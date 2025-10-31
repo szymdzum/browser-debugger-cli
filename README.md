@@ -10,7 +10,19 @@ npm install -g browser-debugger-cli
 
 ## Quick Start
 
-**1. Start Chrome with debugging enabled:**
+```bash
+# Just run bdg - it will auto-launch Chrome if needed
+bdg localhost:3000
+
+# Interact with the page, then press Ctrl+C
+```
+
+JSON output with collected network requests, console logs, and DOM will be written to stdout.
+
+### How It Works
+
+`bdg` automatically launches Chrome with debugging enabled if it's not already running. You can also manually start Chrome first if you prefer:
+
 ```bash
 # macOS
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
@@ -26,16 +38,7 @@ google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-bdg
   --user-data-dir=C:\temp\chrome-bdg
 ```
 
-**2. Open your target page in Chrome**
-
-**3. Run the CLI:**
-```bash
-bdg localhost:3000
-```
-
-**4. Interact with the page, then press Ctrl+C**
-
-JSON output with collected network requests, console logs, and DOM will be written to stdout.
+If Chrome is already running with debugging enabled, `bdg` will detect and use the existing instance.
 
 ## Usage
 
