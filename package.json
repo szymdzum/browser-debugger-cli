@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
     "dev": "tsc && node dist/index.js",
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build"

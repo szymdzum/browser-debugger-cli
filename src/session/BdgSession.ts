@@ -198,4 +198,44 @@ export class BdgSession {
   getCDP(): CDPConnection {
     return this.cdp;
   }
+
+  /**
+   * Get collected network requests.
+   *
+   * Useful for live preview of collected data without stopping the session.
+   *
+   * @returns Array of network requests collected so far
+   */
+  getNetworkRequests(): NetworkRequest[] {
+    return this.networkRequests;
+  }
+
+  /**
+   * Get collected console messages.
+   *
+   * Useful for live preview of collected data without stopping the session.
+   *
+   * @returns Array of console messages collected so far
+   */
+  getConsoleLogs(): ConsoleMessage[] {
+    return this.consoleLogs;
+  }
+
+  /**
+   * Get session start time.
+   *
+   * @returns Timestamp when session was created
+   */
+  getStartTime(): number {
+    return this.startTime;
+  }
+
+  /**
+   * Get list of active collectors.
+   *
+   * @returns Array of collector types that are currently active
+   */
+  getActiveCollectors(): CollectorType[] {
+    return this.activeCollectors;
+  }
 }
