@@ -1,0 +1,23 @@
+# Source files (only publish dist/)
+src/
+tsconfig.json
+
+# Development files
+*.md
+!README.md
+.gitignore
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Testing
+coverage/
+*.test.js
+*.spec.js
+
+# CI/CD
+.github/
+.gitlab-ci.yml
