@@ -58,6 +58,60 @@ export interface BdgOutput {
 
 export type CollectorType = 'dom' | 'network' | 'console';
 
+// CDP Event Parameter Types
+export interface CDPNetworkRequestParams {
+  requestId: string;
+  request: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    postData?: string;
+  };
+  timestamp: number;
+}
+
+export interface CDPNetworkResponseParams {
+  requestId: string;
+  response: {
+    url: string;
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    mimeType: string;
+  };
+}
+
+export interface CDPNetworkLoadingFinishedParams {
+  requestId: string;
+  timestamp: number;
+}
+
+export interface CDPNetworkLoadingFailedParams {
+  requestId: string;
+  errorText: string;
+  canceled?: boolean;
+}
+
+export interface CDPConsoleAPICalledParams {
+  type: string;
+  args: Array<{
+    type: string;
+    value?: any;
+    description?: string;
+  }>;
+  timestamp: number;
+}
+
+export interface CDPExceptionThrownParams {
+  exceptionDetails: {
+    text?: string;
+    exception?: {
+      description?: string;
+    };
+    timestamp?: number;
+  };
+}
+
 export interface ConnectionOptions {
   timeout?: number;
   maxRetries?: number;

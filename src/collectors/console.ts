@@ -1,5 +1,10 @@
 import { CDPConnection } from '../connection/cdp.js';
-import { ConsoleMessage, CleanupFunction } from '../types.js';
+import {
+  ConsoleMessage,
+  CleanupFunction,
+  CDPConsoleAPICalledParams,
+  CDPExceptionThrownParams
+} from '../types.js';
 
 const MAX_MESSAGES = 10000; // Prevent memory issues
 
@@ -14,7 +19,7 @@ export async function startConsoleCollection(
   await cdp.send('Log.enable');
 
   // Listen for console API calls
-  const consoleAPIId = cdp.on('Runtime.consoleAPICalled', (params: any) => {
+  const consoleAPIId = cdp.on('Runtime.consoleAPICalled', (params: CDPConsoleAPICalledParams) => {
     const message: ConsoleMessage = {
       type: params.type,
       text: params.args
@@ -40,7 +45,7 @@ export async function startConsoleCollection(
   handlers.push({ event: 'Runtime.consoleAPICalled', id: consoleAPIId });
 
   // Listen for exceptions
-  const exceptionId = cdp.on('Runtime.exceptionThrown', (params: any) => {
+  const exceptionId = cdp.on('Runtime.exceptionThrown', (params: CDPExceptionThrownParams) => {
     const exception = params.exceptionDetails;
     const message: ConsoleMessage = {
       type: 'error',

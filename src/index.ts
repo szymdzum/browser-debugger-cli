@@ -5,6 +5,8 @@ import { findTarget, validateTarget } from './connection/finder.js';
 import { launchChrome, isChromeRunning } from './connection/launcher.js';
 import { BdgSession } from './session/BdgSession.js';
 import { BdgOutput, CollectorType } from './types.js';
+import { normalizeUrl } from './utils/url.js';
+import { validateCollectorTypes } from './utils/validation.js';
 
 const program = new Command();
 
@@ -46,11 +48,11 @@ async function run(url: string, options: { port: number; timeout?: number }, col
   const startTime = Date.now();
 
   try {
+    // Validate collector types
+    validateCollectorTypes(collectors);
+
     // Normalize URL - add http:// if no protocol specified
-    let targetUrl = url;
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
-      targetUrl = `http://${url}`;
-    }
+    const targetUrl = normalizeUrl(url);
 
     // Check if Chrome is running with CDP, if not launch it
     const chromeRunning = await isChromeRunning(options.port);

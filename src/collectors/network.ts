@@ -1,5 +1,12 @@
 import { CDPConnection } from '../connection/cdp.js';
-import { NetworkRequest, CleanupFunction } from '../types.js';
+import {
+  NetworkRequest,
+  CleanupFunction,
+  CDPNetworkRequestParams,
+  CDPNetworkResponseParams,
+  CDPNetworkLoadingFinishedParams,
+  CDPNetworkLoadingFailedParams
+} from '../types.js';
 
 const MAX_REQUESTS = 10000; // Prevent memory issues
 const STALE_REQUEST_TIMEOUT = 60000; // 60 seconds
@@ -32,7 +39,7 @@ export async function startNetworkCollection(
   }, 30000); // Check every 30 seconds
 
   // Listen for requests
-  const requestWillBeSentId = cdp.on('Network.requestWillBeSent', (params: any) => {
+  const requestWillBeSentId = cdp.on('Network.requestWillBeSent', (params: CDPNetworkRequestParams) => {
     if (requestMap.size >= MAX_REQUESTS) {
       console.error(`Warning: Network request limit reached (${MAX_REQUESTS}), dropping new requests`);
       return;
@@ -54,7 +61,7 @@ export async function startNetworkCollection(
   handlers.push({ event: 'Network.requestWillBeSent', id: requestWillBeSentId });
 
   // Listen for responses
-  const responseReceivedId = cdp.on('Network.responseReceived', (params: any) => {
+  const responseReceivedId = cdp.on('Network.responseReceived', (params: CDPNetworkResponseParams) => {
     const entry = requestMap.get(params.requestId);
     if (entry) {
       entry.request.status = params.response.status;
@@ -65,7 +72,7 @@ export async function startNetworkCollection(
   handlers.push({ event: 'Network.responseReceived', id: responseReceivedId });
 
   // Listen for finished requests
-  const loadingFinishedId = cdp.on('Network.loadingFinished', async (params: any) => {
+  const loadingFinishedId = cdp.on('Network.loadingFinished', async (params: CDPNetworkLoadingFinishedParams) => {
     const entry = requestMap.get(params.requestId);
     if (entry && requests.length < MAX_REQUESTS) {
       const request = entry.request;
@@ -88,7 +95,7 @@ export async function startNetworkCollection(
   handlers.push({ event: 'Network.loadingFinished', id: loadingFinishedId });
 
   // Listen for failed requests
-  const loadingFailedId = cdp.on('Network.loadingFailed', (params: any) => {
+  const loadingFailedId = cdp.on('Network.loadingFailed', (params: CDPNetworkLoadingFailedParams) => {
     const entry = requestMap.get(params.requestId);
     if (entry && requests.length < MAX_REQUESTS) {
       entry.request.status = 0; // Indicate failure

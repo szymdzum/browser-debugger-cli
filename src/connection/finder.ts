@@ -1,4 +1,5 @@
 import { CDPTarget } from '../types.js';
+import { normalizeUrl } from '../utils/url.js';
 
 export async function findTarget(url: string, port = 9222): Promise<CDPTarget> {
   try {
@@ -19,8 +20,8 @@ export async function findTarget(url: string, port = 9222): Promise<CDPTarget> {
     }
 
     // Normalize the search URL
-    const searchUrl = url.startsWith('http') ? url : `http://${url}`;
-    
+    const searchUrl = normalizeUrl(url);
+
     // Try exact match first
     let target = pageTargets.find(t => t.url === searchUrl);
     
