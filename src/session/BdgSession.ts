@@ -45,6 +45,9 @@ export class BdgSession {
       throw new Error('Target tab closed during connection');
     }
 
+    // Enable Target domain to receive targetDestroyed events
+    await this.cdp.send('Target.setDiscoverTargets', { discover: true });
+
     this.isActive = true;
   }
 
@@ -168,5 +171,9 @@ export class BdgSession {
 
   getTarget(): CDPTarget {
     return this.target;
+  }
+
+  getCDP(): CDPConnection {
+    return this.cdp;
   }
 }

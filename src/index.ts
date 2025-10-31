@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { findTarget, validateTarget } from './connection/finder.js';
+import { findTarget } from './connection/finder.js';
 import { launchChrome, isChromeRunning } from './connection/launcher.js';
 import { BdgSession } from './session/BdgSession.js';
 import { BdgOutput, CollectorType } from './types.js';
@@ -102,29 +102,34 @@ async function run(url: string, options: { port: number; timeout?: number }, col
       }, options.timeout * 1000);
     }
 
-    // Keep alive until signal
+    // Keep alive until signal or error
     await new Promise<void>((_, reject) => {
-      const connectionCheckInterval = setInterval(async () => {
+      if (!session) {
+        reject(new Error('Session not initialized'));
+        return;
+      }
+
+      // Listen for WebSocket connection loss
+      const connectionCheckInterval = setInterval(() => {
         if (!session) {
           clearInterval(connectionCheckInterval);
           return;
         }
 
-        // Check WebSocket connection
         if (!session.isConnected()) {
           clearInterval(connectionCheckInterval);
           reject(new Error('WebSocket connection lost'));
           return;
         }
+      }, 2000); // Check every 2 seconds
 
-        // Check if target still exists
-        const targetExists = await validateTarget(target.id, options.port);
-        if (!targetExists) {
+      // Listen for target destruction (tab closed/navigated)
+      session.getCDP().on('Target.targetDestroyed', (params: any) => {
+        if (params.targetId === target.id) {
           clearInterval(connectionCheckInterval);
           reject(new Error('Browser tab was closed'));
-          return;
         }
-      }, 2000); // Check every 2 seconds
+      });
     });
   } catch (error) {
     const errorOutput: BdgOutput = {

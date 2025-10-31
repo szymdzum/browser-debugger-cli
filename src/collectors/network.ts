@@ -11,6 +11,21 @@ import {
 const MAX_REQUESTS = 10000; // Prevent memory issues
 const STALE_REQUEST_TIMEOUT = 60000; // 60 seconds
 
+/**
+ * Start collecting network requests via CDP Network domain.
+ *
+ * Tracks all HTTP requests and responses, including headers and bodies (for JSON/text responses).
+ * Implements automatic cleanup of stale requests to prevent memory leaks during long sessions.
+ *
+ * @param cdp - CDP connection instance
+ * @param requests - Array to populate with completed network requests
+ * @returns Cleanup function to remove event handlers and clear state
+ *
+ * @remarks
+ * - Stale requests (incomplete after 60s) are removed from tracking but NOT added to output
+ * - Request limit of 10,000 prevents memory issues in long-running sessions
+ * - Response bodies are only fetched for JSON/JavaScript/text MIME types
+ */
 export async function startNetworkCollection(
   cdp: CDPConnection,
   requests: NetworkRequest[]
@@ -21,7 +36,7 @@ export async function startNetworkCollection(
   // Enable network tracking
   await cdp.send('Network.enable');
 
-  // Periodic cleanup of stale requests
+  // Periodic cleanup of stale requests (see JSDoc @remarks for behavior)
   const cleanupInterval = setInterval(() => {
     const now = Date.now();
     const staleRequests: string[] = [];

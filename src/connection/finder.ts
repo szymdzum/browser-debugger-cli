@@ -1,6 +1,19 @@
 import { CDPTarget } from '../types.js';
 import { normalizeUrl } from '../utils/url.js';
 
+/**
+ * Find a browser tab matching the given URL.
+ *
+ * Attempts multiple matching strategies:
+ * 1. Exact URL match
+ * 2. URL contains substring
+ * 3. Hostname match
+ *
+ * @param url - Target URL to find (e.g., "localhost:3000" or "http://example.com")
+ * @param port - Chrome debugging port
+ * @returns CDP target information for the matched tab
+ * @throws Error if Chrome is not running or no matching tab is found
+ */
 export async function findTarget(url: string, port = 9222): Promise<CDPTarget> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/json`);
@@ -69,6 +82,15 @@ export async function findTarget(url: string, port = 9222): Promise<CDPTarget> {
   }
 }
 
+/**
+ * Validate that a target still exists in Chrome.
+ *
+ * Used to detect when a tab has been closed during collection.
+ *
+ * @param targetId - CDP target ID to validate
+ * @param port - Chrome debugging port
+ * @returns True if target still exists, false otherwise
+ */
 export async function validateTarget(targetId: string, port = 9222): Promise<boolean> {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/json`);

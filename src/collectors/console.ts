@@ -8,6 +8,19 @@ import {
 
 const MAX_MESSAGES = 10000; // Prevent memory issues
 
+/**
+ * Start collecting console messages and exceptions via CDP Runtime domain.
+ *
+ * Captures console.log, console.error, etc. and JavaScript exceptions thrown in the page.
+ *
+ * @param cdp - CDP connection instance
+ * @param messages - Array to populate with console messages
+ * @returns Cleanup function to remove event handlers
+ *
+ * @remarks
+ * - Message limit of 10,000 prevents memory issues in long-running sessions
+ * - After limit is reached, new messages are silently dropped (warning logged once)
+ */
 export async function startConsoleCollection(
   cdp: CDPConnection,
   messages: ConsoleMessage[]

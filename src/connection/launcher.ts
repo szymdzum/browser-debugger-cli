@@ -8,7 +8,17 @@ export interface LaunchOptions {
 }
 
 /**
- * Launch Chrome with remote debugging enabled
+ * Launch Chrome with remote debugging enabled.
+ *
+ * Only supports macOS currently. Chrome will be launched in a new window
+ * with the specified debugging port and user data directory.
+ *
+ * @param options - Launch configuration options
+ * @throws Error if Chrome fails to launch or CDP doesn't become available
+ *
+ * @remarks
+ * Chrome 136+ requires --user-data-dir with a non-default directory.
+ * See CHROME_SETUP.md for details.
  */
 export async function launchChrome(options: LaunchOptions = {}): Promise<void> {
   const port = options.port ?? 9222;
@@ -60,7 +70,10 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<void> {
 }
 
 /**
- * Check if Chrome is already running with CDP on the specified port
+ * Check if Chrome is already running with CDP on the specified port.
+ *
+ * @param port - Chrome debugging port to check
+ * @returns True if Chrome is running and CDP is available
  */
 export async function isChromeRunning(port: number = 9222): Promise<boolean> {
   try {
