@@ -3,7 +3,6 @@
 import { Command } from 'commander';
 import { findTarget } from './connection/finder.js';
 import { launchChrome, isChromeRunning } from './connection/launcher.js';
-import { waitForPageLoad } from './utils/pageLoad.js';
 import { BdgSession } from './session/BdgSession.js';
 import { BdgOutput, CollectorType } from './types.js';
 
@@ -43,13 +42,13 @@ async function handleStop() {
 process.on('SIGINT', handleStop);
 process.on('SIGTERM', handleStop);
 
-async function run(url: string, options: { port: number; timeout?: number; noLaunch?: boolean; waitForLoad?: boolean }, collectors: CollectorType[]) {
+async function run(url: string, options: { port: number; timeout?: number; noLaunch?: boolean }, collectors: CollectorType[]) {
   const startTime = Date.now();
 
   try {
     // Normalize URL - add http:// if no protocol specified
     let targetUrl = url;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('file://')) {
       targetUrl = `http://${url}`;
     }
 
@@ -84,30 +83,10 @@ async function run(url: string, options: { port: number; timeout?: number; noLau
       throw new Error('Failed to establish CDP connection');
     }
 
-    // Wait for page to fully load if requested
-    if (options.waitForLoad) {
-      console.error('Waiting for page to fully load...');
-      try {
-        // Note: waitForPageLoad needs to be updated to work with BdgSession
-        // For now, we'll skip this functionality
-        console.error('Warning: --wait-for-load is not yet supported with new session manager');
-      } catch (error) {
-        console.error('Warning: Page load wait failed:', error instanceof Error ? error.message : String(error));
-        console.error('Continuing with collection anyway...');
-      }
-    }
-
     // Start collectors
-    console.error('DEBUG: Starting collectors...');
     for (const collector of collectors) {
-      console.error(`DEBUG: Enabling ${collector} collector...`);
       await session.startCollector(collector);
-      console.error(`DEBUG: ${collector} collector enabled`);
     }
-
-    // Reload the page to capture network/console activity from the start
-    // Note: This is handled internally by the collectors now
-    console.error('Note: Page reload removed - collectors capture from current state');
 
     const collectorNames = collectors.length === 3
       ? 'network, console, and DOM'
@@ -157,11 +136,10 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
-  .option('-w, --wait-for-load', 'Wait for page to fully load before starting collection')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch, waitForLoad: options.waitForLoad }, ['dom', 'network', 'console']);
+    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['dom', 'network', 'console']);
   });
 
 program
@@ -171,11 +149,10 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
-  .option('-w, --wait-for-load', 'Wait for page to fully load before starting collection')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch, waitForLoad: options.waitForLoad }, ['dom']);
+    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['dom']);
   });
 
 program
@@ -185,11 +162,10 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
-  .option('-w, --wait-for-load', 'Wait for page to fully load before starting collection')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch, waitForLoad: options.waitForLoad }, ['network']);
+    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['network']);
   });
 
 program
@@ -199,11 +175,10 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
-  .option('-w, --wait-for-load', 'Wait for page to fully load before starting collection')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch, waitForLoad: options.waitForLoad }, ['console']);
+    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['console']);
   });
 
 program.parse();
