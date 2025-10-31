@@ -31,21 +31,51 @@ export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupF
  * @returns DOM data including URL, title, and full HTML
  */
 export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
-  // Get document
-  const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+  try {
+    // Add a timeout wrapper to prevent hanging
+    const timeout = 5000; // 5 seconds should be plenty for DOM capture
 
-  // Get outer HTML
-  const { outerHTML } = await cdp.send('DOM.getOuterHTML', {
-    nodeId: root.nodeId
-  });
+    const captureWithTimeout = async <T>(promise: Promise<T>, label: string): Promise<T> => {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error(`${label} timed out after ${timeout}ms`)), timeout)
+        )
+      ]);
+    };
 
-  // Get page info
-  const frameTree = await cdp.send('Page.getFrameTree');
-  const frame = frameTree.frameTree.frame;
+    // Get document
+    console.error('Getting document...');
+    const { root } = await captureWithTimeout(
+      cdp.send('DOM.getDocument', { depth: -1 }),
+      'DOM.getDocument'
+    );
+    console.error(`Got document root (nodeId: ${root.nodeId})`);
 
-  return {
-    url: frame.url,
-    title: frame.name || 'Untitled',
-    outerHTML
-  };
+    // Get outer HTML
+    console.error('Getting outer HTML...');
+    const { outerHTML } = await captureWithTimeout(
+      cdp.send('DOM.getOuterHTML', { nodeId: root.nodeId }),
+      'DOM.getOuterHTML'
+    );
+    console.error(`Got outer HTML (${outerHTML.length} chars)`);
+
+    // Get page info
+    console.error('Getting page info...');
+    const frameTree = await captureWithTimeout(
+      cdp.send('Page.getFrameTree'),
+      'Page.getFrameTree'
+    );
+    const frame = frameTree.frameTree.frame;
+    console.error(`Got page info (url: ${frame.url})`);
+
+    return {
+      url: frame.url,
+      title: frame.name || 'Untitled',
+      outerHTML
+    };
+  } catch (error) {
+    console.error('Error in collectDOM:', error);
+    throw error;
+  }
 }

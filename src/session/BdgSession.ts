@@ -2,7 +2,7 @@ import { CDPConnection } from '../connection/cdp.js';
 import { validateTarget } from '../connection/finder.js';
 import { startNetworkCollection } from '../collectors/network.js';
 import { startConsoleCollection } from '../collectors/console.js';
-import { prepareDOMCollection, collectDOM } from '../collectors/dom.js';
+import { prepareDOMCollection } from '../collectors/dom.js';
 import {
   CDPTarget,
   CollectorType,
@@ -107,87 +107,60 @@ export class BdgSession {
 
     console.error('Capturing final state...');
 
-    try {
-      // Capture DOM snapshot if requested
-      let domData: DOMData | undefined;
-      if (this.activeCollectors.includes('dom')) {
-        try {
-          domData = await collectDOM(this.cdp);
-        } catch (error) {
-          console.error('Warning: Could not capture DOM:', error instanceof Error ? error.message : String(error));
-        }
-      }
+    // Skip DOM capture during shutdown to avoid hanging if Chrome is killed
+    // DOM capture requires Chrome to be alive, which may not be the case during SIGINT shutdown
+    console.error('Skipping DOM capture (Chrome may be closing during shutdown)');
+    console.error('Network and console data will be included in output');
+    let domData: DOMData | undefined;
 
-      // Build output
-      const output: BdgOutput = {
-        success: true,
-        timestamp: new Date().toISOString(),
-        duration: Date.now() - this.startTime,
-        target: {
-          url: domData?.url || this.target.url,
-          title: domData?.title || this.target.title
-        },
-        data: {}
-      };
+    // Build output (even if DOM capture failed/skipped)
+    const output: BdgOutput = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      duration: Date.now() - this.startTime,
+      target: {
+        url: domData?.url || this.target.url,
+        title: domData?.title || this.target.title
+      },
+      data: {}
+    };
 
-      // Add collected data
-      if (this.activeCollectors.includes('dom') && domData) {
-        output.data.dom = domData;
-      }
-      if (this.activeCollectors.includes('network')) {
-        output.data.network = this.networkRequests;
-      }
-      if (this.activeCollectors.includes('console')) {
-        output.data.console = this.consoleLogs;
-      }
-
-      // Clean up collectors
-      await this.cleanup();
-
-      return output;
-    } catch (error) {
-      // Clean up even on error
-      await this.cleanup();
-      throw error;
+    // Add collected data
+    if (this.activeCollectors.includes('dom') && domData) {
+      output.data.dom = domData;
     }
-  }
-
-  private async cleanup(): Promise<void> {
-    // Call cleanup functions for all collectors
-    this.collectors.forEach(cleanup => cleanup());
-    this.collectors.clear();
-
-    // Disable CDP domains
-    await this.disableDomains();
-
-    // Close connection
-    this.cdp.close();
-    this.isActive = false;
-  }
-
-  private async disableDomains(): Promise<void> {
-    const disablePromises: Promise<any>[] = [];  // CDP responses vary, using any for simplicity
-
     if (this.activeCollectors.includes('network')) {
-      disablePromises.push(
-        this.cdp.send('Network.disable').catch(() => {})
-      );
+      output.data.network = this.networkRequests;
     }
     if (this.activeCollectors.includes('console')) {
-      disablePromises.push(
-        this.cdp.send('Runtime.disable').catch(() => {}),
-        this.cdp.send('Log.disable').catch(() => {})
-      );
-    }
-    if (this.activeCollectors.includes('dom')) {
-      disablePromises.push(
-        this.cdp.send('Page.disable').catch(() => {}),
-        this.cdp.send('DOM.disable').catch(() => {})
-      );
+      output.data.console = this.consoleLogs;
     }
 
-    await Promise.allSettled(disablePromises);
+    // Clean up collectors (skip CDP domain disabling during shutdown to avoid hanging)
+    try {
+      console.error('Cleaning up session...');
+
+      // Call cleanup functions for all collectors
+      this.collectors.forEach(cleanup => cleanup());
+      this.collectors.clear();
+
+      // Skip disabling CDP domains - Chrome may be dead during SIGINT shutdown
+      // Just close the connection and mark as inactive
+      try {
+        this.cdp.close();
+      } catch (closeError) {
+        // Ignore close errors
+      }
+      this.isActive = false;
+
+      console.error('Session cleanup complete');
+    } catch (cleanupError) {
+      console.error('Warning: Cleanup error:', cleanupError instanceof Error ? cleanupError.message : String(cleanupError));
+    }
+
+    return output;
   }
+
 
   /**
    * Check if the session is active and connected.

@@ -12,8 +12,6 @@ import {
   readPid,
   isProcessAlive,
   writeSessionOutput,
-  readSessionOutput,
-  getOutputFilePath,
   acquireSessionLock,
   writeSessionMetadata,
   cleanupSession
@@ -25,6 +23,7 @@ const program = new Command();
 let session: BdgSession | null = null;
 let launchedChrome: LaunchedChrome | null = null;
 let isShuttingDown = false;
+let shutdownKeepalive: NodeJS.Timeout | null = null;
 
 async function handleStop() {
   if (isShuttingDown || !session) {
@@ -33,26 +32,47 @@ async function handleStop() {
 
   isShuttingDown = true;
 
+  // Keep event loop alive during shutdown to prevent premature exit
+  shutdownKeepalive = setInterval(() => {}, 1000);
+
   try {
+    console.error('Stopping session...');
     const output = await session.stop();
 
-    // Write to file for 'bdg stop' to read
-    writeSessionOutput(output);
+    // Write to file for 'bdg stop' to read (synchronous to ensure it completes)
+    try {
+      console.error('Writing session output...');
+      writeSessionOutput(output);
+      console.error('Session output written successfully');
+    } catch (writeError) {
+      console.error('Failed to write session output:', writeError);
+      console.error('Write error details:', writeError);
+    }
 
     // Also output to stdout (for foreground use)
     console.log(JSON.stringify(output, null, 2));
 
-    // Kill Chrome if we launched it
+    // Leave Chrome running for future sessions (persistent profile benefit)
     if (launchedChrome) {
-      console.error('Killing Chrome...');
-      await launchedChrome.kill();
+      console.error('Leaving Chrome running for future sessions (use persistent profile)');
+      console.error(`Chrome PID: ${launchedChrome.pid}, port: ${launchedChrome.port}`);
     }
 
     // Cleanup session files
-    cleanupSession();
+    try {
+      cleanupSession();
+    } catch (cleanupError) {
+      console.error('Error cleaning up session:', cleanupError);
+    }
 
+    // Clear keepalive and exit
+    if (shutdownKeepalive) {
+      clearInterval(shutdownKeepalive);
+    }
     process.exit(0);
   } catch (error) {
+    console.error('Error during shutdown:', error);
+
     const errorOutput: BdgOutput = {
       success: false,
       timestamp: new Date().toISOString(),
@@ -62,28 +82,59 @@ async function handleStop() {
       error: error instanceof Error ? error.message : String(error)
     };
 
-    // Write error output to file
-    writeSessionOutput(errorOutput);
+    // Write error output to file (synchronous to ensure it completes)
+    try {
+      console.error('Writing error output...');
+      writeSessionOutput(errorOutput);
+      console.error('Error output written successfully');
+    } catch (writeError) {
+      console.error('Failed to write error output:', writeError);
+      console.error('Write error details:', writeError);
+    }
 
     console.log(JSON.stringify(errorOutput, null, 2));
 
-    // Kill Chrome if we launched it
+    // Leave Chrome running even on error
     if (launchedChrome) {
-      try {
-        await launchedChrome.kill();
-      } catch {}
+      console.error('Leaving Chrome running (use persistent profile)');
+      console.error(`Chrome PID: ${launchedChrome.pid}, port: ${launchedChrome.port}`);
     }
 
     // Cleanup session files
-    cleanupSession();
+    try {
+      cleanupSession();
+    } catch (cleanupError) {
+      console.error('Error cleaning up session:', cleanupError);
+    }
 
+    // Clear keepalive and exit
+    if (shutdownKeepalive) {
+      clearInterval(shutdownKeepalive);
+    }
     process.exit(1);
   }
 }
 
 // Register signal handlers
-process.on('SIGINT', handleStop);
-process.on('SIGTERM', handleStop);
+// Wrap in async IIFE to ensure handler completes before exit
+process.on('SIGINT', () => {
+  // Prevent multiple signals from being processed
+  if (!isShuttingDown) {
+    handleStop().catch((error) => {
+      console.error('Fatal error during shutdown:', error);
+      process.exit(1);
+    });
+  }
+});
+
+process.on('SIGTERM', () => {
+  if (!isShuttingDown) {
+    handleStop().catch((error) => {
+      console.error('Fatal error during shutdown:', error);
+      process.exit(1);
+    });
+  }
+});
 
 async function run(
   url: string,
@@ -387,80 +438,63 @@ program
 
 program
   .command('stop')
-  .description('Stop the active collection session and output results')
-  .action(async () => {
+  .description('Stop all active sessions and free ports (does not capture output)')
+  .option('--kill-chrome', 'Also kill Chrome browser')
+  .action(async (options) => {
     try {
+      const { readSessionMetadata } = await import('./utils/session.js');
+
       // Read PID
       const pid = readPid();
       if (!pid) {
-        console.error('Error: No active session found');
-        console.error('Start a session with: bdg <url>');
-        process.exit(1);
-      }
-
-      // Check if process is alive
-      if (!isProcessAlive(pid)) {
-        console.error(`Error: Session process (PID ${pid}) is not running`);
-        console.error('The session may have already finished or crashed.');
-        cleanupSession();
-
-        // Try to read last output if it exists
-        const lastOutput = readSessionOutput();
-        if (lastOutput) {
-          console.error('\nLast session output:');
-          console.log(JSON.stringify(lastOutput, null, 2));
-          process.exit(0);
-        }
-        process.exit(1);
+        console.error('No active session found');
+        console.error('All ports should be free');
+        process.exit(0);
       }
 
       console.error(`Stopping session (PID ${pid})...`);
 
-      // Send SIGINT to gracefully stop the session
-      process.kill(pid, 'SIGINT');
+      // Read metadata BEFORE killing the process (so we can get Chrome PID)
+      const metadata = readSessionMetadata();
 
-      // Wait for process to exit and write output (max 10s)
-      const outputPath = getOutputFilePath();
-      let waited = 0;
-      const maxWait = 10000; // 10 seconds
-      const checkInterval = 100; // 100ms
-
-      while (waited < maxWait) {
-        await new Promise(resolve => setTimeout(resolve, checkInterval));
-        waited += checkInterval;
-
-        // Check if output file was updated recently (within last 500ms)
+      // Kill the bdg process (use SIGKILL for immediate termination)
+      if (isProcessAlive(pid)) {
         try {
-          const stats = await import('fs').then(fs => fs.promises.stat(outputPath));
-          const fileAge = Date.now() - stats.mtimeMs;
-
-          if (fileAge < 500) {
-            // File was just written, wait a bit more to ensure write is complete
-            await new Promise(resolve => setTimeout(resolve, 200));
-            break;
-          }
-        } catch (error) {
-          // File doesn't exist yet, keep waiting
+          process.kill(pid, 'SIGKILL');
+          console.error(`✓ Killed bdg session (PID ${pid})`);
+        } catch (killError) {
+          console.error(`Warning: Could not kill process ${pid}:`, killError);
         }
-
-        // Check if process has exited
-        if (!isProcessAlive(pid)) {
-          // Process exited, wait a bit for file write
-          await new Promise(resolve => setTimeout(resolve, 200));
-          break;
-        }
-      }
-
-      // Read and output the session data
-      const output = readSessionOutput();
-      if (output) {
-        console.log(JSON.stringify(output, null, 2));
-        process.exit(0);
       } else {
-        console.error('Error: Failed to read session output');
-        console.error(`Expected output at: ${outputPath}`);
-        process.exit(1);
+        console.error(`Process ${pid} already stopped`);
       }
+
+      // Kill Chrome if requested
+      if (options.killChrome) {
+        if (metadata?.chromePid) {
+          try {
+            if (isProcessAlive(metadata.chromePid)) {
+              process.kill(metadata.chromePid, 'SIGTERM');
+              console.error(`✓ Killed Chrome (PID ${metadata.chromePid})`);
+            } else {
+              console.error(`Chrome process (PID ${metadata.chromePid}) already stopped`);
+            }
+          } catch (chromeError) {
+            console.error(`Warning: Could not kill Chrome:`, chromeError);
+          }
+        } else {
+          console.error('Warning: Chrome PID not found in session metadata');
+        }
+      } else {
+        console.error('Leaving Chrome running (use --kill-chrome to close it)');
+      }
+
+      // Clean up session files
+      cleanupSession();
+      console.error('✓ Cleaned up session files');
+      console.error('\nAll sessions stopped and ports freed');
+
+      process.exit(0);
     } catch (error) {
       console.error(`Error stopping session: ${error instanceof Error ? error.message : String(error)}`);
       process.exit(1);
