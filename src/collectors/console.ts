@@ -36,7 +36,7 @@ export async function startConsoleCollection(
     const message: ConsoleMessage = {
       type: params.type,
       text: params.args
-        .map((arg: any) => {
+        .map((arg) => {  // arg type already defined in CDPConsoleAPICalledParams
           if (arg.value !== undefined) {
             return String(arg.value);
           }

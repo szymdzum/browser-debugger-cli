@@ -13,6 +13,15 @@ import {
   CleanupFunction
 } from '../types.js';
 
+/**
+ * Manages a browser debugging session.
+ *
+ * Encapsulates the lifecycle of collecting telemetry from a browser tab:
+ * - CDP connection management
+ * - Collector initialization and cleanup
+ * - Data aggregation
+ * - Graceful shutdown with final snapshot
+ */
 export class BdgSession {
   private cdp: CDPConnection;
   private collectors = new Map<CollectorType, CleanupFunction>();
@@ -51,6 +60,12 @@ export class BdgSession {
     this.isActive = true;
   }
 
+  /**
+   * Start a specific data collector.
+   *
+   * @param type - Type of collector to start ('dom', 'network', or 'console')
+   * @throws Error if session is not active
+   */
   async startCollector(type: CollectorType): Promise<void> {
     if (!this.isActive) {
       throw new Error('Session not active');
@@ -76,6 +91,15 @@ export class BdgSession {
     this.collectors.set(type, cleanup);
   }
 
+  /**
+   * Stop the session and return collected telemetry.
+   *
+   * Captures final DOM snapshot, aggregates all collected data,
+   * and performs cleanup of CDP connection and collectors.
+   *
+   * @returns Complete telemetry output with success/error status
+   * @throws Error if session is not active
+   */
   async stop(): Promise<BdgOutput> {
     if (!this.isActive) {
       throw new Error('Session not active');
@@ -142,7 +166,7 @@ export class BdgSession {
   }
 
   private async disableDomains(): Promise<void> {
-    const disablePromises: Promise<any>[] = [];
+    const disablePromises: Promise<any>[] = [];  // CDP responses vary, using any for simplicity
 
     if (this.activeCollectors.includes('network')) {
       disablePromises.push(
@@ -165,14 +189,31 @@ export class BdgSession {
     await Promise.allSettled(disablePromises);
   }
 
+  /**
+   * Check if the session is active and connected.
+   *
+   * @returns True if session is active and CDP connection is open
+   */
   isConnected(): boolean {
     return this.isActive && this.cdp.isConnected();
   }
 
+  /**
+   * Get the CDP target information for this session.
+   *
+   * @returns Target information (URL, title, ID, etc.)
+   */
   getTarget(): CDPTarget {
     return this.target;
   }
 
+  /**
+   * Get the CDP connection instance.
+   *
+   * Useful for registering additional event handlers or sending custom commands.
+   *
+   * @returns CDP connection instance
+   */
   getCDP(): CDPConnection {
     return this.cdp;
   }

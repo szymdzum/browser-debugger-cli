@@ -1,16 +1,25 @@
 import WebSocket from 'ws';
 import { CDPMessage, ConnectionOptions } from '../types.js';
 
+/**
+ * Chrome DevTools Protocol WebSocket connection manager.
+ *
+ * Handles bidirectional communication with Chrome via CDP:
+ * - Request/response correlation with message IDs
+ * - Event subscription and handling
+ * - Connection lifecycle (connect, reconnect, keepalive)
+ * - Graceful error handling and cleanup
+ */
 export class CDPConnection {
   private ws: WebSocket | null = null;
   private messageId = 0;
   private pendingMessages = new Map<number, {
-    resolve: (value: any) => void;
+    resolve: (value: any) => void;  // CDP responses vary by method, can't type statically
     reject: (error: Error) => void;
     timeout: NodeJS.Timeout;
   }>();
   private nextHandlerId = 0;
-  private eventHandlers = new Map<string, Map<number, (params: any) => void>>();
+  private eventHandlers = new Map<string, Map<number, (params: any) => void>>();  // Event params typed at call site
 
   // Keepalive state
   private pingInterval: NodeJS.Timeout | null = null;
@@ -26,6 +35,13 @@ export class CDPConnection {
   private isIntentionallyClosed = false;
   private onReconnect?: () => Promise<void>;
 
+  /**
+   * Connect to Chrome via WebSocket.
+   *
+   * @param wsUrl - WebSocket debugger URL from CDP target
+   * @param options - Connection configuration options
+   * @throws Error if connection fails after all retries
+   */
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
     const {
       maxRetries = 3,
@@ -193,6 +209,18 @@ export class CDPConnection {
     }
   }
 
+  /**
+   * Send a CDP command and wait for the response.
+   *
+   * @param method - CDP method name (e.g., 'Page.navigate', 'DOM.getDocument')
+   * @param params - Method parameters
+   * @returns Promise resolving to the command result
+   * @throws Error if not connected or command times out (30s)
+   *
+   * @remarks
+   * Return type is `any` because CDP response structures vary by method.
+   * Callers should type-assert the result based on the specific method called.
+   */
   async send(method: string, params: Record<string, any> = {}): Promise<any> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to browser');
@@ -226,6 +254,17 @@ export class CDPConnection {
     });
   }
 
+  /**
+   * Register an event handler for CDP events.
+   *
+   * @param event - CDP event name (e.g., 'Network.requestWillBeSent')
+   * @param handler - Callback function to handle the event
+   * @returns Handler ID for later removal with off()
+   *
+   * @remarks
+   * Handler parameter type is `any` for flexibility. Callers should use typed
+   * event parameter interfaces (e.g., `CDPNetworkRequestParams`) at call site.
+   */
   on(event: string, handler: (params: any) => void): number {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Map());
@@ -235,6 +274,12 @@ export class CDPConnection {
     return handlerId;
   }
 
+  /**
+   * Remove a specific event handler.
+   *
+   * @param event - CDP event name
+   * @param handlerId - Handler ID returned from on()
+   */
   off(event: string, handlerId: number): void {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
@@ -245,6 +290,11 @@ export class CDPConnection {
     }
   }
 
+  /**
+   * Remove all event handlers for a specific event or all events.
+   *
+   * @param event - Optional event name. If omitted, removes all handlers for all events.
+   */
   removeAllListeners(event?: string): void {
     if (event) {
       this.eventHandlers.delete(event);
@@ -253,6 +303,12 @@ export class CDPConnection {
     }
   }
 
+  /**
+   * Close the WebSocket connection and clean up resources.
+   *
+   * @param code - WebSocket close code (default: 1000 for normal closure)
+   * @param reason - Human-readable close reason
+   */
   close(code = 1000, reason = 'Normal closure'): void {
     this.isIntentionallyClosed = true;
     this.autoReconnect = false;
@@ -273,6 +329,11 @@ export class CDPConnection {
     this.removeAllListeners();
   }
 
+  /**
+   * Check if the WebSocket connection is open and ready.
+   *
+   * @returns True if connected and ready to send/receive
+   */
   isConnected(): boolean {
     return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
   }

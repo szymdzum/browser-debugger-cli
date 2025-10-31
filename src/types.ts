@@ -1,8 +1,8 @@
 export interface CDPMessage {
   id: number;
   method?: string;
-  params?: Record<string, any>;
-  result?: any;
+  params?: Record<string, any>;  // CDP params vary by method
+  result?: any;  // CDP results vary by method
   error?: { message: string };
 }
 
@@ -37,7 +37,7 @@ export interface ConsoleMessage {
   type: string;
   text: string;
   timestamp: number;
-  args?: any[];
+  args?: any[];  // Raw console arguments from CDP (mixed types)
 }
 
 export interface BdgOutput {
@@ -96,7 +96,7 @@ export interface CDPConsoleAPICalledParams {
   type: string;
   args: Array<{
     type: string;
-    value?: any;
+    value?: any;  // Console argument value (varies by type: string, number, object, etc.)
     description?: string;
   }>;
   timestamp: number;
@@ -110,6 +110,10 @@ export interface CDPExceptionThrownParams {
     };
     timestamp?: number;
   };
+}
+
+export interface CDPTargetDestroyedParams {
+  targetId: string;
 }
 
 export interface ConnectionOptions {

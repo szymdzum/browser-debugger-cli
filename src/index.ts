@@ -4,7 +4,7 @@ import { Command } from 'commander';
 import { findTarget } from './connection/finder.js';
 import { launchChrome, isChromeRunning } from './connection/launcher.js';
 import { BdgSession } from './session/BdgSession.js';
-import { BdgOutput, CollectorType } from './types.js';
+import { BdgOutput, CollectorType, CDPTargetDestroyedParams } from './types.js';
 import { normalizeUrl } from './utils/url.js';
 import { validateCollectorTypes } from './utils/validation.js';
 
@@ -124,7 +124,7 @@ async function run(url: string, options: { port: number; timeout?: number }, col
       }, 2000); // Check every 2 seconds
 
       // Listen for target destruction (tab closed/navigated)
-      session.getCDP().on('Target.targetDestroyed', (params: any) => {
+      session.getCDP().on('Target.targetDestroyed', (params: CDPTargetDestroyedParams) => {
         if (params.targetId === target.id) {
           clearInterval(connectionCheckInterval);
           reject(new Error('Browser tab was closed'));
