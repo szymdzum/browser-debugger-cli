@@ -1,5 +1,5 @@
 {
-  "name": "bdg",
+  "name": "browser-debugger-cli",
   "version": "0.1.0",
   "description": "Browser telemetry via Chrome DevTools Protocol",
   "type": "module",

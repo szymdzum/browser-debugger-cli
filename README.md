@@ -15,7 +15,7 @@ Simple CLI tool to collect browser telemetry (DOM, network, console) via Chrome 
 ### From npm (once published)
 
 ```bash
-npm install -g bdg
+npm install -g browser-debugger-cli
 ```
 
 ### Local Development
