@@ -30,8 +30,8 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   const headless = options.headless ?? false;
   const startingUrl = options.url ?? 'about:blank';
 
-  // Generate unique user-data-dir if not provided
-  const userDataDir = options.userDataDir ?? generateUniqueUserDataDir();
+  // Use persistent user-data-dir if not provided
+  const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
   console.error(`Launching Chrome with CDP on port ${port}...`);
   console.error(`User data directory: ${userDataDir}`);
@@ -95,17 +95,17 @@ function findChromeBinary(): string | undefined {
 }
 
 /**
- * Generate a unique temporary user-data-dir path.
+ * Get the default persistent user-data-dir path.
  *
- * Creates a unique directory in the system temp folder to avoid
- * conflicts with other Chrome instances or bdg sessions.
+ * Uses ~/.bdg/chrome-profile to persist cookies, settings, and other
+ * browser state across bdg sessions. This allows cookies to be saved
+ * and avoids showing cookie consent dialogs on every run.
  *
- * @returns Absolute path to unique user-data-dir
+ * @returns Absolute path to persistent user-data-dir
  */
-function generateUniqueUserDataDir(): string {
-  const tmpDir = os.tmpdir();
-  const uniqueId = `bdg-${Date.now()}-${process.pid}`;
-  const userDataDir = path.join(tmpDir, uniqueId);
+function getPersistentUserDataDir(): string {
+  const homeDir = os.homedir();
+  const userDataDir = path.join(homeDir, '.bdg', 'chrome-profile');
 
   // Create directory if it doesn't exist
   if (!fs.existsSync(userDataDir)) {

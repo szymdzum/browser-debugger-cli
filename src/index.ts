@@ -87,7 +87,7 @@ process.on('SIGTERM', handleStop);
 
 async function run(
   url: string,
-  options: { port: number; timeout?: number; reuseTab?: boolean },
+  options: { port: number; timeout?: number; reuseTab?: boolean; userDataDir?: string },
   collectors: CollectorType[]
 ) {
   const startTime = Date.now();
@@ -115,6 +115,7 @@ async function run(
         port: options.port,
         headless: false,
         url: targetUrl,
+        userDataDir: options.userDataDir,
       });
       console.error(`Chrome launched (PID: ${launchedChrome.pid})`);
     } else {
@@ -264,11 +265,13 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
+  .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
     const reuseTab = options.reuseTab ?? false;
-    await run(url, { port, timeout, reuseTab }, ['dom', 'network', 'console']);
+    const userDataDir = options.userDataDir;
+    await run(url, { port, timeout, reuseTab, userDataDir }, ['dom', 'network', 'console']);
   });
 
 program
@@ -278,11 +281,13 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
+  .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
     const reuseTab = options.reuseTab ?? false;
-    await run(url, { port, timeout, reuseTab }, ['dom']);
+    const userDataDir = options.userDataDir;
+    await run(url, { port, timeout, reuseTab, userDataDir }, ['dom']);
   });
 
 program
@@ -292,11 +297,13 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
+  .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
     const reuseTab = options.reuseTab ?? false;
-    await run(url, { port, timeout, reuseTab }, ['network']);
+    const userDataDir = options.userDataDir;
+    await run(url, { port, timeout, reuseTab, userDataDir }, ['network']);
   });
 
 program
@@ -306,11 +313,13 @@ program
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
   .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
+  .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
     const reuseTab = options.reuseTab ?? false;
-    await run(url, { port, timeout, reuseTab }, ['console']);
+    const userDataDir = options.userDataDir;
+    await run(url, { port, timeout, reuseTab, userDataDir }, ['console']);
   });
 
 program
