@@ -4,10 +4,10 @@ import { DOMData, CleanupFunction } from '../types.js';
 /**
  * Prepare CDP domains for DOM collection.
  *
- * Enables Page and DOM domains required for capturing DOM snapshots.
+ * Enables Page, DOM, and Runtime domains required for capturing DOM snapshots.
  *
  * @param cdp - CDP connection instance
- * @returns Cleanup function (no-op for DOM since it's snapshot-based)
+ * @returns Cleanup function that disables Runtime domain
  */
 export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupFunction> {
   // Enable Page domain for frame tree
@@ -16,9 +16,20 @@ export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupF
   // Enable DOM domain for document access
   await cdp.send('DOM.enable');
 
-  // Return cleanup function (minimal for DOM since it's snapshot-based)
+  // Enable Runtime domain for document.title evaluation
+  await cdp.send('Runtime.enable');
+
+  // Return cleanup function that disables Runtime domain
   return () => {
-    // No event handlers to clean up for DOM
+    // Disable Runtime domain to clean up resources
+    // Note: This is best-effort during shutdown; errors are ignored
+    try {
+      cdp.send('Runtime.disable').catch(() => {
+        // Ignore errors during cleanup (Chrome may be closing)
+      });
+    } catch {
+      // Ignore synchronous errors
+    }
   };
 }
 
@@ -69,9 +80,29 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     const frame = frameTree.frameTree.frame;
     console.error(`Got page info (url: ${frame.url})`);
 
+    // Get real document title using Runtime.evaluate
+    console.error('Getting document title...');
+    let title = 'Untitled';
+    try {
+      const titleResult = await captureWithTimeout(
+        cdp.send('Runtime.evaluate', {
+          expression: 'document.title',
+          returnByValue: true
+        }),
+        'Runtime.evaluate (document.title)'
+      );
+
+      if (titleResult.result && titleResult.result.value) {
+        title = titleResult.result.value;
+      }
+    } catch (titleError) {
+      console.error('Failed to get document title, using fallback:', titleError);
+    }
+    console.error(`Got document title: ${title}`);
+
     return {
       url: frame.url,
-      title: frame.name || 'Untitled',
+      title,
       outerHTML
     };
   } catch (error) {

@@ -56,6 +56,8 @@ export interface SessionMetadata {
   chromePid?: number;
   startTime: number;
   port: number;
+  targetId?: string;
+  webSocketDebuggerUrl?: string;
 }
 
 /**

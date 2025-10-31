@@ -21,3 +21,7 @@ coverage/
 # CI/CD
 .github/
 .gitlab-ci.yml
+
+# Test data and docs
+*.json
+docs/

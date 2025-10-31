@@ -231,6 +231,8 @@ async function run(
       chromePid: launchedChrome?.pid,
       startTime,
       port: options.port,
+      targetId: fullTarget.id,
+      webSocketDebuggerUrl: fullTarget.webSocketDebuggerUrl,
     });
 
     const collectorNames =
@@ -390,27 +392,31 @@ program
         process.exit(1);
       }
 
-      // Get list of targets
+      // Read session metadata to get the target ID
+      const { readSessionMetadata } = await import('./utils/session.js');
+      const metadata = readSessionMetadata();
+
+      if (!metadata || !metadata.targetId || !metadata.webSocketDebuggerUrl) {
+        console.error('Error: No target information in session metadata');
+        console.error('Session may have been started with an older version');
+        process.exit(1);
+      }
+
+      // Verify the target still exists
       const response = await fetch(`http://127.0.0.1:${port}/json/list`);
       const targets = await response.json();
+      const target = targets.find((t: any) => t.id === metadata.targetId);
 
-      if (targets.length === 0) {
-        console.error('Error: No Chrome tabs found');
+      if (!target) {
+        console.error('Error: Session target not found (tab may have been closed)');
+        console.error('Start a new session with: bdg <url>');
         process.exit(1);
       }
 
-      // Use the first page target (usually the active tab)
-      const target = targets.find((t: any) => t.type === 'page') || targets[0];
-
-      if (!target.webSocketDebuggerUrl) {
-        console.error('Error: Target has no webSocketDebuggerUrl');
-        process.exit(1);
-      }
-
-      // Create temporary CDP connection
+      // Create temporary CDP connection using stored webSocketDebuggerUrl
       const { CDPConnection } = await import('./connection/cdp.js');
       const cdp = new CDPConnection();
-      await cdp.connect(target.webSocketDebuggerUrl);
+      await cdp.connect(metadata.webSocketDebuggerUrl);
 
       // Execute JavaScript
       const result = await cdp.send('Runtime.evaluate', {

@@ -1,10 +1,10 @@
 {
   "name": "browser-debugger-cli",
-  "version": "0.1.0",
+  "version": "0.0.1-alpha.0",
   "description": "Browser telemetry via Chrome DevTools Protocol",
   "type": "module",
   "bin": {
-    "bdg": "./dist/index.js"
+    "bdg": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -20,7 +20,6 @@
     "cli",
     "devtools"
   ],
-  "author": "",
   "license": "MIT",
   "dependencies": {
     "chrome-launcher": "^1.2.1",
@@ -34,5 +33,24 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "author": {
+    "name": "Kumak",
+    "email": "szymon@kumak.dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/szymdzum/browser-debugger-cli.git"
+  },
+  "homepage": "https://github.com/szymdzum/browser-debugger-cli#readme",
+  "bugs": {
+    "url": "https://github.com/szymdzum/browser-debugger-cli/issues"
+  },
+  "publishConfig": {
+    "tag": "alpha"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
 }

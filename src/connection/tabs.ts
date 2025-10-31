@@ -266,33 +266,36 @@ export async function createOrFindTarget(
   cdp: CDPConnection,
   reuseTab = false
 ): Promise<CDPTarget> {
-  // Try to find existing target via CDP
-  const targetsResponse: CDPGetTargetsResponse = await cdp.send('Target.getTargets');
-  const targets: CDPTarget[] = targetsResponse.targetInfos.map((info) => ({
-    id: info.targetId,
-    type: info.type,
-    url: info.url,
-    title: info.title,
-    webSocketDebuggerUrl: '', // Not needed for this operation
-  }));
+  // Only look for existing tabs if reuseTab is true
+  if (reuseTab) {
+    // Try to find existing target via CDP
+    const targetsResponse: CDPGetTargetsResponse = await cdp.send('Target.getTargets');
+    const targets: CDPTarget[] = targetsResponse.targetInfos.map((info) => ({
+      id: info.targetId,
+      type: info.type,
+      url: info.url,
+      title: info.title,
+      webSocketDebuggerUrl: '', // Not needed for this operation
+    }));
 
-  const existingTarget = findBestTarget(url, targets);
+    const existingTarget = findBestTarget(url, targets);
 
-  if (existingTarget) {
-    console.error(`Found existing tab: ${existingTarget.url}`);
+    if (existingTarget) {
+      console.error(`Found existing tab: ${existingTarget.url}`);
 
-    // If reuse-tab mode and URLs don't match exactly, navigate
-    if (reuseTab && existingTarget.url !== normalizeUrl(url)) {
-      console.error(`Navigating tab to: ${url}`);
-      await navigateToUrl(existingTarget.id, url, cdp);
-      await waitForTargetReady(existingTarget.id, url, cdp);
+      // If URLs don't match exactly, navigate
+      if (existingTarget.url !== normalizeUrl(url)) {
+        console.error(`Navigating tab to: ${url}`);
+        await navigateToUrl(existingTarget.id, url, cdp);
+        await waitForTargetReady(existingTarget.id, url, cdp);
+      }
+
+      return existingTarget;
     }
-
-    return existingTarget;
   }
 
-  // No matching tab found, create new one
-  console.error(`No matching tab found, creating new tab for: ${url}`);
+  // No matching tab found (or reuseTab=false), create new one
+  console.error(`Creating new tab for: ${url}`);
   const newTarget = await createNewTab(url, cdp);
 
   // Wait for tab to start loading

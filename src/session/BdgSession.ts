@@ -2,7 +2,7 @@ import { CDPConnection } from '../connection/cdp.js';
 import { validateTarget } from '../connection/finder.js';
 import { startNetworkCollection } from '../collectors/network.js';
 import { startConsoleCollection } from '../collectors/console.js';
-import { prepareDOMCollection } from '../collectors/dom.js';
+import { prepareDOMCollection, collectDOM } from '../collectors/dom.js';
 import {
   CDPTarget,
   CollectorType,
@@ -107,13 +107,21 @@ export class BdgSession {
 
     console.error('Capturing final state...');
 
-    // Skip DOM capture during shutdown to avoid hanging if Chrome is killed
-    // DOM capture requires Chrome to be alive, which may not be the case during SIGINT shutdown
-    console.error('Skipping DOM capture (Chrome may be closing during shutdown)');
-    console.error('Network and console data will be included in output');
+    // Attempt to capture DOM if it's an active collector
     let domData: DOMData | undefined;
+    if (this.activeCollectors.includes('dom')) {
+      try {
+        console.error('Capturing DOM snapshot...');
+        domData = await collectDOM(this.cdp);
+        console.error('DOM snapshot captured successfully');
+      } catch (domError) {
+        // Chrome may be closing during shutdown, ignore DOM capture failures
+        console.error('Warning: DOM capture failed (Chrome may be closing):',
+          domError instanceof Error ? domError.message : String(domError));
+      }
+    }
 
-    // Build output (even if DOM capture failed/skipped)
+    // Build output (even if DOM capture failed)
     const output: BdgOutput = {
       success: true,
       timestamp: new Date().toISOString(),
