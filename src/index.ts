@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { findTarget } from './connection/finder.js';
+import { findTarget, validateTarget } from './connection/finder.js';
 import { launchChrome, isChromeRunning } from './connection/launcher.js';
 import { BdgSession } from './session/BdgSession.js';
 import { BdgOutput, CollectorType } from './types.js';
@@ -102,12 +102,27 @@ async function run(url: string, options: { port: number; timeout?: number }, col
 
     // Keep alive until signal
     await new Promise<void>((_, reject) => {
-      const connectionCheckInterval = setInterval(() => {
-        if (session && !session.isConnected()) {
+      const connectionCheckInterval = setInterval(async () => {
+        if (!session) {
           clearInterval(connectionCheckInterval);
-          reject(new Error('WebSocket connection lost - browser tab may have closed or navigated'));
+          return;
         }
-      }, 1000);
+
+        // Check WebSocket connection
+        if (!session.isConnected()) {
+          clearInterval(connectionCheckInterval);
+          reject(new Error('WebSocket connection lost'));
+          return;
+        }
+
+        // Check if target still exists
+        const targetExists = await validateTarget(target.id, options.port);
+        if (!targetExists) {
+          clearInterval(connectionCheckInterval);
+          reject(new Error('Browser tab was closed'));
+          return;
+        }
+      }, 2000); // Check every 2 seconds
     });
   } catch (error) {
     const errorOutput: BdgOutput = {

@@ -20,7 +20,7 @@
     "cli",
     "devtools"
   ],
-  "author": "Your Name",
+  "author": "",
   "license": "MIT",
   "dependencies": {
     "commander": "^12.1.0",

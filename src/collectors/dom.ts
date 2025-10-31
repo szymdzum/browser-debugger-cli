@@ -5,6 +5,9 @@ export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupF
   // Enable Page domain for frame tree
   await cdp.send('Page.enable');
 
+  // Enable DOM domain for document access
+  await cdp.send('DOM.enable');
+
   // Return cleanup function (minimal for DOM since it's snapshot-based)
   return () => {
     // No event handlers to clean up for DOM

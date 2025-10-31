@@ -9,7 +9,7 @@ export async function startNetworkCollection(
   requests: NetworkRequest[]
 ): Promise<CleanupFunction> {
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
-  const handlerIds: number[] = [];
+  const handlers: Array<{ event: string; id: number }> = [];
 
   // Enable network tracking
   await cdp.send('Network.enable');
@@ -51,7 +51,7 @@ export async function startNetworkCollection(
       timestamp: Date.now()
     });
   });
-  handlerIds.push(requestWillBeSentId);
+  handlers.push({ event: 'Network.requestWillBeSent', id: requestWillBeSentId });
 
   // Listen for responses
   const responseReceivedId = cdp.on('Network.responseReceived', (params: any) => {
@@ -62,7 +62,7 @@ export async function startNetworkCollection(
       entry.request.responseHeaders = params.response.headers;
     }
   });
-  handlerIds.push(responseReceivedId);
+  handlers.push({ event: 'Network.responseReceived', id: responseReceivedId });
 
   // Listen for finished requests
   const loadingFinishedId = cdp.on('Network.loadingFinished', async (params: any) => {
@@ -85,7 +85,7 @@ export async function startNetworkCollection(
       requestMap.delete(params.requestId);
     }
   });
-  handlerIds.push(loadingFinishedId);
+  handlers.push({ event: 'Network.loadingFinished', id: loadingFinishedId });
 
   // Listen for failed requests
   const loadingFailedId = cdp.on('Network.loadingFailed', (params: any) => {
@@ -98,7 +98,7 @@ export async function startNetworkCollection(
       requestMap.delete(params.requestId);
     }
   });
-  handlerIds.push(loadingFailedId);
+  handlers.push({ event: 'Network.loadingFailed', id: loadingFailedId });
 
   // Return cleanup function
   return () => {
@@ -106,10 +106,7 @@ export async function startNetworkCollection(
     clearInterval(cleanupInterval);
 
     // Remove event handlers
-    handlerIds.forEach(id => cdp.off('Network.requestWillBeSent', id));
-    handlerIds.forEach(id => cdp.off('Network.responseReceived', id));
-    handlerIds.forEach(id => cdp.off('Network.loadingFinished', id));
-    handlerIds.forEach(id => cdp.off('Network.loadingFailed', id));
+    handlers.forEach(({ event, id }) => cdp.off(event, id));
 
     // Clear request map
     requestMap.clear();

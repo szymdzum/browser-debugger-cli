@@ -31,15 +31,11 @@ export class BdgSession {
   }
 
   async connect(): Promise<void> {
-    // Connect with retry, auto-reconnect, and keepalive
+    // Connect with retry and keepalive (no auto-reconnect for CLI use)
     await this.cdp.connect(this.target.webSocketDebuggerUrl, {
       maxRetries: 3,
-      autoReconnect: true,
-      keepaliveInterval: 30000,
-      onReconnect: async () => {
-        // Re-enable collectors after reconnection
-        await this.reEnableCollectors();
-      }
+      autoReconnect: false,
+      keepaliveInterval: 30000
     });
 
     // Validate target still exists
@@ -75,22 +71,6 @@ export class BdgSession {
     }
 
     this.collectors.set(type, cleanup);
-  }
-
-  private async reEnableCollectors(): Promise<void> {
-    console.error('Re-enabling collectors after reconnection...');
-
-    // Clear old cleanup functions
-    this.collectors.clear();
-
-    // Re-enable each active collector
-    for (const type of this.activeCollectors) {
-      try {
-        await this.startCollector(type);
-      } catch (error) {
-        console.error(`Failed to re-enable ${type} collector:`, error);
-      }
-    }
   }
 
   async stop(): Promise<BdgOutput> {

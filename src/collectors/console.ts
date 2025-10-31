@@ -7,7 +7,7 @@ export async function startConsoleCollection(
   cdp: CDPConnection,
   messages: ConsoleMessage[]
 ): Promise<CleanupFunction> {
-  const handlerIds: number[] = [];
+  const handlers: Array<{ event: string; id: number }> = [];
 
   // Enable runtime
   await cdp.send('Runtime.enable');
@@ -37,7 +37,7 @@ export async function startConsoleCollection(
       console.error(`Warning: Console message limit reached (${MAX_MESSAGES})`);
     }
   });
-  handlerIds.push(consoleAPIId);
+  handlers.push({ event: 'Runtime.consoleAPICalled', id: consoleAPIId });
 
   // Listen for exceptions
   const exceptionId = cdp.on('Runtime.exceptionThrown', (params: any) => {
@@ -51,12 +51,11 @@ export async function startConsoleCollection(
       messages.push(message);
     }
   });
-  handlerIds.push(exceptionId);
+  handlers.push({ event: 'Runtime.exceptionThrown', id: exceptionId });
 
   // Return cleanup function
   return () => {
     // Remove event handlers
-    handlerIds.forEach(id => cdp.off('Runtime.consoleAPICalled', id));
-    handlerIds.forEach(id => cdp.off('Runtime.exceptionThrown', id));
+    handlers.forEach(({ event, id }) => cdp.off(event, id));
   };
 }
