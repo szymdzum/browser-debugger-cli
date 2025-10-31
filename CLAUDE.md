@@ -46,12 +46,10 @@ bdg console localhost:3000
 # Options
 bdg localhost:3000 --port 9223              # Custom CDP port
 bdg localhost:3000 --timeout 30             # Auto-stop after 30s
-bdg localhost:3000 --no-launch              # Don't auto-launch Chrome
-bdg localhost:3000 --wait-for-load          # Wait for page load before collecting
 ```
 
-### Chrome Setup (Required)
-Chrome must be launched with debugging enabled:
+### Chrome Setup (Optional)
+Chrome is **auto-launched** if not already running. You can also manually start Chrome with debugging:
 ```bash
 # macOS
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
@@ -98,13 +96,22 @@ Each collector is independent and enables its CDP domain:
 - **console.ts**: Captures console logs and exceptions via `Runtime.consoleAPICalled` and `Log.entryAdded`
 
 ### Utilities (`src/utils/`)
-- **pageLoad.ts**: Wait for page load with network idle detection
+- **url.ts**: Centralized URL normalization
+- **validation.ts**: Input validation for collector types
+
+### Session Management (`src/session/`)
+- **BdgSession.ts**: Encapsulates CDP session lifecycle
+  - Connection management with retry and keepalive
+  - Collector lifecycle management
+  - Cleanup and graceful shutdown
 
 ### Type Definitions (`src/types.ts`)
 - `CDPMessage`, `CDPTarget`: CDP protocol types
+- `CDPNetworkRequestParams`, `CDPNetworkResponseParams`, etc.: Typed CDP event parameters
 - `NetworkRequest`, `ConsoleMessage`, `DOMData`: Collected data types
 - `BdgOutput`: Final JSON output structure
 - `CollectorType`: 'dom' | 'network' | 'console'
+- `CleanupFunction`: Type for collector cleanup handlers
 
 ## Key Design Patterns
 
@@ -118,14 +125,17 @@ Each collector is independent and enables its CDP domain:
 ```typescript
 // Pattern used by all collectors:
 1. Enable CDP domain: await cdp.send('Domain.enable')
-2. Register event handlers: cdp.on('Domain.eventName', handler)
-3. Accumulate data in shared array passed by reference
-4. On shutdown, DOM snapshot is captured last
+2. Register event handlers with typed params: cdp.on('Domain.eventName', handler)
+3. Store handler IDs with event names: handlers.push({ event, id })
+4. Accumulate data in shared array passed by reference
+5. Return cleanup function that properly removes handlers
+6. On shutdown, DOM snapshot is captured last
 ```
 
 ### Connection Management
 - WebSocket stays open until stopped or connection lost
-- Periodic connection checks (every 1s) detect tab closure
+- Event-driven monitoring using `Target.targetDestroyed` for tab closure
+- Keepalive pings (every 30s) detect connection health
 - Graceful error handling with structured JSON error output
 
 ### URL Normalization
@@ -137,56 +147,85 @@ Each collector is independent and enables its CDP domain:
 1. Create `src/collectors/newcollector.ts`:
 ```typescript
 import { CDPConnection } from '../connection/cdp.js';
+import { CleanupFunction, CDPNewEventParams } from '../types.js';
 
+/**
+ * Start collecting new telemetry data.
+ *
+ * @param cdp - CDP connection instance
+ * @param data - Array to populate with collected data
+ * @returns Cleanup function to remove event handlers
+ */
 export async function startNewCollection(
   cdp: CDPConnection,
   data: NewDataType[]
-): Promise<void> {
+): Promise<CleanupFunction> {
+  const handlers: Array<{ event: string; id: number }> = [];
+
+  // Enable CDP domain
   await cdp.send('Domain.enable');
 
-  cdp.on('Domain.eventName', (params: any) => {
+  // Register event handler with typed params
+  const handlerId = cdp.on('Domain.eventName', (params: CDPNewEventParams) => {
     data.push({
       field: params.field,
       timestamp: Date.now()
     });
   });
+  handlers.push({ event: 'Domain.eventName', id: handlerId });
+
+  // Return cleanup function
+  return () => {
+    handlers.forEach(({ event, id }) => cdp.off(event, id));
+  };
 }
 ```
 
-2. Add type to `src/types.ts`:
+2. Add types to `src/types.ts`:
 ```typescript
 export interface NewDataType {
   field: string;
   timestamp: number;
 }
 
+export interface CDPNewEventParams {
+  field: string;
+  // ... other parameters
+}
+
 export type CollectorType = 'dom' | 'network' | 'console' | 'newcollector';
 ```
 
-3. Import and wire in `src/index.ts`:
+3. Wire into `src/session/BdgSession.ts`:
 ```typescript
-import { startNewCollection } from './collectors/newcollector.js';
+import { startNewCollection } from '../collectors/newcollector.js';
 
-// Add to global state
-let newData: NewDataType[] = [];
+// In BdgSession class:
+private newData: NewDataType[] = [];
 
-// Add to run() function
-if (collectors.includes('newcollector')) {
-  await startNewCollection(cdp, newData);
+// Add case to startCollector():
+case 'newcollector':
+  cleanup = await startNewCollection(this.cdp, this.newData);
+  break;
+
+// Add to stop() method output:
+if (this.activeCollectors.includes('newcollector')) {
+  output.data.newcollector = this.newData;
 }
+```
 
-// Add to handleStop() output
-if (activeCollectors.includes('newcollector')) {
-  output.data.newcollector = newData;
-}
-
-// Add command
+4. Add CLI command in `src/index.ts`:
+```typescript
 program
   .command('newcollector')
-  .description('Collect new data')
+  .description('Collect new telemetry data')
   .argument('<url>', 'Target URL')
-  .action(async (url, options) => {
-    await run(url, { port: parseInt(options.port), ... }, ['newcollector']);
+  .option('-p, --port <number>', 'Chrome debugging port', '9222')
+  .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
+  .action(async (url: string, options) => {
+    const port = parseInt(options.port);
+    const timeout = options.timeout ? parseInt(options.timeout) : undefined;
+    await run(url, { port, timeout }, ['newcollector']);
   });
 ```
 
