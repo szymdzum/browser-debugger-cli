@@ -42,7 +42,7 @@ async function handleStop() {
 process.on('SIGINT', handleStop);
 process.on('SIGTERM', handleStop);
 
-async function run(url: string, options: { port: number; timeout?: number; noLaunch?: boolean }, collectors: CollectorType[]) {
+async function run(url: string, options: { port: number; timeout?: number }, collectors: CollectorType[]) {
   const startTime = Date.now();
 
   try {
@@ -53,19 +53,17 @@ async function run(url: string, options: { port: number; timeout?: number; noLau
     }
 
     // Check if Chrome is running with CDP, if not launch it
-    if (!options.noLaunch) {
-      const chromeRunning = await isChromeRunning(options.port);
-      if (!chromeRunning) {
-        console.error(`Launching Chrome with CDP on port ${options.port}...`);
-        await launchChrome({
-          port: options.port,
-          headless: false,
-          url: targetUrl
-        });
-        console.error('Chrome launched successfully');
-      } else {
-        console.error(`Chrome already running on port ${options.port}`);
-      }
+    const chromeRunning = await isChromeRunning(options.port);
+    if (!chromeRunning) {
+      console.error(`Launching Chrome with CDP on port ${options.port}...`);
+      await launchChrome({
+        port: options.port,
+        headless: false,
+        url: targetUrl
+      });
+      console.error('Chrome launched successfully');
+    } else {
+      console.error(`Chrome already running on port ${options.port}`);
     }
 
     // Find target
@@ -135,11 +133,10 @@ program
   .argument('<url>', 'Target URL (example.com or localhost:3000)')
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-  .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['dom', 'network', 'console']);
+    await run(url, { port, timeout }, ['dom', 'network', 'console']);
   });
 
 program
@@ -148,11 +145,10 @@ program
   .argument('<url>', 'Target URL')
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-  .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['dom']);
+    await run(url, { port, timeout }, ['dom']);
   });
 
 program
@@ -161,11 +157,10 @@ program
   .argument('<url>', 'Target URL')
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-  .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['network']);
+    await run(url, { port, timeout }, ['network']);
   });
 
 program
@@ -174,11 +169,10 @@ program
   .argument('<url>', 'Target URL')
   .option('-p, --port <number>', 'Chrome debugging port', '9222')
   .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-  .option('--no-launch', 'Skip auto-launching Chrome (use existing instance)')
   .action(async (url: string, options) => {
     const port = parseInt(options.port);
     const timeout = options.timeout ? parseInt(options.timeout) : undefined;
-    await run(url, { port, timeout, noLaunch: options.noLaunch }, ['console']);
+    await run(url, { port, timeout }, ['console']);
   });
 
 program.parse();
