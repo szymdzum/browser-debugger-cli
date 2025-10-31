@@ -34,18 +34,52 @@ node dist/index.js localhost:3000
 ## Common Commands
 
 ### Running the Tool
+
+**Default Behavior: Runs Until Stopped**
+By default, bdg runs indefinitely until you stop it with `Ctrl+C` or `bdg stop`:
+
 ```bash
-# Collect all telemetry (default)
+# Start collection (runs indefinitely)
 bdg localhost:3000
 
-# Collect specific data
-bdg dom localhost:3000
-bdg network localhost:3000
-bdg console localhost:3000
+# In another terminal or via agent: stop and get results
+bdg stop
+```
 
-# Options
+**Agent-Friendly Workflow** (for AI assistants like Claude Code):
+```bash
+# 1. Agent starts collection in background
+bdg "localhost:3000/customer/signin?redirectTo=%2F"
+
+# 2. User interacts with the browser manually
+#    (fills form, clicks button, sees error, etc.)
+
+# 3. User tells agent: "analyze the errors now"
+
+# 4. Agent stops collection and captures output
+bdg stop > analysis.json
+
+# 5. Agent analyzes the JSON data
+jq '.data.console[] | select(.type == "error")' analysis.json
+```
+
+**Traditional Workflow with Timeout**:
+```bash
+# Auto-stop after timeout (optional)
+bdg localhost:3000 --timeout 30             # Stops after 30s
+```
+
+**Collect Specific Data**:
+```bash
+bdg dom localhost:3000        # DOM snapshot only
+bdg network localhost:3000    # Network requests only
+bdg console localhost:3000    # Console logs only
+```
+
+**Options**:
+```bash
 bdg localhost:3000 --port 9223              # Custom CDP port
-bdg localhost:3000 --timeout 30             # Auto-stop after 30s
+bdg localhost:3000 --timeout 30             # Auto-stop after timeout
 ```
 
 ### Chrome Setup (Optional)
@@ -66,6 +100,49 @@ google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-bdg
 ```
 
 **Note:** Chrome 136+ requires `--user-data-dir` with a non-default directory. See CHROME_SETUP.md for details.
+
+### Session Management
+
+**Session State Files**:
+bdg tracks active sessions using files in `~/.bdg/`:
+- `session.pid` - PID of currently running session
+- `session.json` - Output from last session (written on stop)
+
+**Session Commands**:
+```bash
+# Start a session
+bdg localhost:3000
+# Creates ~/.bdg/session.pid
+# Collects data until stopped
+
+# Stop the session
+bdg stop
+# Sends SIGINT to process
+# Waits for graceful shutdown
+# Outputs JSON from ~/.bdg/session.json
+# Cleans up PID file
+```
+
+**Session Behaviors**:
+- **Only one session at a time**: Starting bdg when a session is already running will error
+- **Automatic cleanup**: PID file is removed on graceful shutdown (Ctrl+C or `bdg stop`)
+- **Stale session detection**: If a PID file exists but the process is dead, bdg will clean it up automatically
+- **Output persistence**: Session data is written to `~/.bdg/session.json` even if the process crashes
+
+**Error Handling**:
+```bash
+# No session running
+$ bdg stop
+Error: No active session found
+Start a session with: bdg <url>
+
+# Session already running
+$ bdg localhost:3000
+{
+  "success": false,
+  "error": "Session already running (PID 12345). Stop it with: bdg stop"
+}
+```
 
 ## Architecture
 
@@ -98,6 +175,10 @@ Each collector is independent and enables its CDP domain:
 ### Utilities (`src/utils/`)
 - **url.ts**: Centralized URL normalization
 - **validation.ts**: Input validation for collector types
+- **session.ts**: Session management (PID tracking, output persistence)
+  - File operations for `~/.bdg/session.pid` and `~/.bdg/session.json`
+  - Process alive checking (cross-platform)
+  - Stale session cleanup
 
 ### Session Management (`src/session/`)
 - **BdgSession.ts**: Encapsulates CDP session lifecycle

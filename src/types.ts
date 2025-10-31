@@ -131,3 +131,48 @@ export interface SessionState {
   startTime: number;
   collectors: CollectorType[];
 }
+
+/**
+ * Information about a launched Chrome instance.
+ */
+export interface LaunchedChrome {
+  pid: number;
+  port: number;
+  kill: () => Promise<void>;
+}
+
+/**
+ * CDP Target.createTarget response.
+ */
+export interface CDPCreateTargetResponse {
+  targetId: string;
+}
+
+/**
+ * CDP Target.attachToTarget response.
+ */
+export interface CDPAttachToTargetResponse {
+  sessionId: string;
+}
+
+/**
+ * CDP Target.getTargets response.
+ */
+export interface CDPGetTargetsResponse {
+  targetInfos: Array<{
+    targetId: string;
+    type: string;
+    title: string;
+    url: string;
+    attached: boolean;
+  }>;
+}
+
+/**
+ * CDP Page.navigate response.
+ */
+export interface CDPNavigateResponse {
+  frameId: string;
+  loaderId?: string;
+  errorText?: string;
+}

@@ -210,10 +210,30 @@ export class CDPConnection {
   }
 
   /**
+   * Get the CDP port from the WebSocket URL.
+   *
+   * @returns CDP port number
+   * @throws Error if not connected or URL is invalid
+   */
+  getPort(): number {
+    if (!this.wsUrl) {
+      throw new Error('Not connected - no WebSocket URL available');
+    }
+
+    try {
+      const url = new URL(this.wsUrl);
+      return parseInt(url.port, 10);
+    } catch (error) {
+      throw new Error(`Invalid WebSocket URL: ${this.wsUrl}`);
+    }
+  }
+
+  /**
    * Send a CDP command and wait for the response.
    *
    * @param method - CDP method name (e.g., 'Page.navigate', 'DOM.getDocument')
    * @param params - Method parameters
+   * @param sessionId - Optional session ID for commands sent to specific targets
    * @returns Promise resolving to the command result
    * @throws Error if not connected or command times out (30s)
    *
@@ -221,13 +241,18 @@ export class CDPConnection {
    * Return type is `any` because CDP response structures vary by method.
    * Callers should type-assert the result based on the specific method called.
    */
-  async send(method: string, params: Record<string, any> = {}): Promise<any> {
+  async send(method: string, params: Record<string, any> = {}, sessionId?: string): Promise<any> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to browser');
     }
 
     const id = ++this.messageId;
-    const message: CDPMessage = { id, method, params };
+    const message: CDPMessage & { sessionId?: string } = { id, method, params };
+
+    // Add sessionId if provided (for commands sent to specific targets)
+    if (sessionId) {
+      message.sessionId = sessionId;
+    }
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
