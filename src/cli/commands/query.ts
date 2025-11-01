@@ -3,6 +3,10 @@ import type { Command } from 'commander';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 
+/**
+ * Flags accepted by the `bdg query` command.
+ * @property port Chrome debugging port to target for evaluation.
+ */
 interface QueryOptions {
   port: string;
 }

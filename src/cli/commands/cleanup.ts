@@ -4,6 +4,11 @@ import type { Command } from 'commander';
 
 import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
 
+/**
+ * Flags consumed by the `bdg cleanup` command.
+ * @property force Force removal even if the tracked process is alive.
+ * @property all   Also delete the persisted `session.json` artifact.
+ */
 interface CleanupOptions {
   force?: boolean;
   all?: boolean;

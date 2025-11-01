@@ -3,6 +3,10 @@ import type { Command } from 'commander';
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import { readFullOutput } from '@/utils/session.js';
 
+/**
+ * Optional switches for `bdg details`.
+ * @property json Emit the selected record as JSON instead of formatted text.
+ */
 interface DetailsOptions {
   json?: boolean;
 }

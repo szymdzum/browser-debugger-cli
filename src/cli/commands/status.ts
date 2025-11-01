@@ -9,6 +9,10 @@ import {
 } from '@/cli/formatters/statusFormatter.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 
+/**
+ * Options for the `bdg status` command.
+ * @property json Print structured JSON instead of the default human output.
+ */
 interface StatusOptions {
   json?: boolean;
 }

@@ -6,6 +6,16 @@ import * as chromeLauncher from 'chrome-launcher';
 
 import type { LaunchedChrome } from '@/types';
 
+/**
+ * Options that control how Chrome is launched for CDP sessions.
+ * @property port        Remote debugging port (defaults to 9222 when omitted).
+ * @property userDataDir Directory used for Chrome profile data. Falls back to
+ *                        the persistent `~/.bdg/chrome-profile` directory.
+ * @property headless    When true, launches Chrome in headless mode. Defaults
+ *                        to the standard windowed experience.
+ * @property url         Initial URL to open. Defaults to `about:blank` and is
+ *                        typically replaced during session setup.
+ */
 export interface LaunchOptions {
   port?: number;
   userDataDir?: string | undefined;

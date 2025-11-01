@@ -36,6 +36,10 @@ class SessionContext {
   startTime: number;
   target: CDPTarget | null = null;
 
+  /**
+   * Create a new session context and track the start timestamp.
+   * The context is shared with signal handlers so they can orchestrate shutdown.
+   */
   constructor() {
     this.startTime = Date.now();
   }
@@ -91,7 +95,9 @@ class SessionContext {
   }
 
   /**
-   * Handle graceful shutdown of the session
+   * Handle graceful shutdown: stops collectors, writes output, and exits.
+   *
+   * Idempotent — repeated calls after shutdown has started are ignored.
    */
   async stop(): Promise<void> {
     if (this.isShuttingDown || !this.session) {
@@ -130,7 +136,8 @@ class SessionContext {
   }
 
   /**
-   * Cleanup on error
+   * Cleanup on error paths without exiting the process.
+   * Clears timers, tears down Chrome if bdg launched it, and removes session files.
    */
   async cleanup(): Promise<void> {
     // Clear preview interval
@@ -210,7 +217,9 @@ async function bootstrapChrome(
 }
 
 /**
- * Helper: Fetch CDP targets from Chrome
+ * Fetch the current list of available CDP targets from Chrome.
+ * Used during session bootstrap to select a temporary connection target and to
+ * refresh metadata when the session creates or reuses tabs.
  */
 async function fetchCDPTargets(port: number): Promise<CDPTarget[]> {
   const response = await fetch(`http://127.0.0.1:${port}/json/list`);
@@ -218,7 +227,8 @@ async function fetchCDPTargets(port: number): Promise<CDPTarget[]> {
 }
 
 /**
- * Helper: Find target by ID in targets list, with optional refetch
+ * Locate a specific CDP target by ID. Falls back to a fresh fetch when cached
+ * metadata is missing or incomplete (e.g., webSocketDebuggerUrl absent).
  */
 async function findTargetById(
   targetId: string,
@@ -294,7 +304,14 @@ async function setupTarget(
 }
 
 /**
- * Phase 4: Start collectors and write session metadata
+ * Phase 4: start requested collectors and persist session metadata for tooling.
+ *
+ * @param session Active BDG session instance
+ * @param collectors Collector types requested by the CLI
+ * @param startTime Timestamp when the session began
+ * @param port Chrome debugging port in use
+ * @param target Target metadata (includes websocket URL)
+ * @param chromePid PID of Chrome if bdg launched it (optional)
  */
 async function startCollectorsAndMetadata(
   session: BdgSession,
@@ -322,7 +339,7 @@ async function startCollectorsAndMetadata(
 }
 
 /**
- * Helper: Build output structure with mode-specific data
+ * Helper: build output payloads for preview/full modes with consistent metadata.
  */
 function buildSessionOutput(
   mode: 'preview' | 'full',

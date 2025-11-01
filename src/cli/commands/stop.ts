@@ -2,6 +2,10 @@ import type { Command } from 'commander';
 
 import { readPid, isProcessAlive, cleanupSession } from '@/utils/session.js';
 
+/**
+ * Flags supported by `bdg stop`.
+ * @property killChrome Kill the associated Chrome process after stopping bdg.
+ */
 interface StopOptions {
   killChrome?: boolean;
 }

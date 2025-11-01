@@ -10,6 +10,14 @@ import {
 } from '@/constants';
 import type { CollectorType } from '@/types';
 
+/**
+ * Parsed command-line flags shared by the start subcommands.
+ * @property port        Chrome debugging port as provided by the user.
+ * @property timeout     Optional auto-stop timeout (seconds, string form).
+ * @property reuseTab    Whether to reuse an existing tab instead of creating one.
+ * @property userDataDir Custom Chrome profile directory path.
+ * @property all         When true, disables default filtering of noisy data.
+ */
 interface CollectorOptions {
   port: string;
   timeout?: string;

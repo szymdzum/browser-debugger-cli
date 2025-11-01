@@ -118,6 +118,14 @@ export interface CDPTargetDestroyedParams {
   targetId: string;
 }
 
+/**
+ * Optional tuning parameters for {@link CDPConnection.connect}.
+ * @property timeout           Milliseconds to wait for the initial socket open.
+ * @property maxRetries        Number of connection attempts before failing.
+ * @property autoReconnect     Reconnect automatically when the socket closes.
+ * @property keepaliveInterval Interval between ping frames to keep CDP alive.
+ * @property onReconnect       Async hook invoked after a successful reconnect.
+ */
 export interface ConnectionOptions {
   timeout?: number;
   maxRetries?: number;
@@ -128,6 +136,12 @@ export interface ConnectionOptions {
 
 export type CleanupFunction = () => void;
 
+/**
+ * Lightweight snapshot of an active BDG session used by higher-level tooling.
+ * @property isActive   Indicates whether collectors are currently running.
+ * @property startTime  Epoch timestamp (ms) when the session began.
+ * @property collectors Enabled collectors for this run (dom/network/console).
+ */
 export interface SessionState {
   isActive: boolean;
   startTime: number;

@@ -13,6 +13,12 @@ import type {
   CleanupFunction,
 } from '@/types';
 
+/**
+ * Build a descriptive error for unreachable collector branches.
+ *
+ * This keeps the `switch` in {@link BdgSession.startCollector} exhaustive so any
+ * future collector additions fail fast during development.
+ */
 function createUnknownCollectorError(type: never): Error {
   return new Error(`Unknown collector type: ${String(type)}`);
 }

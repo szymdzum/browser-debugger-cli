@@ -294,7 +294,15 @@ export class CDPConnection {
         timeout,
       });
 
-      this.ws!.send(JSON.stringify(message));
+      const socket = this.ws;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        clearTimeout(timeout);
+        this.pendingMessages.delete(id);
+        reject(new Error('Not connected to browser'));
+        return;
+      }
+
+      socket.send(JSON.stringify(message));
     });
   }
 
@@ -310,12 +318,14 @@ export class CDPConnection {
    * event parameter interfaces (e.g., `CDPNetworkRequestParams`) at call site.
    */
   on<T = unknown>(event: string, handler: (params: T) => void): number {
-    if (!this.eventHandlers.has(event)) {
-      this.eventHandlers.set(event, new Map());
+    let handlersForEvent = this.eventHandlers.get(event);
+    if (!handlersForEvent) {
+      handlersForEvent = new Map();
+      this.eventHandlers.set(event, handlersForEvent);
     }
     const handlerId = ++this.nextHandlerId;
     // Cast handler to match storage signature - safe because we invoke with unknown params
-    this.eventHandlers.get(event)!.set(handlerId, handler as (params: unknown) => void);
+    handlersForEvent.set(handlerId, handler as (params: unknown) => void);
     return handlerId;
   }
 
