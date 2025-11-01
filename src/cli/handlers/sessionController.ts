@@ -1,13 +1,14 @@
 import type { BdgSession } from '@/session/BdgSession.js';
-import type { BdgOutput, CollectorType, LaunchedChrome, CDPTarget } from '@/types';
-import { writePid, writeSessionMetadata, cleanupSession } from '@/utils/session.js';
+import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
+import { writePid, writeSessionMetadata } from '@/utils/session.js';
 
 import { ChromeBootstrap } from './bootstrap/ChromeBootstrap.js';
 import { SessionLock } from './bootstrap/SessionLock.js';
 import { TargetSetup } from './bootstrap/TargetSetup.js';
+import { ShutdownController } from './lifecycle/ShutdownController.js';
+import { SignalHandler } from './lifecycle/SignalHandler.js';
 import { SessionLoop } from './monitoring/SessionLoop.js';
 import { OutputBuilder } from './output/OutputBuilder.js';
-import { OutputWriter } from './output/OutputWriter.js';
 import { PreviewWriter } from './output/PreviewWriter.js';
 
 /**
@@ -17,10 +18,10 @@ class SessionContext {
   session: BdgSession | null = null;
   launchedChrome: LaunchedChrome | null = null;
   isShuttingDown = false;
-  shutdownKeepalive: NodeJS.Timeout | null = null;
   previewWriter: PreviewWriter | null = null;
   startTime: number;
   target: CDPTarget | null = null;
+  private shutdownController: ShutdownController;
 
   /**
    * Create a new session context and track the start timestamp.
@@ -28,40 +29,7 @@ class SessionContext {
    */
   constructor() {
     this.startTime = Date.now();
-  }
-
-  /**
-   * Finalize shutdown: write output, cleanup, and exit
-   * @private
-   */
-  private async finalizeShutdown(output: BdgOutput, exitCode: 0 | 1): Promise<never> {
-    // Write output using OutputWriter
-    const outputWriter = new OutputWriter();
-    await outputWriter.writeSessionOutput(output, exitCode);
-
-    // Leave Chrome running for future sessions
-    if (this.launchedChrome) {
-      const chromeMessage =
-        exitCode === 0
-          ? 'Leaving Chrome running for future sessions (use persistent profile)'
-          : 'Leaving Chrome running (use persistent profile)';
-      console.error(chromeMessage);
-      console.error(`Chrome PID: ${this.launchedChrome.pid}, port: ${this.launchedChrome.port}`);
-    }
-
-    // Cleanup session files
-    try {
-      cleanupSession();
-    } catch (cleanupError) {
-      console.error('Error cleaning up session:', cleanupError);
-    }
-
-    // Clear keepalive and exit
-    if (this.shutdownKeepalive) {
-      clearInterval(this.shutdownKeepalive);
-    }
-
-    process.exit(exitCode);
+    this.shutdownController = new ShutdownController(this);
   }
 
   /**
@@ -70,31 +38,7 @@ class SessionContext {
    * Idempotent — repeated calls after shutdown has started are ignored.
    */
   async stop(): Promise<void> {
-    if (this.isShuttingDown || !this.session) {
-      return;
-    }
-
-    this.isShuttingDown = true;
-
-    // Keep event loop alive IMMEDIATELY to prevent premature exit during async operations
-    // This must be set before any await points
-    this.shutdownKeepalive = setInterval(() => {}, 1000);
-
-    // Stop preview writer and wait for pending writes
-    if (this.previewWriter) {
-      this.previewWriter.stop();
-      await this.previewWriter.waitForPendingWrite();
-    }
-
-    try {
-      console.error('Stopping session...');
-      const output = await this.session.stop();
-      await this.finalizeShutdown(output, 0);
-    } catch (error) {
-      console.error('Error during shutdown:', error);
-      const errorOutput = OutputBuilder.buildError(error, this.startTime);
-      await this.finalizeShutdown(errorOutput, 1);
-    }
+    await this.shutdownController.shutdown();
   }
 
   /**
@@ -102,29 +46,9 @@ class SessionContext {
    * Clears timers, tears down Chrome if bdg launched it, and removes session files.
    */
   async cleanup(): Promise<void> {
-    // Stop preview writer and wait for pending writes
-    if (this.previewWriter) {
-      this.previewWriter.stop();
-      await this.previewWriter.waitForPendingWrite();
-    }
-
-    // Kill Chrome if we launched it
-    if (this.launchedChrome) {
-      try {
-        await this.launchedChrome.kill();
-      } catch {
-        // Ignore errors during cleanup
-      }
-    }
-
-    // Cleanup session files
-    cleanupSession();
+    await this.shutdownController.cleanup();
   }
 }
-
-// Global context for signal handling
-// Single instance since we don't support multiple sessions
-let globalContext: SessionContext | null = null;
 
 /**
  * Phase 4: start requested collectors and persist session metadata for tooling.
@@ -213,7 +137,14 @@ export async function startSession(
   collectors: CollectorType[]
 ): Promise<void> {
   const context = new SessionContext();
-  globalContext = context;
+
+  // Setup signal handlers for graceful shutdown
+  const signalHandler = new SignalHandler({
+    onShutdown: async () => {
+      await context.stop();
+    },
+  });
+  signalHandler.register();
 
   try {
     // Phase 1: Lock acquisition and validation
@@ -300,60 +231,4 @@ export async function startSession(
 
     process.exit(1);
   }
-}
-
-/**
- * Setup global signal handlers for graceful shutdown
- */
-export function setupSignalHandlers(): void {
-  // Handler that blocks until shutdown completes
-  const handleShutdownSignal = (signal: string): void => {
-    if (!globalContext || globalContext.isShuttingDown) {
-      return;
-    }
-
-    console.error(`\nReceived ${signal}, shutting down gracefully...`);
-
-    // Remove signal handlers to prevent multiple signals from interrupting shutdown
-    process.removeAllListeners('SIGINT');
-    process.removeAllListeners('SIGTERM');
-
-    // Execute shutdown asynchronously but keep process alive with keepalive
-    void (async (): Promise<void> => {
-      try {
-        await globalContext.stop();
-        // stop() calls process.exit(), so we should never reach here
-      } catch (error) {
-        console.error('Fatal error during shutdown:', error);
-        process.exit(1);
-      }
-    })();
-  };
-
-  // Register signal handlers
-  process.on('SIGINT', () => handleShutdownSignal('SIGINT'));
-  process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'));
-
-  // Error handlers for cleanup on crash
-  process.on('unhandledRejection', (reason) => {
-    console.error('Unhandled rejection:', reason);
-    console.error('Cleaning up session files...');
-    try {
-      cleanupSession();
-    } catch (error) {
-      console.error('Error during cleanup:', error);
-    }
-    process.exit(1);
-  });
-
-  process.on('uncaughtException', (error) => {
-    console.error('Uncaught exception:', error);
-    console.error('Cleaning up session files...');
-    try {
-      cleanupSession();
-    } catch (cleanupError) {
-      console.error('Error during cleanup:', cleanupError);
-    }
-    process.exit(1);
-  });
 }
