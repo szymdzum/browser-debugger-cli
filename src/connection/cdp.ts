@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 
 import type { CDPMessage, ConnectionOptions } from '@/types';
-import { CDPConnectionError, CDPTimeoutError } from '@/utils/errors';
+import { CDPConnectionError, CDPTimeoutError } from '@/utils/errors.js';
 
 /**
  * Chrome DevTools Protocol WebSocket connection manager.

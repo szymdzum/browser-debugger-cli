@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as chromeLauncher from 'chrome-launcher';
 
 import type { LaunchedChrome } from '@/types';
-import { ChromeLaunchError, CDPTimeoutError } from '@/utils/errors';
+import { ChromeLaunchError, CDPTimeoutError } from '@/utils/errors.js';
 
 /**
  * Options that control how Chrome is launched for CDP sessions.
