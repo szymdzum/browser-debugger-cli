@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 
 import type { CDPMessage, ConnectionOptions } from '@/types';
+import { CDPConnectionError, CDPTimeoutError } from '@/utils/errors';
 
 /**
  * Chrome DevTools Protocol WebSocket connection manager.
@@ -70,7 +71,10 @@ export class CDPConnection {
       }
     }
 
-    throw new Error(`Failed to connect after ${maxRetries} attempts: ${lastError?.message}`);
+    throw new CDPConnectionError(
+      `Failed to connect after ${maxRetries} attempts: ${lastError?.message}`,
+      lastError
+    );
   }
 
   private attemptConnection(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
@@ -80,7 +84,7 @@ export class CDPConnection {
       this.ws = new WebSocket(wsUrl);
 
       const connectTimeout = setTimeout(() => {
-        reject(new Error('Connection timeout'));
+        reject(new CDPTimeoutError('Connection timeout'));
         this.ws?.close();
       }, timeout);
 
@@ -108,7 +112,7 @@ export class CDPConnection {
           // Reject all pending messages
           this.pendingMessages.forEach((pending) => {
             clearTimeout(pending.timeout);
-            pending.reject(new Error('WebSocket connection closed'));
+            pending.reject(new CDPConnectionError('WebSocket connection closed'));
           });
           this.pendingMessages.clear();
 
@@ -232,14 +236,14 @@ export class CDPConnection {
    */
   getPort(): number {
     if (!this.wsUrl) {
-      throw new Error('Not connected - no WebSocket URL available');
+      throw new CDPConnectionError('Not connected - no WebSocket URL available');
     }
 
     try {
       const url = new URL(this.wsUrl);
       return parseInt(url.port, 10);
     } catch {
-      throw new Error(`Invalid WebSocket URL: ${this.wsUrl}`);
+      throw new CDPConnectionError(`Invalid WebSocket URL: ${this.wsUrl}`);
     }
   }
 
@@ -262,7 +266,7 @@ export class CDPConnection {
     sessionId?: string
   ): Promise<unknown> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('Not connected to browser');
+      throw new CDPConnectionError('Not connected to browser');
     }
 
     const id = ++this.messageId;
@@ -278,7 +282,7 @@ export class CDPConnection {
         const pending = this.pendingMessages.get(id);
         if (pending) {
           this.pendingMessages.delete(id);
-          reject(new Error(`Command timeout: ${method}`));
+          reject(new CDPTimeoutError(`Command timeout: ${method}`));
         }
       }, 30000);
 
@@ -298,7 +302,7 @@ export class CDPConnection {
       if (!socket || socket.readyState !== WebSocket.OPEN) {
         clearTimeout(timeout);
         this.pendingMessages.delete(id);
-        reject(new Error('Not connected to browser'));
+        reject(new CDPConnectionError('Not connected to browser'));
         return;
       }
 
@@ -372,7 +376,7 @@ export class CDPConnection {
     // Clear all pending messages
     this.pendingMessages.forEach((pending) => {
       clearTimeout(pending.timeout);
-      pending.reject(new Error('Connection closed'));
+      pending.reject(new CDPConnectionError('Connection closed'));
     });
     this.pendingMessages.clear();
 
