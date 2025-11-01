@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
-import { CDPMessage, ConnectionOptions } from '../types.js';
+
+import type { CDPMessage, ConnectionOptions } from '@/types';
 
 /**
  * Chrome DevTools Protocol WebSocket connection manager.

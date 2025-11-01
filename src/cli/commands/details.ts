@@ -1,6 +1,7 @@
 import { Command } from 'commander';
-import { readFullOutput } from '../../utils/session.js';
 import { formatNetworkDetails, formatConsoleDetails } from '../formatters/detailsFormatter.js';
+
+import { readFullOutput } from '@/utils/session.js';
 
 /**
  * Register details command

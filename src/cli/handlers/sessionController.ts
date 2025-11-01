@@ -1,9 +1,3 @@
-import { BdgSession } from '../../session/BdgSession.js';
-import { BdgOutput, CollectorType, CDPTargetDestroyedParams, LaunchedChrome, CDPTarget } from '../../types.js';
-import { normalizeUrl } from '../../utils/url.js';
-import { validateCollectorTypes } from '../../utils/validation.js';
-import { createOrFindTarget } from '../../connection/tabs.js';
-import { launchChrome, isChromeRunning } from '../../connection/launcher.js';
 import {
   writePid,
   readPid,
@@ -14,7 +8,15 @@ import {
   cleanupSession,
   writePartialOutput,
   writeFullOutput
-} from '../../utils/session.js';
+} from '@/utils/session.js';
+
+import type { BdgOutput, CollectorType, CDPTargetDestroyedParams, LaunchedChrome, CDPTarget } from '@/types';
+
+import { BdgSession } from '@/session/BdgSession.js';
+import { normalizeUrl } from '@/utils/url.js';
+import { validateCollectorTypes } from '@/utils/validation.js';
+import { createOrFindTarget } from '@/connection/tabs.js';
+import { launchChrome, isChromeRunning } from '@/connection/launcher.js';
 
 /**
  * Encapsulates session state and lifecycle management

@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { readPid, isProcessAlive, cleanupSession } from '../../utils/session.js';
+
+import { readPid, isProcessAlive, cleanupSession } from '@/utils/session.js';
 
 /**
  * Register stop command

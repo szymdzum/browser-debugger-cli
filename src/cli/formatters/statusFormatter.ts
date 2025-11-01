@@ -1,4 +1,4 @@
-import { SessionMetadata, isProcessAlive } from '../../utils/session.js';
+import { SessionMetadata, isProcessAlive } from '@/utils/session.js';
 
 export interface StatusData {
   active: boolean;

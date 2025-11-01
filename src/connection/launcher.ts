@@ -1,8 +1,10 @@
-import * as chromeLauncher from 'chrome-launcher';
-import { LaunchedChrome } from '../types.js';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
+
+import * as chromeLauncher from 'chrome-launcher';
+
+import type { LaunchedChrome } from '@/types';
 
 export interface LaunchOptions {
   port?: number;

@@ -1,5 +1,6 @@
-import { BdgOutput } from '../../types.js';
-import { truncateUrl, truncateText } from '../../utils/url.js';
+import type { BdgOutput } from '@/types';
+
+import { truncateUrl, truncateText } from '@/utils/url.js';
 
 export interface PreviewOptions {
   json?: boolean;

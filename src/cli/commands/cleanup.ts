@@ -1,6 +1,8 @@
-import { Command } from 'commander';
-import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '../../utils/session.js';
 import * as fs from 'fs';
+
+import { Command } from 'commander';
+
+import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
 
 /**
  * Register cleanup command

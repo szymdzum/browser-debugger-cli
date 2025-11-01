@@ -1,4 +1,4 @@
-import { CollectorType } from '../types.js';
+import type { CollectorType } from '@/types';
 
 const VALID_COLLECTORS: CollectorType[] = ['dom', 'network', 'console'];
 

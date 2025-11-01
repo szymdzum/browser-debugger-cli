@@ -1,12 +1,9 @@
 import { CDPConnection } from './cdp.js';
-import {
-  CDPTarget,
-  CDPCreateTargetResponse,
-  CDPAttachToTargetResponse,
-  CDPGetTargetsResponse,
-  CDPNavigateResponse,
-} from '../types.js';
-import { normalizeUrl } from '../utils/url.js';
+
+import type { CDPTarget } from '@/types';
+
+import { CDPCreateTargetResponse, CDPAttachToTargetResponse, CDPGetTargetsResponse, CDPNavigateResponse,  } from '@/types';
+import { normalizeUrl } from '@/utils/url.js';
 
 /**
  * Scored tab match result.

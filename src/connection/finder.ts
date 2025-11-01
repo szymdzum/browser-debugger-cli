@@ -1,4 +1,4 @@
-import { CDPTarget } from '../types.js';
+import type { CDPTarget } from '@/types';
 
 /**
  * Validate that a target still exists in Chrome.

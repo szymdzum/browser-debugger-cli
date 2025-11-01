@@ -5,6 +5,17 @@
     "moduleResolution": "bundler",
     "outDir": "./dist",
     "rootDir": "./src",
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["./*"],
+      "@/types": ["./types.js"],
+      "@/constants": ["./constants.js"],
+      "@/utils/*": ["./utils/*"],
+      "@/cli/*": ["./cli/*"],
+      "@/collectors/*": ["./collectors/*"],
+      "@/connection/*": ["./connection/*"],
+      "@/session/*": ["./session/*"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

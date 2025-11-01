@@ -1,12 +1,8 @@
-import { CDPConnection } from '../connection/cdp.js';
-import {
-  ConsoleMessage,
-  CleanupFunction,
-  CDPConsoleAPICalledParams,
-  CDPExceptionThrownParams
-} from '../types.js';
-import { shouldExcludeConsoleMessage } from '../utils/filters.js';
-import { MAX_CONSOLE_MESSAGES } from '../constants.js';
+import type { ConsoleMessage, CleanupFunction, CDPConsoleAPICalledParams, CDPExceptionThrownParams } from '@/types';
+
+import { CDPConnection } from '@/connection/cdp.js';
+import { shouldExcludeConsoleMessage } from '@/utils/filters.js';
+import { MAX_CONSOLE_MESSAGES } from '@/constants';
 
 /**
  * Start collecting console messages and exceptions via CDP Runtime domain.

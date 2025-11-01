@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { BdgOutput } from '../types.js';
+
+import type { BdgOutput } from '@/types';
 
 /**
  * Get the session directory path (~/.bdg)

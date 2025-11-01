@@ -1,6 +1,7 @@
 import { Command } from 'commander';
-import { readPartialOutput } from '../../utils/session.js';
 import { formatPreview, formatNoPreviewDataMessage } from '../formatters/previewFormatter.js';
+
+import { readPartialOutput } from '@/utils/session.js';
 
 /**
  * Register peek command

@@ -1,17 +1,10 @@
-import { CDPConnection } from '../connection/cdp.js';
-import { validateTarget } from '../connection/finder.js';
-import { startNetworkCollection } from '../collectors/network.js';
-import { startConsoleCollection } from '../collectors/console.js';
-import { prepareDOMCollection, collectDOM } from '../collectors/dom.js';
-import {
-  CDPTarget,
-  CollectorType,
-  NetworkRequest,
-  ConsoleMessage,
-  DOMData,
-  BdgOutput,
-  CleanupFunction
-} from '../types.js';
+import type { CDPTarget, CollectorType, NetworkRequest, ConsoleMessage, DOMData, BdgOutput, CleanupFunction } from '@/types';
+
+import { CDPConnection } from '@/connection/cdp.js';
+import { validateTarget } from '@/connection/finder.js';
+import { startNetworkCollection } from '@/collectors/network.js';
+import { startConsoleCollection } from '@/collectors/console.js';
+import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 
 /**
  * Manages a browser debugging session.

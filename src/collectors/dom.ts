@@ -1,5 +1,6 @@
-import { CDPConnection } from '../connection/cdp.js';
-import { DOMData, CleanupFunction } from '../types.js';
+import type { DOMData, CleanupFunction } from '@/types';
+
+import { CDPConnection } from '@/connection/cdp.js';
 
 /**
  * Prepare CDP domains for DOM collection.

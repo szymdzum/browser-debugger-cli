@@ -1,4 +1,4 @@
-import { NetworkRequest, ConsoleMessage } from '../../types.js';
+import type { NetworkRequest, ConsoleMessage } from '@/types';
 
 /**
  * Format network request details for human-readable output
