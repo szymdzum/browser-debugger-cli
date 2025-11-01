@@ -7,14 +7,11 @@ import type {
   CDPTargetDestroyedParams,
   LaunchedChrome,
   CDPTarget,
-  NetworkRequest,
-  ConsoleMessage,
 } from '@/types';
 import {
   writePid,
   readPid,
   isProcessAlive,
-  writeSessionOutput,
   acquireSessionLock,
   writeSessionMetadata,
   cleanupSession,
@@ -23,6 +20,9 @@ import {
 } from '@/utils/session.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { validateCollectorTypes } from '@/utils/validation.js';
+
+import { OutputBuilder } from './output/OutputBuilder.js';
+import { OutputWriter } from './output/OutputWriter.js';
 
 /**
  * Encapsulates session state and lifecycle management
@@ -49,26 +49,10 @@ class SessionContext {
    * Finalize shutdown: write output, cleanup, and exit
    * @private
    */
-  private finalizeShutdown(output: BdgOutput, exitCode: 0 | 1): never {
-    // Write output to file for 'bdg stop' to read
-    try {
-      const message = exitCode === 0 ? 'Writing session output...' : 'Writing error output...';
-      console.error(message);
-      writeSessionOutput(output);
-      const successMessage =
-        exitCode === 0
-          ? 'Session output written successfully'
-          : 'Error output written successfully';
-      console.error(successMessage);
-    } catch (writeError) {
-      const errorMessage =
-        exitCode === 0 ? 'Failed to write session output:' : 'Failed to write error output:';
-      console.error(errorMessage, writeError);
-      console.error('Write error details:', writeError);
-    }
-
-    // Output to stdout (for foreground use)
-    console.log(JSON.stringify(output, null, 2));
+  private async finalizeShutdown(output: BdgOutput, exitCode: 0 | 1): Promise<never> {
+    // Write output using OutputWriter
+    const outputWriter = new OutputWriter();
+    await outputWriter.writeSessionOutput(output, exitCode);
 
     // Leave Chrome running for future sessions
     if (this.launchedChrome) {
@@ -133,20 +117,11 @@ class SessionContext {
     try {
       console.error('Stopping session...');
       const output = await this.session.stop();
-      this.finalizeShutdown(output, 0);
+      await this.finalizeShutdown(output, 0);
     } catch (error) {
       console.error('Error during shutdown:', error);
-
-      const errorOutput: BdgOutput = {
-        success: false,
-        timestamp: new Date().toISOString(),
-        duration: 0,
-        target: { url: '', title: '' },
-        data: {},
-        error: error instanceof Error ? error.message : String(error),
-      };
-
-      this.finalizeShutdown(errorOutput, 1);
+      const errorOutput = OutputBuilder.buildError(error, this.startTime);
+      await this.finalizeShutdown(errorOutput, 1);
     }
   }
 
@@ -370,63 +345,6 @@ async function startCollectorsAndMetadata(
 }
 
 /**
- * Helper: build output payloads for preview/full modes with consistent metadata.
- */
-function buildSessionOutput(
-  mode: 'preview' | 'full',
-  target: CDPTarget,
-  startTime: number,
-  allNetworkRequests: NetworkRequest[],
-  allConsoleLogs: ConsoleMessage[]
-): BdgOutput {
-  const baseOutput = {
-    success: true,
-    timestamp: new Date().toISOString(),
-    duration: Date.now() - startTime,
-    target: {
-      url: target.url,
-      title: target.title,
-    },
-    partial: true, // Flag to indicate this is incomplete data
-  };
-
-  if (mode === 'preview') {
-    // Lightweight preview: metadata only, last 1000 items
-    return {
-      ...baseOutput,
-      data: {
-        network: allNetworkRequests.slice(-1000).map((req) => ({
-          requestId: req.requestId,
-          url: req.url,
-          method: req.method,
-          timestamp: req.timestamp,
-          status: req.status,
-          mimeType: req.mimeType,
-          // Exclude requestBody, responseBody, headers for lightweight preview
-        })),
-        console: allConsoleLogs.slice(-1000).map((msg) => ({
-          type: msg.type,
-          text: msg.text,
-          timestamp: msg.timestamp,
-          // Exclude args for lightweight preview
-        })),
-        // DOM omitted in preview (only captured on stop)
-      },
-    };
-  }
-
-  // Full mode: complete data with bodies
-  return {
-    ...baseOutput,
-    data: {
-      network: allNetworkRequests, // All data with bodies
-      console: allConsoleLogs, // All data with args
-      // DOM omitted (only captured on stop)
-    },
-  };
-}
-
-/**
  * Phase 5: Start preview writer with two-tier system
  *
  * Uses async I/O with mutex to prevent event loop blocking and overlapping writes.
@@ -457,20 +375,20 @@ function startPreviewWriter(context: SessionContext): void {
         const allConsoleLogs = session.getConsoleLogs();
 
         // Build both preview and full outputs
-        const previewOutput = buildSessionOutput(
-          'preview',
+        const previewOutput = OutputBuilder.build({
+          mode: 'preview',
           target,
-          context.startTime,
-          allNetworkRequests,
-          allConsoleLogs
-        );
-        const fullOutput = buildSessionOutput(
-          'full',
+          startTime: context.startTime,
+          networkRequests: allNetworkRequests,
+          consoleLogs: allConsoleLogs,
+        });
+        const fullOutput = OutputBuilder.build({
+          mode: 'full',
           target,
-          context.startTime,
-          allNetworkRequests,
-          allConsoleLogs
-        );
+          startTime: context.startTime,
+          networkRequests: allNetworkRequests,
+          consoleLogs: allConsoleLogs,
+        });
 
         // Write both files in parallel (async, non-blocking)
         await Promise.all([
@@ -642,15 +560,11 @@ export async function startSession(
     // Phase 6: Run session loop
     await runSessionLoop(session, target);
   } catch (error) {
-    const errorOutput: BdgOutput = {
-      success: false,
-      timestamp: new Date().toISOString(),
-      duration: Date.now() - context.startTime,
-      target: { url: '', title: '' },
-      data: {},
-      error: error instanceof Error ? error.message : String(error),
-    };
-
+    const errorOutput = OutputBuilder.buildError(
+      error,
+      context.startTime,
+      context.target ?? undefined
+    );
     console.log(JSON.stringify(errorOutput, null, 2));
 
     // Cleanup on error
