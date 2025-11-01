@@ -7,6 +7,8 @@ import type {
   CDPTargetDestroyedParams,
   LaunchedChrome,
   CDPTarget,
+  NetworkRequest,
+  ConsoleMessage,
 } from '@/types';
 import {
   writePid,
@@ -208,6 +210,45 @@ async function bootstrapChrome(
 }
 
 /**
+ * Helper: Fetch CDP targets from Chrome
+ */
+async function fetchCDPTargets(port: number): Promise<CDPTarget[]> {
+  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+  return (await response.json()) as CDPTarget[];
+}
+
+/**
+ * Helper: Find target by ID in targets list, with optional refetch
+ */
+async function findTargetById(
+  targetId: string,
+  port: number,
+  cachedTargets?: CDPTarget[]
+): Promise<CDPTarget> {
+  // First check cached targets if provided
+  if (cachedTargets) {
+    const cached = cachedTargets.find((t) => t.id === targetId);
+    if (cached?.webSocketDebuggerUrl) {
+      return cached;
+    }
+  }
+
+  // Not in cache or missing webSocketDebuggerUrl - refetch
+  const targets = await fetchCDPTargets(port);
+  const target = targets.find((t) => t.id === targetId);
+
+  if (!target) {
+    throw new Error(`Could not find target ${targetId}`);
+  }
+
+  if (!target.webSocketDebuggerUrl) {
+    throw new Error(`Could not find webSocketDebuggerUrl for target ${targetId}`);
+  }
+
+  return target;
+}
+
+/**
  * Phase 3: Create CDP connection and find/create target tab
  */
 async function setupTarget(
@@ -217,18 +258,15 @@ async function setupTarget(
   reuseTab: boolean,
   includeAll: boolean = false
 ): Promise<{ session: BdgSession; target: CDPTarget }> {
-  // Create session (connects to CDP)
-  // We need a temporary target just to connect to CDP
-  // Then we'll use createOrFindTarget to get the right tab
-  const tempResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
-  const tempTargets = (await tempResponse.json()) as CDPTarget[];
+  // Fetch targets once
+  const initialTargets = await fetchCDPTargets(port);
 
-  if (tempTargets.length === 0) {
+  if (initialTargets.length === 0) {
     throw new Error('No targets available in Chrome');
   }
 
   // Use first available target to establish CDP connection
-  const tempTarget = tempTargets[0];
+  const tempTarget = initialTargets[0];
   if (!tempTarget) {
     throw new Error('No targets available in Chrome');
   }
@@ -244,21 +282,10 @@ async function setupTarget(
   const target = await createOrFindTarget(url, tempSession.getCDP(), reuseTab);
   console.error(`Using tab: ${target.url}`);
 
-  // Fetch full target info with webSocketDebuggerUrl
-  const fullTargetResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
-  const fullTargets = (await fullTargetResponse.json()) as CDPTarget[];
-  const fullTarget = fullTargets.find((t) => t.id === target.id);
+  // Find full target metadata (refetches only if not in cache or new tab created)
+  const fullTarget = await findTargetById(target.id, port, initialTargets);
 
-  if (!fullTarget) {
-    throw new Error(`Could not find target ${target.id}`);
-  }
-
-  if (!fullTarget.webSocketDebuggerUrl) {
-    throw new Error(`Could not find webSocketDebuggerUrl for target ${target.id}`);
-  }
-
-  // Update session with the correct target
-  // Close current session and reconnect to the correct target
+  // Close temp session and reconnect to the correct target
   tempSession.getCDP().close();
   const session = new BdgSession(fullTarget, port, includeAll);
   await session.connect();
@@ -295,6 +322,63 @@ async function startCollectorsAndMetadata(
 }
 
 /**
+ * Helper: Build output structure with mode-specific data
+ */
+function buildSessionOutput(
+  mode: 'preview' | 'full',
+  target: CDPTarget,
+  startTime: number,
+  allNetworkRequests: NetworkRequest[],
+  allConsoleLogs: ConsoleMessage[]
+): BdgOutput {
+  const baseOutput = {
+    success: true,
+    timestamp: new Date().toISOString(),
+    duration: Date.now() - startTime,
+    target: {
+      url: target.url,
+      title: target.title,
+    },
+    partial: true, // Flag to indicate this is incomplete data
+  };
+
+  if (mode === 'preview') {
+    // Lightweight preview: metadata only, last 1000 items
+    return {
+      ...baseOutput,
+      data: {
+        network: allNetworkRequests.slice(-1000).map((req) => ({
+          requestId: req.requestId,
+          url: req.url,
+          method: req.method,
+          timestamp: req.timestamp,
+          status: req.status,
+          mimeType: req.mimeType,
+          // Exclude requestBody, responseBody, headers for lightweight preview
+        })),
+        console: allConsoleLogs.slice(-1000).map((msg) => ({
+          type: msg.type,
+          text: msg.text,
+          timestamp: msg.timestamp,
+          // Exclude args for lightweight preview
+        })),
+        // DOM omitted in preview (only captured on stop)
+      },
+    };
+  }
+
+  // Full mode: complete data with bodies
+  return {
+    ...baseOutput,
+    data: {
+      network: allNetworkRequests, // All data with bodies
+      console: allConsoleLogs, // All data with args
+      // DOM omitted (only captured on stop)
+    },
+  };
+}
+
+/**
  * Phase 5: Start preview writer with two-tier system
  */
 function startPreviewWriter(context: SessionContext): void {
@@ -305,53 +389,21 @@ function startPreviewWriter(context: SessionContext): void {
         const allNetworkRequests = context.session.getNetworkRequests();
         const allConsoleLogs = context.session.getConsoleLogs();
 
-        // Lightweight preview: metadata only, last 1000 items
-        const previewOutput: BdgOutput = {
-          success: true,
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - context.startTime,
-          target: {
-            url: target.url,
-            title: target.title,
-          },
-          data: {
-            // Exclude bodies and limit to last 1000
-            network: allNetworkRequests.slice(-1000).map((req) => ({
-              requestId: req.requestId,
-              url: req.url,
-              method: req.method,
-              timestamp: req.timestamp,
-              status: req.status,
-              mimeType: req.mimeType,
-              // Exclude requestBody, responseBody, headers for lightweight preview
-            })),
-            console: allConsoleLogs.slice(-1000).map((msg) => ({
-              type: msg.type,
-              text: msg.text,
-              timestamp: msg.timestamp,
-              // Exclude args for lightweight preview
-            })),
-            // DOM omitted in preview (only captured on stop)
-          },
-          partial: true, // Flag to indicate this is incomplete data
-        };
-
-        // Full output: complete data with bodies
-        const fullOutput: BdgOutput = {
-          success: true,
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - context.startTime,
-          target: {
-            url: target.url,
-            title: target.title,
-          },
-          data: {
-            network: allNetworkRequests, // All data with bodies
-            console: allConsoleLogs, // All data with args
-            // DOM omitted (only captured on stop)
-          },
-          partial: true,
-        };
+        // Build both preview and full outputs
+        const previewOutput = buildSessionOutput(
+          'preview',
+          target,
+          context.startTime,
+          allNetworkRequests,
+          allConsoleLogs
+        );
+        const fullOutput = buildSessionOutput(
+          'full',
+          target,
+          context.startTime,
+          allNetworkRequests,
+          allConsoleLogs
+        );
 
         // Write both files
         writePartialOutput(previewOutput); // ~500KB - for 'bdg peek'

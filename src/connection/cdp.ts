@@ -23,8 +23,7 @@ export class CDPConnection {
     }
   >();
   private nextHandlerId = 0;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private eventHandlers = new Map<string, Map<number, (params: any) => void>>(); // Event params typed at call site
+  private eventHandlers = new Map<string, Map<number, (params: unknown) => void>>(); // Event params typed at call site
 
   // Keepalive state
   private pingInterval: NodeJS.Timeout | null = null;
@@ -315,7 +314,8 @@ export class CDPConnection {
       this.eventHandlers.set(event, new Map());
     }
     const handlerId = ++this.nextHandlerId;
-    this.eventHandlers.get(event)!.set(handlerId, handler);
+    // Cast handler to match storage signature - safe because we invoke with unknown params
+    this.eventHandlers.get(event)!.set(handlerId, handler as (params: unknown) => void);
     return handlerId;
   }
 
