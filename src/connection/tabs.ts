@@ -126,14 +126,14 @@ export async function createNewTab(
 
   // Try CDP method first
   try {
-    const response: CDPCreateTargetResponse = await cdp.send('Target.createTarget', {
+    const response = await cdp.send('Target.createTarget', {
       url: normalizedUrl,
       newWindow: false, // Open as tab, not window
-    });
+    }) as CDPCreateTargetResponse;
 
     // Fetch target info from Chrome
     const listResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
-    const targets: CDPTarget[] = await listResponse.json();
+    const targets = await listResponse.json() as CDPTarget[];
 
     // Find the target we just created
     const target = targets.find((t) => t.id === response.targetId);
@@ -141,7 +141,7 @@ export async function createNewTab(
     if (target) {
       return target;
     }
-  } catch (cdpError) {
+  } catch {
     console.error(`CDP Target.createTarget failed, trying HTTP endpoint...`);
   }
 
@@ -155,7 +155,7 @@ export async function createNewTab(
       throw new Error(`HTTP /json/new failed: ${createResponse.statusText}`);
     }
 
-    const target: CDPTarget = await createResponse.json();
+    const target = await createResponse.json() as CDPTarget;
     return target;
   } catch (httpError) {
     throw new Error(
@@ -179,17 +179,17 @@ export async function navigateToUrl(
   const normalizedUrl = normalizeUrl(url);
 
   // Attach to target
-  const sessionResponse: CDPAttachToTargetResponse = await cdp.send('Target.attachToTarget', {
+  const sessionResponse = await cdp.send('Target.attachToTarget', {
     targetId,
     flatten: true,
-  });
+  }) as CDPAttachToTargetResponse;
 
   // Navigate
-  const navResponse: CDPNavigateResponse = await cdp.send(
+  const navResponse = await cdp.send(
     'Page.navigate',
     { url: normalizedUrl },
     sessionResponse.sessionId
-  );
+  ) as CDPNavigateResponse;
 
   if (navResponse.errorText) {
     throw new Error(`Navigation failed: ${navResponse.errorText}`);
@@ -219,7 +219,7 @@ export async function waitForTargetReady(
       const response = await fetch(
         `http://127.0.0.1:${cdp.getPort()}/json/list`
       );
-      const targets: CDPTarget[] = await response.json();
+      const targets = await response.json() as CDPTarget[];
 
       const target = targets.find((t) => t.id === targetId);
 
@@ -268,7 +268,7 @@ export async function createOrFindTarget(
   // Only look for existing tabs if reuseTab is true
   if (reuseTab) {
     // Try to find existing target via CDP
-    const targetsResponse: CDPGetTargetsResponse = await cdp.send('Target.getTargets');
+    const targetsResponse = await cdp.send('Target.getTargets') as CDPGetTargetsResponse;
     const targets: CDPTarget[] = targetsResponse.targetInfos.map((info) => ({
       id: info.targetId,
       type: info.type,

@@ -1,5 +1,12 @@
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { DOMData, CleanupFunction } from '@/types';
+import type {
+  DOMData,
+  CleanupFunction,
+  CDPGetDocumentResponse,
+  CDPGetOuterHTMLResponse,
+  CDPGetFrameTreeResponse,
+  CDPRuntimeEvaluateResponse
+} from '@/types';
 
 
 /**
@@ -58,27 +65,29 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
 
     // Get document
     console.error('Getting document...');
-    const { root } = await captureWithTimeout(
-      cdp.send('DOM.getDocument', { depth: -1 }),
+    const documentResponse = await captureWithTimeout(
+      cdp.send('DOM.getDocument', { depth: -1 }) as Promise<CDPGetDocumentResponse>,
       'DOM.getDocument'
     );
+    const root = documentResponse.root;
     console.error(`Got document root (nodeId: ${root.nodeId})`);
 
     // Get outer HTML
     console.error('Getting outer HTML...');
-    const { outerHTML } = await captureWithTimeout(
-      cdp.send('DOM.getOuterHTML', { nodeId: root.nodeId }),
+    const htmlResponse = await captureWithTimeout(
+      cdp.send('DOM.getOuterHTML', { nodeId: root.nodeId }) as Promise<CDPGetOuterHTMLResponse>,
       'DOM.getOuterHTML'
     );
+    const outerHTML = htmlResponse.outerHTML;
     console.error(`Got outer HTML (${outerHTML.length} chars)`);
 
     // Get page info
     console.error('Getting page info...');
-    const frameTree = await captureWithTimeout(
-      cdp.send('Page.getFrameTree'),
+    const frameTreeResponse = await captureWithTimeout(
+      cdp.send('Page.getFrameTree') as Promise<CDPGetFrameTreeResponse>,
       'Page.getFrameTree'
     );
-    const frame = frameTree.frameTree.frame;
+    const frame = frameTreeResponse.frameTree.frame;
     console.error(`Got page info (url: ${frame.url})`);
 
     // Get real document title using Runtime.evaluate
@@ -89,11 +98,11 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
         cdp.send('Runtime.evaluate', {
           expression: 'document.title',
           returnByValue: true
-        }),
+        }) as Promise<CDPRuntimeEvaluateResponse>,
         'Runtime.evaluate (document.title)'
       );
 
-      if (titleResult.result?.value) {
+      if (titleResult.result.value !== undefined && typeof titleResult.result.value === 'string') {
         title = titleResult.result.value;
       }
     } catch (titleError) {
@@ -101,8 +110,10 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     }
     console.error(`Got document title: ${title}`);
 
+    const url = frame.url;
+
     return {
-      url: frame.url,
+      url,
       title,
       outerHTML
     };

@@ -15,11 +15,12 @@ export class CDPConnection {
   private ws: WebSocket | null = null;
   private messageId = 0;
   private pendingMessages = new Map<number, {
-    resolve: (value: any) => void;  // CDP responses vary by method, can't type statically
+    resolve: (value: unknown) => void;  // CDP responses vary by method, typed at call site
     reject: (error: Error) => void;
     timeout: NodeJS.Timeout;
   }>();
   private nextHandlerId = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private eventHandlers = new Map<string, Map<number, (params: any) => void>>();  // Event params typed at call site
 
   // Keepalive state
@@ -96,7 +97,8 @@ export class CDPConnection {
         reject(error);
       });
 
-      this.ws.on('close', async (code, reason) => {
+      this.ws.on('close', (code, reason) => {
+        void (async () => {
         this.stopKeepalive();
 
         if (this.isIntentionallyClosed) {
@@ -112,10 +114,11 @@ export class CDPConnection {
         });
         this.pendingMessages.clear();
 
-        // Attempt reconnection if enabled
-        if (this.autoReconnect && this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
-          await this.attemptReconnection();
-        }
+          // Attempt reconnection if enabled
+          if (this.autoReconnect && this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+            await this.attemptReconnection();
+          }
+        })();
       });
 
       this.ws.on('pong', () => {
@@ -126,9 +129,20 @@ export class CDPConnection {
         }
       });
 
-      this.ws.on('message', (data: WebSocket.RawData) => {
+      this.ws.on('message', (rawData: WebSocket.RawData) => {
         try {
-          const message: CDPMessage = JSON.parse(data.toString());
+          let dataString: string;
+          if (typeof rawData === 'string') {
+            dataString = rawData;
+          } else if (Buffer.isBuffer(rawData)) {
+            dataString = rawData.toString('utf8');
+          } else if (Array.isArray(rawData)) {
+            dataString = Buffer.concat(rawData).toString('utf8');
+          } else {
+            console.error('Unexpected data type in CDP message');
+            return;
+          }
+          const message: CDPMessage = JSON.parse(dataString) as CDPMessage;
 
           // Handle responses
           if (message.id !== undefined) {
@@ -224,7 +238,7 @@ export class CDPConnection {
     try {
       const url = new URL(this.wsUrl);
       return parseInt(url.port, 10);
-    } catch (error) {
+    } catch {
       throw new Error(`Invalid WebSocket URL: ${this.wsUrl}`);
     }
   }
@@ -239,10 +253,10 @@ export class CDPConnection {
    * @throws Error if not connected or command times out (30s)
    *
    * @remarks
-   * Return type is `any` because CDP response structures vary by method.
+   * Return type is `unknown` because CDP response structures vary by method.
    * Callers should type-assert the result based on the specific method called.
    */
-  async send(method: string, params: Record<string, any> = {}, sessionId?: string): Promise<any> {
+  async send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<unknown> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to browser');
     }
@@ -288,10 +302,10 @@ export class CDPConnection {
    * @returns Handler ID for later removal with off()
    *
    * @remarks
-   * Handler parameter type is `any` for flexibility. Callers should use typed
+   * Handler parameter type uses generics for type safety. Callers should provide typed
    * event parameter interfaces (e.g., `CDPNetworkRequestParams`) at call site.
    */
-  on(event: string, handler: (params: any) => void): number {
+  on<T = unknown>(event: string, handler: (params: T) => void): number {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Map());
     }

@@ -78,8 +78,11 @@ export class BdgSession {
       case 'dom':
         cleanup = await prepareDOMCollection(this.cdp);
         break;
-      default:
-        throw new Error(`Unknown collector type: ${type}`);
+      default: {
+        // Exhaustive check - should never reach here with valid CollectorType
+        const _exhaustive: never = type;
+        throw new Error(`Unknown collector type: ${String(_exhaustive)}`);
+      }
     }
 
     this.collectors.set(type, cleanup);
@@ -121,8 +124,8 @@ export class BdgSession {
       timestamp: new Date().toISOString(),
       duration: Date.now() - this.startTime,
       target: {
-        url: domData?.url || this.target.url,
-        title: domData?.title || this.target.title
+        url: domData?.url ?? this.target.url,
+        title: domData?.title ?? this.target.title
       },
       data: {}
     };
@@ -150,7 +153,7 @@ export class BdgSession {
       // Just close the connection and mark as inactive
       try {
         this.cdp.close();
-      } catch (closeError) {
+      } catch {
         // Ignore close errors
       }
       this.isActive = false;

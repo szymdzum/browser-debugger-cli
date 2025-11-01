@@ -11,8 +11,8 @@ export function formatNetworkDetails(request: NetworkRequest): string {
   lines.push(`Request ID:  ${request.requestId}`);
   lines.push(`URL:         ${request.url}`);
   lines.push(`Method:      ${request.method}`);
-  lines.push(`Status:      ${request.status || 'pending'}`);
-  lines.push(`MIME Type:   ${request.mimeType || 'N/A'}`);
+  lines.push(`Status:      ${request.status ?? 'pending'}`);
+  lines.push(`MIME Type:   ${request.mimeType ?? 'N/A'}`);
   lines.push('');
 
   if (request.requestHeaders) {

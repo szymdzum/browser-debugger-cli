@@ -3,18 +3,27 @@ import type { Command } from 'commander';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 
+interface QueryOptions {
+  port: string;
+}
+
+interface CDPTarget {
+  id: string;
+  webSocketDebuggerUrl: string;
+}
+
 /**
  * Register query command
  */
-export function registerQueryCommand(program: Command) {
+export function registerQueryCommand(program: Command): void {
   program
     .command('query')
     .description('Execute JavaScript in the active session for live debugging')
     .argument('<script>', 'JavaScript to execute (e.g., "document.querySelector(\'input[type=email]\').value")')
     .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
-    .action(async (script: string, options) => {
+    .action(async (script: string, options: QueryOptions) => {
       try {
-        const port = parseInt(options.port);
+        const port = parseInt(options.port, 10);
 
         // Check if session is running
         const pid = readPid();
@@ -36,8 +45,12 @@ export function registerQueryCommand(program: Command) {
 
         // Verify the target still exists
         const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-        const targets = await response.json();
-        const target = targets.find((t: any) => t.id === metadata.targetId);
+        const targetsData: unknown = await response.json();
+        if (!Array.isArray(targetsData)) {
+          console.error('Error: Invalid response from CDP');
+          process.exit(1);
+        }
+        const target = (targetsData as CDPTarget[]).find(t => t.id === metadata.targetId);
 
         if (!target) {
           console.error('Error: Session target not found (tab may have been closed)');
@@ -55,18 +68,21 @@ export function registerQueryCommand(program: Command) {
           expression: script,
           returnByValue: true,
           awaitPromise: true
-        });
+        }) as {
+          exceptionDetails?: { exception?: { description?: string } };
+          result?: { value?: unknown };
+        };
 
-        await cdp.close();
+        cdp.close();
 
         // Output result
         if (result.exceptionDetails) {
           console.error('Error executing script:');
-          console.error(result.exceptionDetails.exception.description);
+          console.error(result.exceptionDetails.exception?.description ?? 'Unknown error');
           process.exit(1);
         }
 
-        console.log(JSON.stringify(result.result.value, null, 2));
+        console.log(JSON.stringify(result.result?.value, null, 2));
         process.exit(0);
       } catch (error) {
         console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);

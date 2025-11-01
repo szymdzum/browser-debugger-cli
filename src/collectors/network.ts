@@ -8,7 +8,7 @@ import {
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT
 } from '@/constants';
-import type { NetworkRequest, CleanupFunction, CDPNetworkRequestParams, CDPNetworkResponseParams, CDPNetworkLoadingFinishedParams, CDPNetworkLoadingFailedParams } from '@/types';
+import type { NetworkRequest, CleanupFunction, CDPNetworkRequestParams, CDPNetworkResponseParams, CDPNetworkLoadingFinishedParams, CDPNetworkLoadingFailedParams, CDPGetResponseBodyResponse } from '@/types';
 import { shouldExcludeDomain } from '@/utils/filters.js';
 
 /**
@@ -47,7 +47,7 @@ export async function startNetworkCollection(
       maxResourceBufferSize: CHROME_NETWORK_BUFFER_PER_RESOURCE,
       maxPostDataSize: CHROME_POST_DATA_LIMIT
     });
-  } catch (error) {
+  } catch {
     // Fallback to basic Network.enable if buffer parameters not supported
     console.error('Network buffer limits not supported, using default settings');
     await cdp.send('Network.enable');
@@ -104,7 +104,7 @@ export async function startNetworkCollection(
   handlers.push({ event: 'Network.responseReceived', id: responseReceivedId });
 
   // Listen for finished requests
-  const loadingFinishedId = cdp.on('Network.loadingFinished', async (params: CDPNetworkLoadingFinishedParams) => {
+  const loadingFinishedId = cdp.on('Network.loadingFinished', (params: CDPNetworkLoadingFinishedParams) => {
     const entry = requestMap.get(params.requestId);
     if (entry && requests.length < MAX_NETWORK_REQUESTS) {
       const request = entry.request;
@@ -117,18 +117,21 @@ export async function startNetworkCollection(
 
       // Try to get response body for API calls
       // Skip if response is too large to prevent memory issues
-      const isTextResponse = request.mimeType?.includes('json') ||
-                            request.mimeType?.includes('javascript') ||
-                            request.mimeType?.includes('text');
+      const isTextResponse = (request.mimeType?.includes('json') ?? false) ||
+                            (request.mimeType?.includes('javascript') ?? false) ||
+                            (request.mimeType?.includes('text') ?? false);
       const isSizeAcceptable = params.encodedDataLength <= MAX_RESPONSE_SIZE;
 
       if (isTextResponse && isSizeAcceptable) {
-        try {
-          const { body } = await cdp.send('Network.getResponseBody', { requestId: params.requestId });
-          request.responseBody = body;
-        } catch (error) {
-          // Response body not available (e.g., 204 No Content, redirects, etc.)
-        }
+        // Fetch response body asynchronously
+        void cdp.send('Network.getResponseBody', { requestId: params.requestId })
+          .then((response) => {
+            const typedResponse = response as CDPGetResponseBodyResponse;
+            request.responseBody = typedResponse.body;
+          })
+          .catch(() => {
+            // Response body not available (e.g., 204 No Content, redirects, etc.)
+          });
       } else if (isTextResponse && !isSizeAcceptable) {
         // Mark large responses as skipped
         request.responseBody = `[SKIPPED: Response too large (${(params.encodedDataLength / 1024 / 1024).toFixed(2)}MB > ${MAX_RESPONSE_SIZE / 1024 / 1024}MB)]`;

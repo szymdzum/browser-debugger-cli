@@ -4,16 +4,21 @@ import type { Command } from 'commander';
 
 import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
 
+interface CleanupOptions {
+  force?: boolean;
+  all?: boolean;
+}
+
 /**
  * Register cleanup command
  */
-export function registerCleanupCommand(program: Command) {
+export function registerCleanupCommand(program: Command): void {
   program
     .command('cleanup')
     .description('Clean up stale session files')
     .option('-f, --force', 'Force cleanup even if session appears active')
     .option('-a, --all', 'Also remove session.json output file')
-    .action(async (options) => {
+    .action((options: CleanupOptions) => {
       try {
         const pid = readPid();
         let didCleanup = false;
@@ -56,8 +61,9 @@ export function registerCleanupCommand(program: Command) {
               fs.unlinkSync(outputPath);
               console.error('✓ Session output file removed');
               didCleanup = true;
-            } catch (error) {
-              console.error(`Warning: Could not remove session.json: ${error}`);
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`Warning: Could not remove session.json: ${errorMessage}`);
             }
           }
         }

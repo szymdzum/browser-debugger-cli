@@ -9,15 +9,19 @@ import {
 } from '@/cli/formatters/statusFormatter.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 
+interface StatusOptions {
+  json?: boolean;
+}
+
 /**
  * Register status command
  */
-export function registerStatusCommand(program: Command) {
+export function registerStatusCommand(program: Command): void {
   program
     .command('status')
     .description('Show active session status and collection statistics')
     .option('-j, --json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: StatusOptions) => {
       try {
         const { readSessionMetadata } = await import('@/utils/session.js');
 

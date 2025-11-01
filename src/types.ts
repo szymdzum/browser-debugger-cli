@@ -1,8 +1,8 @@
 export interface CDPMessage {
   id: number;
   method?: string;
-  params?: Record<string, any>;  // CDP params vary by method
-  result?: any;  // CDP results vary by method
+  params?: Record<string, unknown>;  // CDP params vary by method
+  result?: unknown;  // CDP results vary by method
   error?: { message: string };
 }
 
@@ -37,7 +37,7 @@ export interface ConsoleMessage {
   type: string;
   text: string;
   timestamp: number;
-  args?: any[];  // Raw console arguments from CDP (mixed types)
+  args?: unknown[];  // Raw console arguments from CDP (mixed types)
 }
 
 export interface BdgOutput {
@@ -98,7 +98,7 @@ export interface CDPConsoleAPICalledParams {
   type: string;
   args: Array<{
     type: string;
-    value?: any;  // Console argument value (varies by type: string, number, object, etc.)
+    value?: unknown;  // Console argument value (varies by type: string, number, object, etc.)
     description?: string;
   }>;
   timestamp: number;
@@ -177,4 +177,71 @@ export interface CDPNavigateResponse {
   frameId: string;
   loaderId?: string;
   errorText?: string;
+}
+
+/**
+ * CDP DOM.getDocument response.
+ */
+export interface CDPGetDocumentResponse {
+  root: {
+    nodeId: number;
+    backendNodeId: number;
+    nodeType: number;
+    nodeName: string;
+    localName: string;
+    nodeValue: string;
+  };
+}
+
+/**
+ * CDP DOM.getOuterHTML response.
+ */
+export interface CDPGetOuterHTMLResponse {
+  outerHTML: string;
+}
+
+/**
+ * CDP Page.getFrameTree response.
+ */
+export interface CDPGetFrameTreeResponse {
+  frameTree: {
+    frame: {
+      id: string;
+      loaderId?: string;
+      url: string;
+      domainAndRegistry?: string;
+      securityOrigin?: string;
+      mimeType: string;
+      secureContextType?: string;
+      crossOriginIsolatedContextType?: string;
+      gatedAPIFeatures?: string[];
+    };
+    childFrames?: unknown[];
+  };
+}
+
+/**
+ * CDP Runtime.evaluate response.
+ */
+export interface CDPRuntimeEvaluateResponse {
+  result: {
+    type: string;
+    value?: string | number | boolean;
+    unserializableValue?: string;
+    description?: string;
+  };
+  exceptionDetails?: {
+    exceptionId: number;
+    text: string;
+    lineNumber: number;
+    columnNumber: number;
+  };
+}
+
+/**
+ * CDP Network.getResponseBody response.
+ */
+export interface CDPGetResponseBodyResponse {
+  body: string;
+  base64Encoded: boolean;
 }

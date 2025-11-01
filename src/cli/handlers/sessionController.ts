@@ -130,7 +130,9 @@ class SessionContext {
     if (this.launchedChrome) {
       try {
         await this.launchedChrome.kill();
-      } catch {}
+      } catch {
+        // Ignore errors during cleanup
+      }
     }
 
     // Cleanup session files
@@ -145,10 +147,10 @@ let globalContext: SessionContext | null = null;
 /**
  * Phase 1: Acquire session lock and validate inputs
  */
-async function setupSessionLock(
+function setupSessionLock(
   url: string,
   collectors: CollectorType[]
-): Promise<string> {
+): string {
   const existingPid = readPid();
 
   // Check for stale session before trying to acquire lock
@@ -215,14 +217,18 @@ async function setupTarget(
   const tempResponse = await fetch(
     `http://127.0.0.1:${port}/json/list`
   );
-  const tempTargets = await tempResponse.json();
+  const tempTargets = await tempResponse.json() as CDPTarget[];
 
   if (tempTargets.length === 0) {
     throw new Error('No targets available in Chrome');
   }
 
   // Use first available target to establish CDP connection
-  const tempSession = new BdgSession(tempTargets[0], port, includeAll);
+  const tempTarget = tempTargets[0];
+  if (!tempTarget) {
+    throw new Error('No targets available in Chrome');
+  }
+  const tempSession = new BdgSession(tempTarget, port, includeAll);
   await tempSession.connect();
 
   if (!tempSession.isConnected()) {
@@ -242,16 +248,20 @@ async function setupTarget(
   const fullTargetResponse = await fetch(
     `http://127.0.0.1:${port}/json/list`
   );
-  const fullTargets = await fullTargetResponse.json();
-  const fullTarget = fullTargets.find((t: any) => t.id === target.id);
+  const fullTargets = await fullTargetResponse.json() as CDPTarget[];
+  const fullTarget = fullTargets.find((t) => t.id === target.id);
 
-  if (!fullTarget?.webSocketDebuggerUrl) {
+  if (!fullTarget) {
+    throw new Error(`Could not find target ${target.id}`);
+  }
+
+  if (!fullTarget.webSocketDebuggerUrl) {
     throw new Error(`Could not find webSocketDebuggerUrl for target ${target.id}`);
   }
 
   // Update session with the correct target
   // Close current session and reconnect to the correct target
-  await tempSession.getCDP().close();
+  tempSession.getCDP().close();
   const session = new BdgSession(fullTarget, port, includeAll);
   await session.connect();
 
@@ -293,7 +303,7 @@ function startPreviewWriter(
   context: SessionContext
 ): void {
   context.previewInterval = setInterval(() => {
-    if (context.session && context.session.isConnected()) {
+    if (context.session?.isConnected()) {
       try {
         const target = context.session.getTarget();
         const allNetworkRequests = context.session.getNetworkRequests();
@@ -365,7 +375,7 @@ async function runSessionLoop(
   session: BdgSession,
   target: CDPTarget
 ): Promise<void> {
-  await new Promise<void>((_, reject) => {
+  await new Promise<void>((_resolve, reject) => {
     if (!session) {
       reject(new Error('Session not initialized'));
       return;
@@ -425,13 +435,13 @@ export async function startSession(
   url: string,
   options: { port: number; timeout?: number | undefined; reuseTab?: boolean | undefined; userDataDir?: string | undefined; includeAll?: boolean | undefined },
   collectors: CollectorType[]
-) {
+): Promise<void> {
   const context = new SessionContext();
   globalContext = context;
 
   try {
     // Phase 1: Lock acquisition and validation
-    const targetUrl = await setupSessionLock(url, collectors);
+    const targetUrl = setupSessionLock(url, collectors);
 
     // Phase 2: Chrome bootstrap
     context.launchedChrome = await bootstrapChrome(
@@ -441,13 +451,15 @@ export async function startSession(
     );
 
     // Phase 3: CDP connection and target setup
-    const { session, target } = await setupTarget(
+    const setupResult = await setupTarget(
       url,
       targetUrl,
       options.port,
       options.reuseTab ?? false,
       options.includeAll ?? false
     );
+    const session = setupResult.session;
+    const target = setupResult.target;
     context.session = session;
     context.target = target;
 
@@ -468,7 +480,7 @@ export async function startSession(
     if (options.timeout) {
       setTimeout(() => {
         console.error(`\nTimeout reached (${options.timeout}s)`);
-        context.stop();
+        void context.stop();
       }, options.timeout * 1000);
     }
 
@@ -499,7 +511,7 @@ export async function startSession(
 /**
  * Setup global signal handlers for graceful shutdown
  */
-export function setupSignalHandlers() {
+export function setupSignalHandlers(): void {
   // Register signal handlers
   // Wrap in async IIFE to ensure handler completes before exit
   process.on('SIGINT', () => {
@@ -522,7 +534,7 @@ export function setupSignalHandlers() {
   });
 
   // Error handlers for cleanup on crash
-  process.on('unhandledRejection', (reason, promise) => {
+  process.on('unhandledRejection', (reason, _promise) => {
     console.error('Unhandled rejection:', reason);
     console.error('Cleaning up session files...');
     try {

@@ -70,12 +70,8 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     return {
       pid: chrome.pid,
       port: chrome.port,
-      kill: async () => {
-        try {
-          await chrome.kill();
-        } catch (error) {
-          console.error(`Error killing Chrome: ${error instanceof Error ? error.message : String(error)}`);
-        }
+      kill: (): Promise<void> => {
+        return Promise.resolve(chrome.kill());
       },
     };
   } catch (error) {

@@ -10,6 +10,14 @@ import {
 } from '@/constants';
 import type { CollectorType } from '@/types';
 
+interface CollectorOptions {
+  port: string;
+  timeout?: string;
+  reuseTab?: boolean;
+  userDataDir?: string;
+  all?: boolean;
+}
+
 /**
  * Apply shared collector options to a command
  */
@@ -27,11 +35,11 @@ function applyCollectorOptions(command: Command): Command {
  */
 async function collectorAction(
   url: string,
-  options: any,
+  options: CollectorOptions,
   collectors: CollectorType[]
-) {
-  const port = parseInt(options.port);
-  const timeout = options.timeout ? parseInt(options.timeout) : undefined;
+): Promise<void> {
+  const port = parseInt(options.port, 10);
+  const timeout = options.timeout ? parseInt(options.timeout, 10) : undefined;
   const reuseTab = options.reuseTab ?? false;
   const userDataDir = options.userDataDir;
   const includeAll = options.all ?? false;
@@ -41,7 +49,7 @@ async function collectorAction(
 /**
  * Register all start/collector commands
  */
-export function registerStartCommands(program: Command) {
+export function registerStartCommands(program: Command): void {
   // IMPORTANT: Register subcommands FIRST, before default command
   // This prevents Commander.js from treating subcommand names as arguments
 
@@ -51,7 +59,7 @@ export function registerStartCommands(program: Command) {
       .command('dom')
       .description('Collect DOM only')
       .argument('<url>', 'Target URL')
-  ).action(async (url: string, options) => {
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['dom']);
   });
 
@@ -61,7 +69,7 @@ export function registerStartCommands(program: Command) {
       .command('network')
       .description('Collect network requests only')
       .argument('<url>', 'Target URL')
-  ).action(async (url: string, options) => {
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['network']);
   });
 
@@ -71,7 +79,7 @@ export function registerStartCommands(program: Command) {
       .command('console')
       .description('Collect console logs only')
       .argument('<url>', 'Target URL')
-  ).action(async (url: string, options) => {
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['console']);
   });
 
@@ -80,7 +88,7 @@ export function registerStartCommands(program: Command) {
   applyCollectorOptions(
     program
       .argument('<url>', 'Target URL (example.com or localhost:3000)')
-  ).action(async (url: string, options) => {
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['dom', 'network', 'console']);
   });
 }

@@ -7,6 +7,7 @@ export interface PreviewOptions {
   console?: boolean;
   last: string;
   verbose?: boolean;
+  follow?: boolean;
 }
 
 /**
@@ -24,7 +25,7 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
  * Format preview as JSON
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
-  const jsonOutput: any = {
+  const jsonOutput: BdgOutput = {
     ...output
   };
 
@@ -80,7 +81,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       lines.push('  (none)');
     } else {
       requests.forEach(req => {
-        const status = req.status || 'pending';
+        const status = req.status ?? 'pending';
         const url = truncateUrl(req.url, 50);
         lines.push(`  ${status} ${req.method} ${url} [${req.requestId}]`);
       });
@@ -134,8 +135,8 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       lines.push('No network requests yet');
     } else {
       requests.forEach(req => {
-        const statusColor = req.status && req.status >= 400 ? '❌' : '✓';
-        const status = req.status || 'pending';
+        const statusColor = (req.status && req.status >= 400) ? '❌' : '✓';
+        const status = req.status ?? 'pending';
         lines.push(`${statusColor} ${status} ${req.method} ${req.url}`);
         if (req.mimeType) {
           lines.push(`  Type: ${req.mimeType}`);

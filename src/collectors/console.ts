@@ -34,7 +34,13 @@ export async function startConsoleCollection(
     const text = params.args
       .map((arg) => {  // arg type already defined in CDPConsoleAPICalledParams
         if (arg.value !== undefined) {
-          return String(arg.value);
+          // Handle different value types - primitives only, objects use description
+          const value = arg.value;
+          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            return String(value);
+          }
+          // For objects/arrays, use description if available
+          return arg.description ?? '[object]';
         }
         if (arg.description !== undefined) {
           return arg.description;
@@ -65,7 +71,7 @@ export async function startConsoleCollection(
   // Listen for exceptions
   const exceptionId = cdp.on('Runtime.exceptionThrown', (params: CDPExceptionThrownParams) => {
     const exception = params.exceptionDetails;
-    const text = exception.text || exception.exception?.description || 'Unknown error';
+    const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
 
     // Apply pattern filtering (but don't filter errors by default)
     // Errors are usually important, only filter if they match noise patterns
@@ -76,7 +82,7 @@ export async function startConsoleCollection(
     const message: ConsoleMessage = {
       type: 'error',
       text,
-      timestamp: exception.timestamp || Date.now()
+      timestamp: exception.timestamp ?? Date.now()
     };
     if (messages.length < MAX_CONSOLE_MESSAGES) {
       messages.push(message);
