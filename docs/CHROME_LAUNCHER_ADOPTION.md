@@ -19,24 +19,109 @@
 ## Rollout Strategy
 
 ### Phase 1 – API Surface & Pass-Through (1 sprint)
-- Expand `LaunchOptions` to include a typed pass-through for `chrome-launcher` options (`logLevel`, `connectionPollInterval`, `maxConnectionRetries`, `portStrictMode`, `prefs`, `envVars`, `handleSIGINT`).
-- Update CLI option parsing to populate the new fields where relevant (e.g., `--chrome-log-level`, hidden `--chrome-pref` for advanced users).
-- Add unit tests that assert `launchChrome()` forwards the new options and keeps default behaviour unchanged.
-- Document the new flags in CLI help and docs.
+**Goals**
+- Expand `LaunchOptions` to include pass-through fields for `chrome-launcher`.
+- Wire CLI flags/env-vars to those options without changing existing defaults.
+- Add unit tests and docs for the new knobs.
+
+**Sample Implementation**
+```ts
+// src/connection/launcher.ts
+import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
+
+export interface LaunchOptions extends Pick<
+  ChromeLaunchOptions,
+  | 'logLevel'
+  | 'connectionPollInterval'
+  | 'maxConnectionRetries'
+  | 'portStrictMode'
+  | 'prefs'
+  | 'envVars'
+  | 'handleSIGINT'
+> {
+  port?: number;
+  userDataDir?: string;
+  headless?: boolean;
+  url?: string;
+}
+
+const buildChromeOptions = (options: LaunchOptions): ChromeLaunchOptions => ({
+  port: options.port,
+  startingUrl: options.url,
+  userDataDir: options.userDataDir,
+  logLevel: options.logLevel ?? 'silent',
+  connectionPollInterval: options.connectionPollInterval,
+  maxConnectionRetries: options.maxConnectionRetries,
+  portStrictMode: options.portStrictMode,
+  prefs: options.prefs,
+  envVars: options.envVars,
+  handleSIGINT: options.handleSIGINT ?? false,
+  chromeFlags: buildChromeFlags(options),
+});
+```
 
 ### Phase 2 – Launcher Class Adoption (1–2 sprints)
-- Refactor `src/connection/launcher.ts` to instantiate `new chromeLauncher.Launcher(opts)` and call `launch()` + `waitUntilReady()` instead of manual polling.
-- Remove `waitForCDP()` and reuse upstream retry knobs (configure defaults equivalent to today’s 10s timeout).
-- Feed `userDataDir` via launcher options; surface the resolved `launcher.userDataDir` in the returned `LaunchedChrome` object.
-- Ensure `LaunchedChrome.kill` awaits `launcher.kill()` and `launcher.destroyTmp()` as needed.
-- Regression tests: integration smoke test launching Chrome, verifying CDP availability, and exercising headless + custom profile flows on macOS/Linux runners.
+**Goals**
+- Replace manual polling with `Launcher.launch()` + `waitUntilReady()`.
+- Surface resolved `userDataDir` and `process` handles.
+- Ensure kill flows delegate to `launcher.kill()` and clean temp dirs.
+- Add integration tests covering headless/persistent profile modes.
+
+**Sample Implementation**
+```ts
+// src/connection/launcher.ts
+export async function launchChrome(options: LaunchOptions = {}): Promise<LaunchedChrome> {
+  const launcher = new chromeLauncher.Launcher(buildChromeOptions(options));
+
+  try {
+    await launcher.launch();
+    await launcher.waitUntilReady();
+  } catch (error) {
+    launcher.kill();
+    launcher.destroyTmp();
+    throw new ChromeLaunchError(`Failed to launch Chrome: ${getErrorMessage(error)}`, error);
+  }
+
+  return {
+    pid: launcher.pid!,
+    port: launcher.port!,
+    userDataDir: launcher.userDataDir,
+    process: launcher.chromeProcess ?? null,
+    kill: async (): Promise<void> => {
+      launcher.kill();
+      launcher.destroyTmp();
+    },
+  };
+}
+```
 
 ### Phase 3 – Diagnostics & Cleanup Enhancements (1 sprint)
-- Expose `chromeLauncher.getChromePath()` and `Launcher.getInstallations()` in error messages when launch fails.
-- Add optional `--chrome-diagnostics` CLI flag to emit discovered installations, chosen path, and default flags.
-- Call `chromeLauncher.killAll()` during stale-session cleanup (`sessionController.cleanup()`) when bdg previously launched Chrome.
-- Capture `chrome.process` and pipe handles in `LaunchedChrome` to allow future streaming of Chrome logs when verbose mode is enabled.
-- Update telemetry to record launch retries, selected binary, and whether killAll was used.
+**Goals**
+- Improve error messaging with installation discovery data.
+- Provide aggressive cleanup tooling for stale Chrome instances.
+- Record telemetry about chosen binaries and retry counts.
+
+**Sample Implementation**
+```ts
+// src/cli/handlers/sessionController.ts
+function reportLauncherFailure(error: Error): void {
+  console.error('Chrome launch failed:', error.message);
+  const candidates = chromeLauncher.Launcher.getInstallations();
+  if (candidates.length === 0) {
+    console.error('No Chrome installations detected. Install Chrome or set CHROME_PATH.');
+  } else {
+    console.error('Detected Chrome binaries:\n', candidates.join('\n'));
+  }
+  console.error('Default path:', chromeLauncher.getChromePath());
+}
+
+async function cleanupStaleChrome(): Promise<void> {
+  const errors = chromeLauncher.killAll();
+  if (errors.length > 0) {
+    console.error('Some Chrome processes resisted cleanup:', errors.map((e) => e.message));
+  }
+}
+```
 
 ## Validation Plan
 - Unit coverage for pass-through options (Phase 1) and launcher lifecycle (Phase 2).

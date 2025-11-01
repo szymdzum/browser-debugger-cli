@@ -15,14 +15,13 @@ import {
   acquireSessionLock,
   writeSessionMetadata,
   cleanupSession,
-  writePartialOutputAsync,
-  writeFullOutputAsync,
 } from '@/utils/session.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { validateCollectorTypes } from '@/utils/validation.js';
 
 import { OutputBuilder } from './output/OutputBuilder.js';
 import { OutputWriter } from './output/OutputWriter.js';
+import { PreviewWriter } from './output/PreviewWriter.js';
 
 /**
  * Encapsulates session state and lifecycle management
@@ -32,8 +31,7 @@ class SessionContext {
   launchedChrome: LaunchedChrome | null = null;
   isShuttingDown = false;
   shutdownKeepalive: NodeJS.Timeout | null = null;
-  previewInterval: NodeJS.Timeout | null = null;
-  pendingWrite: Promise<void> | null = null;
+  previewWriter: PreviewWriter | null = null;
   startTime: number;
   target: CDPTarget | null = null;
 
@@ -95,23 +93,10 @@ class SessionContext {
     // This must be set before any await points
     this.shutdownKeepalive = setInterval(() => {}, 1000);
 
-    // Clear preview interval if active
-    if (this.previewInterval) {
-      clearInterval(this.previewInterval);
-      this.previewInterval = null;
-    }
-
-    // Wait for any in-flight write to complete before cleanup
-    // This prevents race where write completes after cleanupSession() and recreates files
-    if (this.pendingWrite) {
-      console.error('Waiting for in-flight write to complete...');
-      try {
-        await this.pendingWrite;
-        console.error('In-flight write completed');
-      } catch (error) {
-        // Ignore write errors during shutdown
-        console.error('Error in pending write (ignoring):', error);
-      }
+    // Stop preview writer and wait for pending writes
+    if (this.previewWriter) {
+      this.previewWriter.stop();
+      await this.previewWriter.waitForPendingWrite();
     }
 
     try {
@@ -130,20 +115,10 @@ class SessionContext {
    * Clears timers, tears down Chrome if bdg launched it, and removes session files.
    */
   async cleanup(): Promise<void> {
-    // Clear preview interval
-    if (this.previewInterval) {
-      clearInterval(this.previewInterval);
-      this.previewInterval = null;
-    }
-
-    // Wait for any in-flight write to complete before cleanup
-    if (this.pendingWrite) {
-      console.error('Waiting for in-flight write to complete before cleanup...');
-      try {
-        await this.pendingWrite;
-      } catch {
-        // Ignore write errors during cleanup
-      }
+    // Stop preview writer and wait for pending writes
+    if (this.previewWriter) {
+      this.previewWriter.stop();
+      await this.previewWriter.waitForPendingWrite();
     }
 
     // Kill Chrome if we launched it
@@ -350,68 +325,13 @@ async function startCollectorsAndMetadata(
  * Uses async I/O with mutex to prevent event loop blocking and overlapping writes.
  */
 function startPreviewWriter(context: SessionContext): void {
-  // Mutex to prevent overlapping writes
-  let isWriting = false;
+  if (!context.session) {
+    return;
+  }
 
-  context.previewInterval = setInterval(() => {
-    // Skip if previous write still in progress or session disconnected
-    if (isWriting || !context.session?.isConnected()) {
-      if (isWriting) {
-        console.error('[PERF] Skipping preview write (previous write still in progress)');
-      }
-      return;
-    }
-
-    isWriting = true;
-
-    // Create and track the write promise so shutdown can await it
-    const writePromise: Promise<void> = (async (): Promise<void> => {
-      try {
-        const session = context.session;
-        if (!session) return;
-
-        const target = session.getTarget();
-        const allNetworkRequests = session.getNetworkRequests();
-        const allConsoleLogs = session.getConsoleLogs();
-
-        // Build both preview and full outputs
-        const previewOutput = OutputBuilder.build({
-          mode: 'preview',
-          target,
-          startTime: context.startTime,
-          networkRequests: allNetworkRequests,
-          consoleLogs: allConsoleLogs,
-        });
-        const fullOutput = OutputBuilder.build({
-          mode: 'full',
-          target,
-          startTime: context.startTime,
-          networkRequests: allNetworkRequests,
-          consoleLogs: allConsoleLogs,
-        });
-
-        // Write both files in parallel (async, non-blocking)
-        await Promise.all([
-          writePartialOutputAsync(previewOutput), // ~500KB - for 'bdg peek'
-          writeFullOutputAsync(fullOutput), // ~87MB - for 'bdg details'
-        ]);
-      } catch (error) {
-        // Ignore preview write errors - don't disrupt collection
-        console.error(
-          'Warning: Failed to write preview data:',
-          error instanceof Error ? error.message : String(error)
-        );
-      } finally {
-        // Always clear mutex flag
-        isWriting = false;
-        // Clear the pending write reference
-        context.pendingWrite = null;
-      }
-    })();
-
-    // Store the promise so shutdown can await it
-    context.pendingWrite = writePromise;
-  }, 5000); // Write preview every 5 seconds
+  // Create and start preview writer
+  context.previewWriter = new PreviewWriter(context.session, context.startTime);
+  context.previewWriter.start();
 }
 
 /**
