@@ -54,6 +54,7 @@ export interface BdgOutput {
     console?: ConsoleMessage[];
   };
   error?: string;
+  partial?: boolean; // Flag to indicate this is partial/incomplete data (live preview)
 }
 
 export type CollectorType = 'dom' | 'network' | 'console';

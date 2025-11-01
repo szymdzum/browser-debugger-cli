@@ -1,0 +1,72 @@
+import { Command } from 'commander';
+import { readPid, isProcessAlive, cleanupSession } from '../../utils/session.js';
+
+/**
+ * Register stop command
+ */
+export function registerStopCommand(program: Command) {
+  program
+    .command('stop')
+    .description('Stop all active sessions and free ports (does not capture output)')
+    .option('--kill-chrome', 'Also kill Chrome browser')
+    .action(async (options) => {
+      try {
+        const { readSessionMetadata } = await import('../../utils/session.js');
+
+        // Read PID
+        const pid = readPid();
+        if (!pid) {
+          console.error('No active session found');
+          console.error('All ports should be free');
+          process.exit(0);
+        }
+
+        console.error(`Stopping session (PID ${pid})...`);
+
+        // Read metadata BEFORE killing the process (so we can get Chrome PID)
+        const metadata = readSessionMetadata();
+
+        // Kill the bdg process (use SIGKILL for immediate termination)
+        if (isProcessAlive(pid)) {
+          try {
+            process.kill(pid, 'SIGKILL');
+            console.error(`✓ Killed bdg session (PID ${pid})`);
+          } catch (killError) {
+            console.error(`Warning: Could not kill process ${pid}:`, killError);
+          }
+        } else {
+          console.error(`Process ${pid} already stopped`);
+        }
+
+        // Kill Chrome if requested
+        if (options.killChrome) {
+          if (metadata?.chromePid) {
+            try {
+              if (isProcessAlive(metadata.chromePid)) {
+                process.kill(metadata.chromePid, 'SIGTERM');
+                console.error(`✓ Killed Chrome (PID ${metadata.chromePid})`);
+              } else {
+                console.error(`Chrome process (PID ${metadata.chromePid}) already stopped`);
+              }
+            } catch (chromeError) {
+              console.error(`Warning: Could not kill Chrome:`, chromeError);
+            }
+          } else {
+            console.error('Warning: Chrome PID not found in session metadata');
+          }
+        } else {
+          console.error('Leaving Chrome running (use --kill-chrome to close it)');
+        }
+
+        // Clean up session files
+        cleanupSession();
+        console.error('✓ Cleaned up session files');
+        console.error('\nAll sessions stopped and ports freed');
+
+        process.exit(0);
+      } catch (error) {
+        console.error(`Error stopping session: ${error instanceof Error ? error.message : String(error)}`);
+        process.exit(1);
+      }
+    });
+}

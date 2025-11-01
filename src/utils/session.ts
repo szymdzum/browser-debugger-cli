@@ -257,9 +257,99 @@ export function readSessionMetadata(): SessionMetadata | null {
 }
 
 /**
+ * Get the path to the partial output file (lightweight preview, metadata only)
+ */
+export function getPartialFilePath(): string {
+  return path.join(getSessionDir(), 'session.preview.json');
+}
+
+/**
+ * Get the path to the full output file (complete data with bodies)
+ */
+export function getFullFilePath(): string {
+  return path.join(getSessionDir(), 'session.full.json');
+}
+
+/**
+ * Write partial session output for live preview (lightweight, metadata only).
+ *
+ * Uses atomic write (tmp file + rename) to prevent corruption.
+ * Excludes request/response bodies and limits to last 1000 items.
+ *
+ * @param output - The partial BdgOutput data to write
+ */
+export function writePartialOutput(output: BdgOutput): void {
+  ensureSessionDir();
+  const partialPath = getPartialFilePath();
+  const tmpPath = partialPath + '.tmp';
+
+  // Write to temp file first, then rename for atomicity
+  fs.writeFileSync(tmpPath, JSON.stringify(output, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, partialPath);
+}
+
+/**
+ * Write full session output for details view (complete data with bodies).
+ *
+ * Uses atomic write (tmp file + rename) to prevent corruption.
+ * Includes all data with request/response bodies.
+ *
+ * @param output - The full BdgOutput data to write
+ */
+export function writeFullOutput(output: BdgOutput): void {
+  ensureSessionDir();
+  const fullPath = getFullFilePath();
+  const tmpPath = fullPath + '.tmp';
+
+  // Write to temp file first, then rename for atomicity
+  fs.writeFileSync(tmpPath, JSON.stringify(output, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, fullPath);
+}
+
+/**
+ * Read partial session output for live preview (lightweight metadata).
+ *
+ * @returns The partial BdgOutput data if file exists and is valid, null otherwise
+ */
+export function readPartialOutput(): BdgOutput | null {
+  const partialPath = getPartialFilePath();
+
+  if (!fs.existsSync(partialPath)) {
+    return null;
+  }
+
+  try {
+    const content = fs.readFileSync(partialPath, 'utf-8');
+    return JSON.parse(content) as BdgOutput;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Read full session output for details view (complete data with bodies).
+ *
+ * @returns The full BdgOutput data if file exists and is valid, null otherwise
+ */
+export function readFullOutput(): BdgOutput | null {
+  const fullPath = getFullFilePath();
+
+  if (!fs.existsSync(fullPath)) {
+    return null;
+  }
+
+  try {
+    const content = fs.readFileSync(fullPath, 'utf-8');
+    return JSON.parse(content) as BdgOutput;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
  * Cleanup all session files.
  *
- * Removes PID, lock, metadata, and output files.
+ * Removes PID, lock, metadata, preview, full, and output files.
  */
 export function cleanupSession(): void {
   cleanupPidFile();
@@ -269,6 +359,26 @@ export function cleanupSession(): void {
   if (fs.existsSync(metaPath)) {
     try {
       fs.unlinkSync(metaPath);
+    } catch (error) {
+      // Ignore errors
+    }
+  }
+
+  // Clean up preview file (lightweight)
+  const partialPath = getPartialFilePath();
+  if (fs.existsSync(partialPath)) {
+    try {
+      fs.unlinkSync(partialPath);
+    } catch (error) {
+      // Ignore errors
+    }
+  }
+
+  // Clean up full file (complete data)
+  const fullPath = getFullFilePath();
+  if (fs.existsSync(fullPath)) {
+    try {
+      fs.unlinkSync(fullPath);
     } catch (error) {
       // Ignore errors
     }

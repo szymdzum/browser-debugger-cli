@@ -5,6 +5,7 @@ import {
   CDPConsoleAPICalledParams,
   CDPExceptionThrownParams
 } from '../types.js';
+import { shouldExcludeConsoleMessage } from '../utils/filters.js';
 
 const MAX_MESSAGES = 10000; // Prevent memory issues
 
@@ -15,15 +16,18 @@ const MAX_MESSAGES = 10000; // Prevent memory issues
  *
  * @param cdp - CDP connection instance
  * @param messages - Array to populate with console messages
+ * @param includeAll - If true, disable default pattern filtering (default: false)
  * @returns Cleanup function to remove event handlers
  *
  * @remarks
  * - Message limit of 10,000 prevents memory issues in long-running sessions
  * - After limit is reached, new messages are silently dropped (warning logged once)
+ * - By default, common dev server noise patterns are filtered out (use includeAll to disable)
  */
 export async function startConsoleCollection(
   cdp: CDPConnection,
-  messages: ConsoleMessage[]
+  messages: ConsoleMessage[],
+  includeAll: boolean = false
 ): Promise<CleanupFunction> {
   const handlers: Array<{ event: string; id: number }> = [];
 
@@ -33,19 +37,26 @@ export async function startConsoleCollection(
 
   // Listen for console API calls
   const consoleAPIId = cdp.on('Runtime.consoleAPICalled', (params: CDPConsoleAPICalledParams) => {
+    const text = params.args
+      .map((arg) => {  // arg type already defined in CDPConsoleAPICalledParams
+        if (arg.value !== undefined) {
+          return String(arg.value);
+        }
+        if (arg.description !== undefined) {
+          return arg.description;
+        }
+        return '';
+      })
+      .join(' ');
+
+    // Apply pattern filtering
+    if (shouldExcludeConsoleMessage(text, includeAll)) {
+      return;
+    }
+
     const message: ConsoleMessage = {
       type: params.type,
-      text: params.args
-        .map((arg) => {  // arg type already defined in CDPConsoleAPICalledParams
-          if (arg.value !== undefined) {
-            return String(arg.value);
-          }
-          if (arg.description !== undefined) {
-            return arg.description;
-          }
-          return '';
-        })
-        .join(' '),
+      text,
       timestamp: params.timestamp,
       args: params.args
     };
@@ -60,9 +71,17 @@ export async function startConsoleCollection(
   // Listen for exceptions
   const exceptionId = cdp.on('Runtime.exceptionThrown', (params: CDPExceptionThrownParams) => {
     const exception = params.exceptionDetails;
+    const text = exception.text || exception.exception?.description || 'Unknown error';
+
+    // Apply pattern filtering (but don't filter errors by default)
+    // Errors are usually important, only filter if they match noise patterns
+    if (shouldExcludeConsoleMessage(text, includeAll)) {
+      return;
+    }
+
     const message: ConsoleMessage = {
       type: 'error',
-      text: exception.text || exception.exception?.description || 'Unknown error',
+      text,
       timestamp: exception.timestamp || Date.now()
     };
     if (messages.length < MAX_MESSAGES) {

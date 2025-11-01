@@ -7,6 +7,7 @@ import {
   CDPNetworkLoadingFinishedParams,
   CDPNetworkLoadingFailedParams
 } from '../types.js';
+import { shouldExcludeDomain } from '../utils/filters.js';
 
 const MAX_REQUESTS = 10000; // Prevent memory issues
 const STALE_REQUEST_TIMEOUT = 60000; // 60 seconds
@@ -19,16 +20,19 @@ const STALE_REQUEST_TIMEOUT = 60000; // 60 seconds
  *
  * @param cdp - CDP connection instance
  * @param requests - Array to populate with completed network requests
+ * @param includeAll - If true, disable default domain filtering (default: false)
  * @returns Cleanup function to remove event handlers and clear state
  *
  * @remarks
  * - Stale requests (incomplete after 60s) are removed from tracking but NOT added to output
  * - Request limit of 10,000 prevents memory issues in long-running sessions
  * - Response bodies are only fetched for JSON/JavaScript/text MIME types
+ * - By default, common tracking/analytics domains are filtered out (use includeAll to disable)
  */
 export async function startNetworkCollection(
   cdp: CDPConnection,
-  requests: NetworkRequest[]
+  requests: NetworkRequest[],
+  includeAll: boolean = false
 ): Promise<CleanupFunction> {
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
   const handlers: Array<{ event: string; id: number }> = [];
@@ -91,6 +95,13 @@ export async function startNetworkCollection(
     const entry = requestMap.get(params.requestId);
     if (entry && requests.length < MAX_REQUESTS) {
       const request = entry.request;
+
+      // Apply domain filtering
+      if (shouldExcludeDomain(request.url, includeAll)) {
+        requestMap.delete(params.requestId);
+        return;
+      }
+
       // Try to get response body for API calls
       if (request.mimeType?.includes('json') || request.mimeType?.includes('javascript') || request.mimeType?.includes('text')) {
         try {
@@ -113,6 +124,12 @@ export async function startNetworkCollection(
   const loadingFailedId = cdp.on('Network.loadingFailed', (params: CDPNetworkLoadingFailedParams) => {
     const entry = requestMap.get(params.requestId);
     if (entry && requests.length < MAX_REQUESTS) {
+      // Apply domain filtering
+      if (shouldExcludeDomain(entry.request.url, includeAll)) {
+        requestMap.delete(params.requestId);
+        return;
+      }
+
       entry.request.status = 0; // Indicate failure
       requests.push(entry.request);
       requestMap.delete(params.requestId);
