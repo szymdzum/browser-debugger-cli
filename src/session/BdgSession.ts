@@ -33,7 +33,8 @@ export class BdgSession {
 
   constructor(
     private target: CDPTarget,
-    private port: number
+    private port: number,
+    private includeAll: boolean = false
   ) {
     this.cdp = new CDPConnection();
     this.startTime = Date.now();
@@ -76,10 +77,10 @@ export class BdgSession {
 
     switch (type) {
       case 'network':
-        cleanup = await startNetworkCollection(this.cdp, this.networkRequests);
+        cleanup = await startNetworkCollection(this.cdp, this.networkRequests, this.includeAll);
         break;
       case 'console':
-        cleanup = await startConsoleCollection(this.cdp, this.consoleLogs);
+        cleanup = await startConsoleCollection(this.cdp, this.consoleLogs, this.includeAll);
         break;
       case 'dom':
         cleanup = await prepareDOMCollection(this.cdp);

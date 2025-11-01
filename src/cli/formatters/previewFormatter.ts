@@ -1,10 +1,12 @@
 import { BdgOutput } from '../../types.js';
+import { truncateUrl, truncateText } from '../../utils/url.js';
 
 export interface PreviewOptions {
   json?: boolean;
   network?: boolean;
   console?: boolean;
   last: string;
+  verbose?: boolean;
 }
 
 /**
@@ -50,6 +52,69 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
  * Format preview as human-readable output
  */
 function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions): string {
+  // Use verbose format if requested, otherwise use compact
+  if (options.verbose) {
+    return formatPreviewVerbose(output, options);
+  }
+  return formatPreviewCompact(output, options);
+}
+
+/**
+ * Format preview in compact format (default)
+ * Token-efficient output optimized for AI agents
+ */
+function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): string {
+  const lines: string[] = [];
+
+  // Simple header (no Unicode box drawing)
+  lines.push(`PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`);
+  lines.push('');
+
+  const lastCount = parseInt(options.last);
+
+  // Show network requests (compact)
+  if (!options.console && output.data.network) {
+    const requests = output.data.network.slice(-lastCount);
+    lines.push(`NETWORK (${requests.length}/${output.data.network.length}):`);
+    if (requests.length === 0) {
+      lines.push('  (none)');
+    } else {
+      requests.forEach(req => {
+        const status = req.status || 'pending';
+        const url = truncateUrl(req.url, 50);
+        lines.push(`  ${status} ${req.method} ${url} [${req.requestId}]`);
+      });
+    }
+    lines.push('');
+  }
+
+  // Show console messages (compact)
+  if (!options.network && output.data.console) {
+    const messages = output.data.console.slice(-lastCount);
+    lines.push(`CONSOLE (${messages.length}/${output.data.console.length}):`);
+    if (messages.length === 0) {
+      lines.push('  (none)');
+    } else {
+      messages.forEach(msg => {
+        const prefix = msg.type.toUpperCase().padEnd(5);
+        const text = truncateText(msg.text, 2);
+        lines.push(`  ${prefix} ${text}`);
+      });
+    }
+    lines.push('');
+  }
+
+  // Minimal suggestions
+  lines.push('Tip: bdg stop | bdg peek --last 50 | bdg peek --verbose');
+
+  return lines.join('\n');
+}
+
+/**
+ * Format preview in verbose format (opt-in with --verbose)
+ * Original human-friendly output with Unicode formatting
+ */
+function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): string {
   const lines: string[] = [];
 
   lines.push('Live Preview (Partial Data)');
@@ -112,7 +177,5 @@ export function formatNoPreviewDataMessage(): string {
   return `No preview data available
 Session may not be running or preview not yet written
 
-💡 Suggestions:
-  Check session status:  bdg status
-  Start a session:       bdg <url>`;
+Tip: bdg status | bdg <url>`;
 }

@@ -80,6 +80,7 @@ bdg console localhost:3000    # Console logs only
 ```bash
 bdg localhost:3000 --port 9223              # Custom CDP port
 bdg localhost:3000 --timeout 30             # Auto-stop after timeout
+bdg localhost:3000 --all                    # Include all data (disable filtering)
 ```
 
 ### Chrome Setup (Optional)
@@ -125,12 +126,13 @@ bdg status
 
 # Preview collected data (without stopping)
 bdg peek
-# Shows last 10 network requests and console messages
+# Shows last 10 network requests and console messages (compact format)
 bdg peek --last 50              # Show last 50 items
 bdg peek --network              # Show only network requests
 bdg peek --console              # Show only console messages
 bdg peek --follow               # Live updates every second
 bdg peek --json                 # JSON output
+bdg peek --verbose              # Verbose output (full URLs, emojis)
 
 # Get full details for specific items
 bdg details network <requestId>     # Full request/response with bodies
@@ -174,10 +176,9 @@ bdg uses a two-tier file system to optimize performance:
 # 1. Start collection
 bdg localhost:3000
 
-# 2. Quick preview (fast - reads 360KB file)
+# 2. Quick preview (fast - reads 360KB file, compact format)
 bdg peek --last 10
-# Output shows: ✓ 200 POST https://api.example.com/users
-#   ID: 12345.678 (use 'bdg details network 12345.678' for full details)
+# Output shows: 200 POST api.example.com/users [12345.678]
 
 # 3. Get full details (reads 87MB file, extracts one request)
 bdg details network 12345.678
@@ -201,6 +202,50 @@ $ bdg localhost:3000
   "error": "Session already running (PID 12345). Stop it with: bdg stop"
 }
 ```
+
+### Output Formatting & Filtering
+
+**Compact Output Format (Default)**:
+By default, `bdg peek` uses a compact, agent-optimized output format that reduces token consumption by 67-72%:
+- No Unicode box-drawing characters (━━━)
+- No emojis (✓, ❌, ⚠️, ℹ️)
+- Truncated URLs: `api.example.com/users` instead of full URLs
+- Truncated stack traces: Limited to 2-3 lines with "... (N more lines)" indicator
+
+```bash
+# Default: compact output (optimized for AI agents)
+bdg peek
+
+# Verbose output (full URLs, emojis, for human readability)
+bdg peek --verbose
+```
+
+**Default Filtering**:
+By default, bdg filters common tracking/analytics domains and dev server noise to reduce data volume by 9-16%:
+
+**Network Filtering** (13 domains excluded):
+- `analytics.google.com`, `googletagmanager.com`, `googleadservices.com`
+- `doubleclick.net`, `clarity.ms`, `facebook.com`, `connect.facebook.net`
+- `tiktok.com`, `bat.bing.com`, `exactag.com`
+- `fullstory.com`, `hotjar.com`, `confirmit.com`
+
+**Console Filtering** (4 patterns excluded):
+- `webpack-dev-server`, `[HMR]`, `[WDS]`
+- `Download the React DevTools`
+
+```bash
+# Default: filtering enabled (excludes tracking/analytics)
+bdg localhost:3000
+
+# Include all data (disable filtering)
+bdg localhost:3000 --all
+```
+
+**Why These Defaults?**
+- Designed for agentic/automated use where token efficiency is critical
+- Filtering removes noise that's rarely relevant for debugging
+- Compact format is faster to parse and cheaper to process
+- Verbose/unfiltered modes available when human readability or complete data is needed
 
 ## Architecture
 
@@ -228,11 +273,21 @@ Each collector is independent and enables its CDP domain:
   - Listens for `Network.requestWillBeSent`, `Network.responseReceived`, `Network.loadingFinished`
   - Stores request/response pairs with headers and bodies (JSON/text only)
   - MAX_REQUESTS limit (10,000) to prevent memory issues
+  - Default filtering excludes 13 tracking/analytics domains (configurable via `--all` flag)
 - **console.ts**: Captures console logs and exceptions via `Runtime.consoleAPICalled` and `Log.entryAdded`
+  - Default filtering excludes 4 dev server noise patterns (configurable via `--all` flag)
 
 ### Utilities (`src/utils/`)
-- **url.ts**: Centralized URL normalization
+- **url.ts**: Centralized URL normalization and truncation
+  - `normalizeUrl()` - Adds protocol if missing, validates URLs
+  - `truncateUrl()` - Shortens URLs for compact output (e.g., `api.example.com/users`)
+  - `truncateText()` - Limits text to N lines for stack traces
 - **validation.ts**: Input validation for collector types
+- **filters.ts**: Default filtering for tracking/analytics and dev server noise
+  - `DEFAULT_EXCLUDED_DOMAINS` - 13 tracking/analytics domains
+  - `DEFAULT_EXCLUDED_CONSOLE_PATTERNS` - 4 dev server patterns
+  - `shouldExcludeDomain()` - Network request domain filtering
+  - `shouldExcludeConsoleMessage()` - Console message pattern filtering
 - **session.ts**: Session management (PID tracking, output persistence, two-tier preview)
   - File operations for session files in `~/.bdg/`
   - Process alive checking (cross-platform)
@@ -457,17 +512,24 @@ The `.npmignore` file ensures only the compiled `dist/` folder and README.md are
   - Details operations read 87MB (complete data with bodies)
   - Both files written atomically every 5 seconds during collection
   - All session files automatically cleaned up on stop
+- Agent-optimized defaults for token efficiency:
+  - Compact output format by default (67-72% token reduction vs verbose)
+  - Default filtering excludes tracking/analytics and dev server noise (9-16% data reduction)
+  - Use `--verbose` flag for human-readable output with full URLs and emojis
+  - Use `--all` flag to disable filtering when complete data is needed
 
 ## Quick Command Reference
 
 ```bash
 # Session Lifecycle
-bdg localhost:3000              # Start collection
+bdg localhost:3000              # Start collection (filtering enabled)
+bdg localhost:3000 --all        # Start with all data (no filtering)
 bdg status                      # Check if session is running
 bdg stop                        # Stop and cleanup
 
 # Monitoring (without stopping)
-bdg peek                        # Quick preview (last 10 items)
+bdg peek                        # Quick preview, compact format (last 10 items)
+bdg peek --verbose              # Verbose format (full URLs, emojis)
 bdg peek --last 50              # Show more items
 bdg peek --network              # Only network requests
 bdg peek --console              # Only console messages
@@ -519,3 +581,4 @@ bdg network example.com --reuse-tab --timeout 30
 - `-t, --timeout <seconds>` - Only works on default command
 - `-r, --reuse-tab` - Only works on default command
 - `-u, --user-data-dir <path>` - Only works on default command
+- `-a, --all` - Only works on default command

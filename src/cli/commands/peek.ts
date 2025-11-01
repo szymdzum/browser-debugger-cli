@@ -10,6 +10,7 @@ export function registerPeekCommand(program: Command) {
     .command('peek')
     .description('Preview collected data without stopping the session')
     .option('-j, --json', 'Output as JSON')
+    .option('-v, --verbose', 'Use verbose output with full URLs and formatting')
     .option('-n, --network', 'Show only network requests')
     .option('-c, --console', 'Show only console messages')
     .option('-f, --follow', 'Watch for updates (like tail -f)')

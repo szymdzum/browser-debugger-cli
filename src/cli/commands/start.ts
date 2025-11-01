@@ -1,6 +1,25 @@
 import { Command } from 'commander';
 import { startSession } from '../handlers/sessionController.js';
 import { CollectorType } from '../../types.js';
+import {
+  DEFAULT_DEBUG_PORT,
+  PORT_OPTION_DESCRIPTION,
+  TIMEOUT_OPTION_DESCRIPTION,
+  REUSE_TAB_OPTION_DESCRIPTION,
+  USER_DATA_DIR_OPTION_DESCRIPTION
+} from '../constants.js';
+
+/**
+ * Apply shared collector options to a command
+ */
+function applyCollectorOptions(command: Command): Command {
+  return command
+    .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
+    .option('-t, --timeout <seconds>', TIMEOUT_OPTION_DESCRIPTION)
+    .option('-r, --reuse-tab', REUSE_TAB_OPTION_DESCRIPTION)
+    .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
+    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)');
+}
 
 /**
  * Common action handler for collector commands
@@ -14,7 +33,8 @@ async function collectorAction(
   const timeout = options.timeout ? parseInt(options.timeout) : undefined;
   const reuseTab = options.reuseTab ?? false;
   const userDataDir = options.userDataDir;
-  await startSession(url, { port, timeout, reuseTab, userDataDir }, collectors);
+  const includeAll = options.all ?? false;
+  await startSession(url, { port, timeout, reuseTab, userDataDir, includeAll }, collectors);
 }
 
 /**
@@ -25,53 +45,41 @@ export function registerStartCommands(program: Command) {
   // This prevents Commander.js from treating subcommand names as arguments
 
   // DOM only
-  program
-    .command('dom')
-    .description('Collect DOM only')
-    .argument('<url>', 'Target URL')
-    .option('-p, --port <number>', 'Chrome debugging port', '9222')
-    .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-    .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
-    .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
-    .action(async (url: string, options) => {
-      await collectorAction(url, options, ['dom']);
-    });
+  applyCollectorOptions(
+    program
+      .command('dom')
+      .description('Collect DOM only')
+      .argument('<url>', 'Target URL')
+  ).action(async (url: string, options) => {
+    await collectorAction(url, options, ['dom']);
+  });
 
   // Network only
-  program
-    .command('network')
-    .description('Collect network requests only')
-    .argument('<url>', 'Target URL')
-    .option('-p, --port <number>', 'Chrome debugging port', '9222')
-    .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-    .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
-    .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
-    .action(async (url: string, options) => {
-      await collectorAction(url, options, ['network']);
-    });
+  applyCollectorOptions(
+    program
+      .command('network')
+      .description('Collect network requests only')
+      .argument('<url>', 'Target URL')
+  ).action(async (url: string, options) => {
+    await collectorAction(url, options, ['network']);
+  });
 
   // Console only
-  program
-    .command('console')
-    .description('Collect console logs only')
-    .argument('<url>', 'Target URL')
-    .option('-p, --port <number>', 'Chrome debugging port', '9222')
-    .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-    .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
-    .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
-    .action(async (url: string, options) => {
-      await collectorAction(url, options, ['console']);
-    });
+  applyCollectorOptions(
+    program
+      .command('console')
+      .description('Collect console logs only')
+      .argument('<url>', 'Target URL')
+  ).action(async (url: string, options) => {
+    await collectorAction(url, options, ['console']);
+  });
 
   // Default command: collect all data
   // MUST be registered AFTER subcommands
-  program
-    .argument('<url>', 'Target URL (example.com or localhost:3000)')
-    .option('-p, --port <number>', 'Chrome debugging port', '9222')
-    .option('-t, --timeout <seconds>', 'Auto-stop after timeout (optional)')
-    .option('-r, --reuse-tab', 'Navigate existing tab instead of creating new one')
-    .option('-u, --user-data-dir <path>', 'Chrome user data directory (default: ~/.bdg/chrome-profile)')
-    .action(async (url: string, options) => {
-      await collectorAction(url, options, ['dom', 'network', 'console']);
-    });
+  applyCollectorOptions(
+    program
+      .argument('<url>', 'Target URL (example.com or localhost:3000)')
+  ).action(async (url: string, options) => {
+    await collectorAction(url, options, ['dom', 'network', 'console']);
+  });
 }

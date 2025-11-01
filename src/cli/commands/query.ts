@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { readPid, isProcessAlive } from '../../utils/session.js';
+import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '../constants.js';
 
 /**
  * Register query command
@@ -9,7 +10,7 @@ export function registerQueryCommand(program: Command) {
     .command('query')
     .description('Execute JavaScript in the active session for live debugging')
     .argument('<script>', 'JavaScript to execute (e.g., "document.querySelector(\'input[type=email]\').value")')
-    .option('-p, --port <number>', 'Chrome debugging port', '9222')
+    .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
     .action(async (script: string, options) => {
       try {
         const port = parseInt(options.port);
