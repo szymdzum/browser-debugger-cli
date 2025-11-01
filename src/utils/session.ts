@@ -308,7 +308,9 @@ export async function writePartialOutputAsync(output: BdgOutput): Promise<void> 
   const stringifyStart = Date.now();
   const jsonString = JSON.stringify(output, null, 2);
   const stringifyDuration = Date.now() - stringifyStart;
-  console.error(`[PERF] Preview JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024).toFixed(1)}KB)`);
+  console.error(
+    `[PERF] Preview JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024).toFixed(1)}KB)`
+  );
 
   // Write to temp file first, then rename for atomicity
   const ioStart = Date.now();
@@ -317,7 +319,9 @@ export async function writePartialOutputAsync(output: BdgOutput): Promise<void> 
   const ioDuration = Date.now() - ioStart;
 
   const totalDuration = Date.now() - startTime;
-  console.error(`[PERF] Preview write: ${totalDuration}ms (stringify: ${stringifyDuration}ms, I/O: ${ioDuration}ms)`);
+  console.error(
+    `[PERF] Preview write: ${totalDuration}ms (stringify: ${stringifyDuration}ms, I/O: ${ioDuration}ms)`
+  );
 }
 
 /**
@@ -357,7 +361,9 @@ export async function writeFullOutputAsync(output: BdgOutput): Promise<void> {
   const stringifyStart = Date.now();
   const jsonString = JSON.stringify(output, null, 2);
   const stringifyDuration = Date.now() - stringifyStart;
-  console.error(`[PERF] Full JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024 / 1024).toFixed(1)}MB)`);
+  console.error(
+    `[PERF] Full JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024 / 1024).toFixed(1)}MB)`
+  );
 
   // Write to temp file first, then rename for atomicity
   const ioStart = Date.now();
@@ -366,7 +372,9 @@ export async function writeFullOutputAsync(output: BdgOutput): Promise<void> {
   const ioDuration = Date.now() - ioStart;
 
   const totalDuration = Date.now() - startTime;
-  console.error(`[PERF] Full write: ${totalDuration}ms (stringify: ${stringifyDuration}ms, I/O: ${ioDuration}ms)`);
+  console.error(
+    `[PERF] Full write: ${totalDuration}ms (stringify: ${stringifyDuration}ms, I/O: ${ioDuration}ms)`
+  );
 }
 
 /**
