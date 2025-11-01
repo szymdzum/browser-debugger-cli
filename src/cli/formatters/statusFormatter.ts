@@ -1,3 +1,5 @@
+import * as chromeLauncher from 'chrome-launcher';
+
 import type { SessionMetadata } from '@/utils/session.js';
 import { isProcessAlive } from '@/utils/session.js';
 
@@ -20,8 +22,15 @@ export interface StatusData {
 
 /**
  * Format session status for human-readable output
+ * @param metadata Session metadata
+ * @param pid BDG process ID
+ * @param verbose Show detailed Chrome diagnostics
  */
-export function formatSessionStatus(metadata: SessionMetadata, pid: number): string {
+export function formatSessionStatus(
+  metadata: SessionMetadata,
+  pid: number,
+  verbose = false
+): string {
   // Calculate duration
   const now = Date.now();
   const durationMs = now - metadata.startTime;
@@ -51,6 +60,35 @@ export function formatSessionStatus(metadata: SessionMetadata, pid: number): str
   lines.push('Network:          ✓ Active');
   lines.push('Console:          ✓ Active');
   lines.push('DOM:              ✓ Active');
+
+  // Add verbose Chrome diagnostics if requested
+  if (verbose) {
+    lines.push('');
+    lines.push('Chrome Diagnostics');
+    lines.push('━'.repeat(50));
+
+    try {
+      const defaultPath = chromeLauncher.getChromePath();
+      lines.push(`Binary:           ${defaultPath}`);
+    } catch {
+      lines.push('Binary:           Could not determine');
+    }
+
+    try {
+      const installations = chromeLauncher.Launcher.getInstallations();
+      lines.push(`Installations:    ${installations.length} found`);
+      if (installations.length > 0 && installations.length <= 3) {
+        installations.forEach((path, index) => {
+          lines.push(`  ${index + 1}. ${path}`);
+        });
+      } else if (installations.length > 3) {
+        lines.push(`  (Use 'bdg cleanup --aggressive' to see all)`);
+      }
+    } catch {
+      lines.push('Installations:    Detection failed');
+    }
+  }
+
   lines.push('');
   lines.push('💡 Commands:');
   lines.push('  Stop session:    bdg stop');

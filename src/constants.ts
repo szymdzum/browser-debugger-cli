@@ -111,3 +111,49 @@ export const REUSE_TAB_OPTION_DESCRIPTION = 'Navigate existing tab instead of cr
  */
 export const USER_DATA_DIR_OPTION_DESCRIPTION =
   'Chrome user data directory (default: ~/.bdg/chrome-profile)';
+
+/**
+ * Description for log-level option in CLI commands
+ * @constant {string}
+ */
+export const LOG_LEVEL_OPTION_DESCRIPTION =
+  'Chrome launcher log level (verbose|info|error|silent, default: silent)';
+
+/**
+ * Description for chrome-prefs option in CLI commands
+ * @constant {string}
+ */
+export const CHROME_PREFS_OPTION_DESCRIPTION = 'Chrome preferences as inline JSON string';
+
+/**
+ * Description for chrome-prefs-file option in CLI commands
+ * @constant {string}
+ */
+export const CHROME_PREFS_FILE_OPTION_DESCRIPTION =
+  'Path to JSON file containing Chrome preferences';
+
+/**
+ * Description for chrome-flags option in CLI commands
+ * @constant {string}
+ */
+export const CHROME_FLAGS_OPTION_DESCRIPTION = 'Additional Chrome command-line flags (repeatable)';
+
+/**
+ * Description for connection-poll-interval option in CLI commands
+ * @constant {string}
+ */
+export const CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION =
+  'Milliseconds between CDP readiness checks (default: 500)';
+
+/**
+ * Description for max-connection-retries option in CLI commands
+ * @constant {string}
+ */
+export const MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION =
+  'Maximum retry attempts before failing (default: 50)';
+
+/**
+ * Description for port-strict option in CLI commands
+ * @constant {string}
+ */
+export const PORT_STRICT_OPTION_DESCRIPTION = 'Fail if Chrome debugging port is already in use';

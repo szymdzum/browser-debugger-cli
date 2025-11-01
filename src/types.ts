@@ -1,3 +1,5 @@
+import type { ChildProcess } from 'child_process';
+
 export interface CDPMessage {
   id: number;
   method?: string;
@@ -150,10 +152,18 @@ export interface SessionState {
 
 /**
  * Information about a launched Chrome instance.
+ *
+ * @property pid         Process ID of the Chrome instance
+ * @property port        Remote debugging port Chrome is listening on
+ * @property userDataDir Resolved Chrome user data directory (profile path)
+ * @property process     Child process handle (for advanced use cases like log streaming)
+ * @property kill        Async function to terminate Chrome and cleanup temp directories
  */
 export interface LaunchedChrome {
   pid: number;
   port: number;
+  userDataDir?: string | undefined;
+  process: ChildProcess | null;
   kill: () => Promise<void>;
 }
 

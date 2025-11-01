@@ -11,10 +11,12 @@ import { readPid, isProcessAlive } from '@/utils/session.js';
 
 /**
  * Options for the `bdg status` command.
- * @property json Print structured JSON instead of the default human output.
+ * @property json    Print structured JSON instead of the default human output.
+ * @property verbose Show detailed Chrome diagnostics (binary path, port, PID).
  */
 interface StatusOptions {
   json?: boolean;
+  verbose?: boolean;
 }
 
 /**
@@ -25,6 +27,7 @@ export function registerStatusCommand(program: Command): void {
     .command('status')
     .description('Show active session status and collection statistics')
     .option('-j, --json', 'Output as JSON')
+    .option('-v, --verbose', 'Show detailed Chrome diagnostics')
     .action(async (options: StatusOptions) => {
       try {
         const { readSessionMetadata } = await import('@/utils/session.js');
@@ -81,7 +84,7 @@ export function registerStatusCommand(program: Command): void {
           console.log(JSON.stringify(jsonOutput, null, 2));
         } else {
           // Human-readable output
-          console.log(formatSessionStatus(metadata, pid));
+          console.log(formatSessionStatus(metadata, pid, options.verbose ?? false));
         }
 
         process.exit(0);

@@ -7,16 +7,30 @@ import {
   TIMEOUT_OPTION_DESCRIPTION,
   REUSE_TAB_OPTION_DESCRIPTION,
   USER_DATA_DIR_OPTION_DESCRIPTION,
+  LOG_LEVEL_OPTION_DESCRIPTION,
+  CHROME_PREFS_OPTION_DESCRIPTION,
+  CHROME_PREFS_FILE_OPTION_DESCRIPTION,
+  CHROME_FLAGS_OPTION_DESCRIPTION,
+  CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION,
+  MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION,
+  PORT_STRICT_OPTION_DESCRIPTION,
 } from '@/constants';
 import type { CollectorType } from '@/types';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
- * @property port        Chrome debugging port as provided by the user.
- * @property timeout     Optional auto-stop timeout (seconds, string form).
- * @property reuseTab    Whether to reuse an existing tab instead of creating one.
- * @property userDataDir Custom Chrome profile directory path.
- * @property all         When true, disables default filtering of noisy data.
+ * @property port                   Chrome debugging port as provided by the user.
+ * @property timeout                Optional auto-stop timeout (seconds, string form).
+ * @property reuseTab               Whether to reuse an existing tab instead of creating one.
+ * @property userDataDir            Custom Chrome profile directory path.
+ * @property all                    When true, disables default filtering of noisy data.
+ * @property logLevel               Chrome launcher log level (verbose|info|error|silent).
+ * @property chromePrefs            Inline JSON string with Chrome preferences.
+ * @property chromePrefsFile        Path to JSON file with Chrome preferences.
+ * @property chromeFlags            Additional Chrome command-line flags.
+ * @property connectionPollInterval Milliseconds between CDP readiness checks.
+ * @property maxConnectionRetries   Maximum retry attempts before failing.
+ * @property portStrict             Fail if port is already in use.
  */
 interface CollectorOptions {
   port: string;
@@ -24,6 +38,13 @@ interface CollectorOptions {
   reuseTab?: boolean;
   userDataDir?: string;
   all?: boolean;
+  logLevel?: string;
+  chromePrefs?: string;
+  chromePrefsFile?: string;
+  chromeFlags?: string[];
+  connectionPollInterval?: string;
+  maxConnectionRetries?: string;
+  portStrict?: boolean;
 }
 
 /**
@@ -35,7 +56,69 @@ function applyCollectorOptions(command: Command): Command {
     .option('-t, --timeout <seconds>', TIMEOUT_OPTION_DESCRIPTION)
     .option('-r, --reuse-tab', REUSE_TAB_OPTION_DESCRIPTION)
     .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
-    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)');
+    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)')
+    .option('--log-level <level>', LOG_LEVEL_OPTION_DESCRIPTION)
+    .option('--chrome-prefs <json>', CHROME_PREFS_OPTION_DESCRIPTION)
+    .option('--chrome-prefs-file <path>', CHROME_PREFS_FILE_OPTION_DESCRIPTION)
+    .option('--chrome-flags <flags...>', CHROME_FLAGS_OPTION_DESCRIPTION)
+    .option('--connection-poll-interval <ms>', CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION)
+    .option('--max-connection-retries <count>', MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION)
+    .option('--port-strict', PORT_STRICT_OPTION_DESCRIPTION);
+}
+
+/**
+ * Parse a string to integer, returning undefined if not provided
+ */
+function parseOptionalInt(value: string | undefined): number | undefined {
+  return value !== undefined ? parseInt(value, 10) : undefined;
+}
+
+/**
+ * Parse JSON string with error handling
+ */
+function parseOptionalJson(value: string | undefined): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(
+      `Invalid JSON in --chrome-prefs: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
+ * Transform CLI options into session options
+ */
+function buildSessionOptions(options: CollectorOptions): {
+  port: number;
+  timeout: number | undefined;
+  reuseTab: boolean;
+  userDataDir: string | undefined;
+  includeAll: boolean;
+  logLevel: 'verbose' | 'info' | 'error' | 'silent' | undefined;
+  prefs: Record<string, unknown> | undefined;
+  prefsFile: string | undefined;
+  chromeFlags: string[] | undefined;
+  connectionPollInterval: number | undefined;
+  maxConnectionRetries: number | undefined;
+  portStrictMode: boolean;
+} {
+  return {
+    port: parseInt(options.port, 10),
+    timeout: parseOptionalInt(options.timeout),
+    reuseTab: options.reuseTab ?? false,
+    userDataDir: options.userDataDir,
+    includeAll: options.all ?? false,
+    logLevel: options.logLevel as 'verbose' | 'info' | 'error' | 'silent' | undefined,
+    prefs: parseOptionalJson(options.chromePrefs),
+    prefsFile: options.chromePrefsFile,
+    chromeFlags: options.chromeFlags,
+    connectionPollInterval: parseOptionalInt(options.connectionPollInterval),
+    maxConnectionRetries: parseOptionalInt(options.maxConnectionRetries),
+    portStrictMode: options.portStrict ?? false,
+  };
 }
 
 /**
@@ -46,16 +129,15 @@ async function collectorAction(
   options: CollectorOptions,
   collectors: CollectorType[]
 ): Promise<void> {
-  const port = parseInt(options.port, 10);
-  const timeout = options.timeout ? parseInt(options.timeout, 10) : undefined;
-  const reuseTab = options.reuseTab ?? false;
-  const userDataDir = options.userDataDir;
-  const includeAll = options.all ?? false;
-  await startSession(url, { port, timeout, reuseTab, userDataDir, includeAll }, collectors);
+  const sessionOptions = buildSessionOptions(options);
+  await startSession(url, sessionOptions, collectors);
 }
 
 /**
  * Register all start/collector commands
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerStartCommands(program: Command): void {
   // IMPORTANT: Register subcommands FIRST, before default command

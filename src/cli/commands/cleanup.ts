@@ -6,16 +6,21 @@ import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/ut
 
 /**
  * Flags consumed by the `bdg cleanup` command.
- * @property force Force removal even if the tracked process is alive.
- * @property all   Also delete the persisted `session.json` artifact.
+ * @property force      Force removal even if the tracked process is alive.
+ * @property all        Also delete the persisted `session.json` artifact.
+ * @property aggressive Aggressively kill all Chrome processes (uses chrome-launcher killAll).
  */
 interface CleanupOptions {
   force?: boolean;
   all?: boolean;
+  aggressive?: boolean;
 }
 
 /**
  * Register cleanup command
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerCleanupCommand(program: Command): void {
   program
@@ -23,10 +28,23 @@ export function registerCleanupCommand(program: Command): void {
     .description('Clean up stale session files')
     .option('-f, --force', 'Force cleanup even if session appears active')
     .option('-a, --all', 'Also remove session.json output file')
-    .action((options: CleanupOptions) => {
+    .option('--aggressive', 'Kill all Chrome processes (uses chrome-launcher killAll)')
+    .action(async (options: CleanupOptions) => {
       try {
+        // Import cleanupStaleChrome dynamically
+        const { cleanupStaleChrome } = await import('@/cli/handlers/sessionController.js');
+
         const pid = readPid();
         let didCleanup = false;
+
+        // Handle aggressive Chrome cleanup first if requested
+        if (options.aggressive) {
+          const errorCount = cleanupStaleChrome();
+          if (errorCount > 0) {
+            console.error('⚠️  Warning: Some Chrome processes could not be killed');
+          }
+          didCleanup = true;
+        }
 
         if (!pid) {
           // No session files to clean up

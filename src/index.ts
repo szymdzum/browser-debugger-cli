@@ -2,11 +2,7 @@
 
 import { Command } from 'commander';
 
-import { setupSignalHandlers } from '@/cli/handlers/sessionController.js';
 import { commandRegistry } from '@/cli/registry.js';
-
-// Setup global signal handlers for graceful shutdown
-setupSignalHandlers();
 
 // Create Commander program
 const program = new Command()
