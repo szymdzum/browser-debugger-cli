@@ -38,18 +38,6 @@ export class CDPConnectionError extends BdgError {
 }
 
 /**
- * Session lock acquisition failed.
- *
- * Examples:
- * - Another bdg session is already running
- * - Stale lock file exists
- */
-export class SessionLockError extends BdgError {
-  readonly code = 'SESSION_LOCK_ERROR';
-  readonly category = 'user' as const;
-}
-
-/**
  * Chrome launch failed.
  *
  * Examples:
@@ -60,19 +48,6 @@ export class SessionLockError extends BdgError {
 export class ChromeLaunchError extends BdgError {
   readonly code = 'CHROME_LAUNCH_ERROR';
   readonly category = 'system' as const;
-}
-
-/**
- * Target (browser tab) not found or inaccessible.
- *
- * Examples:
- * - No matching tabs for given URL
- * - Tab closed during operation
- * - Tab crashed
- */
-export class TargetNotFoundError extends BdgError {
-  readonly code = 'TARGET_NOT_FOUND_ERROR';
-  readonly category = 'user' as const;
 }
 
 /**

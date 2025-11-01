@@ -15,24 +15,6 @@
  */
 export const DEFAULT_DEBUG_PORT = '9222';
 
-/**
- * Default Chrome launcher log level (silent for minimal output)
- * @constant {string}
- */
-export const DEFAULT_LOG_LEVEL = 'silent';
-
-/**
- * Default connection poll interval in milliseconds (chrome-launcher default: 500ms)
- * @constant {number}
- */
-export const DEFAULT_CONNECTION_POLL_INTERVAL = 500;
-
-/**
- * Default maximum connection retries (chrome-launcher default: 50)
- * @constant {number}
- */
-export const DEFAULT_MAX_CONNECTION_RETRIES = 50;
-
 // ============================================================================
 // DATA COLLECTION LIMITS
 // ============================================================================

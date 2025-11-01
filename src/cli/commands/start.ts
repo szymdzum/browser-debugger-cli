@@ -135,6 +135,9 @@ async function collectorAction(
 
 /**
  * Register all start/collector commands
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerStartCommands(program: Command): void {
   // IMPORTANT: Register subcommands FIRST, before default command

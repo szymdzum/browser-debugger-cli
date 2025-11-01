@@ -18,6 +18,9 @@ interface CleanupOptions {
 
 /**
  * Register cleanup command
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerCleanupCommand(program: Command): void {
   program

@@ -220,6 +220,23 @@ function printCollectionStatus(collectors: CollectorType[], timeout?: number): v
 
 /**
  * Start a new session
+ *
+ * @param url - Target URL to navigate to
+ * @param options - Session configuration options
+ * @param options.port - Chrome debugging port
+ * @param options.timeout - Auto-stop after timeout (seconds)
+ * @param options.reuseTab - Navigate existing tab instead of creating new one
+ * @param options.userDataDir - Chrome user data directory
+ * @param options.includeAll - Include all data (disable filtering)
+ * @param options.logLevel - Chrome launcher log level
+ * @param options.prefs - Chrome preferences as object
+ * @param options.prefsFile - Path to JSON file containing Chrome preferences
+ * @param options.chromeFlags - Additional Chrome command-line flags
+ * @param options.connectionPollInterval - Milliseconds between CDP readiness checks
+ * @param options.maxConnectionRetries - Maximum retry attempts before failing
+ * @param options.portStrictMode - Fail if Chrome debugging port is already in use
+ * @param collectors - Array of collector types to enable ('dom', 'network', 'console')
+ * @returns Promise that resolves when session completes
  */
 export async function startSession(
   url: string,
