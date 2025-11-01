@@ -7,7 +7,7 @@ import {
   TIMEOUT_OPTION_DESCRIPTION,
   REUSE_TAB_OPTION_DESCRIPTION,
   USER_DATA_DIR_OPTION_DESCRIPTION
-} from '../constants.js';
+} from '../../constants.js';
 
 /**
  * Apply shared collector options to a command

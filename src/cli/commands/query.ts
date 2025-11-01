@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { readPid, isProcessAlive } from '../../utils/session.js';
-import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '../constants.js';
+import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '../../constants.js';
 
 /**
  * Register query command

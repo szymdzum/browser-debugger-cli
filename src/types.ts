@@ -85,6 +85,7 @@ export interface CDPNetworkResponseParams {
 export interface CDPNetworkLoadingFinishedParams {
   requestId: string;
   timestamp: number;
+  encodedDataLength: number; // Total encoded data length in bytes
 }
 
 export interface CDPNetworkLoadingFailedParams {

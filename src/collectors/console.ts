@@ -6,8 +6,7 @@ import {
   CDPExceptionThrownParams
 } from '../types.js';
 import { shouldExcludeConsoleMessage } from '../utils/filters.js';
-
-const MAX_MESSAGES = 10000; // Prevent memory issues
+import { MAX_CONSOLE_MESSAGES } from '../constants.js';
 
 /**
  * Start collecting console messages and exceptions via CDP Runtime domain.
@@ -60,10 +59,10 @@ export async function startConsoleCollection(
       timestamp: params.timestamp,
       args: params.args
     };
-    if (messages.length < MAX_MESSAGES) {
+    if (messages.length < MAX_CONSOLE_MESSAGES) {
       messages.push(message);
-    } else if (messages.length === MAX_MESSAGES) {
-      console.error(`Warning: Console message limit reached (${MAX_MESSAGES})`);
+    } else if (messages.length === MAX_CONSOLE_MESSAGES) {
+      console.error(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
     }
   });
   handlers.push({ event: 'Runtime.consoleAPICalled', id: consoleAPIId });
@@ -84,7 +83,7 @@ export async function startConsoleCollection(
       text,
       timestamp: exception.timestamp || Date.now()
     };
-    if (messages.length < MAX_MESSAGES) {
+    if (messages.length < MAX_CONSOLE_MESSAGES) {
       messages.push(message);
     }
   });

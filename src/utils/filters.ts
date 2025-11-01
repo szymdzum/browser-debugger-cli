@@ -7,19 +7,50 @@
  * These generate high volume but are rarely useful for debugging
  */
 export const DEFAULT_EXCLUDED_DOMAINS = [
+  // Google Analytics & Ads
   'analytics.google.com',
   'googletagmanager.com',
   'googleadservices.com',
   'doubleclick.net',
+  'google-analytics.com',
+
+  // Microsoft/Bing
   'clarity.ms',
+  'bat.bing.com',
+
+  // Social Media Tracking
   'facebook.com',
   'connect.facebook.net',
   'tiktok.com',
-  'bat.bing.com',
-  'exactag.com',
+  'linkedin.com',
+  'twitter.com',
+  'snapchat.com',
+
+  // Product Analytics
+  'mixpanel.com',
+  'segment.com',
+  'segment.io',
+  'amplitude.com',
+  'heap.io',
+
+  // Session Recording & Heatmaps
   'fullstory.com',
   'hotjar.com',
-  'confirmit.com'
+  'logrocket.com',
+  'smartlook.com',
+
+  // Ad Networks & Attribution
+  'exactag.com',
+  'criteo.com',
+  'adroll.com',
+  'outbrain.com',
+  'taboola.com',
+
+  // Other Analytics
+  'confirmit.com',
+  'newrelic.com',
+  'datadoghq.com',
+  'sentry.io'
 ];
 
 /**
