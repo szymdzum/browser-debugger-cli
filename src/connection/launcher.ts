@@ -242,28 +242,27 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const prefs = loadChromePrefs(options);
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
-  const chromeOptions: ChromeLaunchOptions = {
+  return {
     logLevel: options.logLevel ?? 'silent', // Preserve current quiet behavior
     handleSIGINT: options.handleSIGINT ?? false, // Let bdg handle signals
     ignoreDefaultFlags: options.ignoreDefaultFlags ?? false,
     chromeFlags: buildChromeFlags(options),
     userDataDir, // Forward the resolved userDataDir to chrome-launcher
+    // Only include optional properties if they're defined
+    ...(options.port !== undefined && { port: options.port }),
+    ...(options.url !== undefined && { startingUrl: options.url }),
+    ...(options.connectionPollInterval !== undefined && {
+      connectionPollInterval: options.connectionPollInterval,
+    }),
+    ...(options.maxConnectionRetries !== undefined && {
+      maxConnectionRetries: options.maxConnectionRetries,
+    }),
+    ...(options.portStrictMode !== undefined && { portStrictMode: options.portStrictMode }),
+    // chrome-launcher expects Record<string, JSONLike> but we use Record<string, unknown>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+    ...(prefs !== undefined && { prefs: prefs as any }),
+    ...(options.envVars !== undefined && { envVars: options.envVars }),
   };
-
-  // Only set optional properties if they're defined
-  if (options.port !== undefined) chromeOptions.port = options.port;
-  if (options.url !== undefined) chromeOptions.startingUrl = options.url;
-  if (options.connectionPollInterval !== undefined)
-    chromeOptions.connectionPollInterval = options.connectionPollInterval;
-  if (options.maxConnectionRetries !== undefined)
-    chromeOptions.maxConnectionRetries = options.maxConnectionRetries;
-  if (options.portStrictMode !== undefined) chromeOptions.portStrictMode = options.portStrictMode;
-  // chrome-launcher expects Record<string, JSONLike> but we use Record<string, unknown>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-  if (prefs !== undefined) chromeOptions.prefs = prefs as any;
-  if (options.envVars !== undefined) chromeOptions.envVars = options.envVars;
-
-  return chromeOptions;
 }
 
 /**
