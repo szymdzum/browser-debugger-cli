@@ -1,16 +1,11 @@
 import type { BdgSession } from '@/session/BdgSession.js';
-import type {
-  BdgOutput,
-  CollectorType,
-  CDPTargetDestroyedParams,
-  LaunchedChrome,
-  CDPTarget,
-} from '@/types';
+import type { BdgOutput, CollectorType, LaunchedChrome, CDPTarget } from '@/types';
 import { writePid, writeSessionMetadata, cleanupSession } from '@/utils/session.js';
 
 import { ChromeBootstrap } from './bootstrap/ChromeBootstrap.js';
 import { SessionLock } from './bootstrap/SessionLock.js';
 import { TargetSetup } from './bootstrap/TargetSetup.js';
+import { SessionLoop } from './monitoring/SessionLoop.js';
 import { OutputBuilder } from './output/OutputBuilder.js';
 import { OutputWriter } from './output/OutputWriter.js';
 import { PreviewWriter } from './output/PreviewWriter.js';
@@ -188,50 +183,6 @@ function startPreviewWriter(context: SessionContext): void {
 }
 
 /**
- * Phase 6: Run session loop until stopped or error
- */
-async function runSessionLoop(session: BdgSession, target: CDPTarget): Promise<void> {
-  if (!session) {
-    throw new Error('Session not initialized');
-  }
-
-  const cdp = session.getCDP();
-
-  const waitForNextCheck = (): Promise<'continue' | 'destroyed'> =>
-    new Promise((resolve) => {
-      let timer: ReturnType<typeof setTimeout>;
-      let handlerId: number;
-
-      const handleTargetDestroyed = (params: CDPTargetDestroyedParams): void => {
-        if (params.targetId === target.id) {
-          clearTimeout(timer);
-          cdp.off('Target.targetDestroyed', handlerId);
-          resolve('destroyed');
-        }
-      };
-
-      handlerId = cdp.on<CDPTargetDestroyedParams>('Target.targetDestroyed', handleTargetDestroyed);
-
-      timer = setTimeout(() => {
-        cdp.off('Target.targetDestroyed', handlerId);
-        resolve('continue');
-      }, 2000);
-    });
-
-  for (;;) {
-    const result = await waitForNextCheck();
-
-    if (!session.isConnected()) {
-      throw new Error('WebSocket connection lost');
-    }
-
-    if (result === 'destroyed') {
-      throw new Error('Browser tab was closed');
-    }
-  }
-}
-
-/**
  * Print collection status message
  */
 function printCollectionStatus(collectors: CollectorType[], timeout?: number): void {
@@ -335,7 +286,7 @@ export async function startSession(
     };
 
     // Phase 6: Run session loop
-    await runSessionLoop(session, target);
+    await SessionLoop.run(session, target);
   } catch (error) {
     const errorOutput = OutputBuilder.buildError(
       error,
