@@ -1,11 +1,12 @@
 import { Command } from 'commander';
-import { registerStartCommands } from './commands/start.js';
-import { registerStopCommand } from './commands/stop.js';
-import { registerStatusCommand } from './commands/status.js';
-import { registerQueryCommand } from './commands/query.js';
-import { registerPeekCommand } from './commands/peek.js';
-import { registerDetailsCommand } from './commands/details.js';
-import { registerCleanupCommand } from './commands/cleanup.js';
+
+import { registerStartCommands } from '@/cli/commands/start.js';
+import { registerStopCommand } from '@/cli/commands/stop.js';
+import { registerStatusCommand } from '@/cli/commands/status.js';
+import { registerQueryCommand } from '@/cli/commands/query.js';
+import { registerPeekCommand } from '@/cli/commands/peek.js';
+import { registerDetailsCommand } from '@/cli/commands/details.js';
+import { registerCleanupCommand } from '@/cli/commands/cleanup.js';
 
 /**
  * Command registration function type

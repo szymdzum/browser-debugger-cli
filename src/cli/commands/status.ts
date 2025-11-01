@@ -1,13 +1,13 @@
 import { Command } from 'commander';
+
+import { readPid, isProcessAlive } from '@/utils/session.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,
   formatNoSessionMessage,
   formatStaleSessionMessage,
   formatNoMetadataMessage
-} from '../formatters/statusFormatter.js';
-
-import { readPid, isProcessAlive } from '@/utils/session.js';
+} from '@/cli/formatters/statusFormatter.js';
 
 /**
  * Register status command
@@ -19,7 +19,7 @@ export function registerStatusCommand(program: Command) {
     .option('-j, --json', 'Output as JSON')
     .action(async (options) => {
       try {
-        const { readSessionMetadata } = await import('../../utils/session.js');
+        const { readSessionMetadata } = await import('@/utils/session.js');
 
         // Read PID
         const pid = readPid();

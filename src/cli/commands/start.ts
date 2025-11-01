@@ -1,5 +1,6 @@
 import { Command } from 'commander';
-import { startSession } from '../handlers/sessionController.js';
+
+import { startSession } from '@/cli/handlers/sessionController.js';
 import {
   DEFAULT_DEBUG_PORT,
   PORT_OPTION_DESCRIPTION,

@@ -1,7 +1,6 @@
-import { CDPConnection } from './cdp.js';
-
 import type { CDPTarget } from '@/types';
 
+import { CDPConnection } from '@/connection/cdp.js';
 import { CDPCreateTargetResponse, CDPAttachToTargetResponse, CDPGetTargetsResponse, CDPNavigateResponse,  } from '@/types';
 import { normalizeUrl } from '@/utils/url.js';
 
