@@ -1,17 +1,27 @@
-import { CDPConnection } from '../connection/cdp.js';
-import { validateTarget } from '../connection/finder.js';
-import { startNetworkCollection } from '../collectors/network.js';
-import { startConsoleCollection } from '../collectors/console.js';
-import { prepareDOMCollection, collectDOM } from '../collectors/dom.js';
-import {
+import { startConsoleCollection } from '@/collectors/console.js';
+import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
+import { startNetworkCollection } from '@/collectors/network.js';
+import { CDPConnection } from '@/connection/cdp.js';
+import { validateTarget } from '@/connection/finder.js';
+import type {
   CDPTarget,
   CollectorType,
   NetworkRequest,
   ConsoleMessage,
   DOMData,
   BdgOutput,
-  CleanupFunction
-} from '../types.js';
+  CleanupFunction,
+} from '@/types';
+
+/**
+ * Build a descriptive error for unreachable collector branches.
+ *
+ * This keeps the `switch` in {@link BdgSession.startCollector} exhaustive so any
+ * future collector additions fail fast during development.
+ */
+function createUnknownCollectorError(type: never): Error {
+  return new Error(`Unknown collector type: ${String(type)}`);
+}
 
 /**
  * Manages a browser debugging session.
@@ -45,7 +55,7 @@ export class BdgSession {
     await this.cdp.connect(this.target.webSocketDebuggerUrl, {
       maxRetries: 3,
       autoReconnect: false,
-      keepaliveInterval: 30000
+      keepaliveInterval: 30000,
     });
 
     // Validate target still exists
@@ -85,8 +95,10 @@ export class BdgSession {
       case 'dom':
         cleanup = await prepareDOMCollection(this.cdp);
         break;
-      default:
-        throw new Error(`Unknown collector type: ${type}`);
+      default: {
+        // Exhaustive check - should never reach here with valid CollectorType
+        throw createUnknownCollectorError(type);
+      }
     }
 
     this.collectors.set(type, cleanup);
@@ -117,8 +129,10 @@ export class BdgSession {
         console.error('DOM snapshot captured successfully');
       } catch (domError) {
         // Chrome may be closing during shutdown, ignore DOM capture failures
-        console.error('Warning: DOM capture failed (Chrome may be closing):',
-          domError instanceof Error ? domError.message : String(domError));
+        console.error(
+          'Warning: DOM capture failed (Chrome may be closing):',
+          domError instanceof Error ? domError.message : String(domError)
+        );
       }
     }
 
@@ -128,10 +142,10 @@ export class BdgSession {
       timestamp: new Date().toISOString(),
       duration: Date.now() - this.startTime,
       target: {
-        url: domData?.url || this.target.url,
-        title: domData?.title || this.target.title
+        url: domData?.url ?? this.target.url,
+        title: domData?.title ?? this.target.title,
       },
-      data: {}
+      data: {},
     };
 
     // Add collected data
@@ -150,26 +164,28 @@ export class BdgSession {
       console.error('Cleaning up session...');
 
       // Call cleanup functions for all collectors
-      this.collectors.forEach(cleanup => cleanup());
+      this.collectors.forEach((cleanup) => cleanup());
       this.collectors.clear();
 
       // Skip disabling CDP domains - Chrome may be dead during SIGINT shutdown
       // Just close the connection and mark as inactive
       try {
         this.cdp.close();
-      } catch (closeError) {
+      } catch {
         // Ignore close errors
       }
       this.isActive = false;
 
       console.error('Session cleanup complete');
     } catch (cleanupError) {
-      console.error('Warning: Cleanup error:', cleanupError instanceof Error ? cleanupError.message : String(cleanupError));
+      console.error(
+        'Warning: Cleanup error:',
+        cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      );
     }
 
     return output;
   }
-
 
   /**
    * Check if the session is active and connected.

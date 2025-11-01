@@ -1,9 +1,15 @@
-import { BdgSession } from '../../session/BdgSession.js';
-import { BdgOutput, CollectorType, CDPTargetDestroyedParams, LaunchedChrome, CDPTarget } from '../../types.js';
-import { normalizeUrl } from '../../utils/url.js';
-import { validateCollectorTypes } from '../../utils/validation.js';
-import { createOrFindTarget } from '../../connection/tabs.js';
-import { launchChrome, isChromeRunning } from '../../connection/launcher.js';
+import { launchChrome, isChromeRunning } from '@/connection/launcher.js';
+import { createOrFindTarget } from '@/connection/tabs.js';
+import { BdgSession } from '@/session/BdgSession.js';
+import type {
+  BdgOutput,
+  CollectorType,
+  CDPTargetDestroyedParams,
+  LaunchedChrome,
+  CDPTarget,
+  NetworkRequest,
+  ConsoleMessage,
+} from '@/types';
 import {
   writePid,
   readPid,
@@ -13,8 +19,10 @@ import {
   writeSessionMetadata,
   cleanupSession,
   writePartialOutput,
-  writeFullOutput
-} from '../../utils/session.js';
+  writeFullOutput,
+} from '@/utils/session.js';
+import { normalizeUrl } from '@/utils/url.js';
+import { validateCollectorTypes } from '@/utils/validation.js';
 
 /**
  * Encapsulates session state and lifecycle management
@@ -28,6 +36,10 @@ class SessionContext {
   startTime: number;
   target: CDPTarget | null = null;
 
+  /**
+   * Create a new session context and track the start timestamp.
+   * The context is shared with signal handlers so they can orchestrate shutdown.
+   */
   constructor() {
     this.startTime = Date.now();
   }
@@ -42,10 +54,14 @@ class SessionContext {
       const message = exitCode === 0 ? 'Writing session output...' : 'Writing error output...';
       console.error(message);
       writeSessionOutput(output);
-      const successMessage = exitCode === 0 ? 'Session output written successfully' : 'Error output written successfully';
+      const successMessage =
+        exitCode === 0
+          ? 'Session output written successfully'
+          : 'Error output written successfully';
       console.error(successMessage);
     } catch (writeError) {
-      const errorMessage = exitCode === 0 ? 'Failed to write session output:' : 'Failed to write error output:';
+      const errorMessage =
+        exitCode === 0 ? 'Failed to write session output:' : 'Failed to write error output:';
       console.error(errorMessage, writeError);
       console.error('Write error details:', writeError);
     }
@@ -55,9 +71,10 @@ class SessionContext {
 
     // Leave Chrome running for future sessions
     if (this.launchedChrome) {
-      const chromeMessage = exitCode === 0
-        ? 'Leaving Chrome running for future sessions (use persistent profile)'
-        : 'Leaving Chrome running (use persistent profile)';
+      const chromeMessage =
+        exitCode === 0
+          ? 'Leaving Chrome running for future sessions (use persistent profile)'
+          : 'Leaving Chrome running (use persistent profile)';
       console.error(chromeMessage);
       console.error(`Chrome PID: ${this.launchedChrome.pid}, port: ${this.launchedChrome.port}`);
     }
@@ -78,7 +95,9 @@ class SessionContext {
   }
 
   /**
-   * Handle graceful shutdown of the session
+   * Handle graceful shutdown: stops collectors, writes output, and exits.
+   *
+   * Idempotent — repeated calls after shutdown has started are ignored.
    */
   async stop(): Promise<void> {
     if (this.isShuttingDown || !this.session) {
@@ -109,7 +128,7 @@ class SessionContext {
         duration: 0,
         target: { url: '', title: '' },
         data: {},
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       };
 
       this.finalizeShutdown(errorOutput, 1);
@@ -117,7 +136,8 @@ class SessionContext {
   }
 
   /**
-   * Cleanup on error
+   * Cleanup on error paths without exiting the process.
+   * Clears timers, tears down Chrome if bdg launched it, and removes session files.
    */
   async cleanup(): Promise<void> {
     // Clear preview interval
@@ -130,7 +150,9 @@ class SessionContext {
     if (this.launchedChrome) {
       try {
         await this.launchedChrome.kill();
-      } catch {}
+      } catch {
+        // Ignore errors during cleanup
+      }
     }
 
     // Cleanup session files
@@ -145,10 +167,7 @@ let globalContext: SessionContext | null = null;
 /**
  * Phase 1: Acquire session lock and validate inputs
  */
-async function setupSessionLock(
-  url: string,
-  collectors: CollectorType[]
-): Promise<string> {
+function setupSessionLock(url: string, collectors: CollectorType[]): string {
   const existingPid = readPid();
 
   // Check for stale session before trying to acquire lock
@@ -161,9 +180,7 @@ async function setupSessionLock(
 
   if (!acquireSessionLock()) {
     const currentPid = readPid();
-    throw new Error(
-      `Session already running (PID ${currentPid}). Stop it with: bdg stop`
-    );
+    throw new Error(`Session already running (PID ${currentPid}). Stop it with: bdg stop`);
   }
 
   // Validate collector types
@@ -200,6 +217,48 @@ async function bootstrapChrome(
 }
 
 /**
+ * Fetch the current list of available CDP targets from Chrome.
+ * Used during session bootstrap to select a temporary connection target and to
+ * refresh metadata when the session creates or reuses tabs.
+ */
+async function fetchCDPTargets(port: number): Promise<CDPTarget[]> {
+  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+  return (await response.json()) as CDPTarget[];
+}
+
+/**
+ * Locate a specific CDP target by ID. Falls back to a fresh fetch when cached
+ * metadata is missing or incomplete (e.g., webSocketDebuggerUrl absent).
+ */
+async function findTargetById(
+  targetId: string,
+  port: number,
+  cachedTargets?: CDPTarget[]
+): Promise<CDPTarget> {
+  // First check cached targets if provided
+  if (cachedTargets) {
+    const cached = cachedTargets.find((t) => t.id === targetId);
+    if (cached?.webSocketDebuggerUrl) {
+      return cached;
+    }
+  }
+
+  // Not in cache or missing webSocketDebuggerUrl - refetch
+  const targets = await fetchCDPTargets(port);
+  const target = targets.find((t) => t.id === targetId);
+
+  if (!target) {
+    throw new Error(`Could not find target ${targetId}`);
+  }
+
+  if (!target.webSocketDebuggerUrl) {
+    throw new Error(`Could not find webSocketDebuggerUrl for target ${targetId}`);
+  }
+
+  return target;
+}
+
+/**
  * Phase 3: Create CDP connection and find/create target tab
  */
 async function setupTarget(
@@ -209,20 +268,19 @@ async function setupTarget(
   reuseTab: boolean,
   includeAll: boolean = false
 ): Promise<{ session: BdgSession; target: CDPTarget }> {
-  // Create session (connects to CDP)
-  // We need a temporary target just to connect to CDP
-  // Then we'll use createOrFindTarget to get the right tab
-  const tempResponse = await fetch(
-    `http://127.0.0.1:${port}/json/list`
-  );
-  const tempTargets = await tempResponse.json();
+  // Fetch targets once
+  const initialTargets = await fetchCDPTargets(port);
 
-  if (tempTargets.length === 0) {
+  if (initialTargets.length === 0) {
     throw new Error('No targets available in Chrome');
   }
 
   // Use first available target to establish CDP connection
-  const tempSession = new BdgSession(tempTargets[0], port, includeAll);
+  const tempTarget = initialTargets[0];
+  if (!tempTarget) {
+    throw new Error('No targets available in Chrome');
+  }
+  const tempSession = new BdgSession(tempTarget, port, includeAll);
   await tempSession.connect();
 
   if (!tempSession.isConnected()) {
@@ -231,27 +289,14 @@ async function setupTarget(
 
   // Create or find target tab using TabManager
   console.error(`Finding or creating tab for: ${targetUrl}`);
-  const target = await createOrFindTarget(
-    url,
-    tempSession.getCDP(),
-    reuseTab
-  );
+  const target = await createOrFindTarget(url, tempSession.getCDP(), reuseTab);
   console.error(`Using tab: ${target.url}`);
 
-  // Fetch full target info with webSocketDebuggerUrl
-  const fullTargetResponse = await fetch(
-    `http://127.0.0.1:${port}/json/list`
-  );
-  const fullTargets = await fullTargetResponse.json();
-  const fullTarget = fullTargets.find((t: any) => t.id === target.id);
+  // Find full target metadata (refetches only if not in cache or new tab created)
+  const fullTarget = await findTargetById(target.id, port, initialTargets);
 
-  if (!fullTarget || !fullTarget.webSocketDebuggerUrl) {
-    throw new Error(`Could not find webSocketDebuggerUrl for target ${target.id}`);
-  }
-
-  // Update session with the correct target
-  // Close current session and reconnect to the correct target
-  await tempSession.getCDP().close();
+  // Close temp session and reconnect to the correct target
+  tempSession.getCDP().close();
   const session = new BdgSession(fullTarget, port, includeAll);
   await session.connect();
 
@@ -259,7 +304,14 @@ async function setupTarget(
 }
 
 /**
- * Phase 4: Start collectors and write session metadata
+ * Phase 4: start requested collectors and persist session metadata for tooling.
+ *
+ * @param session Active BDG session instance
+ * @param collectors Collector types requested by the CLI
+ * @param startTime Timestamp when the session began
+ * @param port Chrome debugging port in use
+ * @param target Target metadata (includes websocket URL)
+ * @param chromePid PID of Chrome if bdg launched it (optional)
  */
 async function startCollectorsAndMetadata(
   session: BdgSession,
@@ -287,72 +339,98 @@ async function startCollectorsAndMetadata(
 }
 
 /**
+ * Helper: build output payloads for preview/full modes with consistent metadata.
+ */
+function buildSessionOutput(
+  mode: 'preview' | 'full',
+  target: CDPTarget,
+  startTime: number,
+  allNetworkRequests: NetworkRequest[],
+  allConsoleLogs: ConsoleMessage[]
+): BdgOutput {
+  const baseOutput = {
+    success: true,
+    timestamp: new Date().toISOString(),
+    duration: Date.now() - startTime,
+    target: {
+      url: target.url,
+      title: target.title,
+    },
+    partial: true, // Flag to indicate this is incomplete data
+  };
+
+  if (mode === 'preview') {
+    // Lightweight preview: metadata only, last 1000 items
+    return {
+      ...baseOutput,
+      data: {
+        network: allNetworkRequests.slice(-1000).map((req) => ({
+          requestId: req.requestId,
+          url: req.url,
+          method: req.method,
+          timestamp: req.timestamp,
+          status: req.status,
+          mimeType: req.mimeType,
+          // Exclude requestBody, responseBody, headers for lightweight preview
+        })),
+        console: allConsoleLogs.slice(-1000).map((msg) => ({
+          type: msg.type,
+          text: msg.text,
+          timestamp: msg.timestamp,
+          // Exclude args for lightweight preview
+        })),
+        // DOM omitted in preview (only captured on stop)
+      },
+    };
+  }
+
+  // Full mode: complete data with bodies
+  return {
+    ...baseOutput,
+    data: {
+      network: allNetworkRequests, // All data with bodies
+      console: allConsoleLogs, // All data with args
+      // DOM omitted (only captured on stop)
+    },
+  };
+}
+
+/**
  * Phase 5: Start preview writer with two-tier system
  */
-function startPreviewWriter(
-  context: SessionContext
-): void {
+function startPreviewWriter(context: SessionContext): void {
   context.previewInterval = setInterval(() => {
-    if (context.session && context.session.isConnected()) {
+    if (context.session?.isConnected()) {
       try {
         const target = context.session.getTarget();
         const allNetworkRequests = context.session.getNetworkRequests();
         const allConsoleLogs = context.session.getConsoleLogs();
 
-        // Lightweight preview: metadata only, last 1000 items
-        const previewOutput: BdgOutput = {
-          success: true,
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - context.startTime,
-          target: {
-            url: target.url,
-            title: target.title
-          },
-          data: {
-            // Exclude bodies and limit to last 1000
-            network: allNetworkRequests.slice(-1000).map(req => ({
-              requestId: req.requestId,
-              url: req.url,
-              method: req.method,
-              timestamp: req.timestamp,
-              status: req.status,
-              mimeType: req.mimeType
-              // Exclude requestBody, responseBody, headers for lightweight preview
-            })),
-            console: allConsoleLogs.slice(-1000).map(msg => ({
-              type: msg.type,
-              text: msg.text,
-              timestamp: msg.timestamp
-              // Exclude args for lightweight preview
-            }))
-            // DOM omitted in preview (only captured on stop)
-          },
-          partial: true // Flag to indicate this is incomplete data
-        };
-
-        // Full output: complete data with bodies
-        const fullOutput: BdgOutput = {
-          success: true,
-          timestamp: new Date().toISOString(),
-          duration: Date.now() - context.startTime,
-          target: {
-            url: target.url,
-            title: target.title
-          },
-          data: {
-            network: allNetworkRequests, // All data with bodies
-            console: allConsoleLogs      // All data with args
-            // DOM omitted (only captured on stop)
-          },
-          partial: true
-        };
+        // Build both preview and full outputs
+        const previewOutput = buildSessionOutput(
+          'preview',
+          target,
+          context.startTime,
+          allNetworkRequests,
+          allConsoleLogs
+        );
+        const fullOutput = buildSessionOutput(
+          'full',
+          target,
+          context.startTime,
+          allNetworkRequests,
+          allConsoleLogs
+        );
 
         // Write both files
-        writePartialOutput(previewOutput);  // ~500KB - for 'bdg peek'
-        writeFullOutput(fullOutput);         // ~87MB - for 'bdg details'
+        writePartialOutput(previewOutput); // ~500KB - for 'bdg peek'
+        writeFullOutput(fullOutput); // ~87MB - for 'bdg details'
       } catch (error) {
         // Ignore preview write errors - don't disrupt collection
-        console.error('Warning: Failed to write preview data:', error instanceof Error ? error.message : String(error));
+        console.error(
+          'Warning: Failed to write preview data:',
+          error instanceof Error ? error.message : String(error)
+        );
       }
     }
   }, 5000); // Write preview every 5 seconds
@@ -361,60 +439,60 @@ function startPreviewWriter(
 /**
  * Phase 6: Run session loop until stopped or error
  */
-async function runSessionLoop(
-  session: BdgSession,
-  target: CDPTarget
-): Promise<void> {
-  await new Promise<void>((_, reject) => {
-    if (!session) {
-      reject(new Error('Session not initialized'));
-      return;
+async function runSessionLoop(session: BdgSession, target: CDPTarget): Promise<void> {
+  if (!session) {
+    throw new Error('Session not initialized');
+  }
+
+  const cdp = session.getCDP();
+
+  const waitForNextCheck = (): Promise<'continue' | 'destroyed'> =>
+    new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout>;
+      let handlerId: number;
+
+      const handleTargetDestroyed = (params: CDPTargetDestroyedParams): void => {
+        if (params.targetId === target.id) {
+          clearTimeout(timer);
+          cdp.off('Target.targetDestroyed', handlerId);
+          resolve('destroyed');
+        }
+      };
+
+      handlerId = cdp.on<CDPTargetDestroyedParams>('Target.targetDestroyed', handleTargetDestroyed);
+
+      timer = setTimeout(() => {
+        cdp.off('Target.targetDestroyed', handlerId);
+        resolve('continue');
+      }, 2000);
+    });
+
+  for (;;) {
+    const result = await waitForNextCheck();
+
+    if (!session.isConnected()) {
+      throw new Error('WebSocket connection lost');
     }
 
-    // Listen for WebSocket connection loss
-    const connectionCheckInterval = setInterval(() => {
-      if (!session) {
-        clearInterval(connectionCheckInterval);
-        return;
-      }
-
-      if (!session.isConnected()) {
-        clearInterval(connectionCheckInterval);
-        reject(new Error('WebSocket connection lost'));
-        return;
-      }
-    }, 2000); // Check every 2 seconds
-
-    // Listen for target destruction (tab closed/navigated)
-    session.getCDP().on('Target.targetDestroyed', (params: CDPTargetDestroyedParams) => {
-      if (params.targetId === target.id) {
-        clearInterval(connectionCheckInterval);
-        reject(new Error('Browser tab was closed'));
-      }
-    });
-  });
+    if (result === 'destroyed') {
+      throw new Error('Browser tab was closed');
+    }
+  }
 }
 
 /**
  * Print collection status message
  */
-function printCollectionStatus(
-  collectors: CollectorType[],
-  timeout?: number
-): void {
+function printCollectionStatus(collectors: CollectorType[], timeout?: number): void {
   const collectorNames =
-    collectors.length === 3
-      ? 'network, console, and DOM'
-      : collectors.join(', ');
+    collectors.length === 3 ? 'network, console, and DOM' : collectors.join(', ');
 
   if (timeout) {
     console.error(
       `Collecting ${collectorNames}... (Ctrl+C to stop and output, or wait ${timeout}s for timeout)`
     );
   } else {
-    console.error(
-      `Collecting ${collectorNames}... (Ctrl+C to stop and output, or use 'bdg stop')`
-    );
+    console.error(`Collecting ${collectorNames}... (Ctrl+C to stop and output, or use 'bdg stop')`);
   }
 }
 
@@ -423,31 +501,35 @@ function printCollectionStatus(
  */
 export async function startSession(
   url: string,
-  options: { port: number; timeout?: number; reuseTab?: boolean; userDataDir?: string; includeAll?: boolean },
+  options: {
+    port: number;
+    timeout?: number | undefined;
+    reuseTab?: boolean | undefined;
+    userDataDir?: string | undefined;
+    includeAll?: boolean | undefined;
+  },
   collectors: CollectorType[]
-) {
+): Promise<void> {
   const context = new SessionContext();
   globalContext = context;
 
   try {
     // Phase 1: Lock acquisition and validation
-    const targetUrl = await setupSessionLock(url, collectors);
+    const targetUrl = setupSessionLock(url, collectors);
 
     // Phase 2: Chrome bootstrap
-    context.launchedChrome = await bootstrapChrome(
-      options.port,
-      targetUrl,
-      options.userDataDir
-    );
+    context.launchedChrome = await bootstrapChrome(options.port, targetUrl, options.userDataDir);
 
     // Phase 3: CDP connection and target setup
-    const { session, target } = await setupTarget(
+    const setupResult = await setupTarget(
       url,
       targetUrl,
       options.port,
       options.reuseTab ?? false,
       options.includeAll ?? false
     );
+    const session = setupResult.session;
+    const target = setupResult.target;
     context.session = session;
     context.target = target;
 
@@ -468,7 +550,7 @@ export async function startSession(
     if (options.timeout) {
       setTimeout(() => {
         console.error(`\nTimeout reached (${options.timeout}s)`);
-        context.stop();
+        void context.stop();
       }, options.timeout * 1000);
     }
 
@@ -484,7 +566,7 @@ export async function startSession(
       duration: Date.now() - context.startTime,
       target: { url: '', title: '' },
       data: {},
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     };
 
     console.log(JSON.stringify(errorOutput, null, 2));
@@ -499,7 +581,7 @@ export async function startSession(
 /**
  * Setup global signal handlers for graceful shutdown
  */
-export function setupSignalHandlers() {
+export function setupSignalHandlers(): void {
   // Register signal handlers
   // Wrap in async IIFE to ensure handler completes before exit
   process.on('SIGINT', () => {
@@ -522,7 +604,7 @@ export function setupSignalHandlers() {
   });
 
   // Error handlers for cleanup on crash
-  process.on('unhandledRejection', (reason, promise) => {
+  process.on('unhandledRejection', (reason) => {
     console.error('Unhandled rejection:', reason);
     console.error('Cleaning up session files...');
     try {

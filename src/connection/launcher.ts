@@ -1,12 +1,25 @@
-import * as chromeLauncher from 'chrome-launcher';
-import { LaunchedChrome } from '../types.js';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as fs from 'fs';
 
+import * as chromeLauncher from 'chrome-launcher';
+
+import type { LaunchedChrome } from '@/types';
+import { ChromeLaunchError, CDPTimeoutError } from '@/utils/errors.js';
+
+/**
+ * Options that control how Chrome is launched for CDP sessions.
+ * @property port        Remote debugging port (defaults to 9222 when omitted).
+ * @property userDataDir Directory used for Chrome profile data. Falls back to
+ *                        the persistent `~/.bdg/chrome-profile` directory.
+ * @property headless    When true, launches Chrome in headless mode. Defaults
+ *                        to the standard windowed experience.
+ * @property url         Initial URL to open. Defaults to `about:blank` and is
+ *                        typically replaced during session setup.
+ */
 export interface LaunchOptions {
   port?: number;
-  userDataDir?: string;
+  userDataDir?: string | undefined;
   headless?: boolean;
   url?: string;
 }
@@ -50,9 +63,10 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   }
 
   try {
+    const chromePath = findChromeBinary();
     const chrome = await chromeLauncher.launch({
       port,
-      chromePath: findChromeBinary(), // Let chrome-launcher find Chrome
+      ...(chromePath ? { chromePath } : {}), // Only include if defined
       chromeFlags,
       startingUrl,
       ignoreDefaultFlags: false,
@@ -67,16 +81,15 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     return {
       pid: chrome.pid,
       port: chrome.port,
-      kill: async () => {
-        try {
-          await chrome.kill();
-        } catch (error) {
-          console.error(`Error killing Chrome: ${error instanceof Error ? error.message : String(error)}`);
-        }
+      kill: (): Promise<void> => {
+        return Promise.resolve(chrome.kill());
       },
     };
   } catch (error) {
-    throw new Error(`Failed to launch Chrome: ${error instanceof Error ? error.message : String(error)}`);
+    throw new ChromeLaunchError(
+      `Failed to launch Chrome: ${error instanceof Error ? error.message : String(error)}`,
+      error instanceof Error ? error : undefined
+    );
   }
 }
 
@@ -132,10 +145,10 @@ async function waitForCDP(port: number, maxWaitMs = 10000): Promise<void> {
       return; // CDP is ready!
     }
 
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
-  throw new Error(`CDP not available on port ${port} after ${maxWaitMs}ms`);
+  throw new CDPTimeoutError(`CDP not available on port ${port} after ${maxWaitMs}ms`);
 }
 
 /**

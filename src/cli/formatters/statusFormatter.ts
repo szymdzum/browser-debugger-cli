@@ -1,16 +1,17 @@
-import { SessionMetadata, isProcessAlive } from '../../utils/session.js';
+import type { SessionMetadata } from '@/utils/session.js';
+import { isProcessAlive } from '@/utils/session.js';
 
 export interface StatusData {
   active: boolean;
   bdgPid?: number;
-  chromePid?: number;
+  chromePid?: number | undefined;
   chromeAlive?: boolean;
   startTime?: number;
   duration?: number;
   durationFormatted?: string;
   port?: number;
-  targetId?: string;
-  webSocketDebuggerUrl?: string;
+  targetId?: string | undefined;
+  webSocketDebuggerUrl?: string | undefined;
   collectors?: string[];
   stale?: boolean;
   stalePid?: number;
@@ -27,9 +28,7 @@ export function formatSessionStatus(metadata: SessionMetadata, pid: number): str
   const durationSec = Math.floor(durationMs / 1000);
   const minutes = Math.floor(durationSec / 60);
   const seconds = durationSec % 60;
-  const durationFormatted = minutes > 0
-    ? `${minutes}m ${seconds}s`
-    : `${seconds}s`;
+  const durationFormatted = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
   // Check if Chrome is alive
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
@@ -63,7 +62,10 @@ export function formatSessionStatus(metadata: SessionMetadata, pid: number): str
 /**
  * Convert status data to JSON format
  */
-export function formatStatusAsJson(metadata: SessionMetadata | null, pid: number | null): StatusData {
+export function formatStatusAsJson(
+  metadata: SessionMetadata | null,
+  pid: number | null
+): StatusData {
   if (!pid) {
     return { active: false };
   }
@@ -78,7 +80,7 @@ export function formatStatusAsJson(metadata: SessionMetadata | null, pid: number
     return {
       active: true,
       bdgPid: pid,
-      warning: 'Metadata not found (session may be from older version)'
+      warning: 'Metadata not found (session may be from older version)',
     };
   }
 
@@ -88,9 +90,7 @@ export function formatStatusAsJson(metadata: SessionMetadata | null, pid: number
   const durationSec = Math.floor(durationMs / 1000);
   const minutes = Math.floor(durationSec / 60);
   const seconds = durationSec % 60;
-  const durationFormatted = minutes > 0
-    ? `${minutes}m ${seconds}s`
-    : `${seconds}s`;
+  const durationFormatted = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
   // Check if Chrome is alive
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
@@ -106,7 +106,7 @@ export function formatStatusAsJson(metadata: SessionMetadata | null, pid: number
     port: metadata.port,
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
-    collectors: ['network', 'console', 'dom'] // Default collectors
+    collectors: ['network', 'console', 'dom'], // Default collectors
   };
 }
 

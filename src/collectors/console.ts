@@ -1,13 +1,12 @@
-import { CDPConnection } from '../connection/cdp.js';
-import {
+import type { CDPConnection } from '@/connection/cdp.js';
+import { MAX_CONSOLE_MESSAGES } from '@/constants';
+import type {
   ConsoleMessage,
   CleanupFunction,
   CDPConsoleAPICalledParams,
-  CDPExceptionThrownParams
-} from '../types.js';
-import { shouldExcludeConsoleMessage } from '../utils/filters.js';
-
-const MAX_MESSAGES = 10000; // Prevent memory issues
+  CDPExceptionThrownParams,
+} from '@/types';
+import { shouldExcludeConsoleMessage } from '@/utils/filters.js';
 
 /**
  * Start collecting console messages and exceptions via CDP Runtime domain.
@@ -38,9 +37,20 @@ export async function startConsoleCollection(
   // Listen for console API calls
   const consoleAPIId = cdp.on('Runtime.consoleAPICalled', (params: CDPConsoleAPICalledParams) => {
     const text = params.args
-      .map((arg) => {  // arg type already defined in CDPConsoleAPICalledParams
+      .map((arg) => {
+        // arg type already defined in CDPConsoleAPICalledParams
         if (arg.value !== undefined) {
-          return String(arg.value);
+          // Handle different value types - primitives only, objects use description
+          const value = arg.value;
+          if (
+            typeof value === 'string' ||
+            typeof value === 'number' ||
+            typeof value === 'boolean'
+          ) {
+            return String(value);
+          }
+          // For objects/arrays, use description if available
+          return arg.description ?? '[object]';
         }
         if (arg.description !== undefined) {
           return arg.description;
@@ -58,12 +68,12 @@ export async function startConsoleCollection(
       type: params.type,
       text,
       timestamp: params.timestamp,
-      args: params.args
+      args: params.args,
     };
-    if (messages.length < MAX_MESSAGES) {
+    if (messages.length < MAX_CONSOLE_MESSAGES) {
       messages.push(message);
-    } else if (messages.length === MAX_MESSAGES) {
-      console.error(`Warning: Console message limit reached (${MAX_MESSAGES})`);
+    } else if (messages.length === MAX_CONSOLE_MESSAGES) {
+      console.error(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
     }
   });
   handlers.push({ event: 'Runtime.consoleAPICalled', id: consoleAPIId });
@@ -71,7 +81,7 @@ export async function startConsoleCollection(
   // Listen for exceptions
   const exceptionId = cdp.on('Runtime.exceptionThrown', (params: CDPExceptionThrownParams) => {
     const exception = params.exceptionDetails;
-    const text = exception.text || exception.exception?.description || 'Unknown error';
+    const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
 
     // Apply pattern filtering (but don't filter errors by default)
     // Errors are usually important, only filter if they match noise patterns
@@ -82,9 +92,9 @@ export async function startConsoleCollection(
     const message: ConsoleMessage = {
       type: 'error',
       text,
-      timestamp: exception.timestamp || Date.now()
+      timestamp: exception.timestamp ?? Date.now(),
     };
-    if (messages.length < MAX_MESSAGES) {
+    if (messages.length < MAX_CONSOLE_MESSAGES) {
       messages.push(message);
     }
   });

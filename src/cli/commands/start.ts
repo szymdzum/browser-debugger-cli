@@ -1,13 +1,30 @@
-import { Command } from 'commander';
-import { startSession } from '../handlers/sessionController.js';
-import { CollectorType } from '../../types.js';
+import type { Command } from 'commander';
+
+import { startSession } from '@/cli/handlers/sessionController.js';
 import {
   DEFAULT_DEBUG_PORT,
   PORT_OPTION_DESCRIPTION,
   TIMEOUT_OPTION_DESCRIPTION,
   REUSE_TAB_OPTION_DESCRIPTION,
-  USER_DATA_DIR_OPTION_DESCRIPTION
-} from '../constants.js';
+  USER_DATA_DIR_OPTION_DESCRIPTION,
+} from '@/constants';
+import type { CollectorType } from '@/types';
+
+/**
+ * Parsed command-line flags shared by the start subcommands.
+ * @property port        Chrome debugging port as provided by the user.
+ * @property timeout     Optional auto-stop timeout (seconds, string form).
+ * @property reuseTab    Whether to reuse an existing tab instead of creating one.
+ * @property userDataDir Custom Chrome profile directory path.
+ * @property all         When true, disables default filtering of noisy data.
+ */
+interface CollectorOptions {
+  port: string;
+  timeout?: string;
+  reuseTab?: boolean;
+  userDataDir?: string;
+  all?: boolean;
+}
 
 /**
  * Apply shared collector options to a command
@@ -26,11 +43,11 @@ function applyCollectorOptions(command: Command): Command {
  */
 async function collectorAction(
   url: string,
-  options: any,
+  options: CollectorOptions,
   collectors: CollectorType[]
-) {
-  const port = parseInt(options.port);
-  const timeout = options.timeout ? parseInt(options.timeout) : undefined;
+): Promise<void> {
+  const port = parseInt(options.port, 10);
+  const timeout = options.timeout ? parseInt(options.timeout, 10) : undefined;
   const reuseTab = options.reuseTab ?? false;
   const userDataDir = options.userDataDir;
   const includeAll = options.all ?? false;
@@ -40,17 +57,14 @@ async function collectorAction(
 /**
  * Register all start/collector commands
  */
-export function registerStartCommands(program: Command) {
+export function registerStartCommands(program: Command): void {
   // IMPORTANT: Register subcommands FIRST, before default command
   // This prevents Commander.js from treating subcommand names as arguments
 
   // DOM only
   applyCollectorOptions(
-    program
-      .command('dom')
-      .description('Collect DOM only')
-      .argument('<url>', 'Target URL')
-  ).action(async (url: string, options) => {
+    program.command('dom').description('Collect DOM only').argument('<url>', 'Target URL')
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['dom']);
   });
 
@@ -60,7 +74,7 @@ export function registerStartCommands(program: Command) {
       .command('network')
       .description('Collect network requests only')
       .argument('<url>', 'Target URL')
-  ).action(async (url: string, options) => {
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['network']);
   });
 
@@ -70,16 +84,15 @@ export function registerStartCommands(program: Command) {
       .command('console')
       .description('Collect console logs only')
       .argument('<url>', 'Target URL')
-  ).action(async (url: string, options) => {
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['console']);
   });
 
   // Default command: collect all data
   // MUST be registered AFTER subcommands
   applyCollectorOptions(
-    program
-      .argument('<url>', 'Target URL (example.com or localhost:3000)')
-  ).action(async (url: string, options) => {
+    program.argument('<url>', 'Target URL (example.com or localhost:3000)')
+  ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['dom', 'network', 'console']);
   });
 }

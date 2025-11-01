@@ -1,11 +1,16 @@
-import { Command } from 'commander';
-import { readPartialOutput } from '../../utils/session.js';
-import { formatPreview, formatNoPreviewDataMessage } from '../formatters/previewFormatter.js';
+import type { Command } from 'commander';
+
+import {
+  formatPreview,
+  formatNoPreviewDataMessage,
+  type PreviewOptions,
+} from '@/cli/formatters/previewFormatter.js';
+import { readPartialOutput } from '@/utils/session.js';
 
 /**
  * Register peek command
  */
-export function registerPeekCommand(program: Command) {
+export function registerPeekCommand(program: Command): void {
   program
     .command('peek')
     .description('Preview collected data without stopping the session')
@@ -15,8 +20,8 @@ export function registerPeekCommand(program: Command) {
     .option('-c, --console', 'Show only console messages')
     .option('-f, --follow', 'Watch for updates (like tail -f)')
     .option('--last <count>', 'Show last N items', '10')
-    .action(async (options) => {
-      const showPreview = () => {
+    .action((options: PreviewOptions) => {
+      const showPreview = (): void => {
         const output = readPartialOutput();
 
         if (!output) {

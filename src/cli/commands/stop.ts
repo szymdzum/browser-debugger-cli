@@ -1,15 +1,24 @@
-import { Command } from 'commander';
-import { readPid, isProcessAlive, cleanupSession } from '../../utils/session.js';
+import type { Command } from 'commander';
+
+import { readPid, isProcessAlive, cleanupSession } from '@/utils/session.js';
+
+/**
+ * Flags supported by `bdg stop`.
+ * @property killChrome Kill the associated Chrome process after stopping bdg.
+ */
+interface StopOptions {
+  killChrome?: boolean;
+}
 
 /**
  * Register stop command
  */
-export function registerStopCommand(program: Command) {
+export function registerStopCommand(program: Command): void {
   program
     .command('stop')
     .description('Stop all active sessions and free ports (does not capture output)')
     .option('--kill-chrome', 'Also kill Chrome browser')
-    .action(async (options) => {
+    .action(async (options: StopOptions) => {
       try {
         const { readSessionMetadata } = await import('../../utils/session.js');
 
@@ -31,8 +40,9 @@ export function registerStopCommand(program: Command) {
           try {
             process.kill(pid, 'SIGKILL');
             console.error(`✓ Killed bdg session (PID ${pid})`);
-          } catch (killError) {
-            console.error(`Warning: Could not kill process ${pid}:`, killError);
+          } catch (killError: unknown) {
+            const errorMessage = killError instanceof Error ? killError.message : String(killError);
+            console.error(`Warning: Could not kill process ${pid}:`, errorMessage);
           }
         } else {
           console.error(`Process ${pid} already stopped`);
@@ -48,8 +58,10 @@ export function registerStopCommand(program: Command) {
               } else {
                 console.error(`Chrome process (PID ${metadata.chromePid}) already stopped`);
               }
-            } catch (chromeError) {
-              console.error(`Warning: Could not kill Chrome:`, chromeError);
+            } catch (chromeError: unknown) {
+              const errorMessage =
+                chromeError instanceof Error ? chromeError.message : String(chromeError);
+              console.error(`Warning: Could not kill Chrome:`, errorMessage);
             }
           } else {
             console.error('Warning: Chrome PID not found in session metadata');
@@ -65,7 +77,9 @@ export function registerStopCommand(program: Command) {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error stopping session: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error stopping session: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });

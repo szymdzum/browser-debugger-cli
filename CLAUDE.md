@@ -31,6 +31,25 @@ node dist/index.js --version
 node dist/index.js localhost:3000
 ```
 
+## Code Quality Guidelines
+
+### No Dead Code
+**IMPORTANT**: Remove all dead code immediately. Delete don't disable:
+
+- Unused variables, imports, functions, parameters - **delete entirely** (no `_` prefix)
+- Unreachable code after `return`/`throw` - **delete**
+- Commented-out code - **delete** (use git history if needed)
+
+```typescript
+// ❌ BAD
+try { ... } catch (_error) { console.error('failed'); }
+
+// ✅ GOOD
+try { ... } catch { console.error('failed'); }
+```
+
+Rationale: Dead code obscures behavior and increases maintenance burden.
+
 ## Common Commands
 
 ### Running the Tool

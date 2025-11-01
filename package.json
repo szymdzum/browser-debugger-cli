@@ -7,11 +7,22 @@
     "bdg": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && tsc-alias",
     "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
-    "dev": "tsc && node dist/index.js",
-    "watch": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "dev": "tsc && tsc-alias && node dist/index.js",
+    "watch": "concurrently \"npm:watch:tsc\" \"npm:watch:alias\"",
+    "watch:tsc": "tsc --watch",
+    "watch:alias": "tsc-alias --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"*.{js,json}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.{js,json}\"",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "check": "npm run format:check && npm run type-check && npm run lint",
+    "prepublishOnly": "npm run build",
+    "prepare": "husky"
   },
   "keywords": [
     "cdp",
@@ -28,8 +39,22 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.0",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.10",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-unused-imports": "^4.3.0",
+    "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6",
+    "prettier": "^3.6.2",
+    "tsc-alias": "^1.8.9",
     "typescript": "^5.6.0"
   },
   "engines": {
@@ -53,5 +78,14 @@
   "files": [
     "dist",
     "README.md"
-  ]
+  ],
+  "lint-staged": {
+    "src/**/*.ts": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{js,json}": [
+      "prettier --write"
+    ]
+  }
 }

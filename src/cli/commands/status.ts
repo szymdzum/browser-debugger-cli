@@ -1,24 +1,33 @@
-import { Command } from 'commander';
-import { readPid, isProcessAlive } from '../../utils/session.js';
+import type { Command } from 'commander';
+
 import {
   formatSessionStatus,
   formatStatusAsJson,
   formatNoSessionMessage,
   formatStaleSessionMessage,
-  formatNoMetadataMessage
-} from '../formatters/statusFormatter.js';
+  formatNoMetadataMessage,
+} from '@/cli/formatters/statusFormatter.js';
+import { readPid, isProcessAlive } from '@/utils/session.js';
+
+/**
+ * Options for the `bdg status` command.
+ * @property json Print structured JSON instead of the default human output.
+ */
+interface StatusOptions {
+  json?: boolean;
+}
 
 /**
  * Register status command
  */
-export function registerStatusCommand(program: Command) {
+export function registerStatusCommand(program: Command): void {
   program
     .command('status')
     .description('Show active session status and collection statistics')
     .option('-j, --json', 'Output as JSON')
-    .action(async (options) => {
+    .action(async (options: StatusOptions) => {
       try {
-        const { readSessionMetadata } = await import('../../utils/session.js');
+        const { readSessionMetadata } = await import('@/utils/session.js');
 
         // Read PID
         const pid = readPid();
@@ -49,11 +58,17 @@ export function registerStatusCommand(program: Command) {
 
         if (!metadata) {
           if (options.json) {
-            console.log(JSON.stringify({
-              active: true,
-              bdgPid: pid,
-              warning: 'Metadata not found (session may be from older version)'
-            }, null, 2));
+            console.log(
+              JSON.stringify(
+                {
+                  active: true,
+                  bdgPid: pid,
+                  warning: 'Metadata not found (session may be from older version)',
+                },
+                null,
+                2
+              )
+            );
           } else {
             console.error(formatNoMetadataMessage(pid));
           }
@@ -71,7 +86,9 @@ export function registerStatusCommand(program: Command) {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error checking status: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error checking status: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });

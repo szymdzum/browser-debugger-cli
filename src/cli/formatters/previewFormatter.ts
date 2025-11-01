@@ -1,12 +1,22 @@
-import { BdgOutput } from '../../types.js';
-import { truncateUrl, truncateText } from '../../utils/url.js';
+import type { BdgOutput } from '@/types';
+import { truncateUrl, truncateText } from '@/utils/url.js';
 
+/**
+ * Flags that shape how preview output is rendered for `bdg peek`.
+ * @property json      Emit raw JSON instead of formatted text.
+ * @property network   Limit output to network requests (ignores console data).
+ * @property console   Limit output to console messages (ignores network data).
+ * @property last      Number of recent entries to include (parsed as integer).
+ * @property verbose   Use the expanded, human-friendly layout.
+ * @property follow    Stream updates until interrupted (tail-like behaviour).
+ */
 export interface PreviewOptions {
   json?: boolean;
   network?: boolean;
   console?: boolean;
   last: string;
   verbose?: boolean;
+  follow?: boolean;
 }
 
 /**
@@ -24,8 +34,8 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
  * Format preview as JSON
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
-  const jsonOutput: any = {
-    ...output
+  const jsonOutput: BdgOutput = {
+    ...output,
   };
 
   // Apply filters
@@ -67,7 +77,9 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   const lines: string[] = [];
 
   // Simple header (no Unicode box drawing)
-  lines.push(`PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`);
+  lines.push(
+    `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`
+  );
   lines.push('');
 
   const lastCount = parseInt(options.last);
@@ -79,8 +91,8 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     if (requests.length === 0) {
       lines.push('  (none)');
     } else {
-      requests.forEach(req => {
-        const status = req.status || 'pending';
+      requests.forEach((req) => {
+        const status = req.status ?? 'pending';
         const url = truncateUrl(req.url, 50);
         lines.push(`  ${status} ${req.method} ${url} [${req.requestId}]`);
       });
@@ -95,7 +107,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     if (messages.length === 0) {
       lines.push('  (none)');
     } else {
-      messages.forEach(msg => {
+      messages.forEach((msg) => {
         const prefix = msg.type.toUpperCase().padEnd(5);
         const text = truncateText(msg.text, 2);
         lines.push(`  ${prefix} ${text}`);
@@ -133,14 +145,16 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     if (requests.length === 0) {
       lines.push('No network requests yet');
     } else {
-      requests.forEach(req => {
+      requests.forEach((req) => {
         const statusColor = req.status && req.status >= 400 ? '❌' : '✓';
-        const status = req.status || 'pending';
+        const status = req.status ?? 'pending';
         lines.push(`${statusColor} ${status} ${req.method} ${req.url}`);
         if (req.mimeType) {
           lines.push(`  Type: ${req.mimeType}`);
         }
-        lines.push(`  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`);
+        lines.push(
+          `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
+        );
       });
     }
     lines.push('');
@@ -154,7 +168,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     if (messages.length === 0) {
       lines.push('No console messages yet');
     } else {
-      messages.forEach(msg => {
+      messages.forEach((msg) => {
         const icon = msg.type === 'error' ? '❌' : msg.type === 'warning' ? '⚠️ ' : 'ℹ️ ';
         lines.push(`${icon} [${msg.type}] ${msg.text}`);
       });

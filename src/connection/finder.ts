@@ -1,4 +1,4 @@
-import { CDPTarget } from '../types.js';
+import type { CDPTarget } from '@/types';
 
 /**
  * Validate that a target still exists in Chrome.
@@ -15,8 +15,8 @@ export async function validateTarget(targetId: string, port = 9222): Promise<boo
     if (!response.ok) {
       return false;
     }
-    const targets: CDPTarget[] = await response.json();
-    return targets.some(t => t.id === targetId);
+    const targets = (await response.json()) as CDPTarget[];
+    return targets.some((t) => t.id === targetId);
   } catch {
     return false;
   }

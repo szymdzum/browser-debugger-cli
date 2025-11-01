@@ -1,7 +1,8 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
-import { BdgOutput } from '../types.js';
+import * as path from 'path';
+
+import type { BdgOutput } from '@/types';
 
 /**
  * Get the session directory path (~/.bdg)
@@ -53,11 +54,11 @@ export function getMetadataFilePath(): string {
  */
 export interface SessionMetadata {
   bdgPid: number;
-  chromePid?: number;
+  chromePid?: number | undefined;
   startTime: number;
   port: number;
-  targetId?: string;
-  webSocketDebuggerUrl?: string;
+  targetId?: string | undefined;
+  webSocketDebuggerUrl?: string | undefined;
 }
 
 /**
@@ -96,7 +97,7 @@ export function readPid(): number | null {
     }
 
     return pid;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -112,7 +113,7 @@ export function isProcessAlive(pid: number): boolean {
     // Sending signal 0 checks if process exists without actually sending a signal
     process.kill(pid, 0);
     return true;
-  } catch (error) {
+  } catch {
     // ESRCH error means process doesn't exist
     return false;
   }
@@ -127,7 +128,7 @@ export function cleanupPidFile(): void {
   if (fs.existsSync(pidPath)) {
     try {
       fs.unlinkSync(pidPath);
-    } catch (error) {
+    } catch {
       // Ignore errors during cleanup
     }
   }
@@ -159,7 +160,7 @@ export function readSessionOutput(): BdgOutput | null {
   try {
     const content = fs.readFileSync(outputPath, 'utf-8');
     return JSON.parse(content) as BdgOutput;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -179,8 +180,8 @@ export function acquireSessionLock(): boolean {
     // 'wx' flag creates file exclusively - fails if exists
     fs.writeFileSync(lockPath, process.pid.toString(), { flag: 'wx' });
     return true;
-  } catch (error: any) {
-    if (error.code === 'EEXIST') {
+  } catch (error: unknown) {
+    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
       // Lock file exists - check if process is still alive
       try {
         const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
@@ -220,7 +221,7 @@ export function releaseSessionLock(): void {
     if (fs.existsSync(lockPath)) {
       fs.unlinkSync(lockPath);
     }
-  } catch (error) {
+  } catch {
     // Ignore errors during cleanup
   }
 }
@@ -251,7 +252,7 @@ export function readSessionMetadata(): SessionMetadata | null {
   try {
     const content = fs.readFileSync(metaPath, 'utf-8');
     return JSON.parse(content) as SessionMetadata;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -321,7 +322,7 @@ export function readPartialOutput(): BdgOutput | null {
   try {
     const content = fs.readFileSync(partialPath, 'utf-8');
     return JSON.parse(content) as BdgOutput;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -341,7 +342,7 @@ export function readFullOutput(): BdgOutput | null {
   try {
     const content = fs.readFileSync(fullPath, 'utf-8');
     return JSON.parse(content) as BdgOutput;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -359,7 +360,7 @@ export function cleanupSession(): void {
   if (fs.existsSync(metaPath)) {
     try {
       fs.unlinkSync(metaPath);
-    } catch (error) {
+    } catch {
       // Ignore errors
     }
   }
@@ -369,7 +370,7 @@ export function cleanupSession(): void {
   if (fs.existsSync(partialPath)) {
     try {
       fs.unlinkSync(partialPath);
-    } catch (error) {
+    } catch {
       // Ignore errors
     }
   }
@@ -379,7 +380,7 @@ export function cleanupSession(): void {
   if (fs.existsSync(fullPath)) {
     try {
       fs.unlinkSync(fullPath);
-    } catch (error) {
+    } catch {
       // Ignore errors
     }
   }

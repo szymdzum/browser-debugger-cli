@@ -1,5 +1,7 @@
 import WebSocket from 'ws';
-import { CDPMessage, ConnectionOptions } from '../types.js';
+
+import type { CDPMessage, ConnectionOptions } from '@/types';
+import { CDPConnectionError, CDPTimeoutError } from '@/utils/errors.js';
 
 /**
  * Chrome DevTools Protocol WebSocket connection manager.
@@ -13,13 +15,16 @@ import { CDPMessage, ConnectionOptions } from '../types.js';
 export class CDPConnection {
   private ws: WebSocket | null = null;
   private messageId = 0;
-  private pendingMessages = new Map<number, {
-    resolve: (value: any) => void;  // CDP responses vary by method, can't type statically
-    reject: (error: Error) => void;
-    timeout: NodeJS.Timeout;
-  }>();
+  private pendingMessages = new Map<
+    number,
+    {
+      resolve: (value: unknown) => void; // CDP responses vary by method, typed at call site
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
   private nextHandlerId = 0;
-  private eventHandlers = new Map<string, Map<number, (params: any) => void>>();  // Event params typed at call site
+  private eventHandlers = new Map<string, Map<number, (params: unknown) => void>>(); // Event params typed at call site
 
   // Keepalive state
   private pingInterval: NodeJS.Timeout | null = null;
@@ -33,7 +38,7 @@ export class CDPConnection {
   private reconnectAttempts = 0;
   private readonly MAX_RECONNECT_ATTEMPTS = 5;
   private isIntentionallyClosed = false;
-  private onReconnect?: () => Promise<void>;
+  private onReconnect?: (() => Promise<void>) | undefined;
 
   /**
    * Connect to Chrome via WebSocket.
@@ -43,11 +48,7 @@ export class CDPConnection {
    * @throws Error if connection fails after all retries
    */
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
-    const {
-      maxRetries = 3,
-      autoReconnect = false,
-      onReconnect
-    } = options;
+    const { maxRetries = 3, autoReconnect = false, onReconnect } = options;
 
     this.wsUrl = wsUrl;
     this.autoReconnect = autoReconnect;
@@ -65,12 +66,15 @@ export class CDPConnection {
         if (attempt < maxRetries - 1) {
           const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
           console.error(`Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
 
-    throw new Error(`Failed to connect after ${maxRetries} attempts: ${lastError?.message}`);
+    throw new CDPConnectionError(
+      `Failed to connect after ${maxRetries} attempts: ${lastError?.message}`,
+      lastError
+    );
   }
 
   private attemptConnection(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
@@ -80,7 +84,7 @@ export class CDPConnection {
       this.ws = new WebSocket(wsUrl);
 
       const connectTimeout = setTimeout(() => {
-        reject(new Error('Connection timeout'));
+        reject(new CDPTimeoutError('Connection timeout'));
         this.ws?.close();
       }, timeout);
 
@@ -95,26 +99,28 @@ export class CDPConnection {
         reject(error);
       });
 
-      this.ws.on('close', async (code, reason) => {
-        this.stopKeepalive();
+      this.ws.on('close', (code, reason) => {
+        void (async () => {
+          this.stopKeepalive();
 
-        if (this.isIntentionallyClosed) {
-          return;
-        }
+          if (this.isIntentionallyClosed) {
+            return;
+          }
 
-        console.error(`WebSocket closed: ${code} - ${reason.toString()}`);
+          console.error(`WebSocket closed: ${code} - ${reason.toString()}`);
 
-        // Reject all pending messages
-        this.pendingMessages.forEach((pending) => {
-          clearTimeout(pending.timeout);
-          pending.reject(new Error('WebSocket connection closed'));
-        });
-        this.pendingMessages.clear();
+          // Reject all pending messages
+          this.pendingMessages.forEach((pending) => {
+            clearTimeout(pending.timeout);
+            pending.reject(new CDPConnectionError('WebSocket connection closed'));
+          });
+          this.pendingMessages.clear();
 
-        // Attempt reconnection if enabled
-        if (this.autoReconnect && this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
-          await this.attemptReconnection();
-        }
+          // Attempt reconnection if enabled
+          if (this.autoReconnect && this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+            await this.attemptReconnection();
+          }
+        })();
       });
 
       this.ws.on('pong', () => {
@@ -125,9 +131,20 @@ export class CDPConnection {
         }
       });
 
-      this.ws.on('message', (data: WebSocket.RawData) => {
+      this.ws.on('message', (rawData: WebSocket.RawData) => {
         try {
-          const message: CDPMessage = JSON.parse(data.toString());
+          let dataString: string;
+          if (typeof rawData === 'string') {
+            dataString = rawData;
+          } else if (Buffer.isBuffer(rawData)) {
+            dataString = rawData.toString('utf8');
+          } else if (Array.isArray(rawData)) {
+            dataString = Buffer.concat(rawData).toString('utf8');
+          } else {
+            console.error('Unexpected data type in CDP message');
+            return;
+          }
+          const message: CDPMessage = JSON.parse(dataString) as CDPMessage;
 
           // Handle responses
           if (message.id !== undefined) {
@@ -147,7 +164,7 @@ export class CDPConnection {
           if (message.method) {
             const handlers = this.eventHandlers.get(message.method);
             if (handlers) {
-              handlers.forEach(handler => handler(message.params));
+              handlers.forEach((handler) => handler(message.params));
             }
           }
         } catch (error) {
@@ -160,9 +177,11 @@ export class CDPConnection {
   private async attemptReconnection(): Promise<void> {
     this.reconnectAttempts++;
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
-    console.error(`Reconnecting in ${delay}ms... (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`);
+    console.error(
+      `Reconnecting in ${delay}ms... (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`
+    );
 
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
     try {
       await this.attemptConnection(this.wsUrl);
@@ -217,14 +236,14 @@ export class CDPConnection {
    */
   getPort(): number {
     if (!this.wsUrl) {
-      throw new Error('Not connected - no WebSocket URL available');
+      throw new CDPConnectionError('Not connected - no WebSocket URL available');
     }
 
     try {
       const url = new URL(this.wsUrl);
       return parseInt(url.port, 10);
-    } catch (error) {
-      throw new Error(`Invalid WebSocket URL: ${this.wsUrl}`);
+    } catch {
+      throw new CDPConnectionError(`Invalid WebSocket URL: ${this.wsUrl}`);
     }
   }
 
@@ -238,12 +257,16 @@ export class CDPConnection {
    * @throws Error if not connected or command times out (30s)
    *
    * @remarks
-   * Return type is `any` because CDP response structures vary by method.
+   * Return type is `unknown` because CDP response structures vary by method.
    * Callers should type-assert the result based on the specific method called.
    */
-  async send(method: string, params: Record<string, any> = {}, sessionId?: string): Promise<any> {
+  async send(
+    method: string,
+    params: Record<string, unknown> = {},
+    sessionId?: string
+  ): Promise<unknown> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('Not connected to browser');
+      throw new CDPConnectionError('Not connected to browser');
     }
 
     const id = ++this.messageId;
@@ -259,7 +282,7 @@ export class CDPConnection {
         const pending = this.pendingMessages.get(id);
         if (pending) {
           this.pendingMessages.delete(id);
-          reject(new Error(`Command timeout: ${method}`));
+          reject(new CDPTimeoutError(`Command timeout: ${method}`));
         }
       }, 30000);
 
@@ -272,10 +295,18 @@ export class CDPConnection {
           clearTimeout(timeout);
           reject(error);
         },
-        timeout
+        timeout,
       });
 
-      this.ws!.send(JSON.stringify(message));
+      const socket = this.ws;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        clearTimeout(timeout);
+        this.pendingMessages.delete(id);
+        reject(new CDPConnectionError('Not connected to browser'));
+        return;
+      }
+
+      socket.send(JSON.stringify(message));
     });
   }
 
@@ -287,15 +318,18 @@ export class CDPConnection {
    * @returns Handler ID for later removal with off()
    *
    * @remarks
-   * Handler parameter type is `any` for flexibility. Callers should use typed
+   * Handler parameter type uses generics for type safety. Callers should provide typed
    * event parameter interfaces (e.g., `CDPNetworkRequestParams`) at call site.
    */
-  on(event: string, handler: (params: any) => void): number {
-    if (!this.eventHandlers.has(event)) {
-      this.eventHandlers.set(event, new Map());
+  on<T = unknown>(event: string, handler: (params: T) => void): number {
+    let handlersForEvent = this.eventHandlers.get(event);
+    if (!handlersForEvent) {
+      handlersForEvent = new Map();
+      this.eventHandlers.set(event, handlersForEvent);
     }
     const handlerId = ++this.nextHandlerId;
-    this.eventHandlers.get(event)!.set(handlerId, handler);
+    // Cast handler to match storage signature - safe because we invoke with unknown params
+    handlersForEvent.set(handlerId, handler as (params: unknown) => void);
     return handlerId;
   }
 
@@ -342,7 +376,7 @@ export class CDPConnection {
     // Clear all pending messages
     this.pendingMessages.forEach((pending) => {
       clearTimeout(pending.timeout);
-      pending.reject(new Error('Connection closed'));
+      pending.reject(new CDPConnectionError('Connection closed'));
     });
     this.pendingMessages.clear();
 

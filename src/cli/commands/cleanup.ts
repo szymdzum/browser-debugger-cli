@@ -1,17 +1,29 @@
-import { Command } from 'commander';
-import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '../../utils/session.js';
 import * as fs from 'fs';
+
+import type { Command } from 'commander';
+
+import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
+
+/**
+ * Flags consumed by the `bdg cleanup` command.
+ * @property force Force removal even if the tracked process is alive.
+ * @property all   Also delete the persisted `session.json` artifact.
+ */
+interface CleanupOptions {
+  force?: boolean;
+  all?: boolean;
+}
 
 /**
  * Register cleanup command
  */
-export function registerCleanupCommand(program: Command) {
+export function registerCleanupCommand(program: Command): void {
   program
     .command('cleanup')
     .description('Clean up stale session files')
     .option('-f, --force', 'Force cleanup even if session appears active')
     .option('-a, --all', 'Also remove session.json output file')
-    .action(async (options) => {
+    .action((options: CleanupOptions) => {
       try {
         const pid = readPid();
         let didCleanup = false;
@@ -54,8 +66,9 @@ export function registerCleanupCommand(program: Command) {
               fs.unlinkSync(outputPath);
               console.error('✓ Session output file removed');
               didCleanup = true;
-            } catch (error) {
-              console.error(`Warning: Could not remove session.json: ${error}`);
+            } catch (error: unknown) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              console.error(`Warning: Could not remove session.json: ${errorMessage}`);
             }
           }
         }
@@ -72,7 +85,9 @@ export function registerCleanupCommand(program: Command) {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error during cleanup: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error during cleanup: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });

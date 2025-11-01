@@ -1,18 +1,27 @@
-import { Command } from 'commander';
-import { readFullOutput } from '../../utils/session.js';
-import { formatNetworkDetails, formatConsoleDetails } from '../formatters/detailsFormatter.js';
+import type { Command } from 'commander';
+
+import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
+import { readFullOutput } from '@/utils/session.js';
+
+/**
+ * Optional switches for `bdg details`.
+ * @property json Emit the selected record as JSON instead of formatted text.
+ */
+interface DetailsOptions {
+  json?: boolean;
+}
 
 /**
  * Register details command
  */
-export function registerDetailsCommand(program: Command) {
+export function registerDetailsCommand(program: Command): void {
   program
     .command('details')
     .description('Get detailed information for a specific request or console message')
     .argument('<type>', 'Type of item: "network" or "console"')
     .argument('<id>', 'Request ID (for network) or index (for console)')
     .option('-j, --json', 'Output as JSON')
-    .action(async (type: string, id: string, options) => {
+    .action((type: string, id: string, options: DetailsOptions) => {
       try {
         const fullOutput = readFullOutput();
 
@@ -27,7 +36,7 @@ export function registerDetailsCommand(program: Command) {
 
         if (type === 'network') {
           // Find network request by ID
-          const request = fullOutput.data.network?.find(req => req.requestId === id);
+          const request = fullOutput.data.network?.find((req) => req.requestId === id);
 
           if (!request) {
             console.error(`Network request not found: ${id}`);
@@ -53,7 +62,7 @@ export function registerDetailsCommand(program: Command) {
 
           if (!message) {
             console.error(`Console message not found at index: ${index}`);
-            console.error(`Available range: 0-${(fullOutput.data.console?.length || 0) - 1}`);
+            console.error(`Available range: 0-${(fullOutput.data.console?.length ?? 0) - 1}`);
             console.error('\n💡 Try:');
             console.error('  List messages:  bdg peek --console');
             process.exit(1);
@@ -72,7 +81,9 @@ export function registerDetailsCommand(program: Command) {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error fetching details: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error fetching details: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });
