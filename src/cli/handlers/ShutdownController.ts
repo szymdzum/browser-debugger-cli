@@ -1,11 +1,11 @@
-import type { PreviewWriter } from '../output/PreviewWriter.js';
+import type { PreviewWriter } from './PreviewWriter.js';
 
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { BdgOutput, CDPTarget, LaunchedChrome } from '@/types';
 import { cleanupSession } from '@/utils/session.js';
 
-import { OutputBuilder } from '../output/OutputBuilder.js';
-import { OutputWriter } from '../output/OutputWriter.js';
+import { OutputBuilder } from './OutputBuilder.js';
+import { OutputWriter } from './OutputWriter.js';
 
 /**
  * Minimal session state interface

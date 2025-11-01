@@ -2,14 +2,14 @@ import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
 import { writePid, writeSessionMetadata } from '@/utils/session.js';
 
-import { ChromeBootstrap } from './bootstrap/ChromeBootstrap.js';
-import { SessionLock } from './bootstrap/SessionLock.js';
-import { TargetSetup } from './bootstrap/TargetSetup.js';
-import { ShutdownController } from './lifecycle/ShutdownController.js';
-import { SignalHandler } from './lifecycle/SignalHandler.js';
-import { SessionLoop } from './monitoring/SessionLoop.js';
-import { OutputBuilder } from './output/OutputBuilder.js';
-import { PreviewWriter } from './output/PreviewWriter.js';
+import { ChromeBootstrap } from './ChromeBootstrap.js';
+import { OutputBuilder } from './OutputBuilder.js';
+import { PreviewWriter } from './PreviewWriter.js';
+import { SessionLock } from './SessionLock.js';
+import { SessionLoop } from './SessionLoop.js';
+import { ShutdownController } from './ShutdownController.js';
+import { SignalHandler } from './SignalHandler.js';
+import { TargetSetup } from './TargetSetup.js';
 
 /**
  * Encapsulates session state and lifecycle management
