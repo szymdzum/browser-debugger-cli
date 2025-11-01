@@ -5,7 +5,8 @@
       "Bash(rm:*)",
       "Bash(npm run build:*)",
       "Bash(node dist/index.js:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(git lg:*)"
     ],
     "deny": [],
     "ask": []
