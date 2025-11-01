@@ -15,7 +15,7 @@ const program = new Command()
   .version('0.1.0');
 
 // Register all commands from registry
-commandRegistry.forEach(register => register(program));
+commandRegistry.forEach((register) => register(program));
 
 // Parse and execute
 program.parse();

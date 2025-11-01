@@ -75,7 +75,9 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       },
     };
   } catch (error) {
-    throw new Error(`Failed to launch Chrome: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to launch Chrome: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -131,7 +133,7 @@ async function waitForCDP(port: number, maxWaitMs = 10000): Promise<void> {
       return; // CDP is ready!
     }
 
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
   throw new Error(`CDP not available on port ${port} after ${maxWaitMs}ms`);

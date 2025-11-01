@@ -26,7 +26,7 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
   const jsonOutput: BdgOutput = {
-    ...output
+    ...output,
   };
 
   // Apply filters
@@ -68,7 +68,9 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   const lines: string[] = [];
 
   // Simple header (no Unicode box drawing)
-  lines.push(`PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`);
+  lines.push(
+    `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`
+  );
   lines.push('');
 
   const lastCount = parseInt(options.last);
@@ -80,7 +82,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     if (requests.length === 0) {
       lines.push('  (none)');
     } else {
-      requests.forEach(req => {
+      requests.forEach((req) => {
         const status = req.status ?? 'pending';
         const url = truncateUrl(req.url, 50);
         lines.push(`  ${status} ${req.method} ${url} [${req.requestId}]`);
@@ -96,7 +98,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     if (messages.length === 0) {
       lines.push('  (none)');
     } else {
-      messages.forEach(msg => {
+      messages.forEach((msg) => {
         const prefix = msg.type.toUpperCase().padEnd(5);
         const text = truncateText(msg.text, 2);
         lines.push(`  ${prefix} ${text}`);
@@ -134,14 +136,16 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     if (requests.length === 0) {
       lines.push('No network requests yet');
     } else {
-      requests.forEach(req => {
-        const statusColor = (req.status && req.status >= 400) ? '❌' : '✓';
+      requests.forEach((req) => {
+        const statusColor = req.status && req.status >= 400 ? '❌' : '✓';
         const status = req.status ?? 'pending';
         lines.push(`${statusColor} ${status} ${req.method} ${req.url}`);
         if (req.mimeType) {
           lines.push(`  Type: ${req.mimeType}`);
         }
-        lines.push(`  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`);
+        lines.push(
+          `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
+        );
       });
     }
     lines.push('');
@@ -155,7 +159,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     if (messages.length === 0) {
       lines.push('No console messages yet');
     } else {
-      messages.forEach(msg => {
+      messages.forEach((msg) => {
         const icon = msg.type === 'error' ? '❌' : msg.type === 'warning' ? '⚠️ ' : 'ℹ️ ';
         lines.push(`${icon} [${msg.type}] ${msg.text}`);
       });

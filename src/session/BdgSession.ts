@@ -1,10 +1,17 @@
-
 import { startConsoleCollection } from '@/collectors/console.js';
 import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { validateTarget } from '@/connection/finder.js';
-import type { CDPTarget, CollectorType, NetworkRequest, ConsoleMessage, DOMData, BdgOutput, CleanupFunction } from '@/types';
+import type {
+  CDPTarget,
+  CollectorType,
+  NetworkRequest,
+  ConsoleMessage,
+  DOMData,
+  BdgOutput,
+  CleanupFunction,
+} from '@/types';
 
 function createUnknownCollectorError(type: never): Error {
   return new Error(`Unknown collector type: ${String(type)}`);
@@ -42,7 +49,7 @@ export class BdgSession {
     await this.cdp.connect(this.target.webSocketDebuggerUrl, {
       maxRetries: 3,
       autoReconnect: false,
-      keepaliveInterval: 30000
+      keepaliveInterval: 30000,
     });
 
     // Validate target still exists
@@ -116,8 +123,10 @@ export class BdgSession {
         console.error('DOM snapshot captured successfully');
       } catch (domError) {
         // Chrome may be closing during shutdown, ignore DOM capture failures
-        console.error('Warning: DOM capture failed (Chrome may be closing):',
-          domError instanceof Error ? domError.message : String(domError));
+        console.error(
+          'Warning: DOM capture failed (Chrome may be closing):',
+          domError instanceof Error ? domError.message : String(domError)
+        );
       }
     }
 
@@ -128,9 +137,9 @@ export class BdgSession {
       duration: Date.now() - this.startTime,
       target: {
         url: domData?.url ?? this.target.url,
-        title: domData?.title ?? this.target.title
+        title: domData?.title ?? this.target.title,
       },
-      data: {}
+      data: {},
     };
 
     // Add collected data
@@ -149,7 +158,7 @@ export class BdgSession {
       console.error('Cleaning up session...');
 
       // Call cleanup functions for all collectors
-      this.collectors.forEach(cleanup => cleanup());
+      this.collectors.forEach((cleanup) => cleanup());
       this.collectors.clear();
 
       // Skip disabling CDP domains - Chrome may be dead during SIGINT shutdown
@@ -163,12 +172,14 @@ export class BdgSession {
 
       console.error('Session cleanup complete');
     } catch (cleanupError) {
-      console.error('Warning: Cleanup error:', cleanupError instanceof Error ? cleanupError.message : String(cleanupError));
+      console.error(
+        'Warning: Cleanup error:',
+        cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+      );
     }
 
     return output;
   }
-
 
   /**
    * Check if the session is active and connected.

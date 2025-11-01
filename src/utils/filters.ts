@@ -50,7 +50,7 @@ export const DEFAULT_EXCLUDED_DOMAINS = [
   'confirmit.com',
   'newrelic.com',
   'datadoghq.com',
-  'sentry.io'
+  'sentry.io',
 ];
 
 /**
@@ -60,7 +60,7 @@ export const DEFAULT_EXCLUDED_CONSOLE_PATTERNS = [
   'webpack-dev-server',
   '[HMR]',
   '[WDS]',
-  'Download the React DevTools'
+  'Download the React DevTools',
 ];
 
 /**
@@ -75,9 +75,7 @@ export function shouldExcludeDomain(url: string, includeAll: boolean = false): b
     const parsedUrl = new URL(url);
     const hostname = parsedUrl.hostname.toLowerCase();
 
-    return DEFAULT_EXCLUDED_DOMAINS.some(domain =>
-      hostname.includes(domain.toLowerCase())
-    );
+    return DEFAULT_EXCLUDED_DOMAINS.some((domain) => hostname.includes(domain.toLowerCase()));
   } catch {
     // If URL parsing fails, don't filter
     return false;
@@ -94,7 +92,7 @@ export function shouldExcludeConsoleMessage(text: string, includeAll: boolean = 
 
   const lowerText = text.toLowerCase();
 
-  return DEFAULT_EXCLUDED_CONSOLE_PATTERNS.some(pattern =>
+  return DEFAULT_EXCLUDED_CONSOLE_PATTERNS.some((pattern) =>
     lowerText.includes(pattern.toLowerCase())
   );
 }

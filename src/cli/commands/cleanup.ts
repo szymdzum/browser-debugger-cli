@@ -80,7 +80,9 @@ export function registerCleanupCommand(program: Command): void {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error during cleanup: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error during cleanup: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });

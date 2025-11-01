@@ -1,6 +1,10 @@
 import type { Command } from 'commander';
 
-import { formatPreview, formatNoPreviewDataMessage, type PreviewOptions } from '@/cli/formatters/previewFormatter.js';
+import {
+  formatPreview,
+  formatNoPreviewDataMessage,
+  type PreviewOptions,
+} from '@/cli/formatters/previewFormatter.js';
 import { readPartialOutput } from '@/utils/session.js';
 
 /**

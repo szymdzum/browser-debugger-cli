@@ -5,9 +5,8 @@ import type {
   CDPGetDocumentResponse,
   CDPGetOuterHTMLResponse,
   CDPGetFrameTreeResponse,
-  CDPRuntimeEvaluateResponse
+  CDPRuntimeEvaluateResponse,
 } from '@/types';
-
 
 /**
  * Prepare CDP domains for DOM collection.
@@ -59,7 +58,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
         promise,
         new Promise<T>((_, reject) =>
           setTimeout(() => reject(new Error(`${label} timed out after ${timeout}ms`)), timeout)
-        )
+        ),
       ]);
     };
 
@@ -97,7 +96,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
       const titleResult = await captureWithTimeout(
         cdp.send('Runtime.evaluate', {
           expression: 'document.title',
-          returnByValue: true
+          returnByValue: true,
         }) as Promise<CDPRuntimeEvaluateResponse>,
         'Runtime.evaluate (document.title)'
       );
@@ -115,7 +114,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     return {
       url,
       title,
-      outerHTML
+      outerHTML,
     };
   } catch (error) {
     console.error('Error in collectDOM:', error);

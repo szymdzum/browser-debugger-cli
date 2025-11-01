@@ -2,6 +2,8 @@ import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
+import unusedImports from 'eslint-plugin-unused-imports';
+import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default [
@@ -21,7 +23,8 @@ export default [
     },
     plugins: {
       '@typescript-eslint': tseslint,
-      'import': importPlugin,
+      import: importPlugin,
+      'unused-imports': unusedImports,
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -52,26 +55,47 @@ export default [
           allowHigherOrderFunctions: true,
         },
       ],
-      '@typescript-eslint/no-unused-vars': [
-        'warn',
+      // Disable base rule as it conflicts with unused-imports plugin
+      '@typescript-eslint/no-unused-vars': 'off',
+
+      // Use unused-imports plugin for better unused variable detection
+      'unused-imports/no-unused-imports': 'error',
+      'unused-imports/no-unused-vars': [
+        'error',
         {
-          argsIgnorePattern: '^_',
+          vars: 'all',
           varsIgnorePattern: '^_',
+          args: 'after-used',
+          argsIgnorePattern: '^_',
         },
       ],
+
+      // Disallow unused expressions
+      '@typescript-eslint/no-unused-expressions': [
+        'error',
+        {
+          allowShortCircuit: true,
+          allowTernary: true,
+          allowTaggedTemplates: true,
+        },
+      ],
+
+      // Enhanced promise handling
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/await-thenable': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/require-await': 'warn',
+
+      // Type safety improvements
+      '@typescript-eslint/no-unnecessary-type-assertion': 'error',
+      '@typescript-eslint/prefer-as-const': 'error',
+      '@typescript-eslint/no-non-null-assertion': 'warn',
+
       'import/no-unresolved': 'error',
       'import/order': [
         'warn',
         {
-          groups: [
-            'builtin',
-            'external',
-            'type',
-            'internal',
-            'parent',
-            'sibling',
-            'index',
-          ],
+          groups: ['builtin', 'external', 'type', 'internal', 'parent', 'sibling', 'index'],
           pathGroups: [
             {
               pattern: '@/**',
@@ -93,6 +117,8 @@ export default [
       },
     },
   },
+  // Prettier integration - disable conflicting rules
+  prettierConfig,
   // Ignore patterns
   {
     ignores: ['dist/**', 'node_modules/**', '*.js', '!eslint.config.js'],

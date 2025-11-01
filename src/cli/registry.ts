@@ -18,7 +18,7 @@ export type CommandRegistrar = (program: Command) => void;
  * Order matters: start commands first (includes default), then others
  */
 export const commandRegistry: CommandRegistrar[] = [
-  registerStartCommands,   // Default + dom/network/console
+  registerStartCommands, // Default + dom/network/console
   registerQueryCommand,
   registerStopCommand,
   registerStatusCommand,

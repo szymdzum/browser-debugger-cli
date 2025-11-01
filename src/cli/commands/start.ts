@@ -6,7 +6,7 @@ import {
   PORT_OPTION_DESCRIPTION,
   TIMEOUT_OPTION_DESCRIPTION,
   REUSE_TAB_OPTION_DESCRIPTION,
-  USER_DATA_DIR_OPTION_DESCRIPTION
+  USER_DATA_DIR_OPTION_DESCRIPTION,
 } from '@/constants';
 import type { CollectorType } from '@/types';
 
@@ -55,10 +55,7 @@ export function registerStartCommands(program: Command): void {
 
   // DOM only
   applyCollectorOptions(
-    program
-      .command('dom')
-      .description('Collect DOM only')
-      .argument('<url>', 'Target URL')
+    program.command('dom').description('Collect DOM only').argument('<url>', 'Target URL')
   ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['dom']);
   });
@@ -86,8 +83,7 @@ export function registerStartCommands(program: Command): void {
   // Default command: collect all data
   // MUST be registered AFTER subcommands
   applyCollectorOptions(
-    program
-      .argument('<url>', 'Target URL (example.com or localhost:3000)')
+    program.argument('<url>', 'Target URL (example.com or localhost:3000)')
   ).action(async (url: string, options: CollectorOptions) => {
     await collectorAction(url, options, ['dom', 'network', 'console']);
   });

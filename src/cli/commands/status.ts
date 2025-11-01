@@ -5,7 +5,7 @@ import {
   formatStatusAsJson,
   formatNoSessionMessage,
   formatStaleSessionMessage,
-  formatNoMetadataMessage
+  formatNoMetadataMessage,
 } from '@/cli/formatters/statusFormatter.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 
@@ -54,11 +54,17 @@ export function registerStatusCommand(program: Command): void {
 
         if (!metadata) {
           if (options.json) {
-            console.log(JSON.stringify({
-              active: true,
-              bdgPid: pid,
-              warning: 'Metadata not found (session may be from older version)'
-            }, null, 2));
+            console.log(
+              JSON.stringify(
+                {
+                  active: true,
+                  bdgPid: pid,
+                  warning: 'Metadata not found (session may be from older version)',
+                },
+                null,
+                2
+              )
+            );
           } else {
             console.error(formatNoMetadataMessage(pid));
           }
@@ -76,7 +82,9 @@ export function registerStatusCommand(program: Command): void {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error checking status: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error checking status: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });

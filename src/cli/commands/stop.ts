@@ -55,7 +55,8 @@ export function registerStopCommand(program: Command): void {
                 console.error(`Chrome process (PID ${metadata.chromePid}) already stopped`);
               }
             } catch (chromeError: unknown) {
-              const errorMessage = chromeError instanceof Error ? chromeError.message : String(chromeError);
+              const errorMessage =
+                chromeError instanceof Error ? chromeError.message : String(chromeError);
               console.error(`Warning: Could not kill Chrome:`, errorMessage);
             }
           } else {
@@ -72,7 +73,9 @@ export function registerStopCommand(program: Command): void {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error stopping session: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error stopping session: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });

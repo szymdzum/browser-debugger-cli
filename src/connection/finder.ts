@@ -15,8 +15,8 @@ export async function validateTarget(targetId: string, port = 9222): Promise<boo
     if (!response.ok) {
       return false;
     }
-    const targets = await response.json() as CDPTarget[];
-    return targets.some(t => t.id === targetId);
+    const targets = (await response.json()) as CDPTarget[];
+    return targets.some((t) => t.id === targetId);
   } catch {
     return false;
   }

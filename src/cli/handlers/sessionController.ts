@@ -1,7 +1,13 @@
 import { launchChrome, isChromeRunning } from '@/connection/launcher.js';
 import { createOrFindTarget } from '@/connection/tabs.js';
 import { BdgSession } from '@/session/BdgSession.js';
-import type { BdgOutput, CollectorType, CDPTargetDestroyedParams, LaunchedChrome, CDPTarget } from '@/types';
+import type {
+  BdgOutput,
+  CollectorType,
+  CDPTargetDestroyedParams,
+  LaunchedChrome,
+  CDPTarget,
+} from '@/types';
 import {
   writePid,
   readPid,
@@ -11,7 +17,7 @@ import {
   writeSessionMetadata,
   cleanupSession,
   writePartialOutput,
-  writeFullOutput
+  writeFullOutput,
 } from '@/utils/session.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { validateCollectorTypes } from '@/utils/validation.js';
@@ -42,10 +48,14 @@ class SessionContext {
       const message = exitCode === 0 ? 'Writing session output...' : 'Writing error output...';
       console.error(message);
       writeSessionOutput(output);
-      const successMessage = exitCode === 0 ? 'Session output written successfully' : 'Error output written successfully';
+      const successMessage =
+        exitCode === 0
+          ? 'Session output written successfully'
+          : 'Error output written successfully';
       console.error(successMessage);
     } catch (writeError) {
-      const errorMessage = exitCode === 0 ? 'Failed to write session output:' : 'Failed to write error output:';
+      const errorMessage =
+        exitCode === 0 ? 'Failed to write session output:' : 'Failed to write error output:';
       console.error(errorMessage, writeError);
       console.error('Write error details:', writeError);
     }
@@ -55,9 +65,10 @@ class SessionContext {
 
     // Leave Chrome running for future sessions
     if (this.launchedChrome) {
-      const chromeMessage = exitCode === 0
-        ? 'Leaving Chrome running for future sessions (use persistent profile)'
-        : 'Leaving Chrome running (use persistent profile)';
+      const chromeMessage =
+        exitCode === 0
+          ? 'Leaving Chrome running for future sessions (use persistent profile)'
+          : 'Leaving Chrome running (use persistent profile)';
       console.error(chromeMessage);
       console.error(`Chrome PID: ${this.launchedChrome.pid}, port: ${this.launchedChrome.port}`);
     }
@@ -109,7 +120,7 @@ class SessionContext {
         duration: 0,
         target: { url: '', title: '' },
         data: {},
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       };
 
       this.finalizeShutdown(errorOutput, 1);
@@ -147,10 +158,7 @@ let globalContext: SessionContext | null = null;
 /**
  * Phase 1: Acquire session lock and validate inputs
  */
-function setupSessionLock(
-  url: string,
-  collectors: CollectorType[]
-): string {
+function setupSessionLock(url: string, collectors: CollectorType[]): string {
   const existingPid = readPid();
 
   // Check for stale session before trying to acquire lock
@@ -163,9 +171,7 @@ function setupSessionLock(
 
   if (!acquireSessionLock()) {
     const currentPid = readPid();
-    throw new Error(
-      `Session already running (PID ${currentPid}). Stop it with: bdg stop`
-    );
+    throw new Error(`Session already running (PID ${currentPid}). Stop it with: bdg stop`);
   }
 
   // Validate collector types
@@ -214,10 +220,8 @@ async function setupTarget(
   // Create session (connects to CDP)
   // We need a temporary target just to connect to CDP
   // Then we'll use createOrFindTarget to get the right tab
-  const tempResponse = await fetch(
-    `http://127.0.0.1:${port}/json/list`
-  );
-  const tempTargets = await tempResponse.json() as CDPTarget[];
+  const tempResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
+  const tempTargets = (await tempResponse.json()) as CDPTarget[];
 
   if (tempTargets.length === 0) {
     throw new Error('No targets available in Chrome');
@@ -237,18 +241,12 @@ async function setupTarget(
 
   // Create or find target tab using TabManager
   console.error(`Finding or creating tab for: ${targetUrl}`);
-  const target = await createOrFindTarget(
-    url,
-    tempSession.getCDP(),
-    reuseTab
-  );
+  const target = await createOrFindTarget(url, tempSession.getCDP(), reuseTab);
   console.error(`Using tab: ${target.url}`);
 
   // Fetch full target info with webSocketDebuggerUrl
-  const fullTargetResponse = await fetch(
-    `http://127.0.0.1:${port}/json/list`
-  );
-  const fullTargets = await fullTargetResponse.json() as CDPTarget[];
+  const fullTargetResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
+  const fullTargets = (await fullTargetResponse.json()) as CDPTarget[];
   const fullTarget = fullTargets.find((t) => t.id === target.id);
 
   if (!fullTarget) {
@@ -299,9 +297,7 @@ async function startCollectorsAndMetadata(
 /**
  * Phase 5: Start preview writer with two-tier system
  */
-function startPreviewWriter(
-  context: SessionContext
-): void {
+function startPreviewWriter(context: SessionContext): void {
   context.previewInterval = setInterval(() => {
     if (context.session?.isConnected()) {
       try {
@@ -316,28 +312,28 @@ function startPreviewWriter(
           duration: Date.now() - context.startTime,
           target: {
             url: target.url,
-            title: target.title
+            title: target.title,
           },
           data: {
             // Exclude bodies and limit to last 1000
-            network: allNetworkRequests.slice(-1000).map(req => ({
+            network: allNetworkRequests.slice(-1000).map((req) => ({
               requestId: req.requestId,
               url: req.url,
               method: req.method,
               timestamp: req.timestamp,
               status: req.status,
-              mimeType: req.mimeType
+              mimeType: req.mimeType,
               // Exclude requestBody, responseBody, headers for lightweight preview
             })),
-            console: allConsoleLogs.slice(-1000).map(msg => ({
+            console: allConsoleLogs.slice(-1000).map((msg) => ({
               type: msg.type,
               text: msg.text,
-              timestamp: msg.timestamp
+              timestamp: msg.timestamp,
               // Exclude args for lightweight preview
-            }))
+            })),
             // DOM omitted in preview (only captured on stop)
           },
-          partial: true // Flag to indicate this is incomplete data
+          partial: true, // Flag to indicate this is incomplete data
         };
 
         // Full output: complete data with bodies
@@ -347,22 +343,25 @@ function startPreviewWriter(
           duration: Date.now() - context.startTime,
           target: {
             url: target.url,
-            title: target.title
+            title: target.title,
           },
           data: {
             network: allNetworkRequests, // All data with bodies
-            console: allConsoleLogs      // All data with args
+            console: allConsoleLogs, // All data with args
             // DOM omitted (only captured on stop)
           },
-          partial: true
+          partial: true,
         };
 
         // Write both files
-        writePartialOutput(previewOutput);  // ~500KB - for 'bdg peek'
-        writeFullOutput(fullOutput);         // ~87MB - for 'bdg details'
+        writePartialOutput(previewOutput); // ~500KB - for 'bdg peek'
+        writeFullOutput(fullOutput); // ~87MB - for 'bdg details'
       } catch (error) {
         // Ignore preview write errors - don't disrupt collection
-        console.error('Warning: Failed to write preview data:', error instanceof Error ? error.message : String(error));
+        console.error(
+          'Warning: Failed to write preview data:',
+          error instanceof Error ? error.message : String(error)
+        );
       }
     }
   }, 5000); // Write preview every 5 seconds
@@ -371,10 +370,7 @@ function startPreviewWriter(
 /**
  * Phase 6: Run session loop until stopped or error
  */
-async function runSessionLoop(
-  session: BdgSession,
-  target: CDPTarget
-): Promise<void> {
+async function runSessionLoop(session: BdgSession, target: CDPTarget): Promise<void> {
   if (!session) {
     throw new Error('Session not initialized');
   }
@@ -418,23 +414,16 @@ async function runSessionLoop(
 /**
  * Print collection status message
  */
-function printCollectionStatus(
-  collectors: CollectorType[],
-  timeout?: number
-): void {
+function printCollectionStatus(collectors: CollectorType[], timeout?: number): void {
   const collectorNames =
-    collectors.length === 3
-      ? 'network, console, and DOM'
-      : collectors.join(', ');
+    collectors.length === 3 ? 'network, console, and DOM' : collectors.join(', ');
 
   if (timeout) {
     console.error(
       `Collecting ${collectorNames}... (Ctrl+C to stop and output, or wait ${timeout}s for timeout)`
     );
   } else {
-    console.error(
-      `Collecting ${collectorNames}... (Ctrl+C to stop and output, or use 'bdg stop')`
-    );
+    console.error(`Collecting ${collectorNames}... (Ctrl+C to stop and output, or use 'bdg stop')`);
   }
 }
 
@@ -443,7 +432,13 @@ function printCollectionStatus(
  */
 export async function startSession(
   url: string,
-  options: { port: number; timeout?: number | undefined; reuseTab?: boolean | undefined; userDataDir?: string | undefined; includeAll?: boolean | undefined },
+  options: {
+    port: number;
+    timeout?: number | undefined;
+    reuseTab?: boolean | undefined;
+    userDataDir?: string | undefined;
+    includeAll?: boolean | undefined;
+  },
   collectors: CollectorType[]
 ): Promise<void> {
   const context = new SessionContext();
@@ -454,11 +449,7 @@ export async function startSession(
     const targetUrl = setupSessionLock(url, collectors);
 
     // Phase 2: Chrome bootstrap
-    context.launchedChrome = await bootstrapChrome(
-      options.port,
-      targetUrl,
-      options.userDataDir
-    );
+    context.launchedChrome = await bootstrapChrome(options.port, targetUrl, options.userDataDir);
 
     // Phase 3: CDP connection and target setup
     const setupResult = await setupTarget(
@@ -506,7 +497,7 @@ export async function startSession(
       duration: Date.now() - context.startTime,
       target: { url: '', title: '' },
       data: {},
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? error.message : String(error),
     };
 
     console.log(JSON.stringify(errorOutput, null, 2));

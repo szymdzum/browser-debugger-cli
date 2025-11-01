@@ -1,6 +1,11 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants';
-import type { ConsoleMessage, CleanupFunction, CDPConsoleAPICalledParams, CDPExceptionThrownParams } from '@/types';
+import type {
+  ConsoleMessage,
+  CleanupFunction,
+  CDPConsoleAPICalledParams,
+  CDPExceptionThrownParams,
+} from '@/types';
 import { shouldExcludeConsoleMessage } from '@/utils/filters.js';
 
 /**
@@ -32,11 +37,16 @@ export async function startConsoleCollection(
   // Listen for console API calls
   const consoleAPIId = cdp.on('Runtime.consoleAPICalled', (params: CDPConsoleAPICalledParams) => {
     const text = params.args
-      .map((arg) => {  // arg type already defined in CDPConsoleAPICalledParams
+      .map((arg) => {
+        // arg type already defined in CDPConsoleAPICalledParams
         if (arg.value !== undefined) {
           // Handle different value types - primitives only, objects use description
           const value = arg.value;
-          if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          if (
+            typeof value === 'string' ||
+            typeof value === 'number' ||
+            typeof value === 'boolean'
+          ) {
             return String(value);
           }
           // For objects/arrays, use description if available
@@ -58,7 +68,7 @@ export async function startConsoleCollection(
       type: params.type,
       text,
       timestamp: params.timestamp,
-      args: params.args
+      args: params.args,
     };
     if (messages.length < MAX_CONSOLE_MESSAGES) {
       messages.push(message);
@@ -82,7 +92,7 @@ export async function startConsoleCollection(
     const message: ConsoleMessage = {
       type: 'error',
       text,
-      timestamp: exception.timestamp ?? Date.now()
+      timestamp: exception.timestamp ?? Date.now(),
     };
     if (messages.length < MAX_CONSOLE_MESSAGES) {
       messages.push(message);

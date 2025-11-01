@@ -14,14 +14,17 @@ import type { CDPMessage, ConnectionOptions } from '@/types';
 export class CDPConnection {
   private ws: WebSocket | null = null;
   private messageId = 0;
-  private pendingMessages = new Map<number, {
-    resolve: (value: unknown) => void;  // CDP responses vary by method, typed at call site
-    reject: (error: Error) => void;
-    timeout: NodeJS.Timeout;
-  }>();
+  private pendingMessages = new Map<
+    number,
+    {
+      resolve: (value: unknown) => void; // CDP responses vary by method, typed at call site
+      reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
+    }
+  >();
   private nextHandlerId = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private eventHandlers = new Map<string, Map<number, (params: any) => void>>();  // Event params typed at call site
+  private eventHandlers = new Map<string, Map<number, (params: any) => void>>(); // Event params typed at call site
 
   // Keepalive state
   private pingInterval: NodeJS.Timeout | null = null;
@@ -45,11 +48,7 @@ export class CDPConnection {
    * @throws Error if connection fails after all retries
    */
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
-    const {
-      maxRetries = 3,
-      autoReconnect = false,
-      onReconnect
-    } = options;
+    const { maxRetries = 3, autoReconnect = false, onReconnect } = options;
 
     this.wsUrl = wsUrl;
     this.autoReconnect = autoReconnect;
@@ -67,7 +66,7 @@ export class CDPConnection {
         if (attempt < maxRetries - 1) {
           const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
           console.error(`Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
     }
@@ -99,20 +98,20 @@ export class CDPConnection {
 
       this.ws.on('close', (code, reason) => {
         void (async () => {
-        this.stopKeepalive();
+          this.stopKeepalive();
 
-        if (this.isIntentionallyClosed) {
-          return;
-        }
+          if (this.isIntentionallyClosed) {
+            return;
+          }
 
-        console.error(`WebSocket closed: ${code} - ${reason.toString()}`);
+          console.error(`WebSocket closed: ${code} - ${reason.toString()}`);
 
-        // Reject all pending messages
-        this.pendingMessages.forEach((pending) => {
-          clearTimeout(pending.timeout);
-          pending.reject(new Error('WebSocket connection closed'));
-        });
-        this.pendingMessages.clear();
+          // Reject all pending messages
+          this.pendingMessages.forEach((pending) => {
+            clearTimeout(pending.timeout);
+            pending.reject(new Error('WebSocket connection closed'));
+          });
+          this.pendingMessages.clear();
 
           // Attempt reconnection if enabled
           if (this.autoReconnect && this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
@@ -162,7 +161,7 @@ export class CDPConnection {
           if (message.method) {
             const handlers = this.eventHandlers.get(message.method);
             if (handlers) {
-              handlers.forEach(handler => handler(message.params));
+              handlers.forEach((handler) => handler(message.params));
             }
           }
         } catch (error) {
@@ -175,9 +174,11 @@ export class CDPConnection {
   private async attemptReconnection(): Promise<void> {
     this.reconnectAttempts++;
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
-    console.error(`Reconnecting in ${delay}ms... (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`);
+    console.error(
+      `Reconnecting in ${delay}ms... (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})`
+    );
 
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
     try {
       await this.attemptConnection(this.wsUrl);
@@ -256,7 +257,11 @@ export class CDPConnection {
    * Return type is `unknown` because CDP response structures vary by method.
    * Callers should type-assert the result based on the specific method called.
    */
-  async send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<unknown> {
+  async send(
+    method: string,
+    params: Record<string, unknown> = {},
+    sessionId?: string
+  ): Promise<unknown> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error('Not connected to browser');
     }
@@ -287,7 +292,7 @@ export class CDPConnection {
           clearTimeout(timeout);
           reject(error);
         },
-        timeout
+        timeout,
       });
 
       this.ws!.send(JSON.stringify(message));

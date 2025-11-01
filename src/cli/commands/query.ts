@@ -19,7 +19,10 @@ export function registerQueryCommand(program: Command): void {
   program
     .command('query')
     .description('Execute JavaScript in the active session for live debugging')
-    .argument('<script>', 'JavaScript to execute (e.g., "document.querySelector(\'input[type=email]\').value")')
+    .argument(
+      '<script>',
+      'JavaScript to execute (e.g., "document.querySelector(\'input[type=email]\').value")'
+    )
     .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
     .action(async (script: string, options: QueryOptions) => {
       try {
@@ -50,7 +53,7 @@ export function registerQueryCommand(program: Command): void {
           console.error('Error: Invalid response from CDP');
           process.exit(1);
         }
-        const target = (targetsData as CDPTarget[]).find(t => t.id === metadata.targetId);
+        const target = (targetsData as CDPTarget[]).find((t) => t.id === metadata.targetId);
 
         if (!target) {
           console.error('Error: Session target not found (tab may have been closed)');
@@ -64,11 +67,11 @@ export function registerQueryCommand(program: Command): void {
         await cdp.connect(metadata.webSocketDebuggerUrl);
 
         // Execute JavaScript
-        const result = await cdp.send('Runtime.evaluate', {
+        const result = (await cdp.send('Runtime.evaluate', {
           expression: script,
           returnByValue: true,
-          awaitPromise: true
-        }) as {
+          awaitPromise: true,
+        })) as {
           exceptionDetails?: { exception?: { description?: string } };
           result?: { value?: unknown };
         };

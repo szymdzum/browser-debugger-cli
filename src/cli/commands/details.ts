@@ -32,7 +32,7 @@ export function registerDetailsCommand(program: Command): void {
 
         if (type === 'network') {
           // Find network request by ID
-          const request = fullOutput.data.network?.find(req => req.requestId === id);
+          const request = fullOutput.data.network?.find((req) => req.requestId === id);
 
           if (!request) {
             console.error(`Network request not found: ${id}`);
@@ -77,7 +77,9 @@ export function registerDetailsCommand(program: Command): void {
 
         process.exit(0);
       } catch (error) {
-        console.error(`Error fetching details: ${error instanceof Error ? error.message : String(error)}`);
+        console.error(
+          `Error fetching details: ${error instanceof Error ? error.message : String(error)}`
+        );
         process.exit(1);
       }
     });
