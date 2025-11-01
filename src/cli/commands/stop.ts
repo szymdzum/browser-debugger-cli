@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { readPid, isProcessAlive, cleanupSession } from '@/utils/session.js';
 

@@ -1,5 +1,4 @@
 import type { BdgOutput } from '@/types';
-
 import { truncateUrl, truncateText } from '@/utils/url.js';
 
 export interface PreviewOptions {

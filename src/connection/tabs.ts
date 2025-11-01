@@ -1,7 +1,6 @@
+import type { CDPConnection } from '@/connection/cdp.js';
 import type { CDPTarget } from '@/types';
-
-import { CDPConnection } from '@/connection/cdp.js';
-import { CDPCreateTargetResponse, CDPAttachToTargetResponse, CDPGetTargetsResponse, CDPNavigateResponse,  } from '@/types';
+import type { CDPCreateTargetResponse, CDPAttachToTargetResponse, CDPGetTargetsResponse, CDPNavigateResponse,  } from '@/types';
 import { normalizeUrl } from '@/utils/url.js';
 
 /**
@@ -94,17 +93,21 @@ export function findBestTarget(
   }
 
   // Warn if multiple tabs have same score
+  const first = scored[0];
+  const second = scored[1];
   if (
     scored.length > 1 &&
-    scored[0].score === scored[1].score &&
-    scored[0].score < 100
+    first &&
+    second &&
+    first.score === second.score &&
+    first.score < 100
   ) {
     console.error(
-      `Warning: Multiple tabs match equally (score ${scored[0].score}), using: ${scored[0].target.url}`
+      `Warning: Multiple tabs match equally (score ${first.score}), using: ${first.target.url}`
     );
   }
 
-  return scored[0].target;
+  return first ? first.target : null;
 }
 
 /**

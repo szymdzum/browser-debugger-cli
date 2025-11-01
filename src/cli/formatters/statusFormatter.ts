@@ -1,16 +1,17 @@
-import { SessionMetadata, isProcessAlive } from '@/utils/session.js';
+import type { SessionMetadata} from '@/utils/session.js';
+import { isProcessAlive } from '@/utils/session.js';
 
 export interface StatusData {
   active: boolean;
   bdgPid?: number;
-  chromePid?: number;
+  chromePid?: number | undefined;
   chromeAlive?: boolean;
   startTime?: number;
   duration?: number;
   durationFormatted?: string;
   port?: number;
-  targetId?: string;
-  webSocketDebuggerUrl?: string;
+  targetId?: string | undefined;
+  webSocketDebuggerUrl?: string | undefined;
   collectors?: string[];
   stale?: boolean;
   stalePid?: number;

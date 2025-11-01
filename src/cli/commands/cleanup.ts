@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
 

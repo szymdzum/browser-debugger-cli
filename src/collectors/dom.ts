@@ -1,6 +1,6 @@
+import type { CDPConnection } from '@/connection/cdp.js';
 import type { DOMData, CleanupFunction } from '@/types';
 
-import { CDPConnection } from '@/connection/cdp.js';
 
 /**
  * Prepare CDP domains for DOM collection.
@@ -93,7 +93,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
         'Runtime.evaluate (document.title)'
       );
 
-      if (titleResult.result && titleResult.result.value) {
+      if (titleResult.result?.value) {
         title = titleResult.result.value;
       }
     } catch (titleError) {

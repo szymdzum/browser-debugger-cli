@@ -1,6 +1,6 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import * as os from 'os';
+import * as path from 'path';
 
 import type { BdgOutput } from '@/types';
 
@@ -54,11 +54,11 @@ export function getMetadataFilePath(): string {
  */
 export interface SessionMetadata {
   bdgPid: number;
-  chromePid?: number;
+  chromePid?: number | undefined;
   startTime: number;
   port: number;
-  targetId?: string;
-  webSocketDebuggerUrl?: string;
+  targetId?: string | undefined;
+  webSocketDebuggerUrl?: string | undefined;
 }
 
 /**

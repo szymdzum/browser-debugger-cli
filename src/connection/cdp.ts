@@ -34,7 +34,7 @@ export class CDPConnection {
   private reconnectAttempts = 0;
   private readonly MAX_RECONNECT_ATTEMPTS = 5;
   private isIntentionallyClosed = false;
-  private onReconnect?: () => Promise<void>;
+  private onReconnect?: (() => Promise<void>) | undefined;
 
   /**
    * Connect to Chrome via WebSocket.

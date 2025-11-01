@@ -1,3 +1,7 @@
+import { launchChrome, isChromeRunning } from '@/connection/launcher.js';
+import { createOrFindTarget } from '@/connection/tabs.js';
+import { BdgSession } from '@/session/BdgSession.js';
+import type { BdgOutput, CollectorType, CDPTargetDestroyedParams, LaunchedChrome, CDPTarget } from '@/types';
 import {
   writePid,
   readPid,
@@ -9,14 +13,8 @@ import {
   writePartialOutput,
   writeFullOutput
 } from '@/utils/session.js';
-
-import type { BdgOutput, CollectorType, CDPTargetDestroyedParams, LaunchedChrome, CDPTarget } from '@/types';
-
-import { BdgSession } from '@/session/BdgSession.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { validateCollectorTypes } from '@/utils/validation.js';
-import { createOrFindTarget } from '@/connection/tabs.js';
-import { launchChrome, isChromeRunning } from '@/connection/launcher.js';
 
 /**
  * Encapsulates session state and lifecycle management
@@ -247,7 +245,7 @@ async function setupTarget(
   const fullTargets = await fullTargetResponse.json();
   const fullTarget = fullTargets.find((t: any) => t.id === target.id);
 
-  if (!fullTarget || !fullTarget.webSocketDebuggerUrl) {
+  if (!fullTarget?.webSocketDebuggerUrl) {
     throw new Error(`Could not find webSocketDebuggerUrl for target ${target.id}`);
   }
 
@@ -425,7 +423,7 @@ function printCollectionStatus(
  */
 export async function startSession(
   url: string,
-  options: { port: number; timeout?: number; reuseTab?: boolean; userDataDir?: string; includeAll?: boolean },
+  options: { port: number; timeout?: number | undefined; reuseTab?: boolean | undefined; userDataDir?: string | undefined; includeAll?: boolean | undefined },
   collectors: CollectorType[]
 ) {
   const context = new SessionContext();

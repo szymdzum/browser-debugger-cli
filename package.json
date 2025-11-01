@@ -11,6 +11,9 @@
     "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
     "dev": "tsc && node dist/index.js",
     "watch": "tsc --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -28,8 +31,15 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.0",
     "@types/node": "^20.0.0",
     "@types/ws": "^8.5.10",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "eslint": "^9.39.0",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "globals": "^16.5.0",
     "typescript": "^5.6.0"
   },
   "engines": {

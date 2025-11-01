@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import { readFullOutput } from '@/utils/session.js';

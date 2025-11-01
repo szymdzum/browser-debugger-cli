@@ -25,12 +25,12 @@ export interface NetworkRequest {
   url: string;
   method: string;
   timestamp: number;
-  status?: number;
-  mimeType?: string;
+  status?: number | undefined;
+  mimeType?: string | undefined;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
-  requestBody?: string;
-  responseBody?: string;
+  requestBody?: string | undefined;
+  responseBody?: string | undefined;
 }
 
 export interface ConsoleMessage {
@@ -123,7 +123,7 @@ export interface ConnectionOptions {
   maxRetries?: number;
   autoReconnect?: boolean;
   keepaliveInterval?: number;
-  onReconnect?: () => Promise<void>;
+  onReconnect?: (() => Promise<void>) | undefined;
 }
 
 export type CleanupFunction = () => void;

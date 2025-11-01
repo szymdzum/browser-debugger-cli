@@ -1,6 +1,6 @@
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as fs from 'fs';
 
 import * as chromeLauncher from 'chrome-launcher';
 
@@ -8,7 +8,7 @@ import type { LaunchedChrome } from '@/types';
 
 export interface LaunchOptions {
   port?: number;
-  userDataDir?: string;
+  userDataDir?: string | undefined;
   headless?: boolean;
   url?: string;
 }
@@ -52,9 +52,10 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   }
 
   try {
+    const chromePath = findChromeBinary();
     const chrome = await chromeLauncher.launch({
       port,
-      chromePath: findChromeBinary(), // Let chrome-launcher find Chrome
+      ...(chromePath ? { chromePath } : {}), // Only include if defined
       chromeFlags,
       startingUrl,
       ignoreDefaultFlags: false,

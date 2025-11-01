@@ -1,6 +1,5 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
-import { readPid, isProcessAlive } from '@/utils/session.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,
@@ -8,6 +7,7 @@ import {
   formatStaleSessionMessage,
   formatNoMetadataMessage
 } from '@/cli/formatters/statusFormatter.js';
+import { readPid, isProcessAlive } from '@/utils/session.js';
 
 /**
  * Register status command

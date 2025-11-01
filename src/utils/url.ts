@@ -36,12 +36,14 @@ export function truncateUrl(url: string, maxLength: number = 60): string {
         // Show first part, ellipsis, and last part
         const first = pathParts[0];
         const last = pathParts[pathParts.length - 1];
-        result = `${domain}/${first}/.../${last}`;
+        if (first && last) {
+          result = `${domain}/${first}/.../${last}`;
 
-        // If still too long, truncate the last part
-        if (result.length > maxLength) {
-          const truncatedLast = last.substring(0, 8);
-          result = `${domain}/${first}/.../${truncatedLast}`;
+          // If still too long, truncate the last part
+          if (result.length > maxLength) {
+            const truncatedLast = last.substring(0, 8);
+            result = `${domain}/${first}/.../${truncatedLast}`;
+          }
         }
       } else {
         // Simple truncation

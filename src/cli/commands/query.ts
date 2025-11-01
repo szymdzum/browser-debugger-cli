@@ -1,7 +1,7 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
-import { readPid, isProcessAlive } from '@/utils/session.js';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
+import { readPid, isProcessAlive } from '@/utils/session.js';
 
 /**
  * Register query command
@@ -28,7 +28,7 @@ export function registerQueryCommand(program: Command) {
         const { readSessionMetadata } = await import('../../utils/session.js');
         const metadata = readSessionMetadata();
 
-        if (!metadata || !metadata.targetId || !metadata.webSocketDebuggerUrl) {
+        if (!metadata?.targetId || !metadata.webSocketDebuggerUrl) {
           console.error('Error: No target information in session metadata');
           console.error('Session may have been started with an older version');
           process.exit(1);

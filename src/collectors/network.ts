@@ -1,3 +1,4 @@
+import type { CDPConnection } from '@/connection/cdp.js';
 import {
   MAX_NETWORK_REQUESTS,
   STALE_REQUEST_TIMEOUT,
@@ -7,10 +8,7 @@ import {
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT
 } from '@/constants';
-
 import type { NetworkRequest, CleanupFunction, CDPNetworkRequestParams, CDPNetworkResponseParams, CDPNetworkLoadingFinishedParams, CDPNetworkLoadingFailedParams } from '@/types';
-
-import { CDPConnection } from '@/connection/cdp.js';
 import { shouldExcludeDomain } from '@/utils/filters.js';
 
 /**

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+
 import { setupSignalHandlers } from '@/cli/handlers/sessionController.js';
 import { commandRegistry } from '@/cli/registry.js';
 

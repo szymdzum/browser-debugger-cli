@@ -1,4 +1,4 @@
-import { Command } from 'commander';
+import type { Command } from 'commander';
 
 import { startSession } from '@/cli/handlers/sessionController.js';
 import {
@@ -8,7 +8,6 @@ import {
   REUSE_TAB_OPTION_DESCRIPTION,
   USER_DATA_DIR_OPTION_DESCRIPTION
 } from '@/constants';
-
 import type { CollectorType } from '@/types';
 
 /**
