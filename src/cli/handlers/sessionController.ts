@@ -375,34 +375,44 @@ async function runSessionLoop(
   session: BdgSession,
   target: CDPTarget
 ): Promise<void> {
-  await new Promise<void>((_resolve, reject) => {
-    if (!session) {
-      reject(new Error('Session not initialized'));
-      return;
+  if (!session) {
+    throw new Error('Session not initialized');
+  }
+
+  const cdp = session.getCDP();
+
+  const waitForNextCheck = (): Promise<'continue' | 'destroyed'> =>
+    new Promise((resolve) => {
+      let timer: ReturnType<typeof setTimeout>;
+      let handlerId: number;
+
+      const handleTargetDestroyed = (params: CDPTargetDestroyedParams): void => {
+        if (params.targetId === target.id) {
+          clearTimeout(timer);
+          cdp.off('Target.targetDestroyed', handlerId);
+          resolve('destroyed');
+        }
+      };
+
+      handlerId = cdp.on<CDPTargetDestroyedParams>('Target.targetDestroyed', handleTargetDestroyed);
+
+      timer = setTimeout(() => {
+        cdp.off('Target.targetDestroyed', handlerId);
+        resolve('continue');
+      }, 2000);
+    });
+
+  for (;;) {
+    const result = await waitForNextCheck();
+
+    if (!session.isConnected()) {
+      throw new Error('WebSocket connection lost');
     }
 
-    // Listen for WebSocket connection loss
-    const connectionCheckInterval = setInterval(() => {
-      if (!session) {
-        clearInterval(connectionCheckInterval);
-        return;
-      }
-
-      if (!session.isConnected()) {
-        clearInterval(connectionCheckInterval);
-        reject(new Error('WebSocket connection lost'));
-        return;
-      }
-    }, 2000); // Check every 2 seconds
-
-    // Listen for target destruction (tab closed/navigated)
-    session.getCDP().on('Target.targetDestroyed', (params: CDPTargetDestroyedParams) => {
-      if (params.targetId === target.id) {
-        clearInterval(connectionCheckInterval);
-        reject(new Error('Browser tab was closed'));
-      }
-    });
-  });
+    if (result === 'destroyed') {
+      throw new Error('Browser tab was closed');
+    }
+  }
 }
 
 /**
@@ -534,7 +544,7 @@ export function setupSignalHandlers(): void {
   });
 
   // Error handlers for cleanup on crash
-  process.on('unhandledRejection', (reason, _promise) => {
+  process.on('unhandledRejection', (reason) => {
     console.error('Unhandled rejection:', reason);
     console.error('Cleaning up session files...');
     try {

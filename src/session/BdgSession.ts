@@ -6,6 +6,10 @@ import { CDPConnection } from '@/connection/cdp.js';
 import { validateTarget } from '@/connection/finder.js';
 import type { CDPTarget, CollectorType, NetworkRequest, ConsoleMessage, DOMData, BdgOutput, CleanupFunction } from '@/types';
 
+function createUnknownCollectorError(type: never): Error {
+  return new Error(`Unknown collector type: ${String(type)}`);
+}
+
 /**
  * Manages a browser debugging session.
  *
@@ -80,8 +84,7 @@ export class BdgSession {
         break;
       default: {
         // Exhaustive check - should never reach here with valid CollectorType
-        const _exhaustive: never = type;
-        throw new Error(`Unknown collector type: ${String(_exhaustive)}`);
+        throw createUnknownCollectorError(type);
       }
     }
 
