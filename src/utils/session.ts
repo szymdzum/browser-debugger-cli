@@ -290,6 +290,37 @@ export function writePartialOutput(output: BdgOutput): void {
 }
 
 /**
+ * Write partial session output for live preview (async version).
+ *
+ * Uses atomic write (tmp file + rename) to prevent corruption.
+ * Non-blocking version for periodic writes during collection.
+ *
+ * @param output - The partial BdgOutput data to write
+ * @returns Promise that resolves when write completes
+ */
+export async function writePartialOutputAsync(output: BdgOutput): Promise<void> {
+  const startTime = Date.now();
+  ensureSessionDir();
+  const partialPath = getPartialFilePath();
+  const tmpPath = partialPath + '.tmp';
+
+  // JSON.stringify is synchronous and blocks event loop - measure it separately
+  const stringifyStart = Date.now();
+  const jsonString = JSON.stringify(output, null, 2);
+  const stringifyDuration = Date.now() - stringifyStart;
+  console.error(`[PERF] Preview JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024).toFixed(1)}KB)`);
+
+  // Write to temp file first, then rename for atomicity
+  const ioStart = Date.now();
+  await fs.promises.writeFile(tmpPath, jsonString, 'utf-8');
+  await fs.promises.rename(tmpPath, partialPath);
+  const ioDuration = Date.now() - ioStart;
+
+  const totalDuration = Date.now() - startTime;
+  console.error(`[PERF] Preview write: ${totalDuration}ms (stringify: ${stringifyDuration}ms, I/O: ${ioDuration}ms)`);
+}
+
+/**
  * Write full session output for details view (complete data with bodies).
  *
  * Uses atomic write (tmp file + rename) to prevent corruption.
@@ -305,6 +336,37 @@ export function writeFullOutput(output: BdgOutput): void {
   // Write to temp file first, then rename for atomicity
   fs.writeFileSync(tmpPath, JSON.stringify(output, null, 2), 'utf-8');
   fs.renameSync(tmpPath, fullPath);
+}
+
+/**
+ * Write full session output for details view (async version).
+ *
+ * Uses atomic write (tmp file + rename) to prevent corruption.
+ * Non-blocking version for periodic writes during collection.
+ *
+ * @param output - The full BdgOutput data to write
+ * @returns Promise that resolves when write completes
+ */
+export async function writeFullOutputAsync(output: BdgOutput): Promise<void> {
+  const startTime = Date.now();
+  ensureSessionDir();
+  const fullPath = getFullFilePath();
+  const tmpPath = fullPath + '.tmp';
+
+  // JSON.stringify is synchronous and blocks event loop - measure it separately
+  const stringifyStart = Date.now();
+  const jsonString = JSON.stringify(output, null, 2);
+  const stringifyDuration = Date.now() - stringifyStart;
+  console.error(`[PERF] Full JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024 / 1024).toFixed(1)}MB)`);
+
+  // Write to temp file first, then rename for atomicity
+  const ioStart = Date.now();
+  await fs.promises.writeFile(tmpPath, jsonString, 'utf-8');
+  await fs.promises.rename(tmpPath, fullPath);
+  const ioDuration = Date.now() - ioStart;
+
+  const totalDuration = Date.now() - startTime;
+  console.error(`[PERF] Full write: ${totalDuration}ms (stringify: ${stringifyDuration}ms, I/O: ${ioDuration}ms)`);
 }
 
 /**

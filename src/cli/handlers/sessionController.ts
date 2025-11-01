@@ -18,8 +18,8 @@ import {
   acquireSessionLock,
   writeSessionMetadata,
   cleanupSession,
-  writePartialOutput,
-  writeFullOutput,
+  writePartialOutputAsync,
+  writeFullOutputAsync,
 } from '@/utils/session.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { validateCollectorTypes } from '@/utils/validation.js';
@@ -33,6 +33,7 @@ class SessionContext {
   isShuttingDown = false;
   shutdownKeepalive: NodeJS.Timeout | null = null;
   previewInterval: NodeJS.Timeout | null = null;
+  pendingWrite: Promise<void> | null = null;
   startTime: number;
   target: CDPTarget | null = null;
 
@@ -106,14 +107,28 @@ class SessionContext {
 
     this.isShuttingDown = true;
 
+    // Keep event loop alive IMMEDIATELY to prevent premature exit during async operations
+    // This must be set before any await points
+    this.shutdownKeepalive = setInterval(() => {}, 1000);
+
     // Clear preview interval if active
     if (this.previewInterval) {
       clearInterval(this.previewInterval);
       this.previewInterval = null;
     }
 
-    // Keep event loop alive during shutdown to prevent premature exit
-    this.shutdownKeepalive = setInterval(() => {}, 1000);
+    // Wait for any in-flight write to complete before cleanup
+    // This prevents race where write completes after cleanupSession() and recreates files
+    if (this.pendingWrite) {
+      console.error('Waiting for in-flight write to complete...');
+      try {
+        await this.pendingWrite;
+        console.error('In-flight write completed');
+      } catch (error) {
+        // Ignore write errors during shutdown
+        console.error('Error in pending write (ignoring):', error);
+      }
+    }
 
     try {
       console.error('Stopping session...');
@@ -144,6 +159,16 @@ class SessionContext {
     if (this.previewInterval) {
       clearInterval(this.previewInterval);
       this.previewInterval = null;
+    }
+
+    // Wait for any in-flight write to complete before cleanup
+    if (this.pendingWrite) {
+      console.error('Waiting for in-flight write to complete before cleanup...');
+      try {
+        await this.pendingWrite;
+      } catch {
+        // Ignore write errors during cleanup
+      }
     }
 
     // Kill Chrome if we launched it
@@ -321,10 +346,16 @@ async function startCollectorsAndMetadata(
   target: CDPTarget,
   chromePid?: number
 ): Promise<void> {
-  // Start collectors
+  // Start collectors with timing
+  const collectorStartTime = Date.now();
   for (const collector of collectors) {
+    const individualStart = Date.now();
     await session.startCollector(collector);
+    const individualDuration = Date.now() - individualStart;
+    console.error(`[PERF] Collector '${collector}' initialized: ${individualDuration}ms`);
   }
+  const totalCollectorDuration = Date.now() - collectorStartTime;
+  console.error(`[PERF] All collectors initialized: ${totalCollectorDuration}ms`);
 
   // Write session metadata
   writePid(process.pid);
@@ -397,14 +428,33 @@ function buildSessionOutput(
 
 /**
  * Phase 5: Start preview writer with two-tier system
+ *
+ * Uses async I/O with mutex to prevent event loop blocking and overlapping writes.
  */
 function startPreviewWriter(context: SessionContext): void {
+  // Mutex to prevent overlapping writes
+  let isWriting = false;
+
   context.previewInterval = setInterval(() => {
-    if (context.session?.isConnected()) {
+    // Skip if previous write still in progress or session disconnected
+    if (isWriting || !context.session?.isConnected()) {
+      if (isWriting) {
+        console.error('[PERF] Skipping preview write (previous write still in progress)');
+      }
+      return;
+    }
+
+    isWriting = true;
+
+    // Create and track the write promise so shutdown can await it
+    const writePromise: Promise<void> = (async (): Promise<void> => {
       try {
-        const target = context.session.getTarget();
-        const allNetworkRequests = context.session.getNetworkRequests();
-        const allConsoleLogs = context.session.getConsoleLogs();
+        const session = context.session;
+        if (!session) return;
+
+        const target = session.getTarget();
+        const allNetworkRequests = session.getNetworkRequests();
+        const allConsoleLogs = session.getConsoleLogs();
 
         // Build both preview and full outputs
         const previewOutput = buildSessionOutput(
@@ -422,17 +472,27 @@ function startPreviewWriter(context: SessionContext): void {
           allConsoleLogs
         );
 
-        // Write both files
-        writePartialOutput(previewOutput); // ~500KB - for 'bdg peek'
-        writeFullOutput(fullOutput); // ~87MB - for 'bdg details'
+        // Write both files in parallel (async, non-blocking)
+        await Promise.all([
+          writePartialOutputAsync(previewOutput), // ~500KB - for 'bdg peek'
+          writeFullOutputAsync(fullOutput), // ~87MB - for 'bdg details'
+        ]);
       } catch (error) {
         // Ignore preview write errors - don't disrupt collection
         console.error(
           'Warning: Failed to write preview data:',
           error instanceof Error ? error.message : String(error)
         );
+      } finally {
+        // Always clear mutex flag
+        isWriting = false;
+        // Clear the pending write reference
+        context.pendingWrite = null;
       }
-    }
+    })();
+
+    // Store the promise so shutdown can await it
+    context.pendingWrite = writePromise;
   }, 5000); // Write preview every 5 seconds
 }
 
@@ -521,6 +581,7 @@ export async function startSession(
     context.launchedChrome = await bootstrapChrome(options.port, targetUrl, options.userDataDir);
 
     // Phase 3: CDP connection and target setup
+    const setupStart = Date.now();
     const setupResult = await setupTarget(
       url,
       targetUrl,
@@ -532,6 +593,7 @@ export async function startSession(
     const target = setupResult.target;
     context.session = session;
     context.target = target;
+    console.error(`[PERF] CDP connection and target setup: ${Date.now() - setupStart}ms`);
 
     // Phase 4: Start collectors and write metadata
     await startCollectorsAndMetadata(
@@ -542,6 +604,10 @@ export async function startSession(
       target,
       context.launchedChrome?.pid
     );
+
+    // Total session startup time
+    const totalStartupTime = Date.now() - context.startTime;
+    console.error(`[PERF] Total session startup: ${totalStartupTime}ms`);
 
     // Print status
     printCollectionStatus(collectors, options.timeout);
@@ -556,6 +622,22 @@ export async function startSession(
 
     // Phase 5: Start preview writer
     startPreviewWriter(context);
+
+    // Optional: Log memory usage periodically (every 30s)
+    const memoryLogInterval = setInterval(() => {
+      const usage = process.memoryUsage();
+      const heapUsedMB = (usage.heapUsed / 1024 / 1024).toFixed(2);
+      const heapTotalMB = (usage.heapTotal / 1024 / 1024).toFixed(2);
+      const rssMB = (usage.rss / 1024 / 1024).toFixed(2);
+      console.error(`[PERF] Memory: Heap ${heapUsedMB}/${heapTotalMB} MB, RSS ${rssMB} MB`);
+    }, 30000);
+
+    // Store interval in context for cleanup
+    const originalCleanup = context.cleanup.bind(context);
+    context.cleanup = async (): Promise<void> => {
+      clearInterval(memoryLogInterval);
+      await originalCleanup();
+    };
 
     // Phase 6: Run session loop
     await runSessionLoop(session, target);
@@ -582,26 +664,33 @@ export async function startSession(
  * Setup global signal handlers for graceful shutdown
  */
 export function setupSignalHandlers(): void {
-  // Register signal handlers
-  // Wrap in async IIFE to ensure handler completes before exit
-  process.on('SIGINT', () => {
-    // Prevent multiple signals from being processed
-    if (globalContext && !globalContext.isShuttingDown) {
-      globalContext.stop().catch((error) => {
-        console.error('Fatal error during shutdown:', error);
-        process.exit(1);
-      });
+  // Handler that blocks until shutdown completes
+  const handleShutdownSignal = (signal: string): void => {
+    if (!globalContext || globalContext.isShuttingDown) {
+      return;
     }
-  });
 
-  process.on('SIGTERM', () => {
-    if (globalContext && !globalContext.isShuttingDown) {
-      globalContext.stop().catch((error) => {
+    console.error(`\nReceived ${signal}, shutting down gracefully...`);
+
+    // Remove signal handlers to prevent multiple signals from interrupting shutdown
+    process.removeAllListeners('SIGINT');
+    process.removeAllListeners('SIGTERM');
+
+    // Execute shutdown asynchronously but keep process alive with keepalive
+    void (async (): Promise<void> => {
+      try {
+        await globalContext.stop();
+        // stop() calls process.exit(), so we should never reach here
+      } catch (error) {
         console.error('Fatal error during shutdown:', error);
         process.exit(1);
-      });
-    }
-  });
+      }
+    })();
+  };
+
+  // Register signal handlers
+  process.on('SIGINT', () => handleShutdownSignal('SIGINT'));
+  process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'));
 
   // Error handlers for cleanup on crash
   process.on('unhandledRejection', (reason) => {

@@ -49,6 +49,8 @@ export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupF
  * @returns DOM data including URL, title, and full HTML
  */
 export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
+  const domCaptureStart = Date.now();
+
   try {
     // Add a timeout wrapper to prevent hanging
     const timeout = 5000; // 5 seconds should be plenty for DOM capture
@@ -64,35 +66,41 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
 
     // Get document
     console.error('Getting document...');
+    const docStart = Date.now();
     const documentResponse = await captureWithTimeout(
       cdp.send('DOM.getDocument', { depth: -1 }) as Promise<CDPGetDocumentResponse>,
       'DOM.getDocument'
     );
     const root = documentResponse.root;
-    console.error(`Got document root (nodeId: ${root.nodeId})`);
+    console.error(`[PERF] DOM.getDocument: ${Date.now() - docStart}ms (nodeId: ${root.nodeId})`);
 
     // Get outer HTML
     console.error('Getting outer HTML...');
+    const htmlStart = Date.now();
     const htmlResponse = await captureWithTimeout(
       cdp.send('DOM.getOuterHTML', { nodeId: root.nodeId }) as Promise<CDPGetOuterHTMLResponse>,
       'DOM.getOuterHTML'
     );
     const outerHTML = htmlResponse.outerHTML;
-    console.error(`Got outer HTML (${outerHTML.length} chars)`);
+    console.error(
+      `[PERF] DOM.getOuterHTML: ${Date.now() - htmlStart}ms (${outerHTML.length} chars)`
+    );
 
     // Get page info
     console.error('Getting page info...');
+    const frameStart = Date.now();
     const frameTreeResponse = await captureWithTimeout(
       cdp.send('Page.getFrameTree') as Promise<CDPGetFrameTreeResponse>,
       'Page.getFrameTree'
     );
     const frame = frameTreeResponse.frameTree.frame;
-    console.error(`Got page info (url: ${frame.url})`);
+    console.error(`[PERF] Page.getFrameTree: ${Date.now() - frameStart}ms (url: ${frame.url})`);
 
     // Get real document title using Runtime.evaluate
     console.error('Getting document title...');
     let title = 'Untitled';
     try {
+      const titleStart = Date.now();
       const titleResult = await captureWithTimeout(
         cdp.send('Runtime.evaluate', {
           expression: 'document.title',
@@ -104,12 +112,16 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
       if (titleResult.result.value !== undefined && typeof titleResult.result.value === 'string') {
         title = titleResult.result.value;
       }
+      console.error(`[PERF] Runtime.evaluate (title): ${Date.now() - titleStart}ms`);
     } catch (titleError) {
       console.error('Failed to get document title, using fallback:', titleError);
     }
     console.error(`Got document title: ${title}`);
 
     const url = frame.url;
+
+    const totalDuration = Date.now() - domCaptureStart;
+    console.error(`[PERF] Total DOM capture: ${totalDuration}ms`);
 
     return {
       url,
