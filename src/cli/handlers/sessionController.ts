@@ -1,5 +1,9 @@
+import * as chromeLauncher from 'chrome-launcher';
+
+import type { LaunchOptions } from '@/connection/launcher.js';
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
+import { ChromeLaunchError } from '@/utils/errors.js';
 import { writePid, writeSessionMetadata } from '@/utils/session.js';
 
 import { ChromeBootstrap } from './ChromeBootstrap.js';
@@ -10,6 +14,98 @@ import { SessionLoop } from './SessionLoop.js';
 import { ShutdownController } from './ShutdownController.js';
 import { SignalHandler } from './SignalHandler.js';
 import { TargetSetup } from './TargetSetup.js';
+
+/**
+ * Report detailed diagnostic information when Chrome fails to launch.
+ *
+ * Uses chrome-launcher APIs to detect available Chrome installations and
+ * provide actionable error messages to help users troubleshoot.
+ *
+ * @param error Original error that caused the failure
+ */
+function reportLauncherFailure(error: unknown): void {
+  console.error('\n━━━ Chrome Launch Diagnostics ━━━\n');
+
+  // Show original error
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  console.error(`Error: ${errorMessage}\n`);
+
+  // Detect available Chrome installations
+  try {
+    const installations = chromeLauncher.Launcher.getInstallations();
+
+    if (installations.length === 0) {
+      console.error('❌ No Chrome installations detected on this system\n');
+      console.error('💡 Install Chrome from:');
+      console.error('   https://www.google.com/chrome/\n');
+    } else {
+      console.error(
+        `✓ Found ${installations.length} Chrome installation${installations.length > 1 ? 's' : ''}:\n`
+      );
+      installations.forEach((path, index) => {
+        console.error(`  ${index + 1}. ${path}`);
+      });
+      console.error('');
+
+      // Show default path that will be used
+      try {
+        const defaultPath = chromeLauncher.getChromePath();
+        console.error(`Default binary: ${defaultPath}\n`);
+      } catch {
+        // getChromePath() might throw if no Chrome found
+        console.error('Default binary: Could not determine\n');
+      }
+    }
+  } catch (detectionError) {
+    console.error(
+      `Warning: Could not detect Chrome installations: ${detectionError instanceof Error ? detectionError.message : String(detectionError)}\n`
+    );
+  }
+
+  // Provide troubleshooting steps
+  console.error('💡 Troubleshooting:');
+  console.error('   1. Verify Chrome is installed and accessible');
+  console.error('   2. Check file permissions for Chrome binary');
+  console.error('   3. Try specifying a custom port: bdg <url> --port 9223');
+  console.error('   4. Use strict port mode: bdg <url> --port-strict');
+  console.error('   5. Check if another process is using the debugging port\n');
+}
+
+/**
+ * Aggressively cleanup stale Chrome processes launched by bdg.
+ *
+ * Uses chrome-launcher's killAll() to terminate Chrome instances,
+ * then logs any errors encountered during cleanup.
+ *
+ * @returns Number of errors encountered during cleanup
+ */
+export function cleanupStaleChrome(): number {
+  console.error('\n🧹 Attempting to kill stale Chrome processes...');
+
+  try {
+    const errors = chromeLauncher.killAll();
+
+    if (errors.length === 0) {
+      console.error('✓ All Chrome processes cleaned up successfully');
+      return 0;
+    } else {
+      console.error(
+        `⚠️  Encountered ${errors.length} error${errors.length > 1 ? 's' : ''} during cleanup:\n`
+      );
+      errors.forEach((error, index) => {
+        console.error(`  ${index + 1}. ${error.message}`);
+      });
+      console.error('\n💡 Some processes may have resisted cleanup');
+      console.error('   Try manually killing Chrome processes if issues persist\n');
+      return errors.length;
+    }
+  } catch (error) {
+    console.error(
+      `❌ Failed to cleanup Chrome processes: ${error instanceof Error ? error.message : String(error)}\n`
+    );
+    return 1;
+  }
+}
 
 /**
  * Encapsulates session state and lifecycle management
@@ -133,6 +229,13 @@ export async function startSession(
     reuseTab?: boolean | undefined;
     userDataDir?: string | undefined;
     includeAll?: boolean | undefined;
+    logLevel?: 'verbose' | 'info' | 'error' | 'silent' | undefined;
+    prefs?: Record<string, unknown> | undefined;
+    prefsFile?: string | undefined;
+    chromeFlags?: string[] | undefined;
+    connectionPollInterval?: number | undefined;
+    maxConnectionRetries?: number | undefined;
+    portStrictMode?: boolean | undefined;
   },
   collectors: CollectorType[]
 ): Promise<void> {
@@ -151,11 +254,21 @@ export async function startSession(
     const targetUrl = SessionLock.acquire(url, collectors);
 
     // Phase 2: Chrome bootstrap
-    context.launchedChrome = await ChromeBootstrap.launch(
-      options.port,
-      targetUrl,
-      options.userDataDir
-    );
+    // Build launcher options, filtering out undefined values
+    const launchOptions = Object.fromEntries(
+      Object.entries({
+        userDataDir: options.userDataDir,
+        logLevel: options.logLevel,
+        prefs: options.prefs,
+        prefsFile: options.prefsFile,
+        chromeFlags: options.chromeFlags,
+        connectionPollInterval: options.connectionPollInterval,
+        maxConnectionRetries: options.maxConnectionRetries,
+        portStrictMode: options.portStrictMode,
+      }).filter(([, value]) => value !== undefined)
+    ) as Partial<LaunchOptions>;
+
+    context.launchedChrome = await ChromeBootstrap.launch(options.port, targetUrl, launchOptions);
 
     // Phase 3: CDP connection and target setup
     const setupStart = Date.now();
@@ -219,6 +332,11 @@ export async function startSession(
     // Phase 6: Run session loop
     await SessionLoop.run(session, target);
   } catch (error) {
+    // Show diagnostic information for Chrome launch failures
+    if (error instanceof ChromeLaunchError) {
+      reportLauncherFailure(error);
+    }
+
     const errorOutput = OutputBuilder.buildError(
       error,
       context.startTime,

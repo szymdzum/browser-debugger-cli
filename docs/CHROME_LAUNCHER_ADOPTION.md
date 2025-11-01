@@ -27,6 +27,7 @@
 **Sample Implementation**
 ```ts
 // src/connection/launcher.ts
+import * as chromeLauncher from 'chrome-launcher';
 import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 
 export interface LaunchOptions extends Pick<
@@ -43,6 +44,8 @@ export interface LaunchOptions extends Pick<
   userDataDir?: string;
   headless?: boolean;
   url?: string;
+  ignoreDefaultFlags?: boolean;
+  chromeFlags?: string[];
 }
 
 const buildChromeOptions = (options: LaunchOptions): ChromeLaunchOptions => ({
@@ -58,6 +61,19 @@ const buildChromeOptions = (options: LaunchOptions): ChromeLaunchOptions => ({
   handleSIGINT: options.handleSIGINT ?? false,
   chromeFlags: buildChromeFlags(options),
 });
+
+const buildChromeFlags = (options: LaunchOptions): string[] => {
+  const baseFlags = options.ignoreDefaultFlags
+    ? []
+    : chromeLauncher.Launcher.defaultFlags();
+
+  return [
+    ...baseFlags,
+    `--remote-debugging-port=${options.port ?? 9222}`,
+    ...(options.headless ? ['--headless=new'] : []),
+    ...(options.chromeFlags ?? []),
+  ];
+};
 ```
 
 ### Phase 2 – Launcher Class Adoption (1–2 sprints)
@@ -94,6 +110,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   };
 }
 ```
+> Uses a shared `getErrorMessage()` helper from `@/utils/errors.js`; replace with the project’s chosen error normalizer.
 
 ### Phase 3 – Diagnostics & Cleanup Enhancements (1 sprint)
 **Goals**
@@ -122,6 +139,32 @@ async function cleanupStaleChrome(): Promise<void> {
   }
 }
 ```
+
+## Refactor Inventory
+- **Default flag management (`src/connection/launcher.ts`)**  
+  Replace manual flag assembly with `Launcher.defaultFlags()` and `ignoreDefaultFlags` to inherit upstream automation defaults while layering bdg-specific overrides.
+
+- **Profile handling (`src/connection/launcher.ts`)**  
+  Pass `userDataDir` via launch options and surface the resolved directory from `launcher.userDataDir`, enabling temporary profiles and better tooling visibility.
+
+- **Readiness and retries (`src/connection/launcher.ts`)**  
+  Remove the bespoke `waitForCDP()` loop in favour of `Launcher.waitUntilReady()` and configurable `connectionPollInterval` / `maxConnectionRetries`.
+
+- **Process handles (`src/connection/launcher.ts`)**  
+  Return the underlying `chromeProcess` and optional `remoteDebuggingPipes` so future features (log streaming, pipe transport) can build on them.
+  Update `LaunchedChrome` in `src/types.ts` accordingly.
+
+- **Strict port reuse (`src/cli/handlers/sessionController.ts`)**  
+  Use `portStrictMode` rather than ad-hoc `isChromeRunning()` checks to decide when to launch versus attach.
+
+- **Diagnostics (`src/cli/handlers/sessionController.ts`)**  
+  Surface `Launcher.getInstallations()` and `getChromePath()` in launch failures for clearer guidance on missing or unexpected Chrome installations.
+
+- **Cleanup (`src/cli/handlers/sessionController.ts`)**  
+  Integrate `killAll()` as part of stale-session cleanup (opt-in) to prevent orphaned bdg-launched Chrome instances from blocking new sessions.
+
+- **Signal coordination (`src/connection/launcher.ts`, `sessionController`)**  
+  Explicitly set `handleSIGINT` to align chrome-launcher’s signal behaviour with bdg’s shutdown handlers and avoid duplicate listeners.
 
 ## Validation Plan
 - Unit coverage for pass-through options (Phase 1) and launcher lifecycle (Phase 2).
