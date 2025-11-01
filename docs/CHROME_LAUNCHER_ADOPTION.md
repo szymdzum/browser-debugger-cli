@@ -130,12 +130,12 @@ async function cleanupStaleChrome(): Promise<void> {
 - Add regression test to ensure `bdg stop` leaves user-managed Chrome untouched (no killAll when we did not launch).
 
 ## Risks & Mitigations
-- **Breaking existing defaults:** Ship behind feature flag (`BDG_USE_LAUNCHER_CLASS`) during Phase 2, enable in CI before general release.
+- **Breaking existing defaults:** Validate via local smoke tests before merging; roll forward quickly if regressions appear since there are no other users yet.
 - **Platform differences:** Use `chrome-launcher`’s verbose logs during rollout; gather telemetry on failures by platform.
-- **User surprise from killAll:** Gate new cleanup path behind `--aggressive-cleanup` until we confirm safety; document behaviour clearly.
+- **User surprise from killAll:** Keep aggressive cleanup behind an explicit opt-in flag (`--aggressive-cleanup`) until safety is verified; document behaviour clearly.
 
 ## Open Questions
-- Do we need to support remote debugging pipes for users running on corporate networks that block ports?
+- Remote debugging pipes: out of scope for now; port-based debugging remains sufficient.
 - Should CLI expose Chrome prefs directly or accept a JSON file path?
 - How do we surface launcher diagnostics in `bdg status` without overwhelming standard output?
 

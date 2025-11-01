@@ -1,6 +1,4 @@
-import { launchChrome, isChromeRunning } from '@/connection/launcher.js';
-import { createOrFindTarget } from '@/connection/tabs.js';
-import { BdgSession } from '@/session/BdgSession.js';
+import type { BdgSession } from '@/session/BdgSession.js';
 import type {
   BdgOutput,
   CollectorType,
@@ -8,17 +6,11 @@ import type {
   LaunchedChrome,
   CDPTarget,
 } from '@/types';
-import {
-  writePid,
-  readPid,
-  isProcessAlive,
-  acquireSessionLock,
-  writeSessionMetadata,
-  cleanupSession,
-} from '@/utils/session.js';
-import { normalizeUrl } from '@/utils/url.js';
-import { validateCollectorTypes } from '@/utils/validation.js';
+import { writePid, writeSessionMetadata, cleanupSession } from '@/utils/session.js';
 
+import { ChromeBootstrap } from './bootstrap/ChromeBootstrap.js';
+import { SessionLock } from './bootstrap/SessionLock.js';
+import { TargetSetup } from './bootstrap/TargetSetup.js';
 import { OutputBuilder } from './output/OutputBuilder.js';
 import { OutputWriter } from './output/OutputWriter.js';
 import { PreviewWriter } from './output/PreviewWriter.js';
@@ -138,145 +130,6 @@ class SessionContext {
 // Global context for signal handling
 // Single instance since we don't support multiple sessions
 let globalContext: SessionContext | null = null;
-
-/**
- * Phase 1: Acquire session lock and validate inputs
- */
-function setupSessionLock(url: string, collectors: CollectorType[]): string {
-  const existingPid = readPid();
-
-  // Check for stale session before trying to acquire lock
-  if (existingPid && !isProcessAlive(existingPid)) {
-    console.error(`Found stale session (PID ${existingPid} not running)`);
-    console.error('Cleaning up stale session files...');
-    cleanupSession();
-    console.error('✓ Stale session cleaned up');
-  }
-
-  if (!acquireSessionLock()) {
-    const currentPid = readPid();
-    throw new Error(`Session already running (PID ${currentPid}). Stop it with: bdg stop`);
-  }
-
-  // Validate collector types
-  validateCollectorTypes(collectors);
-
-  // Normalize URL - add http:// if no protocol specified
-  return normalizeUrl(url);
-}
-
-/**
- * Phase 2: Launch or connect to Chrome
- */
-async function bootstrapChrome(
-  port: number,
-  targetUrl: string,
-  userDataDir?: string
-): Promise<LaunchedChrome | null> {
-  const chromeRunning = await isChromeRunning(port);
-
-  if (!chromeRunning) {
-    // Launch Chrome with target URL
-    const chrome = await launchChrome({
-      port,
-      headless: false,
-      url: targetUrl,
-      userDataDir,
-    });
-    console.error(`Chrome launched (PID: ${chrome.pid})`);
-    return chrome;
-  }
-
-  console.error(`Chrome already running on port ${port}`);
-  return null;
-}
-
-/**
- * Fetch the current list of available CDP targets from Chrome.
- * Used during session bootstrap to select a temporary connection target and to
- * refresh metadata when the session creates or reuses tabs.
- */
-async function fetchCDPTargets(port: number): Promise<CDPTarget[]> {
-  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-  return (await response.json()) as CDPTarget[];
-}
-
-/**
- * Locate a specific CDP target by ID. Falls back to a fresh fetch when cached
- * metadata is missing or incomplete (e.g., webSocketDebuggerUrl absent).
- */
-async function findTargetById(
-  targetId: string,
-  port: number,
-  cachedTargets?: CDPTarget[]
-): Promise<CDPTarget> {
-  // First check cached targets if provided
-  if (cachedTargets) {
-    const cached = cachedTargets.find((t) => t.id === targetId);
-    if (cached?.webSocketDebuggerUrl) {
-      return cached;
-    }
-  }
-
-  // Not in cache or missing webSocketDebuggerUrl - refetch
-  const targets = await fetchCDPTargets(port);
-  const target = targets.find((t) => t.id === targetId);
-
-  if (!target) {
-    throw new Error(`Could not find target ${targetId}`);
-  }
-
-  if (!target.webSocketDebuggerUrl) {
-    throw new Error(`Could not find webSocketDebuggerUrl for target ${targetId}`);
-  }
-
-  return target;
-}
-
-/**
- * Phase 3: Create CDP connection and find/create target tab
- */
-async function setupTarget(
-  url: string,
-  targetUrl: string,
-  port: number,
-  reuseTab: boolean,
-  includeAll: boolean = false
-): Promise<{ session: BdgSession; target: CDPTarget }> {
-  // Fetch targets once
-  const initialTargets = await fetchCDPTargets(port);
-
-  if (initialTargets.length === 0) {
-    throw new Error('No targets available in Chrome');
-  }
-
-  // Use first available target to establish CDP connection
-  const tempTarget = initialTargets[0];
-  if (!tempTarget) {
-    throw new Error('No targets available in Chrome');
-  }
-  const tempSession = new BdgSession(tempTarget, port, includeAll);
-  await tempSession.connect();
-
-  if (!tempSession.isConnected()) {
-    throw new Error('Failed to establish CDP connection');
-  }
-
-  // Create or find target tab using TabManager
-  console.error(`Finding or creating tab for: ${targetUrl}`);
-  const target = await createOrFindTarget(url, tempSession.getCDP(), reuseTab);
-  console.error(`Using tab: ${target.url}`);
-
-  // Find full target metadata (refetches only if not in cache or new tab created)
-  const fullTarget = await findTargetById(target.id, port, initialTargets);
-
-  // Close temp session and reconnect to the correct target
-  tempSession.getCDP().close();
-  const session = new BdgSession(fullTarget, port, includeAll);
-  await session.connect();
-
-  return { session, target: fullTarget };
-}
 
 /**
  * Phase 4: start requested collectors and persist session metadata for tooling.
@@ -413,14 +266,18 @@ export async function startSession(
 
   try {
     // Phase 1: Lock acquisition and validation
-    const targetUrl = setupSessionLock(url, collectors);
+    const targetUrl = SessionLock.acquire(url, collectors);
 
     // Phase 2: Chrome bootstrap
-    context.launchedChrome = await bootstrapChrome(options.port, targetUrl, options.userDataDir);
+    context.launchedChrome = await ChromeBootstrap.launch(
+      options.port,
+      targetUrl,
+      options.userDataDir
+    );
 
     // Phase 3: CDP connection and target setup
     const setupStart = Date.now();
-    const setupResult = await setupTarget(
+    const setupResult = await TargetSetup.setup(
       url,
       targetUrl,
       options.port,
