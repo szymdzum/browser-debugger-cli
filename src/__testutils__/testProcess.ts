@@ -35,14 +35,10 @@ let originalKill: typeof process.kill | null = null;
  * @param alivePids - Array of PIDs that should be considered "alive"
  */
 export function mockProcessAlive(alivePids: number[]): void {
-  // Capture original process.kill if not already saved (use arrow function to avoid unbound-method)
-  originalKill ??= (pid: number, signal?: number | NodeJS.Signals): true =>
-    process.kill(pid, signal);
+  // Capture original process.kill if not already saved (bind to avoid unbound-method)
+  originalKill ??= process.kill.bind(process);
 
   const alivePidSet = new Set(alivePids);
-  // Store original kill in a lambda to avoid unbound-method issues
-  const callOriginalKill = (pid: number, signal?: number | NodeJS.Signals): true =>
-    (originalKill as typeof process.kill)(pid, signal);
 
   process.kill = ((pid: number, signal?: number | NodeJS.Signals) => {
     // Signal 0 is used to check if process exists (doesn't actually send signal)
@@ -60,7 +56,7 @@ export function mockProcessAlive(alivePids: number[]): void {
       }
     }
     // For other signals, delegate to original implementation
-    return callOriginalKill(pid, signal);
+    return (originalKill as typeof process.kill)(pid, signal);
   }) as typeof process.kill;
 }
 

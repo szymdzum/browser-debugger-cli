@@ -17,24 +17,25 @@ This document defines how we design, organize, and run tests in this repository.
 
 ## Test Layers
 
-We use a **lightweight 2-layer approach** optimized for this codebase size:
+We use a **lightweight 3-layer approach** optimized for this codebase size:
 
 | Layer | Location | Description | Execution |
 |-------|----------|-------------|-----------|
 | **Contract** | `src/**/__tests__/*.test.ts` | Fast (<200ms/suite), deterministic checks of module-level contracts. Uses lightweight boundary fakes. Co-located next to the code they test. | `npm test` or `npm run test:watch` |
+| **Integration** | `test/integration/*.test.ts` | Cross-module scenarios that are too slow for contract tests (>200ms) or require precise state setup (e.g., stale PIDs, file system atomicity). | Included in `npm test` |
 | **Smoke / E2E** | `scripts/test-e2e.sh` & docs | Real CLI scenarios that exercise Chrome + filesystem. Documented expectations in `SMOKE_TEST_TELEMETRY.md`. | On demand only (`npm run test:e2e`); excluded from CI until headless suite exists |
 
-### Why two layers
+### Why three layers
 - **Contract tests** catch regressions fast while giving refactoring freedom. Run on every change during development.
+- **Integration tests** cover cross-module scenarios and edge cases that are too slow or complex for contract tests (e.g., file system atomicity, stale session cleanup).
 - **Smoke/E2E tests** are the final guardrail before releases, validating the product from the outside with real Chrome.
 
-### When to add a third layer
-If you discover integration scenarios that:
+### When to add integration tests
+Add integration tests when you discover scenarios that:
 - Are too slow for contract tests (>200ms)
 - Are too brittle for E2E (require precise state setup like stale PIDs, race conditions)
 - Cannot be covered by mocking boundaries alone
-
-...then consider adding a targeted `tests/elastic/` harness. For now, the two-layer model keeps things simple.
+- Span multiple modules or require real file system interactions
 
 ---
 
@@ -68,18 +69,18 @@ If you discover integration scenarios that:
 ---
 
 ## Execution Flow
-- **Default inner loop:** `npm run test:contract`
-- **Focused runs:** `npm run test:contract -- --watch --test-name-pattern launchChrome`
-- **Elastic checks:** `npm run test:elastic -- --grep session` (optional unless you touch those surfaces)
-- **Smoke/E2E:** Update and execute the documented scripts for release candidates or major refactors.
+- **Default inner loop:** `npm test`
+- **Watch mode:** `npm run test:watch` (auto-rerun tests on file changes)
+- **Focused runs:** `npm test -- --test-name-pattern launchChrome` (run specific tests by name pattern)
+- **Smoke/E2E:** `npm run test:e2e` (runs documented E2E scripts for release candidates)
 
-> **Tip:** Keep contract suites under ~200 ms each. If they start creeping up, move the scenario to the elastic layer.
+> **Tip:** Keep contract suites under ~200 ms each. If they start creeping up, move the scenario to the integration layer.
 
 ---
 
 ## Maintenance Rules
 - **Keep docs updated.** When you add a new suite or layer, update this file and `SMOKE_TEST_TELEMETRY.md` to reflect coverage.
-- **Review tests like code.** Pull requests should include contract tests for new behavior and elastic/E2E updates when we add major features.
+- **Review tests like code.** Pull requests should include contract tests for new behavior and integration/E2E updates when we add major features.
 - **Delete obsolete coverage.** If a contract no longer exists, remove its test rather than mutating it to fit the new world.
 - **Fail loudly on breaking contracts.** Prefer explicit assertions with descriptive messages so failures guide the maintainer to the root cause quickly.
 
@@ -87,7 +88,7 @@ If you discover integration scenarios that:
 
 ## Open Questions
 - Property-based testing (e.g., `fast-check`) may help cover more URL/target permutations. Decide once contract suites mature.
-- Evaluate running elastic suites in CI once runtime stabilizes and cost is acceptable.
+- Evaluate running integration suites in CI once runtime stabilizes and cost is acceptable.
 
 ---
 
@@ -138,8 +139,8 @@ describe('launchChrome contract', () => {
 - The fake lives in `src/__testutils__/fakeLauncher.ts` and mimics `chrome-launcher`.
 - We only assert the public contract (`pid`, `port`, `kill`) and error wrapping.
 
-### Elastic Harness Example
-File: `tests/elastic/session-lifecycle.test.ts`
+### Integration Test Example
+File: `test/integration/session-lifecycle.test.ts`
 
 ```typescript
 import assert from 'node:assert/strict';
@@ -147,7 +148,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { createSessionHarness } from './helpers/sessionHarness.js';
 
-describe('session lifecycle elastic suite', () => {
+describe('session lifecycle integration suite', () => {
   const harness = createSessionHarness();
 
   beforeEach(async () => {
@@ -175,7 +176,7 @@ describe('session lifecycle elastic suite', () => {
 **Key points:**
 - Harness spins up a fake Chrome + session directory so we can simulate process crashes deterministically.
 - Tests expose invariants (second start should clean stale PID).
-- Lives under `tests/elastic/` because it spans multiple modules and takes longer to run.
+- Lives under `test/integration/` because it spans multiple modules and takes longer to run.
 
 ### Smoke Script Snippet
 File: `scripts/test-e2e.sh`
