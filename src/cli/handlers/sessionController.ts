@@ -24,7 +24,7 @@ import { TargetSetup } from './TargetSetup.js';
  * @param error Original error that caused the failure
  */
 function reportLauncherFailure(error: unknown): void {
-  console.error('\n━━━ Chrome Launch Diagnostics ━━━\n');
+  console.error('\n--- Chrome Launch Diagnostics ---\n');
 
   // Show original error
   const errorMessage = error instanceof Error ? error.message : String(error);
@@ -64,7 +64,7 @@ function reportLauncherFailure(error: unknown): void {
  * @returns Number of errors encountered during cleanup
  */
 export async function cleanupStaleChrome(): Promise<number> {
-  console.error('\n🧹 Attempting to kill stale Chrome processes...');
+  console.error('\nAttempting to kill stale Chrome processes...');
 
   try {
     // Import session utilities (dynamic import for ES modules)
@@ -81,7 +81,7 @@ export async function cleanupStaleChrome(): Promise<number> {
     }
 
     // Kill Chrome process (cross-platform)
-    console.error(`🔪 Killing Chrome process (PID: ${chromePid})...`);
+    console.error(`Killing Chrome process (PID: ${chromePid})...`);
 
     try {
       // Use SIGKILL for aggressive cleanup (force kill)

@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
+import type { CDPTarget } from '@/types';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 
@@ -13,11 +14,6 @@ import { readPid, isProcessAlive } from '@/utils/session.js';
 interface QueryOptions {
   port: string;
   json?: boolean;
-}
-
-interface CDPTarget {
-  id: string;
-  webSocketDebuggerUrl: string;
 }
 
 /**

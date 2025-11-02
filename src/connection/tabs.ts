@@ -67,12 +67,12 @@ function scoreTabMatch(tab: CDPTarget, searchUrl: string): number {
 /**
  * Find the best matching target from a list of tabs.
  *
- * @param url - Target URL to find (will be normalized)
+ * @param normalizedUrl - Target URL to find (must be pre-normalized)
  * @param targets - List of available targets
  * @returns Best matching target or null if no match found
  */
-export function findBestTarget(url: string, targets: CDPTarget[]): CDPTarget | null {
-  const searchUrl = normalizeUrl(url);
+export function findBestTarget(normalizedUrl: string, targets: CDPTarget[]): CDPTarget | null {
+  const searchUrl = normalizedUrl;
 
   // Filter for page targets only
   const pageTargets = targets.filter((t) => t.type === 'page');
@@ -106,13 +106,12 @@ export function findBestTarget(url: string, targets: CDPTarget[]): CDPTarget | n
 /**
  * Create a new tab with the specified URL using CDP.
  *
- * @param url - URL to open in the new tab
+ * @param normalizedUrl - URL to open in the new tab (must be pre-normalized)
  * @param cdp - CDP connection instance
  * @returns Target information for the new tab
  * @throws Error if tab creation fails via both CDP and HTTP fallback methods
  */
-export async function createNewTab(url: string, cdp: CDPConnection): Promise<CDPTarget> {
-  const normalizedUrl = normalizeUrl(url);
+export async function createNewTab(normalizedUrl: string, cdp: CDPConnection): Promise<CDPTarget> {
   const port = cdp.getPort();
 
   let createdTargetId: string | null = null;
@@ -175,17 +174,15 @@ export async function createNewTab(url: string, cdp: CDPConnection): Promise<CDP
  * Navigate an existing tab to a new URL using CDP.
  *
  * @param targetId - CDP target ID to navigate
- * @param url - URL to navigate to
+ * @param normalizedUrl - URL to navigate to (must be pre-normalized)
  * @param cdp - CDP connection instance
  * @throws Error if navigation fails (e.g., network error, invalid URL, blocked by browser)
  */
 export async function navigateToUrl(
   targetId: string,
-  url: string,
+  normalizedUrl: string,
   cdp: CDPConnection
 ): Promise<void> {
-  const normalizedUrl = normalizeUrl(url);
-
   // Attach to target
   const sessionResponse = (await cdp.send('Target.attachToTarget', {
     targetId,
@@ -208,19 +205,18 @@ export async function navigateToUrl(
  * Wait for a target to be ready (URL matches expected).
  *
  * @param targetId - CDP target ID to wait for
- * @param expectedUrl - Expected URL (normalized)
+ * @param normalizedUrl - Expected URL (must be pre-normalized)
  * @param cdp - CDP connection instance
  * @param maxWaitMs - Maximum time to wait in milliseconds
  * @throws Error if target doesn't become ready within maxWaitMs timeout
  */
 export async function waitForTargetReady(
   targetId: string,
-  expectedUrl: string,
+  normalizedUrl: string,
   cdp: CDPConnection,
   maxWaitMs = 15000
 ): Promise<void> {
   const startTime = Date.now();
-  const normalizedUrl = normalizeUrl(expectedUrl);
 
   while (Date.now() - startTime < maxWaitMs) {
     try {
@@ -262,7 +258,7 @@ export async function waitForTargetReady(
  * It tries to find an existing tab first, and if not found,
  * creates a new one.
  *
- * @param url - Target URL
+ * @param url - Target URL (will be normalized once at entry)
  * @param cdp - CDP connection instance
  * @param reuseTab - If true, navigate existing tab instead of creating new one
  * @returns Target information
@@ -272,6 +268,9 @@ export async function createOrFindTarget(
   cdp: CDPConnection,
   reuseTab = false
 ): Promise<CDPTarget> {
+  // Normalize URL once at entry point
+  const normalizedUrl = normalizeUrl(url);
+
   // Only look for existing tabs if reuseTab is true
   if (reuseTab) {
     // Try to find existing target via CDP
@@ -284,16 +283,16 @@ export async function createOrFindTarget(
       webSocketDebuggerUrl: '', // Not needed for this operation
     }));
 
-    const existingTarget = findBestTarget(url, targets);
+    const existingTarget = findBestTarget(normalizedUrl, targets);
 
     if (existingTarget) {
       console.error(`Found existing tab: ${existingTarget.url}`);
 
       // If URLs don't match exactly, navigate
-      if (existingTarget.url !== normalizeUrl(url)) {
-        console.error(`Navigating tab to: ${url}`);
-        await navigateToUrl(existingTarget.id, url, cdp);
-        await waitForTargetReady(existingTarget.id, url, cdp);
+      if (existingTarget.url !== normalizedUrl) {
+        console.error(`Navigating tab to: ${normalizedUrl}`);
+        await navigateToUrl(existingTarget.id, normalizedUrl, cdp);
+        await waitForTargetReady(existingTarget.id, normalizedUrl, cdp);
       }
 
       return existingTarget;
@@ -301,11 +300,11 @@ export async function createOrFindTarget(
   }
 
   // No matching tab found (or reuseTab=false), create new one
-  console.error(`Creating new tab for: ${url}`);
-  const newTarget = await createNewTab(url, cdp);
+  console.error(`Creating new tab for: ${normalizedUrl}`);
+  const newTarget = await createNewTab(normalizedUrl, cdp);
 
   // Wait for tab to start loading
-  await waitForTargetReady(newTarget.id, url, cdp);
+  await waitForTargetReady(newTarget.id, normalizedUrl, cdp);
 
   return newTarget;
 }

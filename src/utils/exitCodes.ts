@@ -40,30 +40,10 @@ export const EXIT_CODES = {
 } as const;
 
 /**
- * Map of BdgError codes to semantic exit codes.
- */
-const ERROR_CODE_MAP: Record<string, number> = {
-  // User errors
-  INVALID_URL_ERROR: EXIT_CODES.INVALID_URL,
-  INVALID_ARGUMENTS: EXIT_CODES.INVALID_ARGUMENTS,
-  PERMISSION_DENIED: EXIT_CODES.PERMISSION_DENIED,
-  RESOURCE_NOT_FOUND: EXIT_CODES.RESOURCE_NOT_FOUND,
-  RESOURCE_ALREADY_EXISTS: EXIT_CODES.RESOURCE_ALREADY_EXISTS,
-  RESOURCE_BUSY: EXIT_CODES.RESOURCE_BUSY,
-
-  // Software/Integration errors
-  CHROME_LAUNCH_ERROR: EXIT_CODES.CHROME_LAUNCH_FAILURE,
-  CDP_CONNECTION_ERROR: EXIT_CODES.CDP_CONNECTION_FAILURE,
-  CDP_TIMEOUT_ERROR: EXIT_CODES.CDP_TIMEOUT,
-  SESSION_FILE_ERROR: EXIT_CODES.SESSION_FILE_ERROR,
-};
-
-/**
  * Get semantic exit code for an error.
  *
  * Maps error types to appropriate exit code ranges:
- * - BdgError with known code → specific exit code
- * - BdgError with unknown code → category-based exit code
+ * - BdgError → uses exitCode property from error class
  * - Unknown error → UNHANDLED_EXCEPTION
  *
  * @param error - Error instance
@@ -80,22 +60,9 @@ const ERROR_CODE_MAP: Record<string, number> = {
  * ```
  */
 export function getExitCodeForError(error: unknown): number {
-  // Handle BdgError instances
+  // Handle BdgError instances - exit code is embedded in the class
   if (error instanceof BdgError) {
-    // Check for specific error code mapping
-    const mappedCode = ERROR_CODE_MAP[error.code];
-    if (mappedCode !== undefined) {
-      return mappedCode;
-    }
-
-    // Fallback to category-based mapping
-    switch (error.category) {
-      case 'user':
-        return EXIT_CODES.INVALID_ARGUMENTS;
-      case 'system':
-      case 'external':
-        return EXIT_CODES.UNHANDLED_EXCEPTION;
-    }
+    return error.exitCode;
   }
 
   // Unknown error type
