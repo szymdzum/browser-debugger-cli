@@ -3,6 +3,7 @@ import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError } from '@/utils/errors.js';
+import { getExitCodeForError } from '@/utils/exitCodes.js';
 import { writePid, writeSessionMetadata, writeChromePid } from '@/utils/session.js';
 
 import { ChromeBootstrap } from './ChromeBootstrap.js';
@@ -23,7 +24,7 @@ import { TargetSetup } from './TargetSetup.js';
  * @param error Original error that caused the failure
  */
 function reportLauncherFailure(error: unknown): void {
-  console.error('\n━━━ Chrome Launch Diagnostics ━━━\n');
+  console.error('\n--- Chrome Launch Diagnostics ---\n');
 
   // Show original error
   const errorMessage = error instanceof Error ? error.message : String(error);
@@ -35,7 +36,7 @@ function reportLauncherFailure(error: unknown): void {
   diagnosticLines.forEach((line) => console.error(line));
 
   // Provide troubleshooting steps
-  console.error('💡 Troubleshooting:');
+  console.error('Troubleshooting:');
   console.error('   1. Verify Chrome is installed and accessible');
   console.error('   2. Check file permissions for Chrome binary');
   console.error('   3. Try specifying a custom port: bdg <url> --port 9223');
@@ -63,7 +64,7 @@ function reportLauncherFailure(error: unknown): void {
  * @returns Number of errors encountered during cleanup
  */
 export async function cleanupStaleChrome(): Promise<number> {
-  console.error('\n🧹 Attempting to kill stale Chrome processes...');
+  console.error('\nAttempting to kill stale Chrome processes...');
 
   try {
     // Import session utilities (dynamic import for ES modules)
@@ -74,19 +75,19 @@ export async function cleanupStaleChrome(): Promise<number> {
     const chromePid = readChromePid();
 
     if (!chromePid) {
-      console.error('⚠️  No Chrome PID found in cache');
+      console.error('Warning: No Chrome PID found in cache');
       console.error('   Either Chrome was already running, or no Chrome was launched by bdg\n');
       return 0;
     }
 
     // Kill Chrome process (cross-platform)
-    console.error(`🔪 Killing Chrome process (PID: ${chromePid})...`);
+    console.error(`Killing Chrome process (PID: ${chromePid})...`);
 
     try {
       // Use SIGKILL for aggressive cleanup (force kill)
       killChromeProcess(chromePid, 'SIGKILL');
 
-      console.error('✓ Chrome process killed successfully');
+      console.error('Chrome process killed successfully');
 
       // Clear the cache after successful kill
       clearChromePid();
@@ -94,13 +95,13 @@ export async function cleanupStaleChrome(): Promise<number> {
       return 0;
     } catch (killError) {
       const errorMessage = killError instanceof Error ? killError.message : String(killError);
-      console.error(`❌ Failed to kill Chrome process: ${errorMessage}`);
+      console.error(`Error: Failed to kill Chrome process: ${errorMessage}`);
       console.error('   Try manually killing Chrome processes if issues persist\n');
       return 1;
     }
   } catch (error) {
     console.error(
-      `❌ Failed to cleanup Chrome processes: ${error instanceof Error ? error.message : String(error)}\n`
+      `Error: Failed to cleanup Chrome processes: ${error instanceof Error ? error.message : String(error)}\n`
     );
     return 1;
   }
@@ -372,6 +373,8 @@ export async function startSession(
     // Cleanup on error
     await context.cleanup();
 
-    process.exit(1);
+    // Use semantic exit codes based on error type
+    const exitCode = getExitCodeForError(error);
+    process.exit(exitCode);
   }
 }

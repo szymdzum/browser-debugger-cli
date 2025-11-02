@@ -7,7 +7,9 @@ import {
   formatStaleSessionMessage,
   formatNoMetadataMessage,
 } from '@/cli/formatters/statusFormatter.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
+import { VERSION } from '@/utils/version.js';
 
 /**
  * Options for the `bdg status` command.
@@ -40,11 +42,11 @@ export function registerStatusCommand(program: Command): void {
 
         if (!pid) {
           if (options.json) {
-            console.log(JSON.stringify({ active: false }, null, 2));
+            console.log(JSON.stringify({ version: VERSION, active: false }, null, 2));
           } else {
             console.error(formatNoSessionMessage());
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         // Check if process is alive
@@ -52,11 +54,17 @@ export function registerStatusCommand(program: Command): void {
 
         if (!isAlive) {
           if (options.json) {
-            console.log(JSON.stringify({ active: false, stale: true, stalePid: pid }, null, 2));
+            console.log(
+              JSON.stringify(
+                { version: VERSION, active: false, stale: true, stalePid: pid },
+                null,
+                2
+              )
+            );
           } else {
             console.error(formatStaleSessionMessage(pid));
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         // Read metadata
@@ -67,6 +75,7 @@ export function registerStatusCommand(program: Command): void {
             console.log(
               JSON.stringify(
                 {
+                  version: VERSION,
                   active: true,
                   bdgPid: pid,
                   warning: 'Metadata not found (session may be from older version)',
@@ -78,7 +87,7 @@ export function registerStatusCommand(program: Command): void {
           } else {
             console.error(formatNoMetadataMessage(pid));
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         if (options.json) {
@@ -90,12 +99,12 @@ export function registerStatusCommand(program: Command): void {
           console.log(formatSessionStatus(metadata, pid, options.verbose ?? false));
         }
 
-        process.exit(0);
+        process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
         console.error(
           `Error checking status: ${error instanceof Error ? error.message : String(error)}`
         );
-        process.exit(1);
+        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });
 }

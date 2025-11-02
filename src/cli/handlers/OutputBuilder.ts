@@ -1,4 +1,5 @@
 import type { BdgOutput, CDPTarget, NetworkRequest, ConsoleMessage, DOMData } from '@/types';
+import { VERSION } from '@/utils/version.js';
 
 /**
  * Output mode determines what data is included and how partial flag is set
@@ -31,6 +32,7 @@ export class OutputBuilder {
     const { mode, target, startTime, networkRequests, consoleLogs, domData } = options;
 
     const baseOutput = {
+      version: VERSION,
       success: true,
       timestamp: new Date().toISOString(),
       duration: Date.now() - startTime,
@@ -101,12 +103,48 @@ export class OutputBuilder {
    */
   static buildError(error: unknown, startTime: number, target?: CDPTarget): BdgOutput {
     return {
+      version: VERSION,
       success: false,
       timestamp: new Date().toISOString(),
       duration: Date.now() - startTime,
       target: target ? { url: target.url, title: target.title } : { url: '', title: '' },
       data: {},
       error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  /**
+   * Build a simple JSON error response for commands.
+   * Used by commands that don't follow the full BdgOutput structure (stop, cleanup, query).
+   *
+   * @param error - Error message or Error object
+   * @param options - Optional fields (exitCode, additional data)
+   * @returns JSON-serializable error object
+   */
+  static buildJsonError(
+    error: string | Error,
+    options?: { exitCode?: number; [key: string]: unknown }
+  ): Record<string, unknown> {
+    return {
+      version: VERSION,
+      success: false,
+      error: error instanceof Error ? error.message : error,
+      ...options,
+    };
+  }
+
+  /**
+   * Build a simple JSON success response for commands.
+   * Used by commands that don't follow the full BdgOutput structure (stop, cleanup, query).
+   *
+   * @param data - Response data
+   * @returns JSON-serializable success object
+   */
+  static buildJsonSuccess(data: Record<string, unknown>): Record<string, unknown> {
+    return {
+      version: VERSION,
+      success: true,
+      ...data,
     };
   }
 }

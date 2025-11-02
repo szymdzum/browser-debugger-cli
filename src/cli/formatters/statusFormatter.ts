@@ -1,8 +1,10 @@
 import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
 import type { SessionMetadata } from '@/utils/session.js';
 import { isProcessAlive } from '@/utils/session.js';
+import { VERSION } from '@/utils/version.js';
 
 export interface StatusData {
+  version: string;
   active: boolean;
   bdgPid?: number;
   chromePid?: number | undefined;
@@ -44,11 +46,13 @@ export function formatSessionStatus(
   const lines: string[] = [];
   lines.push('Session Status');
   lines.push('━'.repeat(50));
-  lines.push(`Status:           ACTIVE ✓`);
+  lines.push(`Status:           ACTIVE`);
   lines.push(`BDG PID:          ${pid}`);
 
   if (metadata.chromePid) {
-    lines.push(`Chrome PID:       ${metadata.chromePid} ${chromeAlive ? '✓' : '✗ (not running)'}`);
+    lines.push(
+      `Chrome PID:       ${metadata.chromePid} ${chromeAlive ? '(running)' : '(not running)'}`
+    );
   }
 
   lines.push(`Duration:         ${durationFormatted}`);
@@ -56,9 +60,9 @@ export function formatSessionStatus(
   lines.push('');
   lines.push('Collectors');
   lines.push('━'.repeat(50));
-  lines.push('Network:          ✓ Active');
-  lines.push('Console:          ✓ Active');
-  lines.push('DOM:              ✓ Active');
+  lines.push('Network:          Active');
+  lines.push('Console:          Active');
+  lines.push('DOM:              Active');
 
   // Add verbose Chrome diagnostics if requested
   if (verbose) {
@@ -73,7 +77,7 @@ export function formatSessionStatus(
   }
 
   lines.push('');
-  lines.push('💡 Commands:');
+  lines.push('Commands:');
   lines.push('  Stop session:    bdg stop');
   lines.push('  Query browser:   bdg query <script>');
 
@@ -88,17 +92,18 @@ export function formatStatusAsJson(
   pid: number | null
 ): StatusData {
   if (!pid) {
-    return { active: false };
+    return { version: VERSION, active: false };
   }
 
   const isAlive = isProcessAlive(pid);
 
   if (!isAlive) {
-    return { active: false, stale: true, stalePid: pid };
+    return { version: VERSION, active: false, stale: true, stalePid: pid };
   }
 
   if (!metadata) {
     return {
+      version: VERSION,
       active: true,
       bdgPid: pid,
       warning: 'Metadata not found (session may be from older version)',
@@ -117,6 +122,7 @@ export function formatStatusAsJson(
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
 
   return {
+    version: VERSION,
     active: true,
     bdgPid: pid,
     chromePid: metadata.chromePid,
@@ -137,7 +143,7 @@ export function formatStatusAsJson(
 export function formatNoSessionMessage(): string {
   return `No active session found
 
-💡 Suggestions:
+Suggestions:
   Start a new session:     bdg <url>
   List Chrome tabs:        bdg tabs`;
 }
@@ -148,7 +154,7 @@ export function formatNoSessionMessage(): string {
 export function formatStaleSessionMessage(pid: number): string {
   return `Found stale session (PID ${pid} not running)
 
-💡 Suggestions:
+Suggestions:
   Clean up:          bdg cleanup
   Start new session: bdg <url>`;
 }

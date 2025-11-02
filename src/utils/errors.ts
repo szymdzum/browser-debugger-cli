@@ -11,11 +11,13 @@
  * Extends native Error with:
  * - Error codes for programmatic handling
  * - Category for filtering (system/user/external)
+ * - Exit code for semantic exit codes (80-99 user errors, 100-119 software errors)
  * - Cause chaining for nested errors
  */
 export abstract class BdgError extends Error {
   abstract readonly code: string;
   abstract readonly category: 'system' | 'user' | 'external';
+  abstract readonly exitCode: number;
 
   constructor(message: string, cause?: Error) {
     super(message);
@@ -35,6 +37,7 @@ export abstract class BdgError extends Error {
 export class CDPConnectionError extends BdgError {
   readonly code = 'CDP_CONNECTION_ERROR';
   readonly category = 'external' as const;
+  readonly exitCode = 101; // CDP_CONNECTION_FAILURE
 }
 
 /**
@@ -48,6 +51,7 @@ export class CDPConnectionError extends BdgError {
 export class ChromeLaunchError extends BdgError {
   readonly code = 'CHROME_LAUNCH_ERROR';
   readonly category = 'system' as const;
+  readonly exitCode = 100; // CHROME_LAUNCH_FAILURE
 }
 
 /**
@@ -60,6 +64,7 @@ export class ChromeLaunchError extends BdgError {
 export class CDPTimeoutError extends BdgError {
   readonly code = 'CDP_TIMEOUT_ERROR';
   readonly category = 'external' as const;
+  readonly exitCode = 102; // CDP_TIMEOUT
 }
 
 /**
@@ -72,6 +77,7 @@ export class CDPTimeoutError extends BdgError {
 export class InvalidURLError extends BdgError {
   readonly code = 'INVALID_URL_ERROR';
   readonly category = 'user' as const;
+  readonly exitCode = 80; // INVALID_URL
 }
 
 /**
@@ -85,6 +91,7 @@ export class InvalidURLError extends BdgError {
 export class SessionFileError extends BdgError {
   readonly code = 'SESSION_FILE_ERROR';
   readonly category = 'system' as const;
+  readonly exitCode = 103; // SESSION_FILE_ERROR
 }
 
 /**

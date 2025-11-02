@@ -6,6 +6,20 @@ import * as path from 'path';
 import type { BdgOutput } from '@/types';
 
 /**
+ * Session file paths relative to ~/.bdg/
+ * Centralized definition for all session-related files.
+ */
+const SESSION_FILES = {
+  PID: 'session.pid',
+  OUTPUT: 'session.json',
+  LOCK: 'session.lock',
+  METADATA: 'session.meta.json',
+  CHROME_PID: 'chrome.pid',
+  PREVIEW: 'session.preview.json',
+  FULL: 'session.full.json',
+} as const;
+
+/**
  * Get the session directory path (~/.bdg)
  */
 export function getSessionDir(): string {
@@ -26,28 +40,28 @@ export function ensureSessionDir(): void {
  * Get the path to the PID file
  */
 export function getPidFilePath(): string {
-  return path.join(getSessionDir(), 'session.pid');
+  return path.join(getSessionDir(), SESSION_FILES.PID);
 }
 
 /**
  * Get the path to the output JSON file
  */
 export function getOutputFilePath(): string {
-  return path.join(getSessionDir(), 'session.json');
+  return path.join(getSessionDir(), SESSION_FILES.OUTPUT);
 }
 
 /**
  * Get the path to the session lock file
  */
 export function getLockFilePath(): string {
-  return path.join(getSessionDir(), 'session.lock');
+  return path.join(getSessionDir(), SESSION_FILES.LOCK);
 }
 
 /**
  * Get the path to the session metadata file
  */
 export function getMetadataFilePath(): string {
-  return path.join(getSessionDir(), 'session.meta.json');
+  return path.join(getSessionDir(), SESSION_FILES.METADATA);
 }
 
 /**
@@ -55,7 +69,7 @@ export function getMetadataFilePath(): string {
  * This file survives session cleanup so aggressive cleanup can still find Chrome.
  */
 export function getChromePidCachePath(): string {
-  return path.join(getSessionDir(), 'chrome.pid');
+  return path.join(getSessionDir(), SESSION_FILES.CHROME_PID);
 }
 
 /**
@@ -370,14 +384,14 @@ export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM
  * Get the path to the partial output file (lightweight preview, metadata only)
  */
 export function getPartialFilePath(): string {
-  return path.join(getSessionDir(), 'session.preview.json');
+  return path.join(getSessionDir(), SESSION_FILES.PREVIEW);
 }
 
 /**
  * Get the path to the full output file (complete data with bodies)
  */
 export function getFullFilePath(): string {
-  return path.join(getSessionDir(), 'session.full.json');
+  return path.join(getSessionDir(), SESSION_FILES.FULL);
 }
 
 /**
