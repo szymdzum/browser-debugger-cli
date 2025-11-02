@@ -43,7 +43,7 @@ The benchmark tests these collector combinations:
 4. **Console only**: `--console --skip-network --skip-dom`
 5. **Network + Console**: `--network --console --skip-dom`
 
-Each scenario runs for **3 seconds** against the built-in test server.
+Each scenario runs for **6 seconds** against the built-in test server.
 
 ## Test Data
 
@@ -130,6 +130,39 @@ benchmark.ts
 
 - **Preview JSON size**: Size of lightweight preview file (`session.preview.json`)
 - **Full JSON size**: Size of complete output file (`session.full.json`)
+
+## Next Steps (Benchmark Roadmap)
+
+To turn the current harness into a long-term decision tool:
+
+- **Broaden scenarios** – Add additional fixtures for streaming responses, large assets, and WebSocket-heavy apps so optimisations are validated beyond the default demo server.
+- **Collect richer metrics** – Capture Chrome-side stats (e.g., `Network.dataReceived`, `Performance.getMetrics`) alongside node PERF logs to cross-check what the browser reports.
+- **Reduce variance** – Run each scenario multiple times (report min/avg/max) or extend run duration when chasing regressions to smooth out noise.
+- **Automate guardrails** – Wire `npm run benchmark` into CI (full suite manually, “all collectors” in PR/weekly cron) and alert when runtime or size crosses agreed thresholds.
+- **Provide comparison tooling** – Add a helper script such as `npm run benchmark:compare <old> <new>` that diffs two markdown reports and highlights timing/size deltas.
+- **Document provenance** – Record the commit SHA and flag set for each published baseline, and keep README/CLAUDE claims in sync with the latest measured numbers.
+
+## Operational Practices
+
+### Using the Benchmark Harness
+
+- Keep `npm run benchmark` as a pre-merge gate for collector/output changes and attach the `docs/perf/collector-baseline.md` diff to PRs so reviewers see the runtime/size impact.
+- Capture a “golden” baseline on `main` (store the commit SHA at the top of `docs/perf/collector-baseline.md`). Re-run benchmarks whenever a feature branches to ensure deltas are attributable.
+- When results shift, annotate the markdown with a short note (e.g., “+12% preview size: added console payloads”) to maintain an auditable history.
+
+### Automating Checks
+
+- Schedule `npm run benchmark` in CI (e.g., weekly cron) and publish the markdown as an artifact; alert if metrics regress beyond thresholds (e.g., +10 % runtime, +20 % file size).
+- For PR pipelines, run the “all collectors” scenario in CI to keep runtime reasonable, and encourage full local runs before merging heavier changes.
+
+### Feeding Optimisations
+
+- Use the bodies fetched/skipped counts to tune `DEFAULT_SKIP_BODY_PATTERNS`; high skip ratios indicate more patterns could be defaults, while frequent fetches highlight gaps.
+- Correlate benchmark output with `[bdg] active collectors` logs from real captures to validate that field usage matches expectations; when noise is reported, re-run the relevant scenario with matching flags.
+
+### Documentation Maintenance
+
+- Refresh the “Performance Optimisation” sections in `README.md` and `CLAUDE.md` whenever benchmarks show a significant improvement or new flag so public claims stay current.
 
 ## Interpreting Results
 
