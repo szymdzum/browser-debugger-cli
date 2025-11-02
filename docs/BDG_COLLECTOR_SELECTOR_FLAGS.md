@@ -52,3 +52,138 @@ Analysts and agents consistently run `bdg <url>` with large flag bundles to supp
 
 - Use the logged collector set frequencies to sequence collector-specific performance work (network filtering, DOM snapshot slimming, console log compaction).
 - Consider optional telemetry for preview write size/time reductions once collectors become selective.
+
+## Network Optimization Features (Implemented)
+
+### Automatic Body Skipping
+
+By default, bdg automatically skips fetching response bodies for non-essential assets to reduce data volume by 50-80%:
+
+**Auto-skipped patterns** (`DEFAULT_SKIP_BODY_PATTERNS`):
+- Images: `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.svg`, `*.ico`, `*.webp`, `*.bmp`, `*.tiff`
+- Fonts: `*.woff`, `*.woff2`, `*.ttf`, `*.eot`, `*.otf`
+- Stylesheets: `*.css`
+- Source maps: `*.map`, `*.js.map`, `*.css.map`
+- Videos: `*.mp4`, `*.webm`, `*.ogg`, `*.avi`, `*.mov`
+- Audio: `*.mp3`, `*.wav`, `*.flac`, `*.aac`
+
+**Why these patterns?** Assets like images and fonts are rarely useful for debugging application logic, but consume significant bandwidth and storage. API responses (JSON, HTML) are always fetched by default.
+
+### Pattern Matching Flags
+
+Control which URLs and bodies are captured using wildcard patterns:
+
+**Body Fetching Control:**
+```bash
+# Fetch all bodies (override auto-optimization)
+bdg <url> --fetch-all-bodies
+
+# Only fetch bodies matching patterns (comma-separated)
+bdg <url> --fetch-bodies-include "*/api/*,*/graphql"
+
+# Additional patterns to exclude
+bdg <url> --fetch-bodies-exclude "*analytics*,*tracking*"
+```
+
+**URL Filtering:**
+```bash
+# Only capture URLs matching patterns
+bdg <url> --network-include "*/api/*,api.example.com/*"
+
+# Exclude URLs matching patterns
+bdg <url> --network-exclude "*analytics*,*tracking*,*ads*"
+```
+
+### Pattern Syntax
+
+bdg uses **simple wildcard patterns** (not glob or regex):
+
+- `*` matches any characters (including `/`)
+- Patterns are **case-insensitive**
+- Matching is done against **both bare hostname and hostname+pathname**
+  - This allows `api.example.com` to match without requiring `/*`
+
+**Examples:**
+
+| Pattern | Matches | Doesn't Match |
+|---------|---------|---------------|
+| `api.example.com` | All URLs on `api.example.com` (any path) | `cdn.example.com` |
+| `api.example.com/*` | Same as above (explicit wildcard) | `cdn.example.com` |
+| `api.example.com/users` | Only `api.example.com/users` endpoint | `api.example.com/posts` |
+| `*.png` | `example.com/logo.png` | `example.com/logo.jpg` |
+| `*/api/*` | `example.com/api/users` | `example.com/v1/graphql` |
+| `*analytics*` | Any hostname containing "analytics" | `api.example.com/data` |
+
+### Pattern Precedence Rule
+
+**Include always trumps exclude** to provide predictable behavior:
+
+```bash
+# Example: Exclude all tracking, but include Mixpanel specifically
+bdg <url> \
+  --network-include "*mixpanel.com/*" \
+  --network-exclude "*analytics*,*tracking*"
+
+# Result: Mixpanel requests are captured despite matching *tracking*
+```
+
+**Precedence order:**
+1. If URL matches `--network-include` → **CAPTURE** (even if it also matches exclude)
+2. If URL matches `--network-exclude` → **EXCLUDE**
+3. Otherwise → **CAPTURE** (default)
+
+The same precedence applies to `--fetch-bodies-include` vs `--fetch-bodies-exclude`.
+
+### Output Optimization
+
+**Compact JSON Output:**
+
+Use `--compact` flag to reduce output file sizes by ~30% (removes indentation):
+
+```bash
+# Compact output (single-line JSON, no indentation)
+bdg <url> --compact
+
+# Default output (pretty-printed with 2-space indentation)
+bdg <url>
+```
+
+**Impact:**
+- Smaller disk footprint for session files
+- Faster JSON.stringify operations
+- Trade-off: Less human-readable (use `jq` for formatting)
+
+**Inactive Collector Omission:**
+
+When using collector selector flags, inactive sections are **completely omitted** from output (not empty arrays):
+
+```bash
+# Only network collector active
+bdg <url> --network --skip-dom --skip-console
+
+# Output structure:
+{
+  "data": {
+    "network": [...]
+    // No "dom" or "console" keys present
+  }
+}
+```
+
+**Impact:**
+- 30-70% output size reduction for selective collector runs
+- Cleaner output structure (only requested data)
+- Agent-optimized: reduces token consumption when parsing
+
+## Performance Benchmarking
+
+To measure the impact of optimization features, use the built-in benchmark system:
+
+```bash
+# Run all benchmark scenarios
+npm run benchmark
+
+# Results written to docs/perf/collector-baseline.md
+```
+
+See [docs/perf/BENCHMARKING.md](perf/BENCHMARKING.md) for detailed documentation.

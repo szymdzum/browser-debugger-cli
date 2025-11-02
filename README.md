@@ -128,16 +128,67 @@ bdg cleanup --all             # Also remove session.json output
 bdg peek --verbose            # Full URLs, emojis, detailed output
 ```
 
-### Default Filtering
+### Default Filtering & Optimization
 
-By default, `bdg` filters tracking/analytics and dev server noise (9-16% data reduction):
+By default, `bdg` applies multiple optimization layers (50-80% data reduction):
 
-**Network**: 13 domains excluded (Google Analytics, Facebook, TikTok, etc.)
-**Console**: 4 patterns excluded (webpack-dev-server, HMR, React DevTools)
+**Network Request Filtering**: 13 tracking/analytics domains excluded (Google Analytics, Facebook, TikTok, etc.)
+
+**Automatic Body Skipping**: Response bodies auto-skipped for non-essential assets:
+- Images, fonts, stylesheets, source maps, videos, audio
+- API responses (JSON, HTML, JS) are always fetched
+
+**Console Filtering**: 4 dev server patterns excluded (webpack-dev-server, HMR, React DevTools)
 
 ```bash
-# Include all data (disable filtering)
+# Default: filtering and auto-optimization enabled
+bdg localhost:3000
+
+# Include all data (disable all filtering and optimization)
 bdg localhost:3000 --all
+
+# Override just body skipping (still filters tracking domains)
+bdg localhost:3000 --fetch-all-bodies
+```
+
+### Performance Optimization
+
+**Network Optimization** - Control which URLs and bodies are captured:
+
+```bash
+# Only capture specific hosts or patterns
+bdg localhost:3000 --network-include "api.example.com,*.graphql"
+
+# Exclude tracking/analytics domains
+bdg localhost:3000 --network-exclude "*analytics*,*ads*,*tracking*"
+
+# Control body fetching with patterns
+bdg localhost:3000 --fetch-bodies-include "*/api/*,*/graphql"
+bdg localhost:3000 --fetch-bodies-exclude "*tracking*"
+
+# Fetch all bodies (override auto-skip)
+bdg localhost:3000 --fetch-all-bodies
+```
+
+**Output Optimization** - Reduce output file sizes:
+
+```bash
+# Compact JSON output (30% size reduction, no indentation)
+bdg localhost:3000 --compact
+```
+
+**Pattern Syntax** - Simple wildcards (`*` matches anything):
+- `api.example.com` → matches all requests to that host
+- `*/api/*` → matches any path containing `/api/`
+- `*analytics*` → matches any hostname with "analytics"
+- `*.png` → matches all PNG images
+
+**Pattern Precedence** - Include always trumps exclude:
+```bash
+# Capture Mixpanel despite *tracking* exclusion
+bdg localhost:3000 \
+  --network-include "mixpanel.com" \
+  --network-exclude "*tracking*"
 ```
 
 ## Output

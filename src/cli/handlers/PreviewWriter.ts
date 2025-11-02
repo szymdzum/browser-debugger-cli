@@ -28,7 +28,8 @@ export class PreviewWriter {
   constructor(
     private dataSource: PreviewDataSource,
     private startTime: number,
-    private intervalMs: number = 5000
+    private intervalMs: number = 5000,
+    private compact: boolean = false
   ) {}
 
   /**
@@ -133,8 +134,8 @@ export class PreviewWriter {
 
     // Write both files in parallel (async, non-blocking)
     await Promise.all([
-      writePartialOutputAsync(previewOutput), // ~500KB - for 'bdg peek'
-      writeFullOutputAsync(fullOutput), // ~87MB - for 'bdg details'
+      writePartialOutputAsync(previewOutput, this.compact), // ~500KB - for 'bdg peek'
+      writeFullOutputAsync(fullOutput, this.compact), // ~87MB - for 'bdg details'
     ]);
   }
 }

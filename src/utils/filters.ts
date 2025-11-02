@@ -168,22 +168,31 @@ export function matchesWildcard(str: string, pattern: string): boolean {
 /**
  * Check if a URL matches any pattern in a list.
  *
+ * Matches against both bare hostname and hostname+pathname to support:
+ * - Bare hostname patterns: `api.example.com` matches all requests to that host
+ * - Hostname wildcard patterns: `*analytics*` matches "analytics.google.com/collect"
+ * - Path patterns: `*\/api\/*` matches "example.com/api/users"
+ * - Combined patterns: `api.example.com\/users` matches specific endpoint
+ *
  * @param url - The URL to check
  * @param patterns - Array of wildcard patterns
  * @returns True if URL matches any pattern
  */
 function matchesAnyPattern(url: string, patterns: string[]): boolean {
-  // Extract pathname from URL for pattern matching
-  let pathname: string;
   try {
     const parsed = new URL(url);
-    pathname = parsed.pathname;
-  } catch {
-    // If not a valid URL, use the whole string
-    pathname = url;
-  }
+    const hostname = parsed.hostname;
+    const hostnameWithPath = hostname + parsed.pathname;
 
-  return patterns.some((pattern) => matchesWildcard(pathname, pattern));
+    // Test patterns against both bare hostname and hostname+pathname
+    // This allows "api.example.com" to match without requiring "/*"
+    return patterns.some(
+      (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
+    );
+  } catch {
+    // If not a valid URL, test against the whole string
+    return patterns.some((pattern) => matchesWildcard(url, pattern));
+  }
 }
 
 /**
@@ -241,8 +250,9 @@ export function shouldFetchBody(
  *
  * Pattern precedence (follows include-trumps-exclude rule):
  * 1. If URL matches includePatterns → CAPTURE (even if it also matches excludePatterns)
- * 2. If URL matches excludePatterns → EXCLUDE
- * 3. Otherwise → CAPTURE (default behavior)
+ * 2. If includePatterns specified but URL doesn't match → EXCLUDE (whitelist mode)
+ * 3. If URL matches excludePatterns → EXCLUDE
+ * 4. Otherwise → CAPTURE (default behavior)
  *
  * Note: This function is separate from domain filtering (shouldExcludeDomain).
  * Both filters can be applied: domain filtering happens first, then URL pattern filtering.
@@ -260,9 +270,14 @@ export function shouldExcludeUrl(
 ): boolean {
   const { includePatterns = [], excludePatterns = [] } = options;
 
-  // If includePatterns specified and URL matches → never exclude (include trumps exclude)
-  if (includePatterns.length > 0 && matchesAnyPattern(url, includePatterns)) {
-    return false;
+  // If includePatterns specified, act as whitelist
+  if (includePatterns.length > 0) {
+    // URL matches include pattern → don't exclude (include trumps exclude)
+    if (matchesAnyPattern(url, includePatterns)) {
+      return false;
+    }
+    // URL doesn't match include pattern → exclude (whitelist mode)
+    return true;
   }
 
   // If excludePatterns specified and URL matches → exclude

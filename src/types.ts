@@ -146,6 +146,7 @@ export interface ConnectionOptions {
  * @property fetchBodiesExclude URL patterns for bodies to skip.
  * @property networkInclude     URL patterns for requests to capture (trumps exclude).
  * @property networkExclude     URL patterns for requests to exclude.
+ * @property compact            Use compact JSON format (no indentation) for output files.
  */
 export interface SessionOptions {
   includeAll?: boolean;
@@ -154,6 +155,7 @@ export interface SessionOptions {
   fetchBodiesExclude?: string[];
   networkInclude?: string[];
   networkExclude?: string[];
+  compact?: boolean;
 }
 
 export type CleanupFunction = () => void;

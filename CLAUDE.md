@@ -125,6 +125,29 @@ bdg localhost:3000 --chrome-prefs-file ./prefs.json                        # Loa
 bdg localhost:3000 --chrome-flags --disable-gpu --no-sandbox  # Additional Chrome command-line flags
 ```
 
+**Performance Optimization Options**:
+```bash
+# Network Optimization (50-80% data reduction)
+bdg localhost:3000 --fetch-all-bodies                          # Fetch all bodies (override auto-skip)
+bdg localhost:3000 --fetch-bodies-include "*/api/*,*/graphql"  # Only fetch specific patterns
+bdg localhost:3000 --fetch-bodies-exclude "*tracking*"         # Additional patterns to skip
+bdg localhost:3000 --network-include "api.example.com"         # Only capture specific hosts
+bdg localhost:3000 --network-exclude "*analytics*,*ads*"       # Exclude tracking domains
+
+# Output Optimization (30% size reduction)
+bdg localhost:3000 --compact                                    # Compact JSON (no indentation)
+
+# Pattern Syntax: Simple wildcards (* matches anything)
+#   api.example.com         -> matches all requests to that host
+#   */api/*                 -> matches any path containing /api/
+#   *analytics*             -> matches any hostname with "analytics"
+#   *.png                   -> matches all PNG images
+#
+# Pattern Precedence: Include always trumps exclude
+#   --network-include "api.example.com" --network-exclude "*example.com"
+#   -> api.example.com is captured despite exclude pattern
+```
+
 ### Chrome Setup (Optional)
 Chrome is **auto-launched** if not already running. You can also manually start Chrome with debugging:
 ```bash
@@ -264,31 +287,42 @@ bdg peek
 bdg peek --verbose
 ```
 
-**Default Filtering**:
-By default, bdg filters common tracking/analytics domains and dev server noise to reduce data volume by 9-16%:
+**Default Filtering & Optimization**:
+By default, bdg applies multiple optimization layers to reduce data volume by 50-80%:
 
-**Network Filtering** (13 domains excluded):
+**Network Request Filtering** (13 domains excluded):
 - `analytics.google.com`, `googletagmanager.com`, `googleadservices.com`
 - `doubleclick.net`, `clarity.ms`, `facebook.com`, `connect.facebook.net`
 - `tiktok.com`, `bat.bing.com`, `exactag.com`
 - `fullstory.com`, `hotjar.com`, `confirmit.com`
+
+**Automatic Body Skipping** (response bodies auto-skipped for non-essential assets):
+- Images: `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.svg`, `*.ico`, `*.webp`
+- Fonts: `*.woff`, `*.woff2`, `*.ttf`, `*.eot`, `*.otf`
+- Stylesheets: `*.css`
+- Source maps: `*.map`, `*.js.map`, `*.css.map`
+- Videos: `*.mp4`, `*.webm`, `*.ogg`, `*.avi`, `*.mov`
+- Audio: `*.mp3`, `*.wav`, `*.flac`, `*.aac`
 
 **Console Filtering** (4 patterns excluded):
 - `webpack-dev-server`, `[HMR]`, `[WDS]`
 - `Download the React DevTools`
 
 ```bash
-# Default: filtering enabled (excludes tracking/analytics)
+# Default: filtering and auto-optimization enabled
 bdg localhost:3000
 
-# Include all data (disable filtering)
+# Include all data (disable all filtering and optimization)
 bdg localhost:3000 --all
+
+# Override just body skipping (still filters tracking domains)
+bdg localhost:3000 --fetch-all-bodies
 ```
 
 **Why These Defaults?**
 - Designed for agentic/automated use where token efficiency is critical
-- Filtering removes noise that's rarely relevant for debugging
-- Compact format is faster to parse and cheaper to process
+- Filtering removes noise that's rarely relevant for debugging (tracking, dev server logs)
+- Auto-skip optimization reduces bandwidth and storage without losing critical data (API responses, HTML, JS)
 - Verbose/unfiltered modes available when human readability or complete data is needed
 
 ## Architecture

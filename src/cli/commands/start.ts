@@ -42,6 +42,7 @@ import type { CollectorType } from '@/types';
  * @property fetchBodiesExclude     Comma-separated patterns for bodies to exclude.
  * @property networkInclude         Comma-separated URL patterns to capture (trumps exclude).
  * @property networkExclude         Comma-separated URL patterns to exclude.
+ * @property compact                Use compact JSON format (no indentation) for output files.
  */
 interface CollectorOptions {
   port: string;
@@ -67,6 +68,7 @@ interface CollectorOptions {
   fetchBodiesExclude?: string;
   networkInclude?: string;
   networkExclude?: string;
+  compact?: boolean;
 }
 
 /**
@@ -82,6 +84,7 @@ function applyCollectorOptions(command: Command): Command {
     .option('-r, --reuse-tab', REUSE_TAB_OPTION_DESCRIPTION)
     .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
     .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)')
+    .option('-c, --compact', 'Use compact JSON format (no indentation) for output files')
     .option('--log-level <level>', LOG_LEVEL_OPTION_DESCRIPTION)
     .option('--chrome-prefs <json>', CHROME_PREFS_OPTION_DESCRIPTION)
     .option('--chrome-prefs-file <path>', CHROME_PREFS_FILE_OPTION_DESCRIPTION)
@@ -255,6 +258,7 @@ function buildSessionOptions(options: CollectorOptions): {
   fetchBodiesExclude: string[] | undefined;
   networkInclude: string[] | undefined;
   networkExclude: string[] | undefined;
+  compact: boolean;
 } {
   return {
     port: parseInt(options.port, 10),
@@ -274,6 +278,7 @@ function buildSessionOptions(options: CollectorOptions): {
     fetchBodiesExclude: parsePatterns(options.fetchBodiesExclude),
     networkInclude: parsePatterns(options.networkInclude),
     networkExclude: parsePatterns(options.networkExclude),
+    compact: options.compact ?? false,
   };
 }
 

@@ -402,9 +402,13 @@ export function getFullFilePath(): string {
  * Non-blocking version for periodic writes during collection.
  *
  * @param output - The partial BdgOutput data to write
+ * @param compact - If true, use compact JSON format (no indentation)
  * @returns Promise that resolves when write completes
  */
-export async function writePartialOutputAsync(output: BdgOutput): Promise<void> {
+export async function writePartialOutputAsync(
+  output: BdgOutput,
+  compact: boolean = false
+): Promise<void> {
   const startTime = Date.now();
   ensureSessionDir();
   const partialPath = getPartialFilePath();
@@ -412,11 +416,21 @@ export async function writePartialOutputAsync(output: BdgOutput): Promise<void> 
 
   // JSON.stringify is synchronous and blocks event loop - measure it separately
   const stringifyStart = Date.now();
-  const jsonString = JSON.stringify(output, null, 2);
+  const jsonString = compact ? JSON.stringify(output) : JSON.stringify(output, null, 2);
   const stringifyDuration = Date.now() - stringifyStart;
-  console.error(
-    `[PERF] Preview JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024).toFixed(1)}KB)`
-  );
+
+  // Calculate size savings when using compact mode
+  const sizeKB = (jsonString.length / 1024).toFixed(1);
+  if (compact) {
+    // Estimate pretty-printed size (rough heuristic: 30% larger due to indentation)
+    const estimatedPrettyKB = ((jsonString.length * 1.3) / 1024).toFixed(1);
+    const savedKB = (parseFloat(estimatedPrettyKB) - parseFloat(sizeKB)).toFixed(1);
+    console.error(
+      `[PERF] Preview JSON.stringify: ${stringifyDuration}ms (${sizeKB}KB compact, saved ~${savedKB}KB)`
+    );
+  } else {
+    console.error(`[PERF] Preview JSON.stringify: ${stringifyDuration}ms (${sizeKB}KB)`);
+  }
 
   // Write to temp file first, then rename for atomicity
   const ioStart = Date.now();
@@ -437,9 +451,13 @@ export async function writePartialOutputAsync(output: BdgOutput): Promise<void> 
  * Non-blocking version for periodic writes during collection.
  *
  * @param output - The full BdgOutput data to write
+ * @param compact - If true, use compact JSON format (no indentation)
  * @returns Promise that resolves when write completes
  */
-export async function writeFullOutputAsync(output: BdgOutput): Promise<void> {
+export async function writeFullOutputAsync(
+  output: BdgOutput,
+  compact: boolean = false
+): Promise<void> {
   const startTime = Date.now();
   ensureSessionDir();
   const fullPath = getFullFilePath();
@@ -447,11 +465,21 @@ export async function writeFullOutputAsync(output: BdgOutput): Promise<void> {
 
   // JSON.stringify is synchronous and blocks event loop - measure it separately
   const stringifyStart = Date.now();
-  const jsonString = JSON.stringify(output, null, 2);
+  const jsonString = compact ? JSON.stringify(output) : JSON.stringify(output, null, 2);
   const stringifyDuration = Date.now() - stringifyStart;
-  console.error(
-    `[PERF] Full JSON.stringify: ${stringifyDuration}ms (${(jsonString.length / 1024 / 1024).toFixed(1)}MB)`
-  );
+
+  // Calculate size savings when using compact mode
+  const sizeMB = (jsonString.length / 1024 / 1024).toFixed(1);
+  if (compact) {
+    // Estimate pretty-printed size (rough heuristic: 30% larger due to indentation)
+    const estimatedPrettyMB = ((jsonString.length * 1.3) / 1024 / 1024).toFixed(1);
+    const savedMB = (parseFloat(estimatedPrettyMB) - parseFloat(sizeMB)).toFixed(1);
+    console.error(
+      `[PERF] Full JSON.stringify: ${stringifyDuration}ms (${sizeMB}MB compact, saved ~${savedMB}MB)`
+    );
+  } else {
+    console.error(`[PERF] Full JSON.stringify: ${stringifyDuration}ms (${sizeMB}MB)`);
+  }
 
   // Write to temp file first, then rename for atomicity
   const ioStart = Date.now();

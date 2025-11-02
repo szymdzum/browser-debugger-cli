@@ -196,13 +196,18 @@ async function startCollectorsAndMetadata(
  *
  * Uses async I/O with mutex to prevent event loop blocking and overlapping writes.
  */
-function startPreviewWriter(context: SessionContext): void {
+function startPreviewWriter(context: SessionContext, compact: boolean): void {
   if (!context.session) {
     return;
   }
 
   // Create and start preview writer
-  context.previewWriter = new PreviewWriter(context.session, context.startTime);
+  context.previewWriter = new PreviewWriter(
+    context.session,
+    context.startTime,
+    5000, // intervalMs
+    compact
+  );
   context.previewWriter.start();
 }
 
@@ -262,6 +267,7 @@ export async function startSession(
     fetchBodiesExclude?: string[] | undefined;
     networkInclude?: string[] | undefined;
     networkExclude?: string[] | undefined;
+    compact?: boolean | undefined;
   },
   collectors: CollectorType[]
 ): Promise<void> {
@@ -307,6 +313,7 @@ export async function startSession(
     const sessionOptions: SessionOptions = {
       includeAll: options.includeAll ?? false,
       fetchAllBodies: options.fetchAllBodies ?? false,
+      compact: options.compact ?? false,
     };
     if (options.fetchBodiesInclude !== undefined) {
       sessionOptions.fetchBodiesInclude = options.fetchBodiesInclude;
@@ -364,7 +371,7 @@ export async function startSession(
     }
 
     // Phase 5: Start preview writer
-    startPreviewWriter(context);
+    startPreviewWriter(context, options.compact ?? false);
 
     // Optional: Log memory usage periodically (every 30s)
     const memoryLogInterval = setInterval(() => {
