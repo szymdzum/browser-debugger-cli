@@ -60,9 +60,13 @@ export function formatSessionStatus(
   lines.push('');
   lines.push('Collectors');
   lines.push('━'.repeat(50));
-  lines.push('Network:          Active');
-  lines.push('Console:          Active');
-  lines.push('DOM:              Active');
+
+  // Use activeCollectors from metadata, fallback to all collectors for backward compatibility
+  const activeCollectors = metadata.activeCollectors ?? ['network', 'console', 'dom'];
+
+  lines.push(`Network:          ${activeCollectors.includes('network') ? 'Active' : 'Inactive'}`);
+  lines.push(`Console:          ${activeCollectors.includes('console') ? 'Active' : 'Inactive'}`);
+  lines.push(`DOM:              ${activeCollectors.includes('dom') ? 'Active' : 'Inactive'}`);
 
   // Add verbose Chrome diagnostics if requested
   if (verbose) {
@@ -133,7 +137,8 @@ export function formatStatusAsJson(
     port: metadata.port,
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
-    collectors: ['network', 'console', 'dom'], // Default collectors
+    // Use activeCollectors from metadata, fallback to all collectors for backward compatibility
+    collectors: metadata.activeCollectors ?? ['network', 'console', 'dom'],
   };
 }
 

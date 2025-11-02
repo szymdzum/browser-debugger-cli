@@ -17,6 +17,7 @@ export interface SessionState {
   previewWriter: PreviewWriter | null;
   startTime: number;
   target: CDPTarget | null;
+  compact: boolean;
 }
 
 /**
@@ -95,7 +96,7 @@ export class ShutdownController {
    */
   private finalize(output: BdgOutput, exitCode: 0 | 1): never {
     // Write output
-    this.outputWriter.writeSessionOutput(output, exitCode);
+    this.outputWriter.writeSessionOutput(output, exitCode, this.state.compact);
 
     // Leave Chrome running for future sessions
     if (this.state.launchedChrome) {

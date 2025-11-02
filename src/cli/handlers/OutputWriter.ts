@@ -10,13 +10,14 @@ export class OutputWriter {
    *
    * @param output - The output payload to write
    * @param exitCode - 0 for success, 1 for error
+   * @param compact - If true, use compact JSON format (no indentation)
    */
-  writeSessionOutput(output: BdgOutput, exitCode: 0 | 1): void {
+  writeSessionOutput(output: BdgOutput, exitCode: 0 | 1, compact: boolean = false): void {
     // Write output to file for 'bdg stop' to read
     try {
       const message = exitCode === 0 ? 'Writing session output...' : 'Writing error output...';
       console.error(message);
-      writeSessionOutput(output);
+      writeSessionOutput(output, compact);
       const successMessage =
         exitCode === 0
           ? 'Session output written successfully'
@@ -30,6 +31,7 @@ export class OutputWriter {
     }
 
     // Output to stdout (for foreground use)
-    console.log(JSON.stringify(output, null, 2));
+    const jsonString = compact ? JSON.stringify(output) : JSON.stringify(output, null, 2);
+    console.log(jsonString);
   }
 }

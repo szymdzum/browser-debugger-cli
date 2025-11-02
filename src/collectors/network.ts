@@ -17,7 +17,17 @@ import type {
   CDPNetworkLoadingFailedParams,
   CDPGetResponseBodyResponse,
 } from '@/types';
-import { shouldExcludeDomain } from '@/utils/filters.js';
+import { CDPHandlerRegistry } from '@/utils/cdpHandlers.js';
+import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBody } from '@/utils/filters.js';
+
+export interface NetworkCollectionOptions {
+  includeAll?: boolean;
+  fetchAllBodies?: boolean;
+  fetchBodiesInclude?: string[];
+  fetchBodiesExclude?: string[];
+  networkInclude?: string[];
+  networkExclude?: string[];
+}
 
 /**
  * Start collecting network requests via CDP Network domain.
@@ -27,24 +37,37 @@ import { shouldExcludeDomain } from '@/utils/filters.js';
  *
  * @param cdp - CDP connection instance
  * @param requests - Array to populate with completed network requests
- * @param includeAll - If true, disable default domain filtering (default: false)
+ * @param options - Collection options
  * @returns Cleanup function to remove event handlers and clear state
  *
  * @remarks
  * - Chrome buffer limits: 50MB total, 10MB per resource, 1MB POST data (with fallback)
  * - Stale requests (incomplete after 60s) are removed from tracking but NOT added to output
  * - Request limit of 10,000 prevents memory issues in long-running sessions
- * - Response bodies are only fetched for JSON/JavaScript/text MIME types
+ * - Response bodies are automatically skipped for images, fonts, CSS, and source maps (see DEFAULT_SKIP_BODY_PATTERNS)
  * - Response bodies larger than 5MB are skipped with a placeholder message
  * - By default, common tracking/analytics domains are filtered out (use includeAll to disable)
+ * - Pattern precedence: include patterns always trump exclude patterns
  */
 export async function startNetworkCollection(
   cdp: CDPConnection,
   requests: NetworkRequest[],
-  includeAll: boolean = false
+  options: NetworkCollectionOptions = {}
 ): Promise<CleanupFunction> {
+  const {
+    includeAll = false,
+    fetchAllBodies = false,
+    fetchBodiesInclude = [],
+    fetchBodiesExclude = [],
+    networkInclude = [],
+    networkExclude = [],
+  } = options;
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
-  const handlers: Array<{ event: string; id: number }> = [];
+  const registry = new CDPHandlerRegistry();
+
+  // Counters for PERF logging
+  let bodiesFetched = 0;
+  let bodiesSkipped = 0;
 
   // Enable network tracking with buffer limits (if supported)
   // These parameters are optional and experimental, but widely supported in Chrome 58+
@@ -79,7 +102,8 @@ export async function startNetworkCollection(
   }, STALE_REQUEST_CLEANUP_INTERVAL);
 
   // Listen for requests
-  const requestWillBeSentId = cdp.on(
+  registry.register<CDPNetworkRequestParams>(
+    cdp,
     'Network.requestWillBeSent',
     (params: CDPNetworkRequestParams) => {
       if (requestMap.size >= MAX_NETWORK_REQUESTS) {
@@ -103,10 +127,10 @@ export async function startNetworkCollection(
       });
     }
   );
-  handlers.push({ event: 'Network.requestWillBeSent', id: requestWillBeSentId });
 
   // Listen for responses
-  const responseReceivedId = cdp.on(
+  registry.register<CDPNetworkResponseParams>(
+    cdp,
     'Network.responseReceived',
     (params: CDPNetworkResponseParams) => {
       const entry = requestMap.get(params.requestId);
@@ -117,10 +141,10 @@ export async function startNetworkCollection(
       }
     }
   );
-  handlers.push({ event: 'Network.responseReceived', id: responseReceivedId });
 
   // Listen for finished requests
-  const loadingFinishedId = cdp.on(
+  registry.register<CDPNetworkLoadingFinishedParams>(
+    cdp,
     'Network.loadingFinished',
     (params: CDPNetworkLoadingFinishedParams) => {
       const entry = requestMap.get(params.requestId);
@@ -133,29 +157,55 @@ export async function startNetworkCollection(
           return;
         }
 
-        // Try to get response body for API calls
-        // Skip if response is too large to prevent memory issues
+        // Apply URL pattern filtering
+        if (
+          shouldExcludeUrl(request.url, {
+            includePatterns: networkInclude,
+            excludePatterns: networkExclude,
+          })
+        ) {
+          requestMap.delete(params.requestId);
+          return;
+        }
+
+        // Determine if we should fetch the response body
+        const isSizeAcceptable = params.encodedDataLength <= MAX_RESPONSE_SIZE;
         const isTextResponse =
           (request.mimeType?.includes('json') ?? false) ||
           (request.mimeType?.includes('javascript') ?? false) ||
-          (request.mimeType?.includes('text') ?? false);
-        const isSizeAcceptable = params.encodedDataLength <= MAX_RESPONSE_SIZE;
+          (request.mimeType?.includes('text') ?? false) ||
+          (request.mimeType?.includes('html') ?? false);
 
         if (isTextResponse && isSizeAcceptable) {
-          // Fetch response body asynchronously
-          void cdp
-            .send('Network.getResponseBody', { requestId: params.requestId })
-            .then((response) => {
-              const typedResponse = response as CDPGetResponseBodyResponse;
-              request.responseBody = typedResponse.body;
-            })
-            .catch(() => {
-              // Response body not available (e.g., 204 No Content, redirects, etc.)
-            });
+          // Check if we should fetch body based on patterns
+          const shouldFetch = shouldFetchBody(request.url, request.mimeType, {
+            fetchAllBodies,
+            includePatterns: fetchBodiesInclude,
+            excludePatterns: fetchBodiesExclude,
+          });
+
+          if (shouldFetch) {
+            bodiesFetched++;
+            // Fetch response body asynchronously
+            void cdp
+              .send('Network.getResponseBody', { requestId: params.requestId })
+              .then((response) => {
+                const typedResponse = response as CDPGetResponseBodyResponse;
+                request.responseBody = typedResponse.body;
+              })
+              .catch(() => {
+                // Response body not available (e.g., 204 No Content, redirects, etc.)
+              });
+          } else {
+            bodiesSkipped++;
+            request.responseBody = '[SKIPPED: Auto-optimization (see DEFAULT_SKIP_BODY_PATTERNS)]';
+          }
         } else if (isTextResponse && !isSizeAcceptable) {
+          bodiesSkipped++;
           // Mark large responses as skipped
           request.responseBody = `[SKIPPED: Response too large (${(params.encodedDataLength / 1024 / 1024).toFixed(2)}MB > ${MAX_RESPONSE_SIZE / 1024 / 1024}MB)]`;
         }
+
         requests.push(request);
         requestMap.delete(params.requestId);
       } else if (requests.length >= MAX_NETWORK_REQUESTS) {
@@ -164,16 +214,27 @@ export async function startNetworkCollection(
       }
     }
   );
-  handlers.push({ event: 'Network.loadingFinished', id: loadingFinishedId });
 
   // Listen for failed requests
-  const loadingFailedId = cdp.on(
+  registry.register<CDPNetworkLoadingFailedParams>(
+    cdp,
     'Network.loadingFailed',
     (params: CDPNetworkLoadingFailedParams) => {
       const entry = requestMap.get(params.requestId);
       if (entry && requests.length < MAX_NETWORK_REQUESTS) {
         // Apply domain filtering
         if (shouldExcludeDomain(entry.request.url, includeAll)) {
+          requestMap.delete(params.requestId);
+          return;
+        }
+
+        // Apply URL pattern filtering
+        if (
+          shouldExcludeUrl(entry.request.url, {
+            includePatterns: networkInclude,
+            excludePatterns: networkExclude,
+          })
+        ) {
           requestMap.delete(params.requestId);
           return;
         }
@@ -186,15 +247,23 @@ export async function startNetworkCollection(
       }
     }
   );
-  handlers.push({ event: 'Network.loadingFailed', id: loadingFailedId });
 
   // Return cleanup function
   return () => {
+    // Log PERF metrics
+    const totalBodyDecisions = bodiesFetched + bodiesSkipped;
+    if (totalBodyDecisions > 0) {
+      const percentageSkipped = ((bodiesSkipped / totalBodyDecisions) * 100).toFixed(1);
+      console.error(
+        `[PERF] Network bodies: ${bodiesFetched} fetched, ${bodiesSkipped} skipped (${percentageSkipped}% reduction)`
+      );
+    }
+
     // Clear interval
     clearInterval(cleanupInterval);
 
     // Remove event handlers
-    handlers.forEach(({ event, id }) => cdp.off(event, id));
+    registry.cleanup(cdp);
 
     // Clear request map
     requestMap.clear();

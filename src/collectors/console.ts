@@ -6,6 +6,7 @@ import type {
   CDPConsoleAPICalledParams,
   CDPExceptionThrownParams,
 } from '@/types';
+import { CDPHandlerRegistry } from '@/utils/cdpHandlers.js';
 import { shouldExcludeConsoleMessage } from '@/utils/filters.js';
 
 /**
@@ -28,81 +29,87 @@ export async function startConsoleCollection(
   messages: ConsoleMessage[],
   includeAll: boolean = false
 ): Promise<CleanupFunction> {
-  const handlers: Array<{ event: string; id: number }> = [];
+  const registry = new CDPHandlerRegistry();
 
   // Enable runtime
   await cdp.send('Runtime.enable');
   await cdp.send('Log.enable');
 
   // Listen for console API calls
-  const consoleAPIId = cdp.on('Runtime.consoleAPICalled', (params: CDPConsoleAPICalledParams) => {
-    const text = params.args
-      .map((arg) => {
-        // arg type already defined in CDPConsoleAPICalledParams
-        if (arg.value !== undefined) {
-          // Handle different value types - primitives only, objects use description
-          const value = arg.value;
-          if (
-            typeof value === 'string' ||
-            typeof value === 'number' ||
-            typeof value === 'boolean'
-          ) {
-            return String(value);
+  registry.register<CDPConsoleAPICalledParams>(
+    cdp,
+    'Runtime.consoleAPICalled',
+    (params: CDPConsoleAPICalledParams) => {
+      const text = params.args
+        .map((arg) => {
+          // arg type already defined in CDPConsoleAPICalledParams
+          if (arg.value !== undefined) {
+            // Handle different value types - primitives only, objects use description
+            const value = arg.value;
+            if (
+              typeof value === 'string' ||
+              typeof value === 'number' ||
+              typeof value === 'boolean'
+            ) {
+              return String(value);
+            }
+            // For objects/arrays, use description if available
+            return arg.description ?? '[object]';
           }
-          // For objects/arrays, use description if available
-          return arg.description ?? '[object]';
-        }
-        if (arg.description !== undefined) {
-          return arg.description;
-        }
-        return '';
-      })
-      .join(' ');
+          if (arg.description !== undefined) {
+            return arg.description;
+          }
+          return '';
+        })
+        .join(' ');
 
-    // Apply pattern filtering
-    if (shouldExcludeConsoleMessage(text, includeAll)) {
-      return;
-    }
+      // Apply pattern filtering
+      if (shouldExcludeConsoleMessage(text, includeAll)) {
+        return;
+      }
 
-    const message: ConsoleMessage = {
-      type: params.type,
-      text,
-      timestamp: params.timestamp,
-      args: params.args,
-    };
-    if (messages.length < MAX_CONSOLE_MESSAGES) {
-      messages.push(message);
-    } else if (messages.length === MAX_CONSOLE_MESSAGES) {
-      console.error(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
+      const message: ConsoleMessage = {
+        type: params.type,
+        text,
+        timestamp: params.timestamp,
+        args: params.args,
+      };
+      if (messages.length < MAX_CONSOLE_MESSAGES) {
+        messages.push(message);
+      } else if (messages.length === MAX_CONSOLE_MESSAGES) {
+        console.error(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
+      }
     }
-  });
-  handlers.push({ event: 'Runtime.consoleAPICalled', id: consoleAPIId });
+  );
 
   // Listen for exceptions
-  const exceptionId = cdp.on('Runtime.exceptionThrown', (params: CDPExceptionThrownParams) => {
-    const exception = params.exceptionDetails;
-    const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
+  registry.register<CDPExceptionThrownParams>(
+    cdp,
+    'Runtime.exceptionThrown',
+    (params: CDPExceptionThrownParams) => {
+      const exception = params.exceptionDetails;
+      const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
 
-    // Apply pattern filtering (but don't filter errors by default)
-    // Errors are usually important, only filter if they match noise patterns
-    if (shouldExcludeConsoleMessage(text, includeAll)) {
-      return;
-    }
+      // Apply pattern filtering (but don't filter errors by default)
+      // Errors are usually important, only filter if they match noise patterns
+      if (shouldExcludeConsoleMessage(text, includeAll)) {
+        return;
+      }
 
-    const message: ConsoleMessage = {
-      type: 'error',
-      text,
-      timestamp: exception.timestamp ?? Date.now(),
-    };
-    if (messages.length < MAX_CONSOLE_MESSAGES) {
-      messages.push(message);
+      const message: ConsoleMessage = {
+        type: 'error',
+        text,
+        timestamp: exception.timestamp ?? Date.now(),
+      };
+      if (messages.length < MAX_CONSOLE_MESSAGES) {
+        messages.push(message);
+      }
     }
-  });
-  handlers.push({ event: 'Runtime.exceptionThrown', id: exceptionId });
+  );
 
   // Return cleanup function
   return () => {
     // Remove event handlers
-    handlers.forEach(({ event, id }) => cdp.off(event, id));
+    registry.cleanup(cdp);
   };
 }

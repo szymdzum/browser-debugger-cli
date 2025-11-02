@@ -1,6 +1,7 @@
 import { startConsoleCollection } from '@/collectors/console.js';
 import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
+import type { NetworkCollectionOptions } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { validateTarget } from '@/connection/finder.js';
 import type {
@@ -11,6 +12,7 @@ import type {
   DOMData,
   BdgOutput,
   CleanupFunction,
+  SessionOptions,
 } from '@/types';
 import { VERSION } from '@/utils/version.js';
 
@@ -31,14 +33,16 @@ export class BdgSession {
   private networkRequests: NetworkRequest[] = [];
   private consoleLogs: ConsoleMessage[] = [];
   private activeCollectors: CollectorType[] = [];
+  private sessionOptions: SessionOptions;
 
   constructor(
     private target: CDPTarget,
     private port: number,
-    private includeAll: boolean = false
+    options: SessionOptions = {}
   ) {
     this.cdp = new CDPConnection();
     this.startTime = Date.now();
+    this.sessionOptions = options;
   }
 
   async connect(): Promise<void> {
@@ -77,11 +81,35 @@ export class BdgSession {
     let cleanup: CleanupFunction;
 
     switch (type) {
-      case 'network':
-        cleanup = await startNetworkCollection(this.cdp, this.networkRequests, this.includeAll);
+      case 'network': {
+        const networkOptions: NetworkCollectionOptions = {};
+        if (this.sessionOptions.includeAll !== undefined) {
+          networkOptions.includeAll = this.sessionOptions.includeAll;
+        }
+        if (this.sessionOptions.fetchAllBodies !== undefined) {
+          networkOptions.fetchAllBodies = this.sessionOptions.fetchAllBodies;
+        }
+        if (this.sessionOptions.fetchBodiesInclude !== undefined) {
+          networkOptions.fetchBodiesInclude = this.sessionOptions.fetchBodiesInclude;
+        }
+        if (this.sessionOptions.fetchBodiesExclude !== undefined) {
+          networkOptions.fetchBodiesExclude = this.sessionOptions.fetchBodiesExclude;
+        }
+        if (this.sessionOptions.networkInclude !== undefined) {
+          networkOptions.networkInclude = this.sessionOptions.networkInclude;
+        }
+        if (this.sessionOptions.networkExclude !== undefined) {
+          networkOptions.networkExclude = this.sessionOptions.networkExclude;
+        }
+        cleanup = await startNetworkCollection(this.cdp, this.networkRequests, networkOptions);
         break;
+      }
       case 'console':
-        cleanup = await startConsoleCollection(this.cdp, this.consoleLogs, this.includeAll);
+        cleanup = await startConsoleCollection(
+          this.cdp,
+          this.consoleLogs,
+          this.sessionOptions.includeAll ?? false
+        );
         break;
       case 'dom':
         cleanup = await prepareDOMCollection(this.cdp);

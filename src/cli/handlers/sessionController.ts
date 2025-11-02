@@ -1,6 +1,6 @@
 import type { LaunchOptions } from '@/connection/launcher.js';
 import type { BdgSession } from '@/session/BdgSession.js';
-import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
+import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError } from '@/utils/errors.js';
 import { getExitCodeForError } from '@/utils/exitCodes.js';
@@ -117,14 +117,18 @@ class SessionContext implements SessionState {
   previewWriter: PreviewWriter | null = null;
   startTime: number;
   target: CDPTarget | null = null;
+  compact: boolean;
   private shutdownController: ShutdownController;
 
   /**
    * Create a new session context and track the start timestamp.
    * The context is shared with signal handlers so they can orchestrate shutdown.
+   *
+   * @param compact - If true, use compact JSON format (no indentation)
    */
-  constructor() {
+  constructor(compact: boolean = false) {
     this.startTime = Date.now();
+    this.compact = compact;
     this.shutdownController = new ShutdownController(this);
   }
 
@@ -184,6 +188,7 @@ async function startCollectorsAndMetadata(
     port,
     targetId: target.id,
     webSocketDebuggerUrl: target.webSocketDebuggerUrl,
+    activeCollectors: collectors,
   });
 
   // Note: Chrome PID cache is written immediately after launch (Phase 2)
@@ -195,13 +200,18 @@ async function startCollectorsAndMetadata(
  *
  * Uses async I/O with mutex to prevent event loop blocking and overlapping writes.
  */
-function startPreviewWriter(context: SessionContext): void {
+function startPreviewWriter(context: SessionContext, compact: boolean): void {
   if (!context.session) {
     return;
   }
 
   // Create and start preview writer
-  context.previewWriter = new PreviewWriter(context.session, context.startTime);
+  context.previewWriter = new PreviewWriter(
+    context.session,
+    context.startTime,
+    5000, // intervalMs
+    compact
+  );
   context.previewWriter.start();
 }
 
@@ -256,10 +266,16 @@ export async function startSession(
     connectionPollInterval?: number | undefined;
     maxConnectionRetries?: number | undefined;
     portStrictMode?: boolean | undefined;
+    fetchAllBodies?: boolean | undefined;
+    fetchBodiesInclude?: string[] | undefined;
+    fetchBodiesExclude?: string[] | undefined;
+    networkInclude?: string[] | undefined;
+    networkExclude?: string[] | undefined;
+    compact?: boolean | undefined;
   },
   collectors: CollectorType[]
 ): Promise<void> {
-  const context = new SessionContext();
+  const context = new SessionContext(options.compact ?? false);
 
   // Setup signal handlers for graceful shutdown
   const signalHandler = new SignalHandler({
@@ -298,12 +314,29 @@ export async function startSession(
 
     // Phase 3: CDP connection and target setup
     const setupStart = Date.now();
+    const sessionOptions: SessionOptions = {
+      includeAll: options.includeAll ?? false,
+      fetchAllBodies: options.fetchAllBodies ?? false,
+      compact: options.compact ?? false,
+    };
+    if (options.fetchBodiesInclude !== undefined) {
+      sessionOptions.fetchBodiesInclude = options.fetchBodiesInclude;
+    }
+    if (options.fetchBodiesExclude !== undefined) {
+      sessionOptions.fetchBodiesExclude = options.fetchBodiesExclude;
+    }
+    if (options.networkInclude !== undefined) {
+      sessionOptions.networkInclude = options.networkInclude;
+    }
+    if (options.networkExclude !== undefined) {
+      sessionOptions.networkExclude = options.networkExclude;
+    }
     const setupResult = await TargetSetup.setup(
       url,
       targetUrl,
       options.port,
       options.reuseTab ?? false,
-      options.includeAll ?? false
+      sessionOptions
     );
     const session = setupResult.session;
     const target = setupResult.target;
@@ -319,6 +352,11 @@ export async function startSession(
       options.port,
       target,
       context.launchedChrome?.pid
+    );
+
+    // Log active collectors for forensic tracking and optimization prioritization
+    console.error(
+      `[bdg] active collectors: ${collectors.join(', ')} (${url}, port ${options.port})`
     );
 
     // Total session startup time
@@ -337,7 +375,7 @@ export async function startSession(
     }
 
     // Phase 5: Start preview writer
-    startPreviewWriter(context);
+    startPreviewWriter(context, options.compact ?? false);
 
     // Optional: Log memory usage periodically (every 30s)
     const memoryLogInterval = setInterval(() => {

@@ -90,9 +90,15 @@ bdg localhost:3000 --timeout 30             # Stops after 30s
 
 **Collect Specific Data**:
 ```bash
-bdg dom localhost:3000        # DOM snapshot only
-bdg network localhost:3000    # Network requests only
-bdg console localhost:3000    # Console logs only
+# Additive flags (enable only specific collectors)
+bdg localhost:3000 --dom                    # DOM snapshot only
+bdg localhost:3000 --network                # Network requests only
+bdg localhost:3000 --console                # Console logs only
+bdg localhost:3000 --dom --console          # DOM and console only
+
+# Subtractive flags (disable specific collectors)
+bdg localhost:3000 --skip-console             # Network and DOM only
+bdg localhost:3000 --skip-dom --skip-network  # Console only
 ```
 
 **Basic Options**:
@@ -117,6 +123,29 @@ bdg localhost:3000 --chrome-prefs-file ./prefs.json                        # Loa
 
 # Chrome Flags
 bdg localhost:3000 --chrome-flags --disable-gpu --no-sandbox  # Additional Chrome command-line flags
+```
+
+**Performance Optimization Options**:
+```bash
+# Network Optimization (50-80% data reduction)
+bdg localhost:3000 --fetch-all-bodies                          # Fetch all bodies (override auto-skip)
+bdg localhost:3000 --fetch-bodies-include "*/api/*,*/graphql"  # Only fetch specific patterns
+bdg localhost:3000 --fetch-bodies-exclude "*tracking*"         # Additional patterns to skip
+bdg localhost:3000 --network-include "api.example.com"         # Only capture specific hosts
+bdg localhost:3000 --network-exclude "*analytics*,*ads*"       # Exclude tracking domains
+
+# Output Optimization (30% size reduction)
+bdg localhost:3000 --compact                                    # Compact JSON (no indentation)
+
+# Pattern Syntax: Simple wildcards (* matches anything)
+#   api.example.com         -> matches all requests to that host
+#   */api/*                 -> matches any path containing /api/
+#   *analytics*             -> matches any hostname with "analytics"
+#   *.png                   -> matches all PNG images
+#
+# Pattern Precedence: Include always trumps exclude
+#   --network-include "api.example.com" --network-exclude "*example.com"
+#   -> api.example.com is captured despite exclude pattern
 ```
 
 ### Chrome Setup (Optional)
@@ -258,31 +287,42 @@ bdg peek
 bdg peek --verbose
 ```
 
-**Default Filtering**:
-By default, bdg filters common tracking/analytics domains and dev server noise to reduce data volume by 9-16%:
+**Default Filtering & Optimization**:
+By default, bdg applies multiple optimization layers to reduce data volume by 50-80%:
 
-**Network Filtering** (13 domains excluded):
+**Network Request Filtering** (13 domains excluded):
 - `analytics.google.com`, `googletagmanager.com`, `googleadservices.com`
 - `doubleclick.net`, `clarity.ms`, `facebook.com`, `connect.facebook.net`
 - `tiktok.com`, `bat.bing.com`, `exactag.com`
 - `fullstory.com`, `hotjar.com`, `confirmit.com`
+
+**Automatic Body Skipping** (response bodies auto-skipped for non-essential assets):
+- Images: `*.png`, `*.jpg`, `*.jpeg`, `*.gif`, `*.svg`, `*.ico`, `*.webp`
+- Fonts: `*.woff`, `*.woff2`, `*.ttf`, `*.eot`, `*.otf`
+- Stylesheets: `*.css`
+- Source maps: `*.map`, `*.js.map`, `*.css.map`
+- Videos: `*.mp4`, `*.webm`, `*.ogg`, `*.avi`, `*.mov`
+- Audio: `*.mp3`, `*.wav`, `*.flac`, `*.aac`
 
 **Console Filtering** (4 patterns excluded):
 - `webpack-dev-server`, `[HMR]`, `[WDS]`
 - `Download the React DevTools`
 
 ```bash
-# Default: filtering enabled (excludes tracking/analytics)
+# Default: filtering and auto-optimization enabled
 bdg localhost:3000
 
-# Include all data (disable filtering)
+# Include all data (disable all filtering and optimization)
 bdg localhost:3000 --all
+
+# Override just body skipping (still filters tracking domains)
+bdg localhost:3000 --fetch-all-bodies
 ```
 
 **Why These Defaults?**
 - Designed for agentic/automated use where token efficiency is critical
-- Filtering removes noise that's rarely relevant for debugging
-- Compact format is faster to parse and cheaper to process
+- Filtering removes noise that's rarely relevant for debugging (tracking, dev server logs)
+- Auto-skip optimization reduces bandwidth and storage without losing critical data (API responses, HTML, JS)
 - Verbose/unfiltered modes available when human readability or complete data is needed
 
 ## Architecture
@@ -762,41 +802,3 @@ npm run validate:ts-version  # Verify TypeScript 5.6+ compatibility
 4. **Team Consistency**: Automated validation ensures consistent practices
 5. **Modern Standards**: Uses cutting-edge TypeScript and ESLint features
 
-## Known Limitations
-
-### Commander.js Subcommand Option Parsing
-
-**Issue**: Options (like `--reuse-tab`, `--timeout`, `--port`) only work on the **default command**, not on subcommands (`dom`, `network`, `console`).
-
-**Root Cause**: Commander.js has a parsing conflict when you define:
-1. A default command with `.argument()` on the root program
-2. Subcommands with their own arguments
-
-This causes Commander.js to interpret the option flags incorrectly on subcommands.
-
-**Evidence**:
-```bash
-# ✅ Works - default command
-bdg example.com --reuse-tab --timeout 30
-# Options are parsed correctly
-
-# ❌ Doesn't work - subcommand
-bdg network example.com --reuse-tab --timeout 30
-# Options are NOT parsed (silently ignored)
-```
-
-**Workaround**: Use the default command for all collection types when you need options:
-```bash
-# Instead of: bdg network example.com --reuse-tab
-# Use: bdg example.com --reuse-tab
-# (collects all data types, but options work correctly)
-```
-
-**Status**: This is a known limitation of Commander.js when combining default commands and subcommands. A fix would require restructuring the CLI command architecture.
-
-**Affected Options**:
-- `-p, --port <number>` - Only works on default command
-- `-t, --timeout <seconds>` - Only works on default command
-- `-r, --reuse-tab` - Only works on default command
-- `-u, --user-data-dir <path>` - Only works on default command
-- `-a, --all` - Only works on default command
