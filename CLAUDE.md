@@ -95,11 +95,28 @@ bdg network localhost:3000    # Network requests only
 bdg console localhost:3000    # Console logs only
 ```
 
-**Options**:
+**Basic Options**:
 ```bash
 bdg localhost:3000 --port 9223              # Custom CDP port
 bdg localhost:3000 --timeout 30             # Auto-stop after timeout
 bdg localhost:3000 --all                    # Include all data (disable filtering)
+bdg localhost:3000 --user-data-dir ~/custom # Custom Chrome profile directory
+```
+
+**Advanced Chrome Options**:
+```bash
+# Chrome Launcher Configuration
+bdg localhost:3000 --log-level verbose      # Chrome launcher logging (verbose|info|error|silent)
+bdg localhost:3000 --connection-poll-interval 1000  # CDP readiness check interval (ms)
+bdg localhost:3000 --max-connection-retries 100     # Maximum connection retry attempts
+bdg localhost:3000 --port-strict            # Fail if port is already in use (lenient by default)
+
+# Chrome Preferences
+bdg localhost:3000 --chrome-prefs '{"download.default_directory":"/tmp"}'  # Inline JSON prefs
+bdg localhost:3000 --chrome-prefs-file ./prefs.json                        # Load prefs from file
+
+# Chrome Flags
+bdg localhost:3000 --chrome-flags --disable-gpu --no-sandbox  # Additional Chrome command-line flags
 ```
 
 ### Chrome Setup (Optional)
@@ -140,8 +157,9 @@ bdg localhost:3000
 # Collects data until stopped
 
 # Check session status (without stopping)
-bdg status
-# Shows: PID, duration, port, active collectors
+bdg status                      # Basic status information
+bdg status --verbose            # Include Chrome diagnostics (binary path, installations)
+bdg status --json               # JSON output
 
 # Preview collected data (without stopping)
 bdg peek
@@ -163,9 +181,10 @@ bdg stop
 # Cleans up all session files (PID, lock, metadata, preview, full)
 
 # Clean up stale session files
-bdg cleanup
-# Removes session files from crashed/dead sessions
+bdg cleanup                     # Remove stale session files
 bdg cleanup --force             # Force cleanup even if session appears active
+bdg cleanup --aggressive        # Kill all Chrome processes (uses chrome-launcher killAll)
+bdg cleanup --all               # Also remove session.json output file
 ```
 
 **Session Behaviors**:
@@ -561,6 +580,86 @@ bdg details console <index>     # Full console message details
 # Maintenance
 bdg cleanup                     # Clean stale sessions
 bdg cleanup --all               # Also remove session.json output file
+```
+
+## Troubleshooting
+
+### Chrome Launch Failures
+
+When Chrome fails to launch, bdg automatically displays diagnostic information including:
+- Detected Chrome installations on your system
+- Default Chrome binary path
+- Actionable troubleshooting steps
+
+**Common Issues**:
+
+1. **No Chrome installations detected**
+   ```bash
+   # Install Chrome from https://www.google.com/chrome/
+   ```
+
+2. **Port already in use**
+   ```bash
+   # Use a different port
+   bdg localhost:3000 --port 9223
+
+   # Or use strict mode to fail fast
+   bdg localhost:3000 --port-strict
+   ```
+
+3. **Permission denied**
+   ```bash
+   # Check Chrome binary permissions
+   ls -l $(which google-chrome)  # Linux
+   ls -l /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome  # macOS
+
+   # Fix permissions if needed
+   chmod +x /path/to/chrome/binary
+   ```
+
+4. **Connection timeout**
+   ```bash
+   # Increase retry attempts and polling interval
+   bdg localhost:3000 \
+     --max-connection-retries 100 \
+     --connection-poll-interval 1000  # 1 second intervals
+   ```
+
+### Chrome Diagnostics
+
+Check Chrome installation status:
+```bash
+# View Chrome diagnostics in status
+bdg status --verbose
+# Shows: Chrome binary path, number of installations found
+
+# View detailed launch telemetry (in stderr during launch)
+# Shows: Binary path, connection config, launch duration
+```
+
+### Stale Chrome Processes
+
+If Chrome processes are left running after bdg crashes:
+```bash
+# Kill all Chrome processes (aggressive cleanup)
+bdg cleanup --aggressive
+
+# Manually check for Chrome processes
+ps aux | grep -i chrome
+```
+
+### Session Lock Issues
+
+If session lock is stuck after a crash:
+```bash
+# Force cleanup of stale session files
+bdg cleanup --force
+
+# Check for stale PID
+bdg status
+
+# Manual cleanup (last resort)
+rm -rf ~/.bdg/session.*
 ```
 
 ## Known Limitations

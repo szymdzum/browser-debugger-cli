@@ -146,26 +146,6 @@ export function writeSessionOutput(output: BdgOutput): void {
 }
 
 /**
- * Read session output from the JSON file
- *
- * @returns The BdgOutput data if file exists and is valid, null otherwise
- */
-export function readSessionOutput(): BdgOutput | null {
-  const outputPath = getOutputFilePath();
-
-  if (!fs.existsSync(outputPath)) {
-    return null;
-  }
-
-  try {
-    const content = fs.readFileSync(outputPath, 'utf-8');
-    return JSON.parse(content) as BdgOutput;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Acquire session lock atomically.
  *
  * Uses exclusive file creation (wx flag) to ensure only one session can run.
@@ -272,24 +252,6 @@ export function getFullFilePath(): string {
 }
 
 /**
- * Write partial session output for live preview (lightweight, metadata only).
- *
- * Uses atomic write (tmp file + rename) to prevent corruption.
- * Excludes request/response bodies and limits to last 1000 items.
- *
- * @param output - The partial BdgOutput data to write
- */
-export function writePartialOutput(output: BdgOutput): void {
-  ensureSessionDir();
-  const partialPath = getPartialFilePath();
-  const tmpPath = partialPath + '.tmp';
-
-  // Write to temp file first, then rename for atomicity
-  fs.writeFileSync(tmpPath, JSON.stringify(output, null, 2), 'utf-8');
-  fs.renameSync(tmpPath, partialPath);
-}
-
-/**
  * Write partial session output for live preview (async version).
  *
  * Uses atomic write (tmp file + rename) to prevent corruption.
@@ -322,24 +284,6 @@ export async function writePartialOutputAsync(output: BdgOutput): Promise<void> 
   console.error(
     `[PERF] Preview write: ${totalDuration}ms (stringify: ${stringifyDuration}ms, I/O: ${ioDuration}ms)`
   );
-}
-
-/**
- * Write full session output for details view (complete data with bodies).
- *
- * Uses atomic write (tmp file + rename) to prevent corruption.
- * Includes all data with request/response bodies.
- *
- * @param output - The full BdgOutput data to write
- */
-export function writeFullOutput(output: BdgOutput): void {
-  ensureSessionDir();
-  const fullPath = getFullFilePath();
-  const tmpPath = fullPath + '.tmp';
-
-  // Write to temp file first, then rename for atomicity
-  fs.writeFileSync(tmpPath, JSON.stringify(output, null, 2), 'utf-8');
-  fs.renameSync(tmpPath, fullPath);
 }
 
 /**
