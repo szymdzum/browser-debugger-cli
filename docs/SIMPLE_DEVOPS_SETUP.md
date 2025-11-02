@@ -186,9 +186,7 @@ jobs:
         run: npm ci
         
       - name: Run tests and quality checks
-        run: |
-          npm run check
-          npm run test:e2e
+        run: npm run check
           
       - name: Build package
         run: npm run build
@@ -274,44 +272,29 @@ major → 1.0.0
 
 ## Step 4: Enhanced Quality Gates
 
-### 4.1: Update CI to Block Merges
+### 4.1: Rely on Fast, Deterministic Checks
 
-Add to `.github/workflows/ci.yml`:
+Our GitHub Actions workflow now blocks merges with deterministic jobs only:
 
-```yaml
-  e2e-test:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          
-      - name: Install dependencies
-        run: npm ci
-        
-      - name: Build package
-        run: npm run build
-        
-      - name: Run E2E tests
-        run: npm run test:e2e
-```
+- `Build` (build + artifact generation)
+- `Code Quality` (format, type-check, lint)
+- `Contract Tests` (CDP connection unit/contract tests)
+- `Security Audit` (npm audit)
+
+The legacy `scripts/test-e2e.sh` remains available for manual smoke testing but
+is intentionally excluded from CI because it requires an interactive Chrome
+session and doesn’t provide reliable exit codes. If you need automated browser
+coverage, create a dedicated headless suite with real assertions before wiring
+it into CI.
 
 ### 4.2: Require Status Checks
 
 1. Go to GitHub → Settings → Branches
-2. Add branch protection rule for `main`
-3. Require status checks: 
+2. Add a branch protection rule for `main`
+3. Require status checks:
    - `Code Quality`
+   - `Contract Tests`
    - `Security Audit`
-   - `E2E Tests`
-   - `CodeQL`
 
 ## Step 5: Simple Rollback Strategies
 

@@ -22,7 +22,7 @@ We use a **lightweight 2-layer approach** optimized for this codebase size:
 | Layer | Location | Description | Execution |
 |-------|----------|-------------|-----------|
 | **Contract** | `src/**/__tests__/*.test.ts` | Fast (<200ms/suite), deterministic checks of module-level contracts. Uses lightweight boundary fakes. Co-located next to the code they test. | `npm test` or `npm run test:watch` |
-| **Smoke / E2E** | `scripts/test-e2e.sh` & docs | Real CLI scenarios that exercise Chrome + filesystem. Documented expectations in `SMOKE_TEST_TELEMETRY.md`. | On demand: `npm run test:e2e` |
+| **Smoke / E2E** | `scripts/test-e2e.sh` & docs | Real CLI scenarios that exercise Chrome + filesystem. Documented expectations in `SMOKE_TEST_TELEMETRY.md`. | On demand only (`npm run test:e2e`); excluded from CI until headless suite exists |
 
 ### Why two layers
 - **Contract tests** catch regressions fast while giving refactoring freedom. Run on every change during development.
