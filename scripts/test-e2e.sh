@@ -1,12 +1,25 @@
 #!/bin/bash
 
-# E2E Test Suite for bdg CLI
-# Applies token optimization techniques from SMOKE_TEST_TELEMETRY.md
+# E2E Smoke Test Checklist for bdg CLI
+#
+# NOTE: This is a MANUAL TESTING CHECKLIST, not an automated test suite.
+# It's designed for interactive use by humans/agents, not CI pipelines.
+#
+# Issues for CI:
+# - No proper assertions (just prints output)
+# - Errors swallowed by pipes to head/jq
+# - Assumes local Chrome profile/server
+# - "✓ Test passed" printed regardless of actual success
+#
+# Use for: Local manual testing and verification
+# Don't use for: CI/CD pipeline gates
+#
+# For automated testing, see: test/contract/ (unit tests with proper assertions)
 
 set -e
-set -o pipefail  # Fail on pipe failures (catch CLI errors even when piped)
+set -o pipefail
 
-# Force headless mode (CI environment detection)
+# Force headless mode for local testing
 export CI=true
 
 echo "==================================="

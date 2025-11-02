@@ -137,43 +137,10 @@ jobs:
       - name: Run contract tests
         run: npm test
 
-  e2e:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    needs: [build, quality, test]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Restore node_modules cache
-        id: cache
-        uses: actions/cache/restore@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
-
-      - name: Install dependencies (cache miss fallback)
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: npm ci
-
-      # Reuse build artifact instead of rebuilding
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Make CLI executable
-        run: chmod +x dist/index.js
-
-      - name: Run E2E tests
-        run: npm run test:e2e
+  # TODO: Add proper E2E tests
+  # Current scripts/test-e2e.sh is a manual smoke test checklist, not automated tests
+  # Needs: proper assertions, deterministic fixtures, headless Chrome mocking, exit code checking
+  # For now: use contract tests for CI gates, E2E script for local manual testing only
 
   security:
     name: Security Audit
