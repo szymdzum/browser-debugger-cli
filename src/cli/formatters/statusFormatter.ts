@@ -1,5 +1,4 @@
-import * as chromeLauncher from 'chrome-launcher';
-
+import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
 import type { SessionMetadata } from '@/utils/session.js';
 import { isProcessAlive } from '@/utils/session.js';
 
@@ -67,26 +66,10 @@ export function formatSessionStatus(
     lines.push('Chrome Diagnostics');
     lines.push('━'.repeat(50));
 
-    try {
-      const defaultPath = chromeLauncher.getChromePath();
-      lines.push(`Binary:           ${defaultPath}`);
-    } catch {
-      lines.push('Binary:           Could not determine');
-    }
-
-    try {
-      const installations = chromeLauncher.Launcher.getInstallations();
-      lines.push(`Installations:    ${installations.length} found`);
-      if (installations.length > 0 && installations.length <= 3) {
-        installations.forEach((path, index) => {
-          lines.push(`  ${index + 1}. ${path}`);
-        });
-      } else if (installations.length > 3) {
-        lines.push(`  (Use 'bdg cleanup --aggressive' to see all)`);
-      }
-    } catch {
-      lines.push('Installations:    Detection failed');
-    }
+    // Get diagnostics using shared utility (cached to avoid repeated scans)
+    const diagnostics = getChromeDiagnostics();
+    const diagnosticLines = formatDiagnosticsForStatus(diagnostics);
+    lines.push(...diagnosticLines);
   }
 
   lines.push('');

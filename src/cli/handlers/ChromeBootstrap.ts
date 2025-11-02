@@ -1,48 +1,51 @@
-import { launchChrome, isChromeRunning, type LaunchOptions } from '@/connection/launcher.js';
+import { launchChrome, type LaunchOptions } from '@/connection/launcher.js';
 import type { LaunchedChrome } from '@/types';
-import { ChromeLaunchError } from '@/utils/errors.js';
 
 /**
  * Handles Chrome browser launch and connection
  */
 export class ChromeBootstrap {
   /**
-   * Launch Chrome if not already running, or connect to existing instance
+   * Launch Chrome if not already running, or connect to existing instance.
+   *
+   * Delegates to chrome-launcher which handles:
+   * - Port availability checking
+   * - Strict mode enforcement (via portStrictMode option)
+   * - Chrome readiness polling
+   * - Reusing existing Chrome instances when port is occupied
    *
    * @param port - Chrome debugging port
    * @param targetUrl - Initial URL to navigate to
    * @param launchOptions - Chrome launcher options (userDataDir, logLevel, etc.)
    * @returns LaunchedChrome instance if Chrome was launched, null if already running
-   * @throws ChromeLaunchError if portStrictMode is enabled and Chrome is already running
+   * @throws Error if chrome-launcher fails to launch or connect
    */
   static async launch(
     port: number,
     targetUrl: string,
     launchOptions?: Partial<LaunchOptions>
   ): Promise<LaunchedChrome | null> {
-    const chromeRunning = await isChromeRunning(port);
+    // Attempt launch - chrome-launcher handles everything:
+    // - Port availability checking
+    // - Launching new Chrome or reusing existing instance
+    // - Strict mode enforcement (throws if portStrictMode=true and can't connect)
+    // - Chrome readiness polling with retries
+    const chrome = await launchChrome({
+      port,
+      headless: false,
+      url: targetUrl,
+      ...launchOptions,
+    });
 
-    // In strict mode, fail fast if Chrome is already running
-    if (chromeRunning && launchOptions?.portStrictMode) {
-      throw new ChromeLaunchError(
-        `Chrome is already running on port ${port}. ` +
-          `Use a different port or disable --port-strict to reuse the existing instance.`
-      );
-    }
-
-    if (!chromeRunning) {
-      // Launch Chrome with target URL and options
-      const chrome = await launchChrome({
-        port,
-        headless: false,
-        url: targetUrl,
-        ...launchOptions,
-      });
+    // chrome-launcher returns a valid LaunchedChrome when successful
+    // PID will be 0 or undefined if reusing an existing Chrome instance
+    const isNewLaunch = chrome.pid && chrome.pid > 0;
+    if (isNewLaunch) {
       console.error(`Chrome launched (PID: ${chrome.pid})`);
-      return chrome;
+      return chrome; // Return handle so we can kill it on cleanup
+    } else {
+      console.error(`Chrome already running on port ${port}`);
+      return null; // Don't return handle - we don't own this Chrome instance
     }
-
-    console.error(`Chrome already running on port ${port}`);
-    return null;
   }
 }

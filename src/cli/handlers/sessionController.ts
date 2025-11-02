@@ -3,6 +3,7 @@ import * as chromeLauncher from 'chrome-launcher';
 import type { LaunchOptions } from '@/connection/launcher.js';
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
+import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError } from '@/utils/errors.js';
 import { writePid, writeSessionMetadata } from '@/utils/session.js';
 
@@ -30,37 +31,10 @@ function reportLauncherFailure(error: unknown): void {
   const errorMessage = error instanceof Error ? error.message : String(error);
   console.error(`Error: ${errorMessage}\n`);
 
-  // Detect available Chrome installations
-  try {
-    const installations = chromeLauncher.Launcher.getInstallations();
-
-    if (installations.length === 0) {
-      console.error('❌ No Chrome installations detected on this system\n');
-      console.error('💡 Install Chrome from:');
-      console.error('   https://www.google.com/chrome/\n');
-    } else {
-      console.error(
-        `✓ Found ${installations.length} Chrome installation${installations.length > 1 ? 's' : ''}:\n`
-      );
-      installations.forEach((path, index) => {
-        console.error(`  ${index + 1}. ${path}`);
-      });
-      console.error('');
-
-      // Show default path that will be used
-      try {
-        const defaultPath = chromeLauncher.getChromePath();
-        console.error(`Default binary: ${defaultPath}\n`);
-      } catch {
-        // getChromePath() might throw if no Chrome found
-        console.error('Default binary: Could not determine\n');
-      }
-    }
-  } catch (detectionError) {
-    console.error(
-      `Warning: Could not detect Chrome installations: ${detectionError instanceof Error ? detectionError.message : String(detectionError)}\n`
-    );
-  }
+  // Get diagnostics using shared utility (cached to avoid repeated scans)
+  const diagnostics = getChromeDiagnostics();
+  const diagnosticLines = formatDiagnosticsForError(diagnostics);
+  diagnosticLines.forEach((line) => console.error(line));
 
   // Provide troubleshooting steps
   console.error('💡 Troubleshooting:');

@@ -15,13 +15,13 @@ import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
  *
  * @property port                   Remote debugging port (defaults to 9222 when omitted).
  * @property userDataDir            Directory used for Chrome profile data. Falls back to
- *                                   the persistent `~/.bdg/chrome-profile` directory.
+ *                                  the persistent `~/.bdg/chrome-profile` directory.
  * @property headless               When true, launches Chrome in headless mode. Defaults
- *                                   to the standard windowed experience.
+ *                                  to the standard windowed experience.
  * @property url                    Initial URL to open. Defaults to `about:blank` and is
- *                                   typically replaced during session setup.
+ *                                  typically replaced during session setup.
  * @property logLevel               Chrome launcher logging level (verbose|info|error|silent).
- *                                   Defaults to 'silent' for minimal output.
+ *                                  Defaults to 'silent' for minimal output.
  * @property connectionPollInterval Milliseconds between CDP readiness checks. Defaults to 500ms.
  * @property maxConnectionRetries   Maximum retry attempts before failing. Defaults to 50.
  * @property portStrictMode         Fail if port is already in use. Defaults to false (lenient).
@@ -76,21 +76,6 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   // Build chrome-launcher options
   const chromePath = findChromeBinary();
   const chromeOptions = buildChromeOptions(options);
-
-  // Telemetry: Log chosen Chrome binary path
-  try {
-    const detectedPath = chromePath ?? chromeLauncher.getChromePath();
-    console.error(`Chrome binary: ${detectedPath}`);
-  } catch {
-    console.error('Chrome binary: Auto-detection in progress...');
-  }
-
-  // Telemetry: Log connection retry configuration
-  const pollInterval = options.connectionPollInterval ?? 500;
-  const maxRetries = options.maxConnectionRetries ?? 50;
-  console.error(
-    `Connection config: ${maxRetries} retries @ ${pollInterval}ms intervals (max ${(maxRetries * pollInterval) / 1000}s)`
-  );
 
   const finalOptions = {
     ...chromeOptions,
@@ -263,21 +248,4 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
     ...(prefs !== undefined && { prefs: prefs as any }),
     ...(options.envVars !== undefined && { envVars: options.envVars }),
   };
-}
-
-/**
- * Check if Chrome is already running with CDP on the specified port.
- *
- * @param port - Chrome debugging port to check
- * @returns True if Chrome is running and CDP is available
- */
-export async function isChromeRunning(port: number = 9222): Promise<boolean> {
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
-      signal: AbortSignal.timeout(2000), // 2 second timeout
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
