@@ -76,6 +76,14 @@ Implementation notes:
 - Accept a `flushFull()` method to produce a single full snapshot on demand (e.g., shutdown).
 - Respect profile defaults (`summary` → preview-only, `full` → full write every n minutes).
 
+#### Accessibility-Aware Sampling
+
+- Add an optional “semantic snapshot” mode that captures the Chrome accessibility tree rather than raw DOM when analysts only need a structural overview.  
+- Implementation hints:
+  - Use `Accessibility.getPartialAXTree` or `Accessibility.queryAXTree` to pull semantic nodes, then map `backendDOMNodeId` back to DOM data when needed.citechromedevtools.github.io/devtools-protocol/tot/Accessibility/?utm_source=openaidev.to/this-is-angular/chrome-devtools-mcp-server-guide-24faqiita.com/rakkyyy/items/2857d455e161ddd4d62f
+  - Provide CLI flags such as `--semantic-snapshot` so PreviewWriter can return role/name hierarchies instead of full HTML—mirroring how the DevTools MCP server’s `take_snapshot` tool works today.  
+  - If the accessibility domain is unavailable (some targets disable it), detect the error and fall back to DOM snapshots automatically.citechromedevtools.github.io/devtools-protocol/tot/Accessibility/?utm_source=openai
+
 ### 3. Selective Output Builders
 
 - Extend `OutputBuilder.build` to honour new modes:  
@@ -163,28 +171,20 @@ Use DevTools Protocol commands to reduce incoming data:
 
 ## Example Workflows After Changes
 
-1. **Quick DOM Audit**
-   ```bash
-   bdg dom http://localhost:3000/customer/register?redirectTo=%2F --profile dom-only
-   # => Writes session.final.json (DOM snapshot only), no preview loop.
-   ```
+| Command | Defaults | When to use | Why it’s optimal |
+| --- | --- | --- | --- |
+| `bdg capture <url>` | `--profile full`, all collectors, standard cadence | First run or exhaustive investigations. | Mirrors current behaviour so existing automations keep working. |
+| `bdg summary <url>` | `--profile summary`, DOM + network, preview-only, no full writes | Quick reconnaissance focused on metadata & payloads. | Produces small artifacts and highlights targets for follow‑up full snapshots. |
+| `bdg dom <url>` | `--profile dom-only`, preview disabled, `--semantic-snapshot` on, optional `--outer-html` | Form/structure audits (inputs, ARIA, headings). | Accessibility-first snapshot (roles, names) mirrors DevTools MCP `take_snapshot`; fall back to DOM only if needed.citedev.to/this-is-angular/chrome-devtools-mcp-server-guide-24faqiita.com/rakkyyy/items/2857d455e161ddd4d62f |
+| `bdg network <url>` | `--profile network-lite`, network collector only, default CDP blocks for heavy assets, `--network-include` flag | API tracing and payload capture. | CDP filtering trims noise; writers emit JSON Lines for easy diffing. |
+| `bdg console <url>` | `--profile summary`, console collector only, follow mode optional | Debugging client logs without touching network/DOM. | Minimal capture load; tail-friendly preview stream. |
 
-2. **Consent Payload Only**
-   ```bash
-   bdg summary http://example.com/register \
-     --profile network-lite \
-     --network-include dev.api.kingfisher.com \
-     --full-write-interval 0
-   # => Blocks assets via CDP, captures only API responses, emits session.summary.json.
-   ```
+**Design highlights**
 
-3. **Investigate Console Noise Without Network**
-   ```bash
-   bdg console http://example.com --profile summary --no-full-writes
-   # => Preview writer disabled, only console preview written.
-   ```
-
-Each workflow produces smaller artifacts, fewer tokens, and shorter turnaround without sacrificing insight.
+- Profiles act as mental shortcuts; advanced users can still override (e.g., `bdg summary --full-write-interval 0`).
+- Shared knobs (`--cdp-block`, `--network-include`, `--outer-html`, `--writer jsonl`, `--semantic-snapshot`) apply to every command, so agents can refine intent without memorising new verbs.
+- Default `--auto-cleanup` ensures stale session files and Chrome PIDs are purged automatically.
+- Every workflow produces smaller artifacts, fewer tokens, and faster turnaround without sacrificing insight.
 
 ---
 
@@ -204,4 +204,3 @@ Each workflow produces smaller artifacts, fewer tokens, and shorter turnaround w
 2. Schedule Phase 1 implementation (low-risk, mostly CLI + preview writer).  
 3. Parallel research ticket: design the `CDPFilterManager` API and how it plugs into existing collectors.
 4. Update CI smoke tests to run a `--profile summary` capture for regression coverage.
-
