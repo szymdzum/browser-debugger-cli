@@ -114,25 +114,41 @@ export async function createNewTab(url: string, cdp: CDPConnection): Promise<CDP
   const normalizedUrl = normalizeUrl(url);
   const port = cdp.getPort();
 
-  // Try CDP method first
+  let createdTargetId: string | null = null;
+
   try {
     const response = (await cdp.send('Target.createTarget', {
       url: normalizedUrl,
       newWindow: false, // Open as tab, not window
     })) as CDPCreateTargetResponse;
+    createdTargetId = response.targetId;
+  } catch (error) {
+    console.error('CDP Target.createTarget failed, attempting HTTP fallback...', error);
+  }
 
-    // Fetch target info from Chrome
-    const listResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
-    const targets = (await listResponse.json()) as CDPTarget[];
+  if (createdTargetId) {
+    try {
+      const listResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
+      if (!listResponse.ok) {
+        throw new Error(
+          `Failed to list targets: ${listResponse.status} ${listResponse.statusText}`
+        );
+      }
+      const targets = (await listResponse.json()) as CDPTarget[];
+      const target = targets.find((t) => t.id === createdTargetId);
 
-    // Find the target we just created
-    const target = targets.find((t) => t.id === response.targetId);
+      if (!target) {
+        throw new Error(`Created target ${createdTargetId} not found in Chrome target list`);
+      }
 
-    if (target) {
       return target;
+    } catch (resolveError) {
+      throw new Error(
+        `Failed to resolve created tab: ${
+          resolveError instanceof Error ? resolveError.message : String(resolveError)
+        }`
+      );
     }
-  } catch {
-    console.error(`CDP Target.createTarget failed, trying HTTP endpoint...`);
   }
 
   // Fallback to HTTP endpoint method

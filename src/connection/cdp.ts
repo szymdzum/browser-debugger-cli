@@ -39,6 +39,7 @@ export class CDPConnection {
   private readonly MAX_RECONNECT_ATTEMPTS = 5;
   private isIntentionallyClosed = false;
   private onReconnect?: (() => Promise<void>) | undefined;
+  private connectionOptions: ConnectionOptions = {};
 
   /**
    * Connect to Chrome via WebSocket.
@@ -48,17 +49,23 @@ export class CDPConnection {
    * @throws Error if connection fails after all retries
    */
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
-    const { maxRetries = 3, autoReconnect = false, onReconnect } = options;
+    const normalizedOptions: ConnectionOptions = {
+      ...options,
+      maxRetries: options.maxRetries ?? 3,
+      autoReconnect: options.autoReconnect ?? false,
+    };
+    const { maxRetries = 3, autoReconnect = false, onReconnect } = normalizedOptions;
 
     this.wsUrl = wsUrl;
     this.autoReconnect = autoReconnect;
     this.onReconnect = onReconnect;
     this.isIntentionallyClosed = false;
+    this.connectionOptions = normalizedOptions;
 
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        await this.attemptConnection(wsUrl, options);
+        await this.attemptConnection(wsUrl, normalizedOptions);
         this.reconnectAttempts = 0;
         return;
       } catch (error) {
@@ -90,6 +97,7 @@ export class CDPConnection {
 
       this.ws.on('open', () => {
         clearTimeout(connectTimeout);
+        this.missedPongs = 0;
         this.startKeepalive(options.keepaliveInterval ?? 30000);
         resolve();
       });
@@ -184,7 +192,7 @@ export class CDPConnection {
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     try {
-      await this.attemptConnection(this.wsUrl);
+      await this.attemptConnection(this.wsUrl, this.connectionOptions);
       this.reconnectAttempts = 0;
       console.error('Reconnected successfully');
 
