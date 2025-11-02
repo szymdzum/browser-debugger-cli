@@ -143,6 +143,76 @@ export function shouldExcludeConsoleMessage(text: string, includeAll: boolean = 
 }
 
 /**
+ * Pattern matching configuration for URL filtering
+ *
+ * @property includePatterns - URL patterns to explicitly include (trumps all other rules)
+ * @property excludePatterns - URL patterns to explicitly exclude
+ * @property defaultBehavior - Behavior when URL doesn't match any patterns ('include' or 'exclude')
+ */
+interface PatternMatchConfig {
+  includePatterns?: string[];
+  excludePatterns?: string[];
+  defaultBehavior?: 'include' | 'exclude';
+}
+
+/**
+ * Evaluate whether a URL matches pattern rules using include-trumps-exclude logic.
+ *
+ * Provides centralized pattern matching with consistent precedence rules:
+ * 1. If URL matches includePatterns → true (even if it also matches excludePatterns)
+ * 2. If includePatterns specified but URL doesn't match → false (whitelist mode)
+ * 3. If URL matches excludePatterns → false
+ * 4. Otherwise → use defaultBehavior
+ *
+ * This function consolidates the URL parsing and wildcard matching logic that was
+ * previously duplicated across multiple filter functions.
+ *
+ * @param url - The URL to check against patterns
+ * @param config - Pattern matching configuration with include/exclude patterns
+ * @returns True if the URL should be included based on pattern rules
+ */
+function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean {
+  const { includePatterns = [], excludePatterns = [], defaultBehavior = 'include' } = config;
+
+  // Parse URL for pattern matching
+  let hostname: string;
+  let hostnameWithPath: string;
+  try {
+    const parsed = new URL(url);
+    hostname = parsed.hostname;
+    hostnameWithPath = hostname + parsed.pathname;
+  } catch {
+    // If not a valid URL, use the whole string
+    hostname = url;
+    hostnameWithPath = url;
+  }
+
+  const testPatterns = (patterns: string[]): boolean => {
+    return patterns.some(
+      (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
+    );
+  };
+
+  // If includePatterns specified, act as whitelist
+  if (includePatterns.length > 0) {
+    // URL matches include pattern → include (include trumps exclude)
+    if (testPatterns(includePatterns)) {
+      return true;
+    }
+    // URL doesn't match include pattern → exclude (whitelist mode)
+    return false;
+  }
+
+  // If excludePatterns specified and URL matches → exclude
+  if (excludePatterns.length > 0 && testPatterns(excludePatterns)) {
+    return false;
+  }
+
+  // Default behavior
+  return defaultBehavior === 'include';
+}
+
+/**
  * Simple wildcard pattern matcher.
  * Supports only the * wildcard character.
  *
@@ -178,22 +248,6 @@ export function matchesWildcard(str: string, pattern: string): boolean {
  * @param patterns - Array of wildcard patterns
  * @returns True if URL matches any pattern
  */
-function matchesAnyPattern(url: string, patterns: string[]): boolean {
-  try {
-    const parsed = new URL(url);
-    const hostname = parsed.hostname;
-    const hostnameWithPath = hostname + parsed.pathname;
-
-    // Test patterns against both bare hostname and hostname+pathname
-    // This allows "api.example.com" to match without requiring "/*"
-    return patterns.some(
-      (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
-    );
-  } catch {
-    // If not a valid URL, test against the whole string
-    return patterns.some((pattern) => matchesWildcard(url, pattern));
-  }
-}
 
 /**
  * Determine if a response body should be fetched based on URL and patterns.
@@ -222,19 +276,23 @@ export function shouldFetchBody(
 ): boolean {
   const { fetchAllBodies = false, includePatterns = [], excludePatterns = [] } = options;
 
-  // If includePatterns specified, act as whitelist
+  // If includePatterns specified, act as whitelist (trumps everything else)
   if (includePatterns.length > 0) {
-    // URL matches include pattern → fetch (include trumps exclude)
-    if (matchesAnyPattern(url, includePatterns)) {
-      return true;
-    }
-    // URL doesn't match include pattern → skip (whitelist mode)
-    return false;
+    return evaluatePatternMatch(url, {
+      includePatterns,
+      defaultBehavior: 'exclude',
+    });
   }
 
-  // If excludePatterns specified and URL matches → skip
-  if (excludePatterns.length > 0 && matchesAnyPattern(url, excludePatterns)) {
-    return false;
+  // If excludePatterns specified and URL matches → skip (trumps fetchAllBodies)
+  if (excludePatterns.length > 0) {
+    const matchesExclude = evaluatePatternMatch(url, {
+      includePatterns: excludePatterns,
+      defaultBehavior: 'exclude',
+    });
+    if (matchesExclude) {
+      return false;
+    }
   }
 
   // If fetchAllBodies flag is set → fetch everything
@@ -243,12 +301,13 @@ export function shouldFetchBody(
   }
 
   // Apply default auto-skip patterns
-  if (matchesAnyPattern(url, DEFAULT_SKIP_BODY_PATTERNS)) {
-    return false;
-  }
+  const matchesDefaultSkip = evaluatePatternMatch(url, {
+    includePatterns: DEFAULT_SKIP_BODY_PATTERNS,
+    defaultBehavior: 'exclude',
+  });
 
-  // Default: fetch the body
-  return true;
+  // Default: fetch the body unless it matches default skip patterns
+  return !matchesDefaultSkip;
 }
 
 /**
@@ -276,21 +335,10 @@ export function shouldExcludeUrl(
 ): boolean {
   const { includePatterns = [], excludePatterns = [] } = options;
 
-  // If includePatterns specified, act as whitelist
-  if (includePatterns.length > 0) {
-    // URL matches include pattern → don't exclude (include trumps exclude)
-    if (matchesAnyPattern(url, includePatterns)) {
-      return false;
-    }
-    // URL doesn't match include pattern → exclude (whitelist mode)
-    return true;
-  }
-
-  // If excludePatterns specified and URL matches → exclude
-  if (excludePatterns.length > 0 && matchesAnyPattern(url, excludePatterns)) {
-    return true;
-  }
-
-  // Default: don't exclude
-  return false;
+  // Use unified pattern matching - invert result since we want exclusion logic
+  return !evaluatePatternMatch(url, {
+    includePatterns,
+    excludePatterns,
+    defaultBehavior: 'include',
+  });
 }
