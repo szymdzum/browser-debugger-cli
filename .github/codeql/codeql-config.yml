@@ -1,0 +1,13 @@
+name: "CodeQL Config"
+
+query-filters:
+  # Exclude test files from hostname regexp and URL sanitization checks
+  # These queries flag test data strings as potential security issues
+  - exclude:
+      id:
+        - js/incomplete-hostname-regexp
+        - js/incomplete-url-substring-sanitization
+      paths:
+        - "**/__tests__/**"
+        - "**/*.test.ts"
+        - "**/*.spec.ts"
