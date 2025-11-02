@@ -334,13 +334,16 @@ function generateMarkdownReport(results: BenchmarkMetrics[]): string {
 /**
  * Cleanup any stale Chrome processes before starting benchmark.
  * This ensures Chrome can be launched fresh with the correct URL.
+ *
+ * @param homeDir - Optional HOME directory for isolated cleanup (uses temp directory when provided)
  */
-async function cleanupChromeProcesses(): Promise<void> {
+async function cleanupChromeProcesses(homeDir?: string): Promise<void> {
   console.log('Cleaning up stale Chrome processes...');
   const result = spawnSync('node', [bdgBinary, 'cleanup', '--aggressive'], {
     cwd: projectRoot,
     stdio: 'pipe',
     encoding: 'utf-8',
+    env: homeDir ? { ...process.env, HOME: homeDir } : process.env,
   });
 
   if (result.status === 0) {
@@ -368,14 +371,14 @@ async function main() {
   // Ensure output directory exists
   await mkdir(dirname(outputPath), { recursive: true });
 
-  // Cleanup any stale Chrome processes before starting
-  await cleanupChromeProcesses();
-
   // Prepare isolated HOME directory for bdg (avoids sandbox issues writing to ~/.bdg)
   const tempHome = resolve(projectRoot, '.tmp/bdg-home');
   await mkdir(tempHome, { recursive: true });
   sessionDir = resolve(tempHome, '.bdg');
   await mkdir(sessionDir, { recursive: true });
+
+  // Cleanup any stale Chrome processes before starting
+  await cleanupChromeProcesses(tempHome);
 
   // Start benchmark server
   console.log('Starting benchmark server...');
@@ -431,8 +434,9 @@ async function main() {
       await server.close();
     }
 
-    // Cleanup Chrome processes after benchmark
-    await cleanupChromeProcesses();
+    // Cleanup Chrome processes after benchmark (use temp home directory)
+    const tempHome = resolve(projectRoot, '.tmp/bdg-home');
+    await cleanupChromeProcesses(tempHome);
   }
 }
 
