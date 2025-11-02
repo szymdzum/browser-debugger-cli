@@ -485,6 +485,7 @@ program
 JSON structure written to stdout on success:
 ```json
 {
+  "version": "0.0.1-alpha.0",
   "success": true,
   "timestamp": "2025-10-31T12:00:00.000Z",
   "duration": 45230,
@@ -503,6 +504,7 @@ JSON structure written to stdout on success:
 Error format:
 ```json
 {
+  "version": "0.0.1-alpha.0",
   "success": false,
   "timestamp": "2025-10-31T12:00:00.000Z",
   "duration": 1234,

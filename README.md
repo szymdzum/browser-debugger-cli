@@ -139,6 +139,7 @@ bdg localhost:3000 --all
 
 ```json
 {
+  "version": "0.0.1-alpha.0",
   "success": true,
   "timestamp": "2025-10-31T12:00:00.000Z",
   "duration": 45230,
@@ -157,6 +158,7 @@ bdg localhost:3000 --all
 Error format:
 ```json
 {
+  "version": "0.0.1-alpha.0",
   "success": false,
   "error": "Error message here",
   ...
