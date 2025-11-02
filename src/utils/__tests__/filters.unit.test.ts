@@ -14,10 +14,9 @@ import {
 
 void describe('filters - matchesWildcard', () => {
   void it('should match exact strings', () => {
-    // codeql[js/incomplete-hostname-regexp] - These are test data strings for wildcard matching, not regex patterns
-    assert.equal(matchesWildcard('api.example.com', 'api.example.com'), true);
-    assert.equal(matchesWildcard('api.example.com/users', 'api.example.com/users'), true);
-    assert.equal(matchesWildcard('api.example.com', 'cdn.example.com'), false);
+    assert.equal(matchesWildcard('api.example.com', 'api.example.com'), true); // codeql[js/incomplete-hostname-regexp] - test data for wildcard matching
+    assert.equal(matchesWildcard('api.example.com/users', 'api.example.com/users'), true); // codeql[js/incomplete-hostname-regexp] - test data for wildcard matching
+    assert.equal(matchesWildcard('api.example.com', 'cdn.example.com'), false); // codeql[js/incomplete-hostname-regexp] - test data for wildcard matching
   });
 
   void it('should match wildcards at start', () => {
@@ -40,9 +39,8 @@ void describe('filters - matchesWildcard', () => {
   });
 
   void it('should be case-insensitive', () => {
-    // codeql[js/incomplete-hostname-regexp] - These are test data strings for wildcard matching, not regex patterns
-    assert.equal(matchesWildcard('API.EXAMPLE.COM', 'api.example.com'), true);
-    assert.equal(matchesWildcard('api.example.com', 'API.EXAMPLE.COM'), true);
+    assert.equal(matchesWildcard('API.EXAMPLE.COM', 'api.example.com'), true); // codeql[js/incomplete-hostname-regexp] - test data for wildcard matching
+    assert.equal(matchesWildcard('api.example.com', 'API.EXAMPLE.COM'), true); // codeql[js/incomplete-hostname-regexp] - test data for wildcard matching
     assert.equal(matchesWildcard('Logo.PNG', '*.png'), true);
   });
 
@@ -322,11 +320,10 @@ void describe('filters - constants', () => {
 
   void it('DEFAULT_EXCLUDED_DOMAINS should include common tracking domains', () => {
     // Verify key domains exist
-    // codeql[js/incomplete-url-substring-sanitization] - These are literal string lookups in a constant array, not URL validation
-    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('analytics.google.com'));
-    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('googletagmanager.com'));
-    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('facebook.com'));
-    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('doubleclick.net'));
+    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('analytics.google.com')); // codeql[js/incomplete-url-substring-sanitization] - array membership check, not URL validation
+    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('googletagmanager.com')); // codeql[js/incomplete-url-substring-sanitization] - array membership check, not URL validation
+    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('facebook.com')); // codeql[js/incomplete-url-substring-sanitization] - array membership check, not URL validation
+    assert.ok(DEFAULT_EXCLUDED_DOMAINS.includes('doubleclick.net')); // codeql[js/incomplete-url-substring-sanitization] - array membership check, not URL validation
   });
 
   void it('DEFAULT_EXCLUDED_CONSOLE_PATTERNS should include dev server noise', () => {
