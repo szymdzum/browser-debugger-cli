@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Version increment type'
+        required: true
+        default: 'prerelease'
+        type: choice
+        options:
+          - prerelease     # 0.0.1-alpha.0 -> 0.0.1-alpha.1
+          - prepatch       # 0.0.1-alpha.0 -> 0.0.2-alpha.0
+          - preminor       # 0.0.1-alpha.0 -> 0.1.0-alpha.0
+          - premajor       # 0.0.1-alpha.0 -> 1.0.0-alpha.0
+          - patch          # 0.0.1-alpha.0 -> 0.0.1 (stable)
+          - minor          # 0.0.1-alpha.0 -> 0.1.0 (stable)
+          - major          # 0.0.1-alpha.0 -> 1.0.0 (stable)
+      prerelease_id:
+        description: 'Prerelease identifier (alpha, beta, rc)'
+        required: false
+        default: 'alpha'
+        type: string
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality checks
+        run: npm run check:enhanced
+
+      - name: Run contract tests
+        run: npm test
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Configure git
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Bump version
+        id: version
+        run: |
+          if [[ "${{ inputs.version_type }}" == pre* ]]; then
+            npm version ${{ inputs.version_type }} --preid=${{ inputs.prerelease_id }}
+          else
+            npm version ${{ inputs.version_type }}
+          fi
+          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Push version bump
+        run: |
+          git push origin main
+          git push origin v${{ steps.version.outputs.version }}
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          release_name: v${{ steps.version.outputs.version }}
+          body: |
+            Release ${{ steps.version.outputs.version }}
+
+            ## Installation
+            ```bash
+            npm install -g browser-debugger-cli@${{ steps.version.outputs.version }}
+            ```
+
+            ## Changes
+            See the [commit history](https://github.com/${{ github.repository }}/compare/v${{ steps.version.outputs.version }}...main) for details.
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
