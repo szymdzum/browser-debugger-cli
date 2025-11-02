@@ -46,11 +46,13 @@ export function formatSessionStatus(
   const lines: string[] = [];
   lines.push('Session Status');
   lines.push('━'.repeat(50));
-  lines.push(`Status:           ACTIVE ✓`);
+  lines.push(`Status:           ACTIVE`);
   lines.push(`BDG PID:          ${pid}`);
 
   if (metadata.chromePid) {
-    lines.push(`Chrome PID:       ${metadata.chromePid} ${chromeAlive ? '✓' : '✗ (not running)'}`);
+    lines.push(
+      `Chrome PID:       ${metadata.chromePid} ${chromeAlive ? '(running)' : '(not running)'}`
+    );
   }
 
   lines.push(`Duration:         ${durationFormatted}`);
@@ -58,9 +60,9 @@ export function formatSessionStatus(
   lines.push('');
   lines.push('Collectors');
   lines.push('━'.repeat(50));
-  lines.push('Network:          ✓ Active');
-  lines.push('Console:          ✓ Active');
-  lines.push('DOM:              ✓ Active');
+  lines.push('Network:          Active');
+  lines.push('Console:          Active');
+  lines.push('DOM:              Active');
 
   // Add verbose Chrome diagnostics if requested
   if (verbose) {
@@ -75,7 +77,7 @@ export function formatSessionStatus(
   }
 
   lines.push('');
-  lines.push('💡 Commands:');
+  lines.push('Commands:');
   lines.push('  Stop session:    bdg stop');
   lines.push('  Query browser:   bdg query <script>');
 
@@ -141,7 +143,7 @@ export function formatStatusAsJson(
 export function formatNoSessionMessage(): string {
   return `No active session found
 
-💡 Suggestions:
+Suggestions:
   Start a new session:     bdg <url>
   List Chrome tabs:        bdg tabs`;
 }
@@ -152,7 +154,7 @@ export function formatNoSessionMessage(): string {
 export function formatStaleSessionMessage(pid: number): string {
   return `Found stale session (PID ${pid} not running)
 
-💡 Suggestions:
+Suggestions:
   Clean up:          bdg cleanup
   Start new session: bdg <url>`;
 }

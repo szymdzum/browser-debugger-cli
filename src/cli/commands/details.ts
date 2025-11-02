@@ -45,7 +45,7 @@ export function registerDetailsCommand(program: Command): void {
           } else {
             console.error('No detailed data available');
             console.error('Session may not be running or data not yet written');
-            console.error('\n💡 Suggestions:');
+            console.error('\nSuggestions:');
             console.error('  Check session status:  bdg status');
             console.error('  Start a session:       bdg <url>');
           }
@@ -69,7 +69,7 @@ export function registerDetailsCommand(program: Command): void {
               );
             } else {
               console.error(`Network request not found: ${id}`);
-              console.error('\n💡 Try:');
+              console.error('\nTry:');
               console.error('  List requests:  bdg peek --network');
             }
             process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
@@ -115,7 +115,7 @@ export function registerDetailsCommand(program: Command): void {
             } else {
               console.error(`Console message not found at index: ${index}`);
               console.error(`Available range: 0-${(fullOutput.data.console?.length ?? 0) - 1}`);
-              console.error('\n💡 Try:');
+              console.error('\nTry:');
               console.error('  List messages:  bdg peek --console');
             }
             process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);

@@ -146,7 +146,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       lines.push('No network requests yet');
     } else {
       requests.forEach((req) => {
-        const statusColor = req.status && req.status >= 400 ? '❌' : '✓';
+        const statusColor = req.status && req.status >= 400 ? 'ERR' : 'OK';
         const status = req.status ?? 'pending';
         lines.push(`${statusColor} ${status} ${req.method} ${req.url}`);
         if (req.mimeType) {
@@ -169,14 +169,14 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       lines.push('No console messages yet');
     } else {
       messages.forEach((msg) => {
-        const icon = msg.type === 'error' ? '❌' : msg.type === 'warning' ? '⚠️ ' : 'ℹ️ ';
+        const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
         lines.push(`${icon} [${msg.type}] ${msg.text}`);
       });
     }
     lines.push('');
   }
 
-  lines.push('💡 Commands:');
+  lines.push('Commands:');
   lines.push('  Stop session:    bdg stop');
   lines.push('  Full preview:    bdg peek --last 50');
   lines.push('  Watch live:      bdg peek --follow');

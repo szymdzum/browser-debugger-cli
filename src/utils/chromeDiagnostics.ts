@@ -58,12 +58,12 @@ export function formatDiagnosticsForError(diagnostics: ChromeDiagnostics): strin
   const lines: string[] = [];
 
   if (diagnostics.installationCount === 0) {
-    lines.push('❌ No Chrome installations detected\n');
-    lines.push('💡 Install Chrome from:');
+    lines.push('Error: No Chrome installations detected\n');
+    lines.push('Install Chrome from:');
     lines.push('   https://www.google.com/chrome/\n');
   } else {
     lines.push(
-      `✓ Found ${diagnostics.installationCount} Chrome installation${diagnostics.installationCount > 1 ? 's' : ''}:\n`
+      `Found ${diagnostics.installationCount} Chrome installation${diagnostics.installationCount > 1 ? 's' : ''}:\n`
     );
     diagnostics.installations.forEach((path, index) => {
       lines.push(`  ${index + 1}. ${path}`);

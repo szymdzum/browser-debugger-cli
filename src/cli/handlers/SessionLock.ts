@@ -23,7 +23,7 @@ export class SessionLock {
       console.error(`Found stale session (PID ${existingPid} not running)`);
       console.error('Cleaning up stale session files...');
       cleanupSession();
-      console.error('✓ Stale session cleaned up');
+      console.error('Stale session cleaned up');
     }
 
     if (!acquireSessionLock()) {

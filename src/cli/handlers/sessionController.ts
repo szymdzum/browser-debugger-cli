@@ -36,7 +36,7 @@ function reportLauncherFailure(error: unknown): void {
   diagnosticLines.forEach((line) => console.error(line));
 
   // Provide troubleshooting steps
-  console.error('💡 Troubleshooting:');
+  console.error('Troubleshooting:');
   console.error('   1. Verify Chrome is installed and accessible');
   console.error('   2. Check file permissions for Chrome binary');
   console.error('   3. Try specifying a custom port: bdg <url> --port 9223');
@@ -75,7 +75,7 @@ export async function cleanupStaleChrome(): Promise<number> {
     const chromePid = readChromePid();
 
     if (!chromePid) {
-      console.error('⚠️  No Chrome PID found in cache');
+      console.error('Warning: No Chrome PID found in cache');
       console.error('   Either Chrome was already running, or no Chrome was launched by bdg\n');
       return 0;
     }
@@ -87,7 +87,7 @@ export async function cleanupStaleChrome(): Promise<number> {
       // Use SIGKILL for aggressive cleanup (force kill)
       killChromeProcess(chromePid, 'SIGKILL');
 
-      console.error('✓ Chrome process killed successfully');
+      console.error('Chrome process killed successfully');
 
       // Clear the cache after successful kill
       clearChromePid();
@@ -95,13 +95,13 @@ export async function cleanupStaleChrome(): Promise<number> {
       return 0;
     } catch (killError) {
       const errorMessage = killError instanceof Error ? killError.message : String(killError);
-      console.error(`❌ Failed to kill Chrome process: ${errorMessage}`);
+      console.error(`Error: Failed to kill Chrome process: ${errorMessage}`);
       console.error('   Try manually killing Chrome processes if issues persist\n');
       return 1;
     }
   } catch (error) {
     console.error(
-      `❌ Failed to cleanup Chrome processes: ${error instanceof Error ? error.message : String(error)}\n`
+      `Error: Failed to cleanup Chrome processes: ${error instanceof Error ? error.message : String(error)}\n`
     );
     return 1;
   }

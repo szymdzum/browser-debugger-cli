@@ -53,7 +53,7 @@ export function registerCleanupCommand(program: Command): void {
           if (errorCount > 0) {
             warnings.push('Some Chrome processes could not be killed');
             if (!options.json) {
-              console.error('⚠️  Warning: Some Chrome processes could not be killed');
+              console.error('Warning: Some Chrome processes could not be killed');
             }
           }
           didCleanup = true;
@@ -85,10 +85,10 @@ export function registerCleanupCommand(program: Command): void {
               );
             } else {
               console.error(errorMsg);
-              console.error('\n💡 Options:');
+              console.error('\nOptions:');
               console.error('  Stop gracefully:       bdg stop');
               console.error('  Force cleanup:         bdg cleanup --force');
-              console.error('\n⚠️  Warning: Force cleanup will remove session files');
+              console.error('\nWarning: Force cleanup will remove session files');
               console.error('   but will NOT kill the running process.');
             }
             process.exit(EXIT_CODES.RESOURCE_BUSY);
@@ -97,7 +97,7 @@ export function registerCleanupCommand(program: Command): void {
           if (isAlive && options.force) {
             warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
             if (!options.json) {
-              console.error(`⚠️  Warning: Process ${pid} is still running!`);
+              console.error(`Warning: Process ${pid} is still running!`);
               console.error('Forcing cleanup anyway...');
               console.error('(The process will continue running but lose session tracking)');
             }
@@ -110,7 +110,7 @@ export function registerCleanupCommand(program: Command): void {
           cleanupSession();
           cleanedSession = true;
           if (!options.json) {
-            console.error('✓ Session files cleaned up');
+            console.error('Session files cleaned up');
           }
           didCleanup = true;
         }
@@ -123,7 +123,7 @@ export function registerCleanupCommand(program: Command): void {
               fs.unlinkSync(outputPath);
               cleanedOutput = true;
               if (!options.json) {
-                console.error('✓ Session output file removed');
+                console.error('Session output file removed');
               }
               didCleanup = true;
             } catch (error: unknown) {

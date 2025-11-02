@@ -74,7 +74,7 @@ export function registerStopCommand(program: Command): void {
             process.kill(pid, 'SIGKILL');
             bdgStopped = true;
             if (!options.json) {
-              console.error(`✓ Killed bdg session (PID ${pid})`);
+              console.error(`Killed bdg session (PID ${pid})`);
             }
           } catch (killError: unknown) {
             const errorMessage = killError instanceof Error ? killError.message : String(killError);
@@ -98,7 +98,7 @@ export function registerStopCommand(program: Command): void {
                 killChromeProcess(metadata.chromePid, 'SIGTERM');
                 chromeStopped = true;
                 if (!options.json) {
-                  console.error(`✓ Killed Chrome (PID ${metadata.chromePid})`);
+                  console.error(`Killed Chrome (PID ${metadata.chromePid})`);
                 }
 
                 // Clear Chrome PID cache after successful kill
@@ -133,7 +133,7 @@ export function registerStopCommand(program: Command): void {
         // Clean up session files
         cleanupSession();
         if (!options.json) {
-          console.error('✓ Cleaned up session files');
+          console.error('Cleaned up session files');
           console.error('\nAll sessions stopped and ports freed');
         }
 
