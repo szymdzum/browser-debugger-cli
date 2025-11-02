@@ -13,6 +13,9 @@ interface DetailsOptions {
 
 /**
  * Register details command
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerDetailsCommand(program: Command): void {
   program

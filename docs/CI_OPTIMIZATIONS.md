@@ -11,8 +11,9 @@ This document explains the CI/CD optimizations implemented in `browser-debugger-
 
 Our CI pipeline is optimized for:
 - ⚡ **Speed** - ~40% faster execution (90s → 75s)
-- 💰 **Cost** - ~50-60% reduction in GitHub Actions minutes
+- 💰 **Cost** - ~40-50% reduction in GitHub Actions minutes
 - 🎯 **Efficiency** - Skip unnecessary work automatically
+- 🔒 **Security** - Continuous audit on every run (no gaps for new CVEs)
 
 ---
 
@@ -54,30 +55,37 @@ Our CI pipeline is optimized for:
 
 ### 2. node_modules Caching
 
-**Problem**: `npm ci` ran 4 times per CI run (quality, test, e2e, security)
+**Problem**: `npm ci` ran 5 times per CI run (build, quality, test, e2e, security)
 
 **Solution**:
-- Build job runs `npm ci` once and caches `node_modules` (107MB)
-- Other jobs restore cache instead of reinstalling
+- All jobs try to restore `node_modules` cache (107MB) before running `npm ci`
+- On cache hit: skip `npm ci` entirely (saves ~20-30s)
+- On cache miss: fallback to `npm ci` and save cache for subsequent jobs
 - Cache key: `${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}`
 
 **Impact**:
-- Saves: ~20-30s per job (3 jobs benefit)
-- Total savings: ~60-90s per CI run
+- First run: Creates cache, saves ~60-90s on subsequent jobs (quality, test, e2e, security)
+- Subsequent runs: All 5 jobs skip `npm ci` (saves ~100-150s total)
 - Cache invalidates automatically when package-lock.json changes
 
 **Implementation**:
 ```yaml
-# In build job:
-- name: Cache node_modules
-  uses: actions/cache/save@v4
+# All jobs use this pattern:
+- name: Restore node_modules cache
+  id: cache
+  uses: actions/cache/restore@v4
   with:
     path: node_modules
     key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
 
-# In other jobs:
-- name: Restore node_modules cache
-  uses: actions/cache/restore@v4
+- name: Install dependencies (cache miss fallback)
+  if: steps.cache.outputs.cache-hit != 'true'
+  run: npm ci
+
+# Build job also saves cache if it was created:
+- name: Cache node_modules
+  if: steps.cache.outputs.cache-hit != 'true'
+  uses: actions/cache/save@v4
   with:
     path: node_modules
     key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
@@ -140,38 +148,22 @@ on:
 
 ---
 
-### 5. Conditional Security Audit
+## Security Considerations
 
-**Problem**: `npm audit` ran on every commit, even when dependencies unchanged
+### Unconditional Security Audit
 
-**Solution**:
-- Uses `dorny/paths-filter@v3` to detect package.json/package-lock.json changes
-- Security audit only runs when dependencies actually change
-- Build job outputs `dependencies-changed` flag
+**Why we run `npm audit` on every CI run:**
 
-**Impact**:
-- Saves: ~10-15s per CI run (when deps unchanged)
-- Frequency: ~80% of commits don't change dependencies
-- Reduces unnecessary npm registry API calls
+While it might seem efficient to only run `npm audit` when dependencies change, this creates a security gap:
+- New CVEs are disclosed for existing packages daily
+- Gating the audit on dependency changes means these CVEs won't be detected until the next dependency update
+- The audit only takes ~10-15 seconds, which is an acceptable trade-off for continuous security monitoring
 
-**Implementation**:
-```yaml
-# In build job:
-- name: Detect changed files
-  id: changes
-  uses: dorny/paths-filter@v3
-  with:
-    filters: |
-      dependencies:
-        - 'package.json'
-        - 'package-lock.json'
+**Alternative considered:**
+- Conditional audit + scheduled weekly runs
+- Rejected because it still creates a gap (up to 7 days) between CVE disclosure and detection
 
-outputs:
-  dependencies-changed: ${{ steps.changes.outputs.dependencies }}
-
-# In security job:
-if: needs.build.outputs.dependencies-changed == 'true'
-```
+**Result**: Security audit runs on every push/PR to catch new vulnerabilities immediately.
 
 ---
 
@@ -207,7 +199,7 @@ Total (sequential): ~200s
 └─────────────┴──────────┴─────────────────────┘
 
 Total: ~75s (build → parallel jobs → e2e)
-*Only runs when deps change (skipped 80% of the time)
+*Security audit runs on every CI run to catch new CVEs immediately
 ```
 
 ### Savings Breakdown
@@ -215,12 +207,11 @@ Total: ~75s (build → parallel jobs → e2e)
 | Optimization           | Time Saved | Frequency | Monthly Impact |
 |------------------------|------------|-----------|----------------|
 | Build artifact sharing | 15s        | 100%      | High           |
-| node_modules caching   | 60s        | 100%      | Very High      |
+| node_modules caching   | 100-150s   | 100%      | Very High      |
 | Concurrency control    | Variable   | 30%       | Medium         |
 | Path filtering         | 2-3 min    | 25%       | Medium         |
-| Conditional audit      | 10s        | 80%       | High           |
 
-**Total estimated savings**: 50-60% reduction in CI minutes per month
+**Total estimated savings**: 40-50% reduction in CI minutes per month
 
 ---
 
@@ -240,13 +231,14 @@ Total: ~75s (build → parallel jobs → e2e)
 
 **After optimization**:
 - Docs-only commits (25): Skipped = 0 minutes
-- Dep-change commits (20): Full run = 20 × 75s = 1,500s
-- Code-only commits (55): No security audit = 55 × 65s = 3,575s
-- Total: 5,075s = ~85 minutes/month
+- Code commits (75): Full CI run = 75 × 75s = 5,625s = ~94 minutes
+- Total: ~94 minutes/month
 
-**Savings**: 150 - 85 = **65 minutes/month** (~43% reduction)
+**Savings**: 150 - 94 = **56 minutes/month** (~37% reduction)
 
-For private repos: **65 minutes × $0.008 = $0.52/month saved**
+For private repos: **56 minutes × $0.008 = $0.45/month saved**
+
+**Note**: Security audit runs on all commits for continuous CVE detection. The performance trade-off (~10s per run) is acceptable for improved security posture.
 
 ---
 
@@ -260,10 +252,10 @@ For private repos: **65 minutes × $0.008 = $0.52/month saved**
 3. View job durations in the summary
 
 **Identify slow jobs**:
-- Build job should be ~45s
+- Build job should be ~45s (first run) or ~25s (cache hit)
 - Quality/Test should be <30s each
 - E2E should be ~30s (most variable due to Chrome)
-- Security audit should be ~10s (when it runs)
+- Security audit should be ~10s (runs on every commit)
 
 ### Cache Health
 
