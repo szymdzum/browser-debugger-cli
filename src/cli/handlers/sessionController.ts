@@ -1,11 +1,9 @@
-import * as chromeLauncher from 'chrome-launcher';
-
 import type { LaunchOptions } from '@/connection/launcher.js';
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError } from '@/utils/errors.js';
-import { writePid, writeSessionMetadata } from '@/utils/session.js';
+import { writePid, writeSessionMetadata, writeChromePid } from '@/utils/session.js';
 
 import { ChromeBootstrap } from './ChromeBootstrap.js';
 import { OutputBuilder } from './OutputBuilder.js';
@@ -48,30 +46,57 @@ function reportLauncherFailure(error: unknown): void {
 /**
  * Aggressively cleanup stale Chrome processes launched by bdg.
  *
- * Uses chrome-launcher's killAll() to terminate Chrome instances,
- * then logs any errors encountered during cleanup.
+ * This function kills Chrome instances that were launched by bdg by:
+ * 1. Reading the Chrome PID from persistent cache (~/.bdg/chrome.pid)
+ * 2. Killing that specific Chrome process using cross-platform kill logic
+ *
+ * The cache survives session cleanup, so this works even after a normal session end.
+ *
+ * Cross-platform killing:
+ * - Windows: Uses `taskkill /pid <pid> /T /F` to kill process tree
+ * - Unix/macOS: Uses `process.kill(-pid, 'SIGKILL')` to kill process group
+ *
+ * Note: We can't use chromeLauncher.killAll() because it only tracks instances
+ * created via chromeLauncher.launch(), but we use new chromeLauncher.Launcher()
+ * which doesn't register in that tracking set.
  *
  * @returns Number of errors encountered during cleanup
  */
-export function cleanupStaleChrome(): number {
+export async function cleanupStaleChrome(): Promise<number> {
   console.error('\n🧹 Attempting to kill stale Chrome processes...');
 
   try {
-    const errors = chromeLauncher.killAll();
+    // Import session utilities (dynamic import for ES modules)
+    const sessionModule = await import('@/utils/session.js');
+    const { readChromePid, clearChromePid, killChromeProcess } = sessionModule;
 
-    if (errors.length === 0) {
-      console.error('✓ All Chrome processes cleaned up successfully');
+    // Read Chrome PID from persistent cache
+    const chromePid = readChromePid();
+
+    if (!chromePid) {
+      console.error('⚠️  No Chrome PID found in cache');
+      console.error('   Either Chrome was already running, or no Chrome was launched by bdg\n');
       return 0;
-    } else {
-      console.error(
-        `⚠️  Encountered ${errors.length} error${errors.length > 1 ? 's' : ''} during cleanup:\n`
-      );
-      errors.forEach((error, index) => {
-        console.error(`  ${index + 1}. ${error.message}`);
-      });
-      console.error('\n💡 Some processes may have resisted cleanup');
+    }
+
+    // Kill Chrome process (cross-platform)
+    console.error(`🔪 Killing Chrome process (PID: ${chromePid})...`);
+
+    try {
+      // Use SIGKILL for aggressive cleanup (force kill)
+      killChromeProcess(chromePid, 'SIGKILL');
+
+      console.error('✓ Chrome process killed successfully');
+
+      // Clear the cache after successful kill
+      clearChromePid();
+
+      return 0;
+    } catch (killError) {
+      const errorMessage = killError instanceof Error ? killError.message : String(killError);
+      console.error(`❌ Failed to kill Chrome process: ${errorMessage}`);
       console.error('   Try manually killing Chrome processes if issues persist\n');
-      return errors.length;
+      return 1;
     }
   } catch (error) {
     console.error(
@@ -159,6 +184,9 @@ async function startCollectorsAndMetadata(
     targetId: target.id,
     webSocketDebuggerUrl: target.webSocketDebuggerUrl,
   });
+
+  // Note: Chrome PID cache is written immediately after launch (Phase 2)
+  // to ensure it's available even if later phases fail
 }
 
 /**
@@ -260,6 +288,12 @@ export async function startSession(
     ) as Partial<LaunchOptions>;
 
     context.launchedChrome = await ChromeBootstrap.launch(options.port, targetUrl, launchOptions);
+
+    // Write Chrome PID to persistent cache immediately after launch
+    // This must happen before Phase 3 so it's available even if setup fails
+    if (context.launchedChrome?.pid) {
+      writeChromePid(context.launchedChrome.pid);
+    }
 
     // Phase 3: CDP connection and target setup
     const setupStart = Date.now();

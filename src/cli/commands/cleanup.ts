@@ -39,7 +39,7 @@ export function registerCleanupCommand(program: Command): void {
 
         // Handle aggressive Chrome cleanup first if requested
         if (options.aggressive) {
-          const errorCount = cleanupStaleChrome();
+          const errorCount = await cleanupStaleChrome();
           if (errorCount > 0) {
             console.error('⚠️  Warning: Some Chrome processes could not be killed');
           }

@@ -1,3 +1,4 @@
+import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -47,6 +48,14 @@ export function getLockFilePath(): string {
  */
 export function getMetadataFilePath(): string {
   return path.join(getSessionDir(), 'session.meta.json');
+}
+
+/**
+ * Get the path to the persistent Chrome PID cache file.
+ * This file survives session cleanup so aggressive cleanup can still find Chrome.
+ */
+export function getChromePidCachePath(): string {
+  return path.join(getSessionDir(), 'chrome.pid');
 }
 
 /**
@@ -234,6 +243,122 @@ export function readSessionMetadata(): SessionMetadata | null {
     return JSON.parse(content) as SessionMetadata;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Write Chrome PID to persistent cache.
+ * This survives session cleanup so aggressive cleanup can find Chrome later.
+ *
+ * @param chromePid - Chrome process ID to cache
+ */
+export function writeChromePid(chromePid: number): void {
+  ensureSessionDir();
+  const cachePath = getChromePidCachePath();
+  const tmpPath = cachePath + '.tmp';
+
+  // Write to temp file first, then rename for atomicity
+  fs.writeFileSync(tmpPath, chromePid.toString(), 'utf-8');
+  fs.renameSync(tmpPath, cachePath);
+}
+
+/**
+ * Read Chrome PID from persistent cache.
+ *
+ * @returns Chrome PID if cached and process is alive, null otherwise
+ */
+export function readChromePid(): number | null {
+  const cachePath = getChromePidCachePath();
+
+  if (!fs.existsSync(cachePath)) {
+    return null;
+  }
+
+  try {
+    const pidStr = fs.readFileSync(cachePath, 'utf-8').trim();
+    const pid = parseInt(pidStr, 10);
+
+    if (isNaN(pid)) {
+      return null;
+    }
+
+    // Only return the PID if the process is still alive
+    // This prevents trying to kill stale PIDs
+    if (!isProcessAlive(pid)) {
+      // Clean up stale cache
+      try {
+        fs.unlinkSync(cachePath);
+      } catch {
+        // Ignore cleanup errors
+      }
+      return null;
+    }
+
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remove Chrome PID from persistent cache.
+ */
+export function clearChromePid(): void {
+  const cachePath = getChromePidCachePath();
+
+  try {
+    if (fs.existsSync(cachePath)) {
+      fs.unlinkSync(cachePath);
+    }
+  } catch {
+    // Ignore errors during cleanup
+  }
+}
+
+/**
+ * Kill a Chrome process using cross-platform approach.
+ *
+ * Windows: Uses `taskkill /pid <pid> /T /F` to kill process tree
+ * Unix/macOS: Uses `process.kill(-pid, signal)` to kill process group
+ *
+ * @param pid - Chrome process ID to kill
+ * @param signal - Signal to send (Unix only, default 'SIGTERM'). Ignored on Windows.
+ * @throws Error if kill operation fails
+ */
+export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {
+  const isWindows = process.platform === 'win32';
+
+  if (isWindows) {
+    // Windows: Use taskkill to kill process tree
+    // /T = kill process tree, /F = force kill
+    const result = spawnSync(`taskkill /pid ${pid} /T /F`, {
+      shell: true,
+      encoding: 'utf-8',
+    });
+
+    // Check for spawn errors (command not found, etc.)
+    if (result.error) {
+      throw result.error;
+    }
+
+    // Check exit status - taskkill returns non-zero on failure
+    // Common exit codes:
+    // - 0: Success
+    // - 128: Process not found
+    // - 1: Access denied or other error
+    if (result.status !== 0) {
+      const errorMsg = (result.stderr ?? result.stdout)?.trim() ?? 'Unknown error';
+      throw new Error(`taskkill failed (exit code ${result.status}): ${errorMsg}`);
+    }
+
+    // Log stderr for debugging (taskkill sometimes writes to stderr even on success)
+    if (result.stderr?.trim()) {
+      console.error(`taskkill stderr: ${result.stderr.trim()}`);
+    }
+  } else {
+    // Unix/macOS: Kill process group (negative PID)
+    // This kills Chrome and all child processes
+    process.kill(-pid, signal);
   }
 }
 

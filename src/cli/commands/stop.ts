@@ -1,6 +1,12 @@
 import type { Command } from 'commander';
 
-import { readPid, isProcessAlive, cleanupSession } from '@/utils/session.js';
+import {
+  readPid,
+  isProcessAlive,
+  cleanupSession,
+  clearChromePid,
+  killChromeProcess,
+} from '@/utils/session.js';
 
 /**
  * Flags supported by `bdg stop`.
@@ -53,10 +59,16 @@ export function registerStopCommand(program: Command): void {
           if (metadata?.chromePid) {
             try {
               if (isProcessAlive(metadata.chromePid)) {
-                process.kill(metadata.chromePid, 'SIGTERM');
+                // Use SIGTERM for graceful shutdown (cross-platform via killChromeProcess)
+                killChromeProcess(metadata.chromePid, 'SIGTERM');
                 console.error(`✓ Killed Chrome (PID ${metadata.chromePid})`);
+
+                // Clear Chrome PID cache after successful kill
+                clearChromePid();
               } else {
                 console.error(`Chrome process (PID ${metadata.chromePid}) already stopped`);
+                // Clear stale cache
+                clearChromePid();
               }
             } catch (chromeError: unknown) {
               const errorMessage =
