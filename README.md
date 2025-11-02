@@ -71,10 +71,15 @@ jq '.data.console[] | select(.type == "error")' telemetry.json
 # Collect all telemetry (default)
 bdg localhost:3000
 
-# Collect specific data types
-bdg dom localhost:3000        # DOM snapshot only
-bdg network localhost:3000    # Network requests only
-bdg console localhost:3000    # Console logs only
+# Collect specific data types (additive flags)
+bdg localhost:3000 --dom                    # DOM snapshot only
+bdg localhost:3000 --network                # Network requests only
+bdg localhost:3000 --console                # Console logs only
+bdg localhost:3000 --dom --console          # DOM and console only
+
+# Exclude specific collectors (subtractive flags)
+bdg localhost:3000 --skip-console             # Network and DOM only
+bdg localhost:3000 --skip-dom --skip-network  # Console only
 
 # Options
 bdg localhost:3000 --port 9223              # Custom CDP port

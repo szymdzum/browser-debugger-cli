@@ -90,9 +90,15 @@ bdg localhost:3000 --timeout 30             # Stops after 30s
 
 **Collect Specific Data**:
 ```bash
-bdg dom localhost:3000        # DOM snapshot only
-bdg network localhost:3000    # Network requests only
-bdg console localhost:3000    # Console logs only
+# Additive flags (enable only specific collectors)
+bdg localhost:3000 --dom                    # DOM snapshot only
+bdg localhost:3000 --network                # Network requests only
+bdg localhost:3000 --console                # Console logs only
+bdg localhost:3000 --dom --console          # DOM and console only
+
+# Subtractive flags (disable specific collectors)
+bdg localhost:3000 --skip-console             # Network and DOM only
+bdg localhost:3000 --skip-dom --skip-network  # Console only
 ```
 
 **Basic Options**:
@@ -762,41 +768,3 @@ npm run validate:ts-version  # Verify TypeScript 5.6+ compatibility
 4. **Team Consistency**: Automated validation ensures consistent practices
 5. **Modern Standards**: Uses cutting-edge TypeScript and ESLint features
 
-## Known Limitations
-
-### Commander.js Subcommand Option Parsing
-
-**Issue**: Options (like `--reuse-tab`, `--timeout`, `--port`) only work on the **default command**, not on subcommands (`dom`, `network`, `console`).
-
-**Root Cause**: Commander.js has a parsing conflict when you define:
-1. A default command with `.argument()` on the root program
-2. Subcommands with their own arguments
-
-This causes Commander.js to interpret the option flags incorrectly on subcommands.
-
-**Evidence**:
-```bash
-# ✅ Works - default command
-bdg example.com --reuse-tab --timeout 30
-# Options are parsed correctly
-
-# ❌ Doesn't work - subcommand
-bdg network example.com --reuse-tab --timeout 30
-# Options are NOT parsed (silently ignored)
-```
-
-**Workaround**: Use the default command for all collection types when you need options:
-```bash
-# Instead of: bdg network example.com --reuse-tab
-# Use: bdg example.com --reuse-tab
-# (collects all data types, but options work correctly)
-```
-
-**Status**: This is a known limitation of Commander.js when combining default commands and subcommands. A fix would require restructuring the CLI command architecture.
-
-**Affected Options**:
-- `-p, --port <number>` - Only works on default command
-- `-t, --timeout <seconds>` - Only works on default command
-- `-r, --reuse-tab` - Only works on default command
-- `-u, --user-data-dir <path>` - Only works on default command
-- `-a, --all` - Only works on default command

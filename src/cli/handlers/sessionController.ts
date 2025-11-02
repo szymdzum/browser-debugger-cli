@@ -321,6 +321,11 @@ export async function startSession(
       context.launchedChrome?.pid
     );
 
+    // Log active collectors for forensic tracking and optimization prioritization
+    console.error(
+      `[bdg] active collectors: ${collectors.join(', ')} (${url}, port ${options.port})`
+    );
+
     // Total session startup time
     const totalStartupTime = Date.now() - context.startTime;
     console.error(`[PERF] Total session startup: ${totalStartupTime}ms`);

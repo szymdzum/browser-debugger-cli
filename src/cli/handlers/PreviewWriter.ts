@@ -1,4 +1,4 @@
-import type { CDPTarget, NetworkRequest, ConsoleMessage } from '@/types';
+import type { CDPTarget, NetworkRequest, ConsoleMessage, CollectorType } from '@/types';
 import { writePartialOutputAsync, writeFullOutputAsync } from '@/utils/session.js';
 
 import { OutputBuilder } from './OutputBuilder.js';
@@ -10,6 +10,7 @@ export interface PreviewDataSource {
   getTarget: () => CDPTarget;
   getNetworkRequests: () => NetworkRequest[];
   getConsoleLogs: () => ConsoleMessage[];
+  getActiveCollectors: () => CollectorType[];
   isConnected: () => boolean;
 }
 
@@ -95,11 +96,21 @@ export class PreviewWriter {
 
   /**
    * Perform the actual write operation (internal)
+   *
+   * Passes original arrays for active collectors, empty arrays for inactive ones.
+   * No cloning needed - OutputBuilder serializes immediately, avoiding unnecessary copies.
    */
   private async doWrite(): Promise<void> {
     const target = this.dataSource.getTarget();
-    const networkRequests = this.dataSource.getNetworkRequests();
-    const consoleLogs = this.dataSource.getConsoleLogs();
+    const activeCollectors = this.dataSource.getActiveCollectors();
+
+    // Pass original arrays when active, empty arrays when inactive (no cloning needed)
+    const networkRequests = activeCollectors.includes('network')
+      ? this.dataSource.getNetworkRequests()
+      : [];
+    const consoleLogs = activeCollectors.includes('console')
+      ? this.dataSource.getConsoleLogs()
+      : [];
 
     // Build both preview and full outputs
     const previewOutput = OutputBuilder.build({
