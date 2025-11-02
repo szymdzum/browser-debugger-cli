@@ -18,6 +18,9 @@ interface StopOptions {
 
 /**
  * Register stop command
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerStopCommand(program: Command): void {
   program

@@ -49,6 +49,9 @@ interface CollectorOptions {
 
 /**
  * Apply shared collector options to a command
+ *
+ * @param command - Commander.js Command instance to apply options to
+ * @returns The modified Command instance with all collector options applied
  */
 function applyCollectorOptions(command: Command): Command {
   return command
@@ -68,6 +71,9 @@ function applyCollectorOptions(command: Command): Command {
 
 /**
  * Parse a string to integer, returning undefined if not provided
+ *
+ * @param value - Optional string value to parse
+ * @returns Parsed integer or undefined if value was not provided
  */
 function parseOptionalInt(value: string | undefined): number | undefined {
   return value !== undefined ? parseInt(value, 10) : undefined;
@@ -75,6 +81,10 @@ function parseOptionalInt(value: string | undefined): number | undefined {
 
 /**
  * Parse JSON string with error handling
+ *
+ * @param value - Optional JSON string to parse
+ * @returns Parsed JSON object or undefined if value was not provided
+ * @throws Error if JSON parsing fails
  */
 function parseOptionalJson(value: string | undefined): Record<string, unknown> | undefined {
   if (!value) return undefined;
@@ -90,6 +100,9 @@ function parseOptionalJson(value: string | undefined): Record<string, unknown> |
 
 /**
  * Transform CLI options into session options
+ *
+ * @param options - Parsed command-line options from Commander
+ * @returns Session options object with parsed and normalized values
  */
 function buildSessionOptions(options: CollectorOptions): {
   port: number;
@@ -123,6 +136,11 @@ function buildSessionOptions(options: CollectorOptions): {
 
 /**
  * Common action handler for collector commands
+ *
+ * @param url - Target URL to collect telemetry from
+ * @param options - Parsed command-line options from Commander
+ * @param collectors - Array of collector types to activate
+ * @returns Promise that resolves when session completes or is stopped
  */
 async function collectorAction(
   url: string,

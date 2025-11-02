@@ -140,6 +140,45 @@ A follow-up test after the `cdp-optimizations-revised` branch showed:
 - **Example**: Checked `peek` returned data, but didn't verify JSON schema compliance
 - **Fix**: Add JSON schema validation for structured outputs
 
+### 6. Query Command Coverage
+- **Issue**: Never exercised `bdg query`, so live CDP evaluation and session metadata error paths remain untested
+- **Impact**: Regressions in runtime evaluation or missing metadata would go unnoticed
+- **Fix**: Add smoke case that executes a simple script (e.g., `document.title`) and one that runs with no active session to assert the error messaging
+- **Status**: ✅ Success-path coverage added in 2025-11-02 E2E run (documents `document.title` and `navigator.userAgent`); still add the no-session failure variant
+
+### 7. Advanced Start Flag Coverage
+- **Issue**: Smoke run only used `--timeout`/`--all`; advanced options like `--reuse-tab`, `--user-data-dir`, `--chrome-prefs`, `--chrome-flags`, `--connection-poll-interval`, `--max-connection-retries`, and `--port-strict` were never invoked
+- **Impact**: Launch/connection regressions tied to these flags could ship unnoticed
+- **Fix**: Create parameterized tests that start sessions with each advanced flag and verify metadata reflects the configuration
+- **Status**: ⚠️ Partial — 2025-11-02 E2E run exercised custom port + reuse-tab; remaining flags still unverified
+
+### 8. Peek Follow Mode
+- **Issue**: `peek --follow` streaming mode was skipped
+- **Impact**: Interval refresh, Ctrl+C handling, and screen-clearing logic are unvalidated
+- **Fix**: Run `peek --follow` against a live session for ~5 seconds and confirm it updates in place, then Ctrl+C to assert graceful shutdown
+
+### 9. Status Flag Variations
+- **Issue**: `status --json` and `status --verbose` outputs were not captured
+- **Impact**: JSON serialization and verbose diagnostics could break unnoticed
+- **Fix**: Add checks that parse the JSON output and snapshot the verbose diagnostics for regression comparison
+- **Status**: ⚠️ Partial — `--verbose` verified on 2025-11-02 E2E run; `--json` output still missing
+
+### 10. Stop Chrome Teardown
+- **Issue**: `stop --kill-chrome` branch never ran, so Chrome PID lookup/cleanup is untested
+- **Impact**: Could leave Chrome processes orphaned or fail silently after regressions
+- **Fix**: Extend stop tests to include `--kill-chrome`, assert Chrome PID removal, and confirm the warning path when metadata lacks a PID
+
+### 11. Cleanup Aggressive Options
+- **Issue**: `cleanup --aggressive` and `cleanup --all` flows were not executed
+- **Impact**: Cached Chrome PID handling and session artifact deletion could regress without detection
+- **Fix**: Run cleanup with each flag, verifying Chrome PID cache clearing and `session.json` removal
+- **Status**: ⚠️ Partial — `--aggressive` validated on 2025-11-02 E2E run (Chrome PID 78322); still need `--all` coverage
+
+### 12. Error Scenario Simulation
+- **Issue**: No tests induce Chrome launch failures, strict port conflicts, or stale metadata scenarios
+- **Impact**: Diagnostic output in `sessionController` might rot and users would get poor guidance
+- **Fix**: Add scripted failure drills (e.g., occupy port, pass bad prefs JSON) and assert diagnostics/cleanup behavior
+
 ---
 
 ## Telemetry Data 📊
@@ -475,18 +514,24 @@ jq -e '.active == true and .pid > 0' <<< "$OUTPUT"
 2. ✅ **Use polling instead of sleep** - Reduce wait times by 83%
 3. ✅ **Run tests in parallel** - 33% faster execution
 4. ✅ **Truncate large outputs** - Use `head`/`jq` to reduce tokens by 30%
+5. ✅ **Cover `bdg query` command** - Success path validated in 2025-11-02 E2E run; add no-session negative case next
+6. ⚠️ **Exercise advanced start flags** - Partial (custom port + reuse-tab covered 2025-11-02); still need prefs/flags/retry/strict options
+7. ⚠️ **Validate `stop --kill-chrome` path** - Ensure Chrome PID teardown stays healthy
 
 ### Medium Priority
-5. ✅ **Add JSON schema validation** - Verify output structure, not just success
-6. ✅ **Test known limitations** - Negative tests for subcommand options
-7. ✅ **Measure actual timing** - Wrap operations in `time` command
-8. ✅ **Add performance benchmarks** - Track session startup, peek, details times
+8. ✅ **Add JSON schema validation** - Verify output structure, not just success
+9. ✅ **Test known limitations** - Negative tests for subcommand options
+10. ✅ **Measure actual timing** - Wrap operations in `time` command
+11. ✅ **Add performance benchmarks** - Track session startup, peek, details times
+12. ⚠️ **Cover `peek --follow` streaming mode** - Assert interval refresh & Ctrl+C handling
+13. ⚠️ **Capture `status --json/--verbose` outputs** - `--verbose` covered 2025-11-02; still need JSON snapshot
+14. ⚠️ **Exercise `cleanup --aggressive/--all`** - `--aggressive` covered 2025-11-02; add `--all` verification
 
 ### Low Priority
-9. ⚠️ **Add integration tests** - Test with real browser interactions
-10. ⚠️ **Add stress tests** - High request volume, long sessions
-11. ⚠️ **Add compatibility tests** - Different Chrome versions, OS platforms
-12. ⚠️ **Add regression tests** - Detect performance degradation over time
+15. ⚠️ **Add integration tests** - Test with real browser interactions
+16. ⚠️ **Add stress tests** - High request volume, long sessions
+17. ⚠️ **Add compatibility tests** - Different Chrome versions, OS platforms
+18. ⚠️ **Add regression tests** - Detect performance degradation over time
 
 ---
 
@@ -1004,3 +1049,40 @@ The follow-up test confirmed these improvements from the optimization branch:
 - Coverage: 100% ✅
 
 **Overall Assessment**: The `cdp-optimizations-revised` branch successfully improved CLI performance. The increased test metrics are due to **test execution methodology**, not CLI regression. Applying the [Token Usage Optimization Guide](#token-usage-optimization-guide) will achieve optimal testing efficiency.
+
+---
+
+## 2025-11-02 E2E Test Results
+
+**Date**: 2025-11-02  
+**Branch**: (unspecified, assumed `main`)  
+**Runner**: `./test-e2e.sh`  
+**Test Coverage**: 9/9 categories  
+**Success Rate**: 100%
+
+### Test Summary (9/9)
+1. **Help & Version** — `--version` reports 0.1.0, `--help` enumerates commands.
+2. **Basic Session Lifecycle** — Start/status/peek/stop happy path with Chrome auto-launch and cleanup.
+3. **Query Command (Live JavaScript)** — `document.title` ⇒ `"Homepage"` and `navigator.userAgent` ⇒ full UA string.
+4. **Error Handling** — `stop`/`status` with no active session and duplicate-start rejection all return actionable errors.
+5. **Status --verbose** — Emits Chrome diagnostics, including binary path (`/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`) and installation count.
+6. **Cleanup --aggressive** — Killed Chrome PID `78322`, confirmed session file cleanup.
+7. **Details Command** — Network/console detail flows invoked (no network data captured because `localhost:3000` was idle).
+8. **Collector Subcommands** — `dom`, `network`, `console` exercised with timeout behavior validated.
+9. **Advanced Flags** — Verified custom port selection and `--reuse-tab` behavior.
+
+### Key Observations
+- **Performance Telemetry** — Session startup ~100–150 ms, CDP connection ~100–130 ms, collector init 5–22 ms (consistent with prior perf logs).
+- **Chrome Launcher Integration** — Auto-detects running Chrome, launches new instance as required, tracks PIDs reliably.
+- **Query Feature Readiness** — Live JavaScript evaluation returns structured payloads, confirming new feature stability.
+- **Error Messaging** — Continues to provide clear, next-step guidance across failure scenarios.
+
+### Test Artifacts
+- `test-e2e.sh` — Reusable, token-aware end-to-end script covering the scenarios above.
+
+### Coverage Impact
+- ✅ `bdg query` success path now part of smoke/E2E coverage (pending no-session negative case).
+- ✅ `status --verbose` validated; add `--json` snapshot to close gap.
+- ✅ `cleanup --aggressive` path proven against real Chrome PID; `cleanup --all` still outstanding.
+- ⚠️ Advanced flags beyond custom port and reuse-tab (prefs, flags, retry tuning, strict-port) remain uncovered.
+- ⚠️ `peek --follow`, `status --json`, `stop --kill-chrome`, and induced failure scenarios still queued for coverage.

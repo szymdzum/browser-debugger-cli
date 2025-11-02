@@ -151,7 +151,9 @@ export function cleanupPidFile(): void {
 export function writeSessionOutput(output: BdgOutput): void {
   ensureSessionDir();
   const outputPath = getOutputFilePath();
-  fs.writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
+  const tmpPath = outputPath + '.tmp';
+  fs.writeFileSync(tmpPath, JSON.stringify(output, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, outputPath);
 }
 
 /**
@@ -223,7 +225,9 @@ export function releaseSessionLock(): void {
 export function writeSessionMetadata(metadata: SessionMetadata): void {
   ensureSessionDir();
   const metaPath = getMetadataFilePath();
-  fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf-8');
+  const tmpPath = metaPath + '.tmp';
+  fs.writeFileSync(tmpPath, JSON.stringify(metadata, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, metaPath);
 }
 
 /**
@@ -347,7 +351,7 @@ export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM
     // - 128: Process not found
     // - 1: Access denied or other error
     if (result.status !== 0) {
-      const errorMsg = (result.stderr ?? result.stdout)?.trim() ?? 'Unknown error';
+      const errorMsg = (result.stderr ?? result.stdout).trim() || 'Unknown error';
       throw new Error(`taskkill failed (exit code ${result.status}): ${errorMsg}`);
     }
 

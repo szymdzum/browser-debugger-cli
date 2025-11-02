@@ -109,30 +109,47 @@ export function findBestTarget(url: string, targets: CDPTarget[]): CDPTarget | n
  * @param url - URL to open in the new tab
  * @param cdp - CDP connection instance
  * @returns Target information for the new tab
+ * @throws Error if tab creation fails via both CDP and HTTP fallback methods
  */
 export async function createNewTab(url: string, cdp: CDPConnection): Promise<CDPTarget> {
   const normalizedUrl = normalizeUrl(url);
   const port = cdp.getPort();
 
-  // Try CDP method first
+  let createdTargetId: string | null = null;
+
   try {
     const response = (await cdp.send('Target.createTarget', {
       url: normalizedUrl,
       newWindow: false, // Open as tab, not window
     })) as CDPCreateTargetResponse;
+    createdTargetId = response.targetId;
+  } catch (error) {
+    console.error('CDP Target.createTarget failed, attempting HTTP fallback...', error);
+  }
 
-    // Fetch target info from Chrome
-    const listResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
-    const targets = (await listResponse.json()) as CDPTarget[];
+  if (createdTargetId) {
+    try {
+      const listResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
+      if (!listResponse.ok) {
+        throw new Error(
+          `Failed to list targets: ${listResponse.status} ${listResponse.statusText}`
+        );
+      }
+      const targets = (await listResponse.json()) as CDPTarget[];
+      const target = targets.find((t) => t.id === createdTargetId);
 
-    // Find the target we just created
-    const target = targets.find((t) => t.id === response.targetId);
+      if (!target) {
+        throw new Error(`Created target ${createdTargetId} not found in Chrome target list`);
+      }
 
-    if (target) {
       return target;
+    } catch (resolveError) {
+      throw new Error(
+        `Failed to resolve created tab: ${
+          resolveError instanceof Error ? resolveError.message : String(resolveError)
+        }`
+      );
     }
-  } catch {
-    console.error(`CDP Target.createTarget failed, trying HTTP endpoint...`);
   }
 
   // Fallback to HTTP endpoint method
@@ -160,6 +177,7 @@ export async function createNewTab(url: string, cdp: CDPConnection): Promise<CDP
  * @param targetId - CDP target ID to navigate
  * @param url - URL to navigate to
  * @param cdp - CDP connection instance
+ * @throws Error if navigation fails (e.g., network error, invalid URL, blocked by browser)
  */
 export async function navigateToUrl(
   targetId: string,
@@ -193,6 +211,7 @@ export async function navigateToUrl(
  * @param expectedUrl - Expected URL (normalized)
  * @param cdp - CDP connection instance
  * @param maxWaitMs - Maximum time to wait in milliseconds
+ * @throws Error if target doesn't become ready within maxWaitMs timeout
  */
 export async function waitForTargetReady(
   targetId: string,

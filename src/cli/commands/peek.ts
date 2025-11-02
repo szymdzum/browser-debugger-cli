@@ -9,6 +9,9 @@ import { readPartialOutput } from '@/utils/session.js';
 
 /**
  * Register peek command
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerPeekCommand(program: Command): void {
   program

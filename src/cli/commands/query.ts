@@ -18,6 +18,9 @@ interface CDPTarget {
 
 /**
  * Register query command
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerQueryCommand(program: Command): void {
   program

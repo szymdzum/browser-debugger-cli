@@ -11,7 +11,7 @@ export class OutputWriter {
    * @param output - The output payload to write
    * @param exitCode - 0 for success, 1 for error
    */
-  async writeSessionOutput(output: BdgOutput, exitCode: 0 | 1): Promise<void> {
+  writeSessionOutput(output: BdgOutput, exitCode: 0 | 1): void {
     // Write output to file for 'bdg stop' to read
     try {
       const message = exitCode === 0 ? 'Writing session output...' : 'Writing error output...';

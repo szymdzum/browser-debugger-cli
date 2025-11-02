@@ -57,11 +57,11 @@ export class ShutdownController {
     try {
       console.error('Stopping session...');
       const output = await this.state.session.stop();
-      await this.finalize(output, 0);
+      this.finalize(output, 0);
     } catch (error) {
       console.error('Error during shutdown:', error);
       const errorOutput = OutputBuilder.buildError(error, this.state.startTime);
-      await this.finalize(errorOutput, 1);
+      this.finalize(errorOutput, 1);
     }
   }
 
@@ -93,9 +93,9 @@ export class ShutdownController {
    * Finalize shutdown: write output, cleanup, and exit
    * @private
    */
-  private async finalize(output: BdgOutput, exitCode: 0 | 1): Promise<never> {
+  private finalize(output: BdgOutput, exitCode: 0 | 1): never {
     // Write output
-    await this.outputWriter.writeSessionOutput(output, exitCode);
+    this.outputWriter.writeSessionOutput(output, exitCode);
 
     // Leave Chrome running for future sessions
     if (this.state.launchedChrome) {

@@ -3,6 +3,7 @@ import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
 import unusedImports from 'eslint-plugin-unused-imports';
+import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
@@ -25,6 +26,7 @@ export default [
       '@typescript-eslint': tseslint,
       import: importPlugin,
       'unused-imports': unusedImports,
+      'no-relative-import-paths': noRelativeImportPaths,
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -90,6 +92,25 @@ export default [
       '@typescript-eslint/no-unnecessary-type-assertion': 'error',
       '@typescript-eslint/prefer-as-const': 'error',
       '@typescript-eslint/no-non-null-assertion': 'warn',
+
+      // Switch exhaustiveness check
+      '@typescript-eslint/switch-exhaustiveness-check': [
+        'error',
+        {
+          allowDefaultCaseForExhaustiveSwitch: false,
+          requireDefaultForNonUnion: true,
+        },
+      ],
+
+      // Import path consistency - enforce @/* over relative paths
+      'no-relative-import-paths/no-relative-import-paths': [
+        'error',
+        {
+          allowSameFolder: true,
+          rootDir: 'src',
+          prefix: '@',
+        },
+      ],
 
       'import/no-unresolved': 'error',
       'import/order': [

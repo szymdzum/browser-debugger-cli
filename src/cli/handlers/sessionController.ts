@@ -10,7 +10,7 @@ import { OutputBuilder } from './OutputBuilder.js';
 import { PreviewWriter } from './PreviewWriter.js';
 import { SessionLock } from './SessionLock.js';
 import { SessionLoop } from './SessionLoop.js';
-import { ShutdownController } from './ShutdownController.js';
+import { ShutdownController, type SessionState } from './ShutdownController.js';
 import { SignalHandler } from './SignalHandler.js';
 import { TargetSetup } from './TargetSetup.js';
 
@@ -109,7 +109,7 @@ export async function cleanupStaleChrome(): Promise<number> {
 /**
  * Encapsulates session state and lifecycle management
  */
-class SessionContext {
+class SessionContext implements SessionState {
   session: BdgSession | null = null;
   launchedChrome: LaunchedChrome | null = null;
   isShuttingDown = false;

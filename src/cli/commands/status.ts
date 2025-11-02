@@ -21,6 +21,9 @@ interface StatusOptions {
 
 /**
  * Register status command
+ *
+ * @param program - Commander.js Command instance to register commands on
+ * @returns void
  */
 export function registerStatusCommand(program: Command): void {
   program
