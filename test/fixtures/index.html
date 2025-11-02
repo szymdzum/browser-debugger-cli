@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BDG E2E Test Page</title>
+</head>
+<body>
+  <h1>BDG E2E Test Fixture</h1>
+  <p>This page is used for E2E testing of the browser-debugger-cli tool.</p>
+
+  <div id="content">
+    <button id="test-button">Click Me</button>
+    <input type="text" id="test-input" value="test value" />
+  </div>
+
+  <script>
+    // Generate some console output for testing
+    console.log('Test page loaded successfully');
+    console.warn('This is a test warning');
+
+    // Add event listener for testing
+    document.getElementById('test-button')?.addEventListener('click', () => {
+      console.log('Button clicked');
+    });
+
+    // Make a test network request
+    fetch('/api/test')
+      .then(res => res.json())
+      .catch(err => console.error('Fetch failed (expected):', err.message));
+  </script>
+</body>
+</html>

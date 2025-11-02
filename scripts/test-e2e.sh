@@ -4,17 +4,48 @@
 # Applies token optimization techniques from SMOKE_TEST_TELEMETRY.md
 
 set -e
+set -o pipefail  # Fail on pipe failures (catch CLI errors even when piped)
+
+# Force headless mode (CI environment detection)
+export CI=true
 
 echo "==================================="
 echo "BDG CLI E2E Test Suite"
 echo "==================================="
 echo ""
 
-# Cleanup before tests
-echo "🧹 Cleaning up..."
+# Aggressive cleanup before tests
+echo "🧹 Pre-test cleanup..."
 pkill -9 -f "node dist/index.js" 2>/dev/null || true
-node dist/index.js cleanup --force >/dev/null 2>&1 || true
-echo "✓ Cleanup complete"
+pkill -9 -f "Google Chrome" 2>/dev/null || true
+node dist/index.js cleanup --force --aggressive >/dev/null 2>&1 || true
+lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+lsof -ti:9222 | xargs kill -9 2>/dev/null || true
+sleep 1
+
+# Start test server
+echo "🚀 Starting test server on port 3000..."
+node test/fixtures/server.cjs 2>/dev/null &
+SERVER_PID=$!
+echo "Test server started (PID: $SERVER_PID)"
+sleep 2  # Wait for server to be ready
+
+# Cleanup function
+cleanup() {
+  echo ""
+  echo "🧹 Cleaning up..."
+  pkill -9 -f "node dist/index.js" 2>/dev/null || true
+  node dist/index.js cleanup --force --aggressive >/dev/null 2>&1 || true
+  if [ -n "$SERVER_PID" ]; then
+    kill $SERVER_PID 2>/dev/null || true
+    echo "Test server stopped"
+  fi
+}
+
+# Trap cleanup on exit
+trap cleanup EXIT
+
+echo "✓ Setup complete"
 echo ""
 
 # Test 1: Help and Version

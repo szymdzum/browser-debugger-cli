@@ -30,9 +30,15 @@ export class ChromeBootstrap {
     // - Launching new Chrome or reusing existing instance
     // - Strict mode enforcement (throws if portStrictMode=true and can't connect)
     // - Chrome readiness polling with retries
+
+    // Default to headless in CI environments (no display available)
+    // User can override via launchOptions.headless if needed
+    const isCI = process.env['CI'] === 'true' || process.env['CI'] === '1';
+    const headless = launchOptions?.headless ?? (isCI ? true : false);
+
     const chrome = await launchChrome({
       port,
-      headless: false,
+      headless,
       url: targetUrl,
       ...launchOptions,
     });
