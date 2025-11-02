@@ -109,6 +109,7 @@ export function findBestTarget(url: string, targets: CDPTarget[]): CDPTarget | n
  * @param url - URL to open in the new tab
  * @param cdp - CDP connection instance
  * @returns Target information for the new tab
+ * @throws Error if tab creation fails via both CDP and HTTP fallback methods
  */
 export async function createNewTab(url: string, cdp: CDPConnection): Promise<CDPTarget> {
   const normalizedUrl = normalizeUrl(url);
@@ -176,6 +177,7 @@ export async function createNewTab(url: string, cdp: CDPConnection): Promise<CDP
  * @param targetId - CDP target ID to navigate
  * @param url - URL to navigate to
  * @param cdp - CDP connection instance
+ * @throws Error if navigation fails (e.g., network error, invalid URL, blocked by browser)
  */
 export async function navigateToUrl(
   targetId: string,
@@ -209,6 +211,7 @@ export async function navigateToUrl(
  * @param expectedUrl - Expected URL (normalized)
  * @param cdp - CDP connection instance
  * @param maxWaitMs - Maximum time to wait in milliseconds
+ * @throws Error if target doesn't become ready within maxWaitMs timeout
  */
 export async function waitForTargetReady(
   targetId: string,

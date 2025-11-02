@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict';
 
-import type { CDPMessage } from '../types.js';
+import type { CDPMessage } from '@/types.js';
 
 /**
  * Poll a condition until it becomes true or timeout

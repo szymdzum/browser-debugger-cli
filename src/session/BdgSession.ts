@@ -14,16 +14,6 @@ import type {
 } from '@/types';
 
 /**
- * Build a descriptive error for unreachable collector branches.
- *
- * This keeps the `switch` in {@link BdgSession.startCollector} exhaustive so any
- * future collector additions fail fast during development.
- */
-function createUnknownCollectorError(type: never): Error {
-  return new Error(`Unknown collector type: ${String(type)}`);
-}
-
-/**
  * Manages a browser debugging session.
  *
  * Encapsulates the lifecycle of collecting telemetry from a browser tab:
@@ -95,10 +85,6 @@ export class BdgSession {
       case 'dom':
         cleanup = await prepareDOMCollection(this.cdp);
         break;
-      default: {
-        // Exhaustive check - should never reach here with valid CollectorType
-        throw createUnknownCollectorError(type);
-      }
     }
 
     this.collectors.set(type, cleanup);

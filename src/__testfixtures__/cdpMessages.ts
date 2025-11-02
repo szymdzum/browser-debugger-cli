@@ -4,7 +4,7 @@
  * Provides realistic CDP message fixtures to keep tests concise and readable.
  */
 
-import type { CDPMessage } from '../types.js';
+import type { CDPMessage } from '@/types.js';
 
 /**
  * Sample CDP request message

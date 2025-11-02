@@ -66,7 +66,7 @@ export class FakeWebSocket extends EventEmitter {
   /**
    * ws API - Send a ping frame
    */
-  ping(_data?: unknown, _mask?: boolean, callback?: (err?: Error) => void): void {
+  ping(callback?: (err?: Error) => void): void {
     if (this.readyState !== OPEN) {
       const err = new Error('WebSocket is not open');
       if (callback) {
@@ -76,7 +76,7 @@ export class FakeWebSocket extends EventEmitter {
     }
 
     this.pingSentCount++;
-    this.emit('ping', _data);
+    this.emit('ping');
     if (callback) {
       callback();
     }
@@ -85,7 +85,7 @@ export class FakeWebSocket extends EventEmitter {
   /**
    * ws API - Send a pong frame (usually in response to ping)
    */
-  pong(_data?: unknown, _mask?: boolean, callback?: (err?: Error) => void): void {
+  pong(callback?: (err?: Error) => void): void {
     if (this.readyState !== OPEN) {
       const err = new Error('WebSocket is not open');
       if (callback) {

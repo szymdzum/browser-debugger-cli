@@ -662,6 +662,104 @@ bdg status
 rm -rf ~/.bdg/session.*
 ```
 
+## Enhanced Code Quality Rules
+
+### Installation Requirements
+
+To use the enhanced import path validation, install the ESLint plugin:
+```bash
+npm install --save-dev eslint-plugin-no-relative-import-paths
+```
+
+Then update `eslint.config.js` to include:
+```javascript
+import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
+
+// Add to plugins:
+'no-relative-import-paths': noRelativeImportPaths,
+
+// Add to rules:
+'no-relative-import-paths/no-relative-import-paths': [
+  'error',
+  { allowSameFolder: true, rootDir: 'src', prefix: '@' }
+],
+```
+
+### TypeScript Compiler Enhancements
+
+**`noUncheckedSideEffectImports` (TypeScript 5.6+)**:
+This compiler option prevents accidental side-effect imports when using `--verbatimModuleSyntax`. It catches imports that might leave behind unintended side effects at runtime.
+
+```typescript
+// ❌ Could leave behind side-effect import
+import { type A, type B } from 'module';
+// Transpiles to: import 'module';
+
+// ✅ Explicit type-only import
+import type { A, B } from 'module';
+// Transpiles to: (nothing - fully removed)
+```
+
+### ESLint Rule Enhancements
+
+**Switch Exhaustiveness Check**:
+The `@typescript-eslint/switch-exhaustiveness-check` rule ensures all switch statements handle every case in union types or enums, preventing runtime errors.
+
+```typescript
+type Status = 'pending' | 'completed' | 'failed';
+
+function handleStatus(status: Status) {
+  switch (status) {
+    case 'pending':
+      return 'In progress...';
+    case 'completed':  
+      return 'Done!';
+    // ❌ Missing 'failed' case - ESLint will error
+  }
+}
+```
+
+**Import Path Consistency**:
+Custom validation ensures all imports use absolute paths (`@/*`) instead of relative paths (`../`), improving refactoring safety and code consistency.
+
+```typescript
+// ❌ Relative import (harder to refactor)
+import { CDPConnection } from '../connection/cdp.js';
+
+// ✅ Absolute import (refactor-safe)
+import { CDPConnection } from '@/connection/cdp.js';
+```
+
+### Validation Scripts
+
+**Enhanced Check Command**:
+```bash
+npm run check:enhanced
+```
+
+This runs comprehensive validation including:
+- Code formatting (Prettier)
+- Type checking (TypeScript)
+- Linting (ESLint)
+- Import path validation
+- Module type validation  
+- TypeScript version validation
+
+**Individual Validations**:
+```bash
+npm run lint:imports        # Check import path consistency
+npm run validate:module-type # Ensure "type": "module" is set
+npm run validate:ts-version  # Verify TypeScript 5.6+ compatibility
+```
+
+### Benefits
+
+1. **Refactoring Safety**: Absolute imports don't break when moving files
+2. **Runtime Safety**: Exhaustive switches prevent missing case errors  
+3. **Import Safety**: Side-effect validation prevents accidental runtime imports
+4. **Team Consistency**: Automated validation ensures consistent practices
+5. **Modern Standards**: Uses cutting-edge TypeScript and ESLint features
+
 ## Known Limitations
 
 ### Commander.js Subcommand Option Parsing

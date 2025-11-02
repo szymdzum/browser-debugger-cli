@@ -351,7 +351,7 @@ export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM
     // - 128: Process not found
     // - 1: Access denied or other error
     if (result.status !== 0) {
-      const errorMsg = (result.stderr ?? result.stdout)?.trim() ?? 'Unknown error';
+      const errorMsg = (result.stderr ?? result.stdout).trim() || 'Unknown error';
       throw new Error(`taskkill failed (exit code ${result.status}): ${errorMsg}`);
     }
 

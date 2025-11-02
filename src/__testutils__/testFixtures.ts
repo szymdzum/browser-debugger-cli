@@ -4,7 +4,7 @@
  * Provides convenient factories for creating test objects with sensible defaults.
  */
 
-import type { CDPMessage } from '../types.js';
+import type { CDPMessage } from '@/types.js';
 
 /**
  * Create a mock CDP message with optional overrides

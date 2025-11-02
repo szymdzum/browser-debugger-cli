@@ -26,9 +26,8 @@ import {
 } from '@/__testfixtures__/cdpMessages.js';
 import { FakeWebSocket } from '@/__testutils__/FakeWebSocket.js';
 import { useFakeClock, type ClockHelper } from '@/__testutils__/testClock.js';
+import { CDPConnection } from '@/connection/cdp.js';
 import type { CDPMessage, ConnectionOptions } from '@/types';
-
-import { CDPConnection } from '../cdp.js';
 
 // Mock the 'ws' module to return our FakeWebSocket
 let mockWebSocket: FakeWebSocket;
