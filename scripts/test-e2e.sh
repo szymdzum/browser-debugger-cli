@@ -61,12 +61,20 @@ echo ""
 echo "==================================="
 echo "Test 2: Basic Session Lifecycle"
 echo "==================================="
-node dist/index.js localhost:3000 2>&1 &
+# Capture output to file for debugging
+node dist/index.js localhost:3000 > /tmp/bdg-test.log 2>&1 &
 BDG_PID=$!
 echo "Started session (PID: $BDG_PID)"
 
-# Wait for session to be active
-sleep 3
+# Wait for session to be active (longer in CI)
+sleep 5
+
+# Check if process is still alive
+if ! kill -0 $BDG_PID 2>/dev/null; then
+  echo "❌ BDG process died! Error log:"
+  cat /tmp/bdg-test.log
+  exit 1
+fi
 
 # Check status
 echo "--- Status ---"
