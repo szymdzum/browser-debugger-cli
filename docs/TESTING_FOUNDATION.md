@@ -209,3 +209,197 @@ bdg cleanup --aggressive
 - Used manually or in CI for release sign-off.
 
 These examples illustrate how the layers fit together while honoring the contract-first philosophy.
+
+---
+
+## Real Implementation Examples
+
+### FakeClock with Complete Microtask Drainage
+
+File: `src/__testutils__/FakeClock.ts`
+
+```typescript
+class FakeClock {
+  private microtaskQueue: Array<() => void> = [];
+
+  /**
+   * Drain the microtask queue completely
+   * CRITICAL: Loops until queue is empty to handle cascading microtasks
+   * (e.g., rejection handler that schedules another microtask)
+   */
+  flush(): void {
+    // Loop-based drainage handles cascading microtasks
+    while (this.microtaskQueue.length > 0) {
+      const task = this.microtaskQueue.shift();
+      if (task) {
+        task(); // May enqueue more microtasks - loop continues
+      }
+    }
+  }
+
+  /**
+   * Advance time AND drain all microtasks
+   * Use this for timeout tests where rejections propagate via microtasks
+   */
+  async tickAsync(ms: number): Promise<void> {
+    this.tick(ms);
+    this.flush();
+    // Allow Node's event loop to process any actual promises
+    await Promise.resolve();
+  }
+}
+```
+
+**Why loop-based flush matters:**
+```typescript
+// Scenario: CDP timeout rejection schedules cleanup microtask
+promise.catch(err => {
+  queueMicrotask(() => this.cleanup()); // Second-level microtask
+});
+
+// Without loop: cleanup() stranded in queue
+clock.flush(); // Only processes rejection, misses cleanup
+
+// With loop: complete drainage
+clock.flush(); // Processes rejection → cleanup → done
+```
+
+---
+
+### FakeWebSocket with Defensive Copies
+
+File: `src/__testutils__/FakeWebSocket.ts`
+
+```typescript
+export class FakeWebSocket extends EventEmitter {
+  private sentMessages: string[] = [];
+
+  /**
+   * VERIFICATION - Get sent messages (defensive copy)
+   * Returns shallow copy to prevent accidental mutation between assertions
+   */
+  getSentMessages(): string[] {
+    return [...this.sentMessages]; // Defensive copy prevents mutation
+  }
+}
+```
+
+**Why defensive copies matter:**
+```typescript
+// Without defensive copy - BAD:
+const msgs1 = ws.getSentMessages(); // [msg1]
+ws.send(msg2);
+const msgs2 = ws.getSentMessages(); // [msg1, msg2]
+assert.equal(msgs1.length, 1); // ❌ FAILS - msgs1 was mutated!
+
+// With defensive copy - GOOD:
+const msgs1 = ws.getSentMessages(); // shallow copy of [msg1]
+ws.send(msg2);
+const msgs2 = ws.getSentMessages(); // new shallow copy of [msg1, msg2]
+assert.equal(msgs1.length, 1); // ✅ PASS - msgs1 is immutable snapshot
+```
+
+---
+
+### CDPConnection Contract Test
+
+File: `src/connection/__tests__/cdp.contract.test.ts`
+
+```typescript
+describe('Timeouts', () => {
+  it('should timeout commands after 30s', async () => {
+    const { tickAndFlush, restore } = useFakeClock();
+
+    try {
+      // Arrange: Establish connection
+      const connectPromise = cdp.connect('ws://localhost:9222/devtools/browser');
+      mockWebSocket.simulateOpen();
+      await connectPromise;
+
+      // Act: Send command without responding
+      const commandPromise = cdp.send('Target.getTargets');
+
+      // Advance time by 30s (command timeout)
+      // tickAndFlush() = tick() + complete microtask drainage
+      await tickAndFlush(30000);
+
+      // Assert: Command times out (rejection propagated via microtasks)
+      await assert.rejects(commandPromise, /Command timeout/);
+    } finally {
+      restore(); // IMPORTANT: Restore real timers in afterEach
+    }
+  });
+});
+
+describe('Keepalive', () => {
+  it('should reset missed pong counter on pong received', async () => {
+    const { tick, restore } = useFakeClock();
+
+    try {
+      // Arrange
+      const connectPromise = cdp.connect('ws://localhost:9222/devtools/browser', {
+        keepaliveInterval: 1000,
+      });
+      mockWebSocket.simulateOpen();
+      await connectPromise;
+
+      // Act: Miss 2 pongs, then receive one
+      tick(1000); // 1st ping
+      tick(1000); // 2nd ping
+      mockWebSocket.simulatePong(); // Reset counter (defensive copy ensures stability)
+
+      // Now miss 2 more - should NOT close (counter was reset)
+      tick(1000); // 3rd ping
+      tick(1000); // 4th ping
+
+      // Assert: Still connected (would close on 3rd consecutive miss)
+      assert.equal(cdp.isConnected(), true);
+    } finally {
+      restore();
+    }
+  });
+});
+```
+
+**Key testing patterns demonstrated:**
+1. **tickAndFlush()** for timeout tests (handles cascading microtasks)
+2. **simulatePong()** for keepalive tests (full `ws` API compatibility)
+3. **Defensive copies** prevent test interference (getSentMessages())
+4. **restore()** in finally block (always cleanup fake timers)
+
+---
+
+## Test Utility Organization
+
+```
+src/
+├─ __testutils__/          # Shared test utilities
+│  ├─ FakeClock.ts         # Timer + microtask control
+│  ├─ FakeWebSocket.ts     # Full ws API fake with defensive copies
+│  ├─ testClock.ts         # Clock helper wrapper (useFakeClock)
+│  ├─ assertions.ts        # Custom assertions
+│  └─ index.ts             # Re-export all utilities
+├─ __testfixtures__/       # Shared test data
+│  └─ cdpMessages.ts       # Sample CDP messages
+└─ connection/
+   ├─ cdp.ts               # Production code
+   └─ __tests__/
+      ├─ cdp.contract.test.ts  # Contract tests
+      ├─ helpers.ts            # Test-specific helpers
+      └─ README.md             # Test documentation
+```
+
+**Import pattern:**
+```typescript
+import { FakeClock, FakeWebSocket, useFakeClock } from '@/__testutils__/index.js';
+import { createRequest, createResponse } from '@/__testfixtures__/cdpMessages.js';
+```
+
+---
+
+By following these patterns, we get:
+- ✅ **Honest tests** - FakeWebSocket mimics real `ws` API, catches real bugs
+- ✅ **Complete coverage** - Loop-based flush handles cascading microtasks
+- ✅ **Stable tests** - Defensive copies prevent mutation between assertions
+- ✅ **Fast execution** - Deterministic timers, no real delays
+- ✅ **Refactor-friendly** - Tests survive internal changes when contracts stay same

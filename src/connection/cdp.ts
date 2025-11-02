@@ -12,6 +12,8 @@ import { CDPConnectionError, CDPTimeoutError } from '@/utils/errors.js';
  * - Connection lifecycle (connect, reconnect, keepalive)
  * - Graceful error handling and cleanup
  */
+type WebSocketFactory = (url: string) => WebSocket;
+
 export class CDPConnection {
   private ws: WebSocket | null = null;
   private messageId = 0;
@@ -40,6 +42,11 @@ export class CDPConnection {
   private isIntentionallyClosed = false;
   private onReconnect?: (() => Promise<void>) | undefined;
   private connectionOptions: ConnectionOptions = {};
+  private readonly createWebSocket: WebSocketFactory;
+
+  constructor(createWebSocket: WebSocketFactory = (url: string) => new WebSocket(url)) {
+    this.createWebSocket = createWebSocket;
+  }
 
   /**
    * Connect to Chrome via WebSocket.
@@ -88,7 +95,7 @@ export class CDPConnection {
     const timeout = options.timeout ?? 10000;
 
     return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(wsUrl);
+      this.ws = this.createWebSocket(wsUrl);
 
       const connectTimeout = setTimeout(() => {
         reject(new CDPTimeoutError('Connection timeout'));

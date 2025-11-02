@@ -1,11 +1,12 @@
 import type { ChildProcess } from 'child_process';
 
 export interface CDPMessage {
-  id: number;
+  id?: number;
   method?: string;
-  params?: Record<string, unknown>; // CDP params vary by method
-  result?: unknown; // CDP results vary by method
-  error?: { message: string };
+  params?: Record<string, unknown>;
+  result?: unknown;
+  error?: { code?: number; message: string };
+  sessionId?: string;
 }
 
 export interface CDPTarget {

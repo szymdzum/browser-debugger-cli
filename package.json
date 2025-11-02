@@ -21,8 +21,8 @@
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
     "check": "npm run format:check && npm run type-check && npm run lint",
-    "test": "tsx --test 'src/**/__tests__/*.test.ts'",
-    "test:watch": "tsx --test --watch 'src/**/__tests__/*.test.ts'",
+    "test": "tsx --test src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts",
+    "test:watch": "tsx --test --watch src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts",
     "test:e2e": "./scripts/test-e2e.sh",
     "prepublishOnly": "npm run build",
     "prepare": "husky"
