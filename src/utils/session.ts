@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type { BdgOutput, CollectorType } from '@/types';
+import { AtomicFileWriter } from '@/utils/atomicFile.js';
 
 /**
  * Session file paths relative to ~/.bdg/
@@ -20,10 +21,25 @@ const SESSION_FILES = {
 } as const;
 
 /**
+ * Session file type for type-safe path generation
+ */
+export type SessionFileType = keyof typeof SESSION_FILES;
+
+/**
  * Get the session directory path (~/.bdg)
  */
 export function getSessionDir(): string {
   return path.join(os.homedir(), '.bdg');
+}
+
+/**
+ * Get the path to a session file by type.
+ *
+ * @param fileType - The type of session file
+ * @returns Full path to the session file
+ */
+export function getSessionFilePath(fileType: SessionFileType): string {
+  return path.join(getSessionDir(), SESSION_FILES[fileType]);
 }
 
 /**
@@ -40,28 +56,28 @@ export function ensureSessionDir(): void {
  * Get the path to the PID file
  */
 export function getPidFilePath(): string {
-  return path.join(getSessionDir(), SESSION_FILES.PID);
+  return getSessionFilePath('PID');
 }
 
 /**
  * Get the path to the output JSON file
  */
 export function getOutputFilePath(): string {
-  return path.join(getSessionDir(), SESSION_FILES.OUTPUT);
+  return getSessionFilePath('OUTPUT');
 }
 
 /**
  * Get the path to the session lock file
  */
 export function getLockFilePath(): string {
-  return path.join(getSessionDir(), SESSION_FILES.LOCK);
+  return getSessionFilePath('LOCK');
 }
 
 /**
  * Get the path to the session metadata file
  */
 export function getMetadataFilePath(): string {
-  return path.join(getSessionDir(), SESSION_FILES.METADATA);
+  return getSessionFilePath('METADATA');
 }
 
 /**
@@ -69,7 +85,7 @@ export function getMetadataFilePath(): string {
  * This file survives session cleanup so aggressive cleanup can still find Chrome.
  */
 export function getChromePidCachePath(): string {
-  return path.join(getSessionDir(), SESSION_FILES.CHROME_PID);
+  return getSessionFilePath('CHROME_PID');
 }
 
 /**
@@ -93,11 +109,7 @@ export interface SessionMetadata {
 export function writePid(pid: number): void {
   ensureSessionDir();
   const pidPath = getPidFilePath();
-  const tmpPath = pidPath + '.tmp';
-
-  // Write to temp file first, then rename for atomicity
-  fs.writeFileSync(tmpPath, pid.toString(), 'utf-8');
-  fs.renameSync(tmpPath, pidPath);
+  AtomicFileWriter.writeSync(pidPath, pid.toString());
 }
 
 /**
@@ -167,10 +179,8 @@ export function cleanupPidFile(): void {
 export function writeSessionOutput(output: BdgOutput, compact: boolean = false): void {
   ensureSessionDir();
   const outputPath = getOutputFilePath();
-  const tmpPath = outputPath + '.tmp';
   const jsonString = compact ? JSON.stringify(output) : JSON.stringify(output, null, 2);
-  fs.writeFileSync(tmpPath, jsonString, 'utf-8');
-  fs.renameSync(tmpPath, outputPath);
+  AtomicFileWriter.writeSync(outputPath, jsonString);
 }
 
 /**
@@ -242,9 +252,7 @@ export function releaseSessionLock(): void {
 export function writeSessionMetadata(metadata: SessionMetadata): void {
   ensureSessionDir();
   const metaPath = getMetadataFilePath();
-  const tmpPath = metaPath + '.tmp';
-  fs.writeFileSync(tmpPath, JSON.stringify(metadata, null, 2), 'utf-8');
-  fs.renameSync(tmpPath, metaPath);
+  AtomicFileWriter.writeSync(metaPath, JSON.stringify(metadata, null, 2));
 }
 
 /**
@@ -276,11 +284,7 @@ export function readSessionMetadata(): SessionMetadata | null {
 export function writeChromePid(chromePid: number): void {
   ensureSessionDir();
   const cachePath = getChromePidCachePath();
-  const tmpPath = cachePath + '.tmp';
-
-  // Write to temp file first, then rename for atomicity
-  fs.writeFileSync(tmpPath, chromePid.toString(), 'utf-8');
-  fs.renameSync(tmpPath, cachePath);
+  AtomicFileWriter.writeSync(cachePath, chromePid.toString());
 }
 
 /**
@@ -387,14 +391,14 @@ export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM
  * Get the path to the partial output file (lightweight preview, metadata only)
  */
 export function getPartialFilePath(): string {
-  return path.join(getSessionDir(), SESSION_FILES.PREVIEW);
+  return getSessionFilePath('PREVIEW');
 }
 
 /**
  * Get the path to the full output file (complete data with bodies)
  */
 export function getFullFilePath(): string {
-  return path.join(getSessionDir(), SESSION_FILES.FULL);
+  return getSessionFilePath('FULL');
 }
 
 /**
@@ -414,7 +418,6 @@ export async function writePartialOutputAsync(
   const startTime = Date.now();
   ensureSessionDir();
   const partialPath = getPartialFilePath();
-  const tmpPath = partialPath + '.tmp';
 
   // JSON.stringify is synchronous and blocks event loop - measure it separately
   const stringifyStart = Date.now();
@@ -434,10 +437,9 @@ export async function writePartialOutputAsync(
     console.error(`[PERF] Preview JSON.stringify: ${stringifyDuration}ms (${sizeKB}KB)`);
   }
 
-  // Write to temp file first, then rename for atomicity
+  // Write atomically
   const ioStart = Date.now();
-  await fs.promises.writeFile(tmpPath, jsonString, 'utf-8');
-  await fs.promises.rename(tmpPath, partialPath);
+  await AtomicFileWriter.writeAsync(partialPath, jsonString);
   const ioDuration = Date.now() - ioStart;
 
   const totalDuration = Date.now() - startTime;
@@ -463,7 +465,6 @@ export async function writeFullOutputAsync(
   const startTime = Date.now();
   ensureSessionDir();
   const fullPath = getFullFilePath();
-  const tmpPath = fullPath + '.tmp';
 
   // JSON.stringify is synchronous and blocks event loop - measure it separately
   const stringifyStart = Date.now();
@@ -483,10 +484,9 @@ export async function writeFullOutputAsync(
     console.error(`[PERF] Full JSON.stringify: ${stringifyDuration}ms (${sizeMB}MB)`);
   }
 
-  // Write to temp file first, then rename for atomicity
+  // Write atomically
   const ioStart = Date.now();
-  await fs.promises.writeFile(tmpPath, jsonString, 'utf-8');
-  await fs.promises.rename(tmpPath, fullPath);
+  await AtomicFileWriter.writeAsync(fullPath, jsonString);
   const ioDuration = Date.now() - ioStart;
 
   const totalDuration = Date.now() - startTime;
