@@ -2,6 +2,7 @@ import * as fs from 'fs';
 
 import type { Command } from 'commander';
 
+import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
 
 /**
@@ -9,11 +10,13 @@ import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/ut
  * @property force      Force removal even if the tracked process is alive.
  * @property all        Also delete the persisted `session.json` artifact.
  * @property aggressive Aggressively kill all Chrome processes (uses chrome-launcher killAll).
+ * @property json       Output result as JSON.
  */
 interface CleanupOptions {
   force?: boolean;
   all?: boolean;
   aggressive?: boolean;
+  json?: boolean;
 }
 
 /**
@@ -29,6 +32,7 @@ export function registerCleanupCommand(program: Command): void {
     .option('-f, --force', 'Force cleanup even if session appears active')
     .option('-a, --all', 'Also remove session.json output file')
     .option('--aggressive', 'Kill all Chrome processes (uses chrome-launcher killAll)')
+    .option('-j, --json', 'Output as JSON')
     .action(async (options: CleanupOptions) => {
       try {
         // Import cleanupStaleChrome dynamically
@@ -36,12 +40,20 @@ export function registerCleanupCommand(program: Command): void {
 
         const pid = readPid();
         let didCleanup = false;
+        let cleanedSession = false;
+        let cleanedOutput = false;
+        let cleanedChrome = false;
+        const warnings: string[] = [];
 
         // Handle aggressive Chrome cleanup first if requested
         if (options.aggressive) {
           const errorCount = await cleanupStaleChrome();
+          cleanedChrome = true;
           if (errorCount > 0) {
-            console.error('⚠️  Warning: Some Chrome processes could not be killed');
+            warnings.push('Some Chrome processes could not be killed');
+            if (!options.json) {
+              console.error('⚠️  Warning: Some Chrome processes could not be killed');
+            }
           }
           didCleanup = true;
         }
@@ -54,25 +66,51 @@ export function registerCleanupCommand(program: Command): void {
           const isAlive = isProcessAlive(pid);
 
           if (isAlive && !options.force) {
-            console.error(`Session is still active (PID ${pid})`);
-            console.error('\n💡 Options:');
-            console.error('  Stop gracefully:       bdg stop');
-            console.error('  Force cleanup:         bdg cleanup --force');
-            console.error('\n⚠️  Warning: Force cleanup will remove session files');
-            console.error('   but will NOT kill the running process.');
+            const errorMsg = `Session is still active (PID ${pid})`;
+            if (options.json) {
+              console.log(
+                JSON.stringify(
+                  OutputBuilder.buildJsonError(errorMsg, {
+                    suggestions: [
+                      'Stop gracefully: bdg stop',
+                      'Force cleanup: bdg cleanup --force',
+                    ],
+                    warning:
+                      'Force cleanup will remove session files but will NOT kill the running process',
+                  }),
+                  null,
+                  2
+                )
+              );
+            } else {
+              console.error(errorMsg);
+              console.error('\n💡 Options:');
+              console.error('  Stop gracefully:       bdg stop');
+              console.error('  Force cleanup:         bdg cleanup --force');
+              console.error('\n⚠️  Warning: Force cleanup will remove session files');
+              console.error('   but will NOT kill the running process.');
+            }
             process.exit(1);
           }
 
           if (isAlive && options.force) {
-            console.error(`⚠️  Warning: Process ${pid} is still running!`);
-            console.error('Forcing cleanup anyway...');
-            console.error('(The process will continue running but lose session tracking)');
+            warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
+            if (!options.json) {
+              console.error(`⚠️  Warning: Process ${pid} is still running!`);
+              console.error('Forcing cleanup anyway...');
+              console.error('(The process will continue running but lose session tracking)');
+            }
           } else {
-            console.error(`Found stale session (PID ${pid} not running)`);
+            if (!options.json) {
+              console.error(`Found stale session (PID ${pid} not running)`);
+            }
           }
 
           cleanupSession();
-          console.error('✓ Session files cleaned up');
+          cleanedSession = true;
+          if (!options.json) {
+            console.error('✓ Session files cleaned up');
+          }
           didCleanup = true;
         }
 
@@ -82,30 +120,73 @@ export function registerCleanupCommand(program: Command): void {
           if (fs.existsSync(outputPath)) {
             try {
               fs.unlinkSync(outputPath);
-              console.error('✓ Session output file removed');
+              cleanedOutput = true;
+              if (!options.json) {
+                console.error('✓ Session output file removed');
+              }
               didCleanup = true;
             } catch (error: unknown) {
               const errorMessage = error instanceof Error ? error.message : String(error);
-              console.error(`Warning: Could not remove session.json: ${errorMessage}`);
+              warnings.push(`Could not remove session.json: ${errorMessage}`);
+              if (!options.json) {
+                console.error(`Warning: Could not remove session.json: ${errorMessage}`);
+              }
             }
           }
         }
 
         // Check if any cleanup was performed
         if (!didCleanup) {
-          console.error('No session files found');
-          console.error('Session directory is already clean');
+          if (options.json) {
+            console.log(
+              JSON.stringify(
+                OutputBuilder.buildJsonSuccess({
+                  cleaned: { session: false, output: false, chrome: false },
+                  message: 'No session files found. Session directory is already clean',
+                }),
+                null,
+                2
+              )
+            );
+          } else {
+            console.error('No session files found');
+            console.error('Session directory is already clean');
+          }
           process.exit(0);
         }
 
-        console.error('');
-        console.error('Session directory is now clean');
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              OutputBuilder.buildJsonSuccess({
+                cleaned: { session: cleanedSession, output: cleanedOutput, chrome: cleanedChrome },
+                message: 'Session directory is now clean',
+                ...(warnings.length > 0 && { warnings }),
+              }),
+              null,
+              2
+            )
+          );
+        } else {
+          console.error('');
+          console.error('Session directory is now clean');
+        }
 
         process.exit(0);
       } catch (error) {
-        console.error(
-          `Error during cleanup: ${error instanceof Error ? error.message : String(error)}`
-        );
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              OutputBuilder.buildJsonError(error instanceof Error ? error.message : String(error)),
+              null,
+              2
+            )
+          );
+        } else {
+          console.error(
+            `Error during cleanup: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
         process.exit(1);
       }
     });
