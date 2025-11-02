@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { describe, it, beforeEach, afterEach } from 'node:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 
 /**
  * Integration tests for session file operations using real filesystem
@@ -11,7 +11,7 @@ import * as path from 'node:path';
  * file I/O, catching issues that in-memory fakes can't detect (permissions,
  * platform quirks, race conditions).
  */
-describe('Session Files Integration Tests', () => {
+void describe('Session Files Integration Tests', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -24,8 +24,8 @@ describe('Session Files Integration Tests', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  describe('Atomic Writes', () => {
-    it('should prevent partial reads during writes (tmp file + rename pattern)', () => {
+  void describe('Atomic Writes', () => {
+    void it('should prevent partial reads during writes (tmp file + rename pattern)', () => {
       const filePath = path.join(tmpDir, 'test.txt');
       const tmpPath = filePath + '.tmp';
       const testData = 'complete data';
@@ -47,7 +47,7 @@ describe('Session Files Integration Tests', () => {
       assert.equal(fs.existsSync(tmpPath), false, 'Temp file should be removed after rename');
     });
 
-    it('should handle exclusive file creation (wx flag)', () => {
+    void it('should handle exclusive file creation (wx flag)', () => {
       const lockPath = path.join(tmpDir, 'session.lock');
 
       // First write with wx should succeed
@@ -68,7 +68,7 @@ describe('Session Files Integration Tests', () => {
       assert.equal(content, '12345', 'Original content should be preserved');
     });
 
-    it('should verify temp directory cleanup happens even on assertion failure', () => {
+    void it('should verify temp directory cleanup happens even on assertion failure', () => {
       // This test verifies our afterEach cleanup works
       const testFile = path.join(tmpDir, 'verify-cleanup.txt');
       fs.writeFileSync(testFile, 'test data');

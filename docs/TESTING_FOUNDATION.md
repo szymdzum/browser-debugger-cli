@@ -22,7 +22,7 @@ We use a **lightweight 3-layer approach** optimized for this codebase size:
 | Layer | Location | Description | Execution |
 |-------|----------|-------------|-----------|
 | **Contract** | `src/**/__tests__/*.test.ts` | Fast (<200ms/suite), deterministic checks of module-level contracts. Uses lightweight boundary fakes. Co-located next to the code they test. | `npm test` or `npm run test:watch` |
-| **Integration** | `test/integration/*.test.ts` | Cross-module scenarios that are too slow for contract tests (>200ms) or require precise state setup (e.g., stale PIDs, file system atomicity). | Included in `npm test` |
+| **Integration** | `src/__tests__/integration/*.test.ts` | Cross-module scenarios that are too slow for contract tests (>200ms) or require precise state setup (e.g., stale PIDs, file system atomicity). | Included in `npm test` |
 | **Smoke / E2E** | `scripts/test-e2e.sh` & docs | Real CLI scenarios that exercise Chrome + filesystem. Documented expectations in `SMOKE_TEST_TELEMETRY.md`. | On demand only (`npm run test:e2e`); excluded from CI until headless suite exists |
 
 ### Why three layers
@@ -140,7 +140,7 @@ describe('launchChrome contract', () => {
 - We only assert the public contract (`pid`, `port`, `kill`) and error wrapping.
 
 ### Integration Test Example
-File: `test/integration/session-lifecycle.test.ts`
+File: `src/__tests__/integration/session-lifecycle.test.ts`
 
 ```typescript
 import assert from 'node:assert/strict';
@@ -176,7 +176,7 @@ describe('session lifecycle integration suite', () => {
 **Key points:**
 - Harness spins up a fake Chrome + session directory so we can simulate process crashes deterministically.
 - Tests expose invariants (second start should clean stale PID).
-- Lives under `test/integration/` because it spans multiple modules and takes longer to run.
+- Lives under `src/__tests__/integration/` because it spans multiple modules and takes longer to run.
 
 ### Smoke Script Snippet
 File: `scripts/test-e2e.sh`

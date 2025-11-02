@@ -38,7 +38,7 @@ sleep 1
 
 # Start test server
 echo "🚀 Starting test server on port 3000..."
-node test/fixtures/server.cjs 2>/dev/null &
+node src/__tests__/fixtures/server.cjs 2>/dev/null &
 SERVER_PID=$!
 echo "Test server started (PID: $SERVER_PID)"
 sleep 2  # Wait for server to be ready
