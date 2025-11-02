@@ -15,7 +15,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { writeFile, stat, mkdir } from 'node:fs/promises';
+import { writeFile, stat, mkdir, readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startBenchmarkServer, type BenchmarkServer } from './benchmark-server.js';
@@ -192,6 +192,29 @@ async function getFileSizes(): Promise<{ preview: number; full: number; final: n
   return sizes;
 }
 
+async function getNetworkBodyStats(): Promise<{ fetched: number; skipped: number }> {
+  try {
+    const finalPath = resolve(sessionDir, 'session.json');
+    const content = await readFile(finalPath, 'utf-8');
+    const json = JSON.parse(content);
+    const requests: Array<{ responseBody?: string }> = json?.data?.network ?? [];
+    let fetched = 0;
+    let skipped = 0;
+    for (const req of requests) {
+      if (typeof req.responseBody === 'string') {
+        if (req.responseBody.startsWith('[SKIPPED')) {
+          skipped += 1;
+        } else {
+          fetched += 1;
+        }
+      }
+    }
+    return { fetched, skipped };
+  } catch {
+    return { fetched: 0, skipped: 0 };
+  }
+}
+
 /**
  * Run bdg with given arguments and collect metrics.
  */
@@ -238,6 +261,7 @@ async function runBdgScenario(
 
   // Get file sizes
   const fileSizes = await getFileSizes();
+  const bodyStats = await getNetworkBodyStats();
 
   return {
     scenario: args.join(' ') || 'default',
@@ -249,8 +273,8 @@ async function runBdgScenario(
     fileWriteTime: perfMetrics.fileWriteTime ?? { preview: 0, full: 0 },
     collectorInitTime: perfMetrics.collectorInitTime ?? 0,
     memoryUsage: perfMetrics.memoryUsage ?? { heapUsed: 0, rss: 0 },
-    bodiesFetched: perfMetrics.bodiesFetched ?? 0,
-    bodiesSkipped: perfMetrics.bodiesSkipped ?? 0,
+    bodiesFetched: perfMetrics.bodiesFetched ?? bodyStats.fetched,
+    bodiesSkipped: perfMetrics.bodiesSkipped ?? bodyStats.skipped,
   };
 }
 
