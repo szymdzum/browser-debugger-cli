@@ -8,6 +8,7 @@ import {
   formatNoMetadataMessage,
 } from '@/cli/formatters/statusFormatter.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
+import { VERSION } from '@/utils/version.js';
 
 /**
  * Options for the `bdg status` command.
@@ -40,7 +41,7 @@ export function registerStatusCommand(program: Command): void {
 
         if (!pid) {
           if (options.json) {
-            console.log(JSON.stringify({ active: false }, null, 2));
+            console.log(JSON.stringify({ version: VERSION, active: false }, null, 2));
           } else {
             console.error(formatNoSessionMessage());
           }
@@ -52,7 +53,13 @@ export function registerStatusCommand(program: Command): void {
 
         if (!isAlive) {
           if (options.json) {
-            console.log(JSON.stringify({ active: false, stale: true, stalePid: pid }, null, 2));
+            console.log(
+              JSON.stringify(
+                { version: VERSION, active: false, stale: true, stalePid: pid },
+                null,
+                2
+              )
+            );
           } else {
             console.error(formatStaleSessionMessage(pid));
           }
@@ -67,6 +74,7 @@ export function registerStatusCommand(program: Command): void {
             console.log(
               JSON.stringify(
                 {
+                  version: VERSION,
                   active: true,
                   bdgPid: pid,
                   warning: 'Metadata not found (session may be from older version)',

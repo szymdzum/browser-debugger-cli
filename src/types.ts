@@ -44,6 +44,7 @@ export interface ConsoleMessage {
 }
 
 export interface BdgOutput {
+  version: string; // Package version for schema tracking
   success: boolean;
   timestamp: string;
   duration: number;

@@ -12,6 +12,7 @@ import type {
   BdgOutput,
   CleanupFunction,
 } from '@/types';
+import { VERSION } from '@/utils/version.js';
 
 /**
  * Manages a browser debugging session.
@@ -124,6 +125,7 @@ export class BdgSession {
 
     // Build output (even if DOM capture failed)
     const output: BdgOutput = {
+      version: VERSION,
       success: true,
       timestamp: new Date().toISOString(),
       duration: Date.now() - this.startTime,

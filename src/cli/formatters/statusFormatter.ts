@@ -1,8 +1,10 @@
 import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
 import type { SessionMetadata } from '@/utils/session.js';
 import { isProcessAlive } from '@/utils/session.js';
+import { VERSION } from '@/utils/version.js';
 
 export interface StatusData {
+  version: string;
   active: boolean;
   bdgPid?: number;
   chromePid?: number | undefined;
@@ -88,17 +90,18 @@ export function formatStatusAsJson(
   pid: number | null
 ): StatusData {
   if (!pid) {
-    return { active: false };
+    return { version: VERSION, active: false };
   }
 
   const isAlive = isProcessAlive(pid);
 
   if (!isAlive) {
-    return { active: false, stale: true, stalePid: pid };
+    return { version: VERSION, active: false, stale: true, stalePid: pid };
   }
 
   if (!metadata) {
     return {
+      version: VERSION,
       active: true,
       bdgPid: pid,
       warning: 'Metadata not found (session may be from older version)',
@@ -117,6 +120,7 @@ export function formatStatusAsJson(
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
 
   return {
+    version: VERSION,
     active: true,
     bdgPid: pid,
     chromePid: metadata.chromePid,
