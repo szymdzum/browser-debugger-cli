@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main]  # Only run on direct commits to main
   pull_request:
-    branches: ['**']
+    branches: ['**']  # Run on all PRs
 
 jobs:
   quality:
