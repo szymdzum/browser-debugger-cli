@@ -17,6 +17,7 @@ import type {
   CDPNetworkLoadingFailedParams,
   CDPGetResponseBodyResponse,
 } from '@/types';
+import { CDPHandlerRegistry } from '@/utils/cdpHandlers.js';
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBody } from '@/utils/filters.js';
 
 export interface NetworkCollectionOptions {
@@ -62,7 +63,7 @@ export async function startNetworkCollection(
     networkExclude = [],
   } = options;
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
-  const handlers: Array<{ event: string; id: number }> = [];
+  const registry = new CDPHandlerRegistry();
 
   // Counters for PERF logging
   let bodiesFetched = 0;
@@ -101,7 +102,8 @@ export async function startNetworkCollection(
   }, STALE_REQUEST_CLEANUP_INTERVAL);
 
   // Listen for requests
-  const requestWillBeSentId = cdp.on(
+  registry.register<CDPNetworkRequestParams>(
+    cdp,
     'Network.requestWillBeSent',
     (params: CDPNetworkRequestParams) => {
       if (requestMap.size >= MAX_NETWORK_REQUESTS) {
@@ -125,10 +127,10 @@ export async function startNetworkCollection(
       });
     }
   );
-  handlers.push({ event: 'Network.requestWillBeSent', id: requestWillBeSentId });
 
   // Listen for responses
-  const responseReceivedId = cdp.on(
+  registry.register<CDPNetworkResponseParams>(
+    cdp,
     'Network.responseReceived',
     (params: CDPNetworkResponseParams) => {
       const entry = requestMap.get(params.requestId);
@@ -139,10 +141,10 @@ export async function startNetworkCollection(
       }
     }
   );
-  handlers.push({ event: 'Network.responseReceived', id: responseReceivedId });
 
   // Listen for finished requests
-  const loadingFinishedId = cdp.on(
+  registry.register<CDPNetworkLoadingFinishedParams>(
+    cdp,
     'Network.loadingFinished',
     (params: CDPNetworkLoadingFinishedParams) => {
       const entry = requestMap.get(params.requestId);
@@ -212,10 +214,10 @@ export async function startNetworkCollection(
       }
     }
   );
-  handlers.push({ event: 'Network.loadingFinished', id: loadingFinishedId });
 
   // Listen for failed requests
-  const loadingFailedId = cdp.on(
+  registry.register<CDPNetworkLoadingFailedParams>(
+    cdp,
     'Network.loadingFailed',
     (params: CDPNetworkLoadingFailedParams) => {
       const entry = requestMap.get(params.requestId);
@@ -245,7 +247,6 @@ export async function startNetworkCollection(
       }
     }
   );
-  handlers.push({ event: 'Network.loadingFailed', id: loadingFailedId });
 
   // Return cleanup function
   return () => {
@@ -262,7 +263,7 @@ export async function startNetworkCollection(
     clearInterval(cleanupInterval);
 
     // Remove event handlers
-    handlers.forEach(({ event, id }) => cdp.off(event, id));
+    registry.cleanup(cdp);
 
     // Clear request map
     requestMap.clear();
