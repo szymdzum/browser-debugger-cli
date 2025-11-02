@@ -64,6 +64,51 @@ export const DEFAULT_EXCLUDED_CONSOLE_PATTERNS = [
 ];
 
 /**
+ * File patterns to skip body fetching by default (assets unlikely to be useful for debugging)
+ * These reduce data volume significantly without losing critical debugging information.
+ */
+export const DEFAULT_SKIP_BODY_PATTERNS = [
+  // Images
+  '*.png',
+  '*.jpg',
+  '*.jpeg',
+  '*.gif',
+  '*.svg',
+  '*.ico',
+  '*.webp',
+  '*.bmp',
+  '*.tiff',
+
+  // Fonts
+  '*.woff',
+  '*.woff2',
+  '*.ttf',
+  '*.eot',
+  '*.otf',
+
+  // Stylesheets
+  '*.css',
+
+  // Source maps (can be large and rarely needed)
+  '*.map',
+  '*.js.map',
+  '*.css.map',
+
+  // Videos
+  '*.mp4',
+  '*.webm',
+  '*.ogg',
+  '*.avi',
+  '*.mov',
+
+  // Audio
+  '*.mp3',
+  '*.wav',
+  '*.flac',
+  '*.aac',
+];
+
+/**
  * Check if a URL should be excluded based on domain filtering
  */
 export function shouldExcludeDomain(url: string, includeAll: boolean = false): boolean {
@@ -95,4 +140,136 @@ export function shouldExcludeConsoleMessage(text: string, includeAll: boolean = 
   return DEFAULT_EXCLUDED_CONSOLE_PATTERNS.some((pattern) =>
     lowerText.includes(pattern.toLowerCase())
   );
+}
+
+/**
+ * Simple wildcard pattern matcher.
+ * Supports only the * wildcard character.
+ *
+ * Examples:
+ *   matchesWildcard("api.json", "*.json") → true
+ *   matchesWildcard("api/users", "*api*") → true
+ *   matchesWildcard("index.html", "*.js") → false
+ *
+ * @param str - The string to test
+ * @param pattern - The pattern with * wildcards
+ * @returns True if the string matches the pattern
+ */
+export function matchesWildcard(str: string, pattern: string): boolean {
+  // Escape special regex characters except *
+  const regexPattern = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
+    .replace(/\*/g, '.*'); // Replace * with .*
+
+  const regex = new RegExp(`^${regexPattern}$`, 'i'); // Case-insensitive
+  return regex.test(str);
+}
+
+/**
+ * Check if a URL matches any pattern in a list.
+ *
+ * @param url - The URL to check
+ * @param patterns - Array of wildcard patterns
+ * @returns True if URL matches any pattern
+ */
+function matchesAnyPattern(url: string, patterns: string[]): boolean {
+  // Extract pathname from URL for pattern matching
+  let pathname: string;
+  try {
+    const parsed = new URL(url);
+    pathname = parsed.pathname;
+  } catch {
+    // If not a valid URL, use the whole string
+    pathname = url;
+  }
+
+  return patterns.some((pattern) => matchesWildcard(pathname, pattern));
+}
+
+/**
+ * Determine if a response body should be fetched based on URL and patterns.
+ *
+ * Pattern precedence (follows include-trumps-exclude rule):
+ * 1. If URL matches includePatterns → FETCH (even if it also matches excludePatterns)
+ * 2. If URL matches excludePatterns → SKIP
+ * 3. If fetchAllBodies flag is true → FETCH
+ * 4. If URL matches DEFAULT_SKIP_BODY_PATTERNS → SKIP
+ * 5. Otherwise → FETCH (default behavior)
+ *
+ * @param url - The request URL
+ * @param mimeType - The response MIME type (optional, for additional checks)
+ * @param options - Configuration options
+ * @returns True if the body should be fetched
+ */
+export function shouldFetchBody(
+  url: string,
+  _mimeType: string | undefined,
+  options: {
+    fetchAllBodies?: boolean;
+    includePatterns?: string[];
+    excludePatterns?: string[];
+  } = {}
+): boolean {
+  const { fetchAllBodies = false, includePatterns = [], excludePatterns = [] } = options;
+
+  // If includePatterns specified and URL matches → always fetch (include trumps exclude)
+  if (includePatterns.length > 0 && matchesAnyPattern(url, includePatterns)) {
+    return true;
+  }
+
+  // If excludePatterns specified and URL matches → skip
+  if (excludePatterns.length > 0 && matchesAnyPattern(url, excludePatterns)) {
+    return false;
+  }
+
+  // If fetchAllBodies flag is set → fetch everything
+  if (fetchAllBodies) {
+    return true;
+  }
+
+  // Apply default auto-skip patterns
+  if (matchesAnyPattern(url, DEFAULT_SKIP_BODY_PATTERNS)) {
+    return false;
+  }
+
+  // Default: fetch the body
+  return true;
+}
+
+/**
+ * Determine if a network request should be excluded based on URL patterns.
+ *
+ * Pattern precedence (follows include-trumps-exclude rule):
+ * 1. If URL matches includePatterns → CAPTURE (even if it also matches excludePatterns)
+ * 2. If URL matches excludePatterns → EXCLUDE
+ * 3. Otherwise → CAPTURE (default behavior)
+ *
+ * Note: This function is separate from domain filtering (shouldExcludeDomain).
+ * Both filters can be applied: domain filtering happens first, then URL pattern filtering.
+ *
+ * @param url - The request URL
+ * @param options - Configuration options
+ * @returns True if the request should be excluded
+ */
+export function shouldExcludeUrl(
+  url: string,
+  options: {
+    includePatterns?: string[];
+    excludePatterns?: string[];
+  } = {}
+): boolean {
+  const { includePatterns = [], excludePatterns = [] } = options;
+
+  // If includePatterns specified and URL matches → never exclude (include trumps exclude)
+  if (includePatterns.length > 0 && matchesAnyPattern(url, includePatterns)) {
+    return false;
+  }
+
+  // If excludePatterns specified and URL matches → exclude
+  if (excludePatterns.length > 0 && matchesAnyPattern(url, excludePatterns)) {
+    return true;
+  }
+
+  // Default: don't exclude
+  return false;
 }

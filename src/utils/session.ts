@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { BdgOutput } from '@/types';
+import type { BdgOutput, CollectorType } from '@/types';
 
 /**
  * Session file paths relative to ~/.bdg/
@@ -82,6 +82,7 @@ export interface SessionMetadata {
   port: number;
   targetId?: string | undefined;
   webSocketDebuggerUrl?: string | undefined;
+  activeCollectors?: CollectorType[] | undefined;
 }
 
 /**

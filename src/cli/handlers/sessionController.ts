@@ -1,6 +1,6 @@
 import type { LaunchOptions } from '@/connection/launcher.js';
 import type { BdgSession } from '@/session/BdgSession.js';
-import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
+import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError } from '@/utils/errors.js';
 import { getExitCodeForError } from '@/utils/exitCodes.js';
@@ -184,6 +184,7 @@ async function startCollectorsAndMetadata(
     port,
     targetId: target.id,
     webSocketDebuggerUrl: target.webSocketDebuggerUrl,
+    activeCollectors: collectors,
   });
 
   // Note: Chrome PID cache is written immediately after launch (Phase 2)
@@ -256,6 +257,11 @@ export async function startSession(
     connectionPollInterval?: number | undefined;
     maxConnectionRetries?: number | undefined;
     portStrictMode?: boolean | undefined;
+    fetchAllBodies?: boolean | undefined;
+    fetchBodiesInclude?: string[] | undefined;
+    fetchBodiesExclude?: string[] | undefined;
+    networkInclude?: string[] | undefined;
+    networkExclude?: string[] | undefined;
   },
   collectors: CollectorType[]
 ): Promise<void> {
@@ -298,12 +304,28 @@ export async function startSession(
 
     // Phase 3: CDP connection and target setup
     const setupStart = Date.now();
+    const sessionOptions: SessionOptions = {
+      includeAll: options.includeAll ?? false,
+      fetchAllBodies: options.fetchAllBodies ?? false,
+    };
+    if (options.fetchBodiesInclude !== undefined) {
+      sessionOptions.fetchBodiesInclude = options.fetchBodiesInclude;
+    }
+    if (options.fetchBodiesExclude !== undefined) {
+      sessionOptions.fetchBodiesExclude = options.fetchBodiesExclude;
+    }
+    if (options.networkInclude !== undefined) {
+      sessionOptions.networkInclude = options.networkInclude;
+    }
+    if (options.networkExclude !== undefined) {
+      sessionOptions.networkExclude = options.networkExclude;
+    }
     const setupResult = await TargetSetup.setup(
       url,
       targetUrl,
       options.port,
       options.reuseTab ?? false,
-      options.includeAll ?? false
+      sessionOptions
     );
     const session = setupResult.session;
     const target = setupResult.target;

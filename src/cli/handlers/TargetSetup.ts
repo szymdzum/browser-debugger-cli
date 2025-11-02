@@ -1,6 +1,6 @@
 import { createOrFindTarget } from '@/connection/tabs.js';
 import { BdgSession } from '@/session/BdgSession.js';
-import type { CDPTarget } from '@/types';
+import type { CDPTarget, SessionOptions } from '@/types';
 
 /**
  * Handles CDP target setup and session creation
@@ -13,7 +13,7 @@ export class TargetSetup {
    * @param targetUrl - Normalized target URL
    * @param port - Chrome debugging port
    * @param reuseTab - Whether to reuse existing tab
-   * @param includeAll - Whether to include all data (disable filtering)
+   * @param sessionOptions - Session-level collection options
    * @returns Session and target metadata
    */
   static async setup(
@@ -21,7 +21,7 @@ export class TargetSetup {
     targetUrl: string,
     port: number,
     reuseTab: boolean,
-    includeAll: boolean = false
+    sessionOptions: SessionOptions = {}
   ): Promise<{ session: BdgSession; target: CDPTarget }> {
     // Fetch targets once
     const initialTargets = await this.fetchTargets(port);
@@ -35,7 +35,7 @@ export class TargetSetup {
     if (!tempTarget) {
       throw new Error('No targets available in Chrome');
     }
-    const tempSession = new BdgSession(tempTarget, port, includeAll);
+    const tempSession = new BdgSession(tempTarget, port, sessionOptions);
     await tempSession.connect();
 
     if (!tempSession.isConnected()) {
@@ -52,7 +52,7 @@ export class TargetSetup {
 
     // Close temp session and reconnect to the correct target
     tempSession.getCDP().close();
-    const session = new BdgSession(fullTarget, port, includeAll);
+    const session = new BdgSession(fullTarget, port, sessionOptions);
     await session.connect();
 
     return { session, target: fullTarget };

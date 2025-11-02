@@ -37,6 +37,11 @@ import type { CollectorType } from '@/types';
  * @property skipDom                Disable DOM collector (subtractive).
  * @property skipNetwork            Disable network collector (subtractive).
  * @property skipConsole            Disable console collector (subtractive).
+ * @property fetchAllBodies         Fetch all response bodies (override auto-optimization).
+ * @property fetchBodiesInclude     Comma-separated patterns for bodies to include (trumps exclude).
+ * @property fetchBodiesExclude     Comma-separated patterns for bodies to exclude.
+ * @property networkInclude         Comma-separated URL patterns to capture (trumps exclude).
+ * @property networkExclude         Comma-separated URL patterns to exclude.
  */
 interface CollectorOptions {
   port: string;
@@ -57,6 +62,11 @@ interface CollectorOptions {
   skipDom?: boolean;
   skipNetwork?: boolean;
   skipConsole?: boolean;
+  fetchAllBodies?: boolean;
+  fetchBodiesInclude?: string;
+  fetchBodiesExclude?: string;
+  networkInclude?: string;
+  networkExclude?: string;
 }
 
 /**
@@ -84,7 +94,24 @@ function applyCollectorOptions(command: Command): Command {
     .option('--console', 'Enable only console collector (additive)')
     .option('--skip-dom', 'Disable DOM collector (subtractive)')
     .option('--skip-network', 'Disable network collector (subtractive)')
-    .option('--skip-console', 'Disable console collector (subtractive)');
+    .option('--skip-console', 'Disable console collector (subtractive)')
+    .option('--fetch-all-bodies', 'Fetch all response bodies (override auto-optimization)')
+    .option(
+      '--fetch-bodies-include <patterns>',
+      'Only fetch bodies matching patterns (comma-separated wildcards, trumps exclude)'
+    )
+    .option(
+      '--fetch-bodies-exclude <patterns>',
+      'Additional patterns to exclude from body fetching (comma-separated wildcards)'
+    )
+    .option(
+      '--network-include <patterns>',
+      'Only capture URLs matching patterns (comma-separated wildcards, trumps exclude)'
+    )
+    .option(
+      '--network-exclude <patterns>',
+      'Additional URL patterns to exclude (comma-separated wildcards)'
+    );
 }
 
 /**
@@ -95,6 +122,20 @@ function applyCollectorOptions(command: Command): Command {
  */
 function parseOptionalInt(value: string | undefined): number | undefined {
   return value !== undefined ? parseInt(value, 10) : undefined;
+}
+
+/**
+ * Parse comma-separated patterns into array
+ *
+ * @param value - Optional comma-separated patterns string
+ * @returns Array of patterns or undefined if value was not provided
+ */
+function parsePatterns(value: string | undefined): string[] | undefined {
+  if (!value) return undefined;
+  return value
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
 }
 
 /**
@@ -209,6 +250,11 @@ function buildSessionOptions(options: CollectorOptions): {
   connectionPollInterval: number | undefined;
   maxConnectionRetries: number | undefined;
   portStrictMode: boolean;
+  fetchAllBodies: boolean;
+  fetchBodiesInclude: string[] | undefined;
+  fetchBodiesExclude: string[] | undefined;
+  networkInclude: string[] | undefined;
+  networkExclude: string[] | undefined;
 } {
   return {
     port: parseInt(options.port, 10),
@@ -223,6 +269,11 @@ function buildSessionOptions(options: CollectorOptions): {
     connectionPollInterval: parseOptionalInt(options.connectionPollInterval),
     maxConnectionRetries: parseOptionalInt(options.maxConnectionRetries),
     portStrictMode: options.portStrict ?? false,
+    fetchAllBodies: options.fetchAllBodies ?? false,
+    fetchBodiesInclude: parsePatterns(options.fetchBodiesInclude),
+    fetchBodiesExclude: parsePatterns(options.fetchBodiesExclude),
+    networkInclude: parsePatterns(options.networkInclude),
+    networkExclude: parsePatterns(options.networkExclude),
   };
 }
 

@@ -1,4 +1,11 @@
-import type { BdgOutput, CDPTarget, NetworkRequest, ConsoleMessage, DOMData } from '@/types';
+import type {
+  BdgOutput,
+  CDPTarget,
+  NetworkRequest,
+  ConsoleMessage,
+  DOMData,
+  CollectorType,
+} from '@/types';
 import { VERSION } from '@/utils/version.js';
 
 /**
@@ -16,6 +23,7 @@ export interface OutputBuilderOptions {
   networkRequests: NetworkRequest[];
   consoleLogs: ConsoleMessage[];
   domData?: DOMData;
+  activeCollectors: CollectorType[];
 }
 
 /**
@@ -29,7 +37,8 @@ export class OutputBuilder {
    * @returns BdgOutput payload
    */
   static build(options: OutputBuilderOptions): BdgOutput {
-    const { mode, target, startTime, networkRequests, consoleLogs, domData } = options;
+    const { mode, target, startTime, networkRequests, consoleLogs, domData, activeCollectors } =
+      options;
 
     const baseOutput = {
       version: VERSION,
@@ -46,50 +55,76 @@ export class OutputBuilder {
 
     if (mode === 'preview') {
       // Lightweight preview: metadata only, last 1000 items
+      const previewData: Record<string, unknown> = {};
+
+      if (activeCollectors.includes('network')) {
+        previewData['network'] = networkRequests.slice(-1000).map((req) => ({
+          requestId: req.requestId,
+          url: req.url,
+          method: req.method,
+          timestamp: req.timestamp,
+          status: req.status,
+          mimeType: req.mimeType,
+          // Exclude requestBody, responseBody, headers for lightweight preview
+        }));
+      }
+
+      if (activeCollectors.includes('console')) {
+        previewData['console'] = consoleLogs.slice(-1000).map((msg) => ({
+          type: msg.type,
+          text: msg.text,
+          timestamp: msg.timestamp,
+          // Exclude args for lightweight preview
+        }));
+      }
+
+      // DOM omitted in preview (only captured on stop)
+
       return {
         ...baseOutput,
-        data: {
-          network: networkRequests.slice(-1000).map((req) => ({
-            requestId: req.requestId,
-            url: req.url,
-            method: req.method,
-            timestamp: req.timestamp,
-            status: req.status,
-            mimeType: req.mimeType,
-            // Exclude requestBody, responseBody, headers for lightweight preview
-          })),
-          console: consoleLogs.slice(-1000).map((msg) => ({
-            type: msg.type,
-            text: msg.text,
-            timestamp: msg.timestamp,
-            // Exclude args for lightweight preview
-          })),
-          // DOM omitted in preview (only captured on stop)
-        },
+        data: previewData,
       };
     }
 
     if (mode === 'full') {
       // Full mode: complete data with bodies
+      const fullData: Record<string, unknown> = {};
+
+      if (activeCollectors.includes('network')) {
+        fullData['network'] = networkRequests; // All data with bodies
+      }
+
+      if (activeCollectors.includes('console')) {
+        fullData['console'] = consoleLogs; // All data with args
+      }
+
+      // DOM omitted (only captured on stop)
+
       return {
         ...baseOutput,
-        data: {
-          network: networkRequests, // All data with bodies
-          console: consoleLogs, // All data with args
-          // DOM omitted (only captured on stop)
-        },
+        data: fullData,
       };
     }
 
     // Final mode - includes DOM, partial=false
+    const finalData: Record<string, unknown> = {};
+
+    if (activeCollectors.includes('network')) {
+      finalData['network'] = networkRequests;
+    }
+
+    if (activeCollectors.includes('console')) {
+      finalData['console'] = consoleLogs;
+    }
+
+    if (activeCollectors.includes('dom') && domData) {
+      finalData['dom'] = domData;
+    }
+
     return {
       ...baseOutput,
       partial: false,
-      data: {
-        network: networkRequests,
-        console: consoleLogs,
-        ...(domData && { dom: domData }),
-      },
+      data: finalData,
     };
   }
 

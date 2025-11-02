@@ -119,6 +119,7 @@ export class PreviewWriter {
       startTime: this.startTime,
       networkRequests,
       consoleLogs,
+      activeCollectors,
     });
 
     const fullOutput = OutputBuilder.build({
@@ -127,6 +128,7 @@ export class PreviewWriter {
       startTime: this.startTime,
       networkRequests,
       consoleLogs,
+      activeCollectors,
     });
 
     // Write both files in parallel (async, non-blocking)

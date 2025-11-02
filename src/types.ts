@@ -138,6 +138,24 @@ export interface ConnectionOptions {
   onReconnect?: (() => Promise<void>) | undefined;
 }
 
+/**
+ * Session-level options for BDG data collection.
+ * @property includeAll         Disable all default filtering (tracking domains, dev server noise, etc).
+ * @property fetchAllBodies     Override auto-optimization and fetch all response bodies.
+ * @property fetchBodiesInclude URL patterns for bodies to fetch (trumps exclude).
+ * @property fetchBodiesExclude URL patterns for bodies to skip.
+ * @property networkInclude     URL patterns for requests to capture (trumps exclude).
+ * @property networkExclude     URL patterns for requests to exclude.
+ */
+export interface SessionOptions {
+  includeAll?: boolean;
+  fetchAllBodies?: boolean;
+  fetchBodiesInclude?: string[];
+  fetchBodiesExclude?: string[];
+  networkInclude?: string[];
+  networkExclude?: string[];
+}
+
 export type CleanupFunction = () => void;
 
 /**
