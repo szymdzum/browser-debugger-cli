@@ -117,14 +117,18 @@ class SessionContext implements SessionState {
   previewWriter: PreviewWriter | null = null;
   startTime: number;
   target: CDPTarget | null = null;
+  compact: boolean;
   private shutdownController: ShutdownController;
 
   /**
    * Create a new session context and track the start timestamp.
    * The context is shared with signal handlers so they can orchestrate shutdown.
+   *
+   * @param compact - If true, use compact JSON format (no indentation)
    */
-  constructor() {
+  constructor(compact: boolean = false) {
     this.startTime = Date.now();
+    this.compact = compact;
     this.shutdownController = new ShutdownController(this);
   }
 
@@ -271,7 +275,7 @@ export async function startSession(
   },
   collectors: CollectorType[]
 ): Promise<void> {
-  const context = new SessionContext();
+  const context = new SessionContext(options.compact ?? false);
 
   // Setup signal handlers for graceful shutdown
   const signalHandler = new SignalHandler({

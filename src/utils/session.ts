@@ -162,12 +162,14 @@ export function cleanupPidFile(): void {
  * Write session output to the JSON file
  *
  * @param output - The BdgOutput data to write
+ * @param compact - If true, use compact JSON format (no indentation)
  */
-export function writeSessionOutput(output: BdgOutput): void {
+export function writeSessionOutput(output: BdgOutput, compact: boolean = false): void {
   ensureSessionDir();
   const outputPath = getOutputFilePath();
   const tmpPath = outputPath + '.tmp';
-  fs.writeFileSync(tmpPath, JSON.stringify(output, null, 2), 'utf-8');
+  const jsonString = compact ? JSON.stringify(output) : JSON.stringify(output, null, 2);
+  fs.writeFileSync(tmpPath, jsonString, 'utf-8');
   fs.renameSync(tmpPath, outputPath);
 }
 

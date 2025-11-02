@@ -200,10 +200,11 @@ function matchesAnyPattern(url: string, patterns: string[]): boolean {
  *
  * Pattern precedence (follows include-trumps-exclude rule):
  * 1. If URL matches includePatterns → FETCH (even if it also matches excludePatterns)
- * 2. If URL matches excludePatterns → SKIP
- * 3. If fetchAllBodies flag is true → FETCH
- * 4. If URL matches DEFAULT_SKIP_BODY_PATTERNS → SKIP
- * 5. Otherwise → FETCH (default behavior)
+ * 2. If includePatterns specified but URL doesn't match → SKIP (whitelist mode)
+ * 3. If URL matches excludePatterns → SKIP
+ * 4. If fetchAllBodies flag is true → FETCH
+ * 5. If URL matches DEFAULT_SKIP_BODY_PATTERNS → SKIP
+ * 6. Otherwise → FETCH (default behavior)
  *
  * @param url - The request URL
  * @param mimeType - The response MIME type (optional, for additional checks)
@@ -221,9 +222,14 @@ export function shouldFetchBody(
 ): boolean {
   const { fetchAllBodies = false, includePatterns = [], excludePatterns = [] } = options;
 
-  // If includePatterns specified and URL matches → always fetch (include trumps exclude)
-  if (includePatterns.length > 0 && matchesAnyPattern(url, includePatterns)) {
-    return true;
+  // If includePatterns specified, act as whitelist
+  if (includePatterns.length > 0) {
+    // URL matches include pattern → fetch (include trumps exclude)
+    if (matchesAnyPattern(url, includePatterns)) {
+      return true;
+    }
+    // URL doesn't match include pattern → skip (whitelist mode)
+    return false;
   }
 
   // If excludePatterns specified and URL matches → skip

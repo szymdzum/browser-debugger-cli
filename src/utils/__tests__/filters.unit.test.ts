@@ -107,6 +107,30 @@ void describe('filters - shouldFetchBody', () => {
     );
   });
 
+  void it('should treat includePatterns as whitelist (skip non-matching URLs)', () => {
+    const options = {
+      includePatterns: ['*/api/*', '*/graphql'],
+    };
+
+    // Matches include pattern → fetch
+    assert.equal(
+      shouldFetchBody('https://example.com/api/users', 'application/json', options),
+      true
+    );
+    assert.equal(shouldFetchBody('https://example.com/graphql', 'application/json', options), true);
+
+    // Doesn't match include pattern → skip (whitelist mode)
+    assert.equal(
+      shouldFetchBody('https://example.com/app.js', 'application/javascript', options),
+      false
+    );
+    assert.equal(shouldFetchBody('https://example.com/index.html', 'text/html', options), false);
+    assert.equal(
+      shouldFetchBody('https://example.com/data.json', 'application/json', options),
+      false
+    );
+  });
+
   void it('should respect excludePatterns', () => {
     const options = {
       excludePatterns: ['*tracking*', '*analytics*'],
