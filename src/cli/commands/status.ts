@@ -7,6 +7,7 @@ import {
   formatStaleSessionMessage,
   formatNoMetadataMessage,
 } from '@/cli/formatters/statusFormatter.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -45,7 +46,7 @@ export function registerStatusCommand(program: Command): void {
           } else {
             console.error(formatNoSessionMessage());
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         // Check if process is alive
@@ -63,7 +64,7 @@ export function registerStatusCommand(program: Command): void {
           } else {
             console.error(formatStaleSessionMessage(pid));
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         // Read metadata
@@ -86,7 +87,7 @@ export function registerStatusCommand(program: Command): void {
           } else {
             console.error(formatNoMetadataMessage(pid));
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         if (options.json) {
@@ -98,12 +99,12 @@ export function registerStatusCommand(program: Command): void {
           console.log(formatSessionStatus(metadata, pid, options.verbose ?? false));
         }
 
-        process.exit(0);
+        process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
         console.error(
           `Error checking status: ${error instanceof Error ? error.message : String(error)}`
         );
-        process.exit(1);
+        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });
 }

@@ -3,6 +3,7 @@ import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError } from '@/utils/errors.js';
+import { getExitCodeForError } from '@/utils/exitCodes.js';
 import { writePid, writeSessionMetadata, writeChromePid } from '@/utils/session.js';
 
 import { ChromeBootstrap } from './ChromeBootstrap.js';
@@ -372,6 +373,8 @@ export async function startSession(
     // Cleanup on error
     await context.cleanup();
 
-    process.exit(1);
+    // Use semantic exit codes based on error type
+    const exitCode = getExitCodeForError(error);
+    process.exit(exitCode);
   }
 }

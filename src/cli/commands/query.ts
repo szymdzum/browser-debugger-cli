@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { readPid, isProcessAlive } from '@/utils/session.js';
 
 /**
@@ -57,7 +58,7 @@ export function registerQueryCommand(program: Command): void {
             console.error(`Error: ${errorMsg}`);
             console.error('Start a session with: bdg <url>');
           }
-          process.exit(1);
+          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 
         // Read session metadata to get the target ID
@@ -80,7 +81,7 @@ export function registerQueryCommand(program: Command): void {
             console.error(`Error: ${errorMsg}`);
             console.error('Session may have been started with an older version');
           }
-          process.exit(1);
+          process.exit(EXIT_CODES.SESSION_FILE_ERROR);
         }
 
         // Verify the target still exists
@@ -93,7 +94,7 @@ export function registerQueryCommand(program: Command): void {
           } else {
             console.error(`Error: ${errorMsg}`);
           }
-          process.exit(1);
+          process.exit(EXIT_CODES.CDP_CONNECTION_FAILURE);
         }
         const target = (targetsData as CDPTarget[]).find((t) => t.id === metadata.targetId);
 
@@ -113,7 +114,7 @@ export function registerQueryCommand(program: Command): void {
             console.error(`Error: ${errorMsg}`);
             console.error('Start a new session with: bdg <url>');
           }
-          process.exit(1);
+          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 
         // Create temporary CDP connection using stored webSocketDebuggerUrl
@@ -143,7 +144,7 @@ export function registerQueryCommand(program: Command): void {
             console.error('Error executing script:');
             console.error(errorMsg);
           }
-          process.exit(1);
+          process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
         }
 
         // Output result (wrapped if --json, raw otherwise)
@@ -160,7 +161,7 @@ export function registerQueryCommand(program: Command): void {
         } else {
           console.log(JSON.stringify(result.result?.value, null, 2));
         }
-        process.exit(0);
+        process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (options.json) {
@@ -168,7 +169,7 @@ export function registerQueryCommand(program: Command): void {
         } else {
           console.error(`Error: ${errorMsg}`);
         }
-        process.exit(1);
+        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });
 }

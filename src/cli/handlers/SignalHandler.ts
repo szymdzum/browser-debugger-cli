@@ -1,3 +1,4 @@
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { cleanupSession } from '@/utils/session.js';
 
 /**
@@ -57,7 +58,7 @@ export class SignalHandler {
         // onShutdown calls process.exit(), so we should never reach here
       } catch (error) {
         console.error('Fatal error during shutdown:', error);
-        process.exit(1);
+        process.exit(EXIT_CODES.SIGNAL_HANDLER_ERROR);
       }
     })();
   }
@@ -73,7 +74,7 @@ export class SignalHandler {
     } catch (error) {
       console.error('Error during cleanup:', error);
     }
-    process.exit(1);
+    process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
   };
 
   /**
@@ -87,6 +88,6 @@ export class SignalHandler {
     } catch (cleanupError) {
       console.error('Error during cleanup:', cleanupError);
     }
-    process.exit(1);
+    process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
   };
 }

@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { readFullOutput } from '@/utils/session.js';
 
 /**
@@ -48,7 +49,7 @@ export function registerDetailsCommand(program: Command): void {
             console.error('  Check session status:  bdg status');
             console.error('  Start a session:       bdg <url>');
           }
-          process.exit(1);
+          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 
         if (type === 'network') {
@@ -71,7 +72,7 @@ export function registerDetailsCommand(program: Command): void {
               console.error('\n💡 Try:');
               console.error('  List requests:  bdg peek --network');
             }
-            process.exit(1);
+            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
           }
 
           if (options.json) {
@@ -94,7 +95,7 @@ export function registerDetailsCommand(program: Command): void {
             } else {
               console.error(`Invalid console index: ${id}`);
             }
-            process.exit(1);
+            process.exit(EXIT_CODES.INVALID_ARGUMENTS);
           }
 
           const message = fullOutput.data.console?.[index];
@@ -117,7 +118,7 @@ export function registerDetailsCommand(program: Command): void {
               console.error('\n💡 Try:');
               console.error('  List messages:  bdg peek --console');
             }
-            process.exit(1);
+            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
           }
 
           if (options.json) {
@@ -140,10 +141,10 @@ export function registerDetailsCommand(program: Command): void {
             console.error(`Unknown type: ${type}`);
             console.error('Valid types: network, console');
           }
-          process.exit(1);
+          process.exit(EXIT_CODES.INVALID_ARGUMENTS);
         }
 
-        process.exit(0);
+        process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
         if (options.json) {
           console.log(
@@ -160,7 +161,7 @@ export function registerDetailsCommand(program: Command): void {
             `Error fetching details: ${error instanceof Error ? error.message : String(error)}`
           );
         }
-        process.exit(1);
+        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });
 }

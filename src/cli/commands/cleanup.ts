@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
 
 /**
@@ -90,7 +91,7 @@ export function registerCleanupCommand(program: Command): void {
               console.error('\n⚠️  Warning: Force cleanup will remove session files');
               console.error('   but will NOT kill the running process.');
             }
-            process.exit(1);
+            process.exit(EXIT_CODES.RESOURCE_BUSY);
           }
 
           if (isAlive && options.force) {
@@ -152,7 +153,7 @@ export function registerCleanupCommand(program: Command): void {
             console.error('No session files found');
             console.error('Session directory is already clean');
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         if (options.json) {
@@ -172,7 +173,7 @@ export function registerCleanupCommand(program: Command): void {
           console.error('Session directory is now clean');
         }
 
-        process.exit(0);
+        process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
         if (options.json) {
           console.log(
@@ -187,7 +188,7 @@ export function registerCleanupCommand(program: Command): void {
             `Error during cleanup: ${error instanceof Error ? error.message : String(error)}`
           );
         }
-        process.exit(1);
+        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });
 }

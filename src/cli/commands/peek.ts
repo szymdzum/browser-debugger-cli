@@ -6,6 +6,7 @@ import {
   type PreviewOptions,
 } from '@/cli/formatters/previewFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { readPartialOutput } from '@/utils/session.js';
 
 /**
@@ -44,7 +45,7 @@ export function registerPeekCommand(program: Command): void {
             console.error(formatNoPreviewDataMessage());
           }
           if (!options.follow) {
-            process.exit(1);
+            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
           }
           return;
         }
@@ -68,7 +69,7 @@ export function registerPeekCommand(program: Command): void {
         process.on('SIGINT', () => {
           clearInterval(followInterval);
           console.error('\nStopped following preview');
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         });
       } else {
         // One-time preview

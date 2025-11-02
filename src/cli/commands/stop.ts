@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import {
   readPid,
   isProcessAlive,
@@ -53,7 +54,7 @@ export function registerStopCommand(program: Command): void {
             console.error('No active session found');
             console.error('All ports should be free');
           }
-          process.exit(0);
+          process.exit(EXIT_CODES.SUCCESS);
         }
 
         if (!options.json) {
@@ -151,7 +152,7 @@ export function registerStopCommand(program: Command): void {
           );
         }
 
-        process.exit(0);
+        process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
         if (options.json) {
           console.log(
@@ -166,7 +167,7 @@ export function registerStopCommand(program: Command): void {
             `Error stopping session: ${error instanceof Error ? error.message : String(error)}`
           );
         }
-        process.exit(1);
+        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });
 }
