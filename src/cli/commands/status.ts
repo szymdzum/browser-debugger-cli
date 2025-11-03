@@ -4,11 +4,10 @@ import {
   formatSessionStatus,
   formatStatusAsJson,
   formatNoSessionMessage,
-  formatStaleSessionMessage,
-  formatNoMetadataMessage,
 } from '@/cli/formatters/statusFormatter.js';
+import { getStatus } from '@/ipc/client.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { readPid, isProcessAlive } from '@/utils/session.js';
+import type { SessionMetadata } from '@/utils/session.js';
 import { VERSION } from '@/utils/version.js';
 
 /**
@@ -35,12 +34,24 @@ export function registerStatusCommand(program: Command): void {
     .option('-v, --verbose', 'Show detailed Chrome diagnostics')
     .action(async (options: StatusOptions) => {
       try {
-        const { readSessionMetadata } = await import('@/utils/session.js');
+        // Request status from daemon via IPC
+        const response = await getStatus();
 
-        // Read PID
-        const pid = readPid();
+        // Handle IPC error response
+        if (response.status === 'error') {
+          console.error(`Daemon error: ${response.error ?? 'Unknown error'}`);
+          process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+        }
 
-        if (!pid) {
+        // Extract data from response
+        const { data } = response;
+        if (!data) {
+          console.error('Invalid response from daemon: missing data');
+          process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+        }
+
+        // Check if there's an active session
+        if (!data.sessionPid || !data.sessionMetadata) {
           if (options.json) {
             console.log(JSON.stringify({ version: VERSION, active: false }, null, 2));
           } else {
@@ -49,61 +60,36 @@ export function registerStatusCommand(program: Command): void {
           process.exit(EXIT_CODES.SUCCESS);
         }
 
-        // Check if process is alive
-        const isAlive = isProcessAlive(pid);
-
-        if (!isAlive) {
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                { version: VERSION, active: false, stale: true, stalePid: pid },
-                null,
-                2
-              )
-            );
-          } else {
-            console.error(formatStaleSessionMessage(pid));
-          }
-          process.exit(EXIT_CODES.SUCCESS);
-        }
-
-        // Read metadata
-        const metadata = readSessionMetadata();
-
-        if (!metadata) {
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                {
-                  version: VERSION,
-                  active: true,
-                  bdgPid: pid,
-                  warning: 'Metadata not found (session may be from older version)',
-                },
-                null,
-                2
-              )
-            );
-          } else {
-            console.error(formatNoMetadataMessage(pid));
-          }
-          process.exit(EXIT_CODES.SUCCESS);
-        }
+        // Convert IPC metadata to SessionMetadata format
+        const metadata: SessionMetadata = {
+          bdgPid: data.sessionMetadata.bdgPid,
+          chromePid: data.sessionMetadata.chromePid,
+          startTime: data.sessionMetadata.startTime,
+          port: data.sessionMetadata.port,
+          targetId: data.sessionMetadata.targetId,
+          webSocketDebuggerUrl: data.sessionMetadata.webSocketDebuggerUrl,
+          activeCollectors: data.sessionMetadata.activeCollectors,
+        };
 
         if (options.json) {
           // JSON output
-          const jsonOutput = formatStatusAsJson(metadata, pid);
+          const jsonOutput = formatStatusAsJson(metadata, data.sessionPid);
           console.log(JSON.stringify(jsonOutput, null, 2));
         } else {
           // Human-readable output
-          console.log(formatSessionStatus(metadata, pid, options.verbose ?? false));
+          console.log(formatSessionStatus(metadata, data.sessionPid, options.verbose ?? false));
         }
 
         process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
-        console.error(
-          `Error checking status: ${error instanceof Error ? error.message : String(error)}`
-        );
+        // Handle connection errors (daemon not running)
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
+          console.error('Daemon not running. Start it with: bdg <url>');
+          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
+        }
+
+        console.error(`Error checking status: ${errorMessage}`);
         process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });

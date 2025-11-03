@@ -12,8 +12,23 @@ import { createServer } from 'net';
 
 import type { Server, Socket } from 'net';
 
-import type { HandshakeRequest, HandshakeResponse, IPCMessageType } from '@/ipc/types.js';
-import { ensureSessionDir, getDaemonPidPath, getDaemonSocketPath } from '@/utils/session.js';
+import type {
+  HandshakeRequest,
+  HandshakeResponse,
+  IPCMessageType,
+  StatusRequest,
+  StatusResponse,
+  StatusResponseData,
+} from '@/ipc/types.js';
+import { filterDefined } from '@/utils/objects.js';
+import {
+  ensureSessionDir,
+  getDaemonPidPath,
+  getDaemonSocketPath,
+  readPid,
+  readSessionMetadata,
+  isProcessAlive,
+} from '@/utils/session.js';
 
 /**
  * Simple JSONL IPC server for daemon communication.
@@ -21,6 +36,7 @@ import { ensureSessionDir, getDaemonPidPath, getDaemonSocketPath } from '@/utils
 export class IPCServer {
   private server: Server | null = null;
   private clients: Set<Socket> = new Set();
+  private readonly startTime: number = Date.now();
 
   /**
    * Start the IPC server on Unix domain socket.
@@ -111,6 +127,13 @@ export class IPCServer {
           // Response messages are sent by daemon, not received
           console.error('[daemon] Unexpected handshake response from client');
           break;
+        case 'status_request':
+          this.handleStatusRequest(socket, message);
+          break;
+        case 'status_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected status response from client');
+          break;
       }
     } catch (error) {
       console.error('[daemon] Failed to parse message:', error);
@@ -133,6 +156,62 @@ export class IPCServer {
     // Send JSONL response (JSON + newline)
     socket.write(JSON.stringify(response) + '\n');
     console.error('[daemon] Handshake response sent');
+  }
+
+  /**
+   * Handle status request.
+   */
+  private handleStatusRequest(socket: Socket, request: StatusRequest): void {
+    console.error(`[daemon] Status request received (sessionId: ${request.sessionId})`);
+
+    try {
+      // Gather daemon metadata
+      const data: StatusResponseData = {
+        daemonPid: process.pid,
+        daemonStartTime: this.startTime,
+        socketPath: getDaemonSocketPath(),
+      };
+
+      // Check for active session
+      const sessionPid = readPid();
+      if (sessionPid && isProcessAlive(sessionPid)) {
+        data.sessionPid = sessionPid;
+
+        // Try to read session metadata
+        const metadata = readSessionMetadata();
+        if (metadata) {
+          data.sessionMetadata = filterDefined({
+            bdgPid: metadata.bdgPid,
+            chromePid: metadata.chromePid,
+            startTime: metadata.startTime,
+            port: metadata.port,
+            targetId: metadata.targetId,
+            webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
+            activeCollectors: metadata.activeCollectors,
+          }) as Required<NonNullable<StatusResponseData['sessionMetadata']>>;
+        }
+      }
+
+      const response: StatusResponse = {
+        type: 'status_response',
+        sessionId: request.sessionId,
+        status: 'ok',
+        data,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Status response sent');
+    } catch (error) {
+      const response: StatusResponse = {
+        type: 'status_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: `Failed to gather status: ${error instanceof Error ? error.message : String(error)}`,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Status error response sent');
+    }
   }
 
   /**
