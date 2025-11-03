@@ -8,7 +8,10 @@
       "Bash(rg:*)",
       "Bash(git lg:*)",
       "Bash(tree:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebFetch(domain:chromedevtools.github.io)",
+      "WebSearch",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

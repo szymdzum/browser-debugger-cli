@@ -1,8 +1,12 @@
 # Daemon + IPC Architecture Specification
 
-**Status**: Planning
+**Status**: Planning - Not Implemented
 **Priority**: High
 **Target Version**: v1.0.0
+**Last Reviewed**: 2025-11-03
+**Review Document**: See [DAEMON_IPC_ARCHITECTURE_REVIEW.md](./DAEMON_IPC_ARCHITECTURE_REVIEW.md) for critical hardening fixes
+
+**⚠️ IMPLEMENTATION NOTE**: This architecture is not yet implemented. All code examples in this document incorporate critical stream framing and concurrency fixes identified during architecture review.
 
 ## Problem Statement
 
@@ -87,6 +91,55 @@ bdg stop
 - Path: `~/.bdg/session.sock`
 - Format: JSON-RPC over newline-delimited JSON
 - Fallback: File-based IPC on Windows (future)
+
+### Stream Framing Considerations
+
+**⚠️ CRITICAL**: TCP/pipe framing does not guarantee message boundaries. A single `write()` call does not guarantee a single `data` event on the receiving end.
+
+**Common Failure Scenarios:**
+
+1. **Chunked Messages** (Message split across multiple data events):
+   ```
+   Event 1: {"id":"1","success":tru
+   Event 2: e,"data":{}}\n
+   ```
+   ❌ `JSON.parse(event1)` throws incomplete JSON error
+
+2. **Concatenated Messages** (Multiple messages in one data event):
+   ```
+   Event 1: {"id":"1","success":true}\n{"id":"2","success":true}\n
+   ```
+   ❌ `JSON.parse(event1)` throws multi-object error
+
+**Solution: Newline-Delimited JSON (JSONL)**
+
+All messages MUST be newline-terminated (`\n`) and parsers MUST buffer until newline before parsing:
+
+```typescript
+let buffer = '';
+
+socket.on('data', (data: Buffer) => {
+  buffer += data.toString();
+
+  // Process all complete messages (lines ending with \n)
+  let newlineIndex: number;
+  while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+    const line = buffer.slice(0, newlineIndex);
+    buffer = buffer.slice(newlineIndex + 1);
+
+    if (line.trim()) {
+      const message = JSON.parse(line);
+      handleMessage(message);
+    }
+  }
+  // Incomplete message remains in buffer
+});
+```
+
+**This pattern MUST be used in:**
+- `waitForHandshake()` - Worker stdout can arrive chunked
+- `IPCClient.handleData()` - Server responses can concatenate/split
+- `IPCServer.handleData()` - Client requests can concatenate/split
 
 ### Message Format
 
@@ -311,7 +364,9 @@ export async function launchDaemon(
 }
 ```
 
-**Guardrail: Handshake Timeout**
+**Guardrail: Handshake Timeout with Buffered Parsing**
+
+**⚠️ CRITICAL**: Handshake must buffer until newline. Stdout can arrive chunked, causing `JSON.parse()` to throw on incomplete messages.
 
 ```typescript
 async function waitForHandshake(
@@ -320,25 +375,89 @@ async function waitForHandshake(
 ): Promise<IPCHandshake> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
+      worker.stdout?.removeListener('data', handleData);
       reject(new Error('Handshake timeout - worker may have crashed'));
     }, timeoutMs);
 
-    // Worker sends handshake via stdout (one-time only)
-    worker.stdout?.once('data', (data) => {
-      clearTimeout(timeout);
-      try {
-        const handshake = JSON.parse(data.toString());
-        resolve(handshake);
-      } catch (err) {
-        reject(new Error('Invalid handshake response'));
+    let buffer = '';
+
+    // CRITICAL: Buffer until newline to handle chunked stdout
+    const handleData = (data: Buffer) => {
+      buffer += data.toString();
+
+      const newlineIndex = buffer.indexOf('\n');
+      if (newlineIndex !== -1) {
+        clearTimeout(timeout);
+        const line = buffer.slice(0, newlineIndex);
+        worker.stdout?.removeListener('data', handleData);
+
+        try {
+          const handshake = JSON.parse(line);
+          resolve(handshake);
+        } catch (err) {
+          reject(new Error('Invalid handshake response'));
+        }
       }
-    });
+    };
+
+    // Worker sends handshake via stdout (one-time only)
+    worker.stdout?.on('data', handleData);
 
     worker.on('error', (err) => {
       clearTimeout(timeout);
+      worker.stdout?.removeListener('data', handleData);
       reject(err);
     });
   });
+}
+```
+
+**Guardrail: Log Capture with Stderr Consumption**
+
+**⚠️ CRITICAL**: Worker stderr MUST be consumed before `worker.unref()`. Otherwise, the child process can block when the stderr pipe buffer fills (typically 64KB), causing hangs mid-execution.
+
+```typescript
+function setupLogCapture(worker: ChildProcess): void {
+  const logDir = path.join(os.homedir(), '.bdg', 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+
+  const logFile = path.join(logDir, `worker-${worker.pid}.log`);
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+
+  // CRITICAL: Pipe stderr to prevent blocking on full pipe
+  worker.stderr?.pipe(logStream);
+
+  // Also pipe stdout (already ended after handshake, but may have buffered data)
+  worker.stdout?.pipe(logStream);
+
+  // Cleanup on worker exit
+  worker.on('exit', () => {
+    logStream.end();
+  });
+
+  // Rotate old logs (keep last 5)
+  rotateOldLogs(logDir, 5);
+}
+
+function rotateOldLogs(logDir: string, keep: number): void {
+  const files = fs.readdirSync(logDir)
+    .filter(f => f.startsWith('worker-') && f.endsWith('.log'))
+    .sort()
+    .reverse();
+
+  // Delete old log files beyond keep limit
+  files.slice(keep).forEach(file => {
+    fs.unlinkSync(path.join(logDir, file));
+  });
+}
+```
+
+**Alternative: Discard stderr if logging not needed**
+```typescript
+function setupLogCapture(worker: ChildProcess): void {
+  // CRITICAL: Still must consume stderr to prevent blocking
+  worker.stderr?.resume();
+  worker.stdout?.resume();
 }
 ```
 
@@ -409,28 +528,46 @@ export async function cleanupStaleSession(): Promise<void> {
   const pidFile = path.join(sessionDir, 'session.pid');
   const metaFile = path.join(sessionDir, 'session.meta.json');
   const socketPath = path.join(sessionDir, 'session.sock');
+  const lockFile = path.join(sessionDir, 'session.lock');
+
+  let lockHandle: fs.promises.FileHandle | undefined;
 
   try {
-    const pidStr = await fs.readFile(pidFile, 'utf-8');
-    const pid = parseInt(pidStr.trim());
+    // Serialize cleanup/startup with atomic lock
+    lockHandle = await fs.open(lockFile, 'wx');
 
-    // Check if process is actually alive
-    if (!await isProcessAlive(pid)) {
-      // Stale PID - clean up all session files
+    try {
+      const pidStr = await fs.readFile(pidFile, 'utf-8');
+      const pid = parseInt(pidStr.trim(), 10);
+
+      // Check if process is actually alive
+      if (!await isProcessAlive(pid)) {
+        await Promise.all([
+          fs.unlink(pidFile).catch(() => {}),
+          fs.unlink(metaFile).catch(() => {}),
+          fs.unlink(socketPath).catch(() => {})
+        ]);
+      }
+    } catch {
+      // No PID file or can't read - clean up anyway
       await Promise.all([
         fs.unlink(pidFile).catch(() => {}),
         fs.unlink(metaFile).catch(() => {}),
-        fs.unlink(socketPath).catch(() => {}),
-        fs.unlink(path.join(sessionDir, 'session.lock')).catch(() => {})
+        fs.unlink(socketPath).catch(() => {})
       ]);
     }
   } catch (err) {
-    // No PID file or can't read - clean up anyway
-    await Promise.all([
-      fs.unlink(pidFile).catch(() => {}),
-      fs.unlink(metaFile).catch(() => {}),
-      fs.unlink(socketPath).catch(() => {})
-    ]);
+    // Another process holds the lock – skip cleanup to avoid racing
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+      throw err;
+    }
+  } finally {
+    await lockHandle?.close().catch(() => {});
+    await fs.unlink(lockFile).catch((err) => {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        throw err;
+      }
+    });
   }
 }
 
@@ -492,13 +629,16 @@ bdg logs --pid 12345
 
 ## IPC Client
 
-**Guardrail: Resilient connection with timeouts**
+**Guardrail: Resilient connection with buffered JSONL parsing**
+
+**⚠️ CRITICAL**: IPC responses must be buffered until newline. Back-to-back responses can concatenate, causing `JSON.parse()` to throw.
 
 ```typescript
 // src/ipc/client.ts
 export class IPCClient {
   private socket?: Socket;
   private requestId = 0;
+  private buffer = ''; // CRITICAL: Buffer for incomplete messages
   private pendingRequests = new Map<string, {
     resolve: (value: any) => void;
     reject: (error: Error) => void;
@@ -528,9 +668,46 @@ export class IPCClient {
       });
 
       this.socket.on('data', (data) => {
-        this.handleResponse(data);
+        this.handleData(data); // CRITICAL: Handle raw data, not response directly
       });
     });
+  }
+
+  // CRITICAL: Buffer until newline before parsing
+  private handleData(data: Buffer): void {
+    this.buffer += data.toString();
+
+    // Process all complete messages (lines ending with \n)
+    let newlineIndex: number;
+    while ((newlineIndex = this.buffer.indexOf('\n')) !== -1) {
+      const line = this.buffer.slice(0, newlineIndex);
+      this.buffer = this.buffer.slice(newlineIndex + 1);
+
+      if (line.trim()) {
+        this.handleResponse(line);
+      }
+    }
+    // Incomplete message remains in buffer
+  }
+
+  private handleResponse(line: string): void {
+    try {
+      const response: IPCResponse = JSON.parse(line);
+      const pending = this.pendingRequests.get(response.id);
+
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pendingRequests.delete(response.id);
+
+        if (response.success) {
+          pending.resolve(response.data);
+        } else {
+          pending.reject(new Error(response.error?.message || 'Request failed'));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to parse IPC response:', err);
+    }
   }
 
   async request(
@@ -558,29 +735,10 @@ export class IPCClient {
     });
   }
 
-  private handleResponse(data: Buffer): void {
-    try {
-      const response: IPCResponse = JSON.parse(data.toString());
-      const pending = this.pendingRequests.get(response.id);
-
-      if (pending) {
-        clearTimeout(pending.timer);
-        this.pendingRequests.delete(response.id);
-
-        if (response.success) {
-          pending.resolve(response.data);
-        } else {
-          pending.reject(new Error(response.error?.message || 'Request failed'));
-        }
-      }
-    } catch (err) {
-      console.error('Failed to parse IPC response:', err);
-    }
-  }
-
   disconnect(): void {
     this.socket?.end();
     this.socket = undefined;
+    this.buffer = ''; // Clear buffer on disconnect
   }
 }
 ```
@@ -618,50 +776,66 @@ export class IPCClient {
 
 ## Implementation Plan
 
+**⚠️ STATUS: None of this code is implemented yet. All phases below are planning only.**
+
+**Reusable Components from Current Codebase:**
+- ✅ Lock file mechanism (src/utils/session.ts) - needs async version
+- ✅ PID tracking (src/utils/session.ts)
+- ✅ Metadata management (src/utils/session.ts)
+- ✅ BdgSession class (src/session/BdgSession.ts) - ready for IPC integration
+- ✅ Two-tier preview system (src/utils/session.ts) - NOT used in IPC-only arch
+
+**Estimated Total Effort:** ~15 days (3 weeks) for full implementation
+
+---
+
 ### Phase 1: Core IPC Infrastructure
 
-**Priority: High**
+**Priority: High | Effort: ~2.5 days**
 
-1. ✅ Create IPC protocol types (`src/ipc/protocol.ts`)
-2. ✅ Implement IPC server (`src/ipc/server.ts`)
-3. ✅ Implement IPC client (`src/ipc/client.ts`)
-4. ✅ Add session cleanup utilities (`src/session/cleanup.ts`)
-5. ✅ Create daemon launcher (`src/daemon/launcher.ts`)
-6. ✅ Create worker process (`src/daemon/worker.ts`)
+1. ⬜ Create IPC protocol types (`src/ipc/protocol.ts`)
+2. ⬜ Implement IPC server with **buffered JSONL parsing** (`src/ipc/server.ts`)
+3. ⬜ Implement IPC client with **buffered JSONL parsing** (`src/ipc/client.ts`)
+4. ⬜ Add session cleanup utilities (`src/session/cleanup.ts`)
+5. ⬜ Create daemon launcher with **lock acquisition** (`src/daemon/launcher.ts`)
+6. ⬜ Create worker process with **handshake buffering** (`src/daemon/worker.ts`)
 
 ### Phase 2: Command Updates
 
-**Priority: High**
+**Priority: High | Effort: ~2.5 days**
 
-7. ✅ Update `bdg <url>` to auto-daemonize
-8. ✅ Update `bdg peek` to use IPC
-9. ✅ Update `bdg details` to use IPC
-10. ✅ Update `bdg stop` to use IPC
-11. ✅ Update `bdg status` to use IPC
+7. ⬜ Update `bdg <url>` to auto-daemonize
+8. ⬜ Update `bdg peek` to use IPC (remove file reads)
+9. ⬜ Update `bdg details` to use IPC (remove file reads)
+10. ⬜ Update `bdg stop` to use IPC (remove direct SIGKILL)
+11. ⬜ Update `bdg status` to use IPC
 
 ### Phase 3: Logging & Debugging
 
-**Priority: Medium**
+**Priority: Medium | Effort: ~1.5 days**
 
-12. ✅ Add worker log rotation
-13. ✅ Add `bdg logs` command
-14. ✅ Add `--foreground` flag for debugging
+12. ⬜ Add worker log rotation with **stderr consumption**
+13. ⬜ Add `bdg logs` command
+14. ⬜ Add `--foreground` flag for debugging
 
-### Phase 4: File I/O Optimization
+### Phase 4: IPC-Only Architecture (No File Fallback)
 
-**Priority: Medium**
+**Priority: Medium | Effort: ~0.5 days**
 
-15. ✅ Reduce file writes from 5s → 30s (crash recovery only)
-16. ✅ Remove `writePartialOutput()` (replaced by IPC)
-17. ✅ Keep `writeFullOutput()` for final session.json only
+15. ⬜ **REMOVE** `writePartialOutputAsync()` - IPC replaces intermediate dumps (final snapshot only)
+16. ⬜ **REMOVE** `writeFullOutputAsync()` - replaced by IPC
+17. ⬜ Keep only final `session.json` write on `bdg stop` command
+18. ⬜ Update collectors to NOT write to disk during collection
+
+**Rationale:** IPC-only architecture. No file-based fallback. If daemon crashes, session data is lost (acceptable trade-off for performance). Final session.json written only when user explicitly runs `bdg stop`.
 
 ### Phase 5: Advanced Features (Optional)
 
-**Priority: Low**
+**Priority: Low | Effort: TBD**
 
-18. ⬜ Add `--stream` mode for real-time output
-19. ⬜ Windows named pipe support (fallback to files for now)
-20. ⬜ Add `--no-disk` flag to disable all file writes
+19. ⬜ Add `--stream` mode for real-time output
+20. ⬜ Windows named pipe support (fallback to TCP sockets)
+21. ⬜ Add `--no-disk` flag to disable all file writes (including final session.json)
 
 ## Backward Compatibility
 
@@ -676,29 +850,11 @@ bdg localhost:3000 --foreground
 - Runs in foreground (blocks terminal)
 - Prints logs to stdout/stderr
 - No IPC server
-- File-based peek/details still work
+- No IPC server (foreground only)
 - Ctrl+C stops immediately
+- Compatible with existing workflow
 
-### File-Based Fallback
-
-If IPC connection fails, commands should fall back to reading session files:
-
-```typescript
-async function peek(options: PeekOptions): Promise<void> {
-  try {
-    // Try IPC first
-    const client = new IPCClient();
-    await client.connect(socketPath);
-    const data = await client.request('peek', options);
-    console.log(formatPeekOutput(data));
-  } catch (err) {
-    // Fall back to file-based
-    console.warn('IPC unavailable, reading from file...');
-    const data = await readPartialOutput();
-    console.log(formatPeekOutput(data));
-  }
-}
-```
+**Note:** IPC-only architecture has NO file-based fallback. If daemon is not running or crashes, commands will error. Use foreground mode for debugging reliability.
 
 ## Error Handling
 
@@ -747,10 +903,18 @@ Cleaned up stale files
 
 ### Integration Tests
 
+**Critical Stream Framing Tests:**
+- **Chunked handshake**: Send handshake JSON in 2-3 chunks, verify parsing succeeds
+- **Concatenated IPC responses**: Send multiple responses in single write, verify all parsed
+- **Split IPC response**: Send response split across multiple writes, verify buffering works
+- **Stderr blocking**: Fill stderr pipe (64KB+), verify worker doesn't hang
+
+**Standard Integration Tests:**
 - Full daemon launch → IPC query → stop workflow
 - Crash recovery (kill worker, verify cleanup)
 - Concurrent session detection
 - Handshake timeout handling
+- Lock file racing (start 10 sessions simultaneously, only 1 succeeds)
 
 ### Manual Testing
 
@@ -826,7 +990,28 @@ bdg peek --remote user@host
 - Unix Domain Sockets: https://nodejs.org/api/net.html#ipc-support
 - Process Management: https://nodejs.org/api/child_process.html
 - JSON-RPC 2.0: https://www.jsonrpc.org/specification
+- Chrome DevTools Protocol overview: https://chromedevtools.github.io/devtools-protocol/
+
+### Practical tooling during implementation
+
+- **chrome-remote-interface (CRI)** – Use the CLI (`npx chrome-remote-interface inspect`) or the Node client to issue raw CDP commands while prototyping. For example, validate `Page.lifecycleEvent` timing or fetch a specific response body before you expose it through IPC.
+- **DevTools protocol code generator** – Pull the official protocol JSON (`npm install devtools-protocol`) and generate TypeScript interfaces so worker/IPC payloads stay aligned with upstream without hand-maintained types.
+- **DevTools Recorder export** – Record a flow, then export “JavaScript + DevTools Protocol” to capture the exact CDP sequence needed for higher-level IPC commands (e.g., DOM snapshots, targeted network fetches).
+- **chrome://inspect Target view** – Monitor targets in real time to ensure the daemon sees the expected sessions, and to debug lifecycle mismatches between Chrome and the IPC metadata.
+- **Puppeteer Connection implementation** – Serves as a reference implementation for buffered JSONL framing, ping/pong, and reconnection logic while hardening our own stream handling.
+
+## Related Documents
+
+**[DAEMON_IPC_ARCHITECTURE_REVIEW.md](./DAEMON_IPC_ARCHITECTURE_REVIEW.md)** - Comprehensive architecture review identifying 5 critical hardening fixes:
+1. **Handshake Robustness** - Buffer until newline to handle chunked stdout
+2. **IPC Response Parsing** - Newline-delimited JSON parser for concatenated/split responses
+3. **Logging Pipeline** - Stderr consumption to prevent worker blocking
+4. **Session Metadata Integrity** - Lock file to prevent race conditions
+5. **File-Based Fallback** - Analysis of fallback architecture (removed in IPC-only design)
+
+All fixes from the review have been incorporated into this specification document.
 
 ## Changelog
 
+- **2025-11-03**: Architecture review completed, critical fixes incorporated, IPC-only design finalized
 - **2025-01-03**: Initial specification
