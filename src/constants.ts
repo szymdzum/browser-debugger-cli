@@ -16,6 +16,30 @@
 export const DEFAULT_DEBUG_PORT = '9222';
 
 /**
+ * Default Chrome debugging port (numeric version for chrome-launcher)
+ * @constant {number}
+ */
+export const DEFAULT_CDP_PORT = 9222;
+
+/**
+ * Default Chrome launcher log level for quiet operation
+ * @constant {string}
+ */
+export const DEFAULT_CHROME_LOG_LEVEL = 'silent';
+
+/**
+ * Default SIGINT handling - bdg handles signals, not chrome-launcher
+ * @constant {boolean}
+ */
+export const DEFAULT_CHROME_HANDLE_SIGINT = false;
+
+/**
+ * Persistent Chrome profile directory path (relative to user home)
+ * @constant {string}
+ */
+export const CHROME_PROFILE_DIR = '.bdg/chrome-profile';
+
+/**
  * BDG-specific Chrome flags for automation and popup suppression
  * These flags are automatically applied when launching Chrome via chrome-launcher
  * @constant {string[]}

@@ -6,9 +6,21 @@ import * as chromeLauncher from 'chrome-launcher';
 
 import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 
-import { BDG_CHROME_FLAGS, BDG_CHROME_PREFS } from '@/constants';
+import {
+  BDG_CHROME_FLAGS,
+  BDG_CHROME_PREFS,
+  DEFAULT_CDP_PORT,
+  DEFAULT_CHROME_LOG_LEVEL,
+  DEFAULT_CHROME_HANDLE_SIGINT,
+  CHROME_PROFILE_DIR,
+} from '@/constants';
 import type { LaunchedChrome } from '@/types';
 import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
+
+const CHROME_LAUNCH_START_MESSAGE = (port: number) =>
+  `Launching Chrome with CDP on port ${port}...`;
+const CHROME_LAUNCH_SUCCESS_MESSAGE = (pid: number, duration: number) =>
+  `Chrome launched successfully (PID: ${pid})\nLaunch duration: ${duration}ms`;
 
 /**
  * JSONLike type matching chrome-launcher's internal type definition
@@ -81,13 +93,12 @@ export interface LaunchOptions
  * Uses chrome-launcher for cross-platform Chrome detection and launching.
  */
 export async function launchChrome(options: LaunchOptions = {}): Promise<LaunchedChrome> {
-  const port = options.port ?? 9222;
+  const port = options.port ?? DEFAULT_CDP_PORT;
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
-  console.error(`Launching Chrome with CDP on port ${port}...`);
+  console.error(CHROME_LAUNCH_START_MESSAGE(port));
   console.error(`User data directory: ${userDataDir}`);
 
-  // Build chrome-launcher options
   const chromePath = findChromeBinary();
   const chromeOptions = buildChromeOptions(options);
 
@@ -96,34 +107,30 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     ...(chromePath ? { chromePath } : {}),
   };
 
-  // Create launcher instance
   const launcher = new chromeLauncher.Launcher(finalOptions);
 
   try {
-    // Launch Chrome and wait for it to be ready
     const launchStart = Date.now();
     await launcher.launch();
     await launcher.waitUntilReady();
-    const launchDuration = Date.now() - launchStart;
+    const launchDurationMs = Date.now() - launchStart;
 
-    console.error(`Chrome launched successfully (PID: ${launcher.pid})`);
-    console.error(`Launch duration: ${launchDuration}ms`);
+    const chromeProcessPid = launcher.pid ?? 0;
+    console.error(CHROME_LAUNCH_SUCCESS_MESSAGE(chromeProcessPid, launchDurationMs));
 
-    // Return enhanced LaunchedChrome instance with new fields
     return {
-      pid: launcher.pid ?? 0, // Should always be defined after successful launch
-      port: launcher.port ?? port, // Fall back to requested port
+      pid: chromeProcessPid,
+      port: launcher.port ?? port,
       userDataDir: launcher.userDataDir,
       process: launcher.chromeProcess ?? null,
       kill: async (): Promise<void> => {
         return Promise.resolve().then(() => {
           launcher.kill();
-          launcher.destroyTmp(); // Cleanup temp directories
+          launcher.destroyTmp();
         });
       },
     };
   } catch (error) {
-    // Cleanup on failure
     launcher.kill();
     launcher.destroyTmp();
 
@@ -137,31 +144,29 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 /**
  * Find Chrome binary path for the current platform.
  *
- * Returns undefined to let chrome-launcher use its own detection logic.
- * Can be extended to support custom paths if needed.
+ * We delegate Chrome detection to chrome-launcher because it has comprehensive
+ * support for multiple Chrome variants (Chrome, Chromium, Chrome Canary) across
+ * all platforms and handles edge cases we don't need to reimplement.
  *
  * @returns Chrome binary path or undefined for auto-detection
  */
 function findChromeBinary(): string | undefined {
-  // Let chrome-launcher handle Chrome detection
-  // It already supports macOS, Linux, Windows, and various Chrome flavors
   return undefined;
 }
 
 /**
  * Get the default persistent user-data-dir path.
  *
- * Uses ~/.bdg/chrome-profile to persist cookies, settings, and other
- * browser state across bdg sessions. This allows cookies to be saved
- * and avoids showing cookie consent dialogs on every run.
+ * We use a persistent directory to maintain browser state (cookies, localStorage,
+ * session storage) across bdg sessions. This prevents users from having to
+ * repeatedly log in or accept cookie consent dialogs during debugging workflows.
  *
  * @returns Absolute path to persistent user-data-dir
  */
 function getPersistentUserDataDir(): string {
   const homeDir = os.homedir();
-  const userDataDir = path.join(homeDir, '.bdg', 'chrome-profile');
+  const userDataDir = path.join(homeDir, CHROME_PROFILE_DIR);
 
-  // Create directory if it doesn't exist
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
@@ -172,15 +177,15 @@ function getPersistentUserDataDir(): string {
 /**
  * Load Chrome preferences from options.
  *
- * Supports both inline prefs object and prefs file path.
- * File path takes precedence if both are provided.
+ * File-based preferences take precedence over inline preferences because
+ * files allow for complex, reusable configurations that can be version
+ * controlled and shared across team members or CI environments.
  *
  * @param options - Launch options containing prefs or prefsFile
  * @returns Chrome preferences object or undefined
  * @throws Error if prefs file cannot be read or parsed
  */
 function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | undefined {
-  // Prefs file takes precedence
   if (options.prefsFile) {
     try {
       const prefsContent = fs.readFileSync(options.prefsFile, 'utf8');
@@ -206,11 +211,10 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
  * @returns Array of Chrome command-line flags
  */
 function buildChromeFlags(options: LaunchOptions): string[] {
-  const port = options.port ?? 9222;
+  const port = options.port ?? DEFAULT_CDP_PORT;
 
   const baseFlags = options.ignoreDefaultFlags ? [] : chromeLauncher.Launcher.defaultFlags();
 
-  // Start with port flag and BDG defaults from constants
   const bdgFlags: string[] = [`--remote-debugging-port=${port}`, ...BDG_CHROME_FLAGS];
 
   if (options.headless) {
@@ -222,27 +226,31 @@ function buildChromeFlags(options: LaunchOptions): string[] {
 
 /**
  * Filter out undefined values from an object, returning only defined properties.
- * This ensures that undefined properties are completely omitted from the result,
- * which is required for chrome-launcher's exactOptionalPropertyTypes.
+ *
+ * This is required because chrome-launcher uses exactOptionalPropertyTypes,
+ * which means passing undefined values will cause TypeScript compilation errors.
+ * We must completely omit undefined properties rather than setting them to undefined.
  *
  * @param obj - Object with potentially undefined values
  * @returns New object with only defined values, no undefined properties
  */
-function pickDefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+function omitUndefinedProperties<T extends Record<string, unknown>>(
+  obj: T
+): Record<string, unknown> {
   return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined));
 }
 
 /**
  * Type-safe conversion for Chrome preferences from unknown to JSONLike.
  *
- * Chrome preferences should be JSON-serializable values (strings, numbers,
- * booleans, objects, arrays, null). This conversion is safe assuming the
- * preferences were loaded from JSON or constructed with JSON-compatible values.
+ * chrome-launcher requires preferences to match its internal JSONLike type constraint
+ * for type safety. This conversion is safe because preferences should always be
+ * JSON-serializable values loaded from JSON files or constructed with compatible types.
  *
  * @param prefs - Preferences object with unknown values
  * @returns Preferences compatible with chrome-launcher's JSONLike constraint
  */
-function convertPrefsToJSONLike(
+function ensureJSONCompatiblePrefs(
   prefs: Record<string, unknown> | undefined
 ): Record<string, JSONLike> | undefined {
   if (prefs === undefined) {
@@ -265,23 +273,22 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const userPrefs = loadChromePrefs(options);
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
-  // Merge user prefs on top of BDG defaults (user prefs take precedence)
   const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;
 
   return {
-    logLevel: options.logLevel ?? 'silent',
-    handleSIGINT: options.handleSIGINT ?? false,
+    logLevel: options.logLevel ?? DEFAULT_CHROME_LOG_LEVEL,
+    handleSIGINT: options.handleSIGINT ?? DEFAULT_CHROME_HANDLE_SIGINT,
     ignoreDefaultFlags: options.ignoreDefaultFlags ?? false,
     chromeFlags: buildChromeFlags(options),
     userDataDir,
 
-    ...pickDefined({
+    ...omitUndefinedProperties({
       port: options.port,
       startingUrl: options.url,
       connectionPollInterval: options.connectionPollInterval,
       maxConnectionRetries: options.maxConnectionRetries,
       portStrictMode: options.portStrictMode,
-      prefs: convertPrefsToJSONLike(mergedPrefs),
+      prefs: ensureJSONCompatiblePrefs(mergedPrefs),
       envVars: options.envVars,
     }),
   };
