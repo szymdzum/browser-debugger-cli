@@ -126,7 +126,50 @@ export interface PeekResponse extends IPCMessage {
 export enum IPCErrorCode {
   NO_SESSION = 'NO_SESSION',
   SESSION_KILL_FAILED = 'SESSION_KILL_FAILED',
+  SESSION_ALREADY_RUNNING = 'SESSION_ALREADY_RUNNING',
+  WORKER_START_FAILED = 'WORKER_START_FAILED',
+  CHROME_LAUNCH_FAILED = 'CHROME_LAUNCH_FAILED',
+  CDP_TIMEOUT = 'CDP_TIMEOUT',
   DAEMON_ERROR = 'DAEMON_ERROR',
+}
+
+/**
+ * Start session request sent from CLI client to daemon.
+ * Requests launching a new browser session for the given URL.
+ */
+export interface StartSessionRequest extends IPCMessage {
+  type: 'start_session_request';
+  sessionId: string; // Unique request identifier
+  url: string; // Target URL to navigate to
+  port?: number; // Chrome debugging port (default: 9222)
+  timeout?: number; // Auto-stop timeout in seconds
+  collectors?: CollectorType[]; // Collectors to activate
+  includeAll?: boolean; // Include all data (disable filtering)
+  userDataDir?: string; // Custom Chrome profile directory
+  maxBodySize?: number; // Max response body size in KB
+}
+
+/**
+ * Start session response payload containing worker metadata.
+ */
+export interface StartSessionResponseData {
+  workerPid: number; // Worker process PID
+  chromePid: number; // Chrome process PID
+  port: number; // Chrome debugging port
+  targetUrl: string; // Target URL
+  targetTitle?: string; // Target page title
+}
+
+/**
+ * Start session response sent from daemon to CLI client.
+ */
+export interface StartSessionResponse extends IPCMessage {
+  type: 'start_session_response';
+  sessionId: string; // Echo back the session ID from request
+  status: 'ok' | 'error';
+  data?: StartSessionResponseData;
+  message?: string; // Status or error message
+  errorCode?: IPCErrorCode; // Structured error code (present when status === 'error')
 }
 
 /**
@@ -160,15 +203,27 @@ export type IPCMessageType =
   | StatusResponse
   | PeekRequest
   | PeekResponse
+  | StartSessionRequest
+  | StartSessionResponse
   | StopSessionRequest
   | StopSessionResponse;
 
 /**
  * Union type of all IPC request messages.
  */
-export type IPCRequest = HandshakeRequest | StatusRequest | PeekRequest | StopSessionRequest;
+export type IPCRequest =
+  | HandshakeRequest
+  | StatusRequest
+  | PeekRequest
+  | StartSessionRequest
+  | StopSessionRequest;
 
 /**
  * Union type of all IPC response messages.
  */
-export type IPCResponse = HandshakeResponse | StatusResponse | PeekResponse | StopSessionResponse;
+export type IPCResponse =
+  | HandshakeResponse
+  | StatusResponse
+  | PeekResponse
+  | StartSessionResponse
+  | StopSessionResponse;

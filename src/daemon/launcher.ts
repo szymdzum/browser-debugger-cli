@@ -75,9 +75,9 @@ export async function launchDaemon(): Promise<ChildProcess> {
   }
 
   // Determine the daemon script path
-  // In development: src/daemon.ts
-  // In production: dist/daemon.js
-  const daemonScriptPath = join(__dirname, '..', '..', 'dist', 'daemon.js');
+  // When running from dist/daemon/launcher.js, __dirname is dist/daemon/
+  // So we go up one level to dist/, then to daemon.js
+  const daemonScriptPath = join(__dirname, '..', 'daemon.js');
 
   if (!fs.existsSync(daemonScriptPath)) {
     throw new Error(`Daemon script not found at ${daemonScriptPath}. Did you run 'npm run build'?`);

@@ -12,6 +12,7 @@ import { createServer } from 'net';
 
 import type { Server, Socket } from 'net';
 
+import { launchSessionInWorker, WorkerStartError } from '@/daemon/startSession.js';
 import type {
   HandshakeRequest,
   HandshakeResponse,
@@ -19,6 +20,9 @@ import type {
   PeekRequest,
   PeekResponse,
   PeekResponseData,
+  StartSessionRequest,
+  StartSessionResponse,
+  StartSessionResponseData,
   StatusRequest,
   StatusResponse,
   StatusResponseData,
@@ -148,6 +152,13 @@ export class IPCServer {
         case 'peek_response':
           // Response messages are sent by daemon, not received
           console.error('[daemon] Unexpected peek response from client');
+          break;
+        case 'start_session_request':
+          void this.handleStartSessionRequest(socket, message);
+          break;
+        case 'start_session_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected start session response from client');
           break;
         case 'stop_session_request':
           this.handleStopSessionRequest(socket, message);
@@ -310,6 +321,116 @@ export class IPCServer {
   }
 
   /**
+   * Handle start session request.
+   */
+  private async handleStartSessionRequest(
+    socket: Socket,
+    request: StartSessionRequest
+  ): Promise<void> {
+    console.error(
+      `[daemon] Start session request received (sessionId: ${request.sessionId}, url: ${request.url})`
+    );
+
+    try {
+      // Check for existing session (concurrency guard)
+      const sessionPid = readPid();
+      if (sessionPid && isProcessAlive(sessionPid)) {
+        const response: StartSessionResponse = {
+          type: 'start_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: `Session already running (PID ${sessionPid}). Stop it first with stop_session_request.`,
+          errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Start session error response sent (session already running)');
+        return;
+      }
+
+      // Launch worker
+      console.error('[daemon] Launching worker...');
+      try {
+        const metadata = await launchSessionInWorker(
+          request.url,
+          filterDefined({
+            port: request.port,
+            timeout: request.timeout,
+            collectors: request.collectors,
+            includeAll: request.includeAll,
+            userDataDir: request.userDataDir,
+            maxBodySize: request.maxBodySize,
+          })
+        );
+
+        console.error('[daemon] Worker launched successfully');
+
+        // Build response data
+        const data: StartSessionResponseData = {
+          workerPid: metadata.workerPid,
+          chromePid: metadata.chromePid,
+          port: metadata.port,
+          targetUrl: metadata.targetUrl,
+          ...(metadata.targetTitle !== undefined && { targetTitle: metadata.targetTitle }),
+        };
+
+        const response: StartSessionResponse = {
+          type: 'start_session_response',
+          sessionId: request.sessionId,
+          status: 'ok',
+          data,
+          message: 'Session started successfully',
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Start session response sent');
+      } catch (error) {
+        // Map worker errors to IPC error codes
+        let errorCode: IPCErrorCode = IPCErrorCode.WORKER_START_FAILED;
+        let errorMessage = 'Failed to start worker';
+
+        if (error instanceof WorkerStartError) {
+          errorMessage = error.message;
+          switch (error.code) {
+            case 'SPAWN_FAILED':
+            case 'WORKER_CRASH':
+            case 'INVALID_READY_MESSAGE':
+              errorCode = IPCErrorCode.WORKER_START_FAILED;
+              break;
+            case 'READY_TIMEOUT':
+              errorCode = IPCErrorCode.CDP_TIMEOUT;
+              break;
+          }
+        } else {
+          errorMessage = error instanceof Error ? error.message : String(error);
+        }
+
+        const response: StartSessionResponse = {
+          type: 'start_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: errorMessage,
+          errorCode,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error(`[daemon] Start session error response sent (${errorCode})`);
+      }
+    } catch (error) {
+      const response: StartSessionResponse = {
+        type: 'start_session_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        message: `Daemon error: ${error instanceof Error ? error.message : String(error)}`,
+        errorCode: IPCErrorCode.DAEMON_ERROR,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Start session error response sent (daemon error)');
+    }
+  }
+
+  /**
    * Handle stop session request.
    */
   private handleStopSessionRequest(socket: Socket, request: StopSessionRequest): void {
@@ -339,10 +460,10 @@ export class IPCServer {
         console.error(`[daemon] Captured Chrome PID ${chromePid} before cleanup`);
       }
 
-      // Kill the session process (use SIGKILL for immediate termination)
+      // Kill the session process (use SIGTERM for graceful shutdown)
       try {
-        process.kill(sessionPid, 'SIGKILL');
-        console.error(`[daemon] Killed session process (PID ${sessionPid})`);
+        process.kill(sessionPid, 'SIGTERM');
+        console.error(`[daemon] Sent SIGTERM to session process (PID ${sessionPid})`);
       } catch (killError: unknown) {
         const errorMessage = killError instanceof Error ? killError.message : String(killError);
         const response: StopSessionResponse = {

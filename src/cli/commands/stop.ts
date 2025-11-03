@@ -30,6 +30,14 @@ function getExitCodeForDaemonError(errorCode?: IPCErrorCode): number {
       return EXIT_CODES.UNHANDLED_EXCEPTION;
     case IPCErrorCode.DAEMON_ERROR:
       return EXIT_CODES.UNHANDLED_EXCEPTION;
+    case IPCErrorCode.SESSION_ALREADY_RUNNING:
+      return EXIT_CODES.UNHANDLED_EXCEPTION;
+    case IPCErrorCode.WORKER_START_FAILED:
+      return EXIT_CODES.UNHANDLED_EXCEPTION;
+    case IPCErrorCode.CHROME_LAUNCH_FAILED:
+      return EXIT_CODES.UNHANDLED_EXCEPTION;
+    case IPCErrorCode.CDP_TIMEOUT:
+      return EXIT_CODES.UNHANDLED_EXCEPTION;
     case undefined:
       return EXIT_CODES.UNHANDLED_EXCEPTION;
   }
