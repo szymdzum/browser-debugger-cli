@@ -16,6 +16,9 @@ import type {
   HandshakeRequest,
   HandshakeResponse,
   IPCMessageType,
+  PeekRequest,
+  PeekResponse,
+  PeekResponseData,
   StatusRequest,
   StatusResponse,
   StatusResponseData,
@@ -27,6 +30,7 @@ import {
   getDaemonSocketPath,
   readPid,
   readSessionMetadata,
+  readPartialOutput,
   isProcessAlive,
 } from '@/utils/session.js';
 
@@ -134,6 +138,13 @@ export class IPCServer {
           // Response messages are sent by daemon, not received
           console.error('[daemon] Unexpected status response from client');
           break;
+        case 'peek_request':
+          this.handlePeekRequest(socket, message);
+          break;
+        case 'peek_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected peek response from client');
+          break;
       }
     } catch (error) {
       console.error('[daemon] Failed to parse message:', error);
@@ -211,6 +222,79 @@ export class IPCServer {
 
       socket.write(JSON.stringify(response) + '\n');
       console.error('[daemon] Status error response sent');
+    }
+  }
+
+  /**
+   * Handle peek request.
+   */
+  private handlePeekRequest(socket: Socket, request: PeekRequest): void {
+    console.error(`[daemon] Peek request received (sessionId: ${request.sessionId})`);
+
+    try {
+      // Check for active session
+      const sessionPid = readPid();
+      if (!sessionPid || !isProcessAlive(sessionPid)) {
+        const response: PeekResponse = {
+          type: 'peek_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          error: 'No active session found',
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Peek error response sent (no session)');
+        return;
+      }
+
+      // Read preview data from filesystem
+      const previewData = readPartialOutput();
+      if (!previewData) {
+        const response: PeekResponse = {
+          type: 'peek_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          error: 'No preview data available (session may be starting up)',
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Peek error response sent (no preview data)');
+        return;
+      }
+
+      // Build response with preview data
+      const data: PeekResponseData = {
+        sessionPid,
+        preview: {
+          version: previewData.version,
+          success: previewData.success,
+          timestamp: previewData.timestamp,
+          duration: previewData.duration,
+          target: previewData.target,
+          data: previewData.data,
+          ...(previewData.partial !== undefined && { partial: previewData.partial }),
+        },
+      };
+
+      const response: PeekResponse = {
+        type: 'peek_response',
+        sessionId: request.sessionId,
+        status: 'ok',
+        data,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Peek response sent');
+    } catch (error) {
+      const response: PeekResponse = {
+        type: 'peek_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: `Failed to get preview: ${error instanceof Error ? error.message : String(error)}`,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Peek error response sent');
     }
   }
 

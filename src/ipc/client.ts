@@ -13,6 +13,8 @@ import { IPCServer } from '@/daemon/ipcServer.js';
 import type {
   HandshakeRequest,
   HandshakeResponse,
+  PeekRequest,
+  PeekResponse,
   StatusRequest,
   StatusResponse,
 } from '@/ipc/types.js';
@@ -188,6 +190,94 @@ export async function getStatus(): Promise<StatusResponse> {
         resolved = true;
         clearTimeout(timeout);
         reject(new Error('Connection closed before status response received'));
+      }
+    });
+  });
+}
+
+/**
+ * Request preview data from the daemon.
+ *
+ * @returns Peek response with session preview data
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function getPeek(): Promise<PeekResponse> {
+  const socketPath = IPCServer.getSocketPath();
+  const sessionId = randomUUID();
+
+  return new Promise((resolve, reject) => {
+    const socket: Socket = connect(socketPath);
+    let buffer = '';
+    let resolved = false;
+
+    // Set request timeout
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        socket.destroy();
+        reject(new Error('Peek request timeout after 5s'));
+      }
+    }, 5000);
+
+    socket.on('connect', () => {
+      console.error('[client] Connected to daemon for peek request');
+
+      // Send peek request
+      const request: PeekRequest = {
+        type: 'peek_request',
+        sessionId,
+      };
+
+      socket.write(JSON.stringify(request) + '\n');
+      console.error('[client] Peek request sent');
+    });
+
+    socket.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString('utf-8');
+
+      // Process complete JSONL frames
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.trim() && !resolved) {
+          try {
+            const response = JSON.parse(line) as PeekResponse;
+            console.error('[client] Peek response received');
+
+            resolved = true;
+            clearTimeout(timeout);
+            socket.destroy();
+            resolve(response);
+          } catch (error) {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              socket.destroy();
+              reject(
+                new Error(
+                  `Failed to parse peek response: ${error instanceof Error ? error.message : String(error)}`
+                )
+              );
+            }
+          }
+        }
+      }
+    });
+
+    socket.on('error', (err) => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        reject(new Error(`Connection error: ${err.message}`));
+      }
+    });
+
+    socket.on('end', () => {
+      if (!resolved) {
+        resolved = true;
+        clearTimeout(timeout);
+        reject(new Error('Connection closed before peek response received'));
       }
     });
   });
