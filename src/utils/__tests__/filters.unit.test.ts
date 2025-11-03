@@ -276,33 +276,52 @@ void describe('filters - shouldExcludeDomain', () => {
 void describe('filters - shouldExcludeConsoleMessage', () => {
   void it('should not exclude by default when includeAll is true', () => {
     assert.equal(
-      shouldExcludeConsoleMessage('webpack-dev-server: Hot Module Replacement', true),
+      shouldExcludeConsoleMessage('webpack-dev-server: Hot Module Replacement', 'log', true),
       false
     );
-    assert.equal(shouldExcludeConsoleMessage('[HMR] Waiting for update signal', true), false);
+    assert.equal(
+      shouldExcludeConsoleMessage('[HMR] Waiting for update signal', 'log', true),
+      false
+    );
   });
 
   void it('should exclude DEFAULT_EXCLUDED_CONSOLE_PATTERNS', () => {
-    assert.equal(shouldExcludeConsoleMessage('webpack-dev-server: Hot Module Replacement'), true);
-    assert.equal(shouldExcludeConsoleMessage('[HMR] Waiting for update signal from WDS...'), true);
-    assert.equal(shouldExcludeConsoleMessage('[WDS] Live Reloading enabled.'), true);
+    assert.equal(
+      shouldExcludeConsoleMessage('webpack-dev-server: Hot Module Replacement', 'log'),
+      true
+    );
+    assert.equal(
+      shouldExcludeConsoleMessage('[HMR] Waiting for update signal from WDS...', 'log'),
+      true
+    );
+    assert.equal(shouldExcludeConsoleMessage('[WDS] Live Reloading enabled.', 'log'), true);
     assert.equal(
       shouldExcludeConsoleMessage(
-        'Download the React DevTools for a better development experience'
+        'Download the React DevTools for a better development experience',
+        'log'
       ),
       true
     );
   });
 
+  void it('should exclude group message types', () => {
+    assert.equal(shouldExcludeConsoleMessage('Some group', 'startGroupCollapsed'), true);
+    assert.equal(shouldExcludeConsoleMessage('', 'endGroup'), true);
+    assert.equal(shouldExcludeConsoleMessage('Normal log', 'log'), false);
+  });
+
   void it('should not exclude non-dev-server messages', () => {
-    assert.equal(shouldExcludeConsoleMessage('User clicked button'), false);
-    assert.equal(shouldExcludeConsoleMessage('API request failed'), false);
-    assert.equal(shouldExcludeConsoleMessage('Error: Invalid input'), false);
+    assert.equal(shouldExcludeConsoleMessage('User clicked button', 'log'), false);
+    assert.equal(shouldExcludeConsoleMessage('API request failed', 'error'), false);
+    assert.equal(shouldExcludeConsoleMessage('Error: Invalid input', 'error'), false);
   });
 
   void it('should be case-insensitive', () => {
-    assert.equal(shouldExcludeConsoleMessage('WEBPACK-DEV-SERVER: Hot Module Replacement'), true);
-    assert.equal(shouldExcludeConsoleMessage('[hmr] waiting for update signal'), true);
+    assert.equal(
+      shouldExcludeConsoleMessage('WEBPACK-DEV-SERVER: Hot Module Replacement', 'log'),
+      true
+    );
+    assert.equal(shouldExcludeConsoleMessage('[hmr] waiting for update signal', 'log'), true);
   });
 });
 

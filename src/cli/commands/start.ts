@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { startSession } from '@/cli/handlers/sessionController.js';
 import {
   DEFAULT_DEBUG_PORT,
+  DEFAULT_REUSE_TAB,
   PORT_OPTION_DESCRIPTION,
   TIMEOUT_OPTION_DESCRIPTION,
   REUSE_TAB_OPTION_DESCRIPTION,
@@ -42,6 +43,7 @@ import type { CollectorType } from '@/types';
  * @property fetchBodiesExclude     Comma-separated patterns for bodies to exclude.
  * @property networkInclude         Comma-separated URL patterns to capture (trumps exclude).
  * @property networkExclude         Comma-separated URL patterns to exclude.
+ * @property maxBodySize            Maximum response body size in megabytes (default: 5MB).
  * @property compact                Use compact JSON format (no indentation) for output files.
  */
 interface CollectorOptions {
@@ -68,6 +70,7 @@ interface CollectorOptions {
   fetchBodiesExclude?: string;
   networkInclude?: string;
   networkExclude?: string;
+  maxBodySize?: string;
   compact?: boolean;
 }
 
@@ -114,17 +117,27 @@ function applyCollectorOptions(command: Command): Command {
     .option(
       '--network-exclude <patterns>',
       'Additional URL patterns to exclude (comma-separated wildcards)'
-    );
+    )
+    .option('--max-body-size <megabytes>', 'Maximum response body size in MB (default: 5MB)', '5');
 }
 
 /**
  * Parse a string to integer, returning undefined if not provided
  *
  * @param value - Optional string value to parse
+ * @param fieldName - Name of the field being parsed (for error messages)
  * @returns Parsed integer or undefined if value was not provided
+ * @throws {Error} If value is provided but not a valid integer
  */
-function parseOptionalInt(value: string | undefined): number | undefined {
-  return value !== undefined ? parseInt(value, 10) : undefined;
+function parseOptionalInt(value: string | undefined, fieldName: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed)) {
+    throw new Error(`Invalid ${fieldName}: "${value}" is not a valid integer`);
+  }
+  return parsed;
 }
 
 /**
@@ -258,26 +271,32 @@ function buildSessionOptions(options: CollectorOptions): {
   fetchBodiesExclude: string[] | undefined;
   networkInclude: string[] | undefined;
   networkExclude: string[] | undefined;
+  maxBodySize: number | undefined;
   compact: boolean;
 } {
+  const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size');
   return {
     port: parseInt(options.port, 10),
-    timeout: parseOptionalInt(options.timeout),
-    reuseTab: options.reuseTab ?? false,
+    timeout: parseOptionalInt(options.timeout, 'timeout'),
+    reuseTab: options.reuseTab ?? DEFAULT_REUSE_TAB,
     userDataDir: options.userDataDir,
     includeAll: options.all ?? false,
     logLevel: options.logLevel as 'verbose' | 'info' | 'error' | 'silent' | undefined,
     prefs: parseOptionalJson(options.chromePrefs),
     prefsFile: options.chromePrefsFile,
     chromeFlags: options.chromeFlags,
-    connectionPollInterval: parseOptionalInt(options.connectionPollInterval),
-    maxConnectionRetries: parseOptionalInt(options.maxConnectionRetries),
+    connectionPollInterval: parseOptionalInt(
+      options.connectionPollInterval,
+      'connection-poll-interval'
+    ),
+    maxConnectionRetries: parseOptionalInt(options.maxConnectionRetries, 'max-connection-retries'),
     portStrictMode: options.portStrict ?? false,
     fetchAllBodies: options.fetchAllBodies ?? false,
     fetchBodiesInclude: parsePatterns(options.fetchBodiesInclude),
     fetchBodiesExclude: parsePatterns(options.fetchBodiesExclude),
     networkInclude: parsePatterns(options.networkInclude),
     networkExclude: parsePatterns(options.networkExclude),
+    maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
   };
 }

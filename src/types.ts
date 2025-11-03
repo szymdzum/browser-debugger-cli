@@ -146,6 +146,7 @@ export interface ConnectionOptions {
  * @property fetchBodiesExclude URL patterns for bodies to skip.
  * @property networkInclude     URL patterns for requests to capture (trumps exclude).
  * @property networkExclude     URL patterns for requests to exclude.
+ * @property maxBodySize        Maximum response body size in bytes (default: 5MB).
  * @property compact            Use compact JSON format (no indentation) for output files.
  */
 export interface SessionOptions {
@@ -155,6 +156,7 @@ export interface SessionOptions {
   fetchBodiesExclude?: string[];
   networkInclude?: string[];
   networkExclude?: string[];
+  maxBodySize?: number;
   compact?: boolean;
 }
 
@@ -226,6 +228,16 @@ export interface CDPNavigateResponse {
 }
 
 /**
+ * CDP Page.lifecycleEvent parameters.
+ */
+export interface CDPLifecycleEventParams {
+  frameId: string;
+  loaderId: string;
+  name: string; // 'DOMContentLoaded', 'load', 'networkAlmostIdle', 'networkIdle', etc.
+  timestamp: number;
+}
+
+/**
  * CDP DOM.getDocument response.
  */
 export interface CDPGetDocumentResponse {
@@ -290,4 +302,38 @@ export interface CDPRuntimeEvaluateResponse {
 export interface CDPGetResponseBodyResponse {
   body: string;
   base64Encoded: boolean;
+}
+
+/**
+ * Result of a tab creation attempt with error context
+ */
+export interface TabCreationResult {
+  success: boolean;
+  target?: CDPTarget;
+  error?: TabCreationError;
+  strategy: 'CDP' | 'HTTP';
+  timing: {
+    attemptStartMs: number;
+    durationMs?: number;
+  };
+}
+
+/**
+ * Structured error information for tab creation failures
+ */
+export interface TabCreationError {
+  type:
+    | 'CDP_COMMAND_FAILED'
+    | 'VERIFICATION_FAILED'
+    | 'VERIFICATION_TIMEOUT'
+    | 'HTTP_REQUEST_FAILED'
+    | 'TARGET_NOT_FOUND';
+  message: string;
+  originalError?: unknown;
+  context: {
+    targetId?: string;
+    httpStatus?: number;
+    chromeVersion?: string;
+    stage?: 'cdp_command' | 'verification' | 'http_request';
+  };
 }

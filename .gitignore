@@ -27,3 +27,8 @@ coverage/
 *.tmp
 tmp/
 temp/
+
+# Workspace artifacts
+analysis/
+benchmarks/
+scripts/

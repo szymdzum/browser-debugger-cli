@@ -1,4 +1,5 @@
 import type { LaunchOptions } from '@/connection/launcher.js';
+import { MEMORY_LOG_INTERVAL, DEFAULT_REUSE_TAB } from '@/constants';
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
@@ -271,6 +272,7 @@ export async function startSession(
     fetchBodiesExclude?: string[] | undefined;
     networkInclude?: string[] | undefined;
     networkExclude?: string[] | undefined;
+    maxBodySize?: number | undefined;
     compact?: boolean | undefined;
   },
   collectors: CollectorType[]
@@ -331,11 +333,14 @@ export async function startSession(
     if (options.networkExclude !== undefined) {
       sessionOptions.networkExclude = options.networkExclude;
     }
+    if (options.maxBodySize !== undefined) {
+      sessionOptions.maxBodySize = options.maxBodySize;
+    }
     const setupResult = await TargetSetup.setup(
       url,
       targetUrl,
       options.port,
-      options.reuseTab ?? false,
+      options.reuseTab ?? DEFAULT_REUSE_TAB,
       sessionOptions
     );
     const session = setupResult.session;
@@ -384,7 +389,7 @@ export async function startSession(
       const heapTotalMB = (usage.heapTotal / 1024 / 1024).toFixed(2);
       const rssMB = (usage.rss / 1024 / 1024).toFixed(2);
       console.error(`[PERF] Memory: Heap ${heapUsedMB}/${heapTotalMB} MB, RSS ${rssMB} MB`);
-    }, 30000);
+    }, MEMORY_LOG_INTERVAL);
 
     // Store interval in context for cleanup
     const originalCleanup = context.cleanup.bind(context);

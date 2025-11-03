@@ -27,6 +27,7 @@ export interface NetworkCollectionOptions {
   fetchBodiesExclude?: string[];
   networkInclude?: string[];
   networkExclude?: string[];
+  maxBodySize?: number;
 }
 
 /**
@@ -61,6 +62,7 @@ export async function startNetworkCollection(
     fetchBodiesExclude = [],
     networkInclude = [],
     networkExclude = [],
+    maxBodySize = MAX_RESPONSE_SIZE,
   } = options;
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
   const registry = new CDPHandlerRegistry();
@@ -169,7 +171,7 @@ export async function startNetworkCollection(
         }
 
         // Determine if we should fetch the response body
-        const isSizeAcceptable = params.encodedDataLength <= MAX_RESPONSE_SIZE;
+        const isSizeAcceptable = params.encodedDataLength <= maxBodySize;
         const isTextResponse =
           (request.mimeType?.includes('json') ?? false) ||
           (request.mimeType?.includes('javascript') ?? false) ||
@@ -203,7 +205,7 @@ export async function startNetworkCollection(
         } else if (isTextResponse && !isSizeAcceptable) {
           bodiesSkipped++;
           // Mark large responses as skipped
-          request.responseBody = `[SKIPPED: Response too large (${(params.encodedDataLength / 1024 / 1024).toFixed(2)}MB > ${MAX_RESPONSE_SIZE / 1024 / 1024}MB)]`;
+          request.responseBody = `[SKIPPED: Response too large (${(params.encodedDataLength / 1024 / 1024).toFixed(2)}MB > ${maxBodySize / 1024 / 1024}MB)]`;
         }
 
         requests.push(request);

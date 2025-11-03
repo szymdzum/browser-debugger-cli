@@ -1,12 +1,110 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import {
+  PAGE_TARGET_TYPE,
+  BLANK_PAGE_URL,
+  CDP_NEW_WINDOW_FLAG,
+  CDP_FLATTEN_SESSION_FLAG,
+  HTTP_LOCALHOST,
+  DEFAULT_TARGET_READY_TIMEOUT_MS,
+  TARGET_READY_POLL_INTERVAL_MS,
+  LOADING_PAGE_ADDITIONAL_WAIT_MS,
+  DEFAULT_VERIFICATION_TIMEOUT_MS,
+  VERIFICATION_INITIAL_DELAY_MS,
+  VERIFICATION_MAX_DELAY_MS,
+  VERIFICATION_BACKOFF_MULTIPLIER,
+  DEFAULT_REUSE_TAB,
+} from '@/constants';
 import type { CDPTarget } from '@/types';
 import type {
   CDPCreateTargetResponse,
   CDPAttachToTargetResponse,
   CDPGetTargetsResponse,
   CDPNavigateResponse,
+  CDPLifecycleEventParams,
 } from '@/types';
+import type { TabCreationResult } from '@/types';
+import { fetchCDPTargetById } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
+
+// Tab Matching Score Thresholds
+const EXACT_URL_MATCH_SCORE = 100;
+const HOST_AND_PATH_MATCH_SCORE = 90;
+const HOST_AND_PATH_PREFIX_MATCH_SCORE = 70;
+const HOST_ONLY_MATCH_SCORE = 50;
+const SUBSTRING_MATCH_SCORE = 30;
+const NO_MATCH_SCORE = 0;
+
+// Message Templates
+const MULTIPLE_TABS_WARNING_TEMPLATE = (score: number, url: string): string =>
+  `Warning: Multiple tabs match equally (score ${score}), using: ${url}`;
+const FOUND_EXISTING_TAB_MESSAGE = (url: string): string => `Found existing tab: ${url}`;
+const NAVIGATING_TAB_MESSAGE = (url: string): string => `Navigating tab to: ${url}`;
+const CREATING_NEW_TAB_MESSAGE = (url: string): string => `Creating new tab for: ${url}`;
+
+// Error Messages
+const CDP_CREATE_TARGET_FALLBACK_MESSAGE =
+  'CDP Target.createTarget failed, attempting HTTP fallback...';
+
+const HTTP_NEW_TAB_FAILED_ERROR = (statusText: string): string =>
+  `HTTP /json/new failed: ${statusText}`;
+const FAILED_TO_CREATE_TAB_ERROR = (details: string): string =>
+  `Failed to create new tab: ${details}`;
+const NAVIGATION_FAILED_ERROR = (errorText: string): string => `Navigation failed: ${errorText}`;
+const TARGET_NOT_READY_ERROR = (timeoutMs: number): string =>
+  `Target did not become ready within ${timeoutMs}ms`;
+
+// Environment variable for timeout override with validation
+/**
+ * Parse and validate the BDG_TARGET_VERIFY_TIMEOUT environment variable.
+ *
+ * Converts string environment variable to number with validation and fallback.
+ * Invalid values (non-numeric, negative, zero) fall back to the default timeout.
+ *
+ * @param envValue - Raw environment variable value (may be undefined)
+ * @returns Parsed timeout in milliseconds, or DEFAULT_VERIFICATION_TIMEOUT_MS if invalid
+ *
+ * @remarks
+ * - Accepts positive integers only
+ * - Logs warning for invalid values before falling back
+ * - Used to override default verification timeout via environment configuration
+ */
+const parseVerificationTimeout = (envValue: string | undefined): number => {
+  if (!envValue) {
+    return DEFAULT_VERIFICATION_TIMEOUT_MS;
+  }
+
+  const parsed = parseInt(envValue, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(
+      `Invalid BDG_TARGET_VERIFY_TIMEOUT value: "${envValue}". Must be a positive number. Using default: ${DEFAULT_VERIFICATION_TIMEOUT_MS}ms`
+    );
+    return DEFAULT_VERIFICATION_TIMEOUT_MS;
+  }
+
+  return parsed;
+};
+
+const VERIFICATION_TIMEOUT_OVERRIDE = parseVerificationTimeout(
+  process.env['BDG_TARGET_VERIFY_TIMEOUT']
+);
+
+// Strategy Names
+const CDP_STRATEGY = 'CDP' as const;
+const HTTP_STRATEGY = 'HTTP' as const;
+
+// Error Types
+const CDP_COMMAND_FAILED = 'CDP_COMMAND_FAILED' as const;
+
+const VERIFICATION_TIMEOUT_ERROR_TYPE = 'VERIFICATION_TIMEOUT' as const;
+const HTTP_REQUEST_FAILED = 'HTTP_REQUEST_FAILED' as const;
+
+// Enhanced Error Messages
+const VERIFICATION_TIMEOUT_ERROR = (
+  targetId: string,
+  timeoutMs: number,
+  attempts: number
+): string =>
+  `Chrome acknowledged Target.createTarget (ID: ${targetId}) but target verification timed out after ${timeoutMs}ms (${attempts} attempts). The tab was created successfully but is not yet visible in Chrome's target list. This commonly occurs in headless/managed Chrome environments where target registration can take 1-5 seconds. Increase timeout with BDG_TARGET_VERIFY_TIMEOUT environment variable (e.g., BDG_TARGET_VERIFY_TIMEOUT=10000 for 10 seconds).`;
 
 /**
  * Scored tab match result.
@@ -18,54 +116,60 @@ interface ScoredTarget {
 
 /**
  * Score how well a tab matches the search URL.
- * Higher score = better match.
+ *
+ * Uses a weighted scoring system where exact matches score highest (100),
+ * followed by host+path matches (90), then host-only matches (50).
+ * This prioritization ensures users get the most specific match first,
+ * while still finding reasonable alternatives when exact matches don't exist.
+ *
+ * Fallback to substring matching (30) handles cases where URL parsing fails
+ * due to malformed URLs or non-standard protocols.
  *
  * @param tab - Target to score
  * @param searchUrl - Normalized URL to match against
- * @returns Match score (0-100)
+ * @returns Match score (0-100, higher = better match)
  */
 function scoreTabMatch(tab: CDPTarget, searchUrl: string): number {
-  // Exact match = best score
   if (tab.url === searchUrl) {
-    return 100;
+    return EXACT_URL_MATCH_SCORE;
   }
 
-  // Try URL-based matching
   try {
-    const tabUrlObj = new URL(tab.url);
-    const searchUrlObj = new URL(searchUrl);
+    const currentTabUrl = new URL(tab.url);
+    const targetUrl = new URL(searchUrl);
 
-    // Same host + path = excellent score
-    if (tabUrlObj.host === searchUrlObj.host && tabUrlObj.pathname === searchUrlObj.pathname) {
-      return 90;
+    if (currentTabUrl.host === targetUrl.host && currentTabUrl.pathname === targetUrl.pathname) {
+      return HOST_AND_PATH_MATCH_SCORE;
     }
 
-    // Same host + path prefix = good score
     if (
-      tabUrlObj.host === searchUrlObj.host &&
-      tabUrlObj.pathname.startsWith(searchUrlObj.pathname)
+      currentTabUrl.host === targetUrl.host &&
+      currentTabUrl.pathname.startsWith(targetUrl.pathname)
     ) {
-      return 70;
+      return HOST_AND_PATH_PREFIX_MATCH_SCORE;
     }
 
-    // Same host = decent score
-    if (tabUrlObj.host === searchUrlObj.host) {
-      return 50;
+    if (currentTabUrl.host === targetUrl.host) {
+      return HOST_ONLY_MATCH_SCORE;
     }
   } catch {
-    // URL parsing failed, fall back to substring matching
+    // URL parsing failed - fall back to substring matching
   }
 
-  // Substring match = weak score
   if (tab.url.includes(searchUrl)) {
-    return 30;
+    return SUBSTRING_MATCH_SCORE;
   }
 
-  return 0; // No match
+  return NO_MATCH_SCORE;
 }
 
 /**
  * Find the best matching target from a list of tabs.
+ *
+ * Filters to page-type targets only because other target types (extensions,
+ * service workers, etc.) cannot be navigated to user URLs. The scoring
+ * system handles ambiguous matches by warning users when multiple tabs
+ * have identical non-perfect scores, helping debug URL matching issues.
  *
  * @param normalizedUrl - Target URL to find (must be pre-normalized)
  * @param targets - List of available targets
@@ -74,16 +178,14 @@ function scoreTabMatch(tab: CDPTarget, searchUrl: string): number {
 export function findBestTarget(normalizedUrl: string, targets: CDPTarget[]): CDPTarget | null {
   const searchUrl = normalizedUrl;
 
-  // Filter for page targets only
-  const pageTargets = targets.filter((t) => t.type === 'page');
+  const pageTargets = targets.filter((target) => target.type === PAGE_TARGET_TYPE);
 
   if (pageTargets.length === 0) {
     return null;
   }
 
-  // Score all targets
   const scored: ScoredTarget[] = pageTargets
-    .map((t) => ({ target: t, score: scoreTabMatch(t, searchUrl) }))
+    .map((target) => ({ target, score: scoreTabMatch(target, searchUrl) }))
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score);
 
@@ -91,87 +193,323 @@ export function findBestTarget(normalizedUrl: string, targets: CDPTarget[]): CDP
     return null;
   }
 
-  // Warn if multiple tabs have same score
-  const first = scored[0];
-  const second = scored[1];
-  if (scored.length > 1 && first && second && first.score === second.score && first.score < 100) {
-    console.error(
-      `Warning: Multiple tabs match equally (score ${first.score}), using: ${first.target.url}`
-    );
+  const bestMatch = scored[0];
+  const secondBestMatch = scored[1];
+  if (
+    scored.length > 1 &&
+    bestMatch &&
+    secondBestMatch &&
+    bestMatch.score === secondBestMatch.score &&
+    bestMatch.score < 100
+  ) {
+    console.error(MULTIPLE_TABS_WARNING_TEMPLATE(bestMatch.score, bestMatch.target.url));
   }
 
-  return first ? first.target : null;
+  return bestMatch ? bestMatch.target : null;
+}
+
+/**
+ * Verify target exists with configurable timeout and exponential backoff.
+ *
+ * Uses a timeout-based approach rather than fixed attempt count to better
+ * handle variable Chrome registration delays in enterprise/headless environments.
+ * Logs timing information for debugging verification issues.
+ */
+async function verifyTargetWithBackoff(
+  targetId: string,
+  port: number,
+  timeoutMs: number = VERIFICATION_TIMEOUT_OVERRIDE
+): Promise<{ target: CDPTarget }> {
+  const startTime = Date.now();
+  let attemptCount = 0;
+  let currentDelayMs = VERIFICATION_INITIAL_DELAY_MS;
+
+  while (Date.now() - startTime < timeoutMs) {
+    attemptCount++;
+
+    try {
+      const target = await fetchCDPTargetById(targetId, port);
+
+      if (target) {
+        const totalDuration = Date.now() - startTime;
+        console.error(
+          `Target verification succeeded: ${targetId} (${totalDuration}ms, ${attemptCount} attempts)`
+        );
+        return { target };
+      }
+
+      const remainingTimeMs = timeoutMs - (Date.now() - startTime);
+      if (remainingTimeMs <= currentDelayMs) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, currentDelayMs));
+      currentDelayMs = Math.min(
+        currentDelayMs * VERIFICATION_BACKOFF_MULTIPLIER,
+        VERIFICATION_MAX_DELAY_MS
+      );
+    } catch {
+      const remainingTimeMs = timeoutMs - (Date.now() - startTime);
+      if (remainingTimeMs <= currentDelayMs) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, currentDelayMs));
+      currentDelayMs = Math.min(
+        currentDelayMs * VERIFICATION_BACKOFF_MULTIPLIER,
+        VERIFICATION_MAX_DELAY_MS
+      );
+    }
+  }
+
+  const totalDuration = Date.now() - startTime;
+
+  console.error(`Target verification timeout: ${targetId}`, {
+    duration: totalDuration,
+    attempts: attemptCount,
+    timeout: timeoutMs,
+  });
+
+  throw new Error(VERIFICATION_TIMEOUT_ERROR(targetId, timeoutMs, attemptCount));
+}
+
+/**
+ * Attempt tab creation via CDP with enhanced verification.
+ *
+ * Distinguishes between CDP command failures (should trigger HTTP fallback)
+ * and verification timeouts (should fail without fallback to prevent duplicate tabs).
+ *
+ * Uses configurable timeout to handle Chrome registration delays in
+ * enterprise/headless environments where targets take 0.5-5s to appear.
+ */
+async function attemptCDPCreation(
+  normalizedUrl: string,
+  cdp: CDPConnection
+): Promise<TabCreationResult> {
+  const startTime = Date.now();
+  let cdpResponse: CDPCreateTargetResponse;
+
+  try {
+    cdpResponse = (await cdp.send('Target.createTarget', {
+      url: normalizedUrl,
+      newWindow: CDP_NEW_WINDOW_FLAG,
+    })) as CDPCreateTargetResponse;
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        type: CDP_COMMAND_FAILED,
+        message: error instanceof Error ? error.message : String(error),
+        originalError: error,
+        context: {
+          stage: 'cdp_command',
+        },
+      },
+      strategy: CDP_STRATEGY,
+      timing: {
+        attemptStartMs: startTime,
+        durationMs: Date.now() - startTime,
+      },
+    };
+  }
+
+  try {
+    const { target } = await verifyTargetWithBackoff(
+      cdpResponse.targetId,
+      cdp.getPort(),
+      VERIFICATION_TIMEOUT_OVERRIDE
+    );
+
+    return {
+      success: true,
+      target,
+      strategy: CDP_STRATEGY,
+      timing: {
+        attemptStartMs: startTime,
+        durationMs: Date.now() - startTime,
+      },
+    };
+  } catch (verificationError) {
+    return {
+      success: false,
+      error: {
+        type: VERIFICATION_TIMEOUT_ERROR_TYPE,
+        message:
+          verificationError instanceof Error
+            ? verificationError.message
+            : String(verificationError),
+        originalError: verificationError,
+        context: {
+          targetId: cdpResponse.targetId,
+          stage: 'verification',
+        },
+      },
+      strategy: CDP_STRATEGY,
+      timing: {
+        attemptStartMs: startTime,
+        durationMs: Date.now() - startTime,
+      },
+    };
+  }
+}
+
+/**
+ * Attempt tab creation via HTTP endpoint.
+ *
+ * Uses Chrome's /json/new HTTP endpoint as a fallback when CDP fails.
+ * This endpoint is more forgiving on Chrome instances with restricted
+ * Target domain access (e.g., remote-debugging with atypical flags).
+ * The HTTP handler waits for tab readiness before responding.
+ */
+async function attemptHTTPCreation(
+  normalizedUrl: string,
+  port: number
+): Promise<TabCreationResult> {
+  const startTime = Date.now();
+
+  try {
+    const createResponse = await fetch(
+      `http://${HTTP_LOCALHOST}:${port}/json/new?${encodeURIComponent(normalizedUrl)}`
+    );
+
+    if (!createResponse.ok) {
+      throw new Error(HTTP_NEW_TAB_FAILED_ERROR(createResponse.statusText));
+    }
+
+    const target = (await createResponse.json()) as CDPTarget;
+
+    return {
+      success: true,
+      target,
+      strategy: HTTP_STRATEGY,
+      timing: {
+        attemptStartMs: startTime,
+        durationMs: Date.now() - startTime,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        type: HTTP_REQUEST_FAILED,
+        message: error instanceof Error ? error.message : String(error),
+        originalError: error,
+        context: {
+          ...(error instanceof Error &&
+          'status' in error &&
+          (error as { status?: number }).status !== undefined
+            ? { httpStatus: (error as { status?: number }).status }
+            : {}),
+        },
+      },
+      strategy: HTTP_STRATEGY,
+      timing: {
+        attemptStartMs: startTime,
+        durationMs: Date.now() - startTime,
+      },
+    };
+  }
 }
 
 /**
  * Create a new tab with the specified URL using CDP.
  *
+ * Uses a two-phase approach with enhanced error handling:
+ * - CDP command failures → HTTP fallback (prevents total failure)
+ * - Verification timeouts → Fail fast with targeted error (prevents duplicate tabs)
+ *
+ * Configurable verification timeout via BDG_TARGET_VERIFY_TIMEOUT environment
+ * variable to handle slow Chrome registration in enterprise/headless environments.
+ *
  * @param normalizedUrl - URL to open in the new tab (must be pre-normalized)
  * @param cdp - CDP connection instance
  * @returns Target information for the new tab
- * @throws Error if tab creation fails via both CDP and HTTP fallback methods
+ * @throws Error if tab creation fails or verification times out
  */
 export async function createNewTab(normalizedUrl: string, cdp: CDPConnection): Promise<CDPTarget> {
-  const port = cdp.getPort();
+  const cdpPort = cdp.getPort();
 
-  let createdTargetId: string | null = null;
+  // Primary strategy: CDP creation with enhanced verification
+  const cdpCreationResult = await attemptCDPCreation(normalizedUrl, cdp);
 
-  try {
-    const response = (await cdp.send('Target.createTarget', {
-      url: normalizedUrl,
-      newWindow: false, // Open as tab, not window
-    })) as CDPCreateTargetResponse;
-    createdTargetId = response.targetId;
-  } catch (error) {
-    console.error('CDP Target.createTarget failed, attempting HTTP fallback...', error);
+  if (cdpCreationResult.success && cdpCreationResult.target) {
+    return cdpCreationResult.target;
   }
 
-  if (createdTargetId) {
-    try {
-      const listResponse = await fetch(`http://127.0.0.1:${port}/json/list`);
-      if (!listResponse.ok) {
-        throw new Error(
-          `Failed to list targets: ${listResponse.status} ${listResponse.statusText}`
-        );
-      }
-      const targets = (await listResponse.json()) as CDPTarget[];
-      const target = targets.find((t) => t.id === createdTargetId);
-
-      if (!target) {
-        throw new Error(`Created target ${createdTargetId} not found in Chrome target list`);
-      }
-
-      return target;
-    } catch (resolveError) {
-      throw new Error(
-        `Failed to resolve created tab: ${
-          resolveError instanceof Error ? resolveError.message : String(resolveError)
-        }`
-      );
-    }
+  if (cdpCreationResult.error?.type === VERIFICATION_TIMEOUT_ERROR_TYPE) {
+    throw new Error(cdpCreationResult.error.message);
   }
 
-  // Fallback to HTTP endpoint method
-  try {
-    const createResponse = await fetch(
-      `http://127.0.0.1:${port}/json/new?${encodeURIComponent(normalizedUrl)}`
-    );
+  console.error(CDP_CREATE_TARGET_FALLBACK_MESSAGE, {
+    strategy: cdpCreationResult.strategy,
+    errorType: cdpCreationResult.error?.type,
+    stage: cdpCreationResult.error?.context?.stage,
+    duration: cdpCreationResult.timing.durationMs,
+    error: cdpCreationResult.error?.message,
+  });
 
-    if (!createResponse.ok) {
-      throw new Error(`HTTP /json/new failed: ${createResponse.statusText}`);
-    }
+  // Fallback strategy: HTTP creation
+  const httpCreationResult = await attemptHTTPCreation(normalizedUrl, cdpPort);
 
-    const target = (await createResponse.json()) as CDPTarget;
-    return target;
-  } catch (httpError) {
-    throw new Error(
-      `Failed to create new tab: ${httpError instanceof Error ? httpError.message : String(httpError)}`
-    );
+  if (httpCreationResult.success && httpCreationResult.target) {
+    return httpCreationResult.target;
   }
+
+  throw new Error(
+    FAILED_TO_CREATE_TAB_ERROR(
+      `CDP command failed (${cdpCreationResult.error?.message}), HTTP fallback also failed (${httpCreationResult.error?.message})`
+    )
+  );
+}
+
+/**
+ * Fetch a specific target by ID from Chrome's target list.
+ *
+ * Encapsulates the HTTP fetch and JSON parsing logic with error handling.
+ * Returns null when the target is not found or fetch fails, allowing
+ * the caller to decide on retry logic.
+ */
+async function fetchTargetById(targetId: string, port: number): Promise<CDPTarget | null> {
+  return fetchCDPTargetById(targetId, port);
+}
+
+/**
+ * Check if a target is ready for interaction.
+ *
+ * A target is considered ready when its URL matches the expected URL
+ * or shows a valid intermediate state. The about:blank check handles
+ * the common case where Chrome shows a blank page during navigation.
+ */
+function isTargetReady(target: CDPTarget, expectedUrl: string): boolean {
+  return (
+    target.url === expectedUrl ||
+    target.url.startsWith(expectedUrl) ||
+    target.url === BLANK_PAGE_URL
+  );
+}
+
+/**
+ * Handle the special case of about:blank pages during navigation.
+ *
+ * Chrome often shows about:blank briefly before loading the actual URL.
+ * This delay allows the navigation to progress before checking again.
+ * Returns true if additional waiting is needed, false if ready to proceed.
+ */
+async function handleBlankPageDelay(target: CDPTarget): Promise<boolean> {
+  if (target.url === BLANK_PAGE_URL) {
+    await new Promise((resolve) => setTimeout(resolve, LOADING_PAGE_ADDITIONAL_WAIT_MS));
+    return true; // Need to continue waiting
+  }
+  return false; // Ready to proceed
 }
 
 /**
  * Navigate an existing tab to a new URL using CDP.
+ *
+ * Requires attaching to the target first because Page.navigate commands
+ * must be sent within a target session context. The flatten:true option
+ * simplifies session management by avoiding nested session hierarchies
+ * that can complicate cleanup and event handling.
  *
  * @param targetId - CDP target ID to navigate
  * @param normalizedUrl - URL to navigate to (must be pre-normalized)
@@ -183,13 +521,11 @@ export async function navigateToUrl(
   normalizedUrl: string,
   cdp: CDPConnection
 ): Promise<void> {
-  // Attach to target
   const sessionResponse = (await cdp.send('Target.attachToTarget', {
     targetId,
-    flatten: true,
+    flatten: CDP_FLATTEN_SESSION_FLAG,
   })) as CDPAttachToTargetResponse;
 
-  // Navigate
   const navResponse = (await cdp.send(
     'Page.navigate',
     { url: normalizedUrl },
@@ -197,12 +533,21 @@ export async function navigateToUrl(
   )) as CDPNavigateResponse;
 
   if (navResponse.errorText) {
-    throw new Error(`Navigation failed: ${navResponse.errorText}`);
+    throw new Error(NAVIGATION_FAILED_ERROR(navResponse.errorText));
   }
 }
 
 /**
  * Wait for a target to be ready (URL matches expected).
+ *
+ * Polling is necessary because tab navigation is asynchronous and Chrome
+ * may report intermediate states (like about:blank) before the final URL
+ * loads. The 500ms additional wait for about:blank handles the common case
+ * where Chrome briefly shows a blank page before starting navigation.
+ *
+ * Uses HTTP endpoint instead of CDP for target status because the HTTP
+ * interface provides more reliable target state information during
+ * navigation transitions.
  *
  * @param targetId - CDP target ID to wait for
  * @param normalizedUrl - Expected URL (must be pre-normalized)
@@ -214,49 +559,170 @@ export async function waitForTargetReady(
   targetId: string,
   normalizedUrl: string,
   cdp: CDPConnection,
-  maxWaitMs = 15000
+  maxWaitMs = DEFAULT_TARGET_READY_TIMEOUT_MS
 ): Promise<void> {
-  const startTime = Date.now();
+  const pollingStartTime = Date.now();
+  const cdpPort = cdp.getPort();
 
-  while (Date.now() - startTime < maxWaitMs) {
-    try {
-      // Fetch current targets
-      const response = await fetch(`http://127.0.0.1:${cdp.getPort()}/json/list`);
-      const targets = (await response.json()) as CDPTarget[];
+  while (Date.now() - pollingStartTime < maxWaitMs) {
+    const currentTarget = await fetchTargetById(targetId, cdpPort);
 
-      const target = targets.find((t) => t.id === targetId);
-
-      if (target) {
-        // Check if URL matches or is loading
-        if (
-          target.url === normalizedUrl ||
-          target.url.startsWith(normalizedUrl) ||
-          target.url === 'about:blank' // Still loading
-        ) {
-          // Wait a bit more if still on about:blank
-          if (target.url === 'about:blank') {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            continue;
-          }
-          return; // Target is ready!
-        }
-      }
-    } catch {
-      // Target doesn't exist yet or fetch failed, keep waiting
+    if (!currentTarget) {
+      await new Promise((resolve) => setTimeout(resolve, TARGET_READY_POLL_INTERVAL_MS));
+      continue;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (!isTargetReady(currentTarget, normalizedUrl)) {
+      await new Promise((resolve) => setTimeout(resolve, TARGET_READY_POLL_INTERVAL_MS));
+      continue;
+    }
+
+    const needsMoreWaiting = await handleBlankPageDelay(currentTarget);
+    if (needsMoreWaiting) {
+      continue;
+    }
+
+    return;
   }
 
-  throw new Error(`Target did not become ready within ${maxWaitMs}ms`);
+  throw new Error(TARGET_NOT_READY_ERROR(maxWaitMs));
+}
+
+/**
+ * Wait for network idle using CDP Page.lifecycleEvent.
+ *
+ * Listens for lifecycle events to detect when React hydration is likely complete.
+ * The 'networkIdle' event indicates network activity has stopped, which typically
+ * means async JavaScript execution (including React hydration) has finished.
+ *
+ * Uses a race between networkIdle event and fallback timeout to handle cases
+ * where networkIdle doesn't fire (e.g., long-polling connections, SSE streams).
+ *
+ * @param cdp - CDP connection instance
+ * @param maxWaitMs - Maximum time to wait for networkIdle (fallback timeout)
+ * @returns Promise that resolves when networkIdle fires or timeout is reached
+ */
+async function waitForNetworkIdle(
+  cdp: CDPConnection,
+  maxWaitMs = DEFAULT_TARGET_READY_TIMEOUT_MS
+): Promise<void> {
+  // Enable lifecycle events
+  await cdp.send('Page.setLifecycleEventsEnabled', { enabled: true });
+
+  return new Promise((resolve) => {
+    let lifecycleHandlerId: number | null = null;
+    let fallbackTimer: NodeJS.Timeout | null = null;
+
+    const cleanup = (): void => {
+      if (lifecycleHandlerId !== null) {
+        cdp.off('Page.lifecycleEvent', lifecycleHandlerId);
+      }
+      if (fallbackTimer !== null) {
+        clearTimeout(fallbackTimer);
+      }
+    };
+
+    // Listen for networkIdle lifecycle event
+    lifecycleHandlerId = cdp.on('Page.lifecycleEvent', (params: CDPLifecycleEventParams) => {
+      if (params.name === 'networkIdle') {
+        console.error('[LIFECYCLE] networkIdle event fired');
+        cleanup();
+        resolve();
+      }
+    });
+
+    // Fallback timeout if networkIdle never fires
+    fallbackTimer = setTimeout(() => {
+      console.error(`[LIFECYCLE] networkIdle timeout (${maxWaitMs}ms), continuing anyway`);
+      cleanup();
+      resolve();
+    }, maxWaitMs);
+  });
+}
+
+/**
+ * Retrieve all available targets from Chrome via CDP.
+ *
+ * Transforms CDP target info into the standard CDPTarget format
+ * used throughout the pipeline. The webSocketDebuggerUrl is left
+ * empty as it's not needed for target discovery operations.
+ */
+async function getExistingTargets(cdp: CDPConnection): Promise<CDPTarget[]> {
+  const targetsResponse = (await cdp.send('Target.getTargets')) as CDPGetTargetsResponse;
+
+  return targetsResponse.targetInfos.map((info) => ({
+    id: info.targetId,
+    type: info.type,
+    url: info.url,
+    title: info.title,
+    webSocketDebuggerUrl: '',
+  }));
+}
+
+/**
+ * Navigate an existing target to the desired URL if needed.
+ *
+ * Only performs navigation when URLs don't match exactly, avoiding
+ * unnecessary navigation operations that could disrupt page state.
+ * Uses the same verification logic as new tab creation to ensure
+ * the navigation completes successfully.
+ */
+async function navigateExistingTarget(
+  target: CDPTarget,
+  normalizedUrl: string,
+  cdp: CDPConnection
+): Promise<CDPTarget> {
+  console.error(FOUND_EXISTING_TAB_MESSAGE(target.url));
+
+  if (target.url !== normalizedUrl) {
+    console.error(NAVIGATING_TAB_MESSAGE(normalizedUrl));
+    await navigateToUrl(target.id, normalizedUrl, cdp);
+    await waitForTargetReady(target.id, normalizedUrl, cdp);
+  }
+
+  // Always wait for React hydration, even if tab is already on the URL
+  // This ensures SPA frameworks have fully initialized before capturing DOM
+  await waitForNetworkIdle(cdp);
+
+  return target;
+}
+
+/**
+ * Find and optionally navigate to an existing target.
+ *
+ * Encapsulates the complete target reuse workflow: discovery,
+ * matching, and navigation. Returns null when no suitable target
+ * is found, allowing the caller to proceed with new tab creation.
+ */
+async function findAndReuseTarget(
+  normalizedUrl: string,
+  cdp: CDPConnection
+): Promise<CDPTarget | null> {
+  const existingTargets = await getExistingTargets(cdp);
+  const matchingTarget = findBestTarget(normalizedUrl, existingTargets);
+
+  if (!matchingTarget) {
+    return null;
+  }
+
+  try {
+    return await navigateExistingTarget(matchingTarget, normalizedUrl, cdp);
+  } catch (error) {
+    console.error(`Failed to reuse tab: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 /**
  * Create a new tab or find existing tab with the target URL.
  *
- * This is the main entry point for tab management.
- * It tries to find an existing tab first, and if not found,
- * creates a new one.
+ * This is the main entry point for tab management with a clear workflow:
+ * when reuseTab=true, attempts to find and navigate existing tabs to avoid
+ * creating unnecessary browser tabs. When reuseTab=false or no suitable
+ * tab exists, creates a new tab for isolated testing scenarios.
+ *
+ * URL normalization happens once at entry to ensure consistent matching
+ * and navigation behavior throughout the entire workflow.
  *
  * @param url - Target URL (will be normalized once at entry)
  * @param cdp - CDP connection instance
@@ -266,45 +732,37 @@ export async function waitForTargetReady(
 export async function createOrFindTarget(
   url: string,
   cdp: CDPConnection,
-  reuseTab = false
+  reuseTab = DEFAULT_REUSE_TAB
 ): Promise<CDPTarget> {
-  // Normalize URL once at entry point
-  const normalizedUrl = normalizeUrl(url);
+  const targetUrl = normalizeUrl(url);
 
-  // Only look for existing tabs if reuseTab is true
-  if (reuseTab) {
-    // Try to find existing target via CDP
-    const targetsResponse = (await cdp.send('Target.getTargets')) as CDPGetTargetsResponse;
-    const targets: CDPTarget[] = targetsResponse.targetInfos.map((info) => ({
-      id: info.targetId,
-      type: info.type,
-      url: info.url,
-      title: info.title,
-      webSocketDebuggerUrl: '', // Not needed for this operation
-    }));
+  // Guard clause: Skip target reuse if not requested
+  if (!reuseTab) {
+    console.error(CREATING_NEW_TAB_MESSAGE(targetUrl));
+    const newTarget = await createNewTab(targetUrl, cdp);
+    await waitForTargetReady(newTarget.id, targetUrl, cdp);
 
-    const existingTarget = findBestTarget(normalizedUrl, targets);
+    // Wait for React hydration to complete
+    await waitForNetworkIdle(cdp);
 
-    if (existingTarget) {
-      console.error(`Found existing tab: ${existingTarget.url}`);
-
-      // If URLs don't match exactly, navigate
-      if (existingTarget.url !== normalizedUrl) {
-        console.error(`Navigating tab to: ${normalizedUrl}`);
-        await navigateToUrl(existingTarget.id, normalizedUrl, cdp);
-        await waitForTargetReady(existingTarget.id, normalizedUrl, cdp);
-      }
-
-      return existingTarget;
-    }
+    return newTarget;
   }
 
-  // No matching tab found (or reuseTab=false), create new one
-  console.error(`Creating new tab for: ${normalizedUrl}`);
-  const newTarget = await createNewTab(normalizedUrl, cdp);
+  // Attempt to find and reuse existing target
+  const reusedTarget = await findAndReuseTarget(targetUrl, cdp);
 
-  // Wait for tab to start loading
-  await waitForTargetReady(newTarget.id, normalizedUrl, cdp);
+  // Early return if target reuse succeeded
+  if (reusedTarget) {
+    return reusedTarget;
+  }
+
+  // Fallback: Create new tab when no suitable target found
+  console.error(CREATING_NEW_TAB_MESSAGE(targetUrl));
+  const newTarget = await createNewTab(targetUrl, cdp);
+  await waitForTargetReady(newTarget.id, targetUrl, cdp);
+
+  // Wait for React hydration to complete
+  await waitForNetworkIdle(cdp);
 
   return newTarget;
 }
