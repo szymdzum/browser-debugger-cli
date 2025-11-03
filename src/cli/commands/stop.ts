@@ -113,8 +113,27 @@ export function registerStopCommand(program: Command): void {
 
           process.exit(EXIT_CODES.SUCCESS);
         } else {
-          // Daemon returned error (e.g., no active session)
-          // Map error codes to appropriate exit codes
+          // Daemon returned error
+          // Special case: NO_SESSION is not really an error - it's a success (desired state achieved)
+          if (response.errorCode === IPCErrorCode.NO_SESSION) {
+            if (options.json) {
+              console.log(
+                JSON.stringify(
+                  OutputBuilder.buildJsonSuccess({
+                    stopped: { bdg: false, chrome: false },
+                    message: response.message ?? 'No active session found',
+                  }),
+                  null,
+                  2
+                )
+              );
+            } else {
+              console.error(response.message ?? 'No active session found');
+            }
+            process.exit(EXIT_CODES.SUCCESS);
+          }
+
+          // Other errors are actual failures
           const exitCode = getExitCodeForDaemonError(response.errorCode);
 
           if (options.json) {
