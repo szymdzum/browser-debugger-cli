@@ -43,7 +43,7 @@
   "license": "MIT",
   "dependencies": {
     "chrome-launcher": "^1.2.1",
-    "commander": "^12.1.0",
+    "commander": "^14.0.2",
     "ws": "^8.18.0"
   },
   "devDependencies": {
