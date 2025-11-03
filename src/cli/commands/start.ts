@@ -42,6 +42,7 @@ import type { CollectorType } from '@/types';
  * @property fetchBodiesExclude     Comma-separated patterns for bodies to exclude.
  * @property networkInclude         Comma-separated URL patterns to capture (trumps exclude).
  * @property networkExclude         Comma-separated URL patterns to exclude.
+ * @property maxBodySize            Maximum response body size in megabytes (default: 5MB).
  * @property compact                Use compact JSON format (no indentation) for output files.
  */
 interface CollectorOptions {
@@ -68,6 +69,7 @@ interface CollectorOptions {
   fetchBodiesExclude?: string;
   networkInclude?: string;
   networkExclude?: string;
+  maxBodySize?: string;
   compact?: boolean;
 }
 
@@ -114,7 +116,8 @@ function applyCollectorOptions(command: Command): Command {
     .option(
       '--network-exclude <patterns>',
       'Additional URL patterns to exclude (comma-separated wildcards)'
-    );
+    )
+    .option('--max-body-size <megabytes>', 'Maximum response body size in MB (default: 5MB)', '5');
 }
 
 /**
@@ -258,8 +261,10 @@ function buildSessionOptions(options: CollectorOptions): {
   fetchBodiesExclude: string[] | undefined;
   networkInclude: string[] | undefined;
   networkExclude: string[] | undefined;
+  maxBodySize: number | undefined;
   compact: boolean;
 } {
+  const maxBodySizeMB = parseOptionalInt(options.maxBodySize);
   return {
     port: parseInt(options.port, 10),
     timeout: parseOptionalInt(options.timeout),
@@ -278,6 +283,7 @@ function buildSessionOptions(options: CollectorOptions): {
     fetchBodiesExclude: parsePatterns(options.fetchBodiesExclude),
     networkInclude: parsePatterns(options.networkInclude),
     networkExclude: parsePatterns(options.networkExclude),
+    maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
   };
 }

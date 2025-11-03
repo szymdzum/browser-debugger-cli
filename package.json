@@ -29,6 +29,8 @@
     "test:watch": "tsx --test --watch src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts src/__tests__/integration/*.test.ts",
     "test:e2e": "./scripts/test-e2e.sh",
     "benchmark": "tsx scripts/benchmark.ts",
+    "benchmark:collectors": "./scripts/benchmark-collectors.sh",
+    "benchmark:compare": "./scripts/compare-benchmarks.sh",
     "prepublishOnly": "npm run build",
     "prepare": "husky"
   },

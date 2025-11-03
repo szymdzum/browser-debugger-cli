@@ -199,7 +199,6 @@ function buildChromeFlags(options: LaunchOptions): string[] {
   const baseFlags = options.ignoreDefaultFlags ? [] : chromeLauncher.Launcher.defaultFlags();
 
   // Build bdg-specific flags
-  // Note: userDataDir is handled by chrome-launcher via ChromeLaunchOptions.userDataDir
   const bdgFlags: string[] = [
     `--remote-debugging-port=${port}`,
     '--no-first-run',
@@ -209,17 +208,6 @@ function buildChromeFlags(options: LaunchOptions): string[] {
 
   if (options.headless) {
     bdgFlags.push('--headless=new');
-  }
-
-  // Add CI-specific flags when running in container environments
-  // These are required for Chrome to run in GitHub Actions and similar environments
-  const isCI = process.env['CI'] === 'true' || process.env['CI'] === '1';
-  if (isCI) {
-    bdgFlags.push(
-      '--no-sandbox', // Required in containers without proper sandboxing
-      '--disable-dev-shm-usage', // Required in containers with limited /dev/shm
-      '--disable-gpu' // Not needed in headless mode, prevents GPU errors
-    );
   }
 
   // Combine: base flags + bdg flags + custom flags

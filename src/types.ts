@@ -146,6 +146,7 @@ export interface ConnectionOptions {
  * @property fetchBodiesExclude URL patterns for bodies to skip.
  * @property networkInclude     URL patterns for requests to capture (trumps exclude).
  * @property networkExclude     URL patterns for requests to exclude.
+ * @property maxBodySize        Maximum response body size in bytes (default: 5MB).
  * @property compact            Use compact JSON format (no indentation) for output files.
  */
 export interface SessionOptions {
@@ -155,6 +156,7 @@ export interface SessionOptions {
   fetchBodiesExclude?: string[];
   networkInclude?: string[];
   networkExclude?: string[];
+  maxBodySize?: number;
   compact?: boolean;
 }
 

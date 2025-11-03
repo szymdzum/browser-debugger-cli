@@ -271,6 +271,7 @@ export async function startSession(
     fetchBodiesExclude?: string[] | undefined;
     networkInclude?: string[] | undefined;
     networkExclude?: string[] | undefined;
+    maxBodySize?: number | undefined;
     compact?: boolean | undefined;
   },
   collectors: CollectorType[]
@@ -330,6 +331,9 @@ export async function startSession(
     }
     if (options.networkExclude !== undefined) {
       sessionOptions.networkExclude = options.networkExclude;
+    }
+    if (options.maxBodySize !== undefined) {
+      sessionOptions.maxBodySize = options.maxBodySize;
     }
     const setupResult = await TargetSetup.setup(
       url,

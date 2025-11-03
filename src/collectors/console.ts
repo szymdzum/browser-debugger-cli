@@ -64,7 +64,7 @@ export async function startConsoleCollection(
         .join(' ');
 
       // Apply pattern filtering
-      if (shouldExcludeConsoleMessage(text, includeAll)) {
+      if (shouldExcludeConsoleMessage(text, params.type, includeAll)) {
         return;
       }
 
@@ -92,7 +92,7 @@ export async function startConsoleCollection(
 
       // Apply pattern filtering (but don't filter errors by default)
       // Errors are usually important, only filter if they match noise patterns
-      if (shouldExcludeConsoleMessage(text, includeAll)) {
+      if (shouldExcludeConsoleMessage(text, 'error', includeAll)) {
         return;
       }
 

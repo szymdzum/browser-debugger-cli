@@ -54,6 +54,11 @@ export const DEFAULT_EXCLUDED_DOMAINS = [
 ];
 
 /**
+ * Console message types to exclude by default (Redux/React DevTools noise)
+ */
+export const DEFAULT_EXCLUDED_CONSOLE_TYPES = ['startGroup', 'startGroupCollapsed', 'endGroup'];
+
+/**
  * Console message patterns to exclude by default (dev server noise)
  */
 export const DEFAULT_EXCLUDED_CONSOLE_PATTERNS = [
@@ -61,6 +66,10 @@ export const DEFAULT_EXCLUDED_CONSOLE_PATTERNS = [
   '[HMR]',
   '[WDS]',
   'Download the React DevTools',
+  '@@redux', // Redux actions
+  '%c prev state', // Redux logger
+  '%c action', // Redux logger
+  '%c next state', // Redux logger
 ];
 
 /**
@@ -109,6 +118,33 @@ export const DEFAULT_SKIP_BODY_PATTERNS = [
 ];
 
 /**
+ * MIME types to skip body fetching by default
+ * This catches resources that may not have obvious file extensions (e.g., CSS with query params)
+ */
+export const DEFAULT_SKIP_BODY_MIME_TYPES = [
+  'text/css',
+  'image/svg+xml',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+  'image/bmp',
+  'image/tiff',
+  'font/woff',
+  'font/woff2',
+  'font/ttf',
+  'font/eot',
+  'font/otf',
+  'application/font-woff',
+  'application/font-woff2',
+  'video/mp4',
+  'video/webm',
+  'audio/mpeg',
+  'audio/wav',
+];
+
+/**
  * Check if a URL should be excluded based on domain filtering
  */
 export function shouldExcludeDomain(url: string, includeAll: boolean = false): boolean {
@@ -128,11 +164,20 @@ export function shouldExcludeDomain(url: string, includeAll: boolean = false): b
 }
 
 /**
- * Check if a console message should be excluded based on pattern filtering
+ * Check if a console message should be excluded based on type and pattern filtering
  */
-export function shouldExcludeConsoleMessage(text: string, includeAll: boolean = false): boolean {
+export function shouldExcludeConsoleMessage(
+  text: string,
+  type: string,
+  includeAll: boolean = false
+): boolean {
   if (includeAll) {
     return false; // Don't filter anything if --include-all flag is set
+  }
+
+  // Check if message type should be excluded (e.g., group messages)
+  if (DEFAULT_EXCLUDED_CONSOLE_TYPES.includes(type)) {
+    return true;
   }
 
   const lowerText = text.toLowerCase();
@@ -250,24 +295,25 @@ export function matchesWildcard(str: string, pattern: string): boolean {
  */
 
 /**
- * Determine if a response body should be fetched based on URL and patterns.
+ * Determine if a response body should be fetched based on URL, MIME type, and patterns.
  *
  * Pattern precedence (follows include-trumps-exclude rule):
  * 1. If URL matches includePatterns → FETCH (even if it also matches excludePatterns)
  * 2. If includePatterns specified but URL doesn't match → SKIP (whitelist mode)
  * 3. If URL matches excludePatterns → SKIP
  * 4. If fetchAllBodies flag is true → FETCH
- * 5. If URL matches DEFAULT_SKIP_BODY_PATTERNS → SKIP
- * 6. Otherwise → FETCH (default behavior)
+ * 5. If MIME type matches DEFAULT_SKIP_BODY_MIME_TYPES → SKIP
+ * 6. If URL matches DEFAULT_SKIP_BODY_PATTERNS → SKIP
+ * 7. Otherwise → FETCH (default behavior)
  *
  * @param url - The request URL
- * @param mimeType - The response MIME type (optional, for additional checks)
+ * @param mimeType - The response MIME type (for MIME-based skipping)
  * @param options - Configuration options
  * @returns True if the body should be fetched
  */
 export function shouldFetchBody(
   url: string,
-  _mimeType: string | undefined,
+  mimeType: string | undefined,
   options: {
     fetchAllBodies?: boolean;
     includePatterns?: string[];
@@ -300,7 +346,18 @@ export function shouldFetchBody(
     return true;
   }
 
-  // Apply default auto-skip patterns
+  // Check MIME type against default skip list (case-insensitive)
+  if (mimeType) {
+    const normalizedMimeType = mimeType.toLowerCase().split(';')[0]?.trim() ?? ''; // Remove charset etc.
+    if (
+      normalizedMimeType &&
+      DEFAULT_SKIP_BODY_MIME_TYPES.some((skipType) => normalizedMimeType === skipType.toLowerCase())
+    ) {
+      return false;
+    }
+  }
+
+  // Apply default auto-skip URL patterns
   const matchesDefaultSkip = evaluatePatternMatch(url, {
     includePatterns: DEFAULT_SKIP_BODY_PATTERNS,
     defaultBehavior: 'exclude',

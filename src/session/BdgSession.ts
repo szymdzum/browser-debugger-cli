@@ -101,6 +101,9 @@ export class BdgSession {
         if (this.sessionOptions.networkExclude !== undefined) {
           networkOptions.networkExclude = this.sessionOptions.networkExclude;
         }
+        if (this.sessionOptions.maxBodySize !== undefined) {
+          networkOptions.maxBodySize = this.sessionOptions.maxBodySize;
+        }
         cleanup = await startNetworkCollection(this.cdp, this.networkRequests, networkOptions);
         break;
       }
