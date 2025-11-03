@@ -81,44 +81,64 @@ interface CollectorOptions {
  * @returns The modified Command instance with all collector options applied
  */
 function applyCollectorOptions(command: Command): Command {
-  return command
-    .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
-    .option('-t, --timeout <seconds>', TIMEOUT_OPTION_DESCRIPTION)
-    .option('-r, --reuse-tab', REUSE_TAB_OPTION_DESCRIPTION)
-    .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
-    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)')
-    .option('-c, --compact', 'Use compact JSON format (no indentation) for output files')
-    .option('--log-level <level>', LOG_LEVEL_OPTION_DESCRIPTION)
-    .option('--chrome-prefs <json>', CHROME_PREFS_OPTION_DESCRIPTION)
-    .option('--chrome-prefs-file <path>', CHROME_PREFS_FILE_OPTION_DESCRIPTION)
-    .option('--chrome-flags <flags...>', CHROME_FLAGS_OPTION_DESCRIPTION)
-    .option('--connection-poll-interval <ms>', CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION)
-    .option('--max-connection-retries <count>', MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION)
-    .option('--port-strict', PORT_STRICT_OPTION_DESCRIPTION)
-    .option('--dom', 'Enable only DOM collector (additive)')
-    .option('--network', 'Enable only network collector (additive)')
-    .option('--console', 'Enable only console collector (additive)')
-    .option('--skip-dom', 'Disable DOM collector (subtractive)')
-    .option('--skip-network', 'Disable network collector (subtractive)')
-    .option('--skip-console', 'Disable console collector (subtractive)')
-    .option('--fetch-all-bodies', 'Fetch all response bodies (override auto-optimization)')
-    .option(
-      '--fetch-bodies-include <patterns>',
-      'Only fetch bodies matching patterns (comma-separated wildcards, trumps exclude)'
-    )
-    .option(
-      '--fetch-bodies-exclude <patterns>',
-      'Additional patterns to exclude from body fetching (comma-separated wildcards)'
-    )
-    .option(
-      '--network-include <patterns>',
-      'Only capture URLs matching patterns (comma-separated wildcards, trumps exclude)'
-    )
-    .option(
-      '--network-exclude <patterns>',
-      'Additional URL patterns to exclude (comma-separated wildcards)'
-    )
-    .option('--max-body-size <megabytes>', 'Maximum response body size in MB (default: 5MB)', '5');
+  return (
+    command
+      // Basic Options
+      .optionsGroup('Basic Options:')
+      .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
+      .option('-t, --timeout <seconds>', TIMEOUT_OPTION_DESCRIPTION)
+      .option('-r, --reuse-tab', REUSE_TAB_OPTION_DESCRIPTION)
+      .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
+      .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)')
+      .option('--compact', 'Use compact JSON format (no indentation) for output files')
+
+      // Chrome Configuration
+      .optionsGroup('Chrome Configuration:')
+      .option('-L, --log-level <level>', LOG_LEVEL_OPTION_DESCRIPTION)
+      .option('-P, --chrome-prefs <json>', CHROME_PREFS_OPTION_DESCRIPTION)
+      .option('-F, --chrome-prefs-file <path>', CHROME_PREFS_FILE_OPTION_DESCRIPTION)
+      .option('-G, --chrome-flags <flags...>', CHROME_FLAGS_OPTION_DESCRIPTION)
+
+      // Connection Settings
+      .optionsGroup('Connection Settings:')
+      .option('-I, --connection-poll-interval <ms>', CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION)
+      .option('-R, --max-connection-retries <count>', MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION)
+      .option('-S, --port-strict', PORT_STRICT_OPTION_DESCRIPTION)
+
+      // Data Collection
+      .optionsGroup('Data Collection:')
+      .option('-d, --dom', 'Enable only DOM collector (additive)')
+      .option('-n, --network', 'Enable only network collector (additive)')
+      .option('-c, --console', 'Enable only console collector (additive)')
+      .option('-D, --skip-dom', 'Disable DOM collector (subtractive)')
+      .option('-N, --skip-network', 'Disable network collector (subtractive)')
+      .option('-C, --skip-console', 'Disable console collector (subtractive)')
+
+      // Network Optimization
+      .optionsGroup('Network Optimization:')
+      .option('-B, --fetch-all-bodies', 'Fetch all response bodies (override auto-optimization)')
+      .option(
+        '-i, --fetch-bodies-include <patterns>',
+        'Only fetch bodies matching patterns (comma-separated wildcards, trumps exclude)'
+      )
+      .option(
+        '-x, --fetch-bodies-exclude <patterns>',
+        'Additional patterns to exclude from body fetching (comma-separated wildcards)'
+      )
+      .option(
+        '-y, --network-include <patterns>',
+        'Only capture URLs matching patterns (comma-separated wildcards, trumps exclude)'
+      )
+      .option(
+        '-z, --network-exclude <patterns>',
+        'Additional URL patterns to exclude (comma-separated wildcards)'
+      )
+      .option(
+        '-m, --max-body-size <megabytes>',
+        'Maximum response body size in MB (default: 5MB)',
+        '5'
+      )
+  );
 }
 
 /**
