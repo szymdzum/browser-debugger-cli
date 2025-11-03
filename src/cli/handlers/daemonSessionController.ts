@@ -106,8 +106,9 @@ export async function startSessionViaDaemon(
     console.error('  bdg stop                Stop session and output results');
     console.error('');
 
-    // Session runs in background worker - CLI returns immediately
-    // User can now run other commands (status, peek, query, stop)
+    // Session runs in background worker - CLI exits immediately
+    // This allows user to run other commands in the same terminal
+    process.exit(0);
   } catch (error) {
     // Handle connection errors
     const errorMessage = error instanceof Error ? error.message : String(error);
