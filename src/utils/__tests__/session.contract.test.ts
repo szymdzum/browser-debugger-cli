@@ -189,7 +189,7 @@ void describe('Session Utilities Contract Tests', () => {
   });
 
   void describe('Stale Session Cleanup', () => {
-    void it('should remove stale session files when process is dead', async () => {
+    void it('should remove stale session files when process is dead', () => {
       // Setup: Create stale session files
       const sessionDir = path.join(tmpDir, '.bdg');
       fs.mkdirSync(sessionDir, { recursive: true });
@@ -221,7 +221,7 @@ void describe('Session Utilities Contract Tests', () => {
       assert.equal(fs.existsSync(getFullFilePath()), false, 'Full file should be removed');
     });
 
-    void it('should not remove files when session process is alive', async () => {
+    void it('should not remove files when session process is alive', () => {
       // Setup: Create session files with alive process
       const sessionDir = path.join(tmpDir, '.bdg');
       fs.mkdirSync(sessionDir, { recursive: true });
@@ -245,7 +245,7 @@ void describe('Session Utilities Contract Tests', () => {
       assert.equal(fs.existsSync(getPidFilePath()), true, 'PID file should still exist');
     });
 
-    void it('should not remove files when daemon process is alive', async () => {
+    void it('should not remove files when daemon process is alive', () => {
       // Setup: Create session files with dead session but alive daemon
       const sessionDir = path.join(tmpDir, '.bdg');
       fs.mkdirSync(sessionDir, { recursive: true });
@@ -265,7 +265,7 @@ void describe('Session Utilities Contract Tests', () => {
       assert.equal(fs.existsSync(getDaemonPidPath()), true, 'Daemon PID should still exist');
     });
 
-    void it('should cleanup daemon artifacts when daemon process is dead', async () => {
+    void it('should cleanup daemon artifacts when daemon process is dead', () => {
       // Setup: Create daemon files with dead process
       const sessionDir = path.join(tmpDir, '.bdg');
       fs.mkdirSync(sessionDir, { recursive: true });
@@ -285,7 +285,7 @@ void describe('Session Utilities Contract Tests', () => {
       assert.equal(fs.existsSync(getDaemonSocketPath()), false, 'Daemon socket should be removed');
     });
 
-    void it('should handle missing files gracefully', async () => {
+    void it('should handle missing files gracefully', () => {
       // Setup: No files exist
       mockProcessAlive([]);
 
