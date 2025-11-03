@@ -15,6 +15,7 @@ import type { Server, Socket } from 'net';
 import type {
   HandshakeRequest,
   HandshakeResponse,
+  IPCErrorCode,
   IPCMessageType,
   PeekRequest,
   PeekResponse,
@@ -22,6 +23,8 @@ import type {
   StatusRequest,
   StatusResponse,
   StatusResponseData,
+  StopSessionRequest,
+  StopSessionResponse,
 } from '@/ipc/types.js';
 import { filterDefined } from '@/utils/objects.js';
 import {
@@ -32,6 +35,7 @@ import {
   readSessionMetadata,
   readPartialOutput,
   isProcessAlive,
+  cleanupSession,
 } from '@/utils/session.js';
 
 /**
@@ -144,6 +148,13 @@ export class IPCServer {
         case 'peek_response':
           // Response messages are sent by daemon, not received
           console.error('[daemon] Unexpected peek response from client');
+          break;
+        case 'stop_session_request':
+          this.handleStopSessionRequest(socket, message);
+          break;
+        case 'stop_session_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected stop session response from client');
           break;
       }
     } catch (error) {
@@ -295,6 +306,83 @@ export class IPCServer {
 
       socket.write(JSON.stringify(response) + '\n');
       console.error('[daemon] Peek error response sent');
+    }
+  }
+
+  /**
+   * Handle stop session request.
+   */
+  private handleStopSessionRequest(socket: Socket, request: StopSessionRequest): void {
+    console.error(`[daemon] Stop session request received (sessionId: ${request.sessionId})`);
+
+    try {
+      // Check for active session
+      const sessionPid = readPid();
+      if (!sessionPid || !isProcessAlive(sessionPid)) {
+        const response: StopSessionResponse = {
+          type: 'stop_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: 'No active session found',
+          errorCode: IPCErrorCode.NO_SESSION,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Stop session error response sent (no session)');
+        return;
+      }
+
+      // Capture Chrome PID BEFORE cleanup (so CLI can kill Chrome if needed)
+      const metadata = readSessionMetadata();
+      const chromePid = metadata?.chromePid;
+      if (chromePid) {
+        console.error(`[daemon] Captured Chrome PID ${chromePid} before cleanup`);
+      }
+
+      // Kill the session process (use SIGKILL for immediate termination)
+      try {
+        process.kill(sessionPid, 'SIGKILL');
+        console.error(`[daemon] Killed session process (PID ${sessionPid})`);
+      } catch (killError: unknown) {
+        const errorMessage = killError instanceof Error ? killError.message : String(killError);
+        const response: StopSessionResponse = {
+          type: 'stop_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: `Failed to kill session process: ${errorMessage}`,
+          errorCode: IPCErrorCode.SESSION_KILL_FAILED,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Stop session error response sent (kill failed)');
+        return;
+      }
+
+      // Clean up session files
+      cleanupSession();
+      console.error('[daemon] Cleaned up session files');
+
+      const response: StopSessionResponse = {
+        type: 'stop_session_response',
+        sessionId: request.sessionId,
+        status: 'ok',
+        message: 'Session stopped successfully',
+        ...(chromePid !== undefined && { chromePid }),
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Stop session response sent');
+    } catch (error) {
+      const response: StopSessionResponse = {
+        type: 'stop_session_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        message: `Failed to stop session: ${error instanceof Error ? error.message : String(error)}`,
+        errorCode: IPCErrorCode.DAEMON_ERROR,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Stop session error response sent');
     }
   }
 

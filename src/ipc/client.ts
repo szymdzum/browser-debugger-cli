@@ -13,47 +13,48 @@ import { IPCServer } from '@/daemon/ipcServer.js';
 import type {
   HandshakeRequest,
   HandshakeResponse,
+  IPCRequest,
+  IPCResponse,
   PeekRequest,
   PeekResponse,
   StatusRequest,
   StatusResponse,
+  StopSessionRequest,
+  StopSessionResponse,
 } from '@/ipc/types.js';
 
 /**
- * Connect to the daemon and perform handshake.
+ * Generic IPC request sender that handles connection, timeout, and error handling.
  *
- * @returns Handshake response from daemon
- * @throws Error if connection fails or handshake times out
+ * @param request - The IPC request to send
+ * @param requestName - Human-readable name for logging (e.g., 'status', 'peek')
+ * @returns Promise that resolves with the response
  */
-export async function connectToDaemon(): Promise<HandshakeResponse> {
+async function sendRequest<TRequest extends IPCRequest, TResponse extends IPCResponse>(
+  request: TRequest,
+  requestName: string
+): Promise<TResponse> {
   const socketPath = IPCServer.getSocketPath();
-  const sessionId = randomUUID();
 
   return new Promise((resolve, reject) => {
     const socket: Socket = connect(socketPath);
     let buffer = '';
     let resolved = false;
 
-    // Set connection timeout
+    // Set request timeout
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
         socket.destroy();
-        reject(new Error('Handshake timeout after 5s'));
+        reject(new Error(`${requestName} request timeout after 5s`));
       }
     }, 5000);
 
     socket.on('connect', () => {
-      console.error('[client] Connected to daemon');
-
-      // Send handshake request
-      const request: HandshakeRequest = {
-        type: 'handshake_request',
-        sessionId,
-      };
+      console.error(`[client] Connected to daemon for ${requestName} request`);
 
       socket.write(JSON.stringify(request) + '\n');
-      console.error('[client] Handshake request sent');
+      console.error(`[client] ${requestName} request sent`);
     });
 
     socket.on('data', (chunk: Buffer) => {
@@ -66,8 +67,8 @@ export async function connectToDaemon(): Promise<HandshakeResponse> {
       for (const line of lines) {
         if (line.trim() && !resolved) {
           try {
-            const response = JSON.parse(line) as HandshakeResponse;
-            console.error('[client] Handshake response received');
+            const response = JSON.parse(line) as TResponse;
+            console.error(`[client] ${requestName} response received`);
 
             resolved = true;
             clearTimeout(timeout);
@@ -80,7 +81,7 @@ export async function connectToDaemon(): Promise<HandshakeResponse> {
               socket.destroy();
               reject(
                 new Error(
-                  `Failed to parse response: ${error instanceof Error ? error.message : String(error)}`
+                  `Failed to parse ${requestName} response: ${error instanceof Error ? error.message : String(error)}`
                 )
               );
             }
@@ -101,10 +102,25 @@ export async function connectToDaemon(): Promise<HandshakeResponse> {
       if (!resolved) {
         resolved = true;
         clearTimeout(timeout);
-        reject(new Error('Connection closed before handshake completed'));
+        reject(new Error(`Connection closed before ${requestName} response received`));
       }
     });
   });
+}
+
+/**
+ * Connect to the daemon and perform handshake.
+ *
+ * @returns Handshake response from daemon
+ * @throws Error if connection fails or handshake times out
+ */
+export async function connectToDaemon(): Promise<HandshakeResponse> {
+  const request: HandshakeRequest = {
+    type: 'handshake_request',
+    sessionId: randomUUID(),
+  };
+
+  return sendRequest<HandshakeRequest, HandshakeResponse>(request, 'handshake');
 }
 
 /**
@@ -114,85 +130,12 @@ export async function connectToDaemon(): Promise<HandshakeResponse> {
  * @throws Error if connection fails, daemon is not running, or request times out
  */
 export async function getStatus(): Promise<StatusResponse> {
-  const socketPath = IPCServer.getSocketPath();
-  const sessionId = randomUUID();
+  const request: StatusRequest = {
+    type: 'status_request',
+    sessionId: randomUUID(),
+  };
 
-  return new Promise((resolve, reject) => {
-    const socket: Socket = connect(socketPath);
-    let buffer = '';
-    let resolved = false;
-
-    // Set request timeout
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        socket.destroy();
-        reject(new Error('Status request timeout after 5s'));
-      }
-    }, 5000);
-
-    socket.on('connect', () => {
-      console.error('[client] Connected to daemon for status request');
-
-      // Send status request
-      const request: StatusRequest = {
-        type: 'status_request',
-        sessionId,
-      };
-
-      socket.write(JSON.stringify(request) + '\n');
-      console.error('[client] Status request sent');
-    });
-
-    socket.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString('utf-8');
-
-      // Process complete JSONL frames
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (line.trim() && !resolved) {
-          try {
-            const response = JSON.parse(line) as StatusResponse;
-            console.error('[client] Status response received');
-
-            resolved = true;
-            clearTimeout(timeout);
-            socket.destroy();
-            resolve(response);
-          } catch (error) {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              socket.destroy();
-              reject(
-                new Error(
-                  `Failed to parse status response: ${error instanceof Error ? error.message : String(error)}`
-                )
-              );
-            }
-          }
-        }
-      }
-    });
-
-    socket.on('error', (err) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        reject(new Error(`Connection error: ${err.message}`));
-      }
-    });
-
-    socket.on('end', () => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        reject(new Error('Connection closed before status response received'));
-      }
-    });
-  });
+  return sendRequest<StatusRequest, StatusResponse>(request, 'status');
 }
 
 /**
@@ -202,83 +145,25 @@ export async function getStatus(): Promise<StatusResponse> {
  * @throws Error if connection fails, daemon is not running, or request times out
  */
 export async function getPeek(): Promise<PeekResponse> {
-  const socketPath = IPCServer.getSocketPath();
-  const sessionId = randomUUID();
+  const request: PeekRequest = {
+    type: 'peek_request',
+    sessionId: randomUUID(),
+  };
 
-  return new Promise((resolve, reject) => {
-    const socket: Socket = connect(socketPath);
-    let buffer = '';
-    let resolved = false;
+  return sendRequest<PeekRequest, PeekResponse>(request, 'peek');
+}
 
-    // Set request timeout
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        socket.destroy();
-        reject(new Error('Peek request timeout after 5s'));
-      }
-    }, 5000);
+/**
+ * Request session stop from the daemon.
+ *
+ * @returns Stop session response with success/error status
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function stopSession(): Promise<StopSessionResponse> {
+  const request: StopSessionRequest = {
+    type: 'stop_session_request',
+    sessionId: randomUUID(),
+  };
 
-    socket.on('connect', () => {
-      console.error('[client] Connected to daemon for peek request');
-
-      // Send peek request
-      const request: PeekRequest = {
-        type: 'peek_request',
-        sessionId,
-      };
-
-      socket.write(JSON.stringify(request) + '\n');
-      console.error('[client] Peek request sent');
-    });
-
-    socket.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString('utf-8');
-
-      // Process complete JSONL frames
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (line.trim() && !resolved) {
-          try {
-            const response = JSON.parse(line) as PeekResponse;
-            console.error('[client] Peek response received');
-
-            resolved = true;
-            clearTimeout(timeout);
-            socket.destroy();
-            resolve(response);
-          } catch (error) {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              socket.destroy();
-              reject(
-                new Error(
-                  `Failed to parse peek response: ${error instanceof Error ? error.message : String(error)}`
-                )
-              );
-            }
-          }
-        }
-      }
-    });
-
-    socket.on('error', (err) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        reject(new Error(`Connection error: ${err.message}`));
-      }
-    });
-
-    socket.on('end', () => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        reject(new Error('Connection closed before peek response received'));
-      }
-    });
-  });
+  return sendRequest<StopSessionRequest, StopSessionResponse>(request, 'stop session');
 }
