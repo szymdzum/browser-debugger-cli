@@ -18,6 +18,8 @@ const SESSION_FILES = {
   CHROME_PID: 'chrome.pid',
   PREVIEW: 'session.preview.json',
   FULL: 'session.full.json',
+  DAEMON_PID: 'daemon.pid',
+  DAEMON_SOCKET: 'daemon.sock',
 } as const;
 
 /**
@@ -86,6 +88,20 @@ export function getMetadataFilePath(): string {
  */
 export function getChromePidCachePath(): string {
   return getSessionFilePath('CHROME_PID');
+}
+
+/**
+ * Get the path to the daemon PID file
+ */
+export function getDaemonPidPath(): string {
+  return getSessionFilePath('DAEMON_PID');
+}
+
+/**
+ * Get the path to the daemon Unix domain socket
+ */
+export function getDaemonSocketPath(): string {
+  return getSessionFilePath('DAEMON_SOCKET');
 }
 
 /**
@@ -532,6 +548,149 @@ export function readFullOutput(): BdgOutput | null {
     return JSON.parse(content) as BdgOutput;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Cleanup stale session files if no active session is running.
+ *
+ * This function uses lock-based serialization to safely clean up orphaned
+ * session artifacts (PID, metadata, socket, preview/full data) when the
+ * recorded process is dead or files are missing/corrupt.
+ *
+ * If a live process is still holding the session, this function exits early
+ * without deleting anything.
+ *
+ * @returns True if cleanup was performed, false if an active session is running
+ */
+export async function cleanupStaleSession(): Promise<boolean> {
+  ensureSessionDir();
+
+  // Try to acquire the session lock
+  const lockAcquired = acquireSessionLock();
+
+  if (!lockAcquired) {
+    // Lock is held by another process - check if it's still alive
+    const lockPath = getLockFilePath();
+    try {
+      const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
+      const lockPid = parseInt(lockPidStr, 10);
+
+      if (!isNaN(lockPid) && isProcessAlive(lockPid)) {
+        // Active session is running - don't clean up
+        return false;
+      }
+    } catch {
+      // Can't read lock file - will clean it up below
+    }
+
+    // Lock exists but process is dead - force acquire
+    try {
+      fs.unlinkSync(lockPath);
+    } catch {
+      // Ignore if already deleted
+    }
+
+    // Try to acquire lock again
+    if (!acquireSessionLock()) {
+      // Still can't acquire - another process may have grabbed it
+      return false;
+    }
+  }
+
+  // We now hold the lock - check if session PID exists and is alive
+  try {
+    const sessionPid = readPid();
+
+    // If session PID exists and process is alive, release lock and return
+    if (sessionPid !== null && isProcessAlive(sessionPid)) {
+      releaseSessionLock();
+      return false;
+    }
+
+    // Check daemon PID if it exists
+    const daemonPidPath = getDaemonPidPath();
+    if (fs.existsSync(daemonPidPath)) {
+      try {
+        const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
+        const daemonPid = parseInt(daemonPidStr, 10);
+
+        // If daemon is still alive, release lock and return
+        if (!isNaN(daemonPid) && isProcessAlive(daemonPid)) {
+          releaseSessionLock();
+          return false;
+        }
+      } catch {
+        // Can't read daemon PID - will clean it up below
+      }
+    }
+
+    // All processes are dead - clean up stale artifacts
+    console.error('[cleanup] Removing stale session files...');
+
+    // Remove session PID
+    cleanupPidFile();
+
+    // Remove metadata
+    const metaPath = getMetadataFilePath();
+    if (fs.existsSync(metaPath)) {
+      try {
+        fs.unlinkSync(metaPath);
+        console.error('[cleanup] Removed metadata file');
+      } catch (error) {
+        console.error('[cleanup] Failed to remove metadata:', error);
+      }
+    }
+
+    // Remove preview file
+    const partialPath = getPartialFilePath();
+    if (fs.existsSync(partialPath)) {
+      try {
+        fs.unlinkSync(partialPath);
+        console.error('[cleanup] Removed preview file');
+      } catch (error) {
+        console.error('[cleanup] Failed to remove preview:', error);
+      }
+    }
+
+    // Remove full file
+    const fullPath = getFullFilePath();
+    if (fs.existsSync(fullPath)) {
+      try {
+        fs.unlinkSync(fullPath);
+        console.error('[cleanup] Removed full data file');
+      } catch (error) {
+        console.error('[cleanup] Failed to remove full data:', error);
+      }
+    }
+
+    // Remove daemon PID
+    if (fs.existsSync(daemonPidPath)) {
+      try {
+        fs.unlinkSync(daemonPidPath);
+        console.error('[cleanup] Removed daemon PID file');
+      } catch (error) {
+        console.error('[cleanup] Failed to remove daemon PID:', error);
+      }
+    }
+
+    // Remove daemon socket
+    const socketPath = getDaemonSocketPath();
+    if (fs.existsSync(socketPath)) {
+      try {
+        fs.unlinkSync(socketPath);
+        console.error('[cleanup] Removed daemon socket');
+      } catch (error) {
+        console.error('[cleanup] Failed to remove daemon socket:', error);
+      }
+    }
+
+    console.error('[cleanup] Stale session cleanup complete');
+
+    return true;
+  } finally {
+    // Always release the lock
+    releaseSessionLock();
   }
 }
 

@@ -15,6 +15,7 @@ import type { Command } from 'commander';
 import { IPCServer } from '@/daemon/ipcServer.js';
 import { connectToDaemon } from '@/ipc/client.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { cleanupStaleSession } from '@/utils/session.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -93,6 +94,15 @@ export function registerIpcTestCommand(program: Command): void {
     .action(async () => {
       try {
         console.error('[ipc-test] Starting IPC handshake test...');
+
+        // Clean up any stale session files before starting
+        console.error('[ipc-test] Checking for stale session files...');
+        const cleaned = await cleanupStaleSession();
+        if (cleaned) {
+          console.error('[ipc-test] Cleaned up stale session files');
+        } else {
+          console.error('[ipc-test] No stale files to clean');
+        }
 
         // Ensure daemon is running
         if (!IPCServer.isRunning()) {

@@ -7,18 +7,13 @@
  * 3. Logs all incoming frames for debugging
  */
 
-import { readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { createServer } from 'net';
-import { homedir } from 'os';
-import { join } from 'path';
 
 import type { Server, Socket } from 'net';
 
 import type { HandshakeRequest, HandshakeResponse, IPCMessageType } from '@/ipc/types.js';
-
-const BDG_DIR = join(homedir(), '.bdg');
-const SOCKET_PATH = join(BDG_DIR, 'daemon.sock');
-const PID_FILE = join(BDG_DIR, 'daemon.pid');
+import { ensureSessionDir, getDaemonPidPath, getDaemonSocketPath } from '@/utils/session.js';
 
 /**
  * Simple JSONL IPC server for daemon communication.
@@ -32,17 +27,12 @@ export class IPCServer {
    */
   async start(): Promise<void> {
     // Ensure ~/.bdg directory exists
-    try {
-      mkdirSync(BDG_DIR, { recursive: true });
-    } catch (error) {
-      if (!(error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST')) {
-        throw error;
-      }
-    }
+    ensureSessionDir();
 
     // Clean up stale socket if exists
+    const socketPath = getDaemonSocketPath();
     try {
-      unlinkSync(SOCKET_PATH);
+      unlinkSync(socketPath);
     } catch {
       // Ignore if socket doesn't exist
     }
@@ -57,8 +47,8 @@ export class IPCServer {
         return;
       }
 
-      this.server.listen(SOCKET_PATH, () => {
-        console.error(`[daemon] IPC server listening on ${SOCKET_PATH}`);
+      this.server.listen(socketPath, () => {
+        console.error(`[daemon] IPC server listening on ${socketPath}`);
         this.writePidFile();
         resolve();
       });
@@ -167,13 +157,15 @@ export class IPCServer {
     }
 
     // Cleanup files
+    const socketPath = getDaemonSocketPath();
     try {
-      unlinkSync(SOCKET_PATH);
+      unlinkSync(socketPath);
     } catch {
       // Ignore if already deleted
     }
+    const pidPath = getDaemonPidPath();
     try {
-      unlinkSync(PID_FILE);
+      unlinkSync(pidPath);
     } catch {
       // Ignore if already deleted
     }
@@ -183,9 +175,10 @@ export class IPCServer {
    * Write daemon PID to file for tracking.
    */
   private writePidFile(): void {
+    const pidPath = getDaemonPidPath();
     try {
-      writeFileSync(PID_FILE, process.pid.toString(), 'utf-8');
-      console.error(`[daemon] PID file written: ${PID_FILE}`);
+      writeFileSync(pidPath, process.pid.toString(), 'utf-8');
+      console.error(`[daemon] PID file written: ${pidPath}`);
     } catch (error) {
       console.error('[daemon] Failed to write PID file:', error);
     }
@@ -195,8 +188,9 @@ export class IPCServer {
    * Check if daemon is already running.
    */
   static isRunning(): boolean {
+    const pidPath = getDaemonPidPath();
     try {
-      const pid = parseInt(readFileSync(PID_FILE, 'utf-8').trim(), 10);
+      const pid = parseInt(readFileSync(pidPath, 'utf-8').trim(), 10);
       // Check if process is alive
       process.kill(pid, 0);
       return true;
@@ -209,6 +203,6 @@ export class IPCServer {
    * Get socket path for client connections.
    */
   static getSocketPath(): string {
-    return SOCKET_PATH;
+    return getDaemonSocketPath();
   }
 }

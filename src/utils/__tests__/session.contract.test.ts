@@ -7,12 +7,18 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { mockProcessAlive, restoreProcessAlive } from '@/__testutils__/testProcess.js';
 import {
   acquireSessionLock,
+  cleanupStaleSession,
+  getDaemonPidPath,
+  getDaemonSocketPath,
   getLockFilePath,
   getPidFilePath,
   isProcessAlive,
   readPid,
   releaseSessionLock,
   writePid,
+  writeSessionMetadata,
+  getPartialFilePath,
+  getFullFilePath,
 } from '@/utils/session.js';
 
 /**
@@ -179,6 +185,115 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([12345]);
 
       assert.equal(isProcessAlive(99999), false);
+    });
+  });
+
+  void describe('Stale Session Cleanup', () => {
+    void it('should remove stale session files when process is dead', async () => {
+      // Setup: Create stale session files
+      const sessionDir = path.join(tmpDir, '.bdg');
+      fs.mkdirSync(sessionDir, { recursive: true });
+
+      writePid(88888);
+      writeSessionMetadata({
+        bdgPid: 88888,
+        chromePid: 77777,
+        startTime: Date.now(),
+        port: 9222,
+      });
+      fs.writeFileSync(getDaemonPidPath(), '66666');
+      fs.writeFileSync(getDaemonSocketPath(), '');
+      fs.writeFileSync(getPartialFilePath(), JSON.stringify({ test: 'preview' }));
+      fs.writeFileSync(getFullFilePath(), JSON.stringify({ test: 'full' }));
+
+      // Mock all processes as dead
+      mockProcessAlive([]);
+
+      // Act
+      const cleaned = await cleanupStaleSession();
+
+      // Assert
+      assert.equal(cleaned, true, 'Should return true when cleanup was performed');
+      assert.equal(fs.existsSync(getPidFilePath()), false, 'PID file should be removed');
+      assert.equal(fs.existsSync(getDaemonPidPath()), false, 'Daemon PID should be removed');
+      assert.equal(fs.existsSync(getDaemonSocketPath()), false, 'Daemon socket should be removed');
+      assert.equal(fs.existsSync(getPartialFilePath()), false, 'Preview file should be removed');
+      assert.equal(fs.existsSync(getFullFilePath()), false, 'Full file should be removed');
+    });
+
+    void it('should not remove files when session process is alive', async () => {
+      // Setup: Create session files with alive process
+      const sessionDir = path.join(tmpDir, '.bdg');
+      fs.mkdirSync(sessionDir, { recursive: true });
+
+      writePid(88888);
+      writeSessionMetadata({
+        bdgPid: 88888,
+        chromePid: 77777,
+        startTime: Date.now(),
+        port: 9222,
+      });
+
+      // Mock process 88888 as alive
+      mockProcessAlive([88888]);
+
+      // Act
+      const cleaned = await cleanupStaleSession();
+
+      // Assert
+      assert.equal(cleaned, false, 'Should return false when session is active');
+      assert.equal(fs.existsSync(getPidFilePath()), true, 'PID file should still exist');
+    });
+
+    void it('should not remove files when daemon process is alive', async () => {
+      // Setup: Create session files with dead session but alive daemon
+      const sessionDir = path.join(tmpDir, '.bdg');
+      fs.mkdirSync(sessionDir, { recursive: true });
+
+      writePid(88888);
+      fs.writeFileSync(getDaemonPidPath(), '66666');
+
+      // Mock only daemon as alive (session process is dead)
+      mockProcessAlive([66666]);
+
+      // Act
+      const cleaned = await cleanupStaleSession();
+
+      // Assert
+      assert.equal(cleaned, false, 'Should return false when daemon is still alive');
+      assert.equal(fs.existsSync(getPidFilePath()), true, 'PID file should still exist');
+      assert.equal(fs.existsSync(getDaemonPidPath()), true, 'Daemon PID should still exist');
+    });
+
+    void it('should cleanup daemon artifacts when daemon process is dead', async () => {
+      // Setup: Create daemon files with dead process
+      const sessionDir = path.join(tmpDir, '.bdg');
+      fs.mkdirSync(sessionDir, { recursive: true });
+
+      fs.writeFileSync(getDaemonPidPath(), '66666');
+      fs.writeFileSync(getDaemonSocketPath(), '');
+
+      // Mock process as dead
+      mockProcessAlive([]);
+
+      // Act
+      const cleaned = await cleanupStaleSession();
+
+      // Assert
+      assert.equal(cleaned, true, 'Should cleanup when daemon is dead');
+      assert.equal(fs.existsSync(getDaemonPidPath()), false, 'Daemon PID should be removed');
+      assert.equal(fs.existsSync(getDaemonSocketPath()), false, 'Daemon socket should be removed');
+    });
+
+    void it('should handle missing files gracefully', async () => {
+      // Setup: No files exist
+      mockProcessAlive([]);
+
+      // Act - should not throw
+      const cleaned = await cleanupStaleSession();
+
+      // Assert
+      assert.equal(cleaned, true, 'Should succeed even with no files');
     });
   });
 });
