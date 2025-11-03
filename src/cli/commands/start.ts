@@ -124,10 +124,19 @@ function applyCollectorOptions(command: Command): Command {
  * Parse a string to integer, returning undefined if not provided
  *
  * @param value - Optional string value to parse
+ * @param fieldName - Name of the field being parsed (for error messages)
  * @returns Parsed integer or undefined if value was not provided
+ * @throws {Error} If value is provided but not a valid integer
  */
-function parseOptionalInt(value: string | undefined): number | undefined {
-  return value !== undefined ? parseInt(value, 10) : undefined;
+function parseOptionalInt(value: string | undefined, fieldName: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed)) {
+    throw new Error(`Invalid ${fieldName}: "${value}" is not a valid integer`);
+  }
+  return parsed;
 }
 
 /**
@@ -264,10 +273,10 @@ function buildSessionOptions(options: CollectorOptions): {
   maxBodySize: number | undefined;
   compact: boolean;
 } {
-  const maxBodySizeMB = parseOptionalInt(options.maxBodySize);
+  const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size');
   return {
     port: parseInt(options.port, 10),
-    timeout: parseOptionalInt(options.timeout),
+    timeout: parseOptionalInt(options.timeout, 'timeout'),
     reuseTab: options.reuseTab ?? false,
     userDataDir: options.userDataDir,
     includeAll: options.all ?? false,
@@ -275,8 +284,11 @@ function buildSessionOptions(options: CollectorOptions): {
     prefs: parseOptionalJson(options.chromePrefs),
     prefsFile: options.chromePrefsFile,
     chromeFlags: options.chromeFlags,
-    connectionPollInterval: parseOptionalInt(options.connectionPollInterval),
-    maxConnectionRetries: parseOptionalInt(options.maxConnectionRetries),
+    connectionPollInterval: parseOptionalInt(
+      options.connectionPollInterval,
+      'connection-poll-interval'
+    ),
+    maxConnectionRetries: parseOptionalInt(options.maxConnectionRetries, 'max-connection-retries'),
     portStrictMode: options.portStrict ?? false,
     fetchAllBodies: options.fetchAllBodies ?? false,
     fetchBodiesInclude: parsePatterns(options.fetchBodiesInclude),

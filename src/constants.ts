@@ -15,6 +15,32 @@
  */
 export const DEFAULT_DEBUG_PORT = '9222';
 
+/**
+ * BDG-specific Chrome flags for automation and popup suppression
+ * These flags are automatically applied when launching Chrome via chrome-launcher
+ * @constant {string[]}
+ */
+export const BDG_CHROME_FLAGS = [
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--disable-search-engine-choice-screen',
+  '--disable-session-crashed-bubble', // Suppress "Restore Pages?" popup after unclean shutdown
+  '--disable-infobars', // Disable all info bars including restore prompt
+];
+
+/**
+ * BDG-specific Chrome preferences for automation
+ * These preferences are automatically merged with user preferences when launching Chrome
+ * User preferences take precedence over these defaults
+ * @constant {Record<string, unknown>}
+ *
+ * Note: Crash/restore popup suppression is handled by Chrome flags (--disable-session-crashed-bubble, --disable-infobars)
+ * which are more reliable than preference-based approaches.
+ */
+export const BDG_CHROME_PREFS: Record<string, unknown> = {
+  'browser.show_quit_confirmation_dialog': false, // Disable quit confirmation for automation
+};
+
 // ============================================================================
 // DATA COLLECTION LIMITS
 // ============================================================================

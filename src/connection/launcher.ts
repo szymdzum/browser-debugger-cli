@@ -6,8 +6,22 @@ import * as chromeLauncher from 'chrome-launcher';
 
 import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 
+import { BDG_CHROME_FLAGS, BDG_CHROME_PREFS } from '@/constants';
 import type { LaunchedChrome } from '@/types';
 import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
+
+/**
+ * JSONLike type matching chrome-launcher's internal type definition
+ */
+type JSONLike =
+  | {
+      [property: string]: JSONLike;
+    }
+  | readonly JSONLike[]
+  | string
+  | number
+  | boolean
+  | null;
 
 /**
  * Options that control how Chrome is launched for CDP sessions.
@@ -179,7 +193,6 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
     }
   }
 
-  // Fall back to inline prefs
   return options.prefs;
 }
 
@@ -195,56 +208,81 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
 function buildChromeFlags(options: LaunchOptions): string[] {
   const port = options.port ?? 9222;
 
-  // Use chrome-launcher defaults as base (unless explicitly ignored)
   const baseFlags = options.ignoreDefaultFlags ? [] : chromeLauncher.Launcher.defaultFlags();
 
-  // Build bdg-specific flags
-  const bdgFlags: string[] = [
-    `--remote-debugging-port=${port}`,
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-search-engine-choice-screen',
-  ];
+  // Start with port flag and BDG defaults from constants
+  const bdgFlags: string[] = [`--remote-debugging-port=${port}`, ...BDG_CHROME_FLAGS];
 
   if (options.headless) {
     bdgFlags.push('--headless=new');
   }
 
-  // Combine: base flags + bdg flags + custom flags
   return [...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];
+}
+
+/**
+ * Filter out undefined values from an object, returning only defined properties.
+ * This ensures that undefined properties are completely omitted from the result,
+ * which is required for chrome-launcher's exactOptionalPropertyTypes.
+ *
+ * @param obj - Object with potentially undefined values
+ * @returns New object with only defined values, no undefined properties
+ */
+function pickDefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined));
+}
+
+/**
+ * Type-safe conversion for Chrome preferences from unknown to JSONLike.
+ *
+ * Chrome preferences should be JSON-serializable values (strings, numbers,
+ * booleans, objects, arrays, null). This conversion is safe assuming the
+ * preferences were loaded from JSON or constructed with JSON-compatible values.
+ *
+ * @param prefs - Preferences object with unknown values
+ * @returns Preferences compatible with chrome-launcher's JSONLike constraint
+ */
+function convertPrefsToJSONLike(
+  prefs: Record<string, unknown> | undefined
+): Record<string, JSONLike> | undefined {
+  if (prefs === undefined) {
+    return undefined;
+  }
+
+  return prefs as Record<string, JSONLike>;
 }
 
 /**
  * Build chrome-launcher options from bdg launch options.
  *
- * Maps LaunchOptions to chrome-launcher API format.
+ * Maps LaunchOptions to chrome-launcher API format using a clean utility approach
+ * that filters out undefined values automatically.
  *
  * @param options - bdg launch options
  * @returns chrome-launcher options object
  */
 function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
-  const prefs = loadChromePrefs(options);
+  const userPrefs = loadChromePrefs(options);
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
+  // Merge user prefs on top of BDG defaults (user prefs take precedence)
+  const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;
+
   return {
-    logLevel: options.logLevel ?? 'silent', // Preserve current quiet behavior
-    handleSIGINT: options.handleSIGINT ?? false, // Let bdg handle signals
+    logLevel: options.logLevel ?? 'silent',
+    handleSIGINT: options.handleSIGINT ?? false,
     ignoreDefaultFlags: options.ignoreDefaultFlags ?? false,
     chromeFlags: buildChromeFlags(options),
-    userDataDir, // Forward the resolved userDataDir to chrome-launcher
-    // Only include optional properties if they're defined
-    ...(options.port !== undefined && { port: options.port }),
-    ...(options.url !== undefined && { startingUrl: options.url }),
-    ...(options.connectionPollInterval !== undefined && {
+    userDataDir,
+
+    ...pickDefined({
+      port: options.port,
+      startingUrl: options.url,
       connectionPollInterval: options.connectionPollInterval,
-    }),
-    ...(options.maxConnectionRetries !== undefined && {
       maxConnectionRetries: options.maxConnectionRetries,
+      portStrictMode: options.portStrictMode,
+      prefs: convertPrefsToJSONLike(mergedPrefs),
+      envVars: options.envVars,
     }),
-    ...(options.portStrictMode !== undefined && { portStrictMode: options.portStrictMode }),
-    // chrome-launcher expects Record<string, JSONLike> but we use Record<string, unknown>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-    ...(prefs !== undefined && { prefs: prefs as any }),
-    ...(options.envVars !== undefined && { envVars: options.envVars }),
   };
 }
