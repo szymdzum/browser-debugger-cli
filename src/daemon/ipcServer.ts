@@ -15,7 +15,6 @@ import type { Server, Socket } from 'net';
 import type {
   HandshakeRequest,
   HandshakeResponse,
-  IPCErrorCode,
   IPCMessageType,
   PeekRequest,
   PeekResponse,
@@ -24,7 +23,9 @@ import type {
   StatusResponse,
   StatusResponseData,
   StopSessionRequest,
-  StopSessionResponse,
+  StopSessionResponse} from '@/ipc/types.js';
+import {
+  IPCErrorCode
 } from '@/ipc/types.js';
 import { filterDefined } from '@/utils/objects.js';
 import {
