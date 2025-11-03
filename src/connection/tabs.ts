@@ -20,6 +20,7 @@ import type {
   CDPAttachToTargetResponse,
   CDPGetTargetsResponse,
   CDPNavigateResponse,
+  CDPLifecycleEventParams,
 } from '@/types';
 import type { TabCreationResult } from '@/types';
 import { fetchCDPTargetById } from '@/utils/http.js';
@@ -588,6 +589,58 @@ export async function waitForTargetReady(
 }
 
 /**
+ * Wait for network idle using CDP Page.lifecycleEvent.
+ *
+ * Listens for lifecycle events to detect when React hydration is likely complete.
+ * The 'networkIdle' event indicates network activity has stopped, which typically
+ * means async JavaScript execution (including React hydration) has finished.
+ *
+ * Uses a race between networkIdle event and fallback timeout to handle cases
+ * where networkIdle doesn't fire (e.g., long-polling connections, SSE streams).
+ *
+ * @param cdp - CDP connection instance
+ * @param maxWaitMs - Maximum time to wait for networkIdle (fallback timeout)
+ * @returns Promise that resolves when networkIdle fires or timeout is reached
+ */
+async function waitForNetworkIdle(
+  cdp: CDPConnection,
+  maxWaitMs = DEFAULT_TARGET_READY_TIMEOUT_MS
+): Promise<void> {
+  // Enable lifecycle events
+  await cdp.send('Page.setLifecycleEventsEnabled', { enabled: true });
+
+  return new Promise((resolve) => {
+    let lifecycleHandlerId: number | null = null;
+    let fallbackTimer: NodeJS.Timeout | null = null;
+
+    const cleanup = (): void => {
+      if (lifecycleHandlerId !== null) {
+        cdp.off('Page.lifecycleEvent', lifecycleHandlerId);
+      }
+      if (fallbackTimer !== null) {
+        clearTimeout(fallbackTimer);
+      }
+    };
+
+    // Listen for networkIdle lifecycle event
+    lifecycleHandlerId = cdp.on('Page.lifecycleEvent', (params: CDPLifecycleEventParams) => {
+      if (params.name === 'networkIdle') {
+        console.error('[LIFECYCLE] networkIdle event fired');
+        cleanup();
+        resolve();
+      }
+    });
+
+    // Fallback timeout if networkIdle never fires
+    fallbackTimer = setTimeout(() => {
+      console.error(`[LIFECYCLE] networkIdle timeout (${maxWaitMs}ms), continuing anyway`);
+      cleanup();
+      resolve();
+    }, maxWaitMs);
+  });
+}
+
+/**
  * Retrieve all available targets from Chrome via CDP.
  *
  * Transforms CDP target info into the standard CDPTarget format
@@ -626,6 +679,10 @@ async function navigateExistingTarget(
     await navigateToUrl(target.id, normalizedUrl, cdp);
     await waitForTargetReady(target.id, normalizedUrl, cdp);
   }
+
+  // Always wait for React hydration, even if tab is already on the URL
+  // This ensures SPA frameworks have fully initialized before capturing DOM
+  await waitForNetworkIdle(cdp);
 
   return target;
 }
@@ -684,6 +741,10 @@ export async function createOrFindTarget(
     console.error(CREATING_NEW_TAB_MESSAGE(targetUrl));
     const newTarget = await createNewTab(targetUrl, cdp);
     await waitForTargetReady(newTarget.id, targetUrl, cdp);
+
+    // Wait for React hydration to complete
+    await waitForNetworkIdle(cdp);
+
     return newTarget;
   }
 
@@ -699,5 +760,9 @@ export async function createOrFindTarget(
   console.error(CREATING_NEW_TAB_MESSAGE(targetUrl));
   const newTarget = await createNewTab(targetUrl, cdp);
   await waitForTargetReady(newTarget.id, targetUrl, cdp);
+
+  // Wait for React hydration to complete
+  await waitForNetworkIdle(cdp);
+
   return newTarget;
 }

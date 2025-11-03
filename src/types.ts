@@ -228,6 +228,16 @@ export interface CDPNavigateResponse {
 }
 
 /**
+ * CDP Page.lifecycleEvent parameters.
+ */
+export interface CDPLifecycleEventParams {
+  frameId: string;
+  loaderId: string;
+  name: string; // 'DOMContentLoaded', 'load', 'networkAlmostIdle', 'networkIdle', etc.
+  timestamp: number;
+}
+
+/**
  * CDP DOM.getDocument response.
  */
 export interface CDPGetDocumentResponse {
