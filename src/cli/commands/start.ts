@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 
-import { startSession } from '@/cli/handlers/sessionController.js';
+import { startSessionViaDaemon } from '@/cli/handlers/daemonSessionController.js';
 import {
   DEFAULT_DEBUG_PORT,
   DEFAULT_REUSE_TAB,
@@ -336,7 +336,9 @@ async function collectorAction(url: string, options: CollectorOptions): Promise<
   const collectors = resolveCollectors(options);
 
   const sessionOptions = buildSessionOptions(options);
-  await startSession(url, sessionOptions, collectors);
+
+  // Dispatch to daemon via IPC instead of running in-process
+  await startSessionViaDaemon(url, sessionOptions, collectors);
 }
 
 /**

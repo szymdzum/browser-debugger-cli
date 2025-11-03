@@ -17,11 +17,14 @@ import type {
   IPCResponse,
   PeekRequest,
   PeekResponse,
+  StartSessionRequest,
+  StartSessionResponse,
   StatusRequest,
   StatusResponse,
   StopSessionRequest,
   StopSessionResponse,
 } from '@/ipc/types.js';
+import type { CollectorType } from '@/types.js';
 
 /**
  * Generic IPC request sender that handles connection, timeout, and error handling.
@@ -151,6 +154,40 @@ export async function getPeek(): Promise<PeekResponse> {
   };
 
   return sendRequest<PeekRequest, PeekResponse>(request, 'peek');
+}
+
+/**
+ * Request daemon to start a new browser session.
+ *
+ * @param url - Target URL to navigate to
+ * @param options - Session configuration options
+ * @returns Start session response with worker and Chrome metadata
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function startSession(
+  url: string,
+  options?: {
+    port?: number;
+    timeout?: number;
+    collectors?: CollectorType[];
+    includeAll?: boolean;
+    userDataDir?: string;
+    maxBodySize?: number;
+  }
+): Promise<StartSessionResponse> {
+  const request: StartSessionRequest = {
+    type: 'start_session_request',
+    sessionId: randomUUID(),
+    url,
+    ...(options?.port !== undefined && { port: options.port }),
+    ...(options?.timeout !== undefined && { timeout: options.timeout }),
+    ...(options?.collectors !== undefined && { collectors: options.collectors }),
+    ...(options?.includeAll !== undefined && { includeAll: options.includeAll }),
+    ...(options?.userDataDir !== undefined && { userDataDir: options.userDataDir }),
+    ...(options?.maxBodySize !== undefined && { maxBodySize: options.maxBodySize }),
+  };
+
+  return sendRequest<StartSessionRequest, StartSessionResponse>(request, 'start session');
 }
 
 /**
