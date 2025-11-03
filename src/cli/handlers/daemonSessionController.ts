@@ -89,21 +89,25 @@ export async function startSessionViaDaemon(
 
     if (options.timeout) {
       console.error(
-        `[bdg] Collecting ${collectorNames}... ` +
-          `(Ctrl+C to stop and output, or wait ${options.timeout}s for timeout)`
+        `[bdg] Collecting ${collectorNames} for ${options.timeout}s... ` +
+          `(auto-stop on timeout, or use 'bdg stop' to stop early)`
       );
     } else {
       console.error(
-        `[bdg] Collecting ${collectorNames}... ` + `(Ctrl+C to stop and output, or use 'bdg stop')`
+        `[bdg] Collecting ${collectorNames}... ` + `(use 'bdg stop' when ready to stop and output)`
       );
     }
 
-    // Keep process alive - the daemon session runs independently
-    // User can stop with Ctrl+C which will trigger SIGINT
-    // or use 'bdg stop' command in another terminal
-    await new Promise<void>(() => {
-      // Never resolves - process runs until killed
-    });
+    console.error('');
+    console.error('Available commands:');
+    console.error('  bdg status              Show session status');
+    console.error('  bdg peek                Preview collected data');
+    console.error('  bdg query <script>      Execute JavaScript in browser');
+    console.error('  bdg stop                Stop session and output results');
+    console.error('');
+
+    // Session runs in background worker - CLI returns immediately
+    // User can now run other commands (status, peek, query, stop)
   } catch (error) {
     // Handle connection errors
     const errorMessage = error instanceof Error ? error.message : String(error);
