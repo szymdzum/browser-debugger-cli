@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { startSession } from '@/cli/handlers/sessionController.js';
 import {
   DEFAULT_DEBUG_PORT,
+  DEFAULT_REUSE_TAB,
   PORT_OPTION_DESCRIPTION,
   TIMEOUT_OPTION_DESCRIPTION,
   REUSE_TAB_OPTION_DESCRIPTION,
@@ -277,7 +278,7 @@ function buildSessionOptions(options: CollectorOptions): {
   return {
     port: parseInt(options.port, 10),
     timeout: parseOptionalInt(options.timeout, 'timeout'),
-    reuseTab: options.reuseTab ?? true,
+    reuseTab: options.reuseTab ?? DEFAULT_REUSE_TAB,
     userDataDir: options.userDataDir,
     includeAll: options.all ?? false,
     logLevel: options.logLevel as 'verbose' | 'info' | 'error' | 'silent' | undefined,

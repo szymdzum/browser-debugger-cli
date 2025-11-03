@@ -1,5 +1,5 @@
 import type { LaunchOptions } from '@/connection/launcher.js';
-import { MEMORY_LOG_INTERVAL } from '@/constants';
+import { MEMORY_LOG_INTERVAL, DEFAULT_REUSE_TAB } from '@/constants';
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
@@ -340,7 +340,7 @@ export async function startSession(
       url,
       targetUrl,
       options.port,
-      options.reuseTab ?? true,
+      options.reuseTab ?? DEFAULT_REUSE_TAB,
       sessionOptions
     );
     const session = setupResult.session;

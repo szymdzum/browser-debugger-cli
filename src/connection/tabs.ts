@@ -12,6 +12,7 @@ import {
   VERIFICATION_INITIAL_DELAY_MS,
   VERIFICATION_MAX_DELAY_MS,
   VERIFICATION_BACKOFF_MULTIPLIER,
+  DEFAULT_REUSE_TAB,
 } from '@/constants';
 import type { CDPTarget } from '@/types';
 import type {
@@ -674,7 +675,7 @@ async function findAndReuseTarget(
 export async function createOrFindTarget(
   url: string,
   cdp: CDPConnection,
-  reuseTab = true
+  reuseTab = DEFAULT_REUSE_TAB
 ): Promise<CDPTarget> {
   const targetUrl = normalizeUrl(url);
 

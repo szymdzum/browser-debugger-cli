@@ -380,7 +380,7 @@ export class CDPConnection {
   }
 
   /**
-   * Calculate exponential backoff delay with jitter and maximum cap.
+   * Calculate exponential backoff delay with maximum cap.
    *
    * We use exponential backoff to avoid thundering herd problems when many
    * clients reconnect simultaneously. The maximum cap prevents extremely
@@ -388,7 +388,7 @@ export class CDPConnection {
    *
    * @param attempt - Current attempt number (0-based)
    * @param maxDelay - Maximum delay in milliseconds
-   * @returns Calculated delay in milliseconds
+   * @returns Calculated delay in milliseconds (base delay * 2^attempt, capped at maxDelay)
    */
   private calculateBackoffDelay(attempt: number, maxDelay: number): number {
     return Math.min(CDP_BASE_RETRY_DELAY_MS * Math.pow(2, attempt), maxDelay);

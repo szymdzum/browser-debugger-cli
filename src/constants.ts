@@ -359,6 +359,14 @@ export const TIMEOUT_OPTION_DESCRIPTION = 'Auto-stop after timeout (optional)';
 export const REUSE_TAB_OPTION_DESCRIPTION = 'Navigate existing tab instead of creating new one';
 
 /**
+ * Default value for reuse-tab option
+ * When true, bdg will attempt to find and reuse existing tabs instead of creating new ones
+ * This is the preferred default for better UX and avoiding tab proliferation
+ * @constant {boolean}
+ */
+export const DEFAULT_REUSE_TAB = true;
+
+/**
  * Description for user-data-dir option in CLI commands
  * @constant {string}
  */

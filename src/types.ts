@@ -306,7 +306,6 @@ export interface TabCreationResult {
     attemptStartMs: number;
     durationMs?: number;
   };
-  telemetry?: VerificationTelemetry;
 }
 
 /**
@@ -327,16 +326,4 @@ export interface TabCreationError {
     chromeVersion?: string;
     stage?: 'cdp_command' | 'verification' | 'http_request';
   };
-}
-
-/**
- * Telemetry data for target verification performance analysis
- */
-export interface VerificationTelemetry {
-  startTime: number;
-  timeoutMs: number;
-  attempts: number;
-  totalDuration: number;
-  chromeFlags: string;
-  isHeadless: boolean;
 }
