@@ -13,17 +13,42 @@ import {
   DEFAULT_CHROME_LOG_LEVEL,
   DEFAULT_CHROME_HANDLE_SIGINT,
   CHROME_PROFILE_DIR,
+  HEADLESS_FLAG,
 } from '@/constants';
 import type { LaunchedChrome } from '@/types';
 import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
+import { filterDefined } from '@/utils/objects.js';
 
-const CHROME_LAUNCH_START_MESSAGE = (port: number) =>
+const CHROME_LAUNCH_START_MESSAGE = (port: number): string =>
   `Launching Chrome with CDP on port ${port}...`;
-const CHROME_LAUNCH_SUCCESS_MESSAGE = (pid: number, duration: number) =>
+const CHROME_LAUNCH_SUCCESS_MESSAGE = (pid: number, duration: number): string =>
   `Chrome launched successfully (PID: ${pid})\nLaunch duration: ${duration}ms`;
 
+// Error Messages
+const INVALID_PORT_ERROR = (port: number): string =>
+  `Invalid port number: ${port}. Port must be between 1 and 65535.`;
+const USER_DATA_DIR_ERROR = (dir: string, error: string): string =>
+  `Failed to create user data directory at ${dir}: ${error}`;
+const PREFS_FILE_NOT_FOUND_ERROR = (file: string): string =>
+  `Chrome preferences file not found: ${file}`;
+const INVALID_PREFS_FORMAT_ERROR = (file: string, type: string): string =>
+  `Invalid Chrome preferences format in ${file}: expected object, got ${type}`;
+const PREFS_LOAD_ERROR = (file: string, error: string): string =>
+  `Failed to load Chrome preferences from ${file}: ${error}`;
+const CHROME_LAUNCH_ERROR = (error: string): string => `Failed to launch Chrome: ${error}`;
+
+// Other Constants
+const FILE_NOT_EXIST_ERROR = 'File does not exist';
+const INVALID_JSON_STRUCTURE_ERROR = 'Invalid JSON structure';
+const USER_DATA_DIR_LOG = (dir: string): string => `User data directory: ${dir}`;
+const REMOTE_DEBUGGING_FLAG = (port: number): string => `--remote-debugging-port=${port}`;
+
 /**
- * JSONLike type matching chrome-launcher's internal type definition
+ * JSONLike type matching chrome-launcher's internal type definition.
+ *
+ * Used for Chrome preferences that must be JSON-serializable values.
+ * chrome-launcher enforces this constraint to ensure preferences can be
+ * safely serialized and passed to Chrome process.
  */
 type JSONLike =
   | {
@@ -86,7 +111,8 @@ export interface LaunchOptions
  *
  * @param options - Launch configuration options
  * @returns LaunchedChrome instance with PID and kill method
- * @throws Error if Chrome fails to launch or CDP doesn't become available
+ * @throws ChromeLaunchError if Chrome fails to launch or CDP doesn't become available
+ * @throws Error if port is invalid or user data directory cannot be created
  *
  * @remarks
  * Chrome 136+ requires --user-data-dir with a non-default directory.
@@ -94,20 +120,19 @@ export interface LaunchOptions
  */
 export async function launchChrome(options: LaunchOptions = {}): Promise<LaunchedChrome> {
   const port = options.port ?? DEFAULT_CDP_PORT;
+
+  // Validate port range
+  if (port < 1 || port > 65535) {
+    throw new Error(INVALID_PORT_ERROR(port));
+  }
+
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
   console.error(CHROME_LAUNCH_START_MESSAGE(port));
-  console.error(`User data directory: ${userDataDir}`);
+  console.error(USER_DATA_DIR_LOG(userDataDir));
 
-  const chromePath = findChromeBinary();
   const chromeOptions = buildChromeOptions(options);
-
-  const finalOptions = {
-    ...chromeOptions,
-    ...(chromePath ? { chromePath } : {}),
-  };
-
-  const launcher = new chromeLauncher.Launcher(finalOptions);
+  const launcher = new chromeLauncher.Launcher(chromeOptions);
 
   try {
     const launchStart = Date.now();
@@ -135,23 +160,10 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     launcher.destroyTmp();
 
     throw new ChromeLaunchError(
-      `Failed to launch Chrome: ${getErrorMessage(error)}`,
+      CHROME_LAUNCH_ERROR(getErrorMessage(error)),
       error instanceof Error ? error : undefined
     );
   }
-}
-
-/**
- * Find Chrome binary path for the current platform.
- *
- * We delegate Chrome detection to chrome-launcher because it has comprehensive
- * support for multiple Chrome variants (Chrome, Chromium, Chrome Canary) across
- * all platforms and handles edge cases we don't need to reimplement.
- *
- * @returns Chrome binary path or undefined for auto-detection
- */
-function findChromeBinary(): string | undefined {
-  return undefined;
 }
 
 /**
@@ -162,13 +174,19 @@ function findChromeBinary(): string | undefined {
  * repeatedly log in or accept cookie consent dialogs during debugging workflows.
  *
  * @returns Absolute path to persistent user-data-dir
+ * @throws Error if user data directory cannot be created due to permission issues
  */
 function getPersistentUserDataDir(): string {
   const homeDir = os.homedir();
   const userDataDir = path.join(homeDir, CHROME_PROFILE_DIR);
 
   if (!fs.existsSync(userDataDir)) {
-    fs.mkdirSync(userDataDir, { recursive: true });
+    try {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      throw new Error(USER_DATA_DIR_ERROR(userDataDir, errorMsg));
+    }
   }
 
   return userDataDir;
@@ -182,17 +200,39 @@ function getPersistentUserDataDir(): string {
  * controlled and shared across team members or CI environments.
  *
  * @param options - Launch options containing prefs or prefsFile
- * @returns Chrome preferences object or undefined
- * @throws Error if prefs file cannot be read or parsed
+ * @returns Chrome preferences object or undefined if no preferences specified
+ * @throws ChromeLaunchError if prefs file cannot be read, parsed, or doesn't exist
  */
 function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | undefined {
   if (options.prefsFile) {
+    // Validate file exists before attempting to read
+    if (!fs.existsSync(options.prefsFile)) {
+      throw new ChromeLaunchError(
+        PREFS_FILE_NOT_FOUND_ERROR(options.prefsFile),
+        new Error(FILE_NOT_EXIST_ERROR)
+      );
+    }
+
     try {
       const prefsContent = fs.readFileSync(options.prefsFile, 'utf8');
-      return JSON.parse(prefsContent) as Record<string, unknown>;
+      const parsed: unknown = JSON.parse(prefsContent);
+
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new ChromeLaunchError(
+          INVALID_PREFS_FORMAT_ERROR(options.prefsFile, typeof parsed),
+          new Error(INVALID_JSON_STRUCTURE_ERROR)
+        );
+      }
+
+      return parsed as Record<string, unknown>;
     } catch (error) {
+      if (error instanceof ChromeLaunchError) {
+        throw error;
+      }
+
+      const errorMsg = error instanceof Error ? error.message : String(error);
       throw new ChromeLaunchError(
-        `Failed to load Chrome prefs from ${options.prefsFile}: ${error instanceof Error ? error.message : String(error)}`,
+        PREFS_LOAD_ERROR(options.prefsFile, errorMsg),
         error instanceof Error ? error : undefined
       );
     }
@@ -205,9 +245,10 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
  * Build Chrome flags array from launch options.
  *
  * Uses chrome-launcher default flags as base (unless ignoreDefaultFlags is true)
- * and layers bdg-specific overrides on top.
+ * and layers bdg-specific overrides on top. Headless mode uses the new headless
+ * implementation for better compatibility.
  *
- * @param options - Launch options
+ * @param options - Launch options containing flag preferences
  * @returns Array of Chrome command-line flags
  */
 function buildChromeFlags(options: LaunchOptions): string[] {
@@ -215,29 +256,13 @@ function buildChromeFlags(options: LaunchOptions): string[] {
 
   const baseFlags = options.ignoreDefaultFlags ? [] : chromeLauncher.Launcher.defaultFlags();
 
-  const bdgFlags: string[] = [`--remote-debugging-port=${port}`, ...BDG_CHROME_FLAGS];
+  const bdgFlags: string[] = [REMOTE_DEBUGGING_FLAG(port), ...BDG_CHROME_FLAGS];
 
   if (options.headless) {
-    bdgFlags.push('--headless=new');
+    bdgFlags.push(HEADLESS_FLAG);
   }
 
   return [...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];
-}
-
-/**
- * Filter out undefined values from an object, returning only defined properties.
- *
- * This is required because chrome-launcher uses exactOptionalPropertyTypes,
- * which means passing undefined values will cause TypeScript compilation errors.
- * We must completely omit undefined properties rather than setting them to undefined.
- *
- * @param obj - Object with potentially undefined values
- * @returns New object with only defined values, no undefined properties
- */
-function omitUndefinedProperties<T extends Record<string, unknown>>(
-  obj: T
-): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(obj).filter(([, value]) => value !== undefined));
 }
 
 /**
@@ -247,8 +272,8 @@ function omitUndefinedProperties<T extends Record<string, unknown>>(
  * for type safety. This conversion is safe because preferences should always be
  * JSON-serializable values loaded from JSON files or constructed with compatible types.
  *
- * @param prefs - Preferences object with unknown values
- * @returns Preferences compatible with chrome-launcher's JSONLike constraint
+ * @param prefs - Preferences object with unknown values from JSON parsing
+ * @returns Preferences compatible with chrome-launcher's JSONLike constraint, or undefined
  */
 function ensureJSONCompatiblePrefs(
   prefs: Record<string, unknown> | undefined
@@ -257,6 +282,7 @@ function ensureJSONCompatiblePrefs(
     return undefined;
   }
 
+  // Safe cast because preferences come from JSON.parse or compatible sources
   return prefs as Record<string, JSONLike>;
 }
 
@@ -264,15 +290,18 @@ function ensureJSONCompatiblePrefs(
  * Build chrome-launcher options from bdg launch options.
  *
  * Maps LaunchOptions to chrome-launcher API format using a clean utility approach
- * that filters out undefined values automatically.
+ * that filters out undefined values automatically. User preferences override bdg
+ * defaults to allow customization while maintaining sensible base configuration.
  *
- * @param options - bdg launch options
- * @returns chrome-launcher options object
+ * @param options - bdg launch options to convert
+ * @returns chrome-launcher compatible options object
+ * @throws ChromeLaunchError if preference loading fails
  */
 function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const userPrefs = loadChromePrefs(options);
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
+  // User preferences take precedence over bdg defaults
   const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;
 
   return {
@@ -282,7 +311,7 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
     chromeFlags: buildChromeFlags(options),
     userDataDir,
 
-    ...omitUndefinedProperties({
+    ...filterDefined({
       port: options.port,
       startingUrl: options.url,
       connectionPollInterval: options.connectionPollInterval,

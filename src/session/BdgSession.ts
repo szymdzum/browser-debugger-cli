@@ -293,7 +293,10 @@ export class BdgSession {
    * We skip CDP domain disabling and tolerate connection errors because
    * Chrome may already be dead during SIGINT shutdown. Priority is on
    * cleaning up our internal state rather than graceful CDP teardown.
+   *
+   * Note: Marked async for consistency with cleanup interface pattern.
    */
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async performSessionCleanup(): Promise<void> {
     try {
       console.error(CLEANING_UP_SESSION_MESSAGE);

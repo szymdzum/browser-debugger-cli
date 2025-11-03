@@ -1,4 +1,5 @@
 import type { LaunchOptions } from '@/connection/launcher.js';
+import { MEMORY_LOG_INTERVAL } from '@/constants';
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
@@ -388,7 +389,7 @@ export async function startSession(
       const heapTotalMB = (usage.heapTotal / 1024 / 1024).toFixed(2);
       const rssMB = (usage.rss / 1024 / 1024).toFixed(2);
       console.error(`[PERF] Memory: Heap ${heapUsedMB}/${heapTotalMB} MB, RSS ${rssMB} MB`);
-    }, 30000);
+    }, MEMORY_LOG_INTERVAL);
 
     // Store interval in context for cleanup
     const originalCleanup = context.cleanup.bind(context);

@@ -293,3 +293,50 @@ export interface CDPGetResponseBodyResponse {
   body: string;
   base64Encoded: boolean;
 }
+
+/**
+ * Result of a tab creation attempt with error context
+ */
+export interface TabCreationResult {
+  success: boolean;
+  target?: CDPTarget;
+  error?: TabCreationError;
+  strategy: 'CDP' | 'HTTP';
+  timing: {
+    attemptStartMs: number;
+    durationMs?: number;
+  };
+  telemetry?: VerificationTelemetry;
+}
+
+/**
+ * Structured error information for tab creation failures
+ */
+export interface TabCreationError {
+  type:
+    | 'CDP_COMMAND_FAILED'
+    | 'VERIFICATION_FAILED'
+    | 'VERIFICATION_TIMEOUT'
+    | 'HTTP_REQUEST_FAILED'
+    | 'TARGET_NOT_FOUND';
+  message: string;
+  originalError?: unknown;
+  context: {
+    targetId?: string;
+    httpStatus?: number;
+    chromeVersion?: string;
+    stage?: 'cdp_command' | 'verification' | 'http_request';
+  };
+}
+
+/**
+ * Telemetry data for target verification performance analysis
+ */
+export interface VerificationTelemetry {
+  startTime: number;
+  timeoutMs: number;
+  attempts: number;
+  totalDuration: number;
+  chromeFlags: string;
+  isHeadless: boolean;
+}
