@@ -23,10 +23,9 @@ import type {
   StatusResponse,
   StatusResponseData,
   StopSessionRequest,
-  StopSessionResponse} from '@/ipc/types.js';
-import {
-  IPCErrorCode
+  StopSessionResponse,
 } from '@/ipc/types.js';
+import { IPCErrorCode } from '@/ipc/types.js';
 import { filterDefined } from '@/utils/objects.js';
 import {
   ensureSessionDir,
