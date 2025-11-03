@@ -277,7 +277,7 @@ function buildSessionOptions(options: CollectorOptions): {
   return {
     port: parseInt(options.port, 10),
     timeout: parseOptionalInt(options.timeout, 'timeout'),
-    reuseTab: options.reuseTab ?? false,
+    reuseTab: options.reuseTab ?? true,
     userDataDir: options.userDataDir,
     includeAll: options.all ?? false,
     logLevel: options.logLevel as 'verbose' | 'info' | 'error' | 'silent' | undefined,

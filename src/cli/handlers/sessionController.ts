@@ -340,7 +340,7 @@ export async function startSession(
       url,
       targetUrl,
       options.port,
-      options.reuseTab ?? false,
+      options.reuseTab ?? true,
       sessionOptions
     );
     const session = setupResult.session;

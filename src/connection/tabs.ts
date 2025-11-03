@@ -20,7 +20,8 @@ import type {
   CDPGetTargetsResponse,
   CDPNavigateResponse,
 } from '@/types';
-import type { TabCreationResult, VerificationTelemetry } from '@/types';
+import type { TabCreationResult } from '@/types';
+import { fetchCDPTargetById } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 
 // Tab Matching Score Thresholds
@@ -42,9 +43,6 @@ const CREATING_NEW_TAB_MESSAGE = (url: string): string => `Creating new tab for:
 const CDP_CREATE_TARGET_FALLBACK_MESSAGE =
   'CDP Target.createTarget failed, attempting HTTP fallback...';
 
-const FAILED_TO_LIST_TARGETS_ERROR = (status: number, statusText: string): string =>
-  `Failed to list targets: ${status} ${statusText}`;
-
 const HTTP_NEW_TAB_FAILED_ERROR = (statusText: string): string =>
   `HTTP /json/new failed: ${statusText}`;
 const FAILED_TO_CREATE_TAB_ERROR = (details: string): string =>
@@ -54,6 +52,20 @@ const TARGET_NOT_READY_ERROR = (timeoutMs: number): string =>
   `Target did not become ready within ${timeoutMs}ms`;
 
 // Environment variable for timeout override with validation
+/**
+ * Parse and validate the BDG_TARGET_VERIFY_TIMEOUT environment variable.
+ *
+ * Converts string environment variable to number with validation and fallback.
+ * Invalid values (non-numeric, negative, zero) fall back to the default timeout.
+ *
+ * @param envValue - Raw environment variable value (may be undefined)
+ * @returns Parsed timeout in milliseconds, or DEFAULT_VERIFICATION_TIMEOUT_MS if invalid
+ *
+ * @remarks
+ * - Accepts positive integers only
+ * - Logs warning for invalid values before falling back
+ * - Used to override default verification timeout via environment configuration
+ */
 const parseVerificationTimeout = (envValue: string | undefined): number => {
   if (!envValue) {
     return DEFAULT_VERIFICATION_TIMEOUT_MS;
@@ -199,46 +211,29 @@ export function findBestTarget(normalizedUrl: string, targets: CDPTarget[]): CDP
  *
  * Uses a timeout-based approach rather than fixed attempt count to better
  * handle variable Chrome registration delays in enterprise/headless environments.
- * Logs timing telemetry for future adaptive behavior tuning.
+ * Logs timing information for debugging verification issues.
  */
 async function verifyTargetWithBackoff(
   targetId: string,
   port: number,
   timeoutMs: number = VERIFICATION_TIMEOUT_OVERRIDE
-): Promise<{ target: CDPTarget; telemetry: VerificationTelemetry }> {
+): Promise<{ target: CDPTarget }> {
   const startTime = Date.now();
   let attemptCount = 0;
   let currentDelayMs = VERIFICATION_INITIAL_DELAY_MS;
 
-  const telemetry: VerificationTelemetry = {
-    startTime,
-    timeoutMs,
-    attempts: 0,
-    totalDuration: 0,
-    chromeFlags: process.env['CHROME_FLAGS'] ?? '',
-    isHeadless: process.env['CHROME_FLAGS']?.includes('--headless') ?? false,
-  };
-
   while (Date.now() - startTime < timeoutMs) {
     attemptCount++;
-    telemetry.attempts = attemptCount;
 
     try {
-      const listResponse = await fetch(`http://${HTTP_LOCALHOST}:${port}/json/list`);
-
-      if (!listResponse.ok) {
-        throw new Error(FAILED_TO_LIST_TARGETS_ERROR(listResponse.status, listResponse.statusText));
-      }
-
-      const targets = (await listResponse.json()) as CDPTarget[];
-      const target = targets.find((t) => t.id === targetId);
+      const target = await fetchCDPTargetById(targetId, port);
 
       if (target) {
-        telemetry.totalDuration = Date.now() - startTime;
+        const totalDuration = Date.now() - startTime;
         console.error(
-          `Target verification succeeded: ${targetId} (${telemetry.totalDuration}ms, ${attemptCount} attempts)`
+          `Target verification succeeded: ${targetId} (${totalDuration}ms, ${attemptCount} attempts)`
         );
-        return { target, telemetry };
+        return { target };
       }
 
       const remainingTimeMs = timeoutMs - (Date.now() - startTime);
@@ -265,14 +260,12 @@ async function verifyTargetWithBackoff(
     }
   }
 
-  telemetry.totalDuration = Date.now() - startTime;
+  const totalDuration = Date.now() - startTime;
 
   console.error(`Target verification timeout: ${targetId}`, {
-    duration: telemetry.totalDuration,
-    attempts: telemetry.attempts,
+    duration: totalDuration,
+    attempts: attemptCount,
     timeout: timeoutMs,
-    chromeFlags: telemetry.chromeFlags,
-    isHeadless: telemetry.isHeadless,
   });
 
   throw new Error(VERIFICATION_TIMEOUT_ERROR(targetId, timeoutMs, attemptCount));
@@ -319,7 +312,7 @@ async function attemptCDPCreation(
   }
 
   try {
-    const { target, telemetry } = await verifyTargetWithBackoff(
+    const { target } = await verifyTargetWithBackoff(
       cdpResponse.targetId,
       cdp.getPort(),
       VERIFICATION_TIMEOUT_OVERRIDE
@@ -333,7 +326,6 @@ async function attemptCDPCreation(
         attemptStartMs: startTime,
         durationMs: Date.now() - startTime,
       },
-      telemetry,
     };
   } catch (verificationError) {
     return {
@@ -476,18 +468,7 @@ export async function createNewTab(normalizedUrl: string, cdp: CDPConnection): P
  * the caller to decide on retry logic.
  */
 async function fetchTargetById(targetId: string, port: number): Promise<CDPTarget | null> {
-  try {
-    const response = await fetch(`http://${HTTP_LOCALHOST}:${port}/json/list`);
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const targets = (await response.json()) as CDPTarget[];
-    return targets.find((t) => t.id === targetId) ?? null;
-  } catch {
-    return null;
-  }
+  return fetchCDPTargetById(targetId, port);
 }
 
 /**
@@ -666,7 +647,12 @@ async function findAndReuseTarget(
     return null;
   }
 
-  return await navigateExistingTarget(matchingTarget, normalizedUrl, cdp);
+  try {
+    return await navigateExistingTarget(matchingTarget, normalizedUrl, cdp);
+  } catch (error) {
+    console.error(`Failed to reuse tab: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
 }
 
 /**
@@ -688,7 +674,7 @@ async function findAndReuseTarget(
 export async function createOrFindTarget(
   url: string,
   cdp: CDPConnection,
-  reuseTab = false
+  reuseTab = true
 ): Promise<CDPTarget> {
   const targetUrl = normalizeUrl(url);
 
