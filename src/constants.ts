@@ -40,6 +40,25 @@ export const DEFAULT_CHROME_HANDLE_SIGINT = false;
 export const CHROME_PROFILE_DIR = '.bdg/chrome-profile';
 
 /**
+ * Maximum CDP connection retry attempts before failing
+ * @constant {number}
+ */
+export const CDP_MAX_CONNECTION_RETRIES = 3;
+
+/**
+ * CDP keepalive ping interval in milliseconds (30 seconds)
+ * Prevents connection timeout during long-running sessions
+ * @constant {number}
+ */
+export const CDP_KEEPALIVE_INTERVAL = 30000;
+
+/**
+ * Enable CDP target discovery for tab detection
+ * @constant {boolean}
+ */
+export const CDP_DISCOVER_TARGETS = true;
+
+/**
  * BDG-specific Chrome flags for automation and popup suppression
  * These flags are automatically applied when launching Chrome via chrome-launcher
  * @constant {string[]}
