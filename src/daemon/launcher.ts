@@ -41,7 +41,7 @@ const __dirname = dirname(__filename);
 export async function launchDaemon(): Promise<ChildProcess> {
   // Clean up stale session files first
   console.error('[launcher] Checking for stale session files...');
-  const cleaned = await cleanupStaleSession();
+  const cleaned = cleanupStaleSession();
   if (cleaned) {
     console.error('[launcher] Cleaned up stale session files');
   }

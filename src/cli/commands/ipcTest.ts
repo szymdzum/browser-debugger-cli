@@ -97,7 +97,7 @@ export function registerIpcTestCommand(program: Command): void {
 
         // Clean up any stale session files before starting
         console.error('[ipc-test] Checking for stale session files...');
-        const cleaned = await cleanupStaleSession();
+        const cleaned = cleanupStaleSession();
         if (cleaned) {
           console.error('[ipc-test] Cleaned up stale session files');
         } else {

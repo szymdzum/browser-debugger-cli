@@ -210,7 +210,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([]);
 
       // Act
-      const cleaned = await cleanupStaleSession();
+      const cleaned = cleanupStaleSession();
 
       // Assert
       assert.equal(cleaned, true, 'Should return true when cleanup was performed');
@@ -238,7 +238,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([88888]);
 
       // Act
-      const cleaned = await cleanupStaleSession();
+      const cleaned = cleanupStaleSession();
 
       // Assert
       assert.equal(cleaned, false, 'Should return false when session is active');
@@ -257,7 +257,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([66666]);
 
       // Act
-      const cleaned = await cleanupStaleSession();
+      const cleaned = cleanupStaleSession();
 
       // Assert
       assert.equal(cleaned, false, 'Should return false when daemon is still alive');
@@ -277,7 +277,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([]);
 
       // Act
-      const cleaned = await cleanupStaleSession();
+      const cleaned = cleanupStaleSession();
 
       // Assert
       assert.equal(cleaned, true, 'Should cleanup when daemon is dead');
@@ -290,7 +290,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([]);
 
       // Act - should not throw
-      const cleaned = await cleanupStaleSession();
+      const cleaned = cleanupStaleSession();
 
       // Assert
       assert.equal(cleaned, true, 'Should succeed even with no files');

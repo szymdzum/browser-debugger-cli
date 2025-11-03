@@ -5,6 +5,8 @@
  * a handshake between the CLI client and the daemon over JSONL protocol.
  */
 
+import type { CollectorType } from '@/types.js';
+
 /**
  * Base envelope for all IPC messages.
  * JSONL format: Each message is a single line of JSON.
@@ -58,7 +60,7 @@ export interface StatusResponseData {
     port: number;
     targetId?: string;
     webSocketDebuggerUrl?: string;
-    activeCollectors?: string[];
+    activeCollectors?: CollectorType[];
   };
 }
 
@@ -74,6 +76,56 @@ export interface StatusResponse extends IPCMessage {
 }
 
 /**
+ * Peek request sent from CLI client to daemon.
+ * Requests current session preview data (lightweight snapshot).
+ */
+export interface PeekRequest extends IPCMessage {
+  type: 'peek_request';
+  sessionId: string; // Unique request identifier
+}
+
+/**
+ * Peek response payload containing session preview data.
+ * Reuses BdgOutput structure from partial/preview file.
+ */
+export interface PeekResponseData {
+  sessionPid: number;
+  preview: {
+    version: string;
+    success: boolean;
+    timestamp: string;
+    duration: number;
+    target: {
+      url: string;
+      title: string;
+    };
+    data: {
+      dom?: unknown;
+      network?: unknown[];
+      console?: unknown[];
+    };
+    partial?: boolean;
+  };
+}
+
+/**
+ * Peek response sent from daemon to CLI client.
+ */
+export interface PeekResponse extends IPCMessage {
+  type: 'peek_response';
+  sessionId: string; // Echo back the session ID from request
+  status: 'ok' | 'error';
+  data?: PeekResponseData;
+  error?: string; // Present if status === 'error'
+}
+
+/**
  * Union type of all IPC messages (for future extension).
  */
-export type IPCMessageType = HandshakeRequest | HandshakeResponse | StatusRequest | StatusResponse;
+export type IPCMessageType =
+  | HandshakeRequest
+  | HandshakeResponse
+  | StatusRequest
+  | StatusResponse
+  | PeekRequest
+  | PeekResponse;

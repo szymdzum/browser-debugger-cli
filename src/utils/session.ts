@@ -563,7 +563,7 @@ export function readFullOutput(): BdgOutput | null {
  *
  * @returns True if cleanup was performed, false if an active session is running
  */
-export async function cleanupStaleSession(): Promise<boolean> {
+export function cleanupStaleSession(): boolean {
   ensureSessionDir();
 
   // Try to acquire the session lock
