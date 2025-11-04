@@ -16,7 +16,7 @@ npm install -g browser-debugger-cli
 ## Quick Start
 
 ```bash
-# Start session (open example.com in Chrome)
+# Start session (opens example.com in Chrome)
 bdg example.com
 
 # [bdg] Session started via daemon
@@ -36,7 +36,9 @@ bdg dom query "document.title"
 
 ## Philosophy
 
-There's no good CLI for Chrome DevTools Protocol. MCP servers work (most of the time) but are token-heavy and monolithic. Puppeteer is for automation, not inspection. Lighthouse is single-purpose. `bdg` takes the Unix approach: small, composable commands that pipe with `jq` and `grep`—tools models already know—without the token overhead.
+There's no good CLI for Chrome DevTools Protocol. MCP servers work (most of the time) but are token-heavy and monolithic. Puppeteer is for automation, not inspection. Lighthouse is single-purpose.
+
+`bdg` takes the Unix approach: small, composable commands that pipe with `jq` and `grep`—tools models already know—without the token overhead.
 
 **Why CLI over protocol servers?**
 - **Token efficiency**: CDP is in the model's training data. A skill doc with usage
