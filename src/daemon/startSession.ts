@@ -14,6 +14,7 @@ import { fileURLToPath } from 'url';
 
 import type { CollectorType } from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { validateUrl } from '@/utils/url.js';
 
 /**
  * Worker metadata returned from successful launch.
@@ -69,6 +70,16 @@ export async function launchSessionInWorker(
   url: string,
   options: LaunchWorkerOptions = {}
 ): Promise<WorkerMetadata> {
+  // Validate URL (P1 Fix #3)
+  const validation = validateUrl(url);
+  if (!validation.valid) {
+    throw new WorkerStartError(
+      validation.error ?? 'Invalid URL',
+      'SPAWN_FAILED',
+      validation.suggestion
+    );
+  }
+
   const config = {
     url,
     port: options.port ?? 9222,

@@ -9,8 +9,12 @@ import * as fs from 'fs';
 
 import type { CollectorType } from '@/types';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { getErrorMessage } from '@/utils/errors.js';
+import { createLogger } from '@/utils/logger.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
+
+const log = createLogger('session');
 
 /**
  * Session metadata stored in ~/.bdg/session.meta.json
@@ -52,18 +56,23 @@ export function writeSessionMetadata(metadata: SessionMetadata): void {
 /**
  * Read session metadata.
  *
+ * WHY: P1 Fix #2 - Now logs warnings when metadata is corrupted.
+ *
+ * @param options - Options for error handling
  * @returns Session metadata if file exists and is valid, null otherwise
  *
  * @example
  * ```typescript
- * const metadata = readSessionMetadata();
+ * const metadata = readSessionMetadata({ warnOnCorruption: true });
  * if (metadata) {
  *   console.log(`Session started at: ${new Date(metadata.startTime)}`);
  *   console.log(`Chrome PID: ${metadata.chromePid}`);
  * }
  * ```
  */
-export function readSessionMetadata(): SessionMetadata | null {
+export function readSessionMetadata(options?: {
+  warnOnCorruption?: boolean;
+}): SessionMetadata | null {
   const metaPath = getSessionFilePath('METADATA');
 
   if (!fs.existsSync(metaPath)) {
@@ -73,7 +82,12 @@ export function readSessionMetadata(): SessionMetadata | null {
   try {
     const content = fs.readFileSync(metaPath, 'utf-8');
     return JSON.parse(content) as SessionMetadata;
-  } catch {
+  } catch (error) {
+    // P1 Fix #2: Warn when metadata is corrupted
+    if (options?.warnOnCorruption) {
+      log(`Session metadata corrupted (cannot read details): ${getErrorMessage(error)}`);
+      log('Troubleshooting: Run "bdg cleanup" to remove corrupted files');
+    }
     return null;
   }
 }

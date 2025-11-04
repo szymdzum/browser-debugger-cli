@@ -238,7 +238,7 @@ export class IPCServer {
         data.sessionPid = sessionPid;
 
         // Try to read session metadata
-        const metadata = readSessionMetadata();
+        const metadata = readSessionMetadata({ warnOnCorruption: true });
         if (metadata) {
           data.sessionMetadata = filterDefined({
             bdgPid: metadata.bdgPid,
@@ -463,7 +463,7 @@ export class IPCServer {
       }
 
       // Capture Chrome PID BEFORE cleanup (so CLI can kill Chrome if needed)
-      const metadata = readSessionMetadata();
+      const metadata = readSessionMetadata({ warnOnCorruption: true });
       const chromePid = metadata?.chromePid;
       if (chromePid) {
         console.error(`[daemon] Captured Chrome PID ${chromePid} before cleanup`);
