@@ -344,11 +344,6 @@ bdg cdp             # Raw CDP access
 - [ ] Visual debugging (`bdg dom highlight`, screenshot capture)
 - [ ] Session recording/replay
 
-**Phase 4: Ecosystem Integration**
-- [ ] MCP server wrapper (for agent orchestration)
-- [ ] CI/CD plugins (GitHub Actions, GitLab CI)
-- [ ] IDE extensions (VSCode, Cursor)
-
 ---
 
 ## Getting Started
