@@ -21,17 +21,17 @@ export interface SelectorBasedOptions {
  * @param selectorOrIndex - CSS selector string or numeric index
  * @param nodeId - Optional direct nodeId (overrides selectorOrIndex)
  * @returns Options object with selector, index, or nodeId set
- * @throws {Error} When index is used but no cached element found at that index
+ * @throws \{Error\} When index is used but no cached element found at that index
  *
  * @example
  * // Direct nodeId (advanced)
- * buildSelectorOptions('.error', 123)  // → { nodeId: 123 }
+ * buildSelectorOptions('.error', 123)  // → \{ nodeId: 123 \}
  *
  * // Index from cache
- * buildSelectorOptions('2', undefined) // → { index: 2 } (if cache has index 2)
+ * buildSelectorOptions('2', undefined) // → \{ index: 2 \} (if cache has index 2)
  *
  * // CSS selector
- * buildSelectorOptions('.error', undefined) // → { selector: '.error' }
+ * buildSelectorOptions('.error', undefined) // → \{ selector: '.error' \}
  */
 export function buildSelectorOptions<T extends SelectorBasedOptions>(
   selectorOrIndex: string,

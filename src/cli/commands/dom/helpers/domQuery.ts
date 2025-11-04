@@ -17,7 +17,7 @@ export interface DomNodeInfo {
  *
  * @param cdp - CDP connection instance
  * @returns Root node ID
- * @throws {Error} When CDP command fails or connection is lost
+ * @throws \{Error\} When CDP command fails or connection is lost
  */
 export async function getDocumentRoot(cdp: CDPConnection): Promise<number> {
   const result = (await cdp.send('DOM.getDocument', { depth: -1 })) as {
@@ -33,7 +33,7 @@ export async function getDocumentRoot(cdp: CDPConnection): Promise<number> {
  * @param selector - CSS selector to query
  * @param rootNodeId - Optional root node ID (defaults to document root)
  * @returns Array of node IDs matching the selector
- * @throws {Error} When CDP command fails or selector is invalid
+ * @throws \{Error\} When CDP command fails or selector is invalid
  */
 export async function queryBySelector(
   cdp: CDPConnection,
@@ -57,7 +57,7 @@ export async function queryBySelector(
  * @param cdp - CDP connection instance
  * @param nodeId - Node ID to query
  * @returns Node information including tag, classes, attributes
- * @throws {Error} When CDP command fails or nodeId is invalid
+ * @throws \{Error\} When CDP command fails or nodeId is invalid
  */
 export async function getNodeInfo(cdp: CDPConnection, nodeId: number): Promise<DomNodeInfo> {
   // Get node description

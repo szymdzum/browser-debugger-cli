@@ -44,8 +44,8 @@ interface DomGetOptions {
  *
  * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
  * @param options - Command options
- * @throws {Error} When IPC request fails or returns error response
- * @throws {Error} When response data is missing
+ * @throws \{Error\} When IPC request fails or returns error response
+ * @throws \{Error\} When response data is missing
  */
 async function handleDomQuery(selector: string, options: DomQueryOptions): Promise<void> {
   try {
@@ -107,9 +107,9 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
  *
  * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
  * @param options - Command options including color, opacity, targeting flags, and nodeId
- * @throws {Error} When cached index not found (user must run 'bdg dom query' first)
- * @throws {Error} When IPC request fails or returns error response
- * @throws {Error} When response data is missing
+ * @throws \{Error\} When cached index not found (user must run 'bdg dom query' first)
+ * @throws \{Error\} When IPC request fails or returns error response
+ * @throws \{Error\} When response data is missing
  */
 async function handleDomHighlight(
   selectorOrIndex: string,
@@ -165,9 +165,9 @@ async function handleDomHighlight(
  *
  * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
  * @param options - Command options including --all, --nth, and nodeId
- * @throws {Error} When cached index not found (user must run 'bdg dom query' first)
- * @throws {Error} When IPC request fails or returns error response
- * @throws {Error} When response data is missing
+ * @throws \{Error\} When cached index not found (user must run 'bdg dom query' first)
+ * @throws \{Error\} When IPC request fails or returns error response
+ * @throws \{Error\} When response data is missing
  */
 async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
   try {
@@ -232,11 +232,11 @@ interface DomEvalOptions {
  *
  * @param script - JavaScript expression to evaluate (e.g., "document.title", "window.location.href")
  * @param options - Command options including port and json formatting
- * @throws {Error} When no active session is running
- * @throws {Error} When session metadata is invalid
- * @throws {Error} When target no longer exists (tab closed)
- * @throws {Error} When CDP connection fails
- * @throws {Error} When script execution throws exception
+ * @throws \{Error\} When no active session is running
+ * @throws \{Error\} When session metadata is invalid
+ * @throws \{Error\} When target no longer exists (tab closed)
+ * @throws \{Error\} When CDP connection fails
+ * @throws \{Error\} When script execution throws exception
  */
 async function handleDomEval(script: string, options: DomEvalOptions): Promise<void> {
   try {

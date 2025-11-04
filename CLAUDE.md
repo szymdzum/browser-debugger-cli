@@ -58,6 +58,87 @@ try { ... } catch { console.error('failed'); }
 
 Rationale: Dead code obscures behavior and increases maintenance burden.
 
+### TSDoc Escaping Rules
+
+**MANDATORY**: TSDoc comments require proper escaping to avoid parser warnings. These violations happen often and must be prevented.
+
+**Common Violations** (based on analysis of 66 TSDoc warnings in this codebase):
+
+1. **Unescaped Curly Braces in @throws Tags** (Most common - 54 violations):
+```typescript
+// ❌ BAD - Unescaped curly braces
+/**
+ * @throws {Error} When operation fails
+ * @throws {never} This function always exits
+ */
+
+// ✅ GOOD - Escaped curly braces
+/**
+ * @throws \{Error\} When operation fails
+ * @throws \{never\} This function always exits
+ */
+```
+
+2. **Unescaped Curly Braces in @example Code** (12 violations):
+```typescript
+// ❌ BAD - Unescaped curly braces in examples
+/**
+ * @example
+ * buildOptions('.error', 123)  // → { nodeId: 123 }
+ */
+
+// ✅ GOOD - Escaped curly braces in examples
+/**
+ * @example
+ * buildOptions('.error', 123)  // → \{ nodeId: 123 \}
+ */
+```
+
+3. **Unescaped Angle Brackets in HTML Examples**:
+```typescript
+// ❌ BAD - Unescaped angle brackets
+/**
+ * @example
+ * <div class="foo">content</div>
+ */
+
+// ✅ GOOD - Escaped angle brackets
+/**
+ * @example
+ * \<div class="foo"\>content\</div\>
+ */
+```
+
+**Why Escaping is Required**:
+- TSDoc parser interprets `{...}` as inline tags like `{@link}` or `{@inheritDoc}`
+- TSDoc parser interprets `<...>` as HTML/XML tags
+- Escaping with backslash `\{`, `\}`, `\<`, `\>` tells parser to treat them as literal characters
+
+**Bulk Fixes with sed**:
+```bash
+# Fix @throws {Error} tags
+sed -i '' 's/ \* @throws {Error}/ * @throws \\{Error\\}/g' file.ts
+
+# Fix @throws {never} tags
+sed -i '' 's/ \* @throws {never}/ * @throws \\{never\\}/g' file.ts
+
+# WARNING: Be careful with angle brackets - don't escape TypeScript generics!
+# Only escape angle brackets in TSDoc comment text, not in code
+```
+
+**Prevention**:
+- Review TSDoc comments in PR reviews
+- Run `npm run lint` before committing (catches TSDoc warnings via eslint-plugin-tsdoc)
+- CI enforces zero TSDoc warnings (see `.github/workflows/ci.yml`)
+
+**Validation**:
+```bash
+npm run lint              # Shows TSDoc warnings
+npm run build             # TypeScript compiler also reports TSDoc issues
+```
+
+**Reference**: [TSDoc Specification](https://tsdoc.org/) for full escaping rules.
+
 ## Available Helpers
 
 Use these helpers in CLI commands. All follow KISS, DRY, YAGNI principles with TSDoc comments.
