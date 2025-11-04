@@ -5,11 +5,9 @@
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
 [![npm downloads](https://img.shields.io/npm/dt/browser-debugger-cli?color=blue)](https://www.npmjs.com/package/browser-debugger-cli)
 
-Lightweight CLI that streams Chrome DevTools Protocol telemetry (DOM, network, console) for humans and agents.
+DevTools telemetry in your terminal. For humans and agents.
 
-Talks directly to Chrome over WebSocket (the same protocol DevTools uses). No
-Puppeteer wrapper, no MCP server, just raw browser internals piped straight to stdout
-where you (or agent) can grep, jq, or script them.
+Direct WebSocket to Chrome's debugging port. Stream DOM, network, and console data straight to stdout. Pipe it, grep it, feed it to agents for full context debugging.
 
 ## Installation
 
