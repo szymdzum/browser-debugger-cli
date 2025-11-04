@@ -38,7 +38,7 @@ bdg dom query "document.title"
 
 There's no good CLI for Chrome DevTools Protocol. MCP servers work (most of the time) but are token-heavy and monolithic. Puppeteer is for automation, not inspection. Lighthouse is single-purpose.
 
-`bdg` takes the Unix approach: small, composable commands that pipe with `jq` and `grep`—tools models already know—without the token overhead.
+`bdg` takes the Unix approach: small, composable commands that pipe with `jq` and `grep` tools models already know—without the token overhead.
 
 **Why CLI over protocol servers?**
 - **Token efficiency**: CDP is in the model's training data. A skill doc with usage
@@ -49,7 +49,7 @@ There's no good CLI for Chrome DevTools Protocol. MCP servers work (most of the 
 - **Real-time evolution**: Update usage patterns anytime. No server redeployment
   needed.
 
-The vision: Terminal-native browser debugging that's as composable as curl and jq.
+The vision: Terminal-native browser debugging that's as composable as `curl` and `jq`.
 ```bash
 # Under development but you get the idea
 
@@ -99,7 +99,7 @@ responses back.
 **Benefits:**
 - Sessions persist across commands (Chrome stays open)
 - Live queries without stopping collection
-- No intermediate files—data flows from Chrome to stdout
+- No intermediate files data flows from Chrome to stdout
 - Real CDP with full protocol access
 
 ## Contributing
