@@ -1,4 +1,5 @@
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
+import { IPCErrorCode } from '@/ipc/types.js';
 import type { CollectorType } from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -65,7 +66,29 @@ export async function startSessionViaDaemon(
 
     // Check for errors
     if (response.status === 'error') {
-      console.error(`[bdg] Daemon error: ${response.message ?? 'Unknown error'}`);
+      // Special handling for SESSION_ALREADY_RUNNING with helpful context
+      if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && response.existingSession) {
+        const { pid, targetUrl, duration } = response.existingSession;
+        const durationStr = duration
+          ? duration < 60
+            ? `${duration}s`
+            : `${Math.floor(duration / 60)}m ${duration % 60}s`
+          : 'unknown';
+
+        console.error(`\nError: Session already running`);
+        console.error(`  PID:      ${pid}`);
+        if (targetUrl) {
+          console.error(`  Target:   ${targetUrl}`);
+        }
+        console.error(`  Duration: ${durationStr}`);
+        console.error(``);
+        console.error(`Suggestions:`);
+        console.error(`  View session:     bdg status`);
+        console.error(`  Stop and restart: bdg stop && bdg ${url}`);
+        console.error(``);
+      } else {
+        console.error(`[bdg] Daemon error: ${response.message ?? 'Unknown error'}`);
+      }
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 

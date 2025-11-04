@@ -170,6 +170,13 @@ export interface StartSessionResponse extends IPCMessage {
   data?: StartSessionResponseData;
   message?: string; // Status or error message
   errorCode?: IPCErrorCode; // Structured error code (present when status === 'error')
+  existingSession?: {
+    // Present when errorCode === SESSION_ALREADY_RUNNING
+    pid: number;
+    targetUrl?: string;
+    startTime?: number;
+    duration?: number;
+  };
 }
 
 /**

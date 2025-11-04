@@ -47,7 +47,9 @@ import { readSessionMetadata } from '@/session/metadata.js';
 import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
+import type { CDPTarget } from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -338,12 +340,37 @@ export class IPCServer {
       // Check for existing session (concurrency guard)
       const sessionPid = readPid();
       if (sessionPid && isProcessAlive(sessionPid)) {
+        // Read session metadata to provide helpful error context
+        const metadata = readSessionMetadata({ warnOnCorruption: false });
+        const startTime = metadata?.startTime;
+        const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : undefined;
+
+        // Try to get target URL from CDP
+        let targetUrl: string | undefined;
+        if (metadata?.port && metadata?.targetId) {
+          try {
+            const targets = await fetchCDPTargets(metadata.port);
+            const target = targets.find((t: CDPTarget) => t.id === metadata.targetId);
+            if (target) {
+              targetUrl = target.url;
+            }
+          } catch {
+            // Ignore CDP fetch errors
+          }
+        }
+
         const response: StartSessionResponse = {
           type: 'start_session_response',
           sessionId: request.sessionId,
           status: 'error',
           message: `Session already running (PID ${sessionPid}). Stop it first with stop_session_request.`,
           errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
+          existingSession: {
+            pid: sessionPid,
+            ...(targetUrl && { targetUrl }),
+            ...(startTime && { startTime }),
+            ...(duration !== undefined && { duration }),
+          },
         };
 
         socket.write(JSON.stringify(response) + '\n');
