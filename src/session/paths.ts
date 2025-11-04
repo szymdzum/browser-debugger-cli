@@ -32,19 +32,24 @@ const SESSION_FILES = {
 export type SessionFileType = keyof typeof SESSION_FILES;
 
 /**
- * Session directory path (~/.bdg)
- * Exported constant for direct use in helper modules
- */
-export const SESSION_DIR = path.join(os.homedir(), '.bdg');
-
-/**
  * Get the session directory path (~/.bdg)
+ *
+ * Uses os.homedir() dynamically to support test environment variable changes.
  *
  * @returns Full path to session directory
  */
 export function getSessionDir(): string {
-  return SESSION_DIR;
+  return path.join(os.homedir(), '.bdg');
 }
+
+/**
+ * Session directory path (~/.bdg)
+ * Exported constant for backward compatibility.
+ *
+ * WARNING: This is evaluated once at module load time. Prefer getSessionDir()
+ * for dynamic resolution (e.g., in tests that change HOME env var).
+ */
+export const SESSION_DIR = path.join(os.homedir(), '.bdg');
 
 /**
  * Get the path to a session file by type.
