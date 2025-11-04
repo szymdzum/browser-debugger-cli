@@ -28,7 +28,8 @@ export interface OutputBuilderOptions {
 }
 
 /**
- * Helper: build output payloads for preview/full/final modes with consistent metadata.
+ * Helper: build output payloads for different modes with consistent metadata.
+ * Modes: preview (metadata only), full (with bodies), final (complete with DOM).
  */
 export class OutputBuilder {
   /**

@@ -29,7 +29,7 @@ import { launchChrome } from '@/connection/launcher.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
 import type { COMMANDS, CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/commands.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
-import { writePartialOutputAsync, writeFullOutputAsync } from '@/session/output.js';
+import { writeSessionOutput } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
 import type {
   CollectorType,
@@ -363,6 +363,71 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       nodes,
     };
   },
+
+  /**
+   * Worker Peek Handler - Return lightweight preview of collected data
+   */
+  worker_peek: async (_cdp, params) => {
+    const lastN = Math.min(params.lastN ?? 10, 100); // Cap at 100
+    const duration = Date.now() - sessionStartTime;
+
+    // Get last N items (slice from end)
+    const recentNetwork = networkRequests.slice(-lastN).map((req) => ({
+      requestId: req.requestId,
+      timestamp: req.timestamp,
+      method: req.method,
+      url: req.url,
+      ...(req.status !== undefined && { status: req.status }),
+      ...(req.mimeType !== undefined && { mimeType: req.mimeType }),
+    }));
+
+    const recentConsole = consoleMessages.slice(-lastN).map((msg) => ({
+      timestamp: msg.timestamp,
+      type: msg.type,
+      text: msg.text,
+    }));
+
+    // Return as resolved Promise to satisfy async handler contract
+    return Promise.resolve({
+      version: VERSION,
+      startTime: sessionStartTime,
+      duration,
+      target: {
+        url: targetInfo?.url ?? '',
+        title: targetInfo?.title ?? '',
+      },
+      activeCollectors,
+      network: recentNetwork,
+      console: recentConsole,
+    });
+  },
+
+  /**
+   * Worker Details Handler - Return full object for specific item
+   */
+  worker_details: async (_cdp, params) => {
+    if (params.itemType === 'network') {
+      const request = networkRequests.find((r) => r.requestId === params.id);
+      if (!request) {
+        return Promise.reject(new Error(`Network request not found: ${params.id}`));
+      }
+      return Promise.resolve({ item: request });
+    } else if (params.itemType === 'console') {
+      const index = parseInt(params.id, 10);
+      if (isNaN(index) || index < 0 || index >= consoleMessages.length) {
+        return Promise.reject(
+          new Error(
+            `Console message not found at index: ${params.id} (available: 0-${consoleMessages.length - 1})`
+          )
+        );
+      }
+      return Promise.resolve({ item: consoleMessages[index] });
+    }
+    // Unreachable due to type narrowing, but TypeScript doesn't see it
+    return Promise.reject(
+      new Error(`Unknown itemType: ${String(params.itemType)}. Expected 'network' or 'console'.`)
+    );
+  },
 };
 
 /**
@@ -469,24 +534,6 @@ function sendReadySignal(config: WorkerConfig): void {
 }
 
 /**
- * Start preview data persistence loop.
- * Writes lightweight preview and full data every 5 seconds.
- */
-function startPreviewLoop(): NodeJS.Timeout {
-  return setInterval(() => {
-    void (async () => {
-      try {
-        const output = buildOutput(true);
-        await writePartialOutputAsync(output);
-        await writeFullOutputAsync(output);
-      } catch (error) {
-        console.error(`[worker] Failed to write preview data: ${getErrorMessage(error)}`);
-      }
-    })();
-  }, 5000);
-}
-
-/**
  * Build BdgOutput structure from collected data.
  */
 function buildOutput(partial: boolean = false): BdgOutput {
@@ -538,8 +585,7 @@ async function gracefulShutdown(): Promise<void> {
     // Write final output
     console.error('[worker] Writing final output...');
     const finalOutput = buildOutput(false);
-    await writePartialOutputAsync(finalOutput);
-    await writeFullOutputAsync(finalOutput);
+    writeSessionOutput(finalOutput);
 
     // Run cleanup functions
     console.error('[worker] Running collector cleanup functions...');
@@ -579,7 +625,6 @@ async function main(): Promise<void> {
   console.error(`[worker] Starting (PID ${process.pid})`);
 
   let config: WorkerConfig;
-  let previewInterval: NodeJS.Timeout | null = null;
 
   try {
     // Parse configuration
@@ -644,10 +689,6 @@ async function main(): Promise<void> {
     });
     console.error(`[worker] Session metadata written`);
 
-    // Start preview data persistence
-    previewInterval = startPreviewLoop();
-    console.error(`[worker] Preview persistence started (5s interval)`);
-
     // Send ready signal to parent
     sendReadySignal(config);
 
@@ -680,10 +721,6 @@ async function main(): Promise<void> {
     console.error(`[worker] Fatal error: ${getErrorMessage(error)}`);
 
     // Cleanup on error
-    if (previewInterval) {
-      clearInterval(previewInterval);
-    }
-
     if (cdp) {
       cdp.close();
     }

@@ -11,7 +11,6 @@ import { getExitCodeForError } from '@/utils/exitCodes.js';
 
 import { ChromeBootstrap } from './ChromeBootstrap.js';
 import { OutputBuilder } from './OutputBuilder.js';
-import { PreviewWriter } from './PreviewWriter.js';
 import { SessionLock } from './SessionLock.js';
 import { SessionLoop } from './SessionLoop.js';
 import { ShutdownController, type SessionState } from './ShutdownController.js';
@@ -112,7 +111,6 @@ class SessionContext implements SessionState {
   session: BdgSession | null = null;
   launchedChrome: LaunchedChrome | null = null;
   isShuttingDown = false;
-  previewWriter: PreviewWriter | null = null;
   startTime: number;
   target: CDPTarget | null = null;
   compact: boolean;
@@ -189,26 +187,6 @@ async function startCollectorsAndMetadata(
 
   // Note: Chrome PID cache is written immediately after launch (Phase 2)
   // to ensure it's available even if later phases fail
-}
-
-/**
- * Phase 5: Start preview writer with two-tier system
- *
- * Uses async I/O with mutex to prevent event loop blocking and overlapping writes.
- */
-function startPreviewWriter(context: SessionContext, compact: boolean): void {
-  if (!context.session) {
-    return;
-  }
-
-  // Create and start preview writer
-  context.previewWriter = new PreviewWriter(
-    context.session,
-    context.startTime,
-    5000, // intervalMs
-    compact
-  );
-  context.previewWriter.start();
 }
 
 /**
@@ -360,9 +338,6 @@ export async function startSession(
         void context.stop();
       }, options.timeout * 1000);
     }
-
-    // Phase 5: Start preview writer
-    startPreviewWriter(context, options.compact ?? false);
 
     // Optional: Log memory usage periodically (every 30s)
     const memoryLogInterval = setInterval(() => {

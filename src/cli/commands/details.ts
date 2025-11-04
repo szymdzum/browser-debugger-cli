@@ -2,7 +2,8 @@ import type { Command } from 'commander';
 
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
-import { readFullOutput } from '@/session/output.js';
+import { getDetails } from '@/ipc/client.js';
+import type { NetworkRequest, ConsoleMessage } from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -27,107 +28,10 @@ export function registerDetailsCommand(program: Command): void {
     .argument('<type>', 'Type of item: "network" or "console"')
     .argument('<id>', 'Request ID (for network) or index (for console)')
     .option('-j, --json', 'Output as JSON')
-    .action((type: string, id: string, options: DetailsOptions) => {
+    .action(async (type: string, id: string, options: DetailsOptions) => {
       try {
-        const fullOutput = readFullOutput();
-
-        if (!fullOutput) {
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonError('No detailed data available', {
-                  note: 'Session may not be running or data not yet written',
-                  suggestions: ['Check session status: bdg status', 'Start a session: bdg <url>'],
-                }),
-                null,
-                2
-              )
-            );
-          } else {
-            console.error('No detailed data available');
-            console.error('Session may not be running or data not yet written');
-            console.error('\nSuggestions:');
-            console.error('  Check session status:  bdg status');
-            console.error('  Start a session:       bdg <url>');
-          }
-          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
-
-        if (type === 'network') {
-          // Find network request by ID
-          const request = fullOutput.data.network?.find((req) => req.requestId === id);
-
-          if (!request) {
-            if (options.json) {
-              console.log(
-                JSON.stringify(
-                  OutputBuilder.buildJsonError(`Network request not found: ${id}`, {
-                    suggestion: 'List requests: bdg peek --network',
-                  }),
-                  null,
-                  2
-                )
-              );
-            } else {
-              console.error(`Network request not found: ${id}`);
-              console.error('\nTry:');
-              console.error('  List requests:  bdg peek --network');
-            }
-            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-          }
-
-          if (options.json) {
-            console.log(JSON.stringify(request, null, 2));
-          } else {
-            console.log(formatNetworkDetails(request));
-          }
-        } else if (type === 'console') {
-          // Find console message by index
-          const index = parseInt(id);
-          if (isNaN(index)) {
-            if (options.json) {
-              console.log(
-                JSON.stringify(
-                  OutputBuilder.buildJsonError(`Invalid console index: ${id}`),
-                  null,
-                  2
-                )
-              );
-            } else {
-              console.error(`Invalid console index: ${id}`);
-            }
-            process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-          }
-
-          const message = fullOutput.data.console?.[index];
-
-          if (!message) {
-            if (options.json) {
-              console.log(
-                JSON.stringify(
-                  OutputBuilder.buildJsonError(`Console message not found at index: ${index}`, {
-                    availableRange: `0-${(fullOutput.data.console?.length ?? 0) - 1}`,
-                    suggestion: 'List messages: bdg peek --console',
-                  }),
-                  null,
-                  2
-                )
-              );
-            } else {
-              console.error(`Console message not found at index: ${index}`);
-              console.error(`Available range: 0-${(fullOutput.data.console?.length ?? 0) - 1}`);
-              console.error('\nTry:');
-              console.error('  List messages:  bdg peek --console');
-            }
-            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-          }
-
-          if (options.json) {
-            console.log(JSON.stringify(message, null, 2));
-          } else {
-            console.log(formatConsoleDetails(message));
-          }
-        } else {
+        // Validate type
+        if (type !== 'network' && type !== 'console') {
           if (options.json) {
             console.log(
               JSON.stringify(
@@ -143,6 +47,63 @@ export function registerDetailsCommand(program: Command): void {
             console.error('Valid types: network, console');
           }
           process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+        }
+
+        // Fetch details via IPC from daemon/worker
+        const response = await getDetails(type, id);
+
+        if (response.status === 'error') {
+          if (options.json) {
+            console.log(
+              JSON.stringify(
+                OutputBuilder.buildJsonError(response.error ?? 'Unknown error', {
+                  suggestion:
+                    type === 'network'
+                      ? 'List requests: bdg peek --network'
+                      : 'List messages: bdg peek --console',
+                }),
+                null,
+                2
+              )
+            );
+          } else {
+            console.error(`Error: ${response.error ?? 'Unknown error'}`);
+            console.error('\nTry:');
+            console.error(
+              type === 'network'
+                ? '  List requests:  bdg peek --network'
+                : '  List messages:  bdg peek --console'
+            );
+          }
+          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
+        }
+
+        if (!response.data?.item) {
+          if (options.json) {
+            console.log(
+              JSON.stringify(OutputBuilder.buildJsonError('No data in response'), null, 2)
+            );
+          } else {
+            console.error('Error: No data in response');
+          }
+          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
+        }
+
+        // Format and display the item
+        if (type === 'network') {
+          const request = response.data.item as NetworkRequest;
+          if (options.json) {
+            console.log(JSON.stringify(request, null, 2));
+          } else {
+            console.log(formatNetworkDetails(request));
+          }
+        } else {
+          const message = response.data.item as ConsoleMessage;
+          if (options.json) {
+            console.log(JSON.stringify(message, null, 2));
+          } else {
+            console.log(formatConsoleDetails(message));
+          }
         }
 
         process.exit(EXIT_CODES.SUCCESS);

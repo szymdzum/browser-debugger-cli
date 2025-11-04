@@ -19,8 +19,6 @@ const SESSION_FILES = {
   LOCK: 'session.lock',
   METADATA: 'session.meta.json',
   CHROME_PID: 'chrome.pid',
-  PREVIEW: 'session.preview.json',
-  FULL: 'session.full.json',
   DAEMON_PID: 'daemon.pid',
   DAEMON_SOCKET: 'daemon.sock',
   DOM_QUERY_CACHE: 'last-query.json',
@@ -77,28 +75,6 @@ export function getSessionFilePath(fileType: SessionFileType): string {
  */
 export function getWorkerSocketPath(workerPid: number): string {
   return path.join(getSessionDir(), `worker.${workerPid}.sock`);
-}
-
-/**
- * Get the path to the partial/preview output file.
- *
- * WHY: Lightweight preview (metadata only) for fast monitoring without stopping collection.
- *
- * @returns Full path to preview file
- */
-export function getPartialFilePath(): string {
-  return getSessionFilePath('PREVIEW');
-}
-
-/**
- * Get the path to the full output file.
- *
- * WHY: Complete data with bodies for detailed on-demand inspection.
- *
- * @returns Full path to full data file
- */
-export function getFullFilePath(): string {
-  return getSessionFilePath('FULL');
 }
 
 /**

@@ -271,3 +271,18 @@ export async function getDOM(options: {
 }): Promise<ClientResponse<'dom_get'>> {
   return sendCommand('dom_get', options);
 }
+
+/**
+ * Get details for a specific network request or console message via the daemon's worker.
+ *
+ * @param type - Type of item: 'network' or 'console'
+ * @param id - Request ID for network, index for console
+ * @returns Worker details response with full object (including bodies/args)
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function getDetails(
+  type: 'network' | 'console',
+  id: string
+): Promise<ClientResponse<'worker_details'>> {
+  return sendCommand('worker_details', { itemType: type, id });
+}

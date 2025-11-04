@@ -86,7 +86,7 @@ export interface PeekRequest extends IPCMessage {
 
 /**
  * Peek response payload containing session preview data.
- * Reuses BdgOutput structure from partial/preview file.
+ * Live data fetched from worker via IPC (no file reads).
  */
 export interface PeekResponseData {
   sessionPid: number;
@@ -195,7 +195,7 @@ export interface StopSessionResponse extends IPCMessage {
 
 /**
  * NOTE: DOM command types (DomQueryCommand, DomHighlightCommand, DomGetCommand, etc.)
- * are now defined in @/ipc/commands.ts
+ * are now defined in \@/ipc/commands.ts
  */
 
 /**

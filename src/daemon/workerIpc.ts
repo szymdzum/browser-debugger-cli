@@ -2,7 +2,7 @@
  * Worker IPC Message Types
  *
  * Defines non-command messages for communication between daemon and worker process.
- * Command messages are defined in @/ipc/commands.ts
+ * Command messages are defined in \@/ipc/commands.ts
  */
 
 /**
@@ -30,6 +30,6 @@ export interface WorkerReadyMessage extends WorkerIPCMessage {
 
 /**
  * Union type of all non-command worker responses.
- * Command responses are defined in @/ipc/commands.ts (WorkerResponseUnion)
+ * Command responses are defined in \@/ipc/commands.ts (WorkerResponseUnion)
  */
 export type WorkerIPCResponse = WorkerReadyMessage;

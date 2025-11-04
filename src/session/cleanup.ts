@@ -1,19 +1,14 @@
 /**
  * Session cleanup operations.
  *
- * Handles cleanup of session files (PID, metadata, lock, preview, full data).
+ * Handles cleanup of session files (PID, metadata, lock, socket).
  * WHY: Centralized cleanup logic ensures consistent cleanup across error paths and normal shutdown.
  */
 
 import * as fs from 'fs';
 
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
-import {
-  getSessionFilePath,
-  getPartialFilePath,
-  getFullFilePath,
-  ensureSessionDir,
-} from './paths.js';
+import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile } from './pid.js';
 import { isProcessAlive } from './process.js';
 
@@ -21,8 +16,8 @@ import { isProcessAlive } from './process.js';
  * Cleanup stale session files if no active session is running.
  *
  * Uses lock-based serialization to safely clean up orphaned session artifacts
- * (PID, metadata, socket, preview/full data) when the recorded process is dead
- * or files are missing/corrupt.
+ * (PID, metadata, socket) when the recorded process is dead or files are
+ * missing/corrupt.
  *
  * WHY: Prevents accumulation of stale session files from crashed processes.
  *
@@ -116,28 +111,6 @@ export function cleanupStaleSession(): boolean {
       }
     }
 
-    // Remove preview file
-    const partialPath = getPartialFilePath();
-    if (fs.existsSync(partialPath)) {
-      try {
-        fs.unlinkSync(partialPath);
-        console.error('[cleanup] Removed preview file');
-      } catch (error) {
-        console.error('[cleanup] Failed to remove preview:', error);
-      }
-    }
-
-    // Remove full file
-    const fullPath = getFullFilePath();
-    if (fs.existsSync(fullPath)) {
-      try {
-        fs.unlinkSync(fullPath);
-        console.error('[cleanup] Removed full data file');
-      } catch (error) {
-        console.error('[cleanup] Failed to remove full data:', error);
-      }
-    }
-
     // Remove daemon PID
     if (fs.existsSync(daemonPidPath)) {
       try {
@@ -171,7 +144,7 @@ export function cleanupStaleSession(): boolean {
 /**
  * Cleanup all session files after a session ends.
  *
- * Removes PID, lock, metadata, preview, and full data files.
+ * Removes PID, lock, and metadata files.
  * Safe to call multiple times (idempotent).
  *
  * WHY: Ensures clean slate for next session, prevents stale file accumulation.
@@ -184,26 +157,6 @@ export function cleanupSession(): void {
   if (fs.existsSync(metaPath)) {
     try {
       fs.unlinkSync(metaPath);
-    } catch {
-      // Ignore errors
-    }
-  }
-
-  // Clean up preview file (lightweight)
-  const partialPath = getPartialFilePath();
-  if (fs.existsSync(partialPath)) {
-    try {
-      fs.unlinkSync(partialPath);
-    } catch {
-      // Ignore errors
-    }
-  }
-
-  // Clean up full file (complete data)
-  const fullPath = getFullFilePath();
-  if (fs.existsSync(fullPath)) {
-    try {
-      fs.unlinkSync(fullPath);
     } catch {
       // Ignore errors
     }
