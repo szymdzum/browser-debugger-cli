@@ -5,6 +5,7 @@ import { registerCdpCommand } from '@/cli/commands/cdp.js';
 import { registerCleanupCommand } from '@/cli/commands/cleanup.js';
 import { registerDetailsCommand } from '@/cli/commands/details.js';
 import { registerIpcTestCommand } from '@/cli/commands/ipcTest.js';
+import { registerNetworkCommands } from '@/cli/commands/network.js';
 import { registerPeekCommand } from '@/cli/commands/peek.js';
 import { registerQueryCommand } from '@/cli/commands/query.js';
 import { registerStartCommands } from '@/cli/commands/start.js';
@@ -49,6 +50,10 @@ export const commandRegistry: CommandRegistrar[] = [
   // CDP Commands
   addCommandGroup('CDP Commands:'),
   registerCdpCommand,
+
+  // Network Commands
+  addCommandGroup('Network Commands:'),
+  registerNetworkCommands,
 
   // IPC Testing (MVP)
   addCommandGroup('IPC Testing:'),
