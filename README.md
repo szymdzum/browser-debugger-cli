@@ -1,12 +1,11 @@
 # Browser Debugger CLI
 
-Lightweight CLI that streams Chrome DevTools Protocol telemetry (DOM, network, console) for humans and agents.
-
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/szymdzum/browser-debugger-cli/pulls)
 [![CI](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/ci.yml)
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
 [![npm downloads](https://img.shields.io/npm/dt/browser-debugger-cli?color=blue)](https://www.npmjs.com/package/browser-debugger-cli)
 
+Lightweight CLI that streams Chrome DevTools Protocol telemetry (DOM, network, console) for humans and agents.
 
 Talks directly to Chrome over WebSocket (the same protocol DevTools uses). No
 Puppeteer wrapper, no MCP server, just raw browser internals piped straight to stdout
