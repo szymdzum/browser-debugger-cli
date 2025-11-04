@@ -1,11 +1,13 @@
 import type { LaunchOptions } from '@/connection/launcher.js';
 import { MEMORY_LOG_INTERVAL, DEFAULT_REUSE_TAB } from '@/constants';
 import type { BdgSession } from '@/session/BdgSession.js';
+import { writeChromePid } from '@/session/chrome.js';
+import { writeSessionMetadata } from '@/session/metadata.js';
+import { writePid } from '@/session/pid.js';
 import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
-import { ChromeLaunchError } from '@/utils/errors.js';
+import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
 import { getExitCodeForError } from '@/utils/exitCodes.js';
-import { writePid, writeSessionMetadata, writeChromePid } from '@/utils/session.js';
 
 import { ChromeBootstrap } from './ChromeBootstrap.js';
 import { OutputBuilder } from './OutputBuilder.js';
@@ -21,15 +23,13 @@ import { TargetSetup } from './TargetSetup.js';
  *
  * Uses chrome-launcher APIs to detect available Chrome installations and
  * provide actionable error messages to help users troubleshoot.
- *
- * @param error Original error that caused the failure
+ * @param error - Original error that caused the failure
  */
 function reportLauncherFailure(error: unknown): void {
   console.error('\n--- Chrome Launch Diagnostics ---\n');
 
   // Show original error
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.error(`Error: ${errorMessage}\n`);
+  console.error(`Error: ${getErrorMessage(error)}\n`);
 
   // Get diagnostics using shared utility (cached to avoid repeated scans)
   const diagnostics = getChromeDiagnostics();
@@ -69,8 +69,8 @@ export async function cleanupStaleChrome(): Promise<number> {
 
   try {
     // Import session utilities (dynamic import for ES modules)
-    const sessionModule = await import('@/utils/session.js');
-    const { readChromePid, clearChromePid, killChromeProcess } = sessionModule;
+    const { readChromePid, clearChromePid } = await import('@/session/chrome.js');
+    const { killChromeProcess } = await import('@/session/process.js');
 
     // Read Chrome PID from persistent cache
     const chromePid = readChromePid();
@@ -95,15 +95,12 @@ export async function cleanupStaleChrome(): Promise<number> {
 
       return 0;
     } catch (killError) {
-      const errorMessage = killError instanceof Error ? killError.message : String(killError);
-      console.error(`Error: Failed to kill Chrome process: ${errorMessage}`);
+      console.error(`Error: Failed to kill Chrome process: ${getErrorMessage(killError)}`);
       console.error('   Try manually killing Chrome processes if issues persist\n');
       return 1;
     }
   } catch (error) {
-    console.error(
-      `Error: Failed to cleanup Chrome processes: ${error instanceof Error ? error.message : String(error)}\n`
-    );
+    console.error(`Error: Failed to cleanup Chrome processes: ${getErrorMessage(error)}\n`);
     return 1;
   }
 }
@@ -124,7 +121,6 @@ class SessionContext implements SessionState {
   /**
    * Create a new session context and track the start timestamp.
    * The context is shared with signal handlers so they can orchestrate shutdown.
-   *
    * @param compact - If true, use compact JSON format (no indentation)
    */
   constructor(compact: boolean = false) {
@@ -153,13 +149,12 @@ class SessionContext implements SessionState {
 
 /**
  * Phase 4: start requested collectors and persist session metadata for tooling.
- *
- * @param session Active BDG session instance
- * @param collectors Collector types requested by the CLI
- * @param startTime Timestamp when the session began
- * @param port Chrome debugging port in use
- * @param target Target metadata (includes websocket URL)
- * @param chromePid PID of Chrome if bdg launched it (optional)
+ * @param session - Active BDG session instance
+ * @param collectors - Collector types requested by the CLI
+ * @param startTime - Timestamp when the session began
+ * @param port - Chrome debugging port in use
+ * @param target - Target metadata (includes websocket URL)
+ * @param chromePid - PID of Chrome if bdg launched it (optional)
  */
 async function startCollectorsAndMetadata(
   session: BdgSession,
@@ -234,21 +229,8 @@ function printCollectionStatus(collectors: CollectorType[], timeout?: number): v
 
 /**
  * Start a new session
- *
  * @param url - Target URL to navigate to
  * @param options - Session configuration options
- * @param options.port - Chrome debugging port
- * @param options.timeout - Auto-stop after timeout (seconds)
- * @param options.reuseTab - Navigate existing tab instead of creating new one
- * @param options.userDataDir - Chrome user data directory
- * @param options.includeAll - Include all data (disable filtering)
- * @param options.logLevel - Chrome launcher log level
- * @param options.prefs - Chrome preferences as object
- * @param options.prefsFile - Path to JSON file containing Chrome preferences
- * @param options.chromeFlags - Additional Chrome command-line flags
- * @param options.connectionPollInterval - Milliseconds between CDP readiness checks
- * @param options.maxConnectionRetries - Maximum retry attempts before failing
- * @param options.portStrictMode - Fail if Chrome debugging port is already in use
  * @param collectors - Array of collector types to enable ('dom', 'network', 'console')
  * @returns Promise that resolves when session completes
  */

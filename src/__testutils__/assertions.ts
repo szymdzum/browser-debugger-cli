@@ -13,7 +13,9 @@ import type { CDPMessage } from '@/types.js';
  * Useful for eventually-consistent assertions
  *
  * @example
+ * ```ts
  * await assertEventually(() => ws.getSentMessages().length > 0, 1000);
+ * ```
  */
 export async function assertEventually(
   fn: () => boolean,
@@ -43,12 +45,13 @@ export function assertCDPMessage(actual: CDPMessage, expected: Partial<CDPMessag
 
 /**
  * Assert that async function throws with specific pattern
- *
  * @example
+ * ```ts
  * await assertThrowsAsync(
  *   () => cdp.send('Invalid.method'),
  *   /timeout/
  * );
+ * ```
  */
 export async function assertThrowsAsync(
   fn: () => Promise<unknown>,

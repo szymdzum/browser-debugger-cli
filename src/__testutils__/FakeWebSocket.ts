@@ -102,7 +102,7 @@ export class FakeWebSocket extends EventEmitter {
 
   /**
    * ws API - Close connection gracefully
-   * Transitions: OPEN -> CLOSING -> CLOSED
+   * Transitions: OPEN \> CLOSING \> CLOSED
    */
   close(code?: number, reason?: string): void {
     if (this.readyState === CLOSED || this.readyState === CLOSING) {
@@ -136,7 +136,7 @@ export class FakeWebSocket extends EventEmitter {
 
   /**
    * TEST CONTROL - Simulate connection open
-   * Transitions: CONNECTING -> OPEN, emits 'open'
+   * Transitions: CONNECTING \> OPEN, emits 'open'
    */
   simulateOpen(): void {
     if (this.readyState !== CONNECTING) {

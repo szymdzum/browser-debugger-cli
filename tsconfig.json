@@ -14,7 +14,9 @@
       "@/cli/*": ["./cli/*"],
       "@/collectors/*": ["./collectors/*"],
       "@/connection/*": ["./connection/*"],
-      "@/session/*": ["./session/*"]
+      "@/session/*": ["./session/*"],
+      "@/ipc/*": ["./ipc/*"],
+      "@/daemon/*": ["./daemon/*"]
     },
     "strict": true,
     "esModuleInterop": true,

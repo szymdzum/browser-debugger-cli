@@ -2,6 +2,8 @@
  * Default filters for reducing noise in collected data
  */
 
+import { extractHostname, extractHostnameWithPath } from './url/safeParseUrl.js';
+
 /**
  * Domains to exclude by default (common tracking/analytics)
  * These generate high volume but are rarely useful for debugging
@@ -145,22 +147,19 @@ export const DEFAULT_SKIP_BODY_MIME_TYPES = [
 ];
 
 /**
- * Check if a URL should be excluded based on domain filtering
+ * Check if a URL should be excluded based on domain filtering.
+ *
+ * @param url - URL to check against exclusion list
+ * @param includeAll - If true, disables all filtering
+ * @returns True if the URL's domain matches an excluded domain
  */
 export function shouldExcludeDomain(url: string, includeAll: boolean = false): boolean {
   if (includeAll) {
     return false; // Don't filter anything if --include-all flag is set
   }
 
-  try {
-    const parsedUrl = new URL(url);
-    const hostname = parsedUrl.hostname.toLowerCase();
-
-    return DEFAULT_EXCLUDED_DOMAINS.some((domain) => hostname.includes(domain.toLowerCase()));
-  } catch {
-    // If URL parsing fails, don't filter
-    return false;
-  }
+  const hostname = extractHostname(url).toLowerCase();
+  return DEFAULT_EXCLUDED_DOMAINS.some((domain) => hostname.includes(domain.toLowerCase()));
 }
 
 /**
@@ -189,14 +188,13 @@ export function shouldExcludeConsoleMessage(
 
 /**
  * Pattern matching configuration for URL filtering
- *
- * @property includePatterns - URL patterns to explicitly include (trumps all other rules)
- * @property excludePatterns - URL patterns to explicitly exclude
- * @property defaultBehavior - Behavior when URL doesn't match any patterns ('include' or 'exclude')
  */
 interface PatternMatchConfig {
+  /** URL patterns to explicitly include (trumps all other rules) */
   includePatterns?: string[];
+  /** URL patterns to explicitly exclude */
   excludePatterns?: string[];
+  /** Behavior when URL doesn't match any patterns ('include' or 'exclude') */
   defaultBehavior?: 'include' | 'exclude';
 }
 
@@ -219,42 +217,23 @@ interface PatternMatchConfig {
 function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean {
   const { includePatterns = [], excludePatterns = [], defaultBehavior = 'include' } = config;
 
-  // Parse URL for pattern matching
-  let hostname: string;
-  let hostnameWithPath: string;
-  try {
-    const parsed = new URL(url);
-    hostname = parsed.hostname;
-    hostnameWithPath = hostname + parsed.pathname;
-  } catch {
-    // If not a valid URL, use the whole string
-    hostname = url;
-    hostnameWithPath = url;
-  }
+  // Parse URL once for all pattern checks
+  const hostname = extractHostname(url);
+  const hostnameWithPath = extractHostnameWithPath(url);
 
-  const testPatterns = (patterns: string[]): boolean => {
-    return patterns.some(
+  // Helper: check if any pattern matches hostname or hostname+path
+  const matchesAny = (patterns: string[]): boolean =>
+    patterns.some(
       (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
     );
-  };
 
-  // If includePatterns specified, act as whitelist
-  if (includePatterns.length > 0) {
-    // URL matches include pattern → include (include trumps exclude)
-    if (testPatterns(includePatterns)) {
-      return true;
-    }
-    // URL doesn't match include pattern → exclude (whitelist mode)
-    return false;
-  }
+  // Compute match states
+  const includeSpecified = includePatterns.length > 0;
+  const includeMatch = includeSpecified && matchesAny(includePatterns);
+  const excludeMatch = excludePatterns.length > 0 && matchesAny(excludePatterns);
 
-  // If excludePatterns specified and URL matches → exclude
-  if (excludePatterns.length > 0 && testPatterns(excludePatterns)) {
-    return false;
-  }
-
-  // Default behavior
-  return defaultBehavior === 'include';
+  // Decision logic: include trumps exclude, then whitelist mode, then exclude, then default
+  return includeMatch || (!includeSpecified && !excludeMatch && defaultBehavior === 'include');
 }
 
 /**

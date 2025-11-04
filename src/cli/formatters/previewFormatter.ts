@@ -3,19 +3,19 @@ import { truncateUrl, truncateText } from '@/utils/url.js';
 
 /**
  * Flags that shape how preview output is rendered for `bdg peek`.
- * @property json      Emit raw JSON instead of formatted text.
- * @property network   Limit output to network requests (ignores console data).
- * @property console   Limit output to console messages (ignores network data).
- * @property last      Number of recent entries to include (parsed as integer).
- * @property verbose   Use the expanded, human-friendly layout.
- * @property follow    Stream updates until interrupted (tail-like behaviour).
  */
 export interface PreviewOptions {
+  /** Emit raw JSON instead of formatted text. */
   json?: boolean;
+  /** Limit output to network requests (ignores console data). */
   network?: boolean;
+  /** Limit output to console messages (ignores network data). */
   console?: boolean;
+  /** Number of recent entries to include (parsed as integer). */
   last: string;
+  /** Use the expanded, human-friendly layout. */
   verbose?: boolean;
+  /** Stream updates until interrupted (tail-like behaviour). */
   follow?: boolean;
 }
 

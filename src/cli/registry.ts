@@ -1,7 +1,9 @@
 import type { Command } from 'commander';
 
+import { registerDomCommands } from '@/cli/collectors/dom.js';
 import { registerCleanupCommand } from '@/cli/commands/cleanup.js';
 import { registerDetailsCommand } from '@/cli/commands/details.js';
+import { registerIpcTestCommand } from '@/cli/commands/ipcTest.js';
 import { registerPeekCommand } from '@/cli/commands/peek.js';
 import { registerQueryCommand } from '@/cli/commands/query.js';
 import { registerStartCommands } from '@/cli/commands/start.js';
@@ -14,15 +16,36 @@ import { registerStopCommand } from '@/cli/commands/stop.js';
 export type CommandRegistrar = (program: Command) => void;
 
 /**
- * Registry of all CLI commands
- * Order matters: start commands first (includes default), then others
+ * Helper to add a command group
+ */
+const addCommandGroup = (groupName: string): CommandRegistrar => {
+  return (program: Command) => {
+    program.commandsGroup(groupName);
+  };
+};
+
+/**
+ * Registry of all CLI commands with grouping
+ * Order matters: groups organize commands in help output
  */
 export const commandRegistry: CommandRegistrar[] = [
+  // Default command (no group)
   registerStartCommands, // Default + dom/network/console
-  registerQueryCommand,
-  registerStopCommand,
+
+  // Session Management Commands
+  addCommandGroup('Session Management:'),
   registerStatusCommand,
+  registerStopCommand,
   registerCleanupCommand,
-  registerDetailsCommand,
+
+  // Data Inspection Commands
+  addCommandGroup('Data Inspection:'),
   registerPeekCommand,
+  registerDetailsCommand,
+  registerQueryCommand,
+  registerDomCommands,
+
+  // IPC Testing (MVP)
+  addCommandGroup('IPC Testing:'),
+  registerIpcTestCommand,
 ];

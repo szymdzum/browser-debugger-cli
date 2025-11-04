@@ -2,17 +2,19 @@ import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
+import { readPid } from '@/session/pid.js';
+import { isProcessAlive } from '@/session/process.js';
 import type { CDPTarget } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { readPid, isProcessAlive } from '@/utils/session.js';
 
 /**
  * Flags accepted by the `bdg query` command.
- * @property port Chrome debugging port to target for evaluation.
- * @property json Output result wrapped in version/success format.
  */
 interface QueryOptions {
+  /** Chrome debugging port to target for evaluation. */
   port: string;
+  /** Output result wrapped in version/success format. */
   json?: boolean;
 }
 
@@ -58,7 +60,7 @@ export function registerQueryCommand(program: Command): void {
         }
 
         // Read session metadata to get the target ID
-        const { readSessionMetadata } = await import('../../utils/session.js');
+        const { readSessionMetadata } = await import('@/session/metadata.js');
         const metadata = readSessionMetadata();
 
         if (!metadata?.targetId || !metadata.webSocketDebuggerUrl) {
@@ -159,7 +161,7 @@ export function registerQueryCommand(program: Command): void {
         }
         process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = getErrorMessage(error);
         if (options.json) {
           console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMsg), null, 2));
         } else {

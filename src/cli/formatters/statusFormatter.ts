@@ -1,6 +1,6 @@
+import type { SessionMetadata } from '@/session/metadata.js';
+import { isProcessAlive } from '@/session/process.js';
 import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
-import type { SessionMetadata } from '@/utils/session.js';
-import { isProcessAlive } from '@/utils/session.js';
 import { VERSION } from '@/utils/version.js';
 
 export interface StatusData {
@@ -23,9 +23,9 @@ export interface StatusData {
 
 /**
  * Format session status for human-readable output
- * @param metadata Session metadata
- * @param pid BDG process ID
- * @param verbose Show detailed Chrome diagnostics
+ * @param metadata - Session metadata
+ * @param pid - BDG process ID
+ * @param verbose - Show detailed Chrome diagnostics
  */
 export function formatSessionStatus(
   metadata: SessionMetadata,
@@ -151,24 +151,4 @@ export function formatNoSessionMessage(): string {
 Suggestions:
   Start a new session:     bdg <url>
   List Chrome tabs:        bdg tabs`;
-}
-
-/**
- * Format "stale session" message
- */
-export function formatStaleSessionMessage(pid: number): string {
-  return `Found stale session (PID ${pid} not running)
-
-Suggestions:
-  Clean up:          bdg cleanup
-  Start new session: bdg <url>`;
-}
-
-/**
- * Format "no metadata" message
- */
-export function formatNoMetadataMessage(pid: number): string {
-  return `Active session found (PID ${pid})
-Warning: No metadata available
-Session may have been started with an older version`;
 }

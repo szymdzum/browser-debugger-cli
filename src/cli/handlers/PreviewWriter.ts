@@ -1,5 +1,6 @@
+import { writePartialOutputAsync, writeFullOutputAsync } from '@/session/output.js';
 import type { CDPTarget, NetworkRequest, ConsoleMessage, CollectorType } from '@/types';
-import { writePartialOutputAsync, writeFullOutputAsync } from '@/utils/session.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 import { OutputBuilder } from './OutputBuilder.js';
 
@@ -84,10 +85,7 @@ export class PreviewWriter {
     // Create and track the write promise so shutdown can await it
     this.pendingWrite = this.doWrite()
       .catch((error) => {
-        console.error(
-          'Warning: Failed to write preview data:',
-          error instanceof Error ? error.message : String(error)
-        );
+        console.error('Warning: Failed to write preview data:', getErrorMessage(error));
       })
       .finally(() => {
         this.isWriting = false;

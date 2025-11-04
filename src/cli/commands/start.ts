@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 
-import { startSession } from '@/cli/handlers/sessionController.js';
+import { startSessionViaDaemon } from '@/cli/handlers/daemonSessionController.js';
 import {
   DEFAULT_DEBUG_PORT,
   DEFAULT_REUSE_TAB,
@@ -17,60 +17,49 @@ import {
   PORT_STRICT_OPTION_DESCRIPTION,
 } from '@/constants';
 import type { CollectorType } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
- * @property port                   Chrome debugging port as provided by the user.
- * @property timeout                Optional auto-stop timeout (seconds, string form).
- * @property reuseTab               Whether to reuse an existing tab instead of creating one.
- * @property userDataDir            Custom Chrome profile directory path.
- * @property all                    When true, disables default filtering of noisy data.
- * @property logLevel               Chrome launcher log level (verbose|info|error|silent).
- * @property chromePrefs            Inline JSON string with Chrome preferences.
- * @property chromePrefsFile        Path to JSON file with Chrome preferences.
- * @property chromeFlags            Additional Chrome command-line flags.
- * @property connectionPollInterval Milliseconds between CDP readiness checks.
- * @property maxConnectionRetries   Maximum retry attempts before failing.
- * @property portStrict             Fail if port is already in use.
- * @property dom                    Enable only DOM collector (additive).
- * @property network                Enable only network collector (additive).
- * @property console                Enable only console collector (additive).
- * @property skipDom                Disable DOM collector (subtractive).
- * @property skipNetwork            Disable network collector (subtractive).
- * @property skipConsole            Disable console collector (subtractive).
- * @property fetchAllBodies         Fetch all response bodies (override auto-optimization).
- * @property fetchBodiesInclude     Comma-separated patterns for bodies to include (trumps exclude).
- * @property fetchBodiesExclude     Comma-separated patterns for bodies to exclude.
- * @property networkInclude         Comma-separated URL patterns to capture (trumps exclude).
- * @property networkExclude         Comma-separated URL patterns to exclude.
- * @property maxBodySize            Maximum response body size in megabytes (default: 5MB).
- * @property compact                Use compact JSON format (no indentation) for output files.
  */
 interface CollectorOptions {
+  /** Chrome debugging port as provided by the user. */
   port: string;
+  /** Optional auto-stop timeout (seconds, string form). */
   timeout?: string;
+  /** Whether to reuse an existing tab instead of creating one. */
   reuseTab?: boolean;
+  /** Custom Chrome profile directory path. */
   userDataDir?: string;
+  /** When true, disables default filtering of noisy data. */
   all?: boolean;
+  /** Chrome launcher log level (verbose|info|error|silent). */
   logLevel?: string;
+  /** Inline JSON string with Chrome preferences. */
   chromePrefs?: string;
+  /** Path to JSON file with Chrome preferences. */
   chromePrefsFile?: string;
+  /** Additional Chrome command-line flags. */
   chromeFlags?: string[];
+  /** Milliseconds between CDP readiness checks. */
   connectionPollInterval?: string;
+  /** Maximum retry attempts before failing. */
   maxConnectionRetries?: string;
+  /** Fail if port is already in use. */
   portStrict?: boolean;
-  dom?: boolean;
-  network?: boolean;
-  console?: boolean;
-  skipDom?: boolean;
-  skipNetwork?: boolean;
-  skipConsole?: boolean;
+  /** Fetch all response bodies (override auto-optimization). */
   fetchAllBodies?: boolean;
+  /** Comma-separated patterns for bodies to include (trumps exclude). */
   fetchBodiesInclude?: string;
+  /** Comma-separated patterns for bodies to exclude. */
   fetchBodiesExclude?: string;
+  /** Comma-separated URL patterns to capture (trumps exclude). */
   networkInclude?: string;
+  /** Comma-separated URL patterns to exclude. */
   networkExclude?: string;
+  /** Maximum response body size in megabytes (default: 5MB). */
   maxBodySize?: string;
+  /** Use compact JSON format (no indentation) for output files. */
   compact?: boolean;
 }
 
@@ -81,53 +70,63 @@ interface CollectorOptions {
  * @returns The modified Command instance with all collector options applied
  */
 function applyCollectorOptions(command: Command): Command {
-  return command
-    .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
-    .option('-t, --timeout <seconds>', TIMEOUT_OPTION_DESCRIPTION)
-    .option('-r, --reuse-tab', REUSE_TAB_OPTION_DESCRIPTION)
-    .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
-    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)')
-    .option('-c, --compact', 'Use compact JSON format (no indentation) for output files')
-    .option('--log-level <level>', LOG_LEVEL_OPTION_DESCRIPTION)
-    .option('--chrome-prefs <json>', CHROME_PREFS_OPTION_DESCRIPTION)
-    .option('--chrome-prefs-file <path>', CHROME_PREFS_FILE_OPTION_DESCRIPTION)
-    .option('--chrome-flags <flags...>', CHROME_FLAGS_OPTION_DESCRIPTION)
-    .option('--connection-poll-interval <ms>', CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION)
-    .option('--max-connection-retries <count>', MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION)
-    .option('--port-strict', PORT_STRICT_OPTION_DESCRIPTION)
-    .option('--dom', 'Enable only DOM collector (additive)')
-    .option('--network', 'Enable only network collector (additive)')
-    .option('--console', 'Enable only console collector (additive)')
-    .option('--skip-dom', 'Disable DOM collector (subtractive)')
-    .option('--skip-network', 'Disable network collector (subtractive)')
-    .option('--skip-console', 'Disable console collector (subtractive)')
-    .option('--fetch-all-bodies', 'Fetch all response bodies (override auto-optimization)')
-    .option(
-      '--fetch-bodies-include <patterns>',
-      'Only fetch bodies matching patterns (comma-separated wildcards, trumps exclude)'
-    )
-    .option(
-      '--fetch-bodies-exclude <patterns>',
-      'Additional patterns to exclude from body fetching (comma-separated wildcards)'
-    )
-    .option(
-      '--network-include <patterns>',
-      'Only capture URLs matching patterns (comma-separated wildcards, trumps exclude)'
-    )
-    .option(
-      '--network-exclude <patterns>',
-      'Additional URL patterns to exclude (comma-separated wildcards)'
-    )
-    .option('--max-body-size <megabytes>', 'Maximum response body size in MB (default: 5MB)', '5');
+  return (
+    command
+      // Basic Options
+      .optionsGroup('Basic Options:')
+      .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
+      .option('-t, --timeout <seconds>', TIMEOUT_OPTION_DESCRIPTION)
+      .option('-r, --reuse-tab', REUSE_TAB_OPTION_DESCRIPTION)
+      .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
+      .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)')
+      .option('--compact', 'Use compact JSON format (no indentation) for output files')
+
+      // Chrome Configuration
+      .optionsGroup('Chrome Configuration:')
+      .option('-L, --log-level <level>', LOG_LEVEL_OPTION_DESCRIPTION)
+      .option('-P, --chrome-prefs <json>', CHROME_PREFS_OPTION_DESCRIPTION)
+      .option('-F, --chrome-prefs-file <path>', CHROME_PREFS_FILE_OPTION_DESCRIPTION)
+      .option('-G, --chrome-flags <flags...>', CHROME_FLAGS_OPTION_DESCRIPTION)
+
+      // Connection Settings
+      .optionsGroup('Connection Settings:')
+      .option('-I, --connection-poll-interval <ms>', CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION)
+      .option('-R, --max-connection-retries <count>', MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION)
+      .option('-S, --port-strict', PORT_STRICT_OPTION_DESCRIPTION)
+
+      // Network Optimization
+      .optionsGroup('Network Optimization:')
+      .option('-B, --fetch-all-bodies', 'Fetch all response bodies (override auto-optimization)')
+      .option(
+        '-i, --fetch-bodies-include <patterns>',
+        'Only fetch bodies matching patterns (comma-separated wildcards, trumps exclude)'
+      )
+      .option(
+        '-x, --fetch-bodies-exclude <patterns>',
+        'Additional patterns to exclude from body fetching (comma-separated wildcards)'
+      )
+      .option(
+        '-y, --network-include <patterns>',
+        'Only capture URLs matching patterns (comma-separated wildcards, trumps exclude)'
+      )
+      .option(
+        '-z, --network-exclude <patterns>',
+        'Additional URL patterns to exclude (comma-separated wildcards)'
+      )
+      .option(
+        '-m, --max-body-size <megabytes>',
+        'Maximum response body size in MB (default: 5MB)',
+        '5'
+      )
+  );
 }
 
 /**
  * Parse a string to integer, returning undefined if not provided
- *
  * @param value - Optional string value to parse
  * @param fieldName - Name of the field being parsed (for error messages)
  * @returns Parsed integer or undefined if value was not provided
- * @throws {Error} If value is provided but not a valid integer
+ * @throws Error if value is provided but not a valid integer
  */
 function parseOptionalInt(value: string | undefined, fieldName: string): number | undefined {
   if (value === undefined) {
@@ -167,84 +166,8 @@ function parseOptionalJson(value: string | undefined): Record<string, unknown> |
   try {
     return JSON.parse(value) as Record<string, unknown>;
   } catch (error) {
-    throw new Error(
-      `Invalid JSON in --chrome-prefs: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throw new Error(`Invalid JSON in --chrome-prefs: ${getErrorMessage(error)}`);
   }
-}
-
-/**
- * Validate collector flags for conflicts
- *
- * @param options - Parsed command-line options from Commander
- * @throws Error if conflicting flags are detected (e.g., --dom and --no-dom)
- */
-export function validateCollectorFlags(options: CollectorOptions): void {
-  const conflicts: string[] = [];
-
-  if (options.dom && options.skipDom) {
-    conflicts.push('--dom and --skip-dom');
-  }
-  if (options.network && options.skipNetwork) {
-    conflicts.push('--network and --skip-network');
-  }
-  if (options.console && options.skipConsole) {
-    conflicts.push('--console and --skip-console');
-  }
-
-  if (conflicts.length > 0) {
-    throw new Error(
-      `Conflicting collector flags detected: ${conflicts.join(', ')}. ` +
-        'Use either additive flags (--dom, --network, --console) or subtractive flags (--skip-dom, --skip-network, --skip-console), not both for the same collector.'
-    );
-  }
-}
-
-/**
- * Resolve which collectors to activate based on CLI flags
- *
- * @param options - Parsed command-line options from Commander
- * @returns Array of collector types to activate
- *
- * Logic:
- * - If any additive flags (--dom, --network, --console) are present, return only those collectors
- * - If subtractive flags (--skip-dom, --skip-network, --skip-console) are present, return all collectors minus excluded ones
- * - If no collector flags are present, return all collectors (default)
- */
-export function resolveCollectors(options: CollectorOptions): CollectorType[] {
-  const allCollectors: CollectorType[] = ['dom', 'network', 'console'];
-
-  // Check for additive flags
-  const hasAdditive = options.dom ?? options.network ?? options.console;
-  if (hasAdditive) {
-    const collectors: CollectorType[] = [];
-    if (options.dom) collectors.push('dom');
-    if (options.network) collectors.push('network');
-    if (options.console) collectors.push('console');
-    return collectors;
-  }
-
-  // Check for subtractive flags
-  const hasSubtractive = options.skipDom ?? options.skipNetwork ?? options.skipConsole;
-  if (hasSubtractive) {
-    const collectors = [...allCollectors];
-    if (options.skipDom) {
-      const index = collectors.indexOf('dom');
-      if (index > -1) collectors.splice(index, 1);
-    }
-    if (options.skipNetwork) {
-      const index = collectors.indexOf('network');
-      if (index > -1) collectors.splice(index, 1);
-    }
-    if (options.skipConsole) {
-      const index = collectors.indexOf('console');
-      if (index > -1) collectors.splice(index, 1);
-    }
-    return collectors;
-  }
-
-  // Default: return all collectors
-  return allCollectors;
 }
 
 /**
@@ -309,14 +232,13 @@ function buildSessionOptions(options: CollectorOptions): {
  * @returns Promise that resolves when session completes or is stopped
  */
 async function collectorAction(url: string, options: CollectorOptions): Promise<void> {
-  // Validate collector flags for conflicts
-  validateCollectorFlags(options);
-
-  // Resolve which collectors to activate based on flags
-  const collectors = resolveCollectors(options);
-
   const sessionOptions = buildSessionOptions(options);
-  await startSession(url, sessionOptions, collectors);
+
+  // Always collect all 3 types (dom, network, console)
+  const collectors: CollectorType[] = ['dom', 'network', 'console'];
+
+  // Dispatch to daemon via IPC instead of running in-process
+  await startSessionViaDaemon(url, sessionOptions, collectors);
 }
 
 /**
@@ -326,9 +248,7 @@ async function collectorAction(url: string, options: CollectorOptions): Promise<
  * @returns void
  */
 export function registerStartCommands(program: Command): void {
-  // Default command: collectors determined by flags
-  // Use --dom, --network, --console (additive) or --no-dom, --no-network, --no-console (subtractive)
-  // If no collector flags provided, all collectors are activated
+  // Default command: always collects all 3 types (dom, network, console)
   applyCollectorOptions(
     program.argument('<url>', 'Target URL (example.com or localhost:3000)')
   ).action(async (url: string, options: CollectorOptions) => {

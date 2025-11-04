@@ -3,20 +3,24 @@ import * as fs from 'fs';
 import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { cleanupSession } from '@/session/cleanup.js';
+import { getSessionFilePath } from '@/session/paths.js';
+import { readPid } from '@/session/pid.js';
+import { isProcessAlive } from '@/session/process.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
 
 /**
  * Flags consumed by the `bdg cleanup` command.
- * @property force      Force removal even if the tracked process is alive.
- * @property all        Also delete the persisted `session.json` artifact.
- * @property aggressive Aggressively kill all Chrome processes (uses chrome-launcher killAll).
- * @property json       Output result as JSON.
  */
 interface CleanupOptions {
+  /** Force removal even if the tracked process is alive. */
   force?: boolean;
+  /** Also delete the persisted `session.json` artifact. */
   all?: boolean;
+  /** Aggressively kill all Chrome processes (uses chrome-launcher killAll). */
   aggressive?: boolean;
+  /** Output result as JSON. */
   json?: boolean;
 }
 
@@ -117,7 +121,7 @@ export function registerCleanupCommand(program: Command): void {
 
         // Also remove session.json output file if --all flag is specified
         if (options.all) {
-          const outputPath = getOutputFilePath();
+          const outputPath = getSessionFilePath('OUTPUT');
           if (fs.existsSync(outputPath)) {
             try {
               fs.unlinkSync(outputPath);
@@ -127,7 +131,7 @@ export function registerCleanupCommand(program: Command): void {
               }
               didCleanup = true;
             } catch (error: unknown) {
-              const errorMessage = error instanceof Error ? error.message : String(error);
+              const errorMessage = getErrorMessage(error);
               warnings.push(`Could not remove session.json: ${errorMessage}`);
               if (!options.json) {
                 console.error(`Warning: Could not remove session.json: ${errorMessage}`);
@@ -177,16 +181,10 @@ export function registerCleanupCommand(program: Command): void {
       } catch (error) {
         if (options.json) {
           console.log(
-            JSON.stringify(
-              OutputBuilder.buildJsonError(error instanceof Error ? error.message : String(error)),
-              null,
-              2
-            )
+            JSON.stringify(OutputBuilder.buildJsonError(getErrorMessage(error)), null, 2)
           );
         } else {
-          console.error(
-            `Error during cleanup: ${error instanceof Error ? error.message : String(error)}`
-          );
+          console.error(`Error during cleanup: ${getErrorMessage(error)}`);
         }
         process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }

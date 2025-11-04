@@ -2,7 +2,9 @@
  * Test utilities - Re-export all test helpers
  *
  * Single import point for all test utilities:
+ * ```ts
  * import { FakeClock, FakeWebSocket, useFakeClock, ... } from '@/__testutils__/index.js';
+ * ```
  */
 
 export { FakeClock } from './FakeClock.js';

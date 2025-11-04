@@ -1,5 +1,8 @@
+import { cleanupSession } from '@/session/cleanup.js';
+import { acquireSessionLock } from '@/session/lock.js';
+import { readPid } from '@/session/pid.js';
+import { isProcessAlive } from '@/session/process.js';
 import type { CollectorType } from '@/types';
-import { readPid, isProcessAlive, cleanupSession, acquireSessionLock } from '@/utils/session.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { validateCollectorTypes } from '@/utils/validation.js';
 

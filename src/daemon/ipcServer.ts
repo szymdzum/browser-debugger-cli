@@ -1,0 +1,762 @@
+/**
+ * Daemon IPC Server - Minimal JSONL handshake MVP
+ *
+ * Starts a Unix domain socket server that:
+ * 1. Listens for JSONL frames (newline-delimited JSON messages)
+ * 2. Responds only to handshake requests
+ * 3. Logs all incoming frames for debugging
+ */
+
+import { readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { createServer } from 'net';
+
+import type { ChildProcess } from 'child_process';
+import type { Server, Socket } from 'net';
+
+import { launchSessionInWorker, WorkerStartError } from '@/daemon/startSession.js';
+import type { WorkerIPCResponse } from '@/daemon/workerIpc.js';
+import {
+  type ClientRequestUnion,
+  type ClientResponse,
+  type WorkerRequest,
+  type WorkerResponseUnion,
+  getCommandName,
+  isCommandRequest,
+  isCommandResponse,
+} from '@/ipc/commands.js';
+import type {
+  HandshakeRequest,
+  HandshakeResponse,
+  IPCMessageType,
+  PeekRequest,
+  PeekResponse,
+  PeekResponseData,
+  StartSessionRequest,
+  StartSessionResponse,
+  StartSessionResponseData,
+  StatusRequest,
+  StatusResponse,
+  StatusResponseData,
+  StopSessionRequest,
+  StopSessionResponse,
+} from '@/ipc/types.js';
+import { IPCErrorCode } from '@/ipc/types.js';
+import { cleanupSession } from '@/session/cleanup.js';
+import { readSessionMetadata } from '@/session/metadata.js';
+import { readPartialOutput } from '@/session/output.js';
+import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
+import { readPid } from '@/session/pid.js';
+import { isProcessAlive } from '@/session/process.js';
+import { getErrorMessage } from '@/utils/errors.js';
+import { filterDefined } from '@/utils/objects.js';
+
+/**
+ * Pending DOM request waiting for worker response
+ */
+interface PendingDomRequest {
+  socket: Socket;
+  sessionId: string;
+  timeout: NodeJS.Timeout;
+}
+
+/**
+ * Simple JSONL IPC server for daemon communication.
+ */
+export class IPCServer {
+  private server: Server | null = null;
+  private clients: Set<Socket> = new Set();
+  private readonly startTime: number = Date.now();
+  private workerProcess: ChildProcess | null = null;
+  private pendingDomRequests: Map<string, PendingDomRequest> = new Map(); // requestId -> pending request
+
+  /**
+   * Start the IPC server on Unix domain socket.
+   */
+  async start(): Promise<void> {
+    // Ensure ~/.bdg directory exists
+    ensureSessionDir();
+
+    // Clean up stale socket if exists
+    const socketPath = getSessionFilePath('DAEMON_SOCKET');
+    try {
+      unlinkSync(socketPath);
+    } catch {
+      // Ignore if socket doesn't exist
+    }
+
+    this.server = createServer((socket: Socket) => {
+      this.handleConnection(socket);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      if (!this.server) {
+        reject(new Error('Server not initialized'));
+        return;
+      }
+
+      this.server.listen(socketPath, () => {
+        console.error(`[daemon] IPC server listening on ${socketPath}`);
+        this.writePidFile();
+        resolve();
+      });
+
+      this.server.on('error', (err) => {
+        console.error('[daemon] Server error:', err);
+        reject(err);
+      });
+    });
+  }
+
+  /**
+   * Handle new client connection.
+   */
+  private handleConnection(socket: Socket): void {
+    console.error('[daemon] Client connected');
+    this.clients.add(socket);
+
+    let buffer = '';
+
+    socket.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString('utf-8');
+
+      // Process complete JSONL frames (separated by newlines)
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.trim()) {
+          this.handleMessage(socket, line);
+        }
+      }
+    });
+
+    socket.on('end', () => {
+      console.error('[daemon] Client disconnected');
+      this.clients.delete(socket);
+    });
+
+    socket.on('error', (err) => {
+      console.error('[daemon] Socket error:', err);
+      this.clients.delete(socket);
+    });
+  }
+
+  /**
+   * Handle incoming JSONL message.
+   */
+  private handleMessage(socket: Socket, line: string): void {
+    console.error('[daemon] Raw frame:', line);
+
+    try {
+      // Parse message - could be either IPC message or command request
+      const message = JSON.parse(line) as IPCMessageType | ClientRequestUnion;
+
+      // Check if this is a command request
+      if (isCommandRequest(message.type)) {
+        this.handleCommandRequest(socket, message as ClientRequestUnion);
+        return;
+      }
+
+      switch (message.type) {
+        case 'handshake_request':
+          this.handleHandshake(socket, message);
+          break;
+        case 'handshake_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected handshake response from client');
+          break;
+        case 'status_request':
+          this.handleStatusRequest(socket, message);
+          break;
+        case 'status_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected status response from client');
+          break;
+        case 'peek_request':
+          this.handlePeekRequest(socket, message);
+          break;
+        case 'peek_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected peek response from client');
+          break;
+        case 'start_session_request':
+          void this.handleStartSessionRequest(socket, message);
+          break;
+        case 'start_session_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected start session response from client');
+          break;
+        case 'stop_session_request':
+          this.handleStopSessionRequest(socket, message);
+          break;
+        case 'stop_session_response':
+          // Response messages are sent by daemon, not received
+          console.error('[daemon] Unexpected stop session response from client');
+          break;
+        // NOTE: DOM command responses are now handled via command system (see commands.ts)
+      }
+    } catch (error) {
+      console.error('[daemon] Failed to parse message:', error);
+    }
+  }
+
+  /**
+   * Handle handshake request.
+   */
+  private handleHandshake(socket: Socket, request: HandshakeRequest): void {
+    console.error(`[daemon] Handshake request received (sessionId: ${request.sessionId})`);
+
+    const response: HandshakeResponse = {
+      type: 'handshake_response',
+      sessionId: request.sessionId,
+      status: 'ok',
+      message: 'Handshake successful',
+    };
+
+    // Send JSONL response (JSON + newline)
+    socket.write(JSON.stringify(response) + '\n');
+    console.error('[daemon] Handshake response sent');
+  }
+
+  /**
+   * Handle status request.
+   */
+  private handleStatusRequest(socket: Socket, request: StatusRequest): void {
+    console.error(`[daemon] Status request received (sessionId: ${request.sessionId})`);
+
+    try {
+      // Gather daemon metadata
+      const data: StatusResponseData = {
+        daemonPid: process.pid,
+        daemonStartTime: this.startTime,
+        socketPath: getSessionFilePath('DAEMON_SOCKET'),
+      };
+
+      // Check for active session
+      const sessionPid = readPid();
+      if (sessionPid && isProcessAlive(sessionPid)) {
+        data.sessionPid = sessionPid;
+
+        // Try to read session metadata
+        const metadata = readSessionMetadata();
+        if (metadata) {
+          data.sessionMetadata = filterDefined({
+            bdgPid: metadata.bdgPid,
+            chromePid: metadata.chromePid,
+            startTime: metadata.startTime,
+            port: metadata.port,
+            targetId: metadata.targetId,
+            webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
+            activeCollectors: metadata.activeCollectors,
+          }) as Required<NonNullable<StatusResponseData['sessionMetadata']>>;
+        }
+      }
+
+      const response: StatusResponse = {
+        type: 'status_response',
+        sessionId: request.sessionId,
+        status: 'ok',
+        data,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Status response sent');
+    } catch (error) {
+      const response: StatusResponse = {
+        type: 'status_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: `Failed to gather status: ${getErrorMessage(error)}`,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Status error response sent');
+    }
+  }
+
+  /**
+   * Handle peek request.
+   */
+  private handlePeekRequest(socket: Socket, request: PeekRequest): void {
+    console.error(`[daemon] Peek request received (sessionId: ${request.sessionId})`);
+
+    try {
+      // Check for active session
+      const sessionPid = readPid();
+      if (!sessionPid || !isProcessAlive(sessionPid)) {
+        const response: PeekResponse = {
+          type: 'peek_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          error: 'No active session found',
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Peek error response sent (no session)');
+        return;
+      }
+
+      // Read preview data from filesystem
+      const previewData = readPartialOutput();
+      if (!previewData) {
+        const response: PeekResponse = {
+          type: 'peek_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          error: 'No preview data available (session may be starting up)',
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Peek error response sent (no preview data)');
+        return;
+      }
+
+      // Build response with preview data
+      const data: PeekResponseData = {
+        sessionPid,
+        preview: {
+          version: previewData.version,
+          success: previewData.success,
+          timestamp: previewData.timestamp,
+          duration: previewData.duration,
+          target: previewData.target,
+          data: previewData.data,
+          ...(previewData.partial !== undefined && { partial: previewData.partial }),
+        },
+      };
+
+      const response: PeekResponse = {
+        type: 'peek_response',
+        sessionId: request.sessionId,
+        status: 'ok',
+        data,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Peek response sent');
+    } catch (error) {
+      const response: PeekResponse = {
+        type: 'peek_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: `Failed to get preview: ${getErrorMessage(error)}`,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Peek error response sent');
+    }
+  }
+
+  /**
+   * Handle start session request.
+   */
+  private async handleStartSessionRequest(
+    socket: Socket,
+    request: StartSessionRequest
+  ): Promise<void> {
+    console.error(
+      `[daemon] Start session request received (sessionId: ${request.sessionId}, url: ${request.url})`
+    );
+
+    try {
+      // Check for existing session (concurrency guard)
+      const sessionPid = readPid();
+      if (sessionPid && isProcessAlive(sessionPid)) {
+        const response: StartSessionResponse = {
+          type: 'start_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: `Session already running (PID ${sessionPid}). Stop it first with stop_session_request.`,
+          errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Start session error response sent (session already running)');
+        return;
+      }
+
+      // Launch worker
+      console.error('[daemon] Launching worker...');
+      try {
+        const metadata = await launchSessionInWorker(
+          request.url,
+          filterDefined({
+            port: request.port,
+            timeout: request.timeout,
+            collectors: request.collectors,
+            includeAll: request.includeAll,
+            userDataDir: request.userDataDir,
+            maxBodySize: request.maxBodySize,
+          })
+        );
+
+        console.error('[daemon] Worker launched successfully');
+
+        // Store worker process for IPC
+        this.workerProcess = metadata.workerProcess;
+
+        // Set up worker stdout listener for DOM responses
+        this.setupWorkerListener(metadata.workerProcess);
+
+        // Build response data
+        const data: StartSessionResponseData = {
+          workerPid: metadata.workerPid,
+          chromePid: metadata.chromePid,
+          port: metadata.port,
+          targetUrl: metadata.targetUrl,
+          ...(metadata.targetTitle !== undefined && { targetTitle: metadata.targetTitle }),
+        };
+
+        const response: StartSessionResponse = {
+          type: 'start_session_response',
+          sessionId: request.sessionId,
+          status: 'ok',
+          data,
+          message: 'Session started successfully',
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Start session response sent');
+      } catch (error) {
+        // Map worker errors to IPC error codes
+        let errorCode: IPCErrorCode = IPCErrorCode.WORKER_START_FAILED;
+        let errorMessage = 'Failed to start worker';
+
+        if (error instanceof WorkerStartError) {
+          errorMessage = error.message;
+          switch (error.code) {
+            case 'SPAWN_FAILED':
+            case 'WORKER_CRASH':
+            case 'INVALID_READY_MESSAGE':
+              errorCode = IPCErrorCode.WORKER_START_FAILED;
+              break;
+            case 'READY_TIMEOUT':
+              errorCode = IPCErrorCode.CDP_TIMEOUT;
+              break;
+          }
+        } else {
+          errorMessage = getErrorMessage(error);
+        }
+
+        const response: StartSessionResponse = {
+          type: 'start_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: errorMessage,
+          errorCode,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error(`[daemon] Start session error response sent (${errorCode})`);
+      }
+    } catch (error) {
+      const response: StartSessionResponse = {
+        type: 'start_session_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        message: `Daemon error: ${getErrorMessage(error)}`,
+        errorCode: IPCErrorCode.DAEMON_ERROR,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Start session error response sent (daemon error)');
+    }
+  }
+
+  /**
+   * Handle stop session request.
+   */
+  private handleStopSessionRequest(socket: Socket, request: StopSessionRequest): void {
+    console.error(`[daemon] Stop session request received (sessionId: ${request.sessionId})`);
+
+    try {
+      // Check for active session
+      const sessionPid = readPid();
+      if (!sessionPid || !isProcessAlive(sessionPid)) {
+        const response: StopSessionResponse = {
+          type: 'stop_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: 'No active session found',
+          errorCode: IPCErrorCode.NO_SESSION,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Stop session error response sent (no session)');
+        return;
+      }
+
+      // Capture Chrome PID BEFORE cleanup (so CLI can kill Chrome if needed)
+      const metadata = readSessionMetadata();
+      const chromePid = metadata?.chromePid;
+      if (chromePid) {
+        console.error(`[daemon] Captured Chrome PID ${chromePid} before cleanup`);
+      }
+
+      // Kill the session process (use SIGTERM for graceful shutdown)
+      try {
+        process.kill(sessionPid, 'SIGTERM');
+        console.error(`[daemon] Sent SIGTERM to session process (PID ${sessionPid})`);
+      } catch (killError: unknown) {
+        const errorMessage = killError instanceof Error ? killError.message : String(killError);
+        const response: StopSessionResponse = {
+          type: 'stop_session_response',
+          sessionId: request.sessionId,
+          status: 'error',
+          message: `Failed to kill session process: ${errorMessage}`,
+          errorCode: IPCErrorCode.SESSION_KILL_FAILED,
+        };
+
+        socket.write(JSON.stringify(response) + '\n');
+        console.error('[daemon] Stop session error response sent (kill failed)');
+        return;
+      }
+
+      // Clean up session files
+      cleanupSession();
+      console.error('[daemon] Cleaned up session files');
+
+      // Clear worker process reference
+      this.workerProcess = null;
+      console.error('[daemon] Cleared worker process reference');
+
+      const response: StopSessionResponse = {
+        type: 'stop_session_response',
+        sessionId: request.sessionId,
+        status: 'ok',
+        message: 'Session stopped successfully',
+        ...(chromePid !== undefined && { chromePid }),
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Stop session response sent');
+    } catch (error) {
+      const response: StopSessionResponse = {
+        type: 'stop_session_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        message: `Failed to stop session: ${getErrorMessage(error)}`,
+        errorCode: IPCErrorCode.DAEMON_ERROR,
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Stop session error response sent');
+    }
+  }
+
+  /**
+   * Set up worker stdout listener for IPC responses.
+   */
+  private setupWorkerListener(worker: ChildProcess): void {
+    let buffer = '';
+
+    if (!worker.stdout) {
+      console.error('[daemon] Warning: Worker stdout not available');
+      return;
+    }
+
+    worker.stdout.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString('utf-8');
+
+      // Process complete JSONL frames (separated by newlines)
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        try {
+          // Parse message - could be either lifecycle signal or command response
+          const message = JSON.parse(line) as WorkerIPCResponse | WorkerResponseUnion;
+          this.handleWorkerResponse(message);
+        } catch (error) {
+          // Ignore parse errors, may be log messages
+          console.error(`[daemon] Failed to parse worker stdout line: ${getErrorMessage(error)}`);
+        }
+      }
+    });
+
+    console.error('[daemon] Worker stdout listener set up');
+  }
+
+  /**
+   * Handle response from worker (lifecycle signals or command responses).
+   */
+  private handleWorkerResponse(message: WorkerIPCResponse | WorkerResponseUnion): void {
+    console.error(
+      `[daemon] Received worker response: ${message.type} (requestId: ${message.requestId})`
+    );
+
+    // Check for ready signal (not a command response)
+    if (message.type === 'worker_ready') {
+      console.error('[daemon] Worker ready signal (already processed during launch)');
+      return;
+    }
+
+    // Check if this is a command response
+    if (isCommandResponse(message.type)) {
+      // Look up pending request
+      const pending = this.pendingDomRequests.get(message.requestId);
+      if (!pending) {
+        console.error(`[daemon] No pending request found for requestId: ${message.requestId}`);
+        return;
+      }
+
+      // Clear timeout and remove from pending
+      clearTimeout(pending.timeout);
+      this.pendingDomRequests.delete(message.requestId);
+
+      // Forward response to client
+      this.forwardCommandResponse(pending.socket, pending.sessionId, message);
+    }
+  }
+
+  /**
+   * Generic forwarder for all command responses.
+   */
+  private forwardCommandResponse(
+    socket: Socket,
+    sessionId: string,
+    workerResponse: WorkerResponseUnion
+  ): void {
+    const commandName = getCommandName(workerResponse.type);
+    if (!commandName) {
+      console.error(`[daemon] Invalid worker response type: ${workerResponse.type}`);
+      return;
+    }
+
+    const { requestId: _requestId, success, ...rest } = workerResponse;
+
+    const response: ClientResponse<typeof commandName> = {
+      ...rest,
+      type: `${commandName}_response` as const,
+      sessionId,
+      status: success ? 'ok' : 'error',
+    } as ClientResponse<typeof commandName>;
+
+    socket.write(JSON.stringify(response) + '\n');
+    console.error(`[daemon] Forwarded ${commandName}_response to client`);
+  }
+
+  /**
+   * Generic handler for all command requests.
+   */
+  private handleCommandRequest(socket: Socket, request: ClientRequestUnion): void {
+    const commandName = getCommandName(request.type);
+    if (!commandName) {
+      console.error(`[daemon] Invalid command type: ${request.type}`);
+      return;
+    }
+
+    console.error(`[daemon] ${commandName} request received (sessionId: ${request.sessionId})`);
+
+    if (!this.workerProcess?.stdin) {
+      const response: ClientResponse<typeof commandName> = {
+        type: `${commandName}_response` as const,
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'No active worker process',
+      };
+      socket.write(JSON.stringify(response) + '\n');
+      console.error(`[daemon] ${commandName} error response sent (no worker)`);
+      return;
+    }
+
+    const requestId = `${commandName}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const timeout = setTimeout(() => {
+      this.pendingDomRequests.delete(requestId);
+      const response: ClientResponse<typeof commandName> = {
+        type: `${commandName}_response` as const,
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'Worker response timeout (10s)',
+      };
+      socket.write(JSON.stringify(response) + '\n');
+      console.error(`[daemon] ${commandName} timeout response sent`);
+    }, 10000);
+
+    this.pendingDomRequests.set(requestId, { socket, sessionId: request.sessionId, timeout });
+
+    const { sessionId: _sessionId, type: _type, ...params } = request;
+    const workerRequest: WorkerRequest<typeof commandName> = {
+      type: `${commandName}_request` as const,
+      requestId,
+      ...params,
+    } as WorkerRequest<typeof commandName>;
+
+    this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
+    console.error(`[daemon] Forwarded ${commandName}_request to worker (requestId: ${requestId})`);
+  }
+
+  /**
+   * Stop the IPC server and cleanup.
+   */
+  async stop(): Promise<void> {
+    // Close all client connections
+    for (const socket of this.clients) {
+      socket.destroy();
+    }
+    this.clients.clear();
+
+    // Close server
+    if (this.server) {
+      await new Promise<void>((resolve) => {
+        this.server?.close(() => {
+          console.error('[daemon] IPC server stopped');
+          resolve();
+        });
+      });
+      this.server = null;
+    }
+
+    // Cleanup files
+    const socketPath = getSessionFilePath('DAEMON_SOCKET');
+    try {
+      unlinkSync(socketPath);
+    } catch {
+      // Ignore if already deleted
+    }
+    const pidPath = getSessionFilePath('DAEMON_PID');
+    try {
+      unlinkSync(pidPath);
+    } catch {
+      // Ignore if already deleted
+    }
+  }
+
+  /**
+   * Write daemon PID to file for tracking.
+   */
+  private writePidFile(): void {
+    const pidPath = getSessionFilePath('DAEMON_PID');
+    try {
+      writeFileSync(pidPath, process.pid.toString(), 'utf-8');
+      console.error(`[daemon] PID file written: ${pidPath}`);
+    } catch (error) {
+      console.error('[daemon] Failed to write PID file:', error);
+    }
+  }
+
+  /**
+   * Check if daemon is already running.
+   */
+  static isRunning(): boolean {
+    const pidPath = getSessionFilePath('DAEMON_PID');
+    try {
+      const pid = parseInt(readFileSync(pidPath, 'utf-8').trim(), 10);
+      // Check if process is alive
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get socket path for client connections.
+   */
+  static getSocketPath(): string {
+    return getSessionFilePath('DAEMON_SOCKET');
+  }
+}

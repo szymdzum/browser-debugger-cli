@@ -1,5 +1,5 @@
+import { writeSessionOutput } from '@/session/output.js';
 import type { BdgOutput } from '@/types';
-import { writeSessionOutput } from '@/utils/session.js';
 
 /**
  * Handles writing session output to files and console

@@ -1,8 +1,8 @@
 import type { PreviewWriter } from './PreviewWriter.js';
 
 import type { BdgSession } from '@/session/BdgSession.js';
+import { cleanupSession } from '@/session/cleanup.js';
 import type { BdgOutput, CDPTarget, LaunchedChrome } from '@/types';
-import { cleanupSession } from '@/utils/session.js';
 
 import { OutputBuilder } from './OutputBuilder.js';
 import { OutputWriter } from './OutputWriter.js';
@@ -91,8 +91,7 @@ export class ShutdownController {
   }
 
   /**
-   * Finalize shutdown: write output, cleanup, and exit
-   * @private
+   * Finalize shutdown: write output, cleanup, and exit (internal use only)
    */
   private finalize(output: BdgOutput, exitCode: 0 | 1): never {
     // Write output
