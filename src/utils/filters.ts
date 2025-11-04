@@ -217,33 +217,23 @@ interface PatternMatchConfig {
 function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean {
   const { includePatterns = [], excludePatterns = [], defaultBehavior = 'include' } = config;
 
-  // Extract hostname and path for pattern matching (using safe parsing)
+  // Parse URL once for all pattern checks
   const hostname = extractHostname(url);
   const hostnameWithPath = extractHostnameWithPath(url);
 
-  const testPatterns = (patterns: string[]): boolean => {
-    return patterns.some(
+  // Helper: check if any pattern matches hostname or hostname+path
+  const matchesAny = (patterns: string[]): boolean =>
+    patterns.some(
       (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
     );
-  };
 
-  // If includePatterns specified, act as whitelist
-  if (includePatterns.length > 0) {
-    // URL matches include pattern → include (include trumps exclude)
-    if (testPatterns(includePatterns)) {
-      return true;
-    }
-    // URL doesn't match include pattern → exclude (whitelist mode)
-    return false;
-  }
+  // Compute match states
+  const includeSpecified = includePatterns.length > 0;
+  const includeMatch = includeSpecified && matchesAny(includePatterns);
+  const excludeMatch = excludePatterns.length > 0 && matchesAny(excludePatterns);
 
-  // If excludePatterns specified and URL matches → exclude
-  if (excludePatterns.length > 0 && testPatterns(excludePatterns)) {
-    return false;
-  }
-
-  // Default behavior
-  return defaultBehavior === 'include';
+  // Decision logic: include trumps exclude, then whitelist mode, then exclude, then default
+  return includeMatch || (!includeSpecified && !excludeMatch && defaultBehavior === 'include');
 }
 
 /**
