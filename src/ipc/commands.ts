@@ -115,6 +115,18 @@ export interface WorkerDetailsData {
   item: unknown; // NetworkRequest | ConsoleMessage (full object)
 }
 
+/**
+ * CDP Call Command - Execute arbitrary CDP method
+ */
+export interface CdpCallCommand {
+  method: string; // CDP method (e.g., 'Network.getCookies', 'Runtime.evaluate')
+  params?: Record<string, unknown>; // CDP method parameters
+}
+
+export interface CdpCallData {
+  result: unknown; // CDP method result (varies by method)
+}
+
 // =============================================================================
 // Command Registry - Single Source of Truth
 // =============================================================================
@@ -143,6 +155,10 @@ export const COMMANDS = {
   worker_details: {
     requestSchema: {} as WorkerDetailsCommand,
     responseSchema: {} as WorkerDetailsData,
+  },
+  cdp_call: {
+    requestSchema: {} as CdpCallCommand,
+    responseSchema: {} as CdpCallData,
   },
 } as const;
 

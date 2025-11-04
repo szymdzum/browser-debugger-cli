@@ -428,6 +428,15 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       new Error(`Unknown itemType: ${String(params.itemType)}. Expected 'network' or 'console'.`)
     );
   },
+
+  /**
+   * CDP Call Handler - Execute arbitrary CDP method
+   */
+  cdp_call: async (cdp, params) => {
+    // Execute CDP method with provided parameters
+    const result = await cdp.send(params.method, params.params ?? {});
+    return { result };
+  },
 };
 
 /**
