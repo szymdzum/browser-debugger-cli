@@ -28,6 +28,7 @@ export function normalizeUrl(url: string): string {
     url.startsWith('chrome:') ||
     url.startsWith('data:') ||
     url.startsWith('javascript:') ||
+    url.startsWith('vbscript:') ||
     url.startsWith('blob:')
   ) {
     return url;

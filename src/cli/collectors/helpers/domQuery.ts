@@ -90,8 +90,21 @@ export async function getNodeInfo(cdp: CDPConnection, nodeId: number): Promise<D
     nodeId,
   })) as { outerHTML: string };
 
-  // Extract text content from HTML (simple approach)
-  const textContent = htmlResult.outerHTML.replace(/<[^>]*>/g, '').trim();
+  // Extract text content from HTML with complete tag removal
+  // First, remove script and style tags with their content entirely
+  let textContent = htmlResult.outerHTML
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+
+  // Then remove all remaining HTML tags (including malformed ones)
+  // Use multiple passes to ensure complete removal of nested/malformed tags
+  let previousLength;
+  do {
+    previousLength = textContent.length;
+    textContent = textContent.replace(/<[^>]*>/g, '');
+  } while (textContent.length !== previousLength && textContent.includes('<'));
+
+  textContent = textContent.trim();
 
   return {
     nodeId,
