@@ -63,20 +63,68 @@ export interface BdgOutput {
 
 export type CollectorType = 'dom' | 'network' | 'console';
 
+// CDP Supporting Types
+export type CDPResourceType =
+  | 'Document'
+  | 'Stylesheet'
+  | 'Image'
+  | 'Media'
+  | 'Font'
+  | 'Script'
+  | 'TextTrack'
+  | 'XHR'
+  | 'Fetch'
+  | 'Prefetch'
+  | 'EventSource'
+  | 'WebSocket'
+  | 'Manifest'
+  | 'SignedExchange'
+  | 'Ping'
+  | 'CSPViolationReport'
+  | 'Preflight'
+  | 'FedCM'
+  | 'Other';
+
+export type CDPMonotonicTime = number;
+export type CDPTimeSinceEpoch = number;
+export type CDPLoaderId = string;
+export type CDPFrameId = string;
+
+export interface CDPInitiator {
+  type: 'parser' | 'script' | 'preload' | 'SignedExchange' | 'preflight' | 'FedCM' | 'other';
+  stack?: unknown; // Runtime.StackTrace - keeping as unknown for simplicity
+  url?: string;
+  lineNumber?: number;
+  columnNumber?: number;
+  requestId?: string;
+}
+
 // CDP Event Parameter Types
 export interface CDPNetworkRequestParams {
   requestId: string;
+  loaderId?: CDPLoaderId;
+  documentURL?: string;
   request: {
     url: string;
     method: string;
     headers: Record<string, string>;
     postData?: string;
   };
-  timestamp: number;
+  timestamp: CDPMonotonicTime;
+  wallTime?: CDPTimeSinceEpoch;
+  initiator?: CDPInitiator;
+  redirectHasExtraInfo?: boolean;
+  redirectResponse?: unknown; // Response type - keeping as unknown for simplicity
+  type?: CDPResourceType;
+  frameId?: CDPFrameId;
+  hasUserGesture?: boolean;
 }
 
 export interface CDPNetworkResponseParams {
   requestId: string;
+  loaderId?: CDPLoaderId;
+  timestamp?: CDPMonotonicTime;
+  type?: CDPResourceType;
   response: {
     url: string;
     status: number;
@@ -84,6 +132,8 @@ export interface CDPNetworkResponseParams {
     headers: Record<string, string>;
     mimeType: string;
   };
+  hasExtraInfo?: boolean;
+  frameId?: CDPFrameId;
 }
 
 export interface CDPNetworkLoadingFinishedParams {
@@ -94,8 +144,12 @@ export interface CDPNetworkLoadingFinishedParams {
 
 export interface CDPNetworkLoadingFailedParams {
   requestId: string;
+  timestamp?: CDPMonotonicTime;
+  type?: CDPResourceType;
   errorText: string;
   canceled?: boolean;
+  blockedReason?: string;
+  corsErrorStatus?: unknown; // CorsErrorStatus type - keeping as unknown for simplicity
 }
 
 export interface CDPConsoleAPICalledParams {
