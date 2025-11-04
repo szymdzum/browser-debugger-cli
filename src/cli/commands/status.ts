@@ -6,6 +6,7 @@ import {
   formatNoSessionMessage,
 } from '@/cli/formatters/statusFormatter.js';
 import { getStatus } from '@/ipc/client.js';
+import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -86,7 +87,13 @@ export function registerStatusCommand(program: Command): void {
         // Handle connection errors (daemon not running)
         const errorMessage = getErrorMessage(error);
         if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
-          console.error('Daemon not running. Start it with: bdg <url>');
+          // P0 Fix #2: Auto-cleanup stale daemon PID if it exists
+          const cleaned = cleanupStaleDaemonPid();
+          if (cleaned) {
+            console.error('Daemon not running (stale PID cleaned up). Start it with: bdg <url>');
+          } else {
+            console.error('Daemon not running. Start it with: bdg <url>');
+          }
           process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 

@@ -21,6 +21,7 @@ const SESSION_FILES = {
   CHROME_PID: 'chrome.pid',
   DAEMON_PID: 'daemon.pid',
   DAEMON_SOCKET: 'daemon.sock',
+  DAEMON_LOCK: 'daemon.lock',
   DOM_QUERY_CACHE: 'last-query.json',
 } as const;
 

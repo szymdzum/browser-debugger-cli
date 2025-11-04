@@ -42,6 +42,7 @@ import type {
 } from '@/ipc/types.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { cleanupSession } from '@/session/cleanup.js';
+import { releaseDaemonLock } from '@/session/lock.js';
 import { readSessionMetadata } from '@/session/metadata.js';
 import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
@@ -748,6 +749,7 @@ export class IPCServer {
     const pidPath = getSessionFilePath('DAEMON_PID');
     try {
       writeFileSync(pidPath, process.pid.toString(), 'utf-8');
+      releaseDaemonLock(); // Release lock after PID is written (P0 Fix #1)
       console.error(`[daemon] PID file written: ${pidPath}`);
     } catch (error) {
       console.error('[daemon] Failed to write PID file:', error);
