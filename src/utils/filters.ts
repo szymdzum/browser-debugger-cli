@@ -188,14 +188,13 @@ export function shouldExcludeConsoleMessage(
 
 /**
  * Pattern matching configuration for URL filtering
- *
- * @property includePatterns - URL patterns to explicitly include (trumps all other rules)
- * @property excludePatterns - URL patterns to explicitly exclude
- * @property defaultBehavior - Behavior when URL doesn't match any patterns ('include' or 'exclude')
  */
 interface PatternMatchConfig {
+  /** URL patterns to explicitly include (trumps all other rules) */
   includePatterns?: string[];
+  /** URL patterns to explicitly exclude */
   excludePatterns?: string[];
+  /** Behavior when URL doesn't match any patterns ('include' or 'exclude') */
   defaultBehavior?: 'include' | 'exclude';
 }
 

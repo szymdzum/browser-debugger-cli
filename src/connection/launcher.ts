@@ -63,25 +63,6 @@ type JSONLike =
 /**
  * Options that control how Chrome is launched for CDP sessions.
  * Extended to support chrome-launcher advanced features.
- *
- * @property port                   Remote debugging port (defaults to 9222 when omitted).
- * @property userDataDir            Directory used for Chrome profile data. Falls back to
- *                                  the persistent `~/.bdg/chrome-profile` directory.
- * @property headless               When true, launches Chrome in headless mode. Defaults
- *                                  to the standard windowed experience.
- * @property url                    Initial URL to open. Defaults to `about:blank` and is
- *                                  typically replaced during session setup.
- * @property logLevel               Chrome launcher logging level (verbose|info|error|silent).
- *                                  Defaults to 'silent' for minimal output.
- * @property connectionPollInterval Milliseconds between CDP readiness checks. Defaults to 500ms.
- * @property maxConnectionRetries   Maximum retry attempts before failing. Defaults to 50.
- * @property portStrictMode         Fail if port is already in use. Defaults to false (lenient).
- * @property prefs                  Chrome preferences object to override default settings.
- * @property prefsFile              Path to JSON file containing Chrome preferences.
- * @property envVars                Environment variables to pass to Chrome process.
- * @property handleSIGINT           Let chrome-launcher handle SIGINT. Defaults to false (bdg handles it).
- * @property ignoreDefaultFlags     Skip chrome-launcher default flags. Defaults to false.
- * @property chromeFlags            Additional Chrome flags to append to defaults.
  */
 export interface LaunchOptions
   extends Pick<
@@ -95,11 +76,17 @@ export interface LaunchOptions
     | 'ignoreDefaultFlags'
     | 'chromeFlags'
   > {
+  /** Remote debugging port (defaults to 9222 when omitted) */
   port?: number;
+  /** Directory for Chrome profile data. Falls back to persistent ~/.bdg/chrome-profile directory */
   userDataDir?: string | undefined;
+  /** When true, launches Chrome in headless mode. Defaults to standard windowed experience */
   headless?: boolean;
+  /** Initial URL to open. Defaults to about:blank and is typically replaced during session setup */
   url?: string;
+  /** Chrome preferences object to override default settings */
   prefs?: Record<string, unknown> | undefined;
+  /** Path to JSON file containing Chrome preferences */
   prefsFile?: string | undefined;
 }
 
