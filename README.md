@@ -5,10 +5,7 @@
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
 [![npm downloads](https://img.shields.io/npm/dt/browser-debugger-cli?color=blue)](https://www.npmjs.com/package/browser-debugger-cli)
 
-DevTools telemetry in your terminal. For humans and agents.
-
-Direct WebSocket to Chrome's debugging port. Stream DOM, network, and console data straight to stdout.
-Pipe it, grep it, feed it to agents for full context debugging.
+DevTools telemetry in your terminal. For humans and agents. Direct WebSocket to Chrome's debugging port. Stream DOM, network, and console data straight to stdout. Pipe it, grep it, feed it to agents for full context debugging.
 
 ## Installation
 
