@@ -6,7 +6,7 @@ import {
   formatNoSessionMessage,
 } from '@/cli/formatters/statusFormatter.js';
 import { getStatus } from '@/ipc/client.js';
-import type { SessionMetadata } from '@/session';
+import type { SessionMetadata } from '@/session/metadata.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 

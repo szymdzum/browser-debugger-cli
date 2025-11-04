@@ -1,7 +1,9 @@
 import type { LaunchOptions } from '@/connection/launcher.js';
 import { MEMORY_LOG_INTERVAL, DEFAULT_REUSE_TAB } from '@/constants';
-import { writePid, writeSessionMetadata, writeChromePid } from '@/session';
 import type { BdgSession } from '@/session/BdgSession.js';
+import { writeChromePid } from '@/session/chrome.js';
+import { writeSessionMetadata } from '@/session/metadata.js';
+import { writePid } from '@/session/pid.js';
 import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError } from '@/utils/errors.js';
@@ -69,8 +71,8 @@ export async function cleanupStaleChrome(): Promise<number> {
 
   try {
     // Import session utilities (dynamic import for ES modules)
-    const sessionModule = await import('@/session');
-    const { readChromePid, clearChromePid, killChromeProcess } = sessionModule;
+    const { readChromePid, clearChromePid } = await import('@/session/chrome.js');
+    const { killChromeProcess } = await import('@/session/process.js');
 
     // Read Chrome PID from persistent cache
     const chromePid = readChromePid();

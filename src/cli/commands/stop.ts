@@ -3,7 +3,8 @@ import type { Command } from 'commander';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
-import { clearChromePid, killChromeProcess } from '@/session';
+import { clearChromePid } from '@/session/chrome.js';
+import { killChromeProcess } from '@/session/process.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

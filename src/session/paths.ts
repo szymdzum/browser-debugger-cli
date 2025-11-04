@@ -23,6 +23,7 @@ const SESSION_FILES = {
   FULL: 'session.full.json',
   DAEMON_PID: 'daemon.pid',
   DAEMON_SOCKET: 'daemon.sock',
+  DOM_QUERY_CACHE: 'last-query.json',
 } as const;
 
 /**
@@ -31,12 +32,18 @@ const SESSION_FILES = {
 export type SessionFileType = keyof typeof SESSION_FILES;
 
 /**
+ * Session directory path (~/.bdg)
+ * Exported constant for direct use in helper modules
+ */
+export const SESSION_DIR = path.join(os.homedir(), '.bdg');
+
+/**
  * Get the session directory path (~/.bdg)
  *
  * @returns Full path to session directory
  */
 export function getSessionDir(): string {
-  return path.join(os.homedir(), '.bdg');
+  return SESSION_DIR;
 }
 
 /**
@@ -87,6 +94,17 @@ export function getPartialFilePath(): string {
  */
 export function getFullFilePath(): string {
   return getSessionFilePath('FULL');
+}
+
+/**
+ * Get the path to the DOM query cache file.
+ *
+ * WHY: Stores last DOM query results for index-based element references.
+ *
+ * @returns Full path to DOM query cache file
+ */
+export function getDomQueryCachePath(): string {
+  return getSessionFilePath('DOM_QUERY_CACHE');
 }
 
 /**

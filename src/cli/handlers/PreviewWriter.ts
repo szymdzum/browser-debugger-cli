@@ -1,4 +1,4 @@
-import { writePartialOutputAsync, writeFullOutputAsync } from '@/session';
+import { writePartialOutputAsync, writeFullOutputAsync } from '@/session/output.js';
 import type { CDPTarget, NetworkRequest, ConsoleMessage, CollectorType } from '@/types';
 
 import { OutputBuilder } from './OutputBuilder.js';

@@ -15,7 +15,9 @@ import { fileURLToPath } from 'url';
 
 import type { ChildProcess } from 'child_process';
 
-import { cleanupStaleSession, getSessionFilePath, isProcessAlive } from '@/session';
+import { cleanupStaleSession } from '@/session/cleanup.js';
+import { getSessionFilePath } from '@/session/paths.js';
+import { isProcessAlive } from '@/session/process.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const __filename = fileURLToPath(import.meta.url);

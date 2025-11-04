@@ -20,12 +20,9 @@ import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
-import {
-  writePartialOutputAsync,
-  writeFullOutputAsync,
-  writePid,
-  writeSessionMetadata,
-} from '@/session';
+import { writeSessionMetadata } from '@/session/metadata.js';
+import { writePartialOutputAsync, writeFullOutputAsync } from '@/session/output.js';
+import { writePid } from '@/session/pid.js';
 import type {
   CollectorType,
   NetworkRequest,

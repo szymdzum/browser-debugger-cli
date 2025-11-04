@@ -2,7 +2,7 @@ import type { Command } from 'commander';
 
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
-import { readFullOutput } from '@/session';
+import { readFullOutput } from '@/session/output.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

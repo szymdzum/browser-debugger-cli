@@ -1,4 +1,4 @@
-import { writeSessionOutput } from '@/session';
+import { writeSessionOutput } from '@/session/output.js';
 import type { BdgOutput } from '@/types';
 
 /**

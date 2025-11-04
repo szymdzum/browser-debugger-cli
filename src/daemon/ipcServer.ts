@@ -30,15 +30,12 @@ import type {
   StopSessionResponse,
 } from '@/ipc/types.js';
 import { IPCErrorCode } from '@/ipc/types.js';
-import {
-  ensureSessionDir,
-  getSessionFilePath,
-  readPid,
-  readSessionMetadata,
-  readPartialOutput,
-  isProcessAlive,
-  cleanupSession,
-} from '@/session';
+import { cleanupSession } from '@/session/cleanup.js';
+import { readSessionMetadata } from '@/session/metadata.js';
+import { readPartialOutput } from '@/session/output.js';
+import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
+import { readPid } from '@/session/pid.js';
+import { isProcessAlive } from '@/session/process.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**

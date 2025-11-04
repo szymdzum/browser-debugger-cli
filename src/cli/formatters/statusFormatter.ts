@@ -1,5 +1,5 @@
-import type { SessionMetadata } from '@/session';
-import { isProcessAlive } from '@/session';
+import type { SessionMetadata } from '@/session/metadata.js';
+import { isProcessAlive } from '@/session/process.js';
 import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
 import { VERSION } from '@/utils/version.js';
 

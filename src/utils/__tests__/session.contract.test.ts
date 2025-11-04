@@ -5,18 +5,12 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { mockProcessAlive, restoreProcessAlive } from '@/__testutils__/testProcess.js';
-import {
-  acquireSessionLock,
-  cleanupStaleSession,
-  getSessionFilePath,
-  isProcessAlive,
-  readPid,
-  releaseSessionLock,
-  writePid,
-  writeSessionMetadata,
-  getPartialFilePath,
-  getFullFilePath,
-} from '@/session';
+import { cleanupStaleSession } from '@/session/cleanup.js';
+import { acquireSessionLock, releaseSessionLock } from '@/session/lock.js';
+import { writeSessionMetadata } from '@/session/metadata.js';
+import { getPartialFilePath, getFullFilePath, getSessionFilePath } from '@/session/paths.js';
+import { readPid, writePid } from '@/session/pid.js';
+import { isProcessAlive } from '@/session/process.js';
 
 /**
  * Session Utilities Contract Tests

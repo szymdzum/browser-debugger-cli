@@ -1,4 +1,4 @@
-import { cleanupSession } from '@/session';
+import { cleanupSession } from '@/session/cleanup.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

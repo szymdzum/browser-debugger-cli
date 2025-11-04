@@ -2,7 +2,8 @@ import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
-import { readPid, isProcessAlive } from '@/session';
+import { readPid } from '@/session/pid.js';
+import { isProcessAlive } from '@/session/process.js';
 import type { CDPTarget } from '@/types';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -58,7 +59,7 @@ export function registerQueryCommand(program: Command): void {
         }
 
         // Read session metadata to get the target ID
-        const { readSessionMetadata } = await import('@/session');
+        const { readSessionMetadata } = await import('@/session/metadata.js');
         const metadata = readSessionMetadata();
 
         if (!metadata?.targetId || !metadata.webSocketDebuggerUrl) {

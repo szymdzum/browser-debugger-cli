@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { registerDomCommands } from '@/cli/collectors/dom.js';
 import { registerCleanupCommand } from '@/cli/commands/cleanup.js';
 import { registerDetailsCommand } from '@/cli/commands/details.js';
 import { registerIpcTestCommand } from '@/cli/commands/ipcTest.js';
@@ -42,6 +43,7 @@ export const commandRegistry: CommandRegistrar[] = [
   registerPeekCommand,
   registerDetailsCommand,
   registerQueryCommand,
+  registerDomCommands,
 
   // IPC Testing (MVP)
   addCommandGroup('IPC Testing:'),

@@ -32,12 +32,6 @@ import type { CollectorType } from '@/types';
  * @property connectionPollInterval Milliseconds between CDP readiness checks.
  * @property maxConnectionRetries   Maximum retry attempts before failing.
  * @property portStrict             Fail if port is already in use.
- * @property dom                    Enable only DOM collector (additive).
- * @property network                Enable only network collector (additive).
- * @property console                Enable only console collector (additive).
- * @property skipDom                Disable DOM collector (subtractive).
- * @property skipNetwork            Disable network collector (subtractive).
- * @property skipConsole            Disable console collector (subtractive).
  * @property fetchAllBodies         Fetch all response bodies (override auto-optimization).
  * @property fetchBodiesInclude     Comma-separated patterns for bodies to include (trumps exclude).
  * @property fetchBodiesExclude     Comma-separated patterns for bodies to exclude.
@@ -59,12 +53,6 @@ interface CollectorOptions {
   connectionPollInterval?: string;
   maxConnectionRetries?: string;
   portStrict?: boolean;
-  dom?: boolean;
-  network?: boolean;
-  console?: boolean;
-  skipDom?: boolean;
-  skipNetwork?: boolean;
-  skipConsole?: boolean;
   fetchAllBodies?: boolean;
   fetchBodiesInclude?: string;
   fetchBodiesExclude?: string;
@@ -104,15 +92,6 @@ function applyCollectorOptions(command: Command): Command {
       .option('-I, --connection-poll-interval <ms>', CONNECTION_POLL_INTERVAL_OPTION_DESCRIPTION)
       .option('-R, --max-connection-retries <count>', MAX_CONNECTION_RETRIES_OPTION_DESCRIPTION)
       .option('-S, --port-strict', PORT_STRICT_OPTION_DESCRIPTION)
-
-      // Data Collection
-      .optionsGroup('Data Collection:')
-      .option('-d, --dom', 'Enable only DOM collector (additive)')
-      .option('-n, --network', 'Enable only network collector (additive)')
-      .option('-c, --console', 'Enable only console collector (additive)')
-      .option('-D, --skip-dom', 'Disable DOM collector (subtractive)')
-      .option('-N, --skip-network', 'Disable network collector (subtractive)')
-      .option('-C, --skip-console', 'Disable console collector (subtractive)')
 
       // Network Optimization
       .optionsGroup('Network Optimization:')
@@ -194,80 +173,6 @@ function parseOptionalJson(value: string | undefined): Record<string, unknown> |
 }
 
 /**
- * Validate collector flags for conflicts
- *
- * @param options - Parsed command-line options from Commander
- * @throws Error if conflicting flags are detected (e.g., --dom and --no-dom)
- */
-export function validateCollectorFlags(options: CollectorOptions): void {
-  const conflicts: string[] = [];
-
-  if (options.dom && options.skipDom) {
-    conflicts.push('--dom and --skip-dom');
-  }
-  if (options.network && options.skipNetwork) {
-    conflicts.push('--network and --skip-network');
-  }
-  if (options.console && options.skipConsole) {
-    conflicts.push('--console and --skip-console');
-  }
-
-  if (conflicts.length > 0) {
-    throw new Error(
-      `Conflicting collector flags detected: ${conflicts.join(', ')}. ` +
-        'Use either additive flags (--dom, --network, --console) or subtractive flags (--skip-dom, --skip-network, --skip-console), not both for the same collector.'
-    );
-  }
-}
-
-/**
- * Resolve which collectors to activate based on CLI flags
- *
- * @param options - Parsed command-line options from Commander
- * @returns Array of collector types to activate
- *
- * Logic:
- * - If any additive flags (--dom, --network, --console) are present, return only those collectors
- * - If subtractive flags (--skip-dom, --skip-network, --skip-console) are present, return all collectors minus excluded ones
- * - If no collector flags are present, return all collectors (default)
- */
-export function resolveCollectors(options: CollectorOptions): CollectorType[] {
-  const allCollectors: CollectorType[] = ['dom', 'network', 'console'];
-
-  // Check for additive flags
-  const hasAdditive = options.dom ?? options.network ?? options.console;
-  if (hasAdditive) {
-    const collectors: CollectorType[] = [];
-    if (options.dom) collectors.push('dom');
-    if (options.network) collectors.push('network');
-    if (options.console) collectors.push('console');
-    return collectors;
-  }
-
-  // Check for subtractive flags
-  const hasSubtractive = options.skipDom ?? options.skipNetwork ?? options.skipConsole;
-  if (hasSubtractive) {
-    const collectors = [...allCollectors];
-    if (options.skipDom) {
-      const index = collectors.indexOf('dom');
-      if (index > -1) collectors.splice(index, 1);
-    }
-    if (options.skipNetwork) {
-      const index = collectors.indexOf('network');
-      if (index > -1) collectors.splice(index, 1);
-    }
-    if (options.skipConsole) {
-      const index = collectors.indexOf('console');
-      if (index > -1) collectors.splice(index, 1);
-    }
-    return collectors;
-  }
-
-  // Default: return all collectors
-  return allCollectors;
-}
-
-/**
  * Transform CLI options into session options
  *
  * @param options - Parsed command-line options from Commander
@@ -329,13 +234,10 @@ function buildSessionOptions(options: CollectorOptions): {
  * @returns Promise that resolves when session completes or is stopped
  */
 async function collectorAction(url: string, options: CollectorOptions): Promise<void> {
-  // Validate collector flags for conflicts
-  validateCollectorFlags(options);
-
-  // Resolve which collectors to activate based on flags
-  const collectors = resolveCollectors(options);
-
   const sessionOptions = buildSessionOptions(options);
+
+  // Always collect all 3 types (dom, network, console)
+  const collectors: CollectorType[] = ['dom', 'network', 'console'];
 
   // Dispatch to daemon via IPC instead of running in-process
   await startSessionViaDaemon(url, sessionOptions, collectors);
@@ -348,9 +250,7 @@ async function collectorAction(url: string, options: CollectorOptions): Promise<
  * @returns void
  */
 export function registerStartCommands(program: Command): void {
-  // Default command: collectors determined by flags
-  // Use --dom, --network, --console (additive) or --no-dom, --no-network, --no-console (subtractive)
-  // If no collector flags provided, all collectors are activated
+  // Default command: always collects all 3 types (dom, network, console)
   applyCollectorOptions(
     program.argument('<url>', 'Target URL (example.com or localhost:3000)')
   ).action(async (url: string, options: CollectorOptions) => {
