@@ -671,6 +671,13 @@ async function main(): Promise<void> {
     await cdp.connect(target.webSocketDebuggerUrl, {
       autoReconnect: false,
       maxRetries: 10,
+      // P1.1: Exit gracefully if Chrome dies unexpectedly
+      // WHY: Prevents zombie worker processes when Chrome crashes/closes
+      onDisconnect: (code, reason) => {
+        console.error(`[worker] Chrome connection lost (code: ${code}, reason: ${reason})`);
+        console.error('[worker] Exiting due to Chrome connection loss');
+        process.exit(0);
+      },
     });
     console.error(`[worker] CDP connection established`);
 

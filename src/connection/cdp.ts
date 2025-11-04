@@ -95,6 +95,7 @@ export class CDPConnection {
   private reconnectAttempts = 0;
   private isIntentionallyClosed = false;
   private onReconnect?: (() => Promise<void>) | undefined;
+  private onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
   private connectionOptions: ConnectionOptions = {};
   private readonly createWebSocket: WebSocketFactory;
 
@@ -117,11 +118,12 @@ export class CDPConnection {
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
     const maxRetries = options.maxRetries ?? CDP_MAX_CONNECTION_RETRIES;
     const autoReconnect = options.autoReconnect ?? false;
-    const { onReconnect } = options;
+    const { onReconnect, onDisconnect } = options;
 
     this.wsUrl = wsUrl;
     this.autoReconnect = autoReconnect;
     this.onReconnect = onReconnect;
+    this.onDisconnect = onDisconnect;
     this.isIntentionallyClosed = false;
     this.connectionOptions = options;
 
@@ -216,6 +218,14 @@ export class CDPConnection {
         console.error(WEBSOCKET_CLOSED_MESSAGE(code, reason.toString()));
 
         this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
+
+        // P1 Fix #1: Call onDisconnect callback if provided
+        // WHY: Allows worker to exit gracefully when Chrome dies
+        if (this.onDisconnect) {
+          void Promise.resolve(this.onDisconnect(code, reason.toString())).catch((error) => {
+            console.error('[cdp] onDisconnect callback error:', error);
+          });
+        }
 
         if (this.autoReconnect && this.reconnectAttempts < CDP_MAX_RECONNECT_ATTEMPTS) {
           await this.attemptReconnection();
