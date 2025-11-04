@@ -30,3 +30,15 @@ export { writeSessionMetadata, readSessionMetadata, type SessionMetadata } from 
 
 // Chrome PID cache
 export { writeChromePid, readChromePid, clearChromePid } from './chrome.js';
+
+// Output file I/O
+export {
+  writeSessionOutput,
+  writePartialOutputAsync,
+  writeFullOutputAsync,
+  readPartialOutput,
+  readFullOutput,
+} from './output.js';
+
+// Cleanup operations
+export { cleanupSession, cleanupStaleSession } from './cleanup.js';
