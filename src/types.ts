@@ -136,6 +136,8 @@ export interface ConnectionOptions {
   keepaliveInterval?: number;
   /** Async hook invoked after a successful reconnect */
   onReconnect?: (() => Promise<void>) | undefined;
+  /** Async hook invoked when WebSocket closes unexpectedly (P1 Fix #1) */
+  onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
 }
 
 /**

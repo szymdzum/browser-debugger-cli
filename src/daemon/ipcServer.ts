@@ -19,6 +19,7 @@ import {
   type ClientRequestUnion,
   type ClientResponse,
   type WorkerRequest,
+  type WorkerResponse,
   type WorkerResponseUnion,
   getCommandName,
   isCommandRequest,
@@ -30,7 +31,6 @@ import type {
   IPCMessageType,
   PeekRequest,
   PeekResponse,
-  PeekResponseData,
   StartSessionRequest,
   StartSessionResponse,
   StartSessionResponseData,
@@ -42,12 +42,14 @@ import type {
 } from '@/ipc/types.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { cleanupSession } from '@/session/cleanup.js';
+import { releaseDaemonLock } from '@/session/lock.js';
 import { readSessionMetadata } from '@/session/metadata.js';
-import { readPartialOutput } from '@/session/output.js';
 import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
+import type { CDPTarget } from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -238,7 +240,7 @@ export class IPCServer {
         data.sessionPid = sessionPid;
 
         // Try to read session metadata
-        const metadata = readSessionMetadata();
+        const metadata = readSessionMetadata({ warnOnCorruption: true });
         if (metadata) {
           data.sessionMetadata = filterDefined({
             bdgPid: metadata.bdgPid,
@@ -275,76 +277,52 @@ export class IPCServer {
   }
 
   /**
-   * Handle peek request.
+   * Handle peek request - forward to worker via IPC.
    */
   private handlePeekRequest(socket: Socket, request: PeekRequest): void {
     console.error(`[daemon] Peek request received (sessionId: ${request.sessionId})`);
 
-    try {
-      // Check for active session
-      const sessionPid = readPid();
-      if (!sessionPid || !isProcessAlive(sessionPid)) {
-        const response: PeekResponse = {
-          type: 'peek_response',
-          sessionId: request.sessionId,
-          status: 'error',
-          error: 'No active session found',
-        };
-
-        socket.write(JSON.stringify(response) + '\n');
-        console.error('[daemon] Peek error response sent (no session)');
-        return;
-      }
-
-      // Read preview data from filesystem
-      const previewData = readPartialOutput();
-      if (!previewData) {
-        const response: PeekResponse = {
-          type: 'peek_response',
-          sessionId: request.sessionId,
-          status: 'error',
-          error: 'No preview data available (session may be starting up)',
-        };
-
-        socket.write(JSON.stringify(response) + '\n');
-        console.error('[daemon] Peek error response sent (no preview data)');
-        return;
-      }
-
-      // Build response with preview data
-      const data: PeekResponseData = {
-        sessionPid,
-        preview: {
-          version: previewData.version,
-          success: previewData.success,
-          timestamp: previewData.timestamp,
-          duration: previewData.duration,
-          target: previewData.target,
-          data: previewData.data,
-          ...(previewData.partial !== undefined && { partial: previewData.partial }),
-        },
-      };
-
-      const response: PeekResponse = {
-        type: 'peek_response',
-        sessionId: request.sessionId,
-        status: 'ok',
-        data,
-      };
-
-      socket.write(JSON.stringify(response) + '\n');
-      console.error('[daemon] Peek response sent');
-    } catch (error) {
+    // Check for active worker process
+    if (!this.workerProcess?.stdin) {
       const response: PeekResponse = {
         type: 'peek_response',
         sessionId: request.sessionId,
         status: 'error',
-        error: `Failed to get preview: ${getErrorMessage(error)}`,
+        error: 'No active worker process',
       };
-
       socket.write(JSON.stringify(response) + '\n');
-      console.error('[daemon] Peek error response sent');
+      console.error('[daemon] Peek error response sent (no worker)');
+      return;
     }
+
+    // Generate unique request ID
+    const requestId = `worker_peek_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Set timeout for worker response
+    const timeout = setTimeout(() => {
+      this.pendingDomRequests.delete(requestId);
+      const response: PeekResponse = {
+        type: 'peek_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'Worker response timeout (5s)',
+      };
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] Peek timeout response sent');
+    }, 5000);
+
+    // Track pending request
+    this.pendingDomRequests.set(requestId, { socket, sessionId: request.sessionId, timeout });
+
+    // Forward to worker
+    const workerRequest: WorkerRequest<'worker_peek'> = {
+      type: 'worker_peek_request',
+      requestId,
+      lastN: 10, // TODO: Extract from PeekRequest if needed
+    };
+
+    this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
+    console.error(`[daemon] Forwarded worker_peek_request to worker (requestId: ${requestId})`);
   }
 
   /**
@@ -362,12 +340,37 @@ export class IPCServer {
       // Check for existing session (concurrency guard)
       const sessionPid = readPid();
       if (sessionPid && isProcessAlive(sessionPid)) {
+        // Read session metadata to provide helpful error context
+        const metadata = readSessionMetadata({ warnOnCorruption: false });
+        const startTime = metadata?.startTime;
+        const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : undefined;
+
+        // Try to get target URL from CDP
+        let targetUrl: string | undefined;
+        if (metadata?.port && metadata?.targetId) {
+          try {
+            const targets = await fetchCDPTargets(metadata.port);
+            const target = targets.find((t: CDPTarget) => t.id === metadata.targetId);
+            if (target) {
+              targetUrl = target.url;
+            }
+          } catch {
+            // Ignore CDP fetch errors
+          }
+        }
+
         const response: StartSessionResponse = {
           type: 'start_session_response',
           sessionId: request.sessionId,
           status: 'error',
           message: `Session already running (PID ${sessionPid}). Stop it first with stop_session_request.`,
           errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
+          existingSession: {
+            pid: sessionPid,
+            ...(targetUrl && { targetUrl }),
+            ...(startTime && { startTime }),
+            ...(duration !== undefined && { duration }),
+          },
         };
 
         socket.write(JSON.stringify(response) + '\n');
@@ -423,7 +426,8 @@ export class IPCServer {
         let errorMessage = 'Failed to start worker';
 
         if (error instanceof WorkerStartError) {
-          errorMessage = error.message;
+          // Include error details (contains worker stderr) for debugging
+          errorMessage = error.details ? `${error.message}\n${error.details}` : error.message;
           switch (error.code) {
             case 'SPAWN_FAILED':
             case 'WORKER_CRASH':
@@ -487,7 +491,7 @@ export class IPCServer {
       }
 
       // Capture Chrome PID BEFORE cleanup (so CLI can kill Chrome if needed)
-      const metadata = readSessionMetadata();
+      const metadata = readSessionMetadata({ warnOnCorruption: true });
       const chromePid = metadata?.chromePid;
       if (chromePid) {
         console.error(`[daemon] Captured Chrome PID ${chromePid} before cleanup`);
@@ -625,6 +629,46 @@ export class IPCServer {
       return;
     }
 
+    // Special handling for worker_peek - transform to PeekResponse format
+    if (commandName === 'worker_peek') {
+      const {
+        requestId: _requestId,
+        success,
+        data,
+        error,
+      } = workerResponse as WorkerResponse<'worker_peek'>;
+      const peekResponse: PeekResponse = {
+        type: 'peek_response',
+        sessionId,
+        status: success ? 'ok' : 'error',
+        ...(success &&
+          data && {
+            data: {
+              sessionPid: readPid() ?? 0,
+              preview: {
+                version: data.version,
+                success: true,
+                timestamp: new Date(data.startTime).toISOString(),
+                duration: data.duration,
+                target: data.target,
+                data: {
+                  network: data.network,
+                  console: data.console,
+                },
+                partial: true,
+              },
+            },
+          }),
+        ...(error && { error }),
+      };
+      socket.write(JSON.stringify(peekResponse) + '\n');
+      console.error(
+        '[daemon] Forwarded worker_peek_response to client (transformed to PeekResponse)'
+      );
+      return;
+    }
+
+    // Default handling for other commands
     const { requestId: _requestId, success, ...rest } = workerResponse;
 
     const response: ClientResponse<typeof commandName> = {
@@ -678,7 +722,8 @@ export class IPCServer {
 
     this.pendingDomRequests.set(requestId, { socket, sessionId: request.sessionId, timeout });
 
-    const { sessionId: _sessionId, type: _type, ...params } = request;
+    // Extract only sessionId, keep all other fields including 'type' param if it exists
+    const { sessionId: _sessionId, type: _ipcType, ...params } = request;
     const workerRequest: WorkerRequest<typeof commandName> = {
       type: `${commandName}_request` as const,
       requestId,
@@ -732,6 +777,7 @@ export class IPCServer {
     const pidPath = getSessionFilePath('DAEMON_PID');
     try {
       writeFileSync(pidPath, process.pid.toString(), 'utf-8');
+      releaseDaemonLock(); // Release lock after PID is written (P0 Fix #1)
       console.error(`[daemon] PID file written: ${pidPath}`);
     } catch (error) {
       console.error('[daemon] Failed to write PID file:', error);

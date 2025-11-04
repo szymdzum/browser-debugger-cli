@@ -8,7 +8,7 @@ import { mockProcessAlive, restoreProcessAlive } from '@/__testutils__/testProce
 import { cleanupStaleSession } from '@/session/cleanup.js';
 import { acquireSessionLock, releaseSessionLock } from '@/session/lock.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
-import { getPartialFilePath, getFullFilePath, getSessionFilePath } from '@/session/paths.js';
+import { getSessionFilePath } from '@/session/paths.js';
 import { readPid, writePid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 
@@ -200,8 +200,6 @@ void describe('Session Utilities Contract Tests', () => {
       });
       fs.writeFileSync(getSessionFilePath('DAEMON_PID'), '66666');
       fs.writeFileSync(getSessionFilePath('DAEMON_SOCKET'), '');
-      fs.writeFileSync(getPartialFilePath(), JSON.stringify({ test: 'preview' }));
-      fs.writeFileSync(getFullFilePath(), JSON.stringify({ test: 'full' }));
 
       // Mock all processes as dead
       mockProcessAlive([]);
@@ -222,8 +220,6 @@ void describe('Session Utilities Contract Tests', () => {
         false,
         'Daemon socket should be removed'
       );
-      assert.equal(fs.existsSync(getPartialFilePath()), false, 'Preview file should be removed');
-      assert.equal(fs.existsSync(getFullFilePath()), false, 'Full file should be removed');
     });
 
     void it('should not remove files when session process is alive', () => {

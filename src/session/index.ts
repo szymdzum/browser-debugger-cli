@@ -10,8 +10,6 @@ export {
   getSessionDir,
   getSessionFilePath,
   getWorkerSocketPath,
-  getPartialFilePath,
-  getFullFilePath,
   ensureSessionDir,
   type SessionFileType,
 } from './paths.js';
@@ -32,13 +30,7 @@ export { writeSessionMetadata, readSessionMetadata, type SessionMetadata } from 
 export { writeChromePid, readChromePid, clearChromePid } from './chrome.js';
 
 // Output file I/O
-export {
-  writeSessionOutput,
-  writePartialOutputAsync,
-  writeFullOutputAsync,
-  readPartialOutput,
-  readFullOutput,
-} from './output.js';
+export { writeSessionOutput } from './output.js';
 
 // Cleanup operations
 export { cleanupSession, cleanupStaleSession } from './cleanup.js';

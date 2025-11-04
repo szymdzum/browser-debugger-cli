@@ -66,10 +66,53 @@ export interface DomGetData {
   nodes: Array<{
     nodeId: number;
     tag?: string;
-    attributes?: Record<string, string>;
+    attributes?: Record<string, unknown>;
     classes?: string[];
     outerHTML?: string;
   }>;
+}
+
+/**
+ * Worker Peek Command - Get lightweight preview of collected data
+ */
+export interface WorkerPeekCommand {
+  lastN?: number; // Limit to last N items (default: 10)
+}
+
+export interface WorkerPeekData {
+  version: string;
+  startTime: number;
+  duration: number;
+  target: {
+    url: string;
+    title: string;
+  };
+  activeCollectors: string[];
+  network: Array<{
+    requestId: string;
+    timestamp: number;
+    method: string;
+    url: string;
+    status?: number;
+    mimeType?: string;
+  }>;
+  console: Array<{
+    timestamp: number;
+    type: string;
+    text: string;
+  }>;
+}
+
+/**
+ * Worker Details Command - Get full object for specific network/console item
+ */
+export interface WorkerDetailsCommand {
+  itemType: 'network' | 'console';
+  id: string; // requestId for network, index for console
+}
+
+export interface WorkerDetailsData {
+  item: unknown; // NetworkRequest | ConsoleMessage (full object)
 }
 
 // =============================================================================
@@ -93,6 +136,14 @@ export const COMMANDS = {
     requestSchema: {} as DomGetCommand,
     responseSchema: {} as DomGetData,
   },
+  worker_peek: {
+    requestSchema: {} as WorkerPeekCommand,
+    responseSchema: {} as WorkerPeekData,
+  },
+  worker_details: {
+    requestSchema: {} as WorkerDetailsCommand,
+    responseSchema: {} as WorkerDetailsData,
+  },
 } as const;
 
 export type CommandName = keyof typeof COMMANDS;
@@ -102,7 +153,7 @@ export type CommandName = keyof typeof COMMANDS;
 // =============================================================================
 
 /**
- * Worker Request - Command with requestId (daemon -> worker via stdin)
+ * Worker Request - Command with requestId (daemon -\> worker via stdin)
  */
 export type WorkerRequest<T extends CommandName> = {
   type: `${T}_request`;
@@ -110,7 +161,7 @@ export type WorkerRequest<T extends CommandName> = {
 } & (typeof COMMANDS)[T]['requestSchema'];
 
 /**
- * Worker Response - Command result with requestId (worker -> daemon via stdout)
+ * Worker Response - Command result with requestId (worker -\> daemon via stdout)
  */
 export type WorkerResponse<T extends CommandName> = {
   type: `${T}_response`;
@@ -121,7 +172,7 @@ export type WorkerResponse<T extends CommandName> = {
 };
 
 /**
- * Client Request - Command with sessionId (CLI -> daemon via Unix socket)
+ * Client Request - Command with sessionId (CLI -\> daemon via Unix socket)
  */
 export type ClientRequest<T extends CommandName> = {
   type: `${T}_request`;
@@ -129,7 +180,7 @@ export type ClientRequest<T extends CommandName> = {
 } & (typeof COMMANDS)[T]['requestSchema'];
 
 /**
- * Client Response - Command result with sessionId (daemon -> CLI via Unix socket)
+ * Client Response - Command result with sessionId (daemon -\> CLI via Unix socket)
  */
 export type ClientResponse<T extends CommandName> = {
   type: `${T}_response`;

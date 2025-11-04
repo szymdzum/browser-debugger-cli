@@ -32,6 +32,9 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
 
 /**
  * Format preview as JSON
+ *
+ * Returns the output wrapped in a preview object to maintain the
+ * IPC response structure (.preview.data path for JSON consumers).
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
   const jsonOutput: BdgOutput = {
@@ -55,7 +58,8 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
     jsonOutput.data.console = jsonOutput.data.console.slice(-lastCount);
   }
 
-  return JSON.stringify(jsonOutput, null, 2);
+  // Wrap in preview object to maintain .preview.data path for JSON consumers
+  return JSON.stringify({ preview: jsonOutput }, null, 2);
 }
 
 /**
@@ -188,8 +192,9 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
  * Format "no preview data" message
  */
 export function formatNoPreviewDataMessage(): string {
-  return `No preview data available
-Session may not be running or preview not yet written
+  return `Error: No active session found
+No preview data available
 
-Tip: bdg status | bdg <url>`;
+Start a session with: bdg <url>
+Check session status: bdg status`;
 }

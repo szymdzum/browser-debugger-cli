@@ -1,28 +1,28 @@
 /**
  * Session cleanup operations.
  *
- * Handles cleanup of session files (PID, metadata, lock, preview, full data).
+ * Handles cleanup of session files (PID, metadata, lock, socket).
  * WHY: Centralized cleanup logic ensures consistent cleanup across error paths and normal shutdown.
  */
 
 import * as fs from 'fs';
 
+import { getErrorMessage } from '@/utils/errors.js';
+import { createLogger } from '@/utils/logger.js';
+
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
-import {
-  getSessionFilePath,
-  getPartialFilePath,
-  getFullFilePath,
-  ensureSessionDir,
-} from './paths.js';
+import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile } from './pid.js';
 import { isProcessAlive } from './process.js';
+
+const log = createLogger('cleanup');
 
 /**
  * Cleanup stale session files if no active session is running.
  *
  * Uses lock-based serialization to safely clean up orphaned session artifacts
- * (PID, metadata, socket, preview/full data) when the recorded process is dead
- * or files are missing/corrupt.
+ * (PID, metadata, socket) when the recorded process is dead or files are
+ * missing/corrupt.
  *
  * WHY: Prevents accumulation of stale session files from crashed processes.
  *
@@ -100,7 +100,7 @@ export function cleanupStaleSession(): boolean {
     }
 
     // All processes are dead - clean up stale artifacts
-    console.error('[cleanup] Removing stale session files...');
+    log('Removing stale session files...');
 
     // Remove session PID
     cleanupPidFile();
@@ -110,31 +110,9 @@ export function cleanupStaleSession(): boolean {
     if (fs.existsSync(metaPath)) {
       try {
         fs.unlinkSync(metaPath);
-        console.error('[cleanup] Removed metadata file');
+        log('Removed metadata file');
       } catch (error) {
-        console.error('[cleanup] Failed to remove metadata:', error);
-      }
-    }
-
-    // Remove preview file
-    const partialPath = getPartialFilePath();
-    if (fs.existsSync(partialPath)) {
-      try {
-        fs.unlinkSync(partialPath);
-        console.error('[cleanup] Removed preview file');
-      } catch (error) {
-        console.error('[cleanup] Failed to remove preview:', error);
-      }
-    }
-
-    // Remove full file
-    const fullPath = getFullFilePath();
-    if (fs.existsSync(fullPath)) {
-      try {
-        fs.unlinkSync(fullPath);
-        console.error('[cleanup] Removed full data file');
-      } catch (error) {
-        console.error('[cleanup] Failed to remove full data:', error);
+        log(`Failed to remove metadata: ${getErrorMessage(error)}`);
       }
     }
 
@@ -142,9 +120,9 @@ export function cleanupStaleSession(): boolean {
     if (fs.existsSync(daemonPidPath)) {
       try {
         fs.unlinkSync(daemonPidPath);
-        console.error('[cleanup] Removed daemon PID file');
+        log('Removed daemon PID file');
       } catch (error) {
-        console.error('[cleanup] Failed to remove daemon PID:', error);
+        log(`Failed to remove daemon PID: ${getErrorMessage(error)}`);
       }
     }
 
@@ -153,13 +131,24 @@ export function cleanupStaleSession(): boolean {
     if (fs.existsSync(socketPath)) {
       try {
         fs.unlinkSync(socketPath);
-        console.error('[cleanup] Removed daemon socket');
+        log('Removed daemon socket');
       } catch (error) {
-        console.error('[cleanup] Failed to remove daemon socket:', error);
+        log(`Failed to remove daemon socket: ${getErrorMessage(error)}`);
       }
     }
 
-    console.error('[cleanup] Stale session cleanup complete');
+    // Remove daemon lock (P0 Fix #1)
+    const daemonLockPath = getSessionFilePath('DAEMON_LOCK');
+    if (fs.existsSync(daemonLockPath)) {
+      try {
+        fs.unlinkSync(daemonLockPath);
+        log('Removed daemon lock');
+      } catch (error) {
+        log(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
+      }
+    }
+
+    log('Stale session cleanup complete');
 
     return true;
   } finally {
@@ -171,7 +160,7 @@ export function cleanupStaleSession(): boolean {
 /**
  * Cleanup all session files after a session ends.
  *
- * Removes PID, lock, metadata, preview, and full data files.
+ * Removes PID, lock, and metadata files.
  * Safe to call multiple times (idempotent).
  *
  * WHY: Ensures clean slate for next session, prevents stale file accumulation.
@@ -188,24 +177,71 @@ export function cleanupSession(): void {
       // Ignore errors
     }
   }
+}
 
-  // Clean up preview file (lightweight)
-  const partialPath = getPartialFilePath();
-  if (fs.existsSync(partialPath)) {
-    try {
-      fs.unlinkSync(partialPath);
-    } catch {
-      // Ignore errors
-    }
+/**
+ * Cleanup stale daemon PID file if daemon process is dead.
+ *
+ * WHY: Prevents stale daemon PIDs from blocking new daemon starts (P0 Fix #2).
+ *
+ * @returns True if cleanup was performed, false if daemon is running
+ */
+export function cleanupStaleDaemonPid(): boolean {
+  const daemonPidPath = getSessionFilePath('DAEMON_PID');
+  if (!fs.existsSync(daemonPidPath)) {
+    return false;
   }
 
-  // Clean up full file (complete data)
-  const fullPath = getFullFilePath();
-  if (fs.existsSync(fullPath)) {
+  try {
+    const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
+    const daemonPid = parseInt(daemonPidStr, 10);
+
+    // If daemon is still alive, don't clean up
+    if (!isNaN(daemonPid) && isProcessAlive(daemonPid)) {
+      return false;
+    }
+
+    // Daemon is dead - clean up stale PID and lock files
+    log(`Daemon not running (stale PID ${daemonPid}), cleaning up...`);
+
+    // Remove daemon PID
     try {
-      fs.unlinkSync(fullPath);
+      fs.unlinkSync(daemonPidPath);
+      log('Removed stale daemon PID file');
+    } catch (error) {
+      log(`Failed to remove daemon PID: ${getErrorMessage(error)}`);
+    }
+
+    // Remove daemon socket
+    const socketPath = getSessionFilePath('DAEMON_SOCKET');
+    if (fs.existsSync(socketPath)) {
+      try {
+        fs.unlinkSync(socketPath);
+        log('Removed stale daemon socket');
+      } catch (error) {
+        log(`Failed to remove daemon socket: ${getErrorMessage(error)}`);
+      }
+    }
+
+    // Remove daemon lock
+    const lockPath = getSessionFilePath('DAEMON_LOCK');
+    if (fs.existsSync(lockPath)) {
+      try {
+        fs.unlinkSync(lockPath);
+        log('Removed stale daemon lock');
+      } catch (error) {
+        log(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
+      }
+    }
+
+    return true;
+  } catch {
+    // Can't read daemon PID - will clean it up
+    try {
+      fs.unlinkSync(daemonPidPath);
+      return true;
     } catch {
-      // Ignore errors
+      return false;
     }
   }
 }

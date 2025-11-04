@@ -28,6 +28,14 @@ export function registerPeekCommand(program: Command): void {
     .option('-f, --follow', 'Watch for updates (like tail -f)')
     .option('--last <count>', 'Show last N items', '10')
     .action(async (options: PreviewOptions) => {
+      // Validate lastN parameter (P1 Fix #4)
+      const lastN = parseInt(options.last ?? '10', 10);
+      if (isNaN(lastN) || lastN < 1 || lastN > 1000) {
+        console.error('Error: lastN must be between 1 and 1000');
+        console.error('\nProvided value:', options.last);
+        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      }
+      options.last = lastN.toString();
       const showPreview = async (): Promise<void> => {
         try {
           // Fetch preview data via IPC from daemon
