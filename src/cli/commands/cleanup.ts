@@ -11,15 +11,15 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Flags consumed by the `bdg cleanup` command.
- * @property force      Force removal even if the tracked process is alive.
- * @property all        Also delete the persisted `session.json` artifact.
- * @property aggressive Aggressively kill all Chrome processes (uses chrome-launcher killAll).
- * @property json       Output result as JSON.
  */
 interface CleanupOptions {
+  /** Force removal even if the tracked process is alive. */
   force?: boolean;
+  /** Also delete the persisted `session.json` artifact. */
   all?: boolean;
+  /** Aggressively kill all Chrome processes (uses chrome-launcher killAll). */
   aggressive?: boolean;
+  /** Output result as JSON. */
   json?: boolean;
 }
 

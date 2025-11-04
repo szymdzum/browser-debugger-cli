@@ -9,11 +9,11 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Flags accepted by the `bdg query` command.
- * @property port Chrome debugging port to target for evaluation.
- * @property json Output result wrapped in version/success format.
  */
 interface QueryOptions {
+  /** Chrome debugging port to target for evaluation. */
   port: string;
+  /** Output result wrapped in version/success format. */
   json?: boolean;
 }
 

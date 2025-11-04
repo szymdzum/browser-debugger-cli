@@ -9,11 +9,11 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Flags supported by `bdg stop`.
- * @property killChrome Kill the associated Chrome process after stopping bdg.
- * @property json       Output result as JSON.
  */
 interface StopOptions {
+  /** Kill the associated Chrome process after stopping bdg. */
   killChrome?: boolean;
+  /** Output result as JSON. */
   json?: boolean;
 }
 

@@ -12,11 +12,11 @@ import { VERSION } from '@/utils/version.js';
 
 /**
  * Options for the `bdg status` command.
- * @property json    Print structured JSON instead of the default human output.
- * @property verbose Show detailed Chrome diagnostics (binary path, port, PID).
  */
 interface StatusOptions {
+  /** Print structured JSON instead of the default human output. */
   json?: boolean;
+  /** Show detailed Chrome diagnostics (binary path, port, PID). */
   verbose?: boolean;
 }
 

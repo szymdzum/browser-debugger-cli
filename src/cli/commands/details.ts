@@ -7,9 +7,9 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Optional switches for `bdg details`.
- * @property json Emit the selected record as JSON instead of formatted text.
  */
 interface DetailsOptions {
+  /** Emit the selected record as JSON instead of formatted text. */
   json?: boolean;
 }
 

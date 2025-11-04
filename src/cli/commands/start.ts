@@ -20,45 +20,45 @@ import type { CollectorType } from '@/types';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
- * @property port                   Chrome debugging port as provided by the user.
- * @property timeout                Optional auto-stop timeout (seconds, string form).
- * @property reuseTab               Whether to reuse an existing tab instead of creating one.
- * @property userDataDir            Custom Chrome profile directory path.
- * @property all                    When true, disables default filtering of noisy data.
- * @property logLevel               Chrome launcher log level (verbose|info|error|silent).
- * @property chromePrefs            Inline JSON string with Chrome preferences.
- * @property chromePrefsFile        Path to JSON file with Chrome preferences.
- * @property chromeFlags            Additional Chrome command-line flags.
- * @property connectionPollInterval Milliseconds between CDP readiness checks.
- * @property maxConnectionRetries   Maximum retry attempts before failing.
- * @property portStrict             Fail if port is already in use.
- * @property fetchAllBodies         Fetch all response bodies (override auto-optimization).
- * @property fetchBodiesInclude     Comma-separated patterns for bodies to include (trumps exclude).
- * @property fetchBodiesExclude     Comma-separated patterns for bodies to exclude.
- * @property networkInclude         Comma-separated URL patterns to capture (trumps exclude).
- * @property networkExclude         Comma-separated URL patterns to exclude.
- * @property maxBodySize            Maximum response body size in megabytes (default: 5MB).
- * @property compact                Use compact JSON format (no indentation) for output files.
  */
 interface CollectorOptions {
+  /** Chrome debugging port as provided by the user. */
   port: string;
+  /** Optional auto-stop timeout (seconds, string form). */
   timeout?: string;
+  /** Whether to reuse an existing tab instead of creating one. */
   reuseTab?: boolean;
+  /** Custom Chrome profile directory path. */
   userDataDir?: string;
+  /** When true, disables default filtering of noisy data. */
   all?: boolean;
+  /** Chrome launcher log level (verbose|info|error|silent). */
   logLevel?: string;
+  /** Inline JSON string with Chrome preferences. */
   chromePrefs?: string;
+  /** Path to JSON file with Chrome preferences. */
   chromePrefsFile?: string;
+  /** Additional Chrome command-line flags. */
   chromeFlags?: string[];
+  /** Milliseconds between CDP readiness checks. */
   connectionPollInterval?: string;
+  /** Maximum retry attempts before failing. */
   maxConnectionRetries?: string;
+  /** Fail if port is already in use. */
   portStrict?: boolean;
+  /** Fetch all response bodies (override auto-optimization). */
   fetchAllBodies?: boolean;
+  /** Comma-separated patterns for bodies to include (trumps exclude). */
   fetchBodiesInclude?: string;
+  /** Comma-separated patterns for bodies to exclude. */
   fetchBodiesExclude?: string;
+  /** Comma-separated URL patterns to capture (trumps exclude). */
   networkInclude?: string;
+  /** Comma-separated URL patterns to exclude. */
   networkExclude?: string;
+  /** Maximum response body size in megabytes (default: 5MB). */
   maxBodySize?: string;
+  /** Use compact JSON format (no indentation) for output files. */
   compact?: boolean;
 }
 
