@@ -607,11 +607,7 @@ export class IPCServer {
       this.pendingDomRequests.delete(message.requestId);
 
       // Forward response to client
-      this.forwardCommandResponse(
-        pending.socket,
-        pending.sessionId,
-        message
-      );
+      this.forwardCommandResponse(pending.socket, pending.sessionId, message);
     }
   }
 

@@ -10,13 +10,8 @@ import { connect } from 'net';
 import type { Socket } from 'net';
 
 import { IPCServer } from '@/daemon/ipcServer.js';
-import type {
-  COMMANDS} from '@/ipc/commands.js';
-import {
-  type CommandName,
-  type ClientRequest,
-  type ClientResponse,
-} from '@/ipc/commands.js';
+import type { COMMANDS } from '@/ipc/commands.js';
+import { type CommandName, type ClientRequest, type ClientResponse } from '@/ipc/commands.js';
 import type {
   HandshakeRequest,
   HandshakeResponse,
