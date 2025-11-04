@@ -7,6 +7,7 @@ import {
 } from '@/cli/formatters/statusFormatter.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionMetadata } from '@/session/metadata.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -83,7 +84,7 @@ export function registerStatusCommand(program: Command): void {
         process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
         // Handle connection errors (daemon not running)
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = getErrorMessage(error);
         if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
           console.error('Daemon not running. Start it with: bdg <url>');
           process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);

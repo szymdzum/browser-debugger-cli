@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { queryDOM, highlightDOM, getDOM } from '@/ipc/client.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import { getNodeIdByIndex } from './helpers/domCache.js';
@@ -89,7 +90,7 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = getErrorMessage(error);
     if (options.json) {
       console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMsg), null, 2));
     } else {
@@ -160,7 +161,7 @@ async function handleDomHighlight(
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = getErrorMessage(error);
     if (options.json) {
       console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMsg), null, 2));
     } else {
@@ -238,7 +239,7 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorMsg = getErrorMessage(error);
     if (options.json) {
       console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMsg), null, 2));
     } else {

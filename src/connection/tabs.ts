@@ -23,6 +23,7 @@ import type {
   CDPLifecycleEventParams,
 } from '@/types';
 import type { TabCreationResult } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargetById } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 
@@ -299,7 +300,7 @@ async function attemptCDPCreation(
       success: false,
       error: {
         type: CDP_COMMAND_FAILED,
-        message: error instanceof Error ? error.message : String(error),
+        message: getErrorMessage(error),
         originalError: error,
         context: {
           stage: 'cdp_command',
@@ -334,10 +335,7 @@ async function attemptCDPCreation(
       success: false,
       error: {
         type: VERIFICATION_TIMEOUT_ERROR_TYPE,
-        message:
-          verificationError instanceof Error
-            ? verificationError.message
-            : String(verificationError),
+        message: getErrorMessage(verificationError),
         originalError: verificationError,
         context: {
           targetId: cdpResponse.targetId,
@@ -392,7 +390,7 @@ async function attemptHTTPCreation(
       success: false,
       error: {
         type: HTTP_REQUEST_FAILED,
-        message: error instanceof Error ? error.message : String(error),
+        message: getErrorMessage(error),
         originalError: error,
         context: {
           ...(error instanceof Error &&
@@ -708,7 +706,7 @@ async function findAndReuseTarget(
   try {
     return await navigateExistingTarget(matchingTarget, normalizedUrl, cdp);
   } catch (error) {
-    console.error(`Failed to reuse tab: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`Failed to reuse tab: ${getErrorMessage(error)}`);
     return null;
   }
 }

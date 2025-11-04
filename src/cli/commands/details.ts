@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { readFullOutput } from '@/session/output.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -149,17 +150,13 @@ export function registerDetailsCommand(program: Command): void {
         if (options.json) {
           console.log(
             JSON.stringify(
-              OutputBuilder.buildJsonError(
-                `Error fetching details: ${error instanceof Error ? error.message : String(error)}`
-              ),
+              OutputBuilder.buildJsonError(`Error fetching details: ${getErrorMessage(error)}`),
               null,
               2
             )
           );
         } else {
-          console.error(
-            `Error fetching details: ${error instanceof Error ? error.message : String(error)}`
-          );
+          console.error(`Error fetching details: ${getErrorMessage(error)}`);
         }
         process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }

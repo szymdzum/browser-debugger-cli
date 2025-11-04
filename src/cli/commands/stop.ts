@@ -5,6 +5,7 @@ import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { clearChromePid } from '@/session/chrome.js';
 import { killChromeProcess } from '@/session/process.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -152,7 +153,7 @@ export function registerStopCommand(program: Command): void {
         }
       } catch (error: unknown) {
         // IPC transport failure (ENOENT, ECONNREFUSED, timeout, etc.)
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage = getErrorMessage(error);
 
         // Check if it's a connection error (daemon not running)
         if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {

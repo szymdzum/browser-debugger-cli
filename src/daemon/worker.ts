@@ -26,16 +26,8 @@ import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
-import type {
-  WorkerIPCMessageType,
-  WorkerDomQueryRequest,
-  WorkerDomQueryResponse,
-  WorkerDomHighlightRequest,
-  WorkerDomHighlightResponse,
-  WorkerDomGetRequest,
-  WorkerDomGetResponse,
-  WorkerReadyMessage,
-} from '@/daemon/workerIpc.js';
+import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
+import type { COMMANDS, CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/commands.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writePartialOutputAsync, writeFullOutputAsync } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
@@ -49,6 +41,7 @@ import type {
   CDPTarget,
   BdgOutput,
 } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { VERSION } from '@/utils/version.js';
@@ -118,9 +111,7 @@ function parseWorkerConfig(): WorkerConfig {
       maxBodySize: config.maxBodySize ?? undefined,
     };
   } catch (error) {
-    throw new Error(
-      `Failed to parse worker config: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throw new Error(`Failed to parse worker config: ${getErrorMessage(error)}`);
   }
 }
 
@@ -173,21 +164,27 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
 }
 
 /**
- * Handle DOM query request from daemon.
+ * Command handler type - executes business logic for a command.
+ * Handlers should throw errors (no try/catch or response wrapping).
  */
-async function handleDomQuery(request: WorkerDomQueryRequest): Promise<void> {
-  console.error(`[worker] Handling dom_query_request (selector: ${request.selector})`);
+type CommandHandler<T extends CommandName> = (
+  cdp: CDPConnection,
+  params: (typeof COMMANDS)[T]['requestSchema']
+) => Promise<(typeof COMMANDS)[T]['responseSchema']>;
 
-  try {
-    if (!cdp) {
-      throw new Error('CDP connection not initialized');
-    }
-
+/**
+ * Command handler registry - maps command names to their business logic.
+ */
+const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
+  /**
+   * DOM Query Handler - Find elements by CSS selector
+   */
+  dom_query: async (cdp, params) => {
     // Ensure DOM is enabled
     await cdp.send('DOM.enable');
 
     // Query elements
-    const nodeIds = await queryBySelector(cdp, request.selector);
+    const nodeIds = await queryBySelector(cdp, params.selector);
 
     // Get information for each node
     const nodes: Array<{
@@ -214,49 +211,22 @@ async function handleDomQuery(request: WorkerDomQueryRequest): Promise<void> {
 
     // Write cache for index-based lookups
     writeQueryCache({
-      selector: request.selector,
+      selector: params.selector,
       timestamp: new Date().toISOString(),
       nodes,
     });
 
-    // Send response
-    const response: WorkerDomQueryResponse = {
-      type: 'dom_query_response',
-      requestId: request.requestId,
-      success: true,
-      data: {
-        selector: request.selector,
-        count: nodes.length,
-        nodes,
-      },
+    return {
+      selector: params.selector,
+      count: nodes.length,
+      nodes,
     };
+  },
 
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent dom_query_response (${nodes.length} nodes)`);
-  } catch (error) {
-    const response: WorkerDomQueryResponse = {
-      type: 'dom_query_response',
-      requestId: request.requestId,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent dom_query_response (error: ${response.error})`);
-  }
-}
-
-/**
- * Handle DOM highlight request from daemon.
- */
-async function handleDomHighlight(request: WorkerDomHighlightRequest): Promise<void> {
-  console.error(`[worker] Handling dom_highlight_request`);
-
-  try {
-    if (!cdp) {
-      throw new Error('CDP connection not initialized');
-    }
-
+  /**
+   * DOM Highlight Handler - Highlight elements in browser
+   */
+  dom_highlight: async (cdp, params) => {
     // Ensure DOM and Overlay are enabled
     await cdp.send('DOM.enable');
     await cdp.send('Overlay.enable');
@@ -264,39 +234,39 @@ async function handleDomHighlight(request: WorkerDomHighlightRequest): Promise<v
     let nodeIds: number[] = [];
 
     // Direct nodeId provided
-    if (request.nodeId !== undefined) {
-      nodeIds = [request.nodeId];
-    } else if (request.index !== undefined) {
+    if (params.nodeId !== undefined) {
+      nodeIds = [params.nodeId];
+    } else if (params.index !== undefined) {
       // Look up nodeId from cache
-      const nodeId = getNodeIdByIndex(request.index);
+      const nodeId = getNodeIdByIndex(params.index);
       if (!nodeId) {
         throw new Error(
-          `No cached element at index ${request.index}. Run 'bdg dom query <selector>' first.`
+          `No cached element at index ${params.index}. Run 'bdg dom query <selector>' first.`
         );
       }
       nodeIds = [nodeId];
-    } else if (request.selector) {
+    } else if (params.selector) {
       // Query by selector
-      nodeIds = await queryBySelector(cdp, request.selector);
+      nodeIds = await queryBySelector(cdp, params.selector);
 
       if (nodeIds.length === 0) {
-        throw new Error(`No elements found matching "${request.selector}"`);
+        throw new Error(`No elements found matching "${params.selector}"`);
       }
 
       // Apply selector filters
-      if (request.first) {
+      if (params.first) {
         const firstNode = nodeIds[0];
         if (firstNode === undefined) {
           throw new Error('No elements found');
         }
         nodeIds = [firstNode];
-      } else if (request.nth !== undefined) {
-        if (request.nth < 1 || request.nth > nodeIds.length) {
-          throw new Error(`--nth ${request.nth} out of range (found ${nodeIds.length} elements)`);
+      } else if (params.nth !== undefined) {
+        if (params.nth < 1 || params.nth > nodeIds.length) {
+          throw new Error(`--nth ${params.nth} out of range (found ${nodeIds.length} elements)`);
         }
-        const nthNode = nodeIds[request.nth - 1];
+        const nthNode = nodeIds[params.nth - 1];
         if (nthNode === undefined) {
-          throw new Error(`Element at index ${request.nth} not found`);
+          throw new Error(`Element at index ${params.nth} not found`);
         }
         nodeIds = [nthNode];
       }
@@ -305,9 +275,9 @@ async function handleDomHighlight(request: WorkerDomHighlightRequest): Promise<v
     }
 
     // Prepare highlight color
-    const colorName = (request.color ?? 'red') as keyof typeof HIGHLIGHT_COLORS;
+    const colorName = (params.color ?? 'red') as keyof typeof HIGHLIGHT_COLORS;
     const color = HIGHLIGHT_COLORS[colorName] ?? HIGHLIGHT_COLORS.red;
-    const opacity = request.opacity ?? color.a;
+    const opacity = params.opacity ?? color.a;
 
     // Highlight each node
     for (const nodeId of nodeIds) {
@@ -319,79 +289,52 @@ async function handleDomHighlight(request: WorkerDomHighlightRequest): Promise<v
       });
     }
 
-    // Send response
-    const response: WorkerDomHighlightResponse = {
-      type: 'dom_highlight_response',
-      requestId: request.requestId,
-      success: true,
-      data: {
-        highlighted: nodeIds.length,
-        nodeIds,
-      },
+    return {
+      highlighted: nodeIds.length,
+      nodeIds,
     };
+  },
 
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent dom_highlight_response (${nodeIds.length} nodes)`);
-  } catch (error) {
-    const response: WorkerDomHighlightResponse = {
-      type: 'dom_highlight_response',
-      requestId: request.requestId,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent dom_highlight_response (error: ${response.error})`);
-  }
-}
-
-/**
- * Handle DOM get request from daemon.
- */
-async function handleDomGet(request: WorkerDomGetRequest): Promise<void> {
-  console.error(`[worker] Handling dom_get_request`);
-
-  try {
-    if (!cdp) {
-      throw new Error('CDP connection not initialized');
-    }
-
+  /**
+   * DOM Get Handler - Get full HTML and attributes for elements
+   */
+  dom_get: async (cdp, params) => {
     // Ensure DOM is enabled
     await cdp.send('DOM.enable');
 
     let nodeIds: number[] = [];
 
     // Direct nodeId provided
-    if (request.nodeId !== undefined) {
-      nodeIds = [request.nodeId];
-    } else if (request.index !== undefined) {
+    if (params.nodeId !== undefined) {
+      nodeIds = [params.nodeId];
+    } else if (params.index !== undefined) {
       // Look up nodeId from cache
-      const nodeId = getNodeIdByIndex(request.index);
+      const nodeId = getNodeIdByIndex(params.index);
       if (!nodeId) {
         throw new Error(
-          `No cached element at index ${request.index}. Run 'bdg dom query <selector>' first.`
+          `No cached element at index ${params.index}. Run 'bdg dom query <selector>' first.`
         );
       }
       nodeIds = [nodeId];
-    } else if (request.selector) {
+    } else if (params.selector) {
       // Query by selector
-      nodeIds = await queryBySelector(cdp, request.selector);
+      nodeIds = await queryBySelector(cdp, params.selector);
 
       if (nodeIds.length === 0) {
-        throw new Error(`No elements found matching "${request.selector}"`);
+        throw new Error(`No elements found matching "${params.selector}"`);
       }
 
       // Apply selector filters
-      if (request.nth !== undefined) {
-        if (request.nth < 1 || request.nth > nodeIds.length) {
-          throw new Error(`--nth ${request.nth} out of range (found ${nodeIds.length} elements)`);
+      if (params.nth !== undefined) {
+        if (params.nth < 1 || params.nth > nodeIds.length) {
+          throw new Error(`--nth ${params.nth} out of range (found ${nodeIds.length} elements)`);
         }
-        const nthNode = nodeIds[request.nth - 1];
+        const nthNode = nodeIds[params.nth - 1];
         if (nthNode === undefined) {
-          throw new Error(`Element at index ${request.nth} not found`);
+          throw new Error(`Element at index ${params.nth} not found`);
         }
         nodeIds = [nthNode];
-      } else if (!request.all) {
+      } else if (!params.all) {
         // Default: first match only
         const firstNode = nodeIds[0];
         if (firstNode === undefined) {
@@ -416,54 +359,55 @@ async function handleDomGet(request: WorkerDomGetRequest): Promise<void> {
       });
     }
 
-    // Send response
-    const response: WorkerDomGetResponse = {
-      type: 'dom_get_response',
-      requestId: request.requestId,
-      success: true,
-      data: {
-        nodes,
-      },
+    return {
+      nodes,
     };
-
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent dom_get_response (${nodes.length} nodes)`);
-  } catch (error) {
-    const response: WorkerDomGetResponse = {
-      type: 'dom_get_response',
-      requestId: request.requestId,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent dom_get_response (error: ${response.error})`);
-  }
-}
+  },
+};
 
 /**
  * Handle incoming IPC message from daemon via stdin.
  */
-function handleWorkerIPC(message: WorkerIPCMessageType): void {
-  console.error(`[worker] Received IPC message: ${message.type}`);
+async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
+  const commandName = message.type.replace('_request', '') as CommandName;
+  const handler = commandHandlers[commandName];
 
-  switch (message.type) {
-    case 'dom_query_request':
-      void handleDomQuery(message);
-      break;
-    case 'dom_highlight_request':
-      void handleDomHighlight(message);
-      break;
-    case 'dom_get_request':
-      void handleDomGet(message);
-      break;
-    // Response types are sent by worker, not received
-    case 'dom_query_response':
-    case 'dom_highlight_response':
-    case 'dom_get_response':
-    case 'worker_ready':
-      console.error(`[worker] Unexpected response type received: ${message.type}`);
-      break;
+  if (!handler) {
+    console.error(`[worker] Unknown command: ${commandName}`);
+    return;
+  }
+
+  console.error(`[worker] Handling ${commandName}_request`);
+
+  try {
+    if (!cdp) throw new Error('CDP connection not initialized');
+
+    // Extract params by removing IPC metadata fields
+    const { type: _type, requestId: _requestId, ...params } = message;
+
+    // Call handler with properly typed params
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
+    const data = await handler(cdp, params as any);
+
+    const response: WorkerResponse<typeof commandName> = {
+      type: `${commandName}_response` as const,
+      requestId: message.requestId,
+      success: true,
+      data,
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent ${commandName}_response (success)`);
+  } catch (error) {
+    const response: WorkerResponse<typeof commandName> = {
+      type: `${commandName}_response` as const,
+      requestId: message.requestId,
+      success: false,
+      error: getErrorMessage(error),
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent ${commandName}_response (error: ${response.error})`);
   }
 }
 
@@ -483,12 +427,10 @@ function setupStdinListener(): void {
     for (const line of lines) {
       if (line.trim()) {
         try {
-          const message = JSON.parse(line) as WorkerIPCMessageType;
-          handleWorkerIPC(message);
+          const message = JSON.parse(line) as WorkerRequestUnion;
+          void handleWorkerIPC(message);
         } catch (error) {
-          console.error(
-            `[worker] Failed to parse IPC message: ${error instanceof Error ? error.message : String(error)}`
-          );
+          console.error(`[worker] Failed to parse IPC message: ${getErrorMessage(error)}`);
         }
       }
     }
@@ -538,9 +480,7 @@ function startPreviewLoop(): NodeJS.Timeout {
         await writePartialOutputAsync(output);
         await writeFullOutputAsync(output);
       } catch (error) {
-        console.error(
-          `[worker] Failed to write preview data: ${error instanceof Error ? error.message : String(error)}`
-        );
+        console.error(`[worker] Failed to write preview data: ${getErrorMessage(error)}`);
       }
     })();
   }, 5000);
@@ -591,9 +531,7 @@ async function gracefulShutdown(): Promise<void> {
         domData = await collectDOM(cdp);
         console.error('[worker] DOM snapshot collected');
       } catch (error) {
-        console.error(
-          `[worker] Failed to collect DOM: ${error instanceof Error ? error.message : String(error)}`
-        );
+        console.error(`[worker] Failed to collect DOM: ${getErrorMessage(error)}`);
       }
     }
 
@@ -609,9 +547,7 @@ async function gracefulShutdown(): Promise<void> {
       try {
         cleanup();
       } catch (error) {
-        console.error(
-          `[worker] Cleanup function error: ${error instanceof Error ? error.message : String(error)}`
-        );
+        console.error(`[worker] Cleanup function error: ${getErrorMessage(error)}`);
       }
     }
 
@@ -631,9 +567,7 @@ async function gracefulShutdown(): Promise<void> {
 
     console.error('[worker] Graceful shutdown complete');
   } catch (error) {
-    console.error(
-      `[worker] Error during shutdown: ${error instanceof Error ? error.message : String(error)}`
-    );
+    console.error(`[worker] Error during shutdown: ${getErrorMessage(error)}`);
     throw error;
   }
 }
@@ -743,9 +677,7 @@ async function main(): Promise<void> {
     // Keep process alive
     console.error('[worker] Session active, waiting for signal or timeout...');
   } catch (error) {
-    console.error(
-      `[worker] Fatal error: ${error instanceof Error ? error.message : String(error)}`
-    );
+    console.error(`[worker] Fatal error: ${getErrorMessage(error)}`);
 
     // Cleanup on error
     if (previewInterval) {

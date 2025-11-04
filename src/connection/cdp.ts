@@ -16,7 +16,7 @@ import {
   UTF8_ENCODING,
 } from '@/constants';
 import type { CDPMessage, ConnectionOptions } from '@/types';
-import { CDPConnectionError, CDPTimeoutError } from '@/utils/errors.js';
+import { CDPConnectionError, CDPTimeoutError, getErrorMessage } from '@/utils/errors.js';
 
 // Error Messages
 const CONNECTION_TIMEOUT_ERROR = 'Connection timeout';
@@ -282,8 +282,7 @@ export class CDPConnection {
 
       throw new Error(UNEXPECTED_DATA_TYPE_ERROR(typeof data));
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(DATA_CONVERSION_ERROR(errorMsg));
+      console.error(DATA_CONVERSION_ERROR(getErrorMessage(error)));
       throw error;
     }
   }
@@ -309,8 +308,7 @@ export class CDPConnection {
 
       return message;
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(JSON_PARSE_ERROR(errorMsg));
+      console.error(JSON_PARSE_ERROR(getErrorMessage(error)));
       throw error;
     }
   }
@@ -339,8 +337,7 @@ export class CDPConnection {
         console.warn('Received CDP message with neither ID nor method - ignoring');
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(MESSAGE_ROUTING_ERROR(errorMsg));
+      console.error(MESSAGE_ROUTING_ERROR(getErrorMessage(error)));
       throw error;
     }
   }
@@ -441,8 +438,7 @@ export class CDPConnection {
         await this.onReconnect();
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(RECONNECTION_FAILED_ERROR(errorMsg));
+      console.error(RECONNECTION_FAILED_ERROR(getErrorMessage(error)));
     }
   }
 
@@ -504,8 +500,7 @@ export class CDPConnection {
       const url = new URL(this.wsUrl);
       return parseInt(url.port, 10);
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      throw new CDPConnectionError(INVALID_WEBSOCKET_URL_ERROR(this.wsUrl, errorMsg));
+      throw new CDPConnectionError(INVALID_WEBSOCKET_URL_ERROR(this.wsUrl, getErrorMessage(error)));
     }
   }
 

@@ -8,6 +8,7 @@ import {
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { getPeek } from '@/ipc/client.js';
 import type { BdgOutput } from '@/types.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -86,7 +87,7 @@ export function registerPeekCommand(program: Command): void {
           console.log(formatPreview(output, options));
         } catch (error) {
           // Handle IPC errors (daemon not running, connection issues, etc.)
-          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorMessage = getErrorMessage(error);
 
           if (options.json) {
             console.log(

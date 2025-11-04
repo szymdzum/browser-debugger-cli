@@ -1,6 +1,7 @@
 import fs from 'fs';
 
 import { getDomQueryCachePath } from '@/session/paths.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * DOM query cache structure
@@ -35,9 +36,7 @@ export function writeQueryCache(cache: DomQueryCache): void {
     fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf8');
   } catch (error) {
     // Silently fail - cache is optional
-    console.error(
-      `Warning: Failed to write DOM cache: ${error instanceof Error ? error.message : String(error)}`
-    );
+    console.error(`Warning: Failed to write DOM cache: ${getErrorMessage(error)}`);
   }
 }
 

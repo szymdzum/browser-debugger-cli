@@ -171,8 +171,7 @@ function getPersistentUserDataDir(): string {
     try {
       fs.mkdirSync(userDataDir, { recursive: true });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      throw new Error(USER_DATA_DIR_ERROR(userDataDir, errorMsg));
+      throw new Error(USER_DATA_DIR_ERROR(userDataDir, getErrorMessage(error)));
     }
   }
 
@@ -217,9 +216,8 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
         throw error;
       }
 
-      const errorMsg = error instanceof Error ? error.message : String(error);
       throw new ChromeLaunchError(
-        PREFS_LOAD_ERROR(options.prefsFile, errorMsg),
+        PREFS_LOAD_ERROR(options.prefsFile, getErrorMessage(error)),
         error instanceof Error ? error : undefined
       );
     }

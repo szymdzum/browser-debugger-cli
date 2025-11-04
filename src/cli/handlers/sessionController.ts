@@ -6,7 +6,7 @@ import { writeSessionMetadata } from '@/session/metadata.js';
 import { writePid } from '@/session/pid.js';
 import type { CollectorType, LaunchedChrome, CDPTarget, SessionOptions } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
-import { ChromeLaunchError } from '@/utils/errors.js';
+import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
 import { getExitCodeForError } from '@/utils/exitCodes.js';
 
 import { ChromeBootstrap } from './ChromeBootstrap.js';
@@ -29,8 +29,7 @@ function reportLauncherFailure(error: unknown): void {
   console.error('\n--- Chrome Launch Diagnostics ---\n');
 
   // Show original error
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  console.error(`Error: ${errorMessage}\n`);
+  console.error(`Error: ${getErrorMessage(error)}\n`);
 
   // Get diagnostics using shared utility (cached to avoid repeated scans)
   const diagnostics = getChromeDiagnostics();
@@ -96,15 +95,12 @@ export async function cleanupStaleChrome(): Promise<number> {
 
       return 0;
     } catch (killError) {
-      const errorMessage = killError instanceof Error ? killError.message : String(killError);
-      console.error(`Error: Failed to kill Chrome process: ${errorMessage}`);
+      console.error(`Error: Failed to kill Chrome process: ${getErrorMessage(killError)}`);
       console.error('   Try manually killing Chrome processes if issues persist\n');
       return 1;
     }
   } catch (error) {
-    console.error(
-      `Error: Failed to cleanup Chrome processes: ${error instanceof Error ? error.message : String(error)}\n`
-    );
+    console.error(`Error: Failed to cleanup Chrome processes: ${getErrorMessage(error)}\n`);
     return 1;
   }
 }

@@ -17,6 +17,7 @@ import {
   PORT_STRICT_OPTION_DESCRIPTION,
 } from '@/constants';
 import type { CollectorType } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -165,9 +166,7 @@ function parseOptionalJson(value: string | undefined): Record<string, unknown> |
   try {
     return JSON.parse(value) as Record<string, unknown>;
   } catch (error) {
-    throw new Error(
-      `Invalid JSON in --chrome-prefs: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throw new Error(`Invalid JSON in --chrome-prefs: ${getErrorMessage(error)}`);
   }
 }
 

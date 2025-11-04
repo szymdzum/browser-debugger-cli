@@ -4,6 +4,7 @@ import { Command } from 'commander';
 
 import { commandRegistry } from '@/cli/registry.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
 /**
@@ -37,8 +38,7 @@ async function main(): Promise<void> {
           process.exit((error as Error & { exitCode?: number }).exitCode ?? 1);
         }
         // Handle other launch failures
-        const message = error instanceof Error ? error.message : String(error);
-        console.error('[bdg] Failed to start daemon:', message);
+        console.error('[bdg] Failed to start daemon:', getErrorMessage(error));
         process.exit(1);
       }
     } else {

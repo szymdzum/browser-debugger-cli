@@ -1,5 +1,6 @@
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import type { CollectorType } from '@/types.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -111,7 +112,7 @@ export async function startSessionViaDaemon(
     process.exit(0);
   } catch (error) {
     // Handle connection errors
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = getErrorMessage(error);
 
     if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
       console.error('[bdg] Daemon not running');

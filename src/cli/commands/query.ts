@@ -5,6 +5,7 @@ import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { CDPTarget } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -160,7 +161,7 @@ export function registerQueryCommand(program: Command): void {
         }
         process.exit(EXIT_CODES.SUCCESS);
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorMsg = getErrorMessage(error);
         if (options.json) {
           console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMsg), null, 2));
         } else {

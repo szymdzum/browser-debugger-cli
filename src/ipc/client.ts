@@ -11,10 +11,15 @@ import type { Socket } from 'net';
 
 import { IPCServer } from '@/daemon/ipcServer.js';
 import type {
+  COMMANDS} from '@/ipc/commands.js';
+import {
+  type CommandName,
+  type ClientRequest,
+  type ClientResponse,
+} from '@/ipc/commands.js';
+import type {
   HandshakeRequest,
   HandshakeResponse,
-  IPCRequest,
-  IPCResponse,
   PeekRequest,
   PeekResponse,
   StartSessionRequest,
@@ -23,23 +28,19 @@ import type {
   StatusResponse,
   StopSessionRequest,
   StopSessionResponse,
-  DomQueryRequest,
-  DomQueryResponse,
-  DomHighlightRequest,
-  DomHighlightResponse,
-  DomGetRequest,
-  DomGetResponse,
 } from '@/ipc/types.js';
 import type { CollectorType } from '@/types.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Generic IPC request sender that handles connection, timeout, and error handling.
+ * Supports both traditional IPC messages (handshake, status, etc.) and command messages (DOM commands).
  *
- * @param request - The IPC request to send
+ * @param request - The IPC request to send (either IPCRequest or ClientRequest<T>)
  * @param requestName - Human-readable name for logging (e.g., 'status', 'peek')
  * @returns Promise that resolves with the response
  */
-async function sendRequest<TRequest extends IPCRequest, TResponse extends IPCResponse>(
+async function sendRequest<TRequest, TResponse>(
   request: TRequest,
   requestName: string
 ): Promise<TResponse> {
@@ -89,9 +90,7 @@ async function sendRequest<TRequest extends IPCRequest, TResponse extends IPCRes
               clearTimeout(timeout);
               socket.destroy();
               reject(
-                new Error(
-                  `Failed to parse ${requestName} response: ${error instanceof Error ? error.message : String(error)}`
-                )
+                new Error(`Failed to parse ${requestName} response: ${getErrorMessage(error)}`)
               );
             }
           }
@@ -212,20 +211,34 @@ export async function stopSession(): Promise<StopSessionResponse> {
 }
 
 /**
+ * Generic command sender - works for any registered command in the COMMANDS registry.
+ *
+ * @param commandName - Name of the command from the COMMANDS registry
+ * @param params - Command parameters matching the command's request schema
+ * @returns Promise that resolves with the command response
+ */
+async function sendCommand<T extends CommandName>(
+  commandName: T,
+  params: (typeof COMMANDS)[T]['requestSchema']
+): Promise<ClientResponse<T>> {
+  const request: ClientRequest<T> = {
+    type: `${commandName}_request` as const,
+    sessionId: randomUUID(),
+    ...params,
+  } as ClientRequest<T>;
+
+  return sendRequest<ClientRequest<T>, ClientResponse<T>>(request, commandName);
+}
+
+/**
  * Query DOM elements by CSS selector via the daemon's worker.
  *
  * @param selector - CSS selector to query
  * @returns DOM query response with matched elements
  * @throws Error if connection fails, daemon is not running, or request times out
  */
-export async function queryDOM(selector: string): Promise<DomQueryResponse> {
-  const request: DomQueryRequest = {
-    type: 'dom_query_request',
-    sessionId: randomUUID(),
-    selector,
-  };
-
-  return sendRequest<DomQueryRequest, DomQueryResponse>(request, 'dom query');
+export async function queryDOM(selector: string): Promise<ClientResponse<'dom_query'>> {
+  return sendCommand('dom_query', { selector });
 }
 
 /**
@@ -243,20 +256,8 @@ export async function highlightDOM(options: {
   nth?: number;
   color?: string;
   opacity?: number;
-}): Promise<DomHighlightResponse> {
-  const request: DomHighlightRequest = {
-    type: 'dom_highlight_request',
-    sessionId: randomUUID(),
-    ...(options.selector !== undefined && { selector: options.selector }),
-    ...(options.index !== undefined && { index: options.index }),
-    ...(options.nodeId !== undefined && { nodeId: options.nodeId }),
-    ...(options.first !== undefined && { first: options.first }),
-    ...(options.nth !== undefined && { nth: options.nth }),
-    ...(options.color !== undefined && { color: options.color }),
-    ...(options.opacity !== undefined && { opacity: options.opacity }),
-  };
-
-  return sendRequest<DomHighlightRequest, DomHighlightResponse>(request, 'dom highlight');
+}): Promise<ClientResponse<'dom_highlight'>> {
+  return sendCommand('dom_highlight', options);
 }
 
 /**
@@ -272,16 +273,6 @@ export async function getDOM(options: {
   nodeId?: number;
   all?: boolean;
   nth?: number;
-}): Promise<DomGetResponse> {
-  const request: DomGetRequest = {
-    type: 'dom_get_request',
-    sessionId: randomUUID(),
-    ...(options.selector !== undefined && { selector: options.selector }),
-    ...(options.index !== undefined && { index: options.index }),
-    ...(options.nodeId !== undefined && { nodeId: options.nodeId }),
-    ...(options.all !== undefined && { all: options.all }),
-    ...(options.nth !== undefined && { nth: options.nth }),
-  };
-
-  return sendRequest<DomGetRequest, DomGetResponse>(request, 'dom get');
+}): Promise<ClientResponse<'dom_get'>> {
+  return sendCommand('dom_get', options);
 }

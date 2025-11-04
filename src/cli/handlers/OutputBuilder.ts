@@ -6,6 +6,7 @@ import type {
   DOMData,
   CollectorType,
 } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
 /**
@@ -144,7 +145,7 @@ export class OutputBuilder {
       duration: Date.now() - startTime,
       target: target ? { url: target.url, title: target.title } : { url: '', title: '' },
       data: {},
-      error: error instanceof Error ? error.message : String(error),
+      error: getErrorMessage(error),
     };
   }
 

@@ -13,6 +13,8 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import type { CollectorType } from '@/types.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
 
 /**
  * Worker metadata returned from successful launch.
@@ -97,7 +99,7 @@ export async function launchSessionInWorker(
     throw new WorkerStartError(
       'Failed to spawn worker process',
       'SPAWN_FAILED',
-      error instanceof Error ? error.message : String(error)
+      getErrorMessage(error)
     );
   }
 
