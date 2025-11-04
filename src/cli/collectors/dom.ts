@@ -80,6 +80,13 @@ async function connectToActiveSession(): Promise<CDPConnection> {
   const cdp = new CDPConnection();
   await cdp.connect(metadata.webSocketDebuggerUrl);
 
+  // Enable required CDP domains
+  await cdp.send('DOM.enable');
+  await cdp.send('Overlay.enable');
+
+  // Get document to establish DOM tree (required for nodeIds to be valid)
+  await cdp.send('DOM.getDocument', { depth: -1 });
+
   return cdp;
 }
 
