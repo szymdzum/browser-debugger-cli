@@ -23,6 +23,12 @@ import type {
   StatusResponse,
   StopSessionRequest,
   StopSessionResponse,
+  DomQueryRequest,
+  DomQueryResponse,
+  DomHighlightRequest,
+  DomHighlightResponse,
+  DomGetRequest,
+  DomGetResponse,
 } from '@/ipc/types.js';
 import type { CollectorType } from '@/types.js';
 
@@ -203,4 +209,79 @@ export async function stopSession(): Promise<StopSessionResponse> {
   };
 
   return sendRequest<StopSessionRequest, StopSessionResponse>(request, 'stop session');
+}
+
+/**
+ * Query DOM elements by CSS selector via the daemon's worker.
+ *
+ * @param selector - CSS selector to query
+ * @returns DOM query response with matched elements
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function queryDOM(selector: string): Promise<DomQueryResponse> {
+  const request: DomQueryRequest = {
+    type: 'dom_query_request',
+    sessionId: randomUUID(),
+    selector,
+  };
+
+  return sendRequest<DomQueryRequest, DomQueryResponse>(request, 'dom query');
+}
+
+/**
+ * Highlight DOM elements in the browser via the daemon's worker.
+ *
+ * @param options - Highlight options (selector, index, nodeId, color, etc.)
+ * @returns DOM highlight response with highlighted node information
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function highlightDOM(options: {
+  selector?: string;
+  index?: number;
+  nodeId?: number;
+  first?: boolean;
+  nth?: number;
+  color?: string;
+  opacity?: number;
+}): Promise<DomHighlightResponse> {
+  const request: DomHighlightRequest = {
+    type: 'dom_highlight_request',
+    sessionId: randomUUID(),
+    ...(options.selector !== undefined && { selector: options.selector }),
+    ...(options.index !== undefined && { index: options.index }),
+    ...(options.nodeId !== undefined && { nodeId: options.nodeId }),
+    ...(options.first !== undefined && { first: options.first }),
+    ...(options.nth !== undefined && { nth: options.nth }),
+    ...(options.color !== undefined && { color: options.color }),
+    ...(options.opacity !== undefined && { opacity: options.opacity }),
+  };
+
+  return sendRequest<DomHighlightRequest, DomHighlightResponse>(request, 'dom highlight');
+}
+
+/**
+ * Get full HTML and attributes for DOM elements via the daemon's worker.
+ *
+ * @param options - Get options (selector, index, nodeId, all, nth)
+ * @returns DOM get response with node information
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function getDOM(options: {
+  selector?: string;
+  index?: number;
+  nodeId?: number;
+  all?: boolean;
+  nth?: number;
+}): Promise<DomGetResponse> {
+  const request: DomGetRequest = {
+    type: 'dom_get_request',
+    sessionId: randomUUID(),
+    ...(options.selector !== undefined && { selector: options.selector }),
+    ...(options.index !== undefined && { index: options.index }),
+    ...(options.nodeId !== undefined && { nodeId: options.nodeId }),
+    ...(options.all !== undefined && { all: options.all }),
+    ...(options.nth !== undefined && { nth: options.nth }),
+  };
+
+  return sendRequest<DomGetRequest, DomGetResponse>(request, 'dom get');
 }

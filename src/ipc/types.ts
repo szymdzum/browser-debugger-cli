@@ -194,6 +194,120 @@ export interface StopSessionResponse extends IPCMessage {
 }
 
 /**
+ * DOM query request sent from CLI client to daemon.
+ * Queries elements by CSS selector.
+ */
+export interface DomQueryRequest extends IPCMessage {
+  type: 'dom_query_request';
+  sessionId: string; // Unique request identifier
+  selector: string; // CSS selector to query
+}
+
+/**
+ * DOM query response payload containing matched elements.
+ */
+export interface DomQueryResponseData {
+  selector: string;
+  count: number;
+  nodes: Array<{
+    index: number;
+    nodeId: number;
+    tag?: string;
+    classes?: string[];
+    preview?: string;
+  }>;
+}
+
+/**
+ * DOM query response sent from daemon to CLI client.
+ */
+export interface DomQueryResponse extends IPCMessage {
+  type: 'dom_query_response';
+  sessionId: string; // Echo back the session ID from request
+  status: 'ok' | 'error';
+  data?: DomQueryResponseData;
+  error?: string; // Present if status === 'error'
+}
+
+/**
+ * DOM highlight request sent from CLI client to daemon.
+ * Highlights elements in the browser.
+ */
+export interface DomHighlightRequest extends IPCMessage {
+  type: 'dom_highlight_request';
+  sessionId: string; // Unique request identifier
+  selector?: string; // CSS selector to query (mutually exclusive with index/nodeId)
+  index?: number; // Index from last query cache (mutually exclusive with selector/nodeId)
+  nodeId?: number; // Direct nodeId (mutually exclusive with selector/index)
+  first?: boolean; // Target first match only (with selector)
+  nth?: number; // Target nth match (with selector)
+  color?: string; // Highlight color preset
+  opacity?: number; // Highlight opacity (0.0 - 1.0)
+}
+
+/**
+ * DOM highlight response payload.
+ */
+export interface DomHighlightResponseData {
+  highlighted: number; // Number of elements highlighted
+  nodeIds: number[]; // NodeIds of highlighted elements
+}
+
+/**
+ * DOM highlight response sent from daemon to CLI client.
+ */
+export interface DomHighlightResponse extends IPCMessage {
+  type: 'dom_highlight_response';
+  sessionId: string; // Echo back the session ID from request
+  status: 'ok' | 'error';
+  data?: DomHighlightResponseData;
+  error?: string; // Present if status === 'error'
+}
+
+/**
+ * DOM get request sent from CLI client to daemon.
+ * Gets full HTML and attributes for elements.
+ */
+export interface DomGetRequest extends IPCMessage {
+  type: 'dom_get_request';
+  sessionId: string; // Unique request identifier
+  selector?: string; // CSS selector to query (mutually exclusive with index/nodeId)
+  index?: number; // Index from last query cache (mutually exclusive with selector/nodeId)
+  nodeId?: number; // Direct nodeId (mutually exclusive with selector/index)
+  all?: boolean; // Target all matches (with selector)
+  nth?: number; // Target nth match (with selector)
+}
+
+/**
+ * DOM node information returned by DOM get command.
+ */
+export interface DomNodeInfo {
+  nodeId: number;
+  tag?: string;
+  attributes?: Record<string, string>;
+  classes?: string[];
+  outerHTML?: string;
+}
+
+/**
+ * DOM get response payload.
+ */
+export interface DomGetResponseData {
+  nodes: DomNodeInfo[]; // Array of node information (single element if not --all)
+}
+
+/**
+ * DOM get response sent from daemon to CLI client.
+ */
+export interface DomGetResponse extends IPCMessage {
+  type: 'dom_get_response';
+  sessionId: string; // Echo back the session ID from request
+  status: 'ok' | 'error';
+  data?: DomGetResponseData;
+  error?: string; // Present if status === 'error'
+}
+
+/**
  * Union type of all IPC messages (for future extension).
  */
 export type IPCMessageType =
@@ -206,7 +320,13 @@ export type IPCMessageType =
   | StartSessionRequest
   | StartSessionResponse
   | StopSessionRequest
-  | StopSessionResponse;
+  | StopSessionResponse
+  | DomQueryRequest
+  | DomQueryResponse
+  | DomHighlightRequest
+  | DomHighlightResponse
+  | DomGetRequest
+  | DomGetResponse;
 
 /**
  * Union type of all IPC request messages.
@@ -216,7 +336,10 @@ export type IPCRequest =
   | StatusRequest
   | PeekRequest
   | StartSessionRequest
-  | StopSessionRequest;
+  | StopSessionRequest
+  | DomQueryRequest
+  | DomHighlightRequest
+  | DomGetRequest;
 
 /**
  * Union type of all IPC response messages.
@@ -226,4 +349,7 @@ export type IPCResponse =
   | StatusResponse
   | PeekResponse
   | StartSessionResponse
-  | StopSessionResponse;
+  | StopSessionResponse
+  | DomQueryResponse
+  | DomHighlightResponse
+  | DomGetResponse;

@@ -23,6 +23,7 @@ export interface WorkerMetadata {
   port: number;
   targetUrl: string;
   targetTitle?: string;
+  workerProcess: ChildProcess; // Keep reference for IPC communication
 }
 
 /**
@@ -88,7 +89,7 @@ export async function launchSessionInWorker(
   let worker: ChildProcess;
   try {
     worker = spawn('node', [workerPath, JSON.stringify(config)], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'], // Enable stdin for IPC
       detached: true,
       env: process.env,
     });
@@ -156,8 +157,8 @@ export async function launchSessionInWorker(
                 console.error(`[daemon] Worker PID: ${readyMessage.workerPid}`);
                 console.error(`[daemon] Chrome PID: ${readyMessage.chromePid}`);
 
-                // Detach worker so it continues running
-                worker.unref();
+                // NOTE: Don't unref() - we need to keep the worker reference for IPC
+                // Worker continues running as detached process
 
                 resolve({
                   workerPid: readyMessage.workerPid,
@@ -165,6 +166,7 @@ export async function launchSessionInWorker(
                   port: readyMessage.port,
                   targetUrl: readyMessage.target.url,
                   ...(readyMessage.target.title && { targetTitle: readyMessage.target.title }),
+                  workerProcess: worker, // Return worker process for IPC
                 });
               }
             }

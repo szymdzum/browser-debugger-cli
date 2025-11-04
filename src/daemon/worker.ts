@@ -15,11 +15,27 @@
  * - Worker handles SIGTERM for graceful shutdown
  */
 
+import { writeQueryCache, getNodeIdByIndex } from '@/cli/collectors/helpers/domCache.js';
+import {
+  queryBySelector,
+  getNodeInfo,
+  createNodePreview,
+} from '@/cli/collectors/helpers/domQuery.js';
 import { startConsoleCollection } from '@/collectors/console.js';
 import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
+import type {
+  WorkerIPCMessageType,
+  WorkerDomQueryRequest,
+  WorkerDomQueryResponse,
+  WorkerDomHighlightRequest,
+  WorkerDomHighlightResponse,
+  WorkerDomGetRequest,
+  WorkerDomGetResponse,
+  WorkerReadyMessage,
+} from '@/daemon/workerIpc.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writePartialOutputAsync, writeFullOutputAsync } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
@@ -47,16 +63,17 @@ interface WorkerConfig {
   maxBodySize?: number | undefined;
 }
 
-interface WorkerReadyMessage {
-  type: 'worker_ready';
-  workerPid: number;
-  chromePid: number;
-  port: number;
-  target: {
-    url: string;
-    title?: string;
-  };
-}
+/**
+ * Color presets for highlight overlay
+ */
+const HIGHLIGHT_COLORS = {
+  red: { r: 255, g: 0, b: 0, a: 0.5 },
+  blue: { r: 0, g: 0, b: 255, a: 0.5 },
+  green: { r: 0, g: 255, b: 0, a: 0.5 },
+  yellow: { r: 255, g: 255, b: 0, a: 0.5 },
+  orange: { r: 255, g: 165, b: 0, a: 0.5 },
+  purple: { r: 128, g: 0, b: 128, a: 0.5 },
+} as const;
 
 // Global state for cleanup
 let chrome: LaunchedChrome | null = null;
@@ -156,6 +173,335 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
 }
 
 /**
+ * Handle DOM query request from daemon.
+ */
+async function handleDomQuery(request: WorkerDomQueryRequest): Promise<void> {
+  console.error(`[worker] Handling dom_query_request (selector: ${request.selector})`);
+
+  try {
+    if (!cdp) {
+      throw new Error('CDP connection not initialized');
+    }
+
+    // Ensure DOM is enabled
+    await cdp.send('DOM.enable');
+
+    // Query elements
+    const nodeIds = await queryBySelector(cdp, request.selector);
+
+    // Get information for each node
+    const nodes: Array<{
+      index: number;
+      nodeId: number;
+      tag?: string;
+      classes?: string[];
+      preview?: string;
+    }> = [];
+
+    for (let i = 0; i < nodeIds.length; i++) {
+      const nodeId = nodeIds[i];
+      if (nodeId === undefined) continue;
+
+      const nodeInfo = await getNodeInfo(cdp, nodeId);
+      nodes.push({
+        index: i + 1,
+        nodeId: nodeInfo.nodeId,
+        ...(nodeInfo.tag !== undefined && { tag: nodeInfo.tag }),
+        ...(nodeInfo.classes !== undefined && { classes: nodeInfo.classes }),
+        preview: createNodePreview(nodeInfo),
+      });
+    }
+
+    // Write cache for index-based lookups
+    writeQueryCache({
+      selector: request.selector,
+      timestamp: new Date().toISOString(),
+      nodes,
+    });
+
+    // Send response
+    const response: WorkerDomQueryResponse = {
+      type: 'dom_query_response',
+      requestId: request.requestId,
+      success: true,
+      data: {
+        selector: request.selector,
+        count: nodes.length,
+        nodes,
+      },
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent dom_query_response (${nodes.length} nodes)`);
+  } catch (error) {
+    const response: WorkerDomQueryResponse = {
+      type: 'dom_query_response',
+      requestId: request.requestId,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent dom_query_response (error: ${response.error})`);
+  }
+}
+
+/**
+ * Handle DOM highlight request from daemon.
+ */
+async function handleDomHighlight(request: WorkerDomHighlightRequest): Promise<void> {
+  console.error(`[worker] Handling dom_highlight_request`);
+
+  try {
+    if (!cdp) {
+      throw new Error('CDP connection not initialized');
+    }
+
+    // Ensure DOM and Overlay are enabled
+    await cdp.send('DOM.enable');
+    await cdp.send('Overlay.enable');
+
+    let nodeIds: number[] = [];
+
+    // Direct nodeId provided
+    if (request.nodeId !== undefined) {
+      nodeIds = [request.nodeId];
+    } else if (request.index !== undefined) {
+      // Look up nodeId from cache
+      const nodeId = getNodeIdByIndex(request.index);
+      if (!nodeId) {
+        throw new Error(
+          `No cached element at index ${request.index}. Run 'bdg dom query <selector>' first.`
+        );
+      }
+      nodeIds = [nodeId];
+    } else if (request.selector) {
+      // Query by selector
+      nodeIds = await queryBySelector(cdp, request.selector);
+
+      if (nodeIds.length === 0) {
+        throw new Error(`No elements found matching "${request.selector}"`);
+      }
+
+      // Apply selector filters
+      if (request.first) {
+        const firstNode = nodeIds[0];
+        if (firstNode === undefined) {
+          throw new Error('No elements found');
+        }
+        nodeIds = [firstNode];
+      } else if (request.nth !== undefined) {
+        if (request.nth < 1 || request.nth > nodeIds.length) {
+          throw new Error(`--nth ${request.nth} out of range (found ${nodeIds.length} elements)`);
+        }
+        const nthNode = nodeIds[request.nth - 1];
+        if (nthNode === undefined) {
+          throw new Error(`Element at index ${request.nth} not found`);
+        }
+        nodeIds = [nthNode];
+      }
+    } else {
+      throw new Error('Either selector, index, or nodeId must be provided');
+    }
+
+    // Prepare highlight color
+    const colorName = (request.color ?? 'red') as keyof typeof HIGHLIGHT_COLORS;
+    const color = HIGHLIGHT_COLORS[colorName] ?? HIGHLIGHT_COLORS.red;
+    const opacity = request.opacity ?? color.a;
+
+    // Highlight each node
+    for (const nodeId of nodeIds) {
+      await cdp.send('Overlay.highlightNode', {
+        highlightConfig: {
+          contentColor: { ...color, a: opacity },
+        },
+        nodeId,
+      });
+    }
+
+    // Send response
+    const response: WorkerDomHighlightResponse = {
+      type: 'dom_highlight_response',
+      requestId: request.requestId,
+      success: true,
+      data: {
+        highlighted: nodeIds.length,
+        nodeIds,
+      },
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent dom_highlight_response (${nodeIds.length} nodes)`);
+  } catch (error) {
+    const response: WorkerDomHighlightResponse = {
+      type: 'dom_highlight_response',
+      requestId: request.requestId,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent dom_highlight_response (error: ${response.error})`);
+  }
+}
+
+/**
+ * Handle DOM get request from daemon.
+ */
+async function handleDomGet(request: WorkerDomGetRequest): Promise<void> {
+  console.error(`[worker] Handling dom_get_request`);
+
+  try {
+    if (!cdp) {
+      throw new Error('CDP connection not initialized');
+    }
+
+    // Ensure DOM is enabled
+    await cdp.send('DOM.enable');
+
+    let nodeIds: number[] = [];
+
+    // Direct nodeId provided
+    if (request.nodeId !== undefined) {
+      nodeIds = [request.nodeId];
+    } else if (request.index !== undefined) {
+      // Look up nodeId from cache
+      const nodeId = getNodeIdByIndex(request.index);
+      if (!nodeId) {
+        throw new Error(
+          `No cached element at index ${request.index}. Run 'bdg dom query <selector>' first.`
+        );
+      }
+      nodeIds = [nodeId];
+    } else if (request.selector) {
+      // Query by selector
+      nodeIds = await queryBySelector(cdp, request.selector);
+
+      if (nodeIds.length === 0) {
+        throw new Error(`No elements found matching "${request.selector}"`);
+      }
+
+      // Apply selector filters
+      if (request.nth !== undefined) {
+        if (request.nth < 1 || request.nth > nodeIds.length) {
+          throw new Error(`--nth ${request.nth} out of range (found ${nodeIds.length} elements)`);
+        }
+        const nthNode = nodeIds[request.nth - 1];
+        if (nthNode === undefined) {
+          throw new Error(`Element at index ${request.nth} not found`);
+        }
+        nodeIds = [nthNode];
+      } else if (!request.all) {
+        // Default: first match only
+        const firstNode = nodeIds[0];
+        if (firstNode === undefined) {
+          throw new Error('No elements found');
+        }
+        nodeIds = [firstNode];
+      }
+    } else {
+      throw new Error('Either selector, index, or nodeId must be provided');
+    }
+
+    // Get information for each node
+    const nodes = [];
+    for (const nodeId of nodeIds) {
+      const info = await getNodeInfo(cdp, nodeId);
+      nodes.push({
+        nodeId: info.nodeId,
+        ...(info.tag !== undefined && { tag: info.tag }),
+        ...(info.attributes !== undefined && { attributes: info.attributes }),
+        ...(info.classes !== undefined && { classes: info.classes }),
+        ...(info.outerHTML !== undefined && { outerHTML: info.outerHTML }),
+      });
+    }
+
+    // Send response
+    const response: WorkerDomGetResponse = {
+      type: 'dom_get_response',
+      requestId: request.requestId,
+      success: true,
+      data: {
+        nodes,
+      },
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent dom_get_response (${nodes.length} nodes)`);
+  } catch (error) {
+    const response: WorkerDomGetResponse = {
+      type: 'dom_get_response',
+      requestId: request.requestId,
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+
+    console.log(JSON.stringify(response));
+    console.error(`[worker] Sent dom_get_response (error: ${response.error})`);
+  }
+}
+
+/**
+ * Handle incoming IPC message from daemon via stdin.
+ */
+function handleWorkerIPC(message: WorkerIPCMessageType): void {
+  console.error(`[worker] Received IPC message: ${message.type}`);
+
+  switch (message.type) {
+    case 'dom_query_request':
+      void handleDomQuery(message);
+      break;
+    case 'dom_highlight_request':
+      void handleDomHighlight(message);
+      break;
+    case 'dom_get_request':
+      void handleDomGet(message);
+      break;
+    // Response types are sent by worker, not received
+    case 'dom_query_response':
+    case 'dom_highlight_response':
+    case 'dom_get_response':
+    case 'worker_ready':
+      console.error(`[worker] Unexpected response type received: ${message.type}`);
+      break;
+  }
+}
+
+/**
+ * Set up stdin listener for IPC commands from daemon.
+ */
+function setupStdinListener(): void {
+  let buffer = '';
+
+  process.stdin.on('data', (chunk: Buffer) => {
+    buffer += chunk.toString('utf-8');
+
+    // Process complete JSONL frames (separated by newlines)
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
+
+    for (const line of lines) {
+      if (line.trim()) {
+        try {
+          const message = JSON.parse(line) as WorkerIPCMessageType;
+          handleWorkerIPC(message);
+        } catch (error) {
+          console.error(
+            `[worker] Failed to parse IPC message: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
+    }
+  });
+
+  process.stdin.on('end', () => {
+    console.error('[worker] Stdin closed, daemon disconnected');
+  });
+
+  console.error('[worker] Stdin listener set up for IPC commands');
+}
+
+/**
  * Send worker_ready signal to parent via stdout.
  */
 function sendReadySignal(config: WorkerConfig): void {
@@ -165,6 +511,7 @@ function sendReadySignal(config: WorkerConfig): void {
 
   const message: WorkerReadyMessage = {
     type: 'worker_ready',
+    requestId: 'ready', // Special requestId for ready signal
     workerPid: process.pid,
     chromePid: chrome.pid,
     port: config.port,
@@ -369,6 +716,9 @@ async function main(): Promise<void> {
 
     // Send ready signal to parent
     sendReadySignal(config);
+
+    // Set up stdin listener for IPC commands from daemon
+    setupStdinListener();
 
     // Set up shutdown handlers
     process.on('SIGTERM', () => {

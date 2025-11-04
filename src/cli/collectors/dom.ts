@@ -1,19 +1,10 @@
 import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
-import { CDPConnection } from '@/connection/cdp.js';
-import { readSessionMetadata } from '@/session/metadata.js';
-import { readPid } from '@/session/pid.js';
-import { isProcessAlive } from '@/session/process.js';
+import { queryDOM, highlightDOM, getDOM } from '@/ipc/client.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-import { writeQueryCache, getNodeIdByIndex } from './helpers/domCache.js';
-import {
-  queryBySelector,
-  getNodeInfo,
-  createNodePreview,
-  type DomNodeInfo,
-} from './helpers/domQuery.js';
+import { getNodeIdByIndex } from './helpers/domCache.js';
 import { parseSelectorOrIndex } from './helpers/selectorParser.js';
 
 /**
@@ -46,51 +37,6 @@ interface DomGetOptions {
 }
 
 /**
- * Color presets for highlight overlay
- */
-const HIGHLIGHT_COLORS = {
-  red: { r: 255, g: 0, b: 0, a: 0.5 },
-  blue: { r: 0, g: 0, b: 255, a: 0.5 },
-  green: { r: 0, g: 255, b: 0, a: 0.5 },
-  yellow: { r: 255, g: 255, b: 0, a: 0.5 },
-  orange: { r: 255, g: 165, b: 0, a: 0.5 },
-  purple: { r: 128, g: 0, b: 128, a: 0.5 },
-} as const;
-
-/**
- * Connect to active session's CDP target
- *
- * @returns CDP connection instance
- * @throws Error if no active session or connection fails
- */
-async function connectToActiveSession(): Promise<CDPConnection> {
-  // Check if session is running
-  const pid = readPid();
-  if (!pid || !isProcessAlive(pid)) {
-    throw new Error('No active session running. Start a session with: bdg <url>');
-  }
-
-  // Read session metadata to get webSocketDebuggerUrl
-  const metadata = readSessionMetadata();
-  if (!metadata?.webSocketDebuggerUrl) {
-    throw new Error('No target information in session metadata');
-  }
-
-  // Connect to CDP target
-  const cdp = new CDPConnection();
-  await cdp.connect(metadata.webSocketDebuggerUrl);
-
-  // Enable required CDP domains
-  await cdp.send('DOM.enable');
-  await cdp.send('Overlay.enable');
-
-  // Get document to establish DOM tree (required for nodeIds to be valid)
-  await cdp.send('DOM.getDocument', { depth: -1 });
-
-  return cdp;
-}
-
-/**
  * Handle bdg dom query <selector> command
  *
  * @param selector - CSS selector to query
@@ -98,13 +44,20 @@ async function connectToActiveSession(): Promise<CDPConnection> {
  */
 async function handleDomQuery(selector: string, options: DomQueryOptions): Promise<void> {
   try {
-    // Connect to active session
-    const cdp = await connectToActiveSession();
+    // Send query request via IPC to daemon/worker
+    const response = await queryDOM(selector);
 
-    // Query elements
-    const nodeIds = await queryBySelector(cdp, selector);
+    if (response.status === 'error') {
+      throw new Error(response.error ?? 'Unknown error');
+    }
 
-    if (nodeIds.length === 0) {
+    if (!response.data) {
+      throw new Error('No data in response');
+    }
+
+    const { count, nodes } = response.data;
+
+    if (count === 0) {
       if (options.json) {
         console.log(
           JSON.stringify(
@@ -120,57 +73,14 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
       } else {
         console.log(`No elements found matching "${selector}"`);
       }
-      cdp.close();
       process.exit(EXIT_CODES.SUCCESS);
     }
 
-    // Get information for each node
-    const nodes: Array<{
-      index: number;
-      nodeId: number;
-      tag?: string;
-      classes?: string[];
-      preview?: string;
-    }> = [];
-
-    for (let i = 0; i < nodeIds.length; i++) {
-      const nodeId = nodeIds[i];
-      if (nodeId === undefined) continue;
-
-      const nodeInfo = await getNodeInfo(cdp, nodeId);
-      nodes.push({
-        index: i + 1,
-        nodeId: nodeInfo.nodeId,
-        ...(nodeInfo.tag !== undefined && { tag: nodeInfo.tag }),
-        ...(nodeInfo.classes !== undefined && { classes: nodeInfo.classes }),
-        preview: createNodePreview(nodeInfo),
-      });
-    }
-
-    // Write cache for index-based lookups
-    writeQueryCache({
-      selector,
-      timestamp: new Date().toISOString(),
-      nodes,
-    });
-
     // Output results
     if (options.json) {
-      console.log(
-        JSON.stringify(
-          {
-            selector,
-            count: nodes.length,
-            nodes,
-          },
-          null,
-          2
-        )
-      );
+      console.log(JSON.stringify(response.data, null, 2));
     } else {
-      console.log(
-        `Found ${nodes.length} element${nodes.length === 1 ? '' : 's'} matching "${selector}":`
-      );
+      console.log(`Found ${count} element${count === 1 ? '' : 's'} matching "${selector}":`);
       for (const node of nodes) {
         const classInfo =
           node.classes && node.classes.length > 0 ? ` class="${node.classes.join(' ')}"` : '';
@@ -178,7 +88,6 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
       }
     }
 
-    cdp.close();
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -202,14 +111,17 @@ async function handleDomHighlight(
   options: DomHighlightOptions
 ): Promise<void> {
   try {
-    // Connect to active session
-    const cdp = await connectToActiveSession();
+    // Build IPC request options
+    const ipcOptions: Parameters<typeof highlightDOM>[0] = {
+      ...(options.color !== undefined && { color: options.color }),
+      ...(options.opacity !== undefined && { opacity: options.opacity }),
+      ...(options.first !== undefined && { first: options.first }),
+      ...(options.nth !== undefined && { nth: options.nth }),
+    };
 
-    let nodeIds: number[] = [];
-
-    // Direct nodeId provided (advanced users)
+    // Handle direct nodeId (advanced users)
     if (options.nodeId !== undefined) {
-      nodeIds = [options.nodeId];
+      ipcOptions.nodeId = options.nodeId;
     } else {
       const parsed = parseSelectorOrIndex(selectorOrIndex);
 
@@ -221,67 +133,33 @@ async function handleDomHighlight(
             `No cached element at index ${parsed.value}. Run 'bdg dom query <selector>' first.`
           );
         }
-        nodeIds = [nodeId];
+        ipcOptions.index = parsed.value as number;
       } else {
         // Query by selector
-        nodeIds = await queryBySelector(cdp, parsed.value as string);
-
-        if (nodeIds.length === 0) {
-          throw new Error(`No elements found matching "${parsed.value}"`);
-        }
-
-        // Apply selector filters
-        if (options.first) {
-          const firstNode = nodeIds[0];
-          if (firstNode === undefined) {
-            throw new Error('No elements found');
-          }
-          nodeIds = [firstNode];
-        } else if (options.nth !== undefined) {
-          if (options.nth < 1 || options.nth > nodeIds.length) {
-            throw new Error(`--nth ${options.nth} out of range (found ${nodeIds.length} elements)`);
-          }
-          const nthNode = nodeIds[options.nth - 1];
-          if (nthNode === undefined) {
-            throw new Error(`Element at index ${options.nth} not found`);
-          }
-          nodeIds = [nthNode];
-        }
+        ipcOptions.selector = parsed.value as string;
       }
     }
 
-    // Prepare highlight color
-    const colorName = (options.color ?? 'red') as keyof typeof HIGHLIGHT_COLORS;
-    const color = HIGHLIGHT_COLORS[colorName] ?? HIGHLIGHT_COLORS.red;
-    const opacity = options.opacity ?? color.a;
+    // Send highlight request via IPC to daemon/worker
+    const response = await highlightDOM(ipcOptions);
 
-    // Highlight each node
-    for (const nodeId of nodeIds) {
-      await cdp.send('Overlay.highlightNode', {
-        highlightConfig: {
-          contentColor: { ...color, a: opacity },
-        },
-        nodeId,
-      });
+    if (response.status === 'error') {
+      throw new Error(response.error ?? 'Unknown error');
+    }
+
+    if (!response.data) {
+      throw new Error('No data in response');
     }
 
     // Output result
     if (options.json) {
-      console.log(
-        JSON.stringify(
-          {
-            highlighted: nodeIds.length,
-            nodeIds,
-          },
-          null,
-          2
-        )
-      );
+      console.log(JSON.stringify(response.data, null, 2));
     } else {
-      console.log(`✓ Highlighted ${nodeIds.length} element${nodeIds.length === 1 ? '' : 's'}`);
+      console.log(
+        `✓ Highlighted ${response.data.highlighted} element${response.data.highlighted === 1 ? '' : 's'}`
+      );
     }
 
-    cdp.close();
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -302,14 +180,15 @@ async function handleDomHighlight(
  */
 async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
   try {
-    // Connect to active session
-    const cdp = await connectToActiveSession();
+    // Build IPC request options
+    const ipcOptions: Parameters<typeof getDOM>[0] = {
+      ...(options.all !== undefined && { all: options.all }),
+      ...(options.nth !== undefined && { nth: options.nth }),
+    };
 
-    let nodeIds: number[] = [];
-
-    // Direct nodeId provided (advanced users)
+    // Handle direct nodeId (advanced users)
     if (options.nodeId !== undefined) {
-      nodeIds = [options.nodeId];
+      ipcOptions.nodeId = options.nodeId;
     } else {
       const parsed = parseSelectorOrIndex(selectorOrIndex);
 
@@ -321,55 +200,38 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
             `No cached element at index ${parsed.value}. Run 'bdg dom query <selector>' first.`
           );
         }
-        nodeIds = [nodeId];
+        ipcOptions.index = parsed.value as number;
       } else {
         // Query by selector
-        nodeIds = await queryBySelector(cdp, parsed.value as string);
-
-        if (nodeIds.length === 0) {
-          throw new Error(`No elements found matching "${parsed.value}"`);
-        }
-
-        // Apply selector filters
-        if (options.nth !== undefined) {
-          if (options.nth < 1 || options.nth > nodeIds.length) {
-            throw new Error(`--nth ${options.nth} out of range (found ${nodeIds.length} elements)`);
-          }
-          const nthNode = nodeIds[options.nth - 1];
-          if (nthNode === undefined) {
-            throw new Error(`Element at index ${options.nth} not found`);
-          }
-          nodeIds = [nthNode];
-        } else if (!options.all) {
-          // Default: first match only
-          const firstNode = nodeIds[0];
-          if (firstNode === undefined) {
-            throw new Error('No elements found');
-          }
-          nodeIds = [firstNode];
-        }
+        ipcOptions.selector = parsed.value as string;
       }
     }
 
-    // Get information for each node
-    const nodesInfo: DomNodeInfo[] = [];
-    for (const nodeId of nodeIds) {
-      const info = await getNodeInfo(cdp, nodeId);
-      nodesInfo.push(info);
+    // Send get request via IPC to daemon/worker
+    const response = await getDOM(ipcOptions);
+
+    if (response.status === 'error') {
+      throw new Error(response.error ?? 'Unknown error');
     }
+
+    if (!response.data) {
+      throw new Error('No data in response');
+    }
+
+    const { nodes } = response.data;
 
     // Output results
     if (options.json) {
-      console.log(JSON.stringify(nodesInfo.length === 1 ? nodesInfo[0] : nodesInfo, null, 2));
+      console.log(JSON.stringify(nodes.length === 1 ? nodes[0] : nodes, null, 2));
     } else {
-      if (nodesInfo.length === 1) {
-        const firstNode = nodesInfo[0];
+      if (nodes.length === 1) {
+        const firstNode = nodes[0];
         if (firstNode) {
           console.log(firstNode.outerHTML);
         }
       } else {
-        for (let i = 0; i < nodesInfo.length; i++) {
-          const node = nodesInfo[i];
+        for (let i = 0; i < nodes.length; i++) {
+          const node = nodes[i];
           if (node) {
             console.log(`[${i + 1}] ${node.outerHTML}`);
           }
@@ -377,7 +239,6 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
       }
     }
 
-    cdp.close();
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

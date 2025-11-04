@@ -10,9 +10,16 @@
 import { readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { createServer } from 'net';
 
+import type { ChildProcess } from 'child_process';
 import type { Server, Socket } from 'net';
 
 import { launchSessionInWorker, WorkerStartError } from '@/daemon/startSession.js';
+import type {
+  WorkerIPCResponse,
+  WorkerDomQueryResponse,
+  WorkerDomHighlightResponse,
+  WorkerDomGetResponse,
+} from '@/daemon/workerIpc.js';
 import type {
   HandshakeRequest,
   HandshakeResponse,
@@ -28,6 +35,12 @@ import type {
   StatusResponseData,
   StopSessionRequest,
   StopSessionResponse,
+  DomQueryRequest,
+  DomQueryResponse,
+  DomHighlightRequest,
+  DomHighlightResponse,
+  DomGetRequest,
+  DomGetResponse,
 } from '@/ipc/types.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { cleanupSession } from '@/session/cleanup.js';
@@ -39,12 +52,23 @@ import { isProcessAlive } from '@/session/process.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
+ * Pending DOM request waiting for worker response
+ */
+interface PendingDomRequest {
+  socket: Socket;
+  sessionId: string;
+  timeout: NodeJS.Timeout;
+}
+
+/**
  * Simple JSONL IPC server for daemon communication.
  */
 export class IPCServer {
   private server: Server | null = null;
   private clients: Set<Socket> = new Set();
   private readonly startTime: number = Date.now();
+  private workerProcess: ChildProcess | null = null;
+  private pendingDomRequests: Map<string, PendingDomRequest> = new Map(); // requestId -> pending request
 
   /**
    * Start the IPC server on Unix domain socket.
@@ -162,6 +186,24 @@ export class IPCServer {
         case 'stop_session_response':
           // Response messages are sent by daemon, not received
           console.error('[daemon] Unexpected stop session response from client');
+          break;
+        case 'dom_query_request':
+          this.handleDomQueryRequest(socket, message);
+          break;
+        case 'dom_query_response':
+          console.error('[daemon] Unexpected dom query response from client');
+          break;
+        case 'dom_highlight_request':
+          this.handleDomHighlightRequest(socket, message);
+          break;
+        case 'dom_highlight_response':
+          console.error('[daemon] Unexpected dom highlight response from client');
+          break;
+        case 'dom_get_request':
+          this.handleDomGetRequest(socket, message);
+          break;
+        case 'dom_get_response':
+          console.error('[daemon] Unexpected dom get response from client');
           break;
       }
     } catch (error) {
@@ -361,6 +403,12 @@ export class IPCServer {
 
         console.error('[daemon] Worker launched successfully');
 
+        // Store worker process for IPC
+        this.workerProcess = metadata.workerProcess;
+
+        // Set up worker stdout listener for DOM responses
+        this.setupWorkerListener(metadata.workerProcess);
+
         // Build response data
         const data: StartSessionResponseData = {
           workerPid: metadata.workerPid,
@@ -479,6 +527,10 @@ export class IPCServer {
       cleanupSession();
       console.error('[daemon] Cleaned up session files');
 
+      // Clear worker process reference
+      this.workerProcess = null;
+      console.error('[daemon] Cleared worker process reference');
+
       const response: StopSessionResponse = {
         type: 'stop_session_response',
         sessionId: request.sessionId,
@@ -501,6 +553,331 @@ export class IPCServer {
       socket.write(JSON.stringify(response) + '\n');
       console.error('[daemon] Stop session error response sent');
     }
+  }
+
+  /**
+   * Set up worker stdout listener for IPC responses.
+   */
+  private setupWorkerListener(worker: ChildProcess): void {
+    let buffer = '';
+
+    if (!worker.stdout) {
+      console.error('[daemon] Warning: Worker stdout not available');
+      return;
+    }
+
+    worker.stdout.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString('utf-8');
+
+      // Process complete JSONL frames (separated by newlines)
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+
+        try {
+          const message = JSON.parse(line) as WorkerIPCResponse;
+          this.handleWorkerResponse(message);
+        } catch (error) {
+          // Ignore parse errors, may be log messages
+          console.error(
+            `[daemon] Failed to parse worker stdout line: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
+    });
+
+    console.error('[daemon] Worker stdout listener set up');
+  }
+
+  /**
+   * Handle response from worker.
+   */
+  private handleWorkerResponse(message: WorkerIPCResponse): void {
+    console.error(
+      `[daemon] Received worker response: ${message.type} (requestId: ${message.requestId})`
+    );
+
+    // Check for ready signal (not a DOM response)
+    if (message.type === 'worker_ready') {
+      console.error('[daemon] Worker ready signal (already processed during launch)');
+      return;
+    }
+
+    // Look up pending request
+    const pending = this.pendingDomRequests.get(message.requestId);
+    if (!pending) {
+      console.error(`[daemon] No pending request found for requestId: ${message.requestId}`);
+      return;
+    }
+
+    // Clear timeout and remove from pending
+    clearTimeout(pending.timeout);
+    this.pendingDomRequests.delete(message.requestId);
+
+    // Forward response to client based on type
+    switch (message.type) {
+      case 'dom_query_response':
+        this.forwardDomQueryResponse(
+          pending.socket,
+          pending.sessionId,
+          message
+        );
+        break;
+      case 'dom_highlight_response':
+        this.forwardDomHighlightResponse(
+          pending.socket,
+          pending.sessionId,
+          message
+        );
+        break;
+      case 'dom_get_response':
+        this.forwardDomGetResponse(
+          pending.socket,
+          pending.sessionId,
+          message
+        );
+        break;
+    }
+  }
+
+  /**
+   * Forward DOM query response from worker to client.
+   */
+  private forwardDomQueryResponse(
+    socket: Socket,
+    sessionId: string,
+    workerResponse: WorkerDomQueryResponse
+  ): void {
+    const response: DomQueryResponse = {
+      type: 'dom_query_response',
+      sessionId,
+      status: workerResponse.success ? 'ok' : 'error',
+      ...(workerResponse.data && { data: workerResponse.data }),
+      ...(workerResponse.error && { error: workerResponse.error }),
+    };
+
+    socket.write(JSON.stringify(response) + '\n');
+    console.error(`[daemon] Forwarded dom_query_response to client`);
+  }
+
+  /**
+   * Forward DOM highlight response from worker to client.
+   */
+  private forwardDomHighlightResponse(
+    socket: Socket,
+    sessionId: string,
+    workerResponse: WorkerDomHighlightResponse
+  ): void {
+    const response: DomHighlightResponse = {
+      type: 'dom_highlight_response',
+      sessionId,
+      status: workerResponse.success ? 'ok' : 'error',
+      ...(workerResponse.data && { data: workerResponse.data }),
+      ...(workerResponse.error && { error: workerResponse.error }),
+    };
+
+    socket.write(JSON.stringify(response) + '\n');
+    console.error(`[daemon] Forwarded dom_highlight_response to client`);
+  }
+
+  /**
+   * Forward DOM get response from worker to client.
+   */
+  private forwardDomGetResponse(
+    socket: Socket,
+    sessionId: string,
+    workerResponse: WorkerDomGetResponse
+  ): void {
+    const response: DomGetResponse = {
+      type: 'dom_get_response',
+      sessionId,
+      status: workerResponse.success ? 'ok' : 'error',
+      ...(workerResponse.data && { data: workerResponse.data }),
+      ...(workerResponse.error && { error: workerResponse.error }),
+    };
+
+    socket.write(JSON.stringify(response) + '\n');
+    console.error(`[daemon] Forwarded dom_get_response to client`);
+  }
+
+  /**
+   * Handle DOM query request from client.
+   */
+  private handleDomQueryRequest(socket: Socket, request: DomQueryRequest): void {
+    console.error(`[daemon] DOM query request received (sessionId: ${request.sessionId})`);
+
+    // Check if worker is available
+    if (!this.workerProcess?.stdin) {
+      const response: DomQueryResponse = {
+        type: 'dom_query_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'No active worker process',
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] DOM query error response sent (no worker)');
+      return;
+    }
+
+    // Generate unique requestId
+    const requestId = `dom_query_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Set up timeout (10 seconds for DOM commands)
+    const timeout = setTimeout(() => {
+      this.pendingDomRequests.delete(requestId);
+
+      const response: DomQueryResponse = {
+        type: 'dom_query_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'Worker response timeout (10s)',
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] DOM query timeout response sent');
+    }, 10000);
+
+    // Store pending request
+    this.pendingDomRequests.set(requestId, {
+      socket,
+      sessionId: request.sessionId,
+      timeout,
+    });
+
+    // Forward to worker
+    const workerRequest = {
+      type: 'dom_query_request',
+      requestId,
+      selector: request.selector,
+    };
+
+    this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
+    console.error(`[daemon] Forwarded dom_query_request to worker (requestId: ${requestId})`);
+  }
+
+  /**
+   * Handle DOM highlight request from client.
+   */
+  private handleDomHighlightRequest(socket: Socket, request: DomHighlightRequest): void {
+    console.error(`[daemon] DOM highlight request received (sessionId: ${request.sessionId})`);
+
+    // Check if worker is available
+    if (!this.workerProcess?.stdin) {
+      const response: DomHighlightResponse = {
+        type: 'dom_highlight_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'No active worker process',
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] DOM highlight error response sent (no worker)');
+      return;
+    }
+
+    // Generate unique requestId
+    const requestId = `dom_highlight_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Set up timeout (10 seconds for DOM commands)
+    const timeout = setTimeout(() => {
+      this.pendingDomRequests.delete(requestId);
+
+      const response: DomHighlightResponse = {
+        type: 'dom_highlight_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'Worker response timeout (10s)',
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] DOM highlight timeout response sent');
+    }, 10000);
+
+    // Store pending request
+    this.pendingDomRequests.set(requestId, {
+      socket,
+      sessionId: request.sessionId,
+      timeout,
+    });
+
+    // Forward to worker
+    const workerRequest = {
+      type: 'dom_highlight_request',
+      requestId,
+      ...(request.selector !== undefined && { selector: request.selector }),
+      ...(request.index !== undefined && { index: request.index }),
+      ...(request.nodeId !== undefined && { nodeId: request.nodeId }),
+      ...(request.first !== undefined && { first: request.first }),
+      ...(request.nth !== undefined && { nth: request.nth }),
+      ...(request.color !== undefined && { color: request.color }),
+      ...(request.opacity !== undefined && { opacity: request.opacity }),
+    };
+
+    this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
+    console.error(`[daemon] Forwarded dom_highlight_request to worker (requestId: ${requestId})`);
+  }
+
+  /**
+   * Handle DOM get request from client.
+   */
+  private handleDomGetRequest(socket: Socket, request: DomGetRequest): void {
+    console.error(`[daemon] DOM get request received (sessionId: ${request.sessionId})`);
+
+    // Check if worker is available
+    if (!this.workerProcess?.stdin) {
+      const response: DomGetResponse = {
+        type: 'dom_get_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'No active worker process',
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] DOM get error response sent (no worker)');
+      return;
+    }
+
+    // Generate unique requestId
+    const requestId = `dom_get_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Set up timeout (10 seconds for DOM commands)
+    const timeout = setTimeout(() => {
+      this.pendingDomRequests.delete(requestId);
+
+      const response: DomGetResponse = {
+        type: 'dom_get_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: 'Worker response timeout (10s)',
+      };
+
+      socket.write(JSON.stringify(response) + '\n');
+      console.error('[daemon] DOM get timeout response sent');
+    }, 10000);
+
+    // Store pending request
+    this.pendingDomRequests.set(requestId, {
+      socket,
+      sessionId: request.sessionId,
+      timeout,
+    });
+
+    // Forward to worker
+    const workerRequest = {
+      type: 'dom_get_request',
+      requestId,
+      ...(request.selector !== undefined && { selector: request.selector }),
+      ...(request.index !== undefined && { index: request.index }),
+      ...(request.nodeId !== undefined && { nodeId: request.nodeId }),
+      ...(request.all !== undefined && { all: request.all }),
+      ...(request.nth !== undefined && { nth: request.nth }),
+    };
+
+    this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
+    console.error(`[daemon] Forwarded dom_get_request to worker (requestId: ${requestId})`);
   }
 
   /**
