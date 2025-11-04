@@ -569,14 +569,14 @@ export class CDPConnection {
   /**
    * Register an event handler for CDP events.
    *
-   * Type casting is safe because we store handlers as (params: unknown) => void
+   * Type casting is safe because we store handlers as (params: unknown) \> void
    * and always invoke them with unknown parameters. The generic T is only for
    * caller convenience and type checking at the call site.
    *
    * @param event - CDP event name (e.g., 'Network.requestWillBeSent')
    * @param handler - Callback function to handle the event
    * @returns Handler ID for later removal with off()
-   * @template T - Type of event parameters for type safety at call site
+   * @typeParam T - Type of event parameters for type safety at call site
    */
   on<T = unknown>(event: string, handler: (params: T) => void): number {
     let handlersForEvent = this.eventHandlers.get(event);

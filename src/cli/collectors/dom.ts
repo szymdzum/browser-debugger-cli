@@ -37,8 +37,7 @@ interface DomGetOptions {
 }
 
 /**
- * Handle bdg dom query <selector> command
- *
+ * Handle bdg dom query \<selector|index\> command
  * @param selector - CSS selector to query
  * @param options - Command options
  */
@@ -101,8 +100,7 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 }
 
 /**
- * Handle bdg dom highlight <selector|index> command
- *
+ * Handle bdg dom highlight \<selector|index\> command
  * @param selectorOrIndex - CSS selector or index from last query
  * @param options - Command options
  */
@@ -173,8 +171,7 @@ async function handleDomHighlight(
 }
 
 /**
- * Handle bdg dom get <selector|index> command
- *
+ * Handle bdg dom get \<selector|index\> command
  * @param selectorOrIndex - CSS selector or index from last query
  * @param options - Command options
  */

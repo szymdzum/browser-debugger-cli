@@ -122,11 +122,10 @@ function applyCollectorOptions(command: Command): Command {
 
 /**
  * Parse a string to integer, returning undefined if not provided
- *
  * @param value - Optional string value to parse
  * @param fieldName - Name of the field being parsed (for error messages)
  * @returns Parsed integer or undefined if value was not provided
- * @throws {Error} If value is provided but not a valid integer
+ * @throws Error if value is provided but not a valid integer
  */
 function parseOptionalInt(value: string | undefined, fieldName: string): number | undefined {
   if (value === undefined) {

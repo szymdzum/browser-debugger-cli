@@ -50,8 +50,7 @@ export function getChromeDiagnostics(): ChromeDiagnostics {
 
 /**
  * Format diagnostics for error reporting when Chrome launch fails.
- *
- * @param diagnostics Chrome diagnostics information
+ * @param diagnostics - Chrome diagnostics information
  * @returns Formatted error message with troubleshooting steps
  */
 export function formatDiagnosticsForError(diagnostics: ChromeDiagnostics): string[] {
@@ -82,8 +81,7 @@ export function formatDiagnosticsForError(diagnostics: ChromeDiagnostics): strin
 
 /**
  * Format diagnostics for verbose status output (bdg status --verbose).
- *
- * @param diagnostics Chrome diagnostics information
+ * @param diagnostics - Chrome diagnostics information
  * @returns Array of formatted status lines
  */
 export function formatDiagnosticsForStatus(diagnostics: ChromeDiagnostics): string[] {

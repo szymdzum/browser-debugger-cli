@@ -13,9 +13,9 @@ export interface ParsedSelector {
  * @returns Parsed result indicating type and value
  *
  * @example
- * parseSelectorOrIndex(".error") // { type: 'selector', value: '.error' }
- * parseSelectorOrIndex("1")      // { type: 'index', value: 1 }
- * parseSelectorOrIndex("42")     // { type: 'index', value: 42 }
+ * parseSelectorOrIndex(".error") // \{ type: 'selector', value: '.error' \}
+ * parseSelectorOrIndex("1")      // \{ type: 'index', value: 1 \}
+ * parseSelectorOrIndex("42")     // \{ type: 'index', value: 42 \}
  */
 export function parseSelectorOrIndex(arg: string): ParsedSelector {
   // If arg is a positive integer, treat as index

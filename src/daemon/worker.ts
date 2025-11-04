@@ -11,7 +11,7 @@
  *
  * Communication Protocol:
  * - Parent provides config via env vars or process.argv
- * - Worker sends JSON line to stdout on success: {"type":"worker_ready",...}
+ * - Worker sends JSON line to stdout on success: \{"type":"worker_ready",...\}
  * - Worker handles SIGTERM for graceful shutdown
  */
 

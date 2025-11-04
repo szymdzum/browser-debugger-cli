@@ -91,8 +91,7 @@ export class ShutdownController {
   }
 
   /**
-   * Finalize shutdown: write output, cleanup, and exit
-   * @private
+   * Finalize shutdown: write output, cleanup, and exit (internal use only)
    */
   private finalize(output: BdgOutput, exitCode: 0 | 1): never {
     // Write output

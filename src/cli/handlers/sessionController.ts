@@ -23,8 +23,7 @@ import { TargetSetup } from './TargetSetup.js';
  *
  * Uses chrome-launcher APIs to detect available Chrome installations and
  * provide actionable error messages to help users troubleshoot.
- *
- * @param error Original error that caused the failure
+ * @param error - Original error that caused the failure
  */
 function reportLauncherFailure(error: unknown): void {
   console.error('\n--- Chrome Launch Diagnostics ---\n');
@@ -126,7 +125,6 @@ class SessionContext implements SessionState {
   /**
    * Create a new session context and track the start timestamp.
    * The context is shared with signal handlers so they can orchestrate shutdown.
-   *
    * @param compact - If true, use compact JSON format (no indentation)
    */
   constructor(compact: boolean = false) {
@@ -155,13 +153,12 @@ class SessionContext implements SessionState {
 
 /**
  * Phase 4: start requested collectors and persist session metadata for tooling.
- *
- * @param session Active BDG session instance
- * @param collectors Collector types requested by the CLI
- * @param startTime Timestamp when the session began
- * @param port Chrome debugging port in use
- * @param target Target metadata (includes websocket URL)
- * @param chromePid PID of Chrome if bdg launched it (optional)
+ * @param session - Active BDG session instance
+ * @param collectors - Collector types requested by the CLI
+ * @param startTime - Timestamp when the session began
+ * @param port - Chrome debugging port in use
+ * @param target - Target metadata (includes websocket URL)
+ * @param chromePid - PID of Chrome if bdg launched it (optional)
  */
 async function startCollectorsAndMetadata(
   session: BdgSession,
@@ -236,21 +233,8 @@ function printCollectionStatus(collectors: CollectorType[], timeout?: number): v
 
 /**
  * Start a new session
- *
  * @param url - Target URL to navigate to
  * @param options - Session configuration options
- * @param options.port - Chrome debugging port
- * @param options.timeout - Auto-stop after timeout (seconds)
- * @param options.reuseTab - Navigate existing tab instead of creating new one
- * @param options.userDataDir - Chrome user data directory
- * @param options.includeAll - Include all data (disable filtering)
- * @param options.logLevel - Chrome launcher log level
- * @param options.prefs - Chrome preferences as object
- * @param options.prefsFile - Path to JSON file containing Chrome preferences
- * @param options.chromeFlags - Additional Chrome command-line flags
- * @param options.connectionPollInterval - Milliseconds between CDP readiness checks
- * @param options.maxConnectionRetries - Maximum retry attempts before failing
- * @param options.portStrictMode - Fail if Chrome debugging port is already in use
  * @param collectors - Array of collector types to enable ('dom', 'network', 'console')
  * @returns Promise that resolves when session completes
  */

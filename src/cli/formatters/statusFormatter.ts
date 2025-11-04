@@ -23,9 +23,9 @@ export interface StatusData {
 
 /**
  * Format session status for human-readable output
- * @param metadata Session metadata
- * @param pid BDG process ID
- * @param verbose Show detailed Chrome diagnostics
+ * @param metadata - Session metadata
+ * @param pid - BDG process ID
+ * @param verbose - Show detailed Chrome diagnostics
  */
 export function formatSessionStatus(
   metadata: SessionMetadata,
