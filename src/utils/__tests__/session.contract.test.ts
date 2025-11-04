@@ -85,6 +85,12 @@ void describe('Session Utilities Contract Tests', () => {
     });
 
     void it('should return null when PID file does not exist', () => {
+      // Ensure PID file doesn't exist (cleanup from previous test)
+      const pidPath = getSessionFilePath('PID');
+      if (fs.existsSync(pidPath)) {
+        fs.unlinkSync(pidPath);
+      }
+
       const pid = readPid();
       assert.equal(pid, null);
     });
