@@ -123,40 +123,40 @@ export interface CDPTargetDestroyedParams {
 }
 
 /**
- * Optional tuning parameters for {@link CDPConnection.connect}.
- * @property timeout           Milliseconds to wait for the initial socket open.
- * @property maxRetries        Number of connection attempts before failing.
- * @property autoReconnect     Reconnect automatically when the socket closes.
- * @property keepaliveInterval Interval between ping frames to keep CDP alive.
- * @property onReconnect       Async hook invoked after a successful reconnect.
+ * Optional tuning parameters for CDPConnection.connect.
  */
 export interface ConnectionOptions {
+  /** Milliseconds to wait for the initial socket open */
   timeout?: number;
+  /** Number of connection attempts before failing */
   maxRetries?: number;
+  /** Reconnect automatically when the socket closes */
   autoReconnect?: boolean;
+  /** Interval between ping frames to keep CDP alive */
   keepaliveInterval?: number;
+  /** Async hook invoked after a successful reconnect */
   onReconnect?: (() => Promise<void>) | undefined;
 }
 
 /**
  * Session-level options for BDG data collection.
- * @property includeAll         Disable all default filtering (tracking domains, dev server noise, etc).
- * @property fetchAllBodies     Override auto-optimization and fetch all response bodies.
- * @property fetchBodiesInclude URL patterns for bodies to fetch (trumps exclude).
- * @property fetchBodiesExclude URL patterns for bodies to skip.
- * @property networkInclude     URL patterns for requests to capture (trumps exclude).
- * @property networkExclude     URL patterns for requests to exclude.
- * @property maxBodySize        Maximum response body size in bytes (default: 5MB).
- * @property compact            Use compact JSON format (no indentation) for output files.
  */
 export interface SessionOptions {
+  /** Disable all default filtering (tracking domains, dev server noise, etc) */
   includeAll?: boolean;
+  /** Override auto-optimization and fetch all response bodies */
   fetchAllBodies?: boolean;
+  /** URL patterns for bodies to fetch (trumps exclude) */
   fetchBodiesInclude?: string[];
+  /** URL patterns for bodies to skip */
   fetchBodiesExclude?: string[];
+  /** URL patterns for requests to capture (trumps exclude) */
   networkInclude?: string[];
+  /** URL patterns for requests to exclude */
   networkExclude?: string[];
+  /** Maximum response body size in bytes (default: 5MB) */
   maxBodySize?: number;
+  /** Use compact JSON format (no indentation) for output files */
   compact?: boolean;
 }
 
@@ -164,18 +164,17 @@ export type CleanupFunction = () => void;
 
 /**
  * Information about a launched Chrome instance.
- *
- * @property pid         Process ID of the Chrome instance
- * @property port        Remote debugging port Chrome is listening on
- * @property userDataDir Resolved Chrome user data directory (profile path)
- * @property process     Child process handle (for advanced use cases like log streaming)
- * @property kill        Async function to terminate Chrome and cleanup temp directories
  */
 export interface LaunchedChrome {
+  /** Process ID of the Chrome instance */
   pid: number;
+  /** Remote debugging port Chrome is listening on */
   port: number;
+  /** Resolved Chrome user data directory (profile path) */
   userDataDir?: string | undefined;
+  /** Child process handle (for advanced use cases like log streaming) */
   process: ChildProcess | null;
+  /** Async function to terminate Chrome and cleanup temp directories */
   kill: () => Promise<void>;
 }
 
