@@ -95,6 +95,9 @@ export async function getNodeInfo(cdp: CDPConnection, nodeId: number): Promise<D
 
   // Extract text content by removing HTML tags
   // Uses simple regex to strip tags while preserving text content including < and > in text
+  // SAFETY: This HTML comes from Chrome's internal DOM via CDP, not user input.
+  // It's trusted browser-generated content used only for display/analysis in CLI output.
+  // The regex is intentionally simple because we're extracting text, not sanitizing for XSS.
   const textContent = htmlResult.outerHTML
     .replace(/<[^>]*>/g, '') // Remove HTML tags
     .replace(/\s+/g, ' ') // Collapse whitespace
