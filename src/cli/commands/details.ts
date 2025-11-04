@@ -14,7 +14,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  */
 interface DetailsOptions extends BaseCommandOptions {
   /** Type of item ('network' or 'console') */
-  type: string;
+  type: 'network' | 'console';
   /** Request ID or console index */
   id: string;
 }
@@ -56,8 +56,8 @@ export function registerDetailsCommand(program: Command): void {
     .argument('<id>', 'Request ID (for network) or index (for console)')
     .addOption(jsonOption)
     .action(async (type: string, id: string, options: DetailsOptions) => {
-      // Store arguments in options for handler
-      options.type = type;
+      // Store arguments in options for handler (type assertion safe due to validation below)
+      options.type = type as 'network' | 'console';
       options.id = id;
 
       await runCommand(
@@ -66,7 +66,7 @@ export function registerDetailsCommand(program: Command): void {
           if (opts.type !== 'network' && opts.type !== 'console') {
             return {
               success: false,
-              error: `Unknown type: ${opts.type}. Valid types: network, console`,
+              error: `Unknown type: ${String(opts.type)}. Valid types: network, console`,
               exitCode: EXIT_CODES.INVALID_ARGUMENTS,
             };
           }
@@ -90,7 +90,7 @@ export function registerDetailsCommand(program: Command): void {
             success: true,
             data: {
               item: response.data.item as NetworkRequest | ConsoleMessage,
-              type: opts.type as 'network' | 'console',
+              type: opts.type,
             },
           };
         },
