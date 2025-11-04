@@ -15,12 +15,12 @@
  * - Worker handles SIGTERM for graceful shutdown
  */
 
-import { writeQueryCache, getNodeIdByIndex } from '@/cli/collectors/helpers/domCache.js';
+import { writeQueryCache, getNodeIdByIndex } from '@/cli/commands/dom/helpers/domCache.js';
 import {
   queryBySelector,
   getNodeInfo,
   createNodePreview,
-} from '@/cli/collectors/helpers/domQuery.js';
+} from '@/cli/commands/dom/helpers/domQuery.js';
 import { startConsoleCollection } from '@/collectors/console.js';
 import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';

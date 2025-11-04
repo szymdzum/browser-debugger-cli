@@ -6,85 +6,81 @@ import {
   type PreviewOptions,
 } from '@/cli/formatters/previewFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { jsonOption } from '@/cli/handlers/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
+import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput } from '@/types.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Register peek command
+ * Handle errors in a consistent way for both follow and one-time modes.
+ *
+ * @param error - Error message
+ * @param options - Preview options
+ * @param exitCode - Exit code to use if not in follow mode
+ */
+function handlePreviewError(error: string, options: PreviewOptions, exitCode: number): void {
+  if (options.json) {
+    console.log(JSON.stringify(OutputBuilder.buildJsonError(error), null, 2));
+  } else {
+    console.error(formatNoPreviewDataMessage());
+  }
+
+  if (!options.follow) {
+    process.exit(exitCode);
+  }
+}
+
+/**
+ * Register peek command.
  *
  * @param program - Commander.js Command instance to register commands on
- * @returns void
  */
 export function registerPeekCommand(program: Command): void {
   program
     .command('peek')
     .description('Preview collected data without stopping the session')
-    .option('-j, --json', 'Output as JSON')
+    .addOption(jsonOption)
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting')
     .option('-n, --network', 'Show only network requests')
     .option('-c, --console', 'Show only console messages')
     .option('-f, --follow', 'Watch for updates (like tail -f)')
     .option('--last <count>', 'Show last N items', '10')
     .action(async (options: PreviewOptions) => {
-      // Validate lastN parameter (P1 Fix #4)
+      // Validate --last parameter
       const lastN = parseInt(options.last ?? '10', 10);
       if (isNaN(lastN) || lastN < 1 || lastN > 1000) {
-        console.error('Error: lastN must be between 1 and 1000');
-        console.error('\nProvided value:', options.last);
+        console.error('Error: --last must be between 1 and 1000');
+        console.error('Provided value:', options.last);
         process.exit(EXIT_CODES.INVALID_ARGUMENTS);
       }
       options.last = lastN.toString();
+
       const showPreview = async (): Promise<void> => {
         try {
           // Fetch preview data via IPC from daemon
           const response = await getPeek();
 
-          if (response.status === 'error') {
-            if (options.json) {
-              console.log(
-                JSON.stringify(
-                  OutputBuilder.buildJsonError(response.error ?? 'Unknown error', {
-                    note: 'Session may not be running or data not yet written',
-                    suggestions: ['Check session status: bdg status', 'Start a session: bdg <url>'],
-                  }),
-                  null,
-                  2
-                )
-              );
-            } else {
-              console.error(formatNoPreviewDataMessage());
-            }
-            if (!options.follow) {
-              process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-            }
+          // Validate IPC response (will throw on error)
+          try {
+            validateIPCResponse(response);
+          } catch {
+            handlePreviewError(
+              response.error ?? 'Unknown error',
+              options,
+              EXIT_CODES.RESOURCE_NOT_FOUND
+            );
             return;
           }
 
-          // Extract preview data from response (cast to BdgOutput for compatibility)
+          // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output) {
-            if (options.json) {
-              console.log(
-                JSON.stringify(
-                  OutputBuilder.buildJsonError('No preview data in response', {
-                    note: 'Session may be starting up',
-                    suggestions: [
-                      'Wait a moment and try again',
-                      'Check session status: bdg status',
-                    ],
-                  }),
-                  null,
-                  2
-                )
-              );
-            } else {
-              console.error(formatNoPreviewDataMessage());
-            }
-            if (!options.follow) {
-              process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-            }
+            handlePreviewError(
+              'No preview data in response',
+              options,
+              EXIT_CODES.RESOURCE_NOT_FOUND
+            );
             return;
           }
 
@@ -93,31 +89,26 @@ export function registerPeekCommand(program: Command): void {
           }
 
           console.log(formatPreview(output, options));
-        } catch (error) {
-          // Handle IPC errors (daemon not running, connection issues, etc.)
-          const errorMessage = getErrorMessage(error);
-
+        } catch {
+          // Handle IPC connection errors (daemon not running, etc.)
+          // Note: validateIPCResponse errors are caught above
           if (options.json) {
             console.log(
               JSON.stringify(
-                OutputBuilder.buildJsonError(`Failed to connect to daemon: ${errorMessage}`, {
-                  note: 'Daemon may not be running',
-                  suggestions: [
-                    'Ensure a session is running: bdg <url>',
-                    'Check daemon status: bdg status',
-                  ],
+                OutputBuilder.buildJsonError('Daemon not running', {
+                  suggestion: 'Start it with: bdg <url>',
                 }),
                 null,
                 2
               )
             );
           } else {
-            console.error(`Error: ${errorMessage}`);
-            console.error('\nDaemon may not be running. Try starting a session first: bdg <url>');
+            console.error('Error: Daemon not running');
+            console.error('Start it with: bdg <url>');
           }
 
           if (!options.follow) {
-            process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
           }
         }
       };

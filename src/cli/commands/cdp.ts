@@ -1,22 +1,24 @@
 import type { Command } from 'commander';
 
+import type { BaseCommandOptions } from '@/cli/handlers/CommandRunner.js';
+import { runCommand } from '@/cli/handlers/CommandRunner.js';
 import { callCDP } from '@/ipc/client.js';
+import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Options for the `bdg cdp` command.
  */
-interface CdpOptions {
+interface CdpOptions extends BaseCommandOptions {
   /** CDP method parameters as JSON string */
   params?: string;
 }
 
 /**
- * Register CDP command
+ * Register CDP command.
  *
  * @param program - Commander.js Command instance to register commands on
- * @returns void
  */
 export function registerCdpCommand(program: Command): void {
   program
@@ -25,40 +27,34 @@ export function registerCdpCommand(program: Command): void {
     .argument('<method>', 'CDP method name (e.g., Network.getCookies, Runtime.evaluate)')
     .option('--params <json>', 'CDP method parameters as JSON')
     .action(async (method: string, options: CdpOptions) => {
-      try {
-        // Parse parameters if provided
-        let params: Record<string, unknown> | undefined;
-        if (options.params) {
-          try {
-            params = JSON.parse(options.params) as Record<string, unknown>;
-          } catch (error) {
-            console.error(`Error parsing --params: ${getErrorMessage(error)}`);
-            console.error('Parameters must be valid JSON');
-            process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      await runCommand(
+        async (opts) => {
+          // Parse parameters if provided
+          let params: Record<string, unknown> | undefined;
+          if (opts.params) {
+            try {
+              params = JSON.parse(opts.params) as Record<string, unknown>;
+            } catch (error) {
+              return {
+                success: false,
+                error: `Error parsing --params: ${getErrorMessage(error)}. Parameters must be valid JSON.`,
+                exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              };
+            }
           }
-        }
 
-        // Send CDP call request to daemon
-        const response = await callCDP(method, params);
+          // Send CDP call request to daemon
+          const response = await callCDP(method, params);
 
-        // Handle error response
-        if (response.status === 'error') {
-          console.error(`Error: ${response.error ?? 'Unknown error'}`);
-          process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-        }
+          // Validate IPC response (throws on error)
+          validateIPCResponse(response);
 
-        // Output result as JSON
-        console.log(JSON.stringify(response.data?.result, null, 2));
-        process.exit(EXIT_CODES.SUCCESS);
-      } catch (error) {
-        const errorMessage = getErrorMessage(error);
-        if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
-          console.error('Daemon not running. Start it with: bdg <url>');
-          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
-
-        console.error(`Error: ${errorMessage}`);
-        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-      }
+          return {
+            success: true,
+            data: response.data?.result,
+          };
+        },
+        { ...options, json: true } // Always output JSON for CDP commands
+      );
     });
 }

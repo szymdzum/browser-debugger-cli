@@ -33,6 +33,14 @@ node dist/index.js localhost:3000
 
 ## Code Quality Guidelines
 
+**MANDATORY**: All code must follow KISS, DRY, and YAGNI principles with TSDoc comments.
+
+### Core Principles
+- **KISS** (Keep It Simple, Stupid) - Simplicity over cleverness
+- **DRY** (Don't Repeat Yourself) - Extract helpers for repeated patterns
+- **YAGNI** (You Aren't Gonna Need It) - Build only what's needed now
+- **TSDoc** - All functions, parameters, and return values must have TSDoc comments
+
 ### No Dead Code
 **IMPORTANT**: Remove all dead code immediately. Delete don't disable:
 
@@ -49,6 +57,41 @@ try { ... } catch { console.error('failed'); }
 ```
 
 Rationale: Dead code obscures behavior and increases maintenance burden.
+
+## Available Helpers
+
+Use these helpers in CLI commands. All follow KISS, DRY, YAGNI principles with TSDoc comments.
+
+### Command Helpers (`src/cli/handlers/`)
+- **CommandRunner** - Wraps handlers with error handling, JSON/human output, exit codes
+  - `runCommand<TOptions, TResult>(handler, options, formatter?)`
+  - Eliminates try-catch, process.exit, daemon error detection
+- **commonOptions** - Shared Commander.js Option definitions
+  - `jsonOption` - Standard `--json` flag
+  - `lastOption` - Pagination `--last <n>` with validation (0-10000)
+  - `filterOption(types)` - Factory for `--filter <type>` with .choices()
+
+### IPC Helpers (`src/ipc/`)
+- **responseValidator** - Type-safe IPC/CDP response validation
+  - `validateIPCResponse<T>(response)` - Throws on error, narrows type
+
+### Usage Example
+```typescript
+import { runCommand } from '@/cli/handlers/CommandRunner.js';
+import { jsonOption } from '@/cli/handlers/commonOptions.js';
+import { validateIPCResponse } from '@/ipc/responseValidator.js';
+
+.addOption(jsonOption)
+.action(async (options) => {
+  await runCommand(async (opts) => {
+    const response = await callCDP('Method', params);
+    validateIPCResponse(response);
+    return { success: true, data: response.data };
+  }, options, humanFormatter);
+});
+```
+
+See `src/cli/commands/network.ts` for complete example.
 
 ## Common Commands
 

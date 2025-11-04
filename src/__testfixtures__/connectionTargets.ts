@@ -1,16 +1,6 @@
 import type { CDPTarget } from '@/types';
 
 /**
- * Interface for mock tab creation error objects
- */
-interface MockTabCreationError {
-  type: string;
-  message: string;
-  originalError?: Error;
-  context?: Record<string, unknown>;
-}
-
-/**
  * Create a mock CDPTarget with default values and optional overrides.
  *
  * Provides consistent test data across connection module tests while allowing
@@ -69,49 +59,3 @@ export const mockTargetList: CDPTarget[] = [
     webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/page/target-5',
   }),
 ];
-
-/**
- * Create a mock TabCreationResult for testing tab creation scenarios.
- *
- * @param overrides - Partial TabCreationResult properties to override defaults
- * @returns Complete TabCreationResult for testing
- */
-export const createMockTabCreationResult = (
-  overrides: Partial<{
-    success: boolean;
-    target?: CDPTarget;
-    error?: MockTabCreationError;
-    strategy: 'CDP' | 'HTTP';
-    timing: { attemptStartMs: number; durationMs?: number };
-  }> = {}
-): {
-  success: boolean;
-  target?: CDPTarget;
-  error?: MockTabCreationError;
-  strategy: 'CDP' | 'HTTP';
-  timing: { attemptStartMs: number; durationMs?: number };
-} => ({
-  success: true,
-  target: createMockTarget(),
-  strategy: 'CDP' as const,
-  timing: {
-    attemptStartMs: Date.now(),
-    durationMs: 500,
-  },
-  ...overrides,
-});
-
-/**
- * Mock CDP responses for Target.createTarget command.
- */
-export const mockCDPCreateTargetResponse = {
-  targetId: 'new-target-456',
-};
-
-/**
- * Mock HTTP response for Chrome's /json/new endpoint.
- */
-export const mockHTTPCreateResponse = createMockTarget({
-  id: 'http-target-789',
-  url: 'http://localhost:3000',
-});

@@ -1,25 +1,52 @@
 import type { Command } from 'commander';
 
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
-import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import type { BaseCommandOptions } from '@/cli/handlers/CommandRunner.js';
+import { runCommand } from '@/cli/handlers/CommandRunner.js';
+import { jsonOption } from '@/cli/handlers/commonOptions.js';
 import { getDetails } from '@/ipc/client.js';
+import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Optional switches for `bdg details`.
+ * Options for details command.
  */
-interface DetailsOptions {
-  /** Emit the selected record as JSON instead of formatted text. */
-  json?: boolean;
+interface DetailsOptions extends BaseCommandOptions {
+  /** Type of item ('network' or 'console') */
+  type: string;
+  /** Request ID or console index */
+  id: string;
 }
 
 /**
- * Register details command
+ * Result data containing the item and its type.
+ */
+interface DetailsResult {
+  /** The network request or console message */
+  item: NetworkRequest | ConsoleMessage;
+  /** Type of item ('network' or 'console') */
+  type: 'network' | 'console';
+}
+
+/**
+ * Format details for human-readable output.
+ * Dispatches to the appropriate formatter based on type.
+ *
+ * @param data - Details result containing item and type
+ */
+function formatDetails(data: DetailsResult): void {
+  if (data.type === 'network') {
+    console.log(formatNetworkDetails(data.item as NetworkRequest));
+  } else {
+    console.log(formatConsoleDetails(data.item as ConsoleMessage));
+  }
+}
+
+/**
+ * Register details command.
  *
  * @param program - Commander.js Command instance to register commands on
- * @returns void
  */
 export function registerDetailsCommand(program: Command): void {
   program
@@ -27,99 +54,48 @@ export function registerDetailsCommand(program: Command): void {
     .description('Get detailed information for a specific request or console message')
     .argument('<type>', 'Type of item: "network" or "console"')
     .argument('<id>', 'Request ID (for network) or index (for console)')
-    .option('-j, --json', 'Output as JSON')
+    .addOption(jsonOption)
     .action(async (type: string, id: string, options: DetailsOptions) => {
-      try {
-        // Validate type
-        if (type !== 'network' && type !== 'console') {
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonError(`Unknown type: ${type}`, {
-                  validTypes: ['network', 'console'],
-                }),
-                null,
-                2
-              )
-            );
-          } else {
-            console.error(`Unknown type: ${type}`);
-            console.error('Valid types: network, console');
-          }
-          process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-        }
+      // Store arguments in options for handler
+      options.type = type;
+      options.id = id;
 
-        // Fetch details via IPC from daemon/worker
-        const response = await getDetails(type, id);
-
-        if (response.status === 'error') {
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonError(response.error ?? 'Unknown error', {
-                  suggestion:
-                    type === 'network'
-                      ? 'List requests: bdg peek --network'
-                      : 'List messages: bdg peek --console',
-                }),
-                null,
-                2
-              )
-            );
-          } else {
-            console.error(`Error: ${response.error ?? 'Unknown error'}`);
-            console.error('\nTry:');
-            console.error(
-              type === 'network'
-                ? '  List requests:  bdg peek --network'
-                : '  List messages:  bdg peek --console'
-            );
+      await runCommand(
+        async (opts) => {
+          // Validate type argument
+          if (opts.type !== 'network' && opts.type !== 'console') {
+            return {
+              success: false,
+              error: `Unknown type: ${opts.type}. Valid types: network, console`,
+              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+            };
           }
-          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
 
-        if (!response.data?.item) {
-          if (options.json) {
-            console.log(
-              JSON.stringify(OutputBuilder.buildJsonError('No data in response'), null, 2)
-            );
-          } else {
-            console.error('Error: No data in response');
-          }
-          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
+          // Fetch details via IPC from daemon/worker
+          const response = await getDetails(opts.type, opts.id);
 
-        // Format and display the item
-        if (type === 'network') {
-          const request = response.data.item as NetworkRequest;
-          if (options.json) {
-            console.log(JSON.stringify(request, null, 2));
-          } else {
-            console.log(formatNetworkDetails(request));
-          }
-        } else {
-          const message = response.data.item as ConsoleMessage;
-          if (options.json) {
-            console.log(JSON.stringify(message, null, 2));
-          } else {
-            console.log(formatConsoleDetails(message));
-          }
-        }
+          // Validate IPC response (throws on error)
+          validateIPCResponse(response);
 
-        process.exit(EXIT_CODES.SUCCESS);
-      } catch (error) {
-        if (options.json) {
-          console.log(
-            JSON.stringify(
-              OutputBuilder.buildJsonError(`Error fetching details: ${getErrorMessage(error)}`),
-              null,
-              2
-            )
-          );
-        } else {
-          console.error(`Error fetching details: ${getErrorMessage(error)}`);
-        }
-        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-      }
+          // Check for data in response
+          if (!response.data?.item) {
+            return {
+              success: false,
+              error: 'No data in response',
+              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+            };
+          }
+
+          return {
+            success: true,
+            data: {
+              item: response.data.item as NetworkRequest | ConsoleMessage,
+              type: opts.type,
+            },
+          };
+        },
+        options,
+        formatDetails
+      );
     });
 }

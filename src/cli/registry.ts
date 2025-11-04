@@ -1,13 +1,12 @@
 import type { Command } from 'commander';
 
-import { registerDomCommands } from '@/cli/collectors/dom.js';
 import { registerCdpCommand } from '@/cli/commands/cdp.js';
 import { registerCleanupCommand } from '@/cli/commands/cleanup.js';
+import { registerConsoleCommand } from '@/cli/commands/console.js';
 import { registerDetailsCommand } from '@/cli/commands/details.js';
-import { registerIpcTestCommand } from '@/cli/commands/ipcTest.js';
+import { registerDomCommands } from '@/cli/commands/dom/index.js';
 import { registerNetworkCommands } from '@/cli/commands/network.js';
 import { registerPeekCommand } from '@/cli/commands/peek.js';
-import { registerQueryCommand } from '@/cli/commands/query.js';
 import { registerStartCommands } from '@/cli/commands/start.js';
 import { registerStatusCommand } from '@/cli/commands/status.js';
 import { registerStopCommand } from '@/cli/commands/stop.js';
@@ -44,7 +43,6 @@ export const commandRegistry: CommandRegistrar[] = [
   addCommandGroup('Data Inspection:'),
   registerPeekCommand,
   registerDetailsCommand,
-  registerQueryCommand,
   registerDomCommands,
 
   // CDP Commands
@@ -55,7 +53,7 @@ export const commandRegistry: CommandRegistrar[] = [
   addCommandGroup('Network Commands:'),
   registerNetworkCommands,
 
-  // IPC Testing (MVP)
-  addCommandGroup('IPC Testing:'),
-  registerIpcTestCommand,
+  // Console Commands
+  addCommandGroup('Console Commands:'),
+  registerConsoleCommand,
 ];

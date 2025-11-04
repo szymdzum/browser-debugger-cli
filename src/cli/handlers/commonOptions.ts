@@ -1,0 +1,68 @@
+import { Option } from 'commander';
+
+/**
+ * Shared --json flag for all commands that support JSON output.
+ * Standard option for machine-readable output.
+ *
+ * @example
+ * ```typescript
+ * program
+ *   .command('status')
+ *   .addOption(jsonOption)
+ *   .action((options) => {
+ *     if (options.json) {
+ *       console.log(JSON.stringify(data));
+ *     }
+ *   });
+ * ```
+ */
+export const jsonOption = new Option('-j, --json', 'Output as JSON');
+
+/**
+ * Shared --last <n> option for pagination.
+ * Includes built-in validation for sensible limits.
+ *
+ * @example
+ * ```typescript
+ * program
+ *   .command('console')
+ *   .addOption(lastOption)
+ *   .action((options) => {
+ *     const logs = allLogs.slice(-options.last);
+ *   });
+ * ```
+ */
+export const lastOption = new Option('--last <n>', 'Show last N items')
+  .default(0)
+  .argParser((val) => {
+    const n = parseInt(val, 10);
+    if (isNaN(n) || n < 0 || n > 10000) {
+      throw new Error('--last must be between 0 and 10000');
+    }
+    return n;
+  });
+
+/**
+ * Create a --filter option with specified valid choices.
+ * Includes built-in validation using Commander's .choices() method.
+ *
+ * @param validTypes - Array of valid filter values
+ * @returns Commander Option instance
+ *
+ * @example
+ * ```typescript
+ * program
+ *   .command('console')
+ *   .addOption(filterOption(['log', 'error', 'warning', 'info']))
+ *   .action((options) => {
+ *     if (options.filter) {
+ *       filtered = logs.filter(log => log.type === options.filter);
+ *     }
+ *   });
+ * ```
+ */
+export function filterOption(validTypes: string[]): Option {
+  return new Option('--filter <type>', `Filter by type (${validTypes.join(', ')})`).choices(
+    validTypes
+  );
+}

@@ -2,6 +2,17 @@
 
 Implementation roadmap for live CDP query commands (`bdg network`, `bdg console`, `bdg dom`, `bdg cdp`).
 
+## Current Progress
+
+**Completed:**
+- ✅ Phase 1: `bdg cdp <method>` - Direct CDP passthrough
+- ✅ Phase 2: `bdg network getCookies` - High-level network commands with human-readable output
+- ✅ Phase 3: `bdg dom eval <script>` - JavaScript evaluation in browser context
+- ✅ Phase 4: `bdg console` - Query collected console logs
+
+**Next Up:**
+- 📋 Phase 5: Additional high-level commands (network requests, DOM snapshot, performance metrics)
+
 ---
 
 ## Vision
@@ -15,7 +26,7 @@ bdg example.com
 # Live queries (in another terminal)
 bdg network getCookies              # Human-readable cookie list
 bdg network getCookies --json       # JSON output for scripting
-bdg dom query "document.title"      # Evaluate JS expression
+bdg dom eval "document.title"       # Evaluate JS expression
 bdg console --last 10               # Last 10 console messages
 bdg cdp Network.getCookies --json   # Direct CDP passthrough
 ```
@@ -220,87 +231,68 @@ bdg network getCookies --url "https://example.com"
 
 ---
 
-## Phase 3: DOM/Runtime Commands - `bdg dom query`
+## Phase 3: DOM/Runtime Commands - `bdg dom eval` ✅ COMPLETE
 
 **Goal**: Evaluate JavaScript expressions in the page context.
 
+**Note**: Implemented as `bdg dom eval` to organize JavaScript evaluation under the DOM namespace, alongside CSS selector queries (`bdg dom query`).
+
 ### Commands
 ```bash
-bdg dom query "document.title"
-bdg dom query "document.querySelectorAll('a').length"
-bdg dom query "Array.from(document.links).map(l => l.href)"
-bdg dom query "window.performance.timing.loadEventEnd - window.performance.timing.navigationStart"
+bdg dom eval "document.title"
+bdg dom eval "document.querySelectorAll('a').length"
+bdg dom eval "Array.from(document.links).map(l => l.href)"
+bdg dom eval "window.performance.timing.loadEventEnd - window.performance.timing.navigationStart"
 ```
 
 ### Implementation
 
-**1. CLI Command** (`src/index.ts`)
-```typescript
-const domCmd = program
-  .command('dom')
-  .description('Inspect DOM state');
+**Implemented in:** `src/cli/collectors/dom.ts` (as part of `registerDomCommands`)
 
-domCmd
-  .command('query <expression>')
-  .description('Evaluate JavaScript expression')
-  .option('--json', 'Output as JSON')
-  .action(async (expression: string, options) => {
-    const response = await sendIPCMessage({
-      type: 'cdp-call',
-      data: {
-        method: 'Runtime.evaluate',
-        params: {
-          expression,
-          returnByValue: true,
-          awaitPromise: true
-        }
-      }
-    });
+**Key features:**
+- Direct JavaScript evaluation in the browser context using `Runtime.evaluate`
+- Checks for active session before execution
+- Creates temporary CDP connection to the active tab
+- Supports `--json` flag for wrapped output format
+- Comprehensive error handling for missing sessions, closed tabs, and script errors
+- Returns raw JSON output by default, or wrapped in version/success format with `--json`
+- Organized under `bdg dom` namespace alongside CSS selector queries
 
-    if (response.result.exceptionDetails) {
-      console.error('Error:', response.result.exceptionDetails.text);
-      process.exit(1);
-    }
-
-    const value = response.result.result.value;
-    if (options.json) {
-      console.log(JSON.stringify(value, null, 2));
-    } else {
-      console.log(formatValue(value));
-    }
-  });
-```
-
-**2. Value Formatter** (`src/formatters/runtime.ts`)
-```typescript
-export function formatValue(value: any): string {
-  if (typeof value === 'string') {
-    return `'${value}'`;
-  }
-  if (typeof value === 'object') {
-    return JSON.stringify(value, null, 2);
-  }
-  return String(value);
-}
-```
-
-### Testing
+### Testing Examples
 ```bash
+# Start session
 bdg example.com
-bdg dom query "document.title"
-bdg dom query "document.querySelectorAll('a').length"
-bdg dom query "navigator.userAgent" --json
+
+# Test simple expressions
+bdg dom eval "document.title"                      # Returns: "Example Domain"
+bdg dom eval "window.location.href"                # Returns: "https://example.com/"
+
+# Test complex expressions (arrays/objects)
+bdg dom eval "Array.from(document.querySelectorAll('a')).map(a => a.href)"
+# Returns: ["https://iana.org/domains/example"]
+
+# Test JSON output format
+bdg dom eval "document.title" --json
+# Returns: {"version": "0.0.1-alpha.0", "success": true, "result": "Example Domain"}
+
+# Test error handling
+bdg dom eval "nonexistent.property"
+# Returns: Error executing script: ReferenceError: nonexistent is not defined
 ```
 
 ### Success Criteria
 - ✅ Can evaluate simple expressions (strings, numbers)
 - ✅ Can evaluate complex expressions (arrays, objects)
-- ✅ Error handling for syntax errors
+- ✅ Error handling for syntax errors and runtime exceptions
 - ✅ Handles promises correctly (`awaitPromise: true`)
+- ✅ Validates session is active before execution
+- ✅ Verifies target tab still exists
+- ✅ Provides helpful error messages with suggestions
+- ✅ Supports both raw and wrapped JSON output formats
 
 ---
 
-## Phase 4: Console Commands - `bdg console`
+## Phase 4: Console Commands - `bdg console` ✅ COMPLETE
 
 **Goal**: Query collected console logs without stopping the session.
 
@@ -435,11 +427,11 @@ bdg performance memory            # Heap usage
 
 ## Implementation Order
 
-1. **Phase 1: `bdg cdp`** - Foundation for all CDP calls (1-2 days)
-2. **Phase 2: `bdg network getCookies`** - First high-level command (1 day)
-3. **Phase 3: `bdg dom query`** - Runtime evaluation (1 day)
-4. **Phase 4: `bdg console`** - Query collected data (1 day)
-5. **Phase 5: Additional commands** - Expand based on user feedback (ongoing)
+1. **Phase 1: `bdg cdp`** - Foundation for all CDP calls ✅ **COMPLETE**
+2. **Phase 2: `bdg network getCookies`** - First high-level command ✅ **COMPLETE**
+3. **Phase 3: `bdg dom eval`** - Runtime evaluation ✅ **COMPLETE**
+4. **Phase 4: `bdg console`** - Query collected data ✅ **COMPLETE**
+5. **Phase 5: Additional commands** - Expand based on user feedback (next up)
 
 ---
 
