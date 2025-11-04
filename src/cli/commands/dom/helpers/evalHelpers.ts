@@ -32,7 +32,7 @@ interface RuntimeEvaluateResult {
  *
  * @param json - Whether to output JSON format
  * @returns PID of running session
- * @throws \{never\} Exits process if no active session found
+ * @throws never Exits process if no active session found
  */
 export function validateActiveSession(json: boolean): number {
   const pid = readPid();
@@ -52,7 +52,7 @@ export function validateActiveSession(json: boolean): number {
  *
  * @param json - Whether to output JSON format
  * @returns Session metadata including targetId and webSocketDebuggerUrl
- * @throws \{never\} Exits process if metadata is invalid or missing required fields
+ * @throws never Exits process if metadata is invalid or missing required fields
  */
 export function getValidatedSessionMetadata(json: boolean): SessionMetadata {
   const metadata = readSessionMetadata();
@@ -75,8 +75,8 @@ export function getValidatedSessionMetadata(json: boolean): SessionMetadata {
  * @param metadata - Session metadata containing targetId
  * @param port - CDP port number
  * @param json - Whether to output JSON format
- * @throws \{Error\} When CDP response is invalid
- * @throws \{never\} Exits process if target not found
+ * @throws Error When CDP response is invalid
+ * @throws never Exits process if target not found
  */
 export async function verifyTargetExists(
   metadata: SessionMetadata,
@@ -108,7 +108,7 @@ export async function verifyTargetExists(
  * @param cdp - CDP connection instance
  * @param script - JavaScript expression to execute
  * @returns Execution result
- * @throws \{Error\} When script execution throws exception
+ * @throws Error When script execution throws exception
  */
 export async function executeScript(
   cdp: CDPConnection,

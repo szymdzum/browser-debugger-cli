@@ -11,14 +11,16 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * @param error - Error object or message
  * @param json - Whether to output JSON format
  * @param exitCode - Exit code to use (defaults to UNHANDLED_EXCEPTION)
- * @throws \{never\} This function always exits the process
+ * @throws never This function always exits the process
  *
  * @example
+ * ```typescript
  * try {
  *   await someOperation();
  * } catch (error) {
  *   handleCommandError(error, options.json);
  * }
+ * ```
  */
 export function handleCommandError(
   error: unknown,
@@ -44,15 +46,17 @@ export function handleCommandError(
  * @param json - Whether to output JSON format
  * @param metadata - Additional context (suggestion, note, etc.)
  * @param exitCode - Exit code to use (defaults to UNHANDLED_EXCEPTION)
- * @throws \{never\} This function always exits the process
+ * @throws never This function always exits the process
  *
  * @example
+ * ```typescript
  * handleCommandErrorWithContext(
  *   'Session not found',
  *   options.json,
  *   { suggestion: 'Start a session with: bdg <url>' },
  *   EXIT_CODES.RESOURCE_NOT_FOUND
  * );
+ * ```
  */
 export function handleCommandErrorWithContext(
   error: unknown,

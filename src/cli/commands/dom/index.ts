@@ -44,8 +44,8 @@ interface DomGetOptions {
  *
  * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
  * @param options - Command options
- * @throws \{Error\} When IPC request fails or returns error response
- * @throws \{Error\} When response data is missing
+ * @throws Error When IPC request fails or returns error response
+ * @throws Error When response data is missing
  */
 async function handleDomQuery(selector: string, options: DomQueryOptions): Promise<void> {
   try {
@@ -100,16 +100,16 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 }
 
 /**
- * Handle bdg dom highlight <selector|index> command
+ * Handle bdg dom highlight command
  *
  * Highlights elements in the browser with visual overlay. Accepts CSS selector,
  * cached index from previous query, or direct nodeId.
  *
  * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
  * @param options - Command options including color, opacity, targeting flags, and nodeId
- * @throws \{Error\} When cached index not found (user must run 'bdg dom query' first)
- * @throws \{Error\} When IPC request fails or returns error response
- * @throws \{Error\} When response data is missing
+ * @throws Error When cached index not found (user must run 'bdg dom query' first)
+ * @throws Error When IPC request fails or returns error response
+ * @throws Error When response data is missing
  */
 async function handleDomHighlight(
   selectorOrIndex: string,
@@ -158,16 +158,16 @@ async function handleDomHighlight(
 }
 
 /**
- * Handle bdg dom get <selector|index> command
+ * Handle bdg dom get command
  *
  * Retrieves full HTML and attributes for DOM elements. Accepts CSS selector,
  * cached index from previous query, or direct nodeId.
  *
  * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
  * @param options - Command options including --all, --nth, and nodeId
- * @throws \{Error\} When cached index not found (user must run 'bdg dom query' first)
- * @throws \{Error\} When IPC request fails or returns error response
- * @throws \{Error\} When response data is missing
+ * @throws Error When cached index not found (user must run 'bdg dom query' first)
+ * @throws Error When IPC request fails or returns error response
+ * @throws Error When response data is missing
  */
 async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
   try {
@@ -202,6 +202,7 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
       console.log(JSON.stringify(nodes.length === 1 ? nodes[0] : nodes, null, 2));
     } else {
       if (nodes.length === 1) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         console.log(nodes[0]!.outerHTML);
       } else {
         for (const [i, node] of nodes.entries()) {
@@ -232,11 +233,11 @@ interface DomEvalOptions {
  *
  * @param script - JavaScript expression to evaluate (e.g., "document.title", "window.location.href")
  * @param options - Command options including port and json formatting
- * @throws \{Error\} When no active session is running
- * @throws \{Error\} When session metadata is invalid
- * @throws \{Error\} When target no longer exists (tab closed)
- * @throws \{Error\} When CDP connection fails
- * @throws \{Error\} When script execution throws exception
+ * @throws Error When no active session is running
+ * @throws Error When session metadata is invalid
+ * @throws Error When target no longer exists (tab closed)
+ * @throws Error When CDP connection fails
+ * @throws Error When script execution throws exception
  */
 async function handleDomEval(script: string, options: DomEvalOptions): Promise<void> {
   try {
@@ -263,6 +264,7 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
     // Create temporary CDP connection and execute script
     const cdp = new CDPConnection();
     // getValidatedSessionMetadata ensures webSocketDebuggerUrl is defined
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     await cdp.connect(metadata.webSocketDebuggerUrl!);
 
     const result = await executeScript(cdp, script);

@@ -58,76 +58,93 @@ try { ... } catch { console.error('failed'); }
 
 Rationale: Dead code obscures behavior and increases maintenance burden.
 
-### TSDoc Escaping Rules
+### TSDoc Syntax Rules
 
-**MANDATORY**: TSDoc comments require proper escaping to avoid parser warnings. These violations happen often and must be prevented.
+**MANDATORY**: TSDoc comments require proper syntax to avoid parser warnings. These violations happen often and must be prevented.
 
 **Common Violations** (based on analysis of 66 TSDoc warnings in this codebase):
 
-1. **Unescaped Curly Braces in @throws Tags** (Most common - 54 violations):
+1. **Curly Braces in @throws Tags** (Most common - 54 violations):
 ```typescript
-// ❌ BAD - Unescaped curly braces
+// ❌ BAD - Don't use curly braces
 /**
  * @throws {Error} When operation fails
  * @throws {never} This function always exits
  */
 
-// ✅ GOOD - Escaped curly braces
+// ✅ GOOD - No curly braces, just the type name
 /**
- * @throws \{Error\} When operation fails
- * @throws \{never\} This function always exits
+ * @throws Error When operation fails
+ * @throws never This function always exits
  */
 ```
 
-2. **Unescaped Curly Braces in @example Code** (12 violations):
+2. **Code with Curly Braces in @example** (12 violations):
 ```typescript
-// ❌ BAD - Unescaped curly braces in examples
+// ❌ BAD - Code not in code fence
 /**
  * @example
  * buildOptions('.error', 123)  // → { nodeId: 123 }
  */
 
-// ✅ GOOD - Escaped curly braces in examples
+// ✅ GOOD - Wrap example code in code fences
 /**
  * @example
- * buildOptions('.error', 123)  // → \{ nodeId: 123 \}
+ * ```typescript
+ * buildOptions('.error', 123)  // → { nodeId: 123 }
+ * ```
  */
 ```
 
-3. **Unescaped Angle Brackets in HTML Examples**:
+3. **HTML/Angle Brackets in Descriptions**:
 ```typescript
-// ❌ BAD - Unescaped angle brackets
+// ❌ BAD - Angle brackets in description
 /**
- * @example
- * <div class="foo">content</div>
+ * Handle <selector|index> command
  */
 
-// ✅ GOOD - Escaped angle brackets
+// ✅ GOOD - Remove or rephrase to avoid angle brackets
 /**
- * @example
- * \<div class="foo"\>content\</div\>
+ * Handle selector or index command
  */
 ```
 
-**Why Escaping is Required**:
+**Why These Rules Exist**:
 - TSDoc parser interprets `{...}` as inline tags like `{@link}` or `{@inheritDoc}`
 - TSDoc parser interprets `<...>` as HTML/XML tags
-- Escaping with backslash `\{`, `\}`, `\<`, `\>` tells parser to treat them as literal characters
+- Code fences (triple backticks) tell TSDoc to ignore special characters in code examples
 
-**Bulk Fixes with sed**:
+**Correct TSDoc Patterns**:
+```typescript
+/**
+ * Brief description
+ *
+ * Longer description with details.
+ *
+ * @param name - Parameter description
+ * @param options - Options object description
+ * @returns Description of return value
+ * @throws Error Description of when error is thrown (NO curly braces)
+ *
+ * @example
+ * ```typescript
+ * // Example code here - curly braces are safe in code fences
+ * const result = myFunction({ foo: 'bar' });
+ * ```
+ */
+```
+
+**Bulk Fixes**:
 ```bash
-# Fix @throws {Error} tags
-sed -i '' 's/ \* @throws {Error}/ * @throws \\{Error\\}/g' file.ts
-
-# Fix @throws {never} tags
-sed -i '' 's/ \* @throws {never}/ * @throws \\{never\\}/g' file.ts
-
-# WARNING: Be careful with angle brackets - don't escape TypeScript generics!
-# Only escape angle brackets in TSDoc comment text, not in code
+# Remove curly braces from @throws tags
+sed -i '' 's/@throws \\{Error\\}/@throws Error/g' file.ts
+sed -i '' 's/@throws \\{never\\}/@throws never/g' file.ts
 ```
 
 **Prevention**:
-- Review TSDoc comments in PR reviews
+- Use code fences (triple backticks) for all @example blocks containing code
+- Never use curly braces in @throws tags - just write the type name
+- Avoid angle brackets in descriptions - rephrase or use code formatting
 - Run `npm run lint` before committing (catches TSDoc warnings via eslint-plugin-tsdoc)
 - CI enforces zero TSDoc warnings (see `.github/workflows/ci.yml`)
 
@@ -137,7 +154,7 @@ npm run lint              # Shows TSDoc warnings
 npm run build             # TypeScript compiler also reports TSDoc issues
 ```
 
-**Reference**: [TSDoc Specification](https://tsdoc.org/) for full escaping rules.
+**Reference**: [TSDoc Specification](https://tsdoc.org/) for full syntax rules.
 
 ## Available Helpers
 
