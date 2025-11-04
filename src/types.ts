@@ -163,18 +163,6 @@ export interface SessionOptions {
 export type CleanupFunction = () => void;
 
 /**
- * Lightweight snapshot of an active BDG session used by higher-level tooling.
- * @property isActive   Indicates whether collectors are currently running.
- * @property startTime  Epoch timestamp (ms) when the session began.
- * @property collectors Enabled collectors for this run (dom/network/console).
- */
-export interface SessionState {
-  isActive: boolean;
-  startTime: number;
-  collectors: CollectorType[];
-}
-
-/**
  * Information about a launched Chrome instance.
  *
  * @property pid         Process ID of the Chrome instance

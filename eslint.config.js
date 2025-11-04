@@ -4,6 +4,7 @@ import tsparser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
 import unusedImports from 'eslint-plugin-unused-imports';
 import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
+import tsdoc from 'eslint-plugin-tsdoc';
 import prettierConfig from 'eslint-config-prettier';
 import globals from 'globals';
 
@@ -27,6 +28,7 @@ export default [
       import: importPlugin,
       'unused-imports': unusedImports,
       'no-relative-import-paths': noRelativeImportPaths,
+      tsdoc: tsdoc,
     },
     rules: {
       ...js.configs.recommended.rules,
@@ -101,6 +103,9 @@ export default [
           requireDefaultForNonUnion: true,
         },
       ],
+
+      // TSDoc syntax validation
+      'tsdoc/syntax': 'warn',
 
       // Import path consistency - enforce @/* over relative paths
       'no-relative-import-paths/no-relative-import-paths': [

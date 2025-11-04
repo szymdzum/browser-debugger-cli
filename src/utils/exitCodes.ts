@@ -69,32 +69,3 @@ export function getExitCodeForError(error: unknown): number {
   // Unknown error type
   return EXIT_CODES.UNHANDLED_EXCEPTION;
 }
-
-/**
- * Check if an exit code indicates a user error (80-99).
- * Useful for agents to determine if they should retry.
- */
-export function isUserError(exitCode: number): boolean {
-  return exitCode >= 80 && exitCode <= 99;
-}
-
-/**
- * Check if an exit code indicates a software error (100-119).
- * Some of these may be retryable (e.g., timeouts, connection failures).
- */
-export function isSoftwareError(exitCode: number): boolean {
-  return exitCode >= 100 && exitCode <= 119;
-}
-
-/**
- * Check if an exit code indicates a potentially retryable error.
- * Currently: connection failures and timeouts.
- */
-export function isRetryable(exitCode: number): boolean {
-  const retryableCodes: number[] = [
-    EXIT_CODES.CDP_CONNECTION_FAILURE,
-    EXIT_CODES.CDP_TIMEOUT,
-    EXIT_CODES.CHROME_LAUNCH_FAILURE, // May be retryable if transient
-  ];
-  return retryableCodes.includes(exitCode);
-}

@@ -16,12 +16,7 @@ import { fileURLToPath } from 'url';
 import type { ChildProcess } from 'child_process';
 
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import {
-  cleanupStaleSession,
-  getDaemonPidPath,
-  getDaemonSocketPath,
-  isProcessAlive,
-} from '@/utils/session.js';
+import { cleanupStaleSession, getSessionFilePath, isProcessAlive } from '@/utils/session.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -47,7 +42,7 @@ export async function launchDaemon(): Promise<ChildProcess> {
   }
 
   // Check if daemon is already running
-  const daemonPidPath = getDaemonPidPath();
+  const daemonPidPath = getSessionFilePath('DAEMON_PID');
   if (fs.existsSync(daemonPidPath)) {
     try {
       const pidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
@@ -117,7 +112,7 @@ export async function launchDaemon(): Promise<ChildProcess> {
 
   // Wait for daemon to be ready (socket file exists)
   console.error('[launcher] Waiting for daemon to be ready...');
-  const socketPath = getDaemonSocketPath();
+  const socketPath = getSessionFilePath('DAEMON_SOCKET');
   const maxWaitMs = 5000;
   const startTime = Date.now();
 
@@ -142,7 +137,7 @@ export async function launchDaemon(): Promise<ChildProcess> {
  * @returns True if daemon is running, false otherwise
  */
 export function isDaemonRunning(): boolean {
-  const daemonPidPath = getDaemonPidPath();
+  const daemonPidPath = getSessionFilePath('DAEMON_PID');
 
   if (!fs.existsSync(daemonPidPath)) {
     return false;

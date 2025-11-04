@@ -4,7 +4,7 @@ import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { readPid, isProcessAlive, cleanupSession, getOutputFilePath } from '@/utils/session.js';
+import { readPid, cleanupSession, isProcessAlive, getSessionFilePath } from '@/utils/session.js';
 
 /**
  * Flags consumed by the `bdg cleanup` command.
@@ -117,7 +117,7 @@ export function registerCleanupCommand(program: Command): void {
 
         // Also remove session.json output file if --all flag is specified
         if (options.all) {
-          const outputPath = getOutputFilePath();
+          const outputPath = getSessionFilePath('OUTPUT');
           if (fs.existsSync(outputPath)) {
             try {
               fs.unlinkSync(outputPath);

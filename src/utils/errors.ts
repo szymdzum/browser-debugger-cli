@@ -68,33 +68,6 @@ export class CDPTimeoutError extends BdgError {
 }
 
 /**
- * Invalid URL provided.
- *
- * Examples:
- * - Malformed URL syntax
- * - Missing required URL components
- */
-export class InvalidURLError extends BdgError {
-  readonly code = 'INVALID_URL_ERROR';
-  readonly category = 'user' as const;
-  readonly exitCode = 80; // INVALID_URL
-}
-
-/**
- * Session file operation failed.
- *
- * Examples:
- * - Cannot write to ~/.bdg/
- * - Disk full
- * - Permission denied
- */
-export class SessionFileError extends BdgError {
-  readonly code = 'SESSION_FILE_ERROR';
-  readonly category = 'system' as const;
-  readonly exitCode = 103; // SESSION_FILE_ERROR
-}
-
-/**
  * Extract error message from unknown error type.
  *
  * Safely extracts error messages from various error types:

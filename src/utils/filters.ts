@@ -2,6 +2,8 @@
  * Default filters for reducing noise in collected data
  */
 
+import { extractHostname, extractHostnameWithPath } from './url/safeParseUrl.js';
+
 /**
  * Domains to exclude by default (common tracking/analytics)
  * These generate high volume but are rarely useful for debugging
@@ -145,22 +147,19 @@ export const DEFAULT_SKIP_BODY_MIME_TYPES = [
 ];
 
 /**
- * Check if a URL should be excluded based on domain filtering
+ * Check if a URL should be excluded based on domain filtering.
+ *
+ * @param url - URL to check against exclusion list
+ * @param includeAll - If true, disables all filtering
+ * @returns True if the URL's domain matches an excluded domain
  */
 export function shouldExcludeDomain(url: string, includeAll: boolean = false): boolean {
   if (includeAll) {
     return false; // Don't filter anything if --include-all flag is set
   }
 
-  try {
-    const parsedUrl = new URL(url);
-    const hostname = parsedUrl.hostname.toLowerCase();
-
-    return DEFAULT_EXCLUDED_DOMAINS.some((domain) => hostname.includes(domain.toLowerCase()));
-  } catch {
-    // If URL parsing fails, don't filter
-    return false;
-  }
+  const hostname = extractHostname(url).toLowerCase();
+  return DEFAULT_EXCLUDED_DOMAINS.some((domain) => hostname.includes(domain.toLowerCase()));
 }
 
 /**
@@ -219,18 +218,9 @@ interface PatternMatchConfig {
 function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean {
   const { includePatterns = [], excludePatterns = [], defaultBehavior = 'include' } = config;
 
-  // Parse URL for pattern matching
-  let hostname: string;
-  let hostnameWithPath: string;
-  try {
-    const parsed = new URL(url);
-    hostname = parsed.hostname;
-    hostnameWithPath = hostname + parsed.pathname;
-  } catch {
-    // If not a valid URL, use the whole string
-    hostname = url;
-    hostnameWithPath = url;
-  }
+  // Extract hostname and path for pattern matching (using safe parsing)
+  const hostname = extractHostname(url);
+  const hostnameWithPath = extractHostnameWithPath(url);
 
   const testPatterns = (patterns: string[]): boolean => {
     return patterns.some(

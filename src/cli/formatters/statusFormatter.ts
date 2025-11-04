@@ -152,23 +152,3 @@ Suggestions:
   Start a new session:     bdg <url>
   List Chrome tabs:        bdg tabs`;
 }
-
-/**
- * Format "stale session" message
- */
-export function formatStaleSessionMessage(pid: number): string {
-  return `Found stale session (PID ${pid} not running)
-
-Suggestions:
-  Clean up:          bdg cleanup
-  Start new session: bdg <url>`;
-}
-
-/**
- * Format "no metadata" message
- */
-export function formatNoMetadataMessage(pid: number): string {
-  return `Active session found (PID ${pid})
-Warning: No metadata available
-Session may have been started with an older version`;
-}

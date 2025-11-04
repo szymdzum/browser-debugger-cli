@@ -280,12 +280,6 @@ export const MAX_CONSOLE_MESSAGES = 10000;
  */
 export const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
 
-/**
- * Default maximum response body size for user override (10MB)
- * @constant {number}
- */
-export const DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
-
 // ============================================================================
 // CHROME CDP BUFFER LIMITS
 // ============================================================================

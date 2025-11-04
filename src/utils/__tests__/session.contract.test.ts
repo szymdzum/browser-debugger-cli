@@ -8,10 +8,7 @@ import { mockProcessAlive, restoreProcessAlive } from '@/__testutils__/testProce
 import {
   acquireSessionLock,
   cleanupStaleSession,
-  getDaemonPidPath,
-  getDaemonSocketPath,
-  getLockFilePath,
-  getPidFilePath,
+  getSessionFilePath,
   isProcessAlive,
   readPid,
   releaseSessionLock,
@@ -81,7 +78,7 @@ void describe('Session Utilities Contract Tests', () => {
     void it('should write PID to file with correct content', () => {
       writePid(12345);
 
-      const pidPath = getPidFilePath();
+      const pidPath = getSessionFilePath('PID');
       const content = fs.readFileSync(pidPath, 'utf-8');
       assert.equal(content, '12345');
     });
@@ -104,14 +101,14 @@ void describe('Session Utilities Contract Tests', () => {
       const acquired = acquireSessionLock();
 
       assert.equal(acquired, true);
-      const lockPath = getLockFilePath();
+      const lockPath = getSessionFilePath('LOCK');
       const content = fs.readFileSync(lockPath, 'utf-8');
       assert.equal(content, '12345'); // process.pid from beforeEach
     });
 
     void it('should return false if lock is held by alive process', () => {
       // Setup: Create lock file held by alive process
-      const lockPath = getLockFilePath();
+      const lockPath = getSessionFilePath('LOCK');
       const sessionDir = path.join(tmpDir, '.bdg');
       fs.mkdirSync(sessionDir, { recursive: true });
       fs.writeFileSync(lockPath, '99999');
@@ -128,7 +125,7 @@ void describe('Session Utilities Contract Tests', () => {
 
     void it('should remove stale lock and acquire if holder PID is dead', () => {
       // Setup: Create lock file held by dead process
-      const lockPath = getLockFilePath();
+      const lockPath = getSessionFilePath('LOCK');
       const sessionDir = path.join(tmpDir, '.bdg');
       fs.mkdirSync(sessionDir, { recursive: true });
       fs.writeFileSync(lockPath, '88888');
@@ -148,7 +145,7 @@ void describe('Session Utilities Contract Tests', () => {
     void it('should remove lock file when released', () => {
       // Setup: Acquire lock first
       acquireSessionLock();
-      const lockPath = getLockFilePath();
+      const lockPath = getSessionFilePath('LOCK');
       assert.equal(fs.existsSync(lockPath), true, 'Lock file should exist');
 
       // Act
@@ -201,8 +198,8 @@ void describe('Session Utilities Contract Tests', () => {
         startTime: Date.now(),
         port: 9222,
       });
-      fs.writeFileSync(getDaemonPidPath(), '66666');
-      fs.writeFileSync(getDaemonSocketPath(), '');
+      fs.writeFileSync(getSessionFilePath('DAEMON_PID'), '66666');
+      fs.writeFileSync(getSessionFilePath('DAEMON_SOCKET'), '');
       fs.writeFileSync(getPartialFilePath(), JSON.stringify({ test: 'preview' }));
       fs.writeFileSync(getFullFilePath(), JSON.stringify({ test: 'full' }));
 
@@ -214,9 +211,17 @@ void describe('Session Utilities Contract Tests', () => {
 
       // Assert
       assert.equal(cleaned, true, 'Should return true when cleanup was performed');
-      assert.equal(fs.existsSync(getPidFilePath()), false, 'PID file should be removed');
-      assert.equal(fs.existsSync(getDaemonPidPath()), false, 'Daemon PID should be removed');
-      assert.equal(fs.existsSync(getDaemonSocketPath()), false, 'Daemon socket should be removed');
+      assert.equal(fs.existsSync(getSessionFilePath('PID')), false, 'PID file should be removed');
+      assert.equal(
+        fs.existsSync(getSessionFilePath('DAEMON_PID')),
+        false,
+        'Daemon PID should be removed'
+      );
+      assert.equal(
+        fs.existsSync(getSessionFilePath('DAEMON_SOCKET')),
+        false,
+        'Daemon socket should be removed'
+      );
       assert.equal(fs.existsSync(getPartialFilePath()), false, 'Preview file should be removed');
       assert.equal(fs.existsSync(getFullFilePath()), false, 'Full file should be removed');
     });
@@ -242,7 +247,7 @@ void describe('Session Utilities Contract Tests', () => {
 
       // Assert
       assert.equal(cleaned, false, 'Should return false when session is active');
-      assert.equal(fs.existsSync(getPidFilePath()), true, 'PID file should still exist');
+      assert.equal(fs.existsSync(getSessionFilePath('PID')), true, 'PID file should still exist');
     });
 
     void it('should not remove files when daemon process is alive', () => {
@@ -251,7 +256,7 @@ void describe('Session Utilities Contract Tests', () => {
       fs.mkdirSync(sessionDir, { recursive: true });
 
       writePid(88888);
-      fs.writeFileSync(getDaemonPidPath(), '66666');
+      fs.writeFileSync(getSessionFilePath('DAEMON_PID'), '66666');
 
       // Mock only daemon as alive (session process is dead)
       mockProcessAlive([66666]);
@@ -261,8 +266,12 @@ void describe('Session Utilities Contract Tests', () => {
 
       // Assert
       assert.equal(cleaned, false, 'Should return false when daemon is still alive');
-      assert.equal(fs.existsSync(getPidFilePath()), true, 'PID file should still exist');
-      assert.equal(fs.existsSync(getDaemonPidPath()), true, 'Daemon PID should still exist');
+      assert.equal(fs.existsSync(getSessionFilePath('PID')), true, 'PID file should still exist');
+      assert.equal(
+        fs.existsSync(getSessionFilePath('DAEMON_PID')),
+        true,
+        'Daemon PID should still exist'
+      );
     });
 
     void it('should cleanup daemon artifacts when daemon process is dead', () => {
@@ -270,8 +279,8 @@ void describe('Session Utilities Contract Tests', () => {
       const sessionDir = path.join(tmpDir, '.bdg');
       fs.mkdirSync(sessionDir, { recursive: true });
 
-      fs.writeFileSync(getDaemonPidPath(), '66666');
-      fs.writeFileSync(getDaemonSocketPath(), '');
+      fs.writeFileSync(getSessionFilePath('DAEMON_PID'), '66666');
+      fs.writeFileSync(getSessionFilePath('DAEMON_SOCKET'), '');
 
       // Mock process as dead
       mockProcessAlive([]);
@@ -281,8 +290,16 @@ void describe('Session Utilities Contract Tests', () => {
 
       // Assert
       assert.equal(cleaned, true, 'Should cleanup when daemon is dead');
-      assert.equal(fs.existsSync(getDaemonPidPath()), false, 'Daemon PID should be removed');
-      assert.equal(fs.existsSync(getDaemonSocketPath()), false, 'Daemon socket should be removed');
+      assert.equal(
+        fs.existsSync(getSessionFilePath('DAEMON_PID')),
+        false,
+        'Daemon PID should be removed'
+      );
+      assert.equal(
+        fs.existsSync(getSessionFilePath('DAEMON_SOCKET')),
+        false,
+        'Daemon socket should be removed'
+      );
     });
 
     void it('should handle missing files gracefully', () => {

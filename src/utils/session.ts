@@ -55,57 +55,7 @@ export function ensureSessionDir(): void {
 }
 
 /**
- * Get the path to the PID file
- */
-export function getPidFilePath(): string {
-  return getSessionFilePath('PID');
-}
-
-/**
- * Get the path to the output JSON file
- */
-export function getOutputFilePath(): string {
-  return getSessionFilePath('OUTPUT');
-}
-
-/**
- * Get the path to the session lock file
- */
-export function getLockFilePath(): string {
-  return getSessionFilePath('LOCK');
-}
-
-/**
- * Get the path to the session metadata file
- */
-export function getMetadataFilePath(): string {
-  return getSessionFilePath('METADATA');
-}
-
-/**
- * Get the path to the persistent Chrome PID cache file.
- * This file survives session cleanup so aggressive cleanup can still find Chrome.
- */
-export function getChromePidCachePath(): string {
-  return getSessionFilePath('CHROME_PID');
-}
-
-/**
- * Get the path to the daemon PID file
- */
-export function getDaemonPidPath(): string {
-  return getSessionFilePath('DAEMON_PID');
-}
-
-/**
- * Get the path to the daemon Unix domain socket
- */
-export function getDaemonSocketPath(): string {
-  return getSessionFilePath('DAEMON_SOCKET');
-}
-
-/**
- * Session metadata stored alongside PID
+ * Get the path to the worker Unix domain socket.
  */
 export interface SessionMetadata {
   bdgPid: number;
@@ -124,7 +74,7 @@ export interface SessionMetadata {
  */
 export function writePid(pid: number): void {
   ensureSessionDir();
-  const pidPath = getPidFilePath();
+  const pidPath = getSessionFilePath('PID');
   AtomicFileWriter.writeSync(pidPath, pid.toString());
 }
 
@@ -134,7 +84,7 @@ export function writePid(pid: number): void {
  * @returns The PID if file exists and is valid, null otherwise
  */
 export function readPid(): number | null {
-  const pidPath = getPidFilePath();
+  const pidPath = getSessionFilePath('PID');
 
   if (!fs.existsSync(pidPath)) {
     return null;
@@ -175,7 +125,7 @@ export function isProcessAlive(pid: number): boolean {
  * Remove the PID file
  */
 export function cleanupPidFile(): void {
-  const pidPath = getPidFilePath();
+  const pidPath = getSessionFilePath('PID');
 
   if (fs.existsSync(pidPath)) {
     try {
@@ -194,7 +144,7 @@ export function cleanupPidFile(): void {
  */
 export function writeSessionOutput(output: BdgOutput, compact: boolean = false): void {
   ensureSessionDir();
-  const outputPath = getOutputFilePath();
+  const outputPath = getSessionFilePath('OUTPUT');
   const jsonString = compact ? JSON.stringify(output) : JSON.stringify(output, null, 2);
   AtomicFileWriter.writeSync(outputPath, jsonString);
 }
@@ -208,7 +158,7 @@ export function writeSessionOutput(output: BdgOutput, compact: boolean = false):
  */
 export function acquireSessionLock(): boolean {
   ensureSessionDir();
-  const lockPath = getLockFilePath();
+  const lockPath = getSessionFilePath('LOCK');
 
   try {
     // 'wx' flag creates file exclusively - fails if exists
@@ -249,7 +199,7 @@ export function acquireSessionLock(): boolean {
  * Removes the lock file to allow other sessions to start.
  */
 export function releaseSessionLock(): void {
-  const lockPath = getLockFilePath();
+  const lockPath = getSessionFilePath('LOCK');
 
   try {
     if (fs.existsSync(lockPath)) {
@@ -267,7 +217,7 @@ export function releaseSessionLock(): void {
  */
 export function writeSessionMetadata(metadata: SessionMetadata): void {
   ensureSessionDir();
-  const metaPath = getMetadataFilePath();
+  const metaPath = getSessionFilePath('METADATA');
   AtomicFileWriter.writeSync(metaPath, JSON.stringify(metadata, null, 2));
 }
 
@@ -277,7 +227,7 @@ export function writeSessionMetadata(metadata: SessionMetadata): void {
  * @returns Session metadata if file exists and is valid, null otherwise
  */
 export function readSessionMetadata(): SessionMetadata | null {
-  const metaPath = getMetadataFilePath();
+  const metaPath = getSessionFilePath('METADATA');
 
   if (!fs.existsSync(metaPath)) {
     return null;
@@ -299,7 +249,7 @@ export function readSessionMetadata(): SessionMetadata | null {
  */
 export function writeChromePid(chromePid: number): void {
   ensureSessionDir();
-  const cachePath = getChromePidCachePath();
+  const cachePath = getSessionFilePath('CHROME_PID');
   AtomicFileWriter.writeSync(cachePath, chromePid.toString());
 }
 
@@ -309,7 +259,7 @@ export function writeChromePid(chromePid: number): void {
  * @returns Chrome PID if cached and process is alive, null otherwise
  */
 export function readChromePid(): number | null {
-  const cachePath = getChromePidCachePath();
+  const cachePath = getSessionFilePath('CHROME_PID');
 
   if (!fs.existsSync(cachePath)) {
     return null;
@@ -345,7 +295,7 @@ export function readChromePid(): number | null {
  * Remove Chrome PID from persistent cache.
  */
 export function clearChromePid(): void {
-  const cachePath = getChromePidCachePath();
+  const cachePath = getSessionFilePath('CHROME_PID');
 
   try {
     if (fs.existsSync(cachePath)) {
@@ -571,7 +521,7 @@ export function cleanupStaleSession(): boolean {
 
   if (!lockAcquired) {
     // Lock is held by another process - check if it's still alive
-    const lockPath = getLockFilePath();
+    const lockPath = getSessionFilePath('LOCK');
     try {
       const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
       const lockPid = parseInt(lockPidStr, 10);
@@ -609,7 +559,7 @@ export function cleanupStaleSession(): boolean {
     }
 
     // Check daemon PID if it exists
-    const daemonPidPath = getDaemonPidPath();
+    const daemonPidPath = getSessionFilePath('DAEMON_PID');
     if (fs.existsSync(daemonPidPath)) {
       try {
         const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
@@ -632,7 +582,7 @@ export function cleanupStaleSession(): boolean {
     cleanupPidFile();
 
     // Remove metadata
-    const metaPath = getMetadataFilePath();
+    const metaPath = getSessionFilePath('METADATA');
     if (fs.existsSync(metaPath)) {
       try {
         fs.unlinkSync(metaPath);
@@ -675,7 +625,7 @@ export function cleanupStaleSession(): boolean {
     }
 
     // Remove daemon socket
-    const socketPath = getDaemonSocketPath();
+    const socketPath = getSessionFilePath('DAEMON_SOCKET');
     if (fs.existsSync(socketPath)) {
       try {
         fs.unlinkSync(socketPath);
@@ -703,7 +653,7 @@ export function cleanupSession(): void {
   cleanupPidFile();
   releaseSessionLock();
 
-  const metaPath = getMetadataFilePath();
+  const metaPath = getSessionFilePath('METADATA');
   if (fs.existsSync(metaPath)) {
     try {
       fs.unlinkSync(metaPath);

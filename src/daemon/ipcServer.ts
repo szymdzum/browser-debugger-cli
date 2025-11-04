@@ -33,8 +33,7 @@ import { IPCErrorCode } from '@/ipc/types.js';
 import { filterDefined } from '@/utils/objects.js';
 import {
   ensureSessionDir,
-  getDaemonPidPath,
-  getDaemonSocketPath,
+  getSessionFilePath,
   readPid,
   readSessionMetadata,
   readPartialOutput,
@@ -58,7 +57,7 @@ export class IPCServer {
     ensureSessionDir();
 
     // Clean up stale socket if exists
-    const socketPath = getDaemonSocketPath();
+    const socketPath = getSessionFilePath('DAEMON_SOCKET');
     try {
       unlinkSync(socketPath);
     } catch {
@@ -202,7 +201,7 @@ export class IPCServer {
       const data: StatusResponseData = {
         daemonPid: process.pid,
         daemonStartTime: this.startTime,
-        socketPath: getDaemonSocketPath(),
+        socketPath: getSessionFilePath('DAEMON_SOCKET'),
       };
 
       // Check for active session
@@ -529,13 +528,13 @@ export class IPCServer {
     }
 
     // Cleanup files
-    const socketPath = getDaemonSocketPath();
+    const socketPath = getSessionFilePath('DAEMON_SOCKET');
     try {
       unlinkSync(socketPath);
     } catch {
       // Ignore if already deleted
     }
-    const pidPath = getDaemonPidPath();
+    const pidPath = getSessionFilePath('DAEMON_PID');
     try {
       unlinkSync(pidPath);
     } catch {
@@ -547,7 +546,7 @@ export class IPCServer {
    * Write daemon PID to file for tracking.
    */
   private writePidFile(): void {
-    const pidPath = getDaemonPidPath();
+    const pidPath = getSessionFilePath('DAEMON_PID');
     try {
       writeFileSync(pidPath, process.pid.toString(), 'utf-8');
       console.error(`[daemon] PID file written: ${pidPath}`);
@@ -560,7 +559,7 @@ export class IPCServer {
    * Check if daemon is already running.
    */
   static isRunning(): boolean {
-    const pidPath = getDaemonPidPath();
+    const pidPath = getSessionFilePath('DAEMON_PID');
     try {
       const pid = parseInt(readFileSync(pidPath, 'utf-8').trim(), 10);
       // Check if process is alive
@@ -575,6 +574,6 @@ export class IPCServer {
    * Get socket path for client connections.
    */
   static getSocketPath(): string {
-    return getDaemonSocketPath();
+    return getSessionFilePath('DAEMON_SOCKET');
   }
 }
