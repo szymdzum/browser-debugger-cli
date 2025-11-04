@@ -85,29 +85,15 @@ export async function launchDaemon(): Promise<ChildProcess> {
   // Spawn the daemon worker
   const daemon = spawn('node', [daemonScriptPath], {
     detached: true,
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: 'ignore', // Fully detached - daemon must not depend on parent's stdio
     env: {
       ...process.env,
       BDG_DAEMON: '1', // Mark as daemon worker
     },
   });
 
-  // Capture logs for debugging
-  daemon.stdout?.on('data', (data: Buffer) => {
-    console.error(`[daemon stdout] ${data.toString('utf-8').trim()}`);
-  });
-
-  daemon.stderr?.on('data', (data: Buffer) => {
-    console.error(`[daemon stderr] ${data.toString('utf-8').trim()}`);
-  });
-
-  daemon.on('error', (error) => {
-    console.error('[daemon] Spawn error:', error);
-  });
-
-  daemon.on('exit', (code, signal) => {
-    console.error(`[daemon] Exited with code ${code}, signal ${signal}`);
-  });
+  // Note: No stdio pipes to avoid SIGPIPE when CLI exits
+  // Daemon logs go to daemon's own stderr (can be captured separately if needed)
 
   // Detach the daemon so it continues running after parent exits
   daemon.unref();
