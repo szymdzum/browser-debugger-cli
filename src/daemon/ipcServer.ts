@@ -399,7 +399,8 @@ export class IPCServer {
         let errorMessage = 'Failed to start worker';
 
         if (error instanceof WorkerStartError) {
-          errorMessage = error.message;
+          // Include error details (contains worker stderr) for debugging
+          errorMessage = error.details ? `${error.message}\n${error.details}` : error.message;
           switch (error.code) {
             case 'SPAWN_FAILED':
             case 'WORKER_CRASH':
