@@ -4,6 +4,7 @@ import { safeParseUrl } from './url/safeParseUrl.js';
  * Normalize a URL by adding http:// protocol if missing.
  *
  * Supports: localhost:3000, example.com, http://localhost, file:// URLs
+ * Preserves special browser protocols: about:, chrome:, data:, javascript:, blob:
  *
  * @param url - URL string to normalize
  * @returns Normalized URL with protocol
@@ -13,10 +14,22 @@ import { safeParseUrl } from './url/safeParseUrl.js';
  * normalizeUrl('localhost:3000')      // → 'http://localhost:3000'
  * normalizeUrl('https://example.com') // → 'https://example.com'
  * normalizeUrl('example.com/path')    // → 'http://example.com/path'
+ * normalizeUrl('about:blank')         // → 'about:blank' (unchanged)
+ * normalizeUrl('chrome://settings')   // → 'chrome://settings' (unchanged)
  * ```
  */
 export function normalizeUrl(url: string): string {
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('file://')) {
+  // Check for protocols that should not be modified
+  if (
+    url.startsWith('http://') ||
+    url.startsWith('https://') ||
+    url.startsWith('file://') ||
+    url.startsWith('about:') ||
+    url.startsWith('chrome:') ||
+    url.startsWith('data:') ||
+    url.startsWith('javascript:') ||
+    url.startsWith('blob:')
+  ) {
     return url;
   }
   return `http://${url}`;
