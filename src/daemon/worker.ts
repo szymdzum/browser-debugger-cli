@@ -15,12 +15,12 @@
  * - Worker handles SIGTERM for graceful shutdown
  */
 
-import { writeQueryCache, getNodeIdByIndex } from '@/cli/collectors/helpers/domCache.js';
+import { writeQueryCache, getNodeIdByIndex } from '@/cli/commands/dom/helpers/domCache.js';
 import {
   queryBySelector,
   getNodeInfo,
   createNodePreview,
-} from '@/cli/collectors/helpers/domQuery.js';
+} from '@/cli/commands/dom/helpers/domQuery.js';
 import { startConsoleCollection } from '@/collectors/console.js';
 import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
@@ -427,6 +427,15 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
     return Promise.reject(
       new Error(`Unknown itemType: ${String(params.itemType)}. Expected 'network' or 'console'.`)
     );
+  },
+
+  /**
+   * CDP Call Handler - Execute arbitrary CDP method
+   */
+  cdp_call: async (cdp, params) => {
+    // Execute CDP method with provided parameters
+    const result = await cdp.send(params.method, params.params ?? {});
+    return { result };
   },
 };
 

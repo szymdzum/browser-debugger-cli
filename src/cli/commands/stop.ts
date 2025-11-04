@@ -1,6 +1,8 @@
 import type { Command } from 'commander';
 
-import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import type { BaseCommandOptions } from '@/cli/handlers/CommandRunner.js';
+import { runCommand } from '@/cli/handlers/CommandRunner.js';
+import { jsonOption } from '@/cli/handlers/commonOptions.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { clearChromePid } from '@/session/chrome.js';
@@ -11,11 +13,43 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 /**
  * Flags supported by `bdg stop`.
  */
-interface StopOptions {
+interface StopOptions extends BaseCommandOptions {
   /** Kill the associated Chrome process after stopping bdg. */
   killChrome?: boolean;
-  /** Output result as JSON. */
-  json?: boolean;
+}
+
+/**
+ * Result data for stop operation.
+ */
+interface StopResult {
+  /** What was stopped */
+  stopped: {
+    bdg: boolean;
+    chrome: boolean;
+  };
+  /** Success message */
+  message: string;
+  /** Optional warnings */
+  warnings?: string[];
+}
+
+/**
+ * Format stop result for human-readable output.
+ *
+ * @param data - Stop result data
+ */
+function formatStop(data: StopResult): void {
+  if (data.stopped.bdg) {
+    console.error('Session stopped successfully');
+  }
+  if (data.stopped.chrome) {
+    console.error('Killed Chrome');
+  }
+  if (data.warnings && data.warnings.length > 0) {
+    data.warnings.forEach((warning) => {
+      console.error(`Warning: ${warning}`);
+    });
+  }
 }
 
 /**
@@ -49,144 +83,99 @@ function getExitCodeForDaemonError(errorCode?: IPCErrorCode): number {
  * Register stop command
  *
  * @param program - Commander.js Command instance to register commands on
- * @returns void
  */
 export function registerStopCommand(program: Command): void {
   program
     .command('stop')
     .description('Stop all active sessions and free ports (does not capture output)')
     .option('--kill-chrome', 'Also kill Chrome browser')
-    .option('-j, --json', 'Output as JSON')
+    .addOption(jsonOption)
     .action(async (options: StopOptions) => {
-      try {
-        // Try to stop session via IPC (daemon)
-        const response = await stopSession();
+      await runCommand(
+        async (opts) => {
+          try {
+            // Try to stop session via IPC (daemon)
+            const response = await stopSession();
 
-        if (response.status === 'ok') {
-          // Session stopped successfully via daemon
-          if (!options.json) {
-            console.error('Session stopped successfully');
-          }
+            if (response.status === 'ok') {
+              // Session stopped successfully via daemon
+              let chromeStopped = false;
+              const warnings: string[] = [];
 
-          // Handle Chrome if requested (daemon captured Chrome PID before cleanup)
-          let chromeStopped = false;
-          const warnings: string[] = [];
-
-          if (options.killChrome) {
-            // Use chromePid from daemon response (captured before cleanup)
-            const chromePid = response.chromePid;
-            if (chromePid) {
-              try {
-                killChromeProcess(chromePid, 'SIGTERM');
-                chromeStopped = true;
-                if (!options.json) {
-                  console.error(`Killed Chrome (PID ${chromePid})`);
-                }
-                clearChromePid();
-              } catch (chromeError: unknown) {
-                const errorMessage =
-                  chromeError instanceof Error ? chromeError.message : String(chromeError);
-                warnings.push(`Could not kill Chrome: ${errorMessage}`);
-                if (!options.json) {
-                  console.error(`Warning: Could not kill Chrome:`, errorMessage);
+              // Handle Chrome if requested (daemon captured Chrome PID before cleanup)
+              if (opts.killChrome) {
+                const chromePid = response.chromePid;
+                if (chromePid) {
+                  try {
+                    killChromeProcess(chromePid, 'SIGTERM');
+                    chromeStopped = true;
+                    console.error(`Killed Chrome (PID ${chromePid})`);
+                    clearChromePid();
+                  } catch (chromeError: unknown) {
+                    const errorMessage =
+                      chromeError instanceof Error ? chromeError.message : String(chromeError);
+                    warnings.push(`Could not kill Chrome: ${errorMessage}`);
+                  }
+                } else {
+                  warnings.push('Chrome PID not found (Chrome was not launched by bdg)');
                 }
               }
-            } else {
-              warnings.push('Chrome PID not found (Chrome was not launched by bdg)');
-              if (!options.json) {
-                console.error('Warning: Chrome PID not found (Chrome was not launched by bdg)');
-              }
-            }
-          }
 
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonSuccess({
+              return {
+                success: true,
+                data: {
                   stopped: { bdg: true, chrome: chromeStopped },
                   message: response.message ?? 'Session stopped successfully',
                   ...(warnings.length > 0 && { warnings }),
-                }),
-                null,
-                2
-              )
-            );
-          }
-
-          process.exit(EXIT_CODES.SUCCESS);
-        } else {
-          // Daemon returned error
-          // Special case: NO_SESSION is not really an error - it's a success (desired state achieved)
-          if (response.errorCode === IPCErrorCode.NO_SESSION) {
-            if (options.json) {
-              console.log(
-                JSON.stringify(
-                  OutputBuilder.buildJsonSuccess({
+                },
+              };
+            } else {
+              // Daemon returned error
+              // Special case: NO_SESSION is not really an error - it's a success (desired state achieved)
+              if (response.errorCode === IPCErrorCode.NO_SESSION) {
+                return {
+                  success: true,
+                  data: {
                     stopped: { bdg: false, chrome: false },
                     message: response.message ?? 'No active session found',
-                  }),
-                  null,
-                  2
-                )
-              );
-            } else {
-              console.error(response.message ?? 'No active session found');
+                  },
+                };
+              }
+
+              // Other errors are actual failures
+              const exitCode = getExitCodeForDaemonError(response.errorCode);
+              return {
+                success: false,
+                error: response.message ?? 'Failed to stop session',
+                exitCode,
+              };
             }
-            process.exit(EXIT_CODES.SUCCESS);
+          } catch (error: unknown) {
+            // IPC transport failure (ENOENT, ECONNREFUSED, timeout, etc.)
+            const errorMessage = getErrorMessage(error);
+
+            // Check if it's a connection error (daemon not running)
+            if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
+              return {
+                success: false,
+                error: 'Daemon not running',
+                exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+                errorContext: {
+                  suggestion: 'Start a session first with: bdg <url>',
+                },
+              };
+            }
+
+            // Other errors (timeout, parse failures, etc.)
+            return {
+              success: false,
+              error: `Stop session failed: ${errorMessage}`,
+              exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+            };
           }
-
-          // Other errors are actual failures
-          const exitCode = getExitCodeForDaemonError(response.errorCode);
-
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonError(response.message ?? 'Failed to stop session'),
-                null,
-                2
-              )
-            );
-          } else {
-            console.error(response.message ?? 'Failed to stop session');
-          }
-          process.exit(exitCode);
-        }
-      } catch (error: unknown) {
-        // IPC transport failure (ENOENT, ECONNREFUSED, timeout, etc.)
-        const errorMessage = getErrorMessage(error);
-
-        // Check if it's a connection error (daemon not running)
-        if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonError(
-                  'Daemon not running. Start a session first with: bdg <url>'
-                ),
-                null,
-                2
-              )
-            );
-          } else {
-            console.error('Daemon not running');
-            console.error('Start a session first with: bdg <url>');
-          }
-          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
-
-        // Other errors (timeout, parse failures, etc.)
-        if (options.json) {
-          console.log(
-            JSON.stringify(
-              OutputBuilder.buildJsonError(`Stop session failed: ${errorMessage}`),
-              null,
-              2
-            )
-          );
-        } else {
-          console.error(`Error stopping session: ${errorMessage}`);
-        }
-        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-      }
+        },
+        options,
+        formatStop
+      );
     });
 }

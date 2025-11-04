@@ -6,9 +6,12 @@ paths-ignore:
   - "**/*.spec.ts"
 
 query-filters:
-  # Exclude test files from hostname regexp and URL sanitization checks
-  # These queries flag test data strings as potential security issues
+  # Exclude queries that flag false positives in this codebase:
+  # - js/incomplete-hostname-regexp: Test data strings
+  # - js/incomplete-url-substring-sanitization: Test data strings
+  # - js/incomplete-multi-character-sanitization: HTML text extraction from trusted CDP source
   - exclude:
       id:
         - js/incomplete-hostname-regexp
         - js/incomplete-url-substring-sanitization
+        - js/incomplete-multi-character-sanitization

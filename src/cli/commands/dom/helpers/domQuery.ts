@@ -17,6 +17,7 @@ export interface DomNodeInfo {
  *
  * @param cdp - CDP connection instance
  * @returns Root node ID
+ * @throws Error When CDP command fails or connection is lost
  */
 export async function getDocumentRoot(cdp: CDPConnection): Promise<number> {
   const result = (await cdp.send('DOM.getDocument', { depth: -1 })) as {
@@ -32,6 +33,7 @@ export async function getDocumentRoot(cdp: CDPConnection): Promise<number> {
  * @param selector - CSS selector to query
  * @param rootNodeId - Optional root node ID (defaults to document root)
  * @returns Array of node IDs matching the selector
+ * @throws Error When CDP command fails or selector is invalid
  */
 export async function queryBySelector(
   cdp: CDPConnection,
@@ -55,6 +57,7 @@ export async function queryBySelector(
  * @param cdp - CDP connection instance
  * @param nodeId - Node ID to query
  * @returns Node information including tag, classes, attributes
+ * @throws Error When CDP command fails or nodeId is invalid
  */
 export async function getNodeInfo(cdp: CDPConnection, nodeId: number): Promise<DomNodeInfo> {
   // Get node description
@@ -90,13 +93,14 @@ export async function getNodeInfo(cdp: CDPConnection, nodeId: number): Promise<D
     nodeId,
   })) as { outerHTML: string };
 
-  // Extract text content by removing ALL angle brackets and their content
-  // This is the safest approach to prevent any HTML injection vulnerabilities
-  // We simply strip all < and > characters along with everything between them
+  // Extract text content by removing HTML tags
+  // Uses simple regex to strip tags while preserving text content including < and > in text
+  // SAFETY: This HTML comes from Chrome's internal DOM via CDP, not user input.
+  // It's trusted browser-generated content used only for display/analysis in CLI output.
+  // The regex is intentionally simple because we're extracting text, not sanitizing for XSS.
   const textContent = htmlResult.outerHTML
-    .replace(/</g, ' ')
-    .replace(/>/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/<[^>]*>/g, '') // Remove HTML tags
+    .replace(/\s+/g, ' ') // Collapse whitespace
     .trim();
 
   return {

@@ -286,3 +286,18 @@ export async function getDetails(
 ): Promise<ClientResponse<'worker_details'>> {
   return sendCommand('worker_details', { itemType: type, id });
 }
+
+/**
+ * Execute arbitrary CDP method via the daemon's worker.
+ *
+ * @param method - CDP method name (e.g., 'Network.getCookies', 'Runtime.evaluate')
+ * @param params - CDP method parameters (optional)
+ * @returns CDP call response with method result
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function callCDP(
+  method: string,
+  params?: Record<string, unknown>
+): Promise<ClientResponse<'cdp_call'>> {
+  return sendCommand('cdp_call', { method, ...(params && { params }) });
+}

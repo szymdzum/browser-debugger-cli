@@ -118,10 +118,6 @@ export interface CDPExceptionThrownParams {
   };
 }
 
-export interface CDPTargetDestroyedParams {
-  targetId: string;
-}
-
 /**
  * Optional tuning parameters for CDPConnection.connect.
  */
@@ -140,28 +136,6 @@ export interface ConnectionOptions {
   onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
 }
 
-/**
- * Session-level options for BDG data collection.
- */
-export interface SessionOptions {
-  /** Disable all default filtering (tracking domains, dev server noise, etc) */
-  includeAll?: boolean;
-  /** Override auto-optimization and fetch all response bodies */
-  fetchAllBodies?: boolean;
-  /** URL patterns for bodies to fetch (trumps exclude) */
-  fetchBodiesInclude?: string[];
-  /** URL patterns for bodies to skip */
-  fetchBodiesExclude?: string[];
-  /** URL patterns for requests to capture (trumps exclude) */
-  networkInclude?: string[];
-  /** URL patterns for requests to exclude */
-  networkExclude?: string[];
-  /** Maximum response body size in bytes (default: 5MB) */
-  maxBodySize?: number;
-  /** Use compact JSON format (no indentation) for output files */
-  compact?: boolean;
-}
-
 export type CleanupFunction = () => void;
 
 /**
@@ -178,52 +152,6 @@ export interface LaunchedChrome {
   process: ChildProcess | null;
   /** Async function to terminate Chrome and cleanup temp directories */
   kill: () => Promise<void>;
-}
-
-/**
- * CDP Target.createTarget response.
- */
-export interface CDPCreateTargetResponse {
-  targetId: string;
-}
-
-/**
- * CDP Target.attachToTarget response.
- */
-export interface CDPAttachToTargetResponse {
-  sessionId: string;
-}
-
-/**
- * CDP Target.getTargets response.
- */
-export interface CDPGetTargetsResponse {
-  targetInfos: Array<{
-    targetId: string;
-    type: string;
-    title: string;
-    url: string;
-    attached: boolean;
-  }>;
-}
-
-/**
- * CDP Page.navigate response.
- */
-export interface CDPNavigateResponse {
-  frameId: string;
-  loaderId?: string;
-  errorText?: string;
-}
-
-/**
- * CDP Page.lifecycleEvent parameters.
- */
-export interface CDPLifecycleEventParams {
-  frameId: string;
-  loaderId: string;
-  name: string; // 'DOMContentLoaded', 'load', 'networkAlmostIdle', 'networkIdle', etc.
-  timestamp: number;
 }
 
 /**
@@ -291,38 +219,4 @@ export interface CDPRuntimeEvaluateResponse {
 export interface CDPGetResponseBodyResponse {
   body: string;
   base64Encoded: boolean;
-}
-
-/**
- * Result of a tab creation attempt with error context
- */
-export interface TabCreationResult {
-  success: boolean;
-  target?: CDPTarget;
-  error?: TabCreationError;
-  strategy: 'CDP' | 'HTTP';
-  timing: {
-    attemptStartMs: number;
-    durationMs?: number;
-  };
-}
-
-/**
- * Structured error information for tab creation failures
- */
-export interface TabCreationError {
-  type:
-    | 'CDP_COMMAND_FAILED'
-    | 'VERIFICATION_FAILED'
-    | 'VERIFICATION_TIMEOUT'
-    | 'HTTP_REQUEST_FAILED'
-    | 'TARGET_NOT_FOUND';
-  message: string;
-  originalError?: unknown;
-  context: {
-    targetId?: string;
-    httpStatus?: number;
-    chromeVersion?: string;
-    stage?: 'cdp_command' | 'verification' | 'http_request';
-  };
 }

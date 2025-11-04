@@ -35,7 +35,7 @@ export function writeQueryCache(cache: DomQueryCache): void {
     const cachePath = getDomQueryCachePath();
     fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf8');
   } catch (error) {
-    // Silently fail - cache is optional
+    // Silently fail - cache is optional and non-critical for CLI operation
     console.error(`Warning: Failed to write DOM cache: ${getErrorMessage(error)}`);
   }
 }
@@ -68,22 +68,8 @@ export function readQueryCache(): DomQueryCache | null {
 
     return cache;
   } catch {
-    // Silently fail - cache is optional
+    // Silently fail - cache is optional, missing/corrupt cache doesn't affect core functionality
     return null;
-  }
-}
-
-/**
- * Clear DOM query cache
- */
-export function clearQueryCache(): void {
-  try {
-    const cachePath = getDomQueryCachePath();
-    if (fs.existsSync(cachePath)) {
-      fs.unlinkSync(cachePath);
-    }
-  } catch {
-    // Silently fail
   }
 }
 

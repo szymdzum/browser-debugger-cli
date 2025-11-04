@@ -22,21 +22,8 @@ export async function startSessionViaDaemon(
   options: {
     port: number;
     timeout: number | undefined;
-    reuseTab: boolean;
     userDataDir: string | undefined;
     includeAll: boolean;
-    logLevel: 'verbose' | 'info' | 'error' | 'silent' | undefined;
-    prefs: Record<string, unknown> | undefined;
-    prefsFile: string | undefined;
-    chromeFlags: string[] | undefined;
-    connectionPollInterval: number | undefined;
-    maxConnectionRetries: number | undefined;
-    portStrictMode: boolean;
-    fetchAllBodies: boolean;
-    fetchBodiesInclude: string[] | undefined;
-    fetchBodiesExclude: string[] | undefined;
-    networkInclude: string[] | undefined;
-    networkExclude: string[] | undefined;
     maxBodySize: number | undefined;
     compact: boolean;
   },

@@ -42,15 +42,6 @@ export function getSessionDir(): string {
 }
 
 /**
- * Session directory path (~/.bdg)
- * Exported constant for backward compatibility.
- *
- * WARNING: This is evaluated once at module load time. Prefer getSessionDir()
- * for dynamic resolution (e.g., in tests that change HOME env var).
- */
-export const SESSION_DIR = path.join(os.homedir(), '.bdg');
-
-/**
  * Get the path to a session file by type.
  *
  * @param fileType - The type of session file
