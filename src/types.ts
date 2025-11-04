@@ -118,10 +118,6 @@ export interface CDPExceptionThrownParams {
   };
 }
 
-export interface CDPTargetDestroyedParams {
-  targetId: string;
-}
-
 /**
  * Optional tuning parameters for CDPConnection.connect.
  */
@@ -138,28 +134,6 @@ export interface ConnectionOptions {
   onReconnect?: (() => Promise<void>) | undefined;
   /** Async hook invoked when WebSocket closes unexpectedly (P1 Fix #1) */
   onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
-}
-
-/**
- * Session-level options for BDG data collection.
- */
-export interface SessionOptions {
-  /** Disable all default filtering (tracking domains, dev server noise, etc) */
-  includeAll?: boolean;
-  /** Override auto-optimization and fetch all response bodies */
-  fetchAllBodies?: boolean;
-  /** URL patterns for bodies to fetch (trumps exclude) */
-  fetchBodiesInclude?: string[];
-  /** URL patterns for bodies to skip */
-  fetchBodiesExclude?: string[];
-  /** URL patterns for requests to capture (trumps exclude) */
-  networkInclude?: string[];
-  /** URL patterns for requests to exclude */
-  networkExclude?: string[];
-  /** Maximum response body size in bytes (default: 5MB) */
-  maxBodySize?: number;
-  /** Use compact JSON format (no indentation) for output files */
-  compact?: boolean;
 }
 
 export type CleanupFunction = () => void;

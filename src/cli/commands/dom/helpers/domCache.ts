@@ -74,20 +74,6 @@ export function readQueryCache(): DomQueryCache | null {
 }
 
 /**
- * Clear DOM query cache
- */
-export function clearQueryCache(): void {
-  try {
-    const cachePath = getDomQueryCachePath();
-    if (fs.existsSync(cachePath)) {
-      fs.unlinkSync(cachePath);
-    }
-  } catch {
-    // Silently fail - cache cleanup is non-critical
-  }
-}
-
-/**
  * Get nodeId from cache by index
  *
  * @param index - Index from query results (1-based)

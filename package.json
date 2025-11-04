@@ -18,6 +18,8 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\" \"*.{js,json}\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"*.{js,json}\"",
+    "knip": "knip",
+    "knip:production": "knip --production",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
     "lint:imports": "echo '✓ Import paths checked by main lint'",
@@ -63,7 +65,6 @@
     "knip": "^5.67.1",
     "lint-staged": "^16.2.6",
     "prettier": "^3.6.2",
-    "ts-prune": "^0.10.3",
     "tsc-alias": "^1.8.9",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"

@@ -219,23 +219,3 @@ export type IPCMessageType =
   | StartSessionResponse
   | StopSessionRequest
   | StopSessionResponse;
-
-/**
- * Union type of all IPC request messages.
- */
-export type IPCRequest =
-  | HandshakeRequest
-  | StatusRequest
-  | PeekRequest
-  | StartSessionRequest
-  | StopSessionRequest;
-
-/**
- * Union type of all IPC response messages.
- */
-export type IPCResponse =
-  | HandshakeResponse
-  | StatusResponse
-  | PeekResponse
-  | StartSessionResponse
-  | StopSessionResponse;

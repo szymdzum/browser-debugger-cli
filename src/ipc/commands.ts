@@ -231,13 +231,6 @@ export type ClientRequestUnion = {
   [K in CommandName]: ClientRequest<K>;
 }[CommandName];
 
-/**
- * Union of all possible client response types
- */
-export type ClientResponseUnion = {
-  [K in CommandName]: ClientResponse<K>;
-}[CommandName];
-
 // =============================================================================
 // Type Guards
 // =============================================================================

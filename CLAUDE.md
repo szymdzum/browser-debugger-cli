@@ -409,25 +409,6 @@ bdg localhost:3000 --compact                                    # Compact JSON (
 # Result: api.example.com is captured despite exclude pattern
 ```
 
-### Chrome Setup (Optional)
-
-Chrome is **auto-launched** if not already running. You can also manually start Chrome with debugging:
-
-```bash
-# macOS
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome \
-  --remote-debugging-port=9222 \
-  --user-data-dir=/tmp/chrome-bdg
-
-# Linux
-google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-bdg
-
-# Windows
-"C:\Program Files\Google\Chrome\Application\chrome.exe" ^
-  --remote-debugging-port=9222 ^
-  --user-data-dir=C:\temp\chrome-bdg
-```
-
 **Note:** Chrome 136+ requires `--user-data-dir` with a non-default directory. See CHROME_SETUP.md for details.
 
 ## Session Files
