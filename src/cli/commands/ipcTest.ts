@@ -14,8 +14,8 @@ import type { Command } from 'commander';
 
 import { IPCServer } from '@/daemon/ipcServer.js';
 import { connectToDaemon } from '@/ipc/client.js';
+import { cleanupStaleSession } from '@/session';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { cleanupStaleSession } from '@/utils/session.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

@@ -2,8 +2,8 @@ import type { Command } from 'commander';
 
 import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { readFullOutput } from '@/session';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { readFullOutput } from '@/utils/session.js';
 
 /**
  * Optional switches for `bdg details`.

@@ -30,7 +30,6 @@ import type {
   StopSessionResponse,
 } from '@/ipc/types.js';
 import { IPCErrorCode } from '@/ipc/types.js';
-import { filterDefined } from '@/utils/objects.js';
 import {
   ensureSessionDir,
   getSessionFilePath,
@@ -39,7 +38,8 @@ import {
   readPartialOutput,
   isProcessAlive,
   cleanupSession,
-} from '@/utils/session.js';
+} from '@/session';
+import { filterDefined } from '@/utils/objects.js';
 
 /**
  * Simple JSONL IPC server for daemon communication.

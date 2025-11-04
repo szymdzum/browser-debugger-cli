@@ -1,8 +1,8 @@
 import type { PreviewWriter } from './PreviewWriter.js';
 
+import { cleanupSession } from '@/session';
 import type { BdgSession } from '@/session/BdgSession.js';
 import type { BdgOutput, CDPTarget, LaunchedChrome } from '@/types';
-import { cleanupSession } from '@/utils/session.js';
 
 import { OutputBuilder } from './OutputBuilder.js';
 import { OutputWriter } from './OutputWriter.js';

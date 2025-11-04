@@ -16,7 +16,7 @@ import {
   writeSessionMetadata,
   getPartialFilePath,
   getFullFilePath,
-} from '@/utils/session.js';
+} from '@/session';
 
 /**
  * Session Utilities Contract Tests

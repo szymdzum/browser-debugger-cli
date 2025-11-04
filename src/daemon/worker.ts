@@ -20,6 +20,12 @@ import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
+import {
+  writePartialOutputAsync,
+  writeFullOutputAsync,
+  writePid,
+  writeSessionMetadata,
+} from '@/session';
 import type {
   CollectorType,
   NetworkRequest,
@@ -31,12 +37,6 @@ import type {
   BdgOutput,
 } from '@/types';
 import { fetchCDPTargets } from '@/utils/http.js';
-import {
-  writePartialOutputAsync,
-  writeFullOutputAsync,
-  writePid,
-  writeSessionMetadata,
-} from '@/utils/session.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { VERSION } from '@/utils/version.js';
 

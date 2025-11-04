@@ -1,6 +1,6 @@
+import type { SessionMetadata } from '@/session';
+import { isProcessAlive } from '@/session';
 import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
-import type { SessionMetadata } from '@/utils/session.js';
-import { isProcessAlive } from '@/utils/session.js';
 import { VERSION } from '@/utils/version.js';
 
 export interface StatusData {

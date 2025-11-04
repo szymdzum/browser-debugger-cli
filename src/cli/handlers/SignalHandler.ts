@@ -1,5 +1,5 @@
+import { cleanupSession } from '@/session';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { cleanupSession } from '@/utils/session.js';
 
 /**
  * Interface for shutdown callback

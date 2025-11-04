@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import type { Command } from 'commander';
 
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { readPid, cleanupSession, isProcessAlive, getSessionFilePath } from '@/session';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { readPid, cleanupSession, isProcessAlive, getSessionFilePath } from '@/utils/session.js';
 
 /**
  * Flags consumed by the `bdg cleanup` command.
