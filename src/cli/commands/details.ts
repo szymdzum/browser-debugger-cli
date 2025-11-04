@@ -90,7 +90,7 @@ export function registerDetailsCommand(program: Command): void {
             success: true,
             data: {
               item: response.data.item as NetworkRequest | ConsoleMessage,
-              type: opts.type,
+              type: opts.type as 'network' | 'console',
             },
           };
         },
