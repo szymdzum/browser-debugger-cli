@@ -257,13 +257,20 @@ export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 30000;
 // ============================================================================
 
 /**
- * IPC request timeout in milliseconds (45 seconds)
+ * IPC request timeout in milliseconds (45 seconds in production, 5 seconds in tests)
  * Maximum time to wait for IPC responses from daemon
  * Must accommodate: Chrome launch (~2s) + Page readiness detection (up to 30s) + buffer (~13s)
  *
+ * Can be overridden via BDG_IPC_TIMEOUT_MS environment variable (used by tests)
+ *
+ * @returns IPC request timeout in milliseconds
  * @see docs/IMPROVEMENTS_ANALYSIS.md - Issue #3: Smart Page Readiness Detection
  */
-export const IPC_REQUEST_TIMEOUT_MS = 45000;
+export function getIPCRequestTimeout(): number {
+  return process.env['BDG_IPC_TIMEOUT_MS'] !== undefined
+    ? parseInt(process.env['BDG_IPC_TIMEOUT_MS'], 10)
+    : 45000;
+}
 
 // ============================================================================
 // CLI OPTION DESCRIPTIONS

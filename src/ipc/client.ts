@@ -9,7 +9,7 @@ import { connect } from 'net';
 
 import type { Socket } from 'net';
 
-import { IPC_REQUEST_TIMEOUT_MS } from '@/constants.js';
+import { getIPCRequestTimeout } from '@/constants.js';
 import { IPCServer } from '@/daemon/ipcServer.js';
 import type { COMMANDS } from '@/ipc/commands.js';
 import { type CommandName, type ClientRequest, type ClientResponse } from '@/ipc/commands.js';
@@ -48,13 +48,14 @@ async function sendRequest<TRequest, TResponse>(
     let resolved = false;
 
     // Set request timeout
+    const timeoutMs = getIPCRequestTimeout();
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
         socket.destroy();
-        reject(new Error(`${requestName} request timeout after ${IPC_REQUEST_TIMEOUT_MS / 1000}s`));
+        reject(new Error(`${requestName} request timeout after ${timeoutMs / 1000}s`));
       }
-    }, IPC_REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
 
     socket.on('connect', () => {
       console.error(`[client] Connected to daemon for ${requestName} request`);

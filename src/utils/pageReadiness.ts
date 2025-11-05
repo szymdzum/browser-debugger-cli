@@ -6,8 +6,6 @@
  * 1. Load event (baseline readiness)
  * 2. Network stability (adapts to request patterns)
  * 3. DOM stability (adapts to mutation rate)
- *
- * @module utils/pageReadiness
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -112,14 +110,14 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
     let timeout: NodeJS.Timeout;
     let handlerId: number | undefined;
 
-    const cleanup = () => {
+    const cleanup = (): void => {
       clearTimeout(timeout);
       if (handlerId !== undefined) {
         cdp.off('Page.loadEventFired', handlerId);
       }
     };
 
-    const checkDeadline = () => {
+    const checkDeadline = (): void => {
       if (Date.now() >= deadline) {
         cleanup();
         reject(new Error('Load event timeout'));
@@ -128,7 +126,7 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
       }
     };
 
-    const loadHandler = () => {
+    const loadHandler = (): void => {
       cleanup();
       resolve();
     };
@@ -146,9 +144,9 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
  * - Calculate average request frequency
  *
  * DETECTION PHASE:
- * - Fast pattern (avg < 100ms): 200ms idle = stable
+ * - Fast pattern (avg \< 100ms): 200ms idle = stable
  * - Steady pattern (100-500ms): 500ms idle = stable
- * - Slow pattern (> 500ms): 1000ms idle = stable
+ * - Slow pattern (\> 500ms): 1000ms idle = stable
  *
  * Why this works:
  * - Fast sites: Quick bursts, fast stabilization
@@ -171,7 +169,7 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
   let lastRequestTime = Date.now();
 
   // Track request patterns
-  const requestHandler = () => {
+  const requestHandler = (): void => {
     const now = Date.now();
     const interval = now - lastRequestTime;
     if (interval < 5000) intervals.push(interval);
@@ -180,7 +178,7 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
     lastActivity = now;
   };
 
-  const finishHandler = () => {
+  const finishHandler = (): void => {
     activeRequests--;
     if (activeRequests === 0) {
       lastActivity = Date.now();
@@ -230,9 +228,9 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
  * 1. Inject MutationObserver into page
  * 2. Track mutation rate for 1 second
  * 3. Calculate adaptive stability threshold:
- *    - High rate (>50/sec): 1000ms no-change = stable
- *    - Medium rate (10-50/sec): 500ms no-change = stable
- *    - Low rate (<10/sec): 300ms no-change = stable
+ *    - High rate (\>50 mutations/sec): 1000ms no-change = stable
+ *    - Medium rate (10-50 mutations/sec): 500ms no-change = stable
+ *    - Low rate (\<10 mutations/sec): 300ms no-change = stable
  * 4. Wait for DOM to remain unchanged for threshold duration
  *
  * Why this works:
