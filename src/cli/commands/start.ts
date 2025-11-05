@@ -6,7 +6,7 @@ import {
   PORT_OPTION_DESCRIPTION,
   TIMEOUT_OPTION_DESCRIPTION,
   USER_DATA_DIR_OPTION_DESCRIPTION,
-} from '@/constants';
+} from '@/constants.js';
 import type { CollectorType } from '@/types';
 
 /**

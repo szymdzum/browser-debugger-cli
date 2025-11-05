@@ -2,21 +2,12 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ES2022",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": "./src",
     "paths": {
-      "@/*": ["./*"],
-      "@/types": ["./types.js"],
-      "@/constants": ["./constants.js"],
-      "@/utils/*": ["./utils/*"],
-      "@/cli/*": ["./cli/*"],
-      "@/collectors/*": ["./collectors/*"],
-      "@/connection/*": ["./connection/*"],
-      "@/session/*": ["./session/*"],
-      "@/ipc/*": ["./ipc/*"],
-      "@/daemon/*": ["./daemon/*"]
+      "@/*": ["./*"]
     },
     "strict": true,
     "esModuleInterop": true,

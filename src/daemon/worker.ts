@@ -26,6 +26,7 @@ import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
+import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
 import type { COMMANDS, CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/commands.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
@@ -43,6 +44,7 @@ import type {
 } from '@/types';
 import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
+import { waitForPageReady } from '@/utils/pageReadiness.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -689,6 +691,11 @@ async function main(): Promise<void> {
       },
     });
     console.error(`[worker] CDP connection established`);
+
+    // Wait for page to be ready using smart detection
+    await waitForPageReady(cdp, {
+      maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
+    });
 
     // Activate collectors
     await activateCollectors(config);

@@ -14,7 +14,7 @@ import {
   DEFAULT_CHROME_HANDLE_SIGINT,
   CHROME_PROFILE_DIR,
   HEADLESS_FLAG,
-} from '@/constants';
+} from '@/constants.js';
 import type { LaunchedChrome } from '@/types';
 import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';

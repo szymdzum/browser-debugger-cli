@@ -7,7 +7,7 @@ import {
   CHROME_NETWORK_BUFFER_TOTAL,
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT,
-} from '@/constants';
+} from '@/constants.js';
 import type {
   NetworkRequest,
   CleanupFunction,

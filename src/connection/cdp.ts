@@ -14,7 +14,7 @@ import {
   WEBSOCKET_NORMAL_CLOSURE,
   WEBSOCKET_NO_PONG_CLOSURE,
   UTF8_ENCODING,
-} from '@/constants';
+} from '@/constants.js';
 import type { CDPMessage, ConnectionOptions } from '@/types';
 import { CDPConnectionError, CDPTimeoutError, getErrorMessage } from '@/utils/errors.js';
 
