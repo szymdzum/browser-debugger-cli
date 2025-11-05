@@ -164,6 +164,8 @@ export const BDG_CHROME_FLAGS = [
   '--disable-search-engine-choice-screen',
   '--disable-session-crashed-bubble', // Suppress "Restore Pages?" popup after unclean shutdown
   '--disable-infobars', // Disable all info bars including restore prompt
+  '--disable-notifications', // Suppress notification permission prompts
+  '--disable-features=Translate', // Suppress Google Translate popup (replaces deprecated --disable-translate)
 ];
 
 /**
@@ -176,6 +178,8 @@ export const BDG_CHROME_FLAGS = [
  */
 export const BDG_CHROME_PREFS: Record<string, unknown> = {
   'browser.show_quit_confirmation_dialog': false, // Disable quit confirmation for automation
+  'translate.enabled': false, // Disable Google Translate popup
+  translate_site_blacklist: ['*'], // Block translate for all sites
 };
 
 // ============================================================================
