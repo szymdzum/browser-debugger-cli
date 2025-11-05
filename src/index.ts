@@ -5,7 +5,7 @@ import { Command } from 'commander';
 import { commandRegistry } from '@/cli/registry.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
 import { getErrorMessage } from '@/utils/errors.js';
-import { createLogger } from '@/utils/logger.js';
+import { createLogger, enableDebugLogging } from '@/utils/logger.js';
 import { VERSION } from '@/utils/version.js';
 
 // ============================================================================
@@ -95,11 +95,20 @@ function getExitCodeFromError(error: unknown): number {
  * 4. Parse arguments and route to appropriate command
  */
 async function main(): Promise<void> {
+  // Check for --debug flag early (before daemon check) to enable verbose logging
+  if (process.argv.includes('--debug')) {
+    enableDebugLogging();
+  }
+
   if (!isDaemonWorkerProcess()) {
     await ensureDaemonRunning();
   }
 
-  const program = new Command().name(CLI_NAME).description(CLI_DESCRIPTION).version(VERSION);
+  const program = new Command()
+    .name(CLI_NAME)
+    .description(CLI_DESCRIPTION)
+    .version(VERSION)
+    .option('--debug', 'Enable debug logging (verbose output)');
 
   commandRegistry.forEach((register) => register(program));
 
@@ -122,20 +131,23 @@ async function main(): Promise<void> {
  */
 async function ensureDaemonRunning(): Promise<void> {
   if (!isDaemonRunning()) {
-    log(DAEMON_STARTING_MESSAGE);
+    log.info(DAEMON_STARTING_MESSAGE);
+    log.debug('Checking daemon PID file and acquiring lock...');
     try {
       await launchDaemon();
-      log(DAEMON_STARTED_MESSAGE);
+      log.info(DAEMON_STARTED_MESSAGE);
+      log.debug('Daemon process spawned and socket ready');
     } catch (error: unknown) {
       if (isDaemonAlreadyRunningError(error)) {
-        log(getErrorMessage(error));
+        log.info(getErrorMessage(error));
         process.exit(getExitCodeFromError(error));
       }
-      log(`${DAEMON_START_FAILED_PREFIX} ${getErrorMessage(error)}`);
+      log.info(`${DAEMON_START_FAILED_PREFIX} ${getErrorMessage(error)}`);
       process.exit(DEFAULT_EXIT_CODE_ON_ERROR);
     }
   } else {
-    log(DAEMON_ALREADY_RUNNING_MESSAGE);
+    log.info(DAEMON_ALREADY_RUNNING_MESSAGE);
+    log.debug('Daemon PID file exists and process is alive');
   }
 }
 
