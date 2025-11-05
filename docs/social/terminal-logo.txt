@@ -1,0 +1,25 @@
+# BDG Terminal Logo
+# Concept 2 - Terminal Window Style
+
+   ╭───────────────────────────────╮
+   │ $ bdg localhost:3000          │
+   │ ▓▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░       │
+   │ ✓ Session started             │
+   │ ✓ Connected to Chrome         │
+   │ ✓ Collecting telemetry...     │
+   ╰───────────────────────────────╯
+
+   Browser Debugger CLI
+   Agent-friendly browser telemetry
+
+## Usage
+Use this in social preview images, documentation headers, or terminal splash screens.
+
+## Recommended Colors
+- Window frame: #7f849c (gray)
+- Progress bar (filled): #a6e3a1 (green)
+- Progress bar (empty): #45475a (dark gray)
+- Checkmarks: #a6e3a1 (green)
+- Title: #cdd6f4 (light gray)
+- Tagline: #9399b2 (medium gray)
+- Background: #1e1e2e (dark)

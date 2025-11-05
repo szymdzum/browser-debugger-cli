@@ -1,0 +1,41 @@
+# BDG Block Logo
+# Concept 3 - Modern Block Letters
+
+   ███████╗ ██████╗  ██████╗
+   ██╔══██║ ██╔══██╗ ██╔════╝
+   ███████║ ██║  ██║ ██║  ███╗
+   ██╔══██║ ██║  ██║ ██║   ██║
+   ██████╔╝ ██████╔╝ ╚██████╔╝
+   ╚═════╝  ╚═════╝   ╚═════╝
+
+   Browser Debugger CLI
+   Chrome DevTools Protocol telemetry
+
+## Usage
+Use this in social preview images, README headers, or marketing materials.
+
+## Color Variations
+
+### Green (Recommended for success/ready states)
+- Logo: #a6e3a1
+- Title: #cdd6f4
+- Tagline: #9399b2
+- Background: #1e1e2e
+
+### Cyan (Recommended for tech/terminal aesthetic)
+- Logo: #89dceb
+- Title: #cdd6f4
+- Tagline: #9399b2
+- Background: #1e1e2e
+
+### Blue (Recommended for professional/corporate)
+- Logo: #89b4fa
+- Title: #cdd6f4
+- Tagline: #9399b2
+- Background: #1e1e2e
+
+## Font Recommendations
+- Use monospace fonts: Fira Code, JetBrains Mono, Monaco, SF Mono
+- Logo size: 28-36pt
+- Title size: 24-28pt
+- Tagline size: 16-20pt
