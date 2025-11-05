@@ -1,8 +1,8 @@
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/cli/handlers/CommandRunner.js';
-import { runCommand } from '@/cli/handlers/CommandRunner.js';
-import { jsonOption } from '@/cli/handlers/commonOptions.js';
+import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { clearChromePid } from '@/session/chrome.js';

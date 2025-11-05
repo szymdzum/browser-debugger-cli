@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 
-import { startSessionViaDaemon } from '@/cli/handlers/daemonSessionController.js';
+import { startSessionViaDaemon } from '@/commands/shared/daemonSessionController.js';
 import {
   DEFAULT_DEBUG_PORT,
   PORT_OPTION_DESCRIPTION,

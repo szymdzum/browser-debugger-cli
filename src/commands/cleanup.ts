@@ -2,9 +2,9 @@ import * as fs from 'fs';
 
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/cli/handlers/CommandRunner.js';
-import { runCommand } from '@/cli/handlers/CommandRunner.js';
-import { jsonOption } from '@/cli/handlers/commonOptions.js';
+import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { cleanupSession } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
@@ -91,7 +91,7 @@ export function registerCleanupCommand(program: Command): void {
       await runCommand(
         async (opts) => {
           // Import cleanupStaleChrome dynamically
-          const { cleanupStaleChrome } = await import('@/cli/handlers/sessionController.js');
+          const { cleanupStaleChrome } = await import('@/commands/shared/sessionController.js');
 
           const pid = readPid();
           let didCleanup = false;

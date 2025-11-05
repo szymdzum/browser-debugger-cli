@@ -1,4 +1,4 @@
-import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
 import { genericError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';

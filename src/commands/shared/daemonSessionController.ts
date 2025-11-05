@@ -1,4 +1,4 @@
-import { landingPage } from '@/cli/handlers/landingPage.js';
+import { landingPage } from '@/commands/shared/landingPage.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import type { CollectorType } from '@/types.js';

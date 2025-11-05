@@ -4,7 +4,7 @@ import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-import { handleCommandErrorWithContext } from './errorHandler.js';
+import { handleCommandErrorWithContext } from './domErrorHandler.js';
 
 /**
  * CDP target information
@@ -66,6 +66,7 @@ export function getValidatedSessionMetadata(json: boolean): SessionMetadata {
     );
   }
 
+  // TypeScript doesn't know handleCommandErrorWithContext never returns
   return metadata;
 }
 

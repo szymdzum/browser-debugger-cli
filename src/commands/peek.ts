@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 
-import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
-import { jsonOption } from '@/cli/handlers/commonOptions.js';
+import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
+import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput } from '@/types.js';

@@ -1,7 +1,7 @@
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/cli/handlers/CommandRunner.js';
-import { runCommand } from '@/cli/handlers/CommandRunner.js';
+import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import { getErrorMessage } from '@/utils/errors.js';

@@ -1,11 +1,11 @@
 import type { Command } from 'commander';
 
-import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
 import { queryDOM, highlightDOM, getDOM } from '@/ipc/client.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-import { handleCommandError } from './helpers/errorHandler.js';
-import { buildSelectorOptions } from './helpers/optionsBuilder.js';
+import { handleCommandError } from './domErrorHandler.js';
+import { buildSelectorOptions } from './domOptionsBuilder.js';
 
 /**
  * Options for DOM query command
@@ -248,7 +248,7 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
       getValidatedSessionMetadata,
       verifyTargetExists,
       executeScript,
-    } = await import('./helpers/evalHelpers.js');
+    } = await import('./domEvalHelpers.js');
 
     // Validate session is running
     const jsonOutput = options.json ?? false;

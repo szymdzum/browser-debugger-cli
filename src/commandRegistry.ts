@@ -1,15 +1,15 @@
 import type { Command } from 'commander';
 
-import { registerCdpCommand } from '@/cli/commands/cdp.js';
-import { registerCleanupCommand } from '@/cli/commands/cleanup.js';
-import { registerConsoleCommand } from '@/cli/commands/console.js';
-import { registerDetailsCommand } from '@/cli/commands/details.js';
-import { registerDomCommands } from '@/cli/commands/dom/index.js';
-import { registerNetworkCommands } from '@/cli/commands/network.js';
-import { registerPeekCommand } from '@/cli/commands/peek.js';
-import { registerStartCommands } from '@/cli/commands/start.js';
-import { registerStatusCommand } from '@/cli/commands/status.js';
-import { registerStopCommand } from '@/cli/commands/stop.js';
+import { registerCdpCommand } from '@/commands/cdp.js';
+import { registerCleanupCommand } from '@/commands/cleanup.js';
+import { registerConsoleCommand } from '@/commands/console.js';
+import { registerDetailsCommand } from '@/commands/details.js';
+import { registerDomCommands } from '@/commands/dom.js';
+import { registerNetworkCommands } from '@/commands/network.js';
+import { registerPeekCommand } from '@/commands/peek.js';
+import { registerStartCommands } from '@/commands/start.js';
+import { registerStatusCommand } from '@/commands/status.js';
+import { registerStopCommand } from '@/commands/stop.js';
 
 /**
  * Command registration function type

@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 
-import { commandRegistry } from '@/cli/registry.js';
+import { commandRegistry } from '@/commandRegistry.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { createLogger, enableDebugLogging } from '@/utils/logger.js';

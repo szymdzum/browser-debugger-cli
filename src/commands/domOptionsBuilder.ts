@@ -1,5 +1,6 @@
-import { getNodeIdByIndex } from './domCache.js';
-import { parseSelectorOrIndex } from './selectorParser.js';
+import { getNodeIdByIndex } from '@/dom/cache.js';
+
+import { parseSelectorOrIndex } from './domSelectorParser.js';
 
 /**
  * Base interface for IPC options that accept selector, index, or nodeId

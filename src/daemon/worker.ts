@@ -15,12 +15,6 @@
  * - Worker handles SIGTERM for graceful shutdown
  */
 
-import { writeQueryCache, getNodeIdByIndex } from '@/cli/commands/dom/helpers/domCache.js';
-import {
-  queryBySelector,
-  getNodeInfo,
-  createNodePreview,
-} from '@/cli/commands/dom/helpers/domQuery.js';
 import { startConsoleCollection } from '@/collectors/console.js';
 import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
@@ -28,6 +22,8 @@ import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
+import { writeQueryCache, getNodeIdByIndex } from '@/dom/cache.js';
+import { queryBySelector, getNodeInfo, createNodePreview } from '@/dom/query.js';
 import type {
   COMMANDS,
   CommandName,
