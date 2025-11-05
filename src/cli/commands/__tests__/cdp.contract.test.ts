@@ -36,7 +36,6 @@ import type { CDPMessage } from '@/types.js';
  * Mock CDP connection that simulates browser responses
  */
 class MockCDPConnection extends CDPConnection {
-  private messageCounter = 1;
   private mockSocket: FakeWebSocket;
 
   constructor() {
@@ -222,8 +221,8 @@ describe('CDP Command Contract Tests', () => {
 
       // Verify result has expected shape
       const result = response.data.result as Record<string, unknown>;
-      assert.equal(typeof result.protocolVersion, 'string');
-      assert.equal(typeof result.product, 'string');
+      assert.equal(typeof result['protocolVersion'], 'string');
+      assert.equal(typeof result['product'], 'string');
     });
 
     it('executes CDP method with parameters', async () => {
@@ -439,7 +438,7 @@ describe('CDP Command Contract Tests', () => {
 
       assert.equal(response.status, 'error');
       assert.equal(typeof response.error, 'string');
-      assert.ok(response.error.length > 0);
+      assert.ok(response.error && response.error.length > 0);
 
       // Should have data undefined when error
       assert.equal(response.data, undefined);
