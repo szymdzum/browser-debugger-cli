@@ -1,4 +1,4 @@
-import { getNodeIdByIndex } from '@/dom/cache.js';
+import { getNodeIdByIndex } from '@/session/queryCache.js';
 
 import { parseSelectorOrIndex } from './domSelectorParser.js';
 

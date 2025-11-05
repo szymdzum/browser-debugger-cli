@@ -19,11 +19,10 @@ import { startConsoleCollection } from '@/collectors/console.js';
 import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
 import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
+import { queryBySelector, getNodeInfo, createNodePreview } from '@/connection/domOperations.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
-import { writeQueryCache, getNodeIdByIndex } from '@/dom/cache.js';
-import { queryBySelector, getNodeInfo, createNodePreview } from '@/dom/query.js';
 import type {
   COMMANDS,
   CommandName,
@@ -34,6 +33,7 @@ import type {
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writeSessionOutput } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
+import { writeQueryCache, getNodeIdByIndex } from '@/session/queryCache.js';
 import type {
   CollectorType,
   NetworkRequest,
