@@ -50,16 +50,14 @@ There's no good CLI for Chrome DevTools Protocol. MCP servers work (most of the 
   needed.
 
 The vision: Terminal-native browser debugging that's as composable as `curl` and `jq`.
-```bash
-# Under development but you get the idea
 
+```bash
+# Vision: Curated commands (friendly, discoverable)
 bdg network getCookies
 # [bdg] Cookies for example.com:
 #   - name: session_id
 #     value: 1234567890abcdef
 #     domain: example.com
-#     path: /
-#     expires: 2023-01-01T00:00:00Z
 #     httpOnly: true
 #     secure: true
 #     sameSite: Strict
@@ -70,17 +68,56 @@ bdg network getCookies --json
 #     "name": "session_id",
 #     "value": "1234567890abcdef",
 #     "domain": "example.com",
-#     "path": "/",
-#     "expires": "2023-01-01T00:00:00Z",
 #     "httpOnly": true,
 #     "secure": true,
 #     "sameSite": "Strict"
 #   }
 # ]
-
-bdg cdp Network.getCookies --json | jq '.[] | select(.name == "session_id") | .value'
-# 1234567890abcdef
 ```
+
+## Raw CDP Access (Available Now)
+
+Full Chrome DevTools Protocol access via `bdg cdp` command – **any CDP method works**:
+
+```bash
+# Get all cookies (raw CDP)
+bdg cdp Network.getCookies
+# {
+#   "cookies": [
+#     {
+#       "name": "session_id",
+#       "value": "1234567890abcdef",
+#       "domain": "example.com",
+#       "httpOnly": true,
+#       "secure": true,
+#       "sameSite": "Strict"
+#     }
+#   ]
+# }
+
+# Evaluate JavaScript
+bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
+# {
+#   "result": {
+#     "type": "string",
+#     "value": "Example Domain"
+#   }
+# }
+
+# Get browser version
+bdg cdp Browser.getVersion
+# {
+#   "protocolVersion": "1.3",
+#   "product": "Chrome/142.0.7444.60",
+#   "jsVersion": "14.2.231.14"
+# }
+
+# Pipe to jq for filtering
+bdg cdp Network.getCookies | jq '.cookies[] | select(.name == "session_id") | .value'
+# "1234567890abcdef"
+```
+
+**60+ domains, 300+ methods** from the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) are available.
 
 ## Technical Overview
 
