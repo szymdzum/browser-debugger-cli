@@ -29,36 +29,65 @@ bdg status
 # Chrome PID: 67890
 # Target: http://example.com
 
-# Preview collected data
-bdg peek --last 5
-# NETWORK [0] GET http://example.com/ (200)
-# NETWORK [1] GET http://example.com/style.css (200)
-# ...
-
 # Execute raw CDP commands
 bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
 # { "result": { "type": "string", "value": "Example Domain" } }
+
+bdg cdp Network.getCookies
+# { "cookies": [...] }
 
 # Stop session
 bdg stop
 ```
 
-## Philosophy
+## How It Works
 
-There's no good CLI for Chrome DevTools Protocol. MCP servers work (most of the time) but are token-heavy and monolithic. Puppeteer is for automation, not inspection. Lighthouse is single-purpose.
+`bdg` is built on a **layered architecture** — raw CDP access with human-friendly wrappers on top.
 
-`bdg` takes the Unix approach: small, composable commands that pipe with `jq` and `grep` tools models already know—without the token overhead.
+### Layer 1: Raw CDP Access ✅
+
+Direct access to **60+ domains, 300+ methods** from [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/):
+
+```bash
+# Execute any CDP method
+bdg cdp Network.getCookies
+bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
+bdg cdp Performance.getMetrics
+
+# Pipe to jq for filtering
+bdg cdp Network.getCookies | jq '.cookies[] | select(.name == "session")'
+```
+
+**Why raw CDP first?**
+- ✅ Zero abstraction overhead — direct WebSocket to Chrome
+- ✅ Full protocol power — all CDP methods work immediately
+- ✅ Future-proof — new CDP features work without code changes
+- ✅ Agent-friendly — structured input/output, composable with Unix tools
+
+### Layer 2: Human-Friendly Wrappers 🚧
+
+Building ergonomic commands on top of raw CDP for common workflows:
+
+```bash
+# Session management
+bdg status          # Check active session
+bdg stop            # Stop session gracefully
+bdg cleanup         # Clean up stale sessions
+
+# Data inspection (planned)
+bdg peek            # Quick preview of collected data
+bdg details         # Full details for specific items
+bdg dom query       # Query DOM elements
+bdg network         # Network request inspector
+```
+
+**Progressive disclosure**: Start with raw CDP power, add convenience wrappers for common patterns.
 
 **Why CLI over protocol servers?**
-- **Token efficiency**: CDP is in the model's training data. A skill doc with usage
-  patterns? ~3k tokens. MCP server definitions? 5-10k before you invoke anything.
-- **Composability**: Pipe commands together. Each does one thing well.
-- **Transparent errors**: See exactly what failed. No protocol layers hiding the
-  issue.
-- **Real-time evolution**: Update usage patterns anytime. No server redeployment
-  needed.
-
-The vision: Terminal-native browser debugging that's as composable as `curl` and `jq`.
+- **Token efficiency**: CDP is in the model's training data (~3k tokens for patterns vs. 5-10k for MCP server definitions)
+- **Composability**: Unix pipes with `jq`, `grep`, `awk` — tools models already know
+- **Transparent errors**: See exactly what failed, no protocol layers hiding issues
+- **Real-time evolution**: Update patterns anytime, no server redeployment
 
 ## Available Commands
 
@@ -109,61 +138,19 @@ bdg cdp Network.getCookies | jq '.cookies[] | select(.name == "session_id") | .v
 ### Session Management
 
 ```bash
+# Start session
+bdg example.com             # Opens Chrome with daemon in background
+
 # Check if session is active
-bdg status
-# Status: Active
-# Worker PID: 12345
-# Chrome PID: 67890
-# Target: http://example.com
+bdg status                  # Show session info
+bdg status --verbose        # Include Chrome diagnostics
 
 # Stop session
-bdg stop
+bdg stop                    # Gracefully stop daemon and close Chrome
 
 # Clean up stale sessions
-bdg cleanup
-bdg cleanup --force  # Force cleanup even if session appears active
-```
-
-### Live Data Inspection
-
-```bash
-# Preview collected data without stopping
-bdg peek
-bdg peek --last 10          # Show last 10 items
-bdg peek --network          # Only network requests
-bdg peek --console          # Only console logs
-bdg peek --follow           # Live updates every second
-bdg peek --json             # JSON output
-
-# Get detailed information
-bdg details network <requestId>    # Full request/response with bodies
-bdg details console <index>        # Full console message with args
-```
-
-### DOM Inspection
-
-```bash
-# Query DOM elements
-bdg dom query "document.title"
-bdg dom query ".error-message"
-
-# Get element by selector or index
-bdg dom get ".main-content"
-bdg dom get 0  # Get first element from cache
-
-# Evaluate JavaScript
-bdg dom eval "window.location.href"
-```
-
-### Network & Console Commands
-
-```bash
-# Inspect network state
-bdg network
-
-# Query console logs
-bdg console
-bdg console --json
+bdg cleanup                 # Remove stale session files
+bdg cleanup --force         # Force cleanup even if session appears active
 ```
 
 ## Technical Overview
