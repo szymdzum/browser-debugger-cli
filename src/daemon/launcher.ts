@@ -20,9 +20,12 @@ import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { isProcessAlive } from '@/session/process.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { createLogger } from '@/utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const log = createLogger('launcher');
 
 /**
  * Launch the daemon worker process.
@@ -39,7 +42,7 @@ const __dirname = dirname(__filename);
  */
 export async function launchDaemon(): Promise<ChildProcess> {
   // Acquire daemon lock atomically to prevent concurrent daemon starts (P0 Fix #1)
-  console.error('[launcher] Acquiring daemon lock...');
+  log.debug('Acquiring daemon lock...');
   if (!acquireDaemonLock()) {
     const error = new Error(
       'Daemon startup already in progress. Wait a moment and try again.'
@@ -51,10 +54,10 @@ export async function launchDaemon(): Promise<ChildProcess> {
 
   try {
     // Clean up stale session files first
-    console.error('[launcher] Checking for stale session files...');
+    log.debug('Checking for stale session files...');
     const cleaned = cleanupStaleSession();
     if (cleaned) {
-      console.error('[launcher] Cleaned up stale session files');
+      log.debug('Cleaned up stale session files');
     }
 
     // Check if daemon is already running
@@ -96,7 +99,7 @@ export async function launchDaemon(): Promise<ChildProcess> {
       );
     }
 
-    console.error(`[launcher] Starting daemon: ${daemonScriptPath}`);
+    log.debug(`Starting daemon: ${daemonScriptPath}`);
 
     // Spawn the daemon worker
     const daemon = spawn('node', [daemonScriptPath], {
@@ -115,14 +118,14 @@ export async function launchDaemon(): Promise<ChildProcess> {
     daemon.unref();
 
     // Wait for daemon to be ready (socket file exists)
-    console.error('[launcher] Waiting for daemon to be ready...');
+    log.debug('Waiting for daemon to be ready...');
     const socketPath = getSessionFilePath('DAEMON_SOCKET');
     const maxWaitMs = 5000;
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {
       if (fs.existsSync(socketPath)) {
-        console.error('[launcher] Daemon is ready');
+        log.debug('Daemon is ready');
         // Note: Keep daemon lock held - daemon will release it when it writes its PID
         return daemon;
       }

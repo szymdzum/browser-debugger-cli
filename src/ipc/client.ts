@@ -27,6 +27,9 @@ import type {
 } from '@/ipc/types.js';
 import type { CollectorType } from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { createLogger } from '@/utils/logger.js';
+
+const log = createLogger('client');
 
 /**
  * Generic IPC request sender that handles connection, timeout, and error handling.
@@ -58,10 +61,10 @@ async function sendRequest<TRequest, TResponse>(
     }, timeoutMs);
 
     socket.on('connect', () => {
-      console.error(`[client] Connected to daemon for ${requestName} request`);
+      log.debug(`Connected to daemon for ${requestName} request`);
 
       socket.write(JSON.stringify(request) + '\n');
-      console.error(`[client] ${requestName} request sent`);
+      log.debug(`${requestName} request sent`);
     });
 
     socket.on('data', (chunk: Buffer) => {
@@ -75,7 +78,7 @@ async function sendRequest<TRequest, TResponse>(
         if (line.trim() && !resolved) {
           try {
             const response = JSON.parse(line) as TResponse;
-            console.error(`[client] ${requestName} response received`);
+            log.debug(`${requestName} response received`);
 
             resolved = true;
             clearTimeout(timeout);

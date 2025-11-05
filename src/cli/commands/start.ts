@@ -116,8 +116,26 @@ async function collectorAction(url: string, options: CollectorOptions): Promise<
 export function registerStartCommands(program: Command): void {
   // Default command: always collects all 3 types (dom, network, console)
   applyCollectorOptions(
-    program.argument('<url>', 'Target URL (example.com or localhost:3000)')
-  ).action(async (url: string, options: CollectorOptions) => {
+    program.argument('[url]', 'Target URL (example.com or localhost:3000)')
+  ).action(async (url: string | undefined, options: CollectorOptions) => {
+    // Show friendly help if no URL provided
+    if (!url) {
+      console.error('');
+      console.error('Start a new session by providing a URL:');
+      console.error('');
+      console.error('  bdg example.com');
+      console.error('  bdg localhost:3000');
+      console.error('  bdg https://github.com');
+      console.error('');
+      console.error('Or manage existing session:');
+      console.error('');
+      console.error('  bdg status      Check session state');
+      console.error('  bdg stop        End session');
+      console.error('  bdg --help      Show all commands');
+      console.error('');
+      process.exit(0);
+    }
+
     await collectorAction(url, options);
   });
 }

@@ -19,12 +19,16 @@ import { isProcessAlive } from '@/session/process.js';
 import type { LaunchedChrome } from '@/types';
 import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
+import { createLogger } from '@/utils/logger.js';
 import { filterDefined } from '@/utils/objects.js';
+
+const log = createLogger('chrome');
 
 const CHROME_LAUNCH_START_MESSAGE = (port: number): string =>
   `Launching Chrome with CDP on port ${port}...`;
 const CHROME_LAUNCH_SUCCESS_MESSAGE = (pid: number, duration: number): string =>
-  `Chrome launched successfully (PID: ${pid})\nLaunch duration: ${duration}ms`;
+  `Chrome launched successfully (PID: ${pid}, ${duration}ms)`;
+const CHROME_USER_DATA_DIR_MESSAGE = (dir: string): string => `User data directory: ${dir}`;
 
 /**
  * Get formatted Chrome diagnostics for error messages.
@@ -55,7 +59,6 @@ const CHROME_LAUNCH_ERROR = (error: string): string => `Failed to launch Chrome:
 // Other Constants
 const FILE_NOT_EXIST_ERROR = 'File does not exist';
 const INVALID_JSON_STRUCTURE_ERROR = 'Invalid JSON structure';
-const USER_DATA_DIR_LOG = (dir: string): string => `User data directory: ${dir}`;
 const REMOTE_DEBUGGING_FLAG = (port: number): string => `--remote-debugging-port=${port}`;
 
 /**
@@ -134,8 +137,8 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
-  console.error(CHROME_LAUNCH_START_MESSAGE(port));
-  console.error(USER_DATA_DIR_LOG(userDataDir));
+  log.info(CHROME_LAUNCH_START_MESSAGE(port));
+  log.debug(CHROME_USER_DATA_DIR_MESSAGE(userDataDir));
 
   const chromeOptions = buildChromeOptions(options);
   const launcher = new chromeLauncher.Launcher(chromeOptions);
@@ -191,7 +194,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     }
 
     // Only print success message after validating PID and process liveness
-    console.error(CHROME_LAUNCH_SUCCESS_MESSAGE(chromeProcessPid, launchDurationMs));
+    log.info(CHROME_LAUNCH_SUCCESS_MESSAGE(chromeProcessPid, launchDurationMs));
 
     return {
       pid: chromeProcessPid,

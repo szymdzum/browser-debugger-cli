@@ -146,7 +146,7 @@ async function ensureDaemonRunning(): Promise<void> {
       process.exit(DEFAULT_EXIT_CODE_ON_ERROR);
     }
   } else {
-    log.info(DAEMON_ALREADY_RUNNING_MESSAGE);
+    log.debug(DAEMON_ALREADY_RUNNING_MESSAGE);
     log.debug('Daemon PID file exists and process is alive');
   }
 }

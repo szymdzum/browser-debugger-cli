@@ -1,8 +1,12 @@
+import { landingPage } from '@/cli/handlers/landingPage.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import type { CollectorType } from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { createLogger } from '@/utils/logger.js';
+
+const log = createLogger('bdg');
 
 /**
  * Start a session via the daemon using IPC.
@@ -30,7 +34,7 @@ export async function startSessionViaDaemon(
   collectors: CollectorType[]
 ): Promise<void> {
   try {
-    console.error('[bdg] Connecting to daemon...');
+    log.debug('Connecting to daemon...');
 
     // Send start_session_request to daemon
     const requestOptions: {
@@ -86,36 +90,15 @@ export async function startSessionViaDaemon(
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 
-    // Output session information
-    console.error(`[bdg] Session started via daemon`);
-    console.error(`[bdg] Worker PID: ${data.workerPid}`);
-    console.error(`[bdg] Chrome PID: ${data.chromePid}`);
-    console.error(`[bdg] Target: ${data.targetUrl}`);
-    if (data.targetTitle) {
-      console.error(`[bdg] Title: ${data.targetTitle}`);
-    }
+    // Display landing page with session information
+    const landing = landingPage({
+      url: data.targetUrl,
+      workerPid: data.workerPid,
+      chromePid: data.chromePid,
+      collectors,
+    });
 
-    const collectorNames =
-      collectors.length === 3 ? 'network, console, and DOM' : collectors.join(', ');
-
-    if (options.timeout) {
-      console.error(
-        `[bdg] Collecting ${collectorNames} for ${options.timeout}s... ` +
-          `(auto-stop on timeout, or use 'bdg stop' to stop early)`
-      );
-    } else {
-      console.error(
-        `[bdg] Collecting ${collectorNames}... ` + `(use 'bdg stop' when ready to stop and output)`
-      );
-    }
-
-    console.error('');
-    console.error('Available commands:');
-    console.error('  bdg status              Show session status');
-    console.error('  bdg peek                Preview collected data');
-    console.error('  bdg query <script>      Execute JavaScript in browser');
-    console.error('  bdg stop                Stop session and output results');
-    console.error('');
+    console.error(landing);
 
     // Session runs in background worker - CLI exits immediately
     // This allows user to run other commands in the same terminal
