@@ -10,7 +10,11 @@ DevTools telemetry in your terminal. For humans and agents. Direct WebSocket to 
 ## Installation
 
 ```bash
-npm install -g browser-debugger-cli
+# Latest alpha release (recommended)
+npm install -g browser-debugger-cli@alpha
+
+# Or install specific version
+npm install -g browser-debugger-cli@0.1.0-alpha.0
 ```
 
 ## Quick Start
