@@ -15,7 +15,9 @@ import {
   CHROME_PROFILE_DIR,
   HEADLESS_FLAG,
 } from '@/constants.js';
+import { isProcessAlive } from '@/session/process.js';
 import type { LaunchedChrome } from '@/types';
+import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -23,6 +25,19 @@ const CHROME_LAUNCH_START_MESSAGE = (port: number): string =>
   `Launching Chrome with CDP on port ${port}...`;
 const CHROME_LAUNCH_SUCCESS_MESSAGE = (pid: number, duration: number): string =>
   `Chrome launched successfully (PID: ${pid})\nLaunch duration: ${duration}ms`;
+
+/**
+ * Get formatted Chrome diagnostics for error messages.
+ *
+ * Retrieves Chrome installation information and formats it for display
+ * in error messages. Uses cached diagnostics to avoid repeated filesystem scans.
+ *
+ * @returns Array of formatted diagnostic strings
+ */
+function getFormattedDiagnostics(): string[] {
+  const diagnostics = getChromeDiagnostics();
+  return formatDiagnosticsForError(diagnostics);
+}
 
 // Error Messages
 const INVALID_PORT_ERROR = (port: number): string =>
@@ -96,10 +111,14 @@ export interface LaunchOptions
  * Supports macOS, Linux, and Windows. Chrome will be launched with
  * the specified debugging port and user data directory.
  *
+ * Validates Chrome process is alive after launch to detect immediate crashes
+ * or port conflicts. Includes Chrome installation diagnostics in error messages
+ * to aid troubleshooting.
+ *
  * @param options - Launch configuration options
  * @returns LaunchedChrome instance with PID and kill method
- * @throws ChromeLaunchError if Chrome fails to launch or CDP doesn't become available
- * @throws Error if port is invalid or user data directory cannot be created
+ * @throws ChromeLaunchError if Chrome fails to launch, process dies immediately, or CDP doesn't become available
+ * @throws Error if user data directory cannot be created
  *
  * @remarks
  * Chrome 136+ requires --user-data-dir with a non-default directory.
@@ -110,7 +129,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   // Validate port range
   if (port < 1 || port > 65535) {
-    throw new Error(INVALID_PORT_ERROR(port));
+    throw new ChromeLaunchError(INVALID_PORT_ERROR(port));
   }
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
@@ -134,19 +153,44 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       launcher.kill();
       launcher.destroyTmp();
 
+      // Get Chrome diagnostics to provide helpful context
+      const diagnosticLines = getFormattedDiagnostics();
+
       throw new ChromeLaunchError(
         `Chrome failed to launch (PID: ${chromeProcessPid})\n\n` +
           `Possible causes:\n` +
           `  - Port ${port} already in use (check: lsof -ti:${port})\n` +
           `  - Chrome binary not found\n` +
           `  - Insufficient permissions\n\n` +
+          `${diagnosticLines.join('\n')}\n\n` +
           `Try:\n` +
           `  - bdg cleanup\n` +
           `  - Use different port: bdg <url> --port ${port + 1}`
       );
     }
 
-    // Only print success message after validating PID
+    // Verify Chrome process is actually running (Issue #4 fix)
+    if (!isProcessAlive(chromeProcessPid)) {
+      launcher.kill();
+      launcher.destroyTmp();
+
+      throw new ChromeLaunchError(
+        `Chrome process died immediately after launch (PID: ${chromeProcessPid})\n\n` +
+          `This usually indicates:\n` +
+          `  - Port ${port} conflict (another process is using this port)\n` +
+          `  - Chrome crashed on startup\n` +
+          `  - Insufficient system resources\n\n` +
+          `Diagnostics:\n` +
+          `  → Check port usage: lsof -ti:${port}\n` +
+          `  → Check Chrome logs for crash details\n\n` +
+          `Try:\n` +
+          `  - bdg cleanup\n` +
+          `  - Kill conflicting process: kill $(lsof -ti:${port})\n` +
+          `  - Use different port: bdg <url> --port ${port + 1}`
+      );
+    }
+
+    // Only print success message after validating PID and process liveness
     console.error(CHROME_LAUNCH_SUCCESS_MESSAGE(chromeProcessPid, launchDurationMs));
 
     return {
@@ -165,8 +209,16 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     launcher.kill();
     launcher.destroyTmp();
 
+    // If it's already a ChromeLaunchError with diagnostics, just re-throw
+    if (error instanceof ChromeLaunchError) {
+      throw error;
+    }
+
+    // For generic launch failures, add Chrome diagnostics
+    const diagnosticLines = getFormattedDiagnostics();
+
     throw new ChromeLaunchError(
-      CHROME_LAUNCH_ERROR(getErrorMessage(error)),
+      `${CHROME_LAUNCH_ERROR(getErrorMessage(error))}\n\n${diagnosticLines.join('\n')}`,
       error instanceof Error ? error : undefined
     );
   }

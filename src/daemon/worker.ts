@@ -671,7 +671,26 @@ async function main(): Promise<void> {
     }
 
     if (!target) {
-      throw new Error(`Target not found for URL: ${normalizedUrl}`);
+      // Enhanced error message with available targets and diagnostics (Issue #5b)
+      const availableTargets = targets
+        .map((t, i) => `  ${i + 1}. ${t.title || '(no title)'}\n     URL: ${t.url}`)
+        .join('\n');
+
+      throw new Error(
+        `Failed to load URL: ${normalizedUrl}\n\n` +
+          `Possible causes:\n` +
+          `  1. Server not running\n` +
+          `     → Check: curl ${normalizedUrl}\n` +
+          `  2. Port conflict (${config.port})\n` +
+          `     → Check: lsof -ti:${config.port}\n` +
+          `     → Kill: pkill -f "chrome.*${config.port}"\n` +
+          `  3. Stale session\n` +
+          `     → Fix: bdg cleanup && bdg ${normalizedUrl}\n\n` +
+          `Available Chrome targets:\n${availableTargets || '  (none)'}\n\n` +
+          `Try:\n` +
+          `  - Verify server is running: curl ${normalizedUrl}\n` +
+          `  - Clean up and retry: bdg cleanup && bdg ${normalizedUrl}`
+      );
     }
 
     targetInfo = target;
