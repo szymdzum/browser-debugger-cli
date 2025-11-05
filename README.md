@@ -19,19 +19,28 @@ npm install -g browser-debugger-cli
 # Start session (opens example.com in Chrome)
 bdg example.com
 
-# [bdg] Session started via daemon
-# [bdg] Collecting network, console, and DOM...
-#  Available commands:
-#   bdg network         Inspect network requests
-#   bdg console         Inspect console logs
-#   bdg dom             Inspect DOM elements
-#   bdg status          Show session status
-#   bdg peek            Preview collected data
-#   bdg stop            Stop and output results
-#   bdg help            Show help
+# Daemon starts in background, Chrome opens
+# Session is active - you can now run commands
 
-bdg dom query "document.title"
-# 'Example Domain'
+# Check session status
+bdg status
+# Status: Active
+# Worker PID: 12345
+# Chrome PID: 67890
+# Target: http://example.com
+
+# Preview collected data
+bdg peek --last 5
+# NETWORK [0] GET http://example.com/ (200)
+# NETWORK [1] GET http://example.com/style.css (200)
+# ...
+
+# Execute raw CDP commands
+bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
+# { "result": { "type": "string", "value": "Example Domain" } }
+
+# Stop session
+bdg stop
 ```
 
 ## Philosophy
@@ -51,31 +60,9 @@ There's no good CLI for Chrome DevTools Protocol. MCP servers work (most of the 
 
 The vision: Terminal-native browser debugging that's as composable as `curl` and `jq`.
 
-```bash
-# Vision: Curated commands (friendly, discoverable)
-bdg network getCookies
-# [bdg] Cookies for example.com:
-#   - name: session_id
-#     value: 1234567890abcdef
-#     domain: example.com
-#     httpOnly: true
-#     secure: true
-#     sameSite: Strict
+## Available Commands
 
-bdg network getCookies --json
-# [
-#   {
-#     "name": "session_id",
-#     "value": "1234567890abcdef",
-#     "domain": "example.com",
-#     "httpOnly": true,
-#     "secure": true,
-#     "sameSite": "Strict"
-#   }
-# ]
-```
-
-## Raw CDP Access (Available Now)
+### Raw CDP Access
 
 Full Chrome DevTools Protocol access via `bdg cdp` command – **any CDP method works**:
 
@@ -118,6 +105,66 @@ bdg cdp Network.getCookies | jq '.cookies[] | select(.name == "session_id") | .v
 ```
 
 **60+ domains, 300+ methods** from the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) are available.
+
+### Session Management
+
+```bash
+# Check if session is active
+bdg status
+# Status: Active
+# Worker PID: 12345
+# Chrome PID: 67890
+# Target: http://example.com
+
+# Stop session
+bdg stop
+
+# Clean up stale sessions
+bdg cleanup
+bdg cleanup --force  # Force cleanup even if session appears active
+```
+
+### Live Data Inspection
+
+```bash
+# Preview collected data without stopping
+bdg peek
+bdg peek --last 10          # Show last 10 items
+bdg peek --network          # Only network requests
+bdg peek --console          # Only console logs
+bdg peek --follow           # Live updates every second
+bdg peek --json             # JSON output
+
+# Get detailed information
+bdg details network <requestId>    # Full request/response with bodies
+bdg details console <index>        # Full console message with args
+```
+
+### DOM Inspection
+
+```bash
+# Query DOM elements
+bdg dom query "document.title"
+bdg dom query ".error-message"
+
+# Get element by selector or index
+bdg dom get ".main-content"
+bdg dom get 0  # Get first element from cache
+
+# Evaluate JavaScript
+bdg dom eval "window.location.href"
+```
+
+### Network & Console Commands
+
+```bash
+# Inspect network state
+bdg network
+
+# Query console logs
+bdg console
+bdg console --json
+```
 
 ## Technical Overview
 
