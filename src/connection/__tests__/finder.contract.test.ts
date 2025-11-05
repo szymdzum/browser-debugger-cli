@@ -3,7 +3,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { createMockTarget, mockTargetList } from '@/__testfixtures__/connectionTargets.js';
 import { validateTarget } from '@/connection/finder.js';
-import { DEFAULT_CDP_PORT } from '@/constants';
+import { DEFAULT_CDP_PORT } from '@/constants.js';
 
 // Mock fetch globally for HTTP endpoints
 let originalFetch: typeof fetch;

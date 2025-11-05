@@ -94,6 +94,16 @@ class MockIPCClient {
   }
 
   /**
+   * Write raw data to socket (for testing fragmentation)
+   */
+  writeRaw(data: string): void {
+    if (!this.socket) {
+      throw new Error('Not connected');
+    }
+    this.socket.write(data);
+  }
+
+  /**
    * Wait for next response (with timeout)
    */
   async waitForResponse(timeoutMs = 2000): Promise<string> {
@@ -104,7 +114,11 @@ class MockIPCClient {
       }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    return this.responses.shift()!;
+    const response = this.responses.shift();
+    if (!response) {
+      throw new Error('No response available');
+    }
+    return response;
   }
 
   /**
@@ -283,8 +297,9 @@ void describe('IPC Server Contract Tests', () => {
       const response = JSON.parse(responseStr) as StatusResponse;
 
       assert.equal(response.status, 'ok');
-      assert.ok(!response.data!.sessionPid, 'Should not have session PID');
-      assert.ok(!response.data!.sessionMetadata, 'Should not have session metadata');
+      assert.ok(response.data, 'Should have data field');
+      assert.ok(!response.data.sessionPid, 'Should not have session PID');
+      assert.ok(!response.data.sessionMetadata, 'Should not have session metadata');
     });
   });
 
@@ -303,13 +318,13 @@ void describe('IPC Server Contract Tests', () => {
       const mid = Math.floor(json.length / 2);
 
       // Send first half
-      client['socket']!.write(json.slice(0, mid));
+      client.writeRaw(json.slice(0, mid));
 
       // Wait a bit
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       // Send second half
-      client['socket']!.write(json.slice(mid));
+      client.writeRaw(json.slice(mid));
 
       const responseStr = await client.waitForResponse();
       const response = JSON.parse(responseStr) as HandshakeResponse;
@@ -330,7 +345,7 @@ void describe('IPC Server Contract Tests', () => {
       ];
 
       const batch = messages.map((m) => JSON.stringify(m)).join('\n') + '\n';
-      client['socket']!.write(batch);
+      client.writeRaw(batch);
 
       // Should receive 3 responses
       const response1 = JSON.parse(await client.waitForResponse()) as HandshakeResponse;
@@ -355,7 +370,7 @@ void describe('IPC Server Contract Tests', () => {
         }) +
         '\n\n';
 
-      client['socket']!.write(json);
+      client.writeRaw(json);
 
       const responseStr = await client.waitForResponse();
       const response = JSON.parse(responseStr) as HandshakeResponse;
@@ -371,7 +386,7 @@ void describe('IPC Server Contract Tests', () => {
       await client.connect(socketPath);
 
       // Send invalid JSON
-      client['socket']!.write('{ invalid json }\n');
+      client.writeRaw('{ invalid json }\n');
 
       // Wait a bit to ensure server processes it
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -435,16 +450,16 @@ void describe('IPC Server Contract Tests', () => {
       await Promise.all(clients.map((c) => c.connect(socketPath)));
 
       // Send different handshakes from each client
-      for (let i = 0; i < clients.length; i++) {
-        clients[i]!.send({
+      for (const [i, client] of clients.entries()) {
+        client.send({
           type: 'handshake_request',
           sessionId: `concurrent-${i}`,
         });
       }
 
       // Each client should receive correct response
-      for (let i = 0; i < clients.length; i++) {
-        const responseStr = await clients[i]!.waitForResponse();
+      for (const [i, client] of clients.entries()) {
+        const responseStr = await client.waitForResponse();
         const response = JSON.parse(responseStr) as HandshakeResponse;
 
         assert.equal(response.sessionId, `concurrent-${i}`);

@@ -1,5 +1,5 @@
 import type { CDPConnection } from '@/connection/cdp.js';
-import { MAX_CONSOLE_MESSAGES } from '@/constants';
+import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type {
   ConsoleMessage,
   CleanupFunction,

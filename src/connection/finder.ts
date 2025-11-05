@@ -1,4 +1,4 @@
-import { DEFAULT_CDP_PORT } from '@/constants';
+import { DEFAULT_CDP_PORT } from '@/constants.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 
 /**

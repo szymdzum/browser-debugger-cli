@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Git Commit Guidelines
+
+**IMPORTANT**: Do NOT include Claude Code attribution in commit messages.
+
+- ❌ **BAD**: Adding "🤖 Generated with [Claude Code]" or "Co-Authored-By: Claude" footers
+- ✅ **GOOD**: Clean, professional commit messages without AI tool attribution
+
+Rationale: Commits should focus on the technical changes, not the tools used to create them. Git history is for code changes, not tool credits.
+
 ## Project Overview
 
 **bdg** is a CLI tool for collecting browser telemetry (DOM, network, console) via Chrome DevTools Protocol (CDP). It uses a daemon + IPC architecture where a background worker process maintains a persistent CDP connection, and CLI commands communicate via Unix domain sockets.

@@ -121,20 +121,21 @@ export async function launchSessionInWorker(
     let stderrBuffer = '';
     let resolved = false;
 
-    // Timeout for ready signal (30 seconds)
+    // Timeout for ready signal (40 seconds)
+    // Must exceed DEFAULT_PAGE_READINESS_TIMEOUT_MS (30s) + Chrome launch time (~2s) + buffer
     const readyTimeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
         worker.kill('SIGKILL');
         reject(
           new WorkerStartError(
-            'Worker did not send ready signal within 30 seconds',
+            'Worker did not send ready signal within 40 seconds',
             'READY_TIMEOUT',
             `stderr: ${stderrBuffer}`
           )
         );
       }
-    }, 30000);
+    }, 40000);
 
     // Handle stdout (ready signal)
     if (worker.stdout) {

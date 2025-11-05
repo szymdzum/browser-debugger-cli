@@ -164,6 +164,8 @@ export const BDG_CHROME_FLAGS = [
   '--disable-search-engine-choice-screen',
   '--disable-session-crashed-bubble', // Suppress "Restore Pages?" popup after unclean shutdown
   '--disable-infobars', // Disable all info bars including restore prompt
+  '--disable-notifications', // Suppress notification permission prompts
+  '--disable-features=Translate', // Suppress Google Translate popup (replaces deprecated --disable-translate)
 ];
 
 /**
@@ -176,6 +178,8 @@ export const BDG_CHROME_FLAGS = [
  */
 export const BDG_CHROME_PREFS: Record<string, unknown> = {
   'browser.show_quit_confirmation_dialog': false, // Disable quit confirmation for automation
+  'translate.enabled': false, // Disable Google Translate popup
+  translate_site_blacklist: ['*'], // Block translate for all sites
 };
 
 // ============================================================================
@@ -244,6 +248,33 @@ export const STALE_REQUEST_CLEANUP_INTERVAL = 30000;
  * How often to log memory statistics during session collection
  */
 export const MEMORY_LOG_INTERVAL = 30000;
+
+/**
+ * Default page readiness timeout (30 seconds)
+ * Maximum time to wait for page to be ready before proceeding
+ * Uses adaptive detection for load, network stability, and DOM stability
+ */
+export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 30000;
+
+// ============================================================================
+// IPC CONFIGURATION
+// ============================================================================
+
+/**
+ * IPC request timeout in milliseconds (45 seconds in production, 5 seconds in tests)
+ * Maximum time to wait for IPC responses from daemon
+ * Must accommodate: Chrome launch (~2s) + Page readiness detection (up to 30s) + buffer (~13s)
+ *
+ * Can be overridden via BDG_IPC_TIMEOUT_MS environment variable (used by tests)
+ *
+ * @returns IPC request timeout in milliseconds
+ * @see docs/IMPROVEMENTS_ANALYSIS.md - Issue #3: Smart Page Readiness Detection
+ */
+export function getIPCRequestTimeout(): number {
+  return process.env['BDG_IPC_TIMEOUT_MS'] !== undefined
+    ? parseInt(process.env['BDG_IPC_TIMEOUT_MS'], 10)
+    : 45000;
+}
 
 // ============================================================================
 // CLI OPTION DESCRIPTIONS

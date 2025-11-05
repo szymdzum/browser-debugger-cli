@@ -64,7 +64,10 @@ class MockCDPConnection {
       this.eventHandlers.set(event, new Map());
     }
     const id = this.nextHandlerId++;
-    this.eventHandlers.get(event)!.set(id, handler as (params: unknown) => void);
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.set(id, handler as (params: unknown) => void);
+    }
     return id;
   }
 
@@ -164,14 +167,15 @@ void describe('Network collector contract', () => {
 
       // Assert: Request is paired with response
       assert.equal(requests.length, 1, 'Should have one network request');
-      const [request] = requests;
-      assert.equal(request!.requestId, 'req-1');
-      assert.equal(request!.url, 'https://api.example.com/users');
-      assert.equal(request!.method, 'GET');
-      assert.equal(request!.status, 200);
-      assert.equal(request!.mimeType, 'application/json');
-      assert.ok(request!.requestHeaders, 'Should have request headers');
-      assert.ok(request!.responseHeaders, 'Should have response headers');
+      const request = requests[0];
+      assert.ok(request, 'Request should exist');
+      assert.equal(request.requestId, 'req-1');
+      assert.equal(request.url, 'https://api.example.com/users');
+      assert.equal(request.method, 'GET');
+      assert.equal(request.status, 200);
+      assert.equal(request.mimeType, 'application/json');
+      assert.ok(request.requestHeaders, 'Should have request headers');
+      assert.ok(request.responseHeaders, 'Should have response headers');
 
       // Cleanup
       void cleanup();
@@ -223,9 +227,12 @@ void describe('Network collector contract', () => {
 
       // Assert: All requests paired correctly despite out-of-order responses
       assert.equal(requests.length, 3);
-      assert.equal(requests[0]!.requestId, 'req-3');
-      assert.equal(requests[1]!.requestId, 'req-1');
-      assert.equal(requests[2]!.requestId, 'req-2');
+      assert.ok(requests[0], 'First request should exist');
+      assert.ok(requests[1], 'Second request should exist');
+      assert.ok(requests[2], 'Third request should exist');
+      assert.equal(requests[0].requestId, 'req-3');
+      assert.equal(requests[1].requestId, 'req-1');
+      assert.equal(requests[2].requestId, 'req-2');
 
       void cleanup();
     });
@@ -292,9 +299,11 @@ void describe('Network collector contract', () => {
 
       // Assert: Request is tracked correctly with response data from second response event
       assert.equal(requests.length, 1, 'Should have one request');
-      assert.equal(requests[0]!.status, 200, 'Status should be set from second response event');
-      assert.equal(requests[0]!.url, 'https://api.example.com/users');
-      assert.equal(requests[0]!.mimeType, 'application/json', 'MIME type should be set');
+      const request = requests[0];
+      assert.ok(request, 'Request should exist');
+      assert.equal(request.status, 200, 'Status should be set from second response event');
+      assert.equal(request.url, 'https://api.example.com/users');
+      assert.equal(request.mimeType, 'application/json', 'MIME type should be set');
 
       void cleanup();
     });
@@ -327,8 +336,10 @@ void describe('Network collector contract', () => {
 
       // Assert: Failed request is recorded with status 0
       assert.equal(requests.length, 1);
-      assert.equal(requests[0]!.status, 0, 'Failed requests should have status 0');
-      assert.equal(requests[0]!.url, 'https://api.example.com/fail');
+      const request = requests[0];
+      assert.ok(request, 'Request should exist');
+      assert.equal(request.status, 0, 'Failed requests should have status 0');
+      assert.equal(request.url, 'https://api.example.com/fail');
 
       void cleanup();
     });
@@ -538,7 +549,9 @@ void describe('Network collector contract', () => {
 
       // Assert: Request included when includeAll=true
       assert.equal(requests.length, 1);
-      assert.ok(requests[0]!.url.includes('google-analytics.com'));
+      const request = requests[0];
+      assert.ok(request, 'Request should exist');
+      assert.ok(request.url.includes('google-analytics.com'));
 
       void cleanup();
     });
@@ -640,8 +653,10 @@ void describe('Network collector contract', () => {
 
       // Assert: Body should be marked as skipped
       assert.equal(requests.length, 1);
+      const request = requests[0];
+      assert.ok(request, 'Request should exist');
       assert.ok(
-        requests[0]!.responseBody?.includes('[SKIPPED: Response too large'),
+        request.responseBody?.includes('[SKIPPED: Response too large'),
         'Large response should have skip marker'
       );
 

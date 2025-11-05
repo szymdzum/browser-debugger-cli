@@ -227,6 +227,7 @@ void describe('IPC Client Contract Tests', () => {
   let tmpDir: string;
   let originalHome: string | undefined;
   let originalUserProfile: string | undefined;
+  let originalIpcTimeout: string | undefined;
   let socketPath: string;
 
   beforeEach(async () => {
@@ -240,6 +241,10 @@ void describe('IPC Client Contract Tests', () => {
     if (process.platform === 'win32') {
       process.env['USERPROFILE'] = tmpDir;
     }
+
+    // Override IPC timeout for faster tests (5 seconds instead of 45)
+    originalIpcTimeout = process.env['BDG_IPC_TIMEOUT_MS'];
+    process.env['BDG_IPC_TIMEOUT_MS'] = '5000';
 
     // Create .bdg directory
     const bdgDir = path.join(tmpDir, '.bdg');
@@ -269,6 +274,11 @@ void describe('IPC Client Contract Tests', () => {
       process.env['USERPROFILE'] = originalUserProfile;
     } else {
       delete process.env['USERPROFILE'];
+    }
+    if (originalIpcTimeout !== undefined) {
+      process.env['BDG_IPC_TIMEOUT_MS'] = originalIpcTimeout;
+    } else {
+      delete process.env['BDG_IPC_TIMEOUT_MS'];
     }
 
     // Cleanup temp directory

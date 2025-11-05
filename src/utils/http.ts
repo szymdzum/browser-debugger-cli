@@ -1,4 +1,4 @@
-import { DEFAULT_CDP_PORT, HTTP_LOCALHOST } from '@/constants';
+import { DEFAULT_CDP_PORT, HTTP_LOCALHOST } from '@/constants.js';
 import type { CDPTarget } from '@/types';
 
 /**
