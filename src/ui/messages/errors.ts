@@ -79,32 +79,6 @@ export function daemonConnectionFailedError(): string {
 }
 
 /**
- * Generate validation error message with optional provided value.
- *
- * @param message - Error message describing the validation failure
- * @param providedValue - Optional value that failed validation
- * @returns Formatted error message
- *
- * @example
- * ```typescript
- * const message = validationError('--last must be between 1 and 1000', 5000);
- * console.error(message);
- * // Error: --last must be between 1 and 1000
- * // Provided value: 5000
- * ```
- */
-export function validationError(message: string, providedValue?: unknown): string {
-  const lines: string[] = [];
-  lines.push(`Error: ${message}`);
-  if (providedValue !== undefined) {
-    const valueStr =
-      typeof providedValue === 'string' ? providedValue : JSON.stringify(providedValue);
-    lines.push(`Provided value: ${valueStr}`);
-  }
-  return lines.join('\n');
-}
-
-/**
  * Generate generic error message with optional context.
  *
  * @param message - Error message

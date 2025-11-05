@@ -10,15 +10,6 @@
 // ============================================================================
 
 /**
- * Generate session stopped successfully message.
- *
- * @returns Formatted success message
- */
-export function sessionStoppedMessage(): string {
-  return 'Session stopped successfully';
-}
-
-/**
  * Generate Chrome killed message.
  *
  * @param pid - Chrome process ID that was killed
@@ -36,15 +27,6 @@ export function chromeKilledMessage(pid?: number): string {
  */
 export function warningMessage(message: string): string {
   return `Warning: ${message}`;
-}
-
-/**
- * Generate no active session message.
- *
- * @returns Formatted message
- */
-export function noActiveSessionMessage(): string {
-  return 'No active session found';
 }
 
 // ============================================================================

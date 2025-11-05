@@ -6,12 +6,10 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { clearChromePid } from '@/session/chrome.js';
+import { getSessionFilePath } from '@/session/paths.js';
 import { killChromeProcess } from '@/session/process.js';
-import {
-  sessionStoppedMessage,
-  chromeKilledMessage,
-  warningMessage,
-} from '@/ui/messages/commands.js';
+import { chromeKilledMessage, warningMessage } from '@/ui/messages/commands.js';
+import { sessionStopped } from '@/ui/messages/session.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -45,7 +43,8 @@ interface StopResult {
  */
 function formatStop(data: StopResult): void {
   if (data.stopped.bdg) {
-    console.error(sessionStoppedMessage());
+    const outputPath = getSessionFilePath('OUTPUT');
+    console.error(sessionStopped(outputPath));
   }
   if (data.stopped.chrome) {
     console.error(chromeKilledMessage());

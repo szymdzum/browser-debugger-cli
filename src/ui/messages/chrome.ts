@@ -79,21 +79,6 @@ export function formatDiagnosticsForStatus(diagnostics: ChromeDiagnostics): stri
 }
 
 /**
- * Generate Chrome launch error message with diagnostics.
- *
- * @param error - Error message from Chrome launcher
- * @param diagnostics - Chrome diagnostics information
- * @returns Formatted error message with troubleshooting
- */
-export function chromeLaunchError(error: string, diagnostics: ChromeDiagnostics): string {
-  const lines: string[] = [];
-  lines.push(`Failed to launch Chrome: ${error}`);
-  lines.push('');
-  lines.push(...formatDiagnosticsForError(diagnostics));
-  return lines.join('\n');
-}
-
-/**
  * Generate invalid port error message.
  *
  * @param port - Invalid port number

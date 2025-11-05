@@ -13,6 +13,12 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import type { CollectorType } from '@/types.js';
+import {
+  daemonSpawningWorker,
+  daemonWorkerSpawned,
+  daemonWorkerReady,
+  daemonParseError,
+} from '@/ui/messages/debug.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { validateUrl } from '@/utils/url.js';
 
@@ -94,8 +100,7 @@ export async function launchSessionInWorker(
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const workerPath = join(currentDir, 'worker.js');
 
-  console.error(`[daemon] Spawning worker: node ${workerPath} <config>`);
-  console.error(`[daemon] Worker config: ${JSON.stringify(config)}`);
+  console.error(daemonSpawningWorker(workerPath, config));
 
   // Spawn worker process
   let worker: ChildProcess;
@@ -113,7 +118,9 @@ export async function launchSessionInWorker(
     );
   }
 
-  console.error(`[daemon] Worker spawned (PID ${worker.pid})`);
+  if (worker.pid) {
+    console.error(daemonWorkerSpawned(worker.pid));
+  }
 
   // Wait for worker_ready signal
   return new Promise<WorkerMetadata>((resolve, reject) => {
@@ -166,9 +173,7 @@ export async function launchSessionInWorker(
                   target: { url: string; title?: string };
                 };
 
-                console.error('[daemon] Worker ready signal received');
-                console.error(`[daemon] Worker PID: ${readyMessage.workerPid}`);
-                console.error(`[daemon] Chrome PID: ${readyMessage.chromePid}`);
+                console.error(daemonWorkerReady(readyMessage.workerPid, readyMessage.chromePid));
 
                 // NOTE: Don't unref() - we need to keep the worker reference for IPC
                 // Worker continues running as detached process
@@ -185,7 +190,7 @@ export async function launchSessionInWorker(
             }
           } catch {
             // Ignore parse errors, may be log messages
-            console.error(`[daemon] Failed to parse stdout line: ${line}`);
+            console.error(daemonParseError(line));
           }
         }
       });

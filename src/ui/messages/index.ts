@@ -8,3 +8,5 @@ export * from './session.js';
 export * from './chrome.js';
 export * from './errors.js';
 export * from './commands.js';
+export * from './debug.js';
+export * from './internal.js';

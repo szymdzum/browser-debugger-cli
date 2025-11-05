@@ -65,28 +65,6 @@ export function landingPage(options: LandingPageOptions): string {
 }
 
 /**
- * Generate "session already running" error message with helpful context.
- *
- * @param pid - Process ID of running daemon
- * @param duration - Session duration in human-readable format
- * @returns Formatted error message
- */
-export function sessionAlreadyRunning(pid: number, duration: string): string {
-  const lines: string[] = [];
-
-  lines.push('Session already running');
-  lines.push('');
-  lines.push(`  PID: ${pid}`);
-  lines.push(`  Duration: ${duration}`);
-  lines.push('');
-  lines.push('Suggestions:');
-  lines.push('  View session:     bdg status');
-  lines.push('  Stop and restart: bdg stop && bdg <url>');
-
-  return lines.join('\n');
-}
-
-/**
  * Generate "session stopped" success message.
  *
  * @param outputPath - Path to session output file
@@ -94,13 +72,4 @@ export function sessionAlreadyRunning(pid: number, duration: string): string {
  */
 export function sessionStopped(outputPath: string): string {
   return `Session stopped. Output saved to: ${outputPath}`;
-}
-
-/**
- * Generate "no active session" error message.
- *
- * @returns Formatted error message
- */
-export function noActiveSession(): string {
-  return 'No active session. Start a session with: bdg <url>';
 }
