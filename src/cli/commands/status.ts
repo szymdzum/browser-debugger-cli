@@ -74,12 +74,27 @@ export function registerStatusCommand(program: Command): void {
         };
 
         if (options.json) {
-          // JSON output
+          // JSON output - include activity and page state
           const jsonOutput = formatStatusAsJson(metadata, data.sessionPid);
+          // Merge in activity data if available
+          if (data.activity) {
+            jsonOutput.activity = data.activity;
+          }
+          if (data.pageState) {
+            jsonOutput.pageState = data.pageState;
+          }
           console.log(JSON.stringify(jsonOutput, null, 2));
         } else {
-          // Human-readable output
-          console.log(formatSessionStatus(metadata, data.sessionPid, options.verbose ?? false));
+          // Human-readable output - pass activity and page state
+          console.log(
+            formatSessionStatus(
+              metadata,
+              data.sessionPid,
+              data.activity,
+              data.pageState,
+              options.verbose ?? false
+            )
+          );
         }
 
         process.exit(EXIT_CODES.SUCCESS);

@@ -1,3 +1,4 @@
+import type { SessionActivity, PageState } from '@/ipc/types.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { isProcessAlive } from '@/session/process.js';
 import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
@@ -19,17 +20,36 @@ export interface StatusData {
   stale?: boolean;
   stalePid?: number;
   warning?: string;
+  // Enhanced activity data
+  activity?: SessionActivity;
+  pageState?: PageState;
+}
+
+/**
+ * Format "time ago" string from timestamp
+ */
+function formatTimeAgo(timestamp: number): string {
+  const secondsAgo = Math.floor((Date.now() - timestamp) / 1000);
+  if (secondsAgo < 60) return `${secondsAgo}s ago`;
+  const minutesAgo = Math.floor(secondsAgo / 60);
+  if (minutesAgo < 60) return `${minutesAgo}m ago`;
+  const hoursAgo = Math.floor(minutesAgo / 60);
+  return `${hoursAgo}h ago`;
 }
 
 /**
  * Format session status for human-readable output
  * @param metadata - Session metadata
  * @param pid - BDG process ID
+ * @param activity - Live activity metrics from worker
+ * @param pageState - Current page state from worker
  * @param verbose - Show detailed Chrome diagnostics
  */
 export function formatSessionStatus(
   metadata: SessionMetadata,
   pid: number,
+  activity?: SessionActivity,
+  pageState?: PageState,
   verbose = false
 ): string {
   // Calculate duration
@@ -47,7 +67,11 @@ export function formatSessionStatus(
   lines.push('Session Status');
   lines.push('━'.repeat(50));
   lines.push(`Status:           ACTIVE`);
-  lines.push(`BDG PID:          ${pid}`);
+  lines.push(`Duration:         ${durationFormatted}`);
+  lines.push('');
+  lines.push('Process Information');
+  lines.push('━'.repeat(50));
+  lines.push(`Daemon PID:       ${pid}`);
 
   if (metadata.chromePid) {
     lines.push(
@@ -55,8 +79,35 @@ export function formatSessionStatus(
     );
   }
 
-  lines.push(`Duration:         ${durationFormatted}`);
   lines.push(`Port:             ${metadata.port}`);
+
+  // Target Information (from live worker data)
+  if (pageState) {
+    lines.push('');
+    lines.push('Target Information');
+    lines.push('━'.repeat(50));
+    lines.push(`URL:              ${pageState.url}`);
+    if (pageState.title) {
+      lines.push(`Title:            ${pageState.title}`);
+    }
+  }
+
+  // Activity Section (from live worker data)
+  if (activity) {
+    lines.push('');
+    lines.push('Activity');
+    lines.push('━'.repeat(50));
+    lines.push(`Network Requests: ${activity.networkRequestsCaptured} captured`);
+    if (activity.lastNetworkRequestAt) {
+      lines.push(`  Last Request:   ${formatTimeAgo(activity.lastNetworkRequestAt)}`);
+    }
+    lines.push(`Console Messages: ${activity.consoleMessagesCaptured} captured`);
+    if (activity.lastConsoleMessageAt) {
+      lines.push(`  Last Message:   ${formatTimeAgo(activity.lastConsoleMessageAt)}`);
+    }
+  }
+
+  // Collectors Section
   lines.push('');
   lines.push('Collectors');
   lines.push('━'.repeat(50));
@@ -83,6 +134,7 @@ export function formatSessionStatus(
   lines.push('');
   lines.push('Commands:');
   lines.push('  Stop session:    bdg stop');
+  lines.push('  Peek data:       bdg peek');
   lines.push('  Query browser:   bdg query <script>');
 
   return lines.join('\n');

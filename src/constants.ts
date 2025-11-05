@@ -250,11 +250,11 @@ export const STALE_REQUEST_CLEANUP_INTERVAL = 30000;
 export const MEMORY_LOG_INTERVAL = 30000;
 
 /**
- * Default page readiness timeout (30 seconds)
+ * Default page readiness timeout (2 seconds)
  * Maximum time to wait for page to be ready before proceeding
  * Uses adaptive detection for load, network stability, and DOM stability
  */
-export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 30000;
+export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 2000;
 
 // ============================================================================
 // IPC CONFIGURATION

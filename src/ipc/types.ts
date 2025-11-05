@@ -46,6 +46,35 @@ export interface StatusRequest extends IPCMessage {
 }
 
 /**
+ * Session activity tracking data.
+ *
+ * Captures real-time activity metrics from the worker process including
+ * network requests, console messages, and DOM query activity.
+ */
+export interface SessionActivity {
+  /** Total network requests captured since session start */
+  networkRequestsCaptured: number;
+  /** Total console messages captured since session start */
+  consoleMessagesCaptured: number;
+  /** Timestamp of last network request (milliseconds since epoch) */
+  lastNetworkRequestAt?: number;
+  /** Timestamp of last console message (milliseconds since epoch) */
+  lastConsoleMessageAt?: number;
+}
+
+/**
+ * Page state information from the browser.
+ *
+ * Provides current page metadata and readiness indicators.
+ */
+export interface PageState {
+  /** Current page URL */
+  url: string;
+  /** Current page title */
+  title: string;
+}
+
+/**
  * Status response payload containing daemon and session metadata.
  */
 export interface StatusResponseData {
@@ -62,6 +91,10 @@ export interface StatusResponseData {
     webSocketDebuggerUrl?: string;
     activeCollectors?: CollectorType[];
   };
+  /** Live activity metrics from worker (only present if session is active) */
+  activity?: SessionActivity;
+  /** Current page state from browser (only present if session is active) */
+  pageState?: PageState;
 }
 
 /**

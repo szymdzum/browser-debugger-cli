@@ -28,7 +28,13 @@ import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
-import type { COMMANDS, CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/commands.js';
+import type {
+  COMMANDS,
+  CommandName,
+  WorkerRequestUnion,
+  WorkerResponse,
+  WorkerStatusData,
+} from '@/ipc/commands.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writeSessionOutput } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
@@ -429,6 +435,43 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
     return Promise.reject(
       new Error(`Unknown itemType: ${String(params.itemType)}. Expected 'network' or 'console'.`)
     );
+  },
+
+  /**
+   * Worker Status Handler - Return live activity metrics and session state
+   *
+   * Provides comprehensive status information including activity counts,
+   * last activity timestamps, current page state, and active collectors.
+   * Used by the status command to show detailed session information.
+   */
+  worker_status: async (_cdp, _params) => {
+    const duration = Date.now() - sessionStartTime;
+
+    // Get last activity timestamps
+    const lastNetworkRequest = networkRequests[networkRequests.length - 1];
+    const lastConsoleMessage = consoleMessages[consoleMessages.length - 1];
+
+    const result: WorkerStatusData = {
+      startTime: sessionStartTime,
+      duration,
+      target: {
+        url: targetInfo?.url ?? '',
+        title: targetInfo?.title ?? '',
+      },
+      activeCollectors,
+      activity: {
+        networkRequestsCaptured: networkRequests.length,
+        consoleMessagesCaptured: consoleMessages.length,
+        ...(lastNetworkRequest?.timestamp !== undefined && {
+          lastNetworkRequestAt: lastNetworkRequest.timestamp,
+        }),
+        ...(lastConsoleMessage?.timestamp !== undefined && {
+          lastConsoleMessageAt: lastConsoleMessage.timestamp,
+        }),
+      },
+    };
+
+    return Promise.resolve(result);
   },
 
   /**
