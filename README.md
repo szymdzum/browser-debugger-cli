@@ -74,11 +74,14 @@ bdg status          # Check active session
 bdg stop            # Stop session gracefully
 bdg cleanup         # Clean up stale sessions
 
-# Data inspection (planned)
+# Data inspection
 bdg peek            # Quick preview of collected data
+bdg peek --follow   # Live updates every second
 bdg details         # Full details for specific items
 bdg dom query       # Query DOM elements
-bdg network         # Network request inspector
+bdg dom eval        # Execute JavaScript in browser context
+bdg dom highlight   # Highlight elements visually
+bdg dom get         # Get full HTML for elements
 ```
 
 **Progressive disclosure**: Start with raw CDP power, add convenience wrappers for common patterns.
