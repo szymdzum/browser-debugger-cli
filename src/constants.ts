@@ -246,6 +246,19 @@ export const STALE_REQUEST_CLEANUP_INTERVAL = 30000;
 export const MEMORY_LOG_INTERVAL = 30000;
 
 // ============================================================================
+// IPC CONFIGURATION
+// ============================================================================
+
+/**
+ * IPC request timeout in milliseconds (15 seconds)
+ * Maximum time to wait for IPC responses from daemon
+ * Increased from 5s to 15s to support SSR applications with longer hydration times
+ *
+ * @see docs/IMPROVEMENTS_ANALYSIS.md - Issue #3: Smart Page Readiness Detection
+ */
+export const IPC_REQUEST_TIMEOUT_MS = 15000;
+
+// ============================================================================
 // CLI OPTION DESCRIPTIONS
 // ============================================================================
 

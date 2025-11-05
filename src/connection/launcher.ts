@@ -128,6 +128,25 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     const launchDurationMs = Date.now() - launchStart;
 
     const chromeProcessPid = launcher.pid ?? 0;
+
+    // Validate PID before printing success message (Issue #4 from IMPROVEMENTS_ANALYSIS.md)
+    if (!chromeProcessPid || chromeProcessPid <= 0) {
+      launcher.kill();
+      launcher.destroyTmp();
+
+      throw new ChromeLaunchError(
+        `Chrome failed to launch (PID: ${chromeProcessPid})\n\n` +
+          `Possible causes:\n` +
+          `  - Port ${port} already in use (check: lsof -ti:${port})\n` +
+          `  - Chrome binary not found\n` +
+          `  - Insufficient permissions\n\n` +
+          `Try:\n` +
+          `  - bdg cleanup\n` +
+          `  - Use different port: bdg <url> --port ${port + 1}`
+      );
+    }
+
+    // Only print success message after validating PID
     console.error(CHROME_LAUNCH_SUCCESS_MESSAGE(chromeProcessPid, launchDurationMs));
 
     return {
