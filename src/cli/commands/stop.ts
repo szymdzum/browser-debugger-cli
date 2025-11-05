@@ -7,6 +7,11 @@ import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import { clearChromePid } from '@/session/chrome.js';
 import { killChromeProcess } from '@/session/process.js';
+import {
+  sessionStoppedMessage,
+  chromeKilledMessage,
+  warningMessage,
+} from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -40,14 +45,14 @@ interface StopResult {
  */
 function formatStop(data: StopResult): void {
   if (data.stopped.bdg) {
-    console.error('Session stopped successfully');
+    console.error(sessionStoppedMessage());
   }
   if (data.stopped.chrome) {
-    console.error('Killed Chrome');
+    console.error(chromeKilledMessage());
   }
   if (data.warnings && data.warnings.length > 0) {
     data.warnings.forEach((warning) => {
-      console.error(`Warning: ${warning}`);
+      console.error(warningMessage(warning));
     });
   }
 }
@@ -109,7 +114,7 @@ export function registerStopCommand(program: Command): void {
                   try {
                     killChromeProcess(chromePid, 'SIGTERM');
                     chromeStopped = true;
-                    console.error(`Killed Chrome (PID ${chromePid})`);
+                    console.error(chromeKilledMessage(chromePid));
                     clearChromePid();
                   } catch (chromeError: unknown) {
                     const errorMessage =

@@ -1,4 +1,5 @@
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -81,7 +82,7 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
           JSON.stringify(OutputBuilder.buildJsonError(result.error ?? 'Unknown error'), null, 2)
         );
       } else {
-        console.error(`Error: ${result.error ?? 'Unknown error'}`);
+        console.error(result.error ? genericError(result.error) : unknownError());
       }
       process.exit(result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION);
     }
@@ -113,8 +114,7 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
           )
         );
       } else {
-        console.error('Error: Daemon not running');
-        console.error('Start it with: bdg <url>');
+        console.error(daemonNotRunningError());
       }
       process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }
@@ -123,7 +123,7 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
     if (options.json) {
       console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMessage), null, 2));
     } else {
-      console.error(`Error: ${errorMessage}`);
+      console.error(genericError(errorMessage));
     }
     process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
   }

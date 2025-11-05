@@ -17,18 +17,24 @@ import {
 } from '@/constants.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { LaunchedChrome } from '@/types';
-import { getChromeDiagnostics, formatDiagnosticsForError } from '@/utils/chromeDiagnostics.js';
+import {
+  formatDiagnosticsForError,
+  chromeLaunchStartMessage,
+  chromeLaunchSuccessMessage,
+  chromeUserDataDirMessage,
+  invalidPortError,
+  userDataDirError,
+  prefsFileNotFoundError,
+  invalidPrefsFormatError,
+  prefsLoadError,
+  chromeLaunchFailedError,
+} from '@/ui/messages/chrome.js';
+import { getChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
 import { createLogger } from '@/utils/logger.js';
 import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('chrome');
-
-const CHROME_LAUNCH_START_MESSAGE = (port: number): string =>
-  `Launching Chrome with CDP on port ${port}...`;
-const CHROME_LAUNCH_SUCCESS_MESSAGE = (pid: number, duration: number): string =>
-  `Chrome launched successfully (PID: ${pid}, ${duration}ms)`;
-const CHROME_USER_DATA_DIR_MESSAGE = (dir: string): string => `User data directory: ${dir}`;
 
 /**
  * Get formatted Chrome diagnostics for error messages.
@@ -42,19 +48,6 @@ function getFormattedDiagnostics(): string[] {
   const diagnostics = getChromeDiagnostics();
   return formatDiagnosticsForError(diagnostics);
 }
-
-// Error Messages
-const INVALID_PORT_ERROR = (port: number): string =>
-  `Invalid port number: ${port}. Port must be between 1 and 65535.`;
-const USER_DATA_DIR_ERROR = (dir: string, error: string): string =>
-  `Failed to create user data directory at ${dir}: ${error}`;
-const PREFS_FILE_NOT_FOUND_ERROR = (file: string): string =>
-  `Chrome preferences file not found: ${file}`;
-const INVALID_PREFS_FORMAT_ERROR = (file: string, type: string): string =>
-  `Invalid Chrome preferences format in ${file}: expected object, got ${type}`;
-const PREFS_LOAD_ERROR = (file: string, error: string): string =>
-  `Failed to load Chrome preferences from ${file}: ${error}`;
-const CHROME_LAUNCH_ERROR = (error: string): string => `Failed to launch Chrome: ${error}`;
 
 // Other Constants
 const FILE_NOT_EXIST_ERROR = 'File does not exist';
@@ -132,13 +125,13 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   // Validate port range
   if (port < 1 || port > 65535) {
-    throw new ChromeLaunchError(INVALID_PORT_ERROR(port));
+    throw new ChromeLaunchError(invalidPortError(port));
   }
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
-  log.info(CHROME_LAUNCH_START_MESSAGE(port));
-  log.debug(CHROME_USER_DATA_DIR_MESSAGE(userDataDir));
+  log.info(chromeLaunchStartMessage(port));
+  log.debug(chromeUserDataDirMessage(userDataDir));
 
   const chromeOptions = buildChromeOptions(options);
   const launcher = new chromeLauncher.Launcher(chromeOptions);
@@ -194,7 +187,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     }
 
     // Only print success message after validating PID and process liveness
-    log.info(CHROME_LAUNCH_SUCCESS_MESSAGE(chromeProcessPid, launchDurationMs));
+    log.info(chromeLaunchSuccessMessage(chromeProcessPid, launchDurationMs));
 
     return {
       pid: chromeProcessPid,
@@ -221,7 +214,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     const diagnosticLines = getFormattedDiagnostics();
 
     throw new ChromeLaunchError(
-      `${CHROME_LAUNCH_ERROR(getErrorMessage(error))}\n\n${diagnosticLines.join('\n')}`,
+      `${chromeLaunchFailedError(getErrorMessage(error))}\n\n${diagnosticLines.join('\n')}`,
       error instanceof Error ? error : undefined
     );
   }
@@ -245,7 +238,7 @@ function getPersistentUserDataDir(): string {
     try {
       fs.mkdirSync(userDataDir, { recursive: true });
     } catch (error) {
-      throw new Error(USER_DATA_DIR_ERROR(userDataDir, getErrorMessage(error)));
+      throw new Error(userDataDirError(userDataDir, getErrorMessage(error)));
     }
   }
 
@@ -268,7 +261,7 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
     // Validate file exists before attempting to read
     if (!fs.existsSync(options.prefsFile)) {
       throw new ChromeLaunchError(
-        PREFS_FILE_NOT_FOUND_ERROR(options.prefsFile),
+        prefsFileNotFoundError(options.prefsFile),
         new Error(FILE_NOT_EXIST_ERROR)
       );
     }
@@ -279,7 +272,7 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
 
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         throw new ChromeLaunchError(
-          INVALID_PREFS_FORMAT_ERROR(options.prefsFile, typeof parsed),
+          invalidPrefsFormatError(options.prefsFile, typeof parsed),
           new Error(INVALID_JSON_STRUCTURE_ERROR)
         );
       }
@@ -291,7 +284,7 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
       }
 
       throw new ChromeLaunchError(
-        PREFS_LOAD_ERROR(options.prefsFile, getErrorMessage(error)),
+        prefsLoadError(options.prefsFile, getErrorMessage(error)),
         error instanceof Error ? error : undefined
       );
     }

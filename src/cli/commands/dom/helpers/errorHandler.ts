@@ -1,4 +1,5 @@
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
+import { genericError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -31,7 +32,7 @@ export function handleCommandError(
   if (json) {
     console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMsg), null, 2));
   } else {
-    console.error(`Error: ${errorMsg}`);
+    console.error(genericError(errorMsg));
   }
   process.exit(exitCode);
 }
@@ -68,7 +69,7 @@ export function handleCommandErrorWithContext(
   if (json) {
     console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMsg, metadata), null, 2));
   } else {
-    console.error(`Error: ${errorMsg}`);
+    console.error(genericError(errorMsg));
     // Output metadata as additional help text
     for (const value of Object.values(metadata)) {
       console.error(`${value}`);

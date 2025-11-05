@@ -1,13 +1,14 @@
 import type { Command } from 'commander';
 
+import { getStatus } from '@/ipc/client.js';
+import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
+import type { SessionMetadata } from '@/session/metadata.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,
   formatNoSessionMessage,
-} from '@/cli/formatters/statusFormatter.js';
-import { getStatus } from '@/ipc/client.js';
-import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
-import type { SessionMetadata } from '@/session/metadata.js';
+} from '@/ui/formatters/status.js';
+import { daemonNotRunningWithCleanup } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
@@ -104,11 +105,7 @@ export function registerStatusCommand(program: Command): void {
         if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
           // P0 Fix #2: Auto-cleanup stale daemon PID if it exists
           const cleaned = cleanupStaleDaemonPid();
-          if (cleaned) {
-            console.error('Daemon not running (stale PID cleaned up). Start it with: bdg <url>');
-          } else {
-            console.error('Daemon not running. Start it with: bdg <url>');
-          }
+          console.error(daemonNotRunningWithCleanup(cleaned));
           process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 

@@ -1,5 +1,5 @@
 import type { BdgOutput } from '@/types';
-import { truncateUrl, truncateText } from '@/utils/url.js';
+import { truncateUrl, truncateText } from '@/ui/formatting.js';
 
 /**
  * Flags that shape how preview output is rendered for `bdg peek`.

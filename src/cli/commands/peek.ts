@@ -1,15 +1,17 @@
 import type { Command } from 'commander';
 
-import {
-  formatPreview,
-  formatNoPreviewDataMessage,
-  type PreviewOptions,
-} from '@/cli/formatters/previewFormatter.js';
 import { OutputBuilder } from '@/cli/handlers/OutputBuilder.js';
 import { jsonOption } from '@/cli/handlers/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput } from '@/types.js';
+import {
+  formatPreview,
+  formatNoPreviewDataMessage,
+  type PreviewOptions,
+} from '@/ui/formatters/preview.js';
+import { invalidLastArgumentError } from '@/ui/messages/commands.js';
+import { daemonNotRunningError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -50,8 +52,7 @@ export function registerPeekCommand(program: Command): void {
       // Validate --last parameter
       const lastN = parseInt(options.last ?? '10', 10);
       if (isNaN(lastN) || lastN < 1 || lastN > 1000) {
-        console.error('Error: --last must be between 1 and 1000');
-        console.error('Provided value:', options.last);
+        console.error(invalidLastArgumentError(options.last));
         process.exit(EXIT_CODES.INVALID_ARGUMENTS);
       }
       options.last = lastN.toString();
@@ -103,8 +104,7 @@ export function registerPeekCommand(program: Command): void {
               )
             );
           } else {
-            console.error('Error: Daemon not running');
-            console.error('Start it with: bdg <url>');
+            console.error(daemonNotRunningError());
           }
 
           if (!options.follow) {

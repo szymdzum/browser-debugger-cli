@@ -1,7 +1,8 @@
 import type { SessionActivity, PageState } from '@/ipc/types.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { isProcessAlive } from '@/session/process.js';
-import { getChromeDiagnostics, formatDiagnosticsForStatus } from '@/utils/chromeDiagnostics.js';
+import { formatDiagnosticsForStatus } from '@/ui/messages/chrome.js';
+import { getChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
 import { VERSION } from '@/utils/version.js';
 
 export interface StatusData {

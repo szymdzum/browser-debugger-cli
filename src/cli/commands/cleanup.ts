@@ -9,6 +9,16 @@ import { cleanupSession } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
+import {
+  sessionFilesCleanedMessage,
+  sessionOutputRemovedMessage,
+  sessionDirectoryCleanMessage,
+  noSessionFilesMessage,
+  staleSessionFoundMessage,
+  forceCleanupWarningMessage,
+  sessionStillActiveError,
+  warningMessage,
+} from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -49,14 +59,14 @@ function formatCleanup(data: CleanupResult): void {
   const { cleaned } = data;
 
   if (cleaned.session) {
-    console.error('Session files cleaned up');
+    console.error(sessionFilesCleanedMessage());
   }
   if (cleaned.output) {
-    console.error('Session output file removed');
+    console.error(sessionOutputRemovedMessage());
   }
   if (data.warnings && data.warnings.length > 0) {
     data.warnings.forEach((warning) => {
-      console.error(`Warning: ${warning}`);
+      console.error(warningMessage(warning));
     });
   }
 
@@ -110,7 +120,7 @@ export function registerCleanupCommand(program: Command): void {
             if (isAlive && !opts.force) {
               return {
                 success: false,
-                error: `Session is still active (PID ${pid})`,
+                error: sessionStillActiveError(pid),
                 exitCode: EXIT_CODES.RESOURCE_BUSY,
                 errorContext: {
                   suggestions: ['Stop gracefully: bdg stop', 'Force cleanup: bdg cleanup --force'],
@@ -122,11 +132,9 @@ export function registerCleanupCommand(program: Command): void {
 
             if (isAlive && opts.force) {
               warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
-              console.error(`Warning: Process ${pid} is still running!`);
-              console.error('Forcing cleanup anyway...');
-              console.error('(The process will continue running but lose session tracking)');
+              console.error(forceCleanupWarningMessage(pid));
             } else {
-              console.error(`Found stale session (PID ${pid} not running)`);
+              console.error(staleSessionFoundMessage(pid));
             }
 
             cleanupSession();
@@ -155,7 +163,7 @@ export function registerCleanupCommand(program: Command): void {
               success: true,
               data: {
                 cleaned: { session: false, output: false, chrome: false },
-                message: 'No session files found. Session directory is already clean',
+                message: noSessionFilesMessage(),
               },
             };
           }
@@ -164,7 +172,7 @@ export function registerCleanupCommand(program: Command): void {
             success: true,
             data: {
               cleaned: { session: cleanedSession, output: cleanedOutput, chrome: cleanedChrome },
-              message: 'Session directory is now clean',
+              message: sessionDirectoryCleanMessage(),
               ...(warnings.length > 0 && { warnings }),
             },
           };

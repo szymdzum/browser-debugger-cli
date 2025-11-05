@@ -5,8 +5,8 @@ import { runCommand } from '@/cli/handlers/CommandRunner.js';
 import { jsonOption } from '@/cli/handlers/commonOptions.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
-import type { Cookie } from '@/utils/formatters/network.js';
-import { formatCookies } from '@/utils/formatters/network.js';
+import type { Cookie } from '@/ui/formatters/index.js';
+import { formatCookies } from '@/ui/formatters/index.js';
 
 /**
  * Options for the `bdg network getCookies` command.
@@ -54,7 +54,10 @@ export function registerNetworkCommands(program: Command): void {
           };
         },
         options,
-        formatCookies // Human-readable formatter
+        // Human-readable formatter (returns formatted string)
+        (cookies: Cookie[]) => {
+          console.log(formatCookies(cookies));
+        }
       );
     });
 }

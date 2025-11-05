@@ -1,12 +1,12 @@
 import type { Command } from 'commander';
 
-import { formatNetworkDetails, formatConsoleDetails } from '@/cli/formatters/detailsFormatter.js';
 import type { BaseCommandOptions } from '@/cli/handlers/CommandRunner.js';
 import { runCommand } from '@/cli/handlers/CommandRunner.js';
 import { jsonOption } from '@/cli/handlers/commonOptions.js';
 import { getDetails } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
+import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
