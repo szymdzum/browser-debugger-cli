@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Error Scenario Test: Daemon Crash Recovery
 #
 # Tests that bdg handles daemon crashes gracefully:

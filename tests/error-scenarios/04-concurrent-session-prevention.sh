@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Error Scenario Test: Concurrent Session Prevention
 #
 # Tests that bdg prevents multiple simultaneous sessions:

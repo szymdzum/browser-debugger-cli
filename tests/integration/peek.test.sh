@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Integration Test: bdg peek command
 #
 # Tests all peek command variations:

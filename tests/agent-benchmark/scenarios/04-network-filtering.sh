@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Agent Benchmark: Network Filtering and Body Fetching
 #
 # Task: Validate network filtering patterns work correctly
@@ -23,6 +23,9 @@ SCENARIO_NAME="network-filtering"
 SCENARIO_COMPLEXITY="tier2"
 TARGET_URL="https://jsonplaceholder.typicode.com"
 
+# Results directory
+RESULTS_DIR="$(cd "$(dirname "$0")/.." && pwd)/results"
+mkdir -p "$RESULTS_DIR"
 # Load helper functions
 source "$(dirname "$0")/../lib/metrics.sh"
 source "$(dirname "$0")/../lib/assertions.sh"
@@ -130,7 +133,7 @@ log_success "Benchmark completed successfully in ${duration}s"
 end_benchmark "$SCENARIO_NAME" "success"
 
 # Write JSON result
-cat > "results/${SCENARIO_NAME}-result.json" <<EOF
+cat > "${RESULTS_DIR}/${SCENARIO_NAME}-result.json" <<EOF
 {
   "scenario": "$SCENARIO_NAME",
   "complexity": "$SCENARIO_COMPLEXITY",

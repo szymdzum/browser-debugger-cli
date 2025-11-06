@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Integration Test: bdg cleanup command
 #
 # Tests all cleanup command variations:

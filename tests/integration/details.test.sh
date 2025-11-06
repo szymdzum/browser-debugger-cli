@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Integration Test: bdg details command
 #
 # Tests details command for both network and console:

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Metrics tracking for agent benchmarks
 
 # Global metrics storage
@@ -8,9 +8,9 @@ BENCHMARK_START_TIME=0
 # Initialize benchmark
 start_benchmark() {
   local scenario_name="$1"
-  BENCHMARK_START_TIME=$(date +%s%3N)  # milliseconds
+  BENCHMARK_START_TIME=$(date +%s)  # seconds (macOS date doesn't support milliseconds)
   METRICS["scenario"]="$scenario_name"
-  METRICS["start_time"]=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
+  METRICS["start_time"]=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   log_info "Starting benchmark: $scenario_name"
 }
 
@@ -18,15 +18,15 @@ start_benchmark() {
 end_benchmark() {
   local scenario_name="$1"
   local status="${2:-success}"
-  
-  local end_time=$(date +%s%3N)
+
+  local end_time=$(date +%s)
   local duration=$((end_time - BENCHMARK_START_TIME))
-  
-  METRICS["end_time"]=$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")
-  METRICS["duration_ms"]="$duration"
+
+  METRICS["end_time"]=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  METRICS["duration_seconds"]="$duration"
   METRICS["status"]="$status"
-  
-  log_info "Benchmark complete: $scenario_name (${duration}ms, status: $status)"
+
+  log_info "Benchmark complete: $scenario_name (${duration}s, status: $status)"
 }
 
 # Record a metric
@@ -54,13 +54,13 @@ export_metrics() {
     echo "  \"status\": \"${METRICS[status]}\","
     echo "  \"start_time\": \"${METRICS[start_time]}\","
     echo "  \"end_time\": \"${METRICS[end_time]}\","
-    echo "  \"duration_ms\": ${METRICS[duration_ms]},"
+    echo "  \"duration_seconds\": ${METRICS[duration_seconds]},"
     echo "  \"metrics\": {"
     
     local first=true
     for key in "${!METRICS[@]}"; do
       # Skip meta fields
-      if [[ "$key" =~ ^(scenario|status|start_time|end_time|duration_ms)$ ]]; then
+      if [[ "$key" =~ ^(scenario|status|start_time|end_time|duration_seconds)$ ]]; then
         continue
       fi
       

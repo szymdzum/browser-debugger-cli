@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Recovery and retry patterns for agent benchmarks
 
 # Retry a command with exponential backoff

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Assertion helpers for agent benchmarks
 
 # Colors for output

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Error Scenario Test: Chrome Launch Failure
 #
 # Tests that bdg handles Chrome launch failures gracefully:

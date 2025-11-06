@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Agent Benchmark Suite Runner
 #
 # Runs all agent benchmark scenarios and generates a summary report

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Integration Test: bdg status command
 #
 # Tests all status command variations:

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Error Scenario Test: Stale Session Recovery
 #
 # Tests that bdg handles stale session files:

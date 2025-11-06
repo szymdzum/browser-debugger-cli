@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Error Scenario Test: Invalid URL Handling
 #
 # Tests that bdg validates URLs properly:

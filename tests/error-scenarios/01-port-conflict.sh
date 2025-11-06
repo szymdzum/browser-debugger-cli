@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Error Scenario Test: Port Already in Use
 #
 # Tests that bdg handles port conflicts gracefully:

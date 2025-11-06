@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Master Test Runner
 #
 # Runs all test suites in order:

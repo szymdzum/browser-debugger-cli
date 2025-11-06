@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Agent Benchmark: Wikipedia Article Summary
 #
 # Task: Extract first paragraph summary from a Wikipedia article
@@ -22,6 +22,9 @@ SCENARIO_NAME="wikipedia-summary"
 SCENARIO_COMPLEXITY="tier2"
 TARGET_URL="https://en.wikipedia.org/wiki/Web_scraping"
 
+# Results directory
+RESULTS_DIR="$(cd "$(dirname "$0")/.." && pwd)/results"
+mkdir -p "$RESULTS_DIR"
 # Load helper functions
 source "$(dirname "$0")/../lib/metrics.sh"
 source "$(dirname "$0")/../lib/assertions.sh"
@@ -108,7 +111,7 @@ log_success "Validation passed: article data extracted"
 # Step 5: Optional screenshot for debugging
 if [ "${SCREENSHOT:-0}" = "1" ]; then
   log_step "Capturing screenshot for debugging"
-  bdg page screenshot --full --out "results/${SCENARIO_NAME}-screenshot.png" 2>/dev/null || log_warn "Screenshot failed"
+  bdg page screenshot --full --out "${RESULTS_DIR}/${SCENARIO_NAME}-screenshot.png" 2>/dev/null || log_warn "Screenshot failed"
 fi
 
 # Step 6: Stop session
@@ -125,7 +128,7 @@ log_success "Benchmark completed successfully in ${duration}s"
 end_benchmark "$SCENARIO_NAME" "success"
 
 # Write JSON result
-cat > "results/${SCENARIO_NAME}-result.json" <<EOF
+cat > "${RESULTS_DIR}/${SCENARIO_NAME}-result.json" <<EOF
 {
   "scenario": "$SCENARIO_NAME",
   "complexity": "$SCENARIO_COMPLEXITY",
