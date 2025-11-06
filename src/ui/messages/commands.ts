@@ -140,3 +140,30 @@ export function daemonNotRunningWithCleanup(staleCleaned: boolean): string {
   }
   return 'Daemon not running. Start it with: bdg <url>';
 }
+
+// ============================================================================
+// Start Command Messages
+// ============================================================================
+
+/**
+ * Generate help message when no URL is provided to start command.
+ *
+ * @returns Multi-line help message with examples
+ */
+export function startCommandHelpMessage(): string {
+  const lines: string[] = [];
+  lines.push('');
+  lines.push('Start a new session by providing a URL:');
+  lines.push('');
+  lines.push('  bdg example.com');
+  lines.push('  bdg localhost:3000');
+  lines.push('  bdg https://github.com');
+  lines.push('');
+  lines.push('Or manage existing session:');
+  lines.push('');
+  lines.push('  bdg status      Check session state');
+  lines.push('  bdg stop        End session');
+  lines.push('  bdg --help      Show all commands');
+  lines.push('');
+  return lines.join('\n');
+}

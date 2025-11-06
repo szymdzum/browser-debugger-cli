@@ -5,13 +5,9 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput } from '@/types.js';
-import {
-  formatPreview,
-  formatNoPreviewDataMessage,
-  type PreviewOptions,
-} from '@/ui/formatters/preview.js';
+import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { invalidLastArgumentError } from '@/ui/messages/commands.js';
-import { daemonNotRunningError } from '@/ui/messages/errors.js';
+import { daemonNotRunningError, noPreviewDataError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -25,7 +21,7 @@ function handlePreviewError(error: string, options: PreviewOptions, exitCode: nu
   if (options.json) {
     console.log(JSON.stringify(OutputBuilder.buildJsonError(error), null, 2));
   } else {
-    console.error(formatNoPreviewDataMessage());
+    console.error(noPreviewDataError());
   }
 
   if (!options.follow) {
@@ -85,11 +81,17 @@ export function registerPeekCommand(program: Command): void {
             return;
           }
 
-          if (!options.follow) {
+          // Clear screen before rendering to prevent stacked outputs in follow mode
+          if (options.follow) {
             console.clear();
           }
 
-          console.log(formatPreview(output, options));
+          // Add current view timestamp for follow mode to show refresh time
+          const previewOptions: PreviewOptions = options.follow
+            ? { ...options, viewedAt: new Date() }
+            : options;
+
+          console.log(formatPreview(output, previewOptions));
         } catch {
           // Handle IPC connection errors (daemon not running, etc.)
           // Note: validateIPCResponse errors are caught above

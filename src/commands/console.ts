@@ -6,6 +6,7 @@ import { filterOption, jsonOption, lastOption } from '@/commands/shared/commonOp
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput, ConsoleMessage } from '@/types.js';
+import { noConsoleMessagesMessage, consoleMessagesHeader } from '@/ui/messages/consoleMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -55,15 +56,9 @@ function formatConsoleLogs(data: { logs: ConsoleMessage[]; filter?: string }): v
   const { logs, filter } = data;
 
   if (logs.length === 0) {
-    console.log('No console messages found');
-    if (filter) {
-      console.log(`(filtered by type: ${filter})`);
-    }
+    console.log(noConsoleMessagesMessage(filter));
   } else {
-    console.log(`Console messages (${logs.length} total):`);
-    if (filter) {
-      console.log(`Filtered by type: ${filter}`);
-    }
+    console.log(consoleMessagesHeader(logs.length, filter));
     console.log();
     logs.forEach((log, idx) => {
       console.log(formatConsoleMessage(log, idx));

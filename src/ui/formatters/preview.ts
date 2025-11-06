@@ -1,5 +1,11 @@
 import type { BdgOutput } from '@/types';
 import { truncateUrl, truncateText } from '@/ui/formatting.js';
+import {
+  PREVIEW_EMPTY_STATES,
+  PREVIEW_HEADERS,
+  compactTipsMessage,
+  verboseCommandsMessage,
+} from '@/ui/messages/preview.js';
 
 /**
  * Flags that shape how preview output is rendered for `bdg peek`.
@@ -17,6 +23,8 @@ export interface PreviewOptions {
   verbose?: boolean;
   /** Stream updates until interrupted (tail-like behaviour). */
   follow?: boolean;
+  /** Current view timestamp (for follow mode to show refresh time). */
+  viewedAt?: Date;
 }
 
 /**
@@ -80,48 +88,64 @@ function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions):
 function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): string {
   const lines: string[] = [];
 
-  // Simple header (no Unicode box drawing)
+  // Header with data collection timestamp
   lines.push(
     `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`
   );
+
+  // In follow mode, add current refresh time to show live updates
+  if (options.follow && options.viewedAt) {
+    lines.push(`Viewed at: ${options.viewedAt.toISOString()}`);
+  }
+
   lines.push('');
 
   const lastCount = parseInt(options.last);
+  const hasNetworkData = output.data.network && output.data.network.length > 0;
+  const hasConsoleData = output.data.console && output.data.console.length > 0;
 
-  // Show network requests (compact)
+  // Show network requests only if not filtered out or has data
   if (!options.console && output.data.network) {
-    const requests = output.data.network.slice(-lastCount);
-    lines.push(`NETWORK (${requests.length}/${output.data.network.length}):`);
-    if (requests.length === 0) {
-      lines.push('  (none)');
-    } else {
-      requests.forEach((req) => {
-        const status = req.status ?? 'pending';
-        const url = truncateUrl(req.url, 50);
-        lines.push(`  ${status} ${req.method} ${url} [${req.requestId}]`);
-      });
+    // Hide empty section if console filter is active and there's no network data
+    if (options.console === undefined || hasNetworkData) {
+      const requests = output.data.network.slice(-lastCount);
+      lines.push(`NETWORK (${requests.length}/${output.data.network.length}):`);
+      if (requests.length === 0) {
+        lines.push(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+      } else {
+        requests.forEach((req) => {
+          const status = req.status ?? 'pending';
+          const url = truncateUrl(req.url, 50);
+          lines.push(`  ${status} ${req.method} ${url} [${req.requestId}]`);
+        });
+      }
+      lines.push('');
     }
-    lines.push('');
   }
 
-  // Show console messages (compact)
+  // Show console messages only if not filtered out or has data
   if (!options.network && output.data.console) {
-    const messages = output.data.console.slice(-lastCount);
-    lines.push(`CONSOLE (${messages.length}/${output.data.console.length}):`);
-    if (messages.length === 0) {
-      lines.push('  (none)');
-    } else {
-      messages.forEach((msg) => {
-        const prefix = msg.type.toUpperCase().padEnd(5);
-        const text = truncateText(msg.text, 2);
-        lines.push(`  ${prefix} ${text}`);
-      });
+    // Hide empty section if network filter is active and there's no console data
+    if (options.network === undefined || hasConsoleData) {
+      const messages = output.data.console.slice(-lastCount);
+      lines.push(`CONSOLE (${messages.length}/${output.data.console.length}):`);
+      if (messages.length === 0) {
+        lines.push(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+      } else {
+        messages.forEach((msg) => {
+          const prefix = msg.type.toUpperCase().padEnd(5);
+          const text = truncateText(msg.text, 2);
+          lines.push(`  ${prefix} ${text}`);
+        });
+      }
+      lines.push('');
     }
-    lines.push('');
   }
 
-  // Minimal suggestions
-  lines.push('Tip: bdg stop | bdg peek --last 50 | bdg peek --verbose');
+  // Suppress tips in follow mode to reduce screen clutter during live updates
+  if (!options.follow) {
+    lines.push(compactTipsMessage());
+  }
 
   return lines.join('\n');
 }
@@ -133,68 +157,71 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
 function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): string {
   const lines: string[] = [];
 
-  lines.push('Live Preview (Partial Data)');
+  lines.push(PREVIEW_HEADERS.LIVE_PREVIEW);
   lines.push('━'.repeat(50));
   lines.push(`Duration:         ${Math.floor(output.duration / 1000)}s`);
   lines.push(`Last updated:     ${output.timestamp}`);
+
+  // In follow mode, add current refresh time to show live updates
+  if (options.follow && options.viewedAt) {
+    lines.push(`Viewed at:        ${options.viewedAt.toISOString()}`);
+  }
+
   lines.push('');
 
   const lastCount = parseInt(options.last);
+  const hasNetworkData = output.data.network && output.data.network.length > 0;
+  const hasConsoleData = output.data.console && output.data.console.length > 0;
 
-  // Show network requests
+  // Show network requests only if not filtered out or has data
   if (!options.console && output.data.network) {
-    const requests = output.data.network.slice(-lastCount);
-    lines.push(`Network Requests (last ${requests.length} of ${output.data.network.length})`);
-    lines.push('━'.repeat(50));
-    if (requests.length === 0) {
-      lines.push('No network requests yet');
-    } else {
-      requests.forEach((req) => {
-        const statusColor = req.status && req.status >= 400 ? 'ERR' : 'OK';
-        const status = req.status ?? 'pending';
-        lines.push(`${statusColor} ${status} ${req.method} ${req.url}`);
-        if (req.mimeType) {
-          lines.push(`  Type: ${req.mimeType}`);
-        }
-        lines.push(
-          `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
-        );
-      });
+    // Hide empty section if console filter is active and there's no network data
+    if (options.console === undefined || hasNetworkData) {
+      const requests = output.data.network.slice(-lastCount);
+      lines.push(`Network Requests (last ${requests.length} of ${output.data.network.length})`);
+      lines.push('━'.repeat(50));
+      if (requests.length === 0) {
+        lines.push(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
+      } else {
+        requests.forEach((req) => {
+          const statusColor = req.status && req.status >= 400 ? 'ERR' : 'OK';
+          const status = req.status ?? 'pending';
+          lines.push(`${statusColor} ${status} ${req.method} ${req.url}`);
+          if (req.mimeType) {
+            lines.push(`  Type: ${req.mimeType}`);
+          }
+          lines.push(
+            `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
+          );
+        });
+      }
+      lines.push('');
     }
-    lines.push('');
   }
 
-  // Show console messages
+  // Show console messages only if not filtered out or has data
   if (!options.network && output.data.console) {
-    const messages = output.data.console.slice(-lastCount);
-    lines.push(`Console Messages (last ${messages.length} of ${output.data.console.length})`);
-    lines.push('━'.repeat(50));
-    if (messages.length === 0) {
-      lines.push('No console messages yet');
-    } else {
-      messages.forEach((msg) => {
-        const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
-        lines.push(`${icon} [${msg.type}] ${msg.text}`);
-      });
+    // Hide empty section if network filter is active and there's no console data
+    if (options.network === undefined || hasConsoleData) {
+      const messages = output.data.console.slice(-lastCount);
+      lines.push(`Console Messages (last ${messages.length} of ${output.data.console.length})`);
+      lines.push('━'.repeat(50));
+      if (messages.length === 0) {
+        lines.push(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);
+      } else {
+        messages.forEach((msg) => {
+          const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
+          lines.push(`${icon} [${msg.type}] ${msg.text}`);
+        });
+      }
+      lines.push('');
     }
-    lines.push('');
   }
 
-  lines.push('Commands:');
-  lines.push('  Stop session:    bdg stop');
-  lines.push('  Full preview:    bdg peek --last 50');
-  lines.push('  Watch live:      bdg peek --follow');
+  // Suppress tips in follow mode to reduce screen clutter during live updates
+  if (!options.follow) {
+    lines.push(verboseCommandsMessage());
+  }
 
   return lines.join('\n');
-}
-
-/**
- * Format "no preview data" message
- */
-export function formatNoPreviewDataMessage(): string {
-  return `Error: No active session found
-No preview data available
-
-Start a session with: bdg <url>
-Check session status: bdg status`;
 }

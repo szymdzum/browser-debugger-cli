@@ -372,18 +372,8 @@ bdg cleanup --aggressive        # Kill all Chrome processes
 
 ### Collection Options
 
-**Collect specific telemetry**:
-```bash
-# Additive flags (enable only specific collectors)
-bdg localhost:3000 --dom                    # DOM snapshot only
-bdg localhost:3000 --network                # Network requests only
-bdg localhost:3000 --console                # Console logs only
-bdg localhost:3000 --dom --console          # DOM and console only
-
-# Subtractive flags (disable specific collectors)
-bdg localhost:3000 --skip-console             # Network and DOM only
-bdg localhost:3000 --skip-dom --skip-network  # Console only
-```
+**Note:** Currently, all three collectors (DOM, network, console) are always enabled by default.
+DOM data is captured as a snapshot at session end, while network and console data stream continuously.
 
 **Basic Options**:
 ```bash

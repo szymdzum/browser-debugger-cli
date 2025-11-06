@@ -8,6 +8,8 @@ import {
   USER_DATA_DIR_OPTION_DESCRIPTION,
 } from '@/constants.js';
 import type { TelemetryType } from '@/types';
+import { startCommandHelpMessage } from '@/ui/messages/commands.js';
+import { invalidIntegerError } from '@/ui/messages/validation.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -60,7 +62,7 @@ function parseOptionalInt(value: string | undefined, fieldName: string): number 
   }
   const parsed = parseInt(value, 10);
   if (isNaN(parsed)) {
-    throw new Error(`Invalid ${fieldName}: "${value}" is not a valid integer`);
+    throw new Error(invalidIntegerError(fieldName, value));
   }
   return parsed;
 }
@@ -120,19 +122,7 @@ export function registerStartCommands(program: Command): void {
   ).action(async (url: string | undefined, options: CollectorOptions) => {
     // Show friendly help if no URL provided
     if (!url) {
-      console.error('');
-      console.error('Start a new session by providing a URL:');
-      console.error('');
-      console.error('  bdg example.com');
-      console.error('  bdg localhost:3000');
-      console.error('  bdg https://github.com');
-      console.error('');
-      console.error('Or manage existing session:');
-      console.error('');
-      console.error('  bdg status      Check session state');
-      console.error('  bdg stop        End session');
-      console.error('  bdg --help      Show all commands');
-      console.error('');
+      console.error(startCommandHelpMessage());
       process.exit(0);
     }
 

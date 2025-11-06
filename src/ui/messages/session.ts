@@ -73,3 +73,27 @@ export function landingPage(options: LandingPageOptions): string {
 export function sessionStopped(outputPath: string): string {
   return `Session stopped. Output saved to: ${outputPath}`;
 }
+
+// ============================================================================
+// Stop Command Messages
+// ============================================================================
+
+/**
+ * Standard messages for stop command operations.
+ */
+export const STOP_MESSAGES = {
+  SUCCESS: 'Session stopped successfully',
+  NO_SESSION: 'No active session found',
+  FAILED: 'Failed to stop session',
+  DAEMON_NOT_RUNNING: 'Daemon not running',
+} as const;
+
+/**
+ * Generate stop session failed error message.
+ *
+ * @param reason - Reason for failure
+ * @returns Formatted error message
+ */
+export function stopFailedError(reason: string): string {
+  return `Stop session failed: ${reason}`;
+}

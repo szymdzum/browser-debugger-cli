@@ -9,7 +9,7 @@ import { clearChromePid } from '@/session/chrome.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { killChromeProcess } from '@/session/process.js';
 import { chromeKilledMessage, warningMessage } from '@/ui/messages/commands.js';
-import { sessionStopped } from '@/ui/messages/session.js';
+import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -129,7 +129,7 @@ export function registerStopCommand(program: Command): void {
                 success: true,
                 data: {
                   stopped: { bdg: true, chrome: chromeStopped },
-                  message: response.message ?? 'Session stopped successfully',
+                  message: response.message ?? STOP_MESSAGES.SUCCESS,
                   ...(warnings.length > 0 && { warnings }),
                 },
               };
@@ -141,7 +141,7 @@ export function registerStopCommand(program: Command): void {
                   success: true,
                   data: {
                     stopped: { bdg: false, chrome: false },
-                    message: response.message ?? 'No active session found',
+                    message: response.message ?? STOP_MESSAGES.NO_SESSION,
                   },
                 };
               }
@@ -150,7 +150,7 @@ export function registerStopCommand(program: Command): void {
               const exitCode = getExitCodeForDaemonError(response.errorCode);
               return {
                 success: false,
-                error: response.message ?? 'Failed to stop session',
+                error: response.message ?? STOP_MESSAGES.FAILED,
                 exitCode,
               };
             }
@@ -162,7 +162,7 @@ export function registerStopCommand(program: Command): void {
             if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
               return {
                 success: false,
-                error: 'Daemon not running',
+                error: STOP_MESSAGES.DAEMON_NOT_RUNNING,
                 exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
                 errorContext: {
                   suggestion: 'Start a session first with: bdg <url>',
@@ -173,7 +173,7 @@ export function registerStopCommand(program: Command): void {
             // Other errors (timeout, parse failures, etc.)
             return {
               success: false,
-              error: `Stop session failed: ${errorMessage}`,
+              error: stopFailedError(errorMessage),
               exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
             };
           }
