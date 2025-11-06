@@ -8,6 +8,7 @@ import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { invalidLastArgumentError } from '@/ui/messages/commands.js';
 import { daemonNotRunningError, noPreviewDataError } from '@/ui/messages/errors.js';
+import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -117,7 +118,7 @@ export function registerPeekCommand(program: Command): void {
 
       if (options.follow) {
         // Follow mode: update every second
-        console.error('Following live preview (Ctrl+C to stop)...\n');
+        console.error(followingPreviewMessage());
         await showPreview();
         const followInterval = setInterval(() => {
           void showPreview();
@@ -126,7 +127,7 @@ export function registerPeekCommand(program: Command): void {
         // Handle Ctrl+C gracefully
         process.on('SIGINT', () => {
           clearInterval(followInterval);
-          console.error('\nStopped following preview');
+          console.error(stoppedFollowingPreviewMessage());
           process.exit(EXIT_CODES.SUCCESS);
         });
       } else {

@@ -49,3 +49,37 @@ export function verboseCommandsMessage(): string {
   lines.push('  Watch live:      bdg peek --follow');
   return lines.join('\n');
 }
+
+// ============================================================================
+// Follow Mode Messages
+// ============================================================================
+
+/**
+ * Generate message for following preview mode.
+ *
+ * @returns Formatted message indicating follow mode is active
+ *
+ * @example
+ * ```typescript
+ * console.error(followingPreviewMessage());
+ * // Output: "Following live preview (Ctrl+C to stop)...\n"
+ * ```
+ */
+export function followingPreviewMessage(): string {
+  return 'Following live preview (Ctrl+C to stop)...\n';
+}
+
+/**
+ * Generate message for stopped following preview.
+ *
+ * @returns Formatted message indicating follow mode stopped
+ *
+ * @example
+ * ```typescript
+ * console.error(stoppedFollowingPreviewMessage());
+ * // Output: "\nStopped following preview"
+ * ```
+ */
+export function stoppedFollowingPreviewMessage(): string {
+  return '\nStopped following preview';
+}

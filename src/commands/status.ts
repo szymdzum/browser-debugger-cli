@@ -9,6 +9,7 @@ import {
   formatNoSessionMessage,
 } from '@/ui/formatters/status.js';
 import { daemonNotRunningWithCleanup } from '@/ui/messages/commands.js';
+import { genericError, invalidResponseError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
@@ -42,14 +43,14 @@ export function registerStatusCommand(program: Command): void {
 
         // Handle IPC error response
         if (response.status === 'error') {
-          console.error(`Daemon error: ${response.error ?? 'Unknown error'}`);
+          console.error(genericError(`Daemon error: ${response.error ?? 'Unknown error'}`));
           process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
         }
 
         // Extract data from response
         const { data } = response;
         if (!data) {
-          console.error('Invalid response from daemon: missing data');
+          console.error(invalidResponseError('missing data'));
           process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
         }
 
@@ -109,7 +110,7 @@ export function registerStatusCommand(program: Command): void {
           process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 
-        console.error(`Error checking status: ${errorMessage}`);
+        console.error(genericError(`Error checking status: ${errorMessage}`));
         process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
       }
     });
