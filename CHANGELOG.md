@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2025-11-06
+
 ### Added
 - Debug logging mode with `--debug` flag for troubleshooting daemon/IPC issues
 - Live activity metrics to `bdg status` command (network requests, console messages, DOM queries)
@@ -28,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced target-not-found errors with available tabs list and diagnostic commands
 - Port validation now throws consistent `ChromeLaunchError` instead of generic `Error`
 - Stale session auto-cleanup when daemon PIDs are dead (no more manual cleanup required)
+- **"Last Request" timestamp in status command** (was showing "489560h ago" instead of "2s ago")
 
 ## [0.1.0] - 2025-11-05
 
