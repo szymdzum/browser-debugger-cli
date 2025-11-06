@@ -5,7 +5,7 @@
  * Includes: separators, sections, lists, key-value pairs, text utilities, and time formatting.
  */
 
-import { safeParseUrl } from '@/utils/url/safeParseUrl.js';
+import { safeParseUrl } from '@/utils/url.js';
 
 // ============================================================================
 // Visual Elements
