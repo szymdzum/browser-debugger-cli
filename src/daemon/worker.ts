@@ -711,15 +711,12 @@ async function main(): Promise<void> {
     // Write worker PID immediately
     writePid(process.pid);
 
-    // Normalize URL
-    const normalizedUrl = normalizeUrl(config.url);
-    console.error(`[worker] Normalized URL: ${normalizedUrl}`);
-
-    // Launch Chrome
+    // Launch Chrome WITHOUT a URL - we'll navigate after collectors are ready
+    // WHY: Collectors must be enabled BEFORE navigation to capture initial requests
     console.error(`[worker] Launching Chrome on port ${config.port}...`);
     const launchOptions = {
       port: config.port,
-      url: normalizedUrl,
+      // DO NOT pass url here - navigation happens after collectors are active
       ...(config.userDataDir !== undefined && { userDataDir: config.userDataDir }),
     };
     chrome = await launchChrome(launchOptions);
@@ -729,33 +726,31 @@ async function main(): Promise<void> {
     console.error(`[worker] Connecting to Chrome via CDP...`);
     const targets = await fetchCDPTargets(config.port);
 
-    // Find target by exact URL match, fallback to hostname match
-    let target = targets.find((t) => t.url === normalizedUrl);
-    if (!target) {
-      const urlObj = new URL(normalizedUrl);
-      target = targets.find((t) => t.url.includes(urlObj.hostname));
-    }
+    // Find the blank page target (Chrome auto-creates one on launch)
+    let target = targets.find((t) => t.type === 'page');
 
     if (!target) {
-      // Enhanced error message with available targets and diagnostics (Issue #5b)
+      // Enhanced error message with available targets and diagnostics
       const availableTargets = targets
-        .map((t, i) => `  ${i + 1}. ${t.title || '(no title)'}\n     URL: ${t.url}`)
+        .map(
+          (t, i) =>
+            `  ${i + 1}. ${t.title || '(no title)'}\n     URL: ${t.url}\n     Type: ${t.type}`
+        )
         .join('\n');
 
       throw new Error(
-        `Failed to load URL: ${normalizedUrl}\n\n` +
+        `No page target found after Chrome launch\n\n` +
           `Possible causes:\n` +
-          `  1. Server not running\n` +
-          `     → Check: curl ${normalizedUrl}\n` +
-          `  2. Port conflict (${config.port})\n` +
+          `  1. Port conflict (${config.port})\n` +
           `     → Check: lsof -ti:${config.port}\n` +
           `     → Kill: pkill -f "chrome.*${config.port}"\n` +
+          `  2. Chrome failed to create default target\n` +
           `  3. Stale session\n` +
-          `     → Fix: bdg cleanup && bdg ${normalizedUrl}\n\n` +
+          `     → Fix: bdg cleanup && bdg <url>\n\n` +
           `Available Chrome targets:\n${availableTargets || '  (none)'}\n\n` +
           `Try:\n` +
-          `  - Verify server is running: curl ${normalizedUrl}\n` +
-          `  - Clean up and retry: bdg cleanup && bdg ${normalizedUrl}`
+          `  - Clean up and retry: bdg cleanup && bdg <url>\n` +
+          `  - Use different port: bdg <url> --port ${config.port + 1}`
       );
     }
 
@@ -777,13 +772,32 @@ async function main(): Promise<void> {
     });
     console.error(`[worker] CDP connection established`);
 
+    // CRITICAL: Activate telemetry modules BEFORE navigating to target URL
+    // WHY: Network/Console events are only captured for requests that start
+    // AFTER Network.enable/Runtime.enable are called. If we navigate first,
+    // we miss all initial page load requests and console messages.
+    console.error(`[worker] Activating collectors before navigation...`);
+    await activateCollectors(config);
+    console.error(`[worker] Collectors active and ready to capture telemetry`);
+
+    // NOW navigate to the target URL
+    const normalizedUrl = normalizeUrl(config.url);
+    console.error(`[worker] Navigating to ${normalizedUrl}...`);
+    await cdp.send('Page.navigate', { url: normalizedUrl });
+
     // Wait for page to be ready using smart detection
     await waitForPageReady(cdp, {
       maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
     });
+    console.error(`[worker] Page ready`);
 
-    // Activate telemetry modules
-    await activateCollectors(config);
+    // Update targetInfo with actual loaded URL (may differ from normalized URL due to redirects)
+    const updatedTargets = await fetchCDPTargets(config.port);
+    const updatedTarget = updatedTargets.find((t) => t.id === target.id);
+    if (updatedTarget) {
+      targetInfo = updatedTarget;
+      console.error(`[worker] Target updated: ${updatedTarget.title} (${updatedTarget.url})`);
+    }
 
     // Write session metadata for status command
     writeSessionMetadata({
