@@ -41,8 +41,11 @@ interface CleanupOptions extends BaseCommandOptions {
 interface CleanupResult {
   /** What was cleaned up */
   cleaned: {
+    /** Whether session files (daemon.pid, etc.) were removed */
     session: boolean;
+    /** Whether session.json output file was removed */
     output: boolean;
+    /** Whether Chrome processes were killed */
     chrome: boolean;
   };
   /** Success message */
@@ -134,8 +137,9 @@ export function registerCleanupCommand(program: Command): void {
                 fs.unlinkSync(daemonPidPath);
                 cleanedSession = true;
                 didCleanup = true;
-              } catch {
-                // Ignore cleanup errors
+              } catch (removeError) {
+                const errorMessage = getErrorMessage(removeError);
+                warnings.push(`Could not remove daemon.pid: ${errorMessage}`);
               }
             }
           }
@@ -166,11 +170,13 @@ export function registerCleanupCommand(program: Command): void {
 
               // Force-kill Chrome processes on debugging port 9222
               // This ensures cleanup --force actually removes orphaned Chrome processes
+              // Platform-specific: macOS/Linux only (Windows not supported)
               try {
                 execSync('lsof -ti:9222 | xargs kill -9 2>/dev/null || true', { stdio: 'ignore' });
                 cleanedChrome = true;
-              } catch {
-                // Ignore errors - port may not be in use
+              } catch (error) {
+                const errorMessage = getErrorMessage(error);
+                warnings.push(`Could not kill Chrome processes: ${errorMessage}`);
               }
             } else {
               console.error(staleSessionFoundMessage(pid));

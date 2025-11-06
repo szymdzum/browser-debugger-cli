@@ -131,6 +131,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   // Check if port is already in use by orphaned Chrome process
   // This prevents confusing launch failures when cleanup didn't fully remove Chrome
+  // Platform-specific: macOS/Linux only (Windows uses different approach)
   try {
     const portInUse = execSync(`lsof -ti:${port} 2>/dev/null || true`, { encoding: 'utf8' }).trim();
     if (portInUse) {
@@ -167,41 +168,27 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
     const chromeProcessPid = launcher.pid ?? 0;
 
-    // Validate PID before printing success message (Issue #4 from IMPROVEMENTS_ANALYSIS.md)
-    if (!chromeProcessPid || chromeProcessPid <= 0) {
+    // Validate PID and process liveness before success
+    if (!chromeProcessPid || chromeProcessPid <= 0 || !isProcessAlive(chromeProcessPid)) {
       launcher.kill();
       launcher.destroyTmp();
 
-      // Get Chrome diagnostics to provide helpful context
+      // Get Chrome diagnostics once for error context
       const diagnosticLines = getFormattedDiagnostics();
 
+      const errorType =
+        !chromeProcessPid || chromeProcessPid <= 0
+          ? 'failed to launch'
+          : 'died immediately after launch';
+
       throw new ChromeLaunchError(
-        `Chrome failed to launch (PID: ${chromeProcessPid})\n\n` +
+        `Chrome ${errorType} (PID: ${chromeProcessPid})\n\n` +
           `Possible causes:\n` +
-          `  - Port ${port} already in use (check: lsof -ti:${port})\n` +
+          `  - Port ${port} conflict (check: lsof -ti:${port})\n` +
           `  - Chrome binary not found\n` +
-          `  - Insufficient permissions\n\n` +
+          `  - Insufficient permissions\n` +
+          `  - Chrome crashed on startup\n\n` +
           `${diagnosticLines.join('\n')}\n\n` +
-          `Try:\n` +
-          `  - bdg cleanup\n` +
-          `  - Use different port: bdg <url> --port ${port + 1}`
-      );
-    }
-
-    // Verify Chrome process is actually running (Issue #4 fix)
-    if (!isProcessAlive(chromeProcessPid)) {
-      launcher.kill();
-      launcher.destroyTmp();
-
-      throw new ChromeLaunchError(
-        `Chrome process died immediately after launch (PID: ${chromeProcessPid})\n\n` +
-          `This usually indicates:\n` +
-          `  - Port ${port} conflict (another process is using this port)\n` +
-          `  - Chrome crashed on startup\n` +
-          `  - Insufficient system resources\n\n` +
-          `Diagnostics:\n` +
-          `  → Check port usage: lsof -ti:${port}\n` +
-          `  → Check Chrome logs for crash details\n\n` +
           `Try:\n` +
           `  - bdg cleanup\n` +
           `  - Kill conflicting process: kill $(lsof -ti:${port})\n` +

@@ -3,6 +3,40 @@
  */
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/**
+ * Valid URL protocols for Chrome navigation.
+ *
+ * Excludes legacy protocols (vbscript) and limits to protocols
+ * actually useful for modern web debugging scenarios.
+ */
+const VALID_PROTOCOLS = [
+  'http:',
+  'https:',
+  'file:',
+  'about:',
+  'chrome:',
+  'data:',
+  'blob:',
+] as const;
+
+/**
+ * Protocol prefixes that should be preserved as-is during normalization.
+ */
+const PRESERVED_PROTOCOL_PREFIXES = [
+  'http://',
+  'https://',
+  'file://',
+  'about:',
+  'chrome:',
+  'data:',
+  'javascript:',
+  'blob:',
+] as const;
+
+// ============================================================================
 // URL Normalization
 // ============================================================================
 
@@ -23,20 +57,14 @@
  * normalizeUrl('about:blank')         // → 'about:blank' (unchanged)
  * normalizeUrl('chrome://settings')   // → 'chrome://settings' (unchanged)
  * ```
+ *
+ * @remarks
+ * javascript: protocol is preserved for compatibility with browser automation,
+ * though it's generally not recommended for direct navigation.
  */
 export function normalizeUrl(url: string): string {
   // Check for protocols that should not be modified
-  if (
-    url.startsWith('http://') ||
-    url.startsWith('https://') ||
-    url.startsWith('file://') ||
-    url.startsWith('about:') ||
-    url.startsWith('chrome:') ||
-    url.startsWith('data:') ||
-    url.startsWith('javascript:') ||
-    url.startsWith('vbscript:') ||
-    url.startsWith('blob:')
-  ) {
+  if (PRESERVED_PROTOCOL_PREFIXES.some((prefix) => url.startsWith(prefix))) {
     return url;
   }
   return `http://${url}`;
@@ -62,6 +90,11 @@ export function normalizeUrl(url: string): string {
  *   // → "URLs must include a valid protocol (http:// or https://)"
  * }
  * ```
+ *
+ * @remarks
+ * Validation is strict to prevent common errors like spaces or invalid protocols.
+ * All URLs are normalized before validation to support convenient formats like
+ * 'localhost:3000' or 'example.com'.
  */
 export function validateUrl(url: string): {
   valid: boolean;
@@ -77,8 +110,7 @@ export function validateUrl(url: string): {
     };
   }
 
-  // Check for invalid characters before normalization
-  // URLs with spaces or invalid characters in protocol/hostname should be rejected
+  // Check for spaces (common error)
   if (url.includes(' ')) {
     return {
       valid: false,
@@ -87,31 +119,12 @@ export function validateUrl(url: string): {
     };
   }
 
-  // Check for invalid characters in protocol-like patterns (e.g., ht!tp://)
-  const protocolPattern = /^[a-z0-9!@#$%^&*()]+:\/\//i;
-  if (protocolPattern.test(url)) {
-    // Has something that looks like a protocol - validate it
-    const match = url.match(/^([a-z0-9!@#$%^&*()]+):\/\//i);
-    if (match && match[1]) {
-      const protocol = match[1].toLowerCase();
-      const validProtocols = ['http', 'https', 'file', 'about', 'chrome', 'data', 'javascript', 'vbscript', 'blob'];
-      if (!validProtocols.includes(protocol)) {
-        return {
-          valid: false,
-          error: `Invalid protocol: '${protocol}://'`,
-          suggestion: 'Use http://, https://, or another valid protocol',
-        };
-      }
-    }
-  }
-
   const normalized = normalizeUrl(url);
 
   try {
     const parsed = new URL(normalized);
 
-    const validProtocols = ['http:', 'https:', 'file:', 'about:', 'chrome:', 'data:'];
-    if (!validProtocols.includes(parsed.protocol)) {
+    if (!VALID_PROTOCOLS.includes(parsed.protocol as (typeof VALID_PROTOCOLS)[number])) {
       return {
         valid: false,
         error: `Invalid protocol: '${parsed.protocol}'`,
