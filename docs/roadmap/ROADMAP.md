@@ -219,7 +219,7 @@ Make Chrome DevTools Protocol accessible from the terminal to two audiences with
 
 **Tasks**:
 - Write `docs/AGENT_WORKFLOWS.md`: connect, select, evaluate, listen to events, stream outputs, retry patterns
-- Update `docs/CDP_METHOD_EXPOSURE.md` with wrapper conventions and examples
+- Update `../CDP_METHOD_EXPOSURE.md` with wrapper conventions and examples
 - Add 10 runnable snippets in bash/node/python using `bdg`
 
 **Acceptance**:
@@ -701,9 +701,9 @@ bdg console.errors --group-by type
 
 ## References
 
-- [CDP Method Exposure Design](./CDP_METHOD_EXPOSURE.md)
-- [Agent-Friendly CLI Principles](./AGENT_FRIENDLY_TOOLS.md)
-- [CLI Reference](./CLI_REFERENCE.md)
+- [CDP Method Exposure Design](../CDP_METHOD_EXPOSURE.md)
+- [Agent-Friendly CLI Principles](../AGENT_FRIENDLY_TOOLS.md)
+- [CLI Reference](../CLI_REFERENCE.md)
 - [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
 
 ---
