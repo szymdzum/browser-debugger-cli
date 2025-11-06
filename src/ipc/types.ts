@@ -5,7 +5,7 @@
  * a handshake between the CLI client and the daemon over JSONL protocol.
  */
 
-import type { CollectorType } from '@/types.js';
+import type { TelemetryType } from '@/types.js';
 
 /**
  * Base envelope for all IPC messages.
@@ -46,6 +46,35 @@ export interface StatusRequest extends IPCMessage {
 }
 
 /**
+ * Session activity tracking data.
+ *
+ * Captures real-time activity metrics from the worker process including
+ * network requests, console messages, and DOM query activity.
+ */
+export interface SessionActivity {
+  /** Total network requests captured since session start */
+  networkRequestsCaptured: number;
+  /** Total console messages captured since session start */
+  consoleMessagesCaptured: number;
+  /** Timestamp of last network request (milliseconds since epoch) */
+  lastNetworkRequestAt?: number;
+  /** Timestamp of last console message (milliseconds since epoch) */
+  lastConsoleMessageAt?: number;
+}
+
+/**
+ * Page state information from the browser.
+ *
+ * Provides current page metadata and readiness indicators.
+ */
+export interface PageState {
+  /** Current page URL */
+  url: string;
+  /** Current page title */
+  title: string;
+}
+
+/**
  * Status response payload containing daemon and session metadata.
  */
 export interface StatusResponseData {
@@ -60,8 +89,12 @@ export interface StatusResponseData {
     port: number;
     targetId?: string;
     webSocketDebuggerUrl?: string;
-    activeCollectors?: CollectorType[];
+    activeTelemetry?: TelemetryType[];
   };
+  /** Live activity metrics from worker (only present if session is active) */
+  activity?: SessionActivity;
+  /** Current page state from browser (only present if session is active) */
+  pageState?: PageState;
 }
 
 /**
@@ -143,7 +176,7 @@ export interface StartSessionRequest extends IPCMessage {
   url: string; // Target URL to navigate to
   port?: number; // Chrome debugging port (default: 9222)
   timeout?: number; // Auto-stop timeout in seconds
-  collectors?: CollectorType[]; // Collectors to activate
+  telemetry?: TelemetryType[]; // Telemetry modules to activate
   includeAll?: boolean; // Include all data (disable filtering)
   userDataDir?: string; // Custom Chrome profile directory
   maxBodySize?: number; // Max response body size in KB

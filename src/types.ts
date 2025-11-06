@@ -61,7 +61,7 @@ export interface BdgOutput {
   partial?: boolean; // Flag to indicate this is partial/incomplete data (live preview)
 }
 
-export type CollectorType = 'dom' | 'network' | 'console';
+export type TelemetryType = 'dom' | 'network' | 'console';
 
 // CDP Supporting Types
 export type CDPResourceType =

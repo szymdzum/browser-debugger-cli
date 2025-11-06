@@ -6,6 +6,8 @@
 
 import { spawnSync } from 'child_process';
 
+import { taskkillStderr, taskkillFailedError } from '@/ui/messages/internal.js';
+
 /**
  * Check if a process with the given PID is alive.
  *
@@ -75,14 +77,14 @@ export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM
     // - 0: Success
     // - 128: Process not found
     // - 1: Access denied or other error
-    if (result.status !== 0) {
+    if (result.status !== 0 && result.status !== null) {
       const errorMsg = (result.stderr ?? result.stdout).trim() || 'Unknown error';
-      throw new Error(`taskkill failed (exit code ${result.status}): ${errorMsg}`);
+      throw new Error(taskkillFailedError(result.status, errorMsg));
     }
 
     // Log stderr for debugging (taskkill sometimes writes to stderr even on success)
     if (result.stderr?.trim()) {
-      console.error(`taskkill stderr: ${result.stderr.trim()}`);
+      console.error(taskkillStderr(result.stderr.trim()));
     }
   } else {
     // Unix/macOS: Kill process group (negative PID)

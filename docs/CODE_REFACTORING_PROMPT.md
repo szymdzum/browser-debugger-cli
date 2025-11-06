@@ -7,6 +7,60 @@
 
 Apply the 80/20 principle: Focus on high-impact, low-risk improvements that maximize readability gains while preserving functionality.
 
+## Project-Specific Utilities (Check First!)
+
+**BEFORE refactoring, always check for existing utilities that can replace inline code:**
+
+### Logger Utility (`src/utils/logger.ts`)
+
+**Instead of inline `console.error()` with prefixes:**
+```typescript
+// ❌ BAD - Inline logging with manual prefix
+console.error('[daemon] Starting server...');
+console.error('[daemon] Server started successfully');
+
+// ✅ GOOD - Use centralized logger
+import { createLogger } from '@/utils/logger.js';
+const log = createLogger('daemon');
+log('Starting server...');
+log('Server started successfully');
+```
+
+**Available log contexts:**
+- `'bdg'` - Main CLI
+- `'launcher'` - Daemon/Chrome launcher
+- `'daemon'` - Daemon process
+- `'worker'` - Worker process
+- `'client'` - IPC client
+- `'cleanup'` - Session cleanup
+- `'session'` - Session management
+- `'chrome'` - Chrome operations
+- `'cdp'` - CDP protocol
+- `'ipc'` - IPC communication
+
+### Error Helpers (`src/utils/errors.ts`)
+
+**Instead of inline error message extraction:**
+```typescript
+// ❌ BAD - Inline error handling
+const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+console.error(`Failed: ${errorMessage}`);
+
+// ✅ GOOD - Use getErrorMessage() helper
+import { getErrorMessage } from '@/utils/errors.js';
+console.error(`Failed: ${getErrorMessage(error)}`);
+```
+
+**Custom error classes available:**
+- `CDPConnectionError` - CDP connection failures (exit code 101)
+- `ChromeLaunchError` - Chrome launch failures (exit code 100)
+- `CDPTimeoutError` - CDP command timeouts (exit code 102)
+
+**When to use custom errors:**
+- Throwing structured errors with exit codes
+- Categorizing errors (system/user/external)
+- Chaining errors with `.cause`
+
 ## Refactoring Techniques
 
 ### 1. Constants Extraction Pattern
@@ -189,16 +243,19 @@ function loadChromePrefs(options: LaunchOptions) {
 
 ## Application Process
 
-1. **Scan for magic numbers and string literals** → Extract as named constants at top of file
-2. **Extract all string literals** → Create organized constant groups (errors, messages, templates)
-3. **Identify obvious "what" comments** → Remove and make code self-explanatory  
-4. **Review function names** → Ensure they describe purpose/constraints
-5. **Check variable names** → Add context, units, or specificity
-6. **Enhance JSDoc** → Replace "what" with "why" explanations
-7. **Verify no breaking changes** → Test that functionality is preserved
+1. **Check for existing utilities** → Replace inline patterns with logger and error helpers
+2. **Scan for magic numbers and string literals** → Extract as named constants at top of file
+3. **Extract all string literals** → Create organized constant groups (errors, messages, templates)
+4. **Identify obvious "what" comments** → Remove and make code self-explanatory
+5. **Review function names** → Ensure they describe purpose/constraints
+6. **Check variable names** → Add context, units, or specificity
+7. **Enhance JSDoc** → Replace "what" with "why" explanations
+8. **Verify no breaking changes** → Test that functionality is preserved
 
 ## Success Criteria
 
+- [ ] Logger utility used instead of inline `console.error('[context] ...')`
+- [ ] `getErrorMessage()` helper used instead of inline `error instanceof Error` checks
 - [ ] Magic numbers replaced with named constants
 - [ ] String literals extracted to organized constants at top of file
 - [ ] Error messages and templates use consistent formatting
@@ -212,6 +269,9 @@ function loadChromePrefs(options: LaunchOptions) {
 
 ## Common Pitfalls to Avoid
 
+- Don't reimplement existing utilities (check `src/utils/` first!)
+- Don't use inline `console.error('[context] ...')` when logger exists
+- Don't write `error instanceof Error ? error.message : '...'` when `getErrorMessage()` exists
 - Don't remove comments that explain complex business logic
 - Don't rename exported functions without checking all call sites
 - Don't extract constants that are only used once

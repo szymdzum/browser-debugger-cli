@@ -5,7 +5,7 @@
  * This process:
  * 1. Spawns Chrome with remote debugging enabled
  * 2. Connects to Chrome via CDP WebSocket
- * 3. Activates requested collectors (network, console, DOM)
+ * 3. Activates requested telemetry modules (network, console, DOM)
  * 4. Sends readiness signal to parent daemon
  * 5. Handles graceful shutdown on SIGTERM/SIGKILL
  *
@@ -15,25 +15,27 @@
  * - Worker handles SIGTERM for graceful shutdown
  */
 
-import { writeQueryCache, getNodeIdByIndex } from '@/cli/commands/dom/helpers/domCache.js';
-import {
-  queryBySelector,
-  getNodeInfo,
-  createNodePreview,
-} from '@/cli/commands/dom/helpers/domQuery.js';
-import { startConsoleCollection } from '@/collectors/console.js';
-import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
-import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
+import { queryBySelector, getNodeInfo, createNodePreview } from '@/connection/domOperations.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
-import type { COMMANDS, CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/commands.js';
+import type {
+  COMMANDS,
+  CommandName,
+  WorkerRequestUnion,
+  WorkerResponse,
+  WorkerStatusData,
+} from '@/ipc/commands.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writeSessionOutput } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
+import { writeQueryCache, getNodeIdByIndex } from '@/session/queryCache.js';
+import { startConsoleCollection } from '@/telemetry/console.js';
+import { prepareDOMCollection, collectDOM } from '@/telemetry/dom.js';
+import { startNetworkCollection } from '@/telemetry/network.js';
 import type {
-  CollectorType,
+  TelemetryType,
   NetworkRequest,
   ConsoleMessage,
   DOMData,
@@ -42,6 +44,30 @@ import type {
   CDPTarget,
   BdgOutput,
 } from '@/types';
+import {
+  workerActivatingCollector,
+  workerCollectorsActivated,
+  workerUnknownCommand,
+  workerHandlingCommand,
+  workerCommandResponse,
+  workerIPCParseError,
+  workerStdinClosed,
+  workerStdinListenerSetup,
+  workerReadySignalSent,
+  workerShutdownStarted,
+  workerCollectingDOM,
+  workerDOMCollected,
+  workerDOMCollectionFailed,
+  workerWritingOutput,
+  workerRunningCleanup,
+  workerClosingCDP,
+  workerShutdownComplete,
+  workerExitingConnectionLoss,
+  workerReceivedSIGTERM,
+  workerReceivedSIGINT,
+  workerTimeoutReached,
+  workerSessionActive,
+} from '@/ui/messages/debug.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { waitForPageReady } from '@/utils/pageReadiness.js';
@@ -52,7 +78,7 @@ interface WorkerConfig {
   url: string;
   port: number;
   timeout?: number | undefined;
-  collectors?: CollectorType[] | undefined;
+  telemetry?: TelemetryType[] | undefined;
   includeAll?: boolean | undefined;
   userDataDir?: string | undefined;
   maxBodySize?: number | undefined;
@@ -75,7 +101,7 @@ let chrome: LaunchedChrome | null = null;
 let cdp: CDPConnection | null = null;
 let cleanupFunctions: CleanupFunction[] = [];
 
-// Collector data storage
+// Telemetry data storage
 const networkRequests: NetworkRequest[] = [];
 const consoleMessages: ConsoleMessage[] = [];
 let domData: DOMData | null = null;
@@ -83,7 +109,7 @@ let domData: DOMData | null = null;
 // Session metadata
 let sessionStartTime: number = Date.now();
 let targetInfo: CDPTarget | null = null;
-let activeCollectors: CollectorType[] = [];
+let activeTelemetry: TelemetryType[] = [];
 
 /**
  * Parse worker configuration from environment variables or argv.
@@ -107,7 +133,7 @@ function parseWorkerConfig(): WorkerConfig {
       url: config.url,
       port: config.port ?? 9222,
       timeout: config.timeout ?? undefined,
-      collectors: config.collectors ?? ['network', 'console', 'dom'],
+      telemetry: config.telemetry ?? ['network', 'console', 'dom'],
       includeAll: config.includeAll ?? false,
       userDataDir: config.userDataDir ?? undefined,
       maxBodySize: config.maxBodySize ?? undefined,
@@ -118,17 +144,17 @@ function parseWorkerConfig(): WorkerConfig {
 }
 
 /**
- * Activate collectors based on configuration.
+ * Activate telemetry modules based on configuration.
  */
 async function activateCollectors(config: WorkerConfig): Promise<void> {
   if (!cdp) {
     throw new Error('CDP connection not initialized');
   }
 
-  activeCollectors = config.collectors ?? ['network', 'console', 'dom'];
+  activeTelemetry = config.telemetry ?? ['network', 'console', 'dom'];
 
-  for (const collector of activeCollectors) {
-    console.error(`[worker] Activating ${collector} collector`);
+  for (const collector of activeTelemetry) {
+    console.error(workerActivatingCollector(collector));
 
     switch (collector) {
       case 'network':
@@ -162,7 +188,7 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
     }
   }
 
-  console.error(`[worker] All collectors activated: ${activeCollectors.join(', ')}`);
+  console.error(workerCollectorsActivated(activeTelemetry));
 }
 
 /**
@@ -398,7 +424,7 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
         url: targetInfo?.url ?? '',
         title: targetInfo?.title ?? '',
       },
-      activeCollectors,
+      activeTelemetry,
       network: recentNetwork,
       console: recentConsole,
     });
@@ -432,6 +458,43 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
   },
 
   /**
+   * Worker Status Handler - Return live activity metrics and session state
+   *
+   * Provides comprehensive status information including activity counts,
+   * last activity timestamps, current page state, and active telemetry modules.
+   * Used by the status command to show detailed session information.
+   */
+  worker_status: async (_cdp, _params) => {
+    const duration = Date.now() - sessionStartTime;
+
+    // Get last activity timestamps
+    const lastNetworkRequest = networkRequests[networkRequests.length - 1];
+    const lastConsoleMessage = consoleMessages[consoleMessages.length - 1];
+
+    const result: WorkerStatusData = {
+      startTime: sessionStartTime,
+      duration,
+      target: {
+        url: targetInfo?.url ?? '',
+        title: targetInfo?.title ?? '',
+      },
+      activeTelemetry,
+      activity: {
+        networkRequestsCaptured: networkRequests.length,
+        consoleMessagesCaptured: consoleMessages.length,
+        ...(lastNetworkRequest?.timestamp !== undefined && {
+          lastNetworkRequestAt: lastNetworkRequest.timestamp,
+        }),
+        ...(lastConsoleMessage?.timestamp !== undefined && {
+          lastConsoleMessageAt: lastConsoleMessage.timestamp,
+        }),
+      },
+    };
+
+    return Promise.resolve(result);
+  },
+
+  /**
    * CDP Call Handler - Execute arbitrary CDP method
    */
   cdp_call: async (cdp, params) => {
@@ -449,11 +512,11 @@ async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
   const handler = commandHandlers[commandName];
 
   if (!handler) {
-    console.error(`[worker] Unknown command: ${commandName}`);
+    console.error(workerUnknownCommand(commandName));
     return;
   }
 
-  console.error(`[worker] Handling ${commandName}_request`);
+  console.error(workerHandlingCommand(commandName));
 
   try {
     if (!cdp) throw new Error('CDP connection not initialized');
@@ -473,7 +536,7 @@ async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
     };
 
     console.log(JSON.stringify(response));
-    console.error(`[worker] Sent ${commandName}_response (success)`);
+    console.error(workerCommandResponse(commandName, true));
   } catch (error) {
     const response: WorkerResponse<typeof commandName> = {
       type: `${commandName}_response` as const,
@@ -483,7 +546,7 @@ async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
     };
 
     console.log(JSON.stringify(response));
-    console.error(`[worker] Sent ${commandName}_response (error: ${response.error})`);
+    console.error(workerCommandResponse(commandName, false, response.error));
   }
 }
 
@@ -506,17 +569,17 @@ function setupStdinListener(): void {
           const message = JSON.parse(line) as WorkerRequestUnion;
           void handleWorkerIPC(message);
         } catch (error) {
-          console.error(`[worker] Failed to parse IPC message: ${getErrorMessage(error)}`);
+          console.error(workerIPCParseError(getErrorMessage(error)));
         }
       }
     }
   });
 
   process.stdin.on('end', () => {
-    console.error('[worker] Stdin closed, daemon disconnected');
+    console.error(workerStdinClosed());
   });
 
-  console.error('[worker] Stdin listener set up for IPC commands');
+  console.error(workerStdinListenerSetup());
 }
 
 /**
@@ -541,7 +604,7 @@ function sendReadySignal(config: WorkerConfig): void {
 
   // Send JSON line to stdout for parent to parse
   console.log(JSON.stringify(message));
-  console.error(`[worker] Ready signal sent (PID ${process.pid}, Chrome PID ${chrome.pid})`);
+  console.error(workerReadySignalSent(process.pid, chrome.pid));
 }
 
 /**
@@ -579,27 +642,27 @@ function buildOutput(partial: boolean = false): BdgOutput {
  * Graceful shutdown: collect final DOM, write session.json, cleanup.
  */
 async function gracefulShutdown(): Promise<void> {
-  console.error('[worker] Starting graceful shutdown...');
+  console.error(workerShutdownStarted());
 
   try {
-    // Collect final DOM snapshot if DOM collector is active
-    if (activeCollectors.includes('dom') && cdp) {
-      console.error('[worker] Collecting final DOM snapshot...');
+    // Collect final DOM snapshot if DOM telemetry is active
+    if (activeTelemetry.includes('dom') && cdp) {
+      console.error(workerCollectingDOM());
       try {
         domData = await collectDOM(cdp);
-        console.error('[worker] DOM snapshot collected');
+        console.error(workerDOMCollected());
       } catch (error) {
-        console.error(`[worker] Failed to collect DOM: ${getErrorMessage(error)}`);
+        console.error(workerDOMCollectionFailed(getErrorMessage(error)));
       }
     }
 
     // Write final output
-    console.error('[worker] Writing final output...');
+    console.error(workerWritingOutput());
     const finalOutput = buildOutput(false);
     writeSessionOutput(finalOutput);
 
     // Run cleanup functions
-    console.error('[worker] Running collector cleanup functions...');
+    console.error(workerRunningCleanup());
     for (const cleanup of cleanupFunctions) {
       try {
         cleanup();
@@ -610,7 +673,7 @@ async function gracefulShutdown(): Promise<void> {
 
     // Close CDP connection
     if (cdp) {
-      console.error('[worker] Closing CDP connection...');
+      console.error(workerClosingCDP());
       cdp.close();
       cdp = null;
     }
@@ -622,7 +685,7 @@ async function gracefulShutdown(): Promise<void> {
       chrome = null;
     }
 
-    console.error('[worker] Graceful shutdown complete');
+    console.error(workerShutdownComplete());
   } catch (error) {
     console.error(`[worker] Error during shutdown: ${getErrorMessage(error)}`);
     throw error;
@@ -671,7 +734,26 @@ async function main(): Promise<void> {
     }
 
     if (!target) {
-      throw new Error(`Target not found for URL: ${normalizedUrl}`);
+      // Enhanced error message with available targets and diagnostics (Issue #5b)
+      const availableTargets = targets
+        .map((t, i) => `  ${i + 1}. ${t.title || '(no title)'}\n     URL: ${t.url}`)
+        .join('\n');
+
+      throw new Error(
+        `Failed to load URL: ${normalizedUrl}\n\n` +
+          `Possible causes:\n` +
+          `  1. Server not running\n` +
+          `     → Check: curl ${normalizedUrl}\n` +
+          `  2. Port conflict (${config.port})\n` +
+          `     → Check: lsof -ti:${config.port}\n` +
+          `     → Kill: pkill -f "chrome.*${config.port}"\n` +
+          `  3. Stale session\n` +
+          `     → Fix: bdg cleanup && bdg ${normalizedUrl}\n\n` +
+          `Available Chrome targets:\n${availableTargets || '  (none)'}\n\n` +
+          `Try:\n` +
+          `  - Verify server is running: curl ${normalizedUrl}\n` +
+          `  - Clean up and retry: bdg cleanup && bdg ${normalizedUrl}`
+      );
     }
 
     targetInfo = target;
@@ -686,7 +768,7 @@ async function main(): Promise<void> {
       // WHY: Prevents zombie worker processes when Chrome crashes/closes
       onDisconnect: (code, reason) => {
         console.error(`[worker] Chrome connection lost (code: ${code}, reason: ${reason})`);
-        console.error('[worker] Exiting due to Chrome connection loss');
+        console.error(workerExitingConnectionLoss());
         process.exit(0);
       },
     });
@@ -697,7 +779,7 @@ async function main(): Promise<void> {
       maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
     });
 
-    // Activate collectors
+    // Activate telemetry modules
     await activateCollectors(config);
 
     // Write session metadata for status command
@@ -708,7 +790,7 @@ async function main(): Promise<void> {
       port: config.port,
       targetId: target.id,
       webSocketDebuggerUrl: target.webSocketDebuggerUrl,
-      activeCollectors,
+      activeTelemetry,
     });
     console.error(`[worker] Session metadata written`);
 
@@ -720,12 +802,12 @@ async function main(): Promise<void> {
 
     // Set up shutdown handlers
     process.on('SIGTERM', () => {
-      console.error('[worker] Received SIGTERM');
+      console.error(workerReceivedSIGTERM());
       void gracefulShutdown().then(() => process.exit(0));
     });
 
     process.on('SIGINT', () => {
-      console.error('[worker] Received SIGINT');
+      console.error(workerReceivedSIGINT());
       void gracefulShutdown().then(() => process.exit(0));
     });
 
@@ -733,13 +815,13 @@ async function main(): Promise<void> {
     if (config.timeout) {
       console.error(`[worker] Auto-stop after ${config.timeout}s`);
       setTimeout(() => {
-        console.error('[worker] Timeout reached, initiating shutdown');
+        console.error(workerTimeoutReached());
         void gracefulShutdown().then(() => process.exit(0));
       }, config.timeout * 1000);
     }
 
     // Keep process alive
-    console.error('[worker] Session active, waiting for signal or timeout...');
+    console.error(workerSessionActive());
   } catch (error) {
     console.error(`[worker] Fatal error: ${getErrorMessage(error)}`);
 

@@ -11,7 +11,8 @@
       "Bash(cat:*)",
       "WebFetch(domain:chromedevtools.github.io)",
       "WebSearch",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(sort:*)"
     ],
     "deny": [],
     "ask": []

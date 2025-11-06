@@ -16,9 +16,15 @@ import type { CDPConnection } from '@/connection/cdp.js';
 export interface PageReadinessOptions {
   /**
    * Maximum wait time before proceeding anyway
-   * Default: 30000ms (30 seconds)
+   * Default: 2000ms (2 seconds)
    */
   maxWaitMs?: number;
+  /**
+   * Wait for network and DOM stability after load event
+   * Default: false (load event is sufficient for most pages)
+   * Enable for SPAs with heavy post-load hydration
+   */
+  waitForStability?: boolean;
 }
 
 /**
@@ -48,21 +54,22 @@ export async function waitForPageReady(
   cdp: CDPConnection,
   options: PageReadinessOptions = {}
 ): Promise<void> {
-  const maxWaitMs = options.maxWaitMs ?? 30000;
+  const maxWaitMs = options.maxWaitMs ?? 2000;
   const deadline = Date.now() + maxWaitMs;
 
   try {
-    // Phase 1: Wait for load event
+    // Phase 1: Wait for load event (sufficient for most pages)
     await waitForLoadEvent(cdp, deadline);
     console.error('[readiness] ✓ Load event');
 
-    // Phase 2: Wait for network to stabilize (adaptive)
-    const networkIdleMs = await waitForNetworkStable(cdp, deadline);
-    console.error(`[readiness] ✓ Network stable (${networkIdleMs}ms idle)`);
+    // Optional: Wait for network/DOM stability (only for SPAs with heavy hydration)
+    if (options.waitForStability) {
+      const networkIdleMs = await waitForNetworkStable(cdp, deadline);
+      console.error(`[readiness] ✓ Network stable (${networkIdleMs}ms idle)`);
 
-    // Phase 3: Wait for DOM to stabilize (adaptive)
-    const domIdleMs = await waitForDOMStable(cdp, deadline);
-    console.error(`[readiness] ✓ DOM stable (${domIdleMs}ms idle)`);
+      const domIdleMs = await waitForDOMStable(cdp, deadline);
+      console.error(`[readiness] ✓ DOM stable (${domIdleMs}ms idle)`);
+    }
 
     console.error('[readiness] ✓ Page ready');
   } catch (error) {
@@ -190,15 +197,8 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
   const loadingFailedId = cdp.on('Network.loadingFailed', finishHandler);
 
   try {
-    // Learning phase: gather samples
-    const learningMs = Math.min(2000, deadline - Date.now());
-    await delay(learningMs);
-
-    // Calculate adaptive threshold
-    const avgInterval =
-      intervals.length > 0 ? intervals.reduce((a, b) => a + b, 0) / intervals.length : 500;
-
-    const idleThreshold = avgInterval < 100 ? 200 : avgInterval < 500 ? 500 : 1000;
+    // Use fixed threshold for immediate detection
+    const idleThreshold = 200; // 200ms idle = network stable
 
     // Detection phase: wait for stability
     while (Date.now() < deadline) {
@@ -269,20 +269,8 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
   });
 
   try {
-    // Learning phase: measure mutation rate
-    const learningMs = Math.min(1000, deadline - Date.now());
-    await delay(learningMs);
-
-    const result = await cdp.send('Runtime.evaluate', {
-      expression: 'window.__bdg_mutations',
-      returnByValue: true,
-    });
-
-    const mutationCount = (result as { result?: { value?: number } }).result?.value ?? 0;
-    const mutationRate = mutationCount / (learningMs / 1000);
-
-    // Calculate adaptive threshold
-    const stableThreshold = mutationRate > 50 ? 1000 : mutationRate > 10 ? 500 : 300;
+    // Use fixed threshold for immediate detection
+    const stableThreshold = 300; // 300ms no mutations = DOM stable
 
     // Detection phase: wait for stability
     while (Date.now() < deadline) {

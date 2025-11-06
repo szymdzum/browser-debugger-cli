@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 
-import type { CollectorType } from '@/types';
+import type { TelemetryType } from '@/types';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { createLogger } from '@/utils/logger.js';
@@ -26,7 +26,7 @@ export interface SessionMetadata {
   port: number;
   targetId?: string | undefined;
   webSocketDebuggerUrl?: string | undefined;
-  activeCollectors?: CollectorType[] | undefined;
+  activeTelemetry?: TelemetryType[] | undefined;
 }
 
 /**

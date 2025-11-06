@@ -59,6 +59,8 @@ interface PendingDomRequest {
   socket: Socket;
   sessionId: string;
   timeout: NodeJS.Timeout;
+  /** Base status data (only for status requests) */
+  statusData?: StatusResponseData;
 }
 
 /**
@@ -249,11 +251,51 @@ export class IPCServer {
             port: metadata.port,
             targetId: metadata.targetId,
             webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
-            activeCollectors: metadata.activeCollectors,
+            activeTelemetry: metadata.activeTelemetry,
           }) as Required<NonNullable<StatusResponseData['sessionMetadata']>>;
+        }
+
+        // Query worker for live activity data if worker is available
+        if (this.workerProcess?.stdin) {
+          const requestId = `worker_status_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+          // Set timeout for worker response
+          const timeout = setTimeout(() => {
+            this.pendingDomRequests.delete(requestId);
+            // Send response without activity data if worker times out
+            const response: StatusResponse = {
+              type: 'status_response',
+              sessionId: request.sessionId,
+              status: 'ok',
+              data,
+            };
+            socket.write(JSON.stringify(response) + '\n');
+            console.error('[daemon] Status response sent (worker timeout)');
+          }, 5000);
+
+          // Track pending request with special handling for status
+          this.pendingDomRequests.set(requestId, {
+            socket,
+            sessionId: request.sessionId,
+            timeout,
+            statusData: data, // Store base status data
+          });
+
+          // Forward to worker
+          const workerRequest: WorkerRequest<'worker_status'> = {
+            type: 'worker_status_request',
+            requestId,
+          };
+
+          this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
+          console.error(
+            `[daemon] Forwarded worker_status_request to worker (requestId: ${requestId})`
+          );
+          return; // Will send response when worker responds
         }
       }
 
+      // Send response immediately if no worker
       const response: StatusResponse = {
         type: 'status_response',
         sessionId: request.sessionId,
@@ -386,7 +428,7 @@ export class IPCServer {
           filterDefined({
             port: request.port,
             timeout: request.timeout,
-            collectors: request.collectors,
+            telemetry: request.telemetry,
             includeAll: request.includeAll,
             userDataDir: request.userDataDir,
             maxBodySize: request.maxBodySize,
@@ -610,8 +652,8 @@ export class IPCServer {
       clearTimeout(pending.timeout);
       this.pendingDomRequests.delete(message.requestId);
 
-      // Forward response to client
-      this.forwardCommandResponse(pending.socket, pending.sessionId, message);
+      // Forward response to client (pass pending data for special handling)
+      this.forwardCommandResponse(pending.socket, pending.sessionId, message, pending);
     }
   }
 
@@ -621,11 +663,73 @@ export class IPCServer {
   private forwardCommandResponse(
     socket: Socket,
     sessionId: string,
-    workerResponse: WorkerResponseUnion
+    workerResponse: WorkerResponseUnion,
+    pendingRequest?: PendingDomRequest
   ): void {
     const commandName = getCommandName(workerResponse.type);
     if (!commandName) {
       console.error(`[daemon] Invalid worker response type: ${workerResponse.type}`);
+      return;
+    }
+
+    // Special handling for worker_status - merge with base status data
+    if (commandName === 'worker_status') {
+      const {
+        requestId: _requestId,
+        success,
+        data,
+        error,
+      } = workerResponse as WorkerResponse<'worker_status'>;
+
+      // Get base status data from pending request
+      const baseStatusData = pendingRequest?.statusData;
+
+      if (success && data && baseStatusData) {
+        // Merge worker activity data with base status data
+        const enrichedData: StatusResponseData = {
+          ...baseStatusData,
+          activity: data.activity,
+          pageState: data.target,
+        };
+
+        const statusResponse: StatusResponse = {
+          type: 'status_response',
+          sessionId,
+          status: 'ok',
+          data: enrichedData,
+        };
+
+        socket.write(JSON.stringify(statusResponse) + '\n');
+        console.error(
+          '[daemon] Forwarded worker_status_response to client (enriched with activity data)'
+        );
+      } else {
+        // Fallback to base status data if worker query failed
+        if (baseStatusData) {
+          const statusResponse: StatusResponse = {
+            type: 'status_response',
+            sessionId,
+            status: error ? 'error' : 'ok',
+            data: baseStatusData,
+            ...(error && { error }),
+          };
+
+          socket.write(JSON.stringify(statusResponse) + '\n');
+          console.error(
+            '[daemon] Forwarded status_response to client (worker query failed, using base data only)'
+          );
+        } else {
+          const statusResponse: StatusResponse = {
+            type: 'status_response',
+            sessionId,
+            status: 'error',
+            error: error ?? 'Failed to retrieve status data',
+          };
+
+          socket.write(JSON.stringify(statusResponse) + '\n');
+          console.error('[daemon] Forwarded status_response error (no base data available)');
+        }
+      }
       return;
     }
 

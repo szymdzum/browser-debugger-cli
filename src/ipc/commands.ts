@@ -87,7 +87,7 @@ export interface WorkerPeekData {
     url: string;
     title: string;
   };
-  activeCollectors: string[];
+  activeTelemetry: string[];
   network: Array<{
     requestId: string;
     timestamp: number;
@@ -127,6 +127,38 @@ export interface CdpCallData {
   result: unknown; // CDP method result (varies by method)
 }
 
+/**
+ * Worker Status Command - Get live activity metrics from worker
+ *
+ * Returns real-time session activity including network request counts,
+ * console message counts, last activity timestamps, and current page state.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface WorkerStatusCommand {
+  // No parameters needed - just returns current state
+}
+
+export interface WorkerStatusData {
+  /** Session start timestamp (milliseconds since epoch) */
+  startTime: number;
+  /** Session duration in milliseconds */
+  duration: number;
+  /** Current page information */
+  target: {
+    url: string;
+    title: string;
+  };
+  /** Active telemetry modules (network, console, dom) */
+  activeTelemetry: string[];
+  /** Real-time activity metrics */
+  activity: {
+    networkRequestsCaptured: number;
+    consoleMessagesCaptured: number;
+    lastNetworkRequestAt?: number;
+    lastConsoleMessageAt?: number;
+  };
+}
+
 // =============================================================================
 // Command Registry - Single Source of Truth
 // =============================================================================
@@ -155,6 +187,10 @@ export const COMMANDS = {
   worker_details: {
     requestSchema: {} as WorkerDetailsCommand,
     responseSchema: {} as WorkerDetailsData,
+  },
+  worker_status: {
+    requestSchema: {} as WorkerStatusCommand,
+    responseSchema: {} as WorkerStatusData,
   },
   cdp_call: {
     requestSchema: {} as CdpCallCommand,

@@ -272,7 +272,7 @@ bdg uses a **daemon + IPC architecture** for persistent CDP connections and effi
   - Shows available tabs on failure for helpful error messages
 - **launcher.ts**: Auto-launches Chrome with CDP if not already running
 
-### Data Collectors (`src/collectors/`)
+### Telemetry Modules (`src/telemetry/`)
 Each collector is independent and enables its CDP domain:
 - **dom.ts**: Captures DOM snapshot on shutdown via `DOM.getDocument` + `DOM.getOuterHTML`
 - **network.ts**: Tracks HTTP requests/responses
@@ -301,7 +301,7 @@ Each collector is independent and enables its CDP domain:
   - `normalizeUrl()` - Adds protocol if missing, validates URLs
   - `truncateUrl()` - Shortens URLs for compact output (e.g., `api.example.com/users`)
   - `truncateText()` - Limits text to N lines for stack traces
-- **validation.ts**: Input validation for collector types
+- **validation.ts**: Input validation for telemetry types
 - **filters.ts**: Default filtering for tracking/analytics and dev server noise
   - `DEFAULT_EXCLUDED_DOMAINS` - 13 tracking/analytics domains
   - `DEFAULT_EXCLUDED_CONSOLE_PATTERNS` - 4 dev server patterns
@@ -313,7 +313,7 @@ Each collector is independent and enables its CDP domain:
 - `CDPNetworkRequestParams`, `CDPNetworkResponseParams`, etc.: Typed CDP event parameters
 - `NetworkRequest`, `ConsoleMessage`, `DOMData`: Collected data types
 - `BdgOutput`: Final JSON output structure
-- `CollectorType`: 'dom' | 'network' | 'console'
+- `TelemetryType`: 'dom' | 'network' | 'console'
 - `CleanupFunction`: Type for collector cleanup handlers
 
 ## Common Commands
@@ -372,18 +372,8 @@ bdg cleanup --aggressive        # Kill all Chrome processes
 
 ### Collection Options
 
-**Collect specific data**:
-```bash
-# Additive flags (enable only specific collectors)
-bdg localhost:3000 --dom                    # DOM snapshot only
-bdg localhost:3000 --network                # Network requests only
-bdg localhost:3000 --console                # Console logs only
-bdg localhost:3000 --dom --console          # DOM and console only
-
-# Subtractive flags (disable specific collectors)
-bdg localhost:3000 --skip-console             # Network and DOM only
-bdg localhost:3000 --skip-dom --skip-network  # Console only
-```
+**Note:** Currently, all three collectors (DOM, network, console) are always enabled by default.
+DOM data is captured as a snapshot at session end, while network and console data stream continuously.
 
 **Basic Options**:
 ```bash
