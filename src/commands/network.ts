@@ -54,10 +54,8 @@ export function registerNetworkCommands(program: Command): void {
           };
         },
         options,
-        // Human-readable formatter (returns formatted string)
-        (cookies: Cookie[]) => {
-          console.log(formatCookies(cookies));
-        }
+        // Human-readable formatter
+        formatCookies
       );
     });
 }

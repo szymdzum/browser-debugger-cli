@@ -2,7 +2,7 @@
  * Cookie formatter for human-readable output.
  */
 
-import { pluralize } from '@/ui/formatting.js';
+import { OutputFormatter, pluralize } from '@/ui/formatting.js';
 
 /**
  * CDP Cookie type
@@ -37,33 +37,34 @@ export function formatCookies(cookies: Cookie[]): string {
     return 'No cookies found';
   }
 
-  const lines: string[] = [];
-  lines.push(`${pluralize(cookies.length, 'Cookie', 'Cookies')}:\n`);
+  const fmt = new OutputFormatter();
+  fmt.text(`${pluralize(cookies.length, 'Cookie', 'Cookies')}:`).blank();
 
   cookies.forEach((cookie, index) => {
-    const cookieLines: string[] = [];
-    cookieLines.push(`[${index + 1}] ${cookie.name}`);
-    cookieLines.push(`  Value: ${cookie.value}`);
-    cookieLines.push(`  Domain: ${cookie.domain}`);
-    cookieLines.push(`  Path: ${cookie.path}`);
+    fmt.text(`[${index + 1}] ${cookie.name}`);
 
-    if (cookie.expires && cookie.expires !== -1) {
-      const expiresDate = new Date(cookie.expires * 1000);
-      cookieLines.push(`  Expires: ${expiresDate.toISOString()}`);
-    } else {
-      cookieLines.push(`  Expires: Session`);
-    }
+    const expires =
+      cookie.expires && cookie.expires !== -1
+        ? new Date(cookie.expires * 1000).toISOString()
+        : 'Session';
 
-    cookieLines.push(`  HttpOnly: ${cookie.httpOnly ? 'Yes' : 'No'}`);
-    cookieLines.push(`  Secure: ${cookie.secure ? 'Yes' : 'No'}`);
-    cookieLines.push(`  SameSite: ${cookie.sameSite ?? 'None'}`);
-
-    lines.push(cookieLines.join('\n'));
+    fmt.list(
+      [
+        `Value: ${cookie.value}`,
+        `Domain: ${cookie.domain}`,
+        `Path: ${cookie.path}`,
+        `Expires: ${expires}`,
+        `HttpOnly: ${cookie.httpOnly ? 'Yes' : 'No'}`,
+        `Secure: ${cookie.secure ? 'Yes' : 'No'}`,
+        `SameSite: ${cookie.sameSite ?? 'None'}`,
+      ],
+      2
+    );
 
     if (index < cookies.length - 1) {
-      lines.push('');
+      fmt.blank();
     }
   });
 
-  return lines.join('\n');
+  return fmt.build();
 }

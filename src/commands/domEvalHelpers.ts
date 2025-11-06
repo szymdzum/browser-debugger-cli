@@ -2,9 +2,8 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
+import { CommandError } from '@/ui/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-import { handleCommandErrorWithContext } from './domErrorHandler.js';
 
 /**
  * CDP target information
@@ -30,16 +29,14 @@ interface RuntimeEvaluateResult {
 /**
  * Validate that an active session is running
  *
- * @param json - Whether to output JSON format
  * @returns PID of running session
- * @throws never Exits process if no active session found
+ * @throws Error When no active session is found
  */
-export function validateActiveSession(json: boolean): number {
+export function validateActiveSession(): number {
   const pid = readPid();
   if (!pid || !isProcessAlive(pid)) {
-    handleCommandErrorWithContext(
+    throw new CommandError(
       'No active session running',
-      json,
       { suggestion: 'Start a session with: bdg <url>' },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
@@ -50,23 +47,20 @@ export function validateActiveSession(json: boolean): number {
 /**
  * Get session metadata with validation
  *
- * @param json - Whether to output JSON format
  * @returns Session metadata including targetId and webSocketDebuggerUrl
- * @throws never Exits process if metadata is invalid or missing required fields
+ * @throws Error When metadata is invalid or missing required fields
  */
-export function getValidatedSessionMetadata(json: boolean): SessionMetadata {
+export function getValidatedSessionMetadata(): SessionMetadata {
   const metadata = readSessionMetadata();
 
   if (!metadata?.targetId || !metadata.webSocketDebuggerUrl) {
-    handleCommandErrorWithContext(
+    throw new CommandError(
       'No target information in session metadata',
-      json,
       { note: 'Session may have been started with an older version' },
       EXIT_CODES.SESSION_FILE_ERROR
     );
   }
 
-  // TypeScript doesn't know handleCommandErrorWithContext never returns
   return metadata;
 }
 
@@ -75,15 +69,9 @@ export function getValidatedSessionMetadata(json: boolean): SessionMetadata {
  *
  * @param metadata - Session metadata containing targetId
  * @param port - CDP port number
- * @param json - Whether to output JSON format
- * @throws Error When CDP response is invalid
- * @throws never Exits process if target not found
+ * @throws Error When CDP response is invalid or target not found
  */
-export async function verifyTargetExists(
-  metadata: SessionMetadata,
-  port: number,
-  json: boolean
-): Promise<void> {
+export async function verifyTargetExists(metadata: SessionMetadata, port: number): Promise<void> {
   const response = await fetch(`http://127.0.0.1:${port}/json/list`);
   const targetsData: unknown = await response.json();
 
@@ -94,9 +82,8 @@ export async function verifyTargetExists(
   const target = (targetsData as CDPTarget[]).find((t) => t.id === metadata.targetId);
 
   if (!target) {
-    handleCommandErrorWithContext(
+    throw new CommandError(
       'Session target not found (tab may have been closed)',
-      json,
       { suggestion: 'Start a new session with: bdg <url>' },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );

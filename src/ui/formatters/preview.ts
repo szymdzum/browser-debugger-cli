@@ -1,5 +1,5 @@
 import type { BdgOutput } from '@/types';
-import { truncateUrl, truncateText } from '@/ui/formatting.js';
+import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
   PREVIEW_EMPTY_STATES,
   PREVIEW_HEADERS,
@@ -86,19 +86,19 @@ function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions):
  * Token-efficient output optimized for AI agents
  */
 function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): string {
-  const lines: string[] = [];
+  const fmt = new OutputFormatter();
 
   // Header with data collection timestamp
-  lines.push(
+  fmt.text(
     `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`
   );
 
   // In follow mode, add current refresh time to show live updates
   if (options.follow && options.viewedAt) {
-    lines.push(`Viewed at: ${options.viewedAt.toISOString()}`);
+    fmt.text(`Viewed at: ${options.viewedAt.toISOString()}`);
   }
 
-  lines.push('');
+  fmt.blank();
 
   const lastCount = parseInt(options.last);
   const hasNetworkData = output.data.network && output.data.network.length > 0;
@@ -109,17 +109,18 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     // Hide empty section if console filter is active and there's no network data
     if (options.console === undefined || hasNetworkData) {
       const requests = output.data.network.slice(-lastCount);
-      lines.push(`NETWORK (${requests.length}/${output.data.network.length}):`);
+      fmt.text(`NETWORK (${requests.length}/${output.data.network.length}):`);
       if (requests.length === 0) {
-        lines.push(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+        fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       } else {
-        requests.forEach((req) => {
+        const networkLines = requests.map((req) => {
           const status = req.status ?? 'pending';
           const url = truncateUrl(req.url, 50);
-          lines.push(`  ${status} ${req.method} ${url} [${req.requestId}]`);
+          return `${status} ${req.method} ${url} [${req.requestId}]`;
         });
+        fmt.list(networkLines, 2);
       }
-      lines.push('');
+      fmt.blank();
     }
   }
 
@@ -128,26 +129,27 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     // Hide empty section if network filter is active and there's no console data
     if (options.network === undefined || hasConsoleData) {
       const messages = output.data.console.slice(-lastCount);
-      lines.push(`CONSOLE (${messages.length}/${output.data.console.length}):`);
+      fmt.text(`CONSOLE (${messages.length}/${output.data.console.length}):`);
       if (messages.length === 0) {
-        lines.push(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+        fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       } else {
-        messages.forEach((msg) => {
+        const consoleLines = messages.map((msg) => {
           const prefix = msg.type.toUpperCase().padEnd(5);
           const text = truncateText(msg.text, 2);
-          lines.push(`  ${prefix} ${text}`);
+          return `${prefix} ${text}`;
         });
+        fmt.list(consoleLines, 2);
       }
-      lines.push('');
+      fmt.blank();
     }
   }
 
   // Suppress tips in follow mode to reduce screen clutter during live updates
   if (!options.follow) {
-    lines.push(compactTipsMessage());
+    fmt.text(compactTipsMessage());
   }
 
-  return lines.join('\n');
+  return fmt.build();
 }
 
 /**
@@ -155,19 +157,23 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
  * Original human-friendly output with Unicode formatting
  */
 function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): string {
-  const lines: string[] = [];
+  const fmt = new OutputFormatter();
 
-  lines.push(PREVIEW_HEADERS.LIVE_PREVIEW);
-  lines.push('━'.repeat(50));
-  lines.push(`Duration:         ${Math.floor(output.duration / 1000)}s`);
-  lines.push(`Last updated:     ${output.timestamp}`);
+  fmt.text(PREVIEW_HEADERS.LIVE_PREVIEW).separator('━', 50);
+  fmt.keyValueList(
+    [
+      ['Duration', `${Math.floor(output.duration / 1000)}s`],
+      ['Last updated', output.timestamp],
+    ],
+    18
+  );
 
   // In follow mode, add current refresh time to show live updates
   if (options.follow && options.viewedAt) {
-    lines.push(`Viewed at:        ${options.viewedAt.toISOString()}`);
+    fmt.keyValue('Viewed at', options.viewedAt.toISOString(), 18);
   }
 
-  lines.push('');
+  fmt.blank();
 
   const lastCount = parseInt(options.last);
   const hasNetworkData = output.data.network && output.data.network.length > 0;
@@ -178,24 +184,25 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     // Hide empty section if console filter is active and there's no network data
     if (options.console === undefined || hasNetworkData) {
       const requests = output.data.network.slice(-lastCount);
-      lines.push(`Network Requests (last ${requests.length} of ${output.data.network.length})`);
-      lines.push('━'.repeat(50));
+      fmt
+        .text(`Network Requests (last ${requests.length} of ${output.data.network.length})`)
+        .separator('━', 50);
       if (requests.length === 0) {
-        lines.push(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
+        fmt.text(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
       } else {
         requests.forEach((req) => {
           const statusColor = req.status && req.status >= 400 ? 'ERR' : 'OK';
           const status = req.status ?? 'pending';
-          lines.push(`${statusColor} ${status} ${req.method} ${req.url}`);
+          fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
           if (req.mimeType) {
-            lines.push(`  Type: ${req.mimeType}`);
+            fmt.text(`  Type: ${req.mimeType}`);
           }
-          lines.push(
+          fmt.text(
             `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
           );
         });
       }
-      lines.push('');
+      fmt.blank();
     }
   }
 
@@ -204,24 +211,25 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     // Hide empty section if network filter is active and there's no console data
     if (options.network === undefined || hasConsoleData) {
       const messages = output.data.console.slice(-lastCount);
-      lines.push(`Console Messages (last ${messages.length} of ${output.data.console.length})`);
-      lines.push('━'.repeat(50));
+      fmt
+        .text(`Console Messages (last ${messages.length} of ${output.data.console.length})`)
+        .separator('━', 50);
       if (messages.length === 0) {
-        lines.push(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);
+        fmt.text(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);
       } else {
         messages.forEach((msg) => {
           const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
-          lines.push(`${icon} [${msg.type}] ${msg.text}`);
+          fmt.text(`${icon} [${msg.type}] ${msg.text}`);
         });
       }
-      lines.push('');
+      fmt.blank();
     }
   }
 
   // Suppress tips in follow mode to reduce screen clutter during live updates
   if (!options.follow) {
-    lines.push(verboseCommandsMessage());
+    fmt.text(verboseCommandsMessage());
   }
 
-  return lines.join('\n');
+  return fmt.build();
 }

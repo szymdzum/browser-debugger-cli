@@ -5,6 +5,7 @@
  */
 
 export * from './cookies.js';
+export * from './dom.js';
 export * from './status.js';
 export * from './preview.js';
 export * from './details.js';

@@ -55,23 +55,26 @@ interface CleanupResult {
  *
  * @param data - Cleanup result data
  */
-function formatCleanup(data: CleanupResult): void {
+function formatCleanup(data: CleanupResult): string {
+  const lines: string[] = [];
   const { cleaned } = data;
 
   if (cleaned.session) {
-    console.error(sessionFilesCleanedMessage());
+    lines.push(sessionFilesCleanedMessage());
   }
   if (cleaned.output) {
-    console.error(sessionOutputRemovedMessage());
+    lines.push(sessionOutputRemovedMessage());
   }
   if (data.warnings && data.warnings.length > 0) {
     data.warnings.forEach((warning) => {
-      console.error(warningMessage(warning));
+      lines.push(warningMessage(warning));
     });
   }
 
-  console.error('');
-  console.error(data.message);
+  lines.push('');
+  lines.push(data.message);
+
+  return lines.join('\n');
 }
 
 /**

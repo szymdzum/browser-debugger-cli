@@ -52,18 +52,21 @@ function formatConsoleMessage(log: ConsoleMessage, index: number): string {
  *
  * @param data - Object containing logs array and optional filter
  */
-function formatConsoleLogs(data: { logs: ConsoleMessage[]; filter?: string }): void {
+function formatConsoleLogs(data: { logs: ConsoleMessage[]; filter?: string }): string {
   const { logs, filter } = data;
 
   if (logs.length === 0) {
-    console.log(noConsoleMessagesMessage(filter));
-  } else {
-    console.log(consoleMessagesHeader(logs.length, filter));
-    console.log();
-    logs.forEach((log, idx) => {
-      console.log(formatConsoleMessage(log, idx));
-    });
+    return noConsoleMessagesMessage(filter);
   }
+
+  const lines: string[] = [];
+  lines.push(consoleMessagesHeader(logs.length, filter));
+  lines.push('');
+  logs.forEach((log, idx) => {
+    lines.push(formatConsoleMessage(log, idx));
+  });
+
+  return lines.join('\n');
 }
 
 /**
