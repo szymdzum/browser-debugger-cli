@@ -39,34 +39,38 @@ bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue
 
 ### ✅ 2. Golden Example Script
 
-**File**: `examples/agents/golden-cdp-workflow.sh`
+**File**: `tests/agent-benchmark/scenarios/00-golden-cdp-workflow.sh`
 
 **Features**:
+- Integrated with test suite (metrics, assertions, recovery helpers)
 - 7 comprehensive sections demonstrating end-to-end CDP workflow
-- Color-coded output with success/error indicators
-- Graceful cleanup with trap handlers
-- Optional jq integration for pretty JSON processing
+- Proper success criteria with validations
+- Automatic metric recording for CI benchmarking
 - Real-world examples: title extraction, element queries, link scraping
-- Session statistics summary
+- Results JSON output for analysis
 
 **Test Run**:
 ```bash
-./examples/agents/golden-cdp-workflow.sh https://example.com
+./tests/agent-benchmark/scenarios/00-golden-cdp-workflow.sh
 ```
 
 **Output Highlights**:
 - ✅ Session started successfully
-- ✅ Extracted document title: "Example Domain"
-- ✅ Found h1 element and extracted text
-- ✅ Extracted 2 paragraphs
-- ✅ Found 1 link with URL and text
-- ✅ Session completed: 2695ms duration, 2 network requests
+- ✅ Extracted document title: "Example Domain" (validated)
+- ✅ Found h1 element and extracted text (validated)
+- ✅ Extracted 2 paragraphs (validated count >= 1)
+- ✅ Retrieved cookies and frame metadata (validated)
+- ✅ Extracted 1 link (validated count >= 1)
+- ✅ Session completed: 2653ms, 2 requests, 0 console messages (validated)
+- ✅ Results written to: `tests/agent-benchmark/results/golden-cdp-workflow-result.json`
 
 **Agent-Friendly Features**:
 - Pure JSON responses (no parsing needed)
 - Semantic exit codes (0 = success)
 - Composable with Unix tools (jq, grep, awk)
 - No intermediate file writes (IPC-based)
+- Assertions catch failures immediately
+- Metrics tracked for performance analysis
 
 ### ✅ 3. Output Schema Audit
 
@@ -283,12 +287,12 @@ Follow same pattern as DOM Wait, using `Page.captureScreenshot` CDP method.
 ## Files Changed
 
 ### New Files
-- ✅ `examples/agents/golden-cdp-workflow.sh` - Golden example script
+- ✅ `tests/agent-benchmark/scenarios/00-golden-cdp-workflow.sh` - Golden CDP workflow test
 - ✅ `docs/roadmap/SCHEMA_MIGRATION_PLAN.md` - Schema evolution plan
 - ✅ `docs/roadmap/WEEK_0_COMPLETION_REPORT.md` - This report
 
 ### Modified Files
-- None (Week 0 is validation and planning only)
+- ✅ `docs/roadmap/WEEK_0_COMPLETION_REPORT.md` - Updated with test suite integration details
 
 ## Recommendations
 
