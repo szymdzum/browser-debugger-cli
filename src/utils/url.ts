@@ -77,6 +77,34 @@ export function validateUrl(url: string): {
     };
   }
 
+  // Check for invalid characters before normalization
+  // URLs with spaces or invalid characters in protocol/hostname should be rejected
+  if (url.includes(' ')) {
+    return {
+      valid: false,
+      error: `Invalid URL format: '${url}' (contains spaces)`,
+      suggestion: 'URLs cannot contain spaces',
+    };
+  }
+
+  // Check for invalid characters in protocol-like patterns (e.g., ht!tp://)
+  const protocolPattern = /^[a-z0-9!@#$%^&*()]+:\/\//i;
+  if (protocolPattern.test(url)) {
+    // Has something that looks like a protocol - validate it
+    const match = url.match(/^([a-z0-9!@#$%^&*()]+):\/\//i);
+    if (match && match[1]) {
+      const protocol = match[1].toLowerCase();
+      const validProtocols = ['http', 'https', 'file', 'about', 'chrome', 'data', 'javascript', 'vbscript', 'blob'];
+      if (!validProtocols.includes(protocol)) {
+        return {
+          valid: false,
+          error: `Invalid protocol: '${protocol}://'`,
+          suggestion: 'Use http://, https://, or another valid protocol',
+        };
+      }
+    }
+  }
+
   const normalized = normalizeUrl(url);
 
   try {
