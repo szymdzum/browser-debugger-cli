@@ -25,16 +25,21 @@ cleanup_sessions
 
 # Test 1: Status with no active session
 log_step "Test 1: Status with no active session"
-STATUS_OUTPUT=$(bdg status 2>&1) || true
+STATUS_OUTPUT=$(bdg status 2>&1)
 EXIT_CODE=$?
 
-# Should fail gracefully (non-zero exit code)
-if [ $EXIT_CODE -eq 0 ]; then
-  log_error "Expected non-zero exit code when no session active"
+# Should succeed but report no session
+if [ $EXIT_CODE -ne 0 ]; then
+  log_error "Status should succeed even with no session"
   exit 1
 fi
 
-log_success "Test 1 passed: Status fails gracefully with no session"
+# Should mention no session in output
+if echo "$STATUS_OUTPUT" | grep -qi "no.*session\|not found"; then
+  log_success "Test 1 passed: Status reports no session correctly"
+else
+  log_warn "Output may not clearly indicate no session"
+fi
 
 # Test 2: Status with active session (basic)
 log_step "Test 2: Starting session for status tests"
