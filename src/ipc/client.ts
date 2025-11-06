@@ -278,6 +278,30 @@ export async function getDOM(options: {
 }
 
 /**
+ * Capture page screenshot via the daemon's worker.
+ *
+ * @param path - Output file path (absolute path)
+ * @param options - Screenshot options (format, quality, fullPage)
+ * @returns Screenshot response with metadata (path, dimensions, size)
+ * @throws Error if connection fails, daemon is not running, or request times out
+ */
+export async function captureScreenshot(
+  path: string,
+  options?: {
+    format?: 'png' | 'jpeg';
+    quality?: number;
+    fullPage?: boolean;
+  }
+): Promise<ClientResponse<'dom_screenshot'>> {
+  return sendCommand('dom_screenshot', {
+    path,
+    ...(options?.format && { format: options.format }),
+    ...(options?.quality !== undefined && { quality: options.quality }),
+    ...(options?.fullPage !== undefined && { fullPage: options.fullPage }),
+  });
+}
+
+/**
  * Get details for a specific network request or console message via the daemon's worker.
  *
  * @param type - Type of item: 'network' or 'console'
