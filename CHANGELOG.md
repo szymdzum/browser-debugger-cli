@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-11-06
+
+### Added
+- Comprehensive test suite with agent benchmarks, error scenarios, edge cases, and integration tests
+- Test runner script (`tests/run-all-tests.sh`) with granular suite selection (`--benchmarks`, `--integration`, `--errors`, `--edge-cases`)
+- Agent benchmark framework for real-world web automation scenarios (Hacker News, GitHub, Wikipedia, Reddit)
+- Error scenario tests for port conflicts, invalid URLs, session recovery, daemon crashes, Chrome launch failures
+- Edge case tests for URL validation and handling
+- Integration tests for CDP, console, DOM, network, cleanup, details, peek, and status commands
+- Comprehensive test documentation in `tests/README.md`
+- Testing philosophy documentation in `docs/quality/`
+- Project roadmap documentation across multiple phases
+
+### Changed
+- **Code quality improvements** following KISS, DRY, and YAGNI principles
+- Enhanced TSDoc comments with detailed descriptions and `@remarks` sections
+- Reorganized testing documentation to `docs/quality/` directory
+- Improved error handling with proper warning messages instead of silent failures
+- Optimized Chrome diagnostics calls (reduced from 3× to 1× in error paths)
+- Combined duplicate PID validation logic in launcher (reduced 30 lines to 26)
+
+### Fixed
+- **Collector activation timing** - activate before navigation to capture initial page load events
+- **Stale daemon cleanup** - properly handle and report errors when removing stale daemon.pid files
+- **Port conflict detection** - detect orphaned Chrome processes before launch with better error messages
+- **URL validation** - stricter validation with centralized protocol constants and simplified logic
+- **Chrome process validation** - combined PID and liveness checks for more efficient error detection
+
+### Removed
+- Dead code and unused catch parameters across codebase
+- Obsolete `vbscript:` protocol support (YAGNI compliance)
+- Redundant protocol validation regex checks (~25 lines)
+- Duplicate protocol lists in URL utilities
+
+### Performance
+- Reduced code duplication by ~68 lines through DRY refactoring
+- Optimized Chrome diagnostics generation in error paths
+- Simplified URL validation logic for faster processing
+
 ## [0.2.0] - 2025-11-06
 
 ### Added
