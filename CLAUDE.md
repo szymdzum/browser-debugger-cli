@@ -165,42 +165,101 @@ npm run build             # TypeScript compiler also reports TSDoc issues
 
 **Reference**: [TSDoc Specification](https://tsdoc.org/) for full syntax rules.
 
-## Available Helpers
+## UI & Error Handling Patterns
 
-Use these helpers in CLI commands. All follow KISS, DRY, YAGNI principles with TSDoc comments.
-
-### Command Helpers (`src/cli/handlers/`)
-- **CommandRunner** - Wraps handlers with error handling, JSON/human output, exit codes
-  - `runCommand<TOptions, TResult>(handler, options, formatter?)`
-  - Eliminates try-catch, process.exit, daemon error detection
-- **commonOptions** - Shared Commander.js Option definitions
-  - `jsonOption` - Standard `--json` flag
-  - `lastOption` - Pagination `--last <n>` with validation (0-10000)
-  - `filterOption(types)` - Factory for `--filter <type>` with .choices()
-
-### IPC Helpers (`src/ipc/`)
-- **responseValidator** - Type-safe IPC/CDP response validation
-  - `validateIPCResponse<T>(response)` - Throws on error, narrows type
-- **client** - IPC client functions for daemon communication
-  - All CLI commands use IPC to communicate with the background worker
-
-### Usage Example
+### OutputFormatter (`src/ui/formatting.ts`)
+Fluent builder for formatted console output:
 ```typescript
-import { runCommand } from '@/cli/handlers/CommandRunner.js';
-import { jsonOption } from '@/cli/handlers/commonOptions.js';
-import { validateIPCResponse } from '@/ipc/responseValidator.js';
-
-.addOption(jsonOption)
-.action(async (options) => {
-  await runCommand(async (opts) => {
-    const response = await callIPCCommand('method', params);
-    validateIPCResponse(response);
-    return { success: true, data: response.data };
-  }, options, humanFormatter);
-});
+const fmt = new OutputFormatter();
+return fmt
+  .text('Session Status')
+  .separator('━', 50)
+  .keyValueList([['Status', 'ACTIVE'], ['Port', '9222']], 18)
+  .blank()
+  .section('Commands:', ['Stop: bdg stop', 'Peek: bdg peek'])
+  .build();
 ```
 
-See `src/cli/commands/network.ts` for complete example.
+**Methods:**
+- `.text(content)` - Add line
+- `.blank()` - Add empty line
+- `.separator(char, width)` - Add horizontal rule
+- `.keyValue(key, value, keyWidth?)` - Aligned key-value pair
+- `.keyValueList(pairs, keyWidth?)` - Multiple aligned pairs
+- `.list(items, indent)` - Indented list
+- `.section(title, items, indent)` - Title with indented list
+- `.indent(content, spaces)` - Indent multiline text
+- `.build()` - Return formatted string
+
+### CommandError (`src/ui/errors.ts`)
+Structured error with metadata and exit codes:
+```typescript
+throw new CommandError(
+  'Session not found',
+  { suggestion: 'Start a session with: bdg <url>' },
+  EXIT_CODES.RESOURCE_NOT_FOUND
+);
+```
+
+CommandRunner automatically handles:
+- **JSON mode**: Includes metadata as separate fields
+- **Human mode**: Shows error + metadata as help text
+- **Exit codes**: Uses error's exitCode instead of generic 1
+
+### CommandRunner (`src/commands/shared/CommandRunner.ts`)
+Wraps command logic with error handling:
+```typescript
+await runCommand(
+  async () => {
+    const response = await getStatus();
+    if (response.status === 'error') {
+      return { success: false, error: response.error };
+    }
+    return { success: true, data: response.data };
+  },
+  options,
+  formatStatus  // Human-readable formatter
+);
+```
+
+**Features:**
+- Handles CommandError with metadata
+- Daemon connection error detection
+- JSON/human output formatting
+- Automatic exit codes
+
+### Common Options (`src/commands/shared/commonOptions.ts`)
+Reusable Commander.js options:
+```typescript
+import { jsonOption, lastOption, filterOption } from '@/commands/shared/commonOptions.js';
+
+program
+  .command('peek')
+  .addOption(jsonOption)           // Standard --json flag
+  .addOption(lastOption)           // --last <n> with validation (0-10000)
+  .addOption(filterOption(['log', 'error']))  // --filter with choices
+```
+
+### Message Centralization (`src/ui/messages/`)
+All user-facing strings centralized in message functions:
+```typescript
+// ❌ Inline strings
+console.error('Daemon not running');
+
+// ✅ Centralized messages
+import { daemonNotRunningError } from '@/ui/messages/errors.js';
+console.error(daemonNotRunningError());
+```
+
+**Main Categories:**
+- `errors.ts` - Error messages (daemon, session, generic errors)
+- `commands.ts` - Command-specific messages (cleanup, validation)
+- `chrome.ts` - Chrome launch/cleanup messages
+- `preview.ts` - Preview/peek messages
+- `consoleMessages.ts` - Console command messages
+- `session.ts` - Session-related messages
+- `validation.ts` - Input validation messages
+- `debug.ts`, `internal.ts` - Internal/debug messages
 
 ## Architecture
 
@@ -224,10 +283,11 @@ bdg uses a **daemon + IPC architecture** for persistent CDP connections and effi
 
 **Components**:
 
-1. **CLI Commands** (`src/cli/commands/*.ts`)
+1. **CLI Commands** (`src/commands/*.ts`)
    - User-facing command handlers
+   - Use CommandRunner for error handling
    - Send requests via IPC client to daemon
-   - Format and display responses
+   - Format output with OutputFormatter
 
 2. **IPC Client** (`src/ipc/client.ts`)
    - Connects to daemon via Unix socket (`~/.bdg/daemon.sock`)
@@ -296,17 +356,23 @@ Each collector is independent and enables its CDP domain:
 - **pid.ts**: Process ID tracking
 - **paths.ts**: Session file path management
 
+### UI Layer (`src/ui/`)
+- **formatting.ts**: OutputFormatter class + utility functions (separator, truncate, etc.)
+- **errors.ts**: CommandError class for structured error handling
+- **messages/**: Centralized user-facing strings
+  - `errors.ts` - Error messages
+  - `commands.ts` - Command-specific messages  
+  - `chrome.ts` - Chrome launch/cleanup messages
+  - `preview.ts` - Preview/peek messages
+  - `consoleMessages.ts`, `session.ts`, `validation.ts`, etc.
+- **formatters/**: Output formatters for commands
+  - `status.ts`, `preview.ts`, `cookies.ts`, `details.ts`, `dom.ts`
+
 ### Utilities (`src/utils/`)
-- **url.ts**: Centralized URL normalization and truncation
-  - `normalizeUrl()` - Adds protocol if missing, validates URLs
-  - `truncateUrl()` - Shortens URLs for compact output (e.g., `api.example.com/users`)
-  - `truncateText()` - Limits text to N lines for stack traces
-- **validation.ts**: Input validation for telemetry types
-- **filters.ts**: Default filtering for tracking/analytics and dev server noise
-  - `DEFAULT_EXCLUDED_DOMAINS` - 13 tracking/analytics domains
-  - `DEFAULT_EXCLUDED_CONSOLE_PATTERNS` - 4 dev server patterns
-  - `shouldExcludeDomain()` - Network request domain filtering
-  - `shouldExcludeConsoleMessage()` - Console message pattern filtering
+- **url.ts**: URL normalization (`normalizeUrl`, `truncateUrl`)
+- **validation.ts**: Input validation
+- **filters.ts**: Default exclusion patterns
+- **exitCodes.ts**: Exit code constants
 
 ### Type Definitions (`src/types.ts`)
 - `CDPMessage`, `CDPTarget`: CDP protocol types
@@ -431,9 +497,9 @@ bdg stores session data in `~/.bdg/`:
 JSON structure written to stdout on success:
 ```json
 {
-  "version": "0.0.1-alpha.0",
+  "version": "0.2.0",
   "success": true,
-  "timestamp": "2025-10-31T12:00:00.000Z",
+  "timestamp": "2025-11-06T12:00:00.000Z",
   "duration": 45230,
   "target": {
     "url": "http://localhost:3000/dashboard",
@@ -450,9 +516,9 @@ JSON structure written to stdout on success:
 Error format:
 ```json
 {
-  "version": "0.0.1-alpha.0",
+  "version": "0.2.0",
   "success": false,
-  "timestamp": "2025-10-31T12:00:00.000Z",
+  "timestamp": "2025-11-06T12:00:00.000Z",
   "duration": 1234,
   "target": { "url": "", "title": "" },
   "data": {},
@@ -491,26 +557,52 @@ Error format:
 
 ## Adding New Commands
 
-Follow the bidirectional IPC pattern documented in `docs/BIDIRECTIONAL_IPC.md`:
+### IPC-Based Commands (Standard Pattern)
 
-1. Define worker IPC types (`src/daemon/workerIpc.ts`)
-2. Define client IPC types (`src/ipc/types.ts`)
-3. Implement worker handler (`src/daemon/worker.ts`)
-4. Implement daemon forwarding (`src/daemon/ipcServer.ts`)
-5. Implement IPC client helper (`src/ipc/client.ts`)
-6. Use in CLI command (`src/cli/commands/*.ts`)
+For commands that query the worker:
 
-See existing DOM commands for complete examples.
+1. **Define IPC types** (`src/ipc/types.ts`, `src/daemon/workerIpc.ts`)
+2. **Implement worker handler** (`src/daemon/worker.ts`)
+3. **Add daemon routing** (`src/daemon/ipcServer.ts`)
+4. **Add IPC client function** (`src/ipc/client.ts`)
+5. **Create command** (`src/commands/*.ts`):
+   ```typescript
+   await runCommand(
+     async () => {
+       const response = await ipcFunction(params);
+       if (response.status === 'error') {
+         return { success: false, error: response.error };
+       }
+       return { success: true, data: response.data };
+     },
+     options,
+     formatFunction
+   );
+   ```
+
+### Direct CDP Commands (Special Cases)
+
+For commands needing direct CDP access (like `dom eval`):
+
+1. **Create helpers** (`src/commands/*Helpers.ts`)
+   - Use CommandError for validation failures
+   - Keep CDP logic separate from command logic
+2. **Use in command** with CommandRunner
+
+See `src/commands/dom.ts` for examples of both patterns.
 
 ## Dependencies
 
 ### Production
-- **commander** (^12.1.0): CLI framework with type-safe arguments
+- **commander** (^14.0.2): CLI framework with type-safe arguments
+- **chrome-launcher** (^1.2.1): Cross-platform Chrome launcher
 - **ws** (^8.18.0): WebSocket client for CDP connection
 
 ### Development
 - **typescript** (^5.6.0): ES2022 target, strict mode, ES modules
-- **@types/node** (^20.0.0), **@types/ws** (^8.5.10): Type definitions
+- **@types/node** (^22.19.0), **@types/ws** (^8.5.10): Type definitions
+- **tsx** (^4.19.0): TypeScript test runner
+- **eslint** (^9.39.0): Linting with TSDoc validation
 
 ## Build Output
 
@@ -529,14 +621,13 @@ The `.npmignore` file ensures only the compiled `dist/` folder and README.md are
 
 ## Important Notes
 
-- All imports use `.js` extensions (Node.js ESM convention) even though source is `.ts`
-- This is standard for Node.js ESM modules with TypeScript
-- Exit codes: 0 = success, 1 = error
-- Status messages go to stderr, JSON output to stdout
-- Connection checks prevent silent failures when tabs close
-- Network collector intelligently fetches response bodies only for JSON/text MIME types
-- IPC architecture eliminates intermediate file writes during collection
-- Agent-optimized defaults for token efficiency:
+- **All imports use `.js` extensions** (Node.js ESM convention) even though source is `.ts`
+- **Exit codes**: Semantic codes (0, 80-99, 100-119) - see Exit Codes section
+- **Output streams**: Status messages → stderr, JSON output → stdout
+- **Connection checks**: Prevent silent failures when tabs close
+- **Response body fetching**: Intelligently fetches only JSON/text MIME types
+- **IPC architecture**: No intermediate file writes during collection
+- **Agent-optimized defaults**:
   - Compact output format by default (67-72% token reduction vs verbose)
   - Default filtering excludes tracking/analytics and dev server noise (9-16% data reduction)
   - Use `--verbose` flag for human-readable output with full URLs and emojis
@@ -653,100 +744,52 @@ bdg status
 rm -rf ~/.bdg/daemon.*
 ```
 
-## Enhanced Code Quality Rules
+## Code Organization
 
-### Installation Requirements
-
-To use the enhanced import path validation, install the ESLint plugin:
-```bash
-npm install --save-dev eslint-plugin-no-relative-import-paths
-```
-
-Then update `eslint.config.js` to include:
-```javascript
-import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
-
-// Add to plugins:
-'no-relative-import-paths': noRelativeImportPaths,
-
-// Add to rules:
-'no-relative-import-paths/no-relative-import-paths': [
-  'error',
-  { allowSameFolder: true, rootDir: 'src', prefix: '@' }
-],
-```
-
-### TypeScript Compiler Enhancements
-
-**`noUncheckedSideEffectImports` (TypeScript 5.6+)**:
-This compiler option prevents accidental side-effect imports when using `--verbatimModuleSyntax`. It catches imports that might leave behind unintended side effects at runtime.
-
+### Import Paths
+Use absolute imports with `@/` prefix:
 ```typescript
-// ❌ Could leave behind side-effect import
-import { type A, type B } from 'module';
-// Transpiles to: import 'module';
-
-// ✅ Explicit type-only import
-import type { A, B } from 'module';
-// Transpiles to: (nothing - fully removed)
-```
-
-### ESLint Rule Enhancements
-
-**Switch Exhaustiveness Check**:
-The `@typescript-eslint/switch-exhaustiveness-check` rule ensures all switch statements handle every case in union types or enums, preventing runtime errors.
-
-```typescript
-type Status = 'pending' | 'completed' | 'failed';
-
-function handleStatus(status: Status) {
-  switch (status) {
-    case 'pending':
-      return 'In progress...';
-    case 'completed':
-      return 'Done!';
-    // ❌ Missing 'failed' case - ESLint will error
-  }
-}
-```
-
-**Import Path Consistency**:
-Custom validation ensures all imports use absolute paths (`@/*`) instead of relative paths (`../`), improving refactoring safety and code consistency.
-
-```typescript
-// ❌ Relative import (harder to refactor)
-import { CDPConnection } from '../connection/cdp.js';
-
 // ✅ Absolute import (refactor-safe)
 import { CDPConnection } from '@/connection/cdp.js';
+import { CommandError } from '@/ui/errors.js';
+
+// ❌ Relative import (breaks on file moves)
+import { CDPConnection } from '../connection/cdp.js';
 ```
 
-### Validation Scripts
+### Exit Codes (`src/utils/exitCodes.ts`)
+Use semantic exit codes for agent-friendly error handling:
+```typescript
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-**Enhanced Check Command**:
-```bash
-npm run check:enhanced
+throw new CommandError(
+  'Resource not found',
+  { suggestion: 'Try: bdg <url>' },
+  EXIT_CODES.RESOURCE_NOT_FOUND  // Semantic code: 83
+);
 ```
 
-This runs comprehensive validation including:
-- Code formatting (Prettier)
-- Type checking (TypeScript)
-- Linting (ESLint)
-- Import path validation
-- Module type validation
-- TypeScript version validation
+**Exit Code Ranges:**
+- **0**: Success
+- **1**: Generic failure (backward compatibility)
+- **80-99**: User errors (invalid input, permissions, resource issues)
+- **100-119**: Software errors (bugs, integration failures, timeouts)
 
-**Individual Validations**:
-```bash
-npm run lint:imports        # Check import path consistency
-npm run validate:module-type # Ensure "type": "module" is set
-npm run validate:ts-version  # Verify TypeScript 5.6+ compatibility
-```
+**Common Exit Codes:**
+- `SUCCESS` (0) - Command succeeded
+- `GENERIC_FAILURE` (1) - Generic error
+- `INVALID_URL` (80) - Invalid URL format
+- `INVALID_ARGUMENTS` (81) - Invalid command arguments
+- `PERMISSION_DENIED` (82) - Permission issues
+- `RESOURCE_NOT_FOUND` (83) - Session/target not found
+- `RESOURCE_ALREADY_EXISTS` (84) - Resource conflict
+- `RESOURCE_BUSY` (85) - Resource in use
+- `DAEMON_ALREADY_RUNNING` (86) - Session already active
+- `CHROME_LAUNCH_FAILURE` (100) - Chrome launch failed
+- `CDP_CONNECTION_FAILURE` (101) - CDP connection failed
+- `CDP_TIMEOUT` (102) - CDP operation timeout
+- `SESSION_FILE_ERROR` (103) - Session file issues
+- `UNHANDLED_EXCEPTION` (104) - Unhandled error
+- `SIGNAL_HANDLER_ERROR` (105) - Signal handling error
 
-### Benefits
-
-1. **Refactoring Safety**: Absolute imports don't break when moving files
-2. **Runtime Safety**: Exhaustive switches prevent missing case errors
-3. **Import Safety**: Side-effect validation prevents accidental runtime imports
-4. **Team Consistency**: Automated validation ensures consistent practices
-5. **Modern Standards**: Uses cutting-edge TypeScript and ESLint features
+**Reference:** [Square's Semantic Exit Codes](https://developer.squareup.com/blog/command-line-observability-with-semantic-exit-codes/)

@@ -3,6 +3,7 @@ import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import { CommandError } from '@/ui/errors.js';
+import { invalidCDPResponseError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -76,7 +77,7 @@ export async function verifyTargetExists(metadata: SessionMetadata, port: number
   const targetsData: unknown = await response.json();
 
   if (!Array.isArray(targetsData)) {
-    throw new Error('Invalid response from CDP');
+    throw new Error(invalidCDPResponseError());
   }
 
   const target = (targetsData as CDPTarget[]).find((t) => t.id === metadata.targetId);
