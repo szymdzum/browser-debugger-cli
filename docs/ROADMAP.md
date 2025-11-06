@@ -42,24 +42,32 @@ Make Chrome DevTools Protocol accessible from the terminal to two audiences with
 
 ## Milestones & Release Phases
 
-### M1: Agents Foundation - Documentation & Stateful Wrappers (Weeks 1–4)
+### M1: Agents Foundation - Documentation & Stateful Wrappers (Weeks 0–4)
 **Target**: v0.4.0
+**Timeline**: 5 weeks (includes Week 0 foundation validation)
 
 **Philosophy**: Agents can already use raw `bdg cdp` for most operations. Focus on documentation and only build wrappers for stateful/complex operations.
 
 **Deliverables**:
+- **Week 0 Foundation**: Validate `bdg cdp` works end-to-end, plan schema evolution
 - **Documentation**: `docs/AGENT_WORKFLOWS.md` with 10+ CDP patterns (queries, navigation, error handling)
-- **Output schema v0**: Finalized and implemented across all commands
+- **Output schema v0**: Enhanced schema with incremental evolution (keeps backward compatibility)
+  - Add `schema`, `command`, `meta`, `errors[]` fields alongside existing fields
+  - Support both legacy and enhanced formats until v1.0
 - **Stateful wrappers only**:
-  - `dom.wait` - Polling loop with timeout (agents shouldn't reimplement this)
-  - `page.screenshot` - Screenshot with file I/O and optional overlays
+  - `dom.wait` - Polling loop with timeout using `Runtime.evaluate`
+  - `page.screenshot` - Screenshot with file I/O (full page, viewport, selector modes)
 - **Example scripts**: 5 battle-tested agent scripts in `examples/agents/` showing CDP composition patterns
+- **CI test fixtures**: Static HTML files for deterministic testing
 
 **Success Criteria**:
+- [ ] Week 0: `bdg cdp` validated with golden example script
 - [ ] Documentation shows how to use raw CDP for 10+ common patterns
 - [ ] Can automate 3 common agent tasks using raw CDP + stateful wrappers
-- [ ] All commands follow schema v0 and semantic exit codes
-- [ ] CI runs examples against real pages (example.com, github.com, wikipedia.org)
+- [ ] Enhanced schema v0 implemented without breaking existing commands
+- [ ] All new commands follow semantic exit codes (0, 81-86, 101-102)
+- [ ] CI runs examples against static fixtures in `examples/fixtures/`
+- [ ] No breaking changes to v0.2.0 commands
 
 ---
 
