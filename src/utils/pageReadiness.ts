@@ -16,60 +16,54 @@ import type { CDPConnection } from '@/connection/cdp.js';
 export interface PageReadinessOptions {
   /**
    * Maximum wait time before proceeding anyway
-   * Default: 2000ms (2 seconds)
+   * Default: 5000ms (5 seconds)
    */
   maxWaitMs?: number;
-  /**
-   * Wait for network and DOM stability after load event
-   * Default: false (load event is sufficient for most pages)
-   * Enable for SPAs with heavy post-load hydration
-   */
-  waitForStability?: boolean;
 }
 
 /**
  * Wait for page to be ready using self-tuning detection
  *
- * Strategy:
- * 1. Wait for load event (baseline)
- * 2. Wait for network to stabilize (adaptive)
- * 3. Wait for DOM to stabilize (adaptive)
+ * Strategy (always applied):
+ * 1. Wait for load event (baseline readiness)
+ * 2. Wait for network to stabilize (adaptive 200ms idle)
+ * 3. Wait for DOM to stabilize (adaptive 300ms idle)
  *
  * All thresholds adapt to observed page behavior.
  * No framework detection, no configuration needed.
+ * Works for static HTML, SPAs, and everything in between.
  *
  * @param cdp - CDP connection
  * @param options - Optional configuration
  *
  * @example
  * ```typescript
- * // Default: Self-tuning for any page
+ * // Default: Wait up to 5s for full stability
  * await waitForPageReady(cdp);
  *
- * // Custom timeout for slow apps
- * await waitForPageReady(cdp, { maxWaitMs: 60000 });
+ * // Custom timeout for very slow apps
+ * await waitForPageReady(cdp, { maxWaitMs: 15000 });
  * ```
  */
 export async function waitForPageReady(
   cdp: CDPConnection,
   options: PageReadinessOptions = {}
 ): Promise<void> {
-  const maxWaitMs = options.maxWaitMs ?? 2000;
+  const maxWaitMs = options.maxWaitMs ?? 5000;
   const deadline = Date.now() + maxWaitMs;
 
   try {
-    // Phase 1: Wait for load event (sufficient for most pages)
+    // Phase 1: Wait for load event (baseline)
     await waitForLoadEvent(cdp, deadline);
     console.error('[readiness] ✓ Load event');
 
-    // Optional: Wait for network/DOM stability (only for SPAs with heavy hydration)
-    if (options.waitForStability) {
-      const networkIdleMs = await waitForNetworkStable(cdp, deadline);
-      console.error(`[readiness] ✓ Network stable (${networkIdleMs}ms idle)`);
+    // Phase 2: Wait for network stability (always - modern web is async)
+    const networkIdleMs = await waitForNetworkStable(cdp, deadline);
+    console.error(`[readiness] ✓ Network stable (${networkIdleMs}ms idle)`);
 
-      const domIdleMs = await waitForDOMStable(cdp, deadline);
-      console.error(`[readiness] ✓ DOM stable (${domIdleMs}ms idle)`);
-    }
+    // Phase 3: Wait for DOM stability (always - SPAs mutate after load)
+    const domIdleMs = await waitForDOMStable(cdp, deadline);
+    console.error(`[readiness] ✓ DOM stable (${domIdleMs}ms idle)`);
 
     console.error('[readiness] ✓ Page ready');
   } catch (error) {
