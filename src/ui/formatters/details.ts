@@ -1,74 +1,78 @@
 import type { NetworkRequest, ConsoleMessage } from '@/types';
+import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
  * Format network request details for human-readable output
  */
 export function formatNetworkDetails(request: NetworkRequest): string {
-  const lines: string[] = [];
+  const fmt = new OutputFormatter();
 
-  lines.push('Network Request Details');
-  lines.push('━'.repeat(70));
-  lines.push(`Request ID:  ${request.requestId}`);
-  lines.push(`URL:         ${request.url}`);
-  lines.push(`Method:      ${request.method}`);
-  lines.push(`Status:      ${request.status ?? 'pending'}`);
-  lines.push(`MIME Type:   ${request.mimeType ?? 'N/A'}`);
-  lines.push('');
+  fmt.text('Network Request Details').separator('━', 70);
+  fmt.keyValueList(
+    [
+      ['Request ID', request.requestId],
+      ['URL', request.url],
+      ['Method', request.method],
+      ['Status', request.status?.toString() ?? 'pending'],
+      ['MIME Type', request.mimeType ?? 'N/A'],
+    ],
+    13
+  );
+  fmt.blank();
 
   if (request.requestHeaders) {
-    lines.push('Request Headers:');
-    lines.push('━'.repeat(70));
+    fmt.text('Request Headers:').separator('━', 70);
     Object.entries(request.requestHeaders).forEach(([key, value]) => {
-      lines.push(`  ${key}: ${value}`);
+      fmt.text(`  ${key}: ${value}`);
     });
-    lines.push('');
+    fmt.blank();
   }
 
   if (request.requestBody) {
-    lines.push('Request Body:');
-    lines.push('━'.repeat(70));
-    lines.push(request.requestBody);
-    lines.push('');
+    fmt.text('Request Body:').separator('━', 70);
+    fmt.text(request.requestBody);
+    fmt.blank();
   }
 
   if (request.responseHeaders) {
-    lines.push('Response Headers:');
-    lines.push('━'.repeat(70));
+    fmt.text('Response Headers:').separator('━', 70);
     Object.entries(request.responseHeaders).forEach(([key, value]) => {
-      lines.push(`  ${key}: ${value}`);
+      fmt.text(`  ${key}: ${value}`);
     });
-    lines.push('');
+    fmt.blank();
   }
 
   if (request.responseBody) {
-    lines.push('Response Body:');
-    lines.push('━'.repeat(70));
-    lines.push(request.responseBody);
+    fmt.text('Response Body:').separator('━', 70);
+    fmt.text(request.responseBody);
   }
 
-  return lines.join('\n');
+  return fmt.build();
 }
 
 /**
  * Format console message details for human-readable output
  */
 export function formatConsoleDetails(message: ConsoleMessage): string {
-  const lines: string[] = [];
+  const fmt = new OutputFormatter();
 
-  lines.push('Console Message Details');
-  lines.push('━'.repeat(70));
-  lines.push(`Type:       ${message.type}`);
-  lines.push(`Timestamp:  ${new Date(message.timestamp).toISOString()}`);
-  lines.push(`Text:       ${message.text}`);
-  lines.push('');
+  fmt.text('Console Message Details').separator('━', 70);
+  fmt.keyValueList(
+    [
+      ['Type', message.type],
+      ['Timestamp', new Date(message.timestamp).toISOString()],
+      ['Text', message.text],
+    ],
+    12
+  );
+  fmt.blank();
 
   if (message.args && message.args.length > 0) {
-    lines.push('Arguments:');
-    lines.push('━'.repeat(70));
+    fmt.text('Arguments:').separator('━', 70);
     message.args.forEach((arg, idx) => {
-      lines.push(`  [${idx}]: ${JSON.stringify(arg, null, 2)}`);
+      fmt.text(`  [${idx}]: ${JSON.stringify(arg, null, 2)}`);
     });
   }
 
-  return lines.join('\n');
+  return fmt.build();
 }

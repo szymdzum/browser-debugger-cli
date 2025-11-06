@@ -1,3 +1,11 @@
+import {
+  cleanupChromeAttemptingMessage,
+  cleanupChromePidNotFoundMessage,
+  cleanupChromeKillingMessage,
+  cleanupChromeSuccessMessage,
+  cleanupChromeFailedMessage,
+  cleanupChromeProcessFailedMessage,
+} from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 /**
@@ -20,7 +28,7 @@ import { getErrorMessage } from '@/utils/errors.js';
  * @returns Number of errors encountered during cleanup
  */
 export async function cleanupStaleChrome(): Promise<number> {
-  console.error('\nAttempting to kill stale Chrome processes...');
+  console.error(cleanupChromeAttemptingMessage());
 
   try {
     // Import session utilities (dynamic import for ES modules)
@@ -31,31 +39,29 @@ export async function cleanupStaleChrome(): Promise<number> {
     const chromePid = readChromePid();
 
     if (!chromePid) {
-      console.error('Warning: No Chrome PID found in cache');
-      console.error('   Either Chrome was already running, or no Chrome was launched by bdg\n');
+      console.error(cleanupChromePidNotFoundMessage());
       return 0;
     }
 
     // Kill Chrome process (cross-platform)
-    console.error(`Killing Chrome process (PID: ${chromePid})...`);
+    console.error(cleanupChromeKillingMessage(chromePid));
 
     try {
       // Use SIGKILL for aggressive cleanup (force kill)
       killChromeProcess(chromePid, 'SIGKILL');
 
-      console.error('Chrome process killed successfully');
+      console.error(cleanupChromeSuccessMessage());
 
       // Clear the cache after successful kill
       clearChromePid();
 
       return 0;
     } catch (killError) {
-      console.error(`Error: Failed to kill Chrome process: ${getErrorMessage(killError)}`);
-      console.error('   Try manually killing Chrome processes if issues persist\n');
+      console.error(cleanupChromeFailedMessage(getErrorMessage(killError)));
       return 1;
     }
   } catch (error) {
-    console.error(`Error: Failed to cleanup Chrome processes: ${getErrorMessage(error)}\n`);
+    console.error(cleanupChromeProcessFailedMessage(getErrorMessage(error)));
     return 1;
   }
 }

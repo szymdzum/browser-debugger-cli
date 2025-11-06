@@ -133,3 +133,17 @@ No preview data available
 Start a session with: bdg <url>
 Check session status: bdg status`;
 }
+
+/**
+ * Generate "invalid CDP response" error message.
+ *
+ * @returns Formatted error message
+ *
+ * @example
+ * ```typescript
+ * throw new Error(invalidCDPResponseError());
+ * ```
+ */
+export function invalidCDPResponseError(): string {
+  return 'Invalid response from CDP';
+}

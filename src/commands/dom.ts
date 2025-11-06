@@ -1,39 +1,40 @@
 import type { Command } from 'commander';
 
-import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
+import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { queryDOM, highlightDOM, getDOM } from '@/ipc/client.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
+import {
+  formatDomQuery,
+  formatDomHighlight,
+  formatDomGet,
+  formatDomEval,
+} from '@/ui/formatters/dom.js';
 
-import { handleCommandError } from './domErrorHandler.js';
 import { buildSelectorOptions } from './domOptionsBuilder.js';
 
 /**
  * Options for DOM query command
  */
-interface DomQueryOptions {
-  json?: boolean;
-}
+type DomQueryOptions = BaseCommandOptions;
 
 /**
  * Options for DOM highlight command
  */
-interface DomHighlightOptions {
+interface DomHighlightOptions extends BaseCommandOptions {
   first?: boolean;
   nth?: number;
   nodeId?: number;
   color?: string;
   opacity?: number;
-  json?: boolean;
 }
 
 /**
  * Options for DOM get command
  */
-interface DomGetOptions {
+interface DomGetOptions extends BaseCommandOptions {
   all?: boolean;
   nth?: number;
   nodeId?: number;
-  json?: boolean;
 }
 
 /**
@@ -44,59 +45,34 @@ interface DomGetOptions {
  *
  * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
  * @param options - Command options
- * @throws Error When IPC request fails or returns error response
- * @throws Error When response data is missing
  */
 async function handleDomQuery(selector: string, options: DomQueryOptions): Promise<void> {
-  try {
-    // Send query request via IPC to daemon/worker
-    const response = await queryDOM(selector);
+  await runCommand(
+    async () => {
+      const response = await queryDOM(selector);
 
-    if (response.status === 'error') {
-      throw new Error(response.error ?? 'Unknown error');
-    }
-
-    if (!response.data) {
-      throw new Error('No data in response');
-    }
-
-    const { count, nodes } = response.data;
-
-    if (count === 0) {
-      if (options.json) {
-        console.log(
-          JSON.stringify(
-            {
-              selector,
-              count: 0,
-              nodes: [],
-            },
-            null,
-            2
-          )
-        );
-      } else {
-        console.log(`No elements found matching "${selector}"`);
+      if (response.status === 'error') {
+        return {
+          success: false,
+          error: response.error ?? 'Unknown error',
+        };
       }
-      process.exit(EXIT_CODES.SUCCESS);
-    }
 
-    // Output results
-    if (options.json) {
-      console.log(JSON.stringify(response.data, null, 2));
-    } else {
-      console.log(`Found ${count} element${count === 1 ? '' : 's'} matching "${selector}":`);
-      for (const node of nodes) {
-        const classInfo =
-          node.classes && node.classes.length > 0 ? ` class="${node.classes.join(' ')}"` : '';
-        console.log(`  [${node.index}] <${node.tag}${classInfo}> ${node.preview}`);
+      if (!response.data) {
+        return {
+          success: false,
+          error: 'No data in response',
+        };
       }
-    }
 
-    process.exit(EXIT_CODES.SUCCESS);
-  } catch (error) {
-    handleCommandError(error, options.json ?? false);
-  }
+      return {
+        success: true,
+        data: response.data,
+      };
+    },
+    options,
+    formatDomQuery
+  );
 }
 
 /**
@@ -107,54 +83,52 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
  *
  * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
  * @param options - Command options including color, opacity, targeting flags, and nodeId
- * @throws Error When cached index not found (user must run 'bdg dom query' first)
- * @throws Error When IPC request fails or returns error response
- * @throws Error When response data is missing
  */
 async function handleDomHighlight(
   selectorOrIndex: string,
   options: DomHighlightOptions
 ): Promise<void> {
-  try {
-    // Build base IPC request options (color, opacity, targeting)
-    const ipcOptions: Parameters<typeof highlightDOM>[0] = {
-      ...(options.color !== undefined && { color: options.color }),
-      ...(options.opacity !== undefined && { opacity: options.opacity }),
-      ...(options.first !== undefined && { first: options.first }),
-      ...(options.nth !== undefined && { nth: options.nth }),
-    };
+  await runCommand(
+    async () => {
+      // Build base IPC request options (color, opacity, targeting)
+      const ipcOptions: Parameters<typeof highlightDOM>[0] = {
+        ...(options.color !== undefined && { color: options.color }),
+        ...(options.opacity !== undefined && { opacity: options.opacity }),
+        ...(options.first !== undefined && { first: options.first }),
+        ...(options.nth !== undefined && { nth: options.nth }),
+      };
 
-    // Add selector/index/nodeId using shared helper
-    const selectorOptions = buildSelectorOptions<Parameters<typeof highlightDOM>[0]>(
-      selectorOrIndex,
-      options.nodeId
-    );
-    Object.assign(ipcOptions, selectorOptions);
-
-    // Send highlight request via IPC to daemon/worker
-    const response = await highlightDOM(ipcOptions);
-
-    if (response.status === 'error') {
-      throw new Error(response.error ?? 'Unknown error');
-    }
-
-    if (!response.data) {
-      throw new Error('No data in response');
-    }
-
-    // Output result
-    if (options.json) {
-      console.log(JSON.stringify(response.data, null, 2));
-    } else {
-      console.log(
-        `✓ Highlighted ${response.data.highlighted} element${response.data.highlighted === 1 ? '' : 's'}`
+      // Add selector/index/nodeId using shared helper
+      const selectorOptions = buildSelectorOptions<Parameters<typeof highlightDOM>[0]>(
+        selectorOrIndex,
+        options.nodeId
       );
-    }
+      Object.assign(ipcOptions, selectorOptions);
 
-    process.exit(EXIT_CODES.SUCCESS);
-  } catch (error) {
-    handleCommandError(error, options.json ?? false);
-  }
+      const response = await highlightDOM(ipcOptions);
+
+      if (response.status === 'error') {
+        return {
+          success: false,
+          error: response.error ?? 'Unknown error',
+        };
+      }
+
+      if (!response.data) {
+        return {
+          success: false,
+          error: 'No data in response',
+        };
+      }
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    },
+    options,
+    formatDomHighlight
+  );
 }
 
 /**
@@ -165,63 +139,53 @@ async function handleDomHighlight(
  *
  * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
  * @param options - Command options including --all, --nth, and nodeId
- * @throws Error When cached index not found (user must run 'bdg dom query' first)
- * @throws Error When IPC request fails or returns error response
- * @throws Error When response data is missing
  */
 async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
-  try {
-    // Build base IPC request options (targeting flags)
-    const ipcOptions: Parameters<typeof getDOM>[0] = {
-      ...(options.all !== undefined && { all: options.all }),
-      ...(options.nth !== undefined && { nth: options.nth }),
-    };
+  await runCommand(
+    async () => {
+      // Build base IPC request options (targeting flags)
+      const ipcOptions: Parameters<typeof getDOM>[0] = {
+        ...(options.all !== undefined && { all: options.all }),
+        ...(options.nth !== undefined && { nth: options.nth }),
+      };
 
-    // Add selector/index/nodeId using shared helper
-    const selectorOptions = buildSelectorOptions<Parameters<typeof getDOM>[0]>(
-      selectorOrIndex,
-      options.nodeId
-    );
-    Object.assign(ipcOptions, selectorOptions);
+      // Add selector/index/nodeId using shared helper
+      const selectorOptions = buildSelectorOptions<Parameters<typeof getDOM>[0]>(
+        selectorOrIndex,
+        options.nodeId
+      );
+      Object.assign(ipcOptions, selectorOptions);
 
-    // Send get request via IPC to daemon/worker
-    const response = await getDOM(ipcOptions);
+      const response = await getDOM(ipcOptions);
 
-    if (response.status === 'error') {
-      throw new Error(response.error ?? 'Unknown error');
-    }
-
-    if (!response.data) {
-      throw new Error('No data in response');
-    }
-
-    const { nodes } = response.data;
-
-    // Output results
-    if (options.json) {
-      console.log(JSON.stringify(nodes.length === 1 ? nodes[0] : nodes, null, 2));
-    } else {
-      if (nodes.length === 1) {
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        console.log(nodes[0]!.outerHTML);
-      } else {
-        for (const [i, node] of nodes.entries()) {
-          console.log(`[${i + 1}] ${node.outerHTML}`);
-        }
+      if (response.status === 'error') {
+        return {
+          success: false,
+          error: response.error ?? 'Unknown error',
+        };
       }
-    }
 
-    process.exit(EXIT_CODES.SUCCESS);
-  } catch (error) {
-    handleCommandError(error, options.json ?? false);
-  }
+      if (!response.data) {
+        return {
+          success: false,
+          error: 'No data in response',
+        };
+      }
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    },
+    options,
+    formatDomGet
+  );
 }
 
 /**
  * Options for DOM eval command
  */
-interface DomEvalOptions {
-  json?: boolean;
+interface DomEvalOptions extends BaseCommandOptions {
   port?: string;
 }
 
@@ -230,65 +194,50 @@ interface DomEvalOptions {
  *
  * Evaluates arbitrary JavaScript in the browser context and returns the result.
  * Requires an active session. Uses CDP Runtime.evaluate with async support.
+ * Note: This command uses direct CDP connection (not IPC) so it follows a different pattern.
  *
  * @param script - JavaScript expression to evaluate (e.g., "document.title", "window.location.href")
  * @param options - Command options including port and json formatting
- * @throws Error When no active session is running
- * @throws Error When session metadata is invalid
- * @throws Error When target no longer exists (tab closed)
- * @throws Error When CDP connection fails
- * @throws Error When script execution throws exception
  */
 async function handleDomEval(script: string, options: DomEvalOptions): Promise<void> {
-  try {
-    // Lazy load CDP connection (only needed for eval command)
-    const { CDPConnection } = await import('@/connection/cdp.js');
-    const {
-      validateActiveSession,
-      getValidatedSessionMetadata,
-      verifyTargetExists,
-      executeScript,
-    } = await import('./domEvalHelpers.js');
+  await runCommand(
+    async () => {
+      // Lazy load CDP connection (only needed for eval command)
+      const { CDPConnection } = await import('@/connection/cdp.js');
+      const {
+        validateActiveSession,
+        getValidatedSessionMetadata,
+        verifyTargetExists,
+        executeScript,
+      } = await import('./domEvalHelpers.js');
 
-    // Validate session is running
-    const jsonOutput = options.json ?? false;
-    validateActiveSession(jsonOutput);
+      // Validate session is running
+      validateActiveSession();
 
-    // Get and validate session metadata
-    const metadata = getValidatedSessionMetadata(jsonOutput);
+      // Get and validate session metadata
+      const metadata = getValidatedSessionMetadata();
 
-    // Verify target still exists
-    const port = parseInt(options.port ?? '9222', 10);
-    await verifyTargetExists(metadata, port, jsonOutput);
+      // Verify target still exists
+      const port = parseInt(options.port ?? '9222', 10);
+      await verifyTargetExists(metadata, port);
 
-    // Create temporary CDP connection and execute script
-    const cdp = new CDPConnection();
-    // getValidatedSessionMetadata ensures webSocketDebuggerUrl is defined
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    await cdp.connect(metadata.webSocketDebuggerUrl!);
+      // Create temporary CDP connection and execute script
+      const cdp = new CDPConnection();
+      // getValidatedSessionMetadata ensures webSocketDebuggerUrl is defined
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      await cdp.connect(metadata.webSocketDebuggerUrl!);
 
-    const result = await executeScript(cdp, script);
-    cdp.close();
+      const result = await executeScript(cdp, script);
+      cdp.close();
 
-    // Output result (wrapped if --json, raw otherwise)
-    if (options.json) {
-      console.log(
-        JSON.stringify(
-          OutputBuilder.buildJsonSuccess({
-            result: result.result?.value,
-          }),
-          null,
-          2
-        )
-      );
-    } else {
-      console.log(JSON.stringify(result.result?.value, null, 2));
-    }
-
-    process.exit(EXIT_CODES.SUCCESS);
-  } catch (error) {
-    handleCommandError(error, options.json ?? false);
-  }
+      return {
+        success: true,
+        data: { result: result.result?.value },
+      };
+    },
+    options,
+    formatDomEval
+  );
 }
 
 /**

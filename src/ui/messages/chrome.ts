@@ -175,3 +175,101 @@ export function prefsLoadError(file: string, error: string): string {
 export function chromeLaunchFailedError(error: string): string {
   return `Failed to launch Chrome: ${error}`;
 }
+
+// ============================================================================
+// Chrome Cleanup Messages
+// ============================================================================
+
+/**
+ * Generate message for starting Chrome cleanup process.
+ *
+ * @returns Formatted message
+ *
+ * @example
+ * ```typescript
+ * console.error(cleanupChromeAttemptingMessage());
+ * ```
+ */
+export function cleanupChromeAttemptingMessage(): string {
+  return '\nAttempting to kill stale Chrome processes...';
+}
+
+/**
+ * Generate warning message when Chrome PID is not found in cache.
+ *
+ * @returns Multi-line formatted warning message
+ *
+ * @example
+ * ```typescript
+ * console.error(cleanupChromePidNotFoundMessage());
+ * ```
+ */
+export function cleanupChromePidNotFoundMessage(): string {
+  const lines: string[] = [];
+  lines.push('Warning: No Chrome PID found in cache');
+  lines.push('   Either Chrome was already running, or no Chrome was launched by bdg\n');
+  return lines.join('\n');
+}
+
+/**
+ * Generate message indicating Chrome process is being killed.
+ *
+ * @param pid - Chrome process ID
+ * @returns Formatted message
+ *
+ * @example
+ * ```typescript
+ * console.error(cleanupChromeKillingMessage(12345));
+ * // Output: "Killing Chrome process (PID: 12345)..."
+ * ```
+ */
+export function cleanupChromeKillingMessage(pid: number): string {
+  return `Killing Chrome process (PID: ${pid})...`;
+}
+
+/**
+ * Generate success message after Chrome process is killed.
+ *
+ * @returns Formatted success message
+ *
+ * @example
+ * ```typescript
+ * console.error(cleanupChromeSuccessMessage());
+ * ```
+ */
+export function cleanupChromeSuccessMessage(): string {
+  return 'Chrome process killed successfully';
+}
+
+/**
+ * Generate error message when Chrome cleanup fails.
+ *
+ * @param error - Error message
+ * @returns Multi-line formatted error message with troubleshooting
+ *
+ * @example
+ * ```typescript
+ * console.error(cleanupChromeFailedMessage('Process not found'));
+ * ```
+ */
+export function cleanupChromeFailedMessage(error: string): string {
+  const lines: string[] = [];
+  lines.push(`Error: Failed to kill Chrome process: ${error}`);
+  lines.push('   Try manually killing Chrome processes if issues persist\n');
+  return lines.join('\n');
+}
+
+/**
+ * Generate generic error message for Chrome cleanup process failure.
+ *
+ * @param error - Error message
+ * @returns Formatted error message
+ *
+ * @example
+ * ```typescript
+ * console.error(cleanupChromeProcessFailedMessage('Cannot read PID file'));
+ * ```
+ */
+export function cleanupChromeProcessFailedMessage(error: string): string {
+  return `Error: Failed to cleanup Chrome processes: ${error}\n`;
+}

@@ -1,6 +1,7 @@
 import type { SessionActivity, PageState } from '@/ipc/types.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { isProcessAlive } from '@/session/process.js';
+import { OutputFormatter } from '@/ui/formatting.js';
 import { formatDiagnosticsForStatus } from '@/ui/messages/chrome.js';
 import { getChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
 import { VERSION } from '@/utils/version.js';
@@ -64,81 +65,86 @@ export function formatSessionStatus(
   // Check if Chrome is alive
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
 
-  const lines: string[] = [];
-  lines.push('Session Status');
-  lines.push('━'.repeat(50));
-  lines.push(`Status:           ACTIVE`);
-  lines.push(`Duration:         ${durationFormatted}`);
-  lines.push('');
-  lines.push('Process Information');
-  lines.push('━'.repeat(50));
-  lines.push(`Daemon PID:       ${pid}`);
+  const fmt = new OutputFormatter();
+
+  fmt.text('Session Status').separator('━', 50);
+  fmt.keyValueList(
+    [
+      ['Status', 'ACTIVE'],
+      ['Duration', durationFormatted],
+    ],
+    18
+  );
+
+  fmt.blank().text('Process Information').separator('━', 50);
+  fmt.keyValue('Daemon PID', pid.toString(), 18);
 
   if (metadata.chromePid) {
-    lines.push(
-      `Chrome PID:       ${metadata.chromePid} ${chromeAlive ? '(running)' : '(not running)'}`
+    fmt.keyValue(
+      'Chrome PID',
+      `${metadata.chromePid} ${chromeAlive ? '(running)' : '(not running)'}`,
+      18
     );
   }
 
-  lines.push(`Port:             ${metadata.port}`);
+  fmt.keyValue('Port', metadata.port.toString(), 18);
 
   // Target Information (from live worker data)
   if (pageState) {
-    lines.push('');
-    lines.push('Target Information');
-    lines.push('━'.repeat(50));
-    lines.push(`URL:              ${pageState.url}`);
+    fmt.blank().text('Target Information').separator('━', 50);
+    fmt.keyValue('URL', pageState.url, 18);
     if (pageState.title) {
-      lines.push(`Title:            ${pageState.title}`);
+      fmt.keyValue('Title', pageState.title, 18);
     }
   }
 
   // Activity Section (from live worker data)
   if (activity) {
-    lines.push('');
-    lines.push('Activity');
-    lines.push('━'.repeat(50));
-    lines.push(`Network Requests: ${activity.networkRequestsCaptured} captured`);
+    fmt.blank().text('Activity').separator('━', 50);
+    fmt.keyValue('Network Requests', `${activity.networkRequestsCaptured} captured`, 18);
     if (activity.lastNetworkRequestAt) {
-      lines.push(`  Last Request:   ${formatTimeAgo(activity.lastNetworkRequestAt)}`);
+      fmt.keyValue('  Last Request', formatTimeAgo(activity.lastNetworkRequestAt), 18);
     }
-    lines.push(`Console Messages: ${activity.consoleMessagesCaptured} captured`);
+    fmt.keyValue('Console Messages', `${activity.consoleMessagesCaptured} captured`, 18);
     if (activity.lastConsoleMessageAt) {
-      lines.push(`  Last Message:   ${formatTimeAgo(activity.lastConsoleMessageAt)}`);
+      fmt.keyValue('  Last Message', formatTimeAgo(activity.lastConsoleMessageAt), 18);
     }
   }
 
   // Telemetry Section
-  lines.push('');
-  lines.push('Collectors');
-  lines.push('━'.repeat(50));
+  fmt.blank().text('Collectors').separator('━', 50);
 
   // Use activeTelemetry from metadata, fallback to all telemetry modules for backward compatibility
   const activeTelemetry = metadata.activeTelemetry ?? ['network', 'console', 'dom'];
 
-  lines.push(`Network:          ${activeTelemetry.includes('network') ? 'Active' : 'Inactive'}`);
-  lines.push(`Console:          ${activeTelemetry.includes('console') ? 'Active' : 'Inactive'}`);
-  lines.push(`DOM:              ${activeTelemetry.includes('dom') ? 'Active' : 'Inactive'}`);
+  fmt.keyValueList(
+    [
+      ['Network', activeTelemetry.includes('network') ? 'Active' : 'Inactive'],
+      ['Console', activeTelemetry.includes('console') ? 'Active' : 'Inactive'],
+      ['DOM', activeTelemetry.includes('dom') ? 'Active' : 'Inactive'],
+    ],
+    18
+  );
 
   // Add verbose Chrome diagnostics if requested
   if (verbose) {
-    lines.push('');
-    lines.push('Chrome Diagnostics');
-    lines.push('━'.repeat(50));
+    fmt.blank().text('Chrome Diagnostics').separator('━', 50);
 
     // Get diagnostics using shared utility (cached to avoid repeated scans)
     const diagnostics = getChromeDiagnostics();
     const diagnosticLines = formatDiagnosticsForStatus(diagnostics);
-    lines.push(...diagnosticLines);
+    diagnosticLines.forEach((line) => fmt.text(line));
   }
 
-  lines.push('');
-  lines.push('Commands:');
-  lines.push('  Stop session:    bdg stop');
-  lines.push('  Peek data:       bdg peek');
-  lines.push('  Query browser:   bdg query <script>');
+  fmt
+    .blank()
+    .section('Commands:', [
+      'Stop session:    bdg stop',
+      'Peek data:       bdg peek',
+      'Query browser:   bdg query <script>',
+    ]);
 
-  return lines.join('\n');
+  return fmt.build();
 }
 
 /**
@@ -199,9 +205,14 @@ export function formatStatusAsJson(
  * Format "no session" message
  */
 export function formatNoSessionMessage(): string {
-  return `No active session found
+  const fmt = new OutputFormatter();
 
-Suggestions:
-  Start a new session:     bdg <url>
-  List Chrome tabs:        bdg tabs`;
+  return fmt
+    .text('No active session found')
+    .blank()
+    .section('Suggestions:', [
+      'Start a new session:     bdg <url>',
+      'List Chrome tabs:        bdg tabs',
+    ])
+    .build();
 }

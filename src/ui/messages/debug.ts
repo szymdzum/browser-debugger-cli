@@ -1,8 +1,10 @@
 /**
  * Debug and diagnostic messages for daemon and worker processes.
  *
- * User-facing debug output for internal operations, prefixed with
- * component names for clarity during troubleshooting.
+ * User-facing debug output for internal operations. Context prefixes
+ * (e.g., [daemon], [worker]) are added by the logger, not here.
+ *
+ * WHY: Avoids duplicate prefixes when used with createLogger().
  */
 
 // ============================================================================
@@ -17,7 +19,7 @@
  * @returns Formatted debug message
  */
 export function daemonSpawningWorker(workerPath: string, config: unknown): string {
-  return `[daemon] Spawning worker: node ${workerPath} <config>\n[daemon] Worker config: ${JSON.stringify(config)}`;
+  return `Spawning worker: node ${workerPath} <config>\nWorker config: ${JSON.stringify(config)}`;
 }
 
 /**
@@ -27,7 +29,7 @@ export function daemonSpawningWorker(workerPath: string, config: unknown): strin
  * @returns Formatted debug message
  */
 export function daemonWorkerSpawned(pid: number): string {
-  return `[daemon] Worker spawned (PID ${pid})`;
+  return `Worker spawned (PID ${pid})`;
 }
 
 /**
@@ -38,7 +40,7 @@ export function daemonWorkerSpawned(pid: number): string {
  * @returns Formatted debug message
  */
 export function daemonWorkerReady(workerPid: number, chromePid: number): string {
-  return `[daemon] Worker ready signal received\n[daemon] Worker PID: ${workerPid}\n[daemon] Chrome PID: ${chromePid}`;
+  return `Worker ready signal received\nWorker PID: ${workerPid}\nChrome PID: ${chromePid}`;
 }
 
 /**
@@ -48,7 +50,7 @@ export function daemonWorkerReady(workerPid: number, chromePid: number): string 
  * @returns Formatted debug message
  */
 export function daemonParseError(line: string): string {
-  return `[daemon] Failed to parse stdout line: ${line}`;
+  return `Failed to parse stdout line: ${line}`;
 }
 
 // ============================================================================
@@ -62,7 +64,7 @@ export function daemonParseError(line: string): string {
  * @returns Formatted debug message
  */
 export function workerActivatingCollector(collectorName: string): string {
-  return `[worker] Activating ${collectorName} telemetry`;
+  return `Activating ${collectorName} telemetry`;
 }
 
 /**
@@ -72,7 +74,7 @@ export function workerActivatingCollector(collectorName: string): string {
  * @returns Formatted debug message
  */
 export function workerCollectorsActivated(telemetry: string[]): string {
-  return `[worker] All telemetry modules activated: ${telemetry.join(', ')}`;
+  return `All telemetry modules activated: ${telemetry.join(', ')}`;
 }
 
 /**
@@ -82,7 +84,7 @@ export function workerCollectorsActivated(telemetry: string[]): string {
  * @returns Formatted debug message
  */
 export function workerUnknownCommand(commandName: string): string {
-  return `[worker] Unknown command: ${commandName}`;
+  return `Unknown command: ${commandName}`;
 }
 
 /**
@@ -92,7 +94,7 @@ export function workerUnknownCommand(commandName: string): string {
  * @returns Formatted debug message
  */
 export function workerHandlingCommand(commandName: string): string {
-  return `[worker] Handling ${commandName}_request`;
+  return `Handling ${commandName}_request`;
 }
 
 /**
@@ -109,9 +111,9 @@ export function workerCommandResponse(
   error?: string
 ): string {
   if (success) {
-    return `[worker] Sent ${commandName}_response (success)`;
+    return `Sent ${commandName}_response (success)`;
   }
-  return `[worker] Sent ${commandName}_response (error: ${error})`;
+  return `Sent ${commandName}_response (error: ${error})`;
 }
 
 /**
@@ -121,7 +123,7 @@ export function workerCommandResponse(
  * @returns Formatted debug message
  */
 export function workerIPCParseError(error: string): string {
-  return `[worker] Failed to parse IPC message: ${error}`;
+  return `Failed to parse IPC message: ${error}`;
 }
 
 /**
@@ -130,7 +132,7 @@ export function workerIPCParseError(error: string): string {
  * @returns Formatted debug message
  */
 export function workerStdinClosed(): string {
-  return '[worker] Stdin closed, daemon disconnected';
+  return 'Stdin closed, daemon disconnected';
 }
 
 /**
@@ -139,7 +141,7 @@ export function workerStdinClosed(): string {
  * @returns Formatted debug message
  */
 export function workerStdinListenerSetup(): string {
-  return '[worker] Stdin listener set up for IPC commands';
+  return 'Stdin listener set up for IPC commands';
 }
 
 /**
@@ -150,7 +152,7 @@ export function workerStdinListenerSetup(): string {
  * @returns Formatted debug message
  */
 export function workerReadySignalSent(workerPid: number, chromePid: number): string {
-  return `[worker] Ready signal sent (PID ${workerPid}, Chrome PID ${chromePid})`;
+  return `Ready signal sent (PID ${workerPid}, Chrome PID ${chromePid})`;
 }
 
 /**
@@ -159,7 +161,7 @@ export function workerReadySignalSent(workerPid: number, chromePid: number): str
  * @returns Formatted debug message
  */
 export function workerShutdownStarted(): string {
-  return '[worker] Starting graceful shutdown...';
+  return 'Starting graceful shutdown...';
 }
 
 /**
@@ -168,7 +170,7 @@ export function workerShutdownStarted(): string {
  * @returns Formatted debug message
  */
 export function workerCollectingDOM(): string {
-  return '[worker] Collecting final DOM snapshot...';
+  return 'Collecting final DOM snapshot...';
 }
 
 /**
@@ -177,7 +179,7 @@ export function workerCollectingDOM(): string {
  * @returns Formatted debug message
  */
 export function workerDOMCollected(): string {
-  return '[worker] DOM snapshot collected';
+  return 'DOM snapshot collected';
 }
 
 /**
@@ -187,7 +189,7 @@ export function workerDOMCollected(): string {
  * @returns Formatted debug message
  */
 export function workerDOMCollectionFailed(error: string): string {
-  return `[worker] Failed to collect DOM: ${error}`;
+  return `Failed to collect DOM: ${error}`;
 }
 
 /**
@@ -196,7 +198,7 @@ export function workerDOMCollectionFailed(error: string): string {
  * @returns Formatted debug message
  */
 export function workerWritingOutput(): string {
-  return '[worker] Writing final output...';
+  return 'Writing final output...';
 }
 
 /**
@@ -205,7 +207,7 @@ export function workerWritingOutput(): string {
  * @returns Formatted debug message
  */
 export function workerRunningCleanup(): string {
-  return '[worker] Running collector cleanup functions...';
+  return 'Running collector cleanup functions...';
 }
 
 /**
@@ -214,7 +216,7 @@ export function workerRunningCleanup(): string {
  * @returns Formatted debug message
  */
 export function workerClosingCDP(): string {
-  return '[worker] Closing CDP connection...';
+  return 'Closing CDP connection...';
 }
 
 /**
@@ -223,7 +225,7 @@ export function workerClosingCDP(): string {
  * @returns Formatted debug message
  */
 export function workerShutdownComplete(): string {
-  return '[worker] Graceful shutdown complete';
+  return 'Graceful shutdown complete';
 }
 
 /**
@@ -232,7 +234,7 @@ export function workerShutdownComplete(): string {
  * @returns Formatted debug message
  */
 export function workerExitingConnectionLoss(): string {
-  return '[worker] Exiting due to Chrome connection loss';
+  return 'Exiting due to Chrome connection loss';
 }
 
 /**
@@ -241,7 +243,7 @@ export function workerExitingConnectionLoss(): string {
  * @returns Formatted debug message
  */
 export function workerReceivedSIGTERM(): string {
-  return '[worker] Received SIGTERM';
+  return 'Received SIGTERM';
 }
 
 /**
@@ -250,7 +252,7 @@ export function workerReceivedSIGTERM(): string {
  * @returns Formatted debug message
  */
 export function workerReceivedSIGINT(): string {
-  return '[worker] Received SIGINT';
+  return 'Received SIGINT';
 }
 
 /**
@@ -259,7 +261,7 @@ export function workerReceivedSIGINT(): string {
  * @returns Formatted debug message
  */
 export function workerTimeoutReached(): string {
-  return '[worker] Timeout reached, initiating shutdown';
+  return 'Timeout reached, initiating shutdown';
 }
 
 /**
@@ -268,5 +270,5 @@ export function workerTimeoutReached(): string {
  * @returns Formatted debug message
  */
 export function workerSessionActive(): string {
-  return '[worker] Session active, waiting for signal or timeout...';
+  return 'Session active, waiting for signal or timeout...';
 }

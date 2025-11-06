@@ -2,10 +2,157 @@
  * Shared formatting utilities for UI output.
  *
  * This module provides low-level formatting helpers used across all UI components.
- * Includes: separators, sections, lists, key-value pairs, text utilities, and time formatting.
+ * Includes: separators, sections, lists, key-value pairs, text utilities, time formatting,
+ * and the OutputFormatter class for building complex formatted output.
  */
 
-import { safeParseUrl } from '@/utils/url/safeParseUrl.js';
+import { safeParseUrl } from '@/utils/url.js';
+
+// ============================================================================
+// Output Formatter Class
+// ============================================================================
+
+/**
+ * Fluent builder for constructing formatted console output.
+ *
+ * Provides a chainable API for building complex multi-line output with consistent
+ * spacing, indentation, and structure. All methods return `this` for chaining.
+ *
+ * @example
+ * ```typescript
+ * const output = new OutputFormatter()
+ *   .text('Found 3 elements:')
+ *   .list(['<div>', '<span>', '<p>'])
+ *   .blank()
+ *   .section('Next steps:', [
+ *     'Highlight: bdg dom highlight 0',
+ *     'Get HTML: bdg dom get 0'
+ *   ])
+ *   .build();
+ *
+ * console.log(output);
+ * // Output:
+ * // Found 3 elements:
+ * //   <div>
+ * //   <span>
+ * //   <p>
+ * //
+ * // Next steps:
+ * //   Highlight: bdg dom highlight 0
+ * //   Get HTML: bdg dom get 0
+ * ```
+ */
+export class OutputFormatter {
+  private lines: string[] = [];
+
+  /**
+   * Add a text line to the output.
+   *
+   * @param content - Text content to add
+   * @returns This formatter for chaining
+   */
+  text(content: string): this {
+    this.lines.push(content);
+    return this;
+  }
+
+  /**
+   * Add a blank line to the output.
+   *
+   * @returns This formatter for chaining
+   */
+  blank(): this {
+    this.lines.push('');
+    return this;
+  }
+
+  /**
+   * Add an indented list of items.
+   *
+   * @param items - Array of items to list
+   * @param indent - Indentation spaces (default: 2)
+   * @returns This formatter for chaining
+   */
+  list(items: string[], indent: number = 2): this {
+    const prefix = ' '.repeat(indent);
+    items.forEach((item) => this.lines.push(prefix + item));
+    return this;
+  }
+
+  /**
+   * Add a section with title and indented items.
+   *
+   * @param title - Section title
+   * @param items - Array of items (will be indented)
+   * @param indent - Indentation spaces (default: 2)
+   * @returns This formatter for chaining
+   */
+  section(title: string, items: string[], indent: number = 2): this {
+    this.lines.push(title);
+    return this.list(items, indent);
+  }
+
+  /**
+   * Add a horizontal separator line.
+   *
+   * @param char - Character to repeat (default: '━')
+   * @param width - Width in characters (default: 50)
+   * @returns This formatter for chaining
+   */
+  separator(char: string = '━', width: number = 50): this {
+    this.lines.push(char.repeat(width));
+    return this;
+  }
+
+  /**
+   * Add a key-value pair with alignment.
+   *
+   * @param key - Key string
+   * @param value - Value string
+   * @param keyWidth - Width to pad key to (default: no padding)
+   * @returns This formatter for chaining
+   */
+  keyValue(key: string, value: string, keyWidth?: number): this {
+    const formatted = keyWidth ? `${key}:`.padEnd(keyWidth) + value : `${key}: ${value}`;
+    this.lines.push(formatted);
+    return this;
+  }
+
+  /**
+   * Add multiple key-value pairs with aligned keys.
+   *
+   * @param pairs - Array of [key, value] tuples
+   * @param keyWidth - Width to pad keys to (auto-calculated if not provided)
+   * @returns This formatter for chaining
+   */
+  keyValueList(pairs: Array<[string, string]>, keyWidth?: number): this {
+    const width = keyWidth ?? Math.max(...pairs.map(([k]) => k.length)) + 2;
+    pairs.forEach(([key, value]) => this.keyValue(key, value, width));
+    return this;
+  }
+
+  /**
+   * Add indented content.
+   *
+   * @param content - Content to indent (can be multiline)
+   * @param spaces - Number of spaces to indent (default: 2)
+   * @returns This formatter for chaining
+   */
+  indent(content: string, spaces: number = 2): this {
+    const prefix = ' '.repeat(spaces);
+    content.split('\n').forEach((line) => this.lines.push(prefix + line));
+    return this;
+  }
+
+  /**
+   * Build the final output string.
+   *
+   * @returns Formatted output with lines joined by newlines
+   */
+  build(): string {
+    return this.lines.join('\n');
+  }
+}
 
 // ============================================================================
 // Visual Elements

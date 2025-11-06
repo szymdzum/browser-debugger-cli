@@ -1,4 +1,5 @@
 import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
+import { CommandError } from '@/ui/errors.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -37,9 +38,11 @@ export type CommandHandler<TOptions extends BaseCommandOptions, TResult = unknow
 
 /**
  * Formatter function type for human-readable output.
- * Receives the command result data and outputs to console.
+ * Receives the command result data and returns a formatted string.
+ *
+ * @returns Formatted string to be output to console
  */
-export type CommandFormatter<TResult = unknown> = (data: TResult) => void;
+export type CommandFormatter<TResult = unknown> = (data: TResult) => string;
 
 /**
  * Run a command with consistent error handling, output formatting, and exit codes.
@@ -91,7 +94,8 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
     if (options.json) {
       console.log(JSON.stringify(result.data, null, 2));
     } else if (formatter) {
-      formatter(result.data as TResult);
+      const formattedOutput = formatter(result.data as TResult);
+      console.log(formattedOutput);
     } else {
       // Fallback: JSON output if no formatter provided
       console.log(JSON.stringify(result.data, null, 2));
@@ -99,6 +103,22 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
+    // Handle CommandError with metadata and custom exit code
+    if (error instanceof CommandError) {
+      if (options.json) {
+        console.log(
+          JSON.stringify(OutputBuilder.buildJsonError(error.message, error.metadata), null, 2)
+        );
+      } else {
+        console.error(genericError(error.message));
+        // Output metadata as additional help text
+        for (const value of Object.values(error.metadata)) {
+          console.error(value);
+        }
+      }
+      process.exit(error.exitCode);
+    }
+
     const errorMessage = getErrorMessage(error);
 
     // Detect daemon connection errors

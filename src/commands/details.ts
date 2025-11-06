@@ -35,11 +35,11 @@ interface DetailsResult {
  *
  * @param data - Details result containing item and type
  */
-function formatDetails(data: DetailsResult): void {
+function formatDetails(data: DetailsResult): string {
   if (data.type === 'network') {
-    console.log(formatNetworkDetails(data.item as NetworkRequest));
+    return formatNetworkDetails(data.item as NetworkRequest);
   } else {
-    console.log(formatConsoleDetails(data.item as ConsoleMessage));
+    return formatConsoleDetails(data.item as ConsoleMessage);
   }
 }
 

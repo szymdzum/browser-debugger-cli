@@ -1,5 +1,7 @@
 import { Option } from 'commander';
 
+import { invalidLastRangeError } from '@/ui/messages/validation.js';
+
 /**
  * Shared --json flag for all commands that support JSON output.
  * Standard option for machine-readable output.
@@ -37,7 +39,7 @@ export const lastOption = new Option('--last <n>', 'Show last N items')
   .argParser((val) => {
     const n = parseInt(val, 10);
     if (isNaN(n) || n < 0 || n > 10000) {
-      throw new Error('--last must be between 0 and 10000');
+      throw new Error(invalidLastRangeError(0, 10000));
     }
     return n;
   });

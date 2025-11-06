@@ -41,19 +41,23 @@ interface StopResult {
  *
  * @param data - Stop result data
  */
-function formatStop(data: StopResult): void {
+function formatStop(data: StopResult): string {
+  const lines: string[] = [];
+
   if (data.stopped.bdg) {
     const outputPath = getSessionFilePath('OUTPUT');
-    console.error(sessionStopped(outputPath));
+    lines.push(sessionStopped(outputPath));
   }
   if (data.stopped.chrome) {
-    console.error(chromeKilledMessage());
+    lines.push(chromeKilledMessage());
   }
   if (data.warnings && data.warnings.length > 0) {
     data.warnings.forEach((warning) => {
-      console.error(warningMessage(warning));
+      lines.push(warningMessage(warning));
     });
   }
+
+  return lines.join('\n');
 }
 
 /**

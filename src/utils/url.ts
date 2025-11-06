@@ -1,9 +1,10 @@
 /**
- * URL normalization and validation utilities.
- *
- * Note: Display formatting functions (truncateUrl, truncateText) have been
- * moved to \@/ui/formatting.js as part of UI centralization.
+ * URL normalization, validation, and parsing utilities.
  */
+
+// ============================================================================
+// URL Normalization
+// ============================================================================
 
 /**
  * Normalize a URL by adding http:// protocol if missing.
@@ -41,10 +42,12 @@ export function normalizeUrl(url: string): string {
   return `http://${url}`;
 }
 
+// ============================================================================
+// URL Validation
+// ============================================================================
+
 /**
  * Validate that a URL is valid and usable for Chrome navigation.
- *
- * WHY: Provides clear error messages before attempting to launch Chrome.
  *
  * @param url - URL string to validate
  * @returns Object with valid flag and error message if invalid
@@ -74,14 +77,11 @@ export function validateUrl(url: string): {
     };
   }
 
-  // Normalize first (adds http:// if missing)
   const normalized = normalizeUrl(url);
 
-  // Try to parse as URL
   try {
     const parsed = new URL(normalized);
 
-    // Check for valid protocol
     const validProtocols = ['http:', 'https:', 'file:', 'about:', 'chrome:', 'data:'];
     if (!validProtocols.includes(parsed.protocol)) {
       return {
@@ -91,7 +91,6 @@ export function validateUrl(url: string): {
       };
     }
 
-    // Check for valid hostname (for http/https)
     if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.hostname) {
       return {
         valid: false,
@@ -108,4 +107,77 @@ export function validateUrl(url: string): {
       suggestion: 'URLs must include a valid protocol (http:// or https://)',
     };
   }
+}
+
+// ============================================================================
+// Safe URL Parsing
+// ============================================================================
+
+/**
+ * Safely parse a URL string with automatic protocol detection.
+ *
+ *
+ * @param input - URL string to parse (may lack protocol)
+ * @returns Parsed URL object, or null if parsing fails both attempts
+ *
+ * @example
+ * ```typescript
+ * safeParseUrl('https://example.com')       // → URL { ... }
+ * safeParseUrl('localhost:3000')            // → URL { protocol: 'http:', ... }
+ * safeParseUrl('example.com/path')          // → URL { protocol: 'http:', ... }
+ * safeParseUrl('not a url')                 // → null
+ * safeParseUrl('file:///path/to/file.html') // → URL { protocol: 'file:', ... }
+ * ```
+ */
+export function safeParseUrl(input: string): URL | null {
+  try {
+    return new URL(input);
+  } catch {
+    // Second attempt: add http:// prefix for protocol-less URLs
+    try {
+      return new URL(`http://${input}`);
+    } catch {
+      // Both attempts failed - invalid URL
+      return null;
+    }
+  }
+}
+
+/**
+ * Extract hostname from a URL string safely.
+ *
+ * @param input - URL string to extract hostname from
+ * @returns Hostname (e.g., 'example.com'), or original input if parsing fails
+ *
+ * @example
+ * ```typescript
+ * extractHostname('https://example.com/path') // → 'example.com'
+ * extractHostname('localhost:3000')           // → 'localhost'
+ * extractHostname('invalid')                  // → 'invalid'
+ * ```
+ */
+export function extractHostname(input: string): string {
+  const parsed = safeParseUrl(input);
+  return parsed?.hostname ?? input;
+}
+
+/**
+ * Extract hostname with pathname from a URL string safely.
+ *
+ * Useful for pattern matching that needs both hostname and path segments.
+ *
+ * @param input - URL string to extract hostname+pathname from
+ * @returns Hostname with pathname (e.g., 'example.com/api/users'), or original input if parsing fails
+ *
+ * @example
+ * ```typescript
+ * extractHostnameWithPath('https://api.example.com/v1/users?id=123')
+ *   // → 'api.example.com/v1/users'
+ * extractHostnameWithPath('localhost:3000/dashboard')
+ *   // → 'localhost/dashboard'
+ * ```
+ */
+export function extractHostnameWithPath(input: string): string {
+  const parsed = safeParseUrl(input);
+  return parsed ? parsed.hostname + parsed.pathname : input;
 }

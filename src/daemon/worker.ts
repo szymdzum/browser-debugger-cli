@@ -70,9 +70,12 @@ import {
 } from '@/ui/messages/debug.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
+import { createLogger } from '@/utils/logger.js';
 import { waitForPageReady } from '@/utils/pageReadiness.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { VERSION } from '@/utils/version.js';
+
+const log = createLogger('worker');
 
 interface WorkerConfig {
   url: string;
@@ -154,7 +157,7 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
   activeTelemetry = config.telemetry ?? ['network', 'console', 'dom'];
 
   for (const collector of activeTelemetry) {
-    console.error(workerActivatingCollector(collector));
+    log.debug(workerActivatingCollector(collector));
 
     switch (collector) {
       case 'network':
@@ -188,7 +191,7 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
     }
   }
 
-  console.error(workerCollectorsActivated(activeTelemetry));
+  log.debug(workerCollectorsActivated(activeTelemetry));
 }
 
 /**
@@ -512,11 +515,11 @@ async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
   const handler = commandHandlers[commandName];
 
   if (!handler) {
-    console.error(workerUnknownCommand(commandName));
+    log.debug(workerUnknownCommand(commandName));
     return;
   }
 
-  console.error(workerHandlingCommand(commandName));
+  log.debug(workerHandlingCommand(commandName));
 
   try {
     if (!cdp) throw new Error('CDP connection not initialized');
@@ -536,7 +539,7 @@ async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
     };
 
     console.log(JSON.stringify(response));
-    console.error(workerCommandResponse(commandName, true));
+    log.debug(workerCommandResponse(commandName, true));
   } catch (error) {
     const response: WorkerResponse<typeof commandName> = {
       type: `${commandName}_response` as const,
@@ -546,7 +549,7 @@ async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
     };
 
     console.log(JSON.stringify(response));
-    console.error(workerCommandResponse(commandName, false, response.error));
+    log.debug(workerCommandResponse(commandName, false, response.error));
   }
 }
 
@@ -569,17 +572,17 @@ function setupStdinListener(): void {
           const message = JSON.parse(line) as WorkerRequestUnion;
           void handleWorkerIPC(message);
         } catch (error) {
-          console.error(workerIPCParseError(getErrorMessage(error)));
+          log.debug(workerIPCParseError(getErrorMessage(error)));
         }
       }
     }
   });
 
   process.stdin.on('end', () => {
-    console.error(workerStdinClosed());
+    log.debug(workerStdinClosed());
   });
 
-  console.error(workerStdinListenerSetup());
+  log.debug(workerStdinListenerSetup());
 }
 
 /**
@@ -604,7 +607,7 @@ function sendReadySignal(config: WorkerConfig): void {
 
   // Send JSON line to stdout for parent to parse
   console.log(JSON.stringify(message));
-  console.error(workerReadySignalSent(process.pid, chrome.pid));
+  log.debug(workerReadySignalSent(process.pid, chrome.pid));
 }
 
 /**
@@ -642,27 +645,27 @@ function buildOutput(partial: boolean = false): BdgOutput {
  * Graceful shutdown: collect final DOM, write session.json, cleanup.
  */
 async function gracefulShutdown(): Promise<void> {
-  console.error(workerShutdownStarted());
+  log.debug(workerShutdownStarted());
 
   try {
     // Collect final DOM snapshot if DOM telemetry is active
     if (activeTelemetry.includes('dom') && cdp) {
-      console.error(workerCollectingDOM());
+      log.debug(workerCollectingDOM());
       try {
         domData = await collectDOM(cdp);
-        console.error(workerDOMCollected());
+        log.debug(workerDOMCollected());
       } catch (error) {
-        console.error(workerDOMCollectionFailed(getErrorMessage(error)));
+        log.debug(workerDOMCollectionFailed(getErrorMessage(error)));
       }
     }
 
     // Write final output
-    console.error(workerWritingOutput());
+    log.debug(workerWritingOutput());
     const finalOutput = buildOutput(false);
     writeSessionOutput(finalOutput);
 
     // Run cleanup functions
-    console.error(workerRunningCleanup());
+    log.debug(workerRunningCleanup());
     for (const cleanup of cleanupFunctions) {
       try {
         cleanup();
@@ -673,7 +676,7 @@ async function gracefulShutdown(): Promise<void> {
 
     // Close CDP connection
     if (cdp) {
-      console.error(workerClosingCDP());
+      log.debug(workerClosingCDP());
       cdp.close();
       cdp = null;
     }
@@ -685,7 +688,7 @@ async function gracefulShutdown(): Promise<void> {
       chrome = null;
     }
 
-    console.error(workerShutdownComplete());
+    log.debug(workerShutdownComplete());
   } catch (error) {
     console.error(`[worker] Error during shutdown: ${getErrorMessage(error)}`);
     throw error;
@@ -768,7 +771,7 @@ async function main(): Promise<void> {
       // WHY: Prevents zombie worker processes when Chrome crashes/closes
       onDisconnect: (code, reason) => {
         console.error(`[worker] Chrome connection lost (code: ${code}, reason: ${reason})`);
-        console.error(workerExitingConnectionLoss());
+        log.debug(workerExitingConnectionLoss());
         process.exit(0);
       },
     });
@@ -802,12 +805,12 @@ async function main(): Promise<void> {
 
     // Set up shutdown handlers
     process.on('SIGTERM', () => {
-      console.error(workerReceivedSIGTERM());
+      log.debug(workerReceivedSIGTERM());
       void gracefulShutdown().then(() => process.exit(0));
     });
 
     process.on('SIGINT', () => {
-      console.error(workerReceivedSIGINT());
+      log.debug(workerReceivedSIGINT());
       void gracefulShutdown().then(() => process.exit(0));
     });
 
@@ -815,13 +818,13 @@ async function main(): Promise<void> {
     if (config.timeout) {
       console.error(`[worker] Auto-stop after ${config.timeout}s`);
       setTimeout(() => {
-        console.error(workerTimeoutReached());
+        log.debug(workerTimeoutReached());
         void gracefulShutdown().then(() => process.exit(0));
       }, config.timeout * 1000);
     }
 
     // Keep process alive
-    console.error(workerSessionActive());
+    log.debug(workerSessionActive());
   } catch (error) {
     console.error(`[worker] Fatal error: ${getErrorMessage(error)}`);
 

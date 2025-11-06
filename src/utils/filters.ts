@@ -2,7 +2,7 @@
  * Default filters for reducing noise in collected data
  */
 
-import { extractHostname, extractHostnameWithPath } from './url/safeParseUrl.js';
+import { extractHostname, extractHostnameWithPath } from './url.js';
 
 /**
  * Domains to exclude by default (common tracking/analytics)

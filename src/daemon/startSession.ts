@@ -20,7 +20,10 @@ import {
   daemonParseError,
 } from '@/ui/messages/debug.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { createLogger } from '@/utils/logger.js';
 import { validateUrl } from '@/utils/url.js';
+
+const log = createLogger('daemon');
 
 /**
  * Worker metadata returned from successful launch.
@@ -100,7 +103,7 @@ export async function launchSessionInWorker(
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const workerPath = join(currentDir, 'worker.js');
 
-  console.error(daemonSpawningWorker(workerPath, config));
+  log.debug(daemonSpawningWorker(workerPath, config));
 
   // Spawn worker process
   let worker: ChildProcess;
@@ -119,7 +122,7 @@ export async function launchSessionInWorker(
   }
 
   if (worker.pid) {
-    console.error(daemonWorkerSpawned(worker.pid));
+    log.debug(daemonWorkerSpawned(worker.pid));
   }
 
   // Wait for worker_ready signal
@@ -173,7 +176,7 @@ export async function launchSessionInWorker(
                   target: { url: string; title?: string };
                 };
 
-                console.error(daemonWorkerReady(readyMessage.workerPid, readyMessage.chromePid));
+                log.debug(daemonWorkerReady(readyMessage.workerPid, readyMessage.chromePid));
 
                 // NOTE: Don't unref() - we need to keep the worker reference for IPC
                 // Worker continues running as detached process
@@ -190,7 +193,7 @@ export async function launchSessionInWorker(
             }
           } catch {
             // Ignore parse errors, may be log messages
-            console.error(daemonParseError(line));
+            log.debug(daemonParseError(line));
           }
         }
       });
