@@ -13,6 +13,9 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
+  # Force kill any Chrome processes on port 9222
+  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
+  sleep 0.5
   bdg cleanup --force 2>/dev/null || true
   exit "$exit_code"
 }

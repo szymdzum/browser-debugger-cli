@@ -14,6 +14,9 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
+  # Force kill any Chrome processes on port 9222
+  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
+  sleep 0.5
   bdg cleanup --force 2>/dev/null || true
   exit "$exit_code"
 }
@@ -46,8 +49,10 @@ log_success "First session running (PID: $FIRST_PID)"
 
 # Test 2: Attempt to start concurrent session
 log_step "Test 2: Attempting concurrent session (should fail)"
-CONCURRENT_OUTPUT=$(bdg "https://example.com" 2>&1) || true
+set +e
+CONCURRENT_OUTPUT=$(bdg "https://example.com" 2>&1)
 EXIT_CODE=$?
+set -e
 
 if [ $EXIT_CODE -eq 0 ]; then
   log_error "Concurrent session should have been prevented"

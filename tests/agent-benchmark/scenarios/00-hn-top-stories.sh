@@ -32,9 +32,12 @@ source "$(dirname "$0")/../lib/recovery.sh"
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
-  # Stop session if still running (best-effort)
   bdg stop 2>/dev/null || true
   sleep 0.5
+  # Force kill any Chrome processes on port 9222
+  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
+  sleep 0.5
+  bdg cleanup --force 2>/dev/null || true
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM

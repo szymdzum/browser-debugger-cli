@@ -16,6 +16,9 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
+  # Force kill any Chrome processes on port 9222
+  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
+  sleep 0.5
   bdg cleanup --force 2>/dev/null || true
   exit "$exit_code"
 }
@@ -38,8 +41,10 @@ cleanup_sessions
 
 # Test 1: Peek with no active session
 log_step "Test 1: Peek with no active session"
-PEEK_OUTPUT=$(bdg peek 2>&1) || true
+set +e
+PEEK_OUTPUT=$(bdg peek 2>&1)
 EXIT_CODE=$?
+set -e
 
 # Should fail gracefully
 if [ $EXIT_CODE -eq 0 ]; then
@@ -101,9 +106,9 @@ JSON_OUTPUT=$(bdg peek --json 2>&1) || die "Peek --json failed"
 # Validate JSON format
 echo "$JSON_OUTPUT" | jq . > /dev/null 2>&1 || die "Peek --json output is not valid JSON"
 
-# Validate JSON structure
-JSON_ITEMS=$(echo "$JSON_OUTPUT" | jq '.items' 2>&1) || die "JSON missing 'items' field"
-[ "$JSON_ITEMS" != "null" ] || die "JSON items field is null"
+# Validate JSON structure (peek uses .preview.data structure)
+JSON_PREVIEW=$(echo "$JSON_OUTPUT" | jq '.preview' 2>&1) || die "JSON missing 'preview' field"
+[ "$JSON_PREVIEW" != "null" ] || die "JSON preview field is null"
 
 log_success "Test 7 passed: Peek --json produces valid JSON"
 

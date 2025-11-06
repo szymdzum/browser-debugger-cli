@@ -14,6 +14,9 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
+  # Force kill any Chrome processes on port 9222
+  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
+  sleep 0.5
   bdg cleanup --force 2>/dev/null || true
   exit "$exit_code"
 }
@@ -45,8 +48,10 @@ log_success "First session started successfully"
 
 # Test 2: Try to start second session (should fail with port conflict)
 log_step "Test 2: Attempting to start second session (should fail)"
-SECOND_SESSION_OUTPUT=$(bdg "https://example.com" 2>&1) || true
+set +e
+SECOND_SESSION_OUTPUT=$(bdg "https://example.com" 2>&1)
 EXIT_CODE=$?
+set -e
 
 # Should fail with non-zero exit code
 if [ $EXIT_CODE -eq 0 ]; then
@@ -67,8 +72,10 @@ fi
 
 # Test 3: Try with explicit port that's already in use
 log_step "Test 3: Attempting to start session on occupied port 9222"
-EXPLICIT_PORT_OUTPUT=$(bdg "https://example.com" --port 9222 2>&1) || true
+set +e
+EXPLICIT_PORT_OUTPUT=$(bdg "https://example.com" --port 9222 2>&1)
 EXIT_CODE=$?
+set -e
 
 if [ $EXIT_CODE -eq 0 ]; then
   log_error "Should have failed with explicit port conflict"
