@@ -117,10 +117,11 @@ All expected fields present and types match schema.
 **Key Decisions**:
 
 **Phase 1: Backward Compatible Extensions (v0.3.0)**
-- Add new command-specific schemas (`DomWaitData`, `ScreenshotData`)
+- Add new command-specific schemas (`ScreenshotData`)
 - Register in `src/ipc/commands.ts` command registry
 - Keep `BdgOutput` structure unchanged
 - Individual commands return specific types via `CommandResult<T>`
+- **Note**: Removed `DomWaitData` - page readiness already implemented as default
 
 **Phase 2: Enhanced Metadata (v0.4.0)**
 - Add optional fields to existing types (viewport, screenshots, performance)
@@ -128,10 +129,15 @@ All expected fields present and types match schema.
 - No breaking changes to v0.3.x consumers
 
 **Phase 3: Schema Versioning (v1.0.0)**
-- Introduce `schemaVersion` field
+- Introduce `schemaVersion` field separate from package version
 - Formal deprecation policy (3-month notice)
-- `--schema-version` flag for negotiation
-- Contract tests with golden files
+- `--schema-version` flag for negotiation (future feature)
+- Contract tests with golden files (implemented in Week 0)
+
+**Versioning Strategy**:
+- **Hybrid approach**: Implicit versioning (package version) until v1.0, then explicit `schemaVersion` field
+- **Rationale**: Additive-only changes don't require schema negotiation yet
+- **Testing**: Golden files lock schema shape and prevent drift
 
 **Migration Strategy**:
 - ✅ Additive changes only (no removals)
@@ -143,17 +149,9 @@ All expected fields present and types match schema.
 
 **Documented in**: `SCHEMA_MIGRATION_PLAN.md` (Exit Code Mappings section)
 
-**New Commands**:
+**New Command**:
 
-**DOM Wait** (`bdg dom wait <selector>`):
-| Code | Constant | Meaning |
-|------|----------|---------|
-| 0 | SUCCESS | Element found |
-| 81 | INVALID_ARGUMENTS | Invalid selector |
-| 83 | RESOURCE_NOT_FOUND | Element not found |
-| 102 | CDP_TIMEOUT | Wait timeout exceeded |
-
-**Page Screenshot** (`bdg page screenshot <path>`):
+**DOM Screenshot** (`bdg dom screenshot <path>`):
 | Code | Constant | Meaning |
 |------|----------|---------|
 | 0 | SUCCESS | Screenshot captured |
@@ -161,6 +159,8 @@ All expected fields present and types match schema.
 | 82 | PERMISSION_DENIED | Cannot write to path |
 | 103 | SESSION_FILE_ERROR | File write failed |
 | 102 | CDP_TIMEOUT | CDP timeout |
+
+**Note**: DOM wait command removed from scope - page readiness is already implemented as default feature (commit `dd12c7e`).
 
 **Existing Codes** (from `src/utils/exitCodes.ts`):
 - **User Errors (80-99)**: Invalid URL, arguments, permissions, resource issues
@@ -171,16 +171,89 @@ All expected fields present and types match schema.
 - Consistent across all commands
 - Documented in code and user-facing docs
 
+### ✅ 6. Contract Tests with Golden Files
+
+**New Deliverables** (added 2025-11-06):
+
+**File**: `src/__tests__/fixtures/schema-v0.2.1.golden.json`
+- Canonical example of BdgOutput schema v0.2.1
+- Includes all telemetry types (network, console, dom)
+- Real-world structure for validation
+
+**Test Suite**: `src/__tests__/schema.contract.test.ts`
+- **12 comprehensive tests** covering:
+  - ✅ Top-level field validation (version, success, timestamp, duration, target, data)
+  - ✅ Target structure validation (url, title)
+  - ✅ Data object validation (optional telemetry arrays)
+  - ✅ NetworkRequest structure (9 fields with type checking)
+  - ✅ ConsoleMessage structure (4 fields with type checking)
+  - ✅ DOMData structure (3 fields with type checking)
+  - ✅ Optional field validation (error, partial)
+  - ✅ Unexpected field detection (breaking change protection)
+  - ✅ Error output format validation
+  - ✅ Partial output format validation (live previews)
+
+**Build Integration**:
+- Postbuild script automatically copies `*.json` fixtures to `dist/__tests__/fixtures/`
+- Ensures golden files available for compiled tests
+- Runs as part of `npm test`
+
+**Test Results**:
+```bash
+node --test dist/__tests__/schema.contract.test.js
+# tests 12
+# pass 12
+# fail 0
+```
+
+**Purpose**:
+- Lock schema shape to prevent accidental breaking changes
+- Validate TypeScript interfaces match runtime JSON
+- Detect schema drift during development
+- Enable confident schema evolution
+
+### ✅ 7. Schema Versioning Strategy
+
+**Design**: Hybrid approach balancing simplicity with future flexibility
+
+**Current (v0.2.x - v0.3.x)**:
+- Implicit versioning via package `version` field
+- Additive-only changes (no breaking changes)
+- No schema negotiation needed
+
+**Future (v1.0.0+)**:
+- Add explicit `schemaVersion` field
+- Enable schema negotiation with `--schema-version` flag (if needed)
+- Formal deprecation policy (3-month notice)
+
+**Rationale**:
+- Start simple: Don't add complexity before it's needed
+- Test evolution: Phase 1 validates additive changes work
+- Future-proof: Clear path to explicit versioning at 1.0
+
+**Benefits**:
+- Consumers can rely on stable schema within major versions
+- Optional fields enable feature additions without breaking changes
+- Contract tests catch violations automatically
+
 ## Acceptance Criteria Status
 
-From `docs/roadmap/01_AGENTS_FOUNDATION.md` Week 0:
+From `docs/roadmap/M1_IMPLEMENTATION_GUIDE.md` Week 0:
 
 - [x] Raw CDP works: `bdg cdp Runtime.evaluate --params '{"expression": "document.title", "returnByValue": true}'`
 - [x] Golden example script runs successfully (query title, check element existence, extract data)
 - [x] Schema migration plan documented (incremental evolution, not breaking change)
-- [x] Exit code table created for `dom.wait` and `page.screenshot`
+- [x] Exit code table created for `dom screenshot` command
+- [x] Contract tests with golden files implemented
+- [x] Schema versioning strategy designed
 
 **All acceptance criteria met!** ✅
+
+**Bonus Deliverables** (beyond original scope):
+- ✅ Comprehensive contract test suite (12 tests)
+- ✅ Automated golden file copying in build process
+- ✅ Schema versioning strategy (hybrid approach)
+- ✅ Updated SCHEMA_MIGRATION_PLAN.md with corrections
 
 ## Technical Insights
 

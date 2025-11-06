@@ -77,26 +77,15 @@ export interface ConsoleMessage {
 
 Based on the roadmap (`docs/roadmap/01_AGENTS_FOUNDATION.md`), we need to support:
 
-### 1. DOM Wait Command (`bdg dom wait`)
+### 1. DOM Screenshot Command (`bdg dom screenshot`)
 
-**New output fields needed:**
-```typescript
-interface DomWaitData {
-  selector: string;
-  found: boolean;
-  waitTime: number;        // Milliseconds waited
-  timeout?: number;        // Timeout value if provided
-  nodeId?: number;         // If found
-  timedOut?: boolean;      // True if wait exceeded timeout
-}
-```
+**Purpose**: Capture visual screenshots of the page (complements DOM HTML capture).
 
-**Exit codes:**
-- 0: Element found
-- 83: Element not found (RESOURCE_NOT_FOUND)
-- 102: Wait timeout exceeded (CDP_TIMEOUT)
-
-### 2. Page Screenshot Command (`bdg page screenshot`)
+**Rationale**: While DOM HTML (`data.dom.outerHTML`) provides semantic content, screenshots capture the visual rendering including:
+- External CSS stylesheets and computed styles
+- Images, canvas elements, video frames
+- Actual layout and visual state
+- Useful for visual regression testing and debugging layout issues
 
 **New output fields needed:**
 ```typescript
@@ -119,7 +108,10 @@ interface ScreenshotData {
 - 0: Screenshot captured successfully
 - 81: Invalid arguments (invalid format, quality, path)
 - 82: Permission denied (cannot write to path)
+- 103: SESSION_FILE_ERROR (File write failed)
 - 102: CDP timeout
+
+**Note**: Page readiness (waiting for DOM to be ready) is already implemented as a default feature in the page readiness logic (see commit `dd12c7e`). No additional `bdg dom wait` command is needed for basic DOM readiness.
 
 ## Migration Strategy
 
@@ -130,21 +122,16 @@ interface ScreenshotData {
 **Approach**: Additive changes only, no removals or breaking modifications.
 
 **Changes**:
-1. Add `DomWaitData` interface to `src/types.ts`
-2. Add `ScreenshotData` interface to `src/types.ts`
-3. Register new commands in `src/ipc/commands.ts`:
+1. Add `ScreenshotData` interface to `src/types.ts`
+2. Register new command in `src/ipc/commands.ts`:
    ```typescript
-   dom_wait: {
-     requestSchema: {} as DomWaitCommand,
-     responseSchema: {} as DomWaitData,
-   },
-   page_screenshot: {
-     requestSchema: {} as PageScreenshotCommand,
+   dom_screenshot: {
+     requestSchema: {} as DomScreenshotCommand,
      responseSchema: {} as ScreenshotData,
    }
    ```
-4. Keep `BdgOutput` structure unchanged
-5. Individual commands return their specific data types
+3. Keep `BdgOutput` structure unchanged
+4. Individual commands return their specific data types
 
 **Compatibility**:
 - ✅ Existing `session.json` format unchanged
@@ -228,15 +215,7 @@ export interface BdgOutput {
 
 ### New Commands Exit Codes
 
-**DOM Wait** (`bdg dom wait <selector>`):
-| Code | Constant | Meaning | Suggestion |
-|------|----------|---------|------------|
-| 0 | SUCCESS | Element found | - |
-| 81 | INVALID_ARGUMENTS | Invalid selector syntax | Check selector format |
-| 83 | RESOURCE_NOT_FOUND | Element not found | Increase timeout or check selector |
-| 102 | CDP_TIMEOUT | Wait timeout exceeded | Increase --timeout value |
-
-**Page Screenshot** (`bdg page screenshot <path>`):
+**DOM Screenshot** (`bdg dom screenshot <path>`):
 | Code | Constant | Meaning | Suggestion |
 |------|----------|---------|------------|
 | 0 | SUCCESS | Screenshot captured | - |
@@ -268,32 +247,24 @@ export interface BdgOutput {
 
 ### Contract Tests
 
-Create golden files to lock schema shape:
+✅ **IMPLEMENTED**: Golden files and contract tests now in place.
 
-**File**: `src/__tests__/fixtures/session-output.golden.json`
-```json
-{
-  "version": "0.2.1",
-  "success": true,
-  "timestamp": "2025-11-06T19:35:52.438Z",
-  "duration": 2695,
-  "target": {
-    "url": "https://example.com/",
-    "title": "Example Domain"
-  },
-  "data": {
-    "network": [...],
-    "console": [...],
-    "dom": {...}
-  }
-}
-```
+**File**: `src/__tests__/fixtures/schema-v0.2.1.golden.json` (created 2025-11-06)
+- Canonical example of v0.2.1 BdgOutput schema
+- Includes all telemetry types (network, console, dom)
+- Used by contract tests to prevent schema drift
 
-**Test**: `src/__tests__/schema.contract.test.ts`
-- Validate BdgOutput structure matches schema
-- Ensure all fields are present with correct types
-- Check for unexpected fields (breaking changes)
-- Verify exit codes match documented values
+**Test**: `src/__tests__/schema.contract.test.ts` (created 2025-11-06)
+- ✅ Validates BdgOutput structure matches TypeScript interfaces
+- ✅ Ensures all required fields are present with correct types
+- ✅ Detects unexpected fields (potential breaking changes)
+- ✅ Tests error and partial output formats
+- ✅ Validates nested structures (NetworkRequest, ConsoleMessage, DOMData)
+- ✅ Runs as part of `npm test`
+
+**Build Integration**: `package.json` postbuild script
+- Automatically copies `*.json` fixtures to `dist/__tests__/fixtures/`
+- Ensures golden files are available for compiled tests
 
 ### Migration Tests
 
@@ -304,28 +275,23 @@ Create golden files to lock schema shape:
 
 ## Implementation Checklist
 
-### Week 0 (Current)
+### Week 0 (Current) ✅ COMPLETE
 - [x] Test `bdg cdp Runtime.evaluate` with real examples
 - [x] Create golden example script showing full raw CDP workflow
 - [x] Audit existing output schema (`BdgOutput` in `src/types.ts`)
-- [ ] Plan schema migration path (this document)
-- [ ] Document exit code mappings for new commands (this document)
+- [x] Plan schema migration path (this document)
+- [x] Document exit code mappings for new commands (this document)
+- [x] Create contract tests with golden files (`src/__tests__/schema.contract.test.ts`)
+- [x] Design schema versioning strategy (hybrid approach: implicit now, explicit at v1.0.0)
 
-### Week 1-2 (DOM Wait Implementation)
-- [ ] Add `DomWaitData` interface to `src/types.ts`
-- [ ] Register `dom_wait` command in `src/ipc/commands.ts`
-- [ ] Implement worker handler in `src/daemon/worker.ts`
-- [ ] Add CLI command in `src/commands/dom.ts`
-- [ ] Create contract tests with golden files
-- [ ] Document usage in `docs/agents/dom-wait.md`
-
-### Week 3-4 (Screenshot Implementation)
+### Week 1-2 (Screenshot Implementation)
 - [ ] Add `ScreenshotData` interface to `src/types.ts`
-- [ ] Register `page_screenshot` command in `src/ipc/commands.ts`
+- [ ] Register `dom_screenshot` command in `src/ipc/commands.ts`
 - [ ] Implement worker handler in `src/daemon/worker.ts`
-- [ ] Add CLI command in `src/commands/page.ts`
-- [ ] Create contract tests with golden files
-- [ ] Document usage in `docs/agents/page-screenshot.md`
+- [ ] Add CLI command `bdg dom screenshot` in `src/commands/dom.ts`
+- [ ] Add golden file for screenshot response
+- [ ] Update contract tests to validate ScreenshotData
+- [ ] Document usage in `docs/agents/dom-screenshot.md`
 
 ### Week 5-6 (Documentation & Polish)
 - [ ] Create `docs/SCHEMA.md` with formal schema documentation
@@ -342,19 +308,23 @@ Create golden files to lock schema shape:
 4. **Document early**: Update docs as schemas evolve, not after
 5. **Agent validation**: Test with real agent scripts to ensure usability
 
-## Open Questions
+## Decisions Made (Previously Open Questions)
 
-1. Should `BdgOutput.data` be extended with command-specific results, or should individual commands return their own types?
-   - **Recommendation**: Individual commands return their own types (current pattern). `BdgOutput` is for final session output only.
+1. **Should `BdgOutput.data` be extended with command-specific results, or should individual commands return their own types?**
+   - ✅ **Decision**: Individual commands return their own types (current pattern). `BdgOutput` is for final session output only.
+   - **Rationale**: Keeps `BdgOutput` focused on session-level telemetry. Command-specific data doesn't belong in the final output.
 
-2. Do we need a `--schema-version` flag now, or wait until 1.0?
-   - **Recommendation**: Wait until we have breaking changes. Current additive approach doesn't require versioning yet.
+2. **Do we need a `--schema-version` flag now, or wait until 1.0?**
+   - ✅ **Decision**: Wait until 1.0. Use hybrid approach: implicit versioning via package version (0.x), explicit `schemaVersion` field at 1.0.
+   - **Rationale**: Current additive approach doesn't require negotiation. Adding `schemaVersion` field can be done at 1.0 when we formalize the contract.
 
-3. Should screenshot metadata be included in `session.json`, or kept separate?
-   - **Recommendation**: Keep separate. Screenshots are artifacts, not telemetry. Reference via `screenshots` array if needed.
+3. **Should screenshot metadata be included in `session.json`, or kept separate?**
+   - ✅ **Decision**: Keep separate. Screenshots are artifacts (binary files), not telemetry data.
+   - **Rationale**: `session.json` is for structured telemetry. Phase 2 (v0.4.0) may add optional `screenshots[]` array with file references if needed.
 
-4. How should we handle CDP errors vs command errors?
-   - **Recommendation**: Use exit codes (102 for CDP timeouts, 101 for connection failures). Include CDP error details in `error` field.
+4. **How should we handle CDP errors vs command errors?**
+   - ✅ **Decision**: Use semantic exit codes. CDP errors: 102 (timeout), 101 (connection failure). Include CDP error details in `error` field.
+   - **Rationale**: Exit codes enable agent-friendly error handling. Human-readable error messages in `error` field provide context.
 
 ## Related Documents
 

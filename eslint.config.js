@@ -143,6 +143,13 @@ export default [
       },
     },
   },
+  // Test files - disable no-floating-promises for Node.js test runner
+  {
+    files: ['src/**/__tests__/**/*.test.ts', 'src/**/__tests__/**/*.contract.test.ts'],
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+    },
+  },
   // Prettier integration - disable conflicting rules
   prettierConfig,
   // Ignore patterns
