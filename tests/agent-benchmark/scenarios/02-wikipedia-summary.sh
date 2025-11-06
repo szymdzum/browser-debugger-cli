@@ -30,6 +30,16 @@ source "$(dirname "$0")/../lib/metrics.sh"
 source "$(dirname "$0")/../lib/assertions.sh"
 source "$(dirname "$0")/../lib/recovery.sh"
 
+# Cleanup trap to prevent cascade failures
+cleanup() {
+  local exit_code=$?
+  # Stop session if still running (best-effort)
+  bdg stop 2>/dev/null || true
+  sleep 0.5
+  exit "$exit_code"
+}
+trap cleanup EXIT INT TERM
+
 # Start timing
 start_time=$(date +%s)
 start_benchmark "$SCENARIO_NAME"

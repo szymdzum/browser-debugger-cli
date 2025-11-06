@@ -8,6 +8,16 @@
 
 set -euo pipefail
 
+# Cleanup trap to prevent cascade failures
+cleanup() {
+  local exit_code=$?
+  bdg stop 2>/dev/null || true
+  sleep 0.5
+  bdg cleanup --force 2>/dev/null || true
+  exit "$exit_code"
+}
+trap cleanup EXIT INT TERM
+
 # Test metadata
 TEST_NAME="status-command"
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
