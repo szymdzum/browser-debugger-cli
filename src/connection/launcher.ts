@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -126,6 +127,28 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   // Validate port range
   if (port < 1 || port > 65535) {
     throw new ChromeLaunchError(invalidPortError(port));
+  }
+
+  // Check if port is already in use by orphaned Chrome process
+  // This prevents confusing launch failures when cleanup didn't fully remove Chrome
+  try {
+    const portInUse = execSync(`lsof -ti:${port} 2>/dev/null || true`, { encoding: 'utf8' }).trim();
+    if (portInUse) {
+      throw new ChromeLaunchError(
+        `Port ${port} is already in use by process ${portInUse}\n\n` +
+          `This usually means Chrome is still running from a previous session.\n\n` +
+          `Try:\n` +
+          `  - bdg cleanup --aggressive  (kills all Chrome processes)\n` +
+          `  - bdg cleanup --force       (removes session files + kills Chrome on port ${port})\n` +
+          `  - kill ${portInUse}                (manually kill the process)\n` +
+          `  - Use different port: bdg <url> --port ${port + 1}`
+      );
+    }
+  } catch (error) {
+    // Re-throw ChromeLaunchError, ignore other errors (lsof not available, etc.)
+    if (error instanceof ChromeLaunchError) {
+      throw error;
+    }
   }
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
