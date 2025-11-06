@@ -7,7 +7,7 @@ import {
   TIMEOUT_OPTION_DESCRIPTION,
   USER_DATA_DIR_OPTION_DESCRIPTION,
 } from '@/constants.js';
-import type { CollectorType } from '@/types';
+import type { TelemetryType } from '@/types';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -28,10 +28,10 @@ interface CollectorOptions {
 }
 
 /**
- * Apply shared collector options to a command
+ * Apply shared telemetry options to a command
  *
  * @param command - Commander.js Command instance to apply options to
- * @returns The modified Command instance with all collector options applied
+ * @returns The modified Command instance with all telemetry options applied
  */
 function applyCollectorOptions(command: Command): Command {
   return command
@@ -91,7 +91,7 @@ function buildSessionOptions(options: CollectorOptions): {
 }
 
 /**
- * Common action handler for collector commands
+ * Common action handler for telemetry commands
  *
  * @param url - Target URL to collect telemetry from
  * @param options - Parsed command-line options from Commander
@@ -101,10 +101,10 @@ async function collectorAction(url: string, options: CollectorOptions): Promise<
   const sessionOptions = buildSessionOptions(options);
 
   // Always collect all 3 types (dom, network, console)
-  const collectors: CollectorType[] = ['dom', 'network', 'console'];
+  const telemetry: TelemetryType[] = ['dom', 'network', 'console'];
 
   // Dispatch to daemon via IPC instead of running in-process
-  await startSessionViaDaemon(url, sessionOptions, collectors);
+  await startSessionViaDaemon(url, sessionOptions, telemetry);
 }
 
 /**

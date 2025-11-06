@@ -17,7 +17,7 @@ export interface StatusData {
   port?: number;
   targetId?: string | undefined;
   webSocketDebuggerUrl?: string | undefined;
-  collectors?: string[];
+  telemetry?: string[];
   stale?: boolean;
   stalePid?: number;
   warning?: string;
@@ -108,17 +108,17 @@ export function formatSessionStatus(
     }
   }
 
-  // Collectors Section
+  // Telemetry Section
   lines.push('');
   lines.push('Collectors');
   lines.push('━'.repeat(50));
 
-  // Use activeCollectors from metadata, fallback to all collectors for backward compatibility
-  const activeCollectors = metadata.activeCollectors ?? ['network', 'console', 'dom'];
+  // Use activeTelemetry from metadata, fallback to all telemetry modules for backward compatibility
+  const activeTelemetry = metadata.activeTelemetry ?? ['network', 'console', 'dom'];
 
-  lines.push(`Network:          ${activeCollectors.includes('network') ? 'Active' : 'Inactive'}`);
-  lines.push(`Console:          ${activeCollectors.includes('console') ? 'Active' : 'Inactive'}`);
-  lines.push(`DOM:              ${activeCollectors.includes('dom') ? 'Active' : 'Inactive'}`);
+  lines.push(`Network:          ${activeTelemetry.includes('network') ? 'Active' : 'Inactive'}`);
+  lines.push(`Console:          ${activeTelemetry.includes('console') ? 'Active' : 'Inactive'}`);
+  lines.push(`DOM:              ${activeTelemetry.includes('dom') ? 'Active' : 'Inactive'}`);
 
   // Add verbose Chrome diagnostics if requested
   if (verbose) {
@@ -190,8 +190,8 @@ export function formatStatusAsJson(
     port: metadata.port,
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
-    // Use activeCollectors from metadata, fallback to all collectors for backward compatibility
-    collectors: metadata.activeCollectors ?? ['network', 'console', 'dom'],
+    // Use activeTelemetry from metadata, fallback to all telemetry types for backward compatibility
+    telemetry: metadata.activeTelemetry ?? ['network', 'console', 'dom'],
   };
 }
 

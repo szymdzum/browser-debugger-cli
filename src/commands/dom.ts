@@ -292,7 +292,7 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
 }
 
 /**
- * Register DOM collector commands
+ * Register DOM telemetry commands
  *
  * @param program - Commander.js Command instance
  */

@@ -1,7 +1,7 @@
 import { landingPage } from '@/commands/shared/landingPage.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
-import type { CollectorType } from '@/types.js';
+import type { TelemetryType } from '@/types.js';
 import {
   sessionAlreadyRunningError,
   daemonConnectionFailedError,
@@ -25,7 +25,7 @@ const log = createLogger('bdg');
  *
  * @param url - Target URL to navigate to
  * @param options - Session configuration options
- * @param collectors - Array of collector types to enable
+ * @param telemetry - Array of telemetry types to enable
  */
 export async function startSessionViaDaemon(
   url: string,
@@ -37,7 +37,7 @@ export async function startSessionViaDaemon(
     maxBodySize: number | undefined;
     compact: boolean;
   },
-  collectors: CollectorType[]
+  telemetry: TelemetryType[]
 ): Promise<void> {
   try {
     log.debug('Connecting to daemon...');
@@ -46,7 +46,7 @@ export async function startSessionViaDaemon(
     const requestOptions: {
       port?: number;
       timeout?: number;
-      collectors?: CollectorType[];
+      telemetry?: TelemetryType[];
       includeAll?: boolean;
       userDataDir?: string;
       maxBodySize?: number;
@@ -54,7 +54,7 @@ export async function startSessionViaDaemon(
 
     if (options.port !== undefined) requestOptions.port = options.port;
     if (options.timeout !== undefined) requestOptions.timeout = options.timeout;
-    if (collectors.length > 0) requestOptions.collectors = collectors;
+    if (telemetry.length > 0) requestOptions.telemetry = telemetry;
     if (options.includeAll !== undefined) requestOptions.includeAll = options.includeAll;
     if (options.userDataDir !== undefined) requestOptions.userDataDir = options.userDataDir;
     if (options.maxBodySize !== undefined) requestOptions.maxBodySize = options.maxBodySize;

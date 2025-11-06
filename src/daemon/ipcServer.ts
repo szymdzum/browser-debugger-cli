@@ -251,7 +251,7 @@ export class IPCServer {
             port: metadata.port,
             targetId: metadata.targetId,
             webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
-            activeCollectors: metadata.activeCollectors,
+            activeTelemetry: metadata.activeTelemetry,
           }) as Required<NonNullable<StatusResponseData['sessionMetadata']>>;
         }
 
@@ -428,7 +428,7 @@ export class IPCServer {
           filterDefined({
             port: request.port,
             timeout: request.timeout,
-            collectors: request.collectors,
+            telemetry: request.telemetry,
             includeAll: request.includeAll,
             userDataDir: request.userDataDir,
             maxBodySize: request.maxBodySize,

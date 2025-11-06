@@ -87,7 +87,7 @@ export interface WorkerPeekData {
     url: string;
     title: string;
   };
-  activeCollectors: string[];
+  activeTelemetry: string[];
   network: Array<{
     requestId: string;
     timestamp: number;
@@ -148,8 +148,8 @@ export interface WorkerStatusData {
     url: string;
     title: string;
   };
-  /** Active collectors (network, console, dom) */
-  activeCollectors: string[];
+  /** Active telemetry modules (network, console, dom) */
+  activeTelemetry: string[];
   /** Real-time activity metrics */
   activity: {
     networkRequestsCaptured: number;

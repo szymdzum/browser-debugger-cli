@@ -4,7 +4,7 @@ import type {
   NetworkRequest,
   ConsoleMessage,
   DOMData,
-  CollectorType,
+  TelemetryType,
 } from '@/types';
 import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
@@ -24,7 +24,7 @@ export interface OutputBuilderOptions {
   networkRequests: NetworkRequest[];
   consoleLogs: ConsoleMessage[];
   domData?: DOMData;
-  activeCollectors: CollectorType[];
+  activeTelemetry: TelemetryType[];
 }
 
 /**
@@ -39,7 +39,7 @@ export class OutputBuilder {
    * @returns BdgOutput payload
    */
   static build(options: OutputBuilderOptions): BdgOutput {
-    const { mode, target, startTime, networkRequests, consoleLogs, domData, activeCollectors } =
+    const { mode, target, startTime, networkRequests, consoleLogs, domData, activeTelemetry } =
       options;
 
     const baseOutput = {
@@ -59,7 +59,7 @@ export class OutputBuilder {
       // Lightweight preview: metadata only, last 1000 items
       const previewData: Record<string, unknown> = {};
 
-      if (activeCollectors.includes('network')) {
+      if (activeTelemetry.includes('network')) {
         previewData['network'] = networkRequests.slice(-1000).map((req) => ({
           requestId: req.requestId,
           url: req.url,
@@ -71,7 +71,7 @@ export class OutputBuilder {
         }));
       }
 
-      if (activeCollectors.includes('console')) {
+      if (activeTelemetry.includes('console')) {
         previewData['console'] = consoleLogs.slice(-1000).map((msg) => ({
           type: msg.type,
           text: msg.text,
@@ -92,11 +92,11 @@ export class OutputBuilder {
       // Full mode: complete data with bodies
       const fullData: Record<string, unknown> = {};
 
-      if (activeCollectors.includes('network')) {
+      if (activeTelemetry.includes('network')) {
         fullData['network'] = networkRequests; // All data with bodies
       }
 
-      if (activeCollectors.includes('console')) {
+      if (activeTelemetry.includes('console')) {
         fullData['console'] = consoleLogs; // All data with args
       }
 
@@ -111,15 +111,15 @@ export class OutputBuilder {
     // Final mode - includes DOM, partial=false
     const finalData: Record<string, unknown> = {};
 
-    if (activeCollectors.includes('network')) {
+    if (activeTelemetry.includes('network')) {
       finalData['network'] = networkRequests;
     }
 
-    if (activeCollectors.includes('console')) {
+    if (activeTelemetry.includes('console')) {
       finalData['console'] = consoleLogs;
     }
 
-    if (activeCollectors.includes('dom') && domData) {
+    if (activeTelemetry.includes('dom') && domData) {
       finalData['dom'] = domData;
     }
 

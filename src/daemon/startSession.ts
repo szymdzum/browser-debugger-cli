@@ -12,7 +12,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-import type { CollectorType } from '@/types.js';
+import type { TelemetryType } from '@/types.js';
 import {
   daemonSpawningWorker,
   daemonWorkerSpawned,
@@ -40,7 +40,7 @@ export interface WorkerMetadata {
 export interface LaunchWorkerOptions {
   port?: number;
   timeout?: number;
-  collectors?: CollectorType[];
+  telemetry?: TelemetryType[];
   includeAll?: boolean;
   userDataDir?: string;
   maxBodySize?: number;
@@ -90,7 +90,7 @@ export async function launchSessionInWorker(
     url,
     port: options.port ?? 9222,
     ...(options.timeout !== undefined && { timeout: options.timeout }),
-    ...(options.collectors !== undefined && { collectors: options.collectors }),
+    ...(options.telemetry !== undefined && { telemetry: options.telemetry }),
     ...(options.includeAll !== undefined && { includeAll: options.includeAll }),
     ...(options.userDataDir !== undefined && { userDataDir: options.userDataDir }),
     ...(options.maxBodySize !== undefined && { maxBodySize: options.maxBodySize }),

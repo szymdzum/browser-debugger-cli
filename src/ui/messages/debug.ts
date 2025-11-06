@@ -56,23 +56,23 @@ export function daemonParseError(line: string): string {
 // ============================================================================
 
 /**
- * Generate collector activation message.
+ * Generate telemetry module activation message.
  *
- * @param collectorName - Name of collector being activated
+ * @param collectorName - Name of telemetry module being activated
  * @returns Formatted debug message
  */
 export function workerActivatingCollector(collectorName: string): string {
-  return `[worker] Activating ${collectorName} collector`;
+  return `[worker] Activating ${collectorName} telemetry`;
 }
 
 /**
- * Generate all collectors activated message.
+ * Generate all telemetry modules activated message.
  *
- * @param collectors - Array of activated collector names
+ * @param telemetry - Array of activated telemetry module names
  * @returns Formatted debug message
  */
-export function workerCollectorsActivated(collectors: string[]): string {
-  return `[worker] All collectors activated: ${collectors.join(', ')}`;
+export function workerCollectorsActivated(telemetry: string[]): string {
+  return `[worker] All telemetry modules activated: ${telemetry.join(', ')}`;
 }
 
 /**

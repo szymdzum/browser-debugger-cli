@@ -1,5 +1,5 @@
 /**
- * Network collector contract tests
+ * Network telemetry contract tests
  *
  * Tests the public API behavior of startNetworkCollection WITHOUT testing implementation details.
  * Follows the testing philosophy: "Test the contract, not the implementation"
@@ -29,8 +29,8 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { useFakeClock } from '@/__testutils__/testClock.js';
-import { startNetworkCollection } from '@/collectors/network.js';
 import type { CDPConnection } from '@/connection/cdp.js';
+import { startNetworkCollection } from '@/telemetry/network.js';
 import type {
   CDPNetworkRequestParams,
   CDPNetworkResponseParams,
@@ -40,8 +40,8 @@ import type {
 } from '@/types';
 
 /**
- * Mock CDP connection for testing network collector.
- * Only mocks the CDP boundary - all collector logic is real.
+ * Mock CDP connection for testing network telemetry.
+ * Only mocks the CDP boundary - all telemetry logic is real.
  */
 class MockCDPConnection {
   private eventHandlers = new Map<string, Map<number, (params: unknown) => void>>();
@@ -112,7 +112,7 @@ class MockCDPConnection {
   }
 }
 
-void describe('Network collector contract', () => {
+void describe('Network telemetry contract', () => {
   let mockCDP: MockCDPConnection;
   let requests: NetworkRequest[];
 

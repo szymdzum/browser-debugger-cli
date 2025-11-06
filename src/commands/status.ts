@@ -71,7 +71,7 @@ export function registerStatusCommand(program: Command): void {
           port: data.sessionMetadata.port,
           targetId: data.sessionMetadata.targetId,
           webSocketDebuggerUrl: data.sessionMetadata.webSocketDebuggerUrl,
-          activeCollectors: data.sessionMetadata.activeCollectors,
+          activeTelemetry: data.sessionMetadata.activeTelemetry,
         };
 
         if (options.json) {

@@ -97,7 +97,7 @@ export function registerConsoleCommand(program: Command): void {
           if (!output?.data.console) {
             return {
               success: false,
-              error: 'No console data available. Ensure console collector is active.',
+              error: 'No console data available. Ensure console telemetry is active.',
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
             };
           }

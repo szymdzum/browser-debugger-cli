@@ -30,8 +30,7 @@ const addCommandGroup = (groupName: string): CommandRegistrar => {
  * Order matters: groups organize commands in help output
  */
 export const commandRegistry: CommandRegistrar[] = [
-  // Default command (no group)
-  registerStartCommands, // Default + dom/network/console
+  registerStartCommands,
 
   // Session Management Commands
   addCommandGroup('Session Management:'),

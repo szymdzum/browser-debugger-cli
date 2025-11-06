@@ -4,7 +4,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
  * Registry for managing CDP event handlers with automatic cleanup.
  *
  * Provides a centralized way to register and clean up CDP event handlers,
- * eliminating the boilerplate code repeated across all collectors.
+ * eliminating the boilerplate code repeated across all telemetry modules.
  */
 export class CDPHandlerRegistry {
   private handlers: Array<{ event: string; id: number }> = [];

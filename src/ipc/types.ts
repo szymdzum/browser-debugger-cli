@@ -5,7 +5,7 @@
  * a handshake between the CLI client and the daemon over JSONL protocol.
  */
 
-import type { CollectorType } from '@/types.js';
+import type { TelemetryType } from '@/types.js';
 
 /**
  * Base envelope for all IPC messages.
@@ -89,7 +89,7 @@ export interface StatusResponseData {
     port: number;
     targetId?: string;
     webSocketDebuggerUrl?: string;
-    activeCollectors?: CollectorType[];
+    activeTelemetry?: TelemetryType[];
   };
   /** Live activity metrics from worker (only present if session is active) */
   activity?: SessionActivity;
@@ -176,7 +176,7 @@ export interface StartSessionRequest extends IPCMessage {
   url: string; // Target URL to navigate to
   port?: number; // Chrome debugging port (default: 9222)
   timeout?: number; // Auto-stop timeout in seconds
-  collectors?: CollectorType[]; // Collectors to activate
+  telemetry?: TelemetryType[]; // Telemetry modules to activate
   includeAll?: boolean; // Include all data (disable filtering)
   userDataDir?: string; // Custom Chrome profile directory
   maxBodySize?: number; // Max response body size in KB

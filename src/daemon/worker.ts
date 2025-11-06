@@ -5,7 +5,7 @@
  * This process:
  * 1. Spawns Chrome with remote debugging enabled
  * 2. Connects to Chrome via CDP WebSocket
- * 3. Activates requested collectors (network, console, DOM)
+ * 3. Activates requested telemetry modules (network, console, DOM)
  * 4. Sends readiness signal to parent daemon
  * 5. Handles graceful shutdown on SIGTERM/SIGKILL
  *
@@ -15,9 +15,6 @@
  * - Worker handles SIGTERM for graceful shutdown
  */
 
-import { startConsoleCollection } from '@/collectors/console.js';
-import { prepareDOMCollection, collectDOM } from '@/collectors/dom.js';
-import { startNetworkCollection } from '@/collectors/network.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { queryBySelector, getNodeInfo, createNodePreview } from '@/connection/domOperations.js';
 import { launchChrome } from '@/connection/launcher.js';
@@ -34,8 +31,11 @@ import { writeSessionMetadata } from '@/session/metadata.js';
 import { writeSessionOutput } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
 import { writeQueryCache, getNodeIdByIndex } from '@/session/queryCache.js';
+import { startConsoleCollection } from '@/telemetry/console.js';
+import { prepareDOMCollection, collectDOM } from '@/telemetry/dom.js';
+import { startNetworkCollection } from '@/telemetry/network.js';
 import type {
-  CollectorType,
+  TelemetryType,
   NetworkRequest,
   ConsoleMessage,
   DOMData,
@@ -78,7 +78,7 @@ interface WorkerConfig {
   url: string;
   port: number;
   timeout?: number | undefined;
-  collectors?: CollectorType[] | undefined;
+  telemetry?: TelemetryType[] | undefined;
   includeAll?: boolean | undefined;
   userDataDir?: string | undefined;
   maxBodySize?: number | undefined;
@@ -101,7 +101,7 @@ let chrome: LaunchedChrome | null = null;
 let cdp: CDPConnection | null = null;
 let cleanupFunctions: CleanupFunction[] = [];
 
-// Collector data storage
+// Telemetry data storage
 const networkRequests: NetworkRequest[] = [];
 const consoleMessages: ConsoleMessage[] = [];
 let domData: DOMData | null = null;
@@ -109,7 +109,7 @@ let domData: DOMData | null = null;
 // Session metadata
 let sessionStartTime: number = Date.now();
 let targetInfo: CDPTarget | null = null;
-let activeCollectors: CollectorType[] = [];
+let activeTelemetry: TelemetryType[] = [];
 
 /**
  * Parse worker configuration from environment variables or argv.
@@ -133,7 +133,7 @@ function parseWorkerConfig(): WorkerConfig {
       url: config.url,
       port: config.port ?? 9222,
       timeout: config.timeout ?? undefined,
-      collectors: config.collectors ?? ['network', 'console', 'dom'],
+      telemetry: config.telemetry ?? ['network', 'console', 'dom'],
       includeAll: config.includeAll ?? false,
       userDataDir: config.userDataDir ?? undefined,
       maxBodySize: config.maxBodySize ?? undefined,
@@ -144,16 +144,16 @@ function parseWorkerConfig(): WorkerConfig {
 }
 
 /**
- * Activate collectors based on configuration.
+ * Activate telemetry modules based on configuration.
  */
 async function activateCollectors(config: WorkerConfig): Promise<void> {
   if (!cdp) {
     throw new Error('CDP connection not initialized');
   }
 
-  activeCollectors = config.collectors ?? ['network', 'console', 'dom'];
+  activeTelemetry = config.telemetry ?? ['network', 'console', 'dom'];
 
-  for (const collector of activeCollectors) {
+  for (const collector of activeTelemetry) {
     console.error(workerActivatingCollector(collector));
 
     switch (collector) {
@@ -188,7 +188,7 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
     }
   }
 
-  console.error(workerCollectorsActivated(activeCollectors));
+  console.error(workerCollectorsActivated(activeTelemetry));
 }
 
 /**
@@ -424,7 +424,7 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
         url: targetInfo?.url ?? '',
         title: targetInfo?.title ?? '',
       },
-      activeCollectors,
+      activeTelemetry,
       network: recentNetwork,
       console: recentConsole,
     });
@@ -461,7 +461,7 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
    * Worker Status Handler - Return live activity metrics and session state
    *
    * Provides comprehensive status information including activity counts,
-   * last activity timestamps, current page state, and active collectors.
+   * last activity timestamps, current page state, and active telemetry modules.
    * Used by the status command to show detailed session information.
    */
   worker_status: async (_cdp, _params) => {
@@ -478,7 +478,7 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
         url: targetInfo?.url ?? '',
         title: targetInfo?.title ?? '',
       },
-      activeCollectors,
+      activeTelemetry,
       activity: {
         networkRequestsCaptured: networkRequests.length,
         consoleMessagesCaptured: consoleMessages.length,
@@ -645,8 +645,8 @@ async function gracefulShutdown(): Promise<void> {
   console.error(workerShutdownStarted());
 
   try {
-    // Collect final DOM snapshot if DOM collector is active
-    if (activeCollectors.includes('dom') && cdp) {
+    // Collect final DOM snapshot if DOM telemetry is active
+    if (activeTelemetry.includes('dom') && cdp) {
       console.error(workerCollectingDOM());
       try {
         domData = await collectDOM(cdp);
@@ -779,7 +779,7 @@ async function main(): Promise<void> {
       maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
     });
 
-    // Activate collectors
+    // Activate telemetry modules
     await activateCollectors(config);
 
     // Write session metadata for status command
@@ -790,7 +790,7 @@ async function main(): Promise<void> {
       port: config.port,
       targetId: target.id,
       webSocketDebuggerUrl: target.webSocketDebuggerUrl,
-      activeCollectors,
+      activeTelemetry,
     });
     console.error(`[worker] Session metadata written`);
 
