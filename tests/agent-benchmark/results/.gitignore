@@ -1,0 +1,5 @@
+# Ignore all benchmark results
+*
+
+# But keep this directory in git
+!.gitignore
