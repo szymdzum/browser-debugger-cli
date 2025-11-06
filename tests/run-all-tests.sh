@@ -29,6 +29,7 @@ NC='\033[0m'
 RUN_BENCHMARKS=true
 RUN_INTEGRATION=true
 RUN_ERRORS=true
+RUN_EDGE_CASES=true
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -45,6 +46,13 @@ while [[ $# -gt 0 ]]; do
     --errors)
       RUN_BENCHMARKS=false
       RUN_INTEGRATION=false
+      RUN_EDGE_CASES=false
+      shift
+      ;;
+    --edge-cases)
+      RUN_BENCHMARKS=false
+      RUN_INTEGRATION=false
+      RUN_ERRORS=false
       shift
       ;;
     *)
@@ -129,7 +137,11 @@ if [ "$RUN_INTEGRATION" = true ]; then
 fi
 
 if [ "$RUN_ERRORS" = true ]; then
-  run_test_suite "Error Scenarios (Edge Cases)" "$TESTS_DIR/error-scenarios" "*.sh"
+  run_test_suite "Error Scenarios" "$TESTS_DIR/error-scenarios" "*.sh"
+fi
+
+if [ "$RUN_EDGE_CASES" = true ]; then
+  run_test_suite "Edge Cases (URL Handling, etc.)" "$TESTS_DIR/edge-cases" "*.sh"
 fi
 
 # Summary
