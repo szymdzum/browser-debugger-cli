@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 
 import type { Command } from 'commander';
@@ -113,6 +114,32 @@ export function registerCleanupCommand(program: Command): void {
             didCleanup = true;
           }
 
+          // Check for stale daemon PID (even if no session.pid exists)
+          const daemonPidPath = getSessionFilePath('DAEMON_PID');
+          if (fs.existsSync(daemonPidPath)) {
+            try {
+              const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
+              const daemonPid = parseInt(daemonPidStr, 10);
+
+              if (isNaN(daemonPid) || !isProcessAlive(daemonPid)) {
+                // Stale daemon PID - clean it up
+                console.error(staleSessionFoundMessage(daemonPid));
+                fs.unlinkSync(daemonPidPath);
+                cleanedSession = true;
+                didCleanup = true;
+              }
+            } catch {
+              // Failed to read - remove it anyway
+              try {
+                fs.unlinkSync(daemonPidPath);
+                cleanedSession = true;
+                didCleanup = true;
+              } catch {
+                // Ignore cleanup errors
+              }
+            }
+          }
+
           if (!pid) {
             // No session files to clean up
             // Fall through to check --all flag for session.json removal
@@ -136,6 +163,15 @@ export function registerCleanupCommand(program: Command): void {
             if (isAlive && opts.force) {
               warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
               console.error(forceCleanupWarningMessage(pid));
+
+              // Force-kill Chrome processes on debugging port 9222
+              // This ensures cleanup --force actually removes orphaned Chrome processes
+              try {
+                execSync('lsof -ti:9222 | xargs kill -9 2>/dev/null || true', { stdio: 'ignore' });
+                cleanedChrome = true;
+              } catch {
+                // Ignore errors - port may not be in use
+              }
             } else {
               console.error(staleSessionFoundMessage(pid));
             }
