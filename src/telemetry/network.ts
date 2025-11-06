@@ -119,7 +119,7 @@ export async function startNetworkCollection(
         requestId: params.requestId,
         url: params.request.url,
         method: params.request.method,
-        timestamp: params.timestamp,
+        timestamp: Date.now(), // Use actual timestamp, not CDP monotonic time
         requestHeaders: params.request.headers,
         requestBody: params.request.postData,
       };
