@@ -37,7 +37,7 @@ export function landingPage(options: LandingPageOptions): string {
   const lines: string[] = [];
 
   lines.push('');
-  lines.push('▲  Session Started');
+  lines.push('◆ Session Started');
   lines.push('');
   lines.push(`Target: ${url}`);
   lines.push('');
