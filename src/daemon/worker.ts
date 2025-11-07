@@ -90,6 +90,7 @@ interface WorkerConfig {
   userDataDir?: string | undefined;
   maxBodySize?: number | undefined;
   headless?: boolean | undefined;
+  waitTimeout?: number | undefined;
 }
 
 /**
@@ -1022,8 +1023,13 @@ async function main(): Promise<void> {
     await cdp.send('Page.navigate', { url: normalizedUrl });
 
     // Wait for page to be ready using smart detection
+    // Use custom wait timeout if provided, otherwise use default (5 seconds)
+    const waitTimeoutMs = config.waitTimeout
+      ? config.waitTimeout * 1000
+      : DEFAULT_PAGE_READINESS_TIMEOUT_MS;
+
     await waitForPageReady(cdp, {
-      maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
+      maxWaitMs: waitTimeoutMs,
     });
     console.error(`[worker] Page ready`);
 
