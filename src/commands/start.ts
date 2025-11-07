@@ -27,6 +27,8 @@ interface CollectorOptions {
   maxBodySize?: string;
   /** Use compact JSON format (no indentation) for output files. */
   compact?: boolean;
+  /** Launch Chrome in headless mode (no visible browser window). */
+  headless?: boolean;
 }
 
 /**
@@ -46,7 +48,8 @@ function applyCollectorOptions(command: Command): Command {
       'Maximum response body size in MB (default: 5MB)',
       '5'
     )
-    .option('--compact', 'Use compact JSON format (no indentation) for output files');
+    .option('--compact', 'Use compact JSON format (no indentation) for output files')
+    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)');
 }
 
 /**
@@ -80,6 +83,7 @@ function buildSessionOptions(options: CollectorOptions): {
   includeAll: boolean;
   maxBodySize: number | undefined;
   compact: boolean;
+  headless: boolean;
 } {
   const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size');
   return {
@@ -89,6 +93,7 @@ function buildSessionOptions(options: CollectorOptions): {
     includeAll: options.all ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
+    headless: options.headless ?? false,
   };
 }
 

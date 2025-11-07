@@ -180,6 +180,7 @@ export interface StartSessionRequest extends IPCMessage {
   includeAll?: boolean; // Include all data (disable filtering)
   userDataDir?: string; // Custom Chrome profile directory
   maxBodySize?: number; // Max response body size in KB
+  headless?: boolean; // Launch Chrome in headless mode
 }
 
 /**

@@ -184,6 +184,7 @@ export async function startSession(
     includeAll?: boolean;
     userDataDir?: string;
     maxBodySize?: number;
+    headless?: boolean;
   }
 ): Promise<StartSessionResponse> {
   const request: StartSessionRequest = {
@@ -197,6 +198,7 @@ export async function startSession(
       includeAll: options?.includeAll,
       userDataDir: options?.userDataDir,
       maxBodySize: options?.maxBodySize,
+      headless: options?.headless,
     }),
   };
 

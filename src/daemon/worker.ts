@@ -87,6 +87,7 @@ interface WorkerConfig {
   includeAll?: boolean | undefined;
   userDataDir?: string | undefined;
   maxBodySize?: number | undefined;
+  headless?: boolean | undefined;
 }
 
 /**
@@ -142,6 +143,7 @@ function parseWorkerConfig(): WorkerConfig {
       includeAll: config.includeAll ?? false,
       userDataDir: config.userDataDir ?? undefined,
       maxBodySize: config.maxBodySize ?? undefined,
+      headless: config.headless ?? false,
     };
   } catch (error) {
     throw new Error(`Failed to parse worker config: ${getErrorMessage(error)}`);
@@ -890,6 +892,7 @@ async function main(): Promise<void> {
       port: config.port,
       // DO NOT pass url here - navigation happens after collectors are active
       ...(config.userDataDir !== undefined && { userDataDir: config.userDataDir }),
+      ...(config.headless !== undefined && { headless: config.headless }),
     };
     chrome = await launchChrome(launchOptions);
     console.error(`[worker] Chrome launched (PID ${chrome.pid})`);

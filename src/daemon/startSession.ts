@@ -47,6 +47,7 @@ export interface LaunchWorkerOptions {
   includeAll?: boolean;
   userDataDir?: string;
   maxBodySize?: number;
+  headless?: boolean;
 }
 
 /**
@@ -97,6 +98,7 @@ export async function launchSessionInWorker(
     ...(options.includeAll !== undefined && { includeAll: options.includeAll }),
     ...(options.userDataDir !== undefined && { userDataDir: options.userDataDir }),
     ...(options.maxBodySize !== undefined && { maxBodySize: options.maxBodySize }),
+    ...(options.headless !== undefined && { headless: options.headless }),
   };
 
   // Resolve worker script path

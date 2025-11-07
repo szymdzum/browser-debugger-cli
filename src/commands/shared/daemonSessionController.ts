@@ -36,6 +36,7 @@ export async function startSessionViaDaemon(
     includeAll: boolean;
     maxBodySize: number | undefined;
     compact: boolean;
+    headless: boolean;
   },
   telemetry: TelemetryType[]
 ): Promise<void> {
@@ -50,6 +51,7 @@ export async function startSessionViaDaemon(
       includeAll?: boolean;
       userDataDir?: string;
       maxBodySize?: number;
+      headless?: boolean;
     } = {};
 
     if (options.port !== undefined) requestOptions.port = options.port;
@@ -58,6 +60,7 @@ export async function startSessionViaDaemon(
     if (options.includeAll !== undefined) requestOptions.includeAll = options.includeAll;
     if (options.userDataDir !== undefined) requestOptions.userDataDir = options.userDataDir;
     if (options.maxBodySize !== undefined) requestOptions.maxBodySize = options.maxBodySize;
+    if (options.headless !== undefined) requestOptions.headless = options.headless;
 
     const response = await sendStartSessionRequest(url, requestOptions);
 

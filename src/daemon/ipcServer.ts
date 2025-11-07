@@ -432,6 +432,7 @@ export class IPCServer {
             includeAll: request.includeAll,
             userDataDir: request.userDataDir,
             maxBodySize: request.maxBodySize,
+            headless: request.headless,
           })
         );
 
