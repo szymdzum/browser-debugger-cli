@@ -28,6 +28,56 @@ interface RuntimeEvaluateResult {
 }
 
 /**
+ * Type guard to validate CDP Runtime.evaluate response structure
+ *
+ * @param value - Value to check
+ * @returns True if value is a valid RuntimeEvaluateResult
+ */
+function isRuntimeEvaluateResult(value: unknown): value is RuntimeEvaluateResult {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const obj = value as Record<string, unknown>;
+
+  // Must have either result or exceptionDetails (or both)
+  if (!('result' in obj) && !('exceptionDetails' in obj)) {
+    return false;
+  }
+
+  // Validate exceptionDetails structure if present
+  if ('exceptionDetails' in obj) {
+    const exceptionDetails = obj['exceptionDetails'];
+    if (typeof exceptionDetails !== 'object' || exceptionDetails === null) {
+      return false;
+    }
+
+    const details = exceptionDetails as Record<string, unknown>;
+    if ('exception' in details) {
+      const exception = details['exception'];
+      if (typeof exception !== 'object' || exception === null) {
+        return false;
+      }
+
+      const exObj = exception as Record<string, unknown>;
+      if ('description' in exObj && typeof exObj['description'] !== 'string') {
+        return false;
+      }
+    }
+  }
+
+  // Validate result structure if present
+  if ('result' in obj) {
+    const result = obj['result'];
+    if (typeof result !== 'object' || result === null) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Validate that an active session is running
  *
  * @returns PID of running session
@@ -97,24 +147,36 @@ export async function verifyTargetExists(metadata: SessionMetadata, port: number
  * @param cdp - CDP connection instance
  * @param script - JavaScript expression to execute
  * @returns Execution result
- * @throws Error When script execution throws exception
+ * @throws Error When script execution throws exception or returns invalid response
  */
 export async function executeScript(
   cdp: CDPConnection,
   script: string
 ): Promise<RuntimeEvaluateResult> {
-  const result = (await cdp.send('Runtime.evaluate', {
+  const response = await cdp.send('Runtime.evaluate', {
     expression: script,
     returnByValue: true,
     awaitPromise: true,
-  })) as RuntimeEvaluateResult;
+  });
+
+  // Validate response structure at runtime
+  if (!isRuntimeEvaluateResult(response)) {
+    throw new CommandError(
+      'Invalid CDP Runtime.evaluate response structure',
+      {
+        note: 'CDP response did not match expected format',
+        suggestion: 'This may indicate a CDP protocol version mismatch',
+      },
+      EXIT_CODES.CDP_CONNECTION_FAILURE
+    );
+  }
 
   // Check for execution exceptions
-  if (result.exceptionDetails) {
+  if (response.exceptionDetails) {
     const errorMsg =
-      result.exceptionDetails.exception?.description ?? 'Unknown error executing script';
+      response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
     throw new Error(errorMsg);
   }
 
-  return result;
+  return response;
 }
