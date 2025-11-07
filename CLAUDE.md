@@ -50,10 +50,11 @@ console.error(daemonNotRunningError());
 
 **Message modules:** `errors.ts`, `commands.ts`, `chrome.ts`, `preview.ts`, `validation.ts`, etc.
 
-### 4. CommandError (`src/ui/errors.ts`)
-Structured error with metadata and semantic exit codes:
+### 4. Error Handling (`src/ui/errors/`)
+Structured errors with metadata and semantic exit codes:
 ```typescript
-import { CommandError } from '@/ui/errors.js';
+// CLI-level errors (user-facing commands)
+import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 throw new CommandError(
@@ -61,9 +62,38 @@ throw new CommandError(
   { suggestion: 'Start a session with: bdg <url>' },
   EXIT_CODES.RESOURCE_NOT_FOUND
 );
+
+// System-level errors (CDP, Chrome, timeouts)
+import { ChromeLaunchError, CDPConnectionError, getErrorMessage } from '@/ui/errors/index.js';
+
+throw new ChromeLaunchError('Chrome binary not found', cause);
 ```
 
-### 5. Common Options (`src/commands/shared/commonOptions.ts`)
+**Error modules:**
+- `CommandError.ts` - CLI-level user-facing errors
+- `SystemErrors.ts` - Low-level system errors (BdgError, CDPConnectionError, ChromeLaunchError, CDPTimeoutError)
+- `utils.ts` - Helper functions (getErrorMessage)
+- `index.ts` - Barrel export for all error types
+
+### 5. Logging (`src/ui/logging/`)
+Consistent logging with context prefixes and debug mode support:
+```typescript
+import { createLogger } from '@/ui/logging/index.js';
+
+const log = createLogger('daemon');
+
+// Always shown (even without --debug)
+log.info('Daemon started on port 9222');
+
+// Only shown in debug mode (--debug or BDG_DEBUG=1)
+log.debug('Processing IPC request from client');
+```
+
+**Logging modules:**
+- `logger.ts` - Logger implementation (createLogger, enableDebugLogging, isDebugEnabled)
+- `index.ts` - Barrel export for all logging utilities
+
+### 6. Common Options (`src/commands/shared/commonOptions.ts`)
 Reusable Commander.js options:
 ```typescript
 import { jsonOption, lastOption, filterOption } from '@/commands/shared/commonOptions.js';
@@ -197,8 +227,13 @@ CLI Command → Unix Socket → Daemon → stdin → Worker (CDP)
 - **CDP Connection** (`src/connection/`) - WebSocket client, target discovery, Chrome launcher
 - **Telemetry** (`src/telemetry/`) - DOM, network, console collectors (enable CDP domain → listen for events → accumulate data)
 - **Session Management** (`src/session/`) - Metadata, PID tracking, file paths
-- **UI Layer** (`src/ui/`) - OutputFormatter, CommandError, message functions, output formatters
-- **Utilities** (`src/utils/`) - URL normalization, validation, filters, exit codes
+- **UI Layer** (`src/ui/`) - Presentation layer for user-facing output
+  - `errors/` - Error classes (CommandError, SystemErrors, utilities)
+  - `logging/` - Logger with debug mode support
+  - `messages/` - Centralized message functions
+  - `formatters/` - Output formatters for different commands
+  - `formatting.ts` - OutputFormatter builder
+- **Utilities** (`src/utils/`) - Pure utility functions (URL normalization, validation, filters, exit codes)
 
 **Type Definitions:** `src/types.ts` (CDP types, collected data types, output structure)
 
