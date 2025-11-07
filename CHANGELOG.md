@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- Empty for now - add here as you work -->
+
+## [0.3.2] - 2025-11-07
+
 ### Added
 - **New `bdg tail` command** for continuous session monitoring
   - Live updates with configurable interval (`--interval <ms>`, default 1000ms)
@@ -14,17 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Proper SIGINT handling (Ctrl+C)
   - JSON and verbose output modes
   - Alternative to `bdg peek --follow` with better Unix semantics
+- Integration tests for tail command (9 test cases)
 
 ### Changed
 - Updated help text to suggest `bdg tail` for continuous monitoring
 - Enhanced CLI documentation
+- Updated landing page with all available commands and diamond icon (◆)
 
-### Phase 3 Technical Debt Resolution (2/13 items)
+### Removed
+- Review documentation moved to completed work archives (CODE_REVIEW.md, REFACTORING_GUIDE.md, TECHNICAL_DEBT.md)
+
+### Phase 3 Technical Debt Resolution (Complete)
 This release completes Phase 3 of technical debt cleanup, achieving better Unix philosophy compliance:
 - **TD-001**: `--kill-chrome` flag remains available (users can also use `bdg cleanup --aggressive`)
 - **TD-005**: Created separate `tail` command (separates snapshot vs. streaming concerns)
 
-**Phase Progress**: 13/13 items complete (100%)
+**All Technical Debt Resolved**: 13/13 items complete (100%)
 - Phase 1 & 2: Internal code quality (11 items) ✅
 - Phase 3: Unix philosophy compliance (2 items) ✅
 
