@@ -173,9 +173,13 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     throw new ChromeLaunchError(invalidPortError(port));
   }
 
-  // Atomically reserve port to prevent race conditions
-  // Uses net.createServer which works on all platforms (macOS, Linux, Windows)
+  // Atomically check if port is available
+  // We must release BEFORE launching Chrome so Chrome can bind to it
   const reservation = await reservePort(port);
+
+  // Immediately release - we just wanted to atomically check availability
+  // Chrome needs to bind to this port, so we can't hold the reservation
+  reservation.release();
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
@@ -190,9 +194,6 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     await launcher.launch();
     await launcher.waitUntilReady();
     const launchDurationMs = Date.now() - launchStart;
-
-    // Release port reservation - Chrome now owns the port
-    reservation.release();
 
     const chromeProcessPid = launcher.pid ?? 0;
 
@@ -240,9 +241,6 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       },
     };
   } catch (error) {
-    // Release port reservation on error
-    reservation.release();
-
     launcher.kill();
     launcher.destroyTmp();
 
