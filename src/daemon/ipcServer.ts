@@ -360,7 +360,7 @@ export class IPCServer {
     const workerRequest: WorkerRequest<'worker_peek'> = {
       type: 'worker_peek_request',
       requestId,
-      lastN: 10, // TODO: Extract from PeekRequest if needed
+      lastN: 10, // Default limit for preview items (PeekRequest doesn't include lastN)
     };
 
     this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
