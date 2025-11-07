@@ -102,7 +102,12 @@ async function sendRequest<TRequest, TResponse>(
       if (!resolved) {
         resolved = true;
         clearTimeout(timeout);
-        reject(new Error(`Connection error: ${err.message}`));
+        const fullMessage = [
+          `IPC ${requestName} connection error`,
+          `Socket: ${socketPath}`,
+          `Details: ${err.message}`,
+        ].join(' | ');
+        reject(new Error(fullMessage));
       }
     });
 
