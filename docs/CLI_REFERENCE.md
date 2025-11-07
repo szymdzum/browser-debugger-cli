@@ -20,10 +20,10 @@ bdg status --json               # JSON output
 
 ### Stop the session
 ```bash
-bdg stop
-# Sends stop command via IPC
-# Daemon shuts down gracefully
-# Final output written to ~/.bdg/session.json
+bdg stop                        # Stop session only
+bdg stop --kill-chrome          # Stop session and kill Chrome
+# OR
+bdg stop && bdg cleanup --aggressive  # Alternative way to kill Chrome
 ```
 
 ## Live Monitoring
@@ -34,9 +34,20 @@ bdg peek                        # Last 10 items (compact format)
 bdg peek --last 50              # Show last 50 items
 bdg peek --network              # Show only network requests
 bdg peek --console              # Show only console messages
-bdg peek --follow               # Live updates every second
 bdg peek --json                 # JSON output
 bdg peek --verbose              # Verbose output (full URLs, emojis)
+```
+
+### Continuous monitoring
+```bash
+bdg tail                        # Live updates every second (like tail -f)
+bdg tail --last 50              # Show last 50 items
+bdg tail --network              # Show only network requests
+bdg tail --console              # Show only console messages
+bdg tail --interval 2000        # Custom update interval (2 seconds)
+bdg tail --verbose              # Verbose output (full URLs, emojis)
+
+# Note: 'bdg peek --follow' also works, but 'tail' has better semantics
 ```
 
 ### Get full details
