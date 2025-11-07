@@ -349,8 +349,9 @@ function buildChromeFlags(options: LaunchOptions): string[] {
 
   const bdgFlags: string[] = [REMOTE_DEBUGGING_FLAG(port), ...BDG_CHROME_FLAGS];
 
+  // Headless flag must come first to ensure it's not overridden by other flags
   if (options.headless) {
-    bdgFlags.push(HEADLESS_FLAG);
+    return [HEADLESS_FLAG, ...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];
   }
 
   return [...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];
