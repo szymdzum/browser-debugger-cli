@@ -1,8 +1,8 @@
 import fs from 'fs';
 
 import { getDomQueryCachePath } from '@/session/paths.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
 import { domCacheWriteWarning } from '@/ui/messages/internal.js';
-import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * DOM query cache structure

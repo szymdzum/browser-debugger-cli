@@ -48,7 +48,7 @@ import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { CDPTarget } from '@/types.js';
-import { getErrorMessage } from '@/utils/errors.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -360,7 +360,7 @@ export class IPCServer {
     const workerRequest: WorkerRequest<'worker_peek'> = {
       type: 'worker_peek_request',
       requestId,
-      lastN: 10, // TODO: Extract from PeekRequest if needed
+      lastN: 10, // Default limit for preview items (PeekRequest doesn't include lastN)
     };
 
     this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
@@ -432,6 +432,7 @@ export class IPCServer {
             includeAll: request.includeAll,
             userDataDir: request.userDataDir,
             maxBodySize: request.maxBodySize,
+            headless: request.headless,
           })
         );
 

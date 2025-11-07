@@ -1,12 +1,12 @@
 /**
- * Custom error classes for bdg CLI.
+ * System-level error classes for bdg CLI.
  *
- * Provides structured error handling with error codes and categorization
- * for better debugging and user-friendly error messages.
+ * Provides structured error handling for low-level system operations
+ * like CDP connections, Chrome launches, and timeouts.
  */
 
 /**
- * Base error class for all bdg errors.
+ * Base error class for all bdg system errors.
  *
  * Extends native Error with:
  * - Error codes for programmatic handling
@@ -65,32 +65,4 @@ export class CDPTimeoutError extends BdgError {
   readonly code = 'CDP_TIMEOUT_ERROR';
   readonly category = 'external' as const;
   readonly exitCode = 102; // CDP_TIMEOUT
-}
-
-/**
- * Extract error message from unknown error type.
- *
- * Safely extracts error messages from various error types:
- * - Error instances → error.message
- * - Unknown types → String(error)
- *
- * Useful for error handling when error type is unknown.
- *
- * @param error - Error of unknown type
- * @returns Error message string
- *
- * @example
- * ```typescript
- * try {
- *   await someOperation();
- * } catch (error) {
- *   throw new ChromeLaunchError(`Failed: ${getErrorMessage(error)}`, error);
- * }
- * ```
- */
-export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }

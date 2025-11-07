@@ -1,7 +1,6 @@
 import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
-import { CommandError } from '@/ui/errors.js';
+import { CommandError, getErrorMessage } from '@/ui/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

@@ -1,5 +1,5 @@
-import { execSync } from 'child_process';
 import * as fs from 'fs';
+import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -18,6 +18,8 @@ import {
 } from '@/constants.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { LaunchedChrome } from '@/types';
+import { ChromeLaunchError, getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import {
   formatDiagnosticsForError,
   chromeLaunchStartMessage,
@@ -31,8 +33,6 @@ import {
   chromeLaunchFailedError,
 } from '@/ui/messages/chrome.js';
 import { getChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
-import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
-import { createLogger } from '@/utils/logger.js';
 import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('chrome');
@@ -121,6 +121,50 @@ export interface LaunchOptions
  * Chrome 136+ requires --user-data-dir with a non-default directory.
  * Uses chrome-launcher for cross-platform Chrome detection and launching.
  */
+/**
+ * Atomically reserve a port to prevent race conditions during Chrome launch.
+ *
+ * Creates a temporary TCP server on the port, which prevents other processes
+ * from binding to it. Returns a release function to free the port.
+ *
+ * @param port - Port number to reserve
+ * @returns Promise resolving to reservation object with release function
+ * @throws ChromeLaunchError If port is already in use
+ */
+async function reservePort(port: number): Promise<{ release: () => void }> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+
+    server.once('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        // Port is already in use - provide helpful error message
+        reject(
+          new ChromeLaunchError(
+            `Port ${port} is already in use.\n\n` +
+              `This usually means Chrome is still running from a previous session.\n\n` +
+              `Try:\n` +
+              `  - bdg cleanup --aggressive  (kills all Chrome processes)\n` +
+              `  - bdg cleanup --force       (removes session files + kills Chrome on port ${port})\n` +
+              `  - lsof -ti:${port} | xargs kill -9  (force kill process on port)\n` +
+              `  - Use different port: bdg <url> --port ${port + 1}`
+          )
+        );
+      } else {
+        reject(err);
+      }
+    });
+
+    server.listen(port, '127.0.0.1', () => {
+      // Port successfully reserved - return release function
+      resolve({
+        release: () => {
+          server.close();
+        },
+      });
+    });
+  });
+}
+
 export async function launchChrome(options: LaunchOptions = {}): Promise<LaunchedChrome> {
   const port = options.port ?? DEFAULT_CDP_PORT;
 
@@ -129,28 +173,13 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     throw new ChromeLaunchError(invalidPortError(port));
   }
 
-  // Check if port is already in use by orphaned Chrome process
-  // This prevents confusing launch failures when cleanup didn't fully remove Chrome
-  // Platform-specific: macOS/Linux only (Windows uses different approach)
-  try {
-    const portInUse = execSync(`lsof -ti:${port} 2>/dev/null || true`, { encoding: 'utf8' }).trim();
-    if (portInUse) {
-      throw new ChromeLaunchError(
-        `Port ${port} is already in use by process ${portInUse}\n\n` +
-          `This usually means Chrome is still running from a previous session.\n\n` +
-          `Try:\n` +
-          `  - bdg cleanup --aggressive  (kills all Chrome processes)\n` +
-          `  - bdg cleanup --force       (removes session files + kills Chrome on port ${port})\n` +
-          `  - kill ${portInUse}                (manually kill the process)\n` +
-          `  - Use different port: bdg <url> --port ${port + 1}`
-      );
-    }
-  } catch (error) {
-    // Re-throw ChromeLaunchError, ignore other errors (lsof not available, etc.)
-    if (error instanceof ChromeLaunchError) {
-      throw error;
-    }
-  }
+  // Atomically check if port is available
+  // We must release BEFORE launching Chrome so Chrome can bind to it
+  const reservation = await reservePort(port);
+
+  // Immediately release - we just wanted to atomically check availability
+  // Chrome needs to bind to this port, so we can't hold the reservation
+  reservation.release();
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
@@ -320,8 +349,9 @@ function buildChromeFlags(options: LaunchOptions): string[] {
 
   const bdgFlags: string[] = [REMOTE_DEBUGGING_FLAG(port), ...BDG_CHROME_FLAGS];
 
+  // Headless flag must come first to ensure it's not overridden by other flags
   if (options.headless) {
-    bdgFlags.push(HEADLESS_FLAG);
+    return [HEADLESS_FLAG, ...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];
   }
 
   return [...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];

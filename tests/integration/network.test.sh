@@ -14,11 +14,18 @@ set -euo pipefail
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
+  # Stop session gracefully first
   bdg stop 2>/dev/null || true
-  sleep 0.5
+  sleep 1
+  
+  # Aggressive cleanup to kill all Chrome processes
+  bdg cleanup --aggressive 2>/dev/null || true
+  sleep 1
+  
+  # Final fallback: force kill port 9222
   lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
-  bdg cleanup --force 2>/dev/null || true
+  
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -41,7 +48,7 @@ cleanup_sessions
 # Test 1: Network command with no active session
 log_step "Test 1: Network with no active session"
 set +e
-bdg network 2>&1
+bdg peek --network 2>&1
 EXIT_CODE=$?
 set -e
 
@@ -54,12 +61,12 @@ log_success "Test 1 passed: Network fails gracefully with no session"
 
 # Start session for remaining tests
 log_step "Starting session for network tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 3  # Let page load and generate network requests
 
 # Test 2: Basic network listing
 log_step "Test 2: List network requests"
-NETWORK_OUTPUT=$(bdg network 2>&1) || die "Failed to list network requests"
+NETWORK_OUTPUT=$(bdg peek --network 2>&1) || die "Failed to list network requests"
 
 # Should show network requests
 if echo "$NETWORK_OUTPUT" | grep -qi "example.com\|network\|GET\|200"; then
@@ -155,9 +162,9 @@ log_success "Test 7 passed: Request verification tested"
 
 # Test 8: Multiple network command calls (idempotency)
 log_step "Test 8: Multiple network calls"
-bdg network > /dev/null 2>&1 || die "First call failed"
-bdg network > /dev/null 2>&1 || die "Second call failed"
-bdg network > /dev/null 2>&1 || die "Third call failed"
+bdg peek --network > /dev/null 2>&1 || die "First call failed"
+bdg peek --network > /dev/null 2>&1 || die "Second call failed"
+bdg peek --network > /dev/null 2>&1 || die "Third call failed"
 
 log_success "Test 8 passed: Multiple calls work (idempotent)"
 

@@ -26,8 +26,9 @@ import type {
   StopSessionResponse,
 } from '@/ipc/types.js';
 import type { TelemetryType } from '@/types.js';
-import { getErrorMessage } from '@/utils/errors.js';
-import { createLogger } from '@/utils/logger.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('client');
 
@@ -102,7 +103,12 @@ async function sendRequest<TRequest, TResponse>(
       if (!resolved) {
         resolved = true;
         clearTimeout(timeout);
-        reject(new Error(`Connection error: ${err.message}`));
+        const fullMessage = [
+          `IPC ${requestName} connection error`,
+          `Socket: ${socketPath}`,
+          `Details: ${err.message}`,
+        ].join(' | ');
+        reject(new Error(fullMessage));
       }
     });
 
@@ -178,18 +184,22 @@ export async function startSession(
     includeAll?: boolean;
     userDataDir?: string;
     maxBodySize?: number;
+    headless?: boolean;
   }
 ): Promise<StartSessionResponse> {
   const request: StartSessionRequest = {
     type: 'start_session_request',
     sessionId: randomUUID(),
     url,
-    ...(options?.port !== undefined && { port: options.port }),
-    ...(options?.timeout !== undefined && { timeout: options.timeout }),
-    ...(options?.telemetry !== undefined && { telemetry: options.telemetry }),
-    ...(options?.includeAll !== undefined && { includeAll: options.includeAll }),
-    ...(options?.userDataDir !== undefined && { userDataDir: options.userDataDir }),
-    ...(options?.maxBodySize !== undefined && { maxBodySize: options.maxBodySize }),
+    ...filterDefined({
+      port: options?.port,
+      timeout: options?.timeout,
+      telemetry: options?.telemetry,
+      includeAll: options?.includeAll,
+      userDataDir: options?.userDataDir,
+      maxBodySize: options?.maxBodySize,
+      headless: options?.headless,
+    }),
   };
 
   return sendRequest<StartSessionRequest, StartSessionResponse>(request, 'start session');
@@ -295,9 +305,11 @@ export async function captureScreenshot(
 ): Promise<ClientResponse<'dom_screenshot'>> {
   return sendCommand('dom_screenshot', {
     path,
-    ...(options?.format && { format: options.format }),
-    ...(options?.quality !== undefined && { quality: options.quality }),
-    ...(options?.fullPage !== undefined && { fullPage: options.fullPage }),
+    ...filterDefined({
+      format: options?.format,
+      quality: options?.quality,
+      fullPage: options?.fullPage,
+    }),
   });
 }
 

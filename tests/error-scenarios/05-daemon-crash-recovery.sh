@@ -39,7 +39,7 @@ cleanup_sessions
 
 # Test 1: Start session and capture daemon PID
 log_step "Test 1: Starting session"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 2
 
 DAEMON_PID=$(cat ~/.bdg/daemon.pid 2>/dev/null) || die "daemon.pid not found"
@@ -104,7 +104,7 @@ fi
 
 # Test 6: New session should start after crash
 log_step "Test 6: Starting new session after crash recovery"
-bdg "https://example.com" || die "Failed to start session after crash"
+bdg "https://example.com" --headless || die "Failed to start session after crash"
 sleep 2
 
 NEW_DAEMON_PID=$(cat ~/.bdg/daemon.pid 2>/dev/null) || die "daemon.pid not found after recovery"

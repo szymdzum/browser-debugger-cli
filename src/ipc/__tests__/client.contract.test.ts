@@ -312,7 +312,7 @@ void describe('IPC Client Contract Tests', () => {
         },
         {
           name: 'Error',
-          message: /Connection error/,
+          message: /IPC handshake connection error/,
         }
       );
     });
@@ -390,7 +390,7 @@ void describe('IPC Client Contract Tests', () => {
         },
         {
           name: 'Error',
-          message: /Connection error/,
+          message: /IPC status connection error/,
         }
       );
     });

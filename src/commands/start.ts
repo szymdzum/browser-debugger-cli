@@ -10,6 +10,7 @@ import {
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { invalidIntegerError } from '@/ui/messages/validation.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -27,6 +28,8 @@ interface CollectorOptions {
   maxBodySize?: string;
   /** Use compact JSON format (no indentation) for output files. */
   compact?: boolean;
+  /** Launch Chrome in headless mode (no visible browser window). */
+  headless?: boolean;
 }
 
 /**
@@ -46,7 +49,8 @@ function applyCollectorOptions(command: Command): Command {
       'Maximum response body size in MB (default: 5MB)',
       '5'
     )
-    .option('--compact', 'Use compact JSON format (no indentation) for output files');
+    .option('--compact', 'Use compact JSON format (no indentation) for output files')
+    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)');
 }
 
 /**
@@ -80,6 +84,7 @@ function buildSessionOptions(options: CollectorOptions): {
   includeAll: boolean;
   maxBodySize: number | undefined;
   compact: boolean;
+  headless: boolean;
 } {
   const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size');
   return {
@@ -89,6 +94,7 @@ function buildSessionOptions(options: CollectorOptions): {
     includeAll: options.all ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
+    headless: options.headless ?? false,
   };
 }
 
@@ -124,6 +130,17 @@ export function registerStartCommands(program: Command): void {
     if (!url) {
       console.error(startCommandHelpMessage());
       process.exit(0);
+    }
+
+    // Validate URL before starting session
+    const { validateUrl } = await import('@/utils/url.js');
+    const validation = validateUrl(url);
+    if (!validation.valid) {
+      console.error(`Error: ${validation.error}`);
+      if (validation.suggestion) {
+        console.error(`Suggestion: ${validation.suggestion}`);
+      }
+      process.exit(EXIT_CODES.INVALID_URL);
     }
 
     await collectorAction(url, options);

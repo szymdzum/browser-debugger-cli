@@ -27,9 +27,11 @@ import type {
   WorkerResponse,
   WorkerStatusData,
 } from '@/ipc/commands.js';
+import { writeChromePid } from '@/session/chrome.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writeSessionOutput } from '@/session/output.js';
 import { writePid } from '@/session/pid.js';
+import { isProcessAlive, killChromeProcess } from '@/session/process.js';
 import { writeQueryCache, getNodeIdByIndex } from '@/session/queryCache.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { prepareDOMCollection, collectDOM } from '@/telemetry/dom.js';
@@ -44,6 +46,8 @@ import type {
   CDPTarget,
   BdgOutput,
 } from '@/types';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import {
   workerActivatingCollector,
   workerCollectorsActivated,
@@ -54,7 +58,6 @@ import {
   workerStdinClosed,
   workerStdinListenerSetup,
   workerReadySignalSent,
-  workerShutdownStarted,
   workerCollectingDOM,
   workerDOMCollected,
   workerDOMCollectionFailed,
@@ -68,9 +71,8 @@ import {
   workerTimeoutReached,
   workerSessionActive,
 } from '@/ui/messages/debug.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
-import { createLogger } from '@/utils/logger.js';
+import { filterDefined } from '@/utils/objects.js';
 import { waitForPageReady } from '@/utils/pageReadiness.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { VERSION } from '@/utils/version.js';
@@ -85,6 +87,7 @@ interface WorkerConfig {
   includeAll?: boolean | undefined;
   userDataDir?: string | undefined;
   maxBodySize?: number | undefined;
+  headless?: boolean | undefined;
 }
 
 /**
@@ -140,6 +143,7 @@ function parseWorkerConfig(): WorkerConfig {
       includeAll: config.includeAll ?? false,
       userDataDir: config.userDataDir ?? undefined,
       maxBodySize: config.maxBodySize ?? undefined,
+      headless: config.headless ?? false,
     };
   } catch (error) {
     throw new Error(`Failed to parse worker config: ${getErrorMessage(error)}`);
@@ -234,8 +238,10 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       nodes.push({
         index: i + 1,
         nodeId: nodeInfo.nodeId,
-        ...(nodeInfo.tag !== undefined && { tag: nodeInfo.tag }),
-        ...(nodeInfo.classes !== undefined && { classes: nodeInfo.classes }),
+        ...filterDefined({
+          tag: nodeInfo.tag,
+          classes: nodeInfo.classes,
+        }),
         preview: createNodePreview(nodeInfo),
       });
     }
@@ -383,10 +389,12 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       const info = await getNodeInfo(cdp, nodeId);
       nodes.push({
         nodeId: info.nodeId,
-        ...(info.tag !== undefined && { tag: info.tag }),
-        ...(info.attributes !== undefined && { attributes: info.attributes }),
-        ...(info.classes !== undefined && { classes: info.classes }),
-        ...(info.outerHTML !== undefined && { outerHTML: info.outerHTML }),
+        ...filterDefined({
+          tag: info.tag,
+          attributes: info.attributes,
+          classes: info.classes,
+          outerHTML: info.outerHTML,
+        }),
       });
     }
 
@@ -428,8 +436,10 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
     // Capture screenshot via CDP
     const screenshotParams: Record<string, unknown> = {
       format,
-      ...(format === 'jpeg' && quality !== undefined && { quality }),
-      ...(fullPage && { captureBeyondViewport: true }),
+      ...filterDefined({
+        quality: format === 'jpeg' ? quality : undefined,
+        captureBeyondViewport: fullPage ? true : undefined,
+      }),
     };
 
     interface ScreenshotResponse {
@@ -735,12 +745,31 @@ function buildOutput(partial: boolean = false): BdgOutput {
 /**
  * Graceful shutdown: collect final DOM, write session.json, cleanup.
  */
-async function gracefulShutdown(): Promise<void> {
-  log.debug(workerShutdownStarted());
+/**
+ * Unified cleanup handler for all exit scenarios.
+ *
+ * Handles cleanup for normal shutdown, crashes, and timeouts.
+ * Ensures Chrome is always killed and verified dead.
+ *
+ * @param reason - Why cleanup is happening
+ */
+async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<void> {
+  log.debug(`[worker] Cleanup started (reason: ${reason})`);
 
   try {
-    // Collect final DOM snapshot if DOM telemetry is active
-    if (activeTelemetry.includes('dom') && cdp) {
+    // Always try to capture and persist Chrome PID before killing
+    const chromePid = chrome?.pid;
+    if (chromePid) {
+      try {
+        writeChromePid(chromePid);
+        log.debug(`[worker] Chrome PID ${chromePid} cached for cleanup`);
+      } catch (error) {
+        console.error(`[worker] Failed to cache Chrome PID: ${getErrorMessage(error)}`);
+      }
+    }
+
+    // Collect final DOM snapshot if this is a normal shutdown
+    if (reason === 'normal' && activeTelemetry.includes('dom') && cdp) {
       log.debug(workerCollectingDOM());
       try {
         domData = await collectDOM(cdp);
@@ -750,12 +779,7 @@ async function gracefulShutdown(): Promise<void> {
       }
     }
 
-    // Write final output
-    log.debug(workerWritingOutput());
-    const finalOutput = buildOutput(false);
-    writeSessionOutput(finalOutput);
-
-    // Run cleanup functions
+    // Run telemetry cleanup functions
     log.debug(workerRunningCleanup());
     for (const cleanup of cleanupFunctions) {
       try {
@@ -767,22 +791,81 @@ async function gracefulShutdown(): Promise<void> {
 
     // Close CDP connection
     if (cdp) {
-      log.debug(workerClosingCDP());
-      cdp.close();
-      cdp = null;
+      try {
+        log.debug(workerClosingCDP());
+        cdp.close();
+        cdp = null;
+      } catch (error) {
+        console.error(`[worker] Error closing CDP: ${getErrorMessage(error)}`);
+      }
     }
 
-    // Kill Chrome
-    if (chrome) {
-      console.error(`[worker] Terminating Chrome (PID ${chrome.pid})...`);
-      await chrome.kill();
-      chrome = null;
+    // Kill Chrome with verification
+    if (chrome && chromePid) {
+      try {
+        console.error(`[worker] Terminating Chrome (PID ${chromePid})...`);
+        await chrome.kill();
+
+        // Verify Chrome died (wait up to 5 seconds)
+        let attempts = 0;
+        const maxAttempts = 10;
+        while (attempts < maxAttempts) {
+          if (!isProcessAlive(chromePid)) {
+            log.debug(`[worker] Chrome process ${chromePid} confirmed dead`);
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          attempts++;
+        }
+
+        // Force kill if still alive after SIGTERM
+        if (isProcessAlive(chromePid)) {
+          console.error(`[worker] Chrome did not die gracefully, force killing...`);
+          try {
+            killChromeProcess(chromePid, 'SIGKILL');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+            if (isProcessAlive(chromePid)) {
+              console.error(`[worker] WARNING: Chrome process ${chromePid} survived SIGKILL`);
+            } else {
+              log.debug(`[worker] Chrome process ${chromePid} force killed successfully`);
+            }
+          } catch (error) {
+            console.error(`[worker] Failed to force kill Chrome: ${getErrorMessage(error)}`);
+          }
+        }
+
+        chrome = null;
+      } catch (error) {
+        console.error(`[worker] Error killing Chrome: ${getErrorMessage(error)}`);
+      }
+    }
+
+    // Write final output
+    if (reason === 'normal') {
+      // Normal shutdown: write complete output
+      try {
+        log.debug(workerWritingOutput());
+        const finalOutput = buildOutput(false);
+        writeSessionOutput(finalOutput);
+      } catch (error) {
+        console.error(`[worker] Error writing final output: ${getErrorMessage(error)}`);
+      }
+    } else {
+      // Crash/timeout: write partial output for recovery
+      try {
+        log.debug(`[worker] Writing partial output (reason: ${reason})`);
+        const partialOutput = buildOutput(true); // partial=true
+        writeSessionOutput(partialOutput);
+      } catch (error) {
+        console.error(`[worker] Error writing partial output: ${getErrorMessage(error)}`);
+      }
     }
 
     log.debug(workerShutdownComplete());
   } catch (error) {
-    console.error(`[worker] Error during shutdown: ${getErrorMessage(error)}`);
-    throw error;
+    console.error(`[worker] Error during cleanup: ${getErrorMessage(error)}`);
+    // Don't rethrow - we want cleanup to complete even if parts fail
   }
 }
 
@@ -809,9 +892,15 @@ async function main(): Promise<void> {
       port: config.port,
       // DO NOT pass url here - navigation happens after collectors are active
       ...(config.userDataDir !== undefined && { userDataDir: config.userDataDir }),
+      ...(config.headless !== undefined && { headless: config.headless }),
     };
     chrome = await launchChrome(launchOptions);
     console.error(`[worker] Chrome launched (PID ${chrome.pid})`);
+
+    // Immediately cache Chrome PID for cleanup even if worker crashes early
+    // This ensures we can kill Chrome even if the worker doesn't reach ready state
+    writeChromePid(chrome.pid);
+    console.error(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);
 
     // Connect to Chrome via CDP
     console.error(`[worker] Connecting to Chrome via CDP...`);
@@ -853,12 +942,13 @@ async function main(): Promise<void> {
     await cdp.connect(target.webSocketDebuggerUrl, {
       autoReconnect: false,
       maxRetries: 10,
-      // P1.1: Exit gracefully if Chrome dies unexpectedly
-      // WHY: Prevents zombie worker processes when Chrome crashes/closes
+      // P1.1: Run cleanup if Chrome dies unexpectedly
+      // WHY: Prevents zombie worker processes and ensures Chrome cleanup
       onDisconnect: (code, reason) => {
         console.error(`[worker] Chrome connection lost (code: ${code}, reason: ${reason})`);
         log.debug(workerExitingConnectionLoss());
-        process.exit(0);
+        // Run cleanup before exiting to ensure Chrome is killed
+        void cleanupWorker('crash').then(() => process.exit(1));
       },
     });
     console.error(`[worker] CDP connection established`);
@@ -911,12 +1001,20 @@ async function main(): Promise<void> {
     // Set up shutdown handlers
     process.on('SIGTERM', () => {
       log.debug(workerReceivedSIGTERM());
-      void gracefulShutdown().then(() => process.exit(0));
+      // Use async IIFE to ensure cleanup completes before exit
+      void (async () => {
+        await cleanupWorker('normal');
+        process.exit(0);
+      })();
     });
 
     process.on('SIGINT', () => {
       log.debug(workerReceivedSIGINT());
-      void gracefulShutdown().then(() => process.exit(0));
+      // Use async IIFE to ensure cleanup completes before exit
+      void (async () => {
+        await cleanupWorker('normal');
+        process.exit(0);
+      })();
     });
 
     // Handle timeout if specified
@@ -924,7 +1022,11 @@ async function main(): Promise<void> {
       console.error(`[worker] Auto-stop after ${config.timeout}s`);
       setTimeout(() => {
         log.debug(workerTimeoutReached());
-        void gracefulShutdown().then(() => process.exit(0));
+        // Use async IIFE to ensure cleanup completes before exit
+        void (async () => {
+          await cleanupWorker('timeout');
+          process.exit(0);
+        })();
       }, config.timeout * 1000);
     }
 
@@ -933,15 +1035,8 @@ async function main(): Promise<void> {
   } catch (error) {
     console.error(`[worker] Fatal error: ${getErrorMessage(error)}`);
 
-    // Cleanup on error
-    if (cdp) {
-      cdp.close();
-    }
-
-    if (chrome) {
-      await chrome.kill();
-    }
-
+    // Use unified cleanup on fatal errors
+    await cleanupWorker('crash');
     process.exit(1);
   }
 }

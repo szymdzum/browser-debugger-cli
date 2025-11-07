@@ -16,12 +16,18 @@ set -euo pipefail
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
+  # Stop session gracefully first
   bdg stop 2>/dev/null || true
-  sleep 0.5
-  # Force kill any Chrome processes on port 9222
+  sleep 1
+  
+  # Aggressive cleanup to kill all Chrome processes
+  bdg cleanup --aggressive 2>/dev/null || true
+  sleep 1
+  
+  # Final fallback: force kill port 9222
   lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
-  bdg cleanup --force 2>/dev/null || true
+  
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -44,7 +50,7 @@ cleanup_sessions
 # Test 1: DOM query with no active session
 log_step "Test 1: DOM query with no active session"
 set +e
-bdg dom "body" 2>&1
+bdg dom query "body" 2>&1
 EXIT_CODE=$?
 set -e
 
@@ -57,12 +63,12 @@ log_success "Test 1 passed: DOM fails gracefully with no session"
 
 # Start session for remaining tests
 log_step "Starting session for DOM tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 3  # Let page load
 
 # Test 2: Valid CSS selector - single element
 log_step "Test 2: Query single element (h1)"
-DOM_OUTPUT=$(bdg dom "h1" 2>&1) || die "Failed to query h1"
+DOM_OUTPUT=$(bdg dom query "h1" 2>&1) || die "Failed to query h1"
 
 # Should contain text content
 if echo "$DOM_OUTPUT" | grep -qi "example"; then
@@ -75,7 +81,7 @@ log_success "Test 2 passed: Single element query works"
 
 # Test 3: Query returning multiple elements
 log_step "Test 3: Query multiple elements (p)"
-DOM_MULTI=$(bdg dom "p" 2>&1) || die "Failed to query p tags"
+DOM_MULTI=$(bdg dom query "p" 2>&1) || die "Failed to query p tags"
 
 # Should show count or list of elements
 [ -n "$DOM_MULTI" ] || die "Query returned empty result"
@@ -85,7 +91,7 @@ log_success "Test 3 passed: Multiple element query works"
 # Test 4: Query with no results
 log_step "Test 4: Query with no matching elements"
 set +e
-DOM_NONE=$(bdg dom ".nonexistent-class-12345" 2>&1)
+DOM_NONE=$(bdg dom query ".nonexistent-class-12345" 2>&1)
 NO_MATCH_EXIT=$?
 set -e
 
@@ -95,7 +101,7 @@ log_success "Test 4 passed: No-match query handled gracefully"
 # Test 5: Invalid CSS selector
 log_step "Test 5: Invalid CSS selector"
 set +e
-bdg dom ">>invalid<<" 2>&1
+bdg dom query ">>invalid<<" 2>&1
 INVALID_EXIT=$?
 set -e
 
@@ -109,7 +115,7 @@ log_success "Test 5 passed: Invalid selector handled"
 
 # Test 6: Query body element
 log_step "Test 6: Query body element"
-BODY_OUTPUT=$(bdg dom "body" 2>&1) || die "Failed to query body"
+BODY_OUTPUT=$(bdg dom query "body" 2>&1) || die "Failed to query body"
 
 [ -n "$BODY_OUTPUT" ] || die "Body query returned empty"
 
@@ -118,7 +124,7 @@ log_success "Test 6 passed: Body element query works"
 # Test 7: Query with descendant selectors
 log_step "Test 7: Complex selector (div p)"
 set +e
-COMPLEX_OUTPUT=$(bdg dom "div p" 2>&1)
+COMPLEX_OUTPUT=$(bdg dom query "div p" 2>&1)
 COMPLEX_EXIT=$?
 set -e
 
@@ -128,7 +134,7 @@ log_success "Test 7 passed: Complex selector handled"
 # Test 8: DOM query with JSON output (if supported)
 log_step "Test 8: DOM with --json flag (if supported)"
 set +e
-JSON_DOM=$(bdg dom "h1" --json 2>&1)
+JSON_DOM=$(bdg dom query "h1" --json 2>&1)
 JSON_EXIT=$?
 set -e
 
@@ -148,7 +154,7 @@ log_success "Test 8 passed: JSON output tested"
 # Test 9: Query by ID
 log_step "Test 9: Query by ID selector"
 set +e
-ID_OUTPUT=$(bdg dom "#nonexistent-id" 2>&1)
+ID_OUTPUT=$(bdg dom query "#nonexistent-id" 2>&1)
 set -e
 
 # Should handle gracefully
@@ -157,7 +163,7 @@ log_success "Test 9 passed: ID selector handled"
 # Test 10: Query by attribute selector
 log_step "Test 10: Query by attribute"
 set +e
-ATTR_OUTPUT=$(bdg dom "[href]" 2>&1)
+ATTR_OUTPUT=$(bdg dom query "[href]" 2>&1)
 set -e
 
 # Should find links if they exist

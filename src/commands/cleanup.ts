@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 
 import type { Command } from 'commander';
@@ -10,6 +9,7 @@ import { cleanupSession } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
 import {
   sessionFilesCleanedMessage,
   sessionOutputRemovedMessage,
@@ -20,7 +20,6 @@ import {
   sessionStillActiveError,
   warningMessage,
 } from '@/ui/messages/commands.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -100,7 +99,6 @@ export function registerCleanupCommand(program: Command): void {
           // Import cleanupStaleChrome dynamically
           const { cleanupStaleChrome } = await import('@/commands/shared/sessionController.js');
 
-          const pid = readPid();
           let didCleanup = false;
           let cleanedSession = false;
           let cleanedOutput = false;
@@ -144,13 +142,12 @@ export function registerCleanupCommand(program: Command): void {
             }
           }
 
-          if (!pid) {
-            // No session files to clean up
-            // Fall through to check --all flag for session.json removal
-          } else {
-            // PID file exists - handle session cleanup
+          // Handle session PID cleanup using early-exit pattern
+          const pid = readPid();
+          if (pid) {
             const isAlive = isProcessAlive(pid);
 
+            // Early exit: session is active and force flag not provided
             if (isAlive && !opts.force) {
               return {
                 success: false,
@@ -164,21 +161,22 @@ export function registerCleanupCommand(program: Command): void {
               };
             }
 
-            if (isAlive && opts.force) {
+            // Handle force cleanup of active session
+            if (isAlive) {
               warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
               console.error(forceCleanupWarningMessage(pid));
 
-              // Force-kill Chrome processes on debugging port 9222
-              // This ensures cleanup --force actually removes orphaned Chrome processes
-              // Platform-specific: macOS/Linux only (Windows not supported)
               try {
-                execSync('lsof -ti:9222 | xargs kill -9 2>/dev/null || true', { stdio: 'ignore' });
-                cleanedChrome = true;
+                const killedCount = await cleanupStaleChrome();
+                if (killedCount > 0) {
+                  cleanedChrome = true;
+                }
               } catch (error) {
                 const errorMessage = getErrorMessage(error);
                 warnings.push(`Could not kill Chrome processes: ${errorMessage}`);
               }
             } else {
+              // Handle stale session cleanup
               console.error(staleSessionFoundMessage(pid));
             }
 

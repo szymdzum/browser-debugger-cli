@@ -2,15 +2,15 @@ import { landingPage } from '@/commands/shared/landingPage.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import type { TelemetryType } from '@/types.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import {
   sessionAlreadyRunningError,
   daemonConnectionFailedError,
   invalidResponseError,
   genericError,
 } from '@/ui/messages/errors.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { createLogger } from '@/utils/logger.js';
 
 const log = createLogger('bdg');
 
@@ -36,6 +36,7 @@ export async function startSessionViaDaemon(
     includeAll: boolean;
     maxBodySize: number | undefined;
     compact: boolean;
+    headless: boolean;
   },
   telemetry: TelemetryType[]
 ): Promise<void> {
@@ -50,6 +51,7 @@ export async function startSessionViaDaemon(
       includeAll?: boolean;
       userDataDir?: string;
       maxBodySize?: number;
+      headless?: boolean;
     } = {};
 
     if (options.port !== undefined) requestOptions.port = options.port;
@@ -58,6 +60,7 @@ export async function startSessionViaDaemon(
     if (options.includeAll !== undefined) requestOptions.includeAll = options.includeAll;
     if (options.userDataDir !== undefined) requestOptions.userDataDir = options.userDataDir;
     if (options.maxBodySize !== undefined) requestOptions.maxBodySize = options.maxBodySize;
+    if (options.headless !== undefined) requestOptions.headless = options.headless;
 
     const response = await sendStartSessionRequest(url, requestOptions);
 

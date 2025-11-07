@@ -6,7 +6,7 @@ import type {
   DOMData,
   TelemetryType,
 } from '@/types';
-import { getErrorMessage } from '@/utils/errors.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
 import { VERSION } from '@/utils/version.js';
 
 /**

@@ -18,7 +18,11 @@ import type {
   CDPGetResponseBodyResponse,
 } from '@/types';
 import { CDPHandlerRegistry } from '@/utils/cdpHandlers.js';
-import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBody } from '@/utils/filters.js';
+import {
+  shouldExcludeDomain,
+  shouldExcludeUrl,
+  shouldFetchBodyWithReason,
+} from '@/utils/filters.js';
 
 export interface NetworkCollectionOptions {
   includeAll?: boolean;
@@ -171,41 +175,33 @@ export async function startNetworkCollection(
         }
 
         // Determine if we should fetch the response body
-        const isSizeAcceptable = params.encodedDataLength <= maxBodySize;
-        const isTextResponse =
-          (request.mimeType?.includes('json') ?? false) ||
-          (request.mimeType?.includes('javascript') ?? false) ||
-          (request.mimeType?.includes('text') ?? false) ||
-          (request.mimeType?.includes('html') ?? false);
-
-        if (isTextResponse && isSizeAcceptable) {
-          // Check if we should fetch body based on patterns
-          const shouldFetch = shouldFetchBody(request.url, request.mimeType, {
+        const decision = shouldFetchBodyWithReason(
+          request.url,
+          request.mimeType,
+          params.encodedDataLength,
+          {
             fetchAllBodies,
             includePatterns: fetchBodiesInclude,
             excludePatterns: fetchBodiesExclude,
-          });
-
-          if (shouldFetch) {
-            bodiesFetched++;
-            // Fetch response body asynchronously
-            void cdp
-              .send('Network.getResponseBody', { requestId: params.requestId })
-              .then((response) => {
-                const typedResponse = response as CDPGetResponseBodyResponse;
-                request.responseBody = typedResponse.body;
-              })
-              .catch(() => {
-                // Response body not available (e.g., 204 No Content, redirects, etc.)
-              });
-          } else {
-            bodiesSkipped++;
-            request.responseBody = '[SKIPPED: Auto-optimization (see DEFAULT_SKIP_BODY_PATTERNS)]';
+            maxBodySize,
           }
-        } else if (isTextResponse && !isSizeAcceptable) {
+        );
+
+        if (decision.should) {
+          bodiesFetched++;
+          // Fetch response body asynchronously
+          void cdp
+            .send('Network.getResponseBody', { requestId: params.requestId })
+            .then((response) => {
+              const typedResponse = response as CDPGetResponseBodyResponse;
+              request.responseBody = typedResponse.body;
+            })
+            .catch(() => {
+              // Response body not available (e.g., 204 No Content, redirects, etc.)
+            });
+        } else {
           bodiesSkipped++;
-          // Mark large responses as skipped
-          request.responseBody = `[SKIPPED: Response too large (${(params.encodedDataLength / 1024 / 1024).toFixed(2)}MB > ${maxBodySize / 1024 / 1024}MB)]`;
+          request.responseBody = `[SKIPPED: ${decision.reason}]`;
         }
 
         requests.push(request);

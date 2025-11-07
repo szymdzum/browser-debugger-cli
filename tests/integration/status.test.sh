@@ -11,12 +11,18 @@ set -euo pipefail
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
+  # Stop session gracefully first
   bdg stop 2>/dev/null || true
-  sleep 0.5
-  # Force kill any Chrome processes on port 9222
+  sleep 1
+  
+  # Aggressive cleanup to kill all Chrome processes
+  bdg cleanup --aggressive 2>/dev/null || true
+  sleep 1
+  
+  # Final fallback: force kill port 9222
   lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
-  bdg cleanup --force 2>/dev/null || true
+  
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -56,7 +62,7 @@ fi
 
 # Test 2: Status with active session (basic)
 log_step "Test 2: Starting session for status tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 2
 
 log_step "Test 2: Checking basic status"

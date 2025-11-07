@@ -14,11 +14,18 @@ set -euo pipefail
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
+  # Stop session gracefully first
   bdg stop 2>/dev/null || true
-  sleep 0.5
+  sleep 1
+  
+  # Aggressive cleanup to kill all Chrome processes
+  bdg cleanup --aggressive 2>/dev/null || true
+  sleep 1
+  
+  # Final fallback: force kill port 9222
   lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
-  bdg cleanup --force 2>/dev/null || true
+  
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -54,7 +61,7 @@ log_success "Test 1 passed: CDP fails gracefully with no session"
 
 # Start session for remaining tests
 log_step "Starting session for CDP tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 3  # Let page load
 
 # Test 2: Valid CDP method without parameters

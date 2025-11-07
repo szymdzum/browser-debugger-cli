@@ -185,5 +185,5 @@ log_success "Test 10 passed: Custom port handled"
 cleanup_sessions
 
 # Summary
-log_success "=== All URL handling tests passed ===\"
+log_success "=== All URL handling tests passed ==="
 exit 0
