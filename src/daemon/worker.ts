@@ -894,6 +894,11 @@ async function main(): Promise<void> {
     chrome = await launchChrome(launchOptions);
     console.error(`[worker] Chrome launched (PID ${chrome.pid})`);
 
+    // Immediately cache Chrome PID for cleanup even if worker crashes early
+    // This ensures we can kill Chrome even if the worker doesn't reach ready state
+    writeChromePid(chrome.pid);
+    console.error(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);
+
     // Connect to Chrome via CDP
     console.error(`[worker] Connecting to Chrome via CDP...`);
     const targets = await fetchCDPTargets(config.port);
