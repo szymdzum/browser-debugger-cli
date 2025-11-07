@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-11-07
+
+### Added
+- **Screenshot command** (`bdg dom screenshot`) for capturing page screenshots
+  - Full-page and viewport-only capture modes
+  - PNG and JPEG format support with quality control (0-100)
+  - Automatic directory creation
+  - Comprehensive metadata output (dimensions, size, format)
+  - Human-readable and JSON output modes
+- Schema contract tests with golden files to prevent schema drift (12 tests)
+- Golden CDP workflow script for agent reference implementation (`tests/agent-benchmark/scenarios/00-golden-cdp-workflow.sh`)
+- Comprehensive exit codes documentation (`docs/EXIT_CODES.md`)
+- Schema migration plan documentation (`docs/roadmap/SCHEMA_MIGRATION_PLAN.md`)
+- Week 0 completion report (`docs/roadmap/WEEK_0_COMPLETION_REPORT.md`)
+- `ScreenshotData` interface to type definitions
+- Screenshot formatter for human-readable output
+
+### Changed
+- Page readiness now waits for stability by default (prevents premature DOM capture)
+- Test suite organized with dedicated fixtures directory
+- ESLint configuration enhanced for test files
+- Improved documentation structure for roadmap and quality guidelines
+
+### Fixed
+- npm distribution tags properly configured (`latest` and `alpha` both point to current version)
+- Package README now updates correctly on npm registry
+- TypeScript build cache issues resolved with clean rebuild process
+
+### Performance
+- Test fixtures automatically copied to dist during build
+
 ## [0.2.1] - 2025-11-06
 
 ### Added
