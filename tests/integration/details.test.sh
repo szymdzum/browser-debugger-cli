@@ -25,7 +25,8 @@ cleanup() {
   sleep 0.5
   
   exit "$exit_code"
-}trap cleanup EXIT INT TERM
+}
+trap cleanup EXIT INT TERM
 
 # Test metadata
 TEST_NAME="details-command"
