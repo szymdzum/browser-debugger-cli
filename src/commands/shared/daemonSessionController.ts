@@ -2,15 +2,15 @@ import { landingPage } from '@/commands/shared/landingPage.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/types.js';
 import type { TelemetryType } from '@/types.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import {
   sessionAlreadyRunningError,
   daemonConnectionFailedError,
   invalidResponseError,
   genericError,
 } from '@/ui/messages/errors.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { createLogger } from '@/utils/logger.js';
 
 const log = createLogger('bdg');
 

@@ -4,8 +4,8 @@ import { Command } from 'commander';
 
 import { commandRegistry } from '@/commands.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
-import { getErrorMessage } from '@/utils/errors.js';
-import { createLogger, enableDebugLogging } from '@/utils/logger.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
 import { VERSION } from '@/utils/version.js';
 
 // ============================================================================

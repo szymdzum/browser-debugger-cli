@@ -26,8 +26,8 @@ import type {
   StopSessionResponse,
 } from '@/ipc/types.js';
 import type { TelemetryType } from '@/types.js';
-import { getErrorMessage } from '@/utils/errors.js';
-import { createLogger } from '@/utils/logger.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 
 const log = createLogger('client');
 

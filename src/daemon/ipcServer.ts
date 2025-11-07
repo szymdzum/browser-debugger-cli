@@ -48,7 +48,7 @@ import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { CDPTarget } from '@/types.js';
-import { getErrorMessage } from '@/utils/errors.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 

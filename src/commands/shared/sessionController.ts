@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/ui/errors/index.js';
 import {
   cleanupChromeAttemptingMessage,
   cleanupChromePidNotFoundMessage,
@@ -6,7 +7,6 @@ import {
   cleanupChromeFailedMessage,
   cleanupChromeProcessFailedMessage,
 } from '@/ui/messages/chrome.js';
-import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Aggressively cleanup stale Chrome processes launched by bdg.

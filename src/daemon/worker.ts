@@ -44,6 +44,8 @@ import type {
   CDPTarget,
   BdgOutput,
 } from '@/types';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import {
   workerActivatingCollector,
   workerCollectorsActivated,
@@ -68,9 +70,7 @@ import {
   workerTimeoutReached,
   workerSessionActive,
 } from '@/ui/messages/debug.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
-import { createLogger } from '@/utils/logger.js';
 import { waitForPageReady } from '@/utils/pageReadiness.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { VERSION } from '@/utils/version.js';

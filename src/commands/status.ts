@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { getStatus } from '@/ipc/client.js';
 import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
 import type { SessionMetadata } from '@/session/metadata.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,
@@ -10,7 +11,6 @@ import {
 } from '@/ui/formatters/status.js';
 import { daemonNotRunningWithCleanup } from '@/ui/messages/commands.js';
 import { genericError, invalidResponseError } from '@/ui/messages/errors.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 

@@ -8,9 +8,9 @@
 import * as fs from 'fs';
 
 import type { TelemetryType } from '@/types';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
-import { getErrorMessage } from '@/utils/errors.js';
-import { createLogger } from '@/utils/logger.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 

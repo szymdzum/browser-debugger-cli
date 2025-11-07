@@ -7,8 +7,8 @@
 
 import * as fs from 'fs';
 
-import { getErrorMessage } from '@/utils/errors.js';
-import { createLogger } from '@/utils/logger.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
