@@ -162,9 +162,9 @@ log_success "Test 7 passed: Request verification tested"
 
 # Test 8: Multiple network command calls (idempotency)
 log_step "Test 8: Multiple network calls"
-bdg network > /dev/null 2>&1 || die "First call failed"
-bdg network > /dev/null 2>&1 || die "Second call failed"
-bdg network > /dev/null 2>&1 || die "Third call failed"
+bdg peek --network > /dev/null 2>&1 || die "First call failed"
+bdg peek --network > /dev/null 2>&1 || die "Second call failed"
+bdg peek --network > /dev/null 2>&1 || die "Third call failed"
 
 log_success "Test 8 passed: Multiple calls work (idempotent)"
 

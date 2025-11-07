@@ -119,6 +119,18 @@ export function validateUrl(url: string): {
     };
   }
 
+  // Check for invalid characters in hostname/protocol (before normalization)
+  // This prevents malformed URLs like "ht!tp://example" from being normalized to "http://ht!tp://example"
+  const beforePath = url.split('/')[0] ?? '';
+  if (/[!@#$%^&*()=+[\]{}\\|;'",<>?]/.test(beforePath)) {
+    return {
+      valid: false,
+      error: `Invalid URL format: '${url}' (contains invalid characters)`,
+      suggestion:
+        'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol',
+    };
+  }
+
   const normalized = normalizeUrl(url);
 
   try {

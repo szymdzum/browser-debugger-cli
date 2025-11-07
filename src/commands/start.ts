@@ -10,6 +10,7 @@ import {
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { invalidIntegerError } from '@/ui/messages/validation.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -129,6 +130,17 @@ export function registerStartCommands(program: Command): void {
     if (!url) {
       console.error(startCommandHelpMessage());
       process.exit(0);
+    }
+
+    // Validate URL before starting session
+    const { validateUrl } = await import('@/utils/url.js');
+    const validation = validateUrl(url);
+    if (!validation.valid) {
+      console.error(`Error: ${validation.error}`);
+      if (validation.suggestion) {
+        console.error(`Suggestion: ${validation.suggestion}`);
+      }
+      process.exit(EXIT_CODES.INVALID_URL);
     }
 
     await collectorAction(url, options);
