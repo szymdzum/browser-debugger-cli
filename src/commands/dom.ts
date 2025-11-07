@@ -12,7 +12,7 @@ import {
 } from '@/ui/formatters/dom.js';
 import { filterDefined } from '@/utils/objects.js';
 
-import { buildSelectorOptions } from './domOptionsBuilder.js';
+import { mergeWithSelector } from './domOptionsBuilder.js';
 
 /**
  * Options for DOM query command
@@ -101,20 +101,17 @@ async function handleDomHighlight(
 ): Promise<void> {
   await runCommand(
     async () => {
-      // Build base IPC request options (color, opacity, targeting)
-      const ipcOptions: Parameters<typeof highlightDOM>[0] = {
-        ...(options.color !== undefined && { color: options.color }),
-        ...(options.opacity !== undefined && { opacity: options.opacity }),
-        ...(options.first !== undefined && { first: options.first }),
-        ...(options.nth !== undefined && { nth: options.nth }),
-      };
-
-      // Add selector/index/nodeId using shared helper
-      const selectorOptions = buildSelectorOptions<Parameters<typeof highlightDOM>[0]>(
+      // Build IPC options with selector/index/nodeId merged
+      const ipcOptions = mergeWithSelector<Parameters<typeof highlightDOM>[0]>(
+        filterDefined({
+          color: options.color,
+          opacity: options.opacity,
+          first: options.first,
+          nth: options.nth,
+        }) as Parameters<typeof highlightDOM>[0],
         selectorOrIndex,
         options.nodeId
       );
-      Object.assign(ipcOptions, selectorOptions);
 
       const response = await highlightDOM(ipcOptions);
 
@@ -154,18 +151,15 @@ async function handleDomHighlight(
 async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
   await runCommand(
     async () => {
-      // Build base IPC request options (targeting flags)
-      const ipcOptions: Parameters<typeof getDOM>[0] = {
-        ...(options.all !== undefined && { all: options.all }),
-        ...(options.nth !== undefined && { nth: options.nth }),
-      };
-
-      // Add selector/index/nodeId using shared helper
-      const selectorOptions = buildSelectorOptions<Parameters<typeof getDOM>[0]>(
+      // Build IPC options with selector/index/nodeId merged
+      const ipcOptions = mergeWithSelector<Parameters<typeof getDOM>[0]>(
+        filterDefined({
+          all: options.all,
+          nth: options.nth,
+        }) as Parameters<typeof getDOM>[0],
         selectorOrIndex,
         options.nodeId
       );
-      Object.assign(ipcOptions, selectorOptions);
 
       const response = await getDOM(ipcOptions);
 

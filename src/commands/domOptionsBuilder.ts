@@ -67,3 +67,43 @@ export function buildSelectorOptions<T extends SelectorBasedOptions>(
 
   return options;
 }
+
+/**
+ * Merge base options with selector-based options.
+ *
+ * Convenience helper that combines buildSelectorOptions with base options object.
+ * Eliminates the repeated pattern of:
+ * ```
+ * const selectorOpts = buildSelectorOptions(...);
+ * Object.assign(ipcOptions, selectorOpts);
+ * ```
+ *
+ * @param baseOptions - Base IPC options object
+ * @param selectorOrIndex - CSS selector or cached index
+ * @param nodeId - Optional direct nodeId
+ * @returns Merged options object with selector/index/nodeId added
+ *
+ * @example
+ * ```typescript
+ * // Instead of:
+ * const ipcOptions = { color: 'red', opacity: 0.5 };
+ * const selectorOptions = buildSelectorOptions('.error', undefined);
+ * Object.assign(ipcOptions, selectorOptions);
+ *
+ * // Use:
+ * const ipcOptions = mergeWithSelector(
+ *   { color: 'red', opacity: 0.5 },
+ *   '.error',
+ *   undefined
+ * );
+ * // → { color: 'red', opacity: 0.5, selector: '.error' }
+ * ```
+ */
+export function mergeWithSelector<T extends SelectorBasedOptions>(
+  baseOptions: T,
+  selectorOrIndex: string,
+  nodeId: number | undefined
+): T {
+  const selectorOptions = buildSelectorOptions<T>(selectorOrIndex, nodeId);
+  return { ...baseOptions, ...selectorOptions };
+}
