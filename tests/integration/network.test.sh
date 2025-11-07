@@ -48,7 +48,7 @@ cleanup_sessions
 # Test 1: Network command with no active session
 log_step "Test 1: Network with no active session"
 set +e
-bdg network 2>&1
+bdg peek --network 2>&1
 EXIT_CODE=$?
 set -e
 
@@ -61,12 +61,12 @@ log_success "Test 1 passed: Network fails gracefully with no session"
 
 # Start session for remaining tests
 log_step "Starting session for network tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 3  # Let page load and generate network requests
 
 # Test 2: Basic network listing
 log_step "Test 2: List network requests"
-NETWORK_OUTPUT=$(bdg network 2>&1) || die "Failed to list network requests"
+NETWORK_OUTPUT=$(bdg peek --network 2>&1) || die "Failed to list network requests"
 
 # Should show network requests
 if echo "$NETWORK_OUTPUT" | grep -qi "example.com\|network\|GET\|200"; then

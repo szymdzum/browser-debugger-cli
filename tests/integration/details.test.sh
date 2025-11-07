@@ -51,7 +51,7 @@ log_success "Test 1 passed: Details fails gracefully with no session"
 
 # Start session and accumulate data
 log_step "Starting session for details tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 3  # Let data accumulate
 
 # Test 2: Get network request IDs from peek

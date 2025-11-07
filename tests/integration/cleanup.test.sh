@@ -47,7 +47,7 @@ log_success "Test 1 passed: Cleanup is safe with no sessions"
 
 # Test 2: Cleanup with active session (should warn or skip)
 log_step "Test 2: Starting session, then trying cleanup"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 2
 
 CLEANUP_OUTPUT=$(bdg cleanup 2>&1) || true
@@ -77,7 +77,7 @@ log_success "Test 3 passed: Cleanup --force works"
 
 # Test 4: Start fresh session, stop gracefully, then cleanup
 log_step "Test 4: Cleanup after graceful stop"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 2
 bdg stop 2>&1 || log_warn "Stop failed"
 sleep 1
@@ -99,7 +99,7 @@ log_success "Test 5 passed: Scenario not applicable"
 log_step "Test 6: Cleanup with --aggressive flag"
 
 # Start session with Chrome
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 2
 
 # Get Chrome PID before cleanup

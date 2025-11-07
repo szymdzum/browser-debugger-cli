@@ -61,7 +61,7 @@ log_success "Test 1 passed: CDP fails gracefully with no session"
 
 # Start session for remaining tests
 log_step "Starting session for CDP tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 3  # Let page load
 
 # Test 2: Valid CDP method without parameters

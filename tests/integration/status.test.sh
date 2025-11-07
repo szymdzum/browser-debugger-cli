@@ -62,7 +62,7 @@ fi
 
 # Test 2: Status with active session (basic)
 log_step "Test 2: Starting session for status tests"
-bdg "https://example.com" || die "Failed to start session"
+bdg "https://example.com" --headless || die "Failed to start session"
 sleep 2
 
 log_step "Test 2: Checking basic status"
