@@ -50,7 +50,7 @@ start_benchmark "$SCENARIO_NAME"
 
 # Step 1: Start session
 log_step "Starting bdg session"
-bdg "$TARGET_URL" || die "Failed to start session"
+bdg "$TARGET_URL" --headless || die "Failed to start session"
 
 # Step 2: Wait for posts to load
 log_step "Waiting for posts to load"
