@@ -157,6 +157,10 @@ export const HEADLESS_FLAG = '--headless=new';
 /**
  * BDG-specific Chrome flags for automation and popup suppression
  * These flags are automatically applied when launching Chrome via chrome-launcher
+ *
+ * Note: Chrome has a known issue (Chromium bug #854609) where it steals focus on macOS
+ * despite --disable-background-mode. This is a long-standing Chrome bug with no workaround.
+ * Headless mode (--headless) avoids this issue entirely.
  */
 export const BDG_CHROME_FLAGS = [
   '--no-first-run',
@@ -166,6 +170,7 @@ export const BDG_CHROME_FLAGS = [
   '--disable-infobars', // Disable all info bars including restore prompt
   '--disable-notifications', // Suppress notification permission prompts
   '--disable-features=Translate', // Suppress Google Translate popup (replaces deprecated --disable-translate)
+  '--disable-background-mode', // Attempt to prevent focus stealing (doesn't work reliably on macOS)
 ];
 
 /**
