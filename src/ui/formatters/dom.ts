@@ -154,3 +154,64 @@ export function formatDomGet(data: DomGetData): string {
 export function formatDomEval(data: { result: unknown }): string {
   return JSON.stringify(data.result, null, 2);
 }
+
+/**
+ * Format screenshot capture result for human-readable display.
+ *
+ * @param data - Screenshot metadata
+ * @returns Formatted string with screenshot details
+ *
+ * @example
+ * ```typescript
+ * formatDomScreenshot({
+ *   path: '/path/to/screenshot.png',
+ *   format: 'png',
+ *   width: 1920,
+ *   height: 1080,
+ *   size: 245632,
+ *   fullPage: true
+ * });
+ * // Output:
+ * // Screenshot captured
+ * // Path: /path/to/screenshot.png
+ * // Format: png
+ * // Dimensions: 1920x1080
+ * // Size: 240.0 KB
+ * // Full page: yes
+ * ```
+ */
+export function formatDomScreenshot(data: {
+  path: string;
+  format: 'png' | 'jpeg';
+  quality?: number;
+  width: number;
+  height: number;
+  size: number;
+  viewport?: { width: number; height: number };
+  fullPage: boolean;
+}): string {
+  const fmt = new OutputFormatter();
+
+  // Format file size
+  const sizeKB = data.size / 1024;
+  const sizeStr = sizeKB < 1024 ? `${sizeKB.toFixed(1)} KB` : `${(sizeKB / 1024).toFixed(1)} MB`;
+
+  fmt
+    .text('Screenshot captured')
+    .blank()
+    .keyValueList([
+      ['Path', data.path],
+      ['Format', data.format.toUpperCase()],
+      ...(data.format === 'jpeg' && data.quality !== undefined
+        ? [['Quality', `${data.quality}%`] as [string, string]]
+        : []),
+      ['Dimensions', `${data.width}x${data.height}`],
+      ['Size', sizeStr],
+      ['Full page', data.fullPage ? 'yes' : 'no'],
+      ...(data.viewport
+        ? [['Viewport', `${data.viewport.width}x${data.viewport.height}`] as [string, string]]
+        : []),
+    ]);
+
+  return fmt.build();
+}

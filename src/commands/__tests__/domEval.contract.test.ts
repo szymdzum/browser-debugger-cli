@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-floating-promises */
 /**
  * DOM Eval Command Smoke Tests
  *

@@ -1,0 +1,47 @@
+{
+  "version": "0.2.1",
+  "success": true,
+  "timestamp": "2025-11-06T20:00:00.000Z",
+  "duration": 4500,
+  "target": {
+    "url": "https://example.com/",
+    "title": "Example Domain"
+  },
+  "data": {
+    "network": [
+      {
+        "requestId": "1000.1",
+        "url": "https://example.com/",
+        "method": "GET",
+        "timestamp": 1730923200000,
+        "status": 200,
+        "mimeType": "text/html",
+        "requestHeaders": {
+          "User-Agent": "Chrome/120.0.0.0"
+        },
+        "responseHeaders": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "responseBody": "<!DOCTYPE html><html>...</html>"
+      }
+    ],
+    "console": [
+      {
+        "type": "log",
+        "text": "Page loaded",
+        "timestamp": 1730923201000,
+        "args": [
+          {
+            "type": "string",
+            "value": "Page loaded"
+          }
+        ]
+      }
+    ],
+    "dom": {
+      "url": "https://example.com/",
+      "title": "Example Domain",
+      "outerHTML": "<!DOCTYPE html><html><head><title>Example Domain</title></head><body><h1>Example Domain</h1></body></html>"
+    }
+  }
+}

@@ -2,13 +2,15 @@ import type { Command } from 'commander';
 
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { queryDOM, highlightDOM, getDOM } from '@/ipc/client.js';
+import { queryDOM, highlightDOM, getDOM, captureScreenshot } from '@/ipc/client.js';
 import {
   formatDomQuery,
   formatDomHighlight,
   formatDomGet,
   formatDomEval,
+  formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
+import { filterDefined } from '@/utils/objects.js';
 
 import { buildSelectorOptions } from './domOptionsBuilder.js';
 
@@ -35,6 +37,15 @@ interface DomGetOptions extends BaseCommandOptions {
   all?: boolean;
   nth?: number;
   nodeId?: number;
+}
+
+/**
+ * Options for DOM screenshot command
+ */
+interface DomScreenshotOptions extends BaseCommandOptions {
+  format?: 'png' | 'jpeg';
+  quality?: number;
+  fullPage?: boolean;
 }
 
 /**
@@ -183,6 +194,50 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
 }
 
 /**
+ * Handle bdg dom screenshot <path> command
+ *
+ * Captures a screenshot of the current page and saves it to disk.
+ * Supports PNG and JPEG formats with customizable quality and viewport options.
+ *
+ * @param path - Output file path (absolute or relative)
+ * @param options - Screenshot options (format, quality, fullPage)
+ */
+async function handleDomScreenshot(path: string, options: DomScreenshotOptions): Promise<void> {
+  await runCommand(
+    async () => {
+      const screenshotOptions = filterDefined({
+        format: options.format,
+        quality: options.quality,
+        fullPage: options.fullPage,
+      }) as { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean };
+
+      const response = await captureScreenshot(path, screenshotOptions);
+
+      if (response.status === 'error') {
+        return {
+          success: false,
+          error: response.error ?? 'Unknown error',
+        };
+      }
+
+      if (!response.data) {
+        return {
+          success: false,
+          error: 'No data in response',
+        };
+      }
+
+      return {
+        success: true,
+        data: response.data,
+      };
+    },
+    options,
+    formatDomScreenshot
+  );
+}
+
+/**
  * Options for DOM eval command
  */
 interface DomEvalOptions extends BaseCommandOptions {
@@ -295,5 +350,18 @@ export function registerDomCommands(program: Command): void {
     .option('-j, --json', 'Output as JSON')
     .action(async (selectorOrIndex: string, options: DomGetOptions) => {
       await handleDomGet(selectorOrIndex, options);
+    });
+
+  // bdg dom screenshot <path>
+  dom
+    .command('screenshot')
+    .description('Capture page screenshot')
+    .argument('<path>', 'Output file path (e.g., "./screenshot.png")')
+    .option('--format <format>', 'Image format: png or jpeg (default: png)')
+    .option('--quality <number>', 'JPEG quality 0-100 (default: 90)', parseInt)
+    .option('--no-full-page', 'Capture viewport only (default: full page)')
+    .option('-j, --json', 'Output as JSON')
+    .action(async (path: string, options: DomScreenshotOptions) => {
+      await handleDomScreenshot(path, options);
     });
 }

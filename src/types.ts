@@ -43,6 +43,31 @@ export interface ConsoleMessage {
   args?: unknown[]; // Raw console arguments from CDP (mixed types)
 }
 
+/**
+ * Screenshot capture data returned by dom screenshot command
+ */
+export interface ScreenshotData {
+  /** Absolute path where screenshot was saved */
+  path: string;
+  /** Image format */
+  format: 'png' | 'jpeg';
+  /** JPEG quality (0-100), only present for JPEG format */
+  quality?: number;
+  /** Image width in pixels */
+  width: number;
+  /** Image height in pixels */
+  height: number;
+  /** File size in bytes */
+  size: number;
+  /** Viewport dimensions when fullPage is false */
+  viewport?: {
+    width: number;
+    height: number;
+  };
+  /** Whether screenshot captured full page or just viewport */
+  fullPage: boolean;
+}
+
 export interface BdgOutput {
   version: string; // Package version for schema tracking
   success: boolean;

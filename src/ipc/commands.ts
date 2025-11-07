@@ -10,6 +10,8 @@
  * - Type safety maintained throughout the stack
  */
 
+import type { ScreenshotData } from '@/types.js';
+
 // =============================================================================
 // Command Schemas (Base Types - No IDs)
 // =============================================================================
@@ -71,6 +73,22 @@ export interface DomGetData {
     outerHTML?: string;
   }>;
 }
+
+/**
+ * DOM Screenshot Command - Capture page screenshot
+ */
+export interface DomScreenshotCommand {
+  /** Output file path (absolute path) */
+  path: string;
+  /** Image format (default: png) */
+  format?: 'png' | 'jpeg';
+  /** JPEG quality 0-100 (default: 90, only for JPEG) */
+  quality?: number;
+  /** Capture full page or just viewport (default: true) */
+  fullPage?: boolean;
+}
+
+export type DomScreenshotData = ScreenshotData;
 
 /**
  * Worker Peek Command - Get lightweight preview of collected data
@@ -179,6 +197,10 @@ export const COMMANDS = {
   dom_get: {
     requestSchema: {} as DomGetCommand,
     responseSchema: {} as DomGetData,
+  },
+  dom_screenshot: {
+    requestSchema: {} as DomScreenshotCommand,
+    responseSchema: {} as DomScreenshotData,
   },
   worker_peek: {
     requestSchema: {} as WorkerPeekCommand,

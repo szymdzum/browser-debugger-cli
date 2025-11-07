@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc && tsc-alias",
-    "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\"",
+    "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\" && node -e \"const fs = require('fs'); const path = require('path'); const src = 'src/__tests__/fixtures'; const dest = 'dist/__tests__/fixtures'; if (fs.existsSync(src)) { fs.mkdirSync(dest, { recursive: true }); fs.readdirSync(src).filter(f => f.endsWith('.json')).forEach(f => fs.copyFileSync(path.join(src, f), path.join(dest, f))); console.log('✅ Copied test fixtures'); }\"",
     "dev": "tsc && tsc-alias && node dist/index.js",
     "watch": "concurrently \"npm:watch:tsc\" \"npm:watch:alias\"",
     "watch:tsc": "tsc --watch",

@@ -396,6 +396,97 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
   },
 
   /**
+   * DOM Screenshot Handler - Capture page screenshot
+   */
+  dom_screenshot: async (cdp, params) => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+
+    // Validate path
+    const absolutePath = path.resolve(params.path);
+
+    // Ensure parent directory exists
+    const parentDir = path.dirname(absolutePath);
+    try {
+      await fs.mkdir(parentDir, { recursive: true });
+    } catch (error: unknown) {
+      if (error && typeof error === 'object' && 'code' in error && error.code !== 'EEXIST') {
+        throw new Error(`Cannot create directory ${parentDir}: ${getErrorMessage(error)}`);
+      }
+    }
+
+    // Set defaults
+    const format = params.format ?? 'png';
+    const quality = params.quality;
+    const fullPage = params.fullPage ?? true;
+
+    // Validate quality for JPEG
+    if (format === 'jpeg' && quality !== undefined && (quality < 0 || quality > 100)) {
+      throw new Error('JPEG quality must be between 0 and 100');
+    }
+
+    // Capture screenshot via CDP
+    const screenshotParams: Record<string, unknown> = {
+      format,
+      ...(format === 'jpeg' && quality !== undefined && { quality }),
+      ...(fullPage && { captureBeyondViewport: true }),
+    };
+
+    interface ScreenshotResponse {
+      data: string; // Base64 encoded image
+    }
+
+    const response = (await cdp.send(
+      'Page.captureScreenshot',
+      screenshotParams
+    )) as ScreenshotResponse;
+    const imageData = Buffer.from(response.data, 'base64');
+
+    // Write file
+    await fs.writeFile(absolutePath, imageData);
+
+    // Get file stats
+    const stats = await fs.stat(absolutePath);
+
+    // Get viewport dimensions if not full page
+    let viewport: { width: number; height: number } | undefined;
+    if (!fullPage) {
+      interface MetricsResponse {
+        layoutViewport: {
+          clientWidth: number;
+          clientHeight: number;
+        };
+      }
+      const metrics = (await cdp.send('Page.getLayoutMetrics')) as MetricsResponse;
+      viewport = {
+        width: metrics.layoutViewport.clientWidth,
+        height: metrics.layoutViewport.clientHeight,
+      };
+    }
+
+    // Get image dimensions (we'll use a simple approach - actual dimensions from CDP or estimate)
+    // For simplicity, we'll get the layout metrics
+    interface LayoutMetrics {
+      contentSize: {
+        width: number;
+        height: number;
+      };
+    }
+    const layoutMetrics = (await cdp.send('Page.getLayoutMetrics')) as LayoutMetrics;
+
+    return {
+      path: absolutePath,
+      format,
+      ...(format === 'jpeg' && quality !== undefined && { quality }),
+      width: layoutMetrics.contentSize.width,
+      height: layoutMetrics.contentSize.height,
+      size: stats.size,
+      ...(viewport && { viewport }),
+      fullPage,
+    };
+  },
+
+  /**
    * Worker Peek Handler - Return lightweight preview of collected data
    */
   worker_peek: async (_cdp, params) => {
