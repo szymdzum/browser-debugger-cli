@@ -32,6 +32,7 @@ export interface NetworkCollectionOptions {
   networkInclude?: string[];
   networkExclude?: string[];
   maxBodySize?: number;
+  getCurrentNavigationId?: (() => number) | undefined;
 }
 
 /**
@@ -67,6 +68,7 @@ export async function startNetworkCollection(
     networkInclude = [],
     networkExclude = [],
     maxBodySize = MAX_RESPONSE_SIZE,
+    getCurrentNavigationId,
   } = options;
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
   const registry = new CDPHandlerRegistry();
@@ -126,6 +128,7 @@ export async function startNetworkCollection(
         timestamp: Date.now(), // Use actual timestamp, not CDP monotonic time
         requestHeaders: params.request.headers,
         requestBody: params.request.postData,
+        navigationId: getCurrentNavigationId?.(),
       };
       requestMap.set(params.requestId, {
         request,

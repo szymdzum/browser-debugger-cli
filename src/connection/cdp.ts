@@ -104,6 +104,33 @@ export class CDPConnection {
   }
 
   /**
+   * Create and connect a CDPConnection instance in one step.
+   *
+   * Factory method that prevents partially-initialized instances by ensuring
+   * the connection is established before returning the instance.
+   *
+   * @param wsUrl - WebSocket debugger URL from CDP target
+   * @param options - Connection configuration options
+   * @returns Fully connected CDPConnection instance
+   * @throws Error if connection fails after all retries
+   *
+   * @example
+   * ```typescript
+   * // Async factory pattern (recommended)
+   * const cdp = await CDPConnection.create(wsUrl, options);
+   *
+   * // Traditional pattern (still supported)
+   * const cdp = new CDPConnection();
+   * await cdp.connect(wsUrl, options);
+   * ```
+   */
+  static async create(wsUrl: string, options?: ConnectionOptions): Promise<CDPConnection> {
+    const connection = new CDPConnection();
+    await connection.connect(wsUrl, options);
+    return connection;
+  }
+
+  /**
    * Connect to Chrome via WebSocket.
    *
    * We retry with exponential backoff because Chrome startup can be slow and

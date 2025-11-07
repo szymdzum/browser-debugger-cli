@@ -34,7 +34,9 @@ import { writePid } from '@/session/pid.js';
 import { isProcessAlive, killChromeProcess } from '@/session/process.js';
 import { writeQueryCache, getNodeIdByIndex } from '@/session/queryCache.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
+import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection, collectDOM } from '@/telemetry/dom.js';
+import { startNavigationTracking, type NavigationEvent } from '@/telemetry/navigation.js';
 import { startNetworkCollection } from '@/telemetry/network.js';
 import type {
   TelemetryType,
@@ -110,7 +112,9 @@ let cleanupFunctions: CleanupFunction[] = [];
 // Telemetry data storage
 const networkRequests: NetworkRequest[] = [];
 const consoleMessages: ConsoleMessage[] = [];
+const navigationEvents: NavigationEvent[] = [];
 let domData: DOMData | null = null;
+let getCurrentNavigationId: (() => number) | null = null;
 
 // Session metadata
 let sessionStartTime: number = Date.now();
@@ -160,6 +164,24 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
 
   activeTelemetry = config.telemetry ?? ['network', 'console', 'dom'];
 
+  // Always enable dialog auto-dismissal to prevent collection blocking
+  {
+    log.debug('Enabling dialog auto-dismissal');
+    const cleanup = await startDialogHandling(cdp);
+    cleanupFunctions.push(cleanup);
+  }
+
+  // Always enable navigation tracking for stale reference detection
+  {
+    log.debug('Enabling navigation tracking');
+    const { cleanup, getCurrentNavigationId: getNavId } = await startNavigationTracking(
+      cdp,
+      navigationEvents
+    );
+    getCurrentNavigationId = getNavId;
+    cleanupFunctions.push(cleanup);
+  }
+
   for (const collector of activeTelemetry) {
     log.debug(workerActivatingCollector(collector));
 
@@ -169,6 +191,7 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
           const networkOptions = {
             includeAll: config.includeAll ?? false,
             ...(config.maxBodySize !== undefined && { maxBodySize: config.maxBodySize }),
+            getCurrentNavigationId,
           };
           const cleanup = await startNetworkCollection(cdp, networkRequests, networkOptions);
           cleanupFunctions.push(cleanup);
@@ -180,7 +203,8 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
           const cleanup = await startConsoleCollection(
             cdp,
             consoleMessages,
-            config.includeAll ?? false
+            config.includeAll ?? false,
+            getCurrentNavigationId ?? undefined
           );
           cleanupFunctions.push(cleanup);
         }
@@ -543,6 +567,19 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       if (!request) {
         return Promise.reject(new Error(`Network request not found: ${params.id}`));
       }
+
+      // Validate navigation ID to detect stale references
+      const currentNavId = getCurrentNavigationId?.();
+      if (currentNavId !== undefined && request.navigationId !== undefined) {
+        if (request.navigationId !== currentNavId) {
+          return Promise.reject(
+            new Error(
+              `Stale reference: Network request from navigation ${request.navigationId}, but current navigation is ${currentNavId}. Page has navigated since this request was made.`
+            )
+          );
+        }
+      }
+
       return Promise.resolve({ item: request });
     } else if (params.itemType === 'console') {
       const index = parseInt(params.id, 10);
@@ -553,7 +590,25 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
           )
         );
       }
-      return Promise.resolve({ item: consoleMessages[index] });
+
+      const message = consoleMessages[index];
+      if (!message) {
+        return Promise.reject(new Error(`Console message not found at index: ${params.id}`));
+      }
+
+      // Validate navigation ID to detect stale references
+      const currentNavId = getCurrentNavigationId?.();
+      if (currentNavId !== undefined && message.navigationId !== undefined) {
+        if (message.navigationId !== currentNavId) {
+          return Promise.reject(
+            new Error(
+              `Stale reference: Console message from navigation ${message.navigationId}, but current navigation is ${currentNavId}. Page has navigated since this message was logged.`
+            )
+          );
+        }
+      }
+
+      return Promise.resolve({ item: message });
     }
     // Unreachable due to type narrowing, but TypeScript doesn't see it
     return Promise.reject(
