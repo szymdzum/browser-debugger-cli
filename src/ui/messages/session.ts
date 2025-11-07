@@ -42,7 +42,15 @@ export function landingPage(options: LandingPageOptions): string {
   lines.push(`Target: ${url}`);
   lines.push('');
   lines.push(
-    section('Explore by domain:', [
+    section('Live Monitoring:', [
+      'bdg peek        Preview collected data (snapshot)',
+      'bdg tail        Continuous monitoring (live updates)',
+      'bdg details <type> <id>    Full request/console details',
+    ])
+  );
+  lines.push('');
+  lines.push(
+    section('Inspect by domain:', [
       'bdg dom         DOM inspection & manipulation',
       'bdg network     Network requests & cookies',
       'bdg console     Console logs & messages',
@@ -52,7 +60,7 @@ export function landingPage(options: LandingPageOptions): string {
   lines.push(
     section('Session:', [
       'bdg status      Check session state',
-      'bdg stop        End session & save',
+      'bdg stop        End session & save output',
     ])
   );
   lines.push('');
