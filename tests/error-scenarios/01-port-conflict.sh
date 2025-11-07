@@ -39,7 +39,7 @@ cleanup_sessions
 
 # Test 1: Start session on default port 9222
 log_step "Test 1: Starting first session on default port 9222"
-bdg "https://example.com" || die "Failed to start first session"
+bdg "https://example.com" --headless || die "Failed to start first session"
 sleep 2
 
 # Verify first session is running
@@ -49,7 +49,7 @@ log_success "First session started successfully"
 # Test 2: Try to start second session (should fail with port conflict)
 log_step "Test 2: Attempting to start second session (should fail)"
 set +e
-SECOND_SESSION_OUTPUT=$(bdg "https://example.com" 2>&1)
+SECOND_SESSION_OUTPUT=$(bdg "https://example.com" --headless 2>&1)
 EXIT_CODE=$?
 set -e
 
@@ -73,7 +73,7 @@ fi
 # Test 3: Try with explicit port that's already in use
 log_step "Test 3: Attempting to start session on occupied port 9222"
 set +e
-EXPLICIT_PORT_OUTPUT=$(bdg "https://example.com" --port 9222 2>&1)
+EXPLICIT_PORT_OUTPUT=$(bdg "https://example.com" --headless --port 9222 2>&1)
 EXIT_CODE=$?
 set -e
 
@@ -93,7 +93,7 @@ bdg stop || log_warn "Failed to stop first session"
 sleep 2
 
 # Now try alternative port
-bdg "https://example.com" --port 9223 || die "Failed to start on alternative port"
+bdg "https://example.com" --headless --port 9223 || die "Failed to start on alternative port"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Alternative port session not running"
