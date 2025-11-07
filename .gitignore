@@ -28,6 +28,9 @@ coverage/
 tmp/
 temp/
 
+# Demo output
+.bdg-demo/
+
 # Workspace artifacts
 analysis/
 benchmarks/
