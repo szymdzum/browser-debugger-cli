@@ -1,4 +1,3 @@
-import { execSync } from 'child_process';
 import * as fs from 'fs';
 
 import type { Command } from 'commander';
@@ -168,12 +167,12 @@ export function registerCleanupCommand(program: Command): void {
               warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
               console.error(forceCleanupWarningMessage(pid));
 
-              // Force-kill Chrome processes on debugging port 9222
-              // This ensures cleanup --force actually removes orphaned Chrome processes
-              // Platform-specific: macOS/Linux only (Windows not supported)
+              // Use cross-platform Chrome cleanup helper
               try {
-                execSync('lsof -ti:9222 | xargs kill -9 2>/dev/null || true', { stdio: 'ignore' });
-                cleanedChrome = true;
+                const killedCount = await cleanupStaleChrome();
+                if (killedCount > 0) {
+                  cleanedChrome = true;
+                }
               } catch (error) {
                 const errorMessage = getErrorMessage(error);
                 warnings.push(`Could not kill Chrome processes: ${errorMessage}`);
