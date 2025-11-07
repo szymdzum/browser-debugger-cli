@@ -8,6 +8,7 @@
 #
 # Usage:
 #   ./run-all-tests.sh              # Run all tests
+#   ./run-all-tests.sh --verbose    # Run all tests with real-time output
 #   ./run-all-tests.sh --benchmark  # Only benchmarks
 #   ./run-all-tests.sh --integration # Only integration
 #   ./run-all-tests.sh --errors     # Only error scenarios
@@ -30,6 +31,7 @@ RUN_BENCHMARKS=true
 RUN_INTEGRATION=true
 RUN_ERRORS=true
 RUN_EDGE_CASES=true
+VERBOSE=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -55,9 +57,13 @@ while [[ $# -gt 0 ]]; do
       RUN_ERRORS=false
       shift
       ;;
+    --verbose|-v)
+      VERBOSE=true
+      shift
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--benchmark|--integration|--errors]"
+      echo "Usage: $0 [--benchmark|--integration|--errors|--verbose]"
       exit 1
       ;;
   esac
@@ -102,18 +108,31 @@ run_test_suite() {
 
     echo -e "${BLUE}Running: $test_name${NC}"
 
-    # Run test and capture exit code
-    if bash "$test_script" > "$RESULTS_DIR/${test_name}.log" 2>&1; then
-      echo -e "${GREEN}✓ PASSED: $test_name${NC}"
-      PASSED_TESTS=$((PASSED_TESTS + 1))
+    # Run test with or without verbose output
+    if [ "$VERBOSE" = true ]; then
+      # Verbose mode: show output in real-time AND save to log
+      if bash "$test_script" 2>&1 | tee "$RESULTS_DIR/${test_name}.log"; then
+        echo -e "${GREEN}✓ PASSED: $test_name${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+      else
+        echo -e "${RED}✗ FAILED: $test_name${NC}"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_TEST_NAMES+=("$test_name")
+      fi
     else
-      echo -e "${RED}✗ FAILED: $test_name${NC}"
-      FAILED_TESTS=$((FAILED_TESTS + 1))
-      FAILED_TEST_NAMES+=("$test_name")
+      # Normal mode: save to log only, show summary
+      if bash "$test_script" > "$RESULTS_DIR/${test_name}.log" 2>&1; then
+        echo -e "${GREEN}✓ PASSED: $test_name${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+      else
+        echo -e "${RED}✗ FAILED: $test_name${NC}"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        FAILED_TEST_NAMES+=("$test_name")
 
-      # Show last few lines of output
-      echo -e "${YELLOW}Last 10 lines of output:${NC}"
-      tail -10 "$RESULTS_DIR/${test_name}.log"
+        # Show last few lines of output
+        echo -e "${YELLOW}Last 10 lines of output:${NC}"
+        tail -10 "$RESULTS_DIR/${test_name}.log"
+      fi
     fi
 
     echo ""
