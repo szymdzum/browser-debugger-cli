@@ -59,7 +59,7 @@ log_success "Test 1 passed: Tail handles missing session gracefully"
 # Start session for remaining tests
 log_step "Starting session for tail tests"
 bdg "https://example.com" --headless || die "Failed to start session"
-sleep 3  # Let some data accumulate
+sleep 5  # Let daemon start and some data accumulate
 
 # Test 2: Basic tail (run for 3 seconds then kill)
 log_step "Test 2: Basic tail (3 second run)"
@@ -100,11 +100,8 @@ log_success "Test 5 passed: Tail --interval works"
 log_step "Test 6: Tail with --json (2 seconds)"
 timeout 2 bdg tail --json 2>&1 > /tmp/tail_json.log || true
 
-# Extract first JSON output (each update produces a JSON object)
-FIRST_JSON=$(head -50 /tmp/tail_json.log | grep -m 1 "^{" || echo "{}")
-
-# Validate JSON format
-echo "$FIRST_JSON" | jq . > /dev/null 2>&1 || die "Tail --json output is not valid JSON"
+# Validate JSON format (first complete JSON object in file)
+head -200 /tmp/tail_json.log | jq -e '.preview' > /dev/null 2>&1 || die "Tail --json output is not valid JSON"
 
 log_success "Test 6 passed: Tail --json produces valid JSON"
 
