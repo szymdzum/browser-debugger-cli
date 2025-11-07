@@ -1,6 +1,6 @@
 {
   "name": "browser-debugger-cli",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "DevTools telemetry in your terminal. For humans and agents. Direct WebSocket to Chrome's debugging port.",
   "type": "module",
   "bin": {
@@ -83,9 +83,6 @@
   "homepage": "https://github.com/szymdzum/browser-debugger-cli#readme",
   "bugs": {
     "url": "https://github.com/szymdzum/browser-debugger-cli/issues"
-  },
-  "publishConfig": {
-    "tag": "alpha"
   },
   "files": [
     "dist",
