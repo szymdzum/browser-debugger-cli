@@ -30,8 +30,6 @@ interface CollectorOptions {
   compact?: boolean;
   /** Launch Chrome in headless mode (no visible browser window). */
   headless?: boolean;
-  /** Page readiness timeout in seconds (default: 5). */
-  waitTimeout?: string;
 }
 
 /**
@@ -52,8 +50,7 @@ function applyCollectorOptions(command: Command): Command {
       '5'
     )
     .option('--compact', 'Use compact JSON format (no indentation) for output files')
-    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)')
-    .option('--wait-timeout <seconds>', 'Page readiness timeout in seconds (default: 5)', '5');
+    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)');
 }
 
 /**
@@ -88,7 +85,6 @@ function buildSessionOptions(options: CollectorOptions): {
   maxBodySize: number | undefined;
   compact: boolean;
   headless: boolean;
-  waitTimeout: number | undefined;
 } {
   const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size');
   return {
@@ -99,7 +95,6 @@ function buildSessionOptions(options: CollectorOptions): {
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
     headless: options.headless ?? false,
-    waitTimeout: parseOptionalInt(options.waitTimeout, 'wait-timeout'),
   };
 }
 

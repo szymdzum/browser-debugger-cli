@@ -106,7 +106,7 @@ bdg dom get         # Get full HTML for elements
 
 ```
 Phase 1: Load Event     → Browser's native window.onload
-Phase 2: Network Idle   → 200ms with no active requests
+Phase 2: Network Idle   → 200ms with no active requests  
 Phase 3: DOM Stable     → 300ms with no DOM mutations
 ```
 
@@ -117,17 +117,12 @@ Phase 3: DOM Stable     → 300ms with no DOM mutations
 - ✅ **API-heavy apps**: Catches lazy-loaded data requests
 - ✅ **Static sites**: Fast detection without unnecessary waiting
 
-### Examples
+**Just works** — no timeouts to configure, no arbitrary waits:
 
 ```bash
-# Default: Wait up to 5 seconds for full page readiness
-bdg example.com
-
-# Custom timeout for very slow apps
-bdg slow-spa.com --wait-timeout 15
-
-# Even works with complex SPAs
-bdg github.com/trending --wait-timeout 10
+bdg example.com           # Automatically waits for full readiness
+bdg github.com/trending   # Works with complex SPAs
+bdg localhost:3000        # Works with your dev server
 ```
 
 ### Under the Hood
@@ -149,11 +144,13 @@ bdg github.com/trending --wait-timeout 10
 
 **Framework-agnostic** — based on actual browser behavior, not framework detection.
 
+**No arbitrary timeouts** — waits up to 5 seconds max, but typically completes much faster (~500ms for most sites).
+
 ### Performance Comparison
 
 | Tool | Detection Method | Time to Ready |
 |------|-----------------|---------------|
-| **bdg** | 3-phase adaptive | ~500ms typical, up to 5s max |
+| **bdg** | 3-phase event-driven | ~500ms typical, up to 5s max |
 | Puppeteer | `networkidle2` (500ms) | ~800ms typical |
 | Playwright | `domcontentloaded` | Too early (misses hydration) |
 | Raw CDP | Manual `Page.loadEventFired` | Too early (misses async content) |
