@@ -400,6 +400,32 @@ npm whoami
 npm publish --tag alpha
 ```
 
+### npm README Not Updating
+
+**Problem**: npm package page shows stale README from old version.
+
+**Cause**: `publishConfig.tag` in package.json causes new versions to update only the specified tag (e.g., `alpha`), not `latest`. The npm website displays the README from the `latest` tag by default.
+
+**Solution**:
+```bash
+# Option 1: Update the latest dist-tag manually
+npm dist-tag add browser-debugger-cli@0.X.Y latest
+
+# Option 2: Remove publishConfig.tag and republish
+# Edit package.json - remove this section:
+# "publishConfig": {
+#   "tag": "alpha"
+# }
+# Then publish normally:
+npm publish
+
+# Verify both tags point to current version
+npm view browser-debugger-cli dist-tags
+# Should show: { latest: '0.X.Y', alpha: '0.X.Y' }
+```
+
+**Prevention**: For stable releases, remove `publishConfig.tag` from package.json before publishing to ensure the `latest` tag updates automatically.
+
 ### Release Notes Not Formatted
 
 **Problem**: Release notes show as plain text, not Markdown.
