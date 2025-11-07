@@ -63,28 +63,16 @@ function formatStop(data: StopResult): string {
 /**
  * Map daemon error codes to appropriate exit codes.
  *
+ * Only NO_SESSION has special handling (RESOURCE_NOT_FOUND).
+ * All other error codes map to UNHANDLED_EXCEPTION.
+ *
  * @param errorCode - IPC error code from daemon response
  * @returns Semantic exit code
  */
 function getExitCodeForDaemonError(errorCode?: IPCErrorCode): number {
-  switch (errorCode) {
-    case IPCErrorCode.NO_SESSION:
-      return EXIT_CODES.RESOURCE_NOT_FOUND;
-    case IPCErrorCode.SESSION_KILL_FAILED:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
-    case IPCErrorCode.DAEMON_ERROR:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
-    case IPCErrorCode.SESSION_ALREADY_RUNNING:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
-    case IPCErrorCode.WORKER_START_FAILED:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
-    case IPCErrorCode.CHROME_LAUNCH_FAILED:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
-    case IPCErrorCode.CDP_TIMEOUT:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
-    case undefined:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
-  }
+  return errorCode === IPCErrorCode.NO_SESSION
+    ? EXIT_CODES.RESOURCE_NOT_FOUND
+    : EXIT_CODES.UNHANDLED_EXCEPTION;
 }
 
 /**
