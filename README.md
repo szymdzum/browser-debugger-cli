@@ -75,8 +75,8 @@ bdg stop            # Stop session gracefully
 bdg cleanup         # Clean up stale sessions
 
 # Data inspection
-bdg peek            # Quick preview of collected data
-bdg peek --follow   # Live updates every second
+bdg peek            # Quick preview of collected data (snapshot)
+bdg tail            # Continuous monitoring (like tail -f)
 bdg details         # Full details for specific items
 bdg dom query       # Query DOM elements
 bdg dom eval        # Execute JavaScript in browser context
