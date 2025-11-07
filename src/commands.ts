@@ -10,6 +10,7 @@ import { registerPeekCommand } from '@/commands/peek.js';
 import { registerStartCommands } from '@/commands/start.js';
 import { registerStatusCommand } from '@/commands/status.js';
 import { registerStopCommand } from '@/commands/stop.js';
+import { registerTailCommand } from '@/commands/tail.js';
 
 /**
  * Command registration function type
@@ -41,6 +42,7 @@ export const commandRegistry: CommandRegistrar[] = [
   // Data Inspection Commands
   addCommandGroup('Data Inspection:'),
   registerPeekCommand,
+  registerTailCommand,
   registerDetailsCommand,
   registerDomCommands,
 

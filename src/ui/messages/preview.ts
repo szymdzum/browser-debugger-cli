@@ -46,7 +46,7 @@ export function verboseCommandsMessage(): string {
   lines.push('Commands:');
   lines.push('  Stop session:    bdg stop');
   lines.push('  Full preview:    bdg peek --last 50');
-  lines.push('  Watch live:      bdg peek --follow');
+  lines.push('  Watch live:      bdg tail');
   return lines.join('\n');
 }
 

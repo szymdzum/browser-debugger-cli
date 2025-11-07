@@ -7,46 +7,52 @@ import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { invalidLastArgumentError } from '@/ui/messages/commands.js';
-import { peekFollowDeprecationWarning } from '@/ui/messages/deprecation.js';
 import { daemonNotRunningError, noPreviewDataError } from '@/ui/messages/errors.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Handle errors in a consistent way for both follow and one-time modes.
+ * Options for tail command (extends PreviewOptions).
+ */
+interface TailOptions extends PreviewOptions {
+  /** Update interval in milliseconds */
+  interval?: string;
+}
+
+/**
+ * Handle errors during tail operation.
  *
  * @param error - Error message
- * @param options - Preview options
- * @param exitCode - Exit code to use if not in follow mode
+ * @param options - Tail options
  */
-function handlePreviewError(error: string, options: PreviewOptions, exitCode: number): void {
+function handleTailError(error: string, options: TailOptions): void {
   if (options.json) {
     console.log(JSON.stringify(OutputBuilder.buildJsonError(error), null, 2));
   } else {
     console.error(noPreviewDataError());
   }
-
-  if (!options.follow) {
-    process.exit(exitCode);
-  }
+  // Don't exit in tail mode - keep trying
 }
 
 /**
- * Register peek command.
+ * Register tail command for continuous monitoring.
+ *
+ * Tail command is like `tail -f` for bdg session data.
+ * It continuously polls and displays updates from the running session.
  *
  * @param program - Commander.js Command instance to register commands on
  */
-export function registerPeekCommand(program: Command): void {
+export function registerTailCommand(program: Command): void {
   program
-    .command('peek')
-    .description('Preview collected data without stopping the session')
+    .command('tail')
+    .description('Continuously monitor session data (like tail -f)')
     .addOption(jsonOption)
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting')
     .option('-n, --network', 'Show only network requests')
     .option('-c, --console', 'Show only console messages')
-    .option('-f, --follow', 'Watch for updates (like tail -f)')
     .option('--last <count>', 'Show last N items', '10')
-    .action(async (options: PreviewOptions) => {
+    .option('--interval <ms>', 'Update interval in milliseconds', '1000')
+    .action(async (options: TailOptions) => {
       // Validate --last parameter
       const lastN = parseInt(options.last ?? '10', 10);
       if (isNaN(lastN) || lastN < 1 || lastN > 1000) {
@@ -55,6 +61,16 @@ export function registerPeekCommand(program: Command): void {
       }
       options.last = lastN.toString();
 
+      // Validate --interval parameter
+      const interval = parseInt(options.interval ?? '1000', 10);
+      if (isNaN(interval) || interval < 100 || interval > 60000) {
+        console.error('Error: --interval must be between 100 and 60000 milliseconds');
+        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      }
+
+      /**
+       * Fetch and display preview data.
+       */
       const showPreview = async (): Promise<void> => {
         try {
           // Fetch preview data via IPC from daemon
@@ -64,39 +80,29 @@ export function registerPeekCommand(program: Command): void {
           try {
             validateIPCResponse(response);
           } catch {
-            handlePreviewError(
-              response.error ?? 'Unknown error',
-              options,
-              EXIT_CODES.RESOURCE_NOT_FOUND
-            );
+            handleTailError(response.error ?? 'Unknown error', options);
             return;
           }
 
           // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output) {
-            handlePreviewError(
-              'No preview data in response',
-              options,
-              EXIT_CODES.RESOURCE_NOT_FOUND
-            );
+            handleTailError('No preview data in response', options);
             return;
           }
 
-          // Clear screen before rendering to prevent stacked outputs in follow mode
-          if (options.follow) {
-            console.clear();
-          }
+          // Clear screen before rendering to prevent stacked outputs
+          console.clear();
 
-          // Add current view timestamp for follow mode to show refresh time
-          const previewOptions: PreviewOptions = options.follow
-            ? { ...options, viewedAt: new Date() }
-            : options;
+          // Add current view timestamp to show refresh time
+          const previewOptions: PreviewOptions = {
+            ...options,
+            viewedAt: new Date(),
+          };
 
           console.log(formatPreview(output, previewOptions));
         } catch {
           // Handle IPC connection errors (daemon not running, etc.)
-          // Note: validateIPCResponse errors are caught above
           if (options.json) {
             console.log(
               JSON.stringify(
@@ -110,33 +116,23 @@ export function registerPeekCommand(program: Command): void {
           } else {
             console.error(daemonNotRunningError());
           }
-
-          if (!options.follow) {
-            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-          }
+          // Don't exit - keep trying in case daemon starts
         }
       };
 
-      if (options.follow) {
-        // Show deprecation warning
-        console.error(peekFollowDeprecationWarning());
+      // Start continuous monitoring
+      console.error(followingPreviewMessage());
+      await showPreview();
 
-        // Follow mode: update every second
-        console.error(followingPreviewMessage());
-        await showPreview();
-        const followInterval = setInterval(() => {
-          void showPreview();
-        }, 1000);
+      const followInterval = setInterval(() => {
+        void showPreview();
+      }, interval);
 
-        // Handle Ctrl+C gracefully
-        process.on('SIGINT', () => {
-          clearInterval(followInterval);
-          console.error(stoppedFollowingPreviewMessage());
-          process.exit(EXIT_CODES.SUCCESS);
-        });
-      } else {
-        // One-time preview
-        await showPreview();
-      }
+      // Handle Ctrl+C gracefully
+      process.on('SIGINT', () => {
+        clearInterval(followInterval);
+        console.error(stoppedFollowingPreviewMessage());
+        process.exit(EXIT_CODES.SUCCESS);
+      });
     });
 }
