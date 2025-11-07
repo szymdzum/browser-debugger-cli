@@ -7,6 +7,12 @@
 
 DevTools telemetry in your terminal, for humans and agents alike. Direct WebSocket to Chrome's debugging port streams DOM, network, and console data straight to stdout. Pipe it, grep it, feed it to your agents for full context debugging.
 
+## Demo
+
+[![asciicast](https://asciinema.org/a/RE6Iup9sB1iSWBK0wgUUn3bBl.svg)](https://asciinema.org/a/RE6Iup9sB1iSWBK0wgUUn3bBl)
+
+*Watch bdg scrape GitHub trending pages and extract repository data in real-time using DOM queries and CDP.*
+
 ## Installation
 
 ```bash
