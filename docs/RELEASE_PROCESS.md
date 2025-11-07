@@ -86,10 +86,12 @@ git pull origin main
 
 ### 2. Update CHANGELOG.md
 
-Add a new version section at the top of the `## [Unreleased]` section:
+Move all items from the `## [Unreleased]` section into a new version section:
 
 ```markdown
 ## [Unreleased]
+
+<!-- Empty for now - add here as you work -->
 
 ## [0.X.Y] - YYYY-MM-DD
 
@@ -110,10 +112,13 @@ Add a new version section at the top of the `## [Unreleased]` section:
 ```
 
 **Guidelines**:
+- Move ALL unreleased changes into the new version section
+- Leave `## [Unreleased]` empty with a comment
 - Use present tense ("Add feature" not "Added feature")
 - Be specific and user-focused
 - Include relevant PR/issue numbers
 - Group changes by category (Added, Changed, Fixed, etc.)
+- Update the date to current date (YYYY-MM-DD format)
 
 ### 3. Bump Version in package.json
 
@@ -172,7 +177,7 @@ Use GitHub CLI to create the release:
 
 ```bash
 gh release create v0.X.Y \
-  --title "v0.X.Y - Brief Description" \
+  --title "v0.X.Y" \
   --notes "$(cat <<'EOF'
 ## Overview
 
@@ -207,7 +212,8 @@ EOF
 ```
 
 **Release Notes Tips**:
-- Start with an overview
+- **Title format**: Use only version tag (e.g., `v0.X.Y`), not descriptive text
+- Start release notes with an overview
 - Use emojis sparingly for visual hierarchy
 - Include installation instructions
 - Link to full changelog
@@ -541,7 +547,7 @@ git add CHANGELOG.md package.json && \
 git commit -m "chore: release v0.X.Y" && \
 git tag v0.X.Y && \
 git push origin main --tags && \
-gh release create v0.X.Y --title "v0.X.Y - Description" --notes "Release notes here"
+gh release create v0.X.Y --title "v0.X.Y" --notes "Release notes here"
 
 # View recent releases
 gh release list
