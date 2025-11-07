@@ -10,7 +10,6 @@ import { getSessionFilePath } from '@/session/paths.js';
 import { killChromeProcess } from '@/session/process.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { chromeKilledMessage, warningMessage } from '@/ui/messages/commands.js';
-import { stopKillChromeDeprecationWarning } from '@/ui/messages/deprecation.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -101,9 +100,6 @@ export function registerStopCommand(program: Command): void {
 
               // Handle Chrome if requested (daemon captured Chrome PID before cleanup)
               if (opts.killChrome) {
-                // Show deprecation warning
-                console.error(stopKillChromeDeprecationWarning());
-
                 const chromePid = response.chromePid;
                 if (chromePid) {
                   try {

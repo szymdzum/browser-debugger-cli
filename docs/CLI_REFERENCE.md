@@ -20,16 +20,11 @@ bdg status --json               # JSON output
 
 ### Stop the session
 ```bash
-bdg stop
-# Sends stop command via IPC
-# Daemon shuts down gracefully
-# Final output written to ~/.bdg/session.json
-
-# To also kill Chrome processes, use cleanup:
-bdg stop && bdg cleanup --aggressive
+bdg stop                        # Stop session only
+bdg stop --kill-chrome          # Stop session and kill Chrome
+# OR
+bdg stop && bdg cleanup --aggressive  # Alternative way to kill Chrome
 ```
-
-**Note:** `bdg stop --kill-chrome` is deprecated. Use `bdg cleanup --aggressive` instead.
 
 ## Live Monitoring
 
@@ -51,9 +46,9 @@ bdg tail --network              # Show only network requests
 bdg tail --console              # Show only console messages
 bdg tail --interval 2000        # Custom update interval (2 seconds)
 bdg tail --verbose              # Verbose output (full URLs, emojis)
-```
 
-**Note:** `bdg peek --follow` is deprecated. Use `bdg tail` instead.
+# Note: 'bdg peek --follow' also works, but 'tail' has better semantics
+```
 
 ### Get full details
 ```bash

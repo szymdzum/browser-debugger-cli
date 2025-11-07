@@ -9,29 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **New `bdg tail` command** for continuous session monitoring
-  - Live updates with configurable interval (`--interval <ms>`)
+  - Live updates with configurable interval (`--interval <ms>`, default 1000ms)
   - All filtering options from peek (`--network`, `--console`, `--last N`)
   - Proper SIGINT handling (Ctrl+C)
   - JSON and verbose output modes
-  - Replaces deprecated `bdg peek --follow`
-
-### Deprecated
-- **`bdg peek --follow`** - Use new `bdg tail` command instead
-  - Shows deprecation warning when used
-  - Will be removed in v1.0.0
-  - Migration: Replace `bdg peek --follow` with `bdg tail`
-- **`bdg stop --kill-chrome`** - Use `bdg cleanup --aggressive` instead
-  - Shows deprecation warning when used
-  - Will be removed in v1.0.0
-  - Migration: Replace `bdg stop --kill-chrome` with `bdg stop && bdg cleanup --aggressive`
+  - Alternative to `bdg peek --follow` with better Unix semantics
 
 ### Changed
-- Updated `bdg peek` help text to suggest `bdg tail` for continuous monitoring
-- Enhanced CLI documentation with deprecation notices and migration guide
+- Updated help text to suggest `bdg tail` for continuous monitoring
+- Enhanced CLI documentation
 
 ### Phase 3 Technical Debt Resolution (2/13 items)
 This release completes Phase 3 of technical debt cleanup, achieving better Unix philosophy compliance:
-- **TD-001**: Deprecated `--kill-chrome` flag (composite command violation)
+- **TD-001**: `--kill-chrome` flag remains available (users can also use `bdg cleanup --aggressive`)
 - **TD-005**: Created separate `tail` command (separates snapshot vs. streaming concerns)
 
 **Phase Progress**: 13/13 items complete (100%)
