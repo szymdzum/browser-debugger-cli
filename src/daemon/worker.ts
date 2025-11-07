@@ -71,6 +71,7 @@ import {
   workerSessionActive,
 } from '@/ui/messages/debug.js';
 import { fetchCDPTargets } from '@/utils/http.js';
+import { filterDefined } from '@/utils/objects.js';
 import { waitForPageReady } from '@/utils/pageReadiness.js';
 import { normalizeUrl } from '@/utils/url.js';
 import { VERSION } from '@/utils/version.js';
@@ -234,8 +235,10 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       nodes.push({
         index: i + 1,
         nodeId: nodeInfo.nodeId,
-        ...(nodeInfo.tag !== undefined && { tag: nodeInfo.tag }),
-        ...(nodeInfo.classes !== undefined && { classes: nodeInfo.classes }),
+        ...filterDefined({
+          tag: nodeInfo.tag,
+          classes: nodeInfo.classes,
+        }),
         preview: createNodePreview(nodeInfo),
       });
     }
@@ -383,10 +386,12 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       const info = await getNodeInfo(cdp, nodeId);
       nodes.push({
         nodeId: info.nodeId,
-        ...(info.tag !== undefined && { tag: info.tag }),
-        ...(info.attributes !== undefined && { attributes: info.attributes }),
-        ...(info.classes !== undefined && { classes: info.classes }),
-        ...(info.outerHTML !== undefined && { outerHTML: info.outerHTML }),
+        ...filterDefined({
+          tag: info.tag,
+          attributes: info.attributes,
+          classes: info.classes,
+          outerHTML: info.outerHTML,
+        }),
       });
     }
 
@@ -428,8 +433,10 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
     // Capture screenshot via CDP
     const screenshotParams: Record<string, unknown> = {
       format,
-      ...(format === 'jpeg' && quality !== undefined && { quality }),
-      ...(fullPage && { captureBeyondViewport: true }),
+      ...filterDefined({
+        quality: format === 'jpeg' ? quality : undefined,
+        captureBeyondViewport: fullPage ? true : undefined,
+      }),
     };
 
     interface ScreenshotResponse {

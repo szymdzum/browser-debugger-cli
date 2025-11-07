@@ -28,6 +28,7 @@ import type {
 import type { TelemetryType } from '@/types.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('client');
 
@@ -189,12 +190,14 @@ export async function startSession(
     type: 'start_session_request',
     sessionId: randomUUID(),
     url,
-    ...(options?.port !== undefined && { port: options.port }),
-    ...(options?.timeout !== undefined && { timeout: options.timeout }),
-    ...(options?.telemetry !== undefined && { telemetry: options.telemetry }),
-    ...(options?.includeAll !== undefined && { includeAll: options.includeAll }),
-    ...(options?.userDataDir !== undefined && { userDataDir: options.userDataDir }),
-    ...(options?.maxBodySize !== undefined && { maxBodySize: options.maxBodySize }),
+    ...filterDefined({
+      port: options?.port,
+      timeout: options?.timeout,
+      telemetry: options?.telemetry,
+      includeAll: options?.includeAll,
+      userDataDir: options?.userDataDir,
+      maxBodySize: options?.maxBodySize,
+    }),
   };
 
   return sendRequest<StartSessionRequest, StartSessionResponse>(request, 'start session');
@@ -300,9 +303,11 @@ export async function captureScreenshot(
 ): Promise<ClientResponse<'dom_screenshot'>> {
   return sendCommand('dom_screenshot', {
     path,
-    ...(options?.format && { format: options.format }),
-    ...(options?.quality !== undefined && { quality: options.quality }),
-    ...(options?.fullPage !== undefined && { fullPage: options.fullPage }),
+    ...filterDefined({
+      format: options?.format,
+      quality: options?.quality,
+      fullPage: options?.fullPage,
+    }),
   });
 }
 
