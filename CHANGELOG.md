@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- Empty for now - add here as you work -->
+
+## [0.3.1] - 2025-11-07
+
+### Changed
+- **Code quality improvements** through Phase 1 technical debt resolution
+  - Simplified error code mapping in stop command (TD-006)
+  - Extracted magic numbers to named constants across codebase (TD-010)
+  - Enhanced IPC connection error messages with contextual information (TD-012)
+  - Replaced platform-specific execSync with cross-platform helper (TD-004)
+  - Resolved TODO comments in IPC server (TD-009)
+- **UI layer reorganization** for better maintainability
+  - Moved error handling modules from `src/` to `src/ui/errors/` directory
+  - Moved logger modules from `src/` to `src/ui/logging/` directory
+  - Updated all import paths to use new locations
+- **Documentation improvements**
+  - Clarified release process for title format and changelog updates
+  - Added comprehensive code review document (CODE_REVIEW.md) cataloguing 19 technical debt items
+  - Added detailed refactoring guide (REFACTORING_GUIDE.md) with before/after examples
+
+### Removed
+- Deprecated re-export files (`src/errors.ts`, `src/logger.ts`)
+
+### Performance
+- Improved code maintainability through reduced duplication and clearer structure
+
 ## [0.3.0] - 2025-11-07
 
 ### Added
