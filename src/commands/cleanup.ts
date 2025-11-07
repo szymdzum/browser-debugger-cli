@@ -99,7 +99,6 @@ export function registerCleanupCommand(program: Command): void {
           // Import cleanupStaleChrome dynamically
           const { cleanupStaleChrome } = await import('@/commands/shared/sessionController.js');
 
-          const pid = readPid();
           let didCleanup = false;
           let cleanedSession = false;
           let cleanedOutput = false;
@@ -143,13 +142,12 @@ export function registerCleanupCommand(program: Command): void {
             }
           }
 
-          if (!pid) {
-            // No session files to clean up
-            // Fall through to check --all flag for session.json removal
-          } else {
-            // PID file exists - handle session cleanup
+          // Handle session PID cleanup using early-exit pattern
+          const pid = readPid();
+          if (pid) {
             const isAlive = isProcessAlive(pid);
 
+            // Early exit: session is active and force flag not provided
             if (isAlive && !opts.force) {
               return {
                 success: false,
@@ -163,11 +161,11 @@ export function registerCleanupCommand(program: Command): void {
               };
             }
 
-            if (isAlive && opts.force) {
+            // Handle force cleanup of active session
+            if (isAlive) {
               warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
               console.error(forceCleanupWarningMessage(pid));
 
-              // Use cross-platform Chrome cleanup helper
               try {
                 const killedCount = await cleanupStaleChrome();
                 if (killedCount > 0) {
@@ -178,6 +176,7 @@ export function registerCleanupCommand(program: Command): void {
                 warnings.push(`Could not kill Chrome processes: ${errorMessage}`);
               }
             } else {
+              // Handle stale session cleanup
               console.error(staleSessionFoundMessage(pid));
             }
 
