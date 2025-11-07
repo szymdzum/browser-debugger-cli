@@ -2,7 +2,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
-import { CommandError } from '@/ui/errors.js';
+import { CommandError } from '@/ui/errors/index.js';
 import { invalidCDPResponseError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 

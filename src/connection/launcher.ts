@@ -18,6 +18,8 @@ import {
 } from '@/constants.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { LaunchedChrome } from '@/types';
+import { ChromeLaunchError, getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import {
   formatDiagnosticsForError,
   chromeLaunchStartMessage,
@@ -31,8 +33,6 @@ import {
   chromeLaunchFailedError,
 } from '@/ui/messages/chrome.js';
 import { getChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
-import { ChromeLaunchError, getErrorMessage } from '@/utils/errors.js';
-import { createLogger } from '@/utils/logger.js';
 import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('chrome');

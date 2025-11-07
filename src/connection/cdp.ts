@@ -16,7 +16,7 @@ import {
   UTF8_ENCODING,
 } from '@/constants.js';
 import type { CDPMessage, ConnectionOptions } from '@/types';
-import { CDPConnectionError, CDPTimeoutError, getErrorMessage } from '@/utils/errors.js';
+import { CDPConnectionError, CDPTimeoutError, getErrorMessage } from '@/ui/errors/index.js';
 
 // Error Messages
 const CONNECTION_TIMEOUT_ERROR = 'Connection timeout';
