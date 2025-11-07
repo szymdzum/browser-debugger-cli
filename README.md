@@ -5,7 +5,7 @@
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
 [![npm downloads](https://img.shields.io/npm/dt/browser-debugger-cli?color=blue)](https://www.npmjs.com/package/browser-debugger-cli)
 
-DevTools telemetry in your terminal. For humans and agents. Direct WebSocket to Chrome's debugging port. Stream DOM, network, and console data straight to stdout. Pipe it, grep it, feed it to agents for full context debugging.
+DevTools telemetry in your terminal, for humans and agents alike. Direct WebSocket to Chrome's debugging port streams DOM, network, and console data straight to stdout. Pipe it, grep it, feed it to your agents for full context debugging.
 
 ## Installation
 
@@ -154,6 +154,82 @@ bdg stop                    # Gracefully stop daemon and close Chrome
 # Clean up stale sessions
 bdg cleanup                 # Remove stale session files
 bdg cleanup --force         # Force cleanup even if session appears active
+```
+
+## Real-World Examples
+
+### Debug API Failures in Real-Time
+
+```bash
+# Monitor network requests as you interact with the page
+bdg localhost:3000 --headless
+bdg tail --network
+
+# Filter failed requests
+bdg peek --network --json | jq '.data.network[] | select(.status >= 400)'
+
+# See full request/response details
+bdg details network <requestId>
+```
+
+### Extract Page Data for AI Agents
+
+```bash
+# Get page title and meta for context
+bdg cdp Runtime.evaluate --params '{"expression":"({title: document.title, meta: Array.from(document.querySelectorAll(\"meta\")).map(m => ({name: m.name, content: m.content}))})", "returnByValue": true}'
+
+# Get all visible text for RAG
+bdg cdp Runtime.evaluate --params '{"expression":"document.body.innerText","returnByValue":true}' | jq -r '.result.value'
+
+# Capture screenshots for vision models
+bdg dom screenshot --output page.png
+```
+
+### Monitor Console Errors During Testing
+
+```bash
+# Watch for console errors in real-time
+bdg https://your-app.com --headless
+bdg tail --console
+
+# Get last 50 console messages
+bdg peek --console --last 50
+
+# Export console logs to file
+bdg stop > session-data.json
+jq '.data.console' session-data.json > console-logs.json
+```
+
+### Inspect DOM Without DevTools
+
+```bash
+# Query elements by selector
+bdg dom query "button.primary"
+
+# Get element HTML
+bdg dom get "button.primary"
+
+# Highlight element on page (visual debugging)
+bdg dom highlight ".navbar" --color red
+
+# Execute JavaScript in page context
+bdg dom eval "document.querySelector('.price').textContent"
+```
+
+### Pipe to Unix Tools
+
+```bash
+# Count failed network requests
+bdg peek --network --json | jq '[.data.network[] | select(.status >= 400)] | length'
+
+# Extract all external script URLs
+bdg peek --network --json | jq -r '.data.network[] | select(.mimeType | contains("javascript")) | .url'
+
+# Find largest requests
+bdg peek --network --json | jq '.data.network | sort_by(.responseSize) | reverse | .[0:5]'
+
+# Monitor performance metrics
+bdg cdp Performance.getMetrics | jq '.metrics[] | select(.name == "JSHeapUsedSize")'
 ```
 
 ## Technical Overview
