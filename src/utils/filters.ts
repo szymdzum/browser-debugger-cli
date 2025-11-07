@@ -5,6 +5,16 @@
 import { extractHostname, extractHostnameWithPath } from './url.js';
 
 /**
+ * Decision object for whether to fetch a response body.
+ */
+export interface BodyFetchDecision {
+  /** Whether the body should be fetched */
+  should: boolean;
+  /** Reason why the body was skipped (if should is false) */
+  reason?: string;
+}
+
+/**
  * Domains to exclude by default (common tracking/analytics)
  * These generate high volume but are rarely useful for debugging
  */
@@ -344,6 +354,78 @@ export function shouldFetchBody(
 
   // Default: fetch the body unless it matches default skip patterns
   return !matchesDefaultSkip;
+}
+
+/**
+ * Determine if a response body should be fetched with detailed reason.
+ *
+ * Combines all decision logic: MIME type, size limits, smart defaults, and fetch flags.
+ * Returns a decision object with reason string for logging/debugging.
+ *
+ * @param url - Request URL
+ * @param mimeType - Response MIME type
+ * @param encodedDataLength - Response size in bytes
+ * @param options - Configuration options
+ * @returns Decision object with should boolean and optional reason
+ *
+ * @example
+ * ```typescript
+ * const decision = shouldFetchBodyWithReason(
+ *   'https://api.example.com/data',
+ *   'application/json',
+ *   1024,
+ *   { maxBodySize: 5 * 1024 * 1024 }
+ * );
+ * if (!decision.should) {
+ *   console.log(`Skipped: ${decision.reason}`);
+ * }
+ * ```
+ */
+export function shouldFetchBodyWithReason(
+  url: string,
+  mimeType: string | undefined,
+  encodedDataLength: number,
+  options: {
+    fetchAllBodies?: boolean;
+    includePatterns?: string[];
+    excludePatterns?: string[];
+    maxBodySize?: number;
+  } = {}
+): BodyFetchDecision {
+  const { maxBodySize = 5 * 1024 * 1024 } = options;
+
+  // Check if response is text-based
+  const isTextResponse =
+    (mimeType?.includes('json') ?? false) ||
+    (mimeType?.includes('javascript') ?? false) ||
+    (mimeType?.includes('text') ?? false) ||
+    (mimeType?.includes('html') ?? false);
+
+  if (!isTextResponse) {
+    return { should: false, reason: 'Non-text response type' };
+  }
+
+  // Check size limits
+  if (encodedDataLength > maxBodySize) {
+    const sizeStr = `${(encodedDataLength / 1024 / 1024).toFixed(2)}MB`;
+    const limitStr = `${(maxBodySize / 1024 / 1024).toFixed(2)}MB`;
+    return {
+      should: false,
+      reason: `Response too large (${sizeStr} > ${limitStr})`,
+    };
+  }
+
+  // Use existing shouldFetchBody for pattern matching
+  const shouldFetch = shouldFetchBody(url, mimeType, options);
+
+  if (!shouldFetch) {
+    return {
+      should: false,
+      reason: 'Auto-optimization (see DEFAULT_SKIP_BODY_PATTERNS)',
+    };
+  }
+
+  return { should: true };
 }
 
 /**
