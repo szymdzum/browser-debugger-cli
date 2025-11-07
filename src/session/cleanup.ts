@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 
+import { safeDeleteFile } from './fileOps.js';
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile } from './pid.js';
@@ -105,48 +106,11 @@ export function cleanupStaleSession(): boolean {
     // Remove session PID
     cleanupPidFile();
 
-    // Remove metadata
-    const metaPath = getSessionFilePath('METADATA');
-    if (fs.existsSync(metaPath)) {
-      try {
-        fs.unlinkSync(metaPath);
-        log('Removed metadata file');
-      } catch (error) {
-        log(`Failed to remove metadata: ${getErrorMessage(error)}`);
-      }
-    }
-
-    // Remove daemon PID
-    if (fs.existsSync(daemonPidPath)) {
-      try {
-        fs.unlinkSync(daemonPidPath);
-        log('Removed daemon PID file');
-      } catch (error) {
-        log(`Failed to remove daemon PID: ${getErrorMessage(error)}`);
-      }
-    }
-
-    // Remove daemon socket
-    const socketPath = getSessionFilePath('DAEMON_SOCKET');
-    if (fs.existsSync(socketPath)) {
-      try {
-        fs.unlinkSync(socketPath);
-        log('Removed daemon socket');
-      } catch (error) {
-        log(`Failed to remove daemon socket: ${getErrorMessage(error)}`);
-      }
-    }
-
-    // Remove daemon lock (P0 Fix #1)
-    const daemonLockPath = getSessionFilePath('DAEMON_LOCK');
-    if (fs.existsSync(daemonLockPath)) {
-      try {
-        fs.unlinkSync(daemonLockPath);
-        log('Removed daemon lock');
-      } catch (error) {
-        log(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
-      }
-    }
+    // Remove all session files using helper
+    safeDeleteFile(getSessionFilePath('METADATA'), 'metadata file', log);
+    safeDeleteFile(daemonPidPath, 'daemon PID file', log);
+    safeDeleteFile(getSessionFilePath('DAEMON_SOCKET'), 'daemon socket', log);
+    safeDeleteFile(getSessionFilePath('DAEMON_LOCK'), 'daemon lock', log);
 
     log('Stale session cleanup complete');
 
