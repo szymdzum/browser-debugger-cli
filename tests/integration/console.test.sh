@@ -159,7 +159,7 @@ bdg stop 2>&1 || true
 sleep 1
 
 # Start new session with data URL that has console.log
-bdg "data:text/html,<script>console.log('test');console.warn('warning');console.error('error');</script>" 2>&1 || log_info "data URL may not be supported"
+bdg "data:text/html,<script>console.log('test');console.warn('warning');console.error('error');</script>" --headless 2>&1 || log_info "data URL may not be supported"
 sleep 2
 
 # Try to get console messages

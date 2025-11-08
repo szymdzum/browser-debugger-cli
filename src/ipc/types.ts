@@ -181,6 +181,7 @@ export interface StartSessionRequest extends IPCMessage {
   userDataDir?: string; // Custom Chrome profile directory
   maxBodySize?: number; // Max response body size in KB
   headless?: boolean; // Launch Chrome in headless mode
+  chromeWsUrl?: string; // WebSocket URL for connecting to existing Chrome (skips launch)
 }
 
 /**

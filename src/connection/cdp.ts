@@ -13,6 +13,8 @@ import {
   CDP_PONG_TIMEOUT_MS,
   WEBSOCKET_NORMAL_CLOSURE,
   WEBSOCKET_NO_PONG_CLOSURE,
+  WEBSOCKET_HANDSHAKE_TIMEOUT_MS,
+  WEBSOCKET_MAX_PAYLOAD_BYTES,
   UTF8_ENCODING,
 } from '@/constants.js';
 import type { CDPMessage, ConnectionOptions } from '@/types';
@@ -68,9 +70,10 @@ const COMMAND_TIMEOUT_ERROR = (method: string): string => `Command timeout: ${me
  * implementations while using real WebSocket in production.
  *
  * @param url - WebSocket URL to connect to
+ * @param options - WebSocket client options
  * @returns WebSocket instance
  */
-type WebSocketFactory = (url: string) => WebSocket;
+type WebSocketFactory = (url: string, options?: WebSocket.ClientOptions) => WebSocket;
 
 export class CDPConnection {
   private ws: WebSocket | null = null;
@@ -99,7 +102,10 @@ export class CDPConnection {
   private connectionOptions: ConnectionOptions = {};
   private readonly createWebSocket: WebSocketFactory;
 
-  constructor(createWebSocket: WebSocketFactory = (url: string) => new WebSocket(url)) {
+  constructor(
+    createWebSocket: WebSocketFactory = (url: string, options?: WebSocket.ClientOptions) =>
+      new WebSocket(url, options)
+  ) {
     this.createWebSocket = createWebSocket;
   }
 
@@ -192,7 +198,11 @@ export class CDPConnection {
     const timeout = options.timeout ?? CDP_CONNECTION_TIMEOUT_MS;
 
     return new Promise((resolve, reject) => {
-      this.ws = this.createWebSocket(wsUrl);
+      this.ws = this.createWebSocket(wsUrl, {
+        perMessageDeflate: false,
+        handshakeTimeout: WEBSOCKET_HANDSHAKE_TIMEOUT_MS,
+        maxPayload: WEBSOCKET_MAX_PAYLOAD_BYTES,
+      });
 
       const connectTimeout = setTimeout(() => {
         reject(new CDPTimeoutError(CONNECTION_TIMEOUT_ERROR));
@@ -258,6 +268,12 @@ export class CDPConnection {
           await this.attemptReconnection();
         }
       })();
+    });
+
+    this.ws.on('ping', () => {
+      // WebSocket automatically sends pong response
+      // This handler is for debugging/monitoring Chrome-initiated pings
+      // Uncomment for debugging: console.debug('[CDP] Received ping from Chrome');
     });
 
     this.ws.on('pong', () => {
@@ -654,7 +670,10 @@ export class CDPConnection {
    * Close the WebSocket connection and clean up resources.
    *
    * Performs complete cleanup including stopping keepalive, rejecting pending
-   * messages, closing WebSocket, and removing all event handlers.
+   * messages, closing WebSocket, and removing all event handlers. Uses graceful
+   * close which waits for pending data to be sent.
+   *
+   * For immediate forceful shutdown (e.g., process termination), use terminate() instead.
    *
    * @param code - WebSocket close code (default: 1000 for normal closure)
    * @param reason - Human-readable close reason
@@ -668,6 +687,38 @@ export class CDPConnection {
 
     if (this.ws) {
       this.ws.close(code, reason);
+      this.ws = null;
+    }
+
+    this.removeAllListeners();
+  }
+
+  /**
+   * Forcefully terminate the WebSocket connection immediately.
+   *
+   * Unlike close(), this method does not wait for pending data to be sent
+   * and destroys the connection immediately. Use this for emergency shutdown
+   * scenarios like process termination (SIGTERM) where waiting for graceful
+   * close might cause the process to hang.
+   *
+   * @example
+   * ```typescript
+   * // Emergency shutdown on SIGTERM
+   * process.on('SIGTERM', () => {
+   *   cdp.terminate();
+   *   process.exit(0);
+   * });
+   * ```
+   */
+  terminate(): void {
+    this.isIntentionallyClosed = true;
+    this.autoReconnect = false;
+    this.stopKeepalive();
+
+    this.clearPendingMessages(new CDPConnectionError('Connection terminated'));
+
+    if (this.ws) {
+      this.ws.terminate(); // Forceful close
       this.ws = null;
     }
 

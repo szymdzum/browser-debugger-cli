@@ -30,6 +30,8 @@ interface CollectorOptions {
   compact?: boolean;
   /** Launch Chrome in headless mode (no visible browser window). */
   headless?: boolean;
+  /** WebSocket URL for connecting to existing Chrome instance (skips Chrome launch). */
+  chromeWsUrl?: string;
 }
 
 /**
@@ -50,7 +52,11 @@ function applyCollectorOptions(command: Command): Command {
       '5'
     )
     .option('--compact', 'Use compact JSON format (no indentation) for output files')
-    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)');
+    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)')
+    .option(
+      '--chrome-ws-url <url>',
+      'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
+    );
 }
 
 /**
@@ -85,6 +91,7 @@ function buildSessionOptions(options: CollectorOptions): {
   maxBodySize: number | undefined;
   compact: boolean;
   headless: boolean;
+  chromeWsUrl: string | undefined;
 } {
   const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size');
   return {
@@ -95,6 +102,7 @@ function buildSessionOptions(options: CollectorOptions): {
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
     headless: options.headless ?? false,
+    chromeWsUrl: options.chromeWsUrl,
   };
 }
 

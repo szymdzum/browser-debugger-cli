@@ -41,7 +41,7 @@ cleanup_sessions
 # Test 1: localhost URL
 log_step "Test 1: localhost URL"
 set +e
-bdg "localhost:3000" 2>&1
+bdg "localhost:3000" --headless 2>&1
 LOCALHOST_EXIT=$?
 set -e
 
@@ -75,7 +75,7 @@ log_success "Test 2 passed: IP address handled"
 
 # Test 3: URL with query parameters
 log_step "Test 3: URL with query parameters"
-bdg "https://example.com?foo=bar&baz=qux" || die "URL with query params failed"
+bdg "https://example.com?foo=bar&baz=qux" --headless || die "URL with query params failed"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
@@ -88,7 +88,7 @@ log_success "Test 3 passed: Query parameters handled"
 
 # Test 4: URL with fragment
 log_step "Test 4: URL with fragment (#section)"
-bdg "https://example.com#section" || die "URL with fragment failed"
+bdg "https://example.com#section" --headless || die "URL with fragment failed"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
@@ -101,7 +101,7 @@ log_success "Test 4 passed: Fragment handled"
 
 # Test 5: URL with both query and fragment
 log_step "Test 5: URL with query and fragment"
-bdg "https://example.com?page=1#top" || die "URL with query+fragment failed"
+bdg "https://example.com?page=1#top" --headless || die "URL with query+fragment failed"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
@@ -114,7 +114,7 @@ log_success "Test 5 passed: Query+fragment handled"
 
 # Test 6: about:blank
 log_step "Test 6: about:blank"
-bdg "about:blank" || die "about:blank failed"
+bdg "about:blank" --headless || die "about:blank failed"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
@@ -127,7 +127,7 @@ log_success "Test 6 passed: about:blank handled"
 
 # Test 7: http:// explicit protocol
 log_step "Test 7: Explicit http:// protocol"
-bdg "http://example.com" || die "http:// URL failed"
+bdg "http://example.com" --headless || die "http:// URL failed"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
@@ -140,7 +140,7 @@ log_success "Test 7 passed: http:// handled"
 
 # Test 8: https:// explicit protocol
 log_step "Test 8: Explicit https:// protocol"
-bdg "https://example.com" || die "https:// URL failed"
+bdg "https://example.com" --headless || die "https:// URL failed"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
@@ -153,7 +153,7 @@ log_success "Test 8 passed: https:// handled"
 
 # Test 9: URL without protocol (auto-add http://)
 log_step "Test 9: URL without protocol"
-bdg "example.com" || die "URL without protocol failed"
+bdg "example.com" --headless || die "URL without protocol failed"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running"
@@ -167,7 +167,7 @@ log_success "Test 9 passed: Protocol auto-detection handled"
 # Test 10: URL with port number
 log_step "Test 10: URL with custom port"
 set +e
-bdg "http://example.com:8080" 2>&1
+bdg "http://example.com:8080" --headless 2>&1
 PORT_EXIT=$?
 set -e
 

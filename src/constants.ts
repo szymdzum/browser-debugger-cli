@@ -47,6 +47,18 @@ export const CDP_MAX_CONNECTION_RETRIES = 3;
 export const CDP_CONNECTION_TIMEOUT_MS = 10000;
 
 /**
+ * WebSocket handshake timeout in milliseconds (5 seconds)
+ * Maximum time to wait for WebSocket handshake to complete
+ */
+export const WEBSOCKET_HANDSHAKE_TIMEOUT_MS = 5000;
+
+/**
+ * WebSocket maximum payload size in bytes (100MB)
+ * Allows large DOM snapshots without hitting payload limits
+ */
+export const WEBSOCKET_MAX_PAYLOAD_BYTES = 100 * 1024 * 1024;
+
+/**
  * CDP command timeout in milliseconds (30 seconds)
  * Maximum time to wait for CDP command responses
  * Balances responsiveness with time for heavy operations (DOM traversal, etc.)

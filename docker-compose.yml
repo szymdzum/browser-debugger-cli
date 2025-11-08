@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Example: nginx serving a simple app
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./demos/example-app:/usr/share/nginx/html:ro
+    networks:
+      - bdg-network
+
+  # bdg service for capturing telemetry
+  bdg:
+    build: .
+    image: bdg-test:latest
+    volumes:
+      - ./docker-output:/root/.bdg
+    # Override entrypoint to avoid default daemon startup
+    entrypoint: ["/bin/sh", "-c"]
+    command: 
+      - |
+        echo "Waiting for nginx to be ready..."
+        sleep 3
+        echo "Starting bdg capture..."
+        bdg nginx:80 --port 9223 --timeout 10
+        echo "Capture complete, checking output..."
+        ls -lh /root/.bdg/ || true
+    depends_on:
+      - nginx
+    networks:
+      - bdg-network
+    environment:
+      - BDG_DEBUG=0
+
+networks:
+  bdg-network:
+    driver: bridge
