@@ -138,23 +138,21 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
 }
 
 /**
- * Wait for network to stabilize using adaptive thresholds
+ * Wait for network to stabilize
  *
- * LEARNING PHASE (first 2s):
- * - Track request intervals
- * - Calculate average request frequency
+ * Uses a fixed 200ms idle threshold which works well for most pages:
+ * - Fast enough for quick sites (avoids unnecessary waiting)
+ * - Patient enough for API-heavy apps (catches late requests)
+ * - Simpler and more predictable than adaptive learning
  *
- * DETECTION PHASE:
- * - Fast pattern (avg \< 100ms): 200ms idle = stable
- * - Steady pattern (100-500ms): 500ms idle = stable
- * - Slow pattern (\> 500ms): 1000ms idle = stable
+ * Network is considered stable when there are zero active requests
+ * for at least 200ms continuously.
  *
  * Why this works:
- * - Fast sites: Quick bursts, fast stabilization
- * - SSR apps: Steady hydration requests, medium wait
- * - API-heavy: Slow requests, longer patience
- *
- * Framework-agnostic - adapts to actual behavior.
+ * - Catches initial request bursts (CSS, JS, images)
+ * - Waits for lazy-loaded resources
+ * - Detects API calls triggered by hydration
+ * - Framework-agnostic - based on actual network activity
  *
  * @param cdp - CDP connection
  * @param deadline - Timestamp when to timeout
@@ -216,23 +214,24 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
 }
 
 /**
- * Wait for DOM to stabilize using adaptive thresholds
+ * Wait for DOM to stabilize
+ *
+ * Uses a MutationObserver to detect when the DOM stops changing.
+ * DOM is considered stable when there are no mutations for 300ms continuously.
  *
  * HOW IT WORKS:
- * 1. Inject MutationObserver into page
- * 2. Track mutation rate for 1 second
- * 3. Calculate adaptive stability threshold:
- *    - High rate (\>50 mutations/sec): 1000ms no-change = stable
- *    - Medium rate (10-50 mutations/sec): 500ms no-change = stable
- *    - Low rate (\<10 mutations/sec): 300ms no-change = stable
- * 4. Wait for DOM to remain unchanged for threshold duration
+ * 1. Inject MutationObserver into page to track all DOM changes
+ * 2. Monitor childList, attributes, subtree, and characterData changes
+ * 3. Wait for 300ms of continuous no-change activity
+ * 4. Clean up observer when complete
  *
  * Why this works:
- * - SSR hydration causes DOM mutations
- * - React/Vue/Svelte all mutate during hydration
- * - When mutations stop, hydration is complete
+ * - SSR hydration causes DOM mutations (React, Vue, Svelte)
+ * - Client-side rendering creates DOM elements
+ * - When mutations stop, framework initialization is complete
+ * - 300ms is long enough to catch batched updates, short enough to be responsive
  *
- * Framework-agnostic - detects actual mutations.
+ * Framework-agnostic - detects actual mutations regardless of framework.
  *
  * @param cdp - CDP connection
  * @param deadline - Timestamp when to timeout

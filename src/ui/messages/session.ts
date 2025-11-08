@@ -42,18 +42,25 @@ export function landingPage(options: LandingPageOptions): string {
   lines.push(`Target: ${url}`);
   lines.push('');
   lines.push(
+    section('Raw CDP Access (60+ domains, 300+ methods):', [
+      'bdg cdp Runtime.evaluate --params \'{"expression":"document.title","returnByValue":true}\'',
+      'bdg cdp Network.getCookies',
+      'bdg cdp Page.captureScreenshot --params \'{"format":"png"}\'',
+    ])
+  );
+  lines.push('');
+  lines.push(
     section('Live Monitoring:', [
-      'bdg peek        Preview collected data (snapshot)',
+      'bdg peek        Preview collected data (last 10 items)',
       'bdg tail        Continuous monitoring (live updates)',
       'bdg details <type> <id>    Full request/console details',
     ])
   );
   lines.push('');
   lines.push(
-    section('Inspect by domain:', [
-      'bdg dom         DOM inspection & manipulation',
-      'bdg network     Network requests & cookies',
-      'bdg console     Console logs & messages',
+    section('Domain Wrappers:', [
+      'bdg dom query <selector>   Query DOM elements',
+      'bdg dom eval <js>          Execute JavaScript',
     ])
   );
   lines.push('');
@@ -65,7 +72,10 @@ export function landingPage(options: LandingPageOptions): string {
   );
   lines.push('');
   lines.push(
-    section('Advanced:', ['bdg cdp <method> [params]    Direct CDP access (300+ methods)'])
+    section('Discovery (for AI agents):', [
+      'bdg --help --json          Machine-readable schema (commands, options, exit codes)',
+      '.claude/skills/bdg/        Claude skill with 15+ recipes & patterns',
+    ])
   );
   lines.push('');
 

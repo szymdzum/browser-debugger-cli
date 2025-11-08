@@ -34,7 +34,9 @@ import { writePid } from '@/session/pid.js';
 import { isProcessAlive, killChromeProcess } from '@/session/process.js';
 import { writeQueryCache, getNodeIdByIndex } from '@/session/queryCache.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
+import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection, collectDOM } from '@/telemetry/dom.js';
+import { startNavigationTracking, type NavigationEvent } from '@/telemetry/navigation.js';
 import { startNetworkCollection } from '@/telemetry/network.js';
 import type {
   TelemetryType,
@@ -48,6 +50,13 @@ import type {
 } from '@/types';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
+import {
+  chromeExternalConnectionMessage,
+  chromeExternalWebSocketMessage,
+  chromeExternalNoPidMessage,
+  chromeExternalSkipTerminationMessage,
+  noPageTargetFoundError,
+} from '@/ui/messages/chrome.js';
 import {
   workerActivatingCollector,
   workerCollectorsActivated,
@@ -88,6 +97,8 @@ interface WorkerConfig {
   userDataDir?: string | undefined;
   maxBodySize?: number | undefined;
   headless?: boolean | undefined;
+  /** WebSocket URL for connecting to existing Chrome instance (skips Chrome launch) */
+  chromeWsUrl?: string | undefined;
 }
 
 /**
@@ -102,17 +113,16 @@ const HIGHLIGHT_COLORS = {
   purple: { r: 128, g: 0, b: 128, a: 0.5 },
 } as const;
 
-// Global state for cleanup
 let chrome: LaunchedChrome | null = null;
 let cdp: CDPConnection | null = null;
 let cleanupFunctions: CleanupFunction[] = [];
 
-// Telemetry data storage
 const networkRequests: NetworkRequest[] = [];
 const consoleMessages: ConsoleMessage[] = [];
+const navigationEvents: NavigationEvent[] = [];
 let domData: DOMData | null = null;
+let getCurrentNavigationId: (() => number) | null = null;
 
-// Session metadata
 let sessionStartTime: number = Date.now();
 let targetInfo: CDPTarget | null = null;
 let activeTelemetry: TelemetryType[] = [];
@@ -121,14 +131,12 @@ let activeTelemetry: TelemetryType[] = [];
  * Parse worker configuration from environment variables or argv.
  */
 function parseWorkerConfig(): WorkerConfig {
-  // For MVP: parse from argv (future: could use env vars or stdin)
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
     throw new Error('Worker requires configuration arguments');
   }
 
-  // Parse simple JSON config from first argument
   try {
     const configArg = args[0];
     if (!configArg) {
@@ -144,6 +152,7 @@ function parseWorkerConfig(): WorkerConfig {
       userDataDir: config.userDataDir ?? undefined,
       maxBodySize: config.maxBodySize ?? undefined,
       headless: config.headless ?? false,
+      chromeWsUrl: config.chromeWsUrl ?? undefined,
     };
   } catch (error) {
     throw new Error(`Failed to parse worker config: ${getErrorMessage(error)}`);
@@ -160,6 +169,22 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
 
   activeTelemetry = config.telemetry ?? ['network', 'console', 'dom'];
 
+  {
+    log.debug('Enabling dialog auto-dismissal');
+    const cleanup = await startDialogHandling(cdp);
+    cleanupFunctions.push(cleanup);
+  }
+
+  {
+    log.debug('Enabling navigation tracking');
+    const { cleanup, getCurrentNavigationId: getNavId } = await startNavigationTracking(
+      cdp,
+      navigationEvents
+    );
+    getCurrentNavigationId = getNavId;
+    cleanupFunctions.push(cleanup);
+  }
+
   for (const collector of activeTelemetry) {
     log.debug(workerActivatingCollector(collector));
 
@@ -168,7 +193,10 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
         {
           const networkOptions = {
             includeAll: config.includeAll ?? false,
-            ...(config.maxBodySize !== undefined && { maxBodySize: config.maxBodySize }),
+            getCurrentNavigationId,
+            ...filterDefined({
+              maxBodySize: config.maxBodySize,
+            }),
           };
           const cleanup = await startNetworkCollection(cdp, networkRequests, networkOptions);
           cleanupFunctions.push(cleanup);
@@ -180,7 +208,8 @@ async function activateCollectors(config: WorkerConfig): Promise<void> {
           const cleanup = await startConsoleCollection(
             cdp,
             consoleMessages,
-            config.includeAll ?? false
+            config.includeAll ?? false,
+            getCurrentNavigationId ?? undefined
           );
           cleanupFunctions.push(cleanup);
         }
@@ -215,13 +244,10 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
    * DOM Query Handler - Find elements by CSS selector
    */
   dom_query: async (cdp, params) => {
-    // Ensure DOM is enabled
     await cdp.send('DOM.enable');
 
-    // Query elements
     const nodeIds = await queryBySelector(cdp, params.selector);
 
-    // Get information for each node
     const nodes: Array<{
       index: number;
       nodeId: number;
@@ -246,7 +272,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       });
     }
 
-    // Write cache for index-based lookups
     writeQueryCache({
       selector: params.selector,
       timestamp: new Date().toISOString(),
@@ -264,17 +289,14 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
    * DOM Highlight Handler - Highlight elements in browser
    */
   dom_highlight: async (cdp, params) => {
-    // Ensure DOM and Overlay are enabled
     await cdp.send('DOM.enable');
     await cdp.send('Overlay.enable');
 
     let nodeIds: number[] = [];
 
-    // Direct nodeId provided
     if (params.nodeId !== undefined) {
       nodeIds = [params.nodeId];
     } else if (params.index !== undefined) {
-      // Look up nodeId from cache
       const nodeId = getNodeIdByIndex(params.index);
       if (!nodeId) {
         throw new Error(
@@ -283,14 +305,12 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       }
       nodeIds = [nodeId];
     } else if (params.selector) {
-      // Query by selector
       nodeIds = await queryBySelector(cdp, params.selector);
 
       if (nodeIds.length === 0) {
         throw new Error(`No elements found matching "${params.selector}"`);
       }
 
-      // Apply selector filters
       if (params.first) {
         const firstNode = nodeIds[0];
         if (firstNode === undefined) {
@@ -311,12 +331,10 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       throw new Error('Either selector, index, or nodeId must be provided');
     }
 
-    // Prepare highlight color
     const colorName = (params.color ?? 'red') as keyof typeof HIGHLIGHT_COLORS;
     const color = HIGHLIGHT_COLORS[colorName] ?? HIGHLIGHT_COLORS.red;
     const opacity = params.opacity ?? color.a;
 
-    // Highlight each node
     for (const nodeId of nodeIds) {
       await cdp.send('Overlay.highlightNode', {
         highlightConfig: {
@@ -336,16 +354,13 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
    * DOM Get Handler - Get full HTML and attributes for elements
    */
   dom_get: async (cdp, params) => {
-    // Ensure DOM is enabled
     await cdp.send('DOM.enable');
 
     let nodeIds: number[] = [];
 
-    // Direct nodeId provided
     if (params.nodeId !== undefined) {
       nodeIds = [params.nodeId];
     } else if (params.index !== undefined) {
-      // Look up nodeId from cache
       const nodeId = getNodeIdByIndex(params.index);
       if (!nodeId) {
         throw new Error(
@@ -354,14 +369,12 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       }
       nodeIds = [nodeId];
     } else if (params.selector) {
-      // Query by selector
       nodeIds = await queryBySelector(cdp, params.selector);
 
       if (nodeIds.length === 0) {
         throw new Error(`No elements found matching "${params.selector}"`);
       }
 
-      // Apply selector filters
       if (params.nth !== undefined) {
         if (params.nth < 1 || params.nth > nodeIds.length) {
           throw new Error(`--nth ${params.nth} out of range (found ${nodeIds.length} elements)`);
@@ -372,7 +385,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
         }
         nodeIds = [nthNode];
       } else if (!params.all) {
-        // Default: first match only
         const firstNode = nodeIds[0];
         if (firstNode === undefined) {
           throw new Error('No elements found');
@@ -383,7 +395,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       throw new Error('Either selector, index, or nodeId must be provided');
     }
 
-    // Get information for each node
     const nodes = [];
     for (const nodeId of nodeIds) {
       const info = await getNodeInfo(cdp, nodeId);
@@ -410,10 +421,8 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
 
-    // Validate path
     const absolutePath = path.resolve(params.path);
 
-    // Ensure parent directory exists
     const parentDir = path.dirname(absolutePath);
     try {
       await fs.mkdir(parentDir, { recursive: true });
@@ -423,17 +432,14 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       }
     }
 
-    // Set defaults
     const format = params.format ?? 'png';
     const quality = params.quality;
     const fullPage = params.fullPage ?? true;
 
-    // Validate quality for JPEG
     if (format === 'jpeg' && quality !== undefined && (quality < 0 || quality > 100)) {
       throw new Error('JPEG quality must be between 0 and 100');
     }
 
-    // Capture screenshot via CDP
     const screenshotParams: Record<string, unknown> = {
       format,
       ...filterDefined({
@@ -452,13 +458,10 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
     )) as ScreenshotResponse;
     const imageData = Buffer.from(response.data, 'base64');
 
-    // Write file
     await fs.writeFile(absolutePath, imageData);
 
-    // Get file stats
     const stats = await fs.stat(absolutePath);
 
-    // Get viewport dimensions if not full page
     let viewport: { width: number; height: number } | undefined;
     if (!fullPage) {
       interface MetricsResponse {
@@ -474,8 +477,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       };
     }
 
-    // Get image dimensions (we'll use a simple approach - actual dimensions from CDP or estimate)
-    // For simplicity, we'll get the layout metrics
     interface LayoutMetrics {
       contentSize: {
         width: number;
@@ -503,7 +504,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
     const lastN = Math.min(params.lastN ?? 10, 100); // Cap at 100
     const duration = Date.now() - sessionStartTime;
 
-    // Get last N items (slice from end)
     const recentNetwork = networkRequests.slice(-lastN).map((req) => ({
       requestId: req.requestId,
       timestamp: req.timestamp,
@@ -519,7 +519,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       text: msg.text,
     }));
 
-    // Return as resolved Promise to satisfy async handler contract
     return Promise.resolve({
       version: VERSION,
       startTime: sessionStartTime,
@@ -536,6 +535,11 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
 
   /**
    * Worker Details Handler - Return full object for specific item
+   *
+   * Note: Navigation validation is intentionally skipped here. Historical network requests
+   * and console messages remain valid even after page navigation, as they represent a
+   * historical record of what happened. Stale reference checks only apply to live DOM
+   * operations where elements might no longer exist.
    */
   worker_details: async (_cdp, params) => {
     if (params.itemType === 'network') {
@@ -543,6 +547,7 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
       if (!request) {
         return Promise.reject(new Error(`Network request not found: ${params.id}`));
       }
+
       return Promise.resolve({ item: request });
     } else if (params.itemType === 'console') {
       const index = parseInt(params.id, 10);
@@ -553,9 +558,14 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
           )
         );
       }
-      return Promise.resolve({ item: consoleMessages[index] });
+
+      const message = consoleMessages[index];
+      if (!message) {
+        return Promise.reject(new Error(`Console message not found at index: ${params.id}`));
+      }
+
+      return Promise.resolve({ item: message });
     }
-    // Unreachable due to type narrowing, but TypeScript doesn't see it
     return Promise.reject(
       new Error(`Unknown itemType: ${String(params.itemType)}. Expected 'network' or 'console'.`)
     );
@@ -571,7 +581,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
   worker_status: async (_cdp, _params) => {
     const duration = Date.now() - sessionStartTime;
 
-    // Get last activity timestamps
     const lastNetworkRequest = networkRequests[networkRequests.length - 1];
     const lastConsoleMessage = consoleMessages[consoleMessages.length - 1];
 
@@ -602,7 +611,6 @@ const commandHandlers: { [K in CommandName]: CommandHandler<K> } = {
    * CDP Call Handler - Execute arbitrary CDP method
    */
   cdp_call: async (cdp, params) => {
-    // Execute CDP method with provided parameters
     const result = await cdp.send(params.method, params.params ?? {});
     return { result };
   },
@@ -625,10 +633,8 @@ async function handleWorkerIPC(message: WorkerRequestUnion): Promise<void> {
   try {
     if (!cdp) throw new Error('CDP connection not initialized');
 
-    // Extract params by removing IPC metadata fields
     const { type: _type, requestId: _requestId, ...params } = message;
 
-    // Call handler with properly typed params
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument
     const data = await handler(cdp, params as any);
 
@@ -663,7 +669,6 @@ function setupStdinListener(): void {
   process.stdin.on('data', (chunk: Buffer) => {
     buffer += chunk.toString('utf-8');
 
-    // Process complete JSONL frames (separated by newlines)
     const lines = buffer.split('\n');
     buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
 
@@ -690,15 +695,17 @@ function setupStdinListener(): void {
  * Send worker_ready signal to parent via stdout.
  */
 function sendReadySignal(config: WorkerConfig): void {
-  if (!chrome || !targetInfo) {
-    throw new Error('Cannot send ready signal: Chrome or target not initialized');
+  if (!targetInfo) {
+    throw new Error('Cannot send ready signal: Target not initialized');
   }
+
+  const chromePid = chrome?.pid ?? 0;
 
   const message: WorkerReadyMessage = {
     type: 'worker_ready',
     requestId: 'ready', // Special requestId for ready signal
     workerPid: process.pid,
-    chromePid: chrome.pid,
+    chromePid,
     port: config.port,
     target: {
       url: targetInfo.url,
@@ -706,9 +713,8 @@ function sendReadySignal(config: WorkerConfig): void {
     },
   };
 
-  // Send JSON line to stdout for parent to parse
   console.log(JSON.stringify(message));
-  log.debug(workerReadySignalSent(process.pid, chrome.pid));
+  log.debug(workerReadySignalSent(process.pid, chromePid));
 }
 
 /**
@@ -757,7 +763,6 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
   log.debug(`[worker] Cleanup started (reason: ${reason})`);
 
   try {
-    // Always try to capture and persist Chrome PID before killing
     const chromePid = chrome?.pid;
     if (chromePid) {
       try {
@@ -768,7 +773,6 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
       }
     }
 
-    // Collect final DOM snapshot if this is a normal shutdown
     if (reason === 'normal' && activeTelemetry.includes('dom') && cdp) {
       log.debug(workerCollectingDOM());
       try {
@@ -779,7 +783,6 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
       }
     }
 
-    // Run telemetry cleanup functions
     log.debug(workerRunningCleanup());
     for (const cleanup of cleanupFunctions) {
       try {
@@ -789,7 +792,6 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
       }
     }
 
-    // Close CDP connection
     if (cdp) {
       try {
         log.debug(workerClosingCDP());
@@ -800,13 +802,11 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
       }
     }
 
-    // Kill Chrome with verification
     if (chrome && chromePid) {
       try {
         console.error(`[worker] Terminating Chrome (PID ${chromePid})...`);
         await chrome.kill();
 
-        // Verify Chrome died (wait up to 5 seconds)
         let attempts = 0;
         const maxAttempts = 10;
         while (attempts < maxAttempts) {
@@ -818,7 +818,6 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
           attempts++;
         }
 
-        // Force kill if still alive after SIGTERM
         if (isProcessAlive(chromePid)) {
           console.error(`[worker] Chrome did not die gracefully, force killing...`);
           try {
@@ -839,11 +838,11 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
       } catch (error) {
         console.error(`[worker] Error killing Chrome: ${getErrorMessage(error)}`);
       }
+    } else if (!chrome) {
+      console.error(`[worker] ${chromeExternalSkipTerminationMessage()}`);
     }
 
-    // Write final output
     if (reason === 'normal') {
-      // Normal shutdown: write complete output
       try {
         log.debug(workerWritingOutput());
         const finalOutput = buildOutput(false);
@@ -852,7 +851,6 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
         console.error(`[worker] Error writing final output: ${getErrorMessage(error)}`);
       }
     } else {
-      // Crash/timeout: write partial output for recovery
       try {
         log.debug(`[worker] Writing partial output (reason: ${reason})`);
         const partialOutput = buildOutput(true); // partial=true
@@ -865,7 +863,6 @@ async function cleanupWorker(reason: 'normal' | 'crash' | 'timeout'): Promise<vo
     log.debug(workerShutdownComplete());
   } catch (error) {
     console.error(`[worker] Error during cleanup: ${getErrorMessage(error)}`);
-    // Don't rethrow - we want cleanup to complete even if parts fail
   }
 }
 
@@ -878,68 +875,71 @@ async function main(): Promise<void> {
   let config: WorkerConfig;
 
   try {
-    // Parse configuration
     config = parseWorkerConfig();
     console.error(`[worker] Config: ${JSON.stringify(config)}`);
 
-    // Write worker PID immediately
     writePid(process.pid);
 
-    // Launch Chrome WITHOUT a URL - we'll navigate after collectors are ready
-    // WHY: Collectors must be enabled BEFORE navigation to capture initial requests
-    console.error(`[worker] Launching Chrome on port ${config.port}...`);
-    const launchOptions = {
-      port: config.port,
-      // DO NOT pass url here - navigation happens after collectors are active
-      ...(config.userDataDir !== undefined && { userDataDir: config.userDataDir }),
-      ...(config.headless !== undefined && { headless: config.headless }),
-    };
-    chrome = await launchChrome(launchOptions);
-    console.error(`[worker] Chrome launched (PID ${chrome.pid})`);
+    if (config.chromeWsUrl) {
+      console.error(`[worker] ${chromeExternalConnectionMessage()}`);
+      console.error(`[worker] ${chromeExternalWebSocketMessage(config.chromeWsUrl)}`);
 
-    // Immediately cache Chrome PID for cleanup even if worker crashes early
-    // This ensures we can kill Chrome even if the worker doesn't reach ready state
-    writeChromePid(chrome.pid);
-    console.error(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);
+      chrome = null;
 
-    // Connect to Chrome via CDP
-    console.error(`[worker] Connecting to Chrome via CDP...`);
-    const targets = await fetchCDPTargets(config.port);
+      const targetId = config.chromeWsUrl.split('/').pop() ?? 'external';
 
-    // Find the blank page target (Chrome auto-creates one on launch)
-    let target = targets.find((t) => t.type === 'page');
+      targetInfo = {
+        id: targetId,
+        type: 'page',
+        title: 'External Chrome',
+        url: config.url,
+        webSocketDebuggerUrl: config.chromeWsUrl,
+      };
 
-    if (!target) {
-      // Enhanced error message with available targets and diagnostics
-      const availableTargets = targets
-        .map(
-          (t, i) =>
-            `  ${i + 1}. ${t.title || '(no title)'}\n     URL: ${t.url}\n     Type: ${t.type}`
-        )
-        .join('\n');
+      console.error(`[worker] ${chromeExternalNoPidMessage()}`);
+    } else {
+      console.error(`[worker] Launching Chrome on port ${config.port}...`);
+      const launchOptions = {
+        port: config.port,
+        ...filterDefined({
+          userDataDir: config.userDataDir,
+          headless: config.headless,
+        }),
+      };
+      chrome = await launchChrome(launchOptions);
+      console.error(`[worker] Chrome launched (PID ${chrome.pid})`);
 
-      throw new Error(
-        `No page target found after Chrome launch\n\n` +
-          `Possible causes:\n` +
-          `  1. Port conflict (${config.port})\n` +
-          `     → Check: lsof -ti:${config.port}\n` +
-          `     → Kill: pkill -f "chrome.*${config.port}"\n` +
-          `  2. Chrome failed to create default target\n` +
-          `  3. Stale session\n` +
-          `     → Fix: bdg cleanup && bdg <url>\n\n` +
-          `Available Chrome targets:\n${availableTargets || '  (none)'}\n\n` +
-          `Try:\n` +
-          `  - Clean up and retry: bdg cleanup && bdg <url>\n` +
-          `  - Use different port: bdg <url> --port ${config.port + 1}`
-      );
+      writeChromePid(chrome.pid);
+      console.error(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);
+
+      console.error(`[worker] Connecting to Chrome via CDP...`);
+      const targets = await fetchCDPTargets(config.port);
+
+      const foundTarget = targets.find((t) => t.type === 'page');
+
+      if (!foundTarget) {
+        const availableTargets = targets.length
+          ? targets
+              .map(
+                (t, i) =>
+                  `  ${i + 1}. ${t.title || '(no title)'}\n     URL: ${t.url}\n     Type: ${t.type}`
+              )
+              .join('\n')
+          : null;
+
+        throw new Error(noPageTargetFoundError(config.port, availableTargets));
+      }
+
+      targetInfo = foundTarget;
+      console.error(`[worker] Found target: ${foundTarget.title} (${foundTarget.url})`);
     }
 
-    targetInfo = target;
-    console.error(`[worker] Found target: ${target.title} (${target.url})`);
+    if (!targetInfo) {
+      throw new Error('Failed to obtain target information');
+    }
 
-    // Establish CDP connection
     cdp = new CDPConnection();
-    await cdp.connect(target.webSocketDebuggerUrl, {
+    await cdp.connect(targetInfo.webSocketDebuggerUrl, {
       autoReconnect: false,
       maxRetries: 10,
       // P1.1: Run cleanup if Chrome dies unexpectedly
@@ -947,7 +947,6 @@ async function main(): Promise<void> {
       onDisconnect: (code, reason) => {
         console.error(`[worker] Chrome connection lost (code: ${code}, reason: ${reason})`);
         log.debug(workerExitingConnectionLoss());
-        // Run cleanup before exiting to ensure Chrome is killed
         void cleanupWorker('crash').then(() => process.exit(1));
       },
     });
@@ -955,53 +954,46 @@ async function main(): Promise<void> {
 
     // CRITICAL: Activate telemetry modules BEFORE navigating to target URL
     // WHY: Network/Console events are only captured for requests that start
-    // AFTER Network.enable/Runtime.enable are called. If we navigate first,
-    // we miss all initial page load requests and console messages.
     console.error(`[worker] Activating collectors before navigation...`);
     await activateCollectors(config);
     console.error(`[worker] Collectors active and ready to capture telemetry`);
 
-    // NOW navigate to the target URL
     const normalizedUrl = normalizeUrl(config.url);
     console.error(`[worker] Navigating to ${normalizedUrl}...`);
     await cdp.send('Page.navigate', { url: normalizedUrl });
 
-    // Wait for page to be ready using smart detection
     await waitForPageReady(cdp, {
       maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
     });
     console.error(`[worker] Page ready`);
 
-    // Update targetInfo with actual loaded URL (may differ from normalized URL due to redirects)
-    const updatedTargets = await fetchCDPTargets(config.port);
-    const updatedTarget = updatedTargets.find((t) => t.id === target.id);
-    if (updatedTarget) {
-      targetInfo = updatedTarget;
-      console.error(`[worker] Target updated: ${updatedTarget.title} (${updatedTarget.url})`);
+    if (chrome && targetInfo) {
+      const currentTargetId = targetInfo.id;
+      const updatedTargets = await fetchCDPTargets(config.port);
+      const updatedTarget = updatedTargets.find((t) => t.id === currentTargetId);
+      if (updatedTarget) {
+        targetInfo = updatedTarget;
+        console.error(`[worker] Target updated: ${updatedTarget.title} (${updatedTarget.url})`);
+      }
     }
 
-    // Write session metadata for status command
     writeSessionMetadata({
       bdgPid: process.pid,
-      chromePid: chrome.pid,
+      chromePid: chrome?.pid ?? 0, // 0 indicates external Chrome (not managed by bdg)
       startTime: sessionStartTime,
       port: config.port,
-      targetId: target.id,
-      webSocketDebuggerUrl: target.webSocketDebuggerUrl,
+      targetId: targetInfo.id,
+      webSocketDebuggerUrl: targetInfo.webSocketDebuggerUrl,
       activeTelemetry,
     });
     console.error(`[worker] Session metadata written`);
 
-    // Send ready signal to parent
     sendReadySignal(config);
 
-    // Set up stdin listener for IPC commands from daemon
     setupStdinListener();
 
-    // Set up shutdown handlers
     process.on('SIGTERM', () => {
       log.debug(workerReceivedSIGTERM());
-      // Use async IIFE to ensure cleanup completes before exit
       void (async () => {
         await cleanupWorker('normal');
         process.exit(0);
@@ -1010,19 +1002,16 @@ async function main(): Promise<void> {
 
     process.on('SIGINT', () => {
       log.debug(workerReceivedSIGINT());
-      // Use async IIFE to ensure cleanup completes before exit
       void (async () => {
         await cleanupWorker('normal');
         process.exit(0);
       })();
     });
 
-    // Handle timeout if specified
     if (config.timeout) {
       console.error(`[worker] Auto-stop after ${config.timeout}s`);
       setTimeout(() => {
         log.debug(workerTimeoutReached());
-        // Use async IIFE to ensure cleanup completes before exit
         void (async () => {
           await cleanupWorker('timeout');
           process.exit(0);
@@ -1030,16 +1019,13 @@ async function main(): Promise<void> {
       }, config.timeout * 1000);
     }
 
-    // Keep process alive
     log.debug(workerSessionActive());
   } catch (error) {
     console.error(`[worker] Fatal error: ${getErrorMessage(error)}`);
 
-    // Use unified cleanup on fatal errors
     await cleanupWorker('crash');
     process.exit(1);
   }
 }
 
-// Start worker
 void main();

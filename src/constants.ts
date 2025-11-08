@@ -47,6 +47,18 @@ export const CDP_MAX_CONNECTION_RETRIES = 3;
 export const CDP_CONNECTION_TIMEOUT_MS = 10000;
 
 /**
+ * WebSocket handshake timeout in milliseconds (5 seconds)
+ * Maximum time to wait for WebSocket handshake to complete
+ */
+export const WEBSOCKET_HANDSHAKE_TIMEOUT_MS = 5000;
+
+/**
+ * WebSocket maximum payload size in bytes (100MB)
+ * Allows large DOM snapshots without hitting payload limits
+ */
+export const WEBSOCKET_MAX_PAYLOAD_BYTES = 100 * 1024 * 1024;
+
+/**
  * CDP command timeout in milliseconds (30 seconds)
  * Maximum time to wait for CDP command responses
  * Balances responsiveness with time for heavy operations (DOM traversal, etc.)
@@ -171,6 +183,17 @@ export const BDG_CHROME_FLAGS = [
   '--disable-notifications', // Suppress notification permission prompts
   '--disable-features=Translate', // Suppress Google Translate popup (replaces deprecated --disable-translate)
   '--disable-background-mode', // Attempt to prevent focus stealing (doesn't work reliably on macOS)
+];
+
+/**
+ * Docker-specific Chrome flags to work around GPU/graphics limitations
+ * These flags disable hardware acceleration and GPU features that fail in containerized environments
+ */
+export const DOCKER_CHROME_FLAGS = [
+  '--disable-gpu', // Disable GPU hardware acceleration
+  '--disable-dev-shm-usage', // Overcome limited resource problems in Docker
+  '--disable-software-rasterizer', // Don't fall back to software rendering
+  '--single-process', // Run Chrome in single-process mode (safer in containers)
 ];
 
 /**

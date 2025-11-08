@@ -1,0 +1,43 @@
+FROM node:20-alpine
+
+# Install Chromium and dependencies
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    nodejs \
+    npm
+
+# Set Chromium path for chrome-launcher
+ENV CHROME_PATH=/usr/bin/chromium-browser
+ENV CHROMIUM_FLAGS="--disable-software-rasterizer --disable-dev-shm-usage"
+
+# Copy package files and build artifacts
+WORKDIR /app
+COPY package*.json ./
+COPY dist ./dist
+COPY README.md ./
+
+# Remove prepare script from package.json (husky not needed in container)
+RUN npm pkg delete scripts.prepare
+
+# Install dependencies first
+RUN npm install --omit=dev
+
+# Install globally
+RUN npm install -g .
+
+# Create output directory
+RUN mkdir -p /root/.bdg
+
+WORKDIR /workspace
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD bdg --version || exit 1
+
+# Default command shows help
+CMD ["bdg", "--help"]

@@ -102,36 +102,56 @@ run_test_suite() {
   echo ""
 
   # Run each test
+  local test_index=0
   for test_script in "${TESTS[@]}"; do
     test_name=$(basename "$test_script" .sh)
+    test_index=$((test_index + 1))
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
 
-    echo -e "${BLUE}Running: $test_name${NC}"
+    echo -e "${BLUE}[$test_index/${#TESTS[@]}] Running: $test_name${NC}"
 
     # Run test with or without verbose output
     if [ "$VERBOSE" = true ]; then
       # Verbose mode: show output in real-time AND save to log
       if bash "$test_script" 2>&1 | tee "$RESULTS_DIR/${test_name}.log"; then
-        echo -e "${GREEN}✓ PASSED: $test_name${NC}"
+        echo -e "${GREEN}       ✓ PASSED: $test_name${NC}"
         PASSED_TESTS=$((PASSED_TESTS + 1))
       else
-        echo -e "${RED}✗ FAILED: $test_name${NC}"
+        echo -e "${RED}       ✗ FAILED: $test_name${NC}"
         FAILED_TESTS=$((FAILED_TESTS + 1))
         FAILED_TEST_NAMES+=("$test_name")
       fi
     else
-      # Normal mode: save to log only, show summary
-      if bash "$test_script" > "$RESULTS_DIR/${test_name}.log" 2>&1; then
-        echo -e "${GREEN}✓ PASSED: $test_name${NC}"
+      # Normal mode: save to log only, show summary with spinner
+      {
+        bash "$test_script" > "$RESULTS_DIR/${test_name}.log" 2>&1
+      } &
+      TEST_PID=$!
+      
+      # Spinner while test runs
+      local spin='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+      local i=0
+      while kill -0 $TEST_PID 2>/dev/null; do
+        i=$(( (i+1) %10 ))
+        printf "\r       ${BLUE}${spin:$i:1} Testing...${NC}"
+        sleep 0.1
+      done
+      
+      # Clear spinner line
+      printf "\r"
+      
+      # Check result
+      if wait $TEST_PID; then
+        echo -e "       ${GREEN}✓ PASSED: $test_name${NC}"
         PASSED_TESTS=$((PASSED_TESTS + 1))
       else
-        echo -e "${RED}✗ FAILED: $test_name${NC}"
+        echo -e "       ${RED}✗ FAILED: $test_name${NC}"
         FAILED_TESTS=$((FAILED_TESTS + 1))
         FAILED_TEST_NAMES+=("$test_name")
 
         # Show last few lines of output
-        echo -e "${YELLOW}Last 10 lines of output:${NC}"
-        tail -10 "$RESULTS_DIR/${test_name}.log"
+        echo -e "${YELLOW}       Last 10 lines of output:${NC}"
+        tail -10 "$RESULTS_DIR/${test_name}.log" | sed 's/^/       /'
       fi
     fi
 

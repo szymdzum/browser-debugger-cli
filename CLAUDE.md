@@ -105,6 +105,33 @@ program
   .addOption(filterOption(['log', 'error']))  // --filter with choices
 ```
 
+## Browser Automation with bdg
+
+**When using bdg for browser automation tasks, use the `bdg` skill.**
+
+The skill is located at `.claude/skills/bdg/SKILL.md` and provides:
+- Quick start guide with common patterns
+- Error handling with exit codes and retries
+- Best practices for CDP usage
+- Common tasks quick reference table
+- Example scraper workflows
+
+**Key principle**: Use raw `bdg cdp` commands instead of inventing wrappers. The CDP protocol is the interface.
+
+**Example workflow**:
+```bash
+bdg https://example.com
+bdg cdp Runtime.evaluate --params '{"expression": "document.title", "returnByValue": true}'
+bdg stop
+```
+
+**Essential documentation**:
+- `.claude/skills/bdg/SKILL.md` - Skill for agents (auto-loaded when needed)
+- `.claude/skills/bdg/WORKFLOWS.md` - Comprehensive guide with 15+ recipes
+- `.claude/skills/bdg/TROUBLESHOOTING.md` - Common issues and solutions
+- `.claude/skills/bdg/EXIT_CODES.md` - Exit code reference for error handling
+- `docs/CLI_REFERENCE.md` - Complete command reference (human-focused)
+
 ## Git Commit Guidelines
 
 **IMPORTANT**: Do NOT include Claude Code attribution in commit messages.

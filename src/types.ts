@@ -34,6 +34,7 @@ export interface NetworkRequest {
   responseHeaders?: Record<string, string>;
   requestBody?: string | undefined;
   responseBody?: string | undefined;
+  navigationId?: number | undefined; // Navigation counter when request was made
 }
 
 export interface ConsoleMessage {
@@ -41,6 +42,7 @@ export interface ConsoleMessage {
   text: string;
   timestamp: number;
   args?: unknown[]; // Raw console arguments from CDP (mixed types)
+  navigationId?: number | undefined; // Navigation counter when message was logged
 }
 
 /**

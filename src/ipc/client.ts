@@ -185,6 +185,7 @@ export async function startSession(
     userDataDir?: string;
     maxBodySize?: number;
     headless?: boolean;
+    chromeWsUrl?: string;
   }
 ): Promise<StartSessionResponse> {
   const request: StartSessionRequest = {
@@ -199,6 +200,7 @@ export async function startSession(
       userDataDir: options?.userDataDir,
       maxBodySize: options?.maxBodySize,
       headless: options?.headless,
+      chromeWsUrl: options?.chromeWsUrl,
     }),
   };
 

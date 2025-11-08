@@ -27,7 +27,8 @@ import { shouldExcludeConsoleMessage } from '@/utils/filters.js';
 export async function startConsoleCollection(
   cdp: CDPConnection,
   messages: ConsoleMessage[],
-  includeAll: boolean = false
+  includeAll: boolean = false,
+  getCurrentNavigationId?: () => number
 ): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
 
@@ -73,6 +74,7 @@ export async function startConsoleCollection(
         text,
         timestamp: params.timestamp,
         args: params.args,
+        navigationId: getCurrentNavigationId?.(),
       };
       if (messages.length < MAX_CONSOLE_MESSAGES) {
         messages.push(message);
@@ -100,6 +102,7 @@ export async function startConsoleCollection(
         type: 'error',
         text,
         timestamp: exception.timestamp ?? Date.now(),
+        navigationId: getCurrentNavigationId?.(),
       };
       if (messages.length < MAX_CONSOLE_MESSAGES) {
         messages.push(message);

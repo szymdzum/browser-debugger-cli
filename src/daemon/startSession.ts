@@ -48,6 +48,7 @@ export interface LaunchWorkerOptions {
   userDataDir?: string;
   maxBodySize?: number;
   headless?: boolean;
+  chromeWsUrl?: string;
 }
 
 /**
@@ -99,6 +100,7 @@ export async function launchSessionInWorker(
     ...(options.userDataDir !== undefined && { userDataDir: options.userDataDir }),
     ...(options.maxBodySize !== undefined && { maxBodySize: options.maxBodySize }),
     ...(options.headless !== undefined && { headless: options.headless }),
+    ...(options.chromeWsUrl !== undefined && { chromeWsUrl: options.chromeWsUrl }),
   };
 
   // Resolve worker script path

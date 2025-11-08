@@ -433,6 +433,7 @@ export class IPCServer {
             userDataDir: request.userDataDir,
             maxBodySize: request.maxBodySize,
             headless: request.headless,
+            chromeWsUrl: request.chromeWsUrl,
           })
         );
 

@@ -44,7 +44,7 @@ log_step "Test 1: Testing with custom user-data-dir"
 CUSTOM_DIR=$(mktemp -d)
 log_info "Using temp user-data-dir: $CUSTOM_DIR"
 
-bdg "https://example.com" --user-data-dir "$CUSTOM_DIR" || die "Failed with custom user-data-dir"
+bdg "https://example.com" --headless --user-data-dir "$CUSTOM_DIR" || die "Failed with custom user-data-dir"
 sleep 2
 
 # Verify session started
@@ -58,7 +58,7 @@ sleep 1
 
 # Test 2: Invalid port (beyond valid range)
 log_step "Test 2: Testing with invalid port number"
-INVALID_PORT_OUTPUT=$(bdg "https://example.com" --port 99999 2>&1) || true
+INVALID_PORT_OUTPUT=$(bdg "https://example.com" --headless --port 99999 2>&1) || true
 EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
@@ -76,7 +76,7 @@ log_step "Test 4: Checking error message quality"
 
 # Force a failure scenario and capture output
 # Using an extremely short timeout might cause issues
-FAILURE_OUTPUT=$(timeout 5 bdg "https://example.com" 2>&1) || true
+FAILURE_OUTPUT=$(timeout 5 bdg "https://example.com" --headless 2>&1) || true
 
 # Error output should mention Chrome or provide diagnostic info
 if echo "$FAILURE_OUTPUT" | grep -qi "chrome\|browser\|launch\|failed\|timeout"; then
@@ -107,7 +107,7 @@ log_success "Cleanup after launch failure handled"
 
 # Test 6: Verify can start normally after failure
 log_step "Test 6: Starting normal session after failures"
-bdg "https://example.com" || die "Failed to start session after previous failures"
+bdg "https://example.com" --headless || die "Failed to start session after previous failures"
 sleep 2
 
 bdg status > /dev/null 2>&1 || die "Session not running after recovery"

@@ -11,6 +11,7 @@ import {
   genericError,
 } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('bdg');
 
@@ -37,6 +38,7 @@ export async function startSessionViaDaemon(
     maxBodySize: number | undefined;
     compact: boolean;
     headless: boolean;
+    chromeWsUrl: string | undefined;
   },
   telemetry: TelemetryType[]
 ): Promise<void> {
@@ -44,25 +46,19 @@ export async function startSessionViaDaemon(
     log.debug('Connecting to daemon...');
 
     // Send start_session_request to daemon
-    const requestOptions: {
-      port?: number;
-      timeout?: number;
-      telemetry?: TelemetryType[];
-      includeAll?: boolean;
-      userDataDir?: string;
-      maxBodySize?: number;
-      headless?: boolean;
-    } = {};
-
-    if (options.port !== undefined) requestOptions.port = options.port;
-    if (options.timeout !== undefined) requestOptions.timeout = options.timeout;
-    if (telemetry.length > 0) requestOptions.telemetry = telemetry;
-    if (options.includeAll !== undefined) requestOptions.includeAll = options.includeAll;
-    if (options.userDataDir !== undefined) requestOptions.userDataDir = options.userDataDir;
-    if (options.maxBodySize !== undefined) requestOptions.maxBodySize = options.maxBodySize;
-    if (options.headless !== undefined) requestOptions.headless = options.headless;
-
-    const response = await sendStartSessionRequest(url, requestOptions);
+    const response = await sendStartSessionRequest(
+      url,
+      filterDefined({
+        port: options.port,
+        timeout: options.timeout,
+        telemetry: telemetry.length > 0 ? telemetry : undefined,
+        includeAll: options.includeAll,
+        userDataDir: options.userDataDir,
+        maxBodySize: options.maxBodySize,
+        headless: options.headless,
+        chromeWsUrl: options.chromeWsUrl,
+      })
+    );
 
     // Check for errors
     if (response.status === 'error') {

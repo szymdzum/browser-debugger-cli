@@ -57,7 +57,9 @@ export type LogContext =
   | 'session'
   | 'chrome'
   | 'cdp'
-  | 'ipc';
+  | 'ipc'
+  | 'dialogs'
+  | 'navigation';
 
 // ============================================================================
 // Logger Interface

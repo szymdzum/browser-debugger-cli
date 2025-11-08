@@ -15,6 +15,7 @@ import {
   DEFAULT_CHROME_HANDLE_SIGINT,
   CHROME_PROFILE_DIR,
   HEADLESS_FLAG,
+  DOCKER_CHROME_FLAGS,
 } from '@/constants.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { LaunchedChrome } from '@/types';
@@ -333,11 +334,37 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
 }
 
 /**
+ * Check if running inside a Docker container
+ * @returns true if running in Docker, false otherwise
+ */
+function isDocker(): boolean {
+  try {
+    // Check for /.dockerenv file (most reliable indicator)
+    if (fs.existsSync('/.dockerenv')) {
+      return true;
+    }
+
+    // Check /proc/self/cgroup for docker/containerd indicators
+    if (fs.existsSync('/proc/self/cgroup')) {
+      const cgroup = fs.readFileSync('/proc/self/cgroup', 'utf8');
+      return cgroup.includes('docker') || cgroup.includes('containerd');
+    }
+  } catch {
+    // If we can't read these files, assume not Docker
+  }
+
+  return false;
+}
+
+/**
  * Build Chrome flags array from launch options.
  *
  * Uses chrome-launcher default flags as base (unless ignoreDefaultFlags is true)
  * and layers bdg-specific overrides on top. Headless mode uses the new headless
  * implementation for better compatibility.
+ *
+ * When running in Docker, automatically adds GPU-disabling flags to work around
+ * graphics limitations in containerized environments.
  *
  * @param options - Launch options containing flag preferences
  * @returns Array of Chrome command-line flags
@@ -349,12 +376,21 @@ function buildChromeFlags(options: LaunchOptions): string[] {
 
   const bdgFlags: string[] = [REMOTE_DEBUGGING_FLAG(port), ...BDG_CHROME_FLAGS];
 
+  // Add Docker-specific flags if running in a container
+  const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
+
   // Headless flag must come first to ensure it's not overridden by other flags
   if (options.headless) {
-    return [HEADLESS_FLAG, ...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];
+    return [
+      HEADLESS_FLAG,
+      ...baseFlags,
+      ...bdgFlags,
+      ...dockerFlags,
+      ...(options.chromeFlags ?? []),
+    ];
   }
 
-  return [...baseFlags, ...bdgFlags, ...(options.chromeFlags ?? [])];
+  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...(options.chromeFlags ?? [])];
 }
 
 /**

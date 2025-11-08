@@ -114,6 +114,69 @@ export function chromeLaunchStartMessage(port: number): string {
 }
 
 /**
+ * Generate external Chrome connection message.
+ *
+ * @returns Formatted message
+ */
+export function chromeExternalConnectionMessage(): string {
+  return 'Connecting to existing Chrome instance...';
+}
+
+/**
+ * Generate external Chrome WebSocket URL message.
+ *
+ * @param wsUrl - WebSocket URL
+ * @returns Formatted message
+ */
+export function chromeExternalWebSocketMessage(wsUrl: string): string {
+  return `WebSocket URL: ${wsUrl}`;
+}
+
+/**
+ * Generate external Chrome no PID message.
+ *
+ * @returns Formatted message
+ */
+export function chromeExternalNoPidMessage(): string {
+  return 'Using external Chrome (no PID - not managed by bdg)';
+}
+
+/**
+ * Generate external Chrome skip termination message.
+ *
+ * @returns Formatted message
+ */
+export function chromeExternalSkipTerminationMessage(): string {
+  return 'Using external Chrome - skipping termination (not managed by bdg)';
+}
+
+/**
+ * Generate error message when no page target is found after Chrome launch.
+ *
+ * @param port - CDP port number
+ * @param availableTargets - Formatted list of available targets (or null if none)
+ * @returns Formatted error message with diagnostics and troubleshooting steps
+ */
+export function noPageTargetFoundError(port: number, availableTargets: string | null): string {
+  const lines: string[] = [];
+
+  lines.push('No page target found after Chrome launch\n');
+  lines.push('Possible causes:');
+  lines.push(`  1. Port conflict (${port})`);
+  lines.push(`     → Check: lsof -ti:${port}`);
+  lines.push(`     → Kill: pkill -f "chrome.*${port}"`);
+  lines.push('  2. Chrome failed to create default target');
+  lines.push('  3. Stale session');
+  lines.push('     → Fix: bdg cleanup && bdg <url>\n');
+  lines.push(`Available Chrome targets:\n${availableTargets ?? '  (none)'}\n`);
+  lines.push('Try:');
+  lines.push('  - Clean up and retry: bdg cleanup && bdg <url>');
+  lines.push(`  - Use different port: bdg <url> --port ${port + 1}`);
+
+  return lines.join('\n');
+}
+
+/**
  * Generate Chrome launch success message.
  *
  * @param pid - Chrome process ID
