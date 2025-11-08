@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BDG Test App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        h1 { text-align: center; }
+        .info { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 8px; }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #45a049; }
+        #output { margin-top: 20px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 BDG Test Application</h1>
+
+    <div class="info">
+        <h2>Test Application for Browser Debugger CLI</h2>
+        <p>This simple app helps test bdg's telemetry collection capabilities.</p>
+
+        <h3>Test Actions:</h3>
+        <button onclick="logMessage()">Log Console Message</button>
+        <button onclick="makeRequest()">Make Network Request</button>
+        <button onclick="updateDOM()">Update DOM</button>
+        <button onclick="triggerError()">Trigger Error</button>
+
+        <div id="output"></div>
+    </div>
+
+    <script>
+        function logMessage() {
+            console.log('Test message from bdg app', { timestamp: new Date().toISOString() });
+            document.getElementById('output').innerHTML = '✓ Console message logged';
+        }
+
+        function makeRequest() {
+            fetch('https://jsonplaceholder.typicode.com/posts/1')
+                .then(r => r.json())
+                .then(data => {
+                    console.log('API response:', data);
+                    document.getElementById('output').innerHTML = '✓ Network request completed';
+                })
+                .catch(err => console.error('Request failed:', err));
+        }
+
+        function updateDOM() {
+            const timestamp = new Date().toISOString();
+            const div = document.createElement('div');
+            div.textContent = `DOM updated at ${timestamp}`;
+            document.getElementById('output').innerHTML = div.outerHTML;
+        }
+
+        function triggerError() {
+            console.error('Test error triggered', { severity: 'warning' });
+            document.getElementById('output').innerHTML = '✓ Error logged to console';
+        }
+
+        // Auto-log on page load
+        console.log('BDG Test App loaded successfully');
+    </script>
+</body>
+</html>

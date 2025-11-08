@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Example: nginx serving a simple app
   nginx:

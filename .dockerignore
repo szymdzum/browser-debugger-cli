@@ -3,10 +3,12 @@ npm-debug.log
 .git
 .gitignore
 *.md
+!README.md
 docs
 tests
 demos
-dist
+!demos/example-app
+# dist (needed for Dockerfile.local)
 .claude
 .vscode
 .DS_Store
