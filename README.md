@@ -242,6 +242,35 @@ bdg cdp Network.getCookies | jq '.cookies[] | select(.name == "session_id") | .v
 
 **60+ domains, 300+ methods** from the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) are available.
 
+### AI Agent Integration
+
+**Claude skill available** at `.claude/skills/bdg/` with comprehensive automation patterns:
+
+- **SKILL.md** - Quick start, common patterns, best practices
+- **WORKFLOWS.md** - 15+ working recipes (GitHub scraper, polling, navigation, screenshots)
+- **EXIT_CODES.md** - Complete error handling reference
+- **TROUBLESHOOTING.md** - Common issues and solutions
+
+Claude automatically loads this skill when browser automation is mentioned. Contains everything needed for agents to use `bdg cdp` effectively without custom wrappers.
+
+**Example from skill**:
+```bash
+# Extract structured data (from WORKFLOWS.md)
+bdg cdp Runtime.evaluate --params '{
+  "expression": "Array.from(document.querySelectorAll(\"a\")).map(a => ({text: a.textContent, href: a.href}))",
+  "returnByValue": true
+}' | jq '.result.value'
+
+# Wait for element with polling (from WORKFLOWS.md)
+while [ $ELAPSED -lt $TIMEOUT ]; do
+  EXISTS=$(bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector(\"#target\") !== null", "returnByValue": true}' | jq -r '.result.value')
+  [ "$EXISTS" = "true" ] && break
+  sleep 0.5
+done
+```
+
+See `.claude/skills/bdg/WORKFLOWS.md` for complete patterns.
+
 ### Session Management
 
 ```bash
