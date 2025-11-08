@@ -1,6 +1,6 @@
 {
   "name": "browser-debugger-cli",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "DevTools telemetry in your terminal. For humans and agents. Direct WebSocket to Chrome's debugging port.",
   "type": "module",
   "bin": {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- Empty for now - add here as you work -->
+
+## [0.5.0] - 2025-11-08
+
 ### Added
 - **Docker support improvements**
   - Automatic Docker environment detection via `isDocker()` helper
