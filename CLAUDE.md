@@ -107,26 +107,26 @@ program
 
 ## Browser Automation with bdg
 
-**When using bdg for browser automation tasks, always consult `SKILL.md` first.**
+**When using bdg for browser automation tasks, use the `bdg` skill.**
 
-`SKILL.md` contains:
+The skill is located at `.claude/skills/bdg/SKILL.md` and provides:
 - Quick start guide with common patterns
-- 15+ working recipes from `docs/AGENT_WORKFLOWS.md`
-- Error handling with exit codes
+- Error handling with exit codes and retries
 - Best practices for CDP usage
-- Session lifecycle management
+- Common tasks quick reference table
+- Example scraper workflows
 
 **Key principle**: Use raw `bdg cdp` commands instead of inventing wrappers. The CDP protocol is the interface.
 
 **Example workflow**:
 ```bash
-bdg start https://example.com
+bdg https://example.com
 bdg cdp Runtime.evaluate --params '{"expression": "document.title", "returnByValue": true}'
 bdg stop
 ```
 
 **Essential documentation**:
-- `SKILL.md` - Quick reference for agents
+- `.claude/skills/bdg/SKILL.md` - Skill for agents (auto-loaded when needed)
 - `docs/AGENT_WORKFLOWS.md` - Comprehensive guide with 15+ recipes
 - `docs/EXIT_CODES.md` - Error handling reference
 - `docs/CLI_REFERENCE.md` - Complete command reference

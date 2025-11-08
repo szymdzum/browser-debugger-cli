@@ -1,6 +1,20 @@
-# bdg - Browser Automation Skill
+---
+name: bdg
+description: Use bdg CLI for browser automation via Chrome DevTools Protocol. Provides direct CDP access (60+ domains, 300+ methods) for DOM queries, navigation, screenshots, network control, and JavaScript execution. Use this skill when you need to automate browsers, scrape dynamic content, or interact with web pages programmatically.
+---
 
-**bdg** is a CLI tool for browser automation via Chrome DevTools Protocol (CDP). This guide shows how to use it effectively.
+# bdg - Browser Automation
+
+**bdg** is a CLI tool for browser automation via Chrome DevTools Protocol (CDP).
+
+## When to Use This Skill
+
+- Automating browsers and scraping dynamic web content
+- Extracting data from JavaScript-heavy single-page applications
+- Taking screenshots or generating PDFs
+- Testing web applications with real browser behavior
+- Manipulating network requests (cache, throttling, blocking)
+- Executing JavaScript in browser context
 
 ## Philosophy: Raw CDP First
 
@@ -10,7 +24,7 @@
 
 ```bash
 # 1. Start session (launches Chrome, opens URL)
-bdg start https://example.com
+bdg https://example.com
 
 # 2. Execute CDP commands directly
 bdg cdp Runtime.evaluate --params '{"expression": "document.title", "returnByValue": true}'
@@ -19,7 +33,7 @@ bdg cdp Runtime.evaluate --params '{"expression": "document.title", "returnByVal
 bdg stop
 ```
 
-## Essential Reading
+## Essential Documentation
 
 **`docs/AGENT_WORKFLOWS.md`** - Complete guide with 15+ working recipes:
 - Golden example: Full GitHub scraper workflow
@@ -39,7 +53,7 @@ bdg cdp Runtime.evaluate --params '{
 }' | jq '.result.value'
 ```
 
-### Wait for Element (Polling)
+### Wait for Element (Polling Loop)
 
 ```bash
 TIMEOUT=10
@@ -81,7 +95,7 @@ bdg cdp Page.captureScreenshot --params '{
 ## Key Commands
 
 ### Session Management
-- `bdg start <url>` - Start session (launches Chrome)
+- `bdg <url>` - Start session (launches Chrome)
 - `bdg status` - Check session status
 - `bdg peek` - Preview collected data
 - `bdg stop` - Stop session and write output
@@ -95,8 +109,8 @@ bdg cdp Page.captureScreenshot --params '{
 
 ### Discovery
 - `bdg --help --json` - Machine-readable command reference
-- `bdg dom query <selector>` - Query DOM elements (wrapper)
-- `bdg dom eval <js>` - Evaluate JavaScript (wrapper)
+- `bdg dom query <selector>` - Query DOM elements
+- `bdg dom eval <js>` - Evaluate JavaScript
 
 ## Error Handling
 
@@ -194,7 +208,7 @@ bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 [ $? -ne 0 ] && { echo "Navigation failed"; exit 101; }
 ```
 
-## Common Tasks
+## Common Tasks Quick Reference
 
 | Task | Command |
 |------|---------|
@@ -206,13 +220,6 @@ bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 | Get cookies | `bdg cdp Network.enable && bdg cdp Network.getCookies` |
 | Reload page | `bdg cdp Page.reload --params '{"ignoreCache": true}'` |
 | Check element exists | `bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector(\"#id\") !== null", "returnByValue": true}'` |
-
-## Documentation
-
-- **Agent Workflows**: `docs/AGENT_WORKFLOWS.md` - 15+ recipes and patterns
-- **CLI Reference**: `docs/CLI_REFERENCE.md` - All commands and options
-- **Exit Codes**: `docs/EXIT_CODES.md` - Error handling guide
-- **Machine-Readable Help**: `bdg --help --json` - Complete schema
 
 ## CDP Protocol Reference
 
@@ -240,7 +247,7 @@ Use `bdg` when you need:
 - Network manipulation
 - Device emulation
 
-## Example: Real-World Scraper
+## Example: GitHub Trending Scraper
 
 ```bash
 #!/bin/bash
@@ -249,15 +256,11 @@ Use `bdg` when you need:
 set -e  # Exit on error
 
 # Start session
-bdg start https://github.com/trending
+bdg https://github.com/trending
 
 # Extract repository data
 REPOS=$(bdg cdp Runtime.evaluate --params '{
-  "expression": "Array.from(document.querySelectorAll(\"article.Box-row\")).map(article => ({
-    name: article.querySelector(\"h2 a\").textContent.trim().replace(/\\s+/g, \" \"),
-    stars: article.querySelector(\".float-sm-right\")?.textContent.trim() || \"0\",
-    language: article.querySelector(\"[itemprop=programmingLanguage]\")?.textContent.trim() || \"Unknown\"
-  }))",
+  "expression": "Array.from(document.querySelectorAll(\"article h2 a\")).slice(0, 5).map(a => ({name: a.textContent.trim(), url: a.href}))",
   "returnByValue": true
 }')
 
@@ -269,7 +272,7 @@ if ! echo "$REPOS" | jq -e '.result.value' > /dev/null; then
 fi
 
 # Display results
-echo "$REPOS" | jq -r '.result.value[] | "\(.name) - \(.stars) stars - \(.language)"'
+echo "$REPOS" | jq -r '.result.value[] | "\(.name) - \(.url)"'
 
 # Stop session
 bdg stop
