@@ -35,7 +35,7 @@ bdg stop
 
 ## Essential Documentation
 
-**`docs/AGENT_WORKFLOWS.md`** - Complete guide with 15+ working recipes:
+**`WORKFLOWS.md`** (in this skill directory) - Complete guide with 15+ working recipes:
 - Golden example: Full GitHub scraper workflow
 - Core patterns for DOM queries, navigation, screenshots
 - Error handling with exit codes and retries
@@ -302,8 +302,8 @@ bdg cleanup --aggressive
 - **Exit 100 (CHROME_LAUNCH_FAILURE)** - Chrome failed to start
   - Solution: Check Chrome installation with `bdg status --verbose`
 
-**Full troubleshooting**: `docs/TROUBLESHOOTING.md`
+**Full troubleshooting**: `TROUBLESHOOTING.md` (in this skill directory)
 
 ---
 
-**For complete patterns and examples, always refer to `docs/AGENT_WORKFLOWS.md`**.
+**For complete patterns and examples, always refer to `WORKFLOWS.md` in this skill directory**.
