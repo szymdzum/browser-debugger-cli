@@ -4,6 +4,7 @@ import { Command } from 'commander';
 
 import { commandRegistry } from '@/commands.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
+import { generateMachineReadableHelp } from '@/help/machineReadableHelp.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
 import { VERSION } from '@/utils/version.js';
@@ -89,10 +90,11 @@ function getExitCodeFromError(error: unknown): number {
  * - Commander provides consistent CLI UX with automatic --help and --version
  *
  * Process flow:
- * 1. Check if running as daemon worker (BDG_DAEMON=1 env var)
- * 2. If CLI client: ensure daemon is running (spawn if needed)
- * 3. Initialize Commander and register command handlers
- * 4. Parse arguments and route to appropriate command
+ * 1. Check for --help --json flag early (bypass daemon requirement)
+ * 2. Check if running as daemon worker (BDG_DAEMON=1 env var)
+ * 3. If CLI client: ensure daemon is running (spawn if needed)
+ * 4. Initialize Commander and register command handlers
+ * 5. Parse arguments and route to appropriate command
  */
 async function main(): Promise<void> {
   // Check for --debug flag early (before daemon check) to enable verbose logging
@@ -100,10 +102,7 @@ async function main(): Promise<void> {
     enableDebugLogging();
   }
 
-  if (!isDaemonWorkerProcess()) {
-    await ensureDaemonRunning();
-  }
-
+  // Initialize program to allow introspection for --help --json
   const program = new Command()
     .name(CLI_NAME)
     .description(CLI_DESCRIPTION)
@@ -111,6 +110,17 @@ async function main(): Promise<void> {
     .option('--debug', 'Enable debug logging (verbose output)');
 
   commandRegistry.forEach((register) => register(program));
+
+  // Handle --help --json before daemon check (no daemon needed for help output)
+  if (process.argv.includes('--help') && process.argv.includes('--json')) {
+    const help = generateMachineReadableHelp(program);
+    console.log(JSON.stringify(help, null, 2));
+    process.exit(0);
+  }
+
+  if (!isDaemonWorkerProcess()) {
+    await ensureDaemonRunning();
+  }
 
   program.parse();
 }

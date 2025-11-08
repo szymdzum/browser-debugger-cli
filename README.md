@@ -98,6 +98,45 @@ bdg dom get         # Get full HTML for elements
 - **Transparent errors**: See exactly what failed, no protocol layers hiding issues
 - **Real-time evolution**: Update patterns anytime, no server redeployment
 
+## Machine-Readable Help
+
+AI agents can discover all commands, options, arguments, and exit codes programmatically:
+
+```bash
+# Get complete CLI schema as JSON
+bdg --help --json
+
+# Extract specific information with jq
+bdg --help --json | jq '.command.subcommands[].name'
+bdg --help --json | jq '.exitCodes'
+bdg --help --json | jq '.command.subcommands[] | select(.name == "dom")'
+```
+
+**Output includes**:
+- All commands and subcommands (recursively)
+- Option flags with types, defaults, and choices
+- Argument specifications (required/optional, variadic)
+- Exit code documentation (semantic codes 0-119)
+
+**Why this matters for agents**:
+- ✅ Self-documenting — no need to hardcode command knowledge
+- ✅ Version-safe — schema updates automatically with CLI changes
+- ✅ Type-aware — agents know which options require values
+- ✅ Error-handling — exit codes enable proper error recovery
+
+**Example**: Agent discovers available commands without prompting:
+
+```bash
+# Agent inspects available commands
+COMMANDS=$(bdg --help --json | jq -r '.command.subcommands[].name')
+
+# Agent finds dom subcommands dynamically
+DOM_COMMANDS=$(bdg --help --json | jq -r '.command.subcommands[] | select(.name == "dom") | .subcommands[].name')
+
+# Agent checks if --filter option exists before using it
+HAS_FILTER=$(bdg --help --json | jq '.command.subcommands[] | select(.name == "peek") | .options[] | select(.flags | contains("--filter"))')
+```
+
 ## Intelligent Page Readiness Detection
 
 `bdg` automatically waits for pages to be fully loaded using a sophisticated three-phase approach that works for **all modern web patterns** — no configuration needed.
