@@ -119,7 +119,7 @@ bdg cdp Page.captureScreenshot --params '{
 - `80-99` - User errors (invalid input, resource not found)
 - `100-119` - System errors (CDP failure, timeout, Chrome crash)
 
-**Reference**: `docs/EXIT_CODES.md`
+**Reference**: `EXIT_CODES.md` (in this skill directory)
 
 ### Check Exit Codes
 

@@ -129,8 +129,8 @@ bdg stop
 - `.claude/skills/bdg/SKILL.md` - Skill for agents (auto-loaded when needed)
 - `.claude/skills/bdg/WORKFLOWS.md` - Comprehensive guide with 15+ recipes
 - `.claude/skills/bdg/TROUBLESHOOTING.md` - Common issues and solutions
-- `docs/EXIT_CODES.md` - Error handling reference
-- `docs/CLI_REFERENCE.md` - Complete command reference
+- `.claude/skills/bdg/EXIT_CODES.md` - Exit code reference for error handling
+- `docs/CLI_REFERENCE.md` - Complete command reference (human-focused)
 
 ## Git Commit Guidelines
 
