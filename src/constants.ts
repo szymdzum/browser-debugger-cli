@@ -186,6 +186,17 @@ export const BDG_CHROME_FLAGS = [
 ];
 
 /**
+ * Docker-specific Chrome flags to work around GPU/graphics limitations
+ * These flags disable hardware acceleration and GPU features that fail in containerized environments
+ */
+export const DOCKER_CHROME_FLAGS = [
+  '--disable-gpu', // Disable GPU hardware acceleration
+  '--disable-dev-shm-usage', // Overcome limited resource problems in Docker
+  '--disable-software-rasterizer', // Don't fall back to software rendering
+  '--single-process', // Run Chrome in single-process mode (safer in containers)
+];
+
+/**
  * BDG-specific Chrome preferences for automation
  * These preferences are automatically merged with user preferences when launching Chrome
  * User preferences take precedence over these defaults

@@ -30,6 +30,12 @@ services:
       - bdg-network
     environment:
       - BDG_DEBUG=0
+    # Required for Chrome to run in Docker
+    cap_add:
+      - SYS_ADMIN
+    # Alternative approach (less secure but works in restricted environments):
+    # security_opt:
+    #   - seccomp=unconfined
 
 networks:
   bdg-network:

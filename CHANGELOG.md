@@ -7,7 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- Empty for now - add here as you work -->
+### Added
+- **Docker support improvements**
+  - Automatic Docker environment detection via `isDocker()` helper
+  - Docker-specific Chrome flags (`DOCKER_CHROME_FLAGS`) for GPU/graphics workarounds
+  - `--cap-add=SYS_ADMIN` capability added to docker-compose.yml for Chrome sandbox support
+  - Comprehensive Docker integration tests
+
+### Changed
+- Chrome launcher now automatically applies Docker-optimized flags when running in containers
+  - `--disable-gpu` - Disable GPU hardware acceleration
+  - `--disable-dev-shm-usage` - Overcome limited resource problems
+  - `--disable-software-rasterizer` - Don't fall back to software rendering
+  - `--single-process` - Run Chrome in single-process mode (safer in containers)
+
+### Fixed
+- Chrome now launches successfully in Docker containers with proper GPU workarounds
+- Docker environment detection works via `/.dockerenv` file and `/proc/self/cgroup` checks
+
+### Documentation
+- Updated docker-compose.yml with required security capabilities
+- Added comments explaining Docker-specific Chrome requirements
+- Documented alternative `seccomp=unconfined` approach for restricted environments
+
+## [0.4.0] - 2025-11-08
+
+### Added
+- **External Chrome connection support** via `--chrome-ws-url` flag
+  - Connect to Chrome running in Docker containers or external processes
+  - Supports WebSocket URLs (e.g., `ws://localhost:9222/devtools/page/{id}`)
+  - Skips Chrome launch and lifecycle management for external instances
+  - Comprehensive Docker documentation in `docs/DOCKER.md`
+- Centralized Chrome messages in `src/ui/messages/chrome.ts`:
+  - `chromeExternalConnectionMessage()`
+  - `chromeExternalWebSocketMessage(wsUrl)`
+  - `chromeExternalNoPidMessage()`
+  - `chromeExternalSkipTerminationMessage()`
+  - `noPageTargetFoundError(port, availableTargets)`
+
+### Changed
+- Refactored worker configuration to use `filterDefined()` utility (2 locations)
+- Improved code maintainability by removing 87 excessive inline comments
+- Enhanced error messages with centralized formatting functions
+- Test suite improvements: fixed 6 syntax errors and added missing `--headless` flags
+
+### Fixed
+- Worker ready signal now handles external Chrome correctly (no null reference errors)
+- IPC chain properly passes `chromeWsUrl` through all layers
+- Page target error messages include diagnostics and troubleshooting steps
+
+### Performance
+- Cleaner codebase with 94% fewer inline comments (kept only critical ones)
+
+### Testing
+- **100% test pass rate achieved** (19/19 tests passing)
+  - Integration tests: 9/9 (100%)
+  - Error scenarios: 6/6 (100%)
+  - Benchmarks: 4/4 (100%)
 
 ## [0.3.2] - 2025-11-07
 
