@@ -6,8 +6,6 @@ npm-debug.log
 !README.md
 docs
 tests
-demos
-!demos/example-app
 # dist (needed for Dockerfile.local)
 .claude
 .vscode

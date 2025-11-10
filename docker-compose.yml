@@ -1,31 +1,27 @@
 services:
-  # Example: nginx serving a simple app
-  nginx:
-    image: nginx:alpine
+  # Example: httpbin service for testing
+  httpbin:
+    image: kennethreitz/httpbin
     ports:
       - "8080:80"
-    volumes:
-      - ./demos/example-app:/usr/share/nginx/html:ro
     networks:
       - bdg-network
 
   # bdg service for capturing telemetry
   bdg:
     image: bdg-test:local  # Use local build with latest code
-    volumes:
-      - ./docker-output:/root/.bdg
     # Override entrypoint to avoid default daemon startup
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        echo "Waiting for nginx to be ready..."
+        echo "Waiting for httpbin to be ready..."
         sleep 3
         echo "Starting bdg capture..."
-        bdg nginx:80 --headless --port 9224 --timeout 10
+        bdg httpbin:80 --headless --port 9224 --timeout 10
         echo "Capture complete, checking output..."
         ls -lh /root/.bdg/ || true
     depends_on:
-      - nginx
+      - httpbin
     networks:
       - bdg-network
     environment:

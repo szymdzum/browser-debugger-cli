@@ -34,3 +34,6 @@ temp/
 # Workspace artifacts
 analysis/
 benchmarks/
+
+# Docker test output
+docker-output/

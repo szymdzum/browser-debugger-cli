@@ -5,7 +5,17 @@
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
 [![npm downloads](https://img.shields.io/npm/dt/browser-debugger-cli?color=blue)](https://www.npmjs.com/package/browser-debugger-cli)
 
-DevTools telemetry in your terminal, for humans and agents alike. Direct WebSocket to Chrome's debugging port streams DOM, network, and console data straight to stdout. Pipe it, grep it, feed it to your agents for full context debugging.
+Chrome DevTools Protocol in your terminal. Run any CDP command, pipe the output, build browser automation with tools you already know. Design to be agent friendly
+
+## Why This Exists
+Puppeteer is great but heavy. CDP is powerful but raw. This tool sits in between: direct protocol access with session management and a few helpful wrappers. No abstractions hiding what's actually happening.
+Built for debugging web apps and scripting browser automation without spinning up a full testing framework.
+
+## Current State
+
+**Raw CDP access is complete.** All 300+ protocol methods work now. This makes it immediately useful for AI agents and developers comfortable with CDP.
+
+**Human-friendly wrappers are in progress.** Commands like `bdg dom query` and `bdg peek` are being added for common operations. For now, most automation work happens through `bdg cdp` and Unix pipes.
 
 ## Demo
 
@@ -22,378 +32,163 @@ npm install -g browser-debugger-cli@alpha
 ## Quick Start
 
 ```bash
-# Start session (opens example.com in Chrome)
+# Start a session
 bdg example.com
 
-# Daemon starts in background, Chrome opens
-# Session is active - you can now run commands
-
-# Check session status
-bdg status
-# Status: Active
-# Worker PID: 12345
-# Chrome PID: 67890
-# Target: http://example.com
-
-# Execute raw CDP commands
+# Run any CDP command
 bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
-# { "result": { "type": "string", "value": "Example Domain" } }
-
 bdg cdp Network.getCookies
-# { "cookies": [...] }
 
-# Stop session
+# Check what's running
+bdg status
+
+# Done
 bdg stop
 ```
 
-## How It Works
+## What You Can Do
 
-`bdg` is built on a **layered architecture** — raw CDP access with human-friendly wrappers on top.
+### Run Any CDP Command
 
-### Layer 1: Raw CDP Access ✅
-
-Direct access to **60+ domains, 300+ methods** from [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/):
+All 300+ methods from [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) work out of the box:
 
 ```bash
-# Execute any CDP method
-bdg cdp Network.getCookies
-bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
-bdg cdp Performance.getMetrics
+# Get cookies and filter with jq
+bdg cdp Network.getCookies | jq '.cookies[] | select(.httpOnly)'
 
-# Pipe to jq for filtering
-bdg cdp Network.getCookies | jq '.cookies[] | select(.name == "session")'
+# Execute JavaScript in the page
+bdg cdp Runtime.evaluate --params '{"expression":"document.querySelectorAll(\"a\").length","returnByValue":true}'
+
+# Monitor memory usage
+bdg cdp Performance.getMetrics | jq '.metrics[] | select(.name == "JSHeapUsedSize")'
+
+# Capture a screenshot
+bdg cdp Page.captureScreenshot | jq -r '.data' | base64 -d > screenshot.png
 ```
 
-**Why raw CDP first?**
-- ✅ Zero abstraction overhead — direct WebSocket to Chrome
-- ✅ Full protocol power — all CDP methods work immediately
-- ✅ Future-proof — new CDP features work without code changes
-- ✅ Agent-friendly — structured input/output, composable with Unix tools
+The daemon keeps a WebSocket open to Chrome, so commands run immediately against the live session.
 
-### Layer 2: Human-Friendly Wrappers 🚧
+### Pipe Everything
 
-Building ergonomic commands on top of raw CDP for common workflows:
+Output is JSON by default. Use it with `jq`, `grep`, `awk` - whatever works:
 
 ```bash
-# Session management
-bdg status          # Check active session
-bdg stop            # Stop session gracefully
-bdg cleanup         # Clean up stale sessions
+# Find all failed network requests
+bdg peek --network --json | jq '.data.network[] | select(.status >= 400)'
 
-# Data inspection
-bdg peek            # Quick preview of collected data (snapshot)
-bdg tail            # Continuous monitoring (like tail -f)
-bdg details         # Full details for specific items
-bdg dom query       # Query DOM elements
-bdg dom eval        # Execute JavaScript in browser context
-bdg dom highlight   # Highlight elements visually
-bdg dom get         # Get full HTML for elements
-```
-
-**Progressive disclosure**: Start with raw CDP power, add convenience wrappers for common patterns.
-
-**Why CLI over protocol servers?**
-- **Token efficiency**: CDP is in the model's training data (~3k tokens for patterns vs. 5-10k for MCP server definitions)
-- **Composability**: Unix pipes with `jq`, `grep`, `awk` — tools models already know
-- **Transparent errors**: See exactly what failed, no protocol layers hiding issues
-- **Real-time evolution**: Update patterns anytime, no server redeployment
-
-## Machine-Readable Help
-
-AI agents can discover all commands, options, arguments, and exit codes programmatically:
-
-```bash
-# Get complete CLI schema as JSON
-bdg --help --json
-
-# Extract specific information with jq
-bdg --help --json | jq '.command.subcommands[].name'
-bdg --help --json | jq '.exitCodes'
-bdg --help --json | jq '.command.subcommands[] | select(.name == "dom")'
-```
-
-**Output includes**:
-- All commands and subcommands (recursively)
-- Option flags with types, defaults, and choices
-- Argument specifications (required/optional, variadic)
-- Exit code documentation (semantic codes 0-119)
-
-**Why this matters for agents**:
-- ✅ Self-documenting — no need to hardcode command knowledge
-- ✅ Version-safe — schema updates automatically with CLI changes
-- ✅ Type-aware — agents know which options require values
-- ✅ Error-handling — exit codes enable proper error recovery
-
-**Example**: Agent discovers available commands without prompting:
-
-```bash
-# Agent inspects available commands
-COMMANDS=$(bdg --help --json | jq -r '.command.subcommands[].name')
-
-# Agent finds dom subcommands dynamically
-DOM_COMMANDS=$(bdg --help --json | jq -r '.command.subcommands[] | select(.name == "dom") | .subcommands[].name')
-
-# Agent checks if --filter option exists before using it
-HAS_FILTER=$(bdg --help --json | jq '.command.subcommands[] | select(.name == "peek") | .options[] | select(.flags | contains("--filter"))')
-```
-
-## Intelligent Page Readiness Detection
-
-`bdg` automatically waits for pages to be fully loaded using a sophisticated three-phase approach that works for **all modern web patterns** — no configuration needed.
-
-### How It Works
-
-```
-Phase 1: Load Event     → Browser's native window.onload
-Phase 2: Network Idle   → 200ms with no active requests  
-Phase 3: DOM Stable     → 300ms with no DOM mutations
-```
-
-**Why this matters:**
-- ✅ **SSR apps** (Next.js, Nuxt): Waits for initial HTML render
-- ✅ **CSR apps** (React SPA): Waits for client-side rendering to complete
-- ✅ **Hydration** (React, Vue, Svelte): Detects when framework initialization finishes
-- ✅ **API-heavy apps**: Catches lazy-loaded data requests
-- ✅ **Static sites**: Fast detection without unnecessary waiting
-
-**Just works** — no timeouts to configure, no arbitrary waits:
-
-```bash
-bdg example.com           # Automatically waits for full readiness
-bdg github.com/trending   # Works with complex SPAs
-bdg localhost:3000        # Works with your dev server
-```
-
-### Under the Hood
-
-**Phase 1: Load Event**
-- Waits for browser's native `window.onload` event
-- Handles edge case where page already loaded before connection
-
-**Phase 2: Network Idle (200ms)**
-- Tracks all HTTP requests via CDP Network domain
-- Waits for 200ms with zero active requests
-- Catches initial bursts (CSS, JS, images) and lazy-loaded resources
-
-**Phase 3: DOM Stable (300ms)**
-- Injects MutationObserver to track DOM changes
-- Monitors childList, attributes, subtree, and characterData mutations
-- Waits for 300ms of no DOM changes
-- Detects React/Vue/Svelte hydration completion
-
-**Framework-agnostic** — based on actual browser behavior, not framework detection.
-
-**No arbitrary timeouts** — waits up to 5 seconds max, but typically completes much faster (~500ms for most sites).
-
-### Performance Comparison
-
-| Tool | Detection Method | Time to Ready |
-|------|-----------------|---------------|
-| **bdg** | 3-phase event-driven | ~500ms typical, up to 5s max |
-| Puppeteer | `networkidle2` (500ms) | ~800ms typical |
-| Playwright | `domcontentloaded` | Too early (misses hydration) |
-| Raw CDP | Manual `Page.loadEventFired` | Too early (misses async content) |
-
-**Result**: `bdg` is faster than Puppeteer while being more accurate than simpler approaches.
-
-## Available Commands
-
-### Raw CDP Access
-
-Full Chrome DevTools Protocol access via `bdg cdp` command – **any CDP method works**:
-
-```bash
-# Get all cookies (raw CDP)
-bdg cdp Network.getCookies
-# {
-#   "cookies": [
-#     {
-#       "name": "session_id",
-#       "value": "1234567890abcdef",
-#       "domain": "example.com",
-#       "httpOnly": true,
-#       "secure": true,
-#       "sameSite": "Strict"
-#     }
-#   ]
-# }
-
-# Evaluate JavaScript
-bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
-# {
-#   "result": {
-#     "type": "string",
-#     "value": "Example Domain"
-#   }
-# }
-
-# Get browser version
-bdg cdp Browser.getVersion
-# {
-#   "protocolVersion": "1.3",
-#   "product": "Chrome/142.0.7444.60",
-#   "jsVersion": "14.2.231.14"
-# }
-
-# Pipe to jq for filtering
-bdg cdp Network.getCookies | jq '.cookies[] | select(.name == "session_id") | .value'
-# "1234567890abcdef"
-```
-
-**60+ domains, 300+ methods** from the [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/) are available.
-
-### AI Agent Integration
-
-**Claude skill available** at `.claude/skills/bdg/` with comprehensive automation patterns:
-
-- **SKILL.md** - Quick start, common patterns, best practices
-- **WORKFLOWS.md** - 15+ working recipes (GitHub scraper, polling, navigation, screenshots)
-- **EXIT_CODES.md** - Complete error handling reference
-- **TROUBLESHOOTING.md** - Common issues and solutions
-
-Claude automatically loads this skill when browser automation is mentioned. Contains everything needed for agents to use `bdg cdp` effectively without custom wrappers.
-
-**Example from skill**:
-```bash
-# Extract structured data (from WORKFLOWS.md)
+# Extract every link on the page
 bdg cdp Runtime.evaluate --params '{
-  "expression": "Array.from(document.querySelectorAll(\"a\")).map(a => ({text: a.textContent, href: a.href}))",
+  "expression": "Array.from(document.querySelectorAll(\"a\")).map(a => ({text: a.textContent.trim(), href: a.href}))",
   "returnByValue": true
 }' | jq '.result.value'
 
-# Wait for element with polling (from WORKFLOWS.md)
-while [ $ELAPSED -lt $TIMEOUT ]; do
-  EXISTS=$(bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector(\"#target\") !== null", "returnByValue": true}' | jq -r '.result.value')
-  [ "$EXISTS" = "true" ] && break
+# Count console errors
+bdg peek --console --json | jq '[.data.console[] | select(.level == "error")] | length'
+```
+
+### For AI Agents
+
+Claude skill included at `.claude/skills/bdg/` with working automation patterns:
+
+- Common CDP workflows (scraping, polling, navigation)
+- Exit codes and error handling
+- Troubleshooting reference
+
+The `--help --json` flag outputs the complete CLI schema for programmatic discovery:
+
+```bash
+bdg --help --json | jq '.command.subcommands[].name'
+bdg --help --json | jq '.exitCodes'
+```
+
+Agents can figure out what commands exist and how to use them without hardcoded knowledge.
+
+### Debug Live Apps
+
+Point at localhost, monitor what's happening:
+
+```bash
+bdg localhost:3000 --headless
+bdg tail --console          # Stream console output
+bdg tail --network          # Watch requests in real-time
+```
+
+Helpful for catching issues during development without opening DevTools.
+
+### Automate Browser Tasks
+
+Poll for elements, click buttons, extract data:
+
+```bash
+# Wait for an element to appear
+while ! bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\"#target\") !== null","returnByValue":true}' | jq -e '.result.value'; do
   sleep 0.5
 done
+
+# Click it
+bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\"#target\").click()"}'
+
+# Get the result
+bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\".result\").textContent","returnByValue":true}'
 ```
 
-See `.claude/skills/bdg/WORKFLOWS.md` for complete patterns.
+Check `.claude/skills/bdg/WORKFLOWS.md` for more complete examples (GitHub scraper, form automation, etc).
 
-### Session Management
+## Session Management
+
+Sessions persist until you stop them. Chrome stays open, data keeps collecting:
 
 ```bash
-# Start session
-bdg example.com             # Opens Chrome with daemon in background
-
-# Check if session is active
-bdg status                  # Show session info
-bdg status --verbose        # Include Chrome diagnostics
-
-# Stop session
-bdg stop                    # Gracefully stop daemon and close Chrome
-
-# Clean up stale sessions
-bdg cleanup                 # Remove stale session files
-bdg cleanup --force         # Force cleanup even if session appears active
+bdg example.com          # Opens Chrome, starts daemon
+bdg status               # Check what's running
+bdg status --verbose     # Show Chrome process details
+bdg stop                 # Kill everything
+bdg cleanup              # Remove stale files
 ```
 
-## Real-World Examples
+## Helper Commands
 
-### Debug API Failures in Real-Time
+A few convenience wrappers for common operations. Most work still happens through `bdg cdp`:
 
 ```bash
-# Monitor network requests as you interact with the page
-bdg localhost:3000 --headless
-bdg tail --network
+# Query DOM
+bdg dom query "button.primary"      # Find elements
+bdg dom get "button.primary"        # Get HTML
+bdg dom eval "document.title"       # Run JavaScript
+bdg dom highlight ".navbar"         # Visual debugging
 
-# Filter failed requests
-bdg peek --network --json | jq '.data.network[] | select(.status >= 400)'
-
-# See full request/response details
-bdg details network <requestId>
+# Inspect collected data
+bdg peek                 # Quick snapshot
+bdg peek --network       # Just network data
+bdg tail                 # Stream like tail -f
 ```
 
-### Extract Page Data for AI Agents
+## Page Readiness
 
-```bash
-# Get page title and meta for context
-bdg cdp Runtime.evaluate --params '{"expression":"({title: document.title, meta: Array.from(document.querySelectorAll(\"meta\")).map(m => ({name: m.name, content: m.content}))})", "returnByValue": true}'
+By default, `bdg` waits for pages to fully load using three signals:
 
-# Get all visible text for RAG
-bdg cdp Runtime.evaluate --params '{"expression":"document.body.innerText","returnByValue":true}' | jq -r '.result.value'
+1. Browser's `window.onload` fires
+2. Network goes quiet (200ms without new requests)
+3. DOM stops changing (300ms without mutations)
 
-# Capture screenshots for vision models
-bdg dom screenshot --output page.png
-```
+Catches server-rendered HTML, client hydration, and lazy-loaded content. Works with Next.js, React, Vue, whatever. Times out after 5 seconds if something hangs.
 
-### Monitor Console Errors During Testing
+Skip it with `--no-wait` if you want immediate connection.
 
-```bash
-# Watch for console errors in real-time
-bdg https://your-app.com --headless
-bdg tail --console
+## Architecture
 
-# Get last 50 console messages
-bdg peek --console --last 50
+Three processes:
 
-# Export console logs to file
-bdg stop > session-data.json
-jq '.data.console' session-data.json > console-logs.json
-```
+- **CLI** talks to daemon via Unix socket
+- **Daemon** manages Chrome and routes commands
+- **Worker** holds the WebSocket to CDP
 
-### Inspect DOM Without DevTools
-
-```bash
-# Query elements by selector
-bdg dom query "button.primary"
-
-# Get element HTML
-bdg dom get "button.primary"
-
-# Highlight element on page (visual debugging)
-bdg dom highlight ".navbar" --color red
-
-# Execute JavaScript in page context
-bdg dom eval "document.querySelector('.price').textContent"
-```
-
-### Pipe to Unix Tools
-
-```bash
-# Count failed network requests
-bdg peek --network --json | jq '[.data.network[] | select(.status >= 400)] | length'
-
-# Extract all external script URLs
-bdg peek --network --json | jq -r '.data.network[] | select(.mimeType | contains("javascript")) | .url'
-
-# Find largest requests
-bdg peek --network --json | jq '.data.network | sort_by(.responseSize) | reverse | .[0:5]'
-
-# Monitor performance metrics
-bdg cdp Performance.getMetrics | jq '.metrics[] | select(.name == "JSHeapUsedSize")'
-```
-
-## Technical Overview
-
-`bdg` runs a daemon that maintains a WebSocket connection to Chrome's debugging port.
-When you run commands like `bdg network` or `bdg console`, they communicate with the
-daemon via IPC, which forwards [Chrome DevTools
-Protocol](https://chromedevtools.github.io/devtools-protocol/) commands and streams
-responses back.
-
-**Architecture:**
-- **Daemon** – Background process managing Chrome connection lifecycle
-- **IPC** – Unix sockets for CLI ↔ daemon communication
-- **WebSocket** – Direct connection to Chrome's `--remote-debugging-port`
-- **CDP** – Native Chrome DevTools Protocol for all browser inspection
-
-**Benefits:**
-- Sessions persist across commands (Chrome stays open)
-- Live queries without stopping collection
-- No intermediate files data flows from Chrome to stdout
-- Real CDP with full protocol access
+Chrome stays running between commands. No startup cost for each operation.
 
 ## Contributing
 
-Contributions welcome! But honestly, I'd just be happy if you give it a try.
-
-Let me know how you use it
-([discussions](https://github.com/szymdzum/browser-debugger-cli/discussions)), let me
-know what's broken
-([issues](https://github.com/szymdzum/browser-debugger-cli/issues/new)).
+If you use this and something breaks, [open an issue](https://github.com/szymdzum/browser-debugger-cli/issues/new). If you have ideas, start a [discussion](https://github.com/szymdzum/browser-debugger-cli/discussions). PRs welcome.
 
 ## License
 
-MIT – see [LICENSE](LICENSE) for details.
+MIT
