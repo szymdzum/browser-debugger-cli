@@ -8,17 +8,19 @@
  */
 
 import { readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { createServer } from 'net';
 
-import type { ChildProcess } from 'child_process';
-import type { Server, Socket } from 'net';
+import type { Socket } from 'net';
 
-import { launchSessionInWorker, WorkerStartError } from '@/daemon/startSession.js';
+import { SocketServer } from '@/daemon/server/SocketServer.js';
+import { WorkerManager } from '@/daemon/server/WorkerManager.js';
+import { WorkerStartError } from '@/daemon/startSession.js';
 import type { WorkerIPCResponse } from '@/daemon/workerIpc.js';
 import {
   type ClientRequestUnion,
   type ClientResponse,
+  type CommandName,
   type WorkerRequest,
+  type WorkerRequestUnion,
   type WorkerResponse,
   type WorkerResponseUnion,
   getCommandName,
@@ -44,7 +46,7 @@ import { IPCErrorCode } from '@/ipc/types.js';
 import { cleanupSession } from '@/session/cleanup.js';
 import { releaseDaemonLock } from '@/session/lock.js';
 import { readSessionMetadata } from '@/session/metadata.js';
-import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
+import { ensureSessionDir, getSessionFilePath, getDaemonSocketPath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { CDPTarget } from '@/types.js';
@@ -61,17 +63,22 @@ interface PendingDomRequest {
   timeout: NodeJS.Timeout;
   /** Base status data (only for status requests) */
   statusData?: StatusResponseData;
+  commandName?: CommandName;
 }
 
 /**
  * Simple JSONL IPC server for daemon communication.
  */
 export class IPCServer {
-  private server: Server | null = null;
-  private clients: Set<Socket> = new Set();
   private readonly startTime: number = Date.now();
-  private workerProcess: ChildProcess | null = null;
+  private readonly socketServer = new SocketServer();
+  private readonly workerManager = new WorkerManager();
   private pendingDomRequests: Map<string, PendingDomRequest> = new Map(); // requestId -> pending request
+
+  constructor() {
+    this.workerManager.on('message', (message) => this.handleWorkerResponse(message));
+    this.workerManager.on('exit', (code, signal) => this.handleWorkerExit(code, signal));
+  }
 
   /**
    * Start the IPC server on Unix domain socket.
@@ -80,35 +87,9 @@ export class IPCServer {
     // Ensure ~/.bdg directory exists
     ensureSessionDir();
 
-    // Clean up stale socket if exists
     const socketPath = getSessionFilePath('DAEMON_SOCKET');
-    try {
-      unlinkSync(socketPath);
-    } catch {
-      // Ignore if socket doesn't exist
-    }
-
-    this.server = createServer((socket: Socket) => {
-      this.handleConnection(socket);
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      if (!this.server) {
-        reject(new Error('Server not initialized'));
-        return;
-      }
-
-      this.server.listen(socketPath, () => {
-        console.error(`[daemon] IPC server listening on ${socketPath}`);
-        this.writePidFile();
-        resolve();
-      });
-
-      this.server.on('error', (err) => {
-        console.error('[daemon] Server error:', err);
-        reject(err);
-      });
-    });
+    await this.socketServer.start(socketPath, (socket) => this.handleConnection(socket));
+    this.writePidFile();
   }
 
   /**
@@ -116,7 +97,6 @@ export class IPCServer {
    */
   private handleConnection(socket: Socket): void {
     console.error('[daemon] Client connected');
-    this.clients.add(socket);
 
     let buffer = '';
 
@@ -136,12 +116,10 @@ export class IPCServer {
 
     socket.on('end', () => {
       console.error('[daemon] Client disconnected');
-      this.clients.delete(socket);
     });
 
     socket.on('error', (err) => {
       console.error('[daemon] Socket error:', err);
-      this.clients.delete(socket);
     });
   }
 
@@ -256,7 +234,7 @@ export class IPCServer {
         }
 
         // Query worker for live activity data if worker is available
-        if (this.workerProcess?.stdin) {
+        if (this.workerManager.hasActiveWorker()) {
           const requestId = `worker_status_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
           // Set timeout for worker response
@@ -279,6 +257,7 @@ export class IPCServer {
             sessionId: request.sessionId,
             timeout,
             statusData: data, // Store base status data
+            commandName: 'worker_status',
           });
 
           // Forward to worker
@@ -287,11 +266,19 @@ export class IPCServer {
             requestId,
           };
 
-          this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
-          console.error(
-            `[daemon] Forwarded worker_status_request to worker (requestId: ${requestId})`
-          );
-          return; // Will send response when worker responds
+          try {
+            this.workerManager.send(workerRequest as WorkerRequestUnion);
+            console.error(
+              `[daemon] Forwarded worker_status_request to worker (requestId: ${requestId})`
+            );
+            return; // Will send response when worker responds
+          } catch (error) {
+            clearTimeout(timeout);
+            this.pendingDomRequests.delete(requestId);
+            console.error(
+              `[daemon] Failed to forward worker_status_request: ${getErrorMessage(error)}`
+            );
+          }
         }
       }
 
@@ -325,7 +312,7 @@ export class IPCServer {
     console.error(`[daemon] Peek request received (sessionId: ${request.sessionId})`);
 
     // Check for active worker process
-    if (!this.workerProcess?.stdin) {
+    if (!this.workerManager.hasActiveWorker()) {
       const response: PeekResponse = {
         type: 'peek_response',
         sessionId: request.sessionId,
@@ -354,7 +341,12 @@ export class IPCServer {
     }, 5000);
 
     // Track pending request
-    this.pendingDomRequests.set(requestId, { socket, sessionId: request.sessionId, timeout });
+    this.pendingDomRequests.set(requestId, {
+      socket,
+      sessionId: request.sessionId,
+      timeout,
+      commandName: 'worker_peek',
+    });
 
     // Forward to worker
     const workerRequest: WorkerRequest<'worker_peek'> = {
@@ -363,8 +355,21 @@ export class IPCServer {
       lastN: 10, // Default limit for preview items (PeekRequest doesn't include lastN)
     };
 
-    this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
-    console.error(`[daemon] Forwarded worker_peek_request to worker (requestId: ${requestId})`);
+    try {
+      this.workerManager.send(workerRequest as WorkerRequestUnion);
+      console.error(`[daemon] Forwarded worker_peek_request to worker (requestId: ${requestId})`);
+    } catch (error) {
+      clearTimeout(timeout);
+      this.pendingDomRequests.delete(requestId);
+      const response: PeekResponse = {
+        type: 'peek_response',
+        sessionId: request.sessionId,
+        status: 'error',
+        error: getErrorMessage(error),
+      };
+      socket.write(JSON.stringify(response) + '\n');
+      console.error(`[daemon] Failed to forward worker_peek_request: ${getErrorMessage(error)}`);
+    }
   }
 
   /**
@@ -423,7 +428,7 @@ export class IPCServer {
       // Launch worker
       console.error('[daemon] Launching worker...');
       try {
-        const metadata = await launchSessionInWorker(
+        const metadata = await this.workerManager.launch(
           request.url,
           filterDefined({
             port: request.port,
@@ -438,12 +443,6 @@ export class IPCServer {
         );
 
         console.error('[daemon] Worker launched successfully');
-
-        // Store worker process for IPC
-        this.workerProcess = metadata.workerProcess;
-
-        // Set up worker stdout listener for DOM responses
-        this.setupWorkerListener(metadata.workerProcess);
 
         // Build response data
         const data: StartSessionResponseData = {
@@ -565,7 +564,7 @@ export class IPCServer {
       console.error('[daemon] Cleaned up session files');
 
       // Clear worker process reference
-      this.workerProcess = null;
+      this.workerManager.dispose();
       console.error('[daemon] Cleared worker process reference');
 
       const response: StopSessionResponse = {
@@ -590,41 +589,6 @@ export class IPCServer {
       socket.write(JSON.stringify(response) + '\n');
       console.error('[daemon] Stop session error response sent');
     }
-  }
-
-  /**
-   * Set up worker stdout listener for IPC responses.
-   */
-  private setupWorkerListener(worker: ChildProcess): void {
-    let buffer = '';
-
-    if (!worker.stdout) {
-      console.error('[daemon] Warning: Worker stdout not available');
-      return;
-    }
-
-    worker.stdout.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString('utf-8');
-
-      // Process complete JSONL frames (separated by newlines)
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-
-        try {
-          // Parse message - could be either lifecycle signal or command response
-          const message = JSON.parse(line) as WorkerIPCResponse | WorkerResponseUnion;
-          this.handleWorkerResponse(message);
-        } catch (error) {
-          // Ignore parse errors, may be log messages
-          console.error(`[daemon] Failed to parse worker stdout line: ${getErrorMessage(error)}`);
-        }
-      }
-    });
-
-    console.error('[daemon] Worker stdout listener set up');
   }
 
   /**
@@ -656,6 +620,65 @@ export class IPCServer {
 
       // Forward response to client (pass pending data for special handling)
       this.forwardCommandResponse(pending.socket, pending.sessionId, message, pending);
+    }
+  }
+
+  private handleWorkerExit(code: number | null, signal: NodeJS.Signals | null): void {
+    console.error(
+      `[daemon] Worker exit detected (code: ${code ?? 'null'}, signal: ${signal ?? 'null'})`
+    );
+
+    if (this.pendingDomRequests.size === 0) {
+      return;
+    }
+
+    const errorMessage = 'Worker process exited before responding';
+
+    for (const [requestId, pending] of this.pendingDomRequests.entries()) {
+      clearTimeout(pending.timeout);
+      this.pendingDomRequests.delete(requestId);
+
+      if (pending.commandName === 'worker_status') {
+        const statusResponse: StatusResponse = {
+          type: 'status_response',
+          sessionId: pending.sessionId,
+          status: 'error',
+          ...(pending.statusData && { data: pending.statusData }),
+          error: errorMessage,
+        };
+        pending.socket.write(JSON.stringify(statusResponse) + '\n');
+        continue;
+      }
+
+      if (pending.commandName === 'worker_peek') {
+        const peekResponse: PeekResponse = {
+          type: 'peek_response',
+          sessionId: pending.sessionId,
+          status: 'error',
+          error: errorMessage,
+        };
+        pending.socket.write(JSON.stringify(peekResponse) + '\n');
+        continue;
+      }
+
+      if (pending.commandName) {
+        const response = {
+          type: `${pending.commandName}_response` as const,
+          sessionId: pending.sessionId,
+          status: 'error',
+          error: errorMessage,
+        } satisfies ClientResponse<CommandName>;
+        pending.socket.write(JSON.stringify(response) + '\n');
+        continue;
+      }
+
+      const fallback: StatusResponse = {
+        type: 'status_response',
+        sessionId: pending.sessionId,
+        status: 'error',
+        error: errorMessage,
+      };
+      pending.socket.write(JSON.stringify(fallback) + '\n');
     }
   }
 
@@ -800,7 +823,7 @@ export class IPCServer {
 
     console.error(`[daemon] ${commandName} request received (sessionId: ${request.sessionId})`);
 
-    if (!this.workerProcess?.stdin) {
+    if (!this.workerManager.hasActiveWorker()) {
       const response: ClientResponse<typeof commandName> = {
         type: `${commandName}_response` as const,
         sessionId: request.sessionId,
@@ -826,7 +849,12 @@ export class IPCServer {
       console.error(`[daemon] ${commandName} timeout response sent`);
     }, 10000);
 
-    this.pendingDomRequests.set(requestId, { socket, sessionId: request.sessionId, timeout });
+    this.pendingDomRequests.set(requestId, {
+      socket,
+      sessionId: request.sessionId,
+      timeout,
+      commandName,
+    });
 
     // Extract only sessionId, keep all other fields including 'type' param if it exists
     const { sessionId: _sessionId, type: _ipcType, ...params } = request;
@@ -836,30 +864,33 @@ export class IPCServer {
       ...params,
     } as WorkerRequest<typeof commandName>;
 
-    this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
-    console.error(`[daemon] Forwarded ${commandName}_request to worker (requestId: ${requestId})`);
+    try {
+      this.workerManager.send(workerRequest as WorkerRequestUnion);
+      console.error(
+        `[daemon] Forwarded ${commandName}_request to worker (requestId: ${requestId})`
+      );
+    } catch (error) {
+      clearTimeout(timeout);
+      this.pendingDomRequests.delete(requestId);
+      const response: ClientResponse<typeof commandName> = {
+        type: `${commandName}_response` as const,
+        sessionId: request.sessionId,
+        status: 'error',
+        error: getErrorMessage(error),
+      };
+      socket.write(JSON.stringify(response) + '\n');
+      console.error(
+        `[daemon] Failed to forward ${commandName}_request to worker: ${getErrorMessage(error)}`
+      );
+    }
   }
 
   /**
    * Stop the IPC server and cleanup.
    */
   async stop(): Promise<void> {
-    // Close all client connections
-    for (const socket of this.clients) {
-      socket.destroy();
-    }
-    this.clients.clear();
-
-    // Close server
-    if (this.server) {
-      await new Promise<void>((resolve) => {
-        this.server?.close(() => {
-          console.error('[daemon] IPC server stopped');
-          resolve();
-        });
-      });
-      this.server = null;
-    }
+    await this.socketServer.stop();
+    this.workerManager.dispose();
 
     // Cleanup files
     const socketPath = getSessionFilePath('DAEMON_SOCKET');
@@ -909,6 +940,6 @@ export class IPCServer {
    * Get socket path for client connections.
    */
   static getSocketPath(): string {
-    return getSessionFilePath('DAEMON_SOCKET');
+    return getDaemonSocketPath();
   }
 }

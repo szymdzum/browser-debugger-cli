@@ -220,6 +220,8 @@ export const COMMANDS = {
   },
 } as const;
 
+export type CommandSchemas = typeof COMMANDS;
+
 export type CommandName = keyof typeof COMMANDS;
 
 // =============================================================================

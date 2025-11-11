@@ -1,23 +1,25 @@
 import type { Command } from 'commander';
 
+import { runCommand, type BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { getStatus } from '@/ipc/client.js';
+import type { SessionActivity, PageState } from '@/ipc/types.js';
 import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
 import type { SessionMetadata } from '@/session/metadata.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
+import { getErrorMessage, isDaemonConnectionError } from '@/ui/errors/index.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,
   formatNoSessionMessage,
+  type StatusData,
 } from '@/ui/formatters/status.js';
 import { daemonNotRunningWithCleanup } from '@/ui/messages/commands.js';
-import { genericError, invalidResponseError } from '@/ui/messages/errors.js';
+import { invalidResponseError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { VERSION } from '@/utils/version.js';
 
 /**
  * Options for the `bdg status` command.
  */
-interface StatusOptions {
+interface StatusOptions extends BaseCommandOptions {
   /** Print structured JSON instead of the default human output. */
   json?: boolean;
   /** Show detailed Chrome diagnostics (binary path, port, PID). */
@@ -37,81 +39,106 @@ export function registerStatusCommand(program: Command): void {
     .option('-j, --json', 'Output as JSON')
     .option('-v, --verbose', 'Show detailed Chrome diagnostics')
     .action(async (options: StatusOptions) => {
-      try {
-        // Request status from daemon via IPC
-        const response = await getStatus();
+      let latestMetadata: SessionMetadata | null = null;
+      let latestSessionPid: number | null = null;
+      let latestActivity: SessionActivity | undefined;
+      let latestPageState: PageState | undefined;
 
-        // Handle IPC error response
-        if (response.status === 'error') {
-          console.error(genericError(`Daemon error: ${response.error ?? 'Unknown error'}`));
-          process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-        }
+      await runCommand(
+        async () => {
+          try {
+            const response = await getStatus();
+            if (response.status === 'error') {
+              return {
+                success: false,
+                error: `Daemon error: ${response.error ?? 'Unknown error'}`,
+                exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+              };
+            }
 
-        // Extract data from response
-        const { data } = response;
-        if (!data) {
-          console.error(invalidResponseError('missing data'));
-          process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-        }
+            const data = response.data;
+            if (!data) {
+              return {
+                success: false,
+                error: invalidResponseError('missing data'),
+                exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+              };
+            }
 
-        // Check if there's an active session
-        if (!data.sessionPid || !data.sessionMetadata) {
-          if (options.json) {
-            console.log(JSON.stringify({ version: VERSION, active: false }, null, 2));
-          } else {
-            console.error(formatNoSessionMessage());
+            latestActivity = data.activity;
+            latestPageState = data.pageState;
+
+            if (!data.sessionPid || !data.sessionMetadata) {
+              latestMetadata = null;
+              latestSessionPid = null;
+              const jsonOutput = formatStatusAsJson(null, null);
+              if (data.activity) {
+                jsonOutput.activity = data.activity;
+              }
+              if (data.pageState) {
+                jsonOutput.pageState = data.pageState;
+              }
+              return { success: true, data: jsonOutput };
+            }
+
+            const metadata: SessionMetadata = {
+              bdgPid: data.sessionMetadata.bdgPid,
+              chromePid: data.sessionMetadata.chromePid,
+              startTime: data.sessionMetadata.startTime,
+              port: data.sessionMetadata.port,
+              targetId: data.sessionMetadata.targetId,
+              webSocketDebuggerUrl: data.sessionMetadata.webSocketDebuggerUrl,
+              activeTelemetry: data.sessionMetadata.activeTelemetry,
+            };
+
+            latestMetadata = metadata;
+            latestSessionPid = data.sessionPid;
+
+            const jsonOutput = formatStatusAsJson(metadata, data.sessionPid);
+            if (data.activity) {
+              jsonOutput.activity = data.activity;
+            }
+            if (data.pageState) {
+              jsonOutput.pageState = data.pageState;
+            }
+
+            return { success: true, data: jsonOutput };
+          } catch (error) {
+            const errorMessage = getErrorMessage(error);
+            if (isDaemonConnectionError(error)) {
+              const cleaned = cleanupStaleDaemonPid();
+              return {
+                success: false,
+                error: daemonNotRunningWithCleanup(cleaned),
+                exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              };
+            }
+
+            return {
+              success: false,
+              error: `Error checking status: ${errorMessage}`,
+              exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+            };
           }
-          process.exit(EXIT_CODES.SUCCESS);
-        }
-
-        // Convert IPC metadata to SessionMetadata format
-        const metadata: SessionMetadata = {
-          bdgPid: data.sessionMetadata.bdgPid,
-          chromePid: data.sessionMetadata.chromePid,
-          startTime: data.sessionMetadata.startTime,
-          port: data.sessionMetadata.port,
-          targetId: data.sessionMetadata.targetId,
-          webSocketDebuggerUrl: data.sessionMetadata.webSocketDebuggerUrl,
-          activeTelemetry: data.sessionMetadata.activeTelemetry,
-        };
-
-        if (options.json) {
-          // JSON output - include activity and page state
-          const jsonOutput = formatStatusAsJson(metadata, data.sessionPid);
-          // Merge in activity data if available
-          if (data.activity) {
-            jsonOutput.activity = data.activity;
+        },
+        options,
+        (data: StatusData) => {
+          if (!data.active) {
+            return formatNoSessionMessage();
           }
-          if (data.pageState) {
-            jsonOutput.pageState = data.pageState;
+
+          if (!latestMetadata || latestSessionPid === null) {
+            return formatNoSessionMessage();
           }
-          console.log(JSON.stringify(jsonOutput, null, 2));
-        } else {
-          // Human-readable output - pass activity and page state
-          console.log(
-            formatSessionStatus(
-              metadata,
-              data.sessionPid,
-              data.activity,
-              data.pageState,
-              options.verbose ?? false
-            )
+
+          return formatSessionStatus(
+            latestMetadata,
+            latestSessionPid,
+            latestActivity,
+            latestPageState,
+            options.verbose ?? false
           );
         }
-
-        process.exit(EXIT_CODES.SUCCESS);
-      } catch (error) {
-        // Handle connection errors (daemon not running)
-        const errorMessage = getErrorMessage(error);
-        if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
-          // P0 Fix #2: Auto-cleanup stale daemon PID if it exists
-          const cleaned = cleanupStaleDaemonPid();
-          console.error(daemonNotRunningWithCleanup(cleaned));
-          process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
-
-        console.error(genericError(`Error checking status: ${errorMessage}`));
-        process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-      }
+      );
     });
 }

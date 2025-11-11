@@ -1,3 +1,4 @@
+/* eslint-disable import/order */
 /**
  * IPC Client - Minimal JSONL handshake MVP
  *
@@ -5,30 +6,33 @@
  */
 
 import { randomUUID } from 'crypto';
-import { connect } from 'net';
-
-import type { Socket } from 'net';
+import { connect, type Socket } from 'net';
 
 import { getIPCRequestTimeout } from '@/constants.js';
-import { IPCServer } from '@/daemon/ipcServer.js';
-import type { COMMANDS } from '@/ipc/commands.js';
-import { type CommandName, type ClientRequest, type ClientResponse } from '@/ipc/commands.js';
-import type {
-  HandshakeRequest,
-  HandshakeResponse,
-  PeekRequest,
-  PeekResponse,
-  StartSessionRequest,
-  StartSessionResponse,
-  StatusRequest,
-  StatusResponse,
-  StopSessionRequest,
-  StopSessionResponse,
-} from '@/ipc/types.js';
-import type { TelemetryType } from '@/types.js';
+import { getDaemonSocketPath } from '@/session/paths.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { filterDefined } from '@/utils/objects.js';
+
+import {
+  type COMMANDS,
+  type CommandName,
+  type ClientRequest,
+  type ClientResponse,
+} from '@/ipc/commands.js';
+import {
+  type HandshakeRequest,
+  type HandshakeResponse,
+  type PeekRequest,
+  type PeekResponse,
+  type StartSessionRequest,
+  type StartSessionResponse,
+  type StatusRequest,
+  type StatusResponse,
+  type StopSessionRequest,
+  type StopSessionResponse,
+} from '@/ipc/types.js';
+import type { TelemetryType } from '@/types.js';
 
 const log = createLogger('client');
 
@@ -44,7 +48,7 @@ async function sendRequest<TRequest, TResponse>(
   request: TRequest,
   requestName: string
 ): Promise<TResponse> {
-  const socketPath = IPCServer.getSocketPath();
+  const socketPath = getDaemonSocketPath();
 
   return new Promise((resolve, reject) => {
     const socket: Socket = connect(socketPath);

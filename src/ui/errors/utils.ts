@@ -31,3 +31,11 @@ export function getErrorMessage(error: unknown): string {
   }
   return String(error);
 }
+
+/**
+ * Detect whether an error indicates the daemon/socket is unavailable.
+ */
+export function isDaemonConnectionError(error: unknown): boolean {
+  const message = getErrorMessage(error);
+  return message.includes('ENOENT') || message.includes('ECONNREFUSED');
+}

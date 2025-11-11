@@ -70,7 +70,7 @@ export async function cleanupBdgTest(): Promise<void> {
  * });
  * ```
  */
-export async function cleanupPort(port: number): Promise<void> {
+export function cleanupPort(port: number): void {
   try {
     // Platform-specific cleanup (macOS/Linux only for now)
     if (process.platform !== 'win32') {
