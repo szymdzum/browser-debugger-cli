@@ -29,6 +29,13 @@ Built for debugging web apps and scripting browser automation without spinning u
 npm install -g browser-debugger-cli@alpha
 ```
 
+**Platform Support:**
+- ✅ macOS and Linux (native support)
+- ✅ Windows via WSL (Windows Subsystem for Linux)
+- ❌ PowerShell and Git Bash on Windows (not yet supported)
+
+The CLI uses Unix domain sockets for inter-process communication. Windows users should run bdg inside WSL for full compatibility.
+
 ## Quick Start
 
 ```bash
