@@ -156,6 +156,12 @@ run_test_suite() {
     fi
 
     echo ""
+
+    # Add delay between tests to ensure cleanup completes
+    # This prevents race conditions when tests run sequentially
+    if [ $test_index -lt ${#TESTS[@]} ]; then
+      sleep 1
+    fi
   done
 }
 

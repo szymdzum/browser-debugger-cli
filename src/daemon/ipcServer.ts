@@ -699,62 +699,12 @@ export class IPCServer {
 
     // Special handling for worker_status - merge with base status data
     if (commandName === 'worker_status') {
-      const {
-        requestId: _requestId,
-        success,
-        data,
-        error,
-      } = workerResponse as WorkerResponse<'worker_status'>;
-
-      // Get base status data from pending request
-      const baseStatusData = pendingRequest?.statusData;
-
-      if (success && data && baseStatusData) {
-        // Merge worker activity data with base status data
-        const enrichedData: StatusResponseData = {
-          ...baseStatusData,
-          activity: data.activity,
-          pageState: data.target,
-        };
-
-        const statusResponse: StatusResponse = {
-          type: 'status_response',
-          sessionId,
-          status: 'ok',
-          data: enrichedData,
-        };
-
-        socket.write(JSON.stringify(statusResponse) + '\n');
-        console.error(
-          '[daemon] Forwarded worker_status_response to client (enriched with activity data)'
-        );
-      } else {
-        // Fallback to base status data if worker query failed
-        if (baseStatusData) {
-          const statusResponse: StatusResponse = {
-            type: 'status_response',
-            sessionId,
-            status: error ? 'error' : 'ok',
-            data: baseStatusData,
-            ...(error && { error }),
-          };
-
-          socket.write(JSON.stringify(statusResponse) + '\n');
-          console.error(
-            '[daemon] Forwarded status_response to client (worker query failed, using base data only)'
-          );
-        } else {
-          const statusResponse: StatusResponse = {
-            type: 'status_response',
-            sessionId,
-            status: 'error',
-            error: error ?? 'Failed to retrieve status data',
-          };
-
-          socket.write(JSON.stringify(statusResponse) + '\n');
-          console.error('[daemon] Forwarded status_response error (no base data available)');
-        }
-      }
+      this.forwardWorkerStatusResponse(
+        socket,
+        sessionId,
+        workerResponse as WorkerResponse<'worker_status'>,
+        pendingRequest
+      );
       return;
     }
 
@@ -809,6 +759,63 @@ export class IPCServer {
 
     socket.write(JSON.stringify(response) + '\n');
     console.error(`[daemon] Forwarded ${commandName}_response to client`);
+  }
+
+  private forwardWorkerStatusResponse(
+    socket: Socket,
+    sessionId: string,
+    workerResponse: WorkerResponse<'worker_status'>,
+    pendingRequest?: PendingDomRequest
+  ): void {
+    const { success, data, error } = workerResponse;
+    const baseStatusData = pendingRequest?.statusData;
+
+    if (success && data && baseStatusData) {
+      const enrichedData: StatusResponseData = {
+        ...baseStatusData,
+        activity: data.activity,
+        pageState: data.target,
+      };
+
+      const statusResponse: StatusResponse = {
+        type: 'status_response',
+        sessionId,
+        status: 'ok',
+        data: enrichedData,
+      };
+
+      socket.write(JSON.stringify(statusResponse) + '\n');
+      console.error(
+        '[daemon] Forwarded worker_status_response to client (enriched with activity data)'
+      );
+      return;
+    }
+
+    if (baseStatusData) {
+      const statusResponse: StatusResponse = {
+        type: 'status_response',
+        sessionId,
+        status: error ? 'error' : 'ok',
+        data: baseStatusData,
+        ...(error && { error }),
+      };
+
+      socket.write(JSON.stringify(statusResponse) + '\n');
+      console.error(
+        '[daemon] Forwarded status_response to client (worker query failed, using base data only)'
+      );
+      return;
+    }
+
+    const fallback: StatusResponse = {
+      type: 'status_response',
+      sessionId,
+      status: 'error',
+      error: error ?? 'Failed to retrieve status data',
+    };
+
+    socket.write(JSON.stringify(fallback) + '\n');
+    console.error('[daemon] Forwarded status_response error (no base data available)');
   }
 
   /**

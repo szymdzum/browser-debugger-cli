@@ -5,34 +5,30 @@
  * Connects to the daemon's Unix domain socket and performs handshake.
  */
 
+import type { Socket } from 'net';
+import type { COMMANDS, CommandName, ClientRequest, ClientResponse } from '@/ipc/commands.js';
+import type {
+  HandshakeRequest,
+  HandshakeResponse,
+  PeekRequest,
+  PeekResponse,
+  StartSessionRequest,
+  StartSessionResponse,
+  StatusRequest,
+  StatusResponse,
+  StopSessionRequest,
+  StopSessionResponse,
+} from '@/ipc/types.js';
+import type { TelemetryType } from '@/types.js';
+
 import { randomUUID } from 'crypto';
-import { connect, type Socket } from 'net';
+import { connect } from 'net';
 
 import { getIPCRequestTimeout } from '@/constants.js';
 import { getDaemonSocketPath } from '@/session/paths.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { filterDefined } from '@/utils/objects.js';
-
-import {
-  type COMMANDS,
-  type CommandName,
-  type ClientRequest,
-  type ClientResponse,
-} from '@/ipc/commands.js';
-import {
-  type HandshakeRequest,
-  type HandshakeResponse,
-  type PeekRequest,
-  type PeekResponse,
-  type StartSessionRequest,
-  type StartSessionResponse,
-  type StatusRequest,
-  type StatusResponse,
-  type StopSessionRequest,
-  type StopSessionResponse,
-} from '@/ipc/types.js';
-import type { TelemetryType } from '@/types.js';
 
 const log = createLogger('client');
 

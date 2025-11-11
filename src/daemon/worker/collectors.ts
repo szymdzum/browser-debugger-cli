@@ -7,7 +7,7 @@ import type { CleanupFunction, TelemetryType } from '@/types';
 import type { Logger } from '@/ui/logging/index.js';
 import { workerActivatingCollector, workerCollectorsActivated } from '@/ui/messages/debug.js';
 
-import { createDefaultTelemetryPlugins, shouldActivatePlugin } from './plugins.js';
+import { getRegisteredTelemetryPlugins, shouldActivatePlugin } from './plugins.js';
 
 const DEFAULT_TELEMETRY: TelemetryType[] = ['network', 'console', 'dom'];
 
@@ -16,12 +16,13 @@ export async function startTelemetryCollectors(
   config: WorkerConfig,
   store: TelemetryStore,
   logger: Logger,
-  plugins: TelemetryPlugin[] = createDefaultTelemetryPlugins()
+  plugins?: TelemetryPlugin[]
 ): Promise<CleanupFunction[]> {
   const cleanupFunctions: CleanupFunction[] = [];
   store.activeTelemetry = config.telemetry ?? DEFAULT_TELEMETRY;
+  const effectivePlugins = plugins ?? getRegisteredTelemetryPlugins();
 
-  for (const plugin of plugins) {
+  for (const plugin of effectivePlugins) {
     if (!shouldActivatePlugin(plugin, store)) {
       continue;
     }
