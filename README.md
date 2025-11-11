@@ -13,7 +13,7 @@ Built for debugging web apps and scripting browser automation without spinning u
 
 ## Current State
 
-**Raw CDP access is complete.** All 300+ protocol methods work now. This makes it immediately useful for AI agents and developers comfortable with CDP.
+**Raw [CDP](https://chromedevtools.github.io/devtools-protocol/) access is complete.** All 300+ protocol methods work now. This makes it immediately useful for AI agents and developers comfortable with CDP.
 
 **Human-friendly wrappers are in progress.** Commands like `bdg dom query` and `bdg peek` are being added for common operations. For now, most automation work happens through `bdg cdp` and Unix pipes.
 
