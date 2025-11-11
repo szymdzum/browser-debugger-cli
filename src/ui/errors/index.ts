@@ -16,4 +16,4 @@ export {
 } from './SystemErrors.js';
 
 // Utility functions
-export { getErrorMessage } from './utils.js';
+export { getErrorMessage, isDaemonConnectionError } from './utils.js';

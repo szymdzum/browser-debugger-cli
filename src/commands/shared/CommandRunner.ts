@@ -1,5 +1,5 @@
 import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
-import { CommandError, getErrorMessage } from '@/ui/errors/index.js';
+import { CommandError, getErrorMessage, isDaemonConnectionError } from '@/ui/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -121,7 +121,7 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
     const errorMessage = getErrorMessage(error);
 
     // Detect daemon connection errors
-    if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
+    if (isDaemonConnectionError(error)) {
       if (options.json) {
         console.log(
           JSON.stringify(

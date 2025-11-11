@@ -70,6 +70,13 @@ export function getWorkerSocketPath(workerPid: number): string {
 }
 
 /**
+ * Get the path to the daemon's Unix domain socket.
+ */
+export function getDaemonSocketPath(): string {
+  return getSessionFilePath('DAEMON_SOCKET');
+}
+
+/**
  * Get the path to the DOM query cache file.
  *
  * WHY: Stores last DOM query results for index-based element references.
