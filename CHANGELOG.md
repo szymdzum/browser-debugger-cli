@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Empty for now - add here as you work -->
 
+## [0.5.1] - 2025-11-12
+
+### Fixed
+- Improved cleanup of orphaned worker processes when daemon crashes
+- Enhanced stale session detection and automatic cleanup
+- Better test isolation with `BDG_SESSION_DIR` environment variable override
+- Chrome binary validation with actionable error messages for `CHROME_PATH` overrides
+- Chrome profile directory now relative to session directory for better test isolation
+
+### Changed
+- Refactored error handling organization (connection errors moved from `ui/errors` to `connection/errors` domain)
+- Implemented hybrid CI/CD testing strategy:
+  - PR builds run fast contract tests only (~30-60s, no Chrome needed)
+  - Main branch runs full suite including smoke tests with Chrome
+  - Smoke tests skipped on PRs for faster feedback
+- Enhanced orphaned process detection (worker survives daemon crash)
+- Improved process kill mocking to handle negative PIDs correctly
+
+### Testing
+- Added comprehensive smoke test suite for end-to-end validation:
+  - Session lifecycle tests (start, peek, stop)
+  - Error handling tests (daemon crashes, invalid inputs)
+  - Runs only on main branch with headless Chrome
+- Improved smoke test reliability (increased wait times, better cleanup)
+- Better test process mocking for contract tests
+- Documented test pyramid strategy in `TESTING_PHILOSOPHY.md`
+
+### Internal
+- Removed dead code identified by static analysis (knip)
+- Fixed TSDoc syntax violations (no curly braces in `@throws`, proper `@example` code fences)
+- Added test home directory utilities (`testHome.ts`)
+- Enhanced daemon cleanup logic with Chrome process termination
+
 ## [0.5.0] - 2025-11-08
 
 ### Added
