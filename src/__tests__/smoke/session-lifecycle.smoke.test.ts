@@ -53,12 +53,19 @@ void describe('Session Lifecycle Smoke Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Peek at collected data
-    const peekData = await runCommandJSON<Record<string, unknown>>('peek', ['--json']);
+    const peekResult = await runCommandJSON<{ preview: Record<string, unknown> }>('peek', [
+      '--json',
+    ]);
 
     // Should have collected some data
-    assert.ok(peekData);
-    assert.ok(typeof peekData === 'object');
-    assert.ok('data' in peekData);
+    assert.ok(peekResult);
+    assert.ok(typeof peekResult === 'object');
+    assert.ok('preview' in peekResult);
+    assert.ok('data' in peekResult.preview);
+
+    // Stop session to clean up
+    const stopResult = await runCommand('stop', [], { timeout: 10000 });
+    assert.equal(stopResult.exitCode, 0, `Stop failed: ${stopResult.stderr}`);
   });
 
   void it('should write output on stop', async () => {
@@ -76,11 +83,14 @@ void describe('Session Lifecycle Smoke Tests', () => {
     const stopResult = await runCommand('stop', [], { timeout: 10000 });
 
     // Should succeed
-    assert.equal(stopResult.exitCode, 0);
+    assert.equal(stopResult.exitCode, 0, `Stop failed: ${stopResult.stderr}`);
+
+    // Give filesystem time to write the file (increased for test stability)
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Output file should exist
     const output = readSessionOutput();
-    assert.ok(output);
+    assert.ok(output, 'Session output file should exist after stop');
     assert.ok(typeof output === 'object');
 
     // Output should have expected structure
