@@ -1,19 +1,22 @@
 /**
  * Error handling for bdg CLI.
  *
- * Provides structured error classes for both CLI commands and system-level operations.
+ * Provides structured error classes for CLI commands and re-exports domain errors.
  */
 
 // CLI-level errors (user-facing command errors)
 export { CommandError } from './CommandError.js';
 
-// System-level errors (CDP, Chrome, timeouts)
+// Re-export connection errors for backward compatibility (deprecated - import from @/connection/errors instead)
 export {
-  BdgError,
   CDPConnectionError,
   ChromeLaunchError,
   CDPTimeoutError,
-} from './SystemErrors.js';
+  getErrorMessage,
+} from '@/connection/errors.js';
+
+// Legacy system errors (will be removed)
+export { BdgError } from './SystemErrors.js';
 
 // Utility functions
-export { getErrorMessage, isDaemonConnectionError } from './utils.js';
+export { isDaemonConnectionError } from './utils.js';

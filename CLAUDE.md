@@ -50,8 +50,8 @@ console.error(daemonNotRunningError());
 
 **Message modules:** `errors.ts`, `commands.ts`, `chrome.ts`, `preview.ts`, `validation.ts`, etc.
 
-### 4. Error Handling (`src/ui/errors/`)
-Structured errors with metadata and semantic exit codes:
+### 4. Error Handling (Domain-specific modules)
+Structured errors with metadata and semantic exit codes, organized by domain:
 ```typescript
 // CLI-level errors (user-facing commands)
 import { CommandError } from '@/ui/errors/index.js';
@@ -63,17 +63,17 @@ throw new CommandError(
   EXIT_CODES.RESOURCE_NOT_FOUND
 );
 
-// System-level errors (CDP, Chrome, timeouts)
-import { ChromeLaunchError, CDPConnectionError, getErrorMessage } from '@/ui/errors/index.js';
+// Connection errors (CDP, Chrome, timeouts)
+import { ChromeLaunchError, CDPConnectionError, getErrorMessage } from '@/connection/errors.js';
 
 throw new ChromeLaunchError('Chrome binary not found', cause);
 ```
 
-**Error modules:**
-- `CommandError.ts` - CLI-level user-facing errors
-- `SystemErrors.ts` - Low-level system errors (BdgError, CDPConnectionError, ChromeLaunchError, CDPTimeoutError)
-- `utils.ts` - Helper functions (getErrorMessage)
-- `index.ts` - Barrel export for all error types
+**Error modules by domain:**
+- `ui/errors/CommandError.ts` - CLI-level user-facing errors
+- `connection/errors.ts` - Connection layer (CDPConnectionError, ChromeLaunchError, CDPTimeoutError, getErrorMessage)
+- `ui/errors/utils.ts` - Helper functions (isDaemonConnectionError)
+- `ui/errors/index.ts` - Barrel export (re-exports connection errors for backward compatibility)
 
 ### 5. Logging (`src/ui/logging/`)
 Consistent logging with context prefixes and debug mode support:
