@@ -33,7 +33,7 @@ export const DEFAULT_CHROME_HANDLE_SIGINT = false;
 /**
  * Persistent Chrome profile directory path (relative to user home)
  */
-export const CHROME_PROFILE_DIR = '.bdg/chrome-profile';
+export const CHROME_PROFILE_DIR = 'chrome-profile';
 
 /**
  * Maximum CDP connection retry attempts before failing

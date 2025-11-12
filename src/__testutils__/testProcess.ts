@@ -41,9 +41,10 @@ export function mockProcessAlive(alivePids: number[]): void {
   const alivePidSet = new Set(alivePids);
 
   process.kill = ((pid: number, signal?: number | NodeJS.Signals) => {
+    const normalizedPid = Math.abs(pid);
     // Signal 0 is used to check if process exists (doesn't actually send signal)
     if (signal === 0 || signal === undefined) {
-      if (alivePidSet.has(pid)) {
+      if (alivePidSet.has(normalizedPid)) {
         // Process is alive - return true
         return true;
       } else {
@@ -55,8 +56,17 @@ export function mockProcessAlive(alivePids: number[]): void {
         throw err;
       }
     }
-    // For other signals, delegate to original implementation
-    return (originalKill as typeof process.kill)(pid, signal);
+
+    if (!alivePidSet.has(normalizedPid)) {
+      const err = new Error(`kill ESRCH`) as NodeJS.ErrnoException;
+      err.code = 'ESRCH';
+      err.errno = -3;
+      err.syscall = 'kill';
+      throw err;
+    }
+
+    alivePidSet.delete(normalizedPid);
+    return true;
   }) as typeof process.kill;
 }
 

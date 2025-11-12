@@ -9,6 +9,8 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
+import { ensureTestSessionDir, getTestHomeDir } from './testHome.js';
+
 export interface CommandResult {
   exitCode: number;
   stdout: string;
@@ -43,6 +45,8 @@ export async function runCommand(
   // Path to compiled CLI entry point (ESM module compatibility)
   const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
   const cliPath = path.resolve(currentFileDir, '../../dist/index.js');
+  const testSessionDir = ensureTestSessionDir();
+  const testHomeDir = getTestHomeDir();
 
   return new Promise((resolve) => {
     let stdout = '';
@@ -50,7 +54,12 @@ export async function runCommand(
     let timedOut = false;
 
     const child = spawn('node', [cliPath, command, ...args], {
-      env: { ...process.env, ...env },
+      env: {
+        ...process.env,
+        BDG_SESSION_DIR: testSessionDir,
+        HOME: testHomeDir,
+        ...env,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 

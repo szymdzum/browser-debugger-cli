@@ -25,6 +25,8 @@ const SESSION_FILES = {
   DOM_QUERY_CACHE: 'last-query.json',
 } as const;
 
+const SESSION_DIR_OVERRIDE_ENV = 'BDG_SESSION_DIR';
+
 /**
  * Session file type for type-safe path generation
  */
@@ -38,6 +40,11 @@ export type SessionFileType = keyof typeof SESSION_FILES;
  * @returns Full path to session directory
  */
 export function getSessionDir(): string {
+  const override = process.env[SESSION_DIR_OVERRIDE_ENV];
+  if (override && override.trim().length > 0) {
+    return path.isAbsolute(override) ? override : path.resolve(override);
+  }
+
   return path.join(os.homedir(), '.bdg');
 }
 

@@ -222,6 +222,32 @@ void describe('Session Utilities Contract Tests', () => {
       );
     });
 
+    void it('should cleanup orphaned worker when daemon is dead', () => {
+      const sessionDir = path.join(tmpDir, '.bdg');
+      fs.mkdirSync(sessionDir, { recursive: true });
+
+      writePid(88888);
+      fs.writeFileSync(getSessionFilePath('DAEMON_PID'), '66666');
+
+      // Only worker PID is alive
+      mockProcessAlive([88888]);
+
+      const cleaned = cleanupStaleSession();
+
+      assert.equal(cleaned, true, 'Should clean up when daemon died but worker survived');
+      assert.equal(
+        fs.existsSync(getSessionFilePath('PID')),
+        false,
+        'Worker PID file should be removed'
+      );
+      assert.equal(
+        fs.existsSync(getSessionFilePath('DAEMON_PID')),
+        false,
+        'Daemon PID should be removed'
+      );
+      assert.equal(isProcessAlive(88888), false, 'Orphaned worker process should be killed');
+    });
+
     void it('should not remove files when session process is alive', () => {
       // Setup: Create session files with alive process
       const sessionDir = path.join(tmpDir, '.bdg');
@@ -234,9 +260,10 @@ void describe('Session Utilities Contract Tests', () => {
         startTime: Date.now(),
         port: 9222,
       });
+      fs.writeFileSync(getSessionFilePath('DAEMON_PID'), '66666');
 
       // Mock process 88888 as alive
-      mockProcessAlive([88888]);
+      mockProcessAlive([88888, 66666]);
 
       // Act
       const cleaned = cleanupStaleSession();

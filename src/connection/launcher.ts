@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as net from 'net';
-import * as os from 'os';
 import * as path from 'path';
 
 import * as chromeLauncher from 'chrome-launcher';
@@ -17,6 +16,7 @@ import {
   HEADLESS_FLAG,
   DOCKER_CHROME_FLAGS,
 } from '@/constants.js';
+import { ensureSessionDir, getSessionDir } from '@/session/paths.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { LaunchedChrome } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
@@ -31,6 +31,8 @@ import {
   invalidPrefsFormatError,
   prefsLoadError,
   chromeLaunchFailedError,
+  chromeBinaryOverrideNotFound,
+  chromeBinaryOverrideNotExecutable,
 } from '@/ui/messages/chrome.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -89,6 +91,7 @@ export interface LaunchOptions
     | 'handleSIGINT'
     | 'ignoreDefaultFlags'
     | 'chromeFlags'
+    | 'chromePath'
   > {
   /** Remote debugging port (defaults to 9222 when omitted) */
   port?: number;
@@ -102,6 +105,8 @@ export interface LaunchOptions
   prefs?: Record<string, unknown> | undefined;
   /** Path to JSON file containing Chrome preferences */
   prefsFile?: string | undefined;
+  /** Override Chrome binary detection with an explicit path */
+  chromePath?: string;
 }
 
 /**
@@ -272,8 +277,9 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
  * @throws Error if user data directory cannot be created due to permission issues
  */
 function getPersistentUserDataDir(): string {
-  const homeDir = os.homedir();
-  const userDataDir = path.join(homeDir, CHROME_PROFILE_DIR);
+  ensureSessionDir();
+  const baseDir = getSessionDir();
+  const userDataDir = path.join(baseDir, CHROME_PROFILE_DIR);
 
   if (!fs.existsSync(userDataDir)) {
     try {
@@ -332,6 +338,58 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
   }
 
   return options.prefs;
+}
+
+/**
+ * Resolve Chrome binary override from LaunchOptions or CHROME_PATH.
+ *
+ * When users explicitly set a Chrome binary we skip chrome-launcher's fallback
+ * auto-detection to ensure mismatched paths fail fast with actionable errors.
+ *
+ * @param options - Launch options which may include chromePath
+ * @returns Validated Chrome binary path or undefined if no override
+ * @throws ChromeLaunchError if override path is invalid or not executable
+ */
+function resolveChromeBinaryOverride(options: LaunchOptions): string | undefined {
+  const override = options.chromePath ?? process.env['CHROME_PATH'];
+
+  if (!override) {
+    return undefined;
+  }
+
+  const chromePath = override.trim();
+  if (!chromePath) {
+    return undefined;
+  }
+
+  const sourceLabel = options.chromePath ? 'chromePath option' : 'CHROME_PATH';
+
+  if (!fs.existsSync(chromePath)) {
+    const diagnostics = getFormattedDiagnostics();
+    throw new ChromeLaunchError(
+      `${chromeBinaryOverrideNotFound(chromePath, sourceLabel)}\n\n${diagnostics.join('\n')}`
+    );
+  }
+
+  try {
+    const stats = fs.statSync(chromePath);
+    if (stats.isDirectory()) {
+      throw new ChromeLaunchError(chromeBinaryOverrideNotExecutable(chromePath, sourceLabel));
+    }
+
+    fs.accessSync(chromePath, fs.constants.X_OK);
+  } catch (error) {
+    if (error instanceof ChromeLaunchError) {
+      throw error;
+    }
+
+    throw new ChromeLaunchError(
+      `${chromeBinaryOverrideNotExecutable(chromePath, sourceLabel)}\n\n${getErrorMessage(error)}`,
+      error instanceof Error ? error : undefined
+    );
+  }
+
+  return chromePath;
 }
 
 /**
@@ -429,6 +487,7 @@ function ensureJSONCompatiblePrefs(
 function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const userPrefs = loadChromePrefs(options);
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
+  const chromePathOverride = resolveChromeBinaryOverride(options);
 
   // User preferences take precedence over bdg defaults
   const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;
@@ -448,6 +507,7 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
       portStrictMode: options.portStrictMode,
       prefs: ensureJSONCompatiblePrefs(mergedPrefs),
       envVars: options.envVars,
+      chromePath: chromePathOverride,
     }),
   };
 }
