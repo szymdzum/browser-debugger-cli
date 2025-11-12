@@ -122,18 +122,31 @@ export async function killDaemon(signal: NodeJS.Signals = 'SIGTERM'): Promise<vo
  * ```
  */
 export async function cleanupAllSessions(): Promise<void> {
-  // Kill daemon if running
+  // Kill daemon if running via PID file
   await killDaemon('SIGKILL');
 
-  // Kill Chrome on port 9222 (default port used by tests)
+  // Kill ALL daemon/worker processes (handles orphaned processes from failed tests)
+  // This is aggressive but necessary for test isolation
   try {
     const { execSync } = await import('child_process');
-    execSync('lsof -ti:9222 | xargs kill -9 2>/dev/null || true', { stdio: 'ignore' });
+    execSync('pkill -9 -f "node.*dist/daemon" 2>/dev/null || true', { stdio: 'ignore' });
+    execSync('pkill -9 -f "node.*dist/daemon/worker" 2>/dev/null || true', { stdio: 'ignore' });
+  } catch {
+    // Ignore errors
+  }
+
+  // Kill Chrome on all test ports (9222-9232)
+  try {
+    const { execSync } = await import('child_process');
+    for (let port = 9222; port <= 9232; port++) {
+      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+    }
   } catch {
     // Ignore errors if no process on port
   }
 
   // Wait for processes to fully die and ports to be released
+  // Increased to 2000ms to ensure complete cleanup between tests
   await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Remove all session files

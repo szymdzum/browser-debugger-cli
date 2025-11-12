@@ -6,7 +6,7 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import {
@@ -18,11 +18,8 @@ import {
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 void describe('Error Handling Smoke Tests', () => {
-  beforeEach(async () => {
-    await cleanupAllSessions();
-  });
-
   afterEach(async () => {
+    // Cleanup after each test (no beforeEach needed if this works properly)
     await cleanupAllSessions();
   });
 

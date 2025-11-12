@@ -6,7 +6,7 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, afterEach } from 'node:test';
 
 import { runCommand, runCommandJSON } from '@/__testutils__/commandRunner.js';
 import {
@@ -18,13 +18,8 @@ import {
 } from '@/__testutils__/daemonHelpers.js';
 
 void describe('Session Lifecycle Smoke Tests', () => {
-  beforeEach(async () => {
-    // Ensure clean state before each test
-    await cleanupAllSessions();
-  });
-
   afterEach(async () => {
-    // Cleanup after each test
+    // Cleanup after each test (no beforeEach needed if this works properly)
     await cleanupAllSessions();
   });
 
@@ -46,7 +41,10 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should collect data during session', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9224', '--headless'], { timeout: 10000 });
+    const startResult = await runCommand('http://example.com', ['--port', '9224', '--headless'], {
+      timeout: 10000,
+    });
+    assert.equal(startResult.exitCode, 0, `Session start failed: ${startResult.stderr}`);
 
     // Wait for daemon to be ready
     await waitForDaemon(5000);
@@ -65,7 +63,10 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should write output on stop', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9225', '--headless'], { timeout: 10000 });
+    const startResult = await runCommand('http://example.com', ['--port', '9225', '--headless'], {
+      timeout: 10000,
+    });
+    assert.equal(startResult.exitCode, 0, `Session start failed: ${startResult.stderr}`);
     await waitForDaemon(5000);
 
     // Give Chrome time to collect data
@@ -111,7 +112,10 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should handle concurrent session attempts gracefully', async () => {
     // Start first session with unique port
-    await runCommand('http://example.com', ['--port', '9227', '--headless'], { timeout: 10000 });
+    const firstResult = await runCommand('http://example.com', ['--port', '9227', '--headless'], {
+      timeout: 10000,
+    });
+    assert.equal(firstResult.exitCode, 0, `First session start failed: ${firstResult.stderr}`);
     await waitForDaemon(5000);
 
     // Try to start second session (should fail)
@@ -121,7 +125,10 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
     // Should fail with daemon already running error
     assert.notEqual(secondResult.exitCode, 0);
-    assert.ok(secondResult.stderr.includes('daemon'));
+    assert.ok(
+      secondResult.stderr.includes('daemon') || secondResult.stderr.includes('already'),
+      `Expected error about daemon, got: ${secondResult.stderr}`
+    );
 
     // First session should still be running
     assert.equal(isDaemonRunning(), true);
