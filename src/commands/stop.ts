@@ -127,14 +127,12 @@ export function registerStopCommand(program: Command): void {
               };
             } else {
               // Daemon returned error
-              // Special case: NO_SESSION is not really an error - it's a success (desired state achieved)
+              // Special case: NO_SESSION should fail with helpful error message
               if (response.errorCode === IPCErrorCode.NO_SESSION) {
                 return {
-                  success: true,
-                  data: {
-                    stopped: { bdg: false, chrome: false },
-                    message: response.message ?? STOP_MESSAGES.NO_SESSION,
-                  },
+                  success: false,
+                  error: response.message ?? STOP_MESSAGES.NO_SESSION,
+                  exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
                 };
               }
 

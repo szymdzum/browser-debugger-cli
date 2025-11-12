@@ -125,6 +125,17 @@ export async function cleanupAllSessions(): Promise<void> {
   // Kill daemon if running
   await killDaemon('SIGKILL');
 
+  // Kill Chrome on port 9222 (default port used by tests)
+  try {
+    const { execSync } = await import('child_process');
+    execSync('lsof -ti:9222 | xargs kill -9 2>/dev/null || true', { stdio: 'ignore' });
+  } catch {
+    // Ignore errors if no process on port
+  }
+
+  // Wait for processes to fully die
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+
   // Remove all session files
   const files = [
     'DAEMON_PID',
