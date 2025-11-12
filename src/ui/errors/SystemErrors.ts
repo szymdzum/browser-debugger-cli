@@ -1,22 +1,18 @@
 /**
  * Legacy system error classes (deprecated).
  *
- * @deprecated This file will be removed. Domain errors have been moved to their respective modules:
- * - CDP/Chrome errors: @/connection/errors.ts
- * - Daemon errors: @/daemon/errors.ts (future)
- * - Session errors: @/session/errors.ts (future)
+ * This file will be removed. Domain errors have been moved to their respective modules.
+ * Use connection/errors.ts for CDP and Chrome errors.
  */
 
 /**
  * Base error class for all bdg system errors (legacy).
  *
- * @deprecated No longer used. Domain modules define their own error base classes.
+ * No longer used. Domain modules define their own error base classes.
  *
- * Extends native Error with:
- * - Error codes for programmatic handling
- * - Category for filtering (system/user/external)
- * - Exit code for semantic exit codes (80-99 user errors, 100-119 software errors)
- * - Cause chaining for nested errors
+ * Extends native Error with error codes for programmatic handling,
+ * category for filtering, exit codes for semantic exit codes,
+ * and cause chaining for nested errors.
  */
 export abstract class BdgError extends Error {
   abstract readonly code: string;

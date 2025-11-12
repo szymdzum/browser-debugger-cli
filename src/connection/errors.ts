@@ -7,10 +7,8 @@
 /**
  * Base error class for all connection-related errors.
  *
- * Extends native Error with:
- * - Error codes for programmatic handling
- * - Exit code for semantic exit codes
- * - Cause chaining for nested errors
+ * Extends native Error with error codes for programmatic handling,
+ * exit codes for semantic exit codes, and cause chaining for nested errors.
  */
 export abstract class ConnectionError extends Error {
   abstract readonly code: string;
