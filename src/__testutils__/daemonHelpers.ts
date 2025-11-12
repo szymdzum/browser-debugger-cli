@@ -133,8 +133,8 @@ export async function cleanupAllSessions(): Promise<void> {
     // Ignore errors if no process on port
   }
 
-  // Wait for processes to fully die
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  // Wait for processes to fully die and ports to be released
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
   // Remove all session files
   const files = [
