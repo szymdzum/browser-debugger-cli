@@ -25,6 +25,8 @@ const SESSION_FILES = {
   DOM_QUERY_CACHE: 'last-query.json',
 } as const;
 
+const SESSION_DIR_OVERRIDE_ENV = 'BDG_SESSION_DIR';
+
 /**
  * Session file type for type-safe path generation
  */
@@ -38,6 +40,11 @@ export type SessionFileType = keyof typeof SESSION_FILES;
  * @returns Full path to session directory
  */
 export function getSessionDir(): string {
+  const override = process.env[SESSION_DIR_OVERRIDE_ENV];
+  if (override && override.trim().length > 0) {
+    return path.isAbsolute(override) ? override : path.resolve(override);
+  }
+
   return path.join(os.homedir(), '.bdg');
 }
 
@@ -55,18 +62,6 @@ export function getSessionDir(): string {
  */
 export function getSessionFilePath(fileType: SessionFileType): string {
   return path.join(getSessionDir(), SESSION_FILES[fileType]);
-}
-
-/**
- * Get the path to the worker Unix domain socket.
- *
- * WHY: Single canonical place for worker UDS path; predictable cleanup; avoids collisions.
- *
- * @param workerPid - Worker process ID
- * @returns Full path to worker socket
- */
-export function getWorkerSocketPath(workerPid: number): string {
-  return path.join(getSessionDir(), `worker.${workerPid}.sock`);
 }
 
 /**

@@ -10,13 +10,58 @@ import * as fs from 'fs';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 
+import { readChromePid, clearChromePid } from './chrome.js';
 import { safeDeleteFile } from './fileOps.js';
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile } from './pid.js';
-import { isProcessAlive } from './process.js';
+import { isProcessAlive, killChromeProcess } from './process.js';
 
 const log = createLogger('cleanup');
+
+function readPidFromFile(filePath: string): number | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const pidStr = fs.readFileSync(filePath, 'utf-8').trim();
+    const pid = parseInt(pidStr, 10);
+    return Number.isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
+function killOrphanedWorker(pid: number): void {
+  try {
+    process.kill(pid, 'SIGKILL');
+    log(`Force killed orphaned worker process ${pid}`);
+  } catch (error) {
+    log(`Failed to kill orphaned worker process ${pid}: ${getErrorMessage(error)}`);
+  }
+}
+
+function killCachedChromeProcess(reason: string): void {
+  const chromePid = readChromePid();
+  if (!chromePid) {
+    return;
+  }
+
+  log(`Killing cached Chrome process ${chromePid} (${reason})`);
+
+  let killSucceeded = false;
+  try {
+    killChromeProcess(chromePid, 'SIGKILL');
+    killSucceeded = true;
+  } catch (error) {
+    log(`Failed to kill Chrome process ${chromePid}: ${getErrorMessage(error)}`);
+  } finally {
+    if (killSucceeded || !isProcessAlive(chromePid)) {
+      clearChromePid();
+    }
+  }
+}
 
 /**
  * Cleanup stale session files if no active session is running.
@@ -73,35 +118,34 @@ export function cleanupStaleSession(): boolean {
     }
   }
 
-  // We now hold the lock - check if session PID exists and is alive
+  // We now hold the lock - check if session and daemon processes are alive
   try {
     const sessionPid = readPid();
+    let sessionAlive = sessionPid !== null && isProcessAlive(sessionPid);
 
-    // If session PID exists and process is alive, release lock and return
-    if (sessionPid !== null && isProcessAlive(sessionPid)) {
-      releaseSessionLock();
+    const daemonPidPath = getSessionFilePath('DAEMON_PID');
+    const daemonPid = readPidFromFile(daemonPidPath);
+    const daemonAlive = daemonPid !== null && isProcessAlive(daemonPid);
+
+    if (sessionAlive && !daemonAlive && sessionPid !== null) {
+      log(`Detected orphaned worker process (PID ${sessionPid}) with no daemon - forcing cleanup`);
+      killCachedChromeProcess('orphaned worker cleanup');
+      killOrphanedWorker(sessionPid);
+      sessionAlive = isProcessAlive(sessionPid);
+    }
+
+    if (sessionAlive) {
       return false;
     }
 
-    // Check daemon PID if it exists
-    const daemonPidPath = getSessionFilePath('DAEMON_PID');
-    if (fs.existsSync(daemonPidPath)) {
-      try {
-        const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
-        const daemonPid = parseInt(daemonPidStr, 10);
-
-        // If daemon is still alive, release lock and return
-        if (!isNaN(daemonPid) && isProcessAlive(daemonPid)) {
-          releaseSessionLock();
-          return false;
-        }
-      } catch {
-        // Can't read daemon PID - will clean it up below
-      }
+    if (daemonAlive) {
+      return false;
     }
 
     // All processes are dead - clean up stale artifacts
     log('Removing stale session files...');
+
+    killCachedChromeProcess('stale session cleanup');
 
     // Remove session PID
     cleanupPidFile();

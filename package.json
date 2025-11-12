@@ -29,6 +29,7 @@
     "check:enhanced": "npm run format:check && npm run type-check && npm run lint && npm run validate:module-type && npm run validate:ts-version",
     "test": "tsx --test src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts src/__tests__/integration/*.test.ts",
     "test:watch": "tsx --test --watch src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts src/__tests__/integration/*.test.ts",
+    "test:smoke": "tsx --test --test-concurrency=1 src/__tests__/smoke/*.test.ts",
     "prepublishOnly": "npm run build",
     "prepare": "husky"
   },

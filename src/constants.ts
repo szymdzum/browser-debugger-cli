@@ -33,7 +33,7 @@ export const DEFAULT_CHROME_HANDLE_SIGINT = false;
 /**
  * Persistent Chrome profile directory path (relative to user home)
  */
-export const CHROME_PROFILE_DIR = '.bdg/chrome-profile';
+export const CHROME_PROFILE_DIR = 'chrome-profile';
 
 /**
  * Maximum CDP connection retry attempts before failing
@@ -70,11 +70,6 @@ export const CDP_COMMAND_TIMEOUT_MS = 30000;
  * Prevents connection timeout during long-running sessions
  */
 export const CDP_KEEPALIVE_INTERVAL = 30000;
-
-/**
- * Enable CDP target discovery for tab detection
- */
-export const CDP_DISCOVER_TARGETS = true;
 
 /**
  * CDP reconnection retry limit
@@ -129,30 +124,6 @@ export const WEBSOCKET_NO_PONG_CLOSURE = 1001;
  * Standard encoding for text data conversion
  */
 export const UTF8_ENCODING = 'utf8';
-
-/**
- * CDP target type for browser pages
- * Identifies page-type targets (vs service workers, extensions, etc.)
- */
-export const PAGE_TARGET_TYPE = 'page';
-
-/**
- * Blank page URL used by Chrome
- * Standard initial/empty page URL
- */
-export const BLANK_PAGE_URL = 'about:blank';
-
-/**
- * CDP createTarget new window flag (default: false for tabs)
- * Controls whether targets are created as new windows or tabs
- */
-export const CDP_NEW_WINDOW_FLAG = false;
-
-/**
- * CDP attachToTarget flatten flag (default: true for simplified sessions)
- * Prevents nested session hierarchies for easier management
- */
-export const CDP_FLATTEN_SESSION_FLAG = true;
 
 /**
  * HTTP localhost address for CDP endpoints
@@ -272,12 +243,6 @@ export const STALE_REQUEST_TIMEOUT = 60000;
 export const STALE_REQUEST_CLEANUP_INTERVAL = 30000;
 
 /**
- * Memory usage logging interval (30 seconds)
- * How often to log memory statistics during session collection
- */
-export const MEMORY_LOG_INTERVAL = 30000;
-
-/**
  * Default page readiness timeout (2 seconds)
  * Maximum time to wait for page to be ready before proceeding
  * Uses adaptive detection for load, network stability, and DOM stability
@@ -317,18 +282,6 @@ export const PORT_OPTION_DESCRIPTION = 'Chrome debugging port';
  * Description for timeout option in CLI commands
  */
 export const TIMEOUT_OPTION_DESCRIPTION = 'Auto-stop after timeout (optional)';
-
-/**
- * Description for reuse-tab option in CLI commands
- */
-export const REUSE_TAB_OPTION_DESCRIPTION = 'Navigate existing tab instead of creating new one';
-
-/**
- * Default value for reuse-tab option
- * When true, bdg will attempt to find and reuse existing tabs instead of creating new ones
- * This is the preferred default for better UX and avoiding tab proliferation
- */
-export const DEFAULT_REUSE_TAB = true;
 
 /**
  * Description for user-data-dir option in CLI commands

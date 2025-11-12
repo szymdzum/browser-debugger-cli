@@ -1,4 +1,5 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import {
   MAX_NETWORK_REQUESTS,
   STALE_REQUEST_TIMEOUT,
@@ -17,12 +18,8 @@ import type {
   CDPNetworkLoadingFailedParams,
   CDPGetResponseBodyResponse,
 } from '@/types';
-import { CDPHandlerRegistry } from '@/utils/cdpHandlers.js';
-import {
-  shouldExcludeDomain,
-  shouldExcludeUrl,
-  shouldFetchBodyWithReason,
-} from '@/utils/filters.js';
+
+import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 
 export interface NetworkCollectionOptions {
   includeAll?: boolean;

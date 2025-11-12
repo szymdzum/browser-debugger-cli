@@ -1,7 +1,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import type { CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
-import { CDPHandlerRegistry } from '@/utils/cdpHandlers.js';
 
 const log = createLogger('navigation');
 

@@ -1,39 +1,27 @@
 /**
  * Error utility functions.
  *
- * Helper functions for extracting error messages from unknown error types.
+ * Helper functions for detecting specific error conditions in the CLI layer.
  */
 
+import { getErrorMessage } from '@/connection/errors.js';
+
 /**
- * Extract error message from unknown error type.
- *
- * Safely extracts error messages from various error types:
- * - Error instances → error.message
- * - Unknown types → String(error)
- *
- * Useful for error handling when error type is unknown.
+ * Detect whether an error indicates the daemon/socket is unavailable.
  *
  * @param error - Error of unknown type
- * @returns Error message string
+ * @returns True if error indicates daemon connection failure
  *
  * @example
  * ```typescript
  * try {
- *   await someOperation();
+ *   await connectToDaemon();
  * } catch (error) {
- *   throw new ChromeLaunchError(`Failed: ${getErrorMessage(error)}`, error);
+ *   if (isDaemonConnectionError(error)) {
+ *     console.error('Daemon not running. Start with: bdg <url>');
+ *   }
  * }
  * ```
- */
-export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-/**
- * Detect whether an error indicates the daemon/socket is unavailable.
  */
 export function isDaemonConnectionError(error: unknown): boolean {
   const message = getErrorMessage(error);

@@ -101,16 +101,3 @@ const pluginRegistry: TelemetryPlugin[] = createDefaultTelemetryPlugins();
 export function getRegisteredTelemetryPlugins(): TelemetryPlugin[] {
   return [...pluginRegistry];
 }
-
-export function registerTelemetryPlugin(plugin: TelemetryPlugin): void {
-  const existingIndex = pluginRegistry.findIndex((p) => p.name === plugin.name);
-  if (existingIndex >= 0) {
-    pluginRegistry.splice(existingIndex, 1, plugin);
-  } else {
-    pluginRegistry.push(plugin);
-  }
-}
-
-export function resetTelemetryPlugins(): void {
-  pluginRegistry.splice(0, pluginRegistry.length, ...createDefaultTelemetryPlugins());
-}

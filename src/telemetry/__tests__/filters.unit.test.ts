@@ -10,7 +10,7 @@ import {
   DEFAULT_SKIP_BODY_PATTERNS,
   DEFAULT_EXCLUDED_DOMAINS,
   DEFAULT_EXCLUDED_CONSOLE_PATTERNS,
-} from '@/utils/filters.js';
+} from '@/telemetry/filters.js';
 
 void describe('filters - matchesWildcard', () => {
   void it('should match exact strings', () => {

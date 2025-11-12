@@ -17,6 +17,7 @@
 
 import { CDPConnection } from '@/connection/cdp.js';
 import { launchChrome } from '@/connection/launcher.js';
+import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { startTelemetryCollectors } from '@/daemon/worker/collectors.js';
@@ -63,7 +64,6 @@ import {
 } from '@/ui/messages/debug.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
-import { waitForPageReady } from '@/utils/pageReadiness.js';
 import { normalizeUrl } from '@/utils/url.js';
 
 const log = createLogger('worker');

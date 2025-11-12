@@ -577,6 +577,17 @@ export class IPCServer {
 
       socket.write(JSON.stringify(response) + '\n');
       console.error('[daemon] Stop session response sent');
+
+      // Release lock immediately so new sessions can start
+      releaseDaemonLock();
+      console.error('[daemon] Daemon lock released');
+
+      // Shutdown daemon after successful stop
+      // Give socket time to flush response, then exit gracefully
+      setTimeout(() => {
+        console.error('[daemon] Shutting down daemon after successful stop');
+        process.exit(0);
+      }, 100);
     } catch (error) {
       const response: StopSessionResponse = {
         type: 'stop_session_response',

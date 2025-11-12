@@ -4,8 +4,8 @@
  * Centralized location for Chrome diagnostics, launch errors, and troubleshooting messages.
  */
 
+import type { ChromeDiagnostics } from '@/connection/diagnostics.js';
 import { pluralize } from '@/ui/formatting.js';
-import type { ChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
 
 /**
  * Format Chrome diagnostics for error reporting when Chrome launch fails.
@@ -237,6 +237,31 @@ export function prefsLoadError(file: string, error: string): string {
  */
 export function chromeLaunchFailedError(error: string): string {
   return `Failed to launch Chrome: ${error}`;
+}
+
+/**
+ * Generate error for invalid Chrome binary override path.
+ *
+ * @param path - Path that was provided via env/option
+ * @param source - Human-readable source label (e.g. CHROME_PATH)
+ * @returns Formatted error message
+ */
+export function chromeBinaryOverrideNotFound(path: string, source: string): string {
+  return `Chrome binary override (${source}) points to "${path}", but that file does not exist.`;
+}
+
+/**
+ * Generate error when Chrome binary override is not executable.
+ *
+ * @param path - Provided Chrome binary path
+ * @param source - Human-readable source label (e.g. CHROME_PATH)
+ * @returns Formatted error message with remediation guidance
+ */
+export function chromeBinaryOverrideNotExecutable(path: string, source: string): string {
+  return (
+    `Chrome binary override (${source}) points to "${path}", but it is not an executable file.\n` +
+    'Update the path to the Chrome binary (e.g. /Applications/Google Chrome.app/Contents/MacOS/Google Chrome) or unset the override to let bdg auto-detect Chrome.'
+  );
 }
 
 // ============================================================================
