@@ -221,21 +221,30 @@ EOF
 
 ### 8. Publish to npm
 
-Publish the package to npm with the `alpha` tag:
+Publish the package to npm with the `alpha` tag, then update `latest` to ensure the npm website displays current documentation:
 
 ```bash
+# Publish with alpha tag
 npm publish --tag alpha
+
+# Update latest tag to point to the new version (ensures npm website shows current README)
+npm dist-tag add browser-debugger-cli@0.X.Y latest
 ```
 
 **Note**: The `prepublishOnly` script will automatically run `npm run build` before publishing.
 
+**Why update both tags?**
+- The npm website (npmjs.com) displays the README from the `latest` tag
+- Publishing with `--tag alpha` only updates the `alpha` tag
+- Manually updating `latest` ensures the package page shows current documentation
+
 **Verify publication**:
 
 ```bash
-# Check that the new version is published
-npm info browser-debugger-cli@alpha version
+# Check that both tags point to the new version
+npm view browser-debugger-cli dist-tags
 
-# Should show: 0.X.Y
+# Should show: { latest: '0.X.Y', alpha: '0.X.Y' }
 ```
 
 ### 9. Verify Release
@@ -359,13 +368,14 @@ npm install -g browser-debugger-cli@0.X.Y
 ┌─────────────────────────────────────────────────────────────┐
 │ 7. Publish to npm                                           │
 │    npm publish --tag alpha                                  │
+│    npm dist-tag add browser-debugger-cli@0.X.Y latest       │
 └────────────────────────────┬────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ 8. Verify Release                                           │
 │    gh release view v0.X.Y                                   │
-│    npm info browser-debugger-cli@alpha version              │
+│    npm view browser-debugger-cli dist-tags                  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -431,33 +441,26 @@ npm whoami
 
 # Try publishing again
 npm publish --tag alpha
+npm dist-tag add browser-debugger-cli@0.X.Y latest
 ```
 
 ### npm README Not Updating
 
 **Problem**: npm package page shows stale README from old version.
 
-**Cause**: `publishConfig.tag` in package.json causes new versions to update only the specified tag (e.g., `alpha`), not `latest`. The npm website displays the README from the `latest` tag by default.
+**Cause**: The npm website displays the README from the `latest` tag. If you only publish with `--tag alpha`, the `latest` tag doesn't update.
 
 **Solution**:
 ```bash
-# Option 1: Update the latest dist-tag manually
+# Update the latest dist-tag to point to the new version
 npm dist-tag add browser-debugger-cli@0.X.Y latest
-
-# Option 2: Remove publishConfig.tag and republish
-# Edit package.json - remove this section:
-# "publishConfig": {
-#   "tag": "alpha"
-# }
-# Then publish normally:
-npm publish
 
 # Verify both tags point to current version
 npm view browser-debugger-cli dist-tags
 # Should show: { latest: '0.X.Y', alpha: '0.X.Y' }
 ```
 
-**Prevention**: For stable releases, remove `publishConfig.tag` from package.json before publishing to ensure the `latest` tag updates automatically.
+**Prevention**: Always run `npm dist-tag add browser-debugger-cli@0.X.Y latest` after publishing (now included in standard release process).
 
 ### Release Notes Not Formatted
 
@@ -575,7 +578,8 @@ git commit -m "chore: release v0.X.Y" && \
 git tag v0.X.Y && \
 git push origin main --tags && \
 gh release create v0.X.Y --title "v0.X.Y" --notes "Release notes here" && \
-npm publish --tag alpha
+npm publish --tag alpha && \
+npm dist-tag add browser-debugger-cli@0.X.Y latest
 
 # View recent releases
 gh release list
