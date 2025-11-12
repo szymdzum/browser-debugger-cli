@@ -63,8 +63,8 @@ Follow [Semantic Versioning](https://semver.org/):
 - [ ] Version commit created
 - [ ] Git tag created and pushed
 - [ ] GitHub Release created with notes
+- [ ] npm package published
 - [ ] CI checks passing on release
-- [ ] npm package published (if desired)
 
 ### Post-Release
 
@@ -219,7 +219,26 @@ EOF
 - Link to full changelog
 - Highlight breaking changes prominently
 
-### 8. Verify Release
+### 8. Publish to npm
+
+Publish the package to npm with the `alpha` tag:
+
+```bash
+npm publish --tag alpha
+```
+
+**Note**: The `prepublishOnly` script will automatically run `npm run build` before publishing.
+
+**Verify publication**:
+
+```bash
+# Check that the new version is published
+npm info browser-debugger-cli@alpha version
+
+# Should show: 0.X.Y
+```
+
+### 9. Verify Release
 
 Check that the release appears correctly:
 
@@ -236,8 +255,9 @@ open https://github.com/szymdzum/browser-debugger-cli/releases/tag/v0.X.Y
 - ✅ Release notes are formatted correctly
 - ✅ Tag is linked to correct commit
 - ✅ Date/time are correct
+- ✅ npm package published with correct version
 
-### 9. Verify Local Repository
+### 10. Verify Local Repository
 
 Ensure your local repo is clean:
 
@@ -337,8 +357,15 @@ npm install -g browser-debugger-cli@0.X.Y
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 7. (Optional) Publish to npm                                │
+│ 7. Publish to npm                                           │
 │    npm publish --tag alpha                                  │
+└────────────────────────────┬────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 8. Verify Release                                           │
+│    gh release view v0.X.Y                                   │
+│    npm info browser-debugger-cli@alpha version              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -543,11 +570,12 @@ git push origin :refs/tags/v0.X.Y
 # Complete release workflow (one-liner)
 npm run check:enhanced && \
 npm run build && \
-git add CHANGELOG.md package.json && \
+git add CHANGELOG.md package.json package-lock.json && \
 git commit -m "chore: release v0.X.Y" && \
 git tag v0.X.Y && \
 git push origin main --tags && \
-gh release create v0.X.Y --title "v0.X.Y" --notes "Release notes here"
+gh release create v0.X.Y --title "v0.X.Y" --notes "Release notes here" && \
+npm publish --tag alpha
 
 # View recent releases
 gh release list
