@@ -52,7 +52,7 @@ void describe('Error Handling Smoke Tests', () => {
   void it('should handle invalid URL gracefully', async () => {
     // Note: URL validation is permissive - "not-a-valid-url" becomes "http://not-a-valid-url/"
     // This test verifies error handling, not URL validation
-    const result = await runCommand('http://example.com', ['--port', '9229'], {
+    const result = await runCommand('http://example.com', ['--port', '9229', '--headless'], {
       timeout: 10000,
     });
 
@@ -65,7 +65,7 @@ void describe('Error Handling Smoke Tests', () => {
 
   void it('should handle daemon crash during session', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9230'], { timeout: 10000 });
+    await runCommand('http://example.com', ['--port', '9230', '--headless'], { timeout: 10000 });
     await waitForDaemon(5000);
 
     // Kill daemon forcefully (simulate crash)
@@ -89,7 +89,7 @@ void describe('Error Handling Smoke Tests', () => {
 
   void it('should provide helpful error when Chrome fails to launch', async () => {
     // Try to start with invalid Chrome path and unique port
-    const result = await runCommand('http://example.com', ['--port', '9231'], {
+    const result = await runCommand('http://example.com', ['--port', '9231', '--headless'], {
       timeout: 10000,
       env: {
         CHROME_PATH: '/nonexistent/chrome',
@@ -105,7 +105,7 @@ void describe('Error Handling Smoke Tests', () => {
 
   void it('should cleanup stale sessions automatically', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9232'], { timeout: 10000 });
+    await runCommand('http://example.com', ['--port', '9232', '--headless'], { timeout: 10000 });
     await waitForDaemon(5000);
 
     // Kill daemon without cleanup (simulate crash)
@@ -115,7 +115,7 @@ void describe('Error Handling Smoke Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Try to start new session (should cleanup stale and succeed)
-    const result = await runCommand('http://example.com', ['--port', '9232'], {
+    const result = await runCommand('http://example.com', ['--port', '9232', '--headless'], {
       timeout: 10000,
     });
 

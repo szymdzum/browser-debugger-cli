@@ -30,7 +30,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should start session and create daemon', async () => {
     // Start session with a simple URL using a unique port to avoid conflicts
-    const result = await runCommand('http://example.com', ['--port', '9223'], {
+    const result = await runCommand('http://example.com', ['--port', '9223', '--headless'], {
       timeout: 10000,
     });
 
@@ -46,7 +46,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should collect data during session', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9224'], { timeout: 10000 });
+    await runCommand('http://example.com', ['--port', '9224', '--headless'], { timeout: 10000 });
 
     // Wait for daemon to be ready
     await waitForDaemon(5000);
@@ -65,7 +65,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should write output on stop', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9225'], { timeout: 10000 });
+    await runCommand('http://example.com', ['--port', '9225', '--headless'], { timeout: 10000 });
     await waitForDaemon(5000);
 
     // Give Chrome time to collect data
@@ -93,7 +93,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should cleanup daemon on stop', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9226'], { timeout: 10000 });
+    await runCommand('http://example.com', ['--port', '9226', '--headless'], { timeout: 10000 });
     await waitForDaemon(5000);
 
     // Stop session
@@ -111,11 +111,11 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should handle concurrent session attempts gracefully', async () => {
     // Start first session with unique port
-    await runCommand('http://example.com', ['--port', '9227'], { timeout: 10000 });
+    await runCommand('http://example.com', ['--port', '9227', '--headless'], { timeout: 10000 });
     await waitForDaemon(5000);
 
     // Try to start second session (should fail)
-    const secondResult = await runCommand('http://another.com', ['--port', '9228'], {
+    const secondResult = await runCommand('http://another.com', ['--port', '9228', '--headless'], {
       timeout: 10000,
     });
 
