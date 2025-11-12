@@ -2,7 +2,7 @@
  * Default filters for reducing noise in collected data
  */
 
-import { extractHostname, extractHostnameWithPath } from './url.js';
+import { extractHostname, extractHostnameWithPath } from '@/utils/url.js';
 
 /**
  * Decision object for whether to fetch a response body.

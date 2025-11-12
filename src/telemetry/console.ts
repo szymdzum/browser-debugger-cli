@@ -1,4 +1,5 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type {
   ConsoleMessage,
@@ -6,8 +7,8 @@ import type {
   CDPConsoleAPICalledParams,
   CDPExceptionThrownParams,
 } from '@/types';
-import { CDPHandlerRegistry } from '@/utils/cdpHandlers.js';
-import { shouldExcludeConsoleMessage } from '@/utils/filters.js';
+
+import { shouldExcludeConsoleMessage } from './filters.js';
 
 /**
  * Start collecting console messages and exceptions via CDP Runtime domain.

@@ -32,9 +32,9 @@ import {
   prefsLoadError,
   chromeLaunchFailedError,
 } from '@/ui/messages/chrome.js';
-import { getChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
 import { filterDefined } from '@/utils/objects.js';
 
+import { getChromeDiagnostics } from './diagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from './errors.js';
 
 const log = createLogger('chrome');

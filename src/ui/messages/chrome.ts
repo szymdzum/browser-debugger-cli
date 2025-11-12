@@ -4,8 +4,8 @@
  * Centralized location for Chrome diagnostics, launch errors, and troubleshooting messages.
  */
 
+import type { ChromeDiagnostics } from '@/connection/diagnostics.js';
 import { pluralize } from '@/ui/formatting.js';
-import type { ChromeDiagnostics } from '@/utils/chromeDiagnostics.js';
 
 /**
  * Format Chrome diagnostics for error reporting when Chrome launch fails.
