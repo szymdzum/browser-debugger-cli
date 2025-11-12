@@ -534,6 +534,77 @@ When writing tests:
 
 ---
 
+## Test Pyramid: Unit, Contract, Integration, and Smoke Tests
+
+This project uses a layered testing strategy:
+
+### 1. Unit Tests (`*.unit.test.ts`)
+- **Scope**: Single function, pure logic
+- **Mocking**: External dependencies only
+- **Speed**: Very fast (<1ms per test)
+- **Example**: `filters.unit.test.ts`, `launcher.unit.test.ts`
+- **When to run**: Every commit, watch mode during development
+
+### 2. Contract Tests (`*.contract.test.ts`)
+- **Scope**: Module behavior with mocked I/O boundaries
+- **Mocking**: CDP, filesystem, network - not internal code
+- **Speed**: Fast (1-10ms per test)
+- **Example**: `cdp.contract.test.ts`, `network.contract.test.ts`
+- **When to run**: Every commit, CI on all PRs
+
+### 3. Integration Tests (`*.integration.test.ts`)
+- **Scope**: Multiple modules working together
+- **Mocking**: Minimal (only external systems like Chrome)
+- **Speed**: Medium (10-100ms per test)
+- **Example**: `session-files.integration.test.ts`
+- **When to run**: Every commit, CI on all PRs
+
+### 4. Smoke Tests (`*.smoke.test.ts`)
+- **Scope**: Full end-to-end CLI behavior with real Chrome
+- **Mocking**: None - uses actual Chrome browser
+- **Speed**: Slow (2-5 seconds per test)
+- **Example**: `session-lifecycle.smoke.test.ts`, `error-handling.smoke.test.ts`
+- **When to run**: Locally before release, CI on main branch only
+
+### CI Strategy
+
+**On Pull Requests (fast feedback):**
+```yaml
+✅ Unit tests
+✅ Contract tests
+✅ Integration tests
+❌ Smoke tests (skipped for speed)
+```
+
+**On Main Branch (release readiness):**
+```yaml
+✅ Unit tests
+✅ Contract tests
+✅ Integration tests
+✅ Smoke tests (with headless Chrome)
+```
+
+**Rationale:**
+- PRs get fast feedback (~30-60s) without Chrome installation overhead
+- Main branch gets full end-to-end validation before releases
+- Smoke tests catch Chrome integration issues before they reach production
+- Developers can run smoke tests locally with `npm run test:smoke`
+
+### Running Tests Locally
+
+```bash
+# Fast: Run unit, contract, and integration tests (no Chrome needed)
+npm test
+
+# Full: Run smoke tests with real Chrome
+npm run test:smoke
+
+# Watch mode for development (excludes smoke tests)
+npm run test:watch
+```
+
+---
+
 ## Summary
 
 **The Golden Rule:**
