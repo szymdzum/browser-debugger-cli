@@ -27,8 +27,9 @@
     "validate:ts-version": "node -e \"const ts = require('typescript'); const v = ts.version.split('.'); if (parseInt(v[0]) < 5 || (parseInt(v[0]) === 5 && parseInt(v[1]) < 6)) { console.error('Requires TypeScript 5.6+, found:', ts.version); process.exit(1); } else { console.log('✅ TypeScript version:', ts.version); }\"",
     "check": "npm run format:check && npm run type-check && npm run lint",
     "check:enhanced": "npm run format:check && npm run type-check && npm run lint && npm run validate:module-type && npm run validate:ts-version",
-    "test": "tsx --test src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts src/__tests__/integration/*.test.ts",
-    "test:watch": "tsx --test --watch src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts src/__tests__/integration/*.test.ts",
+    "test": "tsx --test src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts src/__tests__/integration/*.test.ts src/__tests__/smoke/*.test.ts",
+    "test:watch": "tsx --test --watch src/**/__tests__/*.test.ts src/**/__tests__/*.contract.test.ts src/__tests__/integration/*.test.ts src/__tests__/smoke/*.test.ts",
+    "test:smoke": "tsx --test src/__tests__/smoke/*.test.ts",
     "prepublishOnly": "npm run build",
     "prepare": "husky"
   },
