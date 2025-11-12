@@ -58,18 +58,6 @@ export function getSessionFilePath(fileType: SessionFileType): string {
 }
 
 /**
- * Get the path to the worker Unix domain socket.
- *
- * WHY: Single canonical place for worker UDS path; predictable cleanup; avoids collisions.
- *
- * @param workerPid - Worker process ID
- * @returns Full path to worker socket
- */
-export function getWorkerSocketPath(workerPid: number): string {
-  return path.join(getSessionDir(), `worker.${workerPid}.sock`);
-}
-
-/**
  * Get the path to the daemon's Unix domain socket.
  */
 export function getDaemonSocketPath(): string {

@@ -15,8 +15,5 @@ export {
   getErrorMessage,
 } from '@/connection/errors.js';
 
-// Legacy system errors (will be removed)
-export { BdgError } from './SystemErrors.js';
-
 // Utility functions
 export { isDaemonConnectionError } from './utils.js';
