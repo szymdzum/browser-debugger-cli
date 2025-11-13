@@ -81,7 +81,7 @@ RESULT=$(bdg cdp Runtime.evaluate --params "{\"expression\": $(printf '%s' "$EXT
 log_step "Validating extracted data"
 
 # Parse result using jq
-REPOS=$(echo "$RESULT" | jq -r '.result.value')
+REPOS=$(echo "$RESULT" | jq -r '.result.result.value')
 REPO_COUNT=$(echo "$REPOS" | jq 'length')
 
 log_info "Extracted $REPO_COUNT repositories"

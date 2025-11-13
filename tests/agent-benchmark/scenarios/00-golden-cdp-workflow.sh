@@ -73,7 +73,7 @@ record_metric "session_started" "true"
 log_step "Querying document title via Runtime.evaluate"
 
 TITLE_RESULT=$(bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}')
-TITLE=$(echo "$TITLE_RESULT" | jq -r '.result.value')
+TITLE=$(echo "$TITLE_RESULT" | jq -r '.result.result.value')
 
 assert_not_empty "$TITLE" "Title should not be empty"
 log_success "Title extracted: $TITLE"
@@ -87,7 +87,7 @@ log_step "Checking element existence and extracting content"
 
 # Check if h1 exists
 H1_EXISTS=$(bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\"h1\") !== null","returnByValue":true}')
-EXISTS=$(echo "$H1_EXISTS" | jq -r '.result.value')
+EXISTS=$(echo "$H1_EXISTS" | jq -r '.result.result.value')
 
 if [ "$EXISTS" != "true" ]; then
   die "H1 element should exist"
@@ -96,7 +96,7 @@ log_success "H1 element found"
 
 # Extract h1 text content
 H1_TEXT=$(bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\"h1\")?.textContent","returnByValue":true}')
-H1_CONTENT=$(echo "$H1_TEXT" | jq -r '.result.value')
+H1_CONTENT=$(echo "$H1_TEXT" | jq -r '.result.result.value')
 
 assert_not_empty "$H1_CONTENT" "H1 content should not be empty"
 log_success "H1 content: $H1_CONTENT"
@@ -109,7 +109,7 @@ record_metric "h1_content" "$H1_CONTENT"
 log_step "Extracting data from multiple paragraph elements"
 
 PARAGRAPHS=$(bdg cdp Runtime.evaluate --params '{"expression":"Array.from(document.querySelectorAll(\"p\")).map(p => p.textContent)","returnByValue":true}')
-PARA_COUNT=$(echo "$PARAGRAPHS" | jq '.result.value | length')
+PARA_COUNT=$(echo "$PARAGRAPHS" | jq '.result.result.value | length')
 
 assert_gte "$PARA_COUNT" 1 "Should have at least 1 paragraph"
 log_success "Extracted $PARA_COUNT paragraphs"
@@ -145,7 +145,7 @@ record_metric "mime_type" "$MIME_TYPE"
 log_step "Extracting complex data (links with URLs and text)"
 
 LINKS=$(bdg cdp Runtime.evaluate --params '{"expression":"Array.from(document.querySelectorAll(\"a\")).map(a => ({href: a.href, text: a.textContent.trim()}))","returnByValue":true}')
-LINK_COUNT=$(echo "$LINKS" | jq '.result.value | length')
+LINK_COUNT=$(echo "$LINKS" | jq '.result.result.value | length')
 
 assert_gte "$LINK_COUNT" 1 "Should have at least 1 link"
 log_success "Extracted $LINK_COUNT links"

@@ -1,11 +1,11 @@
 /**
- * Smart page readiness detection using self-tuning thresholds
+ * Smart page readiness detection using fixed thresholds
  *
- * This module provides adaptive page load detection that works for any page type
+ * This module provides page load detection that works for most page types
  * without configuration. It uses a three-phase approach:
  * 1. Load event (baseline readiness)
- * 2. Network stability (adapts to request patterns)
- * 3. DOM stability (adapts to mutation rate)
+ * 2. Network stability (200ms idle threshold)
+ * 3. DOM stability (300ms idle threshold)
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -23,14 +23,14 @@ export interface PageReadinessOptions {
 }
 
 /**
- * Wait for page to be ready using self-tuning detection
+ * Wait for page to be ready using fixed thresholds
  *
  * Strategy (always applied):
  * 1. Wait for load event (baseline readiness)
- * 2. Wait for network to stabilize (adaptive 200ms idle)
- * 3. Wait for DOM to stabilize (adaptive 300ms idle)
+ * 2. Wait for network to stabilize (200ms idle threshold)
+ * 3. Wait for DOM to stabilize (300ms idle threshold)
  *
- * All thresholds adapt to observed page behavior.
+ * Uses fixed thresholds that work well for most pages.
  * No framework detection, no configuration needed.
  * Works for static HTML, SPAs, and everything in between.
  *
@@ -165,17 +165,10 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
 
   let activeRequests = 0;
   let lastActivity = Date.now();
-  const intervals: number[] = [];
-  let lastRequestTime = Date.now();
 
-  // Track request patterns
   const requestHandler = (): void => {
-    const now = Date.now();
-    const interval = now - lastRequestTime;
-    if (interval < 5000) intervals.push(interval);
-    lastRequestTime = now;
     activeRequests++;
-    lastActivity = now;
+    lastActivity = Date.now();
   };
 
   const finishHandler = (): void => {

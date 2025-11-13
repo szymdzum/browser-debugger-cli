@@ -470,9 +470,11 @@ async function main(): Promise<void> {
     });
     console.error(`[worker] Session metadata written`);
 
-    sendReadySignal(config);
-
+    // Setup IPC listener BEFORE sending ready signal to prevent race condition
+    // where CLI exits and agent immediately sends commands before IPC is ready
     setupStdinListener();
+
+    sendReadySignal(config);
 
     process.on('SIGTERM', () => {
       log.debug(workerReceivedSIGTERM());

@@ -1,4 +1,4 @@
-import type { DomQueryData, DomHighlightData, DomGetData } from '@/ipc/commands.js';
+import type { DomQueryResult, DomGetResult } from '@/commands/dom/helpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
@@ -26,7 +26,7 @@ import { OutputFormatter } from '@/ui/formatting.js';
  * //   [1] <span class="error"> Required field
  * ```
  */
-export function formatDomQuery(data: DomQueryData): string {
+export function formatDomQuery(data: DomQueryResult): string {
   const { count, nodes, selector } = data;
   const fmt = new OutputFormatter();
 
@@ -51,36 +51,8 @@ export function formatDomQuery(data: DomQueryData): string {
     .list(nodeLines)
     .blank()
     .section('Next steps:', [
-      'Highlight:  bdg dom highlight <index>',
       'Get HTML:   bdg dom get <index>',
       'Inspect:    bdg details dom <index>',
-    ])
-    .build();
-}
-
-/**
- * Format DOM highlight results for human-readable output.
- *
- * Displays success message with count of highlighted elements.
- *
- * @param data - DOM highlight result containing count of highlighted elements
- * @returns Formatted output string
- *
- * @example
- * ```typescript
- * formatDomHighlight({ highlighted: 3, nodeIds: [123, 456, 789] });
- * // Output: ✓ Highlighted 3 elements
- * ```
- */
-export function formatDomHighlight(data: DomHighlightData): string {
-  const fmt = new OutputFormatter();
-
-  return fmt
-    .text(`✓ Highlighted ${data.highlighted} element${data.highlighted === 1 ? '' : 's'}`)
-    .blank()
-    .section('Next steps:', [
-      'Get HTML:   bdg dom get <index>',
-      'Query more: bdg dom query <selector>',
     ])
     .build();
 }
@@ -114,7 +86,7 @@ export function formatDomHighlight(data: DomHighlightData): string {
  * // [2] <span class="error">Error 2</span>
  * ```
  */
-export function formatDomGet(data: DomGetData): string {
+export function formatDomGet(data: DomGetResult): string {
   const { nodes } = data;
 
   if (nodes.length === 1) {
