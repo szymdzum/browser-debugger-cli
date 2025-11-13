@@ -45,6 +45,7 @@
   "dependencies": {
     "chrome-launcher": "^1.2.1",
     "commander": "^14.0.2",
+    "devtools-protocol": "^0.0.1543509",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -54,7 +55,6 @@
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.46.2",
     "concurrently": "^9.2.1",
-    "devtools-protocol": "^0.0.1543509",
     "eslint": "^9.39.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",

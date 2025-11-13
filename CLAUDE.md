@@ -263,6 +263,9 @@ CLI Command → Unix Socket → Daemon → stdin → Worker (CDP)
 ### Key Modules
 
 - **CDP Connection** (`src/connection/`) - WebSocket client, target discovery, Chrome launcher
+  - `cdp.ts` - Core CDP WebSocket connection
+  - `typed-cdp.ts` - **Type-safe CDP wrapper** with Protocol types (autocomplete for 300+ methods)
+  - `handlers.ts` - Event handler registry with cleanup
 - **Telemetry** (`src/telemetry/`) - DOM, network, console collectors (enable CDP domain → listen for events → accumulate data)
 - **Session Management** (`src/session/`) - Metadata, PID tracking, file paths
 - **UI Layer** (`src/ui/`) - Presentation layer for user-facing output
@@ -272,8 +275,15 @@ CLI Command → Unix Socket → Daemon → stdin → Worker (CDP)
   - `formatters/` - Output formatters for different commands
   - `formatting.ts` - OutputFormatter builder
 - **Utilities** (`src/utils/`) - Pure utility functions (URL normalization, validation, filters, exit codes)
+- **CDP Protocol** (`src/cdp/`) - Protocol schema and introspection
+  - `protocol.ts` - Protocol loader with case-insensitive lookup
+  - `schema.ts` - Agent-friendly method schemas with examples
+  - `types.ts` - Schema structure types
 
-**Type Definitions:** `src/types.ts` (CDP types, collected data types, output structure)
+**Type Definitions:** 
+- `src/types.ts` - Application types (NetworkRequest, ConsoleMessage, output structure)
+- `devtools-protocol` package - Official CDP type definitions (Protocol namespace)
+- See `docs/TYPE_SAFE_CDP.md` for type-safe CDP API documentation
 
 ## Code Organization
 
