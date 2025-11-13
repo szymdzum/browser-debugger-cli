@@ -141,6 +141,17 @@ bdg stop
 
 Rationale: Commits should focus on the technical changes, not the tools used to create them.
 
+**CRITICAL**: Never auto-commit changes. Always wait for user review.
+
+- ❌ **BAD**: Committing changes immediately after implementing them
+- ✅ **GOOD**: Implementing changes, showing diff, waiting for user to review and commit
+
+Process:
+1. Implement requested changes
+2. Show `git diff` or `git status` to user
+3. Wait for user approval before running `git commit`
+4. User reviews, may request changes, then commits when ready
+
 ## Project Overview
 
 **bdg** is a CLI tool for collecting browser telemetry (DOM, network, console) via Chrome DevTools Protocol (CDP). It uses a daemon + IPC architecture where a background worker process maintains a persistent CDP connection, and CLI commands communicate via Unix domain sockets.
