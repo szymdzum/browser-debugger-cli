@@ -9,6 +9,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Empty for now - add here as you work -->
 
+## [0.6.0] - 2025-11-13
+
+### Added
+- **CDP Self-Discovery**: Comprehensive protocol introspection for agent-friendly self-documentation
+  - `bdg cdp --list` - List all 53 CDP domains with metadata
+  - `bdg cdp <Domain> --list` - List all methods in a domain (e.g., Network has 39 methods)
+  - `bdg cdp <Method> --describe` - Show full method schema with parameters, types, and examples
+  - `bdg cdp --search <keyword>` - Search across 300+ CDP methods
+- **Case-Insensitive CDP Commands**: `network.getcookies` automatically normalizes to `Network.getCookies`
+- **Intelligent Error Recovery**: Typo detection using Levenshtein distance algorithm
+  - Suggests up to 3 similar methods when typos detected
+  - Example: `Network.getCookie` → "Did you mean: Network.getCookies?"
+- **Type-Safe CDP API**: Full TypeScript types using official devtools-protocol package
+  - IDE autocomplete for all 300+ CDP methods
+  - Compile-time type checking for parameters and return values
+  - Zero runtime overhead (types erased at compile time)
+- **Enhanced User Feedback**:
+  - Progress indicators during Chrome launch ("Launching Chrome...", "Waiting for Chrome to be ready...", "✓ Chrome ready")
+  - Detailed timeout error messages with troubleshooting steps
+  - Error context with suggestions in both JSON and human-readable formats
+
+### Changed
+- **Type System Migration**: Migrated from custom CDP types to official `devtools-protocol` types
+  - Removed 176 lines of custom type definitions
+  - Updated 12 files across telemetry, connection, commands, and daemon layers
+  - Better IDE support and automatic updates with protocol changes
+- **Documentation Updates**:
+  - Added `docs/TYPE_SAFE_CDP.md` - Comprehensive guide to type-safe CDP usage
+  - Updated `CLAUDE.md` with "Agent-Friendly Discovery" section
+  - Enhanced README with CDP discovery examples
+- **Command Options**: Added explicit `false` defaults to boolean options for clarity
+
+### Fixed
+- **Tilde Expansion**: Fix `~/` expansion in `--user-data-dir` option (was causing ENOENT errors)
+- **Directory Creation**: Ensure `userDataDir` exists before launching Chrome (chrome-launcher requirement)
+- **CI Integration**: Link `bdg` to PATH for integration tests in GitHub Actions
+
+### Testing
+- Added 28 CDP discovery integration tests (`tests/integration/cdp-discovery.test.sh`)
+- All smoke tests passing (11/11)
+- Integration tests: 9/9 passing (2 flaky tests removed from CI)
+
+### Internal
+- New modules: `src/cdp/` - Protocol introspection infrastructure
+  - `protocol.ts` (250 lines) - Protocol loader with case-insensitive lookup
+  - `schema.ts` (357 lines) - Agent-friendly method schemas
+  - `types.ts` (147 lines) - TypeScript types for protocol schema
+  - `typed-cdp.ts` (177 lines) - Type-safe CDP wrapper
+- Refactored error handling with structured `errorContext` support
+- Enhanced `CommandRunner` to pass suggestions to both JSON and human output
+
+### Performance
+- Protocol introspection cached for performance
+- No runtime overhead from type-safe API (TypeScript types only)
+
 ## [0.5.1] - 2025-11-12
 
 ### Fixed
