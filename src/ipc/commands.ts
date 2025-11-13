@@ -36,24 +36,6 @@ export interface DomQueryData {
 }
 
 /**
- * DOM Highlight Command - Highlight elements in browser
- */
-export interface DomHighlightCommand {
-  selector?: string;
-  index?: number;
-  nodeId?: number;
-  first?: boolean;
-  nth?: number;
-  color?: string;
-  opacity?: number;
-}
-
-export interface DomHighlightData {
-  highlighted: number;
-  nodeIds: number[];
-}
-
-/**
  * DOM Get Command - Get full HTML and attributes for elements
  */
 export interface DomGetCommand {
@@ -189,10 +171,6 @@ export const COMMANDS = {
   dom_query: {
     requestSchema: {} as DomQueryCommand,
     responseSchema: {} as DomQueryData,
-  },
-  dom_highlight: {
-    requestSchema: {} as DomHighlightCommand,
-    responseSchema: {} as DomHighlightData,
   },
   dom_get: {
     requestSchema: {} as DomGetCommand,

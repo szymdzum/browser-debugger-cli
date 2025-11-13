@@ -18,15 +18,6 @@ export type CommandRegistry = {
   [K in CommandName]: Handler<K>;
 };
 
-const HIGHLIGHT_COLORS = {
-  red: { r: 255, g: 0, b: 0, a: 0.5 },
-  blue: { r: 0, g: 0, b: 255, a: 0.5 },
-  green: { r: 0, g: 255, b: 0, a: 0.5 },
-  yellow: { r: 255, g: 255, b: 0, a: 0.5 },
-  orange: { r: 255, g: 165, b: 0, a: 0.5 },
-  purple: { r: 128, g: 0, b: 128, a: 0.5 },
-} as const;
-
 export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
   return {
     dom_query: async (cdp, params) => {
@@ -68,68 +59,6 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         selector: params.selector,
         count: nodes.length,
         nodes,
-      };
-    },
-
-    dom_highlight: async (cdp, params) => {
-      await cdp.send('DOM.enable');
-      await cdp.send('Overlay.enable');
-
-      let nodeIds: number[] = [];
-
-      if (params.nodeId !== undefined) {
-        nodeIds = [params.nodeId];
-      } else if (params.index !== undefined) {
-        const nodeId = getNodeIdByIndex(params.index);
-        if (!nodeId) {
-          throw new Error(
-            `No cached element at index ${params.index}. Run 'bdg dom query <selector>' first.`
-          );
-        }
-        nodeIds = [nodeId];
-      } else if (params.selector) {
-        nodeIds = await queryBySelector(cdp, params.selector);
-
-        if (nodeIds.length === 0) {
-          throw new Error(`No elements found matching "${params.selector}"`);
-        }
-
-        if (params.first) {
-          const firstNode = nodeIds[0];
-          if (firstNode === undefined) {
-            throw new Error('No elements found');
-          }
-          nodeIds = [firstNode];
-        } else if (params.nth !== undefined) {
-          if (params.nth < 1 || params.nth > nodeIds.length) {
-            throw new Error(`--nth ${params.nth} out of range (found ${nodeIds.length} elements)`);
-          }
-          const nthNode = nodeIds[params.nth - 1];
-          if (nthNode === undefined) {
-            throw new Error(`Element at index ${params.nth} not found`);
-          }
-          nodeIds = [nthNode];
-        }
-      } else {
-        throw new Error('Either selector, index, or nodeId must be provided');
-      }
-
-      const colorName = (params.color ?? 'red') as keyof typeof HIGHLIGHT_COLORS;
-      const color = HIGHLIGHT_COLORS[colorName] ?? HIGHLIGHT_COLORS.red;
-      const opacity = params.opacity ?? color.a;
-
-      for (const nodeId of nodeIds) {
-        await cdp.send('Overlay.highlightNode', {
-          highlightConfig: {
-            contentColor: { ...color, a: opacity },
-          },
-          nodeId,
-        });
-      }
-
-      return {
-        highlighted: nodeIds.length,
-        nodeIds,
       };
     },
 

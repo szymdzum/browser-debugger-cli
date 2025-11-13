@@ -254,25 +254,6 @@ export async function queryDOM(selector: string): Promise<ClientResponse<'dom_qu
 }
 
 /**
- * Highlight DOM elements in the browser via the daemon's worker.
- *
- * @param options - Highlight options (selector, index, nodeId, color, etc.)
- * @returns DOM highlight response with highlighted node information
- * @throws Error if connection fails, daemon is not running, or request times out
- */
-export async function highlightDOM(options: {
-  selector?: string;
-  index?: number;
-  nodeId?: number;
-  first?: boolean;
-  nth?: number;
-  color?: string;
-  opacity?: number;
-}): Promise<ClientResponse<'dom_highlight'>> {
-  return sendCommand('dom_highlight', options);
-}
-
-/**
  * Get full HTML and attributes for DOM elements via the daemon's worker.
  *
  * @param options - Get options (selector, index, nodeId, all, nth)

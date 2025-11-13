@@ -2,10 +2,9 @@ import type { Command } from 'commander';
 
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { queryDOM, highlightDOM, getDOM, captureScreenshot } from '@/ipc/client.js';
+import { queryDOM, getDOM, captureScreenshot } from '@/ipc/client.js';
 import {
   formatDomQuery,
-  formatDomHighlight,
   formatDomGet,
   formatDomEval,
   formatDomScreenshot,
@@ -18,17 +17,6 @@ import { mergeWithSelector } from './domOptionsBuilder.js';
  * Options for DOM query command
  */
 type DomQueryOptions = BaseCommandOptions;
-
-/**
- * Options for DOM highlight command
- */
-interface DomHighlightOptions extends BaseCommandOptions {
-  first?: boolean;
-  nth?: number;
-  nodeId?: number;
-  color?: string;
-  opacity?: number;
-}
 
 /**
  * Options for DOM get command
@@ -83,59 +71,6 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
     },
     options,
     formatDomQuery
-  );
-}
-
-/**
- * Handle bdg dom highlight command
- *
- * Highlights elements in the browser with visual overlay. Accepts CSS selector,
- * cached index from previous query, or direct nodeId.
- *
- * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
- * @param options - Command options including color, opacity, targeting flags, and nodeId
- */
-async function handleDomHighlight(
-  selectorOrIndex: string,
-  options: DomHighlightOptions
-): Promise<void> {
-  await runCommand(
-    async () => {
-      // Build IPC options with selector/index/nodeId merged
-      const ipcOptions = mergeWithSelector<Parameters<typeof highlightDOM>[0]>(
-        filterDefined({
-          color: options.color,
-          opacity: options.opacity,
-          first: options.first,
-          nth: options.nth,
-        }) as Parameters<typeof highlightDOM>[0],
-        selectorOrIndex,
-        options.nodeId
-      );
-
-      const response = await highlightDOM(ipcOptions);
-
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
-      }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
-    },
-    options,
-    formatDomHighlight
   );
 }
 
@@ -317,21 +252,6 @@ export function registerDomCommands(program: Command): void {
     .option('-j, --json', 'Wrap result in version/success format')
     .action(async (script: string, options: DomEvalOptions) => {
       await handleDomEval(script, options);
-    });
-
-  // bdg dom highlight <selector|index>
-  dom
-    .command('highlight')
-    .description('Highlight elements in browser')
-    .argument('<selector|index>', 'CSS selector or index from last query')
-    .option('--first', 'Target first match only')
-    .option('--nth <n>', 'Target nth match', parseInt)
-    .option('--node-id <id>', 'Use nodeId directly (advanced)', parseInt)
-    .option('--color <color>', 'Highlight color (red, blue, green, yellow, orange, purple)')
-    .option('--opacity <value>', 'Highlight opacity (0.0 - 1.0)', parseFloat)
-    .option('-j, --json', 'Output as JSON')
-    .action(async (selectorOrIndex: string, options: DomHighlightOptions) => {
-      await handleDomHighlight(selectorOrIndex, options);
     });
 
   // bdg dom get <selector|index>
