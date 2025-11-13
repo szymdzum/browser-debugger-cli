@@ -175,6 +175,18 @@ jobs:
           name: dist
           path: dist/
 
+      - name: Make bdg executable and link to PATH
+        run: |
+          chmod +x dist/index.js
+          mkdir -p $HOME/.local/bin
+          ln -sf $PWD/dist/index.js $HOME/.local/bin/bdg
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Verify bdg installation
+        run: |
+          which bdg
+          bdg --version
+
       - name: Run smoke tests
         run: npm run test:smoke
 
