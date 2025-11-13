@@ -2,6 +2,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { queryBySelector, getNodeInfo, createNodePreview } from '@/connection/domOperations.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/commands.js';
 import { writeQueryCache, getNodeIdByIndex } from '@/session/queryCache.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
@@ -224,14 +225,10 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         }),
       };
 
-      interface ScreenshotResponse {
-        data: string;
-      }
-
       const response = (await cdp.send(
         'Page.captureScreenshot',
         screenshotParams
-      )) as ScreenshotResponse;
+      )) as Protocol.Page.CaptureScreenshotResponse;
       const imageData = Buffer.from(response.data, 'base64');
 
       await fs.writeFile(absolutePath, imageData);
@@ -239,26 +236,18 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
 
       let viewport: { width: number; height: number } | undefined;
       if (!fullPage) {
-        interface MetricsResponse {
-          layoutViewport: {
-            clientWidth: number;
-            clientHeight: number;
-          };
-        }
-        const metrics = (await cdp.send('Page.getLayoutMetrics')) as MetricsResponse;
+        const metrics = (await cdp.send(
+          'Page.getLayoutMetrics'
+        )) as Protocol.Page.GetLayoutMetricsResponse;
         viewport = {
           width: metrics.layoutViewport.clientWidth,
           height: metrics.layoutViewport.clientHeight,
         };
       }
 
-      interface LayoutMetrics {
-        contentSize: {
-          width: number;
-          height: number;
-        };
-      }
-      const layoutMetrics = (await cdp.send('Page.getLayoutMetrics')) as LayoutMetrics;
+      const layoutMetrics = (await cdp.send(
+        'Page.getLayoutMetrics'
+      )) as Protocol.Page.GetLayoutMetricsResponse;
 
       return {
         path: absolutePath,
