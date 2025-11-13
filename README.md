@@ -238,6 +238,16 @@ Three processes:
 
 Chrome stays running between commands. No startup cost for each operation.
 
+## Design Principles
+
+This tool is built on principles learned from building CLI tools for autonomous agents:
+
+**[Self-Documenting Systems](docs/principles/SELF_DOCUMENTING_SYSTEMS.md)** - Tools should teach agents how to use them through progressive discovery, not external documentation. The `--list`, `--describe`, and `--search` commands implement this philosophy.
+
+**[Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md)** - CLI design patterns that work well for autonomous agents: machine-readable output, semantic exit codes, structured errors, and zero-ambiguity commands.
+
+These docs capture observations from real agent interactions and explain the reasoning behind design decisions. If you're building tools for AI agents, they might be useful.
+
 ## Contributing
 
 If you use this and something breaks, [open an issue](https://github.com/szymdzum/browser-debugger-cli/issues/new). If you have ideas, start a [discussion](https://github.com/szymdzum/browser-debugger-cli/discussions). PRs welcome.
