@@ -22,9 +22,9 @@
 
 ## Detailed Status by Area
 
-### 1. Page Readiness Detection ✅ COMPLETED (v0.2.0)
+### 1. Page Readiness Detection ✅ COMPLETED (v0.6.0+)
 
-**Status:** ✅ **Fully implemented**
+**Status:** ✅ **Fully implemented and tested**
 
 **What Was Proposed:**
 - Wait command to block until SPAs are ready
@@ -46,11 +46,18 @@
 - ❌ No `--wait-ready` flag (always enabled)
 
 **Why the Difference:**
-The automatic approach provides better UX. Users don't need to think about page readiness—it just works. The proposal's explicit commands would add complexity without clear benefit.
+The automatic blocking approach provides better UX. Agents get control only when it's safe to interact, eliminating the need for arbitrary sleep delays. The proposal's explicit commands would add complexity without clear benefit.
 
-**Implementation Quality:** ⭐⭐⭐⭐⭐ (5/5) - Better than proposed
+**Race Condition Fix (v0.6.0+):**
+- Original v0.2.0 implementation had a subtle race condition
+- Worker would send "ready" signal before IPC listener was set up
+- CLI would exit and agents could send commands before worker was ready to receive them
+- Fixed by reordering: setupStdinListener() now runs BEFORE sendReadySignal()
+- Tested: agents can immediately run `bdg peek` after session start completes
 
-**Version:** v0.2.0 (2025-11-06)
+**Implementation Quality:** ⭐⭐⭐⭐⭐ (5/5) - Better than proposed, fully working
+
+**Version:** v0.2.0 (2025-11-06), race condition fixed in v0.6.0+ (2025-11-13)
 
 ---
 

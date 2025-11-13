@@ -12,8 +12,8 @@
 
 Since this document was created, significant progress has been made:
 
-**✅ Completed (v0.2.0 - v0.6.0):**
-- **Page readiness detection** - Three-phase adaptive detection implemented automatically in v0.2.0
+**✅ Completed (v0.2.0 - v0.6.0+):**
+- **Page readiness detection** - Three-phase adaptive detection in v0.2.0, race condition fixed in v0.6.0+
 - **CDP error context** - Intelligent typo suggestions with Levenshtein distance in v0.6.0
 - **CDP self-discovery** - Protocol introspection (`--list`, `--search`, `--describe`) in v0.6.0
 
@@ -32,7 +32,7 @@ See [`UX_IMPROVEMENTS_STATUS.md`](./UX_IMPROVEMENTS_STATUS.md) for detailed impl
 
 BDG successfully solves the JSON escaping problem inherent in raw CDP tools and provides excellent command discoverability through help text and inline suggestions. However, there are opportunities to improve the user experience in key areas:
 
-1. ✅ **Page readiness detection** - ~~Users need to know when SPAs are fully loaded~~ **IMPLEMENTED in v0.2.0**
+1. ✅ **Page readiness detection** - ~~Users need to know when SPAs are fully loaded~~ **FULLY IMPLEMENTED in v0.6.0+**
 2. 🔴 **React form interaction** - Common pattern that requires complex boilerplate
 3. 🔴 **Accessibility testing** - Core use case that deserves first-class commands
 4. 🟡 **Command organization** - Some features would benefit from better grouping
@@ -74,9 +74,9 @@ BDG successfully solves the JSON escaping problem inherent in raw CDP tools and 
 
 ## Improvement Areas
 
-### 1. Page Readiness Detection ✅ IMPLEMENTED (v0.2.0)
+### 1. Page Readiness Detection ✅ FULLY IMPLEMENTED (v0.6.0+)
 
-**Status:** ✅ **Fully implemented** - Automatic three-phase adaptive detection runs on every session start
+**Status:** ✅ **Fully implemented** - Automatic three-phase adaptive detection + CLI blocks until ready
 
 **Problem:** Users cannot easily determine when Single Page Applications (SPAs) are fully loaded and ready for interaction.
 
@@ -138,12 +138,17 @@ bdg http://localhost:3000 --wait-ready
 - ✅ Self-tuning thresholds based on page behavior
 - ✅ Automatic integration (runs transparently on session start)
 
+**Race Condition Fix (v0.6.0+):**
+- ✅ Worker IPC listener setup before sending ready signal
+- ✅ Eliminates race condition where CLI exits before worker can receive commands
+- ✅ Agents can immediately run follow-up commands without delays
+
 **What's Not Yet Implemented:**
 - ❌ Explicit `bdg page wait-ready` command (automatic only, not exposed)
-- ❌ Ready state indicator in `bdg status` output
-- ❌ `--wait-ready` flag (always enabled, not configurable)
+- ❌ Ready state indicator in `bdg status` output (shows URL/title but not readiness timing)
+- ❌ `--wait-ready` flag (always enabled by default, not configurable)
 
-**Note:** The automatic approach provides better UX than requiring explicit wait commands. Most users don't need to think about readiness.
+**Note:** The automatic blocking approach provides better UX than requiring explicit wait commands. Agents get control only when it's safe to interact, eliminating the need for arbitrary sleep delays.
 
 ---
 
@@ -568,7 +573,7 @@ bdg dom suggest "navigation"
 
 | Improvement | Impact | Effort | Priority | Status |
 |-------------|--------|--------|----------|--------|
-| Page readiness detection | High | Medium | ~~**P0**~~ | ✅ **Done (v0.2.0)** |
+| Page readiness detection | High | Medium | ~~**P0**~~ | ✅ **Done (v0.6.0+)** |
 | React form interaction | High | High | **P0** | 🔴 **Not Started** |
 | Accessibility commands | High | High | **P0** | 🔴 **Not Started** |
 | Page context commands | Medium | Low | **P1** | 🟡 **Deferred** |
@@ -584,7 +589,7 @@ bdg dom suggest "navigation"
 ### Phase 1: Core Improvements (P0) - PARTIALLY COMPLETE
 
 **Completed:**
-- ✅ Page readiness detection (v0.2.0) - Automatic three-phase adaptive detection
+- ✅ Page readiness detection (v0.6.0+) - Automatic blocking until page ready, race condition fixed
 - ✅ Enhanced error messages with suggestions (v0.6.0) - CDP commands only
 
 **Remaining:**
