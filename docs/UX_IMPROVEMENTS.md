@@ -152,82 +152,74 @@ bdg http://localhost:3000 --wait-ready
 
 ---
 
-### 2. React/SPA Form Interaction 🔴 NOT IMPLEMENTED
+### 2. React/SPA Form Interaction ✅ FULLY IMPLEMENTED (v0.6.0+)
 
-**Problem:** Setting form values in React applications requires complex boilerplate using native value setters and event dispatching.
+**Problem:** Setting form values in React applications required complex boilerplate using native value setters and event dispatching.
 
-**Current State:**
-```bash
-# Users must write complex JavaScript
-bdg cdp Runtime.evaluate --params '{
-  "expression": "(async function() {
-    const setNativeValue = (el, value) => {
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        \"value\"
-      ).set;
-      setter.call(el, value);
-    };
-    const input = document.querySelector(\"input[name=email]\");
-    input.focus();
-    setNativeValue(input, \"test@example.com\");
-    input.dispatchEvent(new Event(\"input\", {bubbles: true}));
-    input.dispatchEvent(new Event(\"change\", {bubbles: true}));
-    input.blur();
-  })()",
-  "awaitPromise": true
-}'
-```
+**Solution Implemented:**
 
-**Impact:**
-- High barrier to entry for common task
-- Error-prone (easy to miss event dispatching)
-- Not discoverable without documentation
-
-**Proposed Solution: High-Level Form Commands**
+High-level form commands that work with React, Vue, Angular, and vanilla JS:
 
 ```bash
-bdg dom fill <selector> <value> [options]
-# Automatically:
-# - Focuses element
-# - Uses native setter (React-compatible)
-# - Dispatches input/change events
-# - Blurs element
-# - Waits for validation state
+# Fill form fields (React-compatible)
+bdg dom fill <selector> <value> [--index <n>] [--no-blur]
 
 # Examples:
 bdg dom fill "input[name='email']" "test@example.com"
-bdg dom fill "input[type='password']" "secret" --delay 100
-bdg dom fill "select[name='country']" "US"
-bdg dom fill "input[type='checkbox']" true
+bdg dom fill "input[type='password']" "secret123"
+bdg dom fill "input[type='text']" "value" --index 2  # For multiple matches
+bdg dom fill "input" "value" --no-blur  # Keep focus after filling
+
+# Click elements
+bdg dom click <selector> [--index <n>]
+
+# Examples:
+bdg dom click "button.save"
+bdg dom click "button" --index 3  # Click third button
+
+# Submit forms with smart waiting
+bdg dom submit <selector> [--wait-navigation] [--wait-network <ms>] [--timeout <ms>]
+
+# Examples:
+bdg dom submit "button[type='submit']"
+bdg dom submit "form button" --wait-navigation
+bdg dom submit ".submit-btn" --wait-network 2000 --timeout 10000
 ```
 
+**What It Does:**
+- ✅ Uses native property setters (bypasses React's value prop)
+- ✅ Dispatches proper events (input, change, focusout)
+- ✅ Handles multiple element matches with `--index`
+- ✅ Smart form submission with network idle detection
+- ✅ Optional navigation waiting
+- ✅ Works with React, Vue, Angular, and vanilla JS
+
+**Implementation Details:**
+- Framework-agnostic approach (no detection needed)
+- Uses injected scripts via `Runtime.evaluate`
+- Proper event bubbling for all frameworks
+- Visibility detection prefers interactive elements
+- Full error handling with semantic exit codes
+
+**Example Workflow:**
 ```bash
-bdg dom type <selector> <text> [options]
-# Types with realistic delays between characters
-# Useful for autocomplete testing
+# Start session
+bdg localhost:3000
 
-bdg dom type "input[name='search']" "laptop" --delay 150
+# Fill login form
+bdg dom fill 'input[name="email"]' 'test@example.com'
+bdg dom fill 'input[name="password"]' 'secret123'
+
+# Submit and wait
+bdg dom submit 'button[type="submit"]' --wait-network 2000
+
+# Stop
+bdg stop
 ```
 
-```bash
-bdg dom submit <selector>
-# Clicks submit button and waits for:
-# - Form validation
-# - Network request completion
-# - Page navigation (if applicable)
+**Priority:** **High** - Core use case for SPA testing
 
-bdg dom submit "button[type='submit']" --timeout 10
-```
-
-**Implementation Notes:**
-- Detect framework (React/Vue/Angular) and adapt event dispatching
-- Support common input types (text, password, checkbox, radio, select)
-- Provide `--raw` flag to bypass smart behavior if needed
-
-**Priority:** **High** - This is a core use case for SPA testing
-
-**Status:** 🔴 **Not started** - High-priority gap for v0.7.0+
+**Status:** ✅ **Fully implemented** in v0.6.0+
 
 ---
 
