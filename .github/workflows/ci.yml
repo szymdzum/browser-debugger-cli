@@ -191,7 +191,6 @@ jobs:
         run: npm run test:smoke
 
       - name: Run integration tests
-        continue-on-error: true
         run: ./tests/run-all-tests.sh --integration
 
   security:
