@@ -1,13 +1,13 @@
 /**
- * DOM helpers for direct CDP operations.
+ * DOM helpers using CDP relay pattern.
  *
- * Provides query, get, and screenshot functionality using temporary CDP connections.
- * Follows the pattern established by dom eval and form interaction commands.
+ * Provides query, get, and screenshot functionality using the worker's persistent CDP connection.
+ * All operations go through IPC callCDP() for optimal performance.
  */
 
-import type { CDPConnection } from '@/connection/cdp.js';
-import { queryBySelector, getNodeInfo, createNodePreview } from '@/connection/domOperations.js';
 import { CDPConnectionError } from '@/connection/errors.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
+import { callCDP } from '@/ipc/client.js';
 
 /**
  * Result of a DOM query operation
@@ -75,25 +75,72 @@ export interface ScreenshotOptions {
 }
 
 /**
- * Query DOM elements by CSS selector.
+ * Query DOM elements by CSS selector using CDP relay.
  *
- * @param cdp - CDP connection
  * @param selector - CSS selector to query
  * @returns Query result with matched nodes
  * @throws CDPConnectionError if CDP operation fails
  */
-export async function queryDOMElements(
-  cdp: CDPConnection,
-  selector: string
-): Promise<DomQueryResult> {
-  await cdp.send('DOM.enable');
+export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
+  // Enable DOM domain
+  await callCDP('DOM.enable', {});
 
-  const nodeIds = await queryBySelector(cdp, selector);
+  // Get document root
+  const docResponse = await callCDP('DOM.getDocument', {});
+  const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
+  if (!doc?.root?.nodeId) {
+    throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
+  }
 
+  // Query selector
+  const queryResponse = await callCDP('DOM.querySelectorAll', {
+    nodeId: doc.root.nodeId,
+    selector,
+  });
+  const queryResult = queryResponse.data?.result as
+    | Protocol.DOM.QuerySelectorAllResponse
+    | undefined;
+  const nodeIds = queryResult?.nodeIds ?? [];
+
+  // Get info for each node
   const nodes = await Promise.all(
     nodeIds.map(async (nodeId, index) => {
-      const info = await getNodeInfo(cdp, nodeId);
-      const preview = createNodePreview(info);
+      // Describe node
+      const descResponse = await callCDP('DOM.describeNode', { nodeId });
+      const descResult = descResponse.data?.result as Protocol.DOM.DescribeNodeResponse | undefined;
+      const nodeDesc = descResult?.node;
+
+      if (!nodeDesc) {
+        return { index, nodeId };
+      }
+
+      // Parse attributes
+      const attributes: Record<string, string> = {};
+      if (nodeDesc.attributes) {
+        for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
+          const key = nodeDesc.attributes[i];
+          const value = nodeDesc.attributes[i + 1];
+          if (key !== undefined && value !== undefined) {
+            attributes[key] = value;
+          }
+        }
+      }
+
+      // Extract classes and create preview
+      const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
+      const tag = nodeDesc.nodeName.toLowerCase();
+
+      // Get outer HTML for preview
+      const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
+      const htmlResult = htmlResponse.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined;
+      const outerHTML = htmlResult?.outerHTML ?? '';
+
+      // Create preview text
+      const textContent = outerHTML
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
 
       const node: {
         index: number;
@@ -101,14 +148,11 @@ export async function queryDOMElements(
         tag?: string;
         classes?: string[];
         preview?: string;
-      } = {
-        index,
-        nodeId,
-      };
+      } = { index, nodeId };
 
-      if (info.tag !== undefined) node.tag = info.tag;
-      if (info.classes !== undefined) node.classes = info.classes;
-      if (preview !== undefined) node.preview = preview;
+      if (tag) node.tag = tag;
+      if (classes) node.classes = classes;
+      if (preview) node.preview = preview;
 
       return node;
     })
@@ -122,30 +166,40 @@ export async function queryDOMElements(
 }
 
 /**
- * Get full HTML and attributes for DOM elements.
+ * Get full HTML and attributes for DOM elements using CDP relay.
  *
- * @param cdp - CDP connection
  * @param options - Get options (selector, index, nodeId, all, nth)
  * @returns Get result with node details
  * @throws CDPConnectionError if CDP operation fails
  */
-export async function getDOMElements(
-  cdp: CDPConnection,
-  options: DomGetOptions
-): Promise<DomGetResult> {
-  await cdp.send('DOM.enable');
+export async function getDOMElements(options: DomGetOptions): Promise<DomGetResult> {
+  await callCDP('DOM.enable', {});
 
   let nodeIds: number[] = [];
 
   if (options.nodeId !== undefined) {
     nodeIds = [options.nodeId];
   } else if (options.index !== undefined) {
-    // TODO: Implement query cache for index-based lookups
     throw new Error(
-      'Index-based lookups not yet supported in direct CDP mode. Use selector instead.'
+      'Index-based lookups not yet supported in CDP relay mode. Use selector instead.'
     );
   } else if (options.selector) {
-    nodeIds = await queryBySelector(cdp, options.selector);
+    // Get document root
+    const docResponse = await callCDP('DOM.getDocument', {});
+    const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
+    if (!doc?.root?.nodeId) {
+      throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
+    }
+
+    // Query selector
+    const queryResponse = await callCDP('DOM.querySelectorAll', {
+      nodeId: doc.root.nodeId,
+      selector: options.selector,
+    });
+    const queryResult = queryResponse.data?.result as
+      | Protocol.DOM.QuerySelectorAllResponse
+      | undefined;
+    nodeIds = queryResult?.nodeIds ?? [];
 
     if (nodeIds.length === 0) {
       throw new Error(`No elements found matching "${options.selector}"`);
@@ -175,7 +229,35 @@ export async function getDOMElements(
 
   const nodes = await Promise.all(
     nodeIds.map(async (nodeId) => {
-      const info = await getNodeInfo(cdp, nodeId);
+      // Describe node
+      const descResponse = await callCDP('DOM.describeNode', { nodeId });
+      const descResult = descResponse.data?.result as Protocol.DOM.DescribeNodeResponse | undefined;
+      const nodeDesc = descResult?.node;
+
+      if (!nodeDesc) {
+        return { nodeId };
+      }
+
+      // Parse attributes
+      const attributes: Record<string, string> = {};
+      if (nodeDesc.attributes) {
+        for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
+          const key = nodeDesc.attributes[i];
+          const value = nodeDesc.attributes[i + 1];
+          if (key !== undefined && value !== undefined) {
+            attributes[key] = value;
+          }
+        }
+      }
+
+      // Extract classes
+      const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
+      const tag = nodeDesc.nodeName.toLowerCase();
+
+      // Get outer HTML
+      const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
+      const htmlResult = htmlResponse.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined;
+      const outerHTML = htmlResult?.outerHTML;
 
       const node: {
         nodeId: number;
@@ -183,14 +265,12 @@ export async function getDOMElements(
         attributes?: Record<string, unknown>;
         classes?: string[];
         outerHTML?: string;
-      } = {
-        nodeId,
-      };
+      } = { nodeId };
 
-      if (info.tag !== undefined) node.tag = info.tag;
-      if (info.attributes !== undefined) node.attributes = info.attributes;
-      if (info.classes !== undefined) node.classes = info.classes;
-      if (info.outerHTML !== undefined) node.outerHTML = info.outerHTML;
+      if (tag) node.tag = tag;
+      if (Object.keys(attributes).length > 0) node.attributes = attributes;
+      if (classes) node.classes = classes;
+      if (outerHTML) node.outerHTML = outerHTML;
 
       return node;
     })
@@ -200,16 +280,14 @@ export async function getDOMElements(
 }
 
 /**
- * Capture a screenshot of the page.
+ * Capture a screenshot of the page using CDP relay.
  *
- * @param cdp - CDP connection
  * @param outputPath - Path to save screenshot
  * @param options - Screenshot options (format, quality, fullPage)
  * @returns Screenshot result with path, format, dimensions, and size
  * @throws CDPConnectionError if CDP operation fails
  */
 export async function capturePageScreenshot(
-  cdp: CDPConnection,
   outputPath: string,
   options: ScreenshotOptions = {}
 ): Promise<ScreenshotResult> {
@@ -218,40 +296,33 @@ export async function capturePageScreenshot(
   const fullPage = options.fullPage ?? true;
 
   // Get viewport dimensions
-  const metricsResponse = await cdp.send('Page.getLayoutMetrics', {});
-  const cdpMetrics = metricsResponse as {
-    contentSize?: { width: number; height: number };
-    visualViewport?: { clientWidth: number; clientHeight: number };
-  };
+  const metricsResponse = await callCDP('Page.getLayoutMetrics', {});
+  const metricsResult = metricsResponse.data?.result as
+    | Protocol.Page.GetLayoutMetricsResponse
+    | undefined;
 
-  const contentSize = cdpMetrics.contentSize ?? { width: 0, height: 0 };
-  const viewport = cdpMetrics.visualViewport ?? { clientWidth: 0, clientHeight: 0 };
+  const contentSize = metricsResult?.contentSize ?? { width: 0, height: 0 };
+  const viewport = metricsResult?.visualViewport ?? { clientWidth: 0, clientHeight: 0 };
 
   // Capture screenshot
-  const response = await cdp.send('Page.captureScreenshot', {
+  const screenshotResponse = await callCDP('Page.captureScreenshot', {
     format,
-    quality,
+    ...(quality !== undefined && { quality }),
     captureBeyondViewport: fullPage,
   });
 
-  const cdpResponse = response as {
-    data?: string;
-    exceptionDetails?: { text?: string };
-  };
+  const screenshotResult = screenshotResponse.data?.result as
+    | Protocol.Page.CaptureScreenshotResponse
+    | undefined;
 
-  if (cdpResponse.exceptionDetails) {
-    const text = cdpResponse.exceptionDetails.text ?? 'Unknown error';
-    throw new CDPConnectionError('Screenshot capture failed', new Error(text));
-  }
-
-  if (!cdpResponse.data) {
+  if (!screenshotResult?.data) {
     throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
   }
 
   // Write to file
   const fs = await import('fs/promises');
   const path = await import('path');
-  const buffer = Buffer.from(cdpResponse.data, 'base64');
+  const buffer = Buffer.from(screenshotResult.data, 'base64');
 
   const absolutePath = path.resolve(outputPath);
   await fs.writeFile(absolutePath, buffer);

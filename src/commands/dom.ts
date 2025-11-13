@@ -38,7 +38,7 @@ interface DomScreenshotOptions extends BaseCommandOptions {
  * Handle bdg dom query <selector> command
  *
  * Queries the DOM using a CSS selector and displays matching elements.
- * Uses direct CDP connection (creates temporary connection).
+ * Uses CDP relay through worker's persistent connection.
  *
  * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
  * @param options - Command options
@@ -46,23 +46,8 @@ interface DomScreenshotOptions extends BaseCommandOptions {
 async function handleDomQuery(selector: string, options: DomQueryOptions): Promise<void> {
   await runCommand(
     async () => {
-      const { CDPConnection } = await import('@/connection/cdp.js');
-      const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-        await import('./domEvalHelpers.js');
-
-      validateActiveSession();
-      const metadata = getValidatedSessionMetadata();
-      await verifyTargetExists(metadata, 9222);
-
-      const cdp = new CDPConnection();
-      await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-      try {
-        const result = await queryDOMElements(cdp, selector);
-        return { success: true, data: result };
-      } finally {
-        cdp.close();
-      }
+      const result = await queryDOMElements(selector);
+      return { success: true, data: result };
     },
     options,
     formatDomQuery
@@ -73,7 +58,7 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
  * Handle bdg dom get command
  *
  * Retrieves full HTML and attributes for DOM elements. Accepts CSS selector or direct nodeId.
- * Uses direct CDP connection (creates temporary connection).
+ * Uses CDP relay through worker's persistent connection.
  *
  * @param selector - CSS selector (e.g., ".error")
  * @param options - Command options including --all, --nth, and nodeId
@@ -81,28 +66,13 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 async function handleDomGet(selector: string, options: DomGetOptions): Promise<void> {
   await runCommand(
     async () => {
-      const { CDPConnection } = await import('@/connection/cdp.js');
-      const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-        await import('./domEvalHelpers.js');
+      const getOptions: DomGetHelperOptions = { selector };
+      if (options.all !== undefined) getOptions.all = options.all;
+      if (options.nth !== undefined) getOptions.nth = options.nth;
+      if (options.nodeId !== undefined) getOptions.nodeId = options.nodeId;
 
-      validateActiveSession();
-      const metadata = getValidatedSessionMetadata();
-      await verifyTargetExists(metadata, 9222);
-
-      const cdp = new CDPConnection();
-      await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-      try {
-        const getOptions: DomGetHelperOptions = { selector };
-        if (options.all !== undefined) getOptions.all = options.all;
-        if (options.nth !== undefined) getOptions.nth = options.nth;
-        if (options.nodeId !== undefined) getOptions.nodeId = options.nodeId;
-
-        const result = await getDOMElements(cdp, getOptions);
-        return { success: true, data: result };
-      } finally {
-        cdp.close();
-      }
+      const result = await getDOMElements(getOptions);
+      return { success: true, data: result };
     },
     options,
     formatDomGet
@@ -114,7 +84,7 @@ async function handleDomGet(selector: string, options: DomGetOptions): Promise<v
  *
  * Captures a screenshot of the current page and saves it to disk.
  * Supports PNG and JPEG formats with customizable quality and viewport options.
- * Uses direct CDP connection (creates temporary connection).
+ * Uses CDP relay through worker's persistent connection.
  *
  * @param path - Output file path (absolute or relative)
  * @param options - Screenshot options (format, quality, fullPage)
@@ -122,29 +92,14 @@ async function handleDomGet(selector: string, options: DomGetOptions): Promise<v
 async function handleDomScreenshot(path: string, options: DomScreenshotOptions): Promise<void> {
   await runCommand(
     async () => {
-      const { CDPConnection } = await import('@/connection/cdp.js');
-      const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-        await import('./domEvalHelpers.js');
+      const screenshotOptions: { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean } =
+        {};
+      if (options.format !== undefined) screenshotOptions.format = options.format;
+      if (options.quality !== undefined) screenshotOptions.quality = options.quality;
+      if (options.fullPage !== undefined) screenshotOptions.fullPage = options.fullPage;
 
-      validateActiveSession();
-      const metadata = getValidatedSessionMetadata();
-      await verifyTargetExists(metadata, 9222);
-
-      const cdp = new CDPConnection();
-      await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-      try {
-        const screenshotOptions: { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean } =
-          {};
-        if (options.format !== undefined) screenshotOptions.format = options.format;
-        if (options.quality !== undefined) screenshotOptions.quality = options.quality;
-        if (options.fullPage !== undefined) screenshotOptions.fullPage = options.fullPage;
-
-        const result = await capturePageScreenshot(cdp, path, screenshotOptions);
-        return { success: true, data: result };
-      } finally {
-        cdp.close();
-      }
+      const result = await capturePageScreenshot(path, screenshotOptions);
+      return { success: true, data: result };
     },
     options,
     formatDomScreenshot
