@@ -158,8 +158,8 @@ async function waitForCompletion(
   let timeoutHandle: NodeJS.Timeout | null = null;
 
   return new Promise((resolve, reject) => {
-    // Store handler IDs for cleanup
-    const handlerIds: number[] = [];
+    // Store (event, handlerId) pairs for proper cleanup
+    const handlers: Array<{ event: string; handlerId: number }> = [];
 
     // Set up timeout
     timeoutHandle = setTimeout(() => {
@@ -172,7 +172,7 @@ async function waitForCompletion(
       );
     }, timeout);
 
-    const checkCompletion = () => {
+    const checkCompletion = (): void => {
       // Check if all conditions are met
       const networkIdle = waitNetwork === 0 || activeRequests === 0;
       const navigationComplete = !waitNavigation || navigationOccurred;
@@ -209,13 +209,25 @@ async function waitForCompletion(
       checkCompletion();
     };
 
-    // Register event listeners and store handler IDs
-    handlerIds.push(cdp.on('Network.requestWillBeSent', onRequestStarted));
-    handlerIds.push(cdp.on('Network.loadingFinished', onRequestFinished));
-    handlerIds.push(cdp.on('Network.loadingFailed', onRequestFinished));
+    // Register event listeners and store (event, handlerId) pairs
+    handlers.push({
+      event: 'Network.requestWillBeSent',
+      handlerId: cdp.on('Network.requestWillBeSent', onRequestStarted),
+    });
+    handlers.push({
+      event: 'Network.loadingFinished',
+      handlerId: cdp.on('Network.loadingFinished', onRequestFinished),
+    });
+    handlers.push({
+      event: 'Network.loadingFailed',
+      handlerId: cdp.on('Network.loadingFailed', onRequestFinished),
+    });
 
     if (waitNavigation) {
-      handlerIds.push(cdp.on('Page.frameNavigated', onNavigated));
+      handlers.push({
+        event: 'Page.frameNavigated',
+        handlerId: cdp.on('Page.frameNavigated', onNavigated),
+      });
     }
 
     // Enable network monitoring if not already enabled
@@ -235,10 +247,10 @@ async function waitForCompletion(
       if (idleTimeout) clearTimeout(idleTimeout);
       if (timeoutHandle) clearTimeout(timeoutHandle);
 
-      // Remove event listeners using handler IDs
-      for (const handlerId of handlerIds) {
+      // Remove event listeners with proper event names
+      for (const { event, handlerId } of handlers) {
         try {
-          cdp.off('', handlerId); // Event name not needed, just handlerId
+          cdp.off(event, handlerId);
         } catch {
           // Ignore errors during cleanup
         }

@@ -89,7 +89,7 @@ RESULT=$(bdg cdp Runtime.evaluate --params "{\"expression\": $(printf '%s' "$EXT
 log_step "Validating extracted data"
 
 # Parse result using jq
-STORIES=$(echo "$RESULT" | jq -r '.result.value')
+STORIES=$(echo "$RESULT" | jq -r '.result.result.value')
 STORY_COUNT=$(echo "$STORIES" | jq 'length')
 
 log_info "Extracted $STORY_COUNT stories"

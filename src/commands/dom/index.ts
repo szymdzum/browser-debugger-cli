@@ -1,15 +1,17 @@
 import type { Command } from 'commander';
 
+import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/commands/dom/helpers.js';
+import type { DomGetOptions as DomGetHelperOptions } from '@/commands/dom/helpers.js';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/helpers/domHelpers.js';
-import type { DomGetOptions as DomGetHelperOptions } from '@/helpers/domHelpers.js';
+import { CommandError } from '@/ui/errors/index.js';
 import {
   formatDomQuery,
   formatDomGet,
   formatDomEval,
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Options for DOM query command
@@ -133,7 +135,7 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
         getValidatedSessionMetadata,
         verifyTargetExists,
         executeScript,
-      } = await import('./domEvalHelpers.js');
+      } = await import('@/commands/dom/evalHelpers.js');
 
       // Validate session is running
       validateActiveSession();
@@ -143,6 +145,13 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
 
       // Verify target still exists
       const port = parseInt(options.port ?? '9222', 10);
+      if (!Number.isFinite(port) || port < 1 || port > 65535) {
+        throw new CommandError(
+          'Invalid port number',
+          { suggestion: 'Port must be an integer between 1 and 65535' },
+          EXIT_CODES.INVALID_ARGUMENTS
+        );
+      }
       await verifyTargetExists(metadata, port);
 
       // Create temporary CDP connection and execute script

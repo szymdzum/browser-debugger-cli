@@ -59,7 +59,6 @@ export interface ScreenshotResult {
  */
 export interface DomGetOptions {
   selector?: string;
-  index?: number;
   nodeId?: number;
   all?: boolean;
   nth?: number;
@@ -168,7 +167,7 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
 /**
  * Get full HTML and attributes for DOM elements using CDP relay.
  *
- * @param options - Get options (selector, index, nodeId, all, nth)
+ * @param options - Get options (selector or nodeId, plus optional --all or --nth flags)
  * @returns Get result with node details
  * @throws CDPConnectionError if CDP operation fails
  */
@@ -179,10 +178,6 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
 
   if (options.nodeId !== undefined) {
     nodeIds = [options.nodeId];
-  } else if (options.index !== undefined) {
-    throw new Error(
-      'Index-based lookups not yet supported in CDP relay mode. Use selector instead.'
-    );
   } else if (options.selector) {
     // Get document root
     const docResponse = await callCDP('DOM.getDocument', {});
@@ -224,7 +219,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
       nodeIds = [firstNode];
     }
   } else {
-    throw new Error('Either selector, index, or nodeId must be provided');
+    throw new Error('Either selector or nodeId must be provided');
   }
 
   const nodes = await Promise.all(

@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import { createResponse } from '@/__testfixtures__/cdpMessages.js';
 import { FakeWebSocket } from '@/__testutils__/FakeWebSocket.js';
-import { verifyTargetExists, executeScript } from '@/commands/domEvalHelpers.js';
+import { verifyTargetExists, executeScript } from '@/commands/dom/evalHelpers.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 

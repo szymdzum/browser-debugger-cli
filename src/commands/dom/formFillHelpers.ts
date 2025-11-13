@@ -123,7 +123,7 @@ export async function clickElement(
   }
 
   // Execute the click script
-  const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(targetSelector)}', {})`;
+  const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(targetSelector)}')`;
 
   try {
     const response = await cdp.send('Runtime.evaluate', {
@@ -211,30 +211,30 @@ async function getElementByIndex(
 
 /**
  * Escape CSS selector for safe inclusion in JavaScript string.
+ * Uses JSON.stringify to handle all special characters safely.
  *
  * @param selector - CSS selector to escape
- * @returns Escaped selector
+ * @returns Escaped selector (without surrounding quotes)
  *
  * @internal
  */
 function escapeSelectorForJS(selector: string): string {
-  return selector.replace(/'/g, "\\'").replace(/"/g, '\\"');
+  // JSON.stringify handles all escaping (backslashes, quotes, newlines, control chars)
+  // Remove surrounding quotes since we add them in the template
+  return JSON.stringify(selector).slice(1, -1);
 }
 
 /**
  * Escape value for safe inclusion in JavaScript string.
+ * Uses JSON.stringify to handle all special characters safely.
  *
  * @param value - Value to escape
- * @returns Escaped value
+ * @returns Escaped value (without surrounding quotes)
  *
  * @internal
  */
 function escapeValueForJS(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t');
+  // JSON.stringify handles all escaping (backslashes, quotes, newlines, control chars)
+  // Remove surrounding quotes since we add them in the template
+  return JSON.stringify(value).slice(1, -1);
 }

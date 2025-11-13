@@ -4,15 +4,58 @@
 
 import type { Command } from 'commander';
 
-import { fillElement, clickElement } from '@/helpers/formFillHelpers.js';
-import { submitForm } from '@/helpers/formSubmitHelpers.js';
-import type { SubmitResult } from '@/helpers/formSubmitHelpers.js';
-import type { FillResult, ClickResult } from '@/helpers/reactEventHelpers.js';
+import { fillElement, clickElement } from '@/commands/dom/formFillHelpers.js';
+import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
+import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
+import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
+import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { CDPConnection } from '@/connection/cdp.js';
+import type { SessionMetadata } from '@/session/metadata.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-import { runCommand } from './shared/CommandRunner.js';
-import { jsonOption } from './shared/commonOptions.js';
+/**
+ * Execute a function with an active CDP connection.
+ *
+ * Handles the full connection lifecycle:
+ * 1. Validates active session
+ * 2. Gets session metadata
+ * 3. Verifies target exists
+ * 4. Creates and connects CDP
+ * 5. Executes callback
+ * 6. Closes CDP connection (even on error)
+ *
+ * @param fn - Callback to execute with CDP connection
+ * @returns Result from callback
+ * @throws Error if session validation or connection fails
+ *
+ * @internal
+ */
+async function withCDPConnection<T>(
+  fn: (cdp: CDPConnection, metadata: SessionMetadata) => Promise<T>
+): Promise<T> {
+  const { CDPConnection } = await import('@/connection/cdp.js');
+  const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } = await import(
+    '@/commands/dom/evalHelpers.js'
+  );
+
+  // Validate session
+  validateActiveSession();
+  const metadata = getValidatedSessionMetadata();
+  const port = 9222; // Default port
+  await verifyTargetExists(metadata, port);
+
+  // Connect to CDP
+  const cdp = new CDPConnection();
+  await cdp.connect(metadata.webSocketDebuggerUrl!);
+
+  try {
+    return await fn(cdp, metadata);
+  } finally {
+    cdp.close();
+  }
+}
 
 /**
  * Register form interaction commands.
@@ -44,22 +87,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selector: string, value: string, options: FillCommandOptions) => {
       await runCommand(
         async () => {
-          // Create temporary CDP connection (same pattern as dom eval)
-          const { CDPConnection } = await import('@/connection/cdp.js');
-          const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-            await import('./domEvalHelpers.js');
-
-          // Validate session
-          validateActiveSession();
-          const metadata = getValidatedSessionMetadata();
-          const port = 9222; // Default port
-          await verifyTargetExists(metadata, port);
-
-          // Connect to CDP
-          const cdp = new CDPConnection();
-          await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-          try {
+          return await withCDPConnection(async (cdp) => {
             const fillOptions: { index?: number; blur?: boolean } = {
               blur: options.blur,
             };
@@ -80,9 +108,7 @@ export function registerFormInteractionCommands(program: Command): void {
             }
 
             return { success: true, data: result };
-          } finally {
-            cdp.close();
-          }
+          });
         },
         options,
         formatFillOutput
@@ -99,18 +125,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selector: string, options: ClickCommandOptions) => {
       await runCommand(
         async () => {
-          const { CDPConnection } = await import('@/connection/cdp.js');
-          const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-            await import('./domEvalHelpers.js');
-
-          validateActiveSession();
-          const metadata = getValidatedSessionMetadata();
-          await verifyTargetExists(metadata, 9222);
-
-          const cdp = new CDPConnection();
-          await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-          try {
+          return await withCDPConnection(async (cdp) => {
             const clickOptions: { index?: number } = {};
             if (options.index !== undefined) {
               clickOptions.index = options.index;
@@ -129,9 +144,7 @@ export function registerFormInteractionCommands(program: Command): void {
             }
 
             return { success: true, data: result };
-          } finally {
-            cdp.close();
-          }
+          });
         },
         options,
         formatClickOutput
@@ -151,18 +164,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selector: string, options: SubmitCommandOptions) => {
       await runCommand(
         async () => {
-          const { CDPConnection } = await import('@/connection/cdp.js');
-          const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-            await import('./domEvalHelpers.js');
-
-          validateActiveSession();
-          const metadata = getValidatedSessionMetadata();
-          await verifyTargetExists(metadata, 9222);
-
-          const cdp = new CDPConnection();
-          await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-          try {
+          return await withCDPConnection(async (cdp) => {
             const submitOptions: {
               index?: number;
               waitNavigation?: boolean;
@@ -194,9 +196,7 @@ export function registerFormInteractionCommands(program: Command): void {
             }
 
             return { success: true, data: result };
-          } finally {
-            cdp.close();
-          }
+          });
         },
         options,
         formatSubmitOutput

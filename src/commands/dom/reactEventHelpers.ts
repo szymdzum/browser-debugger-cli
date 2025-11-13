@@ -102,6 +102,8 @@ export const REACT_FILL_SCRIPT = `
   // Blur if requested (triggers validation in many forms)
   if (options.blur !== false) {
     el.blur();
+    // Dispatch focusout event for React/framework validation handlers
+    el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
   }
   
   return {
@@ -120,17 +122,47 @@ export const REACT_FILL_SCRIPT = `
  *
  * @remarks
  * Simple click implementation that works with buttons, links, and custom components.
+ * When selector matches multiple elements, prioritizes visible ones.
  */
 export const CLICK_ELEMENT_SCRIPT = `
-(function(selector, options) {
-  const el = document.querySelector(selector);
+(function(selector) {
+  let el = document.querySelector(selector);
   
+  // If not found, return error
   if (!el) {
     return {
       success: false,
       error: 'Element not found',
       selector: selector
     };
+  }
+  
+  // Check if there are multiple matches and pick the visible one
+  const allMatches = document.querySelectorAll(selector);
+  if (allMatches.length > 1) {
+    // Find first visible element using bounding rect and computed styles
+    for (const candidate of allMatches) {
+      const style = window.getComputedStyle(candidate);
+      const rect = candidate.getBoundingClientRect();
+      
+      // Check if element is actually visible:
+      // - Must have dimensions (non-zero width/height)
+      // - Must not be display:none or visibility:hidden
+      // - Opacity check (but allow semi-transparent elements)
+      // - offsetParent check (but position:fixed elements have null offsetParent, so also check position)
+      const hasSize = rect.width > 0 && rect.height > 0;
+      const isDisplayed = style.display !== 'none' && style.visibility !== 'hidden';
+      const isOpaque = parseFloat(style.opacity) > 0;
+      const isPositioned = candidate.offsetParent !== null || style.position === 'fixed';
+      
+      // Don't filter out elements without text - icon buttons, inputs, etc. are valid
+      const isVisible = hasSize && isDisplayed && isOpaque && isPositioned;
+      
+      if (isVisible) {
+        el = candidate;
+        break;
+      }
+    }
   }
   
   // Check if element is clickable (has click handler or is a button/link)
@@ -149,7 +181,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   }
   
   // Scroll element into view first
-  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  el.scrollIntoView({ behavior: 'auto', block: 'center' });
   
   // Click the element
   el.click();
@@ -195,23 +227,43 @@ export const GET_ELEMENT_BY_INDEX_SCRIPT = `
   
   // Return element info (we'll use this to build a more specific selector)
   const el = elements[index - 1]; // Convert to 0-based
-  const tagName = el.tagName.toLowerCase();
-  const id = el.id;
-  const classes = Array.from(el.classList).join('.');
   
-  // Build a unique selector
-  let uniqueSelector = tagName;
-  if (id) {
-    uniqueSelector = \`#\${id}\`;
-  } else if (classes) {
-    uniqueSelector = \`\${tagName}.\${classes}\`;
-  } else {
-    // Use nth-child as fallback
-    const parent = el.parentElement;
-    const siblings = Array.from(parent?.children || []);
-    const childIndex = siblings.indexOf(el) + 1;
-    uniqueSelector = \`\${tagName}:nth-child(\${childIndex})\`;
+  // Build a truly unique selector by constructing a scoped DOM path
+  function buildUniquePath(element: Element): string {
+    // If element has an ID, that's unique enough
+    if (element.id) {
+      return \`#\${CSS.escape(element.id)}\`;
+    }
+    
+    // Build path from root using nth-of-type for each ancestor
+    const path: string[] = [];
+    let current: Element | null = element;
+    
+    while (current && current !== document.documentElement) {
+      let selector = current.tagName.toLowerCase();
+      
+      // Use nth-of-type to ensure uniqueness within parent
+      if (current.parentElement) {
+        const siblings = Array.from(current.parentElement.children);
+        const sameTagSiblings = siblings.filter(
+          (sibling) => sibling.tagName === current!.tagName
+        );
+        
+        if (sameTagSiblings.length > 1) {
+          const index = sameTagSiblings.indexOf(current) + 1;
+          selector += \`:nth-of-type(\${index})\`;
+        }
+      }
+      
+      path.unshift(selector);
+      current = current.parentElement;
+    }
+    
+    // Prefix with html to anchor to document root
+    return 'html > ' + path.join(' > ');
   }
+  
+  const uniqueSelector = buildUniquePath(el);
   
   return {
     success: true,
