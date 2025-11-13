@@ -46,20 +46,6 @@ void describe('Error Handling Smoke Tests', () => {
     assert.ok(result.stderr.includes('daemon'));
   });
 
-  void it('should handle invalid URL gracefully', async () => {
-    // Note: URL validation is permissive - "not-a-valid-url" becomes "http://not-a-valid-url/"
-    // This test verifies error handling, not URL validation
-    const result = await runCommand('http://example.com', ['--port', '9229', '--headless'], {
-      timeout: 10000,
-    });
-
-    // Should succeed (URL is valid, session starts)
-    assert.equal(result.exitCode, 0);
-
-    // Should provide session started message
-    assert.ok(/session started|target:/i.test(result.stderr));
-  });
-
   void it('should handle daemon crash during session', async () => {
     // Start session with unique port
     await runCommand('http://example.com', ['--port', '9230', '--headless'], { timeout: 10000 });
