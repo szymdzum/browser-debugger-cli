@@ -1,4 +1,4 @@
-import type { DomQueryData, DomGetData } from '@/ipc/commands.js';
+import type { DomQueryResult, DomGetResult } from '@/helpers/domHelpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
@@ -26,7 +26,7 @@ import { OutputFormatter } from '@/ui/formatting.js';
  * //   [1] <span class="error"> Required field
  * ```
  */
-export function formatDomQuery(data: DomQueryData): string {
+export function formatDomQuery(data: DomQueryResult): string {
   const { count, nodes, selector } = data;
   const fmt = new OutputFormatter();
 
@@ -86,7 +86,7 @@ export function formatDomQuery(data: DomQueryData): string {
  * // [2] <span class="error">Error 2</span>
  * ```
  */
-export function formatDomGet(data: DomGetData): string {
+export function formatDomGet(data: DomGetResult): string {
   const { nodes } = data;
 
   if (nodes.length === 1) {

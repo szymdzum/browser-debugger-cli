@@ -243,60 +243,6 @@ async function sendCommand<T extends CommandName>(
 }
 
 /**
- * Query DOM elements by CSS selector via the daemon's worker.
- *
- * @param selector - CSS selector to query
- * @returns DOM query response with matched elements
- * @throws Error if connection fails, daemon is not running, or request times out
- */
-export async function queryDOM(selector: string): Promise<ClientResponse<'dom_query'>> {
-  return sendCommand('dom_query', { selector });
-}
-
-/**
- * Get full HTML and attributes for DOM elements via the daemon's worker.
- *
- * @param options - Get options (selector, index, nodeId, all, nth)
- * @returns DOM get response with node information
- * @throws Error if connection fails, daemon is not running, or request times out
- */
-export async function getDOM(options: {
-  selector?: string;
-  index?: number;
-  nodeId?: number;
-  all?: boolean;
-  nth?: number;
-}): Promise<ClientResponse<'dom_get'>> {
-  return sendCommand('dom_get', options);
-}
-
-/**
- * Capture page screenshot via the daemon's worker.
- *
- * @param path - Output file path (absolute path)
- * @param options - Screenshot options (format, quality, fullPage)
- * @returns Screenshot response with metadata (path, dimensions, size)
- * @throws Error if connection fails, daemon is not running, or request times out
- */
-export async function captureScreenshot(
-  path: string,
-  options?: {
-    format?: 'png' | 'jpeg';
-    quality?: number;
-    fullPage?: boolean;
-  }
-): Promise<ClientResponse<'dom_screenshot'>> {
-  return sendCommand('dom_screenshot', {
-    path,
-    ...filterDefined({
-      format: options?.format,
-      quality: options?.quality,
-      fullPage: options?.fullPage,
-    }),
-  });
-}
-
-/**
  * Get details for a specific network request or console message via the daemon's worker.
  *
  * @param type - Type of item: 'network' or 'console'
