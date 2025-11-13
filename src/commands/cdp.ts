@@ -45,7 +45,11 @@ interface CdpOptions extends BaseCommandOptions {
 export function registerCdpCommand(program: Command): void {
   program
     .command('cdp')
-    .description('Execute CDP methods with full protocol introspection')
+    .description(
+      'CDP protocol introspection and execution (53 domains, 300+ methods)\n' +
+        '  Discovery: --list, --search, --describe\n' +
+        '  Execution: case-insensitive (network.getcookies works)'
+    )
     .argument('[method]', 'CDP method name (e.g., Network.getCookies, network.getcookies)')
     .option('--params <json>', 'Method parameters as JSON')
     .option('--list', 'List all domains or methods in a domain')
@@ -154,9 +158,7 @@ async function handleListDomains(): Promise<{ success: true; data: unknown }> {
  * @param domainName - Domain name (case-insensitive)
  * @returns Success result with method summaries
  */
-async function handleListDomainMethods(
-  domainName: string
-): Promise<{
+async function handleListDomainMethods(domainName: string): Promise<{
   success: boolean;
   data?: unknown;
   error?: string;
@@ -211,9 +213,7 @@ async function handleListDomainMethods(
  * @param methodName - Method name (case-insensitive, with or without domain)
  * @returns Success result with method schema
  */
-async function handleDescribeMethod(
-  methodName: string
-): Promise<{
+async function handleDescribeMethod(methodName: string): Promise<{
   success: boolean;
   data?: unknown;
   error?: string;

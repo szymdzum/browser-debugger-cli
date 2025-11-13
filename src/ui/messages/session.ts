@@ -42,10 +42,11 @@ export function landingPage(options: LandingPageOptions): string {
   lines.push(`Target: ${url}`);
   lines.push('');
   lines.push(
-    section('Raw CDP Access (60+ domains, 300+ methods):', [
-      'bdg cdp Runtime.evaluate --params \'{"expression":"document.title","returnByValue":true}\'',
-      'bdg cdp Network.getCookies',
-      'bdg cdp Page.captureScreenshot --params \'{"format":"png"}\'',
+    section('Raw CDP Access (53 domains, 300+ methods):', [
+      'bdg cdp --list             List all domains',
+      'bdg cdp Network --list     List Network methods',
+      'bdg cdp --search cookie    Search methods',
+      'bdg cdp runtime.evaluate --params \'{"expression":"document.title"}\'',
     ])
   );
   lines.push('');
