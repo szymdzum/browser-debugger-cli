@@ -2,16 +2,14 @@ import type { Command } from 'commander';
 
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { queryDOM, getDOM, captureScreenshot } from '@/ipc/client.js';
+import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/helpers/domHelpers.js';
+import type { DomGetOptions as DomGetHelperOptions } from '@/helpers/domHelpers.js';
 import {
   formatDomQuery,
   formatDomGet,
   formatDomEval,
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
-import { filterDefined } from '@/utils/objects.js';
-
-import { mergeWithSelector } from './domOptionsBuilder.js';
 
 /**
  * Options for DOM query command
@@ -40,7 +38,7 @@ interface DomScreenshotOptions extends BaseCommandOptions {
  * Handle bdg dom query <selector> command
  *
  * Queries the DOM using a CSS selector and displays matching elements.
- * Results are cached for 5 minutes to enable index-based references in other commands.
+ * Uses direct CDP connection (creates temporary connection).
  *
  * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
  * @param options - Command options
@@ -48,26 +46,23 @@ interface DomScreenshotOptions extends BaseCommandOptions {
 async function handleDomQuery(selector: string, options: DomQueryOptions): Promise<void> {
   await runCommand(
     async () => {
-      const response = await queryDOM(selector);
+      const { CDPConnection } = await import('@/connection/cdp.js');
+      const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
+        await import('./domEvalHelpers.js');
 
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
+      validateActiveSession();
+      const metadata = getValidatedSessionMetadata();
+      await verifyTargetExists(metadata, 9222);
+
+      const cdp = new CDPConnection();
+      await cdp.connect(metadata.webSocketDebuggerUrl!);
+
+      try {
+        const result = await queryDOMElements(cdp, selector);
+        return { success: true, data: result };
+      } finally {
+        cdp.close();
       }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
     },
     options,
     formatDomQuery
@@ -77,45 +72,37 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 /**
  * Handle bdg dom get command
  *
- * Retrieves full HTML and attributes for DOM elements. Accepts CSS selector,
- * cached index from previous query, or direct nodeId.
+ * Retrieves full HTML and attributes for DOM elements. Accepts CSS selector or direct nodeId.
+ * Uses direct CDP connection (creates temporary connection).
  *
- * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
+ * @param selector - CSS selector (e.g., ".error")
  * @param options - Command options including --all, --nth, and nodeId
  */
-async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
+async function handleDomGet(selector: string, options: DomGetOptions): Promise<void> {
   await runCommand(
     async () => {
-      // Build IPC options with selector/index/nodeId merged
-      const ipcOptions = mergeWithSelector<Parameters<typeof getDOM>[0]>(
-        filterDefined({
-          all: options.all,
-          nth: options.nth,
-        }) as Parameters<typeof getDOM>[0],
-        selectorOrIndex,
-        options.nodeId
-      );
+      const { CDPConnection } = await import('@/connection/cdp.js');
+      const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
+        await import('./domEvalHelpers.js');
 
-      const response = await getDOM(ipcOptions);
+      validateActiveSession();
+      const metadata = getValidatedSessionMetadata();
+      await verifyTargetExists(metadata, 9222);
 
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
+      const cdp = new CDPConnection();
+      await cdp.connect(metadata.webSocketDebuggerUrl!);
+
+      try {
+        const getOptions: DomGetHelperOptions = { selector };
+        if (options.all !== undefined) getOptions.all = options.all;
+        if (options.nth !== undefined) getOptions.nth = options.nth;
+        if (options.nodeId !== undefined) getOptions.nodeId = options.nodeId;
+
+        const result = await getDOMElements(cdp, getOptions);
+        return { success: true, data: result };
+      } finally {
+        cdp.close();
       }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
     },
     options,
     formatDomGet
@@ -127,6 +114,7 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
  *
  * Captures a screenshot of the current page and saves it to disk.
  * Supports PNG and JPEG formats with customizable quality and viewport options.
+ * Uses direct CDP connection (creates temporary connection).
  *
  * @param path - Output file path (absolute or relative)
  * @param options - Screenshot options (format, quality, fullPage)
@@ -134,32 +122,29 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
 async function handleDomScreenshot(path: string, options: DomScreenshotOptions): Promise<void> {
   await runCommand(
     async () => {
-      const screenshotOptions = filterDefined({
-        format: options.format,
-        quality: options.quality,
-        fullPage: options.fullPage,
-      }) as { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean };
+      const { CDPConnection } = await import('@/connection/cdp.js');
+      const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
+        await import('./domEvalHelpers.js');
 
-      const response = await captureScreenshot(path, screenshotOptions);
+      validateActiveSession();
+      const metadata = getValidatedSessionMetadata();
+      await verifyTargetExists(metadata, 9222);
 
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
+      const cdp = new CDPConnection();
+      await cdp.connect(metadata.webSocketDebuggerUrl!);
+
+      try {
+        const screenshotOptions: { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean } =
+          {};
+        if (options.format !== undefined) screenshotOptions.format = options.format;
+        if (options.quality !== undefined) screenshotOptions.quality = options.quality;
+        if (options.fullPage !== undefined) screenshotOptions.fullPage = options.fullPage;
+
+        const result = await capturePageScreenshot(cdp, path, screenshotOptions);
+        return { success: true, data: result };
+      } finally {
+        cdp.close();
       }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
     },
     options,
     formatDomScreenshot
@@ -254,17 +239,17 @@ export function registerDomCommands(program: Command): void {
       await handleDomEval(script, options);
     });
 
-  // bdg dom get <selector|index>
+  // bdg dom get <selector>
   dom
     .command('get')
     .description('Get full HTML and attributes for elements')
-    .argument('<selector|index>', 'CSS selector or index from last query')
+    .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option('--all', 'Target all matches')
     .option('--nth <n>', 'Target nth match', parseInt)
     .option('--node-id <id>', 'Use nodeId directly (advanced)', parseInt)
     .option('-j, --json', 'Output as JSON')
-    .action(async (selectorOrIndex: string, options: DomGetOptions) => {
-      await handleDomGet(selectorOrIndex, options);
+    .action(async (selector: string, options: DomGetOptions) => {
+      await handleDomGet(selector, options);
     });
 
   // bdg dom screenshot <path>
