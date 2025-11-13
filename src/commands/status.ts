@@ -36,8 +36,8 @@ export function registerStatusCommand(program: Command): void {
   program
     .command('status')
     .description('Show active session status and collection statistics')
-    .option('-j, --json', 'Output as JSON')
-    .option('-v, --verbose', 'Show detailed Chrome diagnostics')
+    .option('-j, --json', 'Output as JSON', false)
+    .option('-v, --verbose', 'Show detailed Chrome diagnostics', false)
     .action(async (options: StatusOptions) => {
       let latestMetadata: SessionMetadata | null = null;
       let latestSessionPid: number | null = null;

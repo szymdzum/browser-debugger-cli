@@ -89,9 +89,9 @@ export function registerCleanupCommand(program: Command): void {
   program
     .command('cleanup')
     .description('Clean up stale session files')
-    .option('-f, --force', 'Force cleanup even if session appears active')
-    .option('-a, --all', 'Also remove session.json output file')
-    .option('--aggressive', 'Kill all Chrome processes (uses chrome-launcher killAll)')
+    .option('-f, --force', 'Force cleanup even if session appears active', false)
+    .option('-a, --all', 'Also remove session.json output file', false)
+    .option('--aggressive', 'Kill all Chrome processes (uses chrome-launcher killAll)', false)
     .addOption(jsonOption)
     .action(async (options: CleanupOptions) => {
       await runCommand(

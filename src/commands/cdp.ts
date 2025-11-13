@@ -65,17 +65,17 @@ export function registerCdpCommand(program: Command): void {
 
           // Mode 2: List all domains
           if (opts.list && !method) {
-            return await handleListDomains();
+            return handleListDomains();
           }
 
           // Mode 3: List domain methods
           if (opts.list && method) {
-            return await handleListDomainMethods(method);
+            return handleListDomainMethods(method);
           }
 
           // Mode 4: Describe method
           if (opts.describe && method) {
-            return await handleDescribeMethod(method);
+            return handleDescribeMethod(method);
           }
 
           // Mode 5: Execute method
@@ -96,6 +96,91 @@ export function registerCdpCommand(program: Command): void {
         { ...options, json: true } // Always output JSON for CDP commands
       );
     });
+}
+
+/**
+ * Calculate Levenshtein distance between two strings.
+ * Used for finding similar method names.
+ *
+ * @param str1 - First string
+ * @param str2 - Second string
+ * @returns Edit distance between strings
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+  const len1 = str1.length;
+  const len2 = str2.length;
+  const matrix: number[][] = [];
+
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i];
+  }
+  const firstRow = matrix[0];
+  if (firstRow) {
+    for (let j = 0; j <= len2; j++) {
+      firstRow[j] = j;
+    }
+  }
+
+  for (let i = 1; i <= len1; i++) {
+    const currentRow = matrix[i];
+    if (!currentRow) continue;
+
+    for (let j = 1; j <= len2; j++) {
+      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      const deletion = (matrix[i - 1]?.[j] ?? 0) + 1;
+      const insertion = (currentRow[j - 1] ?? 0) + 1;
+      const substitution = (matrix[i - 1]?.[j - 1] ?? 0) + cost;
+      currentRow[j] = Math.min(deletion, insertion, substitution);
+    }
+  }
+
+  return matrix[len1]?.[len2] ?? 0;
+}
+
+/**
+ * Find similar methods to suggest when a method is not found.
+ * Returns up to 3 closest matches based on edit distance.
+ *
+ * @param methodName - The method name that was not found
+ * @param domain - Optional domain to search within
+ * @returns Array of similar method names
+ */
+function findSimilarMethods(methodName: string, domain?: string): string[] {
+  const allDomains = getAllDomainSummaries();
+  const candidates: Array<{ name: string; distance: number }> = [];
+
+  const searchName = methodName.toLowerCase();
+
+  for (const domainSummary of allDomains) {
+    // If domain specified, only search that domain
+    if (domain && domainSummary.name.toLowerCase() !== domain.toLowerCase()) {
+      continue;
+    }
+
+    const methods = getDomainMethods(domainSummary.name);
+    for (const method of methods) {
+      const fullName = method.name.toLowerCase();
+      const methodOnly = method.method.toLowerCase();
+
+      // Calculate distance for both full name and method name
+      const distanceFull = levenshteinDistance(searchName, fullName);
+      const distanceMethod = levenshteinDistance(searchName, methodOnly);
+
+      // Use the smaller distance
+      const distance = Math.min(distanceFull, distanceMethod);
+
+      // Only consider if distance is reasonable (less than half the length)
+      if (distance <= Math.max(searchName.length / 2, 3)) {
+        candidates.push({ name: method.name, distance });
+      }
+    }
+  }
+
+  // Sort by distance and return top 3
+  return candidates
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 3)
+    .map((c) => c.name);
 }
 
 /**
@@ -132,7 +217,7 @@ async function handleSearch(query: string): Promise<{ success: true; data: unkno
  *
  * @returns Success result with domain summaries
  */
-async function handleListDomains(): Promise<{ success: true; data: unknown }> {
+function handleListDomains(): { success: true; data: unknown } {
   const summaries = getAllDomainSummaries();
 
   return {
@@ -158,13 +243,13 @@ async function handleListDomains(): Promise<{ success: true; data: unknown }> {
  * @param domainName - Domain name (case-insensitive)
  * @returns Success result with method summaries
  */
-async function handleListDomainMethods(domainName: string): Promise<{
+function handleListDomainMethods(domainName: string): {
   success: boolean;
   data?: unknown;
   error?: string;
   exitCode?: number;
-  errorContext?: unknown;
-}> {
+  errorContext?: Record<string, unknown>;
+} {
   const summary = getDomainSummary(domainName);
   if (!summary) {
     return {
@@ -213,13 +298,13 @@ async function handleListDomainMethods(domainName: string): Promise<{
  * @param methodName - Method name (case-insensitive, with or without domain)
  * @returns Success result with method schema
  */
-async function handleDescribeMethod(methodName: string): Promise<{
+function handleDescribeMethod(methodName: string): {
   success: boolean;
   data?: unknown;
   error?: string;
   exitCode?: number;
-  errorContext?: unknown;
-}> {
+  errorContext?: Record<string, unknown>;
+} {
   // Parse domain and method
   const [domainName, method] = methodName.includes('.')
     ? methodName.split('.')
@@ -229,12 +314,20 @@ async function handleDescribeMethod(methodName: string): Promise<{
     // If no dot, assume it's just a domain - show domain summary
     const summary = getDomainSummary(domainName);
     if (!summary) {
+      const similar = findSimilarMethods(methodName);
+      const suggestions = ['Use: bdg cdp --list (to see all domains)'];
+      if (similar.length > 0) {
+        suggestions.push('');
+        suggestions.push('Did you mean:');
+        similar.forEach((name) => suggestions.push(`  • ${name}`));
+      }
+
       return {
         success: false,
         error: `Domain or method '${methodName}' not found`,
         exitCode: EXIT_CODES.INVALID_ARGUMENTS,
         errorContext: {
-          suggestion: 'Use: bdg cdp --list (to see all domains)',
+          suggestion: suggestions.join('\n'),
         },
       };
     }
@@ -257,12 +350,20 @@ async function handleDescribeMethod(methodName: string): Promise<{
   // Get method schema
   const schema = getMethodSchema(domainName, method);
   if (!schema) {
+    const similar = findSimilarMethods(methodName, domainName);
+    const suggestions = [`Use: bdg cdp ${domainName} --list (to see all ${domainName} methods)`];
+    if (similar.length > 0) {
+      suggestions.push('');
+      suggestions.push('Did you mean:');
+      similar.forEach((name) => suggestions.push(`  • ${name}`));
+    }
+
     return {
       success: false,
       error: `Method '${methodName}' not found`,
       exitCode: EXIT_CODES.INVALID_ARGUMENTS,
       errorContext: {
-        suggestion: `Use: bdg cdp ${domainName} --list (to see all ${domainName} methods)`,
+        suggestion: suggestions.join('\n'),
       },
     };
   }
@@ -313,17 +414,25 @@ async function handleExecuteMethod(
   data?: unknown;
   error?: string;
   exitCode?: number;
-  errorContext?: unknown;
+  errorContext?: Record<string, unknown>;
 }> {
   // Normalize method name (case-insensitive)
   const normalized = normalizeMethod(methodName);
   if (!normalized) {
+    const similar = findSimilarMethods(methodName);
+    const suggestions = ['Use: bdg cdp --search <keyword> (to search for methods)'];
+    if (similar.length > 0) {
+      suggestions.push('');
+      suggestions.push('Did you mean:');
+      similar.forEach((name) => suggestions.push(`  • ${name}`));
+    }
+
     return {
       success: false,
       error: `Method '${methodName}' not found`,
       exitCode: EXIT_CODES.INVALID_ARGUMENTS,
       errorContext: {
-        suggestion: 'Use: bdg cdp --search <keyword> (to search for methods)',
+        suggestion: suggestions.join('\n'),
       },
     };
   }

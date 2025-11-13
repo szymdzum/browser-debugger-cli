@@ -129,6 +129,7 @@ export function invalidLastArgumentError(
 }
 
 /**
+ * @deprecated Use daemonNotRunningError() from errors.ts instead
  * Generate daemon not running with cleanup suggestion.
  *
  * @param staleCleaned - Whether stale PID was cleaned up

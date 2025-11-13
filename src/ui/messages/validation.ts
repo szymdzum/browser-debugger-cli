@@ -5,20 +5,59 @@
  */
 
 /**
- * Generate invalid integer error message.
+ * Options for integer validation error messages.
+ */
+export interface IntegerValidationOptions {
+  /** Minimum allowed value */
+  min?: number;
+  /** Maximum allowed value */
+  max?: number;
+  /** Example valid value to show */
+  exampleValue?: number;
+}
+
+/**
+ * Generate invalid integer error message with context.
  *
  * @param fieldName - Name of the field being validated
  * @param value - The invalid value provided
- * @returns Formatted error message
+ * @param options - Optional range and example information
+ * @returns Formatted error message with suggestions
  *
  * @example
  * ```typescript
+ * // Basic usage
  * throw new Error(invalidIntegerError('timeout', 'abc'));
- * // "Invalid timeout: "abc" is not a valid integer"
+ *
+ * // With range
+ * throw new Error(invalidIntegerError('timeout', 'abc', { min: 1, max: 3600 }));
+ *
+ * // With example
+ * throw new Error(invalidIntegerError('port', 'xyz', { min: 1024, max: 65535, exampleValue: 9222 }));
  * ```
  */
-export function invalidIntegerError(fieldName: string, value: string): string {
-  return `Invalid ${fieldName}: "${value}" is not a valid integer`;
+export function invalidIntegerError(
+  fieldName: string,
+  value: string,
+  options?: IntegerValidationOptions
+): string {
+  const lines: string[] = [];
+
+  lines.push(`Error: Invalid ${fieldName}: "${value}" is not a valid integer`);
+
+  if (options?.min !== undefined && options?.max !== undefined) {
+    lines.push(`Valid range: ${options.min} to ${options.max}`);
+  } else if (options?.min !== undefined) {
+    lines.push(`Must be at least ${options.min}`);
+  } else if (options?.max !== undefined) {
+    lines.push(`Must be at most ${options.max}`);
+  }
+
+  const example = options?.exampleValue ?? options?.min ?? 30;
+  lines.push('');
+  lines.push(`Example: --${fieldName} ${example}`);
+
+  return lines.join('\n');
 }
 
 /**

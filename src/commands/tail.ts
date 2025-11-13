@@ -26,12 +26,25 @@ interface TailOptions extends PreviewOptions {
  * @param options - Tail options
  */
 function handleTailError(error: string, options: TailOptions): void {
+  const timestamp = new Date().toISOString();
+
   if (options.json) {
-    console.log(JSON.stringify(OutputBuilder.buildJsonError(error), null, 2));
+    console.log(
+      JSON.stringify(
+        OutputBuilder.buildJsonError(error, { exitCode: EXIT_CODES.RESOURCE_NOT_FOUND }),
+        null,
+        2
+      )
+    );
   } else {
     console.error(noPreviewDataError());
   }
-  // Don't exit in tail mode - keep trying
+
+  // Don't exit in tail mode - show retry message and keep trying
+  console.error(
+    `\n[${timestamp}] ⚠️  Connection lost, retrying every ${options.interval ?? '1000'}ms...`
+  );
+  console.error('Press Ctrl+C to stop');
 }
 
 /**
@@ -47,10 +60,10 @@ export function registerTailCommand(program: Command): void {
     .command('tail')
     .description('Continuously monitor session data (like tail -f)')
     .addOption(jsonOption)
-    .option('-v, --verbose', 'Use verbose output with full URLs and formatting')
-    .option('-n, --network', 'Show only network requests')
-    .option('-c, --console', 'Show only console messages')
-    .option('--last <count>', 'Show last N items', '10')
+    .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
+    .option('-n, --network', 'Show only network requests', false)
+    .option('-c, --console', 'Show only console messages', false)
+    .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailOptions) => {
       // Validate --last parameter

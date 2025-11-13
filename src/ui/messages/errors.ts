@@ -45,23 +45,75 @@ export function sessionAlreadyRunningError(
 }
 
 /**
- * Generate "daemon not running" error message.
+ * Context for daemon error messages.
+ */
+export interface DaemonErrorContext {
+  /** Whether stale PID file was cleaned up */
+  staleCleanedUp?: boolean;
+  /** Whether to suggest checking status (for commands that expect daemon) */
+  suggestStatus?: boolean;
+  /** Whether to suggest retrying (for transient errors) */
+  suggestRetry?: boolean;
+  /** Last error message if available */
+  lastError?: string;
+}
+
+/**
+ * Generate unified "daemon not running" error message with context.
  *
- * @returns Formatted error message with suggestion
+ * This replaces the three previous variants:
+ * - daemonNotRunningError()
+ * - daemonConnectionFailedError()
+ * - daemonNotRunningWithCleanup()
+ *
+ * @param context - Optional context about the error
+ * @returns Formatted error message with suggestions
  *
  * @example
  * ```typescript
+ * // Basic usage
  * console.error(daemonNotRunningError());
+ *
+ * // With stale cleanup
+ * console.error(daemonNotRunningError({ staleCleanedUp: true }));
+ *
+ * // With status suggestion
+ * console.error(daemonNotRunningError({ suggestStatus: true }));
  * ```
  */
-export function daemonNotRunningError(): string {
+export function daemonNotRunningError(context?: DaemonErrorContext): string {
   const lines: string[] = [];
+
   lines.push('Error: Daemon not running');
-  lines.push('Start it with: bdg <url>');
+
+  if (context?.staleCleanedUp) {
+    lines.push('(Stale PID file was cleaned up)');
+  }
+
+  if (context?.lastError) {
+    lines.push(`Last error: ${context.lastError}`);
+  }
+
+  lines.push('');
+  lines.push('Start a new session:');
+  lines.push('  bdg <url>');
+
+  if (context?.suggestStatus) {
+    lines.push('');
+    lines.push('Or check daemon status:');
+    lines.push('  bdg status');
+  }
+
+  if (context?.suggestRetry) {
+    lines.push('');
+    lines.push('Or try the command again if this was transient');
+  }
+
   return lines.join('\n');
 }
 
 /**
+ * @deprecated Use daemonNotRunningError() instead
  * Generate "daemon connection failed" error message.
  *
  * @returns Formatted error message with troubleshooting
@@ -72,10 +124,7 @@ export function daemonNotRunningError(): string {
  * ```
  */
 export function daemonConnectionFailedError(): string {
-  const lines: string[] = [];
-  lines.push('[bdg] Daemon not running');
-  lines.push('[bdg] Try running the command again or check daemon status with: bdg status');
-  return lines.join('\n');
+  return daemonNotRunningError({ suggestStatus: true, suggestRetry: true });
 }
 
 /**

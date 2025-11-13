@@ -25,7 +25,7 @@ const MAX_LAST_ITEMS = 10000;
  *   });
  * ```
  */
-export const jsonOption = new Option('-j, --json', 'Output as JSON');
+export const jsonOption = new Option('-j, --json', 'Output as JSON').default(false);
 
 /**
  * Shared --last <n> option for pagination.
@@ -41,7 +41,10 @@ export const jsonOption = new Option('-j, --json', 'Output as JSON');
  *   });
  * ```
  */
-export const lastOption = new Option('--last <n>', 'Show last N items')
+export const lastOption = new Option(
+  '--last <n>',
+  'Show last N items (network requests and console messages combined, 0 = all)'
+)
   .default(MIN_LAST_ITEMS)
   .argParser((val) => {
     const n = parseInt(val, 10);

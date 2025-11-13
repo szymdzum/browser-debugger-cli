@@ -1,12 +1,7 @@
 import type { Command } from 'commander';
 
 import { startSessionViaDaemon } from '@/commands/shared/daemonSessionController.js';
-import {
-  DEFAULT_DEBUG_PORT,
-  PORT_OPTION_DESCRIPTION,
-  TIMEOUT_OPTION_DESCRIPTION,
-  USER_DATA_DIR_OPTION_DESCRIPTION,
-} from '@/constants.js';
+import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { invalidIntegerError } from '@/ui/messages/validation.js';
@@ -43,16 +38,15 @@ interface CollectorOptions {
 function applyCollectorOptions(command: Command): Command {
   return command
     .option('-p, --port <number>', PORT_OPTION_DESCRIPTION, DEFAULT_DEBUG_PORT)
-    .option('-t, --timeout <seconds>', TIMEOUT_OPTION_DESCRIPTION)
-    .option('-u, --user-data-dir <path>', USER_DATA_DIR_OPTION_DESCRIPTION)
-    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)')
     .option(
-      '-m, --max-body-size <megabytes>',
-      'Maximum response body size in MB (default: 5MB)',
-      '5'
+      '-t, --timeout <seconds>',
+      'Auto-stop after timeout in seconds (unlimited if not specified)'
     )
-    .option('--compact', 'Use compact JSON format (no indentation) for output files')
-    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)')
+    .option('-u, --user-data-dir <path>', 'Chrome user data directory', '~/.bdg/chrome-profile')
+    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)', false)
+    .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
+    .option('--compact', 'Use compact JSON format (no indentation) for output files', false)
+    .option('--headless', 'Launch Chrome in headless mode (no visible browser window)', false)
     .option(
       '--chrome-ws-url <url>',
       'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
@@ -63,16 +57,24 @@ function applyCollectorOptions(command: Command): Command {
  * Parse a string to integer, returning undefined if not provided
  * @param value - Optional string value to parse
  * @param fieldName - Name of the field being parsed (for error messages)
+ * @param min - Optional minimum allowed value
+ * @param max - Optional maximum allowed value
  * @returns Parsed integer or undefined if value was not provided
  * @throws Error if value is provided but not a valid integer
  */
-function parseOptionalInt(value: string | undefined, fieldName: string): number | undefined {
+function parseOptionalInt(
+  value: string | undefined,
+  fieldName: string,
+  min?: number,
+  max?: number
+): number | undefined {
   if (value === undefined) {
     return undefined;
   }
   const parsed = parseInt(value, 10);
   if (isNaN(parsed)) {
-    throw new Error(invalidIntegerError(fieldName, value));
+    const options = min !== undefined && max !== undefined ? { min, max } : undefined;
+    throw new Error(invalidIntegerError(fieldName, value, options));
   }
   return parsed;
 }
@@ -93,10 +95,10 @@ function buildSessionOptions(options: CollectorOptions): {
   headless: boolean;
   chromeWsUrl: string | undefined;
 } {
-  const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size');
+  const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size', 1, 100);
   return {
     port: parseInt(options.port, 10),
-    timeout: parseOptionalInt(options.timeout, 'timeout'),
+    timeout: parseOptionalInt(options.timeout, 'timeout', 1, 3600),
     userDataDir: options.userDataDir,
     includeAll: options.all ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
