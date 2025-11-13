@@ -702,7 +702,7 @@ bdg console.errors --group-by type
 ## References
 
 - [CDP Method Exposure Design](../CDP_METHOD_EXPOSURE.md)
-- [Agent-Friendly CLI Principles](../AGENT_FRIENDLY_TOOLS.md)
+- [Agent-Friendly CLI Principles](../principles/AGENT_FRIENDLY_TOOLS.md)
 - [CLI Reference](../CLI_REFERENCE.md)
 - [Chrome DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)
 

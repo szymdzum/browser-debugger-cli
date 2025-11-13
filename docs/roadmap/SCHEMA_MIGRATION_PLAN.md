@@ -329,6 +329,6 @@ export interface BdgOutput {
 ## Related Documents
 
 - [CLI Reference](../CLI_REFERENCE.md) - Exit code documentation
-- [Agent-Friendly Tools](../AGENT_FRIENDLY_TOOLS.md) - Design principles
+- [Agent-Friendly Tools](../principles/AGENT_FRIENDLY_TOOLS.md) - Design principles
 - [M1 Implementation Guide](M1_IMPLEMENTATION_GUIDE.md) - Week 0-4 tasks
 - [01 Agents Foundation](01_AGENTS_FOUNDATION.md) - M1 deliverables

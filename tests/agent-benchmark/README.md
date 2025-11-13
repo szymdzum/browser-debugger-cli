@@ -404,4 +404,4 @@ A: Yes, but use test accounts only. Never commit credentials.
 
 - [M1 Implementation Guide](../../docs/roadmap/M1_IMPLEMENTATION_GUIDE.md)
 - [Roadmap](../../docs/roadmap/ROADMAP.md)
-- [Agent-Friendly CLI Principles](../../docs/AGENT_FRIENDLY_TOOLS.md)
+- [Agent-Friendly CLI Principles](../../docs/principles/AGENT_FRIENDLY_TOOLS.md)

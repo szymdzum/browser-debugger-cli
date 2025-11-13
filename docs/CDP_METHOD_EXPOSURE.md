@@ -756,5 +756,5 @@ function checkRateLimit(): void {
 - **devtools-protocol NPM**: https://www.npmjs.com/package/devtools-protocol
 - **Protocol JSON**: https://github.com/ChromeDevTools/devtools-protocol/blob/master/json/browser_protocol.json
 - **Live Protocol**: `http://localhost:9222/json/protocol` (when Chrome running)
-- **Agent-Friendly Principles**: `docs/AGENT_FRIENDLY_TOOLS.md`
+- **Agent-Friendly Principles**: `docs/principles/AGENT_FRIENDLY_TOOLS.md`
 - **Collector-Centric UX**: `docs/COLLECTOR_CENTRIC_UX.md`
