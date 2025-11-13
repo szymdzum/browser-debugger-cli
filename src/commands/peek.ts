@@ -19,14 +19,20 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * @param exitCode - Exit code to use if not in follow mode
  */
 function handlePreviewError(error: string, options: PreviewOptions, exitCode: number): void {
+  const timestamp = new Date().toISOString();
+
   if (options.json) {
-    console.log(JSON.stringify(OutputBuilder.buildJsonError(error), null, 2));
+    console.log(JSON.stringify(OutputBuilder.buildJsonError(error, { exitCode }), null, 2));
   } else {
     console.error(noPreviewDataError());
   }
 
   if (!options.follow) {
     process.exit(exitCode);
+  } else {
+    // In follow mode, show error but keep retrying
+    console.error(`\n[${timestamp}] ⚠️  Connection lost, retrying every 1s...`);
+    console.error('Press Ctrl+C to stop');
   }
 }
 
@@ -40,11 +46,11 @@ export function registerPeekCommand(program: Command): void {
     .command('peek')
     .description('Preview collected data without stopping the session')
     .addOption(jsonOption)
-    .option('-v, --verbose', 'Use verbose output with full URLs and formatting')
-    .option('-n, --network', 'Show only network requests')
-    .option('-c, --console', 'Show only console messages')
-    .option('-f, --follow', 'Watch for updates (like tail -f)')
-    .option('--last <count>', 'Show last N items', '10')
+    .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
+    .option('-n, --network', 'Show only network requests', false)
+    .option('-c, --console', 'Show only console messages', false)
+    .option('-f, --follow', 'Watch for updates (like tail -f)', false)
+    .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .action(async (options: PreviewOptions) => {
       // Validate --last parameter
       const lastN = parseInt(options.last ?? '10', 10);

@@ -1,5 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import type { CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
@@ -15,23 +16,6 @@ export interface NavigationEvent {
   timestamp: number;
   /** Navigation counter (increments with each main frame navigation) */
   navigationId: number;
-}
-
-/**
- * Parameters for the Page.frameNavigated event.
- */
-interface CDPFrameNavigatedParams {
-  /** Frame information */
-  frame: {
-    /** Frame ID */
-    id: string;
-    /** Parent frame ID (undefined for main frame) */
-    parentId?: string;
-    /** Frame URL */
-    url: string;
-    /** Frame name */
-    name?: string;
-  };
 }
 
 /**
@@ -84,10 +68,10 @@ export async function startNavigationTracking(
   navigations.push(initialNavigation);
 
   // Listen for frame navigation events
-  registry.register<CDPFrameNavigatedParams>(
+  registry.register<Protocol.Page.FrameNavigatedEvent>(
     cdp,
     'Page.frameNavigated',
-    (params: CDPFrameNavigatedParams) => {
+    (params: Protocol.Page.FrameNavigatedEvent) => {
       // Only track main frame navigations (parentId is undefined for main frame)
       if (params.frame.parentId === undefined) {
         navigationCounter++;

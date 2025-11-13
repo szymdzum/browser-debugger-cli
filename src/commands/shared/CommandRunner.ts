@@ -25,6 +25,8 @@ export interface CommandResult<T = unknown> {
   error?: string;
   /** Optional exit code override (defaults: SUCCESS=0, error codes from EXIT_CODES) */
   exitCode?: number;
+  /** Optional error context (suggestions, examples, etc.) */
+  errorContext?: Record<string, unknown>;
 }
 
 /**
@@ -80,11 +82,27 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
     if (!result.success) {
       // Error result from handler
       if (options.json) {
+        const errorData: Record<string, unknown> = {
+          ...(result.exitCode !== undefined && { exitCode: result.exitCode }),
+          ...result.errorContext,
+        };
         console.log(
-          JSON.stringify(OutputBuilder.buildJsonError(result.error ?? 'Unknown error'), null, 2)
+          JSON.stringify(
+            OutputBuilder.buildJsonError(result.error ?? 'Unknown error', errorData),
+            null,
+            2
+          )
         );
       } else {
         console.error(result.error ? genericError(result.error) : unknownError());
+        // Show errorContext suggestions in human-readable mode
+        if (result.errorContext && typeof result.errorContext === 'object') {
+          for (const value of Object.values(result.errorContext)) {
+            if (typeof value === 'string') {
+              console.error(value);
+            }
+          }
+        }
       }
       process.exit(result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION);
     }

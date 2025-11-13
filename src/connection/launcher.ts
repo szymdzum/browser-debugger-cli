@@ -22,7 +22,6 @@ import type { LaunchedChrome } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   formatDiagnosticsForError,
-  chromeLaunchStartMessage,
   chromeLaunchSuccessMessage,
   chromeUserDataDirMessage,
   invalidPortError,
@@ -190,7 +189,8 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
-  log.info(chromeLaunchStartMessage(port));
+  // Show progress to user (always visible, not just debug)
+  console.error(`Launching Chrome on port ${port}...`);
   log.debug(chromeUserDataDirMessage(userDataDir));
 
   const chromeOptions = buildChromeOptions(options);
@@ -199,8 +199,12 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   try {
     const launchStart = Date.now();
     await launcher.launch();
+
+    console.error('Waiting for Chrome to be ready...');
     await launcher.waitUntilReady();
+
     const launchDurationMs = Date.now() - launchStart;
+    console.error(`✓ Chrome ready (${launchDurationMs}ms)`);
 
     const chromeProcessPid = launcher.pid ?? 0;
 

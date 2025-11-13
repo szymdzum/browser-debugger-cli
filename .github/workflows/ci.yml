@@ -178,6 +178,9 @@ jobs:
       - name: Run smoke tests
         run: npm run test:smoke
 
+      - name: Run integration tests
+        run: ./tests/run-all-tests.sh --integration
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest

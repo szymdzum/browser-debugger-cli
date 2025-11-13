@@ -9,6 +9,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 
 /**
  * Options for page readiness detection
@@ -94,12 +95,12 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
 
   // Check if page already loaded (handles Chrome pre-navigation)
   try {
-    const result = await cdp.send('Runtime.evaluate', {
+    const result = (await cdp.send('Runtime.evaluate', {
       expression: 'document.readyState',
       returnByValue: true,
-    });
+    })) as Protocol.Runtime.EvaluateResponse;
 
-    if ((result as { result?: { value?: string } }).result?.value === 'complete') {
+    if (result.result.value === 'complete') {
       // Load event already fired
       return;
     }
@@ -267,13 +268,12 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
 
     // Detection phase: wait for stability
     while (Date.now() < deadline) {
-      const checkResult = await cdp.send('Runtime.evaluate', {
+      const checkResult = (await cdp.send('Runtime.evaluate', {
         expression: 'Date.now() - window.__bdg_lastMutation',
         returnByValue: true,
-      });
+      })) as Protocol.Runtime.EvaluateResponse;
 
-      const timeSinceLastMutation =
-        (checkResult as { result?: { value?: number } }).result?.value ?? 0;
+      const timeSinceLastMutation = (checkResult.result.value as number) ?? 0;
 
       if (timeSinceLastMutation >= stableThreshold) {
         return timeSinceLastMutation; // Success!

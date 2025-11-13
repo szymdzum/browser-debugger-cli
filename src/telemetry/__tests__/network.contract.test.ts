@@ -30,14 +30,9 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { useFakeClock } from '@/__testutils__/testClock.js';
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { startNetworkCollection } from '@/telemetry/network.js';
-import type {
-  CDPNetworkRequestParams,
-  CDPNetworkResponseParams,
-  CDPNetworkLoadingFinishedParams,
-  CDPNetworkLoadingFailedParams,
-  NetworkRequest,
-} from '@/types';
+import type { NetworkRequest } from '@/types';
 
 /**
  * Mock CDP connection for testing network telemetry.
@@ -112,6 +107,80 @@ class MockCDPConnection {
   }
 }
 
+/**
+ * Test helper - create minimal Protocol.Network.Request with required fields
+ */
+function createTestRequest(partial: Partial<Protocol.Network.Request>): Protocol.Network.Request {
+  return {
+    url: '',
+    method: 'GET',
+    headers: {},
+    initialPriority: 'High',
+    referrerPolicy: 'no-referrer-when-downgrade',
+    ...partial,
+  };
+}
+
+/**
+ * Test helper - create minimal Protocol.Network.Response with required fields
+ */
+function createTestResponse(
+  partial: Partial<Protocol.Network.Response>
+): Protocol.Network.Response {
+  return {
+    url: '',
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    mimeType: 'text/html',
+    charset: 'utf-8',
+    connectionReused: false,
+    connectionId: 0,
+    encodedDataLength: 0,
+    securityState: 'secure',
+    ...partial,
+  };
+}
+
+/**
+ * Test helper - create partial RequestWillBeSentEvent
+ * Tests don't need all fields since the real handlers only use specific ones
+ */
+function createRequestEvent(
+  partial: Partial<Protocol.Network.RequestWillBeSentEvent>
+): Protocol.Network.RequestWillBeSentEvent {
+  return {
+    requestId: '',
+    loaderId: '',
+    documentURL: '',
+    request: createTestRequest({}),
+    timestamp: 0,
+    wallTime: 0,
+    initiator: { type: 'other' },
+    redirectHasExtraInfo: false,
+    type: 'Other',
+    ...partial,
+  } as Protocol.Network.RequestWillBeSentEvent;
+}
+
+/**
+ * Test helper - create partial ResponseReceivedEvent
+ * Tests don't need all fields since the real handlers only use specific ones
+ */
+function createResponseEvent(
+  partial: Partial<Protocol.Network.ResponseReceivedEvent>
+): Protocol.Network.ResponseReceivedEvent {
+  return {
+    requestId: '',
+    loaderId: '',
+    timestamp: 0,
+    type: 'Other',
+    response: createTestResponse({}),
+    hasExtraInfo: false,
+    ...partial,
+  };
+}
+
 void describe('Network telemetry contract', () => {
   let mockCDP: MockCDPConnection;
   let requests: NetworkRequest[];
@@ -131,35 +200,41 @@ void describe('Network telemetry contract', () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
       // Act: Simulate CDP events for a complete request/response cycle
-      mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-        requestId: 'req-1',
-        request: {
-          url: 'https://api.example.com/users',
-          method: 'GET',
-          headers: { 'User-Agent': 'Test' },
-        },
-        timestamp: 1000,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({
+            url: 'https://api.example.com/users',
+            method: 'GET',
+            headers: { 'User-Agent': 'Test' },
+          }),
+          timestamp: 1000,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkResponseParams>('Network.responseReceived', {
-        requestId: 'req-1',
-        response: {
-          url: 'https://api.example.com/users',
-          status: 200,
-          statusText: 'OK',
-          headers: { 'Content-Type': 'application/json' },
-          mimeType: 'application/json',
-        },
-        timestamp: 1050,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-1',
+          response: createTestResponse({
+            url: 'https://api.example.com/users',
+            status: 200,
+            statusText: 'OK',
+            headers: { 'Content-Type': 'application/json' },
+            mimeType: 'application/json',
+          }),
+          timestamp: 1050,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
         requestId: 'req-1',
         timestamp: 1100,
         encodedDataLength: 1234,
@@ -187,38 +262,37 @@ void describe('Network telemetry contract', () => {
 
       // Act: Simulate 3 concurrent requests
       for (let i = 1; i <= 3; i++) {
-        mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-          requestId: `req-${i}`,
-          request: {
-            url: `https://api.example.com/resource-${i}`,
-            method: 'GET',
-            headers: {},
-          },
-          timestamp: 1000 + i,
-          type: 'XHR',
-          frameId: 'frame-1',
-          loaderId: 'loader-1',
-        });
+        mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+          'Network.requestWillBeSent',
+          createRequestEvent({
+            requestId: `req-${i}`,
+            request: { url: `https://api.example.com/resource-${i}` } as Protocol.Network.Request,
+            timestamp: 1000 + i,
+            type: 'XHR',
+            frameId: 'frame-1',
+            loaderId: 'loader-1',
+          })
+        );
       }
 
       // Responses arrive in different order (3, 1, 2)
       for (const i of [3, 1, 2]) {
-        mockCDP.emit<CDPNetworkResponseParams>('Network.responseReceived', {
-          requestId: `req-${i}`,
-          response: {
-            url: `https://api.example.com/resource-${i}`,
-            status: 200,
-            statusText: 'OK',
-            headers: {},
-            mimeType: 'application/json',
-          },
-          timestamp: 2000 + i,
-          type: 'XHR',
-          frameId: 'frame-1',
-          loaderId: 'loader-1',
-        });
+        mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+          'Network.responseReceived',
+          createResponseEvent({
+            requestId: `req-${i}`,
+            response: {
+              url: `https://api.example.com/resource-${i}`,
+              mimeType: 'application/json',
+            } as Protocol.Network.Response,
+            timestamp: 2000 + i,
+            type: 'XHR',
+            frameId: 'frame-1',
+            loaderId: 'loader-1',
+          })
+        );
 
-        mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+        mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
           requestId: `req-${i}`,
           timestamp: 3000 + i,
           encodedDataLength: 100,
@@ -246,52 +320,53 @@ void describe('Network telemetry contract', () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
       // Act: Response arrives BEFORE request (early response is ignored)
-      mockCDP.emit<CDPNetworkResponseParams>('Network.responseReceived', {
-        requestId: 'req-1',
-        response: {
-          url: 'https://api.example.com/users',
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-          mimeType: 'application/json',
-        },
-        timestamp: 1000,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-1',
+          response: createTestResponse({
+            url: 'https://api.example.com/users',
+            mimeType: 'application/json',
+          }),
+          timestamp: 1000,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
       // Request arrives later
-      mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-        requestId: 'req-1',
-        request: {
-          url: 'https://api.example.com/users',
-          method: 'GET',
-          headers: {},
-        },
-        timestamp: 1050,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({
+            url: 'https://api.example.com/users',
+          }),
+          timestamp: 1050,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
       // Response arrives again (normal order) - this one actually sets status
-      mockCDP.emit<CDPNetworkResponseParams>('Network.responseReceived', {
-        requestId: 'req-1',
-        response: {
-          url: 'https://api.example.com/users',
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-          mimeType: 'application/json',
-        },
-        timestamp: 1075,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-1',
+          response: createTestResponse({
+            url: 'https://api.example.com/users',
+            mimeType: 'application/json',
+          }),
+          timestamp: 1075,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
         requestId: 'req-1',
         timestamp: 1100,
         encodedDataLength: 100,
@@ -314,20 +389,21 @@ void describe('Network telemetry contract', () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
       // Act: Request fails instead of succeeding
-      mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-        requestId: 'req-1',
-        request: {
-          url: 'https://api.example.com/fail',
-          method: 'GET',
-          headers: {},
-        },
-        timestamp: 1000,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({
+            url: 'https://api.example.com/fail',
+          }),
+          timestamp: 1000,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkLoadingFailedParams>('Network.loadingFailed', {
+      mockCDP.emit<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', {
         requestId: 'req-1',
         timestamp: 1100,
         type: 'XHR',
@@ -352,18 +428,19 @@ void describe('Network telemetry contract', () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
       // Act: Create request but never finish it
-      mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-        requestId: 'stale-req',
-        request: {
-          url: 'https://api.example.com/hanging',
-          method: 'GET',
-          headers: {},
-        },
-        timestamp: 1000,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'stale-req',
+          request: createTestRequest({
+            url: 'https://api.example.com/hanging',
+          }),
+          timestamp: 1000,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
       // Fast-forward past stale timeout (60s) + cleanup interval (30s)
       await clockHelper.tickAndFlush(91_000);
@@ -392,20 +469,21 @@ void describe('Network telemetry contract', () => {
 
       // Act: Try to collect more than the limit
       for (let i = 1; i <= MAX_REQUESTS + 100; i++) {
-        mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-          requestId: `req-${i}`,
-          request: {
-            url: `https://api.example.com/item-${i}`,
-            method: 'GET',
-            headers: {},
-          },
-          timestamp: 1000 + i,
-          type: 'XHR',
-          frameId: 'frame-1',
-          loaderId: 'loader-1',
-        });
+        mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+          'Network.requestWillBeSent',
+          createRequestEvent({
+            requestId: `req-${i}`,
+            request: createTestRequest({
+              url: `https://api.example.com/item-${i}`,
+            }),
+            timestamp: 1000 + i,
+            type: 'XHR',
+            frameId: 'frame-1',
+            loaderId: 'loader-1',
+          })
+        );
 
-        mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+        mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
           requestId: `req-${i}`,
           timestamp: 2000 + i,
           encodedDataLength: 100,
@@ -500,16 +578,19 @@ void describe('Network telemetry contract', () => {
       ];
 
       for (const url of trackingDomains) {
-        mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-          requestId: `req-${url}`,
-          request: { url, method: 'GET', headers: {} },
-          timestamp: 1000,
-          type: 'Script',
-          frameId: 'frame-1',
-          loaderId: 'loader-1',
-        });
+        mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+          'Network.requestWillBeSent',
+          createRequestEvent({
+            requestId: `req-${url}`,
+            request: createTestRequest({ url }),
+            timestamp: 1000,
+            type: 'Script',
+            frameId: 'frame-1',
+            loaderId: 'loader-1',
+          })
+        );
 
-        mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+        mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
           requestId: `req-${url}`,
           timestamp: 2000,
           encodedDataLength: 100,
@@ -528,20 +609,21 @@ void describe('Network telemetry contract', () => {
       });
 
       // Act: Send request to tracking domain
-      mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-        requestId: 'req-1',
-        request: {
-          url: 'https://www.google-analytics.com/collect',
-          method: 'GET',
-          headers: {},
-        },
-        timestamp: 1000,
-        type: 'Script',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({
+            url: 'https://www.google-analytics.com/collect',
+          }),
+          timestamp: 1000,
+          type: 'Script',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
         requestId: 'req-1',
         timestamp: 2000,
         encodedDataLength: 100,
@@ -566,35 +648,36 @@ void describe('Network telemetry contract', () => {
       );
 
       // Act: JSON response under 5MB
-      mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-        requestId: 'req-1',
-        request: {
-          url: 'https://api.example.com/data.json',
-          method: 'GET',
-          headers: {},
-        },
-        timestamp: 1000,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({
+            url: 'https://api.example.com/data.json',
+          }),
+          timestamp: 1000,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkResponseParams>('Network.responseReceived', {
-        requestId: 'req-1',
-        response: {
-          url: 'https://api.example.com/data.json',
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-          mimeType: 'application/json',
-        },
-        timestamp: 1050,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-1',
+          response: createTestResponse({
+            url: 'https://api.example.com/data.json',
+            mimeType: 'application/json',
+          }),
+          timestamp: 1050,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
         requestId: 'req-1',
         timestamp: 1100,
         encodedDataLength: 1024, // 1KB - under limit
@@ -617,35 +700,36 @@ void describe('Network telemetry contract', () => {
       );
 
       // Act: JSON response over size limit
-      mockCDP.emit<CDPNetworkRequestParams>('Network.requestWillBeSent', {
-        requestId: 'req-1',
-        request: {
-          url: 'https://api.example.com/large.json',
-          method: 'GET',
-          headers: {},
-        },
-        timestamp: 1000,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({
+            url: 'https://api.example.com/large.json',
+          }),
+          timestamp: 1000,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkResponseParams>('Network.responseReceived', {
-        requestId: 'req-1',
-        response: {
-          url: 'https://api.example.com/large.json',
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-          mimeType: 'application/json',
-        },
-        timestamp: 1050,
-        type: 'XHR',
-        frameId: 'frame-1',
-        loaderId: 'loader-1',
-      });
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-1',
+          response: createTestResponse({
+            url: 'https://api.example.com/large.json',
+            mimeType: 'application/json',
+          }),
+          timestamp: 1050,
+          type: 'XHR',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
 
-      mockCDP.emit<CDPNetworkLoadingFinishedParams>('Network.loadingFinished', {
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
         requestId: 'req-1',
         timestamp: 1100,
         encodedDataLength: 10 * 1024 * 1024, // 10MB - over 1KB limit

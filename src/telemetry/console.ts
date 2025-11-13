@@ -1,12 +1,8 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
-import type {
-  ConsoleMessage,
-  CleanupFunction,
-  CDPConsoleAPICalledParams,
-  CDPExceptionThrownParams,
-} from '@/types';
+import type { ConsoleMessage, CleanupFunction } from '@/types';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
 
@@ -38,15 +34,16 @@ export async function startConsoleCollection(
   await cdp.send('Log.enable');
 
   // Listen for console API calls
-  registry.register<CDPConsoleAPICalledParams>(
+  registry.register<Protocol.Runtime.ConsoleAPICalledEvent>(
     cdp,
     'Runtime.consoleAPICalled',
-    (params: CDPConsoleAPICalledParams) => {
+    (params: Protocol.Runtime.ConsoleAPICalledEvent) => {
       const text = params.args
         .map((arg) => {
-          // arg type already defined in CDPConsoleAPICalledParams
+          // arg type already defined in Protocol.Runtime.ConsoleAPICalledEvent
           if (arg.value !== undefined) {
             // Handle different value types - primitives only, objects use description
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             const value = arg.value;
             if (
               typeof value === 'string' ||
@@ -86,10 +83,10 @@ export async function startConsoleCollection(
   );
 
   // Listen for exceptions
-  registry.register<CDPExceptionThrownParams>(
+  registry.register<Protocol.Runtime.ExceptionThrownEvent>(
     cdp,
     'Runtime.exceptionThrown',
-    (params: CDPExceptionThrownParams) => {
+    (params: Protocol.Runtime.ExceptionThrownEvent) => {
       const exception = params.exceptionDetails;
       const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
 
@@ -102,7 +99,7 @@ export async function startConsoleCollection(
       const message: ConsoleMessage = {
         type: 'error',
         text,
-        timestamp: exception.timestamp ?? Date.now(),
+        timestamp: params.timestamp, // Use event timestamp, not exceptionDetails.timestamp
         navigationId: getCurrentNavigationId?.(),
       };
       if (messages.length < MAX_CONSOLE_MESSAGES) {

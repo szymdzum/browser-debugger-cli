@@ -1,4 +1,5 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 
 /**
  * DOM node information from CDP
@@ -20,9 +21,9 @@ export interface DomNodeInfo {
  * @throws Error When CDP command fails or connection is lost
  */
 export async function getDocumentRoot(cdp: CDPConnection): Promise<number> {
-  const result = (await cdp.send('DOM.getDocument', { depth: -1 })) as {
-    root: { nodeId: number };
-  };
+  const result = (await cdp.send('DOM.getDocument', {
+    depth: -1,
+  })) as Protocol.DOM.GetDocumentResponse;
   return result.root.nodeId;
 }
 
@@ -46,7 +47,7 @@ export async function queryBySelector(
   const result = (await cdp.send('DOM.querySelectorAll', {
     nodeId,
     selector,
-  })) as { nodeIds: number[] };
+  })) as Protocol.DOM.QuerySelectorAllResponse;
 
   return result.nodeIds;
 }
@@ -63,13 +64,7 @@ export async function getNodeInfo(cdp: CDPConnection, nodeId: number): Promise<D
   // Get node description
   const describeResult = (await cdp.send('DOM.describeNode', {
     nodeId,
-  })) as {
-    node: {
-      nodeId: number;
-      nodeName: string;
-      attributes?: string[];
-    };
-  };
+  })) as Protocol.DOM.DescribeNodeResponse;
 
   const node = describeResult.node;
 
@@ -91,7 +86,7 @@ export async function getNodeInfo(cdp: CDPConnection, nodeId: number): Promise<D
   // Get outer HTML
   const htmlResult = (await cdp.send('DOM.getOuterHTML', {
     nodeId,
-  })) as { outerHTML: string };
+  })) as Protocol.DOM.GetOuterHTMLResponse;
 
   // Extract text content by removing HTML tags
   // Uses simple regex to strip tags while preserving text content including < and > in text

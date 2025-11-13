@@ -45,6 +45,7 @@
   "dependencies": {
     "chrome-launcher": "^1.2.1",
     "commander": "^14.0.2",
+    "devtools-protocol": "^0.0.1543509",
     "ws": "^8.18.0"
   },
   "devDependencies": {

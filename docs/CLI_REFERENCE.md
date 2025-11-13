@@ -62,7 +62,9 @@ bdg details console <index>         # Full console message with args
 ```bash
 bdg cleanup                     # Remove stale session files
 bdg cleanup --force             # Force cleanup even if session appears active
-bdg cleanup --aggressive        # Kill all Chrome processes
+bdg cleanup --all               # Also remove session.json output file
+bdg cleanup --aggressive        # Kill all Chrome processes (uses chrome-launcher killAll)
+bdg cleanup --json              # JSON output
 ```
 
 ## Collection Options
@@ -78,33 +80,16 @@ bdg localhost:3000 --all                    # Include all data (disable filterin
 bdg localhost:3000 --user-data-dir ~/custom # Custom Chrome profile directory
 ```
 
-### Performance Optimization
+### Advanced Options
 ```bash
-# Network Optimization (50-80% data reduction)
-bdg localhost:3000 --fetch-all-bodies                          # Fetch all bodies (override auto-skip)
-bdg localhost:3000 --fetch-bodies-include "*/api/*,*/graphql"  # Only fetch specific patterns
-bdg localhost:3000 --fetch-bodies-exclude "*tracking*"         # Additional patterns to skip
-bdg localhost:3000 --network-include "api.example.com"         # Only capture specific hosts
-bdg localhost:3000 --network-exclude "*analytics*,*ads*"       # Exclude tracking domains
+# Chrome Options
+bdg localhost:3000 --headless                   # Launch Chrome in headless mode
+bdg localhost:3000 --chrome-ws-url <url>        # Connect to existing Chrome instance
 
-# Output Optimization (30% size reduction)
-bdg localhost:3000 --compact                                    # Compact JSON (no indentation)
+# Output Optimization
+bdg localhost:3000 --compact                    # Compact JSON (no indentation, 30% size reduction)
+bdg localhost:3000 --max-body-size 10           # Set max response body size (MB, default: 5)
 ```
-
-### Pattern Syntax
-Simple wildcards (* matches anything):
-- `api.example.com` → matches all requests to that host
-- `*/api/*` → matches any path containing /api/
-- `*analytics*` → matches any hostname with "analytics"
-- `*.png` → matches all PNG images
-
-**Pattern Precedence:** Include always trumps exclude
-```bash
---network-include "api.example.com" --network-exclude "*example.com"
-# Result: api.example.com is captured despite exclude pattern
-```
-
-**Note:** Chrome 136+ requires `--user-data-dir` with a non-default directory. See CHROME_SETUP.md for details.
 
 ## Session Files
 
@@ -127,7 +112,7 @@ bdg stores session data in `~/.bdg/`:
 ### Success Format
 ```json
 {
-  "version": "0.2.0",
+  "version": "0.5.1",
   "success": true,
   "timestamp": "2025-11-06T12:00:00.000Z",
   "duration": 45230,
@@ -146,7 +131,7 @@ bdg stores session data in `~/.bdg/`:
 ### Error Format
 ```json
 {
-  "version": "0.2.0",
+  "version": "0.5.1",
   "success": false,
   "timestamp": "2025-11-06T12:00:00.000Z",
   "duration": 1234,
@@ -156,4 +141,11 @@ bdg stores session data in `~/.bdg/`:
 }
 ```
 
-See `src/types.ts` for complete type definitions.
+See [`src/types.ts`](../src/types.ts) for complete type definitions.
+
+## Related Documentation
+
+- **Architecture**: [`docs/architecture/BIDIRECTIONAL_IPC.md`](architecture/BIDIRECTIONAL_IPC.md) - Daemon/worker architecture
+- **Testing**: [`docs/quality/TESTING_PHILOSOPHY.md`](quality/TESTING_PHILOSOPHY.md) - Testing strategy
+- **Release Process**: [`docs/RELEASE_PROCESS.md`](RELEASE_PROCESS.md) - How to release new versions
+- **Docker**: [`docs/DOCKER.md`](DOCKER.md) - Running bdg in Docker containers

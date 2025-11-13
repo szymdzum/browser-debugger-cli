@@ -1,39 +1,20 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
+import type { CDPTarget } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { invalidCDPResponseError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * CDP target information
- */
-interface CDPTarget {
-  id: string;
-}
-
-/**
- * CDP Runtime.evaluate result
- */
-interface RuntimeEvaluateResult {
-  exceptionDetails?: {
-    exception?: {
-      description?: string;
-    };
-  };
-  result?: {
-    value?: unknown;
-  };
-}
-
-/**
  * Type guard to validate CDP Runtime.evaluate response structure
  *
  * @param value - Value to check
- * @returns True if value is a valid RuntimeEvaluateResult
+ * @returns True if value is a valid Protocol.Runtime.EvaluateResponse
  */
-function isRuntimeEvaluateResult(value: unknown): value is RuntimeEvaluateResult {
+function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.EvaluateResponse {
   if (typeof value !== 'object' || value === null) {
     return false;
   }
@@ -152,7 +133,7 @@ export async function verifyTargetExists(metadata: SessionMetadata, port: number
 export async function executeScript(
   cdp: CDPConnection,
   script: string
-): Promise<RuntimeEvaluateResult> {
+): Promise<Protocol.Runtime.EvaluateResponse> {
   const response = await cdp.send('Runtime.evaluate', {
     expression: script,
     returnByValue: true,

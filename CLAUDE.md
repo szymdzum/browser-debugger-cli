@@ -2,6 +2,40 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🤖 Agent-Friendly Discovery (START HERE!)
+
+**bdg is self-documenting at TWO levels - use these FIRST before asking questions:**
+
+### 1. CLI Tool Discovery (`--help --json`)
+```bash
+bdg --help --json              # Machine-readable tool structure
+# Returns: All commands, flags, defaults, exit codes, descriptions
+```
+
+**Provides:**
+- 10 commands with arguments and options
+- All default values (no guessing needed)
+- 13 exit codes with semantic meanings
+- Complete option descriptions
+
+### 2. CDP Protocol Discovery (53 domains, 300+ methods)
+```bash
+bdg cdp --list                          # List all 53 CDP domains
+bdg cdp Network --list                  # List all 39 Network methods
+bdg cdp Network.getCookies --describe   # Full schema with params/types/examples
+bdg cdp --search cookie                 # Search for cookie-related methods (14 results)
+```
+
+**Provides:**
+- Self-documenting CDP API (no external docs needed)
+- Method parameters, types, return values
+- Usage examples for every method
+- Case-insensitive search (Network.getCookies = network.getcookies)
+
+**Key Design Principle:** bdg is designed for agent autonomy. Discover capabilities programmatically before implementation.
+
+---
+
 ## Quick Start Guide
 
 **Essential patterns you'll use in every command:**
@@ -141,6 +175,17 @@ bdg stop
 
 Rationale: Commits should focus on the technical changes, not the tools used to create them.
 
+**CRITICAL**: Never auto-commit changes. Always wait for user review.
+
+- ❌ **BAD**: Committing changes immediately after implementing them
+- ✅ **GOOD**: Implementing changes, showing diff, waiting for user to review and commit
+
+Process:
+1. Implement requested changes
+2. Show `git diff` or `git status` to user
+3. Wait for user approval before running `git commit`
+4. User reviews, may request changes, then commits when ready
+
 ## Project Overview
 
 **bdg** is a CLI tool for collecting browser telemetry (DOM, network, console) via Chrome DevTools Protocol (CDP). It uses a daemon + IPC architecture where a background worker process maintains a persistent CDP connection, and CLI commands communicate via Unix domain sockets.
@@ -252,6 +297,9 @@ CLI Command → Unix Socket → Daemon → stdin → Worker (CDP)
 ### Key Modules
 
 - **CDP Connection** (`src/connection/`) - WebSocket client, target discovery, Chrome launcher
+  - `cdp.ts` - Core CDP WebSocket connection
+  - `typed-cdp.ts` - **Type-safe CDP wrapper** with Protocol types (autocomplete for 300+ methods)
+  - `handlers.ts` - Event handler registry with cleanup
 - **Telemetry** (`src/telemetry/`) - DOM, network, console collectors (enable CDP domain → listen for events → accumulate data)
 - **Session Management** (`src/session/`) - Metadata, PID tracking, file paths
 - **UI Layer** (`src/ui/`) - Presentation layer for user-facing output
@@ -261,8 +309,15 @@ CLI Command → Unix Socket → Daemon → stdin → Worker (CDP)
   - `formatters/` - Output formatters for different commands
   - `formatting.ts` - OutputFormatter builder
 - **Utilities** (`src/utils/`) - Pure utility functions (URL normalization, validation, filters, exit codes)
+- **CDP Protocol** (`src/cdp/`) - Protocol schema and introspection
+  - `protocol.ts` - Protocol loader with case-insensitive lookup
+  - `schema.ts` - Agent-friendly method schemas with examples
+  - `types.ts` - Schema structure types
 
-**Type Definitions:** `src/types.ts` (CDP types, collected data types, output structure)
+**Type Definitions:** 
+- `src/types.ts` - Application types (NetworkRequest, ConsoleMessage, output structure)
+- `devtools-protocol` package - Official CDP type definitions (Protocol namespace)
+- See `docs/TYPE_SAFE_CDP.md` for type-safe CDP API documentation
 
 ## Code Organization
 
@@ -361,30 +416,17 @@ bdg cleanup --aggressive        # Kill all Chrome processes
 ### Basic Options
 ```bash
 bdg localhost:3000 --port 9223              # Custom CDP port
-bdg localhost:3000 --timeout 30             # Auto-stop after timeout
+bdg localhost:3000 --timeout 30             # Auto-stop after timeout (seconds)
 bdg localhost:3000 --all                    # Include all data (disable filtering)
 bdg localhost:3000 --user-data-dir ~/custom # Custom Chrome profile directory
+bdg localhost:3000 --max-body-size 10       # Max response body size in MB (default: 5)
+bdg localhost:3000 --compact                # Compact JSON output (no indentation)
+bdg localhost:3000 --headless               # Launch Chrome in headless mode
+bdg localhost:3000 --chrome-ws-url ws://... # Connect to existing Chrome instance
 ```
 
-### Performance Optimization
-```bash
-# Network Optimization (50-80% data reduction)
-bdg localhost:3000 --fetch-all-bodies                          # Fetch all bodies (override auto-skip)
-bdg localhost:3000 --fetch-bodies-include "*/api/*,*/graphql"  # Only fetch specific patterns
-bdg localhost:3000 --fetch-bodies-exclude "*tracking*"         # Additional patterns to skip
-bdg localhost:3000 --network-include "api.example.com"         # Only capture specific hosts
-bdg localhost:3000 --network-exclude "*analytics*,*ads*"       # Exclude tracking domains
-
-# Output Optimization (30% size reduction)
-bdg localhost:3000 --compact                                    # Compact JSON (no indentation)
-```
-
-**Pattern Syntax:** Simple wildcards (* matches anything)
-- `api.example.com` → matches all requests to that host
-- `*/api/*` → matches any path containing /api/
-- `*analytics*` → matches any hostname with "analytics"
-
-**Pattern Precedence:** Include always trumps exclude
+**Output Optimization**: Use `--compact` for 30% size reduction (67-72% token reduction vs verbose)  
+**Default Filtering**: Automatically excludes tracking/analytics and dev server noise (9-16% data reduction). Use `--all` to disable.
 
 ## Session Files
 
@@ -464,9 +506,9 @@ When Chrome fails to launch, bdg displays diagnostic information including detec
 
 **Common Issues:**
 1. **No Chrome installations detected** - Install from https://www.google.com/chrome/
-2. **Port already in use** - Use `--port 9223` or `--port-strict`
+2. **Port already in use** - Use `--port 9223` to specify a different port
 3. **Permission denied** - Check Chrome binary permissions with `ls -l`
-4. **Connection timeout** - Increase `--max-connection-retries` and `--connection-poll-interval`
+4. **Connection timeout** - Check Chrome is running and port is accessible
 
 ### Daemon Issues
 

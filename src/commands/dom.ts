@@ -281,6 +281,7 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
 
       return {
         success: true,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         data: { result: result.result?.value },
       };
     },

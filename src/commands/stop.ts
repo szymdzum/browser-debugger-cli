@@ -83,8 +83,8 @@ function getExitCodeForDaemonError(errorCode?: IPCErrorCode): number {
 export function registerStopCommand(program: Command): void {
   program
     .command('stop')
-    .description('Stop all active sessions and free ports (does not capture output)')
-    .option('--kill-chrome', 'Also kill Chrome browser')
+    .description('Stop daemon and write collected telemetry to session.json')
+    .option('--kill-chrome', 'Also kill Chrome browser process', false)
     .addOption(jsonOption)
     .action(async (options: StopOptions) => {
       await runCommand(

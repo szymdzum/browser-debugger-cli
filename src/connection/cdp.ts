@@ -52,7 +52,6 @@ const MESSAGE_ROUTING_ERROR = (errorMsg: string): string => `Failed to route mes
 const RECONNECTION_FAILED_ERROR = (errorMsg: string): string => `Reconnection failed: ${errorMsg}`;
 const INVALID_WEBSOCKET_URL_ERROR = (url: string, errorMsg: string): string =>
   `Invalid WebSocket URL: ${url}. Error: ${errorMsg}`;
-const COMMAND_TIMEOUT_ERROR = (method: string): string => `Command timeout: ${method}`;
 
 /**
  * Chrome DevTools Protocol WebSocket connection manager.
@@ -594,7 +593,22 @@ export class CDPConnection {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingMessages.delete(id);
-        reject(new CDPTimeoutError(COMMAND_TIMEOUT_ERROR(method)));
+        const timeoutSeconds = CDP_COMMAND_TIMEOUT_MS / 1000;
+        const errorMessage =
+          `Command timeout: ${method}\n\n` +
+          `The browser did not respond within ${timeoutSeconds}s.\n\n` +
+          `Possible causes:\n` +
+          `  • Browser became unresponsive or frozen\n` +
+          `  • Heavy page load or JavaScript execution\n` +
+          `  • Network issues or slow connection\n` +
+          `  • Method requires user interaction\n\n` +
+          `Try:\n` +
+          `  • Check if page is still loading (look for spinner)\n` +
+          `  • Open Chrome DevTools to check for JavaScript errors\n` +
+          `  • Reload page and retry: bdg stop && bdg <url>\n` +
+          `  • Use simpler CDP method or reduce data size\n` +
+          `  • Check Chrome console: chrome://inspect`;
+        reject(new CDPTimeoutError(errorMessage));
       }, CDP_COMMAND_TIMEOUT_MS);
 
       this.pendingMessages.set(id, {
