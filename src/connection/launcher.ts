@@ -189,6 +189,18 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
 
+  // Ensure userDataDir exists (chrome-launcher needs it for chrome-out.log)
+  if (!fs.existsSync(userDataDir)) {
+    try {
+      fs.mkdirSync(userDataDir, { recursive: true });
+    } catch (error) {
+      throw new ChromeLaunchError(
+        userDataDirError(userDataDir, getErrorMessage(error)),
+        error as Error
+      );
+    }
+  }
+
   // Show progress to user (always visible, not just debug)
   console.error(`Launching Chrome on port ${port}...`);
   log.debug(chromeUserDataDirMessage(userDataDir));

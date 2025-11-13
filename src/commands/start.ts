@@ -1,3 +1,5 @@
+import os from 'node:os';
+
 import type { Command } from 'commander';
 
 import { startSessionViaDaemon } from '@/commands/shared/daemonSessionController.js';
@@ -96,10 +98,17 @@ function buildSessionOptions(options: CollectorOptions): {
   chromeWsUrl: string | undefined;
 } {
   const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size', 1, 100);
+
+  // Expand tilde in userDataDir path
+  let userDataDir = options.userDataDir;
+  if (userDataDir?.startsWith('~/')) {
+    userDataDir = userDataDir.replace(/^~/, os.homedir());
+  }
+
   return {
     port: parseInt(options.port, 10),
     timeout: parseOptionalInt(options.timeout, 'timeout', 1, 3600),
-    userDataDir: options.userDataDir,
+    userDataDir,
     includeAll: options.all ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
