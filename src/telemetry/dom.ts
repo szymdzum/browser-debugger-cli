@@ -1,12 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
-import type {
-  DOMData,
-  CleanupFunction,
-  CDPGetDocumentResponse,
-  CDPGetOuterHTMLResponse,
-  CDPGetFrameTreeResponse,
-  CDPRuntimeEvaluateResponse,
-} from '@/types';
+import type { Protocol } from '@/connection/typed-cdp.js';
+import type { DOMData, CleanupFunction } from '@/types';
 
 /**
  * Prepare CDP domains for DOM collection.
@@ -68,7 +62,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     console.error('Getting document...');
     const docStart = Date.now();
     const documentResponse = await captureWithTimeout(
-      cdp.send('DOM.getDocument', { depth: -1 }) as Promise<CDPGetDocumentResponse>,
+      cdp.send('DOM.getDocument', { depth: -1 }) as Promise<Protocol.DOM.GetDocumentResponse>,
       'DOM.getDocument'
     );
     const root = documentResponse.root;
@@ -78,7 +72,9 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     console.error('Getting outer HTML...');
     const htmlStart = Date.now();
     const htmlResponse = await captureWithTimeout(
-      cdp.send('DOM.getOuterHTML', { nodeId: root.nodeId }) as Promise<CDPGetOuterHTMLResponse>,
+      cdp.send('DOM.getOuterHTML', {
+        nodeId: root.nodeId,
+      }) as Promise<Protocol.DOM.GetOuterHTMLResponse>,
       'DOM.getOuterHTML'
     );
     const outerHTML = htmlResponse.outerHTML;
@@ -90,7 +86,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     console.error('Getting page info...');
     const frameStart = Date.now();
     const frameTreeResponse = await captureWithTimeout(
-      cdp.send('Page.getFrameTree') as Promise<CDPGetFrameTreeResponse>,
+      cdp.send('Page.getFrameTree') as Promise<Protocol.Page.GetFrameTreeResponse>,
       'Page.getFrameTree'
     );
     const frame = frameTreeResponse.frameTree.frame;
@@ -105,7 +101,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
         cdp.send('Runtime.evaluate', {
           expression: 'document.title',
           returnByValue: true,
-        }) as Promise<CDPRuntimeEvaluateResponse>,
+        }) as Promise<Protocol.Runtime.EvaluateResponse>,
         'Runtime.evaluate (document.title)'
       );
 

@@ -1,5 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import {
   MAX_NETWORK_REQUESTS,
   STALE_REQUEST_TIMEOUT,
@@ -9,15 +10,7 @@ import {
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT,
 } from '@/constants.js';
-import type {
-  NetworkRequest,
-  CleanupFunction,
-  CDPNetworkRequestParams,
-  CDPNetworkResponseParams,
-  CDPNetworkLoadingFinishedParams,
-  CDPNetworkLoadingFailedParams,
-  CDPGetResponseBodyResponse,
-} from '@/types';
+import type { NetworkRequest, CleanupFunction } from '@/types';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 
@@ -107,10 +100,10 @@ export async function startNetworkCollection(
   }, STALE_REQUEST_CLEANUP_INTERVAL);
 
   // Listen for requests
-  registry.register<CDPNetworkRequestParams>(
+  registry.register<Protocol.Network.RequestWillBeSentEvent>(
     cdp,
     'Network.requestWillBeSent',
-    (params: CDPNetworkRequestParams) => {
+    (params: Protocol.Network.RequestWillBeSentEvent) => {
       if (requestMap.size >= MAX_NETWORK_REQUESTS) {
         console.error(
           `Warning: Network request limit reached (${MAX_NETWORK_REQUESTS}), dropping new requests`
@@ -135,10 +128,10 @@ export async function startNetworkCollection(
   );
 
   // Listen for responses
-  registry.register<CDPNetworkResponseParams>(
+  registry.register<Protocol.Network.ResponseReceivedEvent>(
     cdp,
     'Network.responseReceived',
-    (params: CDPNetworkResponseParams) => {
+    (params: Protocol.Network.ResponseReceivedEvent) => {
       const entry = requestMap.get(params.requestId);
       if (entry) {
         entry.request.status = params.response.status;
@@ -149,10 +142,10 @@ export async function startNetworkCollection(
   );
 
   // Listen for finished requests
-  registry.register<CDPNetworkLoadingFinishedParams>(
+  registry.register<Protocol.Network.LoadingFinishedEvent>(
     cdp,
     'Network.loadingFinished',
-    (params: CDPNetworkLoadingFinishedParams) => {
+    (params: Protocol.Network.LoadingFinishedEvent) => {
       const entry = requestMap.get(params.requestId);
       if (entry && requests.length < MAX_NETWORK_REQUESTS) {
         const request = entry.request;
@@ -193,7 +186,7 @@ export async function startNetworkCollection(
           void cdp
             .send('Network.getResponseBody', { requestId: params.requestId })
             .then((response) => {
-              const typedResponse = response as CDPGetResponseBodyResponse;
+              const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
               request.responseBody = typedResponse.body;
             })
             .catch(() => {
@@ -214,10 +207,10 @@ export async function startNetworkCollection(
   );
 
   // Listen for failed requests
-  registry.register<CDPNetworkLoadingFailedParams>(
+  registry.register<Protocol.Network.LoadingFailedEvent>(
     cdp,
     'Network.loadingFailed',
-    (params: CDPNetworkLoadingFailedParams) => {
+    (params: Protocol.Network.LoadingFailedEvent) => {
       const entry = requestMap.get(params.requestId);
       if (entry && requests.length < MAX_NETWORK_REQUESTS) {
         // Apply domain filtering
