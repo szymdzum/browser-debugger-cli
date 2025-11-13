@@ -5,7 +5,7 @@
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
 [![npm downloads](https://img.shields.io/npm/dt/browser-debugger-cli?color=blue)](https://www.npmjs.com/package/browser-debugger-cli)
 
-Chrome DevTools Protocol in your terminal. Run any CDP command, pipe the output, build browser automation with tools you already know. Design to be agent friendly
+Chrome DevTools Protocol in your terminal. Self-documenting CDP access with discovery, search, and introspection. Perfect for AI agents and developers who want direct browser control without the framework overhead.
 
 ## Why This Exists
 Puppeteer is great but heavy. CDP is powerful but raw. This tool sits in between: direct protocol access with session management and a few helpful wrappers. No abstractions hiding what's actually happening.
@@ -42,9 +42,14 @@ The CLI uses Unix domain sockets for inter-process communication. Windows users 
 # Start a session
 bdg example.com
 
+# Discover what's available
+bdg cdp --list                    # List all 53 domains
+bdg cdp Network --list            # List Network methods
+bdg cdp --search cookie           # Search by keyword
+
 # Run any CDP command
-bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
 bdg cdp Network.getCookies
+bdg cdp Runtime.evaluate --params '{"expression":"document.title","returnByValue":true}'
 
 # Check what's running
 bdg status
@@ -54,6 +59,30 @@ bdg stop
 ```
 
 ## What You Can Do
+
+### Discover CDP Commands (53 Domains, 300+ Methods)
+
+Built-in introspection helps you find what you need without reading docs:
+
+```bash
+# What can I do with this browser?
+bdg cdp --list
+# Returns: 53 domains (Network, DOM, Page, Runtime, Storage, etc.)
+
+# What Network operations exist?
+bdg cdp Network --list
+# Returns: 39 methods with descriptions and parameter counts
+
+# How do I use this method?
+bdg cdp Network.getCookies --describe
+# Returns: Full schema with parameters, types, examples
+
+# Find cookie-related methods
+bdg cdp --search cookie
+# Returns: 14 methods across domains (Network.getCookies, Storage.getCookies, etc.)
+```
+
+All discovery commands output JSON for easy parsing. Perfect for AI agents building automation on the fly.
 
 ### Run Any CDP Command
 
@@ -95,6 +124,25 @@ bdg peek --console --json | jq '[.data.console[] | select(.level == "error")] | 
 
 ### For AI Agents
 
+**Self-documenting CDP discovery** - agents can explore 300+ browser capabilities without external docs:
+
+```bash
+# Agent discovers what's possible
+bdg cdp --list                           # 53 domains available
+bdg cdp --search screenshot              # Find relevant methods
+bdg cdp Page.captureScreenshot --describe # Learn parameters
+bdg cdp Page.captureScreenshot --params '{"format":"png"}' # Execute
+
+# All commands return structured JSON for easy parsing
+```
+
+**Why this matters for agents:**
+- No need to memorize CDP docs (1000+ pages)
+- Discover → Learn → Execute in one tool
+- Search by keyword (`--search`)
+- Case-insensitive execution (forgiving for LLM outputs)
+- Semantic exit codes for error handling
+
 Claude skill included at `.claude/skills/bdg/` with working automation patterns:
 
 - Common CDP workflows (scraping, polling, navigation)
@@ -107,8 +155,6 @@ The `--help --json` flag outputs the complete CLI schema for programmatic discov
 bdg --help --json | jq '.command.subcommands[].name'
 bdg --help --json | jq '.exitCodes'
 ```
-
-Agents can figure out what commands exist and how to use them without hardcoded knowledge.
 
 ### Debug Live Apps
 
