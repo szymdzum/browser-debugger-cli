@@ -10,85 +10,9 @@
  * - Type safety maintained throughout the stack
  */
 
-import type { ScreenshotData } from '@/types.js';
-
 // =============================================================================
 // Command Schemas (Base Types - No IDs)
 // =============================================================================
-
-/**
- * DOM Query Command - Find elements by CSS selector
- */
-export interface DomQueryCommand {
-  selector: string;
-}
-
-export interface DomQueryData {
-  selector: string;
-  count: number;
-  nodes: Array<{
-    index: number;
-    nodeId: number;
-    tag?: string;
-    classes?: string[];
-    preview?: string;
-  }>;
-}
-
-/**
- * DOM Highlight Command - Highlight elements in browser
- */
-export interface DomHighlightCommand {
-  selector?: string;
-  index?: number;
-  nodeId?: number;
-  first?: boolean;
-  nth?: number;
-  color?: string;
-  opacity?: number;
-}
-
-export interface DomHighlightData {
-  highlighted: number;
-  nodeIds: number[];
-}
-
-/**
- * DOM Get Command - Get full HTML and attributes for elements
- */
-export interface DomGetCommand {
-  selector?: string;
-  index?: number;
-  nodeId?: number;
-  all?: boolean;
-  nth?: number;
-}
-
-export interface DomGetData {
-  nodes: Array<{
-    nodeId: number;
-    tag?: string;
-    attributes?: Record<string, unknown>;
-    classes?: string[];
-    outerHTML?: string;
-  }>;
-}
-
-/**
- * DOM Screenshot Command - Capture page screenshot
- */
-export interface DomScreenshotCommand {
-  /** Output file path (absolute path) */
-  path: string;
-  /** Image format (default: png) */
-  format?: 'png' | 'jpeg';
-  /** JPEG quality 0-100 (default: 90, only for JPEG) */
-  quality?: number;
-  /** Capture full page or just viewport (default: true) */
-  fullPage?: boolean;
-}
-
-export type DomScreenshotData = ScreenshotData;
 
 /**
  * Worker Peek Command - Get lightweight preview of collected data
@@ -186,22 +110,6 @@ export interface WorkerStatusData {
  * Each command has a request schema and response schema.
  */
 export const COMMANDS = {
-  dom_query: {
-    requestSchema: {} as DomQueryCommand,
-    responseSchema: {} as DomQueryData,
-  },
-  dom_highlight: {
-    requestSchema: {} as DomHighlightCommand,
-    responseSchema: {} as DomHighlightData,
-  },
-  dom_get: {
-    requestSchema: {} as DomGetCommand,
-    responseSchema: {} as DomGetData,
-  },
-  dom_screenshot: {
-    requestSchema: {} as DomScreenshotCommand,
-    responseSchema: {} as DomScreenshotData,
-  },
   worker_peek: {
     requestSchema: {} as WorkerPeekCommand,
     responseSchema: {} as WorkerPeekData,

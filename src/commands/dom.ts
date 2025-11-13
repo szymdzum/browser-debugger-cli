@@ -2,33 +2,19 @@ import type { Command } from 'commander';
 
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { queryDOM, highlightDOM, getDOM, captureScreenshot } from '@/ipc/client.js';
+import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/helpers/domHelpers.js';
+import type { DomGetOptions as DomGetHelperOptions } from '@/helpers/domHelpers.js';
 import {
   formatDomQuery,
-  formatDomHighlight,
   formatDomGet,
   formatDomEval,
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
-import { filterDefined } from '@/utils/objects.js';
-
-import { mergeWithSelector } from './domOptionsBuilder.js';
 
 /**
  * Options for DOM query command
  */
 type DomQueryOptions = BaseCommandOptions;
-
-/**
- * Options for DOM highlight command
- */
-interface DomHighlightOptions extends BaseCommandOptions {
-  first?: boolean;
-  nth?: number;
-  nodeId?: number;
-  color?: string;
-  opacity?: number;
-}
 
 /**
  * Options for DOM get command
@@ -52,7 +38,7 @@ interface DomScreenshotOptions extends BaseCommandOptions {
  * Handle bdg dom query <selector> command
  *
  * Queries the DOM using a CSS selector and displays matching elements.
- * Results are cached for 5 minutes to enable index-based references in other commands.
+ * Uses CDP relay through worker's persistent connection.
  *
  * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
  * @param options - Command options
@@ -60,26 +46,8 @@ interface DomScreenshotOptions extends BaseCommandOptions {
 async function handleDomQuery(selector: string, options: DomQueryOptions): Promise<void> {
   await runCommand(
     async () => {
-      const response = await queryDOM(selector);
-
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
-      }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
+      const result = await queryDOMElements(selector);
+      return { success: true, data: result };
     },
     options,
     formatDomQuery
@@ -87,100 +55,24 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 }
 
 /**
- * Handle bdg dom highlight command
- *
- * Highlights elements in the browser with visual overlay. Accepts CSS selector,
- * cached index from previous query, or direct nodeId.
- *
- * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
- * @param options - Command options including color, opacity, targeting flags, and nodeId
- */
-async function handleDomHighlight(
-  selectorOrIndex: string,
-  options: DomHighlightOptions
-): Promise<void> {
-  await runCommand(
-    async () => {
-      // Build IPC options with selector/index/nodeId merged
-      const ipcOptions = mergeWithSelector<Parameters<typeof highlightDOM>[0]>(
-        filterDefined({
-          color: options.color,
-          opacity: options.opacity,
-          first: options.first,
-          nth: options.nth,
-        }) as Parameters<typeof highlightDOM>[0],
-        selectorOrIndex,
-        options.nodeId
-      );
-
-      const response = await highlightDOM(ipcOptions);
-
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
-      }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
-    },
-    options,
-    formatDomHighlight
-  );
-}
-
-/**
  * Handle bdg dom get command
  *
- * Retrieves full HTML and attributes for DOM elements. Accepts CSS selector,
- * cached index from previous query, or direct nodeId.
+ * Retrieves full HTML and attributes for DOM elements. Accepts CSS selector or direct nodeId.
+ * Uses CDP relay through worker's persistent connection.
  *
- * @param selectorOrIndex - CSS selector (e.g., ".error") or index from cached query (e.g., "2")
+ * @param selector - CSS selector (e.g., ".error")
  * @param options - Command options including --all, --nth, and nodeId
  */
-async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
+async function handleDomGet(selector: string, options: DomGetOptions): Promise<void> {
   await runCommand(
     async () => {
-      // Build IPC options with selector/index/nodeId merged
-      const ipcOptions = mergeWithSelector<Parameters<typeof getDOM>[0]>(
-        filterDefined({
-          all: options.all,
-          nth: options.nth,
-        }) as Parameters<typeof getDOM>[0],
-        selectorOrIndex,
-        options.nodeId
-      );
+      const getOptions: DomGetHelperOptions = { selector };
+      if (options.all !== undefined) getOptions.all = options.all;
+      if (options.nth !== undefined) getOptions.nth = options.nth;
+      if (options.nodeId !== undefined) getOptions.nodeId = options.nodeId;
 
-      const response = await getDOM(ipcOptions);
-
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
-      }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
+      const result = await getDOMElements(getOptions);
+      return { success: true, data: result };
     },
     options,
     formatDomGet
@@ -192,6 +84,7 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
  *
  * Captures a screenshot of the current page and saves it to disk.
  * Supports PNG and JPEG formats with customizable quality and viewport options.
+ * Uses CDP relay through worker's persistent connection.
  *
  * @param path - Output file path (absolute or relative)
  * @param options - Screenshot options (format, quality, fullPage)
@@ -199,32 +92,14 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Pr
 async function handleDomScreenshot(path: string, options: DomScreenshotOptions): Promise<void> {
   await runCommand(
     async () => {
-      const screenshotOptions = filterDefined({
-        format: options.format,
-        quality: options.quality,
-        fullPage: options.fullPage,
-      }) as { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean };
+      const screenshotOptions: { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean } =
+        {};
+      if (options.format !== undefined) screenshotOptions.format = options.format;
+      if (options.quality !== undefined) screenshotOptions.quality = options.quality;
+      if (options.fullPage !== undefined) screenshotOptions.fullPage = options.fullPage;
 
-      const response = await captureScreenshot(path, screenshotOptions);
-
-      if (response.status === 'error') {
-        return {
-          success: false,
-          error: response.error ?? 'Unknown error',
-        };
-      }
-
-      if (!response.data) {
-        return {
-          success: false,
-          error: 'No data in response',
-        };
-      }
-
-      return {
-        success: true,
-        data: response.data,
-      };
+      const result = await capturePageScreenshot(path, screenshotOptions);
+      return { success: true, data: result };
     },
     options,
     formatDomScreenshot
@@ -319,32 +194,17 @@ export function registerDomCommands(program: Command): void {
       await handleDomEval(script, options);
     });
 
-  // bdg dom highlight <selector|index>
-  dom
-    .command('highlight')
-    .description('Highlight elements in browser')
-    .argument('<selector|index>', 'CSS selector or index from last query')
-    .option('--first', 'Target first match only')
-    .option('--nth <n>', 'Target nth match', parseInt)
-    .option('--node-id <id>', 'Use nodeId directly (advanced)', parseInt)
-    .option('--color <color>', 'Highlight color (red, blue, green, yellow, orange, purple)')
-    .option('--opacity <value>', 'Highlight opacity (0.0 - 1.0)', parseFloat)
-    .option('-j, --json', 'Output as JSON')
-    .action(async (selectorOrIndex: string, options: DomHighlightOptions) => {
-      await handleDomHighlight(selectorOrIndex, options);
-    });
-
-  // bdg dom get <selector|index>
+  // bdg dom get <selector>
   dom
     .command('get')
     .description('Get full HTML and attributes for elements')
-    .argument('<selector|index>', 'CSS selector or index from last query')
+    .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option('--all', 'Target all matches')
     .option('--nth <n>', 'Target nth match', parseInt)
     .option('--node-id <id>', 'Use nodeId directly (advanced)', parseInt)
     .option('-j, --json', 'Output as JSON')
-    .action(async (selectorOrIndex: string, options: DomGetOptions) => {
-      await handleDomGet(selectorOrIndex, options);
+    .action(async (selector: string, options: DomGetOptions) => {
+      await handleDomGet(selector, options);
     });
 
   // bdg dom screenshot <path>
