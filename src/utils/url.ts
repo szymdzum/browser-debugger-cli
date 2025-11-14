@@ -143,9 +143,18 @@ export function validateUrl(url: string): {
 
   const normalized = normalizeUrl(url);
 
+  // Explicitly reject dangerous legacy protocols
+  const urlLower = url.toLowerCase();
+  if (urlLower.startsWith('vbscript:')) {
+    return {
+      valid: false,
+      error: `Dangerous protocol: 'vbscript:' is not allowed`,
+      suggestion: 'Use http://, https://, or other safe protocols',
+    };
+  }
+
   // Check for invalid characters in hostname/protocol (before normalization)
   // Skip this check for special protocols (javascript:, data:) which have different syntax
-  const urlLower = url.toLowerCase();
   const isSpecialProtocol =
     urlLower.startsWith('javascript:') ||
     urlLower.startsWith('data:') ||
