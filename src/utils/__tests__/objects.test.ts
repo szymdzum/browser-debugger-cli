@@ -31,4 +31,31 @@ void describe('filterDefined contract', () => {
 
     assert.deepEqual(input, { keep: 'value', drop: undefined });
   });
+
+  void it('returns empty object when all properties are undefined', () => {
+    const input = { a: undefined, b: undefined };
+    const result = filterDefined(input);
+
+    assert.deepEqual(result, {});
+    assert.equal(Object.keys(result).length, 0);
+  });
+
+  void it('only performs a shallow filter', () => {
+    const input = {
+      nested: {
+        value: undefined,
+        keep: 'nested',
+      },
+      shallow: undefined,
+    };
+
+    const result = filterDefined(input);
+
+    assert.deepEqual(result, {
+      nested: {
+        value: undefined,
+        keep: 'nested',
+      },
+    });
+  });
 });

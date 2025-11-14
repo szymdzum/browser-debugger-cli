@@ -52,4 +52,24 @@ void describe('AtomicFileWriter contract', () => {
       `Expected concurrent writes to clean up temp files, found: ${tempArtifacts.join(', ')}`
     );
   });
+
+  void it('cleans up temporary file when rename fails', () => {
+    const blockedPath = path.join(tmpDir, 'cannot-overwrite');
+    fs.mkdirSync(blockedPath);
+
+    assert.throws(
+      () => AtomicFileWriter.writeSync(blockedPath, 'payload'),
+      /EISDIR|is a directory/
+    );
+
+    const tempArtifacts = fs
+      .readdirSync(tmpDir)
+      .filter((file) => file.startsWith('cannot-overwrite.'));
+    assert.equal(tempArtifacts.length, 0, 'Temporary file should be removed when rename fails');
+    assert.equal(
+      fs.existsSync(blockedPath),
+      true,
+      'Original directory should remain intact after failure'
+    );
+  });
 });
