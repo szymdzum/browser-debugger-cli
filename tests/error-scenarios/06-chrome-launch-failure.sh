@@ -63,7 +63,8 @@ EXIT_CODE=$?
 
 if [ $EXIT_CODE -eq 0 ]; then
   log_warn "Invalid port accepted (should validate)"
-  bdg stop
+  bdg stop 2>/dev/null || bdg cleanup --force 2>/dev/null || true
+  sleep 1
 else
   log_success "Invalid port rejected"
 fi
@@ -77,6 +78,10 @@ log_step "Test 4: Checking error message quality"
 # Force a failure scenario and capture output
 # Using an extremely short timeout might cause issues
 FAILURE_OUTPUT=$(timeout 5 bdg "https://example.com" --headless 2>&1) || true
+
+# Cleanup daemon if timeout left it running
+bdg stop 2>/dev/null || true
+sleep 0.5
 
 # Error output should mention Chrome or provide diagnostic info
 if echo "$FAILURE_OUTPUT" | grep -qi "chrome\|browser\|launch\|failed\|timeout"; then

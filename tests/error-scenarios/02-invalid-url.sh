@@ -49,17 +49,17 @@ fi
 
 # Test 2: Invalid characters
 log_step "Test 2: URL with invalid characters"
-bdg "http://exam ple.com" 2>&1 && die "URL with spaces should have failed" || true
+bdg "http://exam ple.com" --headless 2>&1 && die "URL with spaces should have failed" || true
 log_success "URL with spaces rejected"
 
 # Test 3: Malformed URL
 log_step "Test 3: Malformed URL"
-bdg "ht!tp://example" 2>&1 && die "Malformed URL should have failed" || true
+bdg "ht!tp://example" --headless 2>&1 && die "Malformed URL should have failed" || true
 log_success "Malformed URL rejected"
 
 # Test 4: Just a slash
 log_step "Test 4: Just a slash"
-bdg "/" 2>&1 && die "Single slash should have failed" || true
+bdg "/" --headless 2>&1 && die "Single slash should have failed" || true
 log_success "Single slash rejected"
 
 # Test 5: Valid URLs should work
@@ -78,7 +78,7 @@ for url in "${VALID_URLS[@]}"; do
   log_info "Testing valid URL: $url"
 
   # Start session
-  bdg "$url" || die "Valid URL '$url' should have succeeded"
+  bdg "$url" --headless || die "Valid URL '$url' should have succeeded"
   sleep 1
 
   # Verify it started

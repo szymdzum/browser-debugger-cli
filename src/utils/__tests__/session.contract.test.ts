@@ -58,10 +58,19 @@ void describe('Session Utilities Contract Tests', () => {
     // Restore process.kill mock
     restoreProcessAlive();
 
-    // Restore HOME environment variable
-    process.env['HOME'] = originalHome;
+    // Restore HOME environment variable (delete if originally undefined)
+    if (originalHome === undefined) {
+      delete process.env['HOME'];
+    } else {
+      process.env['HOME'] = originalHome;
+    }
+
     if (process.platform === 'win32') {
-      process.env['USERPROFILE'] = originalUserProfile;
+      if (originalUserProfile === undefined) {
+        delete process.env['USERPROFILE'];
+      } else {
+        process.env['USERPROFILE'] = originalUserProfile;
+      }
     }
 
     // ⚠️ CRITICAL: Clean up temp directory

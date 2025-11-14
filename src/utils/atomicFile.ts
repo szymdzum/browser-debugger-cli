@@ -1,17 +1,32 @@
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 
 /**
  * Atomic file operations using tmp-file-then-rename pattern.
  *
  * Provides safe file writing that prevents corruption from interrupted writes
- * or concurrent access by using a temporary file and atomic rename operation.
+ * or concurrent access by using unique temporary files and atomic rename operation.
  */
 export class AtomicFileWriter {
   /**
+   * Generate a unique temporary file path.
+   *
+   * Uses process PID and random UUID to ensure uniqueness across concurrent processes.
+   *
+   * @param filePath - Target file path
+   * @returns Unique temporary file path
+   */
+  private static getTempPath(filePath: string): string {
+    const uuid = crypto.randomUUID();
+    return `${filePath}.${process.pid}.${uuid}.tmp`;
+  }
+
+  /**
    * Write data to a file atomically (synchronous).
    *
-   * Creates a temporary file, writes the data, then atomically renames it to the target path.
-   * This ensures the target file is never in a partially written state.
+   * Creates a unique temporary file, writes the data, then atomically renames it to the target path.
+   * This ensures the target file is never in a partially written state and prevents corruption
+   * from concurrent writes by different processes.
    *
    * @param filePath - Target file path
    * @param data - Data to write
@@ -23,7 +38,7 @@ export class AtomicFileWriter {
     data: string,
     options: { encoding?: BufferEncoding } = {}
   ): void {
-    const tmpPath = filePath + '.tmp';
+    const tmpPath = this.getTempPath(filePath);
 
     try {
       // Write to temporary file first
@@ -45,8 +60,9 @@ export class AtomicFileWriter {
   /**
    * Write data to a file atomically (asynchronous).
    *
-   * Creates a temporary file, writes the data, then atomically renames it to the target path.
-   * This ensures the target file is never in a partially written state.
+   * Creates a unique temporary file, writes the data, then atomically renames it to the target path.
+   * This ensures the target file is never in a partially written state and prevents corruption
+   * from concurrent writes by different processes.
    *
    * @param filePath - Target file path
    * @param data - Data to write
@@ -59,7 +75,7 @@ export class AtomicFileWriter {
     data: string,
     options: { encoding?: BufferEncoding } = {}
   ): Promise<void> {
-    const tmpPath = filePath + '.tmp';
+    const tmpPath = this.getTempPath(filePath);
 
     try {
       // Write to temporary file first
