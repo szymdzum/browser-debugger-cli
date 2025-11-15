@@ -1,3 +1,4 @@
+import { getErrorMessage } from '@/connection/errors.js';
 import type {
   BdgOutput,
   CDPTarget,
@@ -6,7 +7,6 @@ import type {
   DOMData,
   TelemetryType,
 } from '@/types';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { VERSION } from '@/utils/version.js';
 
 /**

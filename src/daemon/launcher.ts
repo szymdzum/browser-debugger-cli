@@ -15,11 +15,11 @@ import { fileURLToPath } from 'url';
 
 import type { ChildProcess } from 'child_process';
 
+import { getErrorMessage } from '@/connection/errors.js';
 import { cleanupStaleSession } from '@/session/cleanup.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { isProcessAlive } from '@/session/process.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 

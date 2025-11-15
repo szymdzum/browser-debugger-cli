@@ -4,7 +4,7 @@
  * Formats transport-layer errors with context.
  */
 
-import { getErrorMessage } from '@/ui/errors/index.js';
+import { getErrorMessage } from '@/connection/errors.js';
 
 export function formatConnectionError(
   requestName: string,

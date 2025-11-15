@@ -4,8 +4,8 @@
  * Parses and validates worker configuration from command-line arguments.
  */
 
+import { getErrorMessage } from '@/connection/errors.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 
 /**
  * Type guard to validate parsed JSON is a valid WorkerConfig.

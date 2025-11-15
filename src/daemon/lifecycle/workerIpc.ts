@@ -6,9 +6,9 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import type { CommandRegistry } from '@/daemon/worker/commandRegistry.js';
 import type { CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/index.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import type { Logger } from '@/ui/logging/index.js';
 import {
   workerUnknownCommand,

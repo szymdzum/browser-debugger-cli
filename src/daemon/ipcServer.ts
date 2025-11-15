@@ -12,6 +12,7 @@ import { unlinkSync } from 'fs';
 
 import type { Socket } from 'net';
 
+import { getErrorMessage } from '@/connection/errors.js';
 import { PendingRequestManager } from '@/daemon/handlers/pendingRequests.js';
 import { RequestHandlers } from '@/daemon/handlers/requestHandlers.js';
 import { ResponseHandler } from '@/daemon/handlers/responseHandler.js';
@@ -22,7 +23,6 @@ import { type ClientRequestUnion, type IPCMessageType, isCommandRequest } from '
 import { releaseDaemonLock } from '@/session/lock.js';
 import { ensureSessionDir, getSessionFilePath, getDaemonSocketPath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 

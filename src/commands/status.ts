@@ -1,11 +1,12 @@
 import type { Command } from 'commander';
 
 import { runCommand, type BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
 import type { SessionMetadata } from '@/session/metadata.js';
-import { getErrorMessage, isDaemonConnectionError } from '@/ui/errors/index.js';
+import { isDaemonConnectionError } from '@/ui/errors/index.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,

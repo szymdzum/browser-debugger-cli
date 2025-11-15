@@ -5,7 +5,7 @@
  * Maintains internal buffer to handle partial messages across chunks.
  */
 
-import { getErrorMessage } from '@/ui/errors/index.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import type { Logger } from '@/ui/logging/index.js';
 
 /**

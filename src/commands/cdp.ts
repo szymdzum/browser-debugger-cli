@@ -9,9 +9,10 @@ import {
 } from '@/cdp/schema.js';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
-import { CommandError, getErrorMessage } from '@/ui/errors/index.js';
+import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

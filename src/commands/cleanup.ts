@@ -5,11 +5,11 @@ import type { Command } from 'commander';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { cleanupSession } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   sessionFilesCleanedMessage,
@@ -88,7 +88,7 @@ export function registerCleanupCommand(program: Command): void {
       await runCommand(
         async (opts) => {
           // Import cleanupStaleChrome dynamically
-          const { cleanupStaleChrome } = await import('@/commands/shared/sessionController.js');
+          const { cleanupStaleChrome } = await import('@/session/chrome.js');
 
           let didCleanup = false;
           let cleanedSession = false;

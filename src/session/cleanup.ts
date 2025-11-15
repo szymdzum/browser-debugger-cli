@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 
-import { getErrorMessage } from '@/ui/errors/index.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { readChromePid, clearChromePid } from './chrome.js';
