@@ -11,7 +11,6 @@ import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { readChromePid, clearChromePid } from './chrome.js';
-import { safeDeleteFile } from './fileOps.js';
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile, readPidFromFile } from './pid.js';
@@ -107,7 +106,9 @@ export function cleanupStaleSession(): boolean {
     const daemonAlive = daemonPid !== null && isProcessAlive(daemonPid);
 
     if (sessionAlive && !daemonAlive && sessionPid !== null) {
-      log(`Detected orphaned worker process (PID ${sessionPid}) with no daemon - forcing cleanup`);
+      log.info(
+        `Detected orphaned worker process (PID ${sessionPid}) with no daemon - forcing cleanup`
+      );
       killCachedChromeProcess('orphaned worker cleanup');
       killOrphanedWorker(sessionPid);
       sessionAlive = isProcessAlive(sessionPid);
@@ -127,10 +128,29 @@ export function cleanupStaleSession(): boolean {
 
     cleanupPidFile();
 
-    safeDeleteFile(getSessionFilePath('METADATA'), 'metadata file', log);
-    safeDeleteFile(daemonPidPath, 'daemon PID file', log);
-    safeDeleteFile(getSessionFilePath('DAEMON_SOCKET'), 'daemon socket', log);
-    safeDeleteFile(getSessionFilePath('DAEMON_LOCK'), 'daemon lock', log);
+    try {
+      fs.rmSync(getSessionFilePath('METADATA'), { force: true });
+    } catch (error) {
+      log.debug(`Failed to remove metadata file: ${getErrorMessage(error)}`);
+    }
+
+    try {
+      fs.rmSync(daemonPidPath, { force: true });
+    } catch (error) {
+      log.debug(`Failed to remove daemon PID file: ${getErrorMessage(error)}`);
+    }
+
+    try {
+      fs.rmSync(getSessionFilePath('DAEMON_SOCKET'), { force: true });
+    } catch (error) {
+      log.debug(`Failed to remove daemon socket: ${getErrorMessage(error)}`);
+    }
+
+    try {
+      fs.rmSync(getSessionFilePath('DAEMON_LOCK'), { force: true });
+    } catch (error) {
+      log.debug(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
+    }
 
     log.info('Stale session cleanup complete');
 
