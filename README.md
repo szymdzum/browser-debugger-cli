@@ -17,12 +17,6 @@ Built for debugging web apps and scripting browser automation without spinning u
 
 **Human-friendly wrappers are in progress.** Commands like `bdg dom query` and `bdg peek` are being added for common operations. For now, most automation work happens through `bdg cdp` and Unix pipes.
 
-## Demo
-
-[![asciicast](https://asciinema.org/a/RE6Iup9sB1iSWBK0wgUUn3bBl.svg)](https://asciinema.org/a/RE6Iup9sB1iSWBK0wgUUn3bBl)
-
-*Watch bdg scrape GitHub trending pages and extract repository data in real-time using DOM queries and CDP.*
-
 ## Installation
 
 ```bash
