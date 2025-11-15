@@ -1,6 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
@@ -54,42 +54,34 @@ export async function startNavigationTracking(
   navigations: NavigationEvent[]
 ): Promise<{ cleanup: CleanupFunction; getCurrentNavigationId: () => number }> {
   const registry = new CDPHandlerRegistry();
+  const typed = new TypedCDPConnection(cdp);
   let navigationCounter = 0;
 
-  // Enable Page domain to receive navigation events
   await cdp.send('Page.enable');
 
-  // Record initial navigation (the page we're currently on)
   const initialNavigation: NavigationEvent = {
-    url: '', // Will be updated by first frameNavigated event or from session metadata
+    url: '',
     timestamp: Date.now(),
     navigationId: navigationCounter,
   };
   navigations.push(initialNavigation);
 
-  // Listen for frame navigation events
-  registry.register<Protocol.Page.FrameNavigatedEvent>(
-    cdp,
-    'Page.frameNavigated',
-    (params: Protocol.Page.FrameNavigatedEvent) => {
-      // Only track main frame navigations (parentId is undefined for main frame)
-      if (params.frame.parentId === undefined) {
-        navigationCounter++;
+  registry.registerTyped(typed, 'Page.frameNavigated', (params) => {
+    if (params.frame.parentId === undefined) {
+      navigationCounter++;
 
-        const navigation: NavigationEvent = {
-          url: params.frame.url,
-          timestamp: Date.now(),
-          navigationId: navigationCounter,
-        };
+      const navigation: NavigationEvent = {
+        url: params.frame.url,
+        timestamp: Date.now(),
+        navigationId: navigationCounter,
+      };
 
-        navigations.push(navigation);
+      navigations.push(navigation);
 
-        log.debug(`Main frame navigation detected [${navigationCounter}]: ${params.frame.url}`);
-      }
+      log.debug(`Main frame navigation detected [${navigationCounter}]: ${params.frame.url}`);
     }
-  );
+  });
 
-  // Return cleanup function and navigation ID getter
   return {
     cleanup: () => {
       registry.cleanup(cdp);

@@ -1,5 +1,7 @@
 import type { ChildProcess } from 'child_process';
 
+import type { Protocol } from '@/connection/typed-cdp.js';
+
 export interface CDPMessage {
   id?: number;
   method?: string;
@@ -28,21 +30,21 @@ export interface NetworkRequest {
   url: string;
   method: string;
   timestamp: number;
-  status?: number | undefined;
-  mimeType?: string | undefined;
+  status?: number;
+  mimeType?: string;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
-  requestBody?: string | undefined;
-  responseBody?: string | undefined;
-  navigationId?: number | undefined; // Navigation counter when request was made
+  requestBody?: string;
+  responseBody?: string;
+  navigationId?: number; // Navigation counter when request was made
 }
 
 export interface ConsoleMessage {
-  type: string;
+  type: Protocol.Runtime.ConsoleAPICalledEvent['type'] | 'error';
   text: string;
   timestamp: number;
-  args?: unknown[]; // Raw console arguments from CDP (mixed types)
-  navigationId?: number | undefined; // Navigation counter when message was logged
+  args?: unknown[];
+  navigationId?: number;
 }
 
 /**

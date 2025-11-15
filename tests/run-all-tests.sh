@@ -160,9 +160,12 @@ run_test_suite() {
     # Add delay between tests to ensure cleanup completes
     # This prevents race conditions when tests run sequentially
     if [ $test_index -lt ${#TESTS[@]} ]; then
-      sleep 1
+      sleep 2
     fi
   done
+
+  # Extra delay after completing a test suite to ensure full cleanup
+  sleep 1
 }
 
 # Banner

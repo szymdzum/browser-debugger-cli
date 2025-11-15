@@ -1,6 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
@@ -31,32 +31,23 @@ const log = createLogger('dialogs');
  */
 export async function startDialogHandling(cdp: CDPConnection): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
+  const typed = new TypedCDPConnection(cdp);
 
-  // Enable Page domain to receive dialog events
   await cdp.send('Page.enable');
 
-  // Listen for JavaScript dialog opening events
-  registry.register<Protocol.Page.JavascriptDialogOpeningEvent>(
-    cdp,
-    'Page.javascriptDialogOpening',
-    (params: Protocol.Page.JavascriptDialogOpeningEvent) => {
-      log.debug(`Auto-dismissing ${params.type} dialog: "${params.message}" from ${params.url}`);
+  registry.registerTyped(typed, 'Page.javascriptDialogOpening', (params) => {
+    log.debug(`Auto-dismissing ${params.type} dialog: "${params.message}" from ${params.url}`);
 
-      // Auto-accept all dialogs to prevent blocking
-      // For prompt dialogs, use empty string as input
-      // Fire and forget - we don't await the response but handle errors
-      void cdp
-        .send('Page.handleJavaScriptDialog', {
-          accept: true,
-          promptText: params.type === 'prompt' ? '' : undefined,
-        })
-        .catch((error: Error) => {
-          log.debug(`Failed to dismiss dialog: ${error.message}`);
-        });
-    }
-  );
+    void cdp
+      .send('Page.handleJavaScriptDialog', {
+        accept: true,
+        promptText: params.type === 'prompt' ? '' : undefined,
+      })
+      .catch((error: Error) => {
+        log.debug(`Failed to dismiss dialog: ${error.message}`);
+      });
+  });
 
-  // Return cleanup function
   return () => {
     registry.cleanup(cdp);
   };

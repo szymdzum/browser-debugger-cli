@@ -60,7 +60,10 @@ export type LogContext =
   | 'ipc'
   | 'http'
   | 'dialogs'
-  | 'navigation';
+  | 'navigation'
+  | 'console'
+  | 'dom'
+  | 'network';
 
 // ============================================================================
 // Logger Interface

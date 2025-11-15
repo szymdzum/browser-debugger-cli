@@ -37,12 +37,18 @@ source "$(dirname "$0")/../lib/recovery.sh"
 # Cleanup trap to prevent cascade failures
 cleanup() {
   local exit_code=$?
-  bdg stop 2>/dev/null || true
-  sleep 0.5
-  # Force kill any Chrome processes on port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
-  sleep 0.5
-  bdg cleanup --force 2>/dev/null || true
+
+  # Only run cleanup on error or interrupt (not on successful completion)
+  if [ $exit_code -ne 0 ]; then
+    log_warn "Test failed, cleaning up (exit code: $exit_code)..."
+    bdg stop 2>/dev/null || true
+    sleep 1
+    bdg cleanup --force 2>/dev/null || true
+    sleep 0.5
+    # Force kill any Chrome processes on port 9222
+    lsof -ti:9222 | xargs kill -9 2>/dev/null || true
+  fi
+
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -50,6 +56,15 @@ trap cleanup EXIT INT TERM
 # Start timing
 start_time=$(date +%s)
 start_benchmark "$SCENARIO_NAME"
+
+# Ensure no stale sessions exist
+log_step "Verifying clean environment"
+if bdg status >/dev/null 2>&1; then
+  log_warn "Found existing session, cleaning up..."
+  bdg cleanup --force >/dev/null 2>&1 || true
+  sleep 1
+fi
+log_success "Environment clean"
 
 # ============================================================================
 # SECTION 1: Start Session
@@ -161,15 +176,16 @@ bdg stop >/dev/null
 
 log_success "Session stopped"
 
-# Validate session.json was created
-if [ ! -f ~/.bdg/session.json ]; then
-  die "session.json not found after stop"
+# Wait for session.json to be created and validated
+SESSION_JSON_PATH="$HOME/.bdg/session.json"
+if ! wait_for_session_json 10; then
+  die "session.json not created or invalid after bdg stop"
 fi
 
 # Extract final metrics
-DURATION=$(jq -r '.duration' ~/.bdg/session.json)
-NET_REQUESTS=$(jq '.data.network | length' ~/.bdg/session.json)
-CONSOLE_MSGS=$(jq '.data.console | length' ~/.bdg/session.json)
+DURATION=$(jq -r '.duration' "$SESSION_JSON_PATH")
+NET_REQUESTS=$(jq '.data.network | length' "$SESSION_JSON_PATH")
+CONSOLE_MSGS=$(jq '.data.console | length' "$SESSION_JSON_PATH")
 
 assert_gte "$NET_REQUESTS" 1 "Should have captured network requests"
 log_success "Final session: ${DURATION}ms, $NET_REQUESTS requests, $CONSOLE_MSGS console messages"

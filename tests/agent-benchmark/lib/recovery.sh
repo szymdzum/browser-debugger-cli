@@ -187,15 +187,53 @@ capture_error_context() {
 fallback_wait() {
   local selector="$1"
   local timeout="${2:-10}"
-  
+
   log_warn "Using fallback wait (dom.wait not implemented yet)"
   log_info "Waiting ${timeout}s for selector: $selector"
-  
+
   # Simple sleep fallback
   sleep "$timeout"
-  
+
   # TODO: Could implement polling with CDP here
   # For now, just sleep and hope
-  
+
   return 0
+}
+
+# Wait for session.json to be created and valid
+# Usage: wait_for_session_json <timeout_seconds>
+wait_for_session_json() {
+  local timeout="${1:-10}"
+  local session_json="$HOME/.bdg/session.json"
+
+  log_step "Waiting for session.json to be created and valid (timeout: ${timeout}s)"
+
+  # First, wait for file to exist
+  if ! wait_for_condition "$timeout" "[ -f '$session_json' ]" "session.json file existence"; then
+    return 1
+  fi
+
+  # Wait a bit for file to be fully written
+  sleep 0.5
+
+  # Then validate it's valid JSON with retry
+  local max_attempts=5
+  local attempt=1
+
+  while [ $attempt -le $max_attempts ]; do
+    if jq -e . "$session_json" >/dev/null 2>&1; then
+      log_success "session.json is valid (attempt $attempt/$max_attempts)"
+      return 0
+    fi
+
+    if [ $attempt -lt $max_attempts ]; then
+      log_warn "session.json not valid yet (attempt $attempt/$max_attempts), retrying..."
+      sleep 0.5
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  log_error "session.json exists but contains invalid JSON after $max_attempts attempts"
+  return 1
 }
