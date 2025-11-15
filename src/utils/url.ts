@@ -2,10 +2,6 @@
  * URL normalization, validation, and parsing utilities.
  */
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 /**
  * Valid URL protocols for Chrome navigation.
  *
@@ -40,10 +36,6 @@ const PRESERVED_PROTOCOL_PREFIXES = [
   'blob:',
 ] as const;
 
-// ============================================================================
-// URL Normalization
-// ============================================================================
-
 /**
  * Normalize a URL by adding http:// protocol if missing.
  *
@@ -72,14 +64,11 @@ const PRESERVED_PROTOCOL_PREFIXES = [
 export function normalizeUrl(url: string): string {
   const urlLower = url.toLowerCase();
 
-  // Check for protocols that should not be modified (case-insensitive)
   const hasPreservedPrefix = PRESERVED_PROTOCOL_PREFIXES.some((prefix) =>
     urlLower.startsWith(prefix)
   );
 
   if (hasPreservedPrefix) {
-    // Normalize protocol to lowercase while preserving rest of URL
-    // Find where the protocol ends
     const protocolMatch = url.match(/^([a-z]+:\/?\/?)/i);
     if (protocolMatch?.[1]) {
       const protocol = protocolMatch[1].toLowerCase();
@@ -91,10 +80,6 @@ export function normalizeUrl(url: string): string {
 
   return `http://${url}`;
 }
-
-// ============================================================================
-// URL Validation
-// ============================================================================
 
 /**
  * Validate that a URL is valid and usable for Chrome navigation.
@@ -123,7 +108,6 @@ export function validateUrl(url: string): {
   error?: string;
   suggestion?: string;
 } {
-  // Empty URL
   if (!url || url.trim().length === 0) {
     return {
       valid: false,
@@ -132,7 +116,6 @@ export function validateUrl(url: string): {
     };
   }
 
-  // Check for spaces (common error)
   if (url.includes(' ')) {
     return {
       valid: false,
@@ -143,7 +126,6 @@ export function validateUrl(url: string): {
 
   const normalized = normalizeUrl(url);
 
-  // Explicitly reject dangerous legacy protocols
   const urlLower = url.toLowerCase();
   if (urlLower.startsWith('vbscript:')) {
     return {
@@ -153,15 +135,12 @@ export function validateUrl(url: string): {
     };
   }
 
-  // Check for invalid characters in hostname/protocol (before normalization)
-  // Skip this check for special protocols (javascript:, data:) which have different syntax
   const isSpecialProtocol =
     urlLower.startsWith('javascript:') ||
     urlLower.startsWith('data:') ||
     urlLower.startsWith('blob:');
 
   if (!isSpecialProtocol) {
-    // This prevents malformed URLs like "ht!tp://example" from being normalized to "http://ht!tp://example"
     const beforePath = url.split('/')[0] ?? '';
     if (/[!@#$%^&*()=+[\]{}\\|;'",<>?]/.test(beforePath)) {
       return {
@@ -202,10 +181,6 @@ export function validateUrl(url: string): {
   }
 }
 
-// ============================================================================
-// Safe URL Parsing
-// ============================================================================
-
 /**
  * Safely parse a URL string with automatic protocol detection.
  *
@@ -226,11 +201,9 @@ export function safeParseUrl(input: string): URL | null {
   try {
     return new URL(input);
   } catch {
-    // Second attempt: add http:// prefix for protocol-less URLs
     try {
       return new URL(`http://${input}`);
     } catch {
-      // Both attempts failed - invalid URL
       return null;
     }
   }

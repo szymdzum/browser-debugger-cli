@@ -41,13 +41,9 @@ export class AtomicFileWriter {
     const tmpPath = this.getTempPath(filePath);
 
     try {
-      // Write to temporary file first
       fs.writeFileSync(tmpPath, data, { encoding: options.encoding ?? 'utf-8' });
-
-      // Atomically rename to target path
       fs.renameSync(tmpPath, filePath);
     } catch (error) {
-      // Clean up temporary file on error
       try {
         fs.unlinkSync(tmpPath);
       } catch {
@@ -78,13 +74,9 @@ export class AtomicFileWriter {
     const tmpPath = this.getTempPath(filePath);
 
     try {
-      // Write to temporary file first
       await fs.promises.writeFile(tmpPath, data, { encoding: options.encoding ?? 'utf-8' });
-
-      // Atomically rename to target path
       await fs.promises.rename(tmpPath, filePath);
     } catch (error) {
-      // Clean up temporary file on error
       try {
         await fs.promises.unlink(tmpPath);
       } catch {

@@ -3,10 +3,9 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
-import type { CDPTarget } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
-import { invalidCDPResponseError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { fetchCDPTargetById } from '@/utils/http.js';
 
 /**
  * Type guard to validate CDP Runtime.evaluate response structure
@@ -99,19 +98,23 @@ export function getValidatedSessionMetadata(): SessionMetadata {
 /**
  * Verify that the CDP target still exists
  *
+ * Uses the centralized fetchCDPTargetById utility which includes timeout
+ * safeguards and consistent error handling.
+ *
  * @param metadata - Session metadata containing targetId
  * @param port - CDP port number
- * @throws Error When CDP response is invalid or target not found
+ * @throws CommandError When target not found (tab may have been closed)
  */
 export async function verifyTargetExists(metadata: SessionMetadata, port: number): Promise<void> {
-  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
-  const targetsData: unknown = await response.json();
-
-  if (!Array.isArray(targetsData)) {
-    throw new Error(invalidCDPResponseError());
+  if (!metadata.targetId) {
+    throw new CommandError(
+      'Session metadata missing targetId',
+      { suggestion: 'Start a new session with: bdg <url>' },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
   }
 
-  const target = (targetsData as CDPTarget[]).find((t) => t.id === metadata.targetId);
+  const target = await fetchCDPTargetById(metadata.targetId, port);
 
   if (!target) {
     throw new CommandError(

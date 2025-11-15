@@ -44,7 +44,14 @@ export async function fetchCDPTargets(port: number = DEFAULT_CDP_PORT): Promise<
         return [];
       }
 
-      return (await response.json()) as CDPTarget[];
+      const data: unknown = await response.json();
+
+      if (!Array.isArray(data)) {
+        log.debug(`CDP HTTP response is not an array (${url})`);
+        return [];
+      }
+
+      return data as CDPTarget[];
     } finally {
       clearTimeout(timeoutId);
     }
