@@ -32,11 +32,11 @@ export function safeDeleteFile(path: string, label: string, log: Logger): boolea
   }
 
   try {
-    fs.unlinkSync(path);
-    log(`Removed ${label}`);
+    fs.rmSync(path, { force: true });
+    log.info(`Removed ${label}`);
     return true;
   } catch (error) {
-    log(`Failed to remove ${label}: ${getErrorMessage(error)}`);
+    log.info(`Failed to remove ${label}: ${getErrorMessage(error)}`);
     return false;
   }
 }

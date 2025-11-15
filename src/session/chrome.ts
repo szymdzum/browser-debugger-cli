@@ -7,10 +7,14 @@
 
 import * as fs from 'fs';
 
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { isProcessAlive } from './process.js';
+
+const log = createLogger('chrome');
 
 /**
  * Write Chrome PID to persistent cache.
@@ -60,18 +64,20 @@ export function readChromePid(): number | null {
     const pidStr = fs.readFileSync(cachePath, 'utf-8').trim();
     const pid = parseInt(pidStr, 10);
 
-    if (isNaN(pid)) {
+    if (Number.isNaN(pid)) {
+      try {
+        fs.rmSync(cachePath, { force: true });
+      } catch (error) {
+        log.debug(`Failed to remove corrupt Chrome PID cache: ${getErrorMessage(error)}`);
+      }
       return null;
     }
 
-    // Only return the PID if the process is still alive
-    // This prevents trying to kill stale PIDs
     if (!isProcessAlive(pid)) {
-      // Clean up stale cache
       try {
-        fs.unlinkSync(cachePath);
-      } catch {
-        // Ignore cleanup errors
+        fs.rmSync(cachePath, { force: true });
+      } catch (error) {
+        log.debug(`Failed to remove stale Chrome PID cache: ${getErrorMessage(error)}`);
       }
       return null;
     }
@@ -91,10 +97,8 @@ export function clearChromePid(): void {
   const cachePath = getSessionFilePath('CHROME_PID');
 
   try {
-    if (fs.existsSync(cachePath)) {
-      fs.unlinkSync(cachePath);
-    }
-  } catch {
-    // Ignore errors during cleanup
+    fs.rmSync(cachePath, { force: true });
+  } catch (error) {
+    log.debug(`Failed to clear Chrome PID cache: ${getErrorMessage(error)}`);
   }
 }

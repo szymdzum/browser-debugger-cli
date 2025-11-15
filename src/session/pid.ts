@@ -7,9 +7,13 @@
 
 import * as fs from 'fs';
 
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
+
+const log = createLogger('session');
 
 /**
  * Read and parse a PID from a file.
@@ -34,7 +38,7 @@ export function readPidFromFile(filePath: string): number | null {
     const pidStr = fs.readFileSync(filePath, 'utf-8').trim();
     const pid = parseInt(pidStr, 10);
 
-    if (isNaN(pid)) {
+    if (Number.isNaN(pid)) {
       return null;
     }
 
@@ -88,11 +92,9 @@ export function readPid(): number | null {
 export function cleanupPidFile(): void {
   const pidPath = getSessionFilePath('PID');
 
-  if (fs.existsSync(pidPath)) {
-    try {
-      fs.unlinkSync(pidPath);
-    } catch {
-      // Ignore errors during cleanup
-    }
+  try {
+    fs.rmSync(pidPath, { force: true });
+  } catch (error) {
+    log.debug(`Failed to cleanup PID file: ${getErrorMessage(error)}`);
   }
 }

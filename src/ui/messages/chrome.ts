@@ -104,16 +104,6 @@ export function userDataDirError(dir: string, error: string): string {
 // ============================================================================
 
 /**
- * Generate Chrome launch start message.
- *
- * @param port - CDP port number
- * @returns Formatted message
- */
-export function chromeLaunchStartMessage(port: number): string {
-  return `Launching Chrome with CDP on port ${port}...`;
-}
-
-/**
  * Generate external Chrome connection message.
  *
  * @returns Formatted message

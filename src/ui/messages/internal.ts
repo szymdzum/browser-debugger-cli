@@ -7,20 +7,6 @@
  */
 
 // ============================================================================
-// Cache Messages
-// ============================================================================
-
-/**
- * Generate warning for failed DOM cache write.
- *
- * @param error - Error message from write failure
- * @returns Formatted warning message
- */
-export function domCacheWriteWarning(error: string): string {
-  return `Warning: Failed to write DOM cache: ${error}`;
-}
-
-// ============================================================================
 // Process Management Messages
 // ============================================================================
 

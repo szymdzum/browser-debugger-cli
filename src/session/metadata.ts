@@ -54,6 +54,16 @@ export function writeSessionMetadata(metadata: SessionMetadata): void {
 }
 
 /**
+ * Options for reading session metadata.
+ */
+export interface ReadSessionMetadataOptions {
+  /** Log a warning when metadata cannot be parsed */
+  warnOnCorruption?: boolean;
+  /** Delete corrupted metadata file to self-heal for subsequent runs */
+  selfHealOnCorruption?: boolean;
+}
+
+/**
  * Read session metadata.
  *
  * WHY: P1 Fix #2 - Now logs warnings when metadata is corrupted.
@@ -70,9 +80,7 @@ export function writeSessionMetadata(metadata: SessionMetadata): void {
  * }
  * ```
  */
-export function readSessionMetadata(options?: {
-  warnOnCorruption?: boolean;
-}): SessionMetadata | null {
+export function readSessionMetadata(options?: ReadSessionMetadataOptions): SessionMetadata | null {
   const metaPath = getSessionFilePath('METADATA');
 
   if (!fs.existsSync(metaPath)) {
@@ -83,10 +91,17 @@ export function readSessionMetadata(options?: {
     const content = fs.readFileSync(metaPath, 'utf-8');
     return JSON.parse(content) as SessionMetadata;
   } catch (error) {
-    // P1 Fix #2: Warn when metadata is corrupted
     if (options?.warnOnCorruption) {
-      log(`Session metadata corrupted (cannot read details): ${getErrorMessage(error)}`);
-      log('Troubleshooting: Run "bdg cleanup" to remove corrupted files');
+      log.info(`Session metadata corrupted (cannot read details): ${getErrorMessage(error)}`);
+      log.info('Troubleshooting: Run "bdg cleanup" to remove corrupted files');
+    }
+    if (options?.selfHealOnCorruption) {
+      try {
+        fs.rmSync(metaPath, { force: true });
+        log.info('Removed corrupted session metadata file');
+      } catch (deleteError) {
+        log.debug(`Failed to remove corrupted metadata: ${getErrorMessage(deleteError)}`);
+      }
     }
     return null;
   }

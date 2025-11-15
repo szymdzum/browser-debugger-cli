@@ -134,29 +134,3 @@ export function createLogger(context: LogContext): Logger {
 
   return logger;
 }
-
-/**
- * Log a message with a specific context (one-off usage).
- *
- * WHY: Convenient for single log statements without creating a logger instance.
- *
- * @param context - Component context for log prefix
- * @param message - Log message
- * @param level - Log level (defaults to 'debug' - only shown with --debug)
- *
- * @example
- * ```typescript
- * // Always shown (even without --debug)
- * log('cleanup', 'Removed stale daemon socket', 'info');
- *
- * // Only shown in debug mode (default behavior)
- * log('cleanup', 'Found PID file');
- * log('cleanup', 'Checking lock file', 'debug');
- * ```
- */
-export function log(context: LogContext, message: string, level: LogLevel = 'debug'): void {
-  if (level === 'debug' && !isDebugEnabled()) {
-    return;
-  }
-  console.error(`[${context}] ${message}`);
-}

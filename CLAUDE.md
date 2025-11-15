@@ -239,6 +239,25 @@ try { ... } catch (_error) { console.error('failed'); }
 try { ... } catch { console.error('failed'); }
 ```
 
+### Error Handling in Catch Blocks
+**MANDATORY**: Never use empty catch blocks. Log errors with `log.debug()` for visibility.
+
+```typescript
+// ❌ BAD - Empty catch block
+try {
+  fs.rmSync(filePath, { force: true });
+} catch {
+}
+
+// ✅ GOOD - Debug logging
+const log = createLogger('module-name');
+try {
+  fs.rmSync(filePath, { force: true });
+} catch (error) {
+  log.debug(`Failed to remove file: ${getErrorMessage(error)}`);
+}
+```
+
 ### TSDoc Syntax Rules (Critical Violations)
 
 **MANDATORY**: Avoid these common TSDoc parser errors:
