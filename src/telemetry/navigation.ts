@@ -59,9 +59,11 @@ export async function startNavigationTracking(
   // Enable Page domain to receive navigation events
   await cdp.send('Page.enable');
 
-  // Record initial navigation (the page we're currently on)
+  // Record initial navigation event (navigationId 0)
+  // Note: Initial URL is empty and must be populated externally via session metadata.
+  // Subsequent main-frame navigations (navigationId 1+) will have their URLs set by frameNavigated events.
   const initialNavigation: NavigationEvent = {
-    url: '', // Will be updated by first frameNavigated event or from session metadata
+    url: '', // Populated externally via session metadata or TelemetryStore
     timestamp: Date.now(),
     navigationId: navigationCounter,
   };

@@ -3,8 +3,12 @@ import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { ConsoleMessage, CleanupFunction } from '@/types';
+import { createLogger } from '@/ui/logging/index.js';
+import { filterDefined } from '@/utils/objects.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
+
+const log = createLogger('console');
 
 /**
  * Start collecting console messages and exceptions via CDP Runtime domain.
@@ -31,7 +35,6 @@ export async function startConsoleCollection(
 
   // Enable runtime
   await cdp.send('Runtime.enable');
-  await cdp.send('Log.enable');
 
   // Listen for console API calls
   registry.register<Protocol.Runtime.ConsoleAPICalledEvent>(
@@ -67,17 +70,17 @@ export async function startConsoleCollection(
         return;
       }
 
-      const message: ConsoleMessage = {
+      const message = filterDefined({
         type: params.type,
         text,
         timestamp: params.timestamp,
         args: params.args,
         navigationId: getCurrentNavigationId?.(),
-      };
+      }) as unknown as ConsoleMessage;
       if (messages.length < MAX_CONSOLE_MESSAGES) {
         messages.push(message);
       } else if (messages.length === MAX_CONSOLE_MESSAGES) {
-        console.error(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
+        log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
       }
     }
   );
@@ -96,12 +99,12 @@ export async function startConsoleCollection(
         return;
       }
 
-      const message: ConsoleMessage = {
+      const message = filterDefined({
         type: 'error',
         text,
         timestamp: params.timestamp, // Use event timestamp, not exceptionDetails.timestamp
         navigationId: getCurrentNavigationId?.(),
-      };
+      }) as unknown as ConsoleMessage;
       if (messages.length < MAX_CONSOLE_MESSAGES) {
         messages.push(message);
       }

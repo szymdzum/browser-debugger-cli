@@ -11,8 +11,12 @@ import {
   CHROME_POST_DATA_LIMIT,
 } from '@/constants.js';
 import type { NetworkRequest, CleanupFunction } from '@/types';
+import { createLogger } from '@/ui/logging/index.js';
+import { filterDefined } from '@/utils/objects.js';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
+
+const log = createLogger('network');
 
 export interface NetworkCollectionOptions {
   includeAll?: boolean;
@@ -67,6 +71,22 @@ export async function startNetworkCollection(
   let bodiesFetched = 0;
   let bodiesSkipped = 0;
 
+  // Helper: Check if URL should be filtered out based on domain and pattern filters
+  const isFilteredOut = (url: string): boolean => {
+    if (shouldExcludeDomain(url, includeAll)) {
+      return true;
+    }
+    if (
+      shouldExcludeUrl(url, {
+        includePatterns: networkInclude,
+        excludePatterns: networkExclude,
+      })
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   // Enable network tracking with buffer limits (if supported)
   // These parameters are optional and experimental, but widely supported in Chrome 58+
   // See docs/chrome-cdp-compatibility.md for details
@@ -78,7 +98,7 @@ export async function startNetworkCollection(
     });
   } catch {
     // Fallback to basic Network.enable if buffer parameters not supported
-    console.error('Network buffer limits not supported, using default settings');
+    log.debug('Network buffer limits not supported, using default settings');
     await cdp.send('Network.enable');
   }
 
@@ -94,7 +114,7 @@ export async function startNetworkCollection(
     });
 
     if (staleRequests.length > 0) {
-      console.error(`Cleaning up ${staleRequests.length} stale network requests`);
+      log.debug(`Cleaning up ${staleRequests.length} stale network requests`);
       staleRequests.forEach((requestId) => requestMap.delete(requestId));
     }
   }, STALE_REQUEST_CLEANUP_INTERVAL);
@@ -105,13 +125,13 @@ export async function startNetworkCollection(
     'Network.requestWillBeSent',
     (params: Protocol.Network.RequestWillBeSentEvent) => {
       if (requestMap.size >= MAX_NETWORK_REQUESTS) {
-        console.error(
+        log.debug(
           `Warning: Network request limit reached (${MAX_NETWORK_REQUESTS}), dropping new requests`
         );
         return;
       }
 
-      const request: NetworkRequest = {
+      const request = filterDefined({
         requestId: params.requestId,
         url: params.request.url,
         method: params.request.method,
@@ -119,7 +139,7 @@ export async function startNetworkCollection(
         requestHeaders: params.request.headers,
         requestBody: params.request.postData,
         navigationId: getCurrentNavigationId?.(),
-      };
+      }) as unknown as NetworkRequest;
       requestMap.set(params.requestId, {
         request,
         timestamp: Date.now(),
@@ -150,19 +170,8 @@ export async function startNetworkCollection(
       if (entry && requests.length < MAX_NETWORK_REQUESTS) {
         const request = entry.request;
 
-        // Apply domain filtering
-        if (shouldExcludeDomain(request.url, includeAll)) {
-          requestMap.delete(params.requestId);
-          return;
-        }
-
-        // Apply URL pattern filtering
-        if (
-          shouldExcludeUrl(request.url, {
-            includePatterns: networkInclude,
-            excludePatterns: networkExclude,
-          })
-        ) {
+        // Apply domain and URL pattern filtering
+        if (isFilteredOut(request.url)) {
           requestMap.delete(params.requestId);
           return;
         }
@@ -200,7 +209,7 @@ export async function startNetworkCollection(
         requests.push(request);
         requestMap.delete(params.requestId);
       } else if (requests.length >= MAX_NETWORK_REQUESTS) {
-        console.error(`Warning: Network request limit reached (${MAX_NETWORK_REQUESTS})`);
+        log.debug(`Warning: Network request limit reached (${MAX_NETWORK_REQUESTS})`);
         requestMap.delete(params.requestId);
       }
     }
@@ -213,19 +222,8 @@ export async function startNetworkCollection(
     (params: Protocol.Network.LoadingFailedEvent) => {
       const entry = requestMap.get(params.requestId);
       if (entry && requests.length < MAX_NETWORK_REQUESTS) {
-        // Apply domain filtering
-        if (shouldExcludeDomain(entry.request.url, includeAll)) {
-          requestMap.delete(params.requestId);
-          return;
-        }
-
-        // Apply URL pattern filtering
-        if (
-          shouldExcludeUrl(entry.request.url, {
-            includePatterns: networkInclude,
-            excludePatterns: networkExclude,
-          })
-        ) {
+        // Apply domain and URL pattern filtering
+        if (isFilteredOut(entry.request.url)) {
           requestMap.delete(params.requestId);
           return;
         }
@@ -245,7 +243,7 @@ export async function startNetworkCollection(
     const totalBodyDecisions = bodiesFetched + bodiesSkipped;
     if (totalBodyDecisions > 0) {
       const percentageSkipped = ((bodiesSkipped / totalBodyDecisions) * 100).toFixed(1);
-      console.error(
+      log.debug(
         `[PERF] Network bodies: ${bodiesFetched} fetched, ${bodiesSkipped} skipped (${percentageSkipped}% reduction)`
       );
     }

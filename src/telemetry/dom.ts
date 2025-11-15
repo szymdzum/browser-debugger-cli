@@ -1,6 +1,10 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { DOMData, CleanupFunction } from '@/types';
+import { createLogger } from '@/ui/logging/index.js';
+
+const log = createLogger('dom');
 
 /**
  * Prepare CDP domains for DOM collection.
@@ -59,17 +63,17 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     };
 
     // Get document
-    console.error('Getting document...');
+    log.debug('Getting document...');
     const docStart = Date.now();
     const documentResponse = await captureWithTimeout(
       cdp.send('DOM.getDocument', { depth: -1 }) as Promise<Protocol.DOM.GetDocumentResponse>,
       'DOM.getDocument'
     );
     const root = documentResponse.root;
-    console.error(`[PERF] DOM.getDocument: ${Date.now() - docStart}ms (nodeId: ${root.nodeId})`);
+    log.debug(`[PERF] DOM.getDocument: ${Date.now() - docStart}ms (nodeId: ${root.nodeId})`);
 
     // Get outer HTML
-    console.error('Getting outer HTML...');
+    log.debug('Getting outer HTML...');
     const htmlStart = Date.now();
     const htmlResponse = await captureWithTimeout(
       cdp.send('DOM.getOuterHTML', {
@@ -78,22 +82,20 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
       'DOM.getOuterHTML'
     );
     const outerHTML = htmlResponse.outerHTML;
-    console.error(
-      `[PERF] DOM.getOuterHTML: ${Date.now() - htmlStart}ms (${outerHTML.length} chars)`
-    );
+    log.debug(`[PERF] DOM.getOuterHTML: ${Date.now() - htmlStart}ms (${outerHTML.length} chars)`);
 
     // Get page info
-    console.error('Getting page info...');
+    log.debug('Getting page info...');
     const frameStart = Date.now();
     const frameTreeResponse = await captureWithTimeout(
       cdp.send('Page.getFrameTree') as Promise<Protocol.Page.GetFrameTreeResponse>,
       'Page.getFrameTree'
     );
     const frame = frameTreeResponse.frameTree.frame;
-    console.error(`[PERF] Page.getFrameTree: ${Date.now() - frameStart}ms (url: ${frame.url})`);
+    log.debug(`[PERF] Page.getFrameTree: ${Date.now() - frameStart}ms (url: ${frame.url})`);
 
     // Get real document title using Runtime.evaluate
-    console.error('Getting document title...');
+    log.debug('Getting document title...');
     let title = 'Untitled';
     try {
       const titleStart = Date.now();
@@ -108,16 +110,16 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
       if (titleResult.result.value !== undefined && typeof titleResult.result.value === 'string') {
         title = titleResult.result.value;
       }
-      console.error(`[PERF] Runtime.evaluate (title): ${Date.now() - titleStart}ms`);
+      log.debug(`[PERF] Runtime.evaluate (title): ${Date.now() - titleStart}ms`);
     } catch (titleError) {
-      console.error('Failed to get document title, using fallback:', titleError);
+      log.debug(`Failed to get document title, using fallback: ${getErrorMessage(titleError)}`);
     }
-    console.error(`Got document title: ${title}`);
+    log.debug(`Got document title: ${title}`);
 
     const url = frame.url;
 
     const totalDuration = Date.now() - domCaptureStart;
-    console.error(`[PERF] Total DOM capture: ${totalDuration}ms`);
+    log.debug(`[PERF] Total DOM capture: ${totalDuration}ms`);
 
     return {
       url,
@@ -125,7 +127,7 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
       outerHTML,
     };
   } catch (error) {
-    console.error('Error in collectDOM:', error);
+    log.info(`DOM capture failed: ${getErrorMessage(error)}`);
     throw error;
   }
 }

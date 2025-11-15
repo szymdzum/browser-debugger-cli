@@ -242,8 +242,24 @@ function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean 
   const includeMatch = includeSpecified && matchesAny(includePatterns);
   const excludeMatch = excludePatterns.length > 0 && matchesAny(excludePatterns);
 
-  // Decision logic: include trumps exclude, then whitelist mode, then exclude, then default
-  return includeMatch || (!includeSpecified && !excludeMatch && defaultBehavior === 'include');
+  // Decision logic implementing documented precedence:
+  // 1. If includePatterns match → include (trumps everything)
+  if (includeMatch) {
+    return true;
+  }
+
+  // 2. If includePatterns specified but didn't match → exclude (whitelist mode)
+  if (includeSpecified) {
+    return false;
+  }
+
+  // 3. If excludePatterns match → exclude
+  if (excludeMatch) {
+    return false;
+  }
+
+  // 4. Otherwise → use defaultBehavior
+  return defaultBehavior === 'include';
 }
 
 /**
@@ -268,20 +284,6 @@ export function matchesWildcard(str: string, pattern: string): boolean {
   const regex = new RegExp(`^${regexPattern}$`, 'i'); // Case-insensitive
   return regex.test(str);
 }
-
-/**
- * Check if a URL matches any pattern in a list.
- *
- * Matches against both bare hostname and hostname+pathname to support:
- * - Bare hostname patterns: `api.example.com` matches all requests to that host
- * - Hostname wildcard patterns: `*analytics*` matches "analytics.google.com/collect"
- * - Path patterns: `*\/api\/*` matches "example.com/api/users"
- * - Combined patterns: `api.example.com\/users` matches specific endpoint
- *
- * @param url - The URL to check
- * @param patterns - Array of wildcard patterns
- * @returns True if URL matches any pattern
- */
 
 /**
  * Determine if a response body should be fetched based on URL, MIME type, and patterns.
