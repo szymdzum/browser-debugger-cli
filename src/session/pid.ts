@@ -34,7 +34,7 @@ export function readPidFromFile(filePath: string): number | null {
     const pidStr = fs.readFileSync(filePath, 'utf-8').trim();
     const pid = parseInt(pidStr, 10);
 
-    if (isNaN(pid)) {
+    if (Number.isNaN(pid)) {
       return null;
     }
 
@@ -88,11 +88,9 @@ export function readPid(): number | null {
 export function cleanupPidFile(): void {
   const pidPath = getSessionFilePath('PID');
 
-  if (fs.existsSync(pidPath)) {
-    try {
-      fs.unlinkSync(pidPath);
-    } catch {
-      // Ignore errors during cleanup
-    }
+  try {
+    fs.rmSync(pidPath, { force: true });
+  } catch {
+    // Ignore errors during cleanup
   }
 }

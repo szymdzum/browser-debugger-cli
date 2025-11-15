@@ -60,7 +60,13 @@ export function readChromePid(): number | null {
     const pidStr = fs.readFileSync(cachePath, 'utf-8').trim();
     const pid = parseInt(pidStr, 10);
 
-    if (isNaN(pid)) {
+    if (Number.isNaN(pid)) {
+      // Remove corrupt cache file
+      try {
+        fs.rmSync(cachePath, { force: true });
+      } catch {
+        // ignore
+      }
       return null;
     }
 
@@ -69,7 +75,7 @@ export function readChromePid(): number | null {
     if (!isProcessAlive(pid)) {
       // Clean up stale cache
       try {
-        fs.unlinkSync(cachePath);
+        fs.rmSync(cachePath, { force: true });
       } catch {
         // Ignore cleanup errors
       }
@@ -91,9 +97,7 @@ export function clearChromePid(): void {
   const cachePath = getSessionFilePath('CHROME_PID');
 
   try {
-    if (fs.existsSync(cachePath)) {
-      fs.unlinkSync(cachePath);
-    }
+    fs.rmSync(cachePath, { force: true });
   } catch {
     // Ignore errors during cleanup
   }

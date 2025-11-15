@@ -10,6 +10,58 @@ import * as fs from 'fs';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { isProcessAlive } from './process.js';
 
+type LockFile = 'LOCK' | 'DAEMON_LOCK';
+
+function isErrnoException(e: unknown): e is NodeJS.ErrnoException {
+  return typeof e === 'object' && e !== null && 'code' in e;
+}
+
+function acquireLock(file: LockFile): boolean {
+  ensureSessionDir();
+  const lockPath = getSessionFilePath(file);
+
+  try {
+    // 'wx' flag creates file exclusively - fails if exists
+    fs.writeFileSync(lockPath, process.pid.toString(), { flag: 'wx' });
+    return true;
+  } catch (error: unknown) {
+    if (isErrnoException(error) && error.code === 'EEXIST') {
+      // Lock file exists - check if process is still alive
+      try {
+        const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
+        const lockPid = parseInt(lockPidStr, 10);
+
+        if (!Number.isNaN(lockPid) && isProcessAlive(lockPid)) {
+          // Lock is held by active process
+          return false;
+        } else {
+          // Stale lock file - remove it and try again
+          fs.rmSync(lockPath, { force: true });
+          return acquireLock(file);
+        }
+      } catch {
+        // Can't read lock file - assume it's stale
+        try {
+          fs.rmSync(lockPath, { force: true });
+          return acquireLock(file);
+        } catch {
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+}
+
+function releaseLock(file: LockFile): void {
+  const lockPath = getSessionFilePath(file);
+  try {
+    fs.rmSync(lockPath, { force: true });
+  } catch {
+    // Ignore errors during cleanup
+  }
+}
+
 /**
  * Acquire session lock atomically.
  *
@@ -27,40 +79,7 @@ import { isProcessAlive } from './process.js';
  * ```
  */
 export function acquireSessionLock(): boolean {
-  ensureSessionDir();
-  const lockPath = getSessionFilePath('LOCK');
-
-  try {
-    // 'wx' flag creates file exclusively - fails if exists
-    fs.writeFileSync(lockPath, process.pid.toString(), { flag: 'wx' });
-    return true;
-  } catch (error: unknown) {
-    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
-      // Lock file exists - check if process is still alive
-      try {
-        const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
-        const lockPid = parseInt(lockPidStr, 10);
-
-        if (!isNaN(lockPid) && isProcessAlive(lockPid)) {
-          // Lock is held by active process
-          return false;
-        } else {
-          // Stale lock file - remove it and try again
-          fs.unlinkSync(lockPath);
-          return acquireSessionLock();
-        }
-      } catch {
-        // Can't read lock file - assume it's stale
-        try {
-          fs.unlinkSync(lockPath);
-          return acquireSessionLock();
-        } catch {
-          return false;
-        }
-      }
-    }
-    return false;
-  }
+  return acquireLock('LOCK');
 }
 
 /**
@@ -70,15 +89,7 @@ export function acquireSessionLock(): boolean {
  * Safe to call multiple times (idempotent).
  */
 export function releaseSessionLock(): void {
-  const lockPath = getSessionFilePath('LOCK');
-
-  try {
-    if (fs.existsSync(lockPath)) {
-      fs.unlinkSync(lockPath);
-    }
-  } catch {
-    // Ignore errors during cleanup
-  }
+  releaseLock('LOCK');
 }
 
 /**
@@ -100,40 +111,7 @@ export function releaseSessionLock(): void {
  * ```
  */
 export function acquireDaemonLock(): boolean {
-  ensureSessionDir();
-  const lockPath = getSessionFilePath('DAEMON_LOCK');
-
-  try {
-    // 'wx' flag creates file exclusively - fails if exists
-    fs.writeFileSync(lockPath, process.pid.toString(), { flag: 'wx' });
-    return true;
-  } catch (error: unknown) {
-    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
-      // Lock file exists - check if process is still alive
-      try {
-        const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
-        const lockPid = parseInt(lockPidStr, 10);
-
-        if (!isNaN(lockPid) && isProcessAlive(lockPid)) {
-          // Lock is held by active process
-          return false;
-        } else {
-          // Stale lock file - remove it and try again
-          fs.unlinkSync(lockPath);
-          return acquireDaemonLock();
-        }
-      } catch {
-        // Can't read lock file - assume it's stale
-        try {
-          fs.unlinkSync(lockPath);
-          return acquireDaemonLock();
-        } catch {
-          return false;
-        }
-      }
-    }
-    return false;
-  }
+  return acquireLock('DAEMON_LOCK');
 }
 
 /**
@@ -143,13 +121,5 @@ export function acquireDaemonLock(): boolean {
  * Safe to call multiple times (idempotent).
  */
 export function releaseDaemonLock(): void {
-  const lockPath = getSessionFilePath('DAEMON_LOCK');
-
-  try {
-    if (fs.existsSync(lockPath)) {
-      fs.unlinkSync(lockPath);
-    }
-  } catch {
-    // Ignore errors during cleanup
-  }
+  releaseLock('DAEMON_LOCK');
 }

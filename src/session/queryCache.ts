@@ -1,6 +1,6 @@
 import fs from 'fs';
 
-import { getDomQueryCachePath } from '@/session/paths.js';
+import { getDomQueryCachePath, ensureSessionDir } from '@/session/paths.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { domCacheWriteWarning } from '@/ui/messages/internal.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
@@ -37,6 +37,7 @@ const CACHE_EXPIRY_MS = 5 * 60 * 1000;
  */
 export function writeQueryCache(cache: DomQueryCache): void {
   try {
+    ensureSessionDir();
     const cachePath = getDomQueryCachePath();
     AtomicFileWriter.writeSync(cachePath, JSON.stringify(cache, null, 2), { encoding: 'utf8' });
   } catch (error) {
@@ -67,7 +68,11 @@ export function readQueryCache(): DomQueryCache | null {
 
     if (now - cacheTime > CACHE_EXPIRY_MS) {
       // Cache expired - delete it
-      fs.unlinkSync(cachePath);
+      try {
+        fs.rmSync(cachePath, { force: true });
+      } catch (error) {
+        console.error(domCacheWriteWarning(getErrorMessage(error)));
+      }
       return null;
     }
 
