@@ -5,6 +5,7 @@
  */
 
 import { getErrorMessage } from '@/connection/errors.js';
+import { ConfigError } from '@/daemon/errors.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
 
 /**
@@ -29,17 +30,20 @@ export function parseWorkerConfig(): WorkerConfig {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
-    throw new Error('Worker requires configuration arguments');
+    throw new ConfigError('Worker requires configuration arguments', 'MISSING_CONFIG_ARGS');
   }
 
   try {
     const configArg = args[0];
     if (!configArg) {
-      throw new Error('Missing configuration argument');
+      throw new ConfigError('Missing configuration argument', 'EMPTY_CONFIG_ARG');
     }
     const parsed: unknown = JSON.parse(configArg);
     if (!isValidWorkerConfig(parsed)) {
-      throw new Error('Invalid worker config structure - missing required fields (url, port)');
+      throw new ConfigError(
+        'Invalid worker config structure - missing required fields (url, port)',
+        'INVALID_CONFIG_STRUCTURE'
+      );
     }
     const config = parsed;
     const normalized: WorkerConfig = {
@@ -65,6 +69,12 @@ export function parseWorkerConfig(): WorkerConfig {
 
     return normalized;
   } catch (error) {
-    throw new Error(`Failed to parse worker config: ${getErrorMessage(error)}`);
+    if (error instanceof ConfigError) {
+      throw error;
+    }
+    throw new ConfigError(
+      `Failed to parse worker config: ${getErrorMessage(error)}`,
+      'PARSE_ERROR'
+    );
   }
 }

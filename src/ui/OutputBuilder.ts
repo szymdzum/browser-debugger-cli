@@ -167,7 +167,12 @@ export class OutputBuilder {
    */
   static buildJsonError(
     error: string | Error,
-    options?: { exitCode?: number; [key: string]: unknown }
+    options?: {
+      exitCode?: number;
+      suggestion?: string;
+      note?: string;
+      context?: Record<string, string>;
+    }
   ): Record<string, unknown> {
     return {
       version: VERSION,

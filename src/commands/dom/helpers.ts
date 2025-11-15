@@ -15,6 +15,8 @@ import type {
   DomGetOptions,
   ScreenshotOptions,
 } from '@/types/dom.js';
+import { CommandError } from '@/ui/errors/index.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 // Re-export types for backward compatibility
 export type { DomQueryResult, DomGetResult, ScreenshotResult, DomGetOptions, ScreenshotOptions };
@@ -143,29 +145,45 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     nodeIds = queryResult?.nodeIds ?? [];
 
     if (nodeIds.length === 0) {
-      throw new Error(`No elements found matching "${options.selector}"`);
+      throw new CommandError(
+        `No elements found matching "${options.selector}"`,
+        { suggestion: 'Verify the CSS selector is correct' },
+        EXIT_CODES.RESOURCE_NOT_FOUND
+      );
     }
 
     // Apply filtering
     if (options.nth !== undefined) {
       if (options.nth < 1 || options.nth > nodeIds.length) {
-        throw new Error(`--nth ${options.nth} out of range (found ${nodeIds.length} elements)`);
+        throw new CommandError(
+          `--nth ${options.nth} out of range (found ${nodeIds.length} elements)`,
+          { suggestion: `Use a value between 1 and ${nodeIds.length}` },
+          EXIT_CODES.INVALID_ARGUMENTS
+        );
       }
       const nthNode = nodeIds[options.nth - 1];
       if (nthNode === undefined) {
-        throw new Error(`Element at index ${options.nth} not found`);
+        throw new CommandError(
+          `Element at index ${options.nth} not found`,
+          {},
+          EXIT_CODES.RESOURCE_NOT_FOUND
+        );
       }
       nodeIds = [nthNode];
     } else if (!options.all) {
       // Default: return first match only
       const firstNode = nodeIds[0];
       if (firstNode === undefined) {
-        throw new Error('No elements found');
+        throw new CommandError('No elements found', {}, EXIT_CODES.RESOURCE_NOT_FOUND);
       }
       nodeIds = [firstNode];
     }
   } else {
-    throw new Error('Either selector or nodeId must be provided');
+    throw new CommandError(
+      'Either selector or nodeId must be provided',
+      {},
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
   }
 
   const nodes = await Promise.all(

@@ -1,6 +1,8 @@
 import { Option } from 'commander';
 
+import { CommandError } from '@/ui/errors/index.js';
 import { invalidLastRangeError } from '@/ui/messages/validation.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Validation limits for --last option.
@@ -49,7 +51,11 @@ export const lastOption = new Option(
   .argParser((val) => {
     const n = parseInt(val, 10);
     if (isNaN(n) || n < MIN_LAST_ITEMS || n > MAX_LAST_ITEMS) {
-      throw new Error(invalidLastRangeError(MIN_LAST_ITEMS, MAX_LAST_ITEMS));
+      throw new CommandError(
+        invalidLastRangeError(MIN_LAST_ITEMS, MAX_LAST_ITEMS),
+        {},
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
     }
     return n;
   });

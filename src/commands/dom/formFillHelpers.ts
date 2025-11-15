@@ -3,7 +3,8 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { CDPConnectionError } from '@/connection/errors.js';
+import { CommandError } from '@/ui/errors/index.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
   REACT_FILL_SCRIPT,
@@ -24,7 +25,7 @@ import {
  * @param options - Fill options
  * @returns Promise resolving to fill result
  *
- * @throws CDPConnectionError When CDP communication fails
+ * @throws CommandError When element operations fail
  *
  * @example
  * ```typescript
@@ -49,7 +50,11 @@ export async function fillElement(
       return indexResult as FillResult;
     }
     if (!indexResult.uniqueSelector) {
-      throw new CDPConnectionError('Failed to resolve unique selector for element index');
+      throw new CommandError(
+        'Failed to resolve unique selector for element index',
+        { note: 'Element index resolution returned no unique selector' },
+        EXIT_CODES.SOFTWARE_ERROR
+      );
     }
     targetSelector = indexResult.uniqueSelector;
   }
@@ -71,9 +76,10 @@ export async function fillElement(
     };
 
     if (cdpResponse.exceptionDetails) {
-      throw new CDPConnectionError(
+      throw new CommandError(
         'Script execution failed',
-        new Error(cdpResponse.exceptionDetails.text ?? 'Unknown error')
+        { note: cdpResponse.exceptionDetails.text ?? 'Unknown error' },
+        EXIT_CODES.SOFTWARE_ERROR
       );
     }
 
@@ -81,13 +87,21 @@ export async function fillElement(
       return cdpResponse.result.value as FillResult;
     }
 
-    throw new CDPConnectionError('Unexpected response format');
+    throw new CommandError(
+      'Unexpected response format',
+      { note: 'CDP response missing result.value' },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   } catch (error) {
-    if (error instanceof CDPConnectionError) {
+    if (error instanceof CommandError) {
       throw error;
     }
-    const errorMessage = error instanceof Error ? error : new Error(String(error));
-    throw new CDPConnectionError('Failed to fill element', errorMessage);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new CommandError(
+      'Failed to fill element',
+      { note: errorMessage },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   }
 }
 
@@ -99,7 +113,7 @@ export async function fillElement(
  * @param options - Click options
  * @returns Promise resolving to click result
  *
- * @throws CDPConnectionError When CDP communication fails
+ * @throws CommandError When element operations fail
  *
  * @example
  * ```typescript
@@ -123,7 +137,11 @@ export async function clickElement(
       return indexResult as ClickResult;
     }
     if (!indexResult.uniqueSelector) {
-      throw new CDPConnectionError('Failed to resolve unique selector for element index');
+      throw new CommandError(
+        'Failed to resolve unique selector for element index',
+        { note: 'Element index resolution returned no unique selector' },
+        EXIT_CODES.SOFTWARE_ERROR
+      );
     }
     targetSelector = indexResult.uniqueSelector;
   }
@@ -144,9 +162,10 @@ export async function clickElement(
     };
 
     if (cdpResponse.exceptionDetails) {
-      throw new CDPConnectionError(
+      throw new CommandError(
         'Script execution failed',
-        new Error(cdpResponse.exceptionDetails.text ?? 'Unknown error')
+        { note: cdpResponse.exceptionDetails.text ?? 'Unknown error' },
+        EXIT_CODES.SOFTWARE_ERROR
       );
     }
 
@@ -154,13 +173,21 @@ export async function clickElement(
       return cdpResponse.result.value as ClickResult;
     }
 
-    throw new CDPConnectionError('Unexpected response format');
+    throw new CommandError(
+      'Unexpected response format',
+      { note: 'CDP response missing result.value' },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   } catch (error) {
-    if (error instanceof CDPConnectionError) {
+    if (error instanceof CommandError) {
       throw error;
     }
-    const errorMessage = error instanceof Error ? error : new Error(String(error));
-    throw new CDPConnectionError('Failed to click element', errorMessage);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new CommandError(
+      'Failed to click element',
+      { note: errorMessage },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   }
 }
 
@@ -172,7 +199,7 @@ export async function clickElement(
  * @param index - Element index (1-based)
  * @returns Promise resolving to element info
  *
- * @throws CDPConnectionError When CDP communication fails
+ * @throws CommandError When element operations fail
  *
  * @internal
  */
@@ -195,9 +222,10 @@ async function getElementByIndex(
     };
 
     if (cdpResponse.exceptionDetails) {
-      throw new CDPConnectionError(
+      throw new CommandError(
         'Script execution failed',
-        new Error(cdpResponse.exceptionDetails.text ?? 'Unknown error')
+        { note: cdpResponse.exceptionDetails.text ?? 'Unknown error' },
+        EXIT_CODES.SOFTWARE_ERROR
       );
     }
 
@@ -205,13 +233,21 @@ async function getElementByIndex(
       return cdpResponse.result.value as ElementByIndexResult;
     }
 
-    throw new CDPConnectionError('Unexpected response format');
+    throw new CommandError(
+      'Unexpected response format',
+      { note: 'CDP response missing result.value' },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   } catch (error) {
-    if (error instanceof CDPConnectionError) {
+    if (error instanceof CommandError) {
       throw error;
     }
-    const errorMessage = error instanceof Error ? error : new Error(String(error));
-    throw new CDPConnectionError('Failed to get element by index', errorMessage);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new CommandError(
+      'Failed to get element by index',
+      { note: errorMessage },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   }
 }
 

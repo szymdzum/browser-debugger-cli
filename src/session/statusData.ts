@@ -5,12 +5,6 @@
  * Formatters should only handle presentation, not business logic.
  */
 
-import type { SessionActivity, PageState } from '@/ipc/index.js';
-import type { SessionMetadata } from '@/session/metadata.js';
-import { isProcessAlive } from '@/session/process.js';
-import type { StatusData } from '@/ui/formatters/status.js';
-import { VERSION } from '@/utils/version.js';
-
 /**
  * Duration information for a session
  */
@@ -70,99 +64,4 @@ export function formatTimeAgo(timestamp: number, now = Date.now()): string {
   if (minutesAgo < 60) return `${minutesAgo}m ago`;
   const hoursAgo = Math.floor(minutesAgo / 60);
   return `${hoursAgo}h ago`;
-}
-
-/**
- * Build status data for active session
- *
- * Encapsulates all business logic for calculating session status:
- * - Duration calculations
- * - Process health checks
- * - Activity metrics
- * - Telemetry state
- *
- * @param metadata - Session metadata
- * @param pid - BDG daemon process ID
- * @param activity - Optional live activity metrics from worker
- * @param pageState - Optional current page state from worker
- * @returns Complete status data object
- *
- * @example
- * ```typescript
- * const status = buildActiveSessionStatus(metadata, daemonPid);
- * console.log(status.active); // true
- * console.log(status.durationFormatted); // "5m 23s"
- * ```
- */
-export function buildActiveSessionStatus(
-  metadata: SessionMetadata,
-  pid: number,
-  activity?: SessionActivity,
-  pageState?: PageState
-): StatusData {
-  const duration = calculateDuration(metadata.startTime);
-  const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
-
-  // Build status object conditionally to satisfy exactOptionalPropertyTypes
-  const status: StatusData = {
-    version: VERSION,
-    active: true,
-    bdgPid: pid,
-    chromePid: metadata.chromePid,
-    chromeAlive,
-    startTime: metadata.startTime,
-    duration: duration.durationMs,
-    durationFormatted: duration.formatted,
-    port: metadata.port,
-    targetId: metadata.targetId,
-    webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
-    telemetry: metadata.activeTelemetry ?? ['network', 'console', 'dom'],
-  };
-
-  // Only add optional properties if defined
-  if (activity !== undefined) status.activity = activity;
-  if (pageState !== undefined) status.pageState = pageState;
-
-  return status;
-}
-
-/**
- * Build status data for inactive session
- *
- * @returns Status data indicating no active session
- */
-export function buildInactiveSessionStatus(): StatusData {
-  return { version: VERSION, active: false };
-}
-
-/**
- * Build status data for stale session
- *
- * A stale session has a PID file but the process is not running.
- *
- * @param stalePid - PID of the dead process
- * @returns Status data indicating stale session
- */
-export function buildStaleSessionStatus(stalePid: number): StatusData {
-  return { version: VERSION, active: false, stale: true, stalePid };
-}
-
-/**
- * Build status data when metadata is missing
- *
- * This can occur when:
- * - Session was created by older version
- * - Metadata file was corrupted or deleted
- * - Race condition during session startup
- *
- * @param pid - BDG daemon process ID
- * @returns Status data with warning about missing metadata
- */
-export function buildMissingMetadataStatus(pid: number): StatusData {
-  return {
-    version: VERSION,
-    active: true,
-    bdgPid: pid,
-    warning: 'Metadata not found (session may be from older version)',
-  };
 }

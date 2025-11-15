@@ -1,34 +1,42 @@
 /**
  * Transport Error Formatting
  *
- * Formats transport-layer errors with context.
+ * Formats transport-layer errors with context using structured error classes.
  */
 
-import { getErrorMessage } from '@/connection/errors.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
+import {
+  IPCConnectionError,
+  IPCParseError,
+  IPCTimeoutError,
+  IPCEarlyCloseError,
+} from './IPCError.js';
 
 export function formatConnectionError(
   requestName: string,
   socketPath: string,
   error: Error
-): Error {
+): IPCConnectionError {
   const code = (error as NodeJS.ErrnoException).code;
-  const fullMessage = [
+  const message = [
     `IPC ${requestName} connection error`,
     `Socket: ${socketPath}`,
     ...(code ? [`Code: ${code}`] : []),
     `Details: ${error.message}`,
   ].join(' | ');
-  return new Error(fullMessage);
+  return new IPCConnectionError(message, socketPath, code);
 }
 
-export function formatParseError(requestName: string, error: unknown): Error {
-  return new Error(`Failed to parse ${requestName} response: ${getErrorMessage(error)}`);
+export function formatParseError(requestName: string, error: unknown): IPCParseError {
+  const cause = error instanceof Error ? error : undefined;
+  return new IPCParseError(requestName, getErrorMessage(error), cause);
 }
 
-export function formatTimeoutError(requestName: string, timeoutMs: number): Error {
-  return new Error(`${requestName} request timeout after ${timeoutMs / 1000}s`);
+export function formatTimeoutError(requestName: string, timeoutMs: number): IPCTimeoutError {
+  return new IPCTimeoutError(requestName, timeoutMs);
 }
 
-export function formatEarlyCloseError(requestName: string): Error {
-  return new Error(`Connection closed before ${requestName} response received`);
+export function formatEarlyCloseError(requestName: string): IPCEarlyCloseError {
+  return new IPCEarlyCloseError(requestName);
 }

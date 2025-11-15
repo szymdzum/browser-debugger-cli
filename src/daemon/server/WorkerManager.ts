@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 
 import type { ChildProcess } from 'child_process';
 
+import { WorkerError } from '@/daemon/errors.js';
 import { JsonlParser } from '@/daemon/server/JsonlParser.js';
 import {
   launchSessionInWorker,
@@ -54,7 +55,7 @@ export class WorkerManager extends EventEmitter {
    */
   async launch(url: string, options: LaunchWorkerOptions = {}): Promise<WorkerMetadata> {
     if (this.worker) {
-      throw new Error('Worker already running');
+      throw new WorkerError('Worker already running', 'WORKER_ALREADY_RUNNING');
     }
 
     const metadata = await launchSessionInWorker(url, options);
@@ -68,7 +69,7 @@ export class WorkerManager extends EventEmitter {
    */
   send(request: WorkerRequestUnion): void {
     if (!this.worker?.stdin || this.worker.killed) {
-      throw new Error('No active worker process');
+      throw new WorkerError('No active worker process', 'NO_ACTIVE_WORKER');
     }
     this.worker.stdin.write(JSON.stringify(request) + '\n');
   }

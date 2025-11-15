@@ -7,6 +7,8 @@ interface BaseResponse {
   error?: string;
 }
 
+import { IPCError } from '@/ipc/transport/IPCError.js';
+
 /**
  * Response type with success status.
  * Used for type narrowing after validation.
@@ -39,6 +41,6 @@ export function validateIPCResponse<T extends BaseResponse>(
   response: T
 ): asserts response is SuccessResponse<T> {
   if (response.status === 'error') {
-    throw new Error(response.error ?? 'Unknown IPC error');
+    throw new IPCError(response.error ?? 'Unknown IPC error');
   }
 }

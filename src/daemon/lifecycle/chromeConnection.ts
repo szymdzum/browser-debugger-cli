@@ -5,7 +5,9 @@
  * Finds the appropriate CDP target for the session.
  */
 
+import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
+import { ConfigError } from '@/daemon/errors.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
 import { writeChromePid } from '@/session/chrome.js';
@@ -43,7 +45,10 @@ export async function setupChromeConnection(
 function setupExternalChrome(config: WorkerConfig, telemetryStore: TelemetryStore): null {
   const wsUrl = config.chromeWsUrl;
   if (!wsUrl) {
-    throw new Error('chromeWsUrl is required for external Chrome connection');
+    throw new ConfigError(
+      'chromeWsUrl is required for external Chrome connection',
+      'MISSING_WS_URL'
+    );
   }
 
   console.error(`[worker] ${chromeExternalConnectionMessage()}`);
@@ -103,7 +108,7 @@ async function setupLaunchedChrome(
           .join('\n')
       : null;
 
-    throw new Error(noPageTargetFoundError(config.port, availableTargets));
+    throw new ChromeLaunchError(noPageTargetFoundError(config.port, availableTargets));
   }
 
   telemetryStore.setTargetInfo(foundTarget);

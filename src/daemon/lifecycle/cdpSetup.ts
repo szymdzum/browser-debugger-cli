@@ -5,6 +5,7 @@
  */
 
 import { CDPConnection } from '@/connection/cdp.js';
+import { CDPConnectionError } from '@/connection/errors.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
@@ -37,7 +38,7 @@ export async function setupCDPAndNavigate(
   onDisconnect: () => void
 ): Promise<CDPSetupResult> {
   if (!telemetryStore.targetInfo) {
-    throw new Error('Failed to obtain target information');
+    throw new CDPConnectionError('Failed to obtain target information');
   }
 
   // Connect to CDP (inject logger for structured logging)

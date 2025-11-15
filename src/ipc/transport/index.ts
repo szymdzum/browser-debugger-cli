@@ -14,6 +14,15 @@ import {
   formatParseError,
   formatTimeoutError,
 } from './errors.js';
+
+// Export structured error classes for external use
+export {
+  IPCError,
+  IPCConnectionError,
+  IPCTimeoutError,
+  IPCParseError,
+  IPCEarlyCloseError,
+} from './IPCError.js';
 import { JSONLBuffer, parseJSONLFrame, toJSONLFrame } from './jsonl.js';
 import { createSocket } from './socket.js';
 import { validateResponseType, validateSessionId } from './validation.js';

@@ -5,7 +5,7 @@
  */
 
 // CLI-level errors (user-facing command errors)
-export { CommandError } from './CommandError.js';
+export { CommandError, type ErrorMetadata } from './CommandError.js';
 
 // Utility functions
 export { isDaemonConnectionError } from './utils.js';
