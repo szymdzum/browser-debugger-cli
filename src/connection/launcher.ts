@@ -34,7 +34,6 @@ import {
 } from '@/ui/messages/chrome.js';
 import { filterDefined } from '@/utils/objects.js';
 
-
 import { getChromeDiagnostics } from './diagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from './errors.js';
 import { reservePort } from './portReservation.js';
