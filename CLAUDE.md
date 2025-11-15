@@ -274,6 +274,26 @@ try { ... } catch { console.error('failed'); }
 
 **Validation:** `npm run lint` catches TSDoc warnings via eslint-plugin-tsdoc
 
+### Inline Comments vs TSDoc
+
+**Prefer TSDoc over inline comments.** Refactor complex logic into well-named helpers with TSDoc instead of adding inline comments.
+
+```typescript
+// ❌ BAD - Inline comment
+function processData(items: Item[]) {
+  // Filter valid items and extract IDs
+  return items.filter(i => i.valid).map(i => i.id);
+}
+
+// ✅ GOOD - TSDoc on helper function
+/** Extracts IDs from valid items. */
+function getValidItemIds(items: Item[]): string[] {
+  return items.filter(item => item.valid).map(item => item.id);
+}
+```
+
+**Exceptions:** Inline comments acceptable for non-obvious regex, workarounds (with issue link), or complex algorithms.
+
 ## Architecture Overview
 
 ### IPC Daemon Architecture
