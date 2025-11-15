@@ -130,35 +130,3 @@ export function unknownError(): string {
 export function invalidResponseError(reason: string): string {
   return `[bdg] Invalid response from daemon: ${reason}`;
 }
-
-/**
- * Generate "no preview data available" error message.
- *
- * @returns Formatted error message with suggestions
- *
- * @example
- * ```typescript
- * console.error(noPreviewDataError());
- * ```
- */
-export function noPreviewDataError(): string {
-  return `Error: No active session found
-No preview data available
-
-Start a session with: bdg <url>
-Check session status: bdg status`;
-}
-
-/**
- * Generate "invalid CDP response" error message.
- *
- * @returns Formatted error message
- *
- * @example
- * ```typescript
- * throw new Error(invalidCDPResponseError());
- * ```
- */
-export function invalidCDPResponseError(): string {
-  return 'Invalid response from CDP';
-}

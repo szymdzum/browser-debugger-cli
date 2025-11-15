@@ -108,25 +108,6 @@ export function sessionStillActiveError(pid: number): string {
 // Validation Messages
 // ============================================================================
 
-/**
- * Generate invalid --last argument error.
- *
- * @param value - The invalid value provided
- * @param min - Minimum allowed value
- * @param max - Maximum allowed value
- * @returns Multi-line error message
- * */
-export function invalidLastArgumentError(
-  value: string | undefined,
-  min: number = 1,
-  max: number = 1000
-): string {
-  return joinLines(
-    `Error: --last must be between ${min} and ${max}`,
-    value !== undefined && `Provided value: ${value}`
-  );
-}
-
 // ============================================================================
 // Start Command Messages
 // ============================================================================

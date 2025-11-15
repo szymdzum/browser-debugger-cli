@@ -13,7 +13,7 @@ import { AtomicFileWriter } from '@/utils/atomicFile.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 
-const log = createLogger('pid');
+const log = createLogger('session');
 
 /**
  * Read and parse a PID from a file.

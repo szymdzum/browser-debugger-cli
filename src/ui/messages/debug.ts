@@ -156,15 +156,6 @@ export function workerReadySignalSent(workerPid: number, chromePid: number): str
 }
 
 /**
- * Generate graceful shutdown started message.
- *
- * @returns Formatted debug message
- */
-export function workerShutdownStarted(): string {
-  return 'Starting graceful shutdown...';
-}
-
-/**
  * Generate collecting final DOM snapshot message.
  *
  * @returns Formatted debug message

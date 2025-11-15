@@ -13,7 +13,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { isProcessAlive } from './process.js';
 
-const log = createLogger('lock');
+const log = createLogger('session');
 
 type LockFile = 'LOCK' | 'DAEMON_LOCK';
 

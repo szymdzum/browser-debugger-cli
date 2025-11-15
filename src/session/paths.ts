@@ -22,7 +22,6 @@ const SESSION_FILES = {
   DAEMON_PID: 'daemon.pid',
   DAEMON_SOCKET: 'daemon.sock',
   DAEMON_LOCK: 'daemon.lock',
-  DOM_QUERY_CACHE: 'last-query.json',
 } as const;
 
 const SESSION_DIR_OVERRIDE_ENV = 'BDG_SESSION_DIR';
@@ -69,17 +68,6 @@ export function getSessionFilePath(fileType: SessionFileType): string {
  */
 export function getDaemonSocketPath(): string {
   return getSessionFilePath('DAEMON_SOCKET');
-}
-
-/**
- * Get the path to the DOM query cache file.
- *
- * WHY: Stores last DOM query results for index-based element references.
- *
- * @returns Full path to DOM query cache file
- */
-export function getDomQueryCachePath(): string {
-  return getSessionFilePath('DOM_QUERY_CACHE');
 }
 
 /**
