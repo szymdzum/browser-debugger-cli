@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 
 import type { ChildProcess } from 'child_process';
 
+import { JsonlParser } from '@/daemon/server/JsonlParser.js';
 import {
   launchSessionInWorker,
   type WorkerMetadata,
@@ -9,7 +10,6 @@ import {
 } from '@/daemon/startSession.js';
 import type { WorkerIPCResponse } from '@/daemon/workerIpc.js';
 import type { WorkerRequestUnion, WorkerResponseUnion } from '@/ipc/index.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 export type WorkerMessage = WorkerIPCResponse | WorkerResponseUnion;
@@ -20,13 +20,13 @@ type WorkerManagerEvents = {
 };
 
 /**
- * Centralizes worker lifecycle management (launch, message parsing, teardown).
+ * Centralizes worker lifecycle management (launch, send requests, teardown).
  */
 export class WorkerManager extends EventEmitter {
   private worker: ChildProcess | null = null;
-  private buffer = '';
   private metadata: WorkerMetadata | null = null;
   private readonly log = createLogger('daemon');
+  private readonly parser = new JsonlParser(this.log);
 
   override on<Event extends keyof WorkerManagerEvents>(
     event: Event,
@@ -87,7 +87,7 @@ export class WorkerManager extends EventEmitter {
       this.worker = null;
     }
     this.metadata = null;
-    this.buffer = '';
+    this.parser.clear();
   }
 
   private attachWorker(worker: ChildProcess): void {
@@ -119,18 +119,9 @@ export class WorkerManager extends EventEmitter {
   }
 
   private handleStdout(chunk: Buffer): void {
-    this.buffer += chunk.toString('utf-8');
-    const lines = this.buffer.split('\n');
-    this.buffer = lines.pop() ?? '';
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const message = JSON.parse(line) as WorkerMessage;
-        this.emit('message', message);
-      } catch (error) {
-        this.log.debug(`[daemon] Failed to parse worker stdout line: ${getErrorMessage(error)}`);
-      }
+    const messages = this.parser.parse(chunk);
+    for (const message of messages) {
+      this.emit('message', message as WorkerMessage);
     }
   }
 }
