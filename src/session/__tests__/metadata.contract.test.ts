@@ -13,7 +13,6 @@ import * as path from 'path';
 import { writeSessionMetadata, readSessionMetadata } from '@/session/metadata.js';
 import type { TelemetryType } from '@/types.js';
 
-
 describe('Metadata Contract', () => {
   let testDir: string;
 

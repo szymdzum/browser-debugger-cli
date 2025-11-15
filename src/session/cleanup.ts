@@ -128,28 +128,24 @@ export function cleanupStaleSession(): boolean {
 
     cleanupPidFile();
 
-    // Remove metadata file
     try {
       fs.rmSync(getSessionFilePath('METADATA'), { force: true });
     } catch (error) {
       log.debug(`Failed to remove metadata file: ${getErrorMessage(error)}`);
     }
 
-    // Remove daemon PID file
     try {
       fs.rmSync(daemonPidPath, { force: true });
     } catch (error) {
       log.debug(`Failed to remove daemon PID file: ${getErrorMessage(error)}`);
     }
 
-    // Remove daemon socket
     try {
       fs.rmSync(getSessionFilePath('DAEMON_SOCKET'), { force: true });
     } catch (error) {
       log.debug(`Failed to remove daemon socket: ${getErrorMessage(error)}`);
     }
 
-    // Remove daemon lock
     try {
       fs.rmSync(getSessionFilePath('DAEMON_LOCK'), { force: true });
     } catch (error) {
