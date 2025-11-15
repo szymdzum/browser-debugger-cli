@@ -1,7 +1,7 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/commands.js';
+import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
 

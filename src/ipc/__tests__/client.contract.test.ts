@@ -18,7 +18,7 @@ import type {
   HandshakeResponse,
   StatusRequest,
   StatusResponse,
-} from '@/ipc/types.js';
+} from '@/ipc/index.js';
 
 /**
  * Mock daemon server that responds to IPC requests.

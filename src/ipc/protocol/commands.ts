@@ -1,11 +1,21 @@
 /**
- * IPC Commands & Guards (flat)
+ * Worker Command Schemas
+ *
+ * Defines the request/response schemas for commands sent to the worker process.
+ * Each command has a request schema (input) and response data schema (output).
  */
 
-// Base command schemas (no IDs)
+/**
+ * Worker peek command request schema.
+ */
 export interface WorkerPeekCommand {
+  /** Number of recent items to return. */
   lastN?: number;
 }
+
+/**
+ * Worker peek command response data.
+ */
 export interface WorkerPeekData {
   version: string;
   startTime: number;
@@ -23,24 +33,51 @@ export interface WorkerPeekData {
   console: Array<{ timestamp: number; type: string; text: string }>;
 }
 
+/**
+ * Worker details command request schema.
+ */
 export interface WorkerDetailsCommand {
+  /** Type of item to get details for. */
   itemType: 'network' | 'console';
+  /** Unique identifier of the item. */
   id: string;
 }
+
+/**
+ * Worker details command response data.
+ */
 export interface WorkerDetailsData {
+  /** The requested item (network request or console message). */
   item: unknown;
 }
 
+/**
+ * CDP call command request schema.
+ */
 export interface CdpCallCommand {
+  /** CDP method name (e.g., 'Network.getCookies'). */
   method: string;
+  /** Optional parameters for the CDP method. */
   params?: Record<string, unknown>;
 }
+
+/**
+ * CDP call command response data.
+ */
 export interface CdpCallData {
+  /** Result from CDP method call. */
   result: unknown;
 }
 
+/**
+ * Worker status command request schema.
+ */
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface WorkerStatusCommand {}
+
+/**
+ * Worker status command response data.
+ */
 export interface WorkerStatusData {
   startTime: number;
   duration: number;
@@ -54,7 +91,14 @@ export interface WorkerStatusData {
   };
 }
 
+/**
+ * Command definition structure.
+ */
 type CommandDef<TReq, TRes> = { requestSchema: TReq; responseSchema: TRes };
+
+/**
+ * Shape of the command registry.
+ */
 export type RegistryShape = {
   worker_peek: CommandDef<WorkerPeekCommand, WorkerPeekData>;
   worker_details: CommandDef<WorkerDetailsCommand, WorkerDetailsData>;
@@ -62,6 +106,10 @@ export type RegistryShape = {
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
 };
 
+/**
+ * Central registry of all worker commands.
+ * Maps command names to their request/response schemas.
+ */
 export const COMMANDS = {
   worker_peek: { requestSchema: {} as WorkerPeekCommand, responseSchema: {} as WorkerPeekData },
   worker_details: {
@@ -75,50 +123,12 @@ export const COMMANDS = {
   cdp_call: { requestSchema: {} as CdpCallCommand, responseSchema: {} as CdpCallData },
 } as const satisfies RegistryShape;
 
+/**
+ * All registered command schemas.
+ */
 export type CommandSchemas = typeof COMMANDS;
+
+/**
+ * All valid command names.
+ */
 export type CommandName = keyof typeof COMMANDS;
-
-export type WorkerRequest<T extends CommandName> = {
-  type: `${T}_request`;
-  requestId: string;
-} & (typeof COMMANDS)[T]['requestSchema'];
-
-export type WorkerResponse<T extends CommandName> = {
-  type: `${T}_response`;
-  requestId: string;
-  success: boolean;
-  data?: (typeof COMMANDS)[T]['responseSchema'];
-  error?: string;
-};
-
-export type ClientRequest<T extends CommandName> = {
-  type: `${T}_request`;
-  sessionId: string;
-} & (typeof COMMANDS)[T]['requestSchema'];
-
-export type ClientResponse<T extends CommandName> = {
-  type: `${T}_response`;
-  sessionId: string;
-  status: 'ok' | 'error';
-  data?: (typeof COMMANDS)[T]['responseSchema'];
-  error?: string;
-};
-
-export type WorkerRequestUnion = { [K in CommandName]: WorkerRequest<K> }[CommandName];
-export type WorkerResponseUnion = { [K in CommandName]: WorkerResponse<K> }[CommandName];
-export type ClientRequestUnion = { [K in CommandName]: ClientRequest<K> }[CommandName];
-
-export function isCommandRequest(type: string): type is `${CommandName}_request` {
-  const commandName = type.replace('_request', '') as CommandName;
-  return commandName in COMMANDS;
-}
-
-export function isCommandResponse(type: string): type is `${CommandName}_response` {
-  const commandName = type.replace('_response', '') as CommandName;
-  return commandName in COMMANDS;
-}
-
-export function getCommandName(type: string): CommandName | null {
-  const commandName = type.replace(/_request|_response/, '') as CommandName;
-  return commandName in COMMANDS ? commandName : null;
-}

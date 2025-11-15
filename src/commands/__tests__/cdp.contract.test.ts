@@ -27,8 +27,8 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { createResponse, createErrorResponse } from '@/__testfixtures__/cdpMessages.js';
 import { FakeWebSocket } from '@/__testutils__/FakeWebSocket.js';
 import { CDPConnection } from '@/connection/cdp.js';
-import type { ClientResponse } from '@/ipc/commands.js';
-import { validateIPCResponse } from '@/ipc/responseValidator.js';
+import type { ClientResponse } from '@/ipc/index.js';
+import { validateIPCResponse } from '@/ipc/index.js';
 import type { CDPMessage } from '@/types.js';
 
 /**

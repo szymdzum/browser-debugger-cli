@@ -1,6 +1,6 @@
 import { landingPage } from '@/commands/shared/landingPage.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
-import { IPCErrorCode } from '@/ipc/types.js';
+import { IPCErrorCode } from '@/ipc/index.js';
 import type { TelemetryType } from '@/types.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';

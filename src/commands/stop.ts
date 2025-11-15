@@ -4,7 +4,7 @@ import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { stopSession } from '@/ipc/client.js';
-import { IPCErrorCode } from '@/ipc/types.js';
+import { IPCErrorCode } from '@/ipc/index.js';
 import { clearChromePid } from '@/session/chrome.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { killChromeProcess } from '@/session/process.js';

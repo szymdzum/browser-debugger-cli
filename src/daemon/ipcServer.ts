@@ -26,23 +26,22 @@ import {
   getCommandName,
   isCommandRequest,
   isCommandResponse,
-} from '@/ipc/commands.js';
-import type {
-  HandshakeRequest,
-  HandshakeResponse,
-  IPCMessageType,
-  PeekRequest,
-  PeekResponse,
-  StartSessionRequest,
-  StartSessionResponse,
-  StartSessionResponseData,
-  StatusRequest,
-  StatusResponse,
-  StatusResponseData,
-  StopSessionRequest,
-  StopSessionResponse,
-} from '@/ipc/types.js';
-import { IPCErrorCode } from '@/ipc/types.js';
+  type HandshakeRequest,
+  type HandshakeResponse,
+  type IPCMessageType,
+  type PeekRequest,
+  type PeekResponse,
+  type StartSessionRequest,
+  type StartSessionResponse,
+  type StartSessionResponseData,
+  type StatusRequest,
+  type StatusResponse,
+  type StatusResponseData,
+  type StopSessionRequest,
+  type StopSessionResponse,
+  IPCErrorCode,
+} from '@/ipc/index.js';
+import { generateRequestId } from '@/ipc/utils/requestId.js';
 import { cleanupSession } from '@/session/cleanup.js';
 import { releaseDaemonLock } from '@/session/lock.js';
 import { readSessionMetadata } from '@/session/metadata.js';
@@ -236,7 +235,7 @@ export class IPCServer {
 
         // Query worker for live activity data if worker is available
         if (this.workerManager.hasActiveWorker()) {
-          const requestId = `worker_status_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          const requestId = generateRequestId('worker_status');
 
           // Set timeout for worker response
           const timeout = setTimeout(() => {
@@ -326,7 +325,7 @@ export class IPCServer {
     }
 
     // Generate unique request ID
-    const requestId = `worker_peek_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = generateRequestId('worker_peek');
 
     // Set timeout for worker response
     const timeout = setTimeout(() => {
@@ -854,7 +853,7 @@ export class IPCServer {
       return;
     }
 
-    const requestId = `${commandName}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = generateRequestId(commandName);
 
     const timeout = setTimeout(() => {
       this.pendingDomRequests.delete(requestId);

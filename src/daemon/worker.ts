@@ -24,7 +24,7 @@ import { startTelemetryCollectors } from '@/daemon/worker/collectors.js';
 import { createCommandRegistry } from '@/daemon/worker/commandRegistry.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
-import type { CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/commands.js';
+import type { CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/index.js';
 import { writeChromePid } from '@/session/chrome.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writeSessionOutput } from '@/session/output.js';

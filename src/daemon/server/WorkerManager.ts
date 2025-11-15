@@ -8,7 +8,7 @@ import {
   type LaunchWorkerOptions,
 } from '@/daemon/startSession.js';
 import type { WorkerIPCResponse } from '@/daemon/workerIpc.js';
-import type { WorkerRequestUnion, WorkerResponseUnion } from '@/ipc/commands.js';
+import type { WorkerRequestUnion, WorkerResponseUnion } from '@/ipc/index.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 
