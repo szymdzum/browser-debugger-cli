@@ -17,6 +17,31 @@ import { isProcessAlive } from './process.js';
 const log = createLogger('chrome');
 
 /**
+ * Parse Chrome PID from cache file content.
+ *
+ * @param pidStr - PID string from cache file
+ * @returns Parsed PID or null if invalid
+ */
+function parseChromePid(pidStr: string): number | null {
+  const pid = parseInt(pidStr.trim(), 10);
+  return Number.isNaN(pid) ? null : pid;
+}
+
+/**
+ * Remove Chrome PID cache file safely.
+ *
+ * @param cachePath - Path to cache file
+ * @param reason - Reason for removal (for logging)
+ */
+function removeChromePidCache(cachePath: string, reason: string): void {
+  try {
+    fs.rmSync(cachePath, { force: true });
+  } catch (error) {
+    log.debug(`Failed to remove ${reason} Chrome PID cache: ${getErrorMessage(error)}`);
+  }
+}
+
+/**
  * Write Chrome PID to persistent cache.
  *
  * This cache survives session cleanup so aggressive cleanup can find Chrome later.
@@ -61,24 +86,16 @@ export function readChromePid(): number | null {
   }
 
   try {
-    const pidStr = fs.readFileSync(cachePath, 'utf-8').trim();
-    const pid = parseInt(pidStr, 10);
+    const pidStr = fs.readFileSync(cachePath, 'utf-8');
+    const pid = parseChromePid(pidStr);
 
-    if (Number.isNaN(pid)) {
-      try {
-        fs.rmSync(cachePath, { force: true });
-      } catch (error) {
-        log.debug(`Failed to remove corrupt Chrome PID cache: ${getErrorMessage(error)}`);
-      }
+    if (pid === null) {
+      removeChromePidCache(cachePath, 'corrupt');
       return null;
     }
 
     if (!isProcessAlive(pid)) {
-      try {
-        fs.rmSync(cachePath, { force: true });
-      } catch (error) {
-        log.debug(`Failed to remove stale Chrome PID cache: ${getErrorMessage(error)}`);
-      }
+      removeChromePidCache(cachePath, 'stale');
       return null;
     }
 

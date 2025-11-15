@@ -10,7 +10,7 @@ import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-import type { ProtocolSchema, Domain, Command, Parameter } from './types.js';
+import type { ProtocolSchema, Domain, Command } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -62,22 +62,6 @@ export function loadProtocol(): ProtocolSchema {
   };
 
   return cachedProtocol;
-}
-
-/**
- * Get all domain names from the protocol.
- *
- * @returns Array of domain names (e.g., ['Accessibility', 'Network', 'Runtime'])
- *
- * @example
- * ```typescript
- * const domains = getDomains();
- * console.log(domains); // ['Accessibility', 'Animation', 'Network', ...]
- * ```
- */
-export function getDomains(): string[] {
-  const protocol = loadProtocol();
-  return protocol.domains.map((d) => d.domain);
 }
 
 /**
@@ -156,95 +140,4 @@ export function normalizeMethod(input: string): string | undefined {
   }
 
   return `${domain.domain}.${command.name}`;
-}
-
-/**
- * Get all commands for a domain.
- *
- * @param domainName - Domain name (case-insensitive)
- * @returns Array of command names or empty array if domain not found
- *
- * @example
- * ```typescript
- * const commands = getCommandsForDomain('Network');
- * console.log(commands); // ['getCookies', 'setCookie', 'enable', ...]
- * ```
- */
-export function getCommandsForDomain(domainName: string): string[] {
-  const domain = findDomain(domainName);
-  if (!domain?.commands) {
-    return [];
-  }
-  return domain.commands.map((c) => c.name);
-}
-
-/**
- * Format command signature for help text.
- *
- * @param domainName - Domain name
- * @param commandName - Command name
- * @returns Formatted signature string or undefined if not found
- *
- * @example
- * ```typescript
- * const sig = formatCommandSignature('Network', 'getCookies');
- * console.log(sig);
- * // Network.getCookies
- * //
- * // Returns all browser cookies for the current URL.
- * //
- * // Parameters:
- * //   --urls <array> (optional) - The list of URLs for which to fetch cookies
- * //
- * // Returns:
- * //   cookies: Array of Cookie objects
- * ```
- */
-export function formatCommandSignature(
-  domainName: string,
-  commandName: string
-): string | undefined {
-  const domain = findDomain(domainName);
-  if (!domain) {
-    return undefined;
-  }
-
-  const command = findCommand(domain.domain, commandName);
-  if (!command) {
-    return undefined;
-  }
-
-  const lines: string[] = [];
-
-  // Method name
-  lines.push(`${domain.domain}.${command.name}`);
-  lines.push('');
-
-  // Description
-  if (command.description) {
-    lines.push(command.description);
-    lines.push('');
-  }
-
-  // Parameters
-  if (command.parameters && command.parameters.length > 0) {
-    lines.push('Parameters:');
-    command.parameters.forEach((param: Parameter) => {
-      const optional = param.optional ? ' (optional)' : '';
-      const desc = param.description ? ` - ${param.description}` : '';
-      lines.push(`  --${param.name} <${param.type}>${optional}${desc}`);
-    });
-    lines.push('');
-  }
-
-  // Returns
-  if (command.returns && command.returns.length > 0) {
-    lines.push('Returns:');
-    command.returns.forEach((ret) => {
-      const desc = ret.description ? ` - ${ret.description}` : '';
-      lines.push(`  ${ret.name}: ${ret.type ?? ret.$ref}${desc}`);
-    });
-  }
-
-  return lines.join('\n');
 }

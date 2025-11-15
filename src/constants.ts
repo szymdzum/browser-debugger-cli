@@ -277,14 +277,3 @@ export function getIPCRequestTimeout(): number {
  * Description for port option in CLI commands
  */
 export const PORT_OPTION_DESCRIPTION = 'Chrome debugging port';
-
-/**
- * Description for timeout option in CLI commands
- */
-export const TIMEOUT_OPTION_DESCRIPTION = 'Auto-stop after timeout (optional)';
-
-/**
- * Description for user-data-dir option in CLI commands
- */
-export const USER_DATA_DIR_OPTION_DESCRIPTION =
-  'Chrome user data directory (default: ~/.bdg/chrome-profile)';
