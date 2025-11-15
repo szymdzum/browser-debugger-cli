@@ -31,8 +31,9 @@ export function formatDomQuery(data: DomQueryResult): string {
   const fmt = new OutputFormatter();
 
   if (count === 0) {
-    // Escape single quotes in selector to keep the suggestion command valid
-    const safeSelector = selector.replace(/'/g, "\\'");
+    // Escape backslashes first, then single quotes to keep the suggestion command valid
+    // CodeQL: This addresses incomplete-string-escaping-or-encoding
+    const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
     return fmt
       .text(`No elements found matching "${selector}"`)
