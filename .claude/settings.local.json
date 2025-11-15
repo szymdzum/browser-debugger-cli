@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git checkout:*)",
+      "Bash(rm:*)",
+      "Bash(npm run build:*)",
+      "Bash(node dist/index.js:*)",
+      "Bash(rg:*)",
+      "Bash(git lg:*)",
+      "Bash(tree:*)",
+      "Bash(cat:*)",
+      "WebFetch(domain:chromedevtools.github.io)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(sort:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
