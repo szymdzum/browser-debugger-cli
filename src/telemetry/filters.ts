@@ -189,7 +189,7 @@ export function shouldExcludeConsoleMessage(
   }
 
   // Check if message type should be excluded (e.g., group messages)
-  if (DEFAULT_EXCLUDED_CONSOLE_TYPES.includes(type)) {
+  if ((DEFAULT_EXCLUDED_CONSOLE_TYPES as readonly string[]).includes(type)) {
     return true;
   }
 
@@ -354,7 +354,7 @@ export function shouldFetchBody(
 
   // Apply default auto-skip URL patterns
   const matchesDefaultSkip = evaluatePatternMatch(url, {
-    includePatterns: DEFAULT_SKIP_BODY_PATTERNS,
+    includePatterns: [...DEFAULT_SKIP_BODY_PATTERNS],
     defaultBehavior: 'exclude',
   });
 
