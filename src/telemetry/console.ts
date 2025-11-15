@@ -4,7 +4,6 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { ConsoleMessage, CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
-import { filterDefined } from '@/utils/objects.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
 import { pushWithLimit } from './utils.js';
@@ -71,13 +70,14 @@ export async function startConsoleCollection(
         return;
       }
 
-      const message = filterDefined({
+      const navigationId = getCurrentNavigationId?.();
+      const message: ConsoleMessage = {
         type: params.type,
         text,
         timestamp: params.timestamp,
         args: params.args,
-        navigationId: getCurrentNavigationId?.(),
-      }) as unknown as ConsoleMessage;
+        ...(navigationId !== undefined && { navigationId }),
+      };
       pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
         log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
       });
@@ -98,12 +98,13 @@ export async function startConsoleCollection(
         return;
       }
 
-      const message = filterDefined({
+      const navigationId = getCurrentNavigationId?.();
+      const message: ConsoleMessage = {
         type: 'error',
         text,
-        timestamp: params.timestamp, // Use event timestamp, not exceptionDetails.timestamp
-        navigationId: getCurrentNavigationId?.(),
-      }) as unknown as ConsoleMessage;
+        timestamp: params.timestamp,
+        ...(navigationId !== undefined && { navigationId }),
+      };
       pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
         log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
       });

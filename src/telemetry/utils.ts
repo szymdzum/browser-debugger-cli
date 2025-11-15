@@ -38,7 +38,6 @@ export function pushWithLimit<T>(
   } else if (buffer.length === limit) {
     onLimitReached();
   }
-  // Items beyond limit are silently dropped
 }
 
 /**

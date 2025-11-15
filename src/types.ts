@@ -1,5 +1,7 @@
 import type { ChildProcess } from 'child_process';
 
+import type { Protocol } from '@/connection/typed-cdp.js';
+
 export interface CDPMessage {
   id?: number;
   method?: string;
@@ -38,11 +40,11 @@ export interface NetworkRequest {
 }
 
 export interface ConsoleMessage {
-  type: string; // TODO: Narrow to Protocol.Runtime.ConsoleAPICalledEvent['type'] | 'error' after Protocol import
+  type: Protocol.Runtime.ConsoleAPICalledEvent['type'] | 'error';
   text: string;
   timestamp: number;
-  args?: unknown[]; // Raw console arguments from CDP (mixed types)
-  navigationId?: number; // Navigation counter when message was logged
+  args?: unknown[];
+  navigationId?: number;
 }
 
 /**

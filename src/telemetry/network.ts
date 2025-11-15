@@ -12,7 +12,6 @@ import {
 } from '@/constants.js';
 import type { NetworkRequest, CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
-import { filterDefined } from '@/utils/objects.js';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 
@@ -131,15 +130,16 @@ export async function startNetworkCollection(
         return;
       }
 
-      const request = filterDefined({
+      const navigationId = getCurrentNavigationId?.();
+      const request: NetworkRequest = {
         requestId: params.requestId,
         url: params.request.url,
         method: params.request.method,
-        timestamp: Date.now(), // Use actual timestamp, not CDP monotonic time
+        timestamp: Date.now(),
         requestHeaders: params.request.headers,
-        requestBody: params.request.postData,
-        navigationId: getCurrentNavigationId?.(),
-      }) as unknown as NetworkRequest;
+        ...(params.request.postData !== undefined && { requestBody: params.request.postData }),
+        ...(navigationId !== undefined && { navigationId }),
+      };
       requestMap.set(params.requestId, {
         request,
         timestamp: Date.now(),
