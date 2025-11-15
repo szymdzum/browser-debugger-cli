@@ -28,7 +28,7 @@ void describe('validateSessionId', () => {
         validateSessionId(request, response, 'status');
       },
       {
-        message: 'status response sessionId mismatch',
+        message: /Response sessionId mismatch/,
       }
     );
   });
@@ -65,7 +65,7 @@ void describe('validateResponseType', () => {
         validateResponseType(response, 'status_response', 'status');
       },
       {
-        message: /unexpected response type.*peek_response.*expected.*status_response/,
+        message: /Unexpected response type.*peek_response.*expected.*status_response/i,
       }
     );
   });

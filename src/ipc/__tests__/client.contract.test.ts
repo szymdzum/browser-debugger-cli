@@ -296,7 +296,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.connectToDaemon();
         },
         {
-          name: 'Error',
+          name: 'IPCConnectionError',
           message: /IPC handshake connection error/,
         }
       );
@@ -312,7 +312,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.connectToDaemon();
         },
         {
-          name: 'Error',
+          name: 'IPCTimeoutError',
           message: /handshake request timeout after 5s/,
         }
       );
@@ -328,7 +328,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.connectToDaemon();
         },
         {
-          name: 'Error',
+          name: 'IPCParseError',
           message: /Failed to parse handshake response/,
         }
       );
@@ -344,7 +344,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.connectToDaemon();
         },
         {
-          name: 'Error',
+          name: 'IPCEarlyCloseError',
           message: /Connection closed before handshake response received/,
         }
       );
@@ -374,7 +374,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.getStatus();
         },
         {
-          name: 'Error',
+          name: 'IPCConnectionError',
           message: /IPC status connection error/,
         }
       );
@@ -390,7 +390,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.getStatus();
         },
         {
-          name: 'Error',
+          name: 'IPCTimeoutError',
           message: /status request timeout after 5s/,
         }
       );
@@ -529,7 +529,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.getStatus();
         },
         {
-          name: 'Error',
+          name: 'IPCTimeoutError',
           message: /status request timeout after 5s/,
         }
       );
@@ -557,7 +557,7 @@ void describe('IPC Client Contract Tests', () => {
           await ipcClient.getStatus();
         },
         {
-          name: 'Error',
+          name: 'IPCEarlyCloseError',
           message: /Connection closed before status response received/,
         }
       );
