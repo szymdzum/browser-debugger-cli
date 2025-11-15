@@ -8,6 +8,7 @@
 import type { PendingRequestManager } from './pendingRequests.js';
 import type { Socket } from 'net';
 
+import type { ISessionService } from '@/daemon/services/SessionService.js';
 import type { WorkerIPCResponse } from '@/daemon/workerIpc.js';
 import {
   type ClientResponse,
@@ -20,7 +21,6 @@ import {
   getCommandName,
   isCommandResponse,
 } from '@/ipc/index.js';
-import { readPid } from '@/session/pid.js';
 
 /**
  * Response sender function type.
@@ -33,6 +33,7 @@ type SendResponseFn = (socket: Socket, response: unknown) => void;
 export class ResponseHandler {
   constructor(
     private readonly pendingRequests: PendingRequestManager,
+    private readonly sessionService: ISessionService,
     private readonly sendResponse: SendResponseFn
   ) {}
 
@@ -169,7 +170,7 @@ export class ResponseHandler {
         ...(success &&
           data && {
             data: {
-              sessionPid: readPid() ?? 0,
+              sessionPid: this.sessionService.readPid() ?? 0,
               preview: {
                 version: data.version,
                 success: true,

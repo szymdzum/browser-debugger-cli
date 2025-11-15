@@ -17,11 +17,8 @@ import { RequestHandlers } from '@/daemon/handlers/requestHandlers.js';
 import { ResponseHandler } from '@/daemon/handlers/responseHandler.js';
 import { SocketServer } from '@/daemon/server/SocketServer.js';
 import { WorkerManager } from '@/daemon/server/WorkerManager.js';
-import {
-  type ClientRequestUnion,
-  type IPCMessageType,
-  isCommandRequest,
-} from '@/ipc/index.js';
+import { SessionService } from '@/daemon/services/SessionService.js';
+import { type ClientRequestUnion, type IPCMessageType, isCommandRequest } from '@/ipc/index.js';
 import { releaseDaemonLock } from '@/session/lock.js';
 import { ensureSessionDir, getSessionFilePath, getDaemonSocketPath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
@@ -49,6 +46,7 @@ export class IPCServer {
   private readonly socketServer = new SocketServer();
   private readonly workerManager = new WorkerManager();
   private readonly pendingRequests = new PendingRequestManager();
+  private readonly sessionService = new SessionService();
 
   // Delegate handlers
   private readonly requestHandlers: RequestHandlers;
@@ -59,12 +57,15 @@ export class IPCServer {
     this.requestHandlers = new RequestHandlers(
       this.workerManager,
       this.pendingRequests,
+      this.sessionService,
       (socket, response) => this.sendResponse(socket, response),
       this.startTime
     );
 
-    this.responseHandler = new ResponseHandler(this.pendingRequests, (socket, response) =>
-      this.sendResponse(socket, response)
+    this.responseHandler = new ResponseHandler(
+      this.pendingRequests,
+      this.sessionService,
+      (socket, response) => this.sendResponse(socket, response)
     );
 
     // Wire up worker events
@@ -167,10 +168,7 @@ export class IPCServer {
           this.requestHandlers.handlePeekRequest(socket, message);
           break;
         case 'start_session_request':
-          void this.requestHandlers.handleStartSessionRequest(
-            socket,
-            message
-          );
+          void this.requestHandlers.handleStartSessionRequest(socket, message);
           break;
         case 'stop_session_request':
           this.requestHandlers.handleStopSessionRequest(socket, message);
