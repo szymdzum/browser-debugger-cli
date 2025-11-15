@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 
 import { runCommand, type BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import type { StatusResult } from '@/commands/types.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
@@ -44,7 +45,7 @@ export function registerStatusCommand(program: Command): void {
       let latestActivity: SessionActivity | undefined;
       let latestPageState: PageState | undefined;
 
-      await runCommand(
+      await runCommand<StatusOptions, StatusResult>(
         async () => {
           try {
             const response = await getStatus();

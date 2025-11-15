@@ -5,7 +5,7 @@
  * that communicate with the daemon via IPC.
  */
 
-import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
+import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { genericError } from '@/ui/messages/errors.js';
 import {
   connectionLostRetryMessage,

@@ -1,4 +1,10 @@
-import { getErrorMessage } from '@/connection/errors.js';
+/**
+ * Structured output building for CLI commands.
+ *
+ * Provides helpers for building consistent JSON output across all commands.
+ * Moved from commands/shared to ui layer as it's presentation logic, not command logic.
+ */
+
 import type {
   BdgOutput,
   CDPTarget,
@@ -7,6 +13,7 @@ import type {
   DOMData,
   TelemetryType,
 } from '@/types';
+import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
 /**

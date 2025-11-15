@@ -134,6 +134,64 @@ export default [
           },
         },
       ],
+
+      // Dependency layer enforcement - prevent architectural violations
+      'import/no-restricted-paths': [
+        'error',
+        {
+          zones: [
+            // Utils layer (Layer 1) cannot import from higher layers (except as noted)
+            {
+              target: './src/utils',
+              from: './src/commands',
+              message: 'Utils cannot import from commands (layer violation)',
+            },
+            {
+              target: './src/utils',
+              from: './src/daemon',
+              message: 'Utils cannot import from daemon (layer violation)',
+            },
+            // Note: utils → ui is allowed for messages/logging/OutputBuilder
+            // This is a pragmatic exception for error formatting and output building
+
+            // Connection layer (Layer 1) cannot import from session layer (Layer 2)
+            {
+              target: './src/connection',
+              from: './src/session',
+              message: 'Connection cannot import from session (creates circular dependency)',
+            },
+
+            // UI layer (Layer 3) cannot import from commands layer (Layer 4)
+            {
+              target: './src/ui',
+              from: './src/commands',
+              message: 'UI cannot import from commands (upward dependency)',
+            },
+
+            // Types module can import from connection for Protocol types, but that's it
+            {
+              target: './src/types',
+              from: './src/commands',
+              message: 'Types cannot import from commands',
+            },
+            {
+              target: './src/types',
+              from: './src/ui',
+              message: 'Types cannot import from UI',
+            },
+            {
+              target: './src/types',
+              from: './src/session',
+              message: 'Types cannot import from session',
+            },
+            {
+              target: './src/types',
+              from: './src/daemon',
+              message: 'Types cannot import from daemon',
+            },
+          ],
+        },
+      ],
     },
     settings: {
       'import/resolver': {

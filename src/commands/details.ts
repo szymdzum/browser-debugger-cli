@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { DetailsResult } from '@/commands/types.js';
 import { getDetails } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
@@ -17,16 +18,6 @@ interface DetailsOptions extends BaseCommandOptions {
   type: 'network' | 'console';
   /** Request ID or console index */
   id: string;
-}
-
-/**
- * Result data containing the item and its type.
- */
-interface DetailsResult {
-  /** The network request or console message */
-  item: NetworkRequest | ConsoleMessage;
-  /** Type of item ('network' or 'console') */
-  type: 'network' | 'console';
 }
 
 /**
@@ -60,7 +51,7 @@ export function registerDetailsCommand(program: Command): void {
       options.type = type as 'network' | 'console';
       options.id = id;
 
-      await runCommand(
+      await runCommand<DetailsOptions, DetailsResult>(
         async (opts) => {
           // Validate type argument
           if (opts.type !== 'network' && opts.type !== 'console') {

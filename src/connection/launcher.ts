@@ -17,7 +17,6 @@ import {
   HEADLESS_FLAG,
   DOCKER_CHROME_FLAGS,
 } from '@/constants.js';
-import { isProcessAlive } from '@/session/process.js';
 import {
   formatDiagnosticsForError,
   chromeLaunchSuccessMessage,
@@ -33,6 +32,7 @@ import {
   chromeBinaryOverrideIsDirectory,
 } from '@/ui/messages/chrome.js';
 import { filterDefined } from '@/utils/objects.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 import { getChromeDiagnostics } from './diagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from './errors.js';
