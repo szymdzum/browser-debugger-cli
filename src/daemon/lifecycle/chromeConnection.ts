@@ -40,21 +40,23 @@ export async function setupChromeConnection(
 /**
  * Connect to existing external Chrome instance.
  */
-async function setupExternalChrome(
-  config: WorkerConfig,
-  telemetryStore: TelemetryStore
-): Promise<null> {
-  console.error(`[worker] ${chromeExternalConnectionMessage()}`);
-  console.error(`[worker] ${chromeExternalWebSocketMessage(config.chromeWsUrl!)}`);
+function setupExternalChrome(config: WorkerConfig, telemetryStore: TelemetryStore): null {
+  const wsUrl = config.chromeWsUrl;
+  if (!wsUrl) {
+    throw new Error('chromeWsUrl is required for external Chrome connection');
+  }
 
-  const targetId = config.chromeWsUrl!.split('/').pop() ?? 'external';
+  console.error(`[worker] ${chromeExternalConnectionMessage()}`);
+  console.error(`[worker] ${chromeExternalWebSocketMessage(wsUrl)}`);
+
+  const targetId = wsUrl.split('/').pop() ?? 'external';
 
   telemetryStore.setTargetInfo({
     id: targetId,
     type: 'page',
     title: 'External Chrome',
     url: config.url,
-    webSocketDebuggerUrl: config.chromeWsUrl!,
+    webSocketDebuggerUrl: wsUrl,
   });
 
   console.error(`[worker] ${chromeExternalNoPidMessage()}`);

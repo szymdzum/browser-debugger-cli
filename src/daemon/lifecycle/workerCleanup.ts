@@ -99,7 +99,7 @@ export async function cleanupWorker(
     }
 
     // Write output
-    await writeOutput(reason, telemetryStore, log);
+    writeOutput(reason, telemetryStore, log);
 
     log.debug(workerShutdownComplete());
   } catch (error) {
@@ -155,11 +155,11 @@ async function terminateChrome(
 /**
  * Write session output.
  */
-async function writeOutput(
+function writeOutput(
   reason: 'normal' | 'crash' | 'timeout',
   telemetryStore: TelemetryStore,
   log: Logger
-): Promise<void> {
+): void {
   if (reason === 'normal') {
     try {
       log.debug(workerWritingOutput());

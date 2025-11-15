@@ -2,6 +2,7 @@ import { getChromeDiagnostics } from '@/connection/diagnostics.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { isProcessAlive } from '@/session/process.js';
+import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { formatDiagnosticsForStatus } from '@/ui/messages/chrome.js';
 import { VERSION } from '@/utils/version.js';
@@ -28,18 +29,6 @@ export interface StatusData {
 }
 
 /**
- * Format "time ago" string from timestamp
- */
-function formatTimeAgo(timestamp: number): string {
-  const secondsAgo = Math.floor((Date.now() - timestamp) / 1000);
-  if (secondsAgo < 60) return `${secondsAgo}s ago`;
-  const minutesAgo = Math.floor(secondsAgo / 60);
-  if (minutesAgo < 60) return `${minutesAgo}m ago`;
-  const hoursAgo = Math.floor(minutesAgo / 60);
-  return `${hoursAgo}h ago`;
-}
-
-/**
  * Format session status for human-readable output
  * @param metadata - Session metadata
  * @param pid - BDG process ID
@@ -54,13 +43,8 @@ export function formatSessionStatus(
   pageState?: PageState,
   verbose = false
 ): string {
-  // Calculate duration
-  const now = Date.now();
-  const durationMs = now - metadata.startTime;
-  const durationSec = Math.floor(durationMs / 1000);
-  const minutes = Math.floor(durationSec / 60);
-  const seconds = durationSec % 60;
-  const durationFormatted = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  // Calculate duration using business logic module
+  const duration = calculateDuration(metadata.startTime);
 
   // Check if Chrome is alive
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
@@ -71,7 +55,7 @@ export function formatSessionStatus(
   fmt.keyValueList(
     [
       ['Status', 'ACTIVE'],
-      ['Duration', durationFormatted],
+      ['Duration', duration.formatted],
     ],
     18
   );
@@ -173,13 +157,8 @@ export function formatStatusAsJson(
     };
   }
 
-  // Calculate duration
-  const now = Date.now();
-  const durationMs = now - metadata.startTime;
-  const durationSec = Math.floor(durationMs / 1000);
-  const minutes = Math.floor(durationSec / 60);
-  const seconds = durationSec % 60;
-  const durationFormatted = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  // Calculate duration using business logic module
+  const duration = calculateDuration(metadata.startTime);
 
   // Check if Chrome is alive
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
@@ -191,8 +170,8 @@ export function formatStatusAsJson(
     chromePid: metadata.chromePid,
     chromeAlive,
     startTime: metadata.startTime,
-    duration: durationMs,
-    durationFormatted,
+    duration: duration.durationMs,
+    durationFormatted: duration.formatted,
     port: metadata.port,
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,

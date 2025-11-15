@@ -6,7 +6,7 @@
 
 /**
  * Generate unique request ID for worker commands.
- * Format: {prefix}_{timestamp}_{random}
+ * Format: prefix_timestamp_random
  *
  * @param prefix - Command name prefix (e.g., 'worker_status', 'cdp_call')
  * @returns Unique request ID string

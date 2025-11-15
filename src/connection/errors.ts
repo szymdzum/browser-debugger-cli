@@ -64,7 +64,7 @@ export class CDPTimeoutError extends ConnectionError {
 /**
  * Extract error message from unknown error type.
  *
- * @deprecated Import from @/utils/errors.ts instead.
+ * @deprecated Import from \@/utils/errors.ts instead.
  * Re-exported for backward compatibility.
  */
 export { getErrorMessage } from '@/utils/errors.js';

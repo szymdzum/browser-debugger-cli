@@ -432,11 +432,11 @@ function createMockCDP(options: MockCDPOptions = {}): MockCDPWithEmit {
   let handlerId = 0;
 
   const mock = {
-    async send(method: string, params?: Record<string, unknown>): Promise<unknown> {
+    send(method: string, params?: Record<string, unknown>): Promise<unknown> {
       onSend?.(method, params);
 
       if (method === 'Page.enable' || method === 'Network.enable') {
-        return {};
+        return Promise.resolve({});
       }
 
       if (method === 'Runtime.evaluate') {
@@ -448,32 +448,32 @@ function createMockCDP(options: MockCDPOptions = {}): MockCDPWithEmit {
 
         // Mock document.readyState check
         if (expression?.includes('document.readyState')) {
-          return {
+          return Promise.resolve({
             result: {
               value: loadEventAlreadyFired ? 'complete' : 'loading',
             },
-          };
+          });
         }
 
         // Mock MutationObserver injection
         if (expression?.includes('MutationObserver')) {
-          return { result: {} };
+          return Promise.resolve({ result: {} });
         }
 
         // Mock DOM stability check
         if (expression?.includes('__bdg_lastMutation')) {
           const timeSinceLastMutation = domStable ? 500 : 0; // 500ms > 300ms threshold
-          return {
+          return Promise.resolve({
             result: {
               value: timeSinceLastMutation,
             },
-          };
+          });
         }
 
-        return { result: {} };
+        return Promise.resolve({ result: {} });
       }
 
-      return {};
+      return Promise.resolve({});
     },
 
     on(event: string, handler: (params: unknown) => void): number {

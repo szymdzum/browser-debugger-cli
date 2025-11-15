@@ -68,7 +68,7 @@ void describe('TelemetryStore', () => {
     });
 
     void it('sets navigation resolver function', () => {
-      const resolver = () => 42;
+      const resolver = (): number => 42;
       store.setNavigationResolver(resolver);
 
       assert.equal(store.getCurrentNavigationId, resolver);
