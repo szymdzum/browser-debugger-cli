@@ -318,7 +318,7 @@ export class IPCServer {
         type: 'peek_response',
         sessionId: request.sessionId,
         status: 'error',
-        error: 'No active worker process',
+        error: 'No active session',
       };
       socket.write(JSON.stringify(response) + '\n');
       console.error('[daemon] Peek error response sent (no worker)');

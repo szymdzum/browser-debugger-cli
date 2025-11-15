@@ -66,11 +66,16 @@ export function registerPeekCommand(program: Command): void {
           try {
             validateIPCResponse(response);
           } catch {
-            const result = handleDaemonConnectionError(response.error ?? 'Unknown error', {
+            const errorMsg = response.error ?? 'Unknown error';
+            // No active session - use RESOURCE_NOT_FOUND
+            const exitCode = errorMsg.includes('No active session')
+              ? EXIT_CODES.RESOURCE_NOT_FOUND
+              : EXIT_CODES.SESSION_FILE_ERROR;
+            const result = handleDaemonConnectionError(errorMsg, {
               json: options.json,
               follow: options.follow,
               retryIntervalMs: 1000,
-              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
+              exitCode,
             });
             if (result.shouldExit) {
               process.exit(result.exitCode);
