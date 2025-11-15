@@ -71,8 +71,10 @@ export class SocketServer {
 
     try {
       unlinkSync(this.socketPath);
-    } catch {
-      // File might not exist; ignore.
+    } catch (error) {
+      this.log.debug(
+        `Failed to remove socket file: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 }

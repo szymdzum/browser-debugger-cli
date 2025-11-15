@@ -27,6 +27,36 @@ import { validateUrl } from '@/utils/url.js';
 const log = createLogger('daemon');
 
 /**
+ * Type guard to validate worker_ready message structure.
+ */
+function isWorkerReadyMessage(obj: unknown): obj is {
+  type: 'worker_ready';
+  workerPid: number;
+  chromePid: number;
+  port: number;
+  target: { url: string; title?: string };
+} {
+  if (typeof obj !== 'object' || obj === null) {
+    return false;
+  }
+  if (!('type' in obj && obj.type === 'worker_ready')) {
+    return false;
+  }
+  return (
+    'workerPid' in obj &&
+    typeof obj.workerPid === 'number' &&
+    'chromePid' in obj &&
+    typeof obj.chromePid === 'number' &&
+    'port' in obj &&
+    typeof obj.port === 'number' &&
+    'target' in obj &&
+    typeof obj.target === 'object' &&
+    obj.target !== null &&
+    'url' in obj.target
+  );
+}
+
+/**
  * Worker metadata returned from successful launch.
  */
 export interface WorkerMetadata {
@@ -166,40 +196,34 @@ export async function launchSessionInWorker(
           if (!line.trim()) continue;
 
           try {
-            const message = JSON.parse(line) as { type: string };
+            const parsed: unknown = JSON.parse(line);
 
-            if (message.type === 'worker_ready') {
-              if (!resolved) {
-                resolved = true;
-                clearTimeout(readyTimeout);
-
-                // Extract metadata from ready message
-                const readyMessage = message as {
-                  type: 'worker_ready';
-                  workerPid: number;
-                  chromePid: number;
-                  port: number;
-                  target: { url: string; title?: string };
-                };
-
-                log.debug(daemonWorkerReady(readyMessage.workerPid, readyMessage.chromePid));
-
-                // NOTE: Don't unref() - we need to keep the worker reference for IPC
-                // Worker continues running as detached process
-
-                resolve({
-                  workerPid: readyMessage.workerPid,
-                  chromePid: readyMessage.chromePid,
-                  port: readyMessage.port,
-                  targetUrl: readyMessage.target.url,
-                  ...(readyMessage.target.title && { targetTitle: readyMessage.target.title }),
-                  workerProcess: worker, // Return worker process for IPC
-                });
-              }
+            if (!isWorkerReadyMessage(parsed)) {
+              // Not a worker_ready message, might be a log line
+              continue;
             }
-          } catch {
-            // Ignore parse errors, may be log messages
+
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(readyTimeout);
+
+              log.debug(daemonWorkerReady(parsed.workerPid, parsed.chromePid));
+
+              // NOTE: Don't unref() - we need to keep the worker reference for IPC
+              // Worker continues running as detached process
+
+              resolve({
+                workerPid: parsed.workerPid,
+                chromePid: parsed.chromePid,
+                port: parsed.port,
+                targetUrl: parsed.target.url,
+                ...(parsed.target.title && { targetTitle: parsed.target.title }),
+                workerProcess: worker, // Return worker process for IPC
+              });
+            }
+          } catch (error) {
             log.debug(daemonParseError(line));
+            log.debug(`JSON parse error: ${getErrorMessage(error)}`);
           }
         }
       });

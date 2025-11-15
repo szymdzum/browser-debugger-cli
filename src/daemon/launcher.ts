@@ -19,6 +19,7 @@ import { cleanupStaleSession } from '@/session/cleanup.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { isProcessAlive } from '@/session/process.js';
+import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -161,7 +162,8 @@ export function isDaemonRunning(): boolean {
     const pid = parseInt(pidStr, 10);
 
     return !isNaN(pid) && isProcessAlive(pid);
-  } catch {
+  } catch (error) {
+    log.debug(`Failed to read daemon PID file: ${getErrorMessage(error)}`);
     return false;
   }
 }
