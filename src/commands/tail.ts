@@ -11,9 +11,13 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { parsePositiveIntOption } from '@/utils/validation.js';
 
 /**
- * Options for tail command (extends PreviewOptions).
+ * Options as received from Commander for the tail command.
+ * These mirror CLI flags and keep raw string values for options that
+ * need validation/parsing (like --last and --interval).
  */
-interface TailOptions extends PreviewOptions {
+interface TailCommandOptions
+  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'verbose'> {
+  last?: string;
   /** Update interval in milliseconds */
   interval?: string;
 }
@@ -36,19 +40,25 @@ export function registerTailCommand(program: Command): void {
     .option('-c, --console', 'Show only console messages', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
-    .action(async (options: TailOptions) => {
-      const lastN = parsePositiveIntOption('last', options.last, {
-        defaultValue: 10,
-        min: 1,
-        max: 1000,
-      });
-      options.last = lastN.toString();
+    .action(async (options: TailCommandOptions) => {
+      let lastN: number;
+      let interval: number;
+      try {
+        lastN = parsePositiveIntOption('last', options.last, {
+          defaultValue: 10,
+          min: 1,
+          max: 1000,
+        });
 
-      const interval = parsePositiveIntOption('interval', options.interval, {
-        defaultValue: 1000,
-        min: 100,
-        max: 60000,
-      });
+        interval = parsePositiveIntOption('interval', options.interval, {
+          defaultValue: 1000,
+          min: 100,
+          max: 60000,
+        });
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      }
 
       /**
        * Fetch and display preview data.
@@ -94,7 +104,12 @@ export function registerTailCommand(program: Command): void {
 
           // Add current view timestamp to show refresh time
           const previewOptions: PreviewOptions = {
-            ...options,
+            json: options.json,
+            network: options.network,
+            console: options.console,
+            last: lastN,
+            verbose: options.verbose,
+            follow: true,
             viewedAt: new Date(),
           };
 

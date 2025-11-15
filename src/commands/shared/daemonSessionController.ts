@@ -6,7 +6,7 @@ import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   sessionAlreadyRunningError,
-  daemonConnectionFailedError,
+  daemonNotRunningError,
   invalidResponseError,
   genericError,
 } from '@/ui/messages/errors.js';
@@ -95,7 +95,9 @@ export async function startSessionViaDaemon(
     const errorMessage = getErrorMessage(error);
 
     if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
-      console.error(daemonConnectionFailedError());
+      // Daemon is not reachable; use the unified helper so this matches
+      // other commands (status, stop, etc.).
+      console.error(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }));
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 

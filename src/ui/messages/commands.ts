@@ -5,6 +5,8 @@
  * cleaning up stale files, and validating command arguments.
  */
 
+import { joinLines } from '@/ui/formatting.js';
+
 // ============================================================================
 // Stop Command Messages
 // ============================================================================
@@ -78,19 +80,18 @@ export function noSessionFilesMessage(): string {
 export function staleSessionFoundMessage(pid: number): string {
   return `Found stale session (PID ${pid} not running)`;
 }
-
 /**
  * Generate force cleanup warning message.
  *
  * @param pid - Process ID that is still running
  * @returns Multi-line warning message
- */
+ * */
 export function forceCleanupWarningMessage(pid: number): string {
-  const lines: string[] = [];
-  lines.push(`Warning: Process ${pid} is still running!`);
-  lines.push('Forcing cleanup anyway...');
-  lines.push('(The process will continue running but lose session tracking)');
-  return lines.join('\n');
+  return joinLines(
+    `Warning: Process ${pid} is still running!`,
+    'Forcing cleanup anyway...',
+    '(The process will continue running but lose session tracking)'
+  );
 }
 
 /**
@@ -114,57 +115,40 @@ export function sessionStillActiveError(pid: number): string {
  * @param min - Minimum allowed value
  * @param max - Maximum allowed value
  * @returns Multi-line error message
- */
+ * */
 export function invalidLastArgumentError(
   value: string | undefined,
   min: number = 1,
   max: number = 1000
 ): string {
-  const lines: string[] = [];
-  lines.push(`Error: --last must be between ${min} and ${max}`);
-  if (value !== undefined) {
-    lines.push(`Provided value: ${value}`);
-  }
-  return lines.join('\n');
-}
-
-/**
- * @deprecated Use daemonNotRunningError() from errors.ts instead
- * Generate daemon not running with cleanup suggestion.
- *
- * @param staleCleaned - Whether stale PID was cleaned up
- * @returns Formatted error message
- */
-export function daemonNotRunningWithCleanup(staleCleaned: boolean): string {
-  if (staleCleaned) {
-    return 'Daemon not running (stale PID cleaned up). Start it with: bdg <url>';
-  }
-  return 'Daemon not running. Start it with: bdg <url>';
+  return joinLines(
+    `Error: --last must be between ${min} and ${max}`,
+    value !== undefined && `Provided value: ${value}`
+  );
 }
 
 // ============================================================================
 // Start Command Messages
 // ============================================================================
-
 /**
  * Generate help message when no URL is provided to start command.
  *
  * @returns Multi-line help message with examples
- */
+ * */
 export function startCommandHelpMessage(): string {
-  const lines: string[] = [];
-  lines.push('');
-  lines.push('Start a new session by providing a URL:');
-  lines.push('');
-  lines.push('  bdg example.com');
-  lines.push('  bdg localhost:3000');
-  lines.push('  bdg https://github.com');
-  lines.push('');
-  lines.push('Or manage existing session:');
-  lines.push('');
-  lines.push('  bdg status      Check session state');
-  lines.push('  bdg stop        End session');
-  lines.push('  bdg --help      Show all commands');
-  lines.push('');
-  return lines.join('\n');
+  return joinLines(
+    '',
+    'Start a new session by providing a URL:',
+    '',
+    '  bdg example.com',
+    '  bdg localhost:3000',
+    '  bdg https://github.com',
+    '',
+    'Or manage existing session:',
+    '',
+    '  bdg status      Check session state',
+    '  bdg stop        End session',
+    '  bdg --help      Show all commands',
+    ''
+  );
 }

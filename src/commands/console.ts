@@ -6,6 +6,7 @@ import { filterOption, jsonOption, lastOption } from '@/commands/shared/commonOp
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput, ConsoleMessage } from '@/types.js';
+import { joinLines } from '@/ui/formatting.js';
 import { noConsoleMessagesMessage, consoleMessagesHeader } from '@/ui/messages/consoleMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -59,14 +60,11 @@ function formatConsoleLogs(data: { logs: ConsoleMessage[]; filter?: string }): s
     return noConsoleMessagesMessage(filter);
   }
 
-  const lines: string[] = [];
-  lines.push(consoleMessagesHeader(logs.length, filter));
-  lines.push('');
-  logs.forEach((log, idx) => {
-    lines.push(formatConsoleMessage(log, idx));
-  });
-
-  return lines.join('\n');
+  return joinLines(
+    consoleMessagesHeader(logs.length, filter),
+    '',
+    ...logs.map((log, idx) => formatConsoleMessage(log, idx))
+  );
 }
 
 /**

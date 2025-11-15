@@ -6,6 +6,11 @@
  */
 
 import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
+import { genericError } from '@/ui/messages/errors.js';
+import {
+  connectionLostRetryMessage,
+  connectionLostStopHintMessage,
+} from '@/ui/messages/preview.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -81,14 +86,14 @@ export function handleDaemonConnectionError(
   if (json) {
     console.log(JSON.stringify(OutputBuilder.buildJsonError(error, { exitCode }), null, 2));
   } else {
-    console.error(`Error: ${error}`);
+    console.error(genericError(error));
   }
 
   if (!follow) {
     return { shouldExit: true, exitCode };
   }
 
-  console.error(`\n[${timestamp}] ⚠️  Connection lost, retrying every ${retryMessage}...`);
-  console.error('Press Ctrl+C to stop');
+  console.error(connectionLostRetryMessage(timestamp, retryMessage));
+  console.error(connectionLostStopHintMessage());
   return { shouldExit: false };
 }

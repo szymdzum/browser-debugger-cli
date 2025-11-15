@@ -4,6 +4,8 @@
  * User-facing messages for input validation failures across commands.
  */
 
+import { joinLines } from '@/ui/formatting.js';
+
 /**
  * Options for integer validation error messages.
  */
@@ -41,23 +43,20 @@ export function invalidIntegerError(
   value: string,
   options?: IntegerValidationOptions
 ): string {
-  const lines: string[] = [];
+  const header = `Error: Invalid ${fieldName}: "${value}" is not a valid integer`;
 
-  lines.push(`Error: Invalid ${fieldName}: "${value}" is not a valid integer`);
-
+  let rangeInfo: string | undefined;
   if (options?.min !== undefined && options?.max !== undefined) {
-    lines.push(`Valid range: ${options.min} to ${options.max}`);
+    rangeInfo = `Valid range: ${options.min} to ${options.max}`;
   } else if (options?.min !== undefined) {
-    lines.push(`Must be at least ${options.min}`);
+    rangeInfo = `Must be at least ${options.min}`;
   } else if (options?.max !== undefined) {
-    lines.push(`Must be at most ${options.max}`);
+    rangeInfo = `Must be at most ${options.max}`;
   }
 
   const example = options?.exampleValue ?? options?.min ?? 30;
-  lines.push('');
-  lines.push(`Example: --${fieldName} ${example}`);
 
-  return lines.join('\n');
+  return joinLines(header, rangeInfo, '', `Example: --${fieldName} ${example}`);
 }
 
 /**

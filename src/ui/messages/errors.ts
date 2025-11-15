@@ -4,7 +4,7 @@
  * Centralized location for reusable error messages with consistent formatting.
  */
 
-import { formatDuration } from '@/ui/formatting.js';
+import { formatDuration, joinLines } from '@/ui/formatting.js';
 
 /**
  * Generate "session already running" error message.
@@ -25,23 +25,19 @@ export function sessionAlreadyRunningError(
   duration: number,
   targetUrl?: string
 ): string {
-  const lines: string[] = [];
-
-  lines.push('');
-  lines.push('Error: Session already running');
-  lines.push('');
-  lines.push(`  PID:      ${pid}`);
-  if (targetUrl) {
-    lines.push(`  Target:   ${targetUrl}`);
-  }
-  lines.push(`  Duration: ${formatDuration(duration)}`);
-  lines.push('');
-  lines.push('Suggestions:');
-  lines.push('  View session:     bdg status');
-  lines.push('  Stop and restart: bdg stop && bdg <url>');
-  lines.push('');
-
-  return lines.join('\n');
+  return joinLines(
+    '',
+    'Error: Session already running',
+    '',
+    `  PID:      ${pid}`,
+    targetUrl && `  Target:   ${targetUrl}`,
+    `  Duration: ${formatDuration(duration)}`,
+    '',
+    'Suggestions:',
+    '  View session:     bdg status',
+    '  Stop and restart: bdg stop && bdg <url>',
+    ''
+  );
 }
 
 /**
@@ -82,49 +78,19 @@ export interface DaemonErrorContext {
  * ```
  */
 export function daemonNotRunningError(context?: DaemonErrorContext): string {
-  const lines: string[] = [];
-
-  lines.push('Error: Daemon not running');
-
-  if (context?.staleCleanedUp) {
-    lines.push('(Stale PID file was cleaned up)');
-  }
-
-  if (context?.lastError) {
-    lines.push(`Last error: ${context.lastError}`);
-  }
-
-  lines.push('');
-  lines.push('Start a new session:');
-  lines.push('  bdg <url>');
-
-  if (context?.suggestStatus) {
-    lines.push('');
-    lines.push('Or check daemon status:');
-    lines.push('  bdg status');
-  }
-
-  if (context?.suggestRetry) {
-    lines.push('');
-    lines.push('Or try the command again if this was transient');
-  }
-
-  return lines.join('\n');
-}
-
-/**
- * @deprecated Use daemonNotRunningError() instead
- * Generate "daemon connection failed" error message.
- *
- * @returns Formatted error message with troubleshooting
- *
- * @example
- * ```typescript
- * console.error(daemonConnectionFailedError());
- * ```
- */
-export function daemonConnectionFailedError(): string {
-  return daemonNotRunningError({ suggestStatus: true, suggestRetry: true });
+  return joinLines(
+    'Error: Daemon not running',
+    context?.staleCleanedUp && '(Stale PID file was cleaned up)',
+    context?.lastError && `Last error: ${context.lastError}`,
+    '',
+    'Start a new session:',
+    '  bdg <url>',
+    context?.suggestStatus && '',
+    context?.suggestStatus && 'Or check daemon status:',
+    context?.suggestStatus && '  bdg status',
+    context?.suggestRetry && '',
+    context?.suggestRetry && 'Or try the command again if this was transient'
+  );
 }
 
 /**

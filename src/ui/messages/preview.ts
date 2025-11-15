@@ -3,7 +3,7 @@
  *
  * User-facing messages for the peek command, including empty states,
  * tips, and interactive command suggestions.
- */
+ * */
 
 // ============================================================================
 // Empty State Messages
@@ -42,12 +42,12 @@ export function compactTipsMessage(): string {
  * @returns Multi-line commands help for verbose mode
  */
 export function verboseCommandsMessage(): string {
-  const lines: string[] = [];
-  lines.push('Commands:');
-  lines.push('  Stop session:    bdg stop');
-  lines.push('  Full preview:    bdg peek --last 50');
-  lines.push('  Watch live:      bdg tail');
-  return lines.join('\n');
+  return [
+    'Commands:',
+    '  Stop session:    bdg stop',
+    '  Full preview:    bdg peek --last 50',
+    '  Watch live:      bdg tail',
+  ].join('\n');
 }
 
 // ============================================================================
@@ -82,4 +82,23 @@ export function followingPreviewMessage(): string {
  */
 export function stoppedFollowingPreviewMessage(): string {
   return '\nStopped following preview';
+}
+
+/**
+ * Generate connection lost + retry message for follow mode.
+ *
+ * @param timestamp - ISO timestamp of the event
+ * @param retryLabel - Human-readable retry interval (e.g. "1s", "500ms")
+ */
+export function connectionLostRetryMessage(timestamp: string, retryLabel: string): string {
+  return `\n[${timestamp}] ⚠️  Connection lost, retrying every ${retryLabel}...`;
+}
+
+/**
+ * Generate follow-mode stop hint.
+ *
+ * @returns Message instructing the user how to stop follow mode
+ */
+export function connectionLostStopHintMessage(): string {
+  return 'Press Ctrl+C to stop';
 }

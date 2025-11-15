@@ -49,7 +49,10 @@ async function withCDPConnection<T>(
 
   // Connect to CDP
   const cdp = new CDPConnection();
-  await cdp.connect(metadata.webSocketDebuggerUrl!);
+  if (!metadata.webSocketDebuggerUrl) {
+    throw new Error('Missing webSocketDebuggerUrl in session metadata');
+  }
+  await cdp.connect(metadata.webSocketDebuggerUrl);
 
   try {
     return await fn(cdp, metadata);

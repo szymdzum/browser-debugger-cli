@@ -12,19 +12,19 @@ import {
  */
 export interface PreviewOptions {
   /** Emit raw JSON instead of formatted text. */
-  json?: boolean;
+  json?: boolean | undefined;
   /** Limit output to network requests (ignores console data). */
-  network?: boolean;
+  network?: boolean | undefined;
   /** Limit output to console messages (ignores network data). */
-  console?: boolean;
-  /** Number of recent entries to include (parsed as integer). */
-  last: string;
+  console?: boolean | undefined;
+  /** Number of recent entries to include. */
+  last: number;
   /** Use the expanded, human-friendly layout. */
-  verbose?: boolean;
+  verbose?: boolean | undefined;
   /** Stream updates until interrupted (tail-like behaviour). */
-  follow?: boolean;
+  follow?: boolean | undefined;
   /** Current view timestamp (for follow mode to show refresh time). */
-  viewedAt?: Date;
+  viewedAt?: Date | undefined;
 }
 
 /**
@@ -45,28 +45,34 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
  * IPC response structure (.preview.data path for JSON consumers).
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
-  const jsonOutput: BdgOutput = {
-    ...output,
-  };
+  // Build a new data object so we never mutate the original output
+  const data = { ...output.data };
 
   // Apply filters
   if (options.network) {
-    delete jsonOutput.data.console;
+    delete data.console;
   }
   if (options.console) {
-    delete jsonOutput.data.network;
+    delete data.network;
   }
 
   // Apply --last limit
-  const lastCount = parseInt(options.last);
-  if (jsonOutput.data.network && jsonOutput.data.network.length > lastCount) {
-    jsonOutput.data.network = jsonOutput.data.network.slice(-lastCount);
-  }
-  if (jsonOutput.data.console && jsonOutput.data.console.length > lastCount) {
-    jsonOutput.data.console = jsonOutput.data.console.slice(-lastCount);
+  const lastCount = options.last;
+  if (lastCount > 0) {
+    if (data.network && data.network.length > lastCount) {
+      data.network = data.network.slice(-lastCount);
+    }
+    if (data.console && data.console.length > lastCount) {
+      data.console = data.console.slice(-lastCount);
+    }
   }
 
   // Wrap in preview object to maintain .preview.data path for JSON consumers
+  const jsonOutput: BdgOutput = {
+    ...output,
+    data,
+  };
+
   return JSON.stringify({ preview: jsonOutput }, null, 2);
 }
 
@@ -100,7 +106,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
 
   fmt.blank();
 
-  const lastCount = parseInt(options.last);
+  const lastCount = options.last;
   const hasNetworkData = output.data.network && output.data.network.length > 0;
   const hasConsoleData = output.data.console && output.data.console.length > 0;
 
@@ -175,7 +181,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
 
   fmt.blank();
 
-  const lastCount = parseInt(options.last);
+  const lastCount = options.last;
   const hasNetworkData = output.data.network && output.data.network.length > 0;
   const hasConsoleData = output.data.console && output.data.console.length > 0;
 

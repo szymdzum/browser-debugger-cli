@@ -11,6 +11,16 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { parsePositiveIntOption } from '@/utils/validation.js';
 
 /**
+ * Options as received from Commander for the peek command.
+ * These mirror CLI flags and keep raw string values for options that
+ * need validation/parsing (like --last).
+ */
+interface PeekCommandOptions
+  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'verbose' | 'follow'> {
+  last?: string;
+}
+
+/**
  * Register peek command.
  *
  * @param program - Commander.js Command instance to register commands on
@@ -25,13 +35,27 @@ export function registerPeekCommand(program: Command): void {
     .option('-c, --console', 'Show only console messages', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
-    .action(async (options: PreviewOptions) => {
-      const lastN = parsePositiveIntOption('last', options.last, {
-        defaultValue: 10,
-        min: 1,
-        max: 1000,
-      });
-      options.last = lastN.toString();
+    .action(async (options: PeekCommandOptions) => {
+      let lastN: number;
+      try {
+        lastN = parsePositiveIntOption('last', options.last, {
+          defaultValue: 10,
+          min: 1,
+          max: 1000,
+        });
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      }
+
+      const previewBase: PreviewOptions = {
+        json: options.json,
+        network: options.network,
+        console: options.console,
+        last: lastN,
+        verbose: options.verbose,
+        follow: options.follow,
+      };
 
       const showPreview = async (): Promise<void> => {
         try {
@@ -75,9 +99,9 @@ export function registerPeekCommand(program: Command): void {
           }
 
           // Add current view timestamp for follow mode to show refresh time
-          const previewOptions: PreviewOptions = options.follow
-            ? { ...options, viewedAt: new Date() }
-            : options;
+          const previewOptions: PreviewOptions = previewBase.follow
+            ? { ...previewBase, viewedAt: new Date() }
+            : previewBase;
 
           console.log(formatPreview(output, previewOptions));
         } catch {

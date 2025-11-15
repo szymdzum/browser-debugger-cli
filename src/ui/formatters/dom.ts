@@ -31,11 +31,15 @@ export function formatDomQuery(data: DomQueryResult): string {
   const fmt = new OutputFormatter();
 
   if (count === 0) {
+    // Escape backslashes first, then single quotes to keep the suggestion command valid
+    // CodeQL: This addresses incomplete-string-escaping-or-encoding
+    const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
     return fmt
       .text(`No elements found matching "${selector}"`)
       .blank()
       .section('Suggestions:', [
-        `Verify selector: bdg dom eval "document.querySelector('${selector}')"`,
+        `Verify selector: bdg dom eval "document.querySelector('${safeSelector}')"`,
         'List elements:   bdg dom query "*"',
       ])
       .build();

@@ -251,6 +251,19 @@ export function keyValue(key: string, value: string, keyWidth?: number): string 
 // ============================================================================
 
 /**
+ * Join multiple lines into a single string separated by newlines.
+ *
+ * Falsy control values (undefined, null, false) are skipped so callers can
+ * use boolean short-circuiting for optional lines. Empty strings are preserved
+ * to allow intentional blank lines.
+ */
+export function joinLines(...lines: Array<string | null | undefined | false>): string {
+  return lines
+    .filter((line): line is string => line !== undefined && line !== null && line !== false)
+    .join('\n');
+}
+
+/**
  * Indent text by a number of spaces.
  *
  * @param text - Text to indent (can be multiline)
