@@ -32,7 +32,7 @@ export class CDPHandlerRegistry {
    * @param event - CDP event name (e.g., 'Network.requestWillBeSent')
    * @param handler - Event handler function
    *
-   * @deprecated Use registerTyped() with TypedCDPConnection for type safety
+   * @deprecated Since v0.5.0. Use registerTyped() with TypedCDPConnection for type safety. Will be removed in v1.0.0.
    */
   register<T>(cdp: CDPConnection, event: string, handler: (params: T) => void): void {
     const id = cdp.on(event, handler);

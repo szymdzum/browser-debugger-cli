@@ -1,23 +1,19 @@
-import type { ChildProcess } from 'child_process';
-
 import type { Protocol } from '@/connection/typed-cdp.js';
 
-export interface CDPMessage {
-  id?: number;
-  method?: string;
-  params?: Record<string, unknown>;
-  result?: unknown;
-  error?: { code?: number; message: string };
-  sessionId?: string;
-}
-
-export interface CDPTarget {
-  id: string;
-  type: string;
-  title: string;
-  url: string;
-  webSocketDebuggerUrl: string;
-}
+/**
+ * Re-export connection types for backward compatibility.
+ *
+ * These types are now defined in connection/connectionTypes.ts for better cohesion.
+ * This re-export maintains backward compatibility with existing code.
+ */
+export type {
+  CDPMessage,
+  CDPTarget,
+  ConnectionOptions,
+  LaunchedChrome,
+  Logger,
+  CleanupFunction,
+} from '@/connection/types.js';
 
 export interface DOMData {
   url: string;
@@ -91,39 +87,3 @@ export interface BdgOutput {
 }
 
 export type TelemetryType = 'dom' | 'network' | 'console';
-
-/**
- * Optional tuning parameters for CDPConnection.connect.
- */
-export interface ConnectionOptions {
-  /** Milliseconds to wait for the initial socket open */
-  timeout?: number;
-  /** Number of connection attempts before failing */
-  maxRetries?: number;
-  /** Reconnect automatically when the socket closes */
-  autoReconnect?: boolean;
-  /** Interval between ping frames to keep CDP alive */
-  keepaliveInterval?: number;
-  /** Async hook invoked after a successful reconnect */
-  onReconnect?: (() => Promise<void>) | undefined;
-  /** Async hook invoked when WebSocket closes unexpectedly (P1 Fix #1) */
-  onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
-}
-
-export type CleanupFunction = () => void;
-
-/**
- * Information about a launched Chrome instance.
- */
-export interface LaunchedChrome {
-  /** Process ID of the Chrome instance */
-  pid: number;
-  /** Remote debugging port Chrome is listening on */
-  port: number;
-  /** Resolved Chrome user data directory (profile path) */
-  userDataDir?: string | undefined;
-  /** Child process handle (for advanced use cases like log streaming) */
-  process: ChildProcess | null;
-  /** Async function to terminate Chrome and cleanup temp directories */
-  kill: () => Promise<void>;
-}

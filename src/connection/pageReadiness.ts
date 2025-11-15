@@ -11,6 +11,16 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 
+// Readiness Detection Thresholds
+/** Network idle threshold in milliseconds - network is stable when no requests for this duration */
+const NETWORK_IDLE_THRESHOLD_MS = 200;
+/** DOM stable threshold in milliseconds - DOM is stable when no mutations for this duration */
+const DOM_STABLE_THRESHOLD_MS = 300;
+/** Interval for checking deadline expiration in milliseconds */
+const DEADLINE_CHECK_INTERVAL_MS = 100;
+/** Interval for checking network activity in milliseconds */
+const NETWORK_CHECK_INTERVAL_MS = 50;
+
 /**
  * Options for page readiness detection
  */
@@ -124,7 +134,7 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
         cleanup();
         reject(new Error('Load event timeout'));
       } else {
-        timeout = setTimeout(checkDeadline, 100);
+        timeout = setTimeout(checkDeadline, DEADLINE_CHECK_INTERVAL_MS);
       }
     };
 
@@ -183,19 +193,16 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
   const loadingFailedId = cdp.on('Network.loadingFailed', finishHandler);
 
   try {
-    // Use fixed threshold for immediate detection
-    const idleThreshold = 200; // 200ms idle = network stable
-
     // Detection phase: wait for stability
     while (Date.now() < deadline) {
       if (activeRequests === 0) {
         const idleTime = Date.now() - lastActivity;
-        if (idleTime >= idleThreshold) {
+        if (idleTime >= NETWORK_IDLE_THRESHOLD_MS) {
           return idleTime; // Success!
         }
       }
 
-      await delay(50); // Check every 50ms
+      await delay(NETWORK_CHECK_INTERVAL_MS);
     }
 
     throw new Error('Network stability timeout');
@@ -256,9 +263,6 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
   });
 
   try {
-    // Use fixed threshold for immediate detection
-    const stableThreshold = 300; // 300ms no mutations = DOM stable
-
     // Detection phase: wait for stability
     while (Date.now() < deadline) {
       const checkResult = (await cdp.send('Runtime.evaluate', {
@@ -268,11 +272,11 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
 
       const timeSinceLastMutation = (checkResult.result.value as number) ?? 0;
 
-      if (timeSinceLastMutation >= stableThreshold) {
+      if (timeSinceLastMutation >= DOM_STABLE_THRESHOLD_MS) {
         return timeSinceLastMutation; // Success!
       }
 
-      await delay(100); // Check every 100ms
+      await delay(DEADLINE_CHECK_INTERVAL_MS);
     }
 
     throw new Error('DOM stability timeout');

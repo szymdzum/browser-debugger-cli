@@ -1,9 +1,10 @@
 import * as fs from 'fs';
-import * as net from 'net';
+import * as os from 'os';
 import * as path from 'path';
 
 import * as chromeLauncher from 'chrome-launcher';
 
+import type { LaunchedChrome, Logger } from './types.js';
 import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 
 import {
@@ -16,10 +17,7 @@ import {
   HEADLESS_FLAG,
   DOCKER_CHROME_FLAGS,
 } from '@/constants.js';
-import { ensureSessionDir, getSessionDir } from '@/session/paths.js';
 import { isProcessAlive } from '@/session/process.js';
-import type { LaunchedChrome } from '@/types';
-import { createLogger } from '@/ui/logging/index.js';
 import {
   formatDiagnosticsForError,
   chromeLaunchSuccessMessage,
@@ -32,13 +30,24 @@ import {
   chromeLaunchFailedError,
   chromeBinaryOverrideNotFound,
   chromeBinaryOverrideNotExecutable,
+  chromeBinaryOverrideIsDirectory,
 } from '@/ui/messages/chrome.js';
 import { filterDefined } from '@/utils/objects.js';
 
+
 import { getChromeDiagnostics } from './diagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from './errors.js';
+import { reservePort } from './portReservation.js';
 
-const log = createLogger('chrome');
+/**
+ * Default logger instance for launcher (uses console).
+ *
+ * Can be overridden in tests or when launcher is used as a library.
+ */
+const defaultLogger: Logger = {
+  info: (msg) => console.error(msg),
+  debug: () => {}, // No-op by default
+};
 
 /**
  * Get formatted Chrome diagnostics for error messages.
@@ -54,8 +63,6 @@ function getFormattedDiagnostics(): string[] {
 }
 
 // Other Constants
-const FILE_NOT_EXIST_ERROR = 'File does not exist';
-const INVALID_JSON_STRUCTURE_ERROR = 'Invalid JSON structure';
 const REMOTE_DEBUGGING_FLAG = (port: number): string => `--remote-debugging-port=${port}`;
 
 /**
@@ -96,6 +103,10 @@ export interface LaunchOptions
   port?: number;
   /** Directory for Chrome profile data. Falls back to persistent ~/.bdg/chrome-profile directory */
   userDataDir?: string | undefined;
+  /** Base directory for creating user data dir (defaults to OS temp dir, injectable for testing) */
+  baseDir?: string | undefined;
+  /** Logger instance (defaults to console, injectable for testing or custom logging) */
+  logger?: Logger | undefined;
   /** When true, launches Chrome in headless mode. Defaults to standard windowed experience */
   headless?: boolean;
   /** Initial URL to open. Defaults to about:blank and is typically replaced during session setup */
@@ -127,51 +138,8 @@ export interface LaunchOptions
  * Chrome 136+ requires --user-data-dir with a non-default directory.
  * Uses chrome-launcher for cross-platform Chrome detection and launching.
  */
-/**
- * Atomically reserve a port to prevent race conditions during Chrome launch.
- *
- * Creates a temporary TCP server on the port, which prevents other processes
- * from binding to it. Returns a release function to free the port.
- *
- * @param port - Port number to reserve
- * @returns Promise resolving to reservation object with release function
- * @throws ChromeLaunchError If port is already in use
- */
-async function reservePort(port: number): Promise<{ release: () => void }> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-
-    server.once('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EADDRINUSE') {
-        // Port is already in use - provide helpful error message
-        reject(
-          new ChromeLaunchError(
-            `Port ${port} is already in use.\n\n` +
-              `This usually means Chrome is still running from a previous session.\n\n` +
-              `Try:\n` +
-              `  - bdg cleanup --aggressive  (kills all Chrome processes)\n` +
-              `  - bdg cleanup --force       (removes session files + kills Chrome on port ${port})\n` +
-              `  - lsof -ti:${port} | xargs kill -9  (force kill process on port)\n` +
-              `  - Use different port: bdg <url> --port ${port + 1}`
-          )
-        );
-      } else {
-        reject(err);
-      }
-    });
-
-    server.listen(port, '127.0.0.1', () => {
-      // Port successfully reserved - return release function
-      resolve({
-        release: () => {
-          server.close();
-        },
-      });
-    });
-  });
-}
-
 export async function launchChrome(options: LaunchOptions = {}): Promise<LaunchedChrome> {
+  const logger = options.logger ?? defaultLogger;
   const port = options.port ?? DEFAULT_CDP_PORT;
 
   // Validate port range
@@ -187,7 +155,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   // Chrome needs to bind to this port, so we can't hold the reservation
   reservation.release();
 
-  const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
+  const userDataDir = options.userDataDir ?? getPersistentUserDataDir(options.baseDir);
 
   // Ensure userDataDir exists (chrome-launcher needs it for chrome-out.log)
   if (!fs.existsSync(userDataDir)) {
@@ -202,8 +170,8 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   }
 
   // Show progress to user (always visible, not just debug)
-  console.error(`Launching Chrome on port ${port}...`);
-  log.debug(chromeUserDataDirMessage(userDataDir));
+  logger.info(`Launching Chrome on port ${port}...`);
+  logger.debug(chromeUserDataDirMessage(userDataDir));
 
   const chromeOptions = buildChromeOptions(options);
   const launcher = new chromeLauncher.Launcher(chromeOptions);
@@ -212,11 +180,11 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     const launchStart = Date.now();
     await launcher.launch();
 
-    console.error('Waiting for Chrome to be ready...');
+    logger.info('Waiting for Chrome to be ready...');
     await launcher.waitUntilReady();
 
     const launchDurationMs = Date.now() - launchStart;
-    console.error(`✓ Chrome ready (${launchDurationMs}ms)`);
+    logger.info(`✓ Chrome ready (${launchDurationMs}ms)`);
 
     const chromeProcessPid = launcher.pid ?? 0;
 
@@ -249,13 +217,12 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     }
 
     // Only print success message after validating PID and process liveness
-    log.info(chromeLaunchSuccessMessage(chromeProcessPid, launchDurationMs));
+    logger.info(chromeLaunchSuccessMessage(chromeProcessPid, launchDurationMs));
 
     return {
       pid: chromeProcessPid,
       port: launcher.port ?? port,
       userDataDir: launcher.userDataDir,
-      process: launcher.chromeProcess ?? null,
       kill: async (): Promise<void> => {
         return Promise.resolve().then(() => {
           launcher.kill();
@@ -289,13 +256,13 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
  * session storage) across bdg sessions. This prevents users from having to
  * repeatedly log in or accept cookie consent dialogs during debugging workflows.
  *
+ * @param baseDir - Optional base directory (defaults to OS temp dir). Allows injection for testing or custom locations.
  * @returns Absolute path to persistent user-data-dir
  * @throws Error if user data directory cannot be created due to permission issues
  */
-function getPersistentUserDataDir(): string {
-  ensureSessionDir();
-  const baseDir = getSessionDir();
-  const userDataDir = path.join(baseDir, CHROME_PROFILE_DIR);
+function getPersistentUserDataDir(baseDir?: string): string {
+  const dir = baseDir ?? os.tmpdir();
+  const userDataDir = path.join(dir, 'bdg-chrome', CHROME_PROFILE_DIR);
 
   if (!fs.existsSync(userDataDir)) {
     try {
@@ -325,7 +292,7 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
     if (!fs.existsSync(options.prefsFile)) {
       throw new ChromeLaunchError(
         prefsFileNotFoundError(options.prefsFile),
-        new Error(FILE_NOT_EXIST_ERROR)
+        new Error('File does not exist')
       );
     }
 
@@ -336,7 +303,7 @@ function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | unde
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         throw new ChromeLaunchError(
           invalidPrefsFormatError(options.prefsFile, typeof parsed),
-          new Error(INVALID_JSON_STRUCTURE_ERROR)
+          new Error('Invalid JSON structure')
         );
       }
 
@@ -390,7 +357,7 @@ function resolveChromeBinaryOverride(options: LaunchOptions): string | undefined
   try {
     const stats = fs.statSync(chromePath);
     if (stats.isDirectory()) {
-      throw new ChromeLaunchError(chromeBinaryOverrideNotExecutable(chromePath, sourceLabel));
+      throw new ChromeLaunchError(chromeBinaryOverrideIsDirectory(chromePath, sourceLabel));
     }
 
     fs.accessSync(chromePath, fs.constants.X_OK);
@@ -472,11 +439,12 @@ function buildChromeFlags(options: LaunchOptions): string[] {
  * Type-safe conversion for Chrome preferences from unknown to JSONLike.
  *
  * chrome-launcher requires preferences to match its internal JSONLike type constraint
- * for type safety. This conversion is safe because preferences should always be
- * JSON-serializable values loaded from JSON files or constructed with compatible types.
+ * for type safety. This function validates that preferences are JSON-serializable
+ * before casting to ensure runtime safety.
  *
  * @param prefs - Preferences object with unknown values from JSON parsing
  * @returns Preferences compatible with chrome-launcher's JSONLike constraint, or undefined
+ * @throws ChromeLaunchError if preferences contain non-JSON-serializable values
  */
 function ensureJSONCompatiblePrefs(
   prefs: Record<string, unknown> | undefined
@@ -485,7 +453,17 @@ function ensureJSONCompatiblePrefs(
     return undefined;
   }
 
-  // Safe cast because preferences come from JSON.parse or compatible sources
+  // Validate that prefs are JSON-serializable
+  // This ensures preferences don't contain Symbols, Functions, or other non-JSON types
+  try {
+    JSON.stringify(prefs);
+  } catch (error) {
+    throw new ChromeLaunchError(
+      `Chrome preferences must be JSON-serializable: ${getErrorMessage(error)}`,
+      error instanceof Error ? error : undefined
+    );
+  }
+
   return prefs as Record<string, JSONLike>;
 }
 

@@ -40,18 +40,18 @@ export async function setupCDPAndNavigate(
     throw new Error('Failed to obtain target information');
   }
 
-  // Connect to CDP
-  const cdp = new CDPConnection();
+  // Connect to CDP (inject logger for structured logging)
+  const cdp = new CDPConnection(log);
   await cdp.connect(telemetryStore.targetInfo.webSocketDebuggerUrl, {
     autoReconnect: false,
     maxRetries: 10,
     onDisconnect: (code, reason) => {
-      console.error(`[worker] Chrome connection lost (code: ${code}, reason: ${reason})`);
+      log.info(`Chrome connection lost (code: ${code}, reason: ${reason})`);
       log.debug(workerExitingConnectionLoss());
       onDisconnect();
     },
   });
-  console.error(`[worker] CDP connection established`);
+  log.info('CDP connection established');
 
   // Activate telemetry collectors BEFORE navigation
   console.error(`[worker] Activating collectors before navigation...`);

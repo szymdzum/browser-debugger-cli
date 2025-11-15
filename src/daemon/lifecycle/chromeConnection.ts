@@ -70,17 +70,18 @@ async function setupLaunchedChrome(
   telemetryStore: TelemetryStore,
   log: Logger
 ): Promise<LaunchedChrome> {
-  console.error(`[worker] Launching Chrome on port ${config.port}...`);
+  log.info(`Launching Chrome on port ${config.port}...`);
 
   const chrome = await launchChrome({
     port: config.port,
+    logger: log,
     ...filterDefined({
       userDataDir: config.userDataDir,
       headless: config.headless,
     }),
   });
 
-  console.error(`[worker] Chrome launched (PID ${chrome.pid})`);
+  log.info(`Chrome launched (PID ${chrome.pid})`);
 
   writeChromePid(chrome.pid);
   log.debug(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);

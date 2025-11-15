@@ -252,6 +252,35 @@ export function chromeBinaryOverrideNotExecutable(path: string, source: string):
   );
 }
 
+/**
+ * Generate error when Chrome binary override points to a directory.
+ *
+ * @param path - Provided Chrome binary path
+ * @param source - Human-readable source label (e.g. CHROME_PATH)
+ * @returns Formatted error message
+ */
+export function chromeBinaryOverrideIsDirectory(path: string, source: string): string {
+  return `Chrome binary override (${source}) points to "${path}", which is a directory, not an executable file.`;
+}
+
+/**
+ * Generate error when CDP port is already in use.
+ *
+ * @param port - Port number that is in use
+ * @returns Multi-line formatted error message with troubleshooting steps
+ */
+export function portInUseError(port: number): string {
+  return joinLines(
+    `Port ${port} is already in use.\n`,
+    'This usually means Chrome is still running from a previous session.\n',
+    'Try:',
+    `  - bdg cleanup --aggressive  (kills all Chrome processes)`,
+    `  - bdg cleanup --force       (removes session files + kills Chrome on port ${port})`,
+    `  - lsof -ti:${port} | xargs kill -9  (force kill process on port)`,
+    `  - Use different port: bdg <url> --port ${port + 1}`
+  );
+}
+
 // ============================================================================
 // Chrome Cleanup Messages
 // ============================================================================
