@@ -1,24 +1,8 @@
 import WebSocket from 'ws';
 
-import {
-  CDP_COMMAND_TIMEOUT_MS,
-  CDP_CONNECTION_TIMEOUT_MS,
-  CDP_KEEPALIVE_INTERVAL,
-  CDP_MAX_CONNECTION_RETRIES,
-  CDP_MAX_RECONNECT_ATTEMPTS,
-  CDP_BASE_RETRY_DELAY_MS,
-  CDP_MAX_RETRY_DELAY_MS,
-  CDP_MAX_RECONNECT_DELAY_MS,
-  CDP_MAX_MISSED_PONGS,
-  CDP_PONG_TIMEOUT_MS,
-  WEBSOCKET_NORMAL_CLOSURE,
-  WEBSOCKET_NO_PONG_CLOSURE,
-  WEBSOCKET_HANDSHAKE_TIMEOUT_MS,
-  WEBSOCKET_MAX_PAYLOAD_BYTES,
-  UTF8_ENCODING,
-} from '@/constants.js';
-import type { CDPMessage, ConnectionOptions } from '@/types';
+import type { CDPMessage, ConnectionOptions, CreateOptions, Logger } from './types.js';
 
+import { DEFAULT_CDP_CONFIG, WEBSOCKET_CONFIG, UTF8_ENCODING } from './config.js';
 import { CDPConnectionError, CDPTimeoutError, getErrorMessage } from './errors.js';
 
 // Error Messages
@@ -101,11 +85,15 @@ export class CDPConnection {
   private onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
   private connectionOptions: ConnectionOptions = {};
   private readonly createWebSocket: WebSocketFactory;
+  private readonly logger: Logger;
+  private readonly config = DEFAULT_CDP_CONFIG;
 
   constructor(
+    logger: Logger = console,
     createWebSocket: WebSocketFactory = (url: string, options?: WebSocket.ClientOptions) =>
       new WebSocket(url, options)
   ) {
+    this.logger = logger;
     this.createWebSocket = createWebSocket;
   }
 
@@ -116,23 +104,31 @@ export class CDPConnection {
    * the connection is established before returning the instance.
    *
    * @param wsUrl - WebSocket debugger URL from CDP target
-   * @param options - Connection configuration options
+   * @param options - Connection and logger configuration options
    * @returns Fully connected CDPConnection instance
    * @throws Error if connection fails after all retries
    *
    * @example
    * ```typescript
-   * // Async factory pattern (recommended)
-   * const cdp = await CDPConnection.create(wsUrl, options);
+   * // Basic usage
+   * const cdp = await CDPConnection.create(wsUrl);
+   *
+   * // With options
+   * const cdp = await CDPConnection.create(wsUrl, {
+   *   timeout: 10000,
+   *   autoReconnect: true,
+   *   logger: customLogger
+   * });
    *
    * // Traditional pattern (still supported)
-   * const cdp = new CDPConnection();
+   * const cdp = new CDPConnection(logger);
    * await cdp.connect(wsUrl, options);
    * ```
    */
-  static async create(wsUrl: string, options?: ConnectionOptions): Promise<CDPConnection> {
-    const connection = new CDPConnection();
-    await connection.connect(wsUrl, options);
+  static async create(wsUrl: string, options?: CreateOptions): Promise<CDPConnection> {
+    const { logger, ...connectionOptions } = options ?? {};
+    const connection = new CDPConnection(logger);
+    await connection.connect(wsUrl, connectionOptions);
     return connection;
   }
 
@@ -149,7 +145,7 @@ export class CDPConnection {
    * @throws Error if connection fails after all retries
    */
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
-    const maxRetries = options.maxRetries ?? CDP_MAX_CONNECTION_RETRIES;
+    const maxRetries = options.maxRetries ?? this.config.maxConnectionRetries;
     const autoReconnect = options.autoReconnect ?? false;
     const { onReconnect, onDisconnect } = options;
 
@@ -169,8 +165,8 @@ export class CDPConnection {
       } catch (error) {
         lastError = error as Error;
         if (attempt < maxRetries - 1) {
-          const delay = this.calculateBackoffDelay(attempt, CDP_MAX_RETRY_DELAY_MS);
-          console.error(CONNECTION_ATTEMPT_FAILED_MESSAGE(attempt, delay));
+          const delay = this.calculateBackoffDelay(attempt, this.config.maxRetryDelay);
+          this.logger.info(CONNECTION_ATTEMPT_FAILED_MESSAGE(attempt, delay));
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -195,13 +191,13 @@ export class CDPConnection {
    * @throws Error if WebSocket connection fails
    */
   private attemptConnection(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
-    const timeout = options.timeout ?? CDP_CONNECTION_TIMEOUT_MS;
+    const timeout = options.timeout ?? this.config.connectionTimeout;
 
     return new Promise((resolve, reject) => {
       this.ws = this.createWebSocket(wsUrl, {
         perMessageDeflate: false,
-        handshakeTimeout: WEBSOCKET_HANDSHAKE_TIMEOUT_MS,
-        maxPayload: WEBSOCKET_MAX_PAYLOAD_BYTES,
+        handshakeTimeout: WEBSOCKET_CONFIG.handshakeTimeout,
+        maxPayload: WEBSOCKET_CONFIG.maxPayload,
       });
 
       const connectTimeout = setTimeout(() => {
@@ -235,7 +231,7 @@ export class CDPConnection {
     this.ws.on('open', () => {
       clearTimeout(connectTimeout);
       this.missedPongs = 0;
-      this.startKeepalive(options.keepaliveInterval ?? CDP_KEEPALIVE_INTERVAL);
+      this.startKeepalive(options.keepaliveInterval ?? this.config.keepaliveInterval);
       resolve();
     });
 
@@ -252,28 +248,24 @@ export class CDPConnection {
           return;
         }
 
-        console.error(WEBSOCKET_CLOSED_MESSAGE(code, reason.toString()));
+        this.logger.info(WEBSOCKET_CLOSED_MESSAGE(code, reason.toString()));
 
         this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
 
-        // P1 Fix #1: Call onDisconnect callback if provided
-        // WHY: Allows worker to exit gracefully when Chrome dies
         if (this.onDisconnect) {
           void Promise.resolve(this.onDisconnect(code, reason.toString())).catch((error) => {
-            console.error('[cdp] onDisconnect callback error:', error);
+            this.logger.info(`[cdp] onDisconnect callback error: ${error}`);
           });
         }
 
-        if (this.autoReconnect && this.reconnectAttempts < CDP_MAX_RECONNECT_ATTEMPTS) {
+        if (this.autoReconnect && this.reconnectAttempts < this.config.maxReconnectAttempts) {
           await this.attemptReconnection();
         }
       })();
     });
 
     this.ws.on('ping', () => {
-      // WebSocket automatically sends pong response
-      // This handler is for debugging/monitoring Chrome-initiated pings
-      // Uncomment for debugging: console.debug('[CDP] Received ping from Chrome');
+      this.logger.debug('Received ping from Chrome');
     });
 
     this.ws.on('pong', () => {
@@ -304,8 +296,8 @@ export class CDPConnection {
       const messageText = this.convertRawDataToString(incomingData);
       const message = this.parseJSONMessage(messageText);
       this.routeCDPMessage(message);
-    } catch {
-      // Error already logged by specific handler, no need to log again
+    } catch (error) {
+      this.logger.debug(`Failed to process CDP message: ${getErrorMessage(error)}`);
     }
   }
 
@@ -354,7 +346,6 @@ export class CDPConnection {
     try {
       const message = JSON.parse(messageText) as CDPMessage;
 
-      // Basic validation - CDP messages should be objects
       if (typeof message !== 'object' || message === null) {
         throw new Error('CDP message must be an object');
       }
@@ -385,7 +376,6 @@ export class CDPConnection {
         this.handleCDPEvent(message);
       }
 
-      // Log warning if message has neither ID nor method (unusual but not fatal)
       if (message.id === undefined && !message.method) {
         console.warn('Received CDP message with neither ID nor method - ignoring');
       }
@@ -441,7 +431,7 @@ export class CDPConnection {
    * @returns Calculated delay in milliseconds (base delay * 2^attempt, capped at maxDelay)
    */
   private calculateBackoffDelay(attempt: number, maxDelay: number): number {
-    return Math.min(CDP_BASE_RETRY_DELAY_MS * Math.pow(2, attempt), maxDelay);
+    return Math.min(this.config.baseRetryDelay * Math.pow(2, attempt), maxDelay);
   }
 
   /**
@@ -476,22 +466,24 @@ export class CDPConnection {
     this.reconnectAttempts++;
     const delay = this.calculateBackoffDelay(
       this.reconnectAttempts - 1,
-      CDP_MAX_RECONNECT_DELAY_MS
+      this.config.maxReconnectDelay
     );
-    console.error(RECONNECTING_MESSAGE(delay, this.reconnectAttempts, CDP_MAX_RECONNECT_ATTEMPTS));
+    this.logger.info(
+      RECONNECTING_MESSAGE(delay, this.reconnectAttempts, this.config.maxReconnectAttempts)
+    );
 
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     try {
       await this.attemptConnection(this.wsUrl, this.connectionOptions);
       this.reconnectAttempts = 0;
-      console.error(RECONNECTED_SUCCESS_MESSAGE);
+      this.logger.info(RECONNECTED_SUCCESS_MESSAGE);
 
       if (this.onReconnect) {
         await this.onReconnect();
       }
     } catch (error) {
-      console.error(RECONNECTION_FAILED_ERROR(getErrorMessage(error)));
+      this.logger.info(RECONNECTION_FAILED_ERROR(getErrorMessage(error)));
     }
   }
 
@@ -507,19 +499,17 @@ export class CDPConnection {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.missedPongs++;
 
-        if (this.missedPongs >= CDP_MAX_MISSED_PONGS) {
-          console.error(CONNECTION_LOST_MESSAGE);
-          this.ws.close(WEBSOCKET_NO_PONG_CLOSURE, NO_PONG_RECEIVED_REASON);
+        if (this.missedPongs >= this.config.maxMissedPongs) {
+          this.logger.info(CONNECTION_LOST_MESSAGE);
+          this.ws.close(WEBSOCKET_CONFIG.noPongClosure, NO_PONG_RECEIVED_REASON);
           return;
         }
 
         this.ws.ping();
 
         this.pongTimeout = setTimeout(() => {
-          console.error(PONG_TIMEOUT_MESSAGE);
-          // Pong timeout is informational - the connection will be closed
-          // on the next ping cycle if no pong is received
-        }, CDP_PONG_TIMEOUT_MS);
+          this.logger.info(PONG_TIMEOUT_MESSAGE);
+        }, this.config.pongTimeout);
       }
     }, interval);
   }
@@ -593,7 +583,7 @@ export class CDPConnection {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingMessages.delete(id);
-        const timeoutSeconds = CDP_COMMAND_TIMEOUT_MS / 1000;
+        const timeoutSeconds = this.config.commandTimeout / 1000;
         const errorMessage =
           `Command timeout: ${method}\n\n` +
           `The browser did not respond within ${timeoutSeconds}s.\n\n` +
@@ -609,7 +599,7 @@ export class CDPConnection {
           `  • Use simpler CDP method or reduce data size\n` +
           `  • Check Chrome console: chrome://inspect`;
         reject(new CDPTimeoutError(errorMessage));
-      }, CDP_COMMAND_TIMEOUT_MS);
+      }, this.config.commandTimeout);
 
       this.pendingMessages.set(id, {
         resolve: (value) => {
@@ -623,7 +613,6 @@ export class CDPConnection {
         timeout,
       });
 
-      // Safe to assert non-null: we checked this.ws exists on line 543
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       this.ws!.send(JSON.stringify(message));
     });
@@ -693,7 +682,7 @@ export class CDPConnection {
    * @param code - WebSocket close code (default: 1000 for normal closure)
    * @param reason - Human-readable close reason
    */
-  close(code = WEBSOCKET_NORMAL_CLOSURE, reason = NORMAL_CLOSURE_REASON): void {
+  close(code = WEBSOCKET_CONFIG.normalClosure, reason = NORMAL_CLOSURE_REASON): void {
     this.isIntentionallyClosed = true;
     this.autoReconnect = false;
     this.stopKeepalive();

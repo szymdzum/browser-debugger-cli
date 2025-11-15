@@ -48,7 +48,7 @@ describe('CDPConnection contract', () => {
   // Shared setup for non-timer tests
   beforeEach(() => {
     mockWebSocket = new FakeWebSocket();
-    cdp = new CDPConnection(() => mockWebSocket as unknown as WebSocket);
+    cdp = new CDPConnection(console, () => mockWebSocket as unknown as WebSocket);
   });
 
   afterEach(() => {
@@ -166,7 +166,7 @@ describe('CDPConnection contract', () => {
       const clock = useFakeClock();
       try {
         mockWebSocket = new FakeWebSocket();
-        cdp = new CDPConnection(() => mockWebSocket as unknown as WebSocket);
+        cdp = new CDPConnection(console, () => mockWebSocket as unknown as WebSocket);
 
         // Arrange & Act
         const connectPromise = cdp.connect(TEST_URL, {
@@ -221,7 +221,7 @@ describe('CDPConnection contract', () => {
       // Install fake timers BEFORE creating CDP connection
       clockHelper = useFakeClock();
       mockWebSocket = new FakeWebSocket();
-      cdp = new CDPConnection(() => mockWebSocket as unknown as WebSocket);
+      cdp = new CDPConnection(console, () => mockWebSocket as unknown as WebSocket);
     });
 
     afterEach(() => {
@@ -273,7 +273,7 @@ describe('CDPConnection contract', () => {
       // Install fake timers BEFORE creating CDP connection
       clockHelper = useFakeClock();
       mockWebSocket = new FakeWebSocket();
-      cdp = new CDPConnection(() => mockWebSocket as unknown as WebSocket);
+      cdp = new CDPConnection(console, () => mockWebSocket as unknown as WebSocket);
     });
 
     afterEach(() => {

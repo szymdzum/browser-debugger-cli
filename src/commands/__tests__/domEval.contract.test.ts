@@ -31,7 +31,7 @@ class MockCDPConnection extends CDPConnection {
 
   constructor() {
     const mockSocket = new FakeWebSocket();
-    super(() => mockSocket as never);
+    super(console, () => mockSocket as never);
     this.mockSocket = mockSocket;
   }
 
