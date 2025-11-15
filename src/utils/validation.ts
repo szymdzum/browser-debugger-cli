@@ -1,8 +1,84 @@
-import fs from 'fs';
-
-import { invalidLastArgumentError } from '@/ui/messages/commands.js';
 import { invalidIntegerError } from '@/ui/messages/validation.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/**
+ * Build range options object for error messages.
+ *
+ * @param min - Minimum value
+ * @param max - Maximum value
+ * @returns Range options object or undefined if no range constraints
+ */
+function buildRangeOptions(
+  min: number | undefined,
+  max: number | undefined
+): { min: number; max: number } | undefined {
+  return min !== undefined && max !== undefined ? { min, max } : undefined;
+}
+
+/**
+ * Parse and validate an integer option with range constraints.
+ *
+ * @param name - The option name for error messages
+ * @param value - The string value to parse (or undefined)
+ * @param options - Validation configuration
+ * @returns Parsed integer value or undefined if not required and not provided
+ * @throws Error if validation fails
+ *
+ * @example
+ * ```typescript
+ * // Required with default
+ * const lastN = parseIntOption('last', options.last, {
+ *   defaultValue: 10,
+ *   min: 1,
+ *   max: 1000
+ * });
+ *
+ * // Optional
+ * const timeout = parseIntOption('timeout', options.timeout, {
+ *   required: false,
+ *   min: 1,
+ *   max: 3600
+ * });
+ * ```
+ */
+export function parseIntOption(
+  name: string,
+  value: string | undefined,
+  options: {
+    required?: boolean;
+    defaultValue?: number;
+    min?: number;
+    max?: number;
+    errorFormatter?: (value: string | undefined) => string;
+  } = {}
+): number | undefined {
+  const { required = true, defaultValue, min, max, errorFormatter } = options;
+
+  const strValue = value ?? (defaultValue !== undefined ? defaultValue.toString() : undefined);
+
+  if (strValue === undefined) {
+    if (required) {
+      throw new Error(`Option --${name} is required`);
+    }
+    return undefined;
+  }
+
+  const trimmed = strValue.trim();
+  const parsed = parseInt(trimmed, 10);
+
+  if (isNaN(parsed)) {
+    const errorMessage =
+      errorFormatter?.(value) ?? invalidIntegerError(name, trimmed, buildRangeOptions(min, max));
+    throw new Error(errorMessage);
+  }
+
+  if ((min !== undefined && parsed < min) || (max !== undefined && parsed > max)) {
+    const errorMessage =
+      errorFormatter?.(value) ?? invalidIntegerError(name, trimmed, buildRangeOptions(min, max));
+    throw new Error(errorMessage);
+  }
+
+  return parsed;
+}
 
 /**
  * Parse and validate a positive integer option with range constraints.
@@ -11,15 +87,14 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * @param value - The string value to parse (or undefined)
  * @param options - Validation configuration
  * @returns Parsed integer value
- * @throws Error if validation fails and exitOnError is false
+ * @throws Error if validation fails
  *
  * @example
  * ```typescript
  * const lastN = parsePositiveIntOption('last', options.last, {
  *   defaultValue: 10,
  *   min: 1,
- *   max: 1000,
- *   exitOnError: true
+ *   max: 1000
  * });
  * ```
  */
@@ -30,38 +105,11 @@ export function parsePositiveIntOption(
     defaultValue?: number;
     min?: number;
     max?: number;
-    exitOnError?: boolean;
+    errorFormatter?: (value: string | undefined) => string;
   } = {}
 ): number {
-  const { defaultValue, min, max, exitOnError = false } = options;
-  const strValue = value ?? (defaultValue !== undefined ? defaultValue.toString() : undefined);
-
-  if (strValue === undefined) {
-    const error = new Error(`Option --${name} is required`);
-    if (exitOnError) {
-      console.error(error.message);
-      process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-    }
-    throw error;
-  }
-
-  const parsed = parseInt(strValue, 10);
-
-  if (isNaN(parsed) || (min !== undefined && parsed < min) || (max !== undefined && parsed > max)) {
-    const rangeOptions = min !== undefined && max !== undefined ? { min, max } : undefined;
-    const errorMessage =
-      name === 'last'
-        ? invalidLastArgumentError(value)
-        : invalidIntegerError(name, strValue, rangeOptions);
-
-    if (exitOnError) {
-      console.error(errorMessage);
-      process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-    }
-    throw new Error(errorMessage);
-  }
-
-  return parsed;
+  const result = parseIntOption(name, value, { ...options, required: true });
+  return result!;
 }
 
 /**
@@ -89,55 +137,5 @@ export function parseOptionalIntOption(
     max?: number;
   } = {}
 ): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  const { min, max } = options;
-  const parsed = parseInt(value, 10);
-
-  if (isNaN(parsed)) {
-    const rangeOptions = min !== undefined && max !== undefined ? { min, max } : undefined;
-    throw new Error(invalidIntegerError(name, value, rangeOptions));
-  }
-
-  if ((min !== undefined && parsed < min) || (max !== undefined && parsed > max)) {
-    const rangeOptions = min !== undefined && max !== undefined ? { min, max } : undefined;
-    throw new Error(invalidIntegerError(name, value, rangeOptions));
-  }
-
-  return parsed;
-}
-
-/**
- * Read and parse a PID from a file.
- *
- * @param filePath - Path to the PID file
- * @returns Parsed PID or null if file doesn't exist or contains invalid data
- *
- * @example
- * ```typescript
- * const daemonPid = readPidFromFile('/path/to/daemon.pid');
- * if (daemonPid && isProcessAlive(daemonPid)) {
- *   console.log('Daemon is running');
- * }
- * ```
- */
-export function readPidFromFile(filePath: string): number | null {
-  if (!fs.existsSync(filePath)) {
-    return null;
-  }
-
-  try {
-    const pidStr = fs.readFileSync(filePath, 'utf-8').trim();
-    const pid = parseInt(pidStr, 10);
-
-    if (isNaN(pid)) {
-      return null;
-    }
-
-    return pid;
-  } catch {
-    return null;
-  }
+  return parseIntOption(name, value, { ...options, required: false });
 }

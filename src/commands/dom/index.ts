@@ -150,7 +150,6 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
         defaultValue: 9222,
         min: 1,
         max: 65535,
-        exitOnError: false,
       });
       await verifyTargetExists(metadata, port);
 

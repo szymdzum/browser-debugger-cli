@@ -6,7 +6,6 @@
  */
 
 import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
-import { noPreviewDataError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -24,22 +23,35 @@ export interface DaemonErrorOptions {
 }
 
 /**
+ * Result of handling a daemon connection error.
+ */
+export interface DaemonErrorResult {
+  /** Whether the process should exit */
+  shouldExit: boolean;
+  /** Exit code to use if exiting */
+  exitCode?: number;
+}
+
+/**
  * Handle daemon connection errors with consistent formatting and behavior.
  *
- * In JSON mode: outputs error as JSON
- * In follow mode: shows retry message and continues
- * In normal mode: exits with error code
+ * Formats and logs the error appropriately based on output mode.
+ * Returns whether the caller should exit and with what code.
  *
  * @param error - Error message to display
  * @param options - Error handling options
+ * @returns Result indicating whether to exit
  *
  * @example
  * ```typescript
- * // One-time command (exits on error)
- * handleDaemonConnectionError('Daemon not running', {
+ * // One-time command
+ * const result = handleDaemonConnectionError('Daemon not running', {
  *   json: options.json,
  *   exitCode: EXIT_CODES.RESOURCE_NOT_FOUND
  * });
+ * if (result.shouldExit) {
+ *   process.exit(result.exitCode);
+ * }
  *
  * // Follow mode (retries)
  * handleDaemonConnectionError('Connection lost', {
@@ -47,9 +59,13 @@ export interface DaemonErrorOptions {
  *   follow: true,
  *   retryIntervalMs: 1000
  * });
+ * // Returns { shouldExit: false }
  * ```
  */
-export function handleDaemonConnectionError(error: string, options: DaemonErrorOptions): void {
+export function handleDaemonConnectionError(
+  error: string,
+  options: DaemonErrorOptions
+): DaemonErrorResult {
   const {
     json = false,
     follow = false,
@@ -65,13 +81,14 @@ export function handleDaemonConnectionError(error: string, options: DaemonErrorO
   if (json) {
     console.log(JSON.stringify(OutputBuilder.buildJsonError(error, { exitCode }), null, 2));
   } else {
-    console.error(noPreviewDataError());
+    console.error(`Error: ${error}`);
   }
 
   if (!follow) {
-    process.exit(exitCode);
-  } else {
-    console.error(`\n[${timestamp}] ⚠️  Connection lost, retrying every ${retryMessage}...`);
-    console.error('Press Ctrl+C to stop');
+    return { shouldExit: true, exitCode };
   }
+
+  console.error(`\n[${timestamp}] ⚠️  Connection lost, retrying every ${retryMessage}...`);
+  console.error('Press Ctrl+C to stop');
+  return { shouldExit: false };
 }

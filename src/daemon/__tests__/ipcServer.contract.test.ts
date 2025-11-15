@@ -35,7 +35,7 @@ import type {
   StatusResponse,
 } from '@/ipc/types.js';
 import { getSessionFilePath } from '@/session/paths.js';
-import { readPidFromFile } from '@/utils/validation.js';
+import { readPidFromFile } from '@/session/pid.js';
 
 /**
  * Mock client for sending/receiving JSONL messages via Unix socket.

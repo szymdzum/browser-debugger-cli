@@ -8,9 +8,41 @@
 import * as fs from 'fs';
 
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
-import { readPidFromFile } from '@/utils/validation.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
+
+/**
+ * Read and parse a PID from a file.
+ *
+ * @param filePath - Path to the PID file
+ * @returns Parsed PID or null if file doesn't exist or contains invalid data
+ *
+ * @example
+ * ```typescript
+ * const daemonPid = readPidFromFile('/path/to/daemon.pid');
+ * if (daemonPid && isProcessAlive(daemonPid)) {
+ *   console.log('Daemon is running');
+ * }
+ * ```
+ */
+export function readPidFromFile(filePath: string): number | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const pidStr = fs.readFileSync(filePath, 'utf-8').trim();
+    const pid = parseInt(pidStr, 10);
+
+    if (isNaN(pid)) {
+      return null;
+    }
+
+    return pid;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Write the current process PID to the session file atomically.

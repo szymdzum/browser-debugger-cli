@@ -30,7 +30,6 @@ export function registerPeekCommand(program: Command): void {
         defaultValue: 10,
         min: 1,
         max: 1000,
-        exitOnError: true,
       });
       options.last = lastN.toString();
 
@@ -43,24 +42,30 @@ export function registerPeekCommand(program: Command): void {
           try {
             validateIPCResponse(response);
           } catch {
-            handleDaemonConnectionError(response.error ?? 'Unknown error', {
+            const result = handleDaemonConnectionError(response.error ?? 'Unknown error', {
               json: options.json,
               follow: options.follow,
               retryIntervalMs: 1000,
               exitCode: EXIT_CODES.SESSION_FILE_ERROR,
             });
+            if (result.shouldExit) {
+              process.exit(result.exitCode);
+            }
             return;
           }
 
           // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output) {
-            handleDaemonConnectionError('No preview data in response', {
+            const result = handleDaemonConnectionError('No preview data in response', {
               json: options.json,
               follow: options.follow,
               retryIntervalMs: 1000,
               exitCode: EXIT_CODES.SESSION_FILE_ERROR,
             });
+            if (result.shouldExit) {
+              process.exit(result.exitCode);
+            }
             return;
           }
 
@@ -76,11 +81,14 @@ export function registerPeekCommand(program: Command): void {
 
           console.log(formatPreview(output, previewOptions));
         } catch {
-          handleDaemonConnectionError('Daemon not running', {
+          const result = handleDaemonConnectionError('Daemon not running', {
             json: options.json,
             follow: options.follow,
             retryIntervalMs: 1000,
           });
+          if (result.shouldExit) {
+            process.exit(result.exitCode);
+          }
         }
       };
 
