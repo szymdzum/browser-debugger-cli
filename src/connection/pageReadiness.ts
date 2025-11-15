@@ -64,15 +64,12 @@ export async function waitForPageReady(
   const deadline = Date.now() + maxWaitMs;
 
   try {
-    // Phase 1: Wait for load event (baseline)
     await waitForLoadEvent(cdp, deadline);
     console.error('[readiness] ✓ Load event');
 
-    // Phase 2: Wait for network stability (always - modern web is async)
     const networkIdleMs = await waitForNetworkStable(cdp, deadline);
     console.error(`[readiness] ✓ Network stable (${networkIdleMs}ms idle)`);
 
-    // Phase 3: Wait for DOM stability (always - SPAs mutate after load)
     const domIdleMs = await waitForDOMStable(cdp, deadline);
     console.error(`[readiness] ✓ DOM stable (${domIdleMs}ms idle)`);
 
@@ -80,7 +77,6 @@ export async function waitForPageReady(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[readiness] ${message}, proceeding anyway`);
-    // Don't rethrow - allow session to continue
   }
 }
 
@@ -103,7 +99,6 @@ export async function waitForPageReady(
 async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<void> {
   await cdp.send('Page.enable');
 
-  // Check if page already loaded (handles Chrome pre-navigation)
   try {
     const result = (await cdp.send('Runtime.evaluate', {
       expression: 'document.readyState',
@@ -111,11 +106,12 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
     })) as Protocol.Runtime.EvaluateResponse;
 
     if (result.result.value === 'complete') {
-      // Load event already fired
       return;
     }
-  } catch {
-    // Ignore evaluation errors, proceed to wait for event
+  } catch (error) {
+    console.error(
+      `[readiness] Failed to check document.readyState: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -193,7 +189,6 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
   const loadingFailedId = cdp.on('Network.loadingFailed', finishHandler);
 
   try {
-    // Detection phase: wait for stability
     while (Date.now() < deadline) {
       if (activeRequests === 0) {
         const idleTime = Date.now() - lastActivity;
@@ -207,7 +202,6 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
 
     throw new Error('Network stability timeout');
   } finally {
-    // Cleanup handlers
     cdp.off('Network.requestWillBeSent', requestHandlerId);
     cdp.off('Network.loadingFinished', loadingFinishedId);
     cdp.off('Network.loadingFailed', loadingFailedId);
@@ -240,7 +234,6 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
  * @throws Error if deadline exceeded
  */
 async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<number> {
-  // Inject mutation observer
   await cdp.send('Runtime.evaluate', {
     expression: `
       window.__bdg_mutations = 0;
@@ -263,7 +256,6 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
   });
 
   try {
-    // Detection phase: wait for stability
     while (Date.now() < deadline) {
       const checkResult = (await cdp.send('Runtime.evaluate', {
         expression: 'Date.now() - window.__bdg_lastMutation',
@@ -281,7 +273,6 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
 
     throw new Error('DOM stability timeout');
   } finally {
-    // Cleanup observer
     await cdp
       .send('Runtime.evaluate', {
         expression: `
@@ -291,9 +282,7 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
         delete window.__bdg_lastMutation;
       `,
       })
-      .catch(() => {
-        // Ignore cleanup errors
-      });
+      .catch(() => {});
   }
 }
 

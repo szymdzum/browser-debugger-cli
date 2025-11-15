@@ -141,22 +141,15 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   const logger = options.logger ?? defaultLogger;
   const port = options.port ?? DEFAULT_CDP_PORT;
 
-  // Validate port range
   if (port < 1 || port > 65535) {
     throw new ChromeLaunchError(invalidPortError(port));
   }
 
-  // Atomically check if port is available
-  // We must release BEFORE launching Chrome so Chrome can bind to it
   const reservation = await reservePort(port);
-
-  // Immediately release - we just wanted to atomically check availability
-  // Chrome needs to bind to this port, so we can't hold the reservation
   reservation.release();
 
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir(options.baseDir);
 
-  // Ensure userDataDir exists (chrome-launcher needs it for chrome-out.log)
   if (!fs.existsSync(userDataDir)) {
     try {
       fs.mkdirSync(userDataDir, { recursive: true });
@@ -168,7 +161,6 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     }
   }
 
-  // Show progress to user (always visible, not just debug)
   logger.info(`Launching Chrome on port ${port}...`);
   logger.debug(chromeUserDataDirMessage(userDataDir));
 
@@ -187,12 +179,10 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
     const chromeProcessPid = launcher.pid ?? 0;
 
-    // Validate PID and process liveness before success
     if (!chromeProcessPid || chromeProcessPid <= 0 || !isProcessAlive(chromeProcessPid)) {
       launcher.kill();
       launcher.destroyTmp();
 
-      // Get Chrome diagnostics once for error context
       const diagnosticLines = getFormattedDiagnostics();
 
       const errorType =
@@ -215,7 +205,6 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       );
     }
 
-    // Only print success message after validating PID and process liveness
     logger.info(chromeLaunchSuccessMessage(chromeProcessPid, launchDurationMs));
 
     return {
@@ -233,12 +222,10 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     launcher.kill();
     launcher.destroyTmp();
 
-    // If it's already a ChromeLaunchError with diagnostics, just re-throw
     if (error instanceof ChromeLaunchError) {
       throw error;
     }
 
-    // For generic launch failures, add Chrome diagnostics
     const diagnosticLines = getFormattedDiagnostics();
 
     throw new ChromeLaunchError(
@@ -287,7 +274,6 @@ function getPersistentUserDataDir(baseDir?: string): string {
  */
 function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | undefined {
   if (options.prefsFile) {
-    // Validate file exists before attempting to read
     if (!fs.existsSync(options.prefsFile)) {
       throw new ChromeLaunchError(
         prefsFileNotFoundError(options.prefsFile),
@@ -380,21 +366,19 @@ function resolveChromeBinaryOverride(options: LaunchOptions): string | undefined
  */
 function isDocker(): boolean {
   try {
-    // Check for /.dockerenv file (most reliable indicator)
     if (fs.existsSync('/.dockerenv')) {
       return true;
     }
 
-    // Check /proc/self/cgroup for docker/containerd indicators
     if (fs.existsSync('/proc/self/cgroup')) {
       const cgroup = fs.readFileSync('/proc/self/cgroup', 'utf8');
       return cgroup.includes('docker') || cgroup.includes('containerd');
     }
-  } catch {
-    // If we can't read these files, assume not Docker
-  }
 
-  return false;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -417,10 +401,8 @@ function buildChromeFlags(options: LaunchOptions): string[] {
 
   const bdgFlags: string[] = [REMOTE_DEBUGGING_FLAG(port), ...BDG_CHROME_FLAGS];
 
-  // Add Docker-specific flags if running in a container
   const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
 
-  // Headless flag must come first to ensure it's not overridden by other flags
   if (options.headless) {
     return [
       HEADLESS_FLAG,
@@ -452,8 +434,6 @@ function ensureJSONCompatiblePrefs(
     return undefined;
   }
 
-  // Validate that prefs are JSON-serializable
-  // This ensures preferences don't contain Symbols, Functions, or other non-JSON types
   try {
     JSON.stringify(prefs);
   } catch (error) {
@@ -482,7 +462,6 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
   const chromePathOverride = resolveChromeBinaryOverride(options);
 
-  // User preferences take precedence over bdg defaults
   const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;
 
   return {

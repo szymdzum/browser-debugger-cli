@@ -252,8 +252,6 @@ export class CDPConnection {
 
         this.clearPendingMessages(new CDPConnectionError(WEBSOCKET_CONNECTION_CLOSED_ERROR));
 
-        // P1 Fix #1: Call onDisconnect callback if provided
-        // WHY: Allows worker to exit gracefully when Chrome dies
         if (this.onDisconnect) {
           void Promise.resolve(this.onDisconnect(code, reason.toString())).catch((error) => {
             this.logger.info(`[cdp] onDisconnect callback error: ${error}`);
@@ -298,8 +296,8 @@ export class CDPConnection {
       const messageText = this.convertRawDataToString(incomingData);
       const message = this.parseJSONMessage(messageText);
       this.routeCDPMessage(message);
-    } catch {
-      // Error already logged by specific handler, no need to log again
+    } catch (error) {
+      this.logger.debug(`Failed to process CDP message: ${getErrorMessage(error)}`);
     }
   }
 
@@ -348,7 +346,6 @@ export class CDPConnection {
     try {
       const message = JSON.parse(messageText) as CDPMessage;
 
-      // Basic validation - CDP messages should be objects
       if (typeof message !== 'object' || message === null) {
         throw new Error('CDP message must be an object');
       }
@@ -379,7 +376,6 @@ export class CDPConnection {
         this.handleCDPEvent(message);
       }
 
-      // Log warning if message has neither ID nor method (unusual but not fatal)
       if (message.id === undefined && !message.method) {
         console.warn('Received CDP message with neither ID nor method - ignoring');
       }
@@ -513,8 +509,6 @@ export class CDPConnection {
 
         this.pongTimeout = setTimeout(() => {
           this.logger.info(PONG_TIMEOUT_MESSAGE);
-          // Pong timeout is informational - the connection will be closed
-          // on the next ping cycle if no pong is received
         }, this.config.pongTimeout);
       }
     }, interval);
@@ -619,7 +613,6 @@ export class CDPConnection {
         timeout,
       });
 
-      // Safe to assert non-null: we checked this.ws exists on line 543
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       this.ws!.send(JSON.stringify(message));
     });

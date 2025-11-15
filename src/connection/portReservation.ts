@@ -57,7 +57,6 @@ export async function reservePort(port: number): Promise<PortReservation> {
     });
 
     server.listen(port, '127.0.0.1', () => {
-      // Port successfully reserved - return release function
       resolve({
         release: () => {
           server.close();
