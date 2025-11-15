@@ -14,6 +14,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { filterDefined } from '@/utils/objects.js';
 
 /**
  * Execute a function with an active CDP connection.
@@ -88,12 +89,10 @@ export function registerFormInteractionCommands(program: Command): void {
       await runCommand(
         async () => {
           return await withCDPConnection(async (cdp) => {
-            const fillOptions: { index?: number; blur?: boolean } = {
+            const fillOptions = filterDefined({
+              index: options.index,
               blur: options.blur,
-            };
-            if (options.index !== undefined) {
-              fillOptions.index = options.index;
-            }
+            }) as { index?: number; blur?: boolean };
 
             const result = await fillElement(cdp, selector, value, fillOptions);
 
@@ -126,10 +125,9 @@ export function registerFormInteractionCommands(program: Command): void {
       await runCommand(
         async () => {
           return await withCDPConnection(async (cdp) => {
-            const clickOptions: { index?: number } = {};
-            if (options.index !== undefined) {
-              clickOptions.index = options.index;
-            }
+            const clickOptions = filterDefined({
+              index: options.index,
+            }) as { index?: number };
 
             const result = await clickElement(cdp, selector, clickOptions);
 
@@ -165,21 +163,17 @@ export function registerFormInteractionCommands(program: Command): void {
       await runCommand(
         async () => {
           return await withCDPConnection(async (cdp) => {
-            const submitOptions: {
+            const submitOptions = filterDefined({
+              index: options.index,
+              waitNavigation: options.waitNavigation,
+              waitNetwork: parseInt(options.waitNetwork, 10),
+              timeout: parseInt(options.timeout, 10),
+            }) as {
               index?: number;
               waitNavigation?: boolean;
               waitNetwork?: number;
               timeout?: number;
-            } = {
-              waitNetwork: parseInt(options.waitNetwork),
-              timeout: parseInt(options.timeout),
             };
-            if (options.index !== undefined) {
-              submitOptions.index = options.index;
-            }
-            if (options.waitNavigation !== undefined) {
-              submitOptions.waitNavigation = options.waitNavigation;
-            }
 
             const result = await submitForm(cdp, selector, submitOptions);
 

@@ -35,6 +35,7 @@ import type {
   StatusResponse,
 } from '@/ipc/types.js';
 import { getSessionFilePath } from '@/session/paths.js';
+import { readPidFromFile } from '@/utils/validation.js';
 
 /**
  * Mock client for sending/receiving JSONL messages via Unix socket.
@@ -194,7 +195,7 @@ void describe('IPC Server Contract Tests', () => {
       const pidPath = getSessionFilePath('DAEMON_PID');
       assert.ok(fs.existsSync(pidPath), 'PID file should exist');
 
-      const pid = parseInt(fs.readFileSync(pidPath, 'utf-8').trim(), 10);
+      const pid = readPidFromFile(pidPath);
       assert.equal(pid, process.pid, 'PID should match current process');
     });
 

@@ -314,28 +314,12 @@ export async function capturePageScreenshot(
     throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
   }
 
-  // Write to file using atomic write pattern to prevent partial files on crash
-  const fs = await import('fs/promises');
   const path = await import('path');
-  const crypto = await import('crypto');
+  const { AtomicFileWriter } = await import('@/utils/atomicFile.js');
   const buffer = Buffer.from(screenshotResult.data, 'base64');
 
   const absolutePath = path.resolve(outputPath);
-
-  // Use temp-rename pattern for atomic write (same as AtomicFileWriter but for binary data)
-  const tmpPath = `${absolutePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  try {
-    await fs.writeFile(tmpPath, buffer);
-    await fs.rename(tmpPath, absolutePath);
-  } catch (error) {
-    // Clean up temp file on error
-    try {
-      await fs.unlink(tmpPath);
-    } catch {
-      // Ignore cleanup errors
-    }
-    throw error;
-  }
+  await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
 
   const result: ScreenshotResult = {
     path: absolutePath,

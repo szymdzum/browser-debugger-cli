@@ -85,4 +85,34 @@ export class AtomicFileWriter {
       throw error;
     }
   }
+
+  /**
+   * Write binary data (Buffer) to a file atomically (asynchronous).
+   *
+   * Creates a unique temporary file, writes the binary data, then atomically renames it to the target path.
+   * This ensures the target file is never in a partially written state and prevents corruption
+   * from concurrent writes by different processes.
+   *
+   * Useful for screenshots, images, and other binary file exports.
+   *
+   * @param filePath - Target file path
+   * @param buffer - Binary data to write
+   * @returns Promise that resolves when write completes
+   * @throws Error if write operation fails
+   */
+  static async writeBufferAsync(filePath: string, buffer: Buffer): Promise<void> {
+    const tmpPath = this.getTempPath(filePath);
+
+    try {
+      await fs.promises.writeFile(tmpPath, buffer);
+      await fs.promises.rename(tmpPath, filePath);
+    } catch (error) {
+      try {
+        await fs.promises.unlink(tmpPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+      throw error;
+    }
+  }
 }

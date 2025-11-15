@@ -1,15 +1,14 @@
 import type { Command } from 'commander';
 
-import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
-import { invalidLastArgumentError } from '@/ui/messages/commands.js';
-import { daemonNotRunningError, noPreviewDataError } from '@/ui/messages/errors.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
+import { handleDaemonConnectionError } from '@/utils/daemonErrors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { parsePositiveIntOption } from '@/utils/validation.js';
 
 /**
  * Options for tail command (extends PreviewOptions).
@@ -17,34 +16,6 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 interface TailOptions extends PreviewOptions {
   /** Update interval in milliseconds */
   interval?: string;
-}
-
-/**
- * Handle errors during tail operation.
- *
- * @param error - Error message
- * @param options - Tail options
- */
-function handleTailError(error: string, options: TailOptions): void {
-  const timestamp = new Date().toISOString();
-
-  if (options.json) {
-    console.log(
-      JSON.stringify(
-        OutputBuilder.buildJsonError(error, { exitCode: EXIT_CODES.RESOURCE_NOT_FOUND }),
-        null,
-        2
-      )
-    );
-  } else {
-    console.error(noPreviewDataError());
-  }
-
-  // Don't exit in tail mode - show retry message and keep trying
-  console.error(
-    `\n[${timestamp}] ⚠️  Connection lost, retrying every ${options.interval ?? '1000'}ms...`
-  );
-  console.error('Press Ctrl+C to stop');
 }
 
 /**
@@ -66,20 +37,20 @@ export function registerTailCommand(program: Command): void {
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailOptions) => {
-      // Validate --last parameter
-      const lastN = parseInt(options.last ?? '10', 10);
-      if (isNaN(lastN) || lastN < 1 || lastN > 1000) {
-        console.error(invalidLastArgumentError(options.last));
-        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-      }
+      const lastN = parsePositiveIntOption('last', options.last, {
+        defaultValue: 10,
+        min: 1,
+        max: 1000,
+        exitOnError: true,
+      });
       options.last = lastN.toString();
 
-      // Validate --interval parameter
-      const interval = parseInt(options.interval ?? '1000', 10);
-      if (isNaN(interval) || interval < 100 || interval > 60000) {
-        console.error('Error: --interval must be between 100 and 60000 milliseconds');
-        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-      }
+      const interval = parsePositiveIntOption('interval', options.interval, {
+        defaultValue: 1000,
+        min: 100,
+        max: 60000,
+        exitOnError: true,
+      });
 
       /**
        * Fetch and display preview data.
@@ -93,14 +64,24 @@ export function registerTailCommand(program: Command): void {
           try {
             validateIPCResponse(response);
           } catch {
-            handleTailError(response.error ?? 'Unknown error', options);
+            handleDaemonConnectionError(response.error ?? 'Unknown error', {
+              json: options.json,
+              follow: true,
+              retryIntervalMs: interval,
+              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
+            });
             return;
           }
 
           // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output) {
-            handleTailError('No preview data in response', options);
+            handleDaemonConnectionError('No preview data in response', {
+              json: options.json,
+              follow: true,
+              retryIntervalMs: interval,
+              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
+            });
             return;
           }
 
@@ -115,21 +96,11 @@ export function registerTailCommand(program: Command): void {
 
           console.log(formatPreview(output, previewOptions));
         } catch {
-          // Handle IPC connection errors (daemon not running, etc.)
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonError('Daemon not running', {
-                  suggestion: 'Start it with: bdg <url>',
-                }),
-                null,
-                2
-              )
-            );
-          } else {
-            console.error(daemonNotRunningError());
-          }
-          // Don't exit - keep trying in case daemon starts
+          handleDaemonConnectionError('Daemon not running', {
+            json: options.json,
+            follow: true,
+            retryIntervalMs: interval,
+          });
         }
       };
 

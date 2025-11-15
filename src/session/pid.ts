@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { readPidFromFile } from '@/utils/validation.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 
@@ -44,23 +45,7 @@ export function writePid(pid: number): void {
  */
 export function readPid(): number | null {
   const pidPath = getSessionFilePath('PID');
-
-  if (!fs.existsSync(pidPath)) {
-    return null;
-  }
-
-  try {
-    const pidStr = fs.readFileSync(pidPath, 'utf-8').trim();
-    const pid = parseInt(pidStr, 10);
-
-    if (isNaN(pid)) {
-      return null;
-    }
-
-    return pid;
-  } catch {
-    return null;
-  }
+  return readPidFromFile(pidPath);
 }
 
 /**

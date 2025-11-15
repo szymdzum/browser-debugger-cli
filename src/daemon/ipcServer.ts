@@ -7,7 +7,7 @@
  * 3. Logs all incoming frames for debugging
  */
 
-import { readFileSync, unlinkSync } from 'fs';
+import { unlinkSync } from 'fs';
 
 import type { Socket } from 'net';
 
@@ -54,6 +54,7 @@ import { getErrorMessage } from '@/ui/errors/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
+import { readPidFromFile } from '@/utils/validation.js';
 
 /**
  * Pending DOM request waiting for worker response
@@ -949,9 +950,13 @@ export class IPCServer {
    */
   static isRunning(): boolean {
     const pidPath = getSessionFilePath('DAEMON_PID');
+    const pid = readPidFromFile(pidPath);
+
+    if (pid === null) {
+      return false;
+    }
+
     try {
-      const pid = parseInt(readFileSync(pidPath, 'utf-8').trim(), 10);
-      // Check if process is alive
       process.kill(pid, 0);
       return true;
     } catch {

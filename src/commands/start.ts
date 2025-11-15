@@ -6,8 +6,8 @@ import { startSessionViaDaemon } from '@/commands/shared/daemonSessionController
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
-import { invalidIntegerError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { parseOptionalIntOption } from '@/utils/validation.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -56,32 +56,6 @@ function applyCollectorOptions(command: Command): Command {
 }
 
 /**
- * Parse a string to integer, returning undefined if not provided
- * @param value - Optional string value to parse
- * @param fieldName - Name of the field being parsed (for error messages)
- * @param min - Optional minimum allowed value
- * @param max - Optional maximum allowed value
- * @returns Parsed integer or undefined if value was not provided
- * @throws Error if value is provided but not a valid integer
- */
-function parseOptionalInt(
-  value: string | undefined,
-  fieldName: string,
-  min?: number,
-  max?: number
-): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const parsed = parseInt(value, 10);
-  if (isNaN(parsed)) {
-    const options = min !== undefined && max !== undefined ? { min, max } : undefined;
-    throw new Error(invalidIntegerError(fieldName, value, options));
-  }
-  return parsed;
-}
-
-/**
  * Transform CLI options into session options
  *
  * @param options - Parsed command-line options from Commander
@@ -97,7 +71,10 @@ function buildSessionOptions(options: CollectorOptions): {
   headless: boolean;
   chromeWsUrl: string | undefined;
 } {
-  const maxBodySizeMB = parseOptionalInt(options.maxBodySize, 'max-body-size', 1, 100);
+  const maxBodySizeMB = parseOptionalIntOption('max-body-size', options.maxBodySize, {
+    min: 1,
+    max: 100,
+  });
 
   // Expand tilde in userDataDir path
   let userDataDir = options.userDataDir;
@@ -107,7 +84,7 @@ function buildSessionOptions(options: CollectorOptions): {
 
   return {
     port: parseInt(options.port, 10),
-    timeout: parseOptionalInt(options.timeout, 'timeout', 1, 3600),
+    timeout: parseOptionalIntOption('timeout', options.timeout, { min: 1, max: 3600 }),
     userDataDir,
     includeAll: options.all ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
