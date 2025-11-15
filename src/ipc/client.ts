@@ -1,12 +1,6 @@
-/* eslint-disable import/order */
-/**
- * IPC Client - Minimal JSONL handshake MVP
- *
- * Connects to the daemon's Unix domain socket and performs handshake.
- */
+import { randomUUID } from 'crypto';
 
-import type { Socket } from 'net';
-import type { COMMANDS, CommandName, ClientRequest, ClientResponse } from '@/ipc/commands.js';
+import type { COMMANDS, CommandName, ClientRequest, ClientResponse } from './commands.js';
 import type {
   HandshakeRequest,
   HandshakeResponse,
@@ -18,162 +12,48 @@ import type {
   StatusResponse,
   StopSessionRequest,
   StopSessionResponse,
-} from '@/ipc/types.js';
+} from './types.js';
+
 import type { TelemetryType } from '@/types.js';
 
-import { randomUUID } from 'crypto';
-import { connect } from 'net';
+import { sendRequest } from './transport.js';
 
-import { getIPCRequestTimeout } from '@/constants.js';
-import { getDaemonSocketPath } from '@/session/paths.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
-import { createLogger } from '@/ui/logging/index.js';
-import { filterDefined } from '@/utils/objects.js';
-
-const log = createLogger('client');
-
-/**
- * Generic IPC request sender that handles connection, timeout, and error handling.
- * Supports both traditional IPC messages (handshake, status, etc.) and command messages (DOM commands).
- *
- * @param request - The IPC request to send (either IPCRequest or ClientRequest<T>)
- * @param requestName - Human-readable name for logging (e.g., 'status', 'peek')
- * @returns Promise that resolves with the response
- */
-async function sendRequest<TRequest, TResponse>(
-  request: TRequest,
-  requestName: string
-): Promise<TResponse> {
-  const socketPath = getDaemonSocketPath();
-
-  return new Promise((resolve, reject) => {
-    const socket: Socket = connect(socketPath);
-    let buffer = '';
-    let resolved = false;
-
-    // Set request timeout
-    const timeoutMs = getIPCRequestTimeout();
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true;
-        socket.destroy();
-        reject(new Error(`${requestName} request timeout after ${timeoutMs / 1000}s`));
-      }
-    }, timeoutMs);
-
-    socket.on('connect', () => {
-      log.debug(`Connected to daemon for ${requestName} request`);
-
-      socket.write(JSON.stringify(request) + '\n');
-      log.debug(`${requestName} request sent`);
-    });
-
-    socket.on('data', (chunk: Buffer) => {
-      buffer += chunk.toString('utf-8');
-
-      // Process complete JSONL frames
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (line.trim() && !resolved) {
-          try {
-            const response = JSON.parse(line) as TResponse;
-            log.debug(`${requestName} response received`);
-
-            resolved = true;
-            clearTimeout(timeout);
-            socket.destroy();
-            resolve(response);
-          } catch (error) {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timeout);
-              socket.destroy();
-              reject(
-                new Error(`Failed to parse ${requestName} response: ${getErrorMessage(error)}`)
-              );
-            }
-          }
-        }
-      }
-    });
-
-    socket.on('error', (err) => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        const fullMessage = [
-          `IPC ${requestName} connection error`,
-          `Socket: ${socketPath}`,
-          `Details: ${err.message}`,
-        ].join(' | ');
-        reject(new Error(fullMessage));
-      }
-    });
-
-    socket.on('end', () => {
-      if (!resolved) {
-        resolved = true;
-        clearTimeout(timeout);
-        reject(new Error(`Connection closed before ${requestName} response received`));
-      }
-    });
-  });
+function withSession<T extends { type: string }>(payload: T): T & { sessionId: string } {
+  return { ...payload, sessionId: randomUUID() } as T & { sessionId: string };
 }
+
+export type NoType<T> = Omit<T, 'type'>;
 
 /**
  * Connect to the daemon and perform handshake.
- *
- * @returns Handshake response from daemon
- * @throws Error if connection fails or handshake times out
  */
 export async function connectToDaemon(): Promise<HandshakeResponse> {
-  const request: HandshakeRequest = {
-    type: 'handshake_request',
-    sessionId: randomUUID(),
-  };
-
-  return sendRequest<HandshakeRequest, HandshakeResponse>(request, 'handshake');
+  const request: HandshakeRequest = withSession({ type: 'handshake_request' });
+  return sendRequest<HandshakeRequest, HandshakeResponse>(
+    request,
+    'handshake',
+    'handshake_response'
+  );
 }
 
 /**
  * Request status information from the daemon.
- *
- * @returns Status response with daemon and session metadata
- * @throws Error if connection fails, daemon is not running, or request times out
  */
 export async function getStatus(): Promise<StatusResponse> {
-  const request: StatusRequest = {
-    type: 'status_request',
-    sessionId: randomUUID(),
-  };
-
-  return sendRequest<StatusRequest, StatusResponse>(request, 'status');
+  const request: StatusRequest = withSession({ type: 'status_request' });
+  return sendRequest<StatusRequest, StatusResponse>(request, 'status', 'status_response');
 }
 
 /**
  * Request preview data from the daemon.
- *
- * @returns Peek response with session preview data
- * @throws Error if connection fails, daemon is not running, or request times out
  */
 export async function getPeek(): Promise<PeekResponse> {
-  const request: PeekRequest = {
-    type: 'peek_request',
-    sessionId: randomUUID(),
-  };
-
-  return sendRequest<PeekRequest, PeekResponse>(request, 'peek');
+  const request: PeekRequest = withSession({ type: 'peek_request' });
+  return sendRequest<PeekRequest, PeekResponse>(request, 'peek', 'peek_response');
 }
 
 /**
  * Request daemon to start a new browser session.
- *
- * @param url - Target URL to navigate to
- * @param options - Session configuration options
- * @returns Start session response with worker and Chrome metadata
- * @throws Error if connection fails, daemon is not running, or request times out
  */
 export async function startSession(
   url: string,
@@ -188,67 +68,62 @@ export async function startSession(
     chromeWsUrl?: string;
   }
 ): Promise<StartSessionResponse> {
-  const request: StartSessionRequest = {
+  const request: StartSessionRequest = withSession({
     type: 'start_session_request',
-    sessionId: randomUUID(),
     url,
-    ...filterDefined({
-      port: options?.port,
-      timeout: options?.timeout,
-      telemetry: options?.telemetry,
-      includeAll: options?.includeAll,
-      userDataDir: options?.userDataDir,
-      maxBodySize: options?.maxBodySize,
-      headless: options?.headless,
-      chromeWsUrl: options?.chromeWsUrl,
+    ...(options && {
+      port: options.port,
+      timeout: options.timeout,
+      telemetry: options.telemetry,
+      includeAll: options.includeAll,
+      userDataDir: options.userDataDir,
+      maxBodySize: options.maxBodySize,
+      headless: options.headless,
+      chromeWsUrl: options.chromeWsUrl,
     }),
-  };
+  });
 
-  return sendRequest<StartSessionRequest, StartSessionResponse>(request, 'start session');
+  return sendRequest<StartSessionRequest, StartSessionResponse>(
+    request,
+    'start session',
+    'start_session_response'
+  );
 }
 
 /**
  * Request session stop from the daemon.
- *
- * @returns Stop session response with success/error status
- * @throws Error if connection fails, daemon is not running, or request times out
  */
 export async function stopSession(): Promise<StopSessionResponse> {
-  const request: StopSessionRequest = {
-    type: 'stop_session_request',
-    sessionId: randomUUID(),
-  };
-
-  return sendRequest<StopSessionRequest, StopSessionResponse>(request, 'stop session');
+  const request: StopSessionRequest = withSession({ type: 'stop_session_request' });
+  return sendRequest<StopSessionRequest, StopSessionResponse>(
+    request,
+    'stop session',
+    'stop_session_response'
+  );
 }
 
 /**
- * Generic command sender - works for any registered command in the COMMANDS registry.
- *
- * @param commandName - Name of the command from the COMMANDS registry
- * @param params - Command parameters matching the command's request schema
- * @returns Promise that resolves with the command response
+ * Internal: generic command sender.
  */
 async function sendCommand<T extends CommandName>(
   commandName: T,
-  params: (typeof COMMANDS)[T]['requestSchema']
+  params: NoType<(typeof COMMANDS)[T]['requestSchema']>
 ): Promise<ClientResponse<T>> {
   const request: ClientRequest<T> = {
+    ...params,
     type: `${commandName}_request` as const,
     sessionId: randomUUID(),
-    ...params,
   } as ClientRequest<T>;
 
-  return sendRequest<ClientRequest<T>, ClientResponse<T>>(request, commandName);
+  return sendRequest<ClientRequest<T>, ClientResponse<T>>(
+    request,
+    commandName,
+    `${commandName}_response`
+  );
 }
 
 /**
- * Get details for a specific network request or console message via the daemon's worker.
- *
- * @param type - Type of item: 'network' or 'console'
- * @param id - Request ID for network, index for console
- * @returns Worker details response with full object (including bodies/args)
- * @throws Error if connection fails, daemon is not running, or request times out
+ * Get details (network/console) from worker.
  */
 export async function getDetails(
   type: 'network' | 'console',
@@ -259,11 +134,6 @@ export async function getDetails(
 
 /**
  * Execute arbitrary CDP method via the daemon's worker.
- *
- * @param method - CDP method name (e.g., 'Network.getCookies', 'Runtime.evaluate')
- * @param params - CDP method parameters (optional)
- * @returns CDP call response with method result
- * @throws Error if connection fails, daemon is not running, or request times out
  */
 export async function callCDP(
   method: string,
