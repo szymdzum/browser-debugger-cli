@@ -7,6 +7,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { filterDefined } from '@/utils/objects.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
+import { pushWithLimit } from './utils.js';
 
 const log = createLogger('console');
 
@@ -77,11 +78,9 @@ export async function startConsoleCollection(
         args: params.args,
         navigationId: getCurrentNavigationId?.(),
       }) as unknown as ConsoleMessage;
-      if (messages.length < MAX_CONSOLE_MESSAGES) {
-        messages.push(message);
-      } else if (messages.length === MAX_CONSOLE_MESSAGES) {
+      pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
         log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
-      }
+      });
     }
   );
 
@@ -105,9 +104,9 @@ export async function startConsoleCollection(
         timestamp: params.timestamp, // Use event timestamp, not exceptionDetails.timestamp
         navigationId: getCurrentNavigationId?.(),
       }) as unknown as ConsoleMessage;
-      if (messages.length < MAX_CONSOLE_MESSAGES) {
-        messages.push(message);
-      }
+      pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
+        log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
+      });
     }
   );
 

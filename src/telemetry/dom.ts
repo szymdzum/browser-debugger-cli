@@ -4,6 +4,8 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import type { DOMData, CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
+import { withTimeout } from './utils.js';
+
 const log = createLogger('dom');
 
 /**
@@ -50,23 +52,15 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
   const domCaptureStart = Date.now();
 
   try {
-    // Add a timeout wrapper to prevent hanging
-    const timeout = 5000; // 5 seconds should be plenty for DOM capture
-
-    const captureWithTimeout = async <T>(promise: Promise<T>, label: string): Promise<T> => {
-      return Promise.race([
-        promise,
-        new Promise<T>((_, reject) =>
-          setTimeout(() => reject(new Error(`${label} timed out after ${timeout}ms`)), timeout)
-        ),
-      ]);
-    };
+    // Timeout for CDP operations (5 seconds should be plenty for DOM capture)
+    const CDP_TIMEOUT = 5000;
 
     // Get document
     log.debug('Getting document...');
     const docStart = Date.now();
-    const documentResponse = await captureWithTimeout(
+    const documentResponse = await withTimeout(
       cdp.send('DOM.getDocument', { depth: -1 }) as Promise<Protocol.DOM.GetDocumentResponse>,
+      CDP_TIMEOUT,
       'DOM.getDocument'
     );
     const root = documentResponse.root;
@@ -75,10 +69,11 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     // Get outer HTML
     log.debug('Getting outer HTML...');
     const htmlStart = Date.now();
-    const htmlResponse = await captureWithTimeout(
+    const htmlResponse = await withTimeout(
       cdp.send('DOM.getOuterHTML', {
         nodeId: root.nodeId,
       }) as Promise<Protocol.DOM.GetOuterHTMLResponse>,
+      CDP_TIMEOUT,
       'DOM.getOuterHTML'
     );
     const outerHTML = htmlResponse.outerHTML;
@@ -87,8 +82,9 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     // Get page info
     log.debug('Getting page info...');
     const frameStart = Date.now();
-    const frameTreeResponse = await captureWithTimeout(
+    const frameTreeResponse = await withTimeout(
       cdp.send('Page.getFrameTree') as Promise<Protocol.Page.GetFrameTreeResponse>,
+      CDP_TIMEOUT,
       'Page.getFrameTree'
     );
     const frame = frameTreeResponse.frameTree.frame;
@@ -99,11 +95,12 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     let title = 'Untitled';
     try {
       const titleStart = Date.now();
-      const titleResult = await captureWithTimeout(
+      const titleResult = await withTimeout(
         cdp.send('Runtime.evaluate', {
           expression: 'document.title',
           returnByValue: true,
         }) as Promise<Protocol.Runtime.EvaluateResponse>,
+        CDP_TIMEOUT,
         'Runtime.evaluate (document.title)'
       );
 

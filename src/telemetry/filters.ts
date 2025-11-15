@@ -63,12 +63,16 @@ export const DEFAULT_EXCLUDED_DOMAINS = [
   'newrelic.com',
   'datadoghq.com',
   'sentry.io',
-];
+] as const;
 
 /**
  * Console message types to exclude by default (Redux/React DevTools noise)
  */
-export const DEFAULT_EXCLUDED_CONSOLE_TYPES = ['startGroup', 'startGroupCollapsed', 'endGroup'];
+export const DEFAULT_EXCLUDED_CONSOLE_TYPES = [
+  'startGroup',
+  'startGroupCollapsed',
+  'endGroup',
+] as const;
 
 /**
  * Console message patterns to exclude by default (dev server noise)
@@ -82,7 +86,7 @@ export const DEFAULT_EXCLUDED_CONSOLE_PATTERNS = [
   '%c prev state', // Redux logger
   '%c action', // Redux logger
   '%c next state', // Redux logger
-];
+] as const;
 
 /**
  * File patterns to skip body fetching by default (assets unlikely to be useful for debugging)
@@ -127,7 +131,7 @@ export const DEFAULT_SKIP_BODY_PATTERNS = [
   '*.wav',
   '*.flac',
   '*.aac',
-];
+] as const;
 
 /**
  * MIME types to skip body fetching by default
@@ -154,7 +158,7 @@ export const DEFAULT_SKIP_BODY_MIME_TYPES = [
   'video/webm',
   'audio/mpeg',
   'audio/wav',
-];
+] as const;
 
 /**
  * Check if a URL should be excluded based on domain filtering.

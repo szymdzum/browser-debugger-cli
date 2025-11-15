@@ -37,6 +37,9 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'navigation',
       runAlways: true,
+      // NOTE: This plugin must run before other collectors that depend on getCurrentNavigationId.
+      // It tracks main-frame navigations and provides getCurrentNavigationId() via store.getCurrentNavigationId.
+      // Network and console collectors use this to tag events with their associated navigation.
       async start({ cdp, store }) {
         const { cleanup, getCurrentNavigationId } = await startNavigationTracking(
           cdp,
