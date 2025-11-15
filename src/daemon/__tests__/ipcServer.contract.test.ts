@@ -33,7 +33,7 @@ import type {
   HandshakeResponse,
   StatusRequest,
   StatusResponse,
-} from '@/ipc/types.js';
+} from '@/ipc/index.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
 

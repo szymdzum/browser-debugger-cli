@@ -4,7 +4,7 @@ import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { filterOption, jsonOption, lastOption } from '@/commands/shared/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
-import { validateIPCResponse } from '@/ipc/responseValidator.js';
+import { validateIPCResponse } from '@/ipc/index.js';
 import type { BdgOutput, ConsoleMessage } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
 import { noConsoleMessagesMessage, consoleMessagesHeader } from '@/ui/messages/consoleMessages.js';

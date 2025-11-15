@@ -1,5 +1,5 @@
 import { getChromeDiagnostics } from '@/connection/diagnostics.js';
-import type { SessionActivity, PageState } from '@/ipc/types.js';
+import type { SessionActivity, PageState } from '@/ipc/index.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { isProcessAlive } from '@/session/process.js';
 import { OutputFormatter } from '@/ui/formatting.js';

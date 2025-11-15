@@ -4,7 +4,7 @@ import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { getDetails } from '@/ipc/client.js';
-import { validateIPCResponse } from '@/ipc/responseValidator.js';
+import { validateIPCResponse } from '@/ipc/index.js';
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';

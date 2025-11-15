@@ -3,21 +3,6 @@
  *
  * Tests the public API behavior of IPC client functions WITHOUT testing implementation details.
  * Follows the testing philosophy: "Test the contract, not the implementation"
- *
- * Contract:
- * - Input: Function calls with parameters
- * - Output: Responses from daemon via Unix socket
- * - Behavior: Connect, send request, receive response, handle errors/timeouts
- *
- * What we test:
- * ✅ Behavior: Client function calls → daemon responses
- * ✅ Invariants: "Requests receive responses", "Errors propagate correctly"
- * ✅ Edge cases: Daemon not running, timeouts, malformed responses
- *
- * What we DON'T test:
- * ❌ Internal sendRequest() implementation
- * ❌ Socket buffer handling details
- * ❌ How JSONL parsing works internally
  */
 
 import assert from 'node:assert/strict';
@@ -33,7 +18,7 @@ import type {
   HandshakeResponse,
   StatusRequest,
   StatusResponse,
-} from '@/ipc/types.js';
+} from '@/ipc/index.js';
 
 /**
  * Mock daemon server that responds to IPC requests.

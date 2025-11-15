@@ -4,7 +4,7 @@ import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { callCDP } from '@/ipc/client.js';
-import { validateIPCResponse } from '@/ipc/responseValidator.js';
+import { validateIPCResponse } from '@/ipc/index.js';
 import type { Cookie } from '@/ui/formatters/index.js';
 import { formatCookies } from '@/ui/formatters/index.js';
 
