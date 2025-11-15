@@ -7,6 +7,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { withTimeout } from './utils.js';
 
 const log = createLogger('dom');
+const CDP_TIMEOUT = 5000;
 
 /**
  * Prepare CDP domains for DOM collection.
@@ -17,27 +18,78 @@ const log = createLogger('dom');
  * @returns Cleanup function that disables Runtime domain
  */
 export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupFunction> {
-  // Enable Page domain for frame tree
   await cdp.send('Page.enable');
-
-  // Enable DOM domain for document access
   await cdp.send('DOM.enable');
-
-  // Enable Runtime domain for document.title evaluation
   await cdp.send('Runtime.enable');
 
-  // Return cleanup function that disables Runtime domain
   return () => {
-    // Disable Runtime domain to clean up resources
-    // Note: This is best-effort during shutdown; errors are ignored
     try {
       cdp.send('Runtime.disable').catch(() => {
         // Ignore errors during cleanup (Chrome may be closing)
       });
     } catch {
-      // Ignore synchronous errors
+      // Ignore synchronous errors during shutdown
     }
   };
+}
+
+/**
+ * Get the root node of the DOM tree.
+ */
+async function getDocumentRoot(cdp: CDPConnection): Promise<Protocol.DOM.Node> {
+  const response = await withTimeout(
+    cdp.send('DOM.getDocument', { depth: -1 }) as Promise<Protocol.DOM.GetDocumentResponse>,
+    CDP_TIMEOUT,
+    'DOM.getDocument'
+  );
+  return response.root;
+}
+
+/**
+ * Get the outer HTML of a node.
+ */
+async function getOuterHTML(cdp: CDPConnection, nodeId: number): Promise<string> {
+  const response = await withTimeout(
+    cdp.send('DOM.getOuterHTML', { nodeId }) as Promise<Protocol.DOM.GetOuterHTMLResponse>,
+    CDP_TIMEOUT,
+    'DOM.getOuterHTML'
+  );
+  return response.outerHTML;
+}
+
+/**
+ * Get the main frame information.
+ */
+async function getMainFrame(cdp: CDPConnection): Promise<Protocol.Page.Frame> {
+  const response = await withTimeout(
+    cdp.send('Page.getFrameTree') as Promise<Protocol.Page.GetFrameTreeResponse>,
+    CDP_TIMEOUT,
+    'Page.getFrameTree'
+  );
+  return response.frameTree.frame;
+}
+
+/**
+ * Get the document title using Runtime.evaluate.
+ */
+async function getDocumentTitle(cdp: CDPConnection): Promise<string> {
+  try {
+    const result = await withTimeout(
+      cdp.send('Runtime.evaluate', {
+        expression: 'document.title',
+        returnByValue: true,
+      }) as Promise<Protocol.Runtime.EvaluateResponse>,
+      CDP_TIMEOUT,
+      'Runtime.evaluate'
+    );
+
+    if (result.result.value !== undefined && typeof result.result.value === 'string') {
+      return result.result.value;
+    }
+  } catch (error) {
+    log.debug(`Failed to get document title: ${getErrorMessage(error)}`);
+  }
+  return 'Untitled';
 }
 
 /**
@@ -49,77 +101,14 @@ export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupF
  * @returns DOM data including URL, title, and full HTML
  */
 export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
-  const domCaptureStart = Date.now();
-
   try {
-    // Timeout for CDP operations (5 seconds should be plenty for DOM capture)
-    const CDP_TIMEOUT = 5000;
-
-    // Get document
-    log.debug('Getting document...');
-    const docStart = Date.now();
-    const documentResponse = await withTimeout(
-      cdp.send('DOM.getDocument', { depth: -1 }) as Promise<Protocol.DOM.GetDocumentResponse>,
-      CDP_TIMEOUT,
-      'DOM.getDocument'
-    );
-    const root = documentResponse.root;
-    log.debug(`[PERF] DOM.getDocument: ${Date.now() - docStart}ms (nodeId: ${root.nodeId})`);
-
-    // Get outer HTML
-    log.debug('Getting outer HTML...');
-    const htmlStart = Date.now();
-    const htmlResponse = await withTimeout(
-      cdp.send('DOM.getOuterHTML', {
-        nodeId: root.nodeId,
-      }) as Promise<Protocol.DOM.GetOuterHTMLResponse>,
-      CDP_TIMEOUT,
-      'DOM.getOuterHTML'
-    );
-    const outerHTML = htmlResponse.outerHTML;
-    log.debug(`[PERF] DOM.getOuterHTML: ${Date.now() - htmlStart}ms (${outerHTML.length} chars)`);
-
-    // Get page info
-    log.debug('Getting page info...');
-    const frameStart = Date.now();
-    const frameTreeResponse = await withTimeout(
-      cdp.send('Page.getFrameTree') as Promise<Protocol.Page.GetFrameTreeResponse>,
-      CDP_TIMEOUT,
-      'Page.getFrameTree'
-    );
-    const frame = frameTreeResponse.frameTree.frame;
-    log.debug(`[PERF] Page.getFrameTree: ${Date.now() - frameStart}ms (url: ${frame.url})`);
-
-    // Get real document title using Runtime.evaluate
-    log.debug('Getting document title...');
-    let title = 'Untitled';
-    try {
-      const titleStart = Date.now();
-      const titleResult = await withTimeout(
-        cdp.send('Runtime.evaluate', {
-          expression: 'document.title',
-          returnByValue: true,
-        }) as Promise<Protocol.Runtime.EvaluateResponse>,
-        CDP_TIMEOUT,
-        'Runtime.evaluate (document.title)'
-      );
-
-      if (titleResult.result.value !== undefined && typeof titleResult.result.value === 'string') {
-        title = titleResult.result.value;
-      }
-      log.debug(`[PERF] Runtime.evaluate (title): ${Date.now() - titleStart}ms`);
-    } catch (titleError) {
-      log.debug(`Failed to get document title, using fallback: ${getErrorMessage(titleError)}`);
-    }
-    log.debug(`Got document title: ${title}`);
-
-    const url = frame.url;
-
-    const totalDuration = Date.now() - domCaptureStart;
-    log.debug(`[PERF] Total DOM capture: ${totalDuration}ms`);
+    const root = await getDocumentRoot(cdp);
+    const outerHTML = await getOuterHTML(cdp, root.nodeId);
+    const frame = await getMainFrame(cdp);
+    const title = await getDocumentTitle(cdp);
 
     return {
-      url,
+      url: frame.url,
       title,
       outerHTML,
     };

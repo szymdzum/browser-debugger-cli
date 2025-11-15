@@ -1,5 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
+import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import {
   MAX_NETWORK_REQUESTS,
@@ -16,6 +17,77 @@ import { createLogger } from '@/ui/logging/index.js';
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 
 const log = createLogger('network');
+
+/**
+ * Check if a request should be filtered out based on domain and URL patterns.
+ */
+function shouldFilterRequest(
+  url: string,
+  includeAll: boolean,
+  networkInclude: string[],
+  networkExclude: string[]
+): boolean {
+  if (shouldExcludeDomain(url, includeAll)) {
+    return true;
+  }
+  if (shouldExcludeUrl(url, { includePatterns: networkInclude, excludePatterns: networkExclude })) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Fetch response body for a request.
+ */
+function fetchResponseBody(cdp: CDPConnection, requestId: string, request: NetworkRequest): void {
+  void cdp
+    .send('Network.getResponseBody', { requestId })
+    .then((response) => {
+      const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
+      request.responseBody = typedResponse.body;
+    })
+    .catch(() => {});
+}
+
+/**
+ * Create a network request from CDP event parameters.
+ */
+function createNetworkRequest(
+  params: Protocol.Network.RequestWillBeSentEvent,
+  getCurrentNavigationId?: () => number
+): NetworkRequest {
+  const navigationId = getCurrentNavigationId?.();
+  return {
+    requestId: params.requestId,
+    url: params.request.url,
+    method: params.request.method,
+    timestamp: Date.now(),
+    requestHeaders: params.request.headers,
+    ...(params.request.postData !== undefined && { requestBody: params.request.postData }),
+    ...(navigationId !== undefined && { navigationId }),
+  };
+}
+
+/**
+ * Clean up stale requests from the request map.
+ */
+function cleanupStaleRequests(
+  requestMap: Map<string, { request: NetworkRequest; timestamp: number }>
+): void {
+  const now = Date.now();
+  const staleRequests: string[] = [];
+
+  requestMap.forEach((value, requestId) => {
+    if (now - value.timestamp > STALE_REQUEST_TIMEOUT) {
+      staleRequests.push(requestId);
+    }
+  });
+
+  if (staleRequests.length > 0) {
+    log.debug(`Cleaning up ${staleRequests.length} stale network requests`);
+    staleRequests.forEach((requestId) => requestMap.delete(requestId));
+  }
+}
 
 export interface NetworkCollectionOptions {
   includeAll?: boolean;
@@ -65,30 +137,11 @@ export async function startNetworkCollection(
   } = options;
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
   const registry = new CDPHandlerRegistry();
+  const typed = new TypedCDPConnection(cdp);
 
-  // Counters for PERF logging
   let bodiesFetched = 0;
   let bodiesSkipped = 0;
 
-  // Helper: Check if URL should be filtered out based on domain and pattern filters
-  const isFilteredOut = (url: string): boolean => {
-    if (shouldExcludeDomain(url, includeAll)) {
-      return true;
-    }
-    if (
-      shouldExcludeUrl(url, {
-        includePatterns: networkInclude,
-        excludePatterns: networkExclude,
-      })
-    ) {
-      return true;
-    }
-    return false;
-  };
-
-  // Enable network tracking with buffer limits (if supported)
-  // These parameters are optional and experimental, but widely supported in Chrome 58+
-  // See docs/chrome-cdp-compatibility.md for details
   try {
     await cdp.send('Network.enable', {
       maxTotalBufferSize: CHROME_NETWORK_BUFFER_TOTAL,
@@ -96,150 +149,100 @@ export async function startNetworkCollection(
       maxPostDataSize: CHROME_POST_DATA_LIMIT,
     });
   } catch {
-    // Fallback to basic Network.enable if buffer parameters not supported
     log.debug('Network buffer limits not supported, using default settings');
     await cdp.send('Network.enable');
   }
 
-  // Periodic cleanup of stale requests (see JSDoc @remarks for behavior)
-  const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    const staleRequests: string[] = [];
+  const cleanupInterval = setInterval(
+    () => cleanupStaleRequests(requestMap),
+    STALE_REQUEST_CLEANUP_INTERVAL
+  );
 
-    requestMap.forEach((value, requestId) => {
-      if (now - value.timestamp > STALE_REQUEST_TIMEOUT) {
-        staleRequests.push(requestId);
-      }
+  registry.registerTyped(typed, 'Network.requestWillBeSent', (params) => {
+    if (requestMap.size >= MAX_NETWORK_REQUESTS) {
+      log.debug(
+        `Warning: Network request limit reached (${MAX_NETWORK_REQUESTS}), dropping new requests`
+      );
+      return;
+    }
+
+    const request = createNetworkRequest(params, getCurrentNavigationId);
+    requestMap.set(params.requestId, {
+      request,
+      timestamp: Date.now(),
     });
+  });
 
-    if (staleRequests.length > 0) {
-      log.debug(`Cleaning up ${staleRequests.length} stale network requests`);
-      staleRequests.forEach((requestId) => requestMap.delete(requestId));
+  registry.registerTyped(typed, 'Network.responseReceived', (params) => {
+    const entry = requestMap.get(params.requestId);
+    if (entry) {
+      entry.request.status = params.response.status;
+      entry.request.mimeType = params.response.mimeType;
+      entry.request.responseHeaders = params.response.headers;
     }
-  }, STALE_REQUEST_CLEANUP_INTERVAL);
+  });
 
-  // Listen for requests
-  registry.register<Protocol.Network.RequestWillBeSentEvent>(
-    cdp,
-    'Network.requestWillBeSent',
-    (params: Protocol.Network.RequestWillBeSentEvent) => {
-      if (requestMap.size >= MAX_NETWORK_REQUESTS) {
-        log.debug(
-          `Warning: Network request limit reached (${MAX_NETWORK_REQUESTS}), dropping new requests`
-        );
-        return;
+  registry.registerTyped(typed, 'Network.loadingFinished', (params) => {
+    const entry = requestMap.get(params.requestId);
+    if (!entry) return;
+
+    if (requests.length >= MAX_NETWORK_REQUESTS) {
+      log.debug(`Warning: Network request limit reached (${MAX_NETWORK_REQUESTS})`);
+      requestMap.delete(params.requestId);
+      return;
+    }
+
+    const request = entry.request;
+
+    if (shouldFilterRequest(request.url, includeAll, networkInclude, networkExclude)) {
+      requestMap.delete(params.requestId);
+      return;
+    }
+
+    const decision = shouldFetchBodyWithReason(
+      request.url,
+      request.mimeType,
+      params.encodedDataLength,
+      {
+        fetchAllBodies,
+        includePatterns: fetchBodiesInclude,
+        excludePatterns: fetchBodiesExclude,
+        maxBodySize,
       }
+    );
 
-      const navigationId = getCurrentNavigationId?.();
-      const request: NetworkRequest = {
-        requestId: params.requestId,
-        url: params.request.url,
-        method: params.request.method,
-        timestamp: Date.now(),
-        requestHeaders: params.request.headers,
-        ...(params.request.postData !== undefined && { requestBody: params.request.postData }),
-        ...(navigationId !== undefined && { navigationId }),
-      };
-      requestMap.set(params.requestId, {
-        request,
-        timestamp: Date.now(),
-      });
+    if (decision.should) {
+      bodiesFetched++;
+      fetchResponseBody(cdp, params.requestId, request);
+    } else {
+      bodiesSkipped++;
+      request.responseBody = `[SKIPPED: ${decision.reason}]`;
     }
-  );
 
-  // Listen for responses
-  registry.register<Protocol.Network.ResponseReceivedEvent>(
-    cdp,
-    'Network.responseReceived',
-    (params: Protocol.Network.ResponseReceivedEvent) => {
-      const entry = requestMap.get(params.requestId);
-      if (entry) {
-        entry.request.status = params.response.status;
-        entry.request.mimeType = params.response.mimeType;
-        entry.request.responseHeaders = params.response.headers;
-      }
+    requests.push(request);
+    requestMap.delete(params.requestId);
+  });
+
+  registry.registerTyped(typed, 'Network.loadingFailed', (params) => {
+    const entry = requestMap.get(params.requestId);
+    if (!entry) return;
+
+    if (requests.length >= MAX_NETWORK_REQUESTS) {
+      requestMap.delete(params.requestId);
+      return;
     }
-  );
 
-  // Listen for finished requests
-  registry.register<Protocol.Network.LoadingFinishedEvent>(
-    cdp,
-    'Network.loadingFinished',
-    (params: Protocol.Network.LoadingFinishedEvent) => {
-      const entry = requestMap.get(params.requestId);
-      if (entry && requests.length < MAX_NETWORK_REQUESTS) {
-        const request = entry.request;
-
-        // Apply domain and URL pattern filtering
-        if (isFilteredOut(request.url)) {
-          requestMap.delete(params.requestId);
-          return;
-        }
-
-        // Determine if we should fetch the response body
-        const decision = shouldFetchBodyWithReason(
-          request.url,
-          request.mimeType,
-          params.encodedDataLength,
-          {
-            fetchAllBodies,
-            includePatterns: fetchBodiesInclude,
-            excludePatterns: fetchBodiesExclude,
-            maxBodySize,
-          }
-        );
-
-        if (decision.should) {
-          bodiesFetched++;
-          // Fetch response body asynchronously
-          void cdp
-            .send('Network.getResponseBody', { requestId: params.requestId })
-            .then((response) => {
-              const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
-              request.responseBody = typedResponse.body;
-            })
-            .catch(() => {
-              // Response body not available (e.g., 204 No Content, redirects, etc.)
-            });
-        } else {
-          bodiesSkipped++;
-          request.responseBody = `[SKIPPED: ${decision.reason}]`;
-        }
-
-        requests.push(request);
-        requestMap.delete(params.requestId);
-      } else if (requests.length >= MAX_NETWORK_REQUESTS) {
-        log.debug(`Warning: Network request limit reached (${MAX_NETWORK_REQUESTS})`);
-        requestMap.delete(params.requestId);
-      }
+    if (shouldFilterRequest(entry.request.url, includeAll, networkInclude, networkExclude)) {
+      requestMap.delete(params.requestId);
+      return;
     }
-  );
 
-  // Listen for failed requests
-  registry.register<Protocol.Network.LoadingFailedEvent>(
-    cdp,
-    'Network.loadingFailed',
-    (params: Protocol.Network.LoadingFailedEvent) => {
-      const entry = requestMap.get(params.requestId);
-      if (entry && requests.length < MAX_NETWORK_REQUESTS) {
-        // Apply domain and URL pattern filtering
-        if (isFilteredOut(entry.request.url)) {
-          requestMap.delete(params.requestId);
-          return;
-        }
+    entry.request.status = 0;
+    requests.push(entry.request);
+    requestMap.delete(params.requestId);
+  });
 
-        entry.request.status = 0; // Indicate failure
-        requests.push(entry.request);
-        requestMap.delete(params.requestId);
-      } else if (requests.length >= MAX_NETWORK_REQUESTS) {
-        requestMap.delete(params.requestId);
-      }
-    }
-  );
-
-  // Return cleanup function
   return () => {
-    // Log PERF metrics
     const totalBodyDecisions = bodiesFetched + bodiesSkipped;
     if (totalBodyDecisions > 0) {
       const percentageSkipped = ((bodiesSkipped / totalBodyDecisions) * 100).toFixed(1);
@@ -248,13 +251,8 @@ export async function startNetworkCollection(
       );
     }
 
-    // Clear interval
     clearInterval(cleanupInterval);
-
-    // Remove event handlers
     registry.cleanup(cdp);
-
-    // Clear request map
     requestMap.clear();
   };
 }

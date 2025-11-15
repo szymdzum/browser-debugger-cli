@@ -19,46 +19,33 @@ export interface BodyFetchDecision {
  * These generate high volume but are rarely useful for debugging
  */
 export const DEFAULT_EXCLUDED_DOMAINS = [
-  // Google Analytics & Ads
   'analytics.google.com',
   'googletagmanager.com',
   'googleadservices.com',
   'doubleclick.net',
   'google-analytics.com',
-
-  // Microsoft/Bing
   'clarity.ms',
   'bat.bing.com',
-
-  // Social Media Tracking
   'facebook.com',
   'connect.facebook.net',
   'tiktok.com',
   'linkedin.com',
   'twitter.com',
   'snapchat.com',
-
-  // Product Analytics
   'mixpanel.com',
   'segment.com',
   'segment.io',
   'amplitude.com',
   'heap.io',
-
-  // Session Recording & Heatmaps
   'fullstory.com',
   'hotjar.com',
   'logrocket.com',
   'smartlook.com',
-
-  // Ad Networks & Attribution
   'exactag.com',
   'criteo.com',
   'adroll.com',
   'outbrain.com',
   'taboola.com',
-
-  // Other Analytics
   'confirmit.com',
   'newrelic.com',
   'datadoghq.com',
@@ -82,10 +69,10 @@ export const DEFAULT_EXCLUDED_CONSOLE_PATTERNS = [
   '[HMR]',
   '[WDS]',
   'Download the React DevTools',
-  '@@redux', // Redux actions
-  '%c prev state', // Redux logger
-  '%c action', // Redux logger
-  '%c next state', // Redux logger
+  '@@redux',
+  '%c prev state',
+  '%c action',
+  '%c next state',
 ] as const;
 
 /**
@@ -93,7 +80,6 @@ export const DEFAULT_EXCLUDED_CONSOLE_PATTERNS = [
  * These reduce data volume significantly without losing critical debugging information.
  */
 export const DEFAULT_SKIP_BODY_PATTERNS = [
-  // Images
   '*.png',
   '*.jpg',
   '*.jpeg',
@@ -103,30 +89,20 @@ export const DEFAULT_SKIP_BODY_PATTERNS = [
   '*.webp',
   '*.bmp',
   '*.tiff',
-
-  // Fonts
   '*.woff',
   '*.woff2',
   '*.ttf',
   '*.eot',
   '*.otf',
-
-  // Stylesheets
   '*.css',
-
-  // Source maps (can be large and rarely needed)
   '*.map',
   '*.js.map',
   '*.css.map',
-
-  // Videos
   '*.mp4',
   '*.webm',
   '*.ogg',
   '*.avi',
   '*.mov',
-
-  // Audio
   '*.mp3',
   '*.wav',
   '*.flac',
@@ -169,7 +145,7 @@ export const DEFAULT_SKIP_BODY_MIME_TYPES = [
  */
 export function shouldExcludeDomain(url: string, includeAll: boolean = false): boolean {
   if (includeAll) {
-    return false; // Don't filter anything if --include-all flag is set
+    return false;
   }
 
   const hostname = extractHostname(url).toLowerCase();
@@ -185,10 +161,9 @@ export function shouldExcludeConsoleMessage(
   includeAll: boolean = false
 ): boolean {
   if (includeAll) {
-    return false; // Don't filter anything if --include-all flag is set
+    return false;
   }
 
-  // Check if message type should be excluded (e.g., group messages)
   if ((DEFAULT_EXCLUDED_CONSOLE_TYPES as readonly string[]).includes(type)) {
     return true;
   }
@@ -231,38 +206,30 @@ interface PatternMatchConfig {
 function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean {
   const { includePatterns = [], excludePatterns = [], defaultBehavior = 'include' } = config;
 
-  // Parse URL once for all pattern checks
   const hostname = extractHostname(url);
   const hostnameWithPath = extractHostnameWithPath(url);
 
-  // Helper: check if any pattern matches hostname or hostname+path
   const matchesAny = (patterns: string[]): boolean =>
     patterns.some(
       (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
     );
 
-  // Compute match states
   const includeSpecified = includePatterns.length > 0;
   const includeMatch = includeSpecified && matchesAny(includePatterns);
   const excludeMatch = excludePatterns.length > 0 && matchesAny(excludePatterns);
 
-  // Decision logic implementing documented precedence:
-  // 1. If includePatterns match → include (trumps everything)
   if (includeMatch) {
     return true;
   }
 
-  // 2. If includePatterns specified but didn't match → exclude (whitelist mode)
   if (includeSpecified) {
     return false;
   }
 
-  // 3. If excludePatterns match → exclude
   if (excludeMatch) {
     return false;
   }
 
-  // 4. Otherwise → use defaultBehavior
   return defaultBehavior === 'include';
 }
 
@@ -280,12 +247,9 @@ function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean 
  * @returns True if the string matches the pattern
  */
 export function matchesWildcard(str: string, pattern: string): boolean {
-  // Escape special regex characters except *
-  const regexPattern = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
-    .replace(/\*/g, '.*'); // Replace * with .*
+  const regexPattern = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
 
-  const regex = new RegExp(`^${regexPattern}$`, 'i'); // Case-insensitive
+  const regex = new RegExp(`^${regexPattern}$`, 'i');
   return regex.test(str);
 }
 
@@ -317,7 +281,6 @@ export function shouldFetchBody(
 ): boolean {
   const { fetchAllBodies = false, includePatterns = [], excludePatterns = [] } = options;
 
-  // If includePatterns specified, act as whitelist (trumps everything else)
   if (includePatterns.length > 0) {
     return evaluatePatternMatch(url, {
       includePatterns,
@@ -325,7 +288,6 @@ export function shouldFetchBody(
     });
   }
 
-  // If excludePatterns specified and URL matches → skip (trumps fetchAllBodies)
   if (excludePatterns.length > 0) {
     const matchesExclude = evaluatePatternMatch(url, {
       includePatterns: excludePatterns,
@@ -336,14 +298,12 @@ export function shouldFetchBody(
     }
   }
 
-  // If fetchAllBodies flag is set → fetch everything
   if (fetchAllBodies) {
     return true;
   }
 
-  // Check MIME type against default skip list (case-insensitive)
   if (mimeType) {
-    const normalizedMimeType = mimeType.toLowerCase().split(';')[0]?.trim() ?? ''; // Remove charset etc.
+    const normalizedMimeType = mimeType.toLowerCase().split(';')[0]?.trim() ?? '';
     if (
       normalizedMimeType &&
       DEFAULT_SKIP_BODY_MIME_TYPES.some((skipType) => normalizedMimeType === skipType.toLowerCase())
@@ -352,13 +312,11 @@ export function shouldFetchBody(
     }
   }
 
-  // Apply default auto-skip URL patterns
   const matchesDefaultSkip = evaluatePatternMatch(url, {
     includePatterns: [...DEFAULT_SKIP_BODY_PATTERNS],
     defaultBehavior: 'exclude',
   });
 
-  // Default: fetch the body unless it matches default skip patterns
   return !matchesDefaultSkip;
 }
 
@@ -400,7 +358,6 @@ export function shouldFetchBodyWithReason(
 ): BodyFetchDecision {
   const { maxBodySize = 5 * 1024 * 1024 } = options;
 
-  // Check if response is text-based
   const isTextResponse =
     (mimeType?.includes('json') ?? false) ||
     (mimeType?.includes('javascript') ?? false) ||
@@ -411,7 +368,6 @@ export function shouldFetchBodyWithReason(
     return { should: false, reason: 'Non-text response type' };
   }
 
-  // Check size limits
   if (encodedDataLength > maxBodySize) {
     const sizeStr = `${(encodedDataLength / 1024 / 1024).toFixed(2)}MB`;
     const limitStr = `${(maxBodySize / 1024 / 1024).toFixed(2)}MB`;
@@ -421,7 +377,6 @@ export function shouldFetchBodyWithReason(
     };
   }
 
-  // Use existing shouldFetchBody for pattern matching
   const shouldFetch = shouldFetchBody(url, mimeType, options);
 
   if (!shouldFetch) {
@@ -459,7 +414,6 @@ export function shouldExcludeUrl(
 ): boolean {
   const { includePatterns = [], excludePatterns = [] } = options;
 
-  // Use unified pattern matching - invert result since we want exclusion logic
   return !evaluatePatternMatch(url, {
     includePatterns,
     excludePatterns,

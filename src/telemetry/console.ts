@@ -1,6 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { ConsoleMessage, CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
@@ -32,88 +32,69 @@ export async function startConsoleCollection(
   getCurrentNavigationId?: () => number
 ): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
+  const typed = new TypedCDPConnection(cdp);
 
-  // Enable runtime
   await cdp.send('Runtime.enable');
 
-  // Listen for console API calls
-  registry.register<Protocol.Runtime.ConsoleAPICalledEvent>(
-    cdp,
-    'Runtime.consoleAPICalled',
-    (params: Protocol.Runtime.ConsoleAPICalledEvent) => {
-      const text = params.args
-        .map((arg) => {
-          // arg type already defined in Protocol.Runtime.ConsoleAPICalledEvent
-          if (arg.value !== undefined) {
-            // Handle different value types - primitives only, objects use description
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const value = arg.value;
-            if (
-              typeof value === 'string' ||
-              typeof value === 'number' ||
-              typeof value === 'boolean'
-            ) {
-              return String(value);
-            }
-            // For objects/arrays, use description if available
-            return arg.description ?? '[object]';
+  registry.registerTyped(typed, 'Runtime.consoleAPICalled', (params) => {
+    const text = params.args
+      .map((arg) => {
+        if (arg.value !== undefined) {
+          const value: unknown = arg.value;
+          if (
+            typeof value === 'string' ||
+            typeof value === 'number' ||
+            typeof value === 'boolean'
+          ) {
+            return String(value);
           }
-          if (arg.description !== undefined) {
-            return arg.description;
-          }
-          return '';
-        })
-        .join(' ');
+          return arg.description ?? '[object]';
+        }
+        if (arg.description !== undefined) {
+          return arg.description;
+        }
+        return '';
+      })
+      .join(' ');
 
-      // Apply pattern filtering
-      if (shouldExcludeConsoleMessage(text, params.type, includeAll)) {
-        return;
-      }
-
-      const navigationId = getCurrentNavigationId?.();
-      const message: ConsoleMessage = {
-        type: params.type,
-        text,
-        timestamp: params.timestamp,
-        args: params.args,
-        ...(navigationId !== undefined && { navigationId }),
-      };
-      pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
-        log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
-      });
+    if (shouldExcludeConsoleMessage(text, params.type, includeAll)) {
+      return;
     }
-  );
 
-  // Listen for exceptions
-  registry.register<Protocol.Runtime.ExceptionThrownEvent>(
-    cdp,
-    'Runtime.exceptionThrown',
-    (params: Protocol.Runtime.ExceptionThrownEvent) => {
-      const exception = params.exceptionDetails;
-      const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
+    const navigationId = getCurrentNavigationId?.();
+    const message: ConsoleMessage = {
+      type: params.type,
+      text,
+      timestamp: params.timestamp,
+      args: params.args,
+      ...(navigationId !== undefined && { navigationId }),
+    };
+    pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
+      log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
+    });
+  });
 
-      // Apply pattern filtering (but don't filter errors by default)
-      // Errors are usually important, only filter if they match noise patterns
-      if (shouldExcludeConsoleMessage(text, 'error', includeAll)) {
-        return;
-      }
+  registry.registerTyped(typed, 'Runtime.exceptionThrown', (params) => {
+    const exception = params.exceptionDetails;
+    const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
 
-      const navigationId = getCurrentNavigationId?.();
-      const message: ConsoleMessage = {
-        type: 'error',
-        text,
-        timestamp: params.timestamp,
-        ...(navigationId !== undefined && { navigationId }),
-      };
-      pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
-        log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
-      });
+    if (shouldExcludeConsoleMessage(text, 'error', includeAll)) {
+      return;
     }
-  );
 
-  // Return cleanup function
+    const navigationId = getCurrentNavigationId?.();
+    const message: ConsoleMessage = {
+      type: 'error',
+      text,
+      timestamp: params.timestamp,
+      ...(navigationId !== undefined && { navigationId }),
+    };
+    pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
+      log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
+    });
+  });
+
   return () => {
-    // Remove event handlers
     registry.cleanup(cdp);
   };
 }

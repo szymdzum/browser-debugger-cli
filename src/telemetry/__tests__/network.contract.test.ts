@@ -3,26 +3,6 @@
  *
  * Tests the public API behavior of startNetworkCollection WITHOUT testing implementation details.
  * Follows the testing philosophy: "Test the contract, not the implementation"
- *
- * Coverage:
- * 1. Request/response pairing - Normal flow with matching IDs
- * 2. Out-of-order events - Response arrives before request
- * 3. Stale requests - Incomplete requests after timeout
- * 4. Failed requests - Network.loadingFailed events
- * 5. Request limits - MAX_NETWORK_REQUESTS enforcement
- * 6. Cleanup - Handler removal and state cleanup
- * 7. Domain filtering - Tracking/analytics exclusion
- * 8. Body fetching - Size limits and MIME type handling
- *
- * What we test:
- * ✅ Behavior: Given CDP events → expect NetworkRequest array contents
- * ✅ Invariants: "Requests are paired with responses", "Cleanup removes all handlers"
- * ✅ Edge cases: Out-of-order, stale, limits, failures
- *
- * What we DON'T test:
- * ❌ Internal requestMap structure
- * ❌ Internal function calls (tryExactMatch, normalizeUrl, etc.)
- * ❌ Implementation details (Map vs Set, event handler IDs)
  */
 
 import assert from 'node:assert/strict';
@@ -196,10 +176,8 @@ void describe('Network telemetry contract', () => {
 
   void describe('Basic request/response pairing', () => {
     void it('should pair request with response by requestId', async () => {
-      // Arrange: Start collection
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Act: Simulate CDP events for a complete request/response cycle
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
         'Network.requestWillBeSent',
         createRequestEvent({
@@ -240,7 +218,6 @@ void describe('Network telemetry contract', () => {
         encodedDataLength: 1234,
       });
 
-      // Assert: Request is paired with response
       assert.equal(requests.length, 1, 'Should have one network request');
       const request = requests[0];
       assert.ok(request, 'Request should exist');
@@ -252,15 +229,12 @@ void describe('Network telemetry contract', () => {
       assert.ok(request.requestHeaders, 'Should have request headers');
       assert.ok(request.responseHeaders, 'Should have response headers');
 
-      // Cleanup
       void cleanup();
     });
 
     void it('should handle multiple concurrent requests', async () => {
-      // Arrange
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Act: Simulate 3 concurrent requests
       for (let i = 1; i <= 3; i++) {
         mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
           'Network.requestWillBeSent',
@@ -275,7 +249,6 @@ void describe('Network telemetry contract', () => {
         );
       }
 
-      // Responses arrive in different order (3, 1, 2)
       for (const i of [3, 1, 2]) {
         mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
           'Network.responseReceived',
@@ -299,7 +272,6 @@ void describe('Network telemetry contract', () => {
         });
       }
 
-      // Assert: All requests paired correctly despite out-of-order responses
       assert.equal(requests.length, 3);
       assert.ok(requests[0], 'First request should exist');
       assert.ok(requests[1], 'Second request should exist');
@@ -314,12 +286,8 @@ void describe('Network telemetry contract', () => {
 
   void describe('Edge case: Out-of-order events', () => {
     void it('should handle response arriving before request', async () => {
-      // This is a real race condition that can happen in CDP
-      // Current behavior: Response event is ignored if request doesn't exist yet
-      // The second responseReceived event (after request) sets the status correctly
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Act: Response arrives BEFORE request (early response is ignored)
       mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
         'Network.responseReceived',
         createResponseEvent({
@@ -335,7 +303,6 @@ void describe('Network telemetry contract', () => {
         })
       );
 
-      // Request arrives later
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
         'Network.requestWillBeSent',
         createRequestEvent({
@@ -350,7 +317,6 @@ void describe('Network telemetry contract', () => {
         })
       );
 
-      // Response arrives again (normal order) - this one actually sets status
       mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
         'Network.responseReceived',
         createResponseEvent({
@@ -372,7 +338,6 @@ void describe('Network telemetry contract', () => {
         encodedDataLength: 100,
       });
 
-      // Assert: Request is tracked correctly with response data from second response event
       assert.equal(requests.length, 1, 'Should have one request');
       const request = requests[0];
       assert.ok(request, 'Request should exist');
@@ -388,7 +353,6 @@ void describe('Network telemetry contract', () => {
     void it('should handle Network.loadingFailed events', async () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Act: Request fails instead of succeeding
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
         'Network.requestWillBeSent',
         createRequestEvent({
@@ -410,7 +374,6 @@ void describe('Network telemetry contract', () => {
         errorText: 'net::ERR_CONNECTION_REFUSED',
       });
 
-      // Assert: Failed request is recorded with status 0
       assert.equal(requests.length, 1);
       const request = requests[0];
       assert.ok(request, 'Request should exist');
@@ -423,11 +386,9 @@ void describe('Network telemetry contract', () => {
 
   void describe('Edge case: Stale request cleanup', () => {
     void it('should clean up stale requests after timeout', async () => {
-      // Use fake clock to control time
       const clockHelper = useFakeClock();
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Act: Create request but never finish it
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
         'Network.requestWillBeSent',
         createRequestEvent({
@@ -442,10 +403,8 @@ void describe('Network telemetry contract', () => {
         })
       );
 
-      // Fast-forward past stale timeout (60s) + cleanup interval (30s)
       await clockHelper.tickAndFlush(91_000);
 
-      // Assert: Stale request is NOT in final output (removed from tracking)
       assert.equal(
         requests.length,
         0,
@@ -467,7 +426,6 @@ void describe('Network telemetry contract', () => {
 
       const MAX_REQUESTS = 10_000;
 
-      // Act: Try to collect more than the limit
       for (let i = 1; i <= MAX_REQUESTS + 100; i++) {
         mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
           'Network.requestWillBeSent',
@@ -490,7 +448,6 @@ void describe('Network telemetry contract', () => {
         });
       }
 
-      // Assert: Should never exceed MAX_NETWORK_REQUESTS
       assert.ok(
         requests.length <= MAX_REQUESTS,
         `Should not exceed ${MAX_REQUESTS} requests, got ${requests.length}`
@@ -502,10 +459,8 @@ void describe('Network telemetry contract', () => {
 
   void describe('Cleanup behavior', () => {
     void it('should remove all event handlers on cleanup', async () => {
-      // Arrange
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Assert: Handlers registered during start
       assert.ok(
         mockCDP.getHandlerCount('Network.requestWillBeSent') > 0,
         'Should have requestWillBeSent handler'
@@ -523,10 +478,8 @@ void describe('Network telemetry contract', () => {
         'Should have loadingFailed handler'
       );
 
-      // Act: Call cleanup
       void cleanup();
 
-      // Assert: All handlers removed
       assert.equal(
         mockCDP.getHandlerCount('Network.requestWillBeSent'),
         0,
@@ -552,25 +505,18 @@ void describe('Network telemetry contract', () => {
     void it('should be idempotent (safe to call multiple times)', async () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Act: Call cleanup multiple times
       void cleanup();
       void cleanup();
       void cleanup();
 
-      // Assert: No errors thrown, handlers remain removed
       assert.equal(mockCDP.getHandlerCount('Network.requestWillBeSent'), 0);
     });
   });
 
   void describe('Domain filtering', () => {
     void it('should exclude default tracking domains by default', async () => {
-      const cleanup = await startNetworkCollection(
-        mockCDP as unknown as CDPConnection,
-        requests
-        // includeAll defaults to false
-      );
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Act: Send requests to tracking domains
       const trackingDomains = [
         'https://www.google-analytics.com/collect',
         'https://connect.facebook.net/en_US/fbevents.js',
@@ -597,7 +543,6 @@ void describe('Network telemetry contract', () => {
         });
       }
 
-      // Assert: Tracking requests are filtered out
       assert.equal(requests.length, 0, 'Tracking domains should be filtered by default');
 
       void cleanup();
@@ -608,7 +553,6 @@ void describe('Network telemetry contract', () => {
         includeAll: true,
       });
 
-      // Act: Send request to tracking domain
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
         'Network.requestWillBeSent',
         createRequestEvent({
@@ -629,7 +573,6 @@ void describe('Network telemetry contract', () => {
         encodedDataLength: 100,
       });
 
-      // Assert: Request included when includeAll=true
       assert.equal(requests.length, 1);
       const request = requests[0];
       assert.ok(request, 'Request should exist');
@@ -647,7 +590,6 @@ void describe('Network telemetry contract', () => {
         { fetchAllBodies: true } // Force fetch all bodies for this test
       );
 
-      // Act: JSON response under 5MB
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
         'Network.requestWillBeSent',
         createRequestEvent({
@@ -683,10 +625,8 @@ void describe('Network telemetry contract', () => {
         encodedDataLength: 1024, // 1KB - under limit
       });
 
-      // Wait for async body fetch
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      // Assert: Should attempt to fetch body (mock doesn't actually fetch, but real code would)
       assert.equal(requests.length, 1);
 
       void cleanup();
@@ -699,7 +639,6 @@ void describe('Network telemetry contract', () => {
         { maxBodySize: 1024 } // 1KB limit for testing
       );
 
-      // Act: JSON response over size limit
       mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
         'Network.requestWillBeSent',
         createRequestEvent({
@@ -735,7 +674,6 @@ void describe('Network telemetry contract', () => {
         encodedDataLength: 10 * 1024 * 1024, // 10MB - over 1KB limit
       });
 
-      // Assert: Body should be marked as skipped
       assert.equal(requests.length, 1);
       const request = requests[0];
       assert.ok(request, 'Request should exist');
@@ -750,10 +688,8 @@ void describe('Network telemetry contract', () => {
 
   void describe('Initialization', () => {
     void it('should enable Network domain on start', async () => {
-      // Act
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 
-      // Assert: Network.enable was called
       assert.ok(mockCDP.wasNetworkEnabled(), 'Should call Network.enable');
 
       void cleanup();

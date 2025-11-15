@@ -27,6 +27,8 @@
  * );
  * ```
  */
+const limitReachedBuffers = new WeakSet<unknown[]>();
+
 export function pushWithLimit<T>(
   buffer: T[],
   item: T,
@@ -35,8 +37,10 @@ export function pushWithLimit<T>(
 ): void {
   if (buffer.length < limit) {
     buffer.push(item);
-  } else if (buffer.length === limit) {
-    onLimitReached();
+    if (buffer.length === limit && !limitReachedBuffers.has(buffer)) {
+      limitReachedBuffers.add(buffer);
+      onLimitReached();
+    }
   }
 }
 
