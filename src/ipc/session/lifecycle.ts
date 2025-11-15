@@ -33,6 +33,28 @@ export interface HandshakeResponse extends IPCMessage {
 }
 
 /**
+ * Session start options.
+ */
+export interface SessionOptions {
+  /** CDP port to use. */
+  port?: number;
+  /** Auto-stop timeout in seconds. */
+  timeout?: number;
+  /** Telemetry collectors to enable. */
+  telemetry?: TelemetryType[];
+  /** Include all data (disable filtering). */
+  includeAll?: boolean;
+  /** Custom Chrome user data directory. */
+  userDataDir?: string;
+  /** Max response body size in MB. */
+  maxBodySize?: number;
+  /** Launch Chrome in headless mode. */
+  headless?: boolean;
+  /** Connect to existing Chrome instance. */
+  chromeWsUrl?: string;
+}
+
+/**
  * Start session request (client → daemon).
  */
 export interface StartSessionRequest extends IPCMessage {

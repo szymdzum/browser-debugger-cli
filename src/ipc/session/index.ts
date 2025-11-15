@@ -7,6 +7,7 @@
 export * from './errors.js';
 export type * from './lifecycle.js';
 export type * from './queries.js';
+export type * from './types.js';
 
 import type { LifecycleMessageType } from './lifecycle.js';
 import type { QueryMessageType } from './queries.js';

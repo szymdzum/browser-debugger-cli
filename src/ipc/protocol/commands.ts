@@ -5,6 +5,8 @@
  * Each command has a request schema (input) and response data schema (output).
  */
 
+import type { PageState, SessionActivity } from '@/ipc/session/types.js';
+
 /**
  * Worker peek command request schema.
  */
@@ -70,10 +72,9 @@ export interface CdpCallData {
 }
 
 /**
- * Worker status command request schema.
+ * Worker status command request schema (no parameters required).
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface WorkerStatusCommand {}
+export type WorkerStatusCommand = Record<string, unknown>;
 
 /**
  * Worker status command response data.
@@ -81,14 +82,9 @@ export interface WorkerStatusCommand {}
 export interface WorkerStatusData {
   startTime: number;
   duration: number;
-  target: { url: string; title: string };
+  target: PageState;
   activeTelemetry: string[];
-  activity: {
-    networkRequestsCaptured: number;
-    consoleMessagesCaptured: number;
-    lastNetworkRequestAt?: number;
-    lastConsoleMessageAt?: number;
-  };
+  activity: SessionActivity;
 }
 
 /**

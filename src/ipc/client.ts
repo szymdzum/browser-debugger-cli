@@ -12,6 +12,7 @@ import type {
   HandshakeResponse,
   PeekRequest,
   PeekResponse,
+  SessionOptions,
   StartSessionRequest,
   StartSessionResponse,
   StatusRequest,
@@ -20,8 +21,6 @@ import type {
   StopSessionResponse,
 } from './session/index.js';
 import type { NoType } from './utils/index.js';
-
-import type { TelemetryType } from '@/types.js';
 
 import { sendRequest } from './transport/index.js';
 import { withSession } from './utils/index.js';
@@ -98,14 +97,6 @@ export async function getPeek(): Promise<PeekResponse> {
  *
  * @param url - Target URL to navigate to
  * @param options - Session configuration options
- * @param options.port - Custom CDP port (default: 9222)
- * @param options.timeout - Auto-stop timeout in seconds
- * @param options.telemetry - Telemetry collectors to enable
- * @param options.includeAll - Include all data (disable filtering)
- * @param options.userDataDir - Custom Chrome user data directory
- * @param options.maxBodySize - Max response body size in MB (default: 5)
- * @param options.headless - Launch Chrome in headless mode
- * @param options.chromeWsUrl - Connect to existing Chrome instance
  * @returns Start session response with worker and Chrome PIDs
  * @throws Error if connection fails, session already running, or Chrome launch fails
  *
@@ -123,16 +114,7 @@ export async function getPeek(): Promise<PeekResponse> {
  */
 export async function startSession(
   url: string,
-  options?: {
-    port?: number;
-    timeout?: number;
-    telemetry?: TelemetryType[];
-    includeAll?: boolean;
-    userDataDir?: string;
-    maxBodySize?: number;
-    headless?: boolean;
-    chromeWsUrl?: string;
-  }
+  options?: SessionOptions
 ): Promise<StartSessionResponse> {
   const request: StartSessionRequest = withSession({
     type: 'start_session_request',
