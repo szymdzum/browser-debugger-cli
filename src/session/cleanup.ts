@@ -22,9 +22,9 @@ const log = createLogger('cleanup');
 function killOrphanedWorker(pid: number): void {
   try {
     process.kill(pid, 'SIGKILL');
-    log(`Force killed orphaned worker process ${pid}`);
+    log.info(`Force killed orphaned worker process ${pid}`);
   } catch (error) {
-    log(`Failed to kill orphaned worker process ${pid}: ${getErrorMessage(error)}`);
+    log.info(`Failed to kill orphaned worker process ${pid}: ${getErrorMessage(error)}`);
   }
 }
 
@@ -34,14 +34,14 @@ function killCachedChromeProcess(reason: string): void {
     return;
   }
 
-  log(`Killing cached Chrome process ${chromePid} (${reason})`);
+  log.info(`Killing cached Chrome process ${chromePid} (${reason})`);
 
   let killSucceeded = false;
   try {
     killChromeProcess(chromePid, 'SIGKILL');
     killSucceeded = true;
   } catch (error) {
-    log(`Failed to kill Chrome process ${chromePid}: ${getErrorMessage(error)}`);
+    log.info(`Failed to kill Chrome process ${chromePid}: ${getErrorMessage(error)}`);
   } finally {
     if (killSucceeded || !isProcessAlive(chromePid)) {
       clearChromePid();
@@ -72,39 +72,32 @@ function killCachedChromeProcess(reason: string): void {
 export function cleanupStaleSession(): boolean {
   ensureSessionDir();
 
-  // Try to acquire the session lock
   const lockAcquired = acquireSessionLock();
 
   if (!lockAcquired) {
-    // Lock is held by another process - check if it's still alive
     const lockPath = getSessionFilePath('LOCK');
     try {
       const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
       const lockPid = parseInt(lockPidStr, 10);
 
       if (!Number.isNaN(lockPid) && isProcessAlive(lockPid)) {
-        // Active session is running - don't clean up
         return false;
       }
-    } catch {
-      // Can't read lock file - will clean it up below
+    } catch (error) {
+      log.debug(`Failed to read stale session lock: ${getErrorMessage(error)}`);
     }
 
-    // Lock exists but process is dead - force acquire
     try {
       fs.rmSync(lockPath, { force: true });
-    } catch {
-      // Ignore if already deleted
+    } catch (error) {
+      log.debug(`Failed to remove stale session lock: ${getErrorMessage(error)}`);
     }
 
-    // Try to acquire lock again
     if (!acquireSessionLock()) {
-      // Still can't acquire - another process may have grabbed it
       return false;
     }
   }
 
-  // We now hold the lock - check if session and daemon processes are alive
   try {
     const sessionPid = readPid();
     let sessionAlive = sessionPid !== null && isProcessAlive(sessionPid);
@@ -128,15 +121,12 @@ export function cleanupStaleSession(): boolean {
       return false;
     }
 
-    // All processes are dead - clean up stale artifacts
     log.info('Removing stale session files...');
 
     killCachedChromeProcess('stale session cleanup');
 
-    // Remove session PID
     cleanupPidFile();
 
-    // Remove all session files using helper
     safeDeleteFile(getSessionFilePath('METADATA'), 'metadata file', log);
     safeDeleteFile(daemonPidPath, 'daemon PID file', log);
     safeDeleteFile(getSessionFilePath('DAEMON_SOCKET'), 'daemon socket', log);
@@ -146,7 +136,6 @@ export function cleanupStaleSession(): boolean {
 
     return true;
   } finally {
-    // Always release the lock
     releaseSessionLock();
   }
 }
@@ -166,8 +155,8 @@ export function cleanupSession(): void {
   const metaPath = getSessionFilePath('METADATA');
   try {
     fs.rmSync(metaPath, { force: true });
-  } catch {
-    // Ignore errors
+  } catch (error) {
+    log.debug(`Failed to remove metadata file: ${getErrorMessage(error)}`);
   }
 }
 
@@ -188,15 +177,12 @@ export function cleanupStaleDaemonPid(): boolean {
     const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
     const daemonPid = parseInt(daemonPidStr, 10);
 
-    // If daemon is still alive, don't clean up
     if (!Number.isNaN(daemonPid) && isProcessAlive(daemonPid)) {
       return false;
     }
 
-    // Daemon is dead - clean up stale PID and lock files
     log.info(`Daemon not running (stale PID ${daemonPid}), cleaning up...`);
 
-    // Remove daemon PID
     try {
       fs.rmSync(daemonPidPath, { force: true });
       log.info('Removed stale daemon PID file');
@@ -204,7 +190,6 @@ export function cleanupStaleDaemonPid(): boolean {
       log.info(`Failed to remove daemon PID: ${getErrorMessage(error)}`);
     }
 
-    // Remove daemon socket
     const socketPath = getSessionFilePath('DAEMON_SOCKET');
     if (fs.existsSync(socketPath)) {
       try {
@@ -215,7 +200,6 @@ export function cleanupStaleDaemonPid(): boolean {
       }
     }
 
-    // Remove daemon lock
     const lockPath = getSessionFilePath('DAEMON_LOCK');
     if (fs.existsSync(lockPath)) {
       try {
@@ -228,7 +212,6 @@ export function cleanupStaleDaemonPid(): boolean {
 
     return true;
   } catch {
-    // Can't read daemon PID - will clean it up
     try {
       fs.rmSync(daemonPidPath, { force: true });
       return true;

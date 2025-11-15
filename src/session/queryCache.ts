@@ -41,7 +41,6 @@ export function writeQueryCache(cache: DomQueryCache): void {
     const cachePath = getDomQueryCachePath();
     AtomicFileWriter.writeSync(cachePath, JSON.stringify(cache, null, 2), { encoding: 'utf8' });
   } catch (error) {
-    // Silently fail - cache is optional and non-critical for CLI operation
     console.error(domCacheWriteWarning(getErrorMessage(error)));
   }
 }
@@ -67,7 +66,6 @@ export function readQueryCache(): DomQueryCache | null {
     const now = Date.now();
 
     if (now - cacheTime > CACHE_EXPIRY_MS) {
-      // Cache expired - delete it
       try {
         fs.rmSync(cachePath, { force: true });
       } catch (error) {
@@ -78,7 +76,6 @@ export function readQueryCache(): DomQueryCache | null {
 
     return cache;
   } catch {
-    // Silently fail - cache is optional, missing/corrupt cache doesn't affect core functionality
     return null;
   }
 }

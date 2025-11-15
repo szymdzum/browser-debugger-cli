@@ -7,8 +7,13 @@
 
 import * as fs from 'fs';
 
+import { getErrorMessage } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
+
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { isProcessAlive } from './process.js';
+
+const log = createLogger('lock');
 
 type LockFile = 'LOCK' | 'DAEMON_LOCK';
 
@@ -21,26 +26,21 @@ function acquireLock(file: LockFile): boolean {
   const lockPath = getSessionFilePath(file);
 
   try {
-    // 'wx' flag creates file exclusively - fails if exists
     fs.writeFileSync(lockPath, process.pid.toString(), { flag: 'wx' });
     return true;
   } catch (error: unknown) {
     if (isErrnoException(error) && error.code === 'EEXIST') {
-      // Lock file exists - check if process is still alive
       try {
         const lockPidStr = fs.readFileSync(lockPath, 'utf-8').trim();
         const lockPid = parseInt(lockPidStr, 10);
 
         if (!Number.isNaN(lockPid) && isProcessAlive(lockPid)) {
-          // Lock is held by active process
           return false;
         } else {
-          // Stale lock file - remove it and try again
           fs.rmSync(lockPath, { force: true });
           return acquireLock(file);
         }
       } catch {
-        // Can't read lock file - assume it's stale
         try {
           fs.rmSync(lockPath, { force: true });
           return acquireLock(file);
@@ -57,8 +57,8 @@ function releaseLock(file: LockFile): void {
   const lockPath = getSessionFilePath(file);
   try {
     fs.rmSync(lockPath, { force: true });
-  } catch {
-    // Ignore errors during cleanup
+  } catch (error) {
+    log.debug(`Failed to release lock file ${file}: ${getErrorMessage(error)}`);
   }
 }
 
