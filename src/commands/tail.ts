@@ -15,11 +15,8 @@ import { parsePositiveIntOption } from '@/utils/validation.js';
  * These mirror CLI flags and keep raw string values for options that
  * need validation/parsing (like --last and --interval).
  */
-interface TailCommandOptions {
-  json?: boolean;
-  network?: boolean;
-  console?: boolean;
-  verbose?: boolean;
+interface TailCommandOptions
+  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'verbose'> {
   last?: string;
   /** Update interval in milliseconds */
   interval?: string;
@@ -44,17 +41,24 @@ export function registerTailCommand(program: Command): void {
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailCommandOptions) => {
-      const lastN = parsePositiveIntOption('last', options.last, {
-        defaultValue: 10,
-        min: 1,
-        max: 1000,
-      });
+      let lastN: number;
+      let interval: number;
+      try {
+        lastN = parsePositiveIntOption('last', options.last, {
+          defaultValue: 10,
+          min: 1,
+          max: 1000,
+        });
 
-      const interval = parsePositiveIntOption('interval', options.interval, {
-        defaultValue: 1000,
-        min: 100,
-        max: 60000,
-      });
+        interval = parsePositiveIntOption('interval', options.interval, {
+          defaultValue: 1000,
+          min: 100,
+          max: 60000,
+        });
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      }
 
       /**
        * Fetch and display preview data.

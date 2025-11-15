@@ -4,6 +4,8 @@
  * User-facing messages for input validation failures across commands.
  */
 
+import { joinLines } from '@/ui/formatting.js';
+
 /**
  * Options for integer validation error messages.
  */
@@ -54,9 +56,7 @@ export function invalidIntegerError(
 
   const example = options?.exampleValue ?? options?.min ?? 30;
 
-  return [header, rangeInfo, '', `Example: --${fieldName} ${example}`]
-    .filter((line): line is string => Boolean(line))
-    .join('\n');
+  return joinLines(header, rangeInfo, '', `Example: --${fieldName} ${example}`);
 }
 
 /**

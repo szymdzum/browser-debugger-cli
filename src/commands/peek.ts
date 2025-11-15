@@ -15,12 +15,8 @@ import { parsePositiveIntOption } from '@/utils/validation.js';
  * These mirror CLI flags and keep raw string values for options that
  * need validation/parsing (like --last).
  */
-interface PeekCommandOptions {
-  json?: boolean;
-  network?: boolean;
-  console?: boolean;
-  verbose?: boolean;
-  follow?: boolean;
+interface PeekCommandOptions
+  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'verbose' | 'follow'> {
   last?: string;
 }
 
@@ -40,11 +36,17 @@ export function registerPeekCommand(program: Command): void {
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .action(async (options: PeekCommandOptions) => {
-      const lastN = parsePositiveIntOption('last', options.last, {
-        defaultValue: 10,
-        min: 1,
-        max: 1000,
-      });
+      let lastN: number;
+      try {
+        lastN = parsePositiveIntOption('last', options.last, {
+          defaultValue: 10,
+          min: 1,
+          max: 1000,
+        });
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+      }
 
       const previewBase: PreviewOptions = {
         json: options.json,
