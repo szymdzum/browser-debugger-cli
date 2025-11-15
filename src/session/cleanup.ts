@@ -163,21 +163,65 @@ export function cleanupStaleSession(): boolean {
 /**
  * Cleanup all session files after a session ends.
  *
- * Removes PID, lock, and metadata files.
+ * Removes session-specific files while preserving chrome-profile directory
+ * which contains user preferences, cookies, and cached data.
+ *
+ * Files removed:
+ * - session.pid (worker PID)
+ * - session.lock (session lock)
+ * - session.meta.json (session metadata)
+ * - daemon.pid, daemon.sock, daemon.lock (daemon files)
+ *
+ * Files preserved:
+ * - session.json (output file - user needs to read it)
+ * - chrome.pid (for emergency cleanup - auto-removed if Chrome is dead)
+ * - chrome-profile/ directory (cookies, preferences, cache)
+ *
  * Safe to call multiple times (idempotent).
  *
- * WHY: Ensures clean slate for next session, prevents stale file accumulation.
+ * WHY: Ensures clean slate for next session while preserving user preferences.
  */
 export function cleanupSession(): void {
+  // Clean up worker session files
   cleanupPidFile();
   releaseSessionLock();
 
-  const metaPath = getSessionFilePath('METADATA');
+  // Remove session metadata
   try {
-    fs.rmSync(metaPath, { force: true });
+    fs.rmSync(getSessionFilePath('METADATA'), { force: true });
   } catch (error) {
     log.debug(`Failed to remove metadata file: ${getErrorMessage(error)}`);
   }
+
+  // NOTE: chrome.pid is intentionally NOT removed here
+  // It's used for emergency cleanup (bdg cleanup --chrome)
+  // and is automatically cleaned when Chrome process dies (via readChromePid)
+
+  // Remove daemon files
+  try {
+    fs.rmSync(getSessionFilePath('DAEMON_PID'), { force: true });
+  } catch (error) {
+    log.debug(`Failed to remove daemon PID file: ${getErrorMessage(error)}`);
+  }
+
+  try {
+    fs.rmSync(getSessionFilePath('DAEMON_SOCKET'), { force: true });
+  } catch (error) {
+    log.debug(`Failed to remove daemon socket: ${getErrorMessage(error)}`);
+  }
+
+  try {
+    fs.rmSync(getSessionFilePath('DAEMON_LOCK'), { force: true });
+  } catch (error) {
+    log.debug(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
+  }
+
+  // NOTE: session.json (OUTPUT) is intentionally NOT removed
+  // User needs to read the output file after session ends
+  // They can manually delete it or use `bdg cleanup` to remove all files
+
+  // NOTE: chrome-profile/ directory is intentionally NOT removed
+  // to preserve user preferences, cookies, and cached data across sessions
 }
 
 /**
