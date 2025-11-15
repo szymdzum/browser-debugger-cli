@@ -12,8 +12,7 @@ import {
   formatNoSessionMessage,
   type StatusData,
 } from '@/ui/formatters/status.js';
-import { daemonNotRunningWithCleanup } from '@/ui/messages/commands.js';
-import { invalidResponseError } from '@/ui/messages/errors.js';
+import { invalidResponseError, daemonNotRunningError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -107,9 +106,11 @@ export function registerStatusCommand(program: Command): void {
             const errorMessage = getErrorMessage(error);
             if (isDaemonConnectionError(error)) {
               const cleaned = cleanupStaleDaemonPid();
+              // Use unified daemon error helper to keep messaging consistent
+              // across commands.
               return {
                 success: false,
-                error: daemonNotRunningWithCleanup(cleaned),
+                error: daemonNotRunningError({ staleCleanedUp: cleaned }),
                 exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
               };
             }

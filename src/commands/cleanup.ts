@@ -10,6 +10,7 @@ import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
+import { joinLines } from '@/ui/formatting.js';
 import {
   sessionFilesCleanedMessage,
   sessionOutputRemovedMessage,
@@ -59,25 +60,15 @@ interface CleanupResult {
  * @param data - Cleanup result data
  */
 function formatCleanup(data: CleanupResult): string {
-  const lines: string[] = [];
   const { cleaned } = data;
 
-  if (cleaned.session) {
-    lines.push(sessionFilesCleanedMessage());
-  }
-  if (cleaned.output) {
-    lines.push(sessionOutputRemovedMessage());
-  }
-  if (data.warnings && data.warnings.length > 0) {
-    data.warnings.forEach((warning) => {
-      lines.push(warningMessage(warning));
-    });
-  }
-
-  lines.push('');
-  lines.push(data.message);
-
-  return lines.join('\n');
+  return joinLines(
+    cleaned.session && sessionFilesCleanedMessage(),
+    cleaned.output && sessionOutputRemovedMessage(),
+    ...(data.warnings ?? []).map((warning) => warningMessage(warning)),
+    '',
+    data.message
+  );
 }
 
 /**

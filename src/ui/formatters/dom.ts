@@ -31,11 +31,14 @@ export function formatDomQuery(data: DomQueryResult): string {
   const fmt = new OutputFormatter();
 
   if (count === 0) {
+    // Escape single quotes in selector to keep the suggestion command valid
+    const safeSelector = selector.replace(/'/g, "\\'");
+
     return fmt
       .text(`No elements found matching "${selector}"`)
       .blank()
       .section('Suggestions:', [
-        `Verify selector: bdg dom eval "document.querySelector('${selector}')"`,
+        `Verify selector: bdg dom eval "document.querySelector('${safeSelector}')"`,
         'List elements:   bdg dom query "*"',
       ])
       .build();

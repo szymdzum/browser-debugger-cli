@@ -6,6 +6,7 @@ import { startSessionViaDaemon } from '@/commands/shared/daemonSessionController
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
+import { genericError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { parseOptionalIntOption } from '@/utils/validation.js';
 
@@ -132,7 +133,7 @@ export function registerStartCommands(program: Command): void {
     const { validateUrl } = await import('@/utils/url.js');
     const validation = validateUrl(url);
     if (!validation.valid) {
-      console.error(`Error: ${validation.error}`);
+      console.error(genericError(validation.error ?? 'Invalid URL'));
       if (validation.suggestion) {
         console.error(`Suggestion: ${validation.suggestion}`);
       }

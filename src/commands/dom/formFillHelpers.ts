@@ -48,7 +48,10 @@ export async function fillElement(
     if (!indexResult.success) {
       return indexResult as FillResult;
     }
-    targetSelector = indexResult.uniqueSelector!;
+    if (!indexResult.uniqueSelector) {
+      throw new CDPConnectionError('Failed to resolve unique selector for element index');
+    }
+    targetSelector = indexResult.uniqueSelector;
   }
 
   // Execute the fill script
@@ -119,7 +122,10 @@ export async function clickElement(
     if (!indexResult.success) {
       return indexResult as ClickResult;
     }
-    targetSelector = indexResult.uniqueSelector!;
+    if (!indexResult.uniqueSelector) {
+      throw new CDPConnectionError('Failed to resolve unique selector for element index');
+    }
+    targetSelector = indexResult.uniqueSelector;
   }
 
   // Execute the click script

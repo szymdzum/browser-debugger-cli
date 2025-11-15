@@ -9,6 +9,7 @@ import { clearChromePid } from '@/session/chrome.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { killChromeProcess } from '@/session/process.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
+import { joinLines } from '@/ui/formatting.js';
 import { chromeKilledMessage, warningMessage } from '@/ui/messages/commands.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -42,22 +43,13 @@ interface StopResult {
  * @param data - Stop result data
  */
 function formatStop(data: StopResult): string {
-  const lines: string[] = [];
+  const outputLine = data.stopped.bdg ? sessionStopped(getSessionFilePath('OUTPUT')) : undefined;
 
-  if (data.stopped.bdg) {
-    const outputPath = getSessionFilePath('OUTPUT');
-    lines.push(sessionStopped(outputPath));
-  }
-  if (data.stopped.chrome) {
-    lines.push(chromeKilledMessage());
-  }
-  if (data.warnings && data.warnings.length > 0) {
-    data.warnings.forEach((warning) => {
-      lines.push(warningMessage(warning));
-    });
-  }
-
-  return lines.join('\n');
+  return joinLines(
+    outputLine,
+    data.stopped.chrome && chromeKilledMessage(),
+    ...(data.warnings ?? []).map((warning) => warningMessage(warning))
+  );
 }
 
 /**

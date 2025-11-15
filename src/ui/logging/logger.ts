@@ -97,8 +97,8 @@ export interface Logger {
  * Create a logger instance for a specific context.
  *
  * WHY: Provides consistent log formatting with context prefix and level support.
- * By default, ALL logs are hidden unless --debug flag or BDG_DEBUG=1 is set.
- * This keeps normal output clean and only shows logs when debugging.
+ * 'info' logs are always shown, while 'debug' logs are only shown when the
+ * --debug flag is used or BDG_DEBUG=1 is set.
  *
  * @param context - Component context for log prefix
  * @returns Logger instance with info/debug methods

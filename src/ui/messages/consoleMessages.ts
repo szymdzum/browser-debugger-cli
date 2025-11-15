@@ -2,7 +2,9 @@
  * Console command messages (bdg console)
  *
  * User-facing messages for the console command output and formatting.
- */
+ * */
+
+import { joinLines } from '@/ui/formatting.js';
 
 /**
  * Generate "no console messages found" message.
@@ -41,9 +43,5 @@ export function noConsoleMessagesMessage(filter?: string): string {
  * ```
  */
 export function consoleMessagesHeader(count: number, filter?: string): string {
-  const lines = [`Console messages (${count} total):`];
-  if (filter) {
-    lines.push(`Filtered by type: ${filter}`);
-  }
-  return lines.join('\n');
+  return joinLines(`Console messages (${count} total):`, filter && `Filtered by type: ${filter}`);
 }

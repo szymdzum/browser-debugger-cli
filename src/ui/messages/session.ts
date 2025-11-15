@@ -5,7 +5,7 @@
  * status displays, and session management messages.
  */
 
-import { section } from '@/ui/formatting.js';
+import { section, joinLines } from '@/ui/formatting.js';
 
 /**
  * Options for the landing page display.
@@ -34,53 +34,41 @@ export interface LandingPageOptions {
 export function landingPage(options: LandingPageOptions): string {
   const { url } = options;
 
-  const lines: string[] = [];
-
-  lines.push('');
-  lines.push('◆ Session Started');
-  lines.push('');
-  lines.push(`Target: ${url}`);
-  lines.push('');
-  lines.push(
+  return joinLines(
+    '',
+    '◆ Session Started',
+    '',
+    `Target: ${url}`,
+    '',
     section('Raw CDP Access (53 domains, 300+ methods):', [
       'bdg cdp --list             List all domains',
       'bdg cdp Network --list     List Network methods',
       'bdg cdp --search cookie    Search methods',
       'bdg cdp runtime.evaluate --params \'{"expression":"document.title"}\'',
-    ])
-  );
-  lines.push('');
-  lines.push(
+    ]),
+    '',
     section('Live Monitoring:', [
       'bdg peek        Preview collected data (last 10 items)',
       'bdg tail        Continuous monitoring (live updates)',
       'bdg details <type> <id>    Full request/console details',
-    ])
-  );
-  lines.push('');
-  lines.push(
+    ]),
+    '',
     section('Domain Wrappers:', [
       'bdg dom query <selector>   Query DOM elements',
       'bdg dom eval <js>          Execute JavaScript',
-    ])
-  );
-  lines.push('');
-  lines.push(
+    ]),
+    '',
     section('Session:', [
       'bdg status      Check session state',
       'bdg stop        End session & save output',
-    ])
-  );
-  lines.push('');
-  lines.push(
+    ]),
+    '',
     section('Discovery (for AI agents):', [
       'bdg --help --json          Machine-readable schema (commands, options, exit codes)',
       '.claude/skills/bdg/        Claude skill with 15+ recipes & patterns',
-    ])
+    ]),
+    ''
   );
-  lines.push('');
-
-  return lines.join('\n');
 }
 
 /**

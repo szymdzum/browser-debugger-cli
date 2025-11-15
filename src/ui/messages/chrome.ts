@@ -5,7 +5,7 @@
  */
 
 import type { ChromeDiagnostics } from '@/connection/diagnostics.js';
-import { pluralize } from '@/ui/formatting.js';
+import { pluralize, joinLines } from '@/ui/formatting.js';
 
 /**
  * Format Chrome diagnostics for error reporting when Chrome launch fails.
@@ -158,22 +158,20 @@ export function chromeExternalSkipTerminationMessage(): string {
  * @returns Formatted error message with diagnostics and troubleshooting steps
  */
 export function noPageTargetFoundError(port: number, availableTargets: string | null): string {
-  const lines: string[] = [];
-
-  lines.push('No page target found after Chrome launch\n');
-  lines.push('Possible causes:');
-  lines.push(`  1. Port conflict (${port})`);
-  lines.push(`     → Check: lsof -ti:${port}`);
-  lines.push(`     → Kill: pkill -f "chrome.*${port}"`);
-  lines.push('  2. Chrome failed to create default target');
-  lines.push('  3. Stale session');
-  lines.push('     → Fix: bdg cleanup && bdg <url>\n');
-  lines.push(`Available Chrome targets:\n${availableTargets ?? '  (none)'}\n`);
-  lines.push('Try:');
-  lines.push('  - Clean up and retry: bdg cleanup && bdg <url>');
-  lines.push(`  - Use different port: bdg <url> --port ${port + 1}`);
-
-  return lines.join('\n');
+  return joinLines(
+    'No page target found after Chrome launch\n',
+    'Possible causes:',
+    `  1. Port conflict (${port})`,
+    `     → Check: lsof -ti:${port}`,
+    `     → Kill: pkill -f "chrome.*${port}"`,
+    '  2. Chrome failed to create default target',
+    '  3. Stale session',
+    '     → Fix: bdg cleanup && bdg <url>\n',
+    `Available Chrome targets:\n${availableTargets ?? '  (none)'}\n`,
+    'Try:',
+    '  - Clean up and retry: bdg cleanup && bdg <url>',
+    `  - Use different port: bdg <url> --port ${port + 1}`
+  );
 }
 
 /**
@@ -293,10 +291,10 @@ export function cleanupChromeAttemptingMessage(): string {
  * ```
  */
 export function cleanupChromePidNotFoundMessage(): string {
-  const lines: string[] = [];
-  lines.push('Warning: No Chrome PID found in cache');
-  lines.push('   Either Chrome was already running, or no Chrome was launched by bdg\n');
-  return lines.join('\n');
+  return joinLines(
+    'Warning: No Chrome PID found in cache',
+    '   Either Chrome was already running, or no Chrome was launched by bdg\n'
+  );
 }
 
 /**
@@ -341,10 +339,10 @@ export function cleanupChromeSuccessMessage(): string {
  * ```
  */
 export function cleanupChromeFailedMessage(error: string): string {
-  const lines: string[] = [];
-  lines.push(`Error: Failed to kill Chrome process: ${error}`);
-  lines.push('   Try manually killing Chrome processes if issues persist\n');
-  return lines.join('\n');
+  return joinLines(
+    `Error: Failed to kill Chrome process: ${error}`,
+    '   Try manually killing Chrome processes if issues persist\n'
+  );
 }
 
 /**
