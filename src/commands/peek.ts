@@ -1,40 +1,14 @@
 import type { Command } from 'commander';
 
-import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/responseValidator.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
-import { invalidLastArgumentError } from '@/ui/messages/commands.js';
-import { daemonNotRunningError, noPreviewDataError } from '@/ui/messages/errors.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
+import { handleDaemonConnectionError } from '@/utils/daemonErrors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-/**
- * Handle errors in a consistent way for both follow and one-time modes.
- *
- * @param error - Error message
- * @param options - Preview options
- * @param exitCode - Exit code to use if not in follow mode
- */
-function handlePreviewError(error: string, options: PreviewOptions, exitCode: number): void {
-  const timestamp = new Date().toISOString();
-
-  if (options.json) {
-    console.log(JSON.stringify(OutputBuilder.buildJsonError(error, { exitCode }), null, 2));
-  } else {
-    console.error(noPreviewDataError());
-  }
-
-  if (!options.follow) {
-    process.exit(exitCode);
-  } else {
-    // In follow mode, show error but keep retrying
-    console.error(`\n[${timestamp}] ⚠️  Connection lost, retrying every 1s...`);
-    console.error('Press Ctrl+C to stop');
-  }
-}
+import { parsePositiveIntOption } from '@/utils/validation.js';
 
 /**
  * Register peek command.
@@ -52,12 +26,11 @@ export function registerPeekCommand(program: Command): void {
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .action(async (options: PreviewOptions) => {
-      // Validate --last parameter
-      const lastN = parseInt(options.last ?? '10', 10);
-      if (isNaN(lastN) || lastN < 1 || lastN > 1000) {
-        console.error(invalidLastArgumentError(options.last));
-        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-      }
+      const lastN = parsePositiveIntOption('last', options.last, {
+        defaultValue: 10,
+        min: 1,
+        max: 1000,
+      });
       options.last = lastN.toString();
 
       const showPreview = async (): Promise<void> => {
@@ -69,22 +42,30 @@ export function registerPeekCommand(program: Command): void {
           try {
             validateIPCResponse(response);
           } catch {
-            handlePreviewError(
-              response.error ?? 'Unknown error',
-              options,
-              EXIT_CODES.RESOURCE_NOT_FOUND
-            );
+            const result = handleDaemonConnectionError(response.error ?? 'Unknown error', {
+              json: options.json,
+              follow: options.follow,
+              retryIntervalMs: 1000,
+              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
+            });
+            if (result.shouldExit) {
+              process.exit(result.exitCode);
+            }
             return;
           }
 
           // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output) {
-            handlePreviewError(
-              'No preview data in response',
-              options,
-              EXIT_CODES.RESOURCE_NOT_FOUND
-            );
+            const result = handleDaemonConnectionError('No preview data in response', {
+              json: options.json,
+              follow: options.follow,
+              retryIntervalMs: 1000,
+              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
+            });
+            if (result.shouldExit) {
+              process.exit(result.exitCode);
+            }
             return;
           }
 
@@ -100,24 +81,13 @@ export function registerPeekCommand(program: Command): void {
 
           console.log(formatPreview(output, previewOptions));
         } catch {
-          // Handle IPC connection errors (daemon not running, etc.)
-          // Note: validateIPCResponse errors are caught above
-          if (options.json) {
-            console.log(
-              JSON.stringify(
-                OutputBuilder.buildJsonError('Daemon not running', {
-                  suggestion: 'Start it with: bdg <url>',
-                }),
-                null,
-                2
-              )
-            );
-          } else {
-            console.error(daemonNotRunningError());
-          }
-
-          if (!options.follow) {
-            process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
+          const result = handleDaemonConnectionError('Daemon not running', {
+            json: options.json,
+            follow: options.follow,
+            retryIntervalMs: 1000,
+          });
+          if (result.shouldExit) {
+            process.exit(result.exitCode);
           }
         }
       };

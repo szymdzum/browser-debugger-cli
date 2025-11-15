@@ -3,6 +3,7 @@ import fs from 'fs';
 import { getDomQueryCachePath } from '@/session/paths.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
 import { domCacheWriteWarning } from '@/ui/messages/internal.js';
+import { AtomicFileWriter } from '@/utils/atomicFile.js';
 
 /**
  * DOM query cache structure
@@ -29,12 +30,15 @@ const CACHE_EXPIRY_MS = 5 * 60 * 1000;
 /**
  * Write DOM query results to cache
  *
+ * Uses AtomicFileWriter to prevent corruption from concurrent writes or
+ * crashes during write operations.
+ *
  * @param cache - DOM query cache data to write
  */
 export function writeQueryCache(cache: DomQueryCache): void {
   try {
     const cachePath = getDomQueryCachePath();
-    fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf8');
+    AtomicFileWriter.writeSync(cachePath, JSON.stringify(cache, null, 2), { encoding: 'utf8' });
   } catch (error) {
     // Silently fail - cache is optional and non-critical for CLI operation
     console.error(domCacheWriteWarning(getErrorMessage(error)));

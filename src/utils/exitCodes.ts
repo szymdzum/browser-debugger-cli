@@ -14,13 +14,8 @@
  * Exit code constants following semantic ranges.
  */
 export const EXIT_CODES = {
-  // Success
   SUCCESS: 0,
-
-  // Generic failure (backward compatibility)
   GENERIC_FAILURE: 1,
-
-  // User errors (80-99)
   INVALID_URL: 80,
   INVALID_ARGUMENTS: 81,
   PERMISSION_DENIED: 82,
@@ -28,8 +23,6 @@ export const EXIT_CODES = {
   RESOURCE_ALREADY_EXISTS: 84,
   RESOURCE_BUSY: 85,
   DAEMON_ALREADY_RUNNING: 86,
-
-  // Software/Integration errors (100-119)
   CHROME_LAUNCH_FAILURE: 100,
   CDP_CONNECTION_FAILURE: 101,
   CDP_TIMEOUT: 102,

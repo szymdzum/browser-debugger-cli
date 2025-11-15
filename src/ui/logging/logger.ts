@@ -58,6 +58,7 @@ export type LogContext =
   | 'chrome'
   | 'cdp'
   | 'ipc'
+  | 'http'
   | 'dialogs'
   | 'navigation';
 

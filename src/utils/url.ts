@@ -2,15 +2,14 @@
  * URL normalization, validation, and parsing utilities.
  */
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 /**
  * Valid URL protocols for Chrome navigation.
  *
  * Excludes legacy protocols (vbscript) and limits to protocols
  * actually useful for modern web debugging scenarios.
+ *
+ * Includes javascript: for browser automation compatibility, though
+ * it's generally not recommended for direct navigation.
  */
 const VALID_PROTOCOLS = [
   'http:',
@@ -19,6 +18,7 @@ const VALID_PROTOCOLS = [
   'about:',
   'chrome:',
   'data:',
+  'javascript:',
   'blob:',
 ] as const;
 
@@ -36,23 +36,22 @@ const PRESERVED_PROTOCOL_PREFIXES = [
   'blob:',
 ] as const;
 
-// ============================================================================
-// URL Normalization
-// ============================================================================
-
 /**
  * Normalize a URL by adding http:// protocol if missing.
  *
  * Supports: localhost:3000, example.com, http://localhost, file:// URLs
  * Preserves special browser protocols: about:, chrome:, data:, javascript:, blob:
  *
+ * Case-insensitive protocol detection supports HTTPS://, HTTP://, etc.
+ *
  * @param url - URL string to normalize
- * @returns Normalized URL with protocol
+ * @returns Normalized URL with lowercase protocol
  *
  * @example
  * ```typescript
  * normalizeUrl('localhost:3000')      // → 'http://localhost:3000'
  * normalizeUrl('https://example.com') // → 'https://example.com'
+ * normalizeUrl('HTTPS://example.com') // → 'https://example.com'
  * normalizeUrl('example.com/path')    // → 'http://example.com/path'
  * normalizeUrl('about:blank')         // → 'about:blank' (unchanged)
  * normalizeUrl('chrome://settings')   // → 'chrome://settings' (unchanged)
@@ -63,16 +62,24 @@ const PRESERVED_PROTOCOL_PREFIXES = [
  * though it's generally not recommended for direct navigation.
  */
 export function normalizeUrl(url: string): string {
-  // Check for protocols that should not be modified
-  if (PRESERVED_PROTOCOL_PREFIXES.some((prefix) => url.startsWith(prefix))) {
+  const urlLower = url.toLowerCase();
+
+  const hasPreservedPrefix = PRESERVED_PROTOCOL_PREFIXES.some((prefix) =>
+    urlLower.startsWith(prefix)
+  );
+
+  if (hasPreservedPrefix) {
+    const protocolMatch = url.match(/^([a-z]+:\/?\/?)/i);
+    if (protocolMatch?.[1]) {
+      const protocol = protocolMatch[1].toLowerCase();
+      const rest = url.slice(protocolMatch[1].length);
+      return protocol + rest;
+    }
     return url;
   }
+
   return `http://${url}`;
 }
-
-// ============================================================================
-// URL Validation
-// ============================================================================
 
 /**
  * Validate that a URL is valid and usable for Chrome navigation.
@@ -101,7 +108,6 @@ export function validateUrl(url: string): {
   error?: string;
   suggestion?: string;
 } {
-  // Empty URL
   if (!url || url.trim().length === 0) {
     return {
       valid: false,
@@ -110,7 +116,6 @@ export function validateUrl(url: string): {
     };
   }
 
-  // Check for spaces (common error)
   if (url.includes(' ')) {
     return {
       valid: false,
@@ -119,19 +124,33 @@ export function validateUrl(url: string): {
     };
   }
 
-  // Check for invalid characters in hostname/protocol (before normalization)
-  // This prevents malformed URLs like "ht!tp://example" from being normalized to "http://ht!tp://example"
-  const beforePath = url.split('/')[0] ?? '';
-  if (/[!@#$%^&*()=+[\]{}\\|;'",<>?]/.test(beforePath)) {
+  const normalized = normalizeUrl(url);
+
+  const urlLower = url.toLowerCase();
+  if (urlLower.startsWith('vbscript:')) {
     return {
       valid: false,
-      error: `Invalid URL format: '${url}' (contains invalid characters)`,
-      suggestion:
-        'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol',
+      error: `Dangerous protocol: 'vbscript:' is not allowed`,
+      suggestion: 'Use http://, https://, or other safe protocols',
     };
   }
 
-  const normalized = normalizeUrl(url);
+  const isSpecialProtocol =
+    urlLower.startsWith('javascript:') ||
+    urlLower.startsWith('data:') ||
+    urlLower.startsWith('blob:');
+
+  if (!isSpecialProtocol) {
+    const beforePath = url.split('/')[0] ?? '';
+    if (/[!@#$%^&*()=+[\]{}\\|;'",<>?]/.test(beforePath)) {
+      return {
+        valid: false,
+        error: `Invalid URL format: '${url}' (contains invalid characters)`,
+        suggestion:
+          'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol',
+      };
+    }
+  }
 
   try {
     const parsed = new URL(normalized);
@@ -162,10 +181,6 @@ export function validateUrl(url: string): {
   }
 }
 
-// ============================================================================
-// Safe URL Parsing
-// ============================================================================
-
 /**
  * Safely parse a URL string with automatic protocol detection.
  *
@@ -186,11 +201,9 @@ export function safeParseUrl(input: string): URL | null {
   try {
     return new URL(input);
   } catch {
-    // Second attempt: add http:// prefix for protocol-less URLs
     try {
       return new URL(`http://${input}`);
     } catch {
-      // Both attempts failed - invalid URL
       return null;
     }
   }
@@ -218,19 +231,23 @@ export function extractHostname(input: string): string {
  * Extract hostname with pathname from a URL string safely.
  *
  * Useful for pattern matching that needs both hostname and path segments.
+ * Includes port number when present to enable differentiation between
+ * localhost:9222/api and localhost:3000/api.
  *
  * @param input - URL string to extract hostname+pathname from
- * @returns Hostname with pathname (e.g., 'example.com/api/users'), or original input if parsing fails
+ * @returns Hostname (with port if present) and pathname (e.g., 'example.com/api/users'), or original input if parsing fails
  *
  * @example
  * ```typescript
  * extractHostnameWithPath('https://api.example.com/v1/users?id=123')
  *   // → 'api.example.com/v1/users'
  * extractHostnameWithPath('localhost:3000/dashboard')
- *   // → 'localhost/dashboard'
+ *   // → 'localhost:3000/dashboard'
+ * extractHostnameWithPath('http://localhost:9222/api/test')
+ *   // → 'localhost:9222/api/test'
  * ```
  */
 export function extractHostnameWithPath(input: string): string {
   const parsed = safeParseUrl(input);
-  return parsed ? parsed.hostname + parsed.pathname : input;
+  return parsed ? parsed.host + parsed.pathname : input;
 }

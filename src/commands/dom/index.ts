@@ -4,14 +4,14 @@ import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/comma
 import type { DomGetOptions as DomGetHelperOptions } from '@/commands/dom/helpers.js';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { CommandError } from '@/ui/errors/index.js';
 import {
   formatDomQuery,
   formatDomGet,
   formatDomEval,
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { filterDefined } from '@/utils/objects.js';
+import { parsePositiveIntOption } from '@/utils/validation.js';
 
 /**
  * Options for DOM query command
@@ -68,10 +68,12 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 async function handleDomGet(selector: string, options: DomGetOptions): Promise<void> {
   await runCommand(
     async () => {
-      const getOptions: DomGetHelperOptions = { selector };
-      if (options.all !== undefined) getOptions.all = options.all;
-      if (options.nth !== undefined) getOptions.nth = options.nth;
-      if (options.nodeId !== undefined) getOptions.nodeId = options.nodeId;
+      const getOptions = filterDefined({
+        selector,
+        all: options.all,
+        nth: options.nth,
+        nodeId: options.nodeId,
+      }) as DomGetHelperOptions;
 
       const result = await getDOMElements(getOptions);
       return { success: true, data: result };
@@ -94,11 +96,11 @@ async function handleDomGet(selector: string, options: DomGetOptions): Promise<v
 async function handleDomScreenshot(path: string, options: DomScreenshotOptions): Promise<void> {
   await runCommand(
     async () => {
-      const screenshotOptions: { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean } =
-        {};
-      if (options.format !== undefined) screenshotOptions.format = options.format;
-      if (options.quality !== undefined) screenshotOptions.quality = options.quality;
-      if (options.fullPage !== undefined) screenshotOptions.fullPage = options.fullPage;
+      const screenshotOptions = filterDefined({
+        format: options.format,
+        quality: options.quality,
+        fullPage: options.fullPage,
+      }) as { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean };
 
       const result = await capturePageScreenshot(path, screenshotOptions);
       return { success: true, data: result };
@@ -144,14 +146,11 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
       const metadata = getValidatedSessionMetadata();
 
       // Verify target still exists
-      const port = parseInt(options.port ?? '9222', 10);
-      if (!Number.isFinite(port) || port < 1 || port > 65535) {
-        throw new CommandError(
-          'Invalid port number',
-          { suggestion: 'Port must be an integer between 1 and 65535' },
-          EXIT_CODES.INVALID_ARGUMENTS
-        );
-      }
+      const port = parsePositiveIntOption('port', options.port, {
+        defaultValue: 9222,
+        min: 1,
+        max: 65535,
+      });
       await verifyTargetExists(metadata, port);
 
       // Create temporary CDP connection and execute script

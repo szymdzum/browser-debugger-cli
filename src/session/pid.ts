@@ -12,6 +12,39 @@ import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 
 /**
+ * Read and parse a PID from a file.
+ *
+ * @param filePath - Path to the PID file
+ * @returns Parsed PID or null if file doesn't exist or contains invalid data
+ *
+ * @example
+ * ```typescript
+ * const daemonPid = readPidFromFile('/path/to/daemon.pid');
+ * if (daemonPid && isProcessAlive(daemonPid)) {
+ *   console.log('Daemon is running');
+ * }
+ * ```
+ */
+export function readPidFromFile(filePath: string): number | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const pidStr = fs.readFileSync(filePath, 'utf-8').trim();
+    const pid = parseInt(pidStr, 10);
+
+    if (isNaN(pid)) {
+      return null;
+    }
+
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Write the current process PID to the session file atomically.
  *
  * Uses atomic write (tmp file + rename) to prevent corruption if process crashes.
@@ -44,23 +77,7 @@ export function writePid(pid: number): void {
  */
 export function readPid(): number | null {
   const pidPath = getSessionFilePath('PID');
-
-  if (!fs.existsSync(pidPath)) {
-    return null;
-  }
-
-  try {
-    const pidStr = fs.readFileSync(pidPath, 'utf-8').trim();
-    const pid = parseInt(pidStr, 10);
-
-    if (isNaN(pid)) {
-      return null;
-    }
-
-    return pid;
-  } catch {
-    return null;
-  }
+  return readPidFromFile(pidPath);
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   daemonWorkerReady,
   daemonParseError,
 } from '@/ui/messages/debug.js';
+import { filterDefined } from '@/utils/objects.js';
 import { validateUrl } from '@/utils/url.js';
 
 const log = createLogger('daemon');
@@ -91,17 +92,18 @@ export async function launchSessionInWorker(
     );
   }
 
-  const config = {
+  // Use filterDefined to build config, automatically omitting undefined values
+  const config = filterDefined({
     url,
     port: options.port ?? 9222,
-    ...(options.timeout !== undefined && { timeout: options.timeout }),
-    ...(options.telemetry !== undefined && { telemetry: options.telemetry }),
-    ...(options.includeAll !== undefined && { includeAll: options.includeAll }),
-    ...(options.userDataDir !== undefined && { userDataDir: options.userDataDir }),
-    ...(options.maxBodySize !== undefined && { maxBodySize: options.maxBodySize }),
-    ...(options.headless !== undefined && { headless: options.headless }),
-    ...(options.chromeWsUrl !== undefined && { chromeWsUrl: options.chromeWsUrl }),
-  };
+    timeout: options.timeout,
+    telemetry: options.telemetry,
+    includeAll: options.includeAll,
+    userDataDir: options.userDataDir,
+    maxBodySize: options.maxBodySize,
+    headless: options.headless,
+    chromeWsUrl: options.chromeWsUrl,
+  });
 
   // Resolve worker script path
   const currentDir = dirname(fileURLToPath(import.meta.url));

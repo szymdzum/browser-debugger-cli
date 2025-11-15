@@ -314,13 +314,12 @@ export async function capturePageScreenshot(
     throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
   }
 
-  // Write to file
-  const fs = await import('fs/promises');
   const path = await import('path');
+  const { AtomicFileWriter } = await import('@/utils/atomicFile.js');
   const buffer = Buffer.from(screenshotResult.data, 'base64');
 
   const absolutePath = path.resolve(outputPath);
-  await fs.writeFile(absolutePath, buffer);
+  await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
 
   const result: ScreenshotResult = {
     path: absolutePath,

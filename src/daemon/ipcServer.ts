@@ -7,7 +7,7 @@
  * 3. Logs all incoming frames for debugging
  */
 
-import { readFileSync, writeFileSync, unlinkSync } from 'fs';
+import { unlinkSync } from 'fs';
 
 import type { Socket } from 'net';
 
@@ -47,10 +47,11 @@ import { cleanupSession } from '@/session/cleanup.js';
 import { releaseDaemonLock } from '@/session/lock.js';
 import { readSessionMetadata } from '@/session/metadata.js';
 import { ensureSessionDir, getSessionFilePath, getDaemonSocketPath } from '@/session/paths.js';
-import { readPid } from '@/session/pid.js';
+import { readPid, readPidFromFile } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
 import type { CDPTarget } from '@/types.js';
 import { getErrorMessage } from '@/ui/errors/index.js';
+import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -927,11 +928,15 @@ export class IPCServer {
 
   /**
    * Write daemon PID to file for tracking.
+   *
+   * Uses AtomicFileWriter to prevent corruption from crashes during write,
+   * ensuring daemon.pid is never left in a truncated/corrupt state that
+   * would cause parseInt errors during cleanup.
    */
   private writePidFile(): void {
     const pidPath = getSessionFilePath('DAEMON_PID');
     try {
-      writeFileSync(pidPath, process.pid.toString(), 'utf-8');
+      AtomicFileWriter.writeSync(pidPath, process.pid.toString(), { encoding: 'utf-8' });
       releaseDaemonLock(); // Release lock after PID is written (P0 Fix #1)
       console.error(`[daemon] PID file written: ${pidPath}`);
     } catch (error) {
@@ -944,9 +949,13 @@ export class IPCServer {
    */
   static isRunning(): boolean {
     const pidPath = getSessionFilePath('DAEMON_PID');
+    const pid = readPidFromFile(pidPath);
+
+    if (pid === null) {
+      return false;
+    }
+
     try {
-      const pid = parseInt(readFileSync(pidPath, 'utf-8').trim(), 10);
-      // Check if process is alive
       process.kill(pid, 0);
       return true;
     } catch {

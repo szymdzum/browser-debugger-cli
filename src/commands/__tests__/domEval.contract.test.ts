@@ -114,6 +114,7 @@ describe('DOM Eval Command Smoke Tests', () => {
       // eslint-disable-next-line @typescript-eslint/require-await
       globalThis.fetch = mock.fn(async () => {
         return {
+          ok: true,
           // eslint-disable-next-line @typescript-eslint/require-await
           json: async () => [
             { id: 'page-123', type: 'page' },
@@ -134,11 +135,14 @@ describe('DOM Eval Command Smoke Tests', () => {
     });
 
     it('throws error when CDP response is invalid', async () => {
-      // Test CONTRACT: Invalid CDP response → error
+      // Test CONTRACT: Invalid CDP response → treated as target not found
+      // After refactoring to use fetchCDPTargetById, invalid responses
+      // are handled uniformly with missing targets (both return null)
 
       // eslint-disable-next-line @typescript-eslint/require-await
       globalThis.fetch = mock.fn(async () => {
         return {
+          ok: true,
           // eslint-disable-next-line @typescript-eslint/require-await
           json: async () => ({ invalid: 'response' }),
         } as Response;
@@ -153,7 +157,7 @@ describe('DOM Eval Command Smoke Tests', () => {
       };
 
       await assert.rejects(async () => verifyTargetExists(metadata, 9222), {
-        message: /Invalid response from CDP/,
+        message: /Session target not found/,
       });
     });
   });

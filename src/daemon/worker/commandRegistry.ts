@@ -2,6 +2,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/commands.js';
+import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
 
 type Handler<K extends CommandName> = (
@@ -19,14 +20,16 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       const lastN = Math.min(params.lastN ?? 10, 100);
       const duration = Date.now() - store.sessionStartTime;
 
-      const recentNetwork = store.networkRequests.slice(-lastN).map((req) => ({
-        requestId: req.requestId,
-        timestamp: req.timestamp,
-        method: req.method,
-        url: req.url,
-        ...(req.status !== undefined && { status: req.status }),
-        ...(req.mimeType !== undefined && { mimeType: req.mimeType }),
-      }));
+      const recentNetwork = store.networkRequests.slice(-lastN).map((req) =>
+        filterDefined({
+          requestId: req.requestId,
+          timestamp: req.timestamp,
+          method: req.method,
+          url: req.url,
+          status: req.status,
+          mimeType: req.mimeType,
+        })
+      );
 
       const recentConsole = store.consoleMessages.slice(-lastN).map((msg) => ({
         timestamp: msg.timestamp,
@@ -92,15 +95,16 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           title: store.targetInfo?.title ?? '',
         },
         activeTelemetry: store.activeTelemetry,
-        activity: {
+        activity: filterDefined({
           networkRequestsCaptured: store.networkRequests.length,
           consoleMessagesCaptured: store.consoleMessages.length,
-          ...(lastNetworkRequest?.timestamp !== undefined && {
-            lastNetworkRequestAt: lastNetworkRequest.timestamp,
-          }),
-          ...(lastConsoleMessage?.timestamp !== undefined && {
-            lastConsoleMessageAt: lastConsoleMessage.timestamp,
-          }),
+          lastNetworkRequestAt: lastNetworkRequest?.timestamp,
+          lastConsoleMessageAt: lastConsoleMessage?.timestamp,
+        }) as {
+          networkRequestsCaptured: number;
+          consoleMessagesCaptured: number;
+          lastNetworkRequestAt?: number;
+          lastConsoleMessageAt?: number;
         },
       };
 
