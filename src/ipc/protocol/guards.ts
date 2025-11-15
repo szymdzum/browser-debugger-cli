@@ -10,7 +10,7 @@ import { COMMANDS, type CommandName } from './commands.js';
  * Check if a message type is a command request.
  *
  * @param type - Message type string
- * @returns True if type matches pattern {command_name}_request
+ * @returns True if type matches pattern command_name_request
  *
  * @example
  * ```typescript
@@ -19,6 +19,7 @@ import { COMMANDS, type CommandName } from './commands.js';
  * ```
  */
 export function isCommandRequest(type: string): type is `${CommandName}_request` {
+  if (!type.endsWith('_request')) return false;
   const commandName = type.replace('_request', '') as CommandName;
   return commandName in COMMANDS;
 }
@@ -27,7 +28,7 @@ export function isCommandRequest(type: string): type is `${CommandName}_request`
  * Check if a message type is a command response.
  *
  * @param type - Message type string
- * @returns True if type matches pattern {command_name}_response
+ * @returns True if type matches pattern command_name_response
  *
  * @example
  * ```typescript
@@ -36,6 +37,7 @@ export function isCommandRequest(type: string): type is `${CommandName}_request`
  * ```
  */
 export function isCommandResponse(type: string): type is `${CommandName}_response` {
+  if (!type.endsWith('_response')) return false;
   const commandName = type.replace('_response', '') as CommandName;
   return commandName in COMMANDS;
 }
@@ -54,6 +56,7 @@ export function isCommandResponse(type: string): type is `${CommandName}_respons
  * ```
  */
 export function getCommandName(type: string): CommandName | null {
+  if (!type.endsWith('_request') && !type.endsWith('_response')) return null;
   const commandName = type.replace(/_request|_response/, '') as CommandName;
   return commandName in COMMANDS ? commandName : null;
 }
