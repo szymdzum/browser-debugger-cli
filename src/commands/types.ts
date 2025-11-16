@@ -32,6 +32,7 @@ export interface CleanupResult {
     session: boolean;
     output: boolean;
     chrome: boolean;
+    daemons: boolean;
   };
   message: string;
   warnings?: string[];
