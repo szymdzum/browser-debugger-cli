@@ -13,6 +13,8 @@ import type { PageState, SessionActivity } from '@/ipc/session/types.js';
 export interface WorkerPeekCommand {
   /** Number of recent items to return. */
   lastN?: number;
+  /** Offset from the end (for pagination). Default: 0 (most recent). */
+  offset?: number;
 }
 
 /**
@@ -33,6 +35,14 @@ export interface WorkerPeekData {
     mimeType?: string;
   }>;
   console: Array<{ timestamp: number; type: string; text: string }>;
+  /** Total number of network requests (for pagination). */
+  totalNetwork?: number;
+  /** Total number of console messages (for pagination). */
+  totalConsole?: number;
+  /** Whether there are more network items available. */
+  hasMoreNetwork?: boolean;
+  /** Whether there are more console items available. */
+  hasMoreConsole?: boolean;
 }
 
 /**

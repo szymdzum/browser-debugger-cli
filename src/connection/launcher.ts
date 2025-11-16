@@ -7,35 +7,24 @@ import * as chromeLauncher from 'chrome-launcher';
 import type { LaunchedChrome, Logger } from './types.js';
 import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 
-import {
-  BDG_CHROME_FLAGS,
-  BDG_CHROME_PREFS,
-  DEFAULT_CDP_PORT,
-  DEFAULT_CHROME_LOG_LEVEL,
-  DEFAULT_CHROME_HANDLE_SIGINT,
-  CHROME_PROFILE_DIR,
-  HEADLESS_FLAG,
-  DOCKER_CHROME_FLAGS,
-} from '@/constants.js';
+import { BDG_CHROME_PREFS, DEFAULT_CDP_PORT, CHROME_PROFILE_DIR } from '@/constants.js';
+import { DEFAULT_CHROME_LOG_LEVEL, DEFAULT_CHROME_HANDLE_SIGINT } from '@/constants.js';
 import {
   formatDiagnosticsForError,
   chromeLaunchSuccessMessage,
   chromeUserDataDirMessage,
   invalidPortError,
   userDataDirError,
-  prefsFileNotFoundError,
-  invalidPrefsFormatError,
-  prefsLoadError,
   chromeLaunchFailedError,
-  chromeBinaryOverrideNotFound,
-  chromeBinaryOverrideNotExecutable,
-  chromeBinaryOverrideIsDirectory,
 } from '@/ui/messages/chrome.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 import { getChromeDiagnostics } from './diagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from './errors.js';
+import { resolveChromeBinary } from './launcher/binaryResolver.js';
+import { buildChromeFlags } from './launcher/flagsBuilder.js';
+import { loadChromePrefs, ensureJSONCompatiblePrefs } from './launcher/preferencesLoader.js';
 import { reservePort } from './portReservation.js';
 
 /**
@@ -60,26 +49,6 @@ function getFormattedDiagnostics(): string[] {
   const diagnostics = getChromeDiagnostics();
   return formatDiagnosticsForError(diagnostics);
 }
-
-// Other Constants
-const REMOTE_DEBUGGING_FLAG = (port: number): string => `--remote-debugging-port=${port}`;
-
-/**
- * JSONLike type matching chrome-launcher's internal type definition.
- *
- * Used for Chrome preferences that must be JSON-serializable values.
- * chrome-launcher enforces this constraint to ensure preferences can be
- * safely serialized and passed to Chrome process.
- */
-type JSONLike =
-  | {
-      [property: string]: JSONLike;
-    }
-  | readonly JSONLike[]
-  | string
-  | number
-  | boolean
-  | null;
 
 /**
  * Options that control how Chrome is launched for CDP sessions.
@@ -272,180 +241,6 @@ function getPersistentUserDataDir(baseDir?: string): string {
  * @returns Chrome preferences object or undefined if no preferences specified
  * @throws ChromeLaunchError if prefs file cannot be read, parsed, or doesn't exist
  */
-function loadChromePrefs(options: LaunchOptions): Record<string, unknown> | undefined {
-  if (options.prefsFile) {
-    if (!fs.existsSync(options.prefsFile)) {
-      throw new ChromeLaunchError(
-        prefsFileNotFoundError(options.prefsFile),
-        new Error('File does not exist')
-      );
-    }
-
-    try {
-      const prefsContent = fs.readFileSync(options.prefsFile, 'utf8');
-      const parsed: unknown = JSON.parse(prefsContent);
-
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        throw new ChromeLaunchError(
-          invalidPrefsFormatError(options.prefsFile, typeof parsed),
-          new Error('Invalid JSON structure')
-        );
-      }
-
-      return parsed as Record<string, unknown>;
-    } catch (error) {
-      if (error instanceof ChromeLaunchError) {
-        throw error;
-      }
-
-      throw new ChromeLaunchError(
-        prefsLoadError(options.prefsFile, getErrorMessage(error)),
-        error instanceof Error ? error : undefined
-      );
-    }
-  }
-
-  return options.prefs;
-}
-
-/**
- * Resolve Chrome binary override from LaunchOptions or CHROME_PATH.
- *
- * When users explicitly set a Chrome binary we skip chrome-launcher's fallback
- * auto-detection to ensure mismatched paths fail fast with actionable errors.
- *
- * @param options - Launch options which may include chromePath
- * @returns Validated Chrome binary path or undefined if no override
- * @throws ChromeLaunchError if override path is invalid or not executable
- */
-function resolveChromeBinaryOverride(options: LaunchOptions): string | undefined {
-  const override = options.chromePath ?? process.env['CHROME_PATH'];
-
-  if (!override) {
-    return undefined;
-  }
-
-  const chromePath = override.trim();
-  if (!chromePath) {
-    return undefined;
-  }
-
-  const sourceLabel = options.chromePath ? 'chromePath option' : 'CHROME_PATH';
-
-  if (!fs.existsSync(chromePath)) {
-    const diagnostics = getFormattedDiagnostics();
-    throw new ChromeLaunchError(
-      `${chromeBinaryOverrideNotFound(chromePath, sourceLabel)}\n\n${diagnostics.join('\n')}`
-    );
-  }
-
-  try {
-    const stats = fs.statSync(chromePath);
-    if (stats.isDirectory()) {
-      throw new ChromeLaunchError(chromeBinaryOverrideIsDirectory(chromePath, sourceLabel));
-    }
-
-    fs.accessSync(chromePath, fs.constants.X_OK);
-  } catch (error) {
-    if (error instanceof ChromeLaunchError) {
-      throw error;
-    }
-
-    throw new ChromeLaunchError(
-      `${chromeBinaryOverrideNotExecutable(chromePath, sourceLabel)}\n\n${getErrorMessage(error)}`,
-      error instanceof Error ? error : undefined
-    );
-  }
-
-  return chromePath;
-}
-
-/**
- * Check if running inside a Docker container
- * @returns true if running in Docker, false otherwise
- */
-function isDocker(): boolean {
-  try {
-    if (fs.existsSync('/.dockerenv')) {
-      return true;
-    }
-
-    if (fs.existsSync('/proc/self/cgroup')) {
-      const cgroup = fs.readFileSync('/proc/self/cgroup', 'utf8');
-      return cgroup.includes('docker') || cgroup.includes('containerd');
-    }
-
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Build Chrome flags array from launch options.
- *
- * Uses chrome-launcher default flags as base (unless ignoreDefaultFlags is true)
- * and layers bdg-specific overrides on top. Headless mode uses the new headless
- * implementation for better compatibility.
- *
- * When running in Docker, automatically adds GPU-disabling flags to work around
- * graphics limitations in containerized environments.
- *
- * @param options - Launch options containing flag preferences
- * @returns Array of Chrome command-line flags
- */
-function buildChromeFlags(options: LaunchOptions): string[] {
-  const port = options.port ?? DEFAULT_CDP_PORT;
-
-  const baseFlags = options.ignoreDefaultFlags ? [] : chromeLauncher.Launcher.defaultFlags();
-
-  const bdgFlags: string[] = [REMOTE_DEBUGGING_FLAG(port), ...BDG_CHROME_FLAGS];
-
-  const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
-
-  if (options.headless) {
-    return [
-      HEADLESS_FLAG,
-      ...baseFlags,
-      ...bdgFlags,
-      ...dockerFlags,
-      ...(options.chromeFlags ?? []),
-    ];
-  }
-
-  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...(options.chromeFlags ?? [])];
-}
-
-/**
- * Type-safe conversion for Chrome preferences from unknown to JSONLike.
- *
- * chrome-launcher requires preferences to match its internal JSONLike type constraint
- * for type safety. This function validates that preferences are JSON-serializable
- * before casting to ensure runtime safety.
- *
- * @param prefs - Preferences object with unknown values from JSON parsing
- * @returns Preferences compatible with chrome-launcher's JSONLike constraint, or undefined
- * @throws ChromeLaunchError if preferences contain non-JSON-serializable values
- */
-function ensureJSONCompatiblePrefs(
-  prefs: Record<string, unknown> | undefined
-): Record<string, JSONLike> | undefined {
-  if (prefs === undefined) {
-    return undefined;
-  }
-
-  try {
-    JSON.stringify(prefs);
-  } catch (error) {
-    throw new ChromeLaunchError(
-      `Chrome preferences must be JSON-serializable: ${getErrorMessage(error)}`,
-      error instanceof Error ? error : undefined
-    );
-  }
-
-  return prefs as Record<string, JSONLike>;
-}
-
 /**
  * Build chrome-launcher options from bdg launch options.
  *
@@ -460,7 +255,7 @@ function ensureJSONCompatiblePrefs(
 function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const userPrefs = loadChromePrefs(options);
   const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
-  const chromePathOverride = resolveChromeBinaryOverride(options);
+  const chromePathOverride = resolveChromeBinary(options);
 
   const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;
 

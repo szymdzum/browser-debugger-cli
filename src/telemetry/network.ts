@@ -1,4 +1,5 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -46,7 +47,11 @@ function fetchResponseBody(cdp: CDPConnection, requestId: string, request: Netwo
       const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
       request.responseBody = typedResponse.body;
     })
-    .catch(() => {});
+    .catch((error) => {
+      log.debug(
+        `Failed to fetch response body for request ${requestId}: ${getErrorMessage(error)}`
+      );
+    });
 }
 
 /**

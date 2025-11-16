@@ -2,6 +2,8 @@
  * Shared utilities for telemetry collectors
  */
 
+import { ConcurrencyLimiter } from '@/utils/concurrency.js';
+
 /**
  * Push an item to a bounded buffer with limit enforcement.
  *
@@ -77,4 +79,99 @@ export async function withTimeout<T>(
       setTimeout(() => reject(new Error(`CDP ${label} timed out after ${timeoutMs}ms`)), timeoutMs)
     ),
   ]);
+}
+
+/**
+ * Default concurrency limit for batch CDP operations.
+ * Prevents overwhelming the CDP connection with too many simultaneous requests.
+ */
+const DEFAULT_CDP_CONCURRENCY = 10;
+
+/**
+ * Result of a batch CDP operation.
+ */
+export interface BatchCDPResult<T> {
+  /** Successfully resolved results */
+  results: T[];
+  /** Errors that occurred during execution */
+  errors: Array<{ index: number; error: Error }>;
+}
+
+/**
+ * Execute multiple CDP operations in parallel with concurrency control.
+ *
+ * Processes an array of async operations with a maximum concurrency limit,
+ * preventing overwhelming of the CDP connection. Collects both successful
+ * results and errors, allowing partial success handling.
+ *
+ * @param operations - Array of async operations to execute
+ * @param concurrency - Maximum number of concurrent operations (default: 10)
+ * @returns Object containing successful results and errors with their indices
+ *
+ * @example
+ * ```typescript
+ * const operations = nodeIds.map(id => () => cdp.send('DOM.describeNode', { nodeId: id }));
+ * const { results, errors } = await batchCDPOperations(operations, 5);
+ *
+ * if (errors.length > 0) {
+ *   log.debug(`Failed to describe ${errors.length} nodes`);
+ * }
+ * ```
+ */
+export async function batchCDPOperations<T>(
+  operations: Array<() => Promise<T>>,
+  concurrency: number = DEFAULT_CDP_CONCURRENCY
+): Promise<BatchCDPResult<T>> {
+  const limiter = new ConcurrencyLimiter(concurrency);
+  const results: T[] = [];
+  const errors: Array<{ index: number; error: Error }> = [];
+
+  await Promise.all(
+    operations.map((operation, index) =>
+      limiter.run(async () => {
+        try {
+          const result = await operation();
+          results.push(result);
+        } catch (error) {
+          errors.push({
+            index,
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
+        }
+      })
+    )
+  );
+
+  return { results, errors };
+}
+
+/**
+ * Process an array in parallel with concurrency control and transformation.
+ *
+ * Similar to `Promise.all(array.map(fn))` but with concurrency limiting and
+ * error collection. Useful for processing large arrays of data that require
+ * async operations without blocking the entire event loop.
+ *
+ * @param items - Array of items to process
+ * @param mapper - Async function to transform each item
+ * @param concurrency - Maximum number of concurrent operations (default: 10)
+ * @returns Object containing successful results and errors with their indices
+ *
+ * @example
+ * ```typescript
+ * const requestIds = ['req1', 'req2', 'req3'];
+ * const { results, errors } = await parallelMap(
+ *   requestIds,
+ *   async (id) => cdp.send('Network.getResponseBody', { requestId: id }),
+ *   5
+ * );
+ * ```
+ */
+export async function parallelMap<T, R>(
+  items: T[],
+  mapper: (item: T, index: number) => Promise<R>,
+  concurrency: number = DEFAULT_CDP_CONCURRENCY
+): Promise<BatchCDPResult<R>> {
+  const operations = items.map((item, index) => () => mapper(item, index));
+  return batchCDPOperations(operations, concurrency);
 }

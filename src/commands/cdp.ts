@@ -14,6 +14,7 @@ import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { levenshteinDistance } from '@/utils/levenshtein.js';
 
 /**
  * Options for the `bdg cdp` command.
@@ -97,45 +98,6 @@ export function registerCdpCommand(program: Command): void {
         { ...options, json: true } // Always output JSON for CDP commands
       );
     });
-}
-
-/**
- * Calculate Levenshtein distance between two strings.
- * Used for finding similar method names.
- *
- * @param str1 - First string
- * @param str2 - Second string
- * @returns Edit distance between strings
- */
-function levenshteinDistance(str1: string, str2: string): number {
-  const len1 = str1.length;
-  const len2 = str2.length;
-  const matrix: number[][] = [];
-
-  for (let i = 0; i <= len1; i++) {
-    matrix[i] = [i];
-  }
-  const firstRow = matrix[0];
-  if (firstRow) {
-    for (let j = 0; j <= len2; j++) {
-      firstRow[j] = j;
-    }
-  }
-
-  for (let i = 1; i <= len1; i++) {
-    const currentRow = matrix[i];
-    if (!currentRow) continue;
-
-    for (let j = 1; j <= len2; j++) {
-      const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-      const deletion = (matrix[i - 1]?.[j] ?? 0) + 1;
-      const insertion = (currentRow[j - 1] ?? 0) + 1;
-      const substitution = (matrix[i - 1]?.[j - 1] ?? 0) + cost;
-      currentRow[j] = Math.min(deletion, insertion, substitution);
-    }
-  }
-
-  return matrix[len1]?.[len2] ?? 0;
 }
 
 /**
