@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Empty for now - add here as you work -->
 
+## [0.6.1] - 2025-11-16
+
+### Changed
+
+- **Internal Refactoring**: Comprehensive codebase reorganization for better maintainability
+  - **Module boundaries** (#44): Moved Chrome cleanup to session layer, extracted start command helpers, fixed error imports across 28 files for clearer separation of concerns
+  - **Connection layer** (#43): Extracted types, config, and port reservation into dedicated modules (+266 lines, improved discoverability)
+  - **Daemon architecture** (#42): Extracted handlers and lifecycle logic from monolithic files (ipcServer.ts reduced by 80%, worker.ts reduced by 81%)
+  - **IPC layer** (#41): Extracted transport layer, flattened types, added barrel exports for cleaner imports
+  - **Session module** (#40, #39): Improved file operations with `fs.rmSync({ force: true })`, better Windows support, consolidated duplicate lock logic, exported `readPidFromFile` for reuse
+  - **Telemetry module** (#38): Replaced `console.error` with structured logging, used `filterDefined` for cleaner JSON output, added `isFilteredOut` helper
+  - **UI layer** (#37): Added `joinLines` helper, replaced non-null assertions with explicit null checks, added type interfaces for command options
+  - **DOM module** (#32): Consolidated into `src/commands/dom/` directory (7 files), deleted unused dead code, improved documentation
+- **Code Quality**: Removed dead code identified by static analysis, fixed TSDoc syntax violations, improved error handling consistency
+- **Testing**: Added 4 contract test files for session module (430 lines), enhanced test isolation with `BDG_SESSION_DIR`
+
+### Fixed
+
+- **Peek command exit code**: Return `RESOURCE_NOT_FOUND` (83) instead of `SESSION_FILE_ERROR` (103) when no session exists
+- **Worker IPC race condition**: Reordered initialization to setup IPC listener before sending ready signal, preventing intermittent failures when agents run follow-up commands immediately
+- **Chrome binary validation**: Added actionable error messages for `CHROME_PATH` overrides
+- **Process cleanup**: Improved detection and cleanup of orphaned worker processes when daemon crashes
+- **Form interaction bugs** (#32): Fixed 6 critical issues including injection vulnerability, memory leak, browser compatibility, visibility detection, selector generation, and dead code
+
+### Internal
+
+- **Net code reduction**: Despite adding features, overall codebase became more maintainable with ~1,200 lines removed from core daemon files
+- **Test coverage**: 165/165 tests passing (100%), enhanced with flaky tests investigation report
+- **Documentation**: Added comprehensive UX improvements tracking, form interaction plan, agent discoverability guide
+
 ## [0.6.0] - 2025-11-13
 
 ### Added
