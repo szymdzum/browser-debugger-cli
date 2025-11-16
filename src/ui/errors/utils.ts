@@ -4,7 +4,7 @@
  * Helper functions for detecting specific error conditions in the CLI layer.
  *
  * @deprecated This module re-exports IPC utilities for backward compatibility.
- * Prefer importing from @/ipc/utils/errors.js directly.
+ * Prefer importing from \@/ipc/utils/errors.js directly.
  */
 
 import { isConnectionError } from '@/ipc/utils/errors.js';
@@ -12,7 +12,7 @@ import { isConnectionError } from '@/ipc/utils/errors.js';
 /**
  * Detect whether an error indicates the daemon/socket is unavailable.
  *
- * @deprecated Use `isConnectionError` from @/ipc/utils/errors.js instead.
+ * @deprecated Use `isConnectionError` from \@/ipc/utils/errors.js instead.
  * This function is maintained for backward compatibility.
  *
  * @param error - Error of unknown type

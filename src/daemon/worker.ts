@@ -7,6 +7,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { WorkerError } from '@/daemon/errors.js';
 import { setupCDPAndNavigate } from '@/daemon/lifecycle/cdpSetup.js';
 import { setupChromeConnection } from '@/daemon/lifecycle/chromeConnection.js';
 import { setupSignalHandlers } from '@/daemon/lifecycle/signalHandlers.js';
@@ -36,7 +37,10 @@ let cleanupFunctions: CleanupFunction[] = [];
 function sendReadySignal(workerPid: number, chromePid: number, port: number): void {
   const targetInfo = telemetryStore.targetInfo;
   if (!targetInfo) {
-    throw new Error('Cannot send ready signal: Target not initialized');
+    throw new WorkerError(
+      'Cannot send ready signal: Target not initialized',
+      'TARGET_NOT_INITIALIZED'
+    );
   }
 
   const message: WorkerReadyMessage = {

@@ -12,8 +12,8 @@ import { spawn, type ChildProcess } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
+import { getErrorMessage } from '@/connection/errors.js';
 import type { TelemetryType } from '@/types.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   daemonSpawningWorker,

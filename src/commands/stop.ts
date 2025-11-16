@@ -3,12 +3,13 @@ import type { Command } from 'commander';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { StopResult } from '@/commands/types.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { clearChromePid } from '@/session/chrome.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { killChromeProcess } from '@/session/process.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { joinLines } from '@/ui/formatting.js';
 import { chromeKilledMessage, warningMessage } from '@/ui/messages/commands.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
@@ -20,21 +21,6 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 interface StopOptions extends BaseCommandOptions {
   /** Kill the associated Chrome process after stopping bdg. */
   killChrome?: boolean;
-}
-
-/**
- * Result data for stop operation.
- */
-interface StopResult {
-  /** What was stopped */
-  stopped: {
-    bdg: boolean;
-    chrome: boolean;
-  };
-  /** Success message */
-  message: string;
-  /** Optional warnings */
-  warnings?: string[];
 }
 
 /**
@@ -79,7 +65,7 @@ export function registerStopCommand(program: Command): void {
     .option('--kill-chrome', 'Also kill Chrome browser process', false)
     .addOption(jsonOption)
     .action(async (options: StopOptions) => {
-      await runCommand(
+      await runCommand<StopOptions, StopResult>(
         async (opts) => {
           try {
             // Try to stop session via IPC (daemon)

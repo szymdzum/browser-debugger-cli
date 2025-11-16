@@ -158,8 +158,8 @@ async function waitForCompletion(
   let timeoutHandle: NodeJS.Timeout | null = null;
 
   return new Promise((resolve, reject) => {
-    // Store (event, handlerId) pairs for proper cleanup
-    const handlers: Array<{ event: string; handlerId: number }> = [];
+    // Store cleanup functions for proper cleanup
+    const cleanupFunctions: Array<() => void> = [];
 
     // Set up timeout
     timeoutHandle = setTimeout(() => {
@@ -209,25 +209,13 @@ async function waitForCompletion(
       checkCompletion();
     };
 
-    // Register event listeners and store (event, handlerId) pairs
-    handlers.push({
-      event: 'Network.requestWillBeSent',
-      handlerId: cdp.on('Network.requestWillBeSent', onRequestStarted),
-    });
-    handlers.push({
-      event: 'Network.loadingFinished',
-      handlerId: cdp.on('Network.loadingFinished', onRequestFinished),
-    });
-    handlers.push({
-      event: 'Network.loadingFailed',
-      handlerId: cdp.on('Network.loadingFailed', onRequestFinished),
-    });
+    // Register event listeners and store cleanup functions
+    cleanupFunctions.push(cdp.on('Network.requestWillBeSent', onRequestStarted));
+    cleanupFunctions.push(cdp.on('Network.loadingFinished', onRequestFinished));
+    cleanupFunctions.push(cdp.on('Network.loadingFailed', onRequestFinished));
 
     if (waitNavigation) {
-      handlers.push({
-        event: 'Page.frameNavigated',
-        handlerId: cdp.on('Page.frameNavigated', onNavigated),
-      });
+      cleanupFunctions.push(cdp.on('Page.frameNavigated', onNavigated));
     }
 
     // Enable network monitoring if not already enabled
@@ -247,14 +235,8 @@ async function waitForCompletion(
       if (idleTimeout) clearTimeout(idleTimeout);
       if (timeoutHandle) clearTimeout(timeoutHandle);
 
-      // Remove event listeners with proper event names
-      for (const { event, handlerId } of handlers) {
-        try {
-          cdp.off(event, handlerId);
-        } catch {
-          // Ignore errors during cleanup
-        }
-      }
+      // Call all cleanup functions
+      cleanupFunctions.forEach((cleanup) => cleanup());
     }
   });
 }

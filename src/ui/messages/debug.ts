@@ -145,17 +145,6 @@ export function workerStdinListenerSetup(): string {
 }
 
 /**
- * Generate ready signal sent message.
- *
- * @param workerPid - Worker process ID
- * @param chromePid - Chrome process ID
- * @returns Formatted debug message
- */
-export function workerReadySignalSent(workerPid: number, chromePid: number): string {
-  return `Ready signal sent (PID ${workerPid}, Chrome PID ${chromePid})`;
-}
-
-/**
  * Generate collecting final DOM snapshot message.
  *
  * @returns Formatted debug message

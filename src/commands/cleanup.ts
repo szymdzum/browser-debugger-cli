@@ -5,11 +5,12 @@ import type { Command } from 'commander';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { CleanupResult } from '@/commands/types.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { cleanupSession } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/session/process.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   sessionFilesCleanedMessage,
@@ -33,25 +34,6 @@ interface CleanupOptions extends BaseCommandOptions {
   all?: boolean;
   /** Aggressively kill all Chrome processes (uses chrome-launcher killAll). */
   aggressive?: boolean;
-}
-
-/**
- * Result data for cleanup operation.
- */
-interface CleanupResult {
-  /** What was cleaned up */
-  cleaned: {
-    /** Whether session files (daemon.pid, etc.) were removed */
-    session: boolean;
-    /** Whether session.json output file was removed */
-    output: boolean;
-    /** Whether Chrome processes were killed */
-    chrome: boolean;
-  };
-  /** Success message */
-  message: string;
-  /** Optional warnings */
-  warnings?: string[];
 }
 
 /**
@@ -85,10 +67,10 @@ export function registerCleanupCommand(program: Command): void {
     .option('--aggressive', 'Kill all Chrome processes (uses chrome-launcher killAll)', false)
     .addOption(jsonOption)
     .action(async (options: CleanupOptions) => {
-      await runCommand(
+      await runCommand<CleanupOptions, CleanupResult>(
         async (opts) => {
           // Import cleanupStaleChrome dynamically
-          const { cleanupStaleChrome } = await import('@/commands/shared/sessionController.js');
+          const { cleanupStaleChrome } = await import('@/session/chrome.js');
 
           let didCleanup = false;
           let cleanedSession = false;

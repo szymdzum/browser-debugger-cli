@@ -1,14 +1,14 @@
 import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { positiveIntRule } from '@/commands/shared/validation.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
-import { handleDaemonConnectionError } from '@/utils/daemonErrors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { parsePositiveIntOption } from '@/utils/validation.js';
 
 /**
  * Options as received from Commander for the peek command.
@@ -36,17 +36,9 @@ export function registerPeekCommand(program: Command): void {
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .action(async (options: PeekCommandOptions) => {
-      let lastN: number;
-      try {
-        lastN = parsePositiveIntOption('last', options.last, {
-          defaultValue: 10,
-          min: 1,
-          max: 1000,
-        });
-      } catch (error) {
-        console.error(error instanceof Error ? error.message : String(error));
-        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-      }
+      // Validate --last option using validation layer
+      const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
+      const lastN = lastRule.validate(options.last);
 
       const previewBase: PreviewOptions = {
         json: options.json,

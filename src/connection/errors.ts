@@ -4,6 +4,8 @@
  * Provides structured error handling for CDP connections and Chrome launches.
  */
 
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+
 /**
  * Base error class for all connection-related errors.
  *
@@ -33,7 +35,7 @@ export abstract class ConnectionError extends Error {
  */
 export class CDPConnectionError extends ConnectionError {
   readonly code = 'CDP_CONNECTION_ERROR';
-  readonly exitCode = 101; // CDP_CONNECTION_FAILURE
+  readonly exitCode = EXIT_CODES.CDP_CONNECTION_FAILURE;
 }
 
 /**
@@ -46,7 +48,7 @@ export class CDPConnectionError extends ConnectionError {
  */
 export class ChromeLaunchError extends ConnectionError {
   readonly code = 'CHROME_LAUNCH_ERROR';
-  readonly exitCode = 100; // CHROME_LAUNCH_FAILURE
+  readonly exitCode = EXIT_CODES.CHROME_LAUNCH_FAILURE;
 }
 
 /**
@@ -58,33 +60,13 @@ export class ChromeLaunchError extends ConnectionError {
  */
 export class CDPTimeoutError extends ConnectionError {
   readonly code = 'CDP_TIMEOUT_ERROR';
-  readonly exitCode = 102; // CDP_TIMEOUT
+  readonly exitCode = EXIT_CODES.CDP_TIMEOUT;
 }
 
 /**
  * Extract error message from unknown error type.
  *
- * Safely extracts error messages from various error types:
- * - Error instances → error.message
- * - Unknown types → String(error)
- *
- * Useful for error handling when error type is unknown.
- *
- * @param error - Error of unknown type
- * @returns Error message string
- *
- * @example
- * ```typescript
- * try {
- *   await someOperation();
- * } catch (error) {
- *   throw new ChromeLaunchError(`Failed: ${getErrorMessage(error)}`, error);
- * }
- * ```
+ * @deprecated Import from \@/utils/errors.ts instead.
+ * Re-exported for backward compatibility.
  */
-export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
+export { getErrorMessage } from '@/utils/errors.js';

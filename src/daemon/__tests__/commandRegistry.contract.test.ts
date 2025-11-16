@@ -26,7 +26,7 @@ void describe('CommandRegistry', () => {
 
     // Minimal CDP mock (we don't test CDP interaction here)
     mockCdp = {
-      send: async () => ({}),
+      send: () => Promise.resolve({}),
     } as unknown as CDPConnection;
   });
 
@@ -444,10 +444,10 @@ void describe('CommandRegistry', () => {
     void it('forwards CDP method call and returns result', async () => {
       const mockResult = { cookies: [{ name: 'session', value: 'abc123' }] };
       const cdpWithMock = {
-        send: async (method: string, params: unknown) => {
+        send: (method: string, params: unknown) => {
           assert.equal(method, 'Network.getCookies');
           assert.deepEqual(params, { urls: ['http://example.com'] });
-          return mockResult;
+          return Promise.resolve(mockResult);
         },
       } as unknown as CDPConnection;
 
@@ -461,10 +461,10 @@ void describe('CommandRegistry', () => {
 
     void it('handles CDP call without params', async () => {
       const cdpWithMock = {
-        send: async (method: string, params: unknown) => {
+        send: (method: string, params: unknown) => {
           assert.equal(method, 'Runtime.enable');
           assert.deepEqual(params, {});
-          return {};
+          return Promise.resolve({});
         },
       } as unknown as CDPConnection;
 
@@ -477,8 +477,8 @@ void describe('CommandRegistry', () => {
 
     void it('propagates CDP errors', async () => {
       const cdpWithError = {
-        send: async () => {
-          throw new Error('CDP connection failed');
+        send: () => {
+          return Promise.reject(new Error('CDP connection failed'));
         },
       } as unknown as CDPConnection;
 

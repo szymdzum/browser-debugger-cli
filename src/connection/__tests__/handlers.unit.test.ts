@@ -73,46 +73,41 @@ describe('CDPHandlerRegistry - Cleanup', () => {
 
     registry.register(mockCDP, 'Network.requestWillBeSent', () => {});
     registry.register(mockCDP, 'Network.loadingFinished', () => {});
-    registry.cleanup(mockCDP);
+    registry.cleanup();
 
     // Contract: after cleanup, size should be 0
     assert.equal(registry.size(), 0, 'Cleanup should clear all handlers');
   });
 
-  test('cleanup calls off() for each registered handler', () => {
+  test('cleanup calls all cleanup functions', () => {
     const registry = new CDPHandlerRegistry();
-    const offCalls: Array<{ event: string; id: number }> = [];
+    const cleanupCalls: string[] = [];
 
     const mockCDP = createMockCDP();
-    mockCDP.off = (event: string, id: number) => {
-      offCalls.push({ event, id });
+    mockCDP.on = (event: string) => {
+      // Return cleanup function that tracks which event was cleaned up
+      return () => cleanupCalls.push(event);
     };
 
     registry.register(mockCDP, 'Network.requestWillBeSent', () => {});
     registry.register(mockCDP, 'Console.messageAdded', () => {});
-    registry.cleanup(mockCDP);
+    registry.cleanup();
 
-    // Contract: cleanup must call off() for each handler
-    assert.equal(offCalls.length, 2, 'Should call off() for each handler');
-    assert.equal(
-      offCalls[0]?.event,
-      'Network.requestWillBeSent',
-      'First off() should match first handler'
-    );
-    assert.equal(
-      offCalls[1]?.event,
-      'Console.messageAdded',
-      'Second off() should match second handler'
+    // Contract: cleanup must call all cleanup functions
+    assert.equal(cleanupCalls.length, 2, 'Should call cleanup for each handler');
+    assert.deepEqual(
+      cleanupCalls,
+      ['Network.requestWillBeSent', 'Console.messageAdded'],
+      'Should cleanup handlers in registration order'
     );
   });
 
   test('cleanup on empty registry is safe', () => {
     const registry = new CDPHandlerRegistry();
-    const mockCDP = createMockCDP();
 
     // Should not throw
     assert.doesNotThrow(() => {
-      registry.cleanup(mockCDP);
+      registry.cleanup();
     }, 'Cleanup on empty registry should be safe');
   });
 
@@ -121,8 +116,8 @@ describe('CDPHandlerRegistry - Cleanup', () => {
     const mockCDP = createMockCDP();
 
     registry.register(mockCDP, 'Network.requestWillBeSent', () => {});
-    registry.cleanup(mockCDP);
-    registry.cleanup(mockCDP); // Second cleanup
+    registry.cleanup();
+    registry.cleanup(); // Second cleanup
 
     assert.equal(registry.size(), 0, 'Multiple cleanups should be safe');
   });
@@ -136,7 +131,7 @@ describe('CDPHandlerRegistry - Cleanup', () => {
     registry.register(mockCDP, 'Console.messageAdded', () => {});
 
     assert.equal(registry.size(), 3, 'Pre-cleanup: should have 3 handlers');
-    registry.cleanup(mockCDP);
+    registry.cleanup();
     assert.equal(registry.size(), 0, 'Post-cleanup: should have 0 handlers');
   });
 });
@@ -148,7 +143,7 @@ describe('CDPHandlerRegistry - Reusability', () => {
 
     // First batch
     registry.register(mockCDP, 'Network.requestWillBeSent', () => {});
-    registry.cleanup(mockCDP);
+    registry.cleanup();
 
     // Second batch
     registry.register(mockCDP, 'Console.messageAdded', () => {});
@@ -160,22 +155,33 @@ describe('CDPHandlerRegistry - Reusability', () => {
   test('cleanup only affects registered handlers, not future ones', () => {
     const registry = new CDPHandlerRegistry();
     const mockCDP = createMockCDP();
-    const offCalls: string[] = [];
+    const cleanupCalls: string[] = [];
 
-    mockCDP.off = (event: string) => {
-      offCalls.push(event);
+    mockCDP.on = (event: string) => {
+      return () => cleanupCalls.push(event);
     };
 
     registry.register(mockCDP, 'Network.requestWillBeSent', () => {});
-    registry.cleanup(mockCDP);
-    registry.register(mockCDP, 'Console.messageAdded', () => {}); // After cleanup
-    registry.cleanup(mockCDP); // Second cleanup
+    assert.equal(registry.size(), 1, 'Should have 1 handler before first cleanup');
 
-    // First cleanup should only remove Network handler
-    // Second cleanup should only remove Console handler
-    assert.equal(offCalls.length, 2, 'Should have two cleanup calls total');
-    assert.equal(offCalls[0], 'Network.requestWillBeSent', 'First cleanup removes Network handler');
-    assert.equal(offCalls[1], 'Console.messageAdded', 'Second cleanup removes Console handler');
+    registry.cleanup();
+    assert.equal(registry.size(), 0, 'Should have 0 handlers after first cleanup');
+    assert.equal(cleanupCalls.length, 1, 'First cleanup should call 1 cleanup function');
+
+    registry.register(mockCDP, 'Console.messageAdded', () => {}); // After cleanup
+    assert.equal(registry.size(), 1, 'Should have 1 new handler');
+
+    registry.cleanup(); // Second cleanup
+    assert.equal(registry.size(), 0, 'Should have 0 handlers after second cleanup');
+
+    // Contract: Each cleanup only affects handlers registered before it
+    assert.equal(cleanupCalls.length, 2, 'Should have two cleanup calls total');
+    assert.equal(
+      cleanupCalls[0],
+      'Network.requestWillBeSent',
+      'First cleanup removes Network handler'
+    );
+    assert.equal(cleanupCalls[1], 'Console.messageAdded', 'Second cleanup removes Console handler');
   });
 });
 
@@ -198,7 +204,7 @@ describe('CDPHandlerRegistry - Type-Safe API (registerTyped)', () => {
 
     registry.registerTyped(typed, 'Network.requestWillBeSent', () => {});
     registry.registerTyped(typed, 'Network.loadingFinished', () => {});
-    registry.cleanup(mockCDP);
+    registry.cleanup();
 
     assert.equal(registry.size(), 0, 'Cleanup should remove typed handlers');
   });
@@ -216,42 +222,46 @@ describe('CDPHandlerRegistry - Type-Safe API (registerTyped)', () => {
 
   test('cleanup removes both legacy and typed handlers', () => {
     const registry = new CDPHandlerRegistry();
-    const mockCDP = createMockCDP();
-    const typed = new TypedCDPConnection(mockCDP);
-    const offCalls: string[] = [];
+    const cleanupCalls: string[] = [];
 
-    mockCDP.off = (event: string) => {
-      offCalls.push(event);
+    const mockCDP = createMockCDP();
+    mockCDP.on = (event: string) => {
+      return () => cleanupCalls.push(event);
     };
+
+    const typed = new TypedCDPConnection(mockCDP);
 
     registry.register(mockCDP, 'Network.requestWillBeSent', () => {});
     registry.registerTyped(typed, 'Console.messageAdded', () => {});
-    registry.cleanup(mockCDP);
 
-    assert.equal(offCalls.length, 2, 'Should cleanup both handler types');
+    assert.equal(registry.size(), 2, 'Should have 2 handlers before cleanup');
+
+    registry.cleanup();
+
+    assert.equal(cleanupCalls.length, 2, 'Should cleanup both handler types');
     assert.equal(registry.size(), 0, 'Size should be zero after mixed cleanup');
   });
 });
 
-describe('CDPHandlerRegistry - Handler ID Management', () => {
-  test('passes through handler IDs from on() correctly', () => {
+describe('CDPHandlerRegistry - Cleanup Function Management', () => {
+  test('calls cleanup functions correctly', () => {
     const registry = new CDPHandlerRegistry();
     const mockCDP = createMockCDP();
-    const offCalls: number[] = [];
+    const cleanupCalls: number[] = [];
 
-    // Mock returns specific IDs
+    // Mock returns cleanup functions that track calls
     let nextId = 100;
-    mockCDP.on = () => nextId++;
-    mockCDP.off = (_event: string, id: number) => {
-      offCalls.push(id);
+    mockCDP.on = () => {
+      const id = nextId++;
+      return () => cleanupCalls.push(id);
     };
 
     registry.register(mockCDP, 'Network.requestWillBeSent', () => {});
     registry.register(mockCDP, 'Console.messageAdded', () => {});
-    registry.cleanup(mockCDP);
+    registry.cleanup();
 
-    // Contract: cleanup should pass correct IDs to off()
-    assert.deepEqual(offCalls, [100, 101], 'Should pass through correct handler IDs');
+    // Contract: cleanup should call all cleanup functions
+    assert.deepEqual(cleanupCalls, [100, 101], 'Should call all cleanup functions');
   });
 
   test('handles duplicate handler IDs for same event', () => {
@@ -273,14 +283,13 @@ describe('CDPHandlerRegistry - Handler ID Management', () => {
  * Create a mock CDPConnection for testing
  */
 function createMockCDP(): CDPConnection {
-  let handlerId = 0;
-
   return {
     on: (_event: string, _handler: unknown) => {
-      return handlerId++;
+      // Return cleanup function (no-op by default)
+      return () => {};
     },
     off: (_event: string, _id: number) => {
-      // No-op by default
+      // No-op by default (deprecated but still exists)
     },
   } as unknown as CDPConnection;
 }

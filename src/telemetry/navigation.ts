@@ -84,7 +84,7 @@ export async function startNavigationTracking(
 
   return {
     cleanup: () => {
-      registry.cleanup(cdp);
+      registry.cleanup();
     },
     getCurrentNavigationId: () => navigationCounter,
   };

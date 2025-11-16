@@ -116,12 +116,12 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
 
   return new Promise((resolve, reject) => {
     let timeout: NodeJS.Timeout;
-    let handlerId: number | undefined;
+    let cleanupHandler: (() => void) | undefined;
 
     const cleanup = (): void => {
       clearTimeout(timeout);
-      if (handlerId !== undefined) {
-        cdp.off('Page.loadEventFired', handlerId);
+      if (cleanupHandler) {
+        cleanupHandler();
       }
     };
 
@@ -139,7 +139,7 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
       resolve();
     };
 
-    handlerId = cdp.on('Page.loadEventFired', loadHandler);
+    cleanupHandler = cdp.on('Page.loadEventFired', loadHandler);
     checkDeadline();
   });
 }
@@ -184,9 +184,9 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
     }
   };
 
-  const requestHandlerId = cdp.on('Network.requestWillBeSent', requestHandler);
-  const loadingFinishedId = cdp.on('Network.loadingFinished', finishHandler);
-  const loadingFailedId = cdp.on('Network.loadingFailed', finishHandler);
+  const cleanupRequest = cdp.on('Network.requestWillBeSent', requestHandler);
+  const cleanupFinished = cdp.on('Network.loadingFinished', finishHandler);
+  const cleanupFailed = cdp.on('Network.loadingFailed', finishHandler);
 
   try {
     while (Date.now() < deadline) {
@@ -202,9 +202,9 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
 
     throw new Error('Network stability timeout');
   } finally {
-    cdp.off('Network.requestWillBeSent', requestHandlerId);
-    cdp.off('Network.loadingFinished', loadingFinishedId);
-    cdp.off('Network.loadingFailed', loadingFailedId);
+    cleanupRequest();
+    cleanupFinished();
+    cleanupFailed();
   }
 }
 

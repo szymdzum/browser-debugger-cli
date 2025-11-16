@@ -18,6 +18,15 @@ import { JSONLBuffer, parseJSONLFrame, toJSONLFrame } from './jsonl.js';
 import { createSocket } from './socket.js';
 import { validateResponseType, validateSessionId } from './validation.js';
 
+// Export structured error classes for external use
+export {
+  IPCError,
+  IPCConnectionError,
+  IPCTimeoutError,
+  IPCParseError,
+  IPCEarlyCloseError,
+} from './IPCError.js';
+
 const log = createLogger('client');
 
 type WithTypeAndSession = { type: string; sessionId: string };

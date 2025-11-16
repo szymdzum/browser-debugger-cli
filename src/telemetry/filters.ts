@@ -206,17 +206,9 @@ interface PatternMatchConfig {
 function evaluatePatternMatch(url: string, config: PatternMatchConfig): boolean {
   const { includePatterns = [], excludePatterns = [], defaultBehavior = 'include' } = config;
 
-  const hostname = extractHostname(url);
-  const hostnameWithPath = extractHostnameWithPath(url);
-
-  const matchesAny = (patterns: string[]): boolean =>
-    patterns.some(
-      (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
-    );
-
   const includeSpecified = includePatterns.length > 0;
-  const includeMatch = includeSpecified && matchesAny(includePatterns);
-  const excludeMatch = excludePatterns.length > 0 && matchesAny(excludePatterns);
+  const includeMatch = includeSpecified && matchesAnyPattern(url, includePatterns);
+  const excludeMatch = excludePatterns.length > 0 && matchesAnyPattern(url, excludePatterns);
 
   if (includeMatch) {
     return true;
@@ -251,6 +243,24 @@ export function matchesWildcard(str: string, pattern: string): boolean {
 
   const regex = new RegExp(`^${regexPattern}$`, 'i');
   return regex.test(str);
+}
+
+/**
+ * Check if a URL matches any of the provided wildcard patterns.
+ *
+ * Tests both the hostname and hostname+path against each pattern.
+ *
+ * @param url - The URL to check
+ * @param patterns - Array of wildcard patterns to test against
+ * @returns True if the URL matches any pattern
+ */
+function matchesAnyPattern(url: string, patterns: string[]): boolean {
+  const hostname = extractHostname(url);
+  const hostnameWithPath = extractHostnameWithPath(url);
+
+  return patterns.some(
+    (pattern) => matchesWildcard(hostname, pattern) || matchesWildcard(hostnameWithPath, pattern)
+  );
 }
 
 /**

@@ -5,7 +5,9 @@
  * Finds the appropriate CDP target for the session.
  */
 
+import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
+import { ConfigError } from '@/daemon/errors.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
 import { writeChromePid } from '@/session/chrome.js';
@@ -40,21 +42,26 @@ export async function setupChromeConnection(
 /**
  * Connect to existing external Chrome instance.
  */
-async function setupExternalChrome(
-  config: WorkerConfig,
-  telemetryStore: TelemetryStore
-): Promise<null> {
-  console.error(`[worker] ${chromeExternalConnectionMessage()}`);
-  console.error(`[worker] ${chromeExternalWebSocketMessage(config.chromeWsUrl!)}`);
+function setupExternalChrome(config: WorkerConfig, telemetryStore: TelemetryStore): null {
+  const wsUrl = config.chromeWsUrl;
+  if (!wsUrl) {
+    throw new ConfigError(
+      'chromeWsUrl is required for external Chrome connection',
+      'MISSING_WS_URL'
+    );
+  }
 
-  const targetId = config.chromeWsUrl!.split('/').pop() ?? 'external';
+  console.error(`[worker] ${chromeExternalConnectionMessage()}`);
+  console.error(`[worker] ${chromeExternalWebSocketMessage(wsUrl)}`);
+
+  const targetId = wsUrl.split('/').pop() ?? 'external';
 
   telemetryStore.setTargetInfo({
     id: targetId,
     type: 'page',
     title: 'External Chrome',
     url: config.url,
-    webSocketDebuggerUrl: config.chromeWsUrl!,
+    webSocketDebuggerUrl: wsUrl,
   });
 
   console.error(`[worker] ${chromeExternalNoPidMessage()}`);
@@ -88,7 +95,7 @@ async function setupLaunchedChrome(
 
   // Find page target
   console.error(`[worker] Connecting to Chrome via CDP...`);
-  const targets = await fetchCDPTargets(config.port);
+  const targets = await fetchCDPTargets(config.port, log);
   const foundTarget = targets.find((t) => t.type === 'page');
 
   if (!foundTarget) {
@@ -101,7 +108,7 @@ async function setupLaunchedChrome(
           .join('\n')
       : null;
 
-    throw new Error(noPageTargetFoundError(config.port, availableTargets));
+    throw new ChromeLaunchError(noPageTargetFoundError(config.port, availableTargets));
   }
 
   telemetryStore.setTargetInfo(foundTarget);

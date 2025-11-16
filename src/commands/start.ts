@@ -2,7 +2,7 @@ import os from 'node:os';
 
 import type { Command } from 'commander';
 
-import { startSessionViaDaemon } from '@/commands/shared/daemonSessionController.js';
+import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';

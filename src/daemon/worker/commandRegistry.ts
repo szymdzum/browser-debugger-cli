@@ -18,9 +18,19 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
   return {
     worker_peek: async (_cdp, params) => {
       const lastN = Math.min(params.lastN ?? 10, 100);
+      const offset = params.offset ?? 0;
       const duration = Date.now() - store.sessionStartTime;
 
-      const recentNetwork = store.networkRequests.slice(-lastN).map((req) =>
+      // Calculate slice positions from the end, accounting for offset
+      const totalNetwork = store.networkRequests.length;
+      const totalConsole = store.consoleMessages.length;
+
+      const networkStart = Math.max(0, totalNetwork - lastN - offset);
+      const networkEnd = Math.max(0, totalNetwork - offset);
+      const consoleStart = Math.max(0, totalConsole - lastN - offset);
+      const consoleEnd = Math.max(0, totalConsole - offset);
+
+      const recentNetwork = store.networkRequests.slice(networkStart, networkEnd).map((req) =>
         filterDefined({
           requestId: req.requestId,
           timestamp: req.timestamp,
@@ -31,7 +41,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         })
       );
 
-      const recentConsole = store.consoleMessages.slice(-lastN).map((msg) => ({
+      const recentConsole = store.consoleMessages.slice(consoleStart, consoleEnd).map((msg) => ({
         timestamp: msg.timestamp,
         type: msg.type,
         text: msg.text,
@@ -48,6 +58,10 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         activeTelemetry: store.activeTelemetry,
         network: recentNetwork,
         console: recentConsole,
+        totalNetwork,
+        totalConsole,
+        hasMoreNetwork: networkStart > 0,
+        hasMoreConsole: consoleStart > 0,
       });
     },
 

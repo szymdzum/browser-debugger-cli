@@ -43,7 +43,7 @@ export async function cleanupBdgTest(): Promise<void> {
     } catch {
       // Last resort: import and use cleanup function directly
       try {
-        const { cleanupStaleChrome } = await import('@/commands/shared/sessionController.js');
+        const { cleanupStaleChrome } = await import('@/session/chrome.js');
         await cleanupStaleChrome();
       } catch {
         // Cleanup failed - log but don't throw to avoid breaking test runner

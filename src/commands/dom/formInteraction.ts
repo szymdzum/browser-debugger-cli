@@ -12,6 +12,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { SessionMetadata } from '@/session/metadata.js';
+import { CommandError } from '@/ui/errors/index.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -50,7 +51,11 @@ async function withCDPConnection<T>(
   // Connect to CDP
   const cdp = new CDPConnection();
   if (!metadata.webSocketDebuggerUrl) {
-    throw new Error('Missing webSocketDebuggerUrl in session metadata');
+    throw new CommandError(
+      'Missing webSocketDebuggerUrl in session metadata',
+      { note: 'Session metadata may be corrupted or from an older version' },
+      EXIT_CODES.SESSION_FILE_ERROR
+    );
   }
   await cdp.connect(metadata.webSocketDebuggerUrl);
 
@@ -76,7 +81,11 @@ export function registerFormInteractionCommands(program: Command): void {
   const domCommand = program.commands.find((cmd) => cmd.name() === 'dom');
 
   if (!domCommand) {
-    throw new Error('DOM command group not found');
+    throw new CommandError(
+      'DOM command group not found',
+      { note: 'This is an internal error - DOM commands may not be registered' },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   }
 
   // bdg dom fill <selector> <value>

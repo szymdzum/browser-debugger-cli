@@ -1,11 +1,13 @@
 import type { Command } from 'commander';
 
 import { runCommand, type BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import type { StatusResult } from '@/commands/types.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
 import type { SessionMetadata } from '@/session/metadata.js';
-import { getErrorMessage, isDaemonConnectionError } from '@/ui/errors/index.js';
+import { isDaemonConnectionError } from '@/ui/errors/index.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,
@@ -43,7 +45,7 @@ export function registerStatusCommand(program: Command): void {
       let latestActivity: SessionActivity | undefined;
       let latestPageState: PageState | undefined;
 
-      await runCommand(
+      await runCommand<StatusOptions, StatusResult>(
         async () => {
           try {
             const response = await getStatus();

@@ -5,13 +5,13 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { writeChromePid } from '@/session/chrome.js';
 import { writeSessionOutput } from '@/session/output.js';
 import { isProcessAlive, killChromeProcess } from '@/session/process.js';
 import { collectDOM } from '@/telemetry/dom.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { chromeExternalSkipTerminationMessage } from '@/ui/messages/chrome.js';
 import {
@@ -99,7 +99,7 @@ export async function cleanupWorker(
     }
 
     // Write output
-    await writeOutput(reason, telemetryStore, log);
+    writeOutput(reason, telemetryStore, log);
 
     log.debug(workerShutdownComplete());
   } catch (error) {
@@ -155,11 +155,11 @@ async function terminateChrome(
 /**
  * Write session output.
  */
-async function writeOutput(
+function writeOutput(
   reason: 'normal' | 'crash' | 'timeout',
   telemetryStore: TelemetryStore,
   log: Logger
-): Promise<void> {
+): void {
   if (reason === 'normal') {
     try {
       log.debug(workerWritingOutput());

@@ -1,3 +1,10 @@
+/**
+ * Structured output building for CLI commands.
+ *
+ * Provides helpers for building consistent JSON output across all commands.
+ * Moved from commands/shared to ui layer as it's presentation logic, not command logic.
+ */
+
 import type {
   BdgOutput,
   CDPTarget,
@@ -6,7 +13,7 @@ import type {
   DOMData,
   TelemetryType,
 } from '@/types';
-import { getErrorMessage } from '@/ui/errors/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
 /**
@@ -160,7 +167,12 @@ export class OutputBuilder {
    */
   static buildJsonError(
     error: string | Error,
-    options?: { exitCode?: number; [key: string]: unknown }
+    options?: {
+      exitCode?: number;
+      suggestion?: string;
+      note?: string;
+      context?: Record<string, string>;
+    }
   ): Record<string, unknown> {
     return {
       version: VERSION,

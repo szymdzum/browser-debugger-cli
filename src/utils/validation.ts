@@ -1,7 +1,26 @@
+/**
+ * @deprecated This validation module is deprecated. Use `@/commands/shared/validation.ts` instead.
+ *
+ * Migration guide:
+ * - `parseOptionalIntOption()` → `optionalIntRule()` with `validateOptions()`
+ * - `parsePositiveIntOption()` → `positiveIntRule()` with `validateOptions()`
+ * - `parseIntOption()` → `positiveIntRule()` with custom options
+ *
+ * The new validation layer provides:
+ * - Structured CommandError instances with proper exit codes
+ * - Type-safe validation rules
+ * - Consistent error formatting
+ * - Composable validation patterns
+ *
+ * @see commands/shared/validation.ts
+ */
+
 import { invalidIntegerError } from '@/ui/messages/validation.js';
 
 /**
  * Build range options object for error messages.
+ *
+ * @deprecated Use the new validation layer in `@/commands/shared/validation.ts`
  *
  * @param min - Minimum value
  * @param max - Maximum value
@@ -16,6 +35,8 @@ function buildRangeOptions(
 
 /**
  * Parse and validate an integer option with range constraints.
+ *
+ * @deprecated Use `positiveIntRule()` from `@/commands/shared/validation.ts` instead
  *
  * @param name - The option name for error messages
  * @param value - The string value to parse (or undefined)
@@ -83,6 +104,8 @@ export function parseIntOption(
 /**
  * Parse and validate a positive integer option with range constraints.
  *
+ * @deprecated Use `positiveIntRule()` from `@/commands/shared/validation.ts` instead
+ *
  * @param name - The option name for error messages
  * @param value - The string value to parse (or undefined)
  * @param options - Validation configuration
@@ -120,6 +143,8 @@ export function parsePositiveIntOption(
 
 /**
  * Parse an optional integer option (returns undefined if not provided).
+ *
+ * @deprecated Use `optionalIntRule()` from `@/commands/shared/validation.ts` instead
  *
  * @param name - The option name for error messages
  * @param value - The string value to parse (or undefined)

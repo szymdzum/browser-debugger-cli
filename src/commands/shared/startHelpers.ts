@@ -1,8 +1,15 @@
+/**
+ * Start command helper functions.
+ *
+ * Command-specific logic for the `bdg start` command.
+ * Handles IPC communication with daemon to start browser sessions.
+ */
+
 import { landingPage } from '@/commands/shared/landingPage.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import type { TelemetryType } from '@/types.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   sessionAlreadyRunningError,

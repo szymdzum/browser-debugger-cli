@@ -15,11 +15,12 @@ import { fileURLToPath } from 'url';
 
 import type { ChildProcess } from 'child_process';
 
+import { getErrorMessage } from '@/connection/errors.js';
+import { DaemonStartupError } from '@/daemon/errors.js';
 import { cleanupStaleSession } from '@/session/cleanup.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { isProcessAlive } from '@/session/process.js';
-import { getErrorMessage } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -95,8 +96,9 @@ export async function launchDaemon(): Promise<ChildProcess> {
     const daemonScriptPath = join(__dirname, '..', 'daemon.js');
 
     if (!fs.existsSync(daemonScriptPath)) {
-      throw new Error(
-        `Daemon script not found at ${daemonScriptPath}. Did you run 'npm run build'?`
+      throw new DaemonStartupError(
+        `Daemon script not found at ${daemonScriptPath}. Did you run 'npm run build'?`,
+        'DAEMON_SCRIPT_NOT_FOUND'
       );
     }
 
@@ -137,7 +139,7 @@ export async function launchDaemon(): Promise<ChildProcess> {
 
     // Timeout - daemon failed to start
     daemon.kill();
-    throw new Error('Daemon failed to start within 5 seconds');
+    throw new DaemonStartupError('Daemon failed to start within 5 seconds', 'DAEMON_START_TIMEOUT');
   } catch (error) {
     // Release lock on any error
     releaseDaemonLock();

@@ -8,70 +8,28 @@
 import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { callCDP } from '@/ipc/client.js';
+import type {
+  DomQueryResult,
+  DomGetResult,
+  ScreenshotResult,
+  DomGetOptions,
+  ScreenshotOptions,
+} from '@/types/dom.js';
+import { CommandError } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { ConcurrencyLimiter } from '@/utils/concurrency.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('dom');
+
+// Re-export types for backward compatibility
+export type { DomQueryResult, DomGetResult, ScreenshotResult, DomGetOptions, ScreenshotOptions };
 
 /**
- * Result of a DOM query operation
+ * Maximum concurrent CDP calls for DOM operations.
+ * Prevents overwhelming CDP connection with too many simultaneous requests.
  */
-export interface DomQueryResult {
-  selector: string;
-  count: number;
-  nodes: Array<{
-    index: number;
-    nodeId: number;
-    tag?: string;
-    classes?: string[];
-    preview?: string;
-  }>;
-}
-
-/**
- * Result of a DOM get operation
- */
-export interface DomGetResult {
-  nodes: Array<{
-    nodeId: number;
-    tag?: string;
-    attributes?: Record<string, unknown>;
-    classes?: string[];
-    outerHTML?: string;
-  }>;
-}
-
-/**
- * Result of a screenshot operation
- */
-export interface ScreenshotResult {
-  path: string;
-  format: 'png' | 'jpeg';
-  quality?: number;
-  width: number;
-  height: number;
-  size: number;
-  viewport?: {
-    width: number;
-    height: number;
-  };
-  fullPage: boolean;
-}
-
-/**
- * Options for DOM get operation
- */
-export interface DomGetOptions {
-  selector?: string;
-  nodeId?: number;
-  all?: boolean;
-  nth?: number;
-}
-
-/**
- * Options for screenshot operation
- */
-export interface ScreenshotOptions {
-  format?: 'png' | 'jpeg';
-  quality?: number;
-  fullPage?: boolean;
-}
+const CDP_CONCURRENCY_LIMIT = 10;
 
 /**
  * Query DOM elements by CSS selector using CDP relay.
@@ -101,60 +59,72 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
     | undefined;
   const nodeIds = queryResult?.nodeIds ?? [];
 
-  // Get info for each node
+  // Log progress for large queries
+  if (nodeIds.length > 20) {
+    log.debug(`Querying ${nodeIds.length} elements with selector: ${selector}`);
+  }
+
+  // Get info for each node with concurrency control
+  const limiter = new ConcurrencyLimiter(CDP_CONCURRENCY_LIMIT);
   const nodes = await Promise.all(
-    nodeIds.map(async (nodeId, index) => {
-      // Describe node
-      const descResponse = await callCDP('DOM.describeNode', { nodeId });
-      const descResult = descResponse.data?.result as Protocol.DOM.DescribeNodeResponse | undefined;
-      const nodeDesc = descResult?.node;
+    nodeIds.map((nodeId, index) =>
+      limiter.run(async () => {
+        // Describe node
+        const descResponse = await callCDP('DOM.describeNode', { nodeId });
+        const descResult = descResponse.data?.result as
+          | Protocol.DOM.DescribeNodeResponse
+          | undefined;
+        const nodeDesc = descResult?.node;
 
-      if (!nodeDesc) {
-        return { index, nodeId };
-      }
+        if (!nodeDesc) {
+          return { index, nodeId };
+        }
 
-      // Parse attributes
-      const attributes: Record<string, string> = {};
-      if (nodeDesc.attributes) {
-        for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-          const key = nodeDesc.attributes[i];
-          const value = nodeDesc.attributes[i + 1];
-          if (key !== undefined && value !== undefined) {
-            attributes[key] = value;
+        // Parse attributes
+        const attributes: Record<string, string> = {};
+        if (nodeDesc.attributes) {
+          for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
+            const key = nodeDesc.attributes[i];
+            const value = nodeDesc.attributes[i + 1];
+            if (key !== undefined && value !== undefined) {
+              attributes[key] = value;
+            }
           }
         }
-      }
 
-      // Extract classes and create preview
-      const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
-      const tag = nodeDesc.nodeName.toLowerCase();
+        // Extract classes and create preview
+        const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
+        const tag = nodeDesc.nodeName.toLowerCase();
 
-      // Get outer HTML for preview
-      const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
-      const htmlResult = htmlResponse.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined;
-      const outerHTML = htmlResult?.outerHTML ?? '';
+        // Get outer HTML for preview
+        const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
+        const htmlResult = htmlResponse.data?.result as
+          | Protocol.DOM.GetOuterHTMLResponse
+          | undefined;
+        const outerHTML = htmlResult?.outerHTML ?? '';
 
-      // Create preview text
-      const textContent = outerHTML
-        .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
+        // Create preview text
+        const textContent = outerHTML
+          .replace(/<[^>]*>/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
 
-      const node: {
-        index: number;
-        nodeId: number;
-        tag?: string;
-        classes?: string[];
-        preview?: string;
-      } = { index, nodeId };
+        const node: {
+          index: number;
+          nodeId: number;
+          tag?: string;
+          classes?: string[];
+          preview?: string;
+        } = { index, nodeId };
 
-      if (tag) node.tag = tag;
-      if (classes) node.classes = classes;
-      if (preview) node.preview = preview;
+        if (tag) node.tag = tag;
+        if (classes) node.classes = classes;
+        if (preview) node.preview = preview;
 
-      return node;
-    })
+        return node;
+      })
+    )
   );
 
   return {
@@ -197,78 +167,107 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     nodeIds = queryResult?.nodeIds ?? [];
 
     if (nodeIds.length === 0) {
-      throw new Error(`No elements found matching "${options.selector}"`);
+      throw new CommandError(
+        `No elements found matching "${options.selector}"`,
+        { suggestion: 'Verify the CSS selector is correct' },
+        EXIT_CODES.RESOURCE_NOT_FOUND
+      );
     }
 
     // Apply filtering
     if (options.nth !== undefined) {
       if (options.nth < 1 || options.nth > nodeIds.length) {
-        throw new Error(`--nth ${options.nth} out of range (found ${nodeIds.length} elements)`);
+        throw new CommandError(
+          `--nth ${options.nth} out of range (found ${nodeIds.length} elements)`,
+          { suggestion: `Use a value between 1 and ${nodeIds.length}` },
+          EXIT_CODES.INVALID_ARGUMENTS
+        );
       }
       const nthNode = nodeIds[options.nth - 1];
       if (nthNode === undefined) {
-        throw new Error(`Element at index ${options.nth} not found`);
+        throw new CommandError(
+          `Element at index ${options.nth} not found`,
+          {},
+          EXIT_CODES.RESOURCE_NOT_FOUND
+        );
       }
       nodeIds = [nthNode];
     } else if (!options.all) {
       // Default: return first match only
       const firstNode = nodeIds[0];
       if (firstNode === undefined) {
-        throw new Error('No elements found');
+        throw new CommandError('No elements found', {}, EXIT_CODES.RESOURCE_NOT_FOUND);
       }
       nodeIds = [firstNode];
     }
   } else {
-    throw new Error('Either selector or nodeId must be provided');
+    throw new CommandError(
+      'Either selector or nodeId must be provided',
+      {},
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
   }
 
+  // Log progress for large fetches
+  if (nodeIds.length > 20) {
+    log.debug(`Fetching details for ${nodeIds.length} DOM elements`);
+  }
+
+  // Fetch node details with concurrency control
+  const limiter = new ConcurrencyLimiter(CDP_CONCURRENCY_LIMIT);
   const nodes = await Promise.all(
-    nodeIds.map(async (nodeId) => {
-      // Describe node
-      const descResponse = await callCDP('DOM.describeNode', { nodeId });
-      const descResult = descResponse.data?.result as Protocol.DOM.DescribeNodeResponse | undefined;
-      const nodeDesc = descResult?.node;
+    nodeIds.map((nodeId) =>
+      limiter.run(async () => {
+        // Describe node
+        const descResponse = await callCDP('DOM.describeNode', { nodeId });
+        const descResult = descResponse.data?.result as
+          | Protocol.DOM.DescribeNodeResponse
+          | undefined;
+        const nodeDesc = descResult?.node;
 
-      if (!nodeDesc) {
-        return { nodeId };
-      }
+        if (!nodeDesc) {
+          return { nodeId };
+        }
 
-      // Parse attributes
-      const attributes: Record<string, string> = {};
-      if (nodeDesc.attributes) {
-        for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-          const key = nodeDesc.attributes[i];
-          const value = nodeDesc.attributes[i + 1];
-          if (key !== undefined && value !== undefined) {
-            attributes[key] = value;
+        // Parse attributes
+        const attributes: Record<string, string> = {};
+        if (nodeDesc.attributes) {
+          for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
+            const key = nodeDesc.attributes[i];
+            const value = nodeDesc.attributes[i + 1];
+            if (key !== undefined && value !== undefined) {
+              attributes[key] = value;
+            }
           }
         }
-      }
 
-      // Extract classes
-      const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
-      const tag = nodeDesc.nodeName.toLowerCase();
+        // Extract classes
+        const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
+        const tag = nodeDesc.nodeName.toLowerCase();
 
-      // Get outer HTML
-      const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
-      const htmlResult = htmlResponse.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined;
-      const outerHTML = htmlResult?.outerHTML;
+        // Get outer HTML
+        const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
+        const htmlResult = htmlResponse.data?.result as
+          | Protocol.DOM.GetOuterHTMLResponse
+          | undefined;
+        const outerHTML = htmlResult?.outerHTML;
 
-      const node: {
-        nodeId: number;
-        tag?: string;
-        attributes?: Record<string, unknown>;
-        classes?: string[];
-        outerHTML?: string;
-      } = { nodeId };
+        const node: {
+          nodeId: number;
+          tag?: string;
+          attributes?: Record<string, unknown>;
+          classes?: string[];
+          outerHTML?: string;
+        } = { nodeId };
 
-      if (tag) node.tag = tag;
-      if (Object.keys(attributes).length > 0) node.attributes = attributes;
-      if (classes) node.classes = classes;
-      if (outerHTML) node.outerHTML = outerHTML;
+        if (tag) node.tag = tag;
+        if (Object.keys(attributes).length > 0) node.attributes = attributes;
+        if (classes) node.classes = classes;
+        if (outerHTML) node.outerHTML = outerHTML;
 
-      return node;
-    })
+        return node;
+      })
+    )
   );
 
   return { nodes };

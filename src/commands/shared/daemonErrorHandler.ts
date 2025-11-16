@@ -1,11 +1,8 @@
 /**
  * Shared utilities for handling daemon connection errors in commands.
- *
- * Provides consistent error handling for peek, tail, and other commands
- * that communicate with the daemon via IPC.
  */
 
-import { OutputBuilder } from '@/commands/shared/OutputBuilder.js';
+import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { genericError } from '@/ui/messages/errors.js';
 import {
   connectionLostRetryMessage,
@@ -13,9 +10,7 @@ import {
 } from '@/ui/messages/preview.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-/**
- * Options for daemon connection error handling.
- */
+/** Options for daemon connection error handling. */
 export interface DaemonErrorOptions {
   /** Use JSON output format */
   json?: boolean | undefined;
@@ -27,9 +22,7 @@ export interface DaemonErrorOptions {
   exitCode?: number | undefined;
 }
 
-/**
- * Result of handling a daemon connection error.
- */
+/** Result of handling a daemon connection error. */
 export interface DaemonErrorResult {
   /** Whether the process should exit */
   shouldExit: boolean;
@@ -40,32 +33,9 @@ export interface DaemonErrorResult {
 /**
  * Handle daemon connection errors with consistent formatting and behavior.
  *
- * Formats and logs the error appropriately based on output mode.
- * Returns whether the caller should exit and with what code.
- *
  * @param error - Error message to display
  * @param options - Error handling options
  * @returns Result indicating whether to exit
- *
- * @example
- * ```typescript
- * // One-time command
- * const result = handleDaemonConnectionError('Daemon not running', {
- *   json: options.json,
- *   exitCode: EXIT_CODES.RESOURCE_NOT_FOUND
- * });
- * if (result.shouldExit) {
- *   process.exit(result.exitCode);
- * }
- *
- * // Follow mode (retries)
- * handleDaemonConnectionError('Connection lost', {
- *   json: options.json,
- *   follow: true,
- *   retryIntervalMs: 1000
- * });
- * // Returns { shouldExit: false }
- * ```
  */
 export function handleDaemonConnectionError(
   error: string,

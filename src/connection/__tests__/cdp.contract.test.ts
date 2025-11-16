@@ -372,18 +372,18 @@ describe('CDPConnection contract', () => {
       assert.equal(handler2Called.length, 1);
     });
 
-    it('should remove handler with off()', async () => {
+    it('should remove handler with cleanup function', async () => {
       // Arrange
       await connectAndOpen();
 
       let callCount = 0;
-      const handlerId = cdp.on('Page.frameNavigated', () => callCount++);
+      const cleanup = cdp.on('Page.frameNavigated', () => callCount++);
 
       // Act: Send event, then remove handler, then send again
       const event = createEvent('Page.frameNavigated', { frame: { id: 'f1' } });
       mockWebSocket.simulateMessage(JSON.stringify(event));
 
-      cdp.off('Page.frameNavigated', handlerId);
+      cleanup();
 
       mockWebSocket.simulateMessage(JSON.stringify(event));
 
