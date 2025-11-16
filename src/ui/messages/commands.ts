@@ -22,6 +22,16 @@ export function chromeKilledMessage(pid?: number): string {
 }
 
 /**
+ * Generate orphaned daemons cleaned message.
+ *
+ * @param count - Number of orphaned daemons cleaned up
+ * @returns Formatted success message
+ */
+export function orphanedDaemonsCleanedMessage(count: number): string {
+  return `Cleaned up ${count} orphaned daemon process${count === 1 ? '' : 'es'}`;
+}
+
+/**
  * Generate warning message.
  *
  * @param message - Warning text

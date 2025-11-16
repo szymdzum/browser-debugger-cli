@@ -8,10 +8,15 @@ import { getErrorMessage } from '@/connection/errors.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { clearChromePid } from '@/session/chrome.js';
+import { cleanupOrphanedDaemons } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { killChromeProcess } from '@/session/process.js';
 import { joinLines } from '@/ui/formatting.js';
-import { chromeKilledMessage, warningMessage } from '@/ui/messages/commands.js';
+import {
+  chromeKilledMessage,
+  orphanedDaemonsCleanedMessage,
+  warningMessage,
+} from '@/ui/messages/commands.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -30,10 +35,15 @@ interface StopOptions extends BaseCommandOptions {
  */
 function formatStop(data: StopResult): string {
   const outputLine = data.stopped.bdg ? sessionStopped(getSessionFilePath('OUTPUT')) : undefined;
+  const daemonsLine =
+    data.stopped.daemons && data.orphanedDaemonsCount
+      ? orphanedDaemonsCleanedMessage(data.orphanedDaemonsCount)
+      : undefined;
 
   return joinLines(
     outputLine,
     data.stopped.chrome && chromeKilledMessage(),
+    daemonsLine,
     ...(data.warnings ?? []).map((warning) => warningMessage(warning))
   );
 }
@@ -74,6 +84,7 @@ export function registerStopCommand(program: Command): void {
             if (response.status === 'ok') {
               // Session stopped successfully via daemon
               let chromeStopped = false;
+              let orphanedDaemonsCount = 0;
               const warnings: string[] = [];
 
               // Handle Chrome if requested (daemon captured Chrome PID before cleanup)
@@ -95,10 +106,14 @@ export function registerStopCommand(program: Command): void {
                 }
               }
 
+              // Automatically cleanup orphaned daemon processes
+              orphanedDaemonsCount = cleanupOrphanedDaemons();
+
               return {
                 success: true,
                 data: {
-                  stopped: { bdg: true, chrome: chromeStopped },
+                  stopped: { bdg: true, chrome: chromeStopped, daemons: orphanedDaemonsCount > 0 },
+                  orphanedDaemonsCount,
                   message: response.message ?? STOP_MESSAGES.SUCCESS,
                   ...(warnings.length > 0 && { warnings }),
                 },

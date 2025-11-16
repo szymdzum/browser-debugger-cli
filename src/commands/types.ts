@@ -19,7 +19,9 @@ export interface StopResult {
   stopped: {
     bdg: boolean;
     chrome: boolean;
+    daemons: boolean;
   };
+  orphanedDaemonsCount?: number;
   message: string;
   warnings?: string[];
 }
