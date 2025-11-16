@@ -19,7 +19,9 @@ export interface StopResult {
   stopped: {
     bdg: boolean;
     chrome: boolean;
+    daemons: boolean;
   };
+  orphanedDaemonsCount?: number;
   message: string;
   warnings?: string[];
 }
@@ -32,6 +34,7 @@ export interface CleanupResult {
     session: boolean;
     output: boolean;
     chrome: boolean;
+    daemons: boolean;
   };
   message: string;
   warnings?: string[];

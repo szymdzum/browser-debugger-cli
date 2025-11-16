@@ -5,6 +5,7 @@
  * WHY: Centralized cleanup logic ensures consistent cleanup across error paths and normal shutdown.
  */
 
+import { execSync } from 'child_process';
 import * as fs from 'fs';
 
 import { getErrorMessage } from '@/connection/errors.js';
@@ -46,6 +47,75 @@ function killCachedChromeProcess(reason: string): void {
       clearChromePid();
     }
   }
+}
+
+/**
+ * Find all orphaned daemon processes and return their PIDs.
+ *
+ * Orphaned daemons are node processes running dist/daemon.js that are not
+ * the currently tracked daemon in the PID file.
+ *
+ * @returns Array of orphaned daemon PIDs
+ */
+function findOrphanedDaemons(): number[] {
+  const orphanedPids: number[] = [];
+
+  try {
+    // Get currently tracked daemon PID (if any)
+    const daemonPidPath = getSessionFilePath('DAEMON_PID');
+    const currentDaemonPid = readPidFromFile(daemonPidPath);
+
+    // Find all node processes running dist/daemon.js
+    // Platform-specific ps command
+    const psCommand =
+      process.platform === 'win32'
+        ? 'wmic process where "commandline like \'%dist/daemon.js%\'" get processid'
+        : 'ps aux | grep -E "node.*dist/daemon\\.js" | grep -v grep';
+
+    const output = execSync(psCommand, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] });
+
+    // Parse PIDs from output
+    const lines = output.trim().split('\n');
+
+    for (const line of lines) {
+      // Extract PID based on platform
+      let pid: number;
+
+      if (process.platform === 'win32') {
+        // Windows: ProcessId column
+        const match = line.trim().match(/(\d+)/);
+        if (!match?.[1]) {
+          continue;
+        }
+        pid = parseInt(match[1], 10);
+      } else {
+        // Unix/macOS: Second column in ps output
+        const parts = line.trim().split(/\s+/);
+        if (parts.length < 2 || !parts[1]) {
+          continue;
+        }
+        pid = parseInt(parts[1], 10);
+      }
+
+      if (Number.isNaN(pid)) {
+        continue;
+      }
+
+      // Skip if this is the current daemon
+      if (currentDaemonPid && pid === currentDaemonPid) {
+        continue;
+      }
+
+      // Verify process is still alive
+      if (isProcessAlive(pid)) {
+        orphanedPids.push(pid);
+      }
+    }
+  } catch (error) {
+    log.debug(`Failed to find orphaned daemons: ${getErrorMessage(error)}`);
+  }
+
+  return orphanedPids;
 }
 
 /**
@@ -283,4 +353,49 @@ export function cleanupStaleDaemonPid(): boolean {
       return false;
     }
   }
+}
+
+/**
+ * Aggressively cleanup orphaned daemon processes.
+ *
+ * Finds and kills all node processes running dist/daemon.js that are not
+ * the currently tracked daemon. This prevents accumulation of zombie daemon
+ * processes from test failures, timeouts, or crashes.
+ *
+ * WHY: Stale daemon processes accumulate from test runs and failures, causing
+ * resource leaks and confusion. Aggressive cleanup prevents this.
+ *
+ * @returns Number of orphaned daemons killed
+ *
+ * @example
+ * ```typescript
+ * const killedCount = cleanupOrphanedDaemons();
+ * if (killedCount > 0) {
+ *   console.log(`Killed ${killedCount} orphaned daemon process(es)`);
+ * }
+ * ```
+ */
+export function cleanupOrphanedDaemons(): number {
+  const orphanedPids = findOrphanedDaemons();
+
+  if (orphanedPids.length === 0) {
+    log.debug('No orphaned daemon processes found');
+    return 0;
+  }
+
+  log.info(`Found ${orphanedPids.length} orphaned daemon process(es): ${orphanedPids.join(', ')}`);
+
+  let killedCount = 0;
+
+  for (const pid of orphanedPids) {
+    try {
+      process.kill(pid, 'SIGKILL');
+      log.info(`Killed orphaned daemon process ${pid}`);
+      killedCount++;
+    } catch (error) {
+      log.debug(`Failed to kill orphaned daemon ${pid}: ${getErrorMessage(error)}`);
+    }
+  }
+
+  return killedCount;
 }

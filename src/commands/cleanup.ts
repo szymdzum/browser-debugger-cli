@@ -64,22 +64,33 @@ export function registerCleanupCommand(program: Command): void {
     .description('Clean up stale session files')
     .option('-f, --force', 'Force cleanup even if session appears active', false)
     .option('-a, --all', 'Also remove session.json output file', false)
-    .option('--aggressive', 'Kill all Chrome processes (uses chrome-launcher killAll)', false)
+    .option('--aggressive', 'Kill orphaned daemon processes and all stale Chrome instances', false)
     .addOption(jsonOption)
     .action(async (options: CleanupOptions) => {
       await runCommand<CleanupOptions, CleanupResult>(
         async (opts) => {
-          // Import cleanupStaleChrome dynamically
+          // Import cleanup functions dynamically
           const { cleanupStaleChrome } = await import('@/session/chrome.js');
+          const { cleanupOrphanedDaemons } = await import('@/session/cleanup.js');
 
           let didCleanup = false;
           let cleanedSession = false;
           let cleanedOutput = false;
           let cleanedChrome = false;
+          let cleanedDaemons = false;
           const warnings: string[] = [];
 
-          // Handle aggressive Chrome cleanup first if requested
+          // Handle aggressive cleanup first if requested
           if (opts.aggressive) {
+            // Kill orphaned daemon processes
+            const daemonsKilled = cleanupOrphanedDaemons();
+            if (daemonsKilled > 0) {
+              cleanedDaemons = true;
+              didCleanup = true;
+              console.error(`✓ Killed ${daemonsKilled} orphaned daemon process(es)`);
+            }
+
+            // Kill stale Chrome processes
             const errorCount = await cleanupStaleChrome();
             cleanedChrome = true;
             if (errorCount > 0) {
@@ -178,7 +189,7 @@ export function registerCleanupCommand(program: Command): void {
             return {
               success: true,
               data: {
-                cleaned: { session: false, output: false, chrome: false },
+                cleaned: { session: false, output: false, chrome: false, daemons: false },
                 message: noSessionFilesMessage(),
               },
             };
@@ -187,7 +198,12 @@ export function registerCleanupCommand(program: Command): void {
           return {
             success: true,
             data: {
-              cleaned: { session: cleanedSession, output: cleanedOutput, chrome: cleanedChrome },
+              cleaned: {
+                session: cleanedSession,
+                output: cleanedOutput,
+                chrome: cleanedChrome,
+                daemons: cleanedDaemons,
+              },
               message: sessionDirectoryCleanMessage(),
               ...(warnings.length > 0 && { warnings }),
             },
