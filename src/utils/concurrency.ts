@@ -1,7 +1,5 @@
 /**
  * Custom concurrency limiter for controlling parallel async operations.
- *
- * @module utils/concurrency
  */
 
 /**

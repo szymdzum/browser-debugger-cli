@@ -12,7 +12,7 @@
  * - Consistent error formatting
  * - Composable validation patterns
  *
- * @see {@link @/commands/shared/validation.ts}
+ * @see commands/shared/validation.ts
  */
 
 import { invalidIntegerError } from '@/ui/messages/validation.js';

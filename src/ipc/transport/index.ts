@@ -14,6 +14,9 @@ import {
   formatParseError,
   formatTimeoutError,
 } from './errors.js';
+import { JSONLBuffer, parseJSONLFrame, toJSONLFrame } from './jsonl.js';
+import { createSocket } from './socket.js';
+import { validateResponseType, validateSessionId } from './validation.js';
 
 // Export structured error classes for external use
 export {
@@ -23,9 +26,6 @@ export {
   IPCParseError,
   IPCEarlyCloseError,
 } from './IPCError.js';
-import { JSONLBuffer, parseJSONLFrame, toJSONLFrame } from './jsonl.js';
-import { createSocket } from './socket.js';
-import { validateResponseType, validateSessionId } from './validation.js';
 
 const log = createLogger('client');
 

@@ -25,8 +25,6 @@
  * - Deprecated codes will remain functional for at least one major version
  *
  * Reference: https://developer.squareup.com/blog/command-line-observability-with-semantic-exit-codes/
- *
- * @since 0.1.0 - Initial exit code system
  */
 
 /**
