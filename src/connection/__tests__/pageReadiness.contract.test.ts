@@ -476,7 +476,7 @@ function createMockCDP(options: MockCDPOptions = {}): MockCDPWithEmit {
       return Promise.resolve({});
     },
 
-    on(event: string, handler: (params: unknown) => void): number {
+    on(event: string, handler: (params: unknown) => void): () => void {
       onEventRegistered?.(event);
 
       if (!handlers.has(event)) {
@@ -493,7 +493,7 @@ function createMockCDP(options: MockCDPOptions = {}): MockCDPWithEmit {
         }, 10);
       }
 
-      return id;
+      return () => this.off(event, id);
     },
 
     off(event: string, id: number): void {

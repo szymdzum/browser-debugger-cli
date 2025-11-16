@@ -72,7 +72,7 @@ export async function setupCDPAndNavigate(
   // Update target info after navigation
   if (chrome && telemetryStore.targetInfo) {
     const currentTargetId = telemetryStore.targetInfo.id;
-    const updatedTargets = await fetchCDPTargets(config.port);
+    const updatedTargets = await fetchCDPTargets(config.port, log);
     const updatedTarget = updatedTargets.find((t) => t.id === currentTargetId);
     if (updatedTarget) {
       telemetryStore.setTargetInfo(updatedTarget);

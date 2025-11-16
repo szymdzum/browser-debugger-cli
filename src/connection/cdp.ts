@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 
+import type { CDPEventSource, EventCleanup } from './events.js';
 import type { CDPMessage, ConnectionOptions, CreateOptions, Logger } from './types.js';
 
 import { DEFAULT_CDP_CONFIG, WEBSOCKET_CONFIG, UTF8_ENCODING } from './config.js';
@@ -59,7 +60,7 @@ const INVALID_WEBSOCKET_URL_ERROR = (url: string, errorMsg: string): string =>
  */
 type WebSocketFactory = (url: string, options?: WebSocket.ClientOptions) => WebSocket;
 
-export class CDPConnection {
+export class CDPConnection implements CDPEventSource {
   private ws: WebSocket | null = null;
   private messageId = 0;
   private pendingMessages = new Map<
@@ -625,12 +626,25 @@ export class CDPConnection {
    * and always invoke them with unknown parameters. The generic T is only for
    * caller convenience and type checking at the call site.
    *
+   * Implements CDPEventSource interface, returning a cleanup function
+   * instead of handler ID for easier resource management.
+   *
    * @param event - CDP event name (e.g., 'Network.requestWillBeSent')
    * @param handler - Callback function to handle the event
-   * @returns Handler ID for later removal with off()
+   * @returns Cleanup function to unregister the handler
    * @typeParam T - Type of event parameters for type safety at call site
+   *
+   * @example
+   * ```typescript
+   * const cleanup = cdp.on('Network.requestWillBeSent', (params) => {
+   *   console.log('Request:', params.request.url);
+   * });
+   *
+   * // Later, unregister
+   * cleanup();
+   * ```
    */
-  on<T = unknown>(event: string, handler: (params: T) => void): number {
+  on<T = unknown>(event: string, handler: (params: T) => void): EventCleanup {
     let handlersForEvent = this.eventHandlers.get(event);
     if (!handlersForEvent) {
       handlersForEvent = new Map();
@@ -638,7 +652,9 @@ export class CDPConnection {
     }
     const handlerId = ++this.nextHandlerId;
     handlersForEvent.set(handlerId, handler as (params: unknown) => void);
-    return handlerId;
+
+    // Return cleanup function (CDPEventSource interface)
+    return () => this.off(event, handlerId);
   }
 
   /**

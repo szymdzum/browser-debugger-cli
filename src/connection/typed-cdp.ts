@@ -12,6 +12,7 @@
  */
 
 import type { CDPConnection } from './cdp.js';
+import type { EventCleanup } from './events.js';
 import type Protocol from 'devtools-protocol/types/protocol';
 import type ProtocolMapping from 'devtools-protocol/types/protocol-mapping';
 
@@ -131,7 +132,7 @@ export class TypedCDPConnection {
   on<T extends keyof ProtocolMapping.Events>(
     event: T,
     handler: (params: EventParams<T>) => void
-  ): number {
+  ): EventCleanup {
     return this.cdp.on(event, handler as (params: unknown) => void);
   }
 

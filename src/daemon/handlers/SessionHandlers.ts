@@ -61,7 +61,7 @@ export class SessionHandlers {
         let targetUrl: string | undefined;
         if (metadata?.port && metadata?.targetId) {
           try {
-            const targets = await fetchCDPTargets(metadata.port);
+            const targets = await fetchCDPTargets(metadata.port, log);
             const target = targets.find((t: CDPTarget) => t.id === metadata.targetId);
             if (target) {
               targetUrl = target.url;

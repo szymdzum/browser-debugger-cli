@@ -95,6 +95,6 @@ export async function startConsoleCollection(
   });
 
   return () => {
-    registry.cleanup(cdp);
+    registry.cleanup();
   };
 }

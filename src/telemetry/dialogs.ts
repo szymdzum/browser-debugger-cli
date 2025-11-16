@@ -49,6 +49,6 @@ export async function startDialogHandling(cdp: CDPConnection): Promise<CleanupFu
   });
 
   return () => {
-    registry.cleanup(cdp);
+    registry.cleanup();
   };
 }

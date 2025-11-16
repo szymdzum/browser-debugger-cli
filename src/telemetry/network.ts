@@ -257,7 +257,7 @@ export async function startNetworkCollection(
     }
 
     clearInterval(cleanupInterval);
-    registry.cleanup(cdp);
+    registry.cleanup();
     requestMap.clear();
   };
 }

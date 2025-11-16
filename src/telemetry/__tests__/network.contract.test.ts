@@ -34,7 +34,7 @@ class MockCDPConnection {
   /**
    * Mock CDP event subscription
    */
-  on<T>(event: string, handler: (params: T) => void): number {
+  on<T>(event: string, handler: (params: T) => void): () => void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Map());
     }
@@ -43,7 +43,7 @@ class MockCDPConnection {
     if (handlers) {
       handlers.set(id, handler as (params: unknown) => void);
     }
-    return id;
+    return () => this.off(event, id);
   }
 
   /**

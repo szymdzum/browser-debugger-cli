@@ -23,7 +23,7 @@ type EventParams<T extends keyof ProtocolMapping.Events> = ProtocolMapping.Event
  * Supports both legacy untyped usage and new type-safe usage with TypedCDPConnection.
  */
 export class CDPHandlerRegistry {
-  private handlers: Array<{ event: string; id: number }> = [];
+  private cleanupFunctions: Array<() => void> = [];
 
   /**
    * Register a CDP event handler and track it for cleanup (legacy API).
@@ -35,8 +35,8 @@ export class CDPHandlerRegistry {
    * @deprecated Since v0.5.0. Use registerTyped() with TypedCDPConnection for type safety. Will be removed in v1.0.0.
    */
   register<T>(cdp: CDPConnection, event: string, handler: (params: T) => void): void {
-    const id = cdp.on(event, handler);
-    this.handlers.push({ event, id });
+    const cleanup = cdp.on(event, handler);
+    this.cleanupFunctions.push(cleanup);
   }
 
   /**
@@ -62,18 +62,16 @@ export class CDPHandlerRegistry {
     event: T,
     handler: (params: EventParams<T>) => void
   ): void {
-    const id = typed.on(event, handler);
-    this.handlers.push({ event, id });
+    const cleanup = typed.on(event, handler);
+    this.cleanupFunctions.push(cleanup);
   }
 
   /**
    * Remove all registered event handlers and clear the registry.
-   *
-   * @param cdp - CDP connection instance (or TypedCDPConnection.raw)
    */
-  cleanup(cdp: CDPConnection): void {
-    this.handlers.forEach(({ event, id }) => cdp.off(event, id));
-    this.handlers.length = 0;
+  cleanup(): void {
+    this.cleanupFunctions.forEach((cleanup) => cleanup());
+    this.cleanupFunctions.length = 0;
   }
 
   /**
@@ -82,6 +80,6 @@ export class CDPHandlerRegistry {
    * @returns Number of active handlers
    */
   size(): number {
-    return this.handlers.length;
+    return this.cleanupFunctions.length;
   }
 }

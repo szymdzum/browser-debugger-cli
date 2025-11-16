@@ -1,13 +1,13 @@
 import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
-import { handleDaemonConnectionError } from '@/utils/daemonErrors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
