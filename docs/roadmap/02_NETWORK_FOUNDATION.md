@@ -281,7 +281,7 @@ bdg net.unblock --url-pattern <pattern>
 Capture all network traffic for a session:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 bdg net.capture start --file session.ndjson
 # Perform actions...
 bdg page.navigate https://example.com/page2
@@ -294,7 +294,7 @@ bdg stop
 Capture only API requests:
 ```bash
 #!/bin/bash
-bdg start https://app.example.com
+bdg https://app.example.com
 bdg net.capture start --file api-only.ndjson --filter '*/api/*'
 # Interact with app...
 bdg net.capture stop
@@ -305,7 +305,7 @@ cat api-only.ndjson | jq -s 'group_by(.url) | map({url: .[0].url, count: length}
 Debug cache behavior:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 
 # Request with cache
 bdg page.navigate https://example.com/data
@@ -323,7 +323,7 @@ bdg stop
 Test under slow network conditions:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 
 # Apply slow 3G throttling
 bdg cdp Network.enable
@@ -344,7 +344,7 @@ bdg stop
 Block analytics and tracking:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 
 # Block tracking domains
 bdg cdp Network.enable

@@ -374,7 +374,7 @@ bdg dom.a11y --full
 Generate visual report for debugging:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 bdg dom.wait --selector '.error' --timeout 5000 || {
   echo "No errors found"
   exit 0
@@ -388,7 +388,7 @@ bdg stop
 Visualize grid layout:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 bdg overlay.grid --selector '.main-container' --out layout.png
 bdg overlay.grid --all --type flex --out all-flex.png
 echo "Layout screenshots saved"
@@ -399,7 +399,7 @@ bdg stop
 Quick accessibility scan:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 bdg dom.a11y | jq '.data.summary'
 bdg dom.a11y --check color-contrast | jq '.data.checks.colorContrast.issues'
 bdg stop
@@ -409,7 +409,7 @@ bdg stop
 Compare multiple elements:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 bdg dom.inspect --selector 'button.primary' > primary.json
 bdg dom.inspect --selector 'button.secondary' > secondary.json
 diff <(jq -S .data.computed < primary.json) <(jq -S .data.computed < secondary.json)
@@ -420,7 +420,7 @@ bdg stop
 Generate gallery of all matching elements:
 ```bash
 #!/bin/bash
-bdg start https://example.com
+bdg https://example.com
 SELECTORS=(".card" ".button" ".input")
 for sel in "${SELECTORS[@]}"; do
   filename=$(echo "$sel" | sed 's/[^a-z]/-/g')

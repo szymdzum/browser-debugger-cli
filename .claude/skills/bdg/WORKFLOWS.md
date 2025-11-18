@@ -23,7 +23,7 @@ Complete workflow showing session lifecycle, navigation, DOM queries, and data e
 # Extract repository information from GitHub trending page
 
 # 1. Start session (launches Chrome, establishes CDP connection)
-bdg start https://github.com/trending
+bdg https://github.com/trending
 
 # 2. Wait for page to be ready (automatic via page readiness detection)
 # No polling needed - bdg waits for load event + network idle + DOM stable
@@ -886,7 +886,7 @@ document.readyState === 'complete'
 ### Session Lifecycle
 
 ```bash
-bdg start <url>              # Start session + launch Chrome
+bdg <url>                    # Start session + launch Chrome
 bdg cdp <Domain>.<method>    # Execute CDP commands
 bdg status                   # Check session status
 bdg peek                     # Preview collected data

@@ -310,7 +310,7 @@ bdg dom wait --selector "article.Box-row" --timeout 30000
 - Check browser console for JS errors
 
 ### Session Start Failure
-**Symptom**: `bdg start` fails  
+**Symptom**: `bdg <url>` fails  
 **Causes**:
 - Chrome not installed
 - Port conflict (9222 in use)
