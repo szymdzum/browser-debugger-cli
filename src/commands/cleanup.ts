@@ -10,7 +10,6 @@ import { getErrorMessage } from '@/connection/errors.js';
 import { cleanupSession } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
-import { isProcessAlive } from '@/session/process.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   sessionFilesCleanedMessage,
@@ -23,6 +22,7 @@ import {
   warningMessage,
 } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 /**
  * Flags consumed by the `bdg cleanup` command.

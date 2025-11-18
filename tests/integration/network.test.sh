@@ -90,7 +90,7 @@ if [ $JSON_EXIT -eq 0 ]; then
     log_success "JSON output is valid"
     
     # Check for expected fields
-    if echo "$NETWORK_JSON" | jq -e '.preview.data.network' > /dev/null 2>&1; then
+    if echo "$NETWORK_JSON" | jq -e '.data.network' > /dev/null 2>&1; then
       log_success "JSON has expected network data structure"
     fi
   else

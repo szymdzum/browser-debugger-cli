@@ -9,7 +9,7 @@ import * as fs from 'fs';
 
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
-import { isProcessAlive } from '@/session/process.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 import { ensureTestSessionDir } from './testHome.js';
 

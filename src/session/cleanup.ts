@@ -10,12 +10,12 @@ import * as fs from 'fs';
 
 import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
 import { readChromePid, clearChromePid } from './chrome.js';
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile, readPidFromFile } from './pid.js';
-import { isProcessAlive, killChromeProcess } from './process.js';
 
 const log = createLogger('cleanup');
 

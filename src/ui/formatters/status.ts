@@ -1,10 +1,10 @@
 import { getChromeDiagnostics } from '@/connection/diagnostics.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import type { SessionMetadata } from '@/session/metadata.js';
-import { isProcessAlive } from '@/session/process.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { formatDiagnosticsForStatus } from '@/ui/messages/chrome.js';
+import { isProcessAlive } from '@/utils/process.js';
 import { VERSION } from '@/utils/version.js';
 
 export interface StatusData {

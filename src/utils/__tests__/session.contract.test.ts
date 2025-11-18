@@ -10,7 +10,7 @@ import { acquireSessionLock, releaseSessionLock } from '@/session/lock.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid, writePid } from '@/session/pid.js';
-import { isProcessAlive } from '@/session/process.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 /**
  * Session Utilities Contract Tests

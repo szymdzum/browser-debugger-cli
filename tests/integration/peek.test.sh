@@ -112,9 +112,9 @@ JSON_OUTPUT=$(bdg peek --json 2>&1) || die "Peek --json failed"
 # Validate JSON format
 echo "$JSON_OUTPUT" | jq . > /dev/null 2>&1 || die "Peek --json output is not valid JSON"
 
-# Validate JSON structure (peek uses .preview.data structure)
-JSON_PREVIEW=$(echo "$JSON_OUTPUT" | jq '.preview' 2>&1) || die "JSON missing 'preview' field"
-[ "$JSON_PREVIEW" != "null" ] || die "JSON preview field is null"
+# Validate JSON structure (peek now uses standard bdg output format)
+JSON_SUCCESS=$(echo "$JSON_OUTPUT" | jq '.success' 2>&1) || die "JSON missing 'success' field"
+[ "$JSON_SUCCESS" != "null" ] || die "JSON success field is null"
 
 log_success "Test 7 passed: Peek --json produces valid JSON"
 

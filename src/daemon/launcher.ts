@@ -20,9 +20,9 @@ import { DaemonStartupError } from '@/daemon/errors.js';
 import { cleanupStaleSession } from '@/session/cleanup.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { getSessionFilePath } from '@/session/paths.js';
-import { isProcessAlive } from '@/session/process.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -104,8 +104,9 @@ export async function launchDaemon(): Promise<ChildProcess> {
 
     log.debug(`Starting daemon: ${daemonScriptPath}`);
 
-    // Spawn the daemon worker
-    const daemon = spawn('node', [daemonScriptPath], {
+    // Spawn the daemon worker using the same Node binary as the parent process
+    // This ensures compatibility with version managers (nvm, volta) and bundled environments
+    const daemon = spawn(process.execPath, [daemonScriptPath], {
       detached: true,
       stdio: 'ignore', // Fully detached - daemon must not depend on parent's stdio
       env: {

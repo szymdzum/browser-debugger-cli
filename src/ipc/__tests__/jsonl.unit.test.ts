@@ -7,7 +7,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { JSONLBuffer, parseJSONLFrame, toJSONLFrame } from '@/ipc/transport/jsonl.js';
+import {
+  JSONLBuffer,
+  JSONLBufferOverflowError,
+  parseJSONLFrame,
+  toJSONLFrame,
+} from '@/ipc/transport/jsonl.js';
 
 void describe('JSONLBuffer', () => {
   void it('handles partial frames across chunks', () => {
@@ -52,6 +57,33 @@ void describe('JSONLBuffer', () => {
 
     const lines = buffer.process('{"new":"message"}\n');
     assert.deepEqual(lines, ['{"new":"message"}']);
+  });
+
+  void it('throws on buffer overflow', () => {
+    const buffer = new JSONLBuffer();
+
+    // Create a chunk larger than MAX_JSONL_BUFFER_SIZE (10MB) without newlines
+    const largeChunk = 'x'.repeat(11 * 1024 * 1024); // 11MB
+
+    assert.throws(
+      () => {
+        buffer.process(largeChunk);
+      },
+      (error: unknown) => {
+        return error instanceof JSONLBufferOverflowError && error.message.includes('10485760');
+      }
+    );
+  });
+
+  void it('allows chunks under buffer limit', () => {
+    const buffer = new JSONLBuffer();
+
+    // Create a chunk just under the limit
+    const largeButValidChunk = '{"data":"' + 'x'.repeat(9 * 1024 * 1024) + '"}\n';
+
+    // Should not throw
+    const lines = buffer.process(largeButValidChunk);
+    assert.equal(lines.length, 1);
   });
 });
 

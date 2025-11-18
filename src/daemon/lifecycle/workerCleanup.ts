@@ -9,7 +9,6 @@ import { getErrorMessage } from '@/connection/errors.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { writeChromePid } from '@/session/chrome.js';
 import { writeSessionOutput } from '@/session/output.js';
-import { isProcessAlive, killChromeProcess } from '@/session/process.js';
 import { collectDOM } from '@/telemetry/dom.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
 import type { Logger } from '@/ui/logging/index.js';
@@ -23,6 +22,7 @@ import {
   workerShutdownComplete,
   workerWritingOutput,
 } from '@/ui/messages/debug.js';
+import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
 /**
  * Worker cleanup context.

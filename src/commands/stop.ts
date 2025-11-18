@@ -10,7 +10,6 @@ import { IPCErrorCode } from '@/ipc/index.js';
 import { clearChromePid } from '@/session/chrome.js';
 import { cleanupOrphanedDaemons } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
-import { killChromeProcess } from '@/session/process.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   chromeKilledMessage,
@@ -19,6 +18,7 @@ import {
 } from '@/ui/messages/commands.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { killChromeProcess } from '@/utils/process.js';
 
 /**
  * Flags supported by `bdg stop`.

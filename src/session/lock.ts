@@ -9,9 +9,9 @@ import * as fs from 'fs';
 
 import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
-import { isProcessAlive } from './process.js';
 
 const log = createLogger('session');
 

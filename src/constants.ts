@@ -164,6 +164,13 @@ export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 2000;
 // ============================================================================
 
 /**
+ * Maximum JSONL buffer size in bytes (10MB)
+ * Prevents OOM attacks from malicious/buggy processes sending data without newlines
+ * If buffer exceeds this size, connection is terminated with protocol error
+ */
+export const MAX_JSONL_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
+
+/**
  * IPC request timeout in milliseconds (45 seconds in production, 5 seconds in tests)
  * Maximum time to wait for IPC responses from daemon
  * Must accommodate: Chrome launch (~2s) + Page readiness detection (up to 30s) + buffer (~13s)

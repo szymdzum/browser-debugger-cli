@@ -7,13 +7,12 @@
  */
 
 import { readFileSync } from 'fs';
+import { createRequire } from 'module';
 import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
 
 import type { ProtocolSchema, Domain, Command } from './types.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const require = createRequire(import.meta.url);
 
 // Cache the protocol to avoid re-reading the file
 let cachedProtocol: ProtocolSchema | null = null;
@@ -40,16 +39,14 @@ export function loadProtocol(): ProtocolSchema {
     return cachedProtocol;
   }
 
-  // Find the protocol files in node_modules
-  // When compiled, __dirname is dist/cdp, so go up to project root
-  const browserProtocolPath = join(
-    __dirname,
-    '../../node_modules/devtools-protocol/json/browser_protocol.json'
-  );
-  const jsProtocolPath = join(
-    __dirname,
-    '../../node_modules/devtools-protocol/json/js_protocol.json'
-  );
+  // Resolve protocol files using require.resolve to dynamically locate the package
+  // We resolve the package.json, then navigate to the json/ directory
+  // This works regardless of build output structure or installation location
+  const packageJsonPath = require.resolve('devtools-protocol/package.json');
+  const protocolDir = dirname(packageJsonPath);
+
+  const browserProtocolPath = join(protocolDir, 'json/browser_protocol.json');
+  const jsProtocolPath = join(protocolDir, 'json/js_protocol.json');
 
   const browserProtocol = JSON.parse(readFileSync(browserProtocolPath, 'utf-8')) as ProtocolSchema;
   const jsProtocol = JSON.parse(readFileSync(jsProtocolPath, 'utf-8')) as ProtocolSchema;

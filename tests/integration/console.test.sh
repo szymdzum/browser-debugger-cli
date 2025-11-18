@@ -86,7 +86,7 @@ if [ $JSON_EXIT -eq 0 ]; then
     log_success "JSON output is valid"
     
     # Check for expected fields
-    if echo "$CONSOLE_JSON" | jq -e '.preview.data.console' > /dev/null 2>&1; then
+    if echo "$CONSOLE_JSON" | jq -e '.data.console' > /dev/null 2>&1; then
       log_success "JSON has expected console data structure"
     fi
   else

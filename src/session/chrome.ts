@@ -10,9 +10,9 @@ import * as fs from 'fs';
 import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
-import { isProcessAlive } from './process.js';
 
 const log = createLogger('chrome');
 
@@ -152,7 +152,7 @@ export async function cleanupStaleChrome(): Promise<number> {
   console.error(cleanupChromeAttemptingMessage());
 
   try {
-    const { killChromeProcess } = await import('./process.js');
+    const { killChromeProcess } = await import('@/utils/process.js');
 
     const chromePid = readChromePid();
 

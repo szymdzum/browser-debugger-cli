@@ -2,10 +2,10 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js';
 import { readPid } from '@/session/pid.js';
-import { isProcessAlive } from '@/session/process.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargetById } from '@/utils/http.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 /**
  * Type guard to validate CDP Runtime.evaluate response structure

@@ -41,8 +41,8 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
 /**
  * Format preview as JSON
  *
- * Returns the output wrapped in a preview object to maintain the
- * IPC response structure (.preview.data path for JSON consumers).
+ * Returns the output in standard bdg JSON format (consistent with stop command).
+ * BREAKING CHANGE: Previously wrapped in { preview: {...} }, now returns at root level.
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
   // Build a new data object so we never mutate the original output
@@ -67,13 +67,13 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
     }
   }
 
-  // Wrap in preview object to maintain .preview.data path for JSON consumers
+  // Return standard bdg output format (consistent with stop command)
   const jsonOutput: BdgOutput = {
     ...output,
     data,
   };
 
-  return JSON.stringify({ preview: jsonOutput }, null, 2);
+  return JSON.stringify(jsonOutput, null, 2);
 }
 
 /**
