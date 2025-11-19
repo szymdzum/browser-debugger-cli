@@ -63,7 +63,9 @@ export type LogContext =
   | 'navigation'
   | 'console'
   | 'dom'
-  | 'network';
+  | 'network'
+  | 'diagnostics'
+  | 'atomic-file';
 
 // ============================================================================
 // Logger Interface
