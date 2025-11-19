@@ -242,6 +242,14 @@ This tool is built on principles learned from building CLI tools for autonomous 
 
 These docs capture observations from real agent interactions and explain the reasoning behind design decisions. If you're building tools for AI agents, they might be useful.
 
+## Documentation
+
+- **[Roadmap](docs/roadmap/ROADMAP.md)** - Product vision, milestones, and priorities
+- **[Implementation Status](docs/roadmap/IMPLEMENTATION_STATUS.md)** - Feature completion tracking
+- **[CLI Reference](docs/CLI_REFERENCE.md)** - Complete command documentation
+- **[Agent Guide](docs/principles/AGENT_FRIENDLY_TOOLS.md)** - Building tools for AI agents
+- **[Self-Documenting Systems](docs/principles/SELF_DOCUMENTING_SYSTEMS.md)** - Design philosophy
+
 ## Contributing
 
 If you use this and something breaks, [open an issue](https://github.com/szymdzum/browser-debugger-cli/issues/new). If you have ideas, start a [discussion](https://github.com/szymdzum/browser-debugger-cli/discussions). PRs welcome.

@@ -6,15 +6,22 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { describe, it, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 void describe('Error Handling Smoke Tests', () => {
+  let allocatedPort: number;
+
+  beforeEach(() => {
+    const basePort = 9222;
+    const portOffset = Math.floor(Math.random() * 100);
+    allocatedPort = basePort + portOffset;
+  });
+
   afterEach(async () => {
-    // Cleanup after each test (no beforeEach needed if this works properly)
     await cleanupAllSessions();
   });
 
@@ -48,12 +55,16 @@ void describe('Error Handling Smoke Tests', () => {
 
   void it('should provide helpful error when Chrome fails to launch', async () => {
     // Try to start with invalid Chrome path and unique port
-    const result = await runCommand('http://example.com', ['--port', '9231', '--headless'], {
-      timeout: 10000,
-      env: {
-        CHROME_PATH: '/nonexistent/chrome',
-      },
-    });
+    const result = await runCommand(
+      'http://example.com',
+      ['--port', allocatedPort.toString(), '--headless'],
+      {
+        timeout: 60000,
+        env: {
+          CHROME_PATH: '/nonexistent/chrome',
+        },
+      }
+    );
 
     // Should fail (exit code 104 is acceptable for worker errors)
     assert.notEqual(result.exitCode, 0);

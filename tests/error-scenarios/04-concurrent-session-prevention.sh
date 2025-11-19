@@ -9,18 +9,12 @@
 
 set -euo pipefail
 
+# Load cleanup library
+TESTS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib"
+source "$TESTS_LIB_DIR/cleanup.sh"
+
 # Cleanup trap to prevent cascade failures
-cleanup() {
-  local exit_code=$?
-  bdg stop 2>/dev/null || true
-  sleep 0.5
-  # Force kill any Chrome processes on port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
-  sleep 0.5
-  bdg cleanup --force 2>/dev/null || true
-  exit "$exit_code"
-}
-trap cleanup EXIT INT TERM
+trap 'cleanup_with_polling 9222' EXIT INT TERM
 
 # Test metadata
 TEST_NAME="concurrent-session-prevention"

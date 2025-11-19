@@ -276,21 +276,18 @@ void describe('IPC Client Contract Tests', () => {
 
   void describe('connectToDaemon()', () => {
     void it('connects to daemon and receives handshake response', async () => {
-      // Test the CONTRACT: Client connects → daemon responds
       const response = await ipcClient.connectToDaemon();
 
-      // Verify response structure (contract)
       assert.equal(response.type, 'handshake_response');
       assert.equal(response.status, 'ok');
-      assert.ok(response.sessionId); // Should have a session ID
-      assert.ok(response.message); // Should have a message
+      assert.ok(response.sessionId);
+      assert.ok(response.message);
     });
 
     void it('throws error when daemon is not running', async () => {
       // Stop daemon to simulate not running
       await mockDaemon.stop();
 
-      // Test the CONTRACT: No daemon → connection error
       await assert.rejects(
         async () => {
           await ipcClient.connectToDaemon();
@@ -306,7 +303,6 @@ void describe('IPC Client Contract Tests', () => {
       // Configure mock daemon to be slow (10s delay)
       mockDaemon.mode = 'slow';
 
-      // Test the CONTRACT: Slow response → timeout error
       await assert.rejects(
         async () => {
           await ipcClient.connectToDaemon();
@@ -322,7 +318,6 @@ void describe('IPC Client Contract Tests', () => {
       // Configure mock daemon to send invalid JSON
       mockDaemon.mode = 'malformed';
 
-      // Test the CONTRACT: Invalid JSON → parse error
       await assert.rejects(
         async () => {
           await ipcClient.connectToDaemon();
@@ -338,7 +333,6 @@ void describe('IPC Client Contract Tests', () => {
       // Configure mock daemon to close connection immediately
       mockDaemon.mode = 'close_early';
 
-      // Test the CONTRACT: Early close → connection closed error
       await assert.rejects(
         async () => {
           await ipcClient.connectToDaemon();
@@ -353,10 +347,8 @@ void describe('IPC Client Contract Tests', () => {
 
   void describe('getStatus()', () => {
     void it('requests status and receives response', async () => {
-      // Test the CONTRACT: Status request → status response
       const response = await ipcClient.getStatus();
 
-      // Verify response structure (contract)
       assert.equal(response.type, 'status_response');
       assert.equal(response.status, 'ok');
       assert.ok(response.data);
@@ -368,7 +360,6 @@ void describe('IPC Client Contract Tests', () => {
       // Stop daemon
       await mockDaemon.stop();
 
-      // Test the CONTRACT: No daemon → connection error
       await assert.rejects(
         async () => {
           await ipcClient.getStatus();
@@ -384,7 +375,6 @@ void describe('IPC Client Contract Tests', () => {
       // Configure mock daemon to be slow
       mockDaemon.mode = 'slow';
 
-      // Test the CONTRACT: Slow response → timeout
       await assert.rejects(
         async () => {
           await ipcClient.getStatus();
@@ -400,7 +390,6 @@ void describe('IPC Client Contract Tests', () => {
       // Configure mock daemon to send error response
       mockDaemon.mode = 'error';
 
-      // Test the CONTRACT: Daemon error → client receives error
       // Note: Current implementation doesn't check status in response
       // This test documents current behavior
       const response = await ipcClient.getStatus();
@@ -459,7 +448,6 @@ void describe('IPC Client Contract Tests', () => {
 
   void describe('Concurrent requests', () => {
     void it('handles multiple concurrent requests', async () => {
-      // Test the INVARIANT: Multiple concurrent requests all succeed
       const requests = [
         ipcClient.connectToDaemon(),
         ipcClient.getStatus(),
@@ -469,7 +457,6 @@ void describe('IPC Client Contract Tests', () => {
 
       const responses = await Promise.all(requests);
 
-      // Verify all requests succeeded
       assert.equal(responses.length, 4);
       assert.equal(responses[0]?.type, 'handshake_response');
       assert.equal(responses[1]?.type, 'status_response');
@@ -499,7 +486,6 @@ void describe('IPC Client Contract Tests', () => {
 
   void describe('JSONL protocol', () => {
     void it('handles requests with unique session IDs', async () => {
-      // Test the PROPERTY: Each request has unique session ID
       const response1 = await ipcClient.connectToDaemon();
       const response2 = await ipcClient.connectToDaemon();
 
@@ -508,7 +494,6 @@ void describe('IPC Client Contract Tests', () => {
     });
 
     void it('preserves session ID in response', async () => {
-      // Test the INVARIANT: Response sessionId matches request sessionId
       // This is tested implicitly by the mock daemon echoing back sessionId
       const response = await ipcClient.getStatus();
 
@@ -523,7 +508,6 @@ void describe('IPC Client Contract Tests', () => {
       // Configure daemon to receive but not respond
       mockDaemon.mode = 'silent';
 
-      // Test the CONTRACT: No response → timeout
       await assert.rejects(
         async () => {
           await ipcClient.getStatus();
@@ -551,7 +535,6 @@ void describe('IPC Client Contract Tests', () => {
         partialServer.listen(socketPath, resolve);
       });
 
-      // Test the CONTRACT: Partial response → connection closed error
       await assert.rejects(
         async () => {
           await ipcClient.getStatus();
@@ -566,6 +549,308 @@ void describe('IPC Client Contract Tests', () => {
       await new Promise<void>((resolve) => {
         partialServer.close(() => resolve());
       });
+    });
+  });
+
+  void describe('getDetails()', () => {
+    void it('fetches network request details by ID', async () => {
+      // Create custom mock that responds to worker_details_request
+      await mockDaemon.stop();
+
+      const detailsServer = net.createServer((socket) => {
+        let buffer = '';
+        socket.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              const request = JSON.parse(line) as { type: string; sessionId: string; id: string };
+              if (request.type === 'worker_details_request') {
+                const response = {
+                  type: 'worker_details_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                  data: {
+                    item: {
+                      requestId: request.id,
+                      url: 'https://example.com/api',
+                      method: 'GET',
+                      status: 200,
+                      headers: { 'content-type': 'application/json' },
+                    },
+                  },
+                };
+                socket.write(JSON.stringify(response) + '\n');
+              }
+            }
+          }
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        detailsServer.listen(socketPath, resolve);
+      });
+
+      const response = await ipcClient.getDetails('network', 'req-123');
+
+      assert.equal(response.type, 'worker_details_response');
+      assert.equal(response.status, 'ok');
+      assert.ok(response.data);
+      assert.ok(response.data.item);
+
+      // Cleanup
+      await new Promise<void>((resolve) => {
+        detailsServer.close(() => resolve());
+      });
+    });
+
+    void it('fetches console message details by ID', async () => {
+      // Create custom mock that responds to worker_details_request
+      await mockDaemon.stop();
+
+      const detailsServer = net.createServer((socket) => {
+        let buffer = '';
+        socket.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              const request = JSON.parse(line) as { type: string; sessionId: string };
+              if (request.type === 'worker_details_request') {
+                const response = {
+                  type: 'worker_details_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                  data: {
+                    item: {
+                      type: 'log',
+                      timestamp: Date.now(),
+                      text: 'Test log message',
+                      stackTrace: { callFrames: [] },
+                    },
+                  },
+                };
+                socket.write(JSON.stringify(response) + '\n');
+              }
+            }
+          }
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        detailsServer.listen(socketPath, resolve);
+      });
+
+      const response = await ipcClient.getDetails('console', 'msg-456');
+
+      assert.equal(response.type, 'worker_details_response');
+      assert.equal(response.status, 'ok');
+      assert.ok(response.data);
+      assert.ok(response.data.item);
+
+      // Cleanup
+      await new Promise<void>((resolve) => {
+        detailsServer.close(() => resolve());
+      });
+    });
+
+    void it('throws error when daemon is not running', async () => {
+      // Stop daemon
+      await mockDaemon.stop();
+
+      await assert.rejects(
+        async () => {
+          await ipcClient.getDetails('network', 'req-123');
+        },
+        {
+          name: 'IPCConnectionError',
+          message: /IPC worker_details connection error/,
+        }
+      );
+    });
+  });
+
+  void describe('callCDP()', () => {
+    void it('executes CDP method and returns result', async () => {
+      // Create custom mock that responds to cdp_call_request
+      await mockDaemon.stop();
+
+      const cdpServer = net.createServer((socket) => {
+        let buffer = '';
+        socket.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              const request = JSON.parse(line) as { type: string; sessionId: string };
+              if (request.type === 'cdp_call_request') {
+                const response = {
+                  type: 'cdp_call_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                  data: {
+                    result: {
+                      cookies: [
+                        { name: 'session', value: 'abc123' },
+                        { name: 'user_id', value: '42' },
+                      ],
+                    },
+                  },
+                };
+                socket.write(JSON.stringify(response) + '\n');
+              }
+            }
+          }
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        cdpServer.listen(socketPath, resolve);
+      });
+
+      const response = await ipcClient.callCDP('Network.getCookies', {});
+
+      assert.equal(response.type, 'cdp_call_response');
+      assert.equal(response.status, 'ok');
+      assert.ok(response.data);
+      assert.ok(response.data.result);
+
+      // Cleanup
+      await new Promise<void>((resolve) => {
+        cdpServer.close(() => resolve());
+      });
+    });
+
+    void it('forwards CDP method parameters correctly', async () => {
+      // Create custom mock that echoes back the method and params
+      await mockDaemon.stop();
+
+      type ReceivedRequest = { method: string; params: Record<string, unknown> };
+      let receivedRequest: ReceivedRequest | null = null;
+
+      const cdpServer = net.createServer((socket) => {
+        let buffer = '';
+        socket.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              const request = JSON.parse(line) as {
+                type: string;
+                sessionId: string;
+                method: string;
+                params: Record<string, unknown>;
+              };
+              if (request.type === 'cdp_call_request') {
+                // Capture the request for verification
+                receivedRequest = { method: request.method, params: request.params };
+
+                const response = {
+                  type: 'cdp_call_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                  data: {
+                    result: { success: true },
+                  },
+                };
+                socket.write(JSON.stringify(response) + '\n');
+              }
+            }
+          }
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        cdpServer.listen(socketPath, resolve);
+      });
+
+      await ipcClient.callCDP('Network.setCookie', {
+        name: 'test',
+        value: 'value123',
+        domain: 'example.com',
+      });
+
+      assert.ok(receivedRequest, 'Request should have been received');
+      const req = receivedRequest as ReceivedRequest;
+      assert.equal(req.method, 'Network.setCookie');
+      assert.ok(req.params);
+      assert.equal(req.params['name'], 'test');
+      assert.equal(req.params['value'], 'value123');
+      assert.equal(req.params['domain'], 'example.com');
+
+      // Cleanup
+      await new Promise<void>((resolve) => {
+        cdpServer.close(() => resolve());
+      });
+    });
+
+    void it('handles CDP method without parameters', async () => {
+      // Create custom mock
+      await mockDaemon.stop();
+
+      const cdpServer = net.createServer((socket) => {
+        let buffer = '';
+        socket.on('data', (chunk: Buffer) => {
+          buffer += chunk.toString('utf-8');
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (line.trim()) {
+              const request = JSON.parse(line) as { type: string; sessionId: string };
+              if (request.type === 'cdp_call_request') {
+                const response = {
+                  type: 'cdp_call_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                  data: {
+                    result: { userAgent: 'Mozilla/5.0' },
+                  },
+                };
+                socket.write(JSON.stringify(response) + '\n');
+              }
+            }
+          }
+        });
+      });
+
+      await new Promise<void>((resolve) => {
+        cdpServer.listen(socketPath, resolve);
+      });
+
+      const response = await ipcClient.callCDP('Browser.getVersion');
+
+      assert.equal(response.type, 'cdp_call_response');
+      assert.equal(response.status, 'ok');
+      assert.ok(response.data);
+
+      // Cleanup
+      await new Promise<void>((resolve) => {
+        cdpServer.close(() => resolve());
+      });
+    });
+
+    void it('throws error when daemon is not running', async () => {
+      // Stop daemon
+      await mockDaemon.stop();
+
+      await assert.rejects(
+        async () => {
+          await ipcClient.callCDP('Network.getCookies', {});
+        },
+        {
+          name: 'IPCConnectionError',
+          message: /IPC cdp_call connection error/,
+        }
+      );
     });
   });
 });

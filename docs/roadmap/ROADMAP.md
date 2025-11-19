@@ -1,8 +1,51 @@
 # Roadmap: browser-debugger-cli
 
-**Last Updated**: 2025-11-06  
-**Current Version**: 0.2.0  
+**Last Updated**: 2025-11-19
+**Current Version**: 0.6.1
 **Status**: In active development
+
+---
+
+## Current Status (v0.6.1 - November 2025)
+
+### ✅ Recently Completed
+
+**v0.6.0 (2025-11-13)**:
+- React/SPA form interaction (`bdg dom fill/click/submit`)
+- CDP self-discovery (`bdg cdp --list/--search/--describe`)
+- Intelligent error context with typo suggestions
+- DOM module refactoring (13 bug fixes)
+
+**v0.2.0 (2025-11-06)**:
+- Automatic page readiness detection (three-phase adaptive)
+- Framework-agnostic (React/Vue/Angular)
+
+### 🚧 In Progress
+
+**Active GitHub Issues**:
+- Issue #60: Accessibility Engine (`bdg dom a11y tree/query/describe`) - **M1.5 Critical Path**
+- Issue #61: HAR Export (`bdg network har`) - **M2 Network Foundation**
+- Issue #62: Network Control Commands (`cache/throttle/block`) - **M2 Network Foundation**
+
+### 📋 Priority Queue (Next Up)
+
+**High Priority** (Referenced in archived feedback docs):
+- DOM wait command (`bdg dom wait --selector --state --timeout`)
+- Semantic selectors (click by text instead of CSS)
+- Document request capture (main HTML document in network telemetry)
+- Security headers commands (`bdg security headers/csp/cookies`)
+
+See [`../IMPLEMENTATION_STATUS.md`](../IMPLEMENTATION_STATUS.md) for detailed feature tracking.
+
+### 🎯 Current Focus: M1.5 - Accessibility Foundation
+
+**Why M1.5?** Accessibility tree engine is the critical path that unblocks:
+- Semantic element queries (`bdg dom a11y query "role:button name:Submit"`)
+- Token-optimized output (`--semantic` flag, 70-90% reduction)
+- Human-friendly accessibility debugging
+
+**Timeline**: 2-3 weeks
+**Blockers**: None (CDP methods available)
 
 ---
 

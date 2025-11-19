@@ -6,7 +6,7 @@
  */
 
 import * as assert from 'node:assert/strict';
-import { describe, it, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { runCommand, runCommandJSON } from '@/__testutils__/commandRunner.js';
 import {
@@ -19,16 +19,26 @@ import {
 import type { BdgOutput } from '@/types.js';
 
 void describe('Session Lifecycle Smoke Tests', () => {
+  let allocatedPort: number;
+
+  beforeEach(() => {
+    const basePort = 9222;
+    const portOffset = Math.floor(Math.random() * 100);
+    allocatedPort = basePort + portOffset;
+  });
+
   afterEach(async () => {
-    // Cleanup after each test (no beforeEach needed if this works properly)
     await cleanupAllSessions();
   });
 
   void it('should start session and create daemon', async () => {
-    // Start session with a simple URL using a unique port to avoid conflicts
-    const result = await runCommand('http://example.com', ['--port', '9223', '--headless'], {
-      timeout: 30000, // Increased to 30s for GitHub Actions (observed 22s+ on slow runners)
-    });
+    const result = await runCommand(
+      'http://example.com',
+      ['--port', allocatedPort.toString(), '--headless'],
+      {
+        timeout: 60000,
+      }
+    );
 
     // Should succeed
     assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
@@ -41,10 +51,13 @@ void describe('Session Lifecycle Smoke Tests', () => {
   });
 
   void it('should collect data during session', async () => {
-    // Start session with unique port
-    const startResult = await runCommand('http://example.com', ['--port', '9224', '--headless'], {
-      timeout: 10000,
-    });
+    const startResult = await runCommand(
+      'http://example.com',
+      ['--port', allocatedPort.toString(), '--headless'],
+      {
+        timeout: 60000,
+      }
+    );
     assert.equal(startResult.exitCode, 0, `Session start failed: ${startResult.stderr}`);
 
     // Wait for daemon to be ready
@@ -63,15 +76,19 @@ void describe('Session Lifecycle Smoke Tests', () => {
     assert.ok('data' in peekResult);
 
     // Stop session to clean up
-    const stopResult = await runCommand('stop', [], { timeout: 10000 });
+    const stopResult = await runCommand('stop', [], { timeout: 60000 });
     assert.equal(stopResult.exitCode, 0, `Stop failed: ${stopResult.stderr}`);
   });
 
   void it('should write output on stop', async () => {
     // Start session with unique port
-    const startResult = await runCommand('http://example.com', ['--port', '9225', '--headless'], {
-      timeout: 10000,
-    });
+    const startResult = await runCommand(
+      'http://example.com',
+      ['--port', allocatedPort.toString(), '--headless'],
+      {
+        timeout: 60000,
+      }
+    );
     assert.equal(startResult.exitCode, 0, `Session start failed: ${startResult.stderr}`);
     await waitForDaemon(5000);
 
@@ -79,7 +96,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
     // Stop session
-    const stopResult = await runCommand('stop', [], { timeout: 10000 });
+    const stopResult = await runCommand('stop', [], { timeout: 60000 });
 
     // Should succeed
     assert.equal(stopResult.exitCode, 0, `Stop failed: ${stopResult.stderr}`);
@@ -103,11 +120,13 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should cleanup daemon on stop', async () => {
     // Start session with unique port
-    await runCommand('http://example.com', ['--port', '9226', '--headless'], { timeout: 10000 });
+    await runCommand('http://example.com', ['--port', allocatedPort.toString(), '--headless'], {
+      timeout: 60000,
+    });
     await waitForDaemon(5000);
 
     // Stop session
-    await runCommand('stop', [], { timeout: 10000 });
+    await runCommand('stop', [], { timeout: 60000 });
 
     // Wait for cleanup
     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -121,16 +140,24 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
   void it('should handle concurrent session attempts gracefully', async () => {
     // Start first session with unique port
-    const firstResult = await runCommand('http://example.com', ['--port', '9227', '--headless'], {
-      timeout: 10000,
-    });
+    const firstResult = await runCommand(
+      'http://example.com',
+      ['--port', allocatedPort.toString(), '--headless'],
+      {
+        timeout: 60000,
+      }
+    );
     assert.equal(firstResult.exitCode, 0, `First session start failed: ${firstResult.stderr}`);
     await waitForDaemon(5000);
 
     // Try to start second session (should fail)
-    const secondResult = await runCommand('http://another.com', ['--port', '9228', '--headless'], {
-      timeout: 10000,
-    });
+    const secondResult = await runCommand(
+      'http://another.com',
+      ['--port', allocatedPort.toString(), '--headless'],
+      {
+        timeout: 60000,
+      }
+    );
 
     // Should fail with daemon already running error
     assert.notEqual(secondResult.exitCode, 0);

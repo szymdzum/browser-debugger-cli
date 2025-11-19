@@ -6,6 +6,7 @@
  */
 
 import * as fs from 'fs';
+import * as net from 'net';
 
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPid } from '@/session/pid.js';
@@ -215,14 +216,72 @@ export function readSessionOutput(): unknown {
  * assert.ok(await waitForDaemon(5000));
  * ```
  */
-export async function waitForDaemon(timeoutMs: number = 5000): Promise<boolean> {
+/**
+ * Wait for daemon to be fully ready (socket listening + IPC responsive).
+ *
+ * Enhanced version that polls for:
+ * 1. PID file exists and process alive
+ * 2. Daemon socket exists and is connectable
+ * 3. IPC handshake succeeds (optional verification)
+ *
+ * @param timeoutMs - Maximum time to wait (default: 10s, increased from 5s)
+ * @param verifyHandshake - Whether to verify IPC handshake (default: false for backwards compat)
+ * @returns True if daemon is ready, false if timeout
+ */
+export async function waitForDaemon(
+  timeoutMs: number = 10000,
+  verifyHandshake: boolean = false
+): Promise<boolean> {
   const startTime = Date.now();
+  const pollInterval = 100;
 
   while (Date.now() - startTime < timeoutMs) {
-    if (isDaemonRunning()) {
-      return true;
+    if (!isDaemonRunning()) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      continue;
     }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const socketPath = getSessionFilePath('DAEMON_SOCKET');
+    if (!fs.existsSync(socketPath)) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      continue;
+    }
+
+    const isListening = await new Promise<boolean>((resolve) => {
+      const socket = net.createConnection(socketPath);
+
+      socket.on('connect', () => {
+        socket.end();
+        resolve(true);
+      });
+
+      socket.on('error', () => {
+        resolve(false);
+      });
+
+      setTimeout(() => {
+        socket.destroy();
+        resolve(false);
+      }, 500);
+    });
+
+    if (!isListening) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      continue;
+    }
+
+    if (verifyHandshake) {
+      try {
+        const { connectToDaemon } = await import('@/ipc/client.js');
+        await connectToDaemon();
+        return true;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        continue;
+      }
+    }
+
+    return true;
   }
 
   return false;
