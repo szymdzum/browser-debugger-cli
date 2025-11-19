@@ -167,6 +167,9 @@ export class IPCServer {
         case 'peek_request':
           this.requestHandlers.handlePeekRequest(socket, message);
           break;
+        case 'har_data_request':
+          this.requestHandlers.handleHARDataRequest(socket, message);
+          break;
         case 'start_session_request':
           void this.requestHandlers.handleStartSessionRequest(socket, message);
           break;
@@ -176,6 +179,7 @@ export class IPCServer {
         case 'handshake_response':
         case 'status_response':
         case 'peek_response':
+        case 'har_data_response':
         case 'start_session_response':
         case 'stop_session_response':
           // Already filtered above, but keeping cases for exhaustiveness check

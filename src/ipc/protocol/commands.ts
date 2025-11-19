@@ -6,6 +6,7 @@
  */
 
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
+import type { NetworkRequest } from '@/types.js';
 
 /**
  * Worker peek command request schema.
@@ -98,6 +99,19 @@ export interface WorkerStatusData {
 }
 
 /**
+ * Worker HAR data command request schema (no parameters required).
+ */
+export type WorkerHARDataCommand = Record<string, unknown>;
+
+/**
+ * Worker HAR data command response data.
+ */
+export interface WorkerHARDataData {
+  /** All collected network requests for HAR export. */
+  requests: NetworkRequest[];
+}
+
+/**
  * Command definition structure.
  */
 type CommandDef<TReq, TRes> = { requestSchema: TReq; responseSchema: TRes };
@@ -109,6 +123,7 @@ export type RegistryShape = {
   worker_peek: CommandDef<WorkerPeekCommand, WorkerPeekData>;
   worker_details: CommandDef<WorkerDetailsCommand, WorkerDetailsData>;
   worker_status: CommandDef<WorkerStatusCommand, WorkerStatusData>;
+  worker_har_data: CommandDef<WorkerHARDataCommand, WorkerHARDataData>;
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
 };
 
@@ -125,6 +140,10 @@ export const COMMANDS = {
   worker_status: {
     requestSchema: {} as WorkerStatusCommand,
     responseSchema: {} as WorkerStatusData,
+  },
+  worker_har_data: {
+    requestSchema: {} as WorkerHARDataCommand,
+    responseSchema: {} as WorkerHARDataData,
   },
   cdp_call: { requestSchema: {} as CdpCallCommand, responseSchema: {} as CdpCallData },
 } as const satisfies RegistryShape;

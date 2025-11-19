@@ -10,6 +10,8 @@ import type { COMMANDS } from './protocol/index.js';
 import type {
   HandshakeRequest,
   HandshakeResponse,
+  HARDataRequest,
+  HARDataResponse,
   PeekRequest,
   PeekResponse,
   SessionOptions,
@@ -89,6 +91,26 @@ export async function getStatus(): Promise<StatusResponse> {
 export async function getPeek(): Promise<PeekResponse> {
   const request: PeekRequest = withSession({ type: 'peek_request' });
   return sendRequest<PeekRequest, PeekResponse>(request, 'peek', 'peek_response');
+}
+
+/**
+ * Request network data for HAR export from the daemon.
+ * Returns all collected network requests without stopping session.
+ *
+ * @returns HAR data response with network requests
+ * @throws Error if connection fails, times out, or no active session
+ *
+ * @example
+ * ```typescript
+ * const response = await getHARData();
+ * if (response.status === 'ok' && response.data) {
+ *   console.log('Total requests:', response.data.requests.length);
+ * }
+ * ```
+ */
+export async function getHARData(): Promise<HARDataResponse> {
+  const request: HARDataRequest = withSession({ type: 'har_data_request' });
+  return sendRequest<HARDataRequest, HARDataResponse>(request, 'HAR data', 'har_data_response');
 }
 
 /**

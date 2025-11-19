@@ -37,7 +37,32 @@ export interface NetworkRequest {
   responseHeaders?: Record<string, string>;
   requestBody?: string;
   responseBody?: string;
-  navigationId?: number; // Navigation counter when request was made
+  navigationId?: number;
+  timing?: {
+    requestTime?: number;
+    proxyStart?: number;
+    proxyEnd?: number;
+    dnsStart?: number;
+    dnsEnd?: number;
+    connectStart?: number;
+    connectEnd?: number;
+    sslStart?: number;
+    sslEnd?: number;
+    workerStart?: number;
+    workerReady?: number;
+    workerFetchStart?: number;
+    workerRespondWithSettled?: number;
+    sendStart?: number;
+    sendEnd?: number;
+    pushStart?: number;
+    pushEnd?: number;
+    receiveHeadersEnd?: number;
+  };
+  loadingFinishedTime?: number;
+  encodedDataLength?: number;
+  decodedBodyLength?: number;
+  serverIPAddress?: string;
+  connection?: string;
 }
 
 export interface ConsoleMessage {

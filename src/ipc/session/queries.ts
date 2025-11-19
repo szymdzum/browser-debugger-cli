@@ -7,7 +7,7 @@
 import type { IPCMessage } from './lifecycle.js';
 import type { PageState, SessionActivity } from './types.js';
 
-import type { TelemetryType } from '@/types.js';
+import type { NetworkRequest, TelemetryType } from '@/types.js';
 
 /**
  * Status request (client → daemon).
@@ -90,6 +90,39 @@ export interface PeekResponse extends IPCMessage {
 }
 
 /**
+ * HAR data request (client → daemon).
+ */
+export interface HARDataRequest extends IPCMessage {
+  type: 'har_data_request';
+}
+
+/**
+ * HAR data response data.
+ */
+export interface HARDataResponseData {
+  /** Worker process ID. */
+  sessionPid: number;
+  /** Network requests for HAR export. */
+  requests: NetworkRequest[];
+}
+
+/**
+ * HAR data response (daemon → client).
+ */
+export interface HARDataResponse extends IPCMessage {
+  type: 'har_data_response';
+  status: 'ok' | 'error';
+  data?: HARDataResponseData;
+  error?: string;
+}
+
+/**
  * Union of all session query message types.
  */
-export type QueryMessageType = StatusRequest | StatusResponse | PeekRequest | PeekResponse;
+export type QueryMessageType =
+  | StatusRequest
+  | StatusResponse
+  | PeekRequest
+  | PeekResponse
+  | HARDataRequest
+  | HARDataResponse;

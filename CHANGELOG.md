@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- Empty for now - add here as you work -->
 
+## [0.7.0] - 2025-11-19
+
+### Added
+
+- **HAR Export** (`bdg network har`) - Export network data as HAR 1.2 format (#61)
+  - `bdg network har [output-file]` - Export to HAR format compatible with Chrome DevTools
+  - Works with live sessions (queries daemon via IPC) or post-session (reads session.json)
+  - Optional output filename defaults to timestamped file in ~/.bdg/
+  - Automatic binary content detection and base64 encoding
+  - Includes creator/browser metadata and Chrome version
+  - Valid HAR 1.2 format that opens in Chrome DevTools and HAR Viewer
+  - **Real timing data**: DNS resolution, TCP/SSL connection, send, wait (TTFB), and receive times
+  - **Accurate sizes**: Wire-level body sizes (encodedDataLength), HTTP headers including request/status lines
+  - **Server metadata**: IP address and connection ID for each request
+  - Proper handling of missing timing fields (-1 for unknown per HAR spec)
+
 ## [0.6.2] - 2025-11-19
 
 ### Added

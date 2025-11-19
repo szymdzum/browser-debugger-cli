@@ -194,6 +194,34 @@ export class ResponseHandler {
       return;
     }
 
+    // Special handling for worker_har_data - transform to HARDataResponse format
+    if (commandName === 'worker_har_data') {
+      const {
+        requestId: _requestId,
+        success,
+        data,
+        error,
+      } = workerResponse as WorkerResponse<'worker_har_data'>;
+      const harDataResponse = {
+        type: 'har_data_response' as const,
+        sessionId,
+        status: success ? ('ok' as const) : ('error' as const),
+        ...(success &&
+          data && {
+            data: {
+              sessionPid: this.sessionService.readPid() ?? 0,
+              requests: data.requests,
+            },
+          }),
+        ...(error && { error }),
+      };
+      this.sendResponse(socket, harDataResponse);
+      console.error(
+        '[daemon] Forwarded worker_har_data_response to client (transformed to HARDataResponse)'
+      );
+      return;
+    }
+
     // Default handling for other commands
     const { requestId: _requestId, success, ...rest } = workerResponse;
 

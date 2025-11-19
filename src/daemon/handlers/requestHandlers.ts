@@ -13,6 +13,7 @@ import type { ISessionService } from '@/daemon/services/SessionService.js';
 import {
   type ClientRequestUnion,
   type HandshakeRequest,
+  type HARDataRequest,
   type PeekRequest,
   type StartSessionRequest,
   type StatusRequest,
@@ -50,8 +51,8 @@ export class RequestHandlers {
     this.queryHandlers = new QueryHandlers(
       workerManager,
       pendingRequests,
-      sessionService,
       sendResponse,
+      sessionService,
       daemonStartTime
     );
 
@@ -77,6 +78,13 @@ export class RequestHandlers {
    */
   handlePeekRequest(socket: Socket, request: PeekRequest): void {
     this.queryHandlers.handlePeek(socket, request);
+  }
+
+  /**
+   * Handle HAR data request.
+   */
+  handleHARDataRequest(socket: Socket, request: HARDataRequest): void {
+    this.queryHandlers.handleHARData(socket, request);
   }
 
   /**

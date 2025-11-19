@@ -1,12 +1,22 @@
+import * as fs from 'fs';
+import * as path from 'path';
+
 import type { Command } from 'commander';
 
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
-import { callCDP } from '@/ipc/client.js';
+import { getHARData, callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import { getSessionFilePath } from '@/session/paths.js';
+import { buildHAR } from '@/telemetry/har/builder.js';
+import type { BdgOutput, NetworkRequest } from '@/types.js';
+import { isDaemonConnectionError } from '@/ui/errors/utils.js';
 import type { Cookie } from '@/ui/formatters/index.js';
 import { formatCookies } from '@/ui/formatters/index.js';
+import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { VERSION } from '@/utils/version.js';
 
 /**
  * Options for the `bdg network getCookies` command.
@@ -17,12 +27,167 @@ interface GetCookiesOptions extends BaseCommandOptions {
 }
 
 /**
+ * Options for the `bdg network har` command.
+ */
+interface HAROptions extends BaseCommandOptions {
+  /** Output file path (optional, defaults to timestamped filename) */
+  outputFile?: string;
+}
+
+/**
+ * Generate timestamped filename for HAR export in ~/.bdg/ directory.
+ *
+ * @returns Full path to HAR file in ~/.bdg/capture-YYYY-MM-DD-HHMMSS.har
+ *
+ * @example
+ * ```typescript
+ * generateHARFilename(); // "~/.bdg/capture-2025-11-19-143045.har"
+ * ```
+ */
+function generateHARFilename(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+
+  const filename = `capture-${year}-${month}-${day}-${hours}${minutes}${seconds}.har`;
+  const sessionDir = path.dirname(getSessionFilePath('OUTPUT'));
+  return path.join(sessionDir, filename);
+}
+
+/**
+ * Fetch network requests from live daemon session.
+ *
+ * @returns Network requests array
+ * @throws Error if daemon connection fails or no network data available
+ */
+async function fetchFromLiveSession(): Promise<NetworkRequest[]> {
+  const response = await getHARData();
+  validateIPCResponse(response);
+
+  if (!response.data?.requests) {
+    throw new Error('No network data in response');
+  }
+
+  return response.data.requests;
+}
+
+/**
+ * Fetch network requests from offline session.json file.
+ *
+ * @returns Network requests array
+ * @throws Error if session file not found or no network data available
+ */
+function fetchFromOfflineSession(): NetworkRequest[] {
+  const sessionPath = getSessionFilePath('OUTPUT');
+
+  if (!fs.existsSync(sessionPath)) {
+    throw new Error('No active session or session.json found. Start a session with: bdg <url>', {
+      cause: { code: EXIT_CODES.RESOURCE_NOT_FOUND },
+    });
+  }
+
+  const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8')) as BdgOutput;
+
+  if (!sessionData.data?.network) {
+    throw new Error('No network data in session file', {
+      cause: { code: EXIT_CODES.RESOURCE_NOT_FOUND },
+    });
+  }
+
+  return sessionData.data.network;
+}
+
+/**
+ * Check if error indicates daemon is unavailable.
+ *
+ * @param error - Error to check
+ * @returns True if error indicates no active session or daemon connection failure
+ */
+function isDaemonUnavailable(error: unknown): boolean {
+  if (isDaemonConnectionError(error)) {
+    return true;
+  }
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  return errorMessage.includes('No active session');
+}
+
+/**
+ * Get network requests from live session or session.json.
+ *
+ * Tries live daemon first, falls back to offline session file.
+ *
+ * @returns Network requests array
+ * @throws Error if no session available (live or offline)
+ */
+async function getNetworkRequests(): Promise<NetworkRequest[]> {
+  try {
+    return await fetchFromLiveSession();
+  } catch (error) {
+    if (isDaemonUnavailable(error)) {
+      return fetchFromOfflineSession();
+    }
+    throw error;
+  }
+}
+
+/**
+ * Format HAR export success message for human output.
+ *
+ * @param data - HAR export result data
+ * @returns Formatted success message
+ */
+function formatHARExport(data: { file: string; entries: number }): string {
+  return `✓ Exported ${data.entries} requests to ${data.file}`;
+}
+
+/**
  * Register network commands.
  *
  * @param program - Commander.js Command instance to register commands on
  */
 export function registerNetworkCommands(program: Command): void {
   const networkCmd = program.command('network').description('Inspect network state and resources');
+
+  // bdg network har [output-file]
+  networkCmd
+    .command('har [output-file]')
+    .description('Export network data as HAR 1.2 format')
+    .addOption(jsonOption)
+    .action(async (outputFile: string | undefined, options: HAROptions) => {
+      await runCommand(
+        async () => {
+          const requests = await getNetworkRequests();
+
+          const outputPath = outputFile ?? generateHARFilename();
+
+          const dir = path.dirname(outputPath);
+          if (dir !== '.' && !fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+
+          const har = buildHAR(requests, {
+            version: VERSION,
+          });
+
+          await AtomicFileWriter.writeAsync(outputPath, JSON.stringify(har, null, 2));
+
+          return {
+            success: true,
+            data: {
+              file: outputPath,
+              entries: har.log.entries.length,
+            },
+          };
+        },
+        options,
+        formatHARExport
+      );
+    });
 
   // bdg network getCookies
   networkCmd
@@ -33,19 +198,15 @@ export function registerNetworkCommands(program: Command): void {
     .action(async (options: GetCookiesOptions) => {
       await runCommand(
         async (opts) => {
-          // Build CDP method parameters
           const params: Record<string, unknown> = {};
           if (opts.url) {
             params['urls'] = [opts.url];
           }
 
-          // Call CDP Network.getCookies
           const response = await callCDP('Network.getCookies', params);
 
-          // Validate IPC response (throws on error)
           validateIPCResponse(response);
 
-          // Extract cookies from CDP response
           const cookies = (response.data?.result as { cookies?: Cookie[] })?.cookies ?? [];
 
           return {
@@ -54,7 +215,6 @@ export function registerNetworkCommands(program: Command): void {
           };
         },
         options,
-        // Human-readable formatter
         formatCookies
       );
     });

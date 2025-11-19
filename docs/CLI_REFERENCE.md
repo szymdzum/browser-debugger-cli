@@ -173,6 +173,58 @@ bdg dom eval "document.querySelector('h1').textContent"
 bdg dom eval --json                               # JSON output with full Runtime.evaluate response
 ```
 
+## Network Commands
+
+### HAR Export
+
+Export collected network requests as HAR 1.2 format (HTTP Archive).
+
+```bash
+# Export from live session
+bdg network har                           # Default: ~/.bdg/capture-2025-11-19-143045.har
+bdg network har myfile.har                # Custom filename (relative or absolute path)
+bdg network har ~/exports/debug.har       # Absolute path
+
+# Export after session stopped
+bdg stop
+bdg network har final.har                 # Reads from ~/.bdg/session.json
+
+# JSON output (for scripting)
+bdg network har --json                    # Returns metadata about exported file
+```
+
+**Output:**
+- Valid HAR 1.2 format compatible with Chrome DevTools and HAR Viewer
+- Includes all request/response data (URLs, methods, headers, bodies)
+- Binary content automatically base64 encoded
+- Creator and browser metadata included
+- Timing fields use `-1` for unknown values (HAR spec compliant)
+
+**File Location:**
+- Default: `~/.bdg/capture-YYYY-MM-DD-HHMMSS.har` (timestamped to prevent overwrites)
+- Custom path: Use explicit filename argument
+
+**Usage:**
+- Drag and drop HAR file into Chrome DevTools → Network tab
+- Open in online HAR Viewer: http://www.softwareishard.com/har/viewer/
+- Analyze requests, headers, timings, and response bodies
+- Share network captures for debugging
+
+**Example workflow:**
+```bash
+# Capture session
+bdg https://example.com --headless
+
+# Export multiple snapshots during session
+bdg network har snapshot1.har
+# ... wait for more activity ...
+bdg network har snapshot2.har
+
+# Stop and export final
+bdg stop
+bdg network har final.har
+```
+
 ## Maintenance
 
 ### Clean up stale sessions

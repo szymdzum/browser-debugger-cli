@@ -213,6 +213,10 @@ bdg dom a11y describe "#login"      # Get a11y info for element
 bdg peek                 # Quick snapshot
 bdg peek --network       # Just network data
 bdg tail                 # Stream like tail -f
+
+# Export network data
+bdg network har          # Export as HAR 1.2 format
+bdg network har myfile.har  # Custom filename
 ```
 
 ### Accessibility Testing

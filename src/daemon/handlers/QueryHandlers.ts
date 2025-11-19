@@ -11,8 +11,8 @@ import { getErrorMessage } from '@/connection/errors.js';
 import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { ISessionService } from '@/daemon/services/SessionService.js';
 import {
+  type HARDataRequest,
   type PeekRequest,
-  type PeekResponse,
   type StatusRequest,
   type StatusResponse,
   type StatusResponseData,
@@ -22,6 +22,8 @@ import {
 import { generateRequestId } from '@/ipc/utils/requestId.js';
 import { filterDefined } from '@/utils/objects.js';
 
+import { BaseHandler } from './BaseHandler.js';
+
 /**
  * Response sender function type.
  */
@@ -30,14 +32,16 @@ type SendResponseFn = (socket: Socket, response: unknown) => void;
 /**
  * Handles status and peek queries.
  */
-export class QueryHandlers {
+export class QueryHandlers extends BaseHandler {
   constructor(
-    private readonly workerManager: WorkerManager,
-    private readonly pendingRequests: PendingRequestManager,
+    workerManager: WorkerManager,
+    pendingRequests: PendingRequestManager,
+    sendResponse: SendResponseFn,
     private readonly sessionService: ISessionService,
-    private readonly sendResponse: SendResponseFn,
     private readonly daemonStartTime: number
-  ) {}
+  ) {
+    super(workerManager, pendingRequests, sendResponse);
+  }
 
   /**
    * Handle status request.
@@ -73,50 +77,20 @@ export class QueryHandlers {
         }
 
         // Query worker for live activity data if worker is available
-        if (this.workerManager.hasActiveWorker()) {
-          const requestId = generateRequestId('worker_status');
-
-          // Set timeout for worker response
-          const timeout = setTimeout(() => {
-            this.pendingRequests.remove(requestId);
-            // Send response without activity data if worker times out
-            const response: StatusResponse = {
-              type: 'status_response',
-              sessionId: request.sessionId,
-              status: 'ok',
-              data,
-            };
-            this.sendResponse(socket, response);
-            console.error('[daemon] Status response sent (worker timeout)');
-          }, 5000);
-
-          // Track pending request with special handling for status
-          this.pendingRequests.add(requestId, {
-            socket,
-            sessionId: request.sessionId,
-            timeout,
-            statusData: data, // Store base status data
-            commandName: 'worker_status',
-          });
-
-          // Forward to worker
+        if (this.hasActiveWorker()) {
           const workerRequest: WorkerRequest<'worker_status'> = {
             type: 'worker_status_request',
-            requestId,
+            requestId: generateRequestId('worker_status'),
           };
 
-          try {
-            this.workerManager.send(workerRequest as WorkerRequestUnion);
-            console.error(
-              `[daemon] Forwarded worker_status_request to worker (requestId: ${requestId})`
-            );
-            return; // Will send response when worker responds
-          } catch (error) {
-            this.pendingRequests.remove(requestId);
-            console.error(
-              `[daemon] Failed to forward worker_status_request: ${getErrorMessage(error)}`
-            );
-          }
+          this.forwardToWorker({
+            socket,
+            sessionId: request.sessionId,
+            commandName: 'worker_status',
+            workerRequest: workerRequest as WorkerRequestUnion,
+            statusData: data,
+          });
+          return; // Will send response when worker responds
         }
       }
 
@@ -144,68 +118,51 @@ export class QueryHandlers {
   }
 
   /**
+   * Handle HAR data request - forward to worker via IPC.
+   */
+  handleHARData(socket: Socket, request: HARDataRequest): void {
+    console.error(`[daemon] HAR data request received (sessionId: ${request.sessionId})`);
+
+    if (!this.hasActiveWorker()) {
+      this.sendNoWorkerResponse(socket, request.sessionId, 'har_data', 'No active session');
+      return;
+    }
+
+    const workerRequest: WorkerRequest<'worker_har_data'> = {
+      type: 'worker_har_data_request',
+      requestId: generateRequestId('worker_har_data'),
+    };
+
+    this.forwardToWorker({
+      socket,
+      sessionId: request.sessionId,
+      commandName: 'worker_har_data',
+      workerRequest: workerRequest as WorkerRequestUnion,
+    });
+  }
+
+  /**
    * Handle peek request - forward to worker via IPC.
    */
   handlePeek(socket: Socket, request: PeekRequest): void {
     console.error(`[daemon] Peek request received (sessionId: ${request.sessionId})`);
 
-    // Check for active worker process
-    if (!this.workerManager.hasActiveWorker()) {
-      const response: PeekResponse = {
-        type: 'peek_response',
-        sessionId: request.sessionId,
-        status: 'error',
-        error: 'No active session',
-      };
-      this.sendResponse(socket, response);
-      console.error('[daemon] Peek error response sent (no worker)');
+    if (!this.hasActiveWorker()) {
+      this.sendNoWorkerResponse(socket, request.sessionId, 'peek', 'No active session');
       return;
     }
 
-    // Generate unique request ID
-    const requestId = generateRequestId('worker_peek');
-
-    // Set timeout for worker response
-    const timeout = setTimeout(() => {
-      this.pendingRequests.remove(requestId);
-      const response: PeekResponse = {
-        type: 'peek_response',
-        sessionId: request.sessionId,
-        status: 'error',
-        error: 'Worker response timeout (5s)',
-      };
-      this.sendResponse(socket, response);
-      console.error('[daemon] Peek timeout response sent');
-    }, 5000);
-
-    // Track pending request
-    this.pendingRequests.add(requestId, {
-      socket,
-      sessionId: request.sessionId,
-      timeout,
-      commandName: 'worker_peek',
-    });
-
-    // Forward to worker
     const workerRequest: WorkerRequest<'worker_peek'> = {
       type: 'worker_peek_request',
-      requestId,
+      requestId: generateRequestId('worker_peek'),
       lastN: 10, // Default limit for preview items (PeekRequest doesn't include lastN)
     };
 
-    try {
-      this.workerManager.send(workerRequest as WorkerRequestUnion);
-      console.error(`[daemon] Forwarded worker_peek_request to worker (requestId: ${requestId})`);
-    } catch (error) {
-      this.pendingRequests.remove(requestId);
-      const response: PeekResponse = {
-        type: 'peek_response',
-        sessionId: request.sessionId,
-        status: 'error',
-        error: getErrorMessage(error),
-      };
-      this.sendResponse(socket, response);
-      console.error(`[daemon] Failed to forward worker_peek_request: ${getErrorMessage(error)}`);
-    }
+    this.forwardToWorker({
+      socket,
+      sessionId: request.sessionId,
+      commandName: 'worker_peek',
+      workerRequest: workerRequest as WorkerRequestUnion,
+    });
   }
 }

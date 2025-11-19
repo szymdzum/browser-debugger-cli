@@ -125,6 +125,12 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       return Promise.resolve(result);
     },
 
+    worker_har_data: async (_cdp, _params) => {
+      return Promise.resolve({
+        requests: store.networkRequests,
+      });
+    },
+
     cdp_call: async (cdp, params) => {
       const result = await cdp.send(params.method, params.params ?? {});
       return { result };

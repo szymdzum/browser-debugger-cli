@@ -46,6 +46,9 @@ function fetchResponseBody(cdp: CDPConnection, requestId: string, request: Netwo
     .then((response) => {
       const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
       request.responseBody = typedResponse.body;
+      if (typedResponse.body) {
+        request.decodedBodyLength = typedResponse.body.length;
+      }
     })
     .catch((error) => {
       log.debug(
@@ -180,10 +183,52 @@ export async function startNetworkCollection(
 
   registry.registerTyped(typed, 'Network.responseReceived', (params) => {
     const entry = requestMap.get(params.requestId);
-    if (entry) {
-      entry.request.status = params.response.status;
-      entry.request.mimeType = params.response.mimeType;
-      entry.request.responseHeaders = params.response.headers;
+    if (!entry) return;
+
+    const { status, mimeType, headers, timing, remoteIPAddress, connectionId } = params.response;
+
+    entry.request.status = status;
+    entry.request.mimeType = mimeType;
+    entry.request.responseHeaders = headers;
+
+    if (timing) {
+      const {
+        requestTime,
+        proxyStart,
+        proxyEnd,
+        dnsStart,
+        dnsEnd,
+        connectStart,
+        connectEnd,
+        sslStart,
+        sslEnd,
+        sendStart,
+        sendEnd,
+        receiveHeadersEnd,
+      } = timing;
+
+      entry.request.timing = {
+        requestTime,
+        proxyStart,
+        proxyEnd,
+        dnsStart,
+        dnsEnd,
+        connectStart,
+        connectEnd,
+        sslStart,
+        sslEnd,
+        sendStart,
+        sendEnd,
+        receiveHeadersEnd,
+      };
+    }
+
+    if (remoteIPAddress) {
+      entry.request.serverIPAddress = remoteIPAddress;
+    }
+
+    if (connectionId !== undefined) {
+      entry.request.connection = String(connectionId);
     }
   });
 
@@ -198,6 +243,12 @@ export async function startNetworkCollection(
     }
 
     const request = entry.request;
+
+    if (params.encodedDataLength !== undefined) {
+      request.encodedDataLength = params.encodedDataLength;
+    }
+
+    request.loadingFinishedTime = params.timestamp;
 
     if (shouldFilterRequest(request.url, includeAll, networkInclude, networkExclude)) {
       requestMap.delete(params.requestId);
