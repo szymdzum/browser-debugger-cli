@@ -42,7 +42,7 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
  * Format preview as JSON
  *
  * Returns the output in standard bdg JSON format (consistent with stop command).
- * BREAKING CHANGE: Previously wrapped in { preview: {...} }, now returns at root level.
+ * BREAKING CHANGE: Previously wrapped in preview object, now returns at root level.
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
   // Build a new data object so we never mutate the original output
