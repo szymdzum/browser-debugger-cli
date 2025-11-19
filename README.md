@@ -204,11 +204,40 @@ bdg dom get "button.primary"        # Get HTML
 bdg dom eval "document.title"       # Run JavaScript
 bdg dom highlight ".navbar"         # Visual debugging
 
+# Accessibility inspection
+bdg dom a11y tree                   # View full accessibility tree
+bdg dom a11y query role=button      # Find elements by ARIA role
+bdg dom a11y describe "#login"      # Get a11y info for element
+
 # Inspect collected data
 bdg peek                 # Quick snapshot
 bdg peek --network       # Just network data
 bdg tail                 # Stream like tail -f
 ```
+
+### Accessibility Testing
+
+Built-in accessibility tree inspection via Chrome DevTools Protocol:
+
+```bash
+# Find unlabeled buttons
+bdg dom a11y query role=button --json | jq '.nodes[] | select(.name == null)'
+
+# Verify form labels
+bdg dom a11y query role=textbox --json | jq '.nodes[] | {id: .nodeId, label: .name}'
+
+# Check landmark structure
+bdg dom a11y query role=main --json | jq '.count'  # Should be 1
+
+# Audit specific element
+bdg dom a11y describe "button#submit" --json | jq '{role, name, focusable, disabled}'
+```
+
+Use cases:
+- **Automated testing**: Verify all interactive elements have accessible names
+- **CI/CD integration**: Catch accessibility regressions before deployment
+- **Screen reader simulation**: See what assistive tech sees
+- **ARIA validation**: Check landmark roles and ARIA attributes
 
 ## Page Readiness
 

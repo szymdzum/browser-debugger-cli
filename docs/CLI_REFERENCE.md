@@ -56,6 +56,52 @@ bdg details network <requestId>     # Full request/response with bodies
 bdg details console <index>         # Full console message with args
 ```
 
+## DOM Commands
+
+### Accessibility Tree Inspection
+
+Inspect the accessibility tree exposed by Chrome DevTools Protocol.
+
+```bash
+# View full accessibility tree
+bdg dom a11y tree               # Display tree (first 50 nodes, human-readable)
+bdg dom a11y tree --json        # Full tree in JSON format
+
+# Query nodes by role, name, or description
+bdg dom a11y query role=button                    # Find all buttons
+bdg dom a11y query name="Submit"                  # Find by accessible name
+bdg dom a11y query role=button,name="Submit"      # Combine criteria (AND logic)
+bdg dom a11y query description="Click to submit"  # Find by description
+bdg dom a11y query --json                         # JSON output
+
+# Describe specific element by CSS selector
+bdg dom a11y describe "button[type='submit']"     # Get accessibility info for element
+bdg dom a11y describe "#login-form"               # Query by ID
+bdg dom a11y describe ".nav-link:first-child"     # Complex selectors supported
+bdg dom a11y describe --json                      # JSON output
+```
+
+**Query Pattern Syntax:**
+- `role=<value>` - Filter by ARIA role (case-insensitive)
+- `name=<value>` - Filter by accessible name (case-insensitive)
+- `description=<value>` - Filter by accessible description (case-insensitive)
+- Combine with commas for AND logic: `role=button,name=Submit`
+
+**Output:**
+- Tree view shows role, name, description, and key properties
+- Ignored nodes are automatically filtered out
+- Human-readable format limited to 50 nodes (use `--json` for complete output)
+
+### JavaScript Evaluation
+
+Execute JavaScript in the page context.
+
+```bash
+bdg dom eval "document.title"                     # Evaluate expression
+bdg dom eval "document.querySelector('h1').textContent"
+bdg dom eval --json                               # JSON output with full Runtime.evaluate response
+```
+
 ## Maintenance
 
 ### Clean up stale sessions

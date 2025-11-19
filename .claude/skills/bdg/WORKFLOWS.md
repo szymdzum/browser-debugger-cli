@@ -497,6 +497,131 @@ RESULT=$(bdg cdp Runtime.evaluate --params '{
 echo "$RESULT" | jq '.result.value'
 ```
 
+### 16. Accessibility Tree - Find All Buttons
+
+```bash
+# Get full accessibility tree and filter for button role
+bdg dom a11y tree --json | jq -r '.nodes | to_entries[] | select(.value.role == "button") | .value | "\(.name // "Unnamed") (\(.nodeId))"'
+
+# Or use query command (simpler)
+bdg dom a11y query role=button --json | jq -r '.nodes[] | .name // "Unnamed button"'
+```
+
+**Use cases**:
+- Verify all interactive elements have accessible names
+- Test screen reader compatibility
+- Audit form controls for accessibility
+
+### 17. Accessibility - Verify Form Labels
+
+```bash
+#!/bin/bash
+# Check if all form inputs have accessible names
+
+bdg https://myapp.com/signup
+
+# Query all textbox roles (includes input fields)
+INPUTS=$(bdg dom a11y query role=textbox --json)
+
+# Check for inputs without names
+UNLABELED=$(echo "$INPUTS" | jq -r '.nodes[] | select(.name == null or .name == "") | .nodeId')
+
+if [ -n "$UNLABELED" ]; then
+  echo "❌ Found unlabeled inputs: $UNLABELED"
+  exit 1
+else
+  echo "✅ All inputs have accessible names"
+fi
+
+bdg stop
+```
+
+**Key insight**: Screen readers use the `name` property to announce form fields. Empty names indicate missing labels.
+
+### 18. Accessibility - Validate ARIA Landmarks
+
+```bash
+# Verify page has proper landmark structure
+bdg https://example.com
+
+# Check for main landmark
+MAIN=$(bdg dom a11y query role=main --json | jq -r '.count')
+[ "$MAIN" -eq 1 ] && echo "✅ Page has one main landmark" || echo "❌ Page should have exactly one main landmark"
+
+# Check for navigation
+NAV=$(bdg dom a11y query role=navigation --json | jq -r '.count')
+[ "$NAV" -gt 0 ] && echo "✅ Page has navigation landmark" || echo "⚠️  No navigation landmark found"
+
+# Check for banner (header)
+BANNER=$(bdg dom a11y query role=banner --json | jq -r '.count')
+[ "$BANNER" -gt 0 ] && echo "✅ Page has banner landmark" || echo "⚠️  No banner landmark found"
+
+# Check for contentinfo (footer)
+CONTENTINFO=$(bdg dom a11y query role=contentinfo --json | jq -r '.count')
+[ "$CONTENTINFO" -gt 0 ] && echo "✅ Page has contentinfo landmark" || echo "⚠️  No contentinfo landmark found"
+
+bdg stop
+```
+
+**ARIA landmark roles**: main, navigation, banner, contentinfo, complementary, search, region, form
+
+### 19. Accessibility - Test Element State
+
+```bash
+# Verify specific element's accessibility properties
+INFO=$(bdg dom a11y describe "button#submit-form" --json)
+
+echo "$INFO" | jq '{
+  role: .role,
+  name: .name,
+  focusable: .focusable,
+  disabled: .disabled
+}'
+
+# Example output:
+# {
+#   "role": "button",
+#   "name": "Submit Form",
+#   "focusable": true,
+#   "disabled": false
+# }
+```
+
+**Use cases**:
+- Verify disabled state is communicated to screen readers
+- Check focus management in modal dialogs
+- Validate ARIA live regions
+
+### 20. Accessibility - Audit Interactive Elements
+
+```bash
+#!/bin/bash
+# Comprehensive accessibility audit for interactive elements
+
+bdg https://myapp.com
+
+# Find all buttons, links, and form controls
+echo "=== Buttons ==="
+bdg dom a11y query role=button --json | jq -r '.nodes[] | select(.name == null or .name == "") | "⚠️  Unnamed button (ID: \(.nodeId))"'
+
+echo "=== Links ==="
+bdg dom a11y query role=link --json | jq -r '.nodes[] | select(.name == null or .name == "") | "⚠️  Link without text (ID: \(.nodeId))"'
+
+echo "=== Form Inputs ==="
+bdg dom a11y query role=textbox --json | jq -r '.nodes[] | select(.name == null or .name == "") | "⚠️  Unlabeled input (ID: \(.nodeId))"'
+
+echo "=== Images ==="
+# Check for images that might need alt text (images with role=img typically come from <img> tags)
+bdg cdp Runtime.evaluate --params '{
+  "expression": "Array.from(document.querySelectorAll(\"img:not([alt])\")).map(img => img.src)",
+  "returnByValue": true
+}' | jq -r '.result.value[] | "⚠️  Image missing alt text: \(.)"'
+
+bdg stop
+```
+
+**Best practice**: Run this audit as part of CI/CD to catch accessibility regressions.
+
 ---
 
 ## Error Handling
