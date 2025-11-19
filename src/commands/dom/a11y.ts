@@ -60,7 +60,7 @@ async function handleA11yTree(options: A11yTreeOptions): Promise<void> {
     process.exit(EXIT_CODES.SUCCESS);
   }
 
-  await runCommand(async () => ({ success: true, data: tree }), options, formatA11yTree);
+  await runCommand(() => Promise.resolve({ success: true, data: tree }), options, formatA11yTree);
 }
 
 /**
