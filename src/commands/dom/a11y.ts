@@ -5,6 +5,8 @@
  * - tree: Dump full accessibility tree
  * - query: Search by role/name/description patterns
  * - describe: Get A11y properties for CSS selector
+ *
+ * Uses IPC/callCDP pattern for consistency with other DOM commands.
  */
 
 import type { Command } from 'commander';
@@ -12,8 +14,6 @@ import type { Command } from 'commander';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
-import { TypedCDPConnection } from '@/connection/typed-cdp.js';
-import type { SessionMetadata } from '@/session/metadata.js';
 import {
   collectA11yTree,
   queryA11yTree,
@@ -23,49 +23,6 @@ import {
 import { CommandError } from '@/ui/errors/index.js';
 import { formatA11yTree, formatA11yQueryResult, formatA11yNode } from '@/ui/formatters/a11y.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-/**
- * Execute a function with an active CDP connection.
- *
- * Handles the full connection lifecycle:
- * 1. Validates active session
- * 2. Gets session metadata
- * 3. Verifies target exists
- * 4. Creates and connects CDP
- * 5. Executes callback
- * 6. Closes CDP connection (even on error)
- *
- * @param fn - Callback to execute with CDP connection
- * @returns Result from callback
- * @throws Error if session validation or connection fails
- *
- * @internal
- */
-async function withCDPConnection<T>(
-  fn: (cdp: TypedCDPConnection, metadata: SessionMetadata) => Promise<T>
-): Promise<T> {
-  const { CDPConnection } = await import('@/connection/cdp.js');
-  const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } = await import(
-    '@/commands/dom/evalHelpers.js'
-  );
-
-  validateActiveSession();
-  const metadata = getValidatedSessionMetadata();
-  const port = 9222;
-  await verifyTargetExists(metadata, port);
-
-  const rawCdp = new CDPConnection();
-  try {
-    if (!metadata.webSocketDebuggerUrl) {
-      throw new Error('WebSocket debugger URL not found in session metadata');
-    }
-    await rawCdp.connect(metadata.webSocketDebuggerUrl);
-    const cdp = new TypedCDPConnection(rawCdp);
-    return await fn(cdp, metadata);
-  } finally {
-    rawCdp.close();
-  }
-}
 
 /**
  * Options for A11y tree command
@@ -85,7 +42,7 @@ type A11yDescribeOptions = BaseCommandOptions;
 /**
  * Handle bdg dom a11y tree command
  *
- * Dumps the full accessibility tree for the current page.
+ * Dumps the full accessibility tree for the current page via IPC.
  * Filters out ignored nodes for cleaner output.
  *
  * @param options - Command options
@@ -93,10 +50,7 @@ type A11yDescribeOptions = BaseCommandOptions;
 async function handleA11yTree(options: A11yTreeOptions): Promise<void> {
   await runCommand(
     async () => {
-      const tree = await withCDPConnection(async (cdp) => {
-        return await collectA11yTree(cdp);
-      });
-
+      const tree = await collectA11yTree();
       return { success: true, data: tree };
     },
     options,
@@ -107,7 +61,7 @@ async function handleA11yTree(options: A11yTreeOptions): Promise<void> {
 /**
  * Handle bdg dom a11y query <pattern> command
  *
- * Queries the accessibility tree using role/name/description patterns.
+ * Queries the accessibility tree using role/name/description patterns via IPC.
  * Pattern format: "role:button name:Submit" (space-separated key:value pairs)
  *
  * @param pattern - Query pattern string
@@ -136,10 +90,8 @@ async function handleA11yQuery(pattern: string, options: A11yQueryOptions): Prom
         );
       }
 
-      const result = await withCDPConnection(async (cdp) => {
-        const tree = await collectA11yTree(cdp);
-        return queryA11yTree(tree, queryPattern);
-      });
+      const tree = await collectA11yTree();
+      const result = queryA11yTree(tree, queryPattern);
 
       if (result.count === 0) {
         throw new CommandError(
@@ -162,7 +114,7 @@ async function handleA11yQuery(pattern: string, options: A11yQueryOptions): Prom
 /**
  * Handle bdg dom a11y describe <selector> command
  *
- * Gets accessibility properties for a DOM element by CSS selector.
+ * Gets accessibility properties for a DOM element by CSS selector via IPC.
  * Useful for understanding how an element is exposed to assistive technologies.
  *
  * @param selector - CSS selector
@@ -178,9 +130,7 @@ async function handleA11yQuery(pattern: string, options: A11yQueryOptions): Prom
 async function handleA11yDescribe(selector: string, options: A11yDescribeOptions): Promise<void> {
   await runCommand(
     async () => {
-      const node = await withCDPConnection(async (cdp) => {
-        return await getA11yNodeBySelector(cdp, selector);
-      });
+      const node = await getA11yNodeBySelector(selector);
 
       if (!node) {
         throw new CommandError(

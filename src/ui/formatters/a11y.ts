@@ -2,6 +2,17 @@ import type { A11yTree, A11yQueryResult, A11yNode } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
+ * Maximum number of nodes to display in tree output before truncating.
+ * Prevents overwhelming terminal output for large accessibility trees.
+ */
+const MAX_TREE_NODES_DISPLAY = 50;
+
+/**
+ * Separator width for section dividers in formatted output.
+ */
+const SEPARATOR_WIDTH = 50;
+
+/**
  * Format accessibility tree for human-readable output.
  *
  * Displays the tree structure with role, name, and key properties.
@@ -13,18 +24,18 @@ import { OutputFormatter } from '@/ui/formatting.js';
 export function formatA11yTree(tree: A11yTree): string {
   const fmt = new OutputFormatter();
 
-  fmt.text(`Accessibility Tree (${tree.count} nodes)`).separator('─', 50).blank();
+  fmt.text(`Accessibility Tree (${tree.count} nodes)`).separator('─', SEPARATOR_WIDTH).blank();
 
-  const nodes = Array.from(tree.nodes.values()).slice(0, 50);
+  const nodes = Array.from(tree.nodes.values()).slice(0, MAX_TREE_NODES_DISPLAY);
 
   for (const node of nodes) {
     fmt.text(formatA11yNodeOneLine(node));
   }
 
-  if (tree.count > 50) {
+  if (tree.count > MAX_TREE_NODES_DISPLAY) {
     fmt
       .blank()
-      .text(`... and ${tree.count - 50} more nodes`)
+      .text(`... and ${tree.count - MAX_TREE_NODES_DISPLAY} more nodes`)
       .text('Use --json flag for complete output');
   }
 
@@ -56,7 +67,7 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
 
   fmt
     .text(`Found ${result.count} element${result.count === 1 ? '' : 's'} matching "${patternStr}"`)
-    .separator('─', 50)
+    .separator('─', SEPARATOR_WIDTH)
     .blank();
 
   for (const node of result.nodes) {
@@ -77,7 +88,7 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
 export function formatA11yNode(node: A11yNode): string {
   const fmt = new OutputFormatter();
 
-  fmt.text(`Accessibility Node: ${node.role}`).separator('─', 50).blank();
+  fmt.text(`Accessibility Node: ${node.role}`).separator('─', SEPARATOR_WIDTH).blank();
 
   const props: [string, string][] = [];
 

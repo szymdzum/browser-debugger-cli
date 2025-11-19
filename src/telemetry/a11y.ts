@@ -1,46 +1,67 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
-import type { TypedCDPConnection } from '@/connection/typed-cdp.js';
+import { callCDP } from '@/ipc/client.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult } from '@/types.js';
 
 /**
- * Collects the full accessibility tree from the page.
+ * Builds accessibility tree from raw CDP nodes.
  *
- * @param cdp - CDP connection instance
+ * Pure function that filters out ignored nodes and builds the tree structure.
+ * Separated from collectA11yTree for easier unit testing.
+ *
+ * @param rawNodes - Raw AXNode array from CDP
+ * @returns Parsed accessibility tree
+ * @throws Error if no root node found
+ */
+export function buildTreeFromRawNodes(rawNodes: Protocol.Accessibility.AXNode[]): A11yTree {
+  const nodes = new Map<string, A11yNode>();
+  let root: A11yNode | null = null;
+
+  for (const rawNode of rawNodes) {
+    if (rawNode.ignored) {
+      continue;
+    }
+
+    const node = parseA11yNode(rawNode);
+    nodes.set(node.nodeId, node);
+
+    root ??= node;
+  }
+
+  if (!root) {
+    throw new Error('No root node found in accessibility tree');
+  }
+
+  return {
+    root,
+    nodes,
+    count: nodes.size,
+  };
+}
+
+/**
+ * Collects the full accessibility tree from the page via IPC.
+ *
+ * Uses the worker's persistent CDP connection through callCDP for consistency
+ * with other DOM commands and to avoid connection conflicts.
+ *
  * @returns Parsed and filtered accessibility tree
  * @throws Error if CDP Accessibility domain fails
  */
-export async function collectA11yTree(cdp: TypedCDPConnection): Promise<A11yTree> {
-  await cdp.send('Accessibility.enable', {} as never);
+export async function collectA11yTree(): Promise<A11yTree> {
+  await callCDP('Accessibility.enable', {});
 
   try {
-    const response = await cdp.send('Accessibility.getFullAXTree', {} as never);
-    const rawNodes = response.nodes;
-
-    const nodes = new Map<string, A11yNode>();
-    let root: A11yNode | null = null;
-
-    for (const rawNode of rawNodes) {
-      if (rawNode.ignored) {
-        continue;
-      }
-
-      const node = parseA11yNode(rawNode);
-      nodes.set(node.nodeId, node);
-
-      root ??= node;
+    const response = await callCDP('Accessibility.getFullAXTree', {});
+    const result = response.data?.result as
+      | Protocol.Accessibility.GetFullAXTreeResponse
+      | undefined;
+    if (!result?.nodes) {
+      throw new Error('Failed to get accessibility tree');
     }
 
-    if (!root) {
-      throw new Error('No root node found in accessibility tree');
-    }
-
-    return {
-      root,
-      nodes,
-      count: nodes.size,
-    };
+    return buildTreeFromRawNodes(result.nodes);
   } finally {
-    await cdp.send('Accessibility.disable', {} as never);
+    await callCDP('Accessibility.disable', {});
   }
 }
 
@@ -245,34 +266,45 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
 }
 
 /**
- * Gets accessibility properties for a DOM node by CSS selector.
+ * Gets accessibility properties for a DOM node by CSS selector via IPC.
  *
- * @param cdp - CDP connection instance
+ * Uses the worker's persistent CDP connection through callCDP for consistency.
+ *
  * @param selector - CSS selector
  * @returns A11y node or null if not found
  * @throws Error if selector is invalid or element not found
  */
-export async function getA11yNodeBySelector(
-  cdp: TypedCDPConnection,
-  selector: string
-): Promise<A11yNode | null> {
-  await cdp.send('Accessibility.enable', {} as never);
+export async function getA11yNodeBySelector(selector: string): Promise<A11yNode | null> {
+  await callCDP('Accessibility.enable', {});
 
   try {
-    const doc = await cdp.send('DOM.getDocument', {} as never);
-    const nodeResult = await cdp.send('DOM.querySelector', {
+    const docResponse = await callCDP('DOM.getDocument', {});
+    const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
+    if (!doc?.root?.nodeId) {
+      throw new Error('Failed to get document root');
+    }
+
+    const nodeResponse = await callCDP('DOM.querySelector', {
       nodeId: doc.root.nodeId,
       selector,
     });
+    const nodeResult = nodeResponse.data?.result as Protocol.DOM.QuerySelectorResponse | undefined;
 
-    if (!nodeResult.nodeId) {
+    if (!nodeResult?.nodeId) {
       return null;
     }
 
-    const a11yResult = await cdp.send('Accessibility.getPartialAXTree', {
+    const a11yResponse = await callCDP('Accessibility.getPartialAXTree', {
       nodeId: nodeResult.nodeId,
       fetchRelatives: false,
-    } as never);
+    });
+    const a11yResult = a11yResponse.data?.result as
+      | Protocol.Accessibility.GetPartialAXTreeResponse
+      | undefined;
+
+    if (!a11yResult?.nodes) {
+      return null;
+    }
 
     const rawNode = a11yResult.nodes.find((n) => !n.ignored);
     if (!rawNode) {
@@ -281,6 +313,6 @@ export async function getA11yNodeBySelector(
 
     return parseA11yNode(rawNode);
   } finally {
-    await cdp.send('Accessibility.disable', {} as never);
+    await callCDP('Accessibility.disable', {});
   }
 }
