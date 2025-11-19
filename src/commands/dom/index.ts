@@ -1,5 +1,6 @@
 import type { Command } from 'commander';
 
+import { registerA11yCommands } from '@/commands/dom/a11y.js';
 import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/commands/dom/helpers.js';
 import type { DomGetOptions as DomGetHelperOptions } from '@/commands/dom/helpers.js';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
@@ -181,7 +182,8 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
 export function registerDomCommands(program: Command): void {
   const dom = program.command('dom').description('DOM inspection and manipulation');
 
-  // bdg dom query <selector>
+  registerA11yCommands(dom);
+
   dom
     .command('query')
     .description('Find elements by CSS selector')
@@ -191,7 +193,6 @@ export function registerDomCommands(program: Command): void {
       await handleDomQuery(selector, options);
     });
 
-  // bdg dom eval <script>
   dom
     .command('eval')
     .description('Evaluate JavaScript expression in the page context')
@@ -202,7 +203,6 @@ export function registerDomCommands(program: Command): void {
       await handleDomEval(script, options);
     });
 
-  // bdg dom get <selector>
   dom
     .command('get')
     .description('Get full HTML and attributes for elements')
@@ -215,7 +215,6 @@ export function registerDomCommands(program: Command): void {
       await handleDomGet(selector, options);
     });
 
-  // bdg dom screenshot <path>
   dom
     .command('screenshot')
     .description('Capture page screenshot')

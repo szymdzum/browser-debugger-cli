@@ -62,3 +62,79 @@ export interface BdgOutput {
 }
 
 export type TelemetryType = 'dom' | 'network' | 'console';
+
+/**
+ * Accessibility tree node with filtered and formatted data.
+ *
+ * This is a simplified representation of Protocol.Accessibility.AXNode
+ * optimized for agent consumption and semantic queries.
+ */
+export interface A11yNode {
+  /** Unique node identifier from CDP */
+  nodeId: string;
+  /** ARIA role (button, textbox, heading, etc.) */
+  role: string;
+  /** Accessible name (computed label) */
+  name?: string;
+  /** Accessible description */
+  description?: string;
+  /** Node value (for inputs, textareas, etc.) */
+  value?: string;
+  /** Whether node is focusable */
+  focusable?: boolean;
+  /** Whether node is currently focused */
+  focused?: boolean;
+  /** Whether node is disabled */
+  disabled?: boolean;
+  /** Whether field is required (forms) */
+  required?: boolean;
+  /** Additional ARIA properties */
+  properties?: Record<string, unknown>;
+  /** Child node IDs */
+  childIds?: string[];
+  /** Associated DOM node ID for querying */
+  backendDOMNodeId?: number;
+}
+
+/**
+ * Accessibility tree data structure.
+ */
+export interface A11yTree {
+  /** Root node of the tree */
+  root: A11yNode;
+  /** All nodes indexed by nodeId for fast lookup */
+  nodes: Map<string, A11yNode>;
+  /** Total node count */
+  count: number;
+}
+
+/**
+ * Query pattern for searching accessibility tree.
+ *
+ * @example
+ * ```typescript
+ * { role: 'button', name: 'Submit' }
+ * { role: 'textbox' }
+ * { name: 'Email' }
+ * ```
+ */
+export interface A11yQueryPattern {
+  /** Filter by ARIA role */
+  role?: string;
+  /** Filter by accessible name (case-insensitive) */
+  name?: string;
+  /** Filter by accessible description (case-insensitive) */
+  description?: string;
+}
+
+/**
+ * Result from A11y query operation.
+ */
+export interface A11yQueryResult {
+  /** Matching nodes */
+  nodes: A11yNode[];
+  /** Total matches found */
+  count: number;
+  /** Query pattern used */
+  pattern: A11yQueryPattern;
+}

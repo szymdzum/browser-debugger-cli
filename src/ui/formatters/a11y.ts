@@ -1,0 +1,199 @@
+import type { A11yTree, A11yQueryResult, A11yNode } from '@/types.js';
+import { OutputFormatter } from '@/ui/formatting.js';
+
+/**
+ * Format accessibility tree for human-readable output.
+ *
+ * Displays the tree structure with role, name, and key properties.
+ * Shows up to 50 nodes by default for manageable output.
+ *
+ * @param tree - Accessibility tree data
+ * @returns Formatted output string
+ */
+export function formatA11yTree(tree: A11yTree): string {
+  const fmt = new OutputFormatter();
+
+  fmt.text(`Accessibility Tree (${tree.count} nodes)`).separator('─', 50).blank();
+
+  const nodes = Array.from(tree.nodes.values()).slice(0, 50);
+
+  for (const node of nodes) {
+    fmt.text(formatA11yNodeOneLine(node));
+  }
+
+  if (tree.count > 50) {
+    fmt
+      .blank()
+      .text(`... and ${tree.count - 50} more nodes`)
+      .text('Use --json flag for complete output');
+  }
+
+  return fmt.build();
+}
+
+/**
+ * Format query result for human-readable output.
+ *
+ * Shows matching nodes with their role, name, and properties.
+ *
+ * @param result - Query result with matching nodes
+ * @returns Formatted output string
+ */
+export function formatA11yQueryResult(result: A11yQueryResult): string {
+  const fmt = new OutputFormatter();
+
+  const patternParts: string[] = [];
+  if (result.pattern.role) {
+    patternParts.push(`role:${result.pattern.role}`);
+  }
+  if (result.pattern.name) {
+    patternParts.push(`name:${result.pattern.name}`);
+  }
+  if (result.pattern.description) {
+    patternParts.push(`description:${result.pattern.description}`);
+  }
+  const patternStr = patternParts.join(' ');
+
+  fmt
+    .text(`Found ${result.count} element${result.count === 1 ? '' : 's'} matching "${patternStr}"`)
+    .separator('─', 50)
+    .blank();
+
+  for (const node of result.nodes) {
+    fmt.text(formatA11yNodeOneLine(node)).blank();
+  }
+
+  return fmt.build();
+}
+
+/**
+ * Format single accessibility node for human-readable output.
+ *
+ * Shows detailed properties including role, name, description, value, and states.
+ *
+ * @param node - Accessibility node
+ * @returns Formatted output string
+ */
+export function formatA11yNode(node: A11yNode): string {
+  const fmt = new OutputFormatter();
+
+  fmt.text(`Accessibility Node: ${node.role}`).separator('─', 50).blank();
+
+  const props: [string, string][] = [];
+
+  if (node.name) {
+    props.push(['Name', node.name]);
+  }
+  if (node.description) {
+    props.push(['Description', node.description]);
+  }
+  if (node.value !== undefined) {
+    props.push(['Value', node.value]);
+  }
+
+  if (node.focusable) {
+    props.push(['Focusable', 'yes']);
+  }
+  if (node.focused) {
+    props.push(['Focused', 'yes']);
+  }
+  if (node.disabled) {
+    props.push(['Disabled', 'yes']);
+  }
+  if (node.required) {
+    props.push(['Required', 'yes']);
+  }
+
+  props.push(['Node ID', node.nodeId]);
+  if (node.backendDOMNodeId) {
+    props.push(['DOM Node ID', String(node.backendDOMNodeId)]);
+  }
+
+  fmt.keyValueList(props, 16);
+
+  if (node.properties && Object.keys(node.properties).length > 0) {
+    fmt.blank().text('Additional Properties:').blank();
+    const additionalProps = Object.entries(node.properties).map(
+      ([key, value]) => [key, String(value)] as [string, string]
+    );
+    fmt.keyValueList(additionalProps, 20);
+  }
+
+  return fmt.build();
+}
+
+/**
+ * Format accessibility node as single line (for tree/query output).
+ *
+ * Compact format: [Role] "Name" (states)
+ *
+ * @param node - Accessibility node
+ * @returns Single-line formatted string
+ *
+ * @example
+ * ```typescript
+ * formatA11yNodeOneLine({
+ *   role: 'button',
+ *   name: 'Submit',
+ *   focusable: true,
+ *   disabled: false
+ * });
+ * // => '[Button] "Submit" (focusable)'
+ * ```
+ */
+function formatA11yNodeOneLine(node: A11yNode): string {
+  const parts: string[] = [];
+
+  parts.push(`[${capitalize(node.role)}]`);
+
+  if (node.name) {
+    parts.push(`"${node.name}"`);
+  }
+
+  const states: string[] = [];
+  if (node.value !== undefined && node.value !== '') {
+    states.push(`value: ${truncate(node.value, 30)}`);
+  }
+  if (node.focused) {
+    states.push('focused');
+  }
+  if (node.disabled) {
+    states.push('disabled');
+  }
+  if (node.required) {
+    states.push('required');
+  }
+  if (node.focusable && states.length === 0) {
+    states.push('focusable');
+  }
+
+  if (states.length > 0) {
+    parts.push(`(${states.join(', ')})`);
+  }
+
+  return parts.join(' ');
+}
+
+/**
+ * Capitalize first letter of string.
+ *
+ * @param str - Input string
+ * @returns Capitalized string
+ */
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Truncate string to max length with ellipsis.
+ *
+ * @param str - Input string
+ * @param maxLen - Maximum length
+ * @returns Truncated string
+ */
+function truncate(str: string, maxLen: number): string {
+  if (str.length <= maxLen) {
+    return str;
+  }
+  return str.substring(0, maxLen - 3) + '...';
+}
