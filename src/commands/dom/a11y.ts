@@ -20,7 +20,6 @@ import {
   parseQueryPattern,
   getA11yNodeBySelector,
 } from '@/telemetry/a11y.js';
-import type { A11yTree } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { formatA11yTree, formatA11yQueryResult, formatA11yNode } from '@/ui/formatters/a11y.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -49,19 +48,19 @@ type A11yDescribeOptions = BaseCommandOptions;
  * @param options - Command options
  */
 async function handleA11yTree(options: A11yTreeOptions): Promise<void> {
-  await runCommand(
-    async () => {
-      const tree = await collectA11yTree();
-      const serializedTree = {
-        root: tree.root,
-        nodes: Object.fromEntries(tree.nodes),
-        count: tree.count,
-      } as unknown as A11yTree;
-      return { success: true, data: serializedTree };
-    },
-    options,
-    formatA11yTree
-  );
+  const tree = await collectA11yTree();
+
+  if (options.json) {
+    const serialized = {
+      root: tree.root,
+      nodes: Object.fromEntries(tree.nodes),
+      count: tree.count,
+    };
+    console.log(JSON.stringify(serialized, null, 2));
+    process.exit(EXIT_CODES.SUCCESS);
+  }
+
+  await runCommand(async () => ({ success: true, data: tree }), options, formatA11yTree);
 }
 
 /**
