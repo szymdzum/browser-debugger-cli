@@ -101,7 +101,8 @@ log_step "Test 6: Tail with --json (2 seconds)"
 timeout 2 bdg tail --json 2>&1 > /tmp/tail_json.log || true
 
 # Validate JSON format (first complete JSON object in file)
-head -200 /tmp/tail_json.log | jq -e '.preview' > /dev/null 2>&1 || die "Tail --json output is not valid JSON"
+# Check for root-level fields (version, data) instead of .preview (removed in breaking change)
+head -200 /tmp/tail_json.log | jq -e '.version and .data' > /dev/null 2>&1 || die "Tail --json output is not valid JSON"
 
 log_success "Test 6 passed: Tail --json produces valid JSON"
 

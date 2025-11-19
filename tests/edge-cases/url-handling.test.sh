@@ -59,7 +59,7 @@ log_success "Test 1 passed: localhost URL handled"
 # Test 2: 127.0.0.1 IP address
 log_step "Test 2: IP address (127.0.0.1)"
 set +e
-bdg "127.0.0.1:8080" 2>&1
+bdg "127.0.0.1:8080" --headless 2>&1
 IP_EXIT=$?
 set -e
 
