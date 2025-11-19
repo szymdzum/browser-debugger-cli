@@ -13,7 +13,6 @@ import { buildHAR } from '@/telemetry/har/builder.js';
 import type { Entry, Timings } from '@/telemetry/har/types.js';
 import type { NetworkRequest } from '@/types.js';
 
-
 describe('HAR Builder', () => {
   const baseMetadata: HARMetadata = {
     version: '0.7.0',

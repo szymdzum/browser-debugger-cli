@@ -18,7 +18,6 @@ import type {
 
 import type { NetworkRequest } from '@/types.js';
 
-
 /**
  * Metadata for HAR generation.
  */

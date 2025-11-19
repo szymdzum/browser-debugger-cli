@@ -13,7 +13,6 @@ import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { CommandName, WorkerRequestUnion } from '@/ipc/index.js';
 import type { StatusResponseData } from '@/ipc/session/index.js';
 
-
 /**
  * Response sender function type.
  */
