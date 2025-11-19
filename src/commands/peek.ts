@@ -16,7 +16,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * need validation/parsing (like --last).
  */
 interface PeekCommandOptions
-  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'verbose' | 'follow'> {
+  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'dom' | 'verbose' | 'follow'> {
   last?: string;
 }
 
@@ -33,6 +33,7 @@ export function registerPeekCommand(program: Command): void {
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)
+    .option('-d, --dom', 'Show DOM/A11y tree data', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .action(async (options: PeekCommandOptions) => {
@@ -44,6 +45,7 @@ export function registerPeekCommand(program: Command): void {
         json: options.json,
         network: options.network,
         console: options.console,
+        dom: options.dom,
         last: lastN,
         verbose: options.verbose,
         follow: options.follow,

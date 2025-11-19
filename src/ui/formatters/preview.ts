@@ -7,6 +7,8 @@ import {
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
 
+import { semantic } from './semantic.js';
+
 /**
  * Flags that shape how preview output is rendered for `bdg peek`.
  */
@@ -17,6 +19,8 @@ export interface PreviewOptions {
   network?: boolean | undefined;
   /** Limit output to console messages (ignores network data). */
   console?: boolean | undefined;
+  /** Show DOM/A11y tree data. */
+  dom?: boolean | undefined;
   /** Number of recent entries to include. */
   last: number;
   /** Use the expanded, human-friendly layout. */
@@ -51,9 +55,15 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
   // Apply filters
   if (options.network) {
     delete data.console;
+    delete data.dom;
   }
   if (options.console) {
     delete data.network;
+    delete data.dom;
+  }
+  if (options.dom) {
+    delete data.network;
+    delete data.console;
   }
 
   // Apply --last limit
@@ -148,6 +158,22 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       }
       fmt.blank();
     }
+  }
+
+  // Show DOM/A11y tree if --dom flag is present
+  if (options.dom && output.data.dom?.a11yTree) {
+    const tree = output.data.dom.a11yTree;
+    fmt.text(`DOM/A11Y TREE (${tree.count} nodes):`);
+    const treeWithMap = {
+      root: tree.root,
+      nodes: new Map(Object.entries(tree.nodes)),
+      count: tree.count,
+    };
+    fmt.text(semantic(treeWithMap));
+    fmt.blank();
+  } else if (options.dom) {
+    fmt.text(`DOM: ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+    fmt.blank();
   }
 
   // Suppress tips in follow mode to reduce screen clutter during live updates

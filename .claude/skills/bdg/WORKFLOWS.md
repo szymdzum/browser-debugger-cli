@@ -622,6 +622,55 @@ bdg stop
 
 **Best practice**: Run this audit as part of CI/CD to catch accessibility regressions.
 
+### 21. Semantic DOM Inspection (Token-Efficient)
+
+```bash
+#!/bin/bash
+# Use semantic A11y output for 70-99% token reduction vs raw HTML
+# Ideal for AI agents, automation, and accessibility testing
+
+bdg https://myapp.com
+
+# Get semantic representation (default) - 70%+ token reduction
+echo "=== Semantic Output ==="
+bdg dom get "h1"                    # [Heading L1] "Page Title"
+bdg dom get "button"                # [Button] "Submit" (focusable)
+bdg dom get "#searchInput"          # [Searchbox] "Search" (focusable)
+bdg dom get "nav"                   # [Navigation] "Main menu"
+
+# Compare with raw HTML
+echo "=== Raw HTML ==="
+bdg dom get "button" --raw          # Full HTML with all attributes
+
+# Use semantic for automation
+BUTTON_LABEL=$(bdg dom get "button" | grep -oP '"\K[^"]+')
+if [[ "$BUTTON_LABEL" == "Submit" ]]; then
+  echo "✓ Button has correct label"
+fi
+
+# Get JSON for programmatic access
+bdg dom get "button" --json | jq '.role, .name, .focusable'
+
+bdg stop
+```
+
+**Token efficiency examples:**
+- Simple button: `41 chars` (semantic) vs `233 chars` (HTML) = **82% reduction**
+- Search input: `42 chars` (semantic) vs `278 chars` (HTML) = **85% reduction**
+- Navigation: `19 chars` (semantic) vs `4,218 chars` (HTML) = **99.5% reduction**
+
+**When to use semantic:**
+- ✅ AI agent interactions (massive token savings)
+- ✅ Automated testing (verify labels, roles, states)
+- ✅ Accessibility audits (check ARIA properties)
+- ✅ Element identification (role + name is unique)
+
+**When to use `--raw`:**
+- Need exact HTML structure
+- CSS class inspection
+- Multiple elements (`--all`, `--nth`)
+- HTML/CSS debugging
+
 ---
 
 ## Error Handling

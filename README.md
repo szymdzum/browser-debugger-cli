@@ -220,6 +220,18 @@ bdg tail                 # Stream like tail -f
 Built-in accessibility tree inspection via Chrome DevTools Protocol:
 
 ```bash
+# Semantic DOM inspection (70-99% token reduction vs raw HTML)
+bdg dom get "button"              # [Button] "Submit" (focusable)
+bdg dom get "#searchInput"        # [Searchbox] "Search" (focusable, required)
+bdg dom get "nav"                 # [Navigation] "Main menu"
+
+# Compare with raw HTML
+bdg dom get "button" --raw        # Full HTML with all attributes
+
+# Full accessibility tree
+bdg dom a11y tree                 # View first 50 nodes
+bdg dom a11y tree --json          # Complete tree in JSON
+
 # Find unlabeled buttons
 bdg dom a11y query role=button --json | jq '.nodes[] | select(.name == null)'
 
@@ -233,7 +245,13 @@ bdg dom a11y query role=main --json | jq '.count'  # Should be 1
 bdg dom a11y describe "button#submit" --json | jq '{role, name, focusable, disabled}'
 ```
 
+**Token efficiency:**
+- Simple button: 82% reduction (41 chars vs 233 chars HTML)
+- Search input: 85% reduction (42 chars vs 278 chars HTML)
+- Navigation: 99.5% reduction (19 chars vs 4,218 chars HTML)
+
 Use cases:
+- **AI agents**: Massive token savings for LLM-based automation
 - **Automated testing**: Verify all interactive elements have accessible names
 - **CI/CD integration**: Catch accessibility regressions before deployment
 - **Screen reader simulation**: See what assistive tech sees

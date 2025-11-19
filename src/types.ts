@@ -19,6 +19,11 @@ export interface DOMData {
   url: string;
   title: string;
   outerHTML: string;
+  a11yTree?: {
+    root: A11yNode;
+    nodes: Record<string, A11yNode>;
+    count: number;
+  };
 }
 
 export interface NetworkRequest {

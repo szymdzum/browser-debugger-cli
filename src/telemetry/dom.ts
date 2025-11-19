@@ -1,9 +1,10 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import type { DOMData, CleanupFunction } from '@/types';
+import type { DOMData, CleanupFunction, A11yNode } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
+import { buildTreeFromRawNodes } from './a11y.js';
 import { withTimeout } from './utils.js';
 
 const log = createLogger('dom');
@@ -93,12 +94,50 @@ async function getDocumentTitle(cdp: CDPConnection): Promise<string> {
 }
 
 /**
+ * Capture accessibility tree from the current page.
+ *
+ * @param cdp - CDP connection instance
+ * @returns A11y tree with nodes serialized as plain object, or undefined on error
+ */
+async function collectA11yTree(
+  cdp: CDPConnection
+): Promise<{ root: A11yNode; nodes: Record<string, A11yNode>; count: number } | undefined> {
+  try {
+    await cdp.send('Accessibility.enable');
+    const response = (await withTimeout(
+      cdp.send('Accessibility.getFullAXTree', {}),
+      CDP_TIMEOUT,
+      'Accessibility.getFullAXTree'
+    )) as Protocol.Accessibility.GetFullAXTreeResponse;
+
+    if (!response.nodes) {
+      return undefined;
+    }
+
+    const tree = buildTreeFromRawNodes(response.nodes);
+
+    await cdp.send('Accessibility.disable').catch(() => {
+      /* Ignore errors */
+    });
+
+    return {
+      root: tree.root,
+      nodes: Object.fromEntries(tree.nodes),
+      count: tree.count,
+    };
+  } catch (error) {
+    log.debug(`A11y tree capture failed: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
  * Capture a complete DOM snapshot of the current page.
  *
  * Called during session shutdown to get the final state of the page.
  *
  * @param cdp - CDP connection instance
- * @returns DOM data including URL, title, and full HTML
+ * @returns DOM data including URL, title, full HTML, and A11y tree
  */
 export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
   try {
@@ -106,11 +145,13 @@ export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
     const outerHTML = await getOuterHTML(cdp, root.nodeId);
     const frame = await getMainFrame(cdp);
     const title = await getDocumentTitle(cdp);
+    const a11yTree = await collectA11yTree(cdp);
 
     return {
       url: frame.url,
       title,
       outerHTML,
+      ...(a11yTree && { a11yTree }),
     };
   } catch (error) {
     log.info(`DOM capture failed: ${getErrorMessage(error)}`);
