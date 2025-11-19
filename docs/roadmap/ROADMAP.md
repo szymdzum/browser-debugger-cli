@@ -10,6 +10,12 @@
 
 ### ✅ Recently Completed
 
+**v0.7.0-alpha (2025-11-19)**:
+- Accessibility Engine Phase 1 & 2 (`bdg dom a11y tree/query/describe`) - Issue #60
+- Semantic output for DOM inspection (70-99% token reduction)
+- A11y tree integration in DOM snapshots
+- `bdg peek --dom` for live accessibility tree preview
+
 **v0.6.0 (2025-11-13)**:
 - React/SPA form interaction (`bdg dom fill/click/submit`)
 - CDP self-discovery (`bdg cdp --list/--search/--describe`)
@@ -23,7 +29,6 @@
 ### 🚧 In Progress
 
 **Active GitHub Issues**:
-- Issue #60: Accessibility Engine (`bdg dom a11y tree/query/describe`) - **M1.5 Critical Path**
 - Issue #61: HAR Export (`bdg network har`) - **M2 Network Foundation**
 - Issue #62: Network Control Commands (`cache/throttle/block`) - **M2 Network Foundation**
 
@@ -37,14 +42,15 @@
 
 See [`../IMPLEMENTATION_STATUS.md`](../IMPLEMENTATION_STATUS.md) for detailed feature tracking.
 
-### 🎯 Current Focus: M1.5 - Accessibility Foundation
+### 🎯 Current Focus: M2 - Network Foundation
 
-**Why M1.5?** Accessibility tree engine is the critical path that unblocks:
-- Semantic element queries (`bdg dom a11y query "role:button name:Submit"`)
-- Token-optimized output (`--semantic` flag, 70-90% reduction)
-- Human-friendly accessibility debugging
+**Why M2?** Network telemetry and control commands enable:
+- HAR export for debugging network issues
+- Request/response inspection and replay
+- Network throttling and offline mode simulation
+- Cache control for testing scenarios
 
-**Timeline**: 2-3 weeks
+**Next Up**: Issue #61 (HAR Export), Issue #62 (Network Control Commands)
 **Blockers**: None (CDP methods available)
 
 ---
