@@ -9,10 +9,6 @@ import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
 import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
 import { VERSION } from '@/utils/version.js';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
 const DAEMON_WORKER_ENV_VAR = 'BDG_DAEMON';
 const DAEMON_WORKER_ENV_VALUE = '1';
 
@@ -20,19 +16,13 @@ const DAEMON_ALREADY_RUNNING_ERROR_CODE = 'DAEMON_ALREADY_RUNNING';
 
 const DEFAULT_EXIT_CODE_ON_ERROR = 1;
 
-// Log Messages
 const DAEMON_STARTING_MESSAGE = 'Starting daemon...';
 const DAEMON_STARTED_MESSAGE = 'Daemon started successfully';
 const DAEMON_ALREADY_RUNNING_MESSAGE = 'Daemon is already running';
 const DAEMON_START_FAILED_PREFIX = 'Failed to start daemon:';
 
-// Commander Configuration
 const CLI_NAME = 'bdg';
 const CLI_DESCRIPTION = 'Browser telemetry via Chrome DevTools Protocol';
-
-// ============================================================================
-// Utilities
-// ============================================================================
 
 const log = createLogger('bdg');
 
@@ -76,10 +66,6 @@ function getExitCodeFromError(error: unknown): number {
   return DEFAULT_EXIT_CODE_ON_ERROR;
 }
 
-// ============================================================================
-// Main Entry Point
-// ============================================================================
-
 /**
  * Main entry point - daemon-first architecture.
  *
@@ -97,12 +83,10 @@ function getExitCodeFromError(error: unknown): number {
  * 5. Parse arguments and route to appropriate command
  */
 async function main(): Promise<void> {
-  // Check for --debug flag early (before daemon check) to enable verbose logging
   if (process.argv.includes('--debug')) {
     enableDebugLogging();
   }
 
-  // Initialize program to allow introspection for --help --json
   const program = new Command()
     .name(CLI_NAME)
     .description(CLI_DESCRIPTION)
@@ -111,7 +95,6 @@ async function main(): Promise<void> {
 
   commandRegistry.forEach((register) => register(program));
 
-  // Handle --help --json before daemon check (no daemon needed for help output)
   if (process.argv.includes('--help') && process.argv.includes('--json')) {
     const help = generateMachineReadableHelp(program);
     console.log(JSON.stringify(help, null, 2));

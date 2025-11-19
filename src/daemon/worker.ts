@@ -78,20 +78,15 @@ async function main(): Promise<void> {
   console.error(`[worker] Starting (PID ${process.pid})`);
 
   try {
-    // Parse configuration
     const config = parseWorkerConfig();
     console.error(`[worker] Config: ${JSON.stringify(config)}`);
 
-    // Initialize state
     initializeTelemetryStore();
     writePid(process.pid);
 
-    // Setup Chrome connection (launch or connect to external)
     chrome = await setupChromeConnection(config, telemetryStore, log);
 
-    // Setup CDP connection, telemetry, and navigate
     const result = await setupCDPAndNavigate(config, telemetryStore, chrome, log, () => {
-      // CDP disconnect callback
       void cleanupWorker('crash', { chrome, cdp, cleanupFunctions, telemetryStore, log }).then(() =>
         process.exit(1)
       );
@@ -100,7 +95,6 @@ async function main(): Promise<void> {
     cdp = result.cdp;
     cleanupFunctions = result.cleanupFunctions;
 
-    // Write session metadata
     writeSessionMetadata({
       bdgPid: process.pid,
       chromePid: chrome?.pid ?? 0,
@@ -112,13 +106,10 @@ async function main(): Promise<void> {
     });
     console.error(`[worker] Session metadata written`);
 
-    // Setup IPC listener BEFORE sending ready signal
     setupStdinListener(cdp, commandRegistry, log);
 
-    // Send ready signal to daemon
     sendReadySignal(process.pid, chrome?.pid ?? 0, config.port);
 
-    // Setup signal handlers (SIGTERM, SIGINT, timeout)
     setupSignalHandlers({ chrome, cdp, cleanupFunctions, telemetryStore, log }, config.timeout);
 
     log.debug(workerSessionActive());

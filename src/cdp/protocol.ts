@@ -14,7 +14,6 @@ import type { ProtocolSchema, Domain, Command } from './types.js';
 
 const require = createRequire(import.meta.url);
 
-// Cache the protocol to avoid re-reading the file
 let cachedProtocol: ProtocolSchema | null = null;
 
 /**
@@ -39,9 +38,6 @@ export function loadProtocol(): ProtocolSchema {
     return cachedProtocol;
   }
 
-  // Resolve protocol files using require.resolve to dynamically locate the package
-  // We resolve the package.json, then navigate to the json/ directory
-  // This works regardless of build output structure or installation location
   const packageJsonPath = require.resolve('devtools-protocol/package.json');
   const protocolDir = dirname(packageJsonPath);
 
@@ -51,8 +47,6 @@ export function loadProtocol(): ProtocolSchema {
   const browserProtocol = JSON.parse(readFileSync(browserProtocolPath, 'utf-8')) as ProtocolSchema;
   const jsProtocol = JSON.parse(readFileSync(jsProtocolPath, 'utf-8')) as ProtocolSchema;
 
-  // Merge the two protocols
-  // Use browser protocol as base, add JS protocol domains
   cachedProtocol = {
     version: browserProtocol.version,
     domains: [...browserProtocol.domains, ...jsProtocol.domains],

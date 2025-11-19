@@ -7,10 +7,6 @@
  * WHY: Avoids duplicate prefixes when used with createLogger().
  */
 
-// ============================================================================
-// Daemon Messages
-// ============================================================================
-
 /**
  * Generate worker spawn message with configuration.
  *
@@ -52,10 +48,6 @@ export function daemonWorkerReady(workerPid: number, chromePid: number): string 
 export function daemonParseError(line: string): string {
   return `Failed to parse stdout line: ${line}`;
 }
-
-// ============================================================================
-// Worker Messages
-// ============================================================================
 
 /**
  * Generate telemetry module activation message.

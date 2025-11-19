@@ -11,7 +11,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 
-// Readiness Detection Thresholds
 /** Network idle threshold in milliseconds - network is stable when no requests for this duration */
 const NETWORK_IDLE_THRESHOLD_MS = 200;
 /** DOM stable threshold in milliseconds - DOM is stable when no mutations for this duration */

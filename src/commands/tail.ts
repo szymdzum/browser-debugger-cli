@@ -65,10 +65,8 @@ export function registerTailCommand(program: Command): void {
        */
       const showPreview = async (): Promise<void> => {
         try {
-          // Fetch preview data via IPC from daemon
           const response = await getPeek();
 
-          // Validate IPC response (will throw on error)
           try {
             validateIPCResponse(response);
           } catch {
@@ -84,7 +82,6 @@ export function registerTailCommand(program: Command): void {
             return;
           }
 
-          // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output) {
             const result = handleDaemonConnectionError('No preview data in response', {
@@ -99,10 +96,8 @@ export function registerTailCommand(program: Command): void {
             return;
           }
 
-          // Clear screen before rendering to prevent stacked outputs
           console.clear();
 
-          // Add current view timestamp to show refresh time
           const previewOptions: PreviewOptions = {
             json: options.json,
             network: options.network,
@@ -126,7 +121,6 @@ export function registerTailCommand(program: Command): void {
         }
       };
 
-      // Start continuous monitoring
       console.error(followingPreviewMessage());
       await showPreview();
 
@@ -134,7 +128,6 @@ export function registerTailCommand(program: Command): void {
         void showPreview();
       }, interval);
 
-      // Handle Ctrl+C gracefully
       process.on('SIGINT', () => {
         clearInterval(followInterval);
         console.error(stoppedFollowingPreviewMessage());

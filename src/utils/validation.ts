@@ -132,9 +132,6 @@ export function parsePositiveIntOption(
   } = {}
 ): number {
   const result = parseIntOption(name, value, { ...options, required: true });
-  // With required: true, parseIntOption will either return a number or throw.
-  // This extra check keeps TypeScript and lint rules satisfied without
-  // relying on a non-null assertion.
   if (result === undefined) {
     throw new Error(`Option --${name} is required`);
   }

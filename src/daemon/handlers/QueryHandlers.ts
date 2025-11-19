@@ -50,19 +50,16 @@ export class QueryHandlers extends BaseHandler {
     console.error(`[daemon] Status request received (sessionId: ${request.sessionId})`);
 
     try {
-      // Gather daemon metadata
       const data: StatusResponseData = {
         daemonPid: process.pid,
         daemonStartTime: this.daemonStartTime,
         socketPath: this.sessionService.getFilePath('DAEMON_SOCKET'),
       };
 
-      // Check for active session
       const sessionPid = this.sessionService.readPid();
       if (sessionPid && this.sessionService.isProcessAlive(sessionPid)) {
         data.sessionPid = sessionPid;
 
-        // Try to read session metadata
         const metadata = this.sessionService.readMetadata({ warnOnCorruption: true });
         if (metadata) {
           data.sessionMetadata = filterDefined({
@@ -76,7 +73,6 @@ export class QueryHandlers extends BaseHandler {
           }) as Required<NonNullable<StatusResponseData['sessionMetadata']>>;
         }
 
-        // Query worker for live activity data if worker is available
         if (this.hasActiveWorker()) {
           const workerRequest: WorkerRequest<'worker_status'> = {
             type: 'worker_status_request',
@@ -94,7 +90,6 @@ export class QueryHandlers extends BaseHandler {
         }
       }
 
-      // Send response immediately if no worker
       const response: StatusResponse = {
         type: 'status_response',
         sessionId: request.sessionId,

@@ -6,10 +6,6 @@
  * but shouldn't stop execution.
  */
 
-// ============================================================================
-// Process Management Messages
-// ============================================================================
-
 /**
  * Generate taskkill stderr output message (Windows).
  *

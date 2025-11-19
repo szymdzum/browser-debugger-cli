@@ -42,13 +42,11 @@ async function withCDPConnection<T>(
     '@/commands/dom/evalHelpers.js'
   );
 
-  // Validate session
   validateActiveSession();
   const metadata = getValidatedSessionMetadata();
   const port = 9222; // Default port
   await verifyTargetExists(metadata, port);
 
-  // Connect to CDP
   const cdp = new CDPConnection();
   if (!metadata.webSocketDebuggerUrl) {
     throw new CommandError(
@@ -88,7 +86,6 @@ export function registerFormInteractionCommands(program: Command): void {
     );
   }
 
-  // bdg dom fill <selector> <value>
   domCommand
     .command('fill')
     .description('Fill a form field with a value (React-compatible)')
@@ -126,7 +123,6 @@ export function registerFormInteractionCommands(program: Command): void {
       );
     });
 
-  // bdg dom click <selector>
   domCommand
     .command('click')
     .description('Click an element')
@@ -161,7 +157,6 @@ export function registerFormInteractionCommands(program: Command): void {
       );
     });
 
-  // bdg dom submit <selector>
   domCommand
     .command('submit')
     .description('Submit a form by clicking submit button and waiting for completion')

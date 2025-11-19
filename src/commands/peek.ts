@@ -37,7 +37,6 @@ export function registerPeekCommand(program: Command): void {
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .action(async (options: PeekCommandOptions) => {
-      // Validate --last option using validation layer
       const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
       const lastN = lastRule.validate(options.last);
 
@@ -53,15 +52,12 @@ export function registerPeekCommand(program: Command): void {
 
       const showPreview = async (): Promise<void> => {
         try {
-          // Fetch preview data via IPC from daemon
           const response = await getPeek();
 
-          // Validate IPC response (will throw on error)
           try {
             validateIPCResponse(response);
           } catch {
             const errorMsg = response.error ?? 'Unknown error';
-            // No active session - use RESOURCE_NOT_FOUND
             const exitCode = errorMsg.includes('No active session')
               ? EXIT_CODES.RESOURCE_NOT_FOUND
               : EXIT_CODES.SESSION_FILE_ERROR;
@@ -77,7 +73,6 @@ export function registerPeekCommand(program: Command): void {
             return;
           }
 
-          // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output) {
             const result = handleDaemonConnectionError('No preview data in response', {
@@ -92,12 +87,10 @@ export function registerPeekCommand(program: Command): void {
             return;
           }
 
-          // Clear screen before rendering to prevent stacked outputs in follow mode
           if (options.follow) {
             console.clear();
           }
 
-          // Add current view timestamp for follow mode to show refresh time
           const previewOptions: PreviewOptions = previewBase.follow
             ? { ...previewBase, viewedAt: new Date() }
             : previewBase;
@@ -116,21 +109,18 @@ export function registerPeekCommand(program: Command): void {
       };
 
       if (options.follow) {
-        // Follow mode: update every second
         console.error(followingPreviewMessage());
         await showPreview();
         const followInterval = setInterval(() => {
           void showPreview();
         }, 1000);
 
-        // Handle Ctrl+C gracefully
         process.on('SIGINT', () => {
           clearInterval(followInterval);
           console.error(stoppedFollowingPreviewMessage());
           process.exit(EXIT_CODES.SUCCESS);
         });
       } else {
-        // One-time preview
         await showPreview();
       }
     });

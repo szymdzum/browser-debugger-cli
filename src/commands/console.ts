@@ -82,13 +82,10 @@ export function registerConsoleCommand(program: Command): void {
     .action(async (options: ConsoleOptions) => {
       await runCommand(
         async (opts) => {
-          // Fetch preview data via IPC from daemon
           const response = await getPeek();
 
-          // Validate IPC response (throws on error)
           validateIPCResponse(response);
 
-          // Extract preview data from response
           const output = response.data?.preview as BdgOutput | undefined;
           if (!output?.data.console) {
             return {
@@ -100,12 +97,10 @@ export function registerConsoleCommand(program: Command): void {
 
           let logs = [...output.data.console];
 
-          // Apply type filter if specified (Commander validates choices)
           if (opts.filter) {
             logs = logs.filter((log) => log.type === opts.filter);
           }
 
-          // Apply last N filter if specified (Commander validates range)
           if (opts.last > 0) {
             logs = logs.slice(-opts.last);
           }

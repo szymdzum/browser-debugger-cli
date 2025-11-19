@@ -43,7 +43,6 @@ export async function fillElement(
 ): Promise<FillResult> {
   let targetSelector = selector;
 
-  // If index is specified, resolve it to a unique selector first
   if (options.index !== undefined) {
     const indexResult = await getElementByIndex(cdp, selector, options.index);
     if (!indexResult.success) {
@@ -59,7 +58,6 @@ export async function fillElement(
     targetSelector = indexResult.uniqueSelector;
   }
 
-  // Execute the fill script
   const expression = `(${REACT_FILL_SCRIPT})('${escapeSelectorForJS(targetSelector)}', '${escapeValueForJS(value)}', ${JSON.stringify({ blur: options.blur ?? true })})`;
 
   try {
@@ -69,7 +67,6 @@ export async function fillElement(
       userGesture: true, // Treat as user-initiated action
     });
 
-    // Type guard for CDP response
     const cdpResponse = response as {
       exceptionDetails?: { text?: string };
       result?: { value?: unknown };
@@ -130,7 +127,6 @@ export async function clickElement(
 ): Promise<ClickResult> {
   let targetSelector = selector;
 
-  // If index is specified, resolve it to a unique selector first
   if (options.index !== undefined) {
     const indexResult = await getElementByIndex(cdp, selector, options.index);
     if (!indexResult.success) {
@@ -146,7 +142,6 @@ export async function clickElement(
     targetSelector = indexResult.uniqueSelector;
   }
 
-  // Execute the click script
   const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(targetSelector)}')`;
 
   try {
@@ -261,8 +256,6 @@ async function getElementByIndex(
  * @internal
  */
 function escapeSelectorForJS(selector: string): string {
-  // JSON.stringify handles all escaping (backslashes, quotes, newlines, control chars)
-  // Remove surrounding quotes since we add them in the template
   return JSON.stringify(selector).slice(1, -1);
 }
 
@@ -276,7 +269,5 @@ function escapeSelectorForJS(selector: string): string {
  * @internal
  */
 function escapeValueForJS(value: string): string {
-  // JSON.stringify handles all escaping (backslashes, quotes, newlines, control chars)
-  // Remove surrounding quotes since we add them in the template
   return JSON.stringify(value).slice(1, -1);
 }

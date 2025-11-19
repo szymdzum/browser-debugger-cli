@@ -99,10 +99,6 @@ export function userDataDirError(dir: string, error: string): string {
   return `Failed to create user data directory at ${dir}: ${error}`;
 }
 
-// ============================================================================
-// Chrome Launcher Messages
-// ============================================================================
-
 /**
  * Generate external Chrome connection message.
  *
@@ -280,10 +276,6 @@ export function portInUseError(port: number): string {
     `  - Use different port: bdg <url> --port ${port + 1}`
   );
 }
-
-// ============================================================================
-// Chrome Cleanup Messages
-// ============================================================================
 
 /**
  * Generate message for starting Chrome cleanup process.

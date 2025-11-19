@@ -69,7 +69,6 @@ export class CommandHandlers extends BaseHandler {
       return;
     }
 
-    // Extract only sessionId, keep all other fields including 'type' param if it exists
     const { sessionId: _sessionId, type: _ipcType, ...params } = request;
     const workerRequest: WorkerRequest<typeof commandName> = {
       type: `${commandName}_request` as const,

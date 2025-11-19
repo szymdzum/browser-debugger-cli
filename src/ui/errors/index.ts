@@ -4,8 +4,6 @@
  * Provides structured error classes for CLI commands.
  */
 
-// CLI-level errors (user-facing command errors)
 export { CommandError, type ErrorMetadata } from './CommandError.js';
 
-// Utility functions
 export { isDaemonConnectionError } from './utils.js';

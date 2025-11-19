@@ -81,7 +81,6 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
     const result = await handler(options);
 
     if (!result.success) {
-      // Error result from handler
       if (options.json) {
         const errorData: Record<string, unknown> = {
           ...(result.exitCode !== undefined && { exitCode: result.exitCode }),
@@ -96,7 +95,6 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
         );
       } else {
         console.error(result.error ? genericError(result.error) : unknownError());
-        // Show errorContext suggestions in human-readable mode
         if (result.errorContext && typeof result.errorContext === 'object') {
           for (const value of Object.values(result.errorContext)) {
             if (typeof value === 'string') {
@@ -108,20 +106,17 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
       process.exit(result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 
-    // Success - output data
     if (options.json) {
       console.log(JSON.stringify(result.data, null, 2));
     } else if (formatter) {
       const formattedOutput = formatter(result.data as TResult);
       console.log(formattedOutput);
     } else {
-      // Fallback: JSON output if no formatter provided
       console.log(JSON.stringify(result.data, null, 2));
     }
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
-    // Handle CommandError with metadata and custom exit code
     if (error instanceof CommandError) {
       if (options.json) {
         console.log(
@@ -129,7 +124,6 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
         );
       } else {
         console.error(genericError(error.message));
-        // Output metadata as additional help text
         for (const value of Object.values(error.metadata)) {
           console.error(value);
         }
@@ -139,7 +133,6 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
 
     const errorMessage = getErrorMessage(error);
 
-    // Detect daemon connection errors
     if (isDaemonConnectionError(error)) {
       if (options.json) {
         console.log(
@@ -157,7 +150,6 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
       process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }
 
-    // Generic error
     if (options.json) {
       console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMessage), null, 2));
     } else {

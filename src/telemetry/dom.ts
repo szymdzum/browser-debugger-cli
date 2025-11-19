@@ -25,11 +25,11 @@ export async function prepareDOMCollection(cdp: CDPConnection): Promise<CleanupF
 
   return () => {
     try {
-      cdp.send('Runtime.disable').catch(() => {
-        // Ignore errors during cleanup (Chrome may be closing)
+      cdp.send('Runtime.disable').catch((error) => {
+        log.debug(`Failed to disable Runtime: ${getErrorMessage(error)}`);
       });
-    } catch {
-      // Ignore synchronous errors during shutdown
+    } catch (error) {
+      log.debug(`Failed to disable Runtime: ${getErrorMessage(error)}`);
     }
   };
 }

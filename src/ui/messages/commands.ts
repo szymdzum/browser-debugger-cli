@@ -7,10 +7,6 @@
 
 import { joinLines } from '@/ui/formatting.js';
 
-// ============================================================================
-// Stop Command Messages
-// ============================================================================
-
 /**
  * Generate Chrome killed message.
  *
@@ -40,10 +36,6 @@ export function orphanedDaemonsCleanedMessage(count: number): string {
 export function warningMessage(message: string): string {
   return `Warning: ${message}`;
 }
-
-// ============================================================================
-// Cleanup Command Messages
-// ============================================================================
 
 /**
  * Generate session files cleaned up message.
@@ -114,13 +106,6 @@ export function sessionStillActiveError(pid: number): string {
   return `Session is still active (PID ${pid})`;
 }
 
-// ============================================================================
-// Validation Messages
-// ============================================================================
-
-// ============================================================================
-// Start Command Messages
-// ============================================================================
 /**
  * Generate help message when no URL is provided to start command.
  *

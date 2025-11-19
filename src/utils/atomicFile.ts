@@ -1,6 +1,11 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 
+import { getErrorMessage } from '@/connection/errors.js';
+import { createLogger } from '@/ui/logging/index.js';
+
+const log = createLogger('atomic-file');
+
 /**
  * Atomic file operations using tmp-file-then-rename pattern.
  *
@@ -46,8 +51,8 @@ export class AtomicFileWriter {
     } catch (error) {
       try {
         fs.unlinkSync(tmpPath);
-      } catch {
-        // Ignore cleanup errors
+      } catch (cleanupError) {
+        log.debug(`Failed to cleanup temp file ${tmpPath}: ${getErrorMessage(cleanupError)}`);
       }
       throw error;
     }
@@ -79,8 +84,8 @@ export class AtomicFileWriter {
     } catch (error) {
       try {
         await fs.promises.unlink(tmpPath);
-      } catch {
-        // Ignore cleanup errors
+      } catch (cleanupError) {
+        log.debug(`Failed to cleanup temp file ${tmpPath}: ${getErrorMessage(cleanupError)}`);
       }
       throw error;
     }
@@ -109,8 +114,8 @@ export class AtomicFileWriter {
     } catch (error) {
       try {
         await fs.promises.unlink(tmpPath);
-      } catch {
-        // Ignore cleanup errors
+      } catch (cleanupError) {
+        log.debug(`Failed to cleanup temp file ${tmpPath}: ${getErrorMessage(cleanupError)}`);
       }
       throw error;
     }

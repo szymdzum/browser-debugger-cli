@@ -43,7 +43,6 @@ const log = createLogger('launcher');
  * @throws Error if daemon fails to start or is already running
  */
 export async function launchDaemon(): Promise<ChildProcess> {
-  // Acquire daemon lock atomically to prevent concurrent daemon starts (P0 Fix #1)
   log.debug('Acquiring daemon lock...');
   if (!acquireDaemonLock()) {
     const error = new Error(
@@ -55,14 +54,12 @@ export async function launchDaemon(): Promise<ChildProcess> {
   }
 
   try {
-    // Clean up stale session files first
     log.debug('Checking for stale session files...');
     const cleaned = cleanupStaleSession();
     if (cleaned) {
       log.debug('Cleaned up stale session files');
     }
 
-    // Check if daemon is already running
     const daemonPidPath = getSessionFilePath('DAEMON_PID');
     if (fs.existsSync(daemonPidPath)) {
       try {
@@ -78,7 +75,6 @@ export async function launchDaemon(): Promise<ChildProcess> {
           throw error;
         }
       } catch (error: unknown) {
-        // If it's our "already running" error, re-throw it
         if (
           error instanceof Error &&
           'code' in error &&
@@ -86,13 +82,9 @@ export async function launchDaemon(): Promise<ChildProcess> {
         ) {
           throw error;
         }
-        // Otherwise ignore read errors, will clean up below
       }
     }
 
-    // Determine the daemon script path
-    // When running from dist/daemon/launcher.js, __dirname is dist/daemon/
-    // So we go up one level to dist/, then to daemon.js
     const daemonScriptPath = join(__dirname, '..', 'daemon.js');
 
     if (!fs.existsSync(daemonScriptPath)) {
@@ -104,8 +96,6 @@ export async function launchDaemon(): Promise<ChildProcess> {
 
     log.debug(`Starting daemon: ${daemonScriptPath}`);
 
-    // Spawn the daemon worker using the same Node binary as the parent process
-    // This ensures compatibility with version managers (nvm, volta) and bundled environments
     const daemon = spawn(process.execPath, [daemonScriptPath], {
       detached: true,
       stdio: 'ignore', // Fully detached - daemon must not depend on parent's stdio
@@ -115,13 +105,8 @@ export async function launchDaemon(): Promise<ChildProcess> {
       },
     });
 
-    // Note: No stdio pipes to avoid SIGPIPE when CLI exits
-    // Daemon logs go to daemon's own stderr (can be captured separately if needed)
-
-    // Detach the daemon so it continues running after parent exits
     daemon.unref();
 
-    // Wait for daemon to be ready (socket file exists)
     log.debug('Waiting for daemon to be ready...');
     const socketPath = getSessionFilePath('DAEMON_SOCKET');
     const maxWaitMs = 5000;
@@ -130,19 +115,15 @@ export async function launchDaemon(): Promise<ChildProcess> {
     while (Date.now() - startTime < maxWaitMs) {
       if (fs.existsSync(socketPath)) {
         log.debug('Daemon is ready');
-        // Note: Keep daemon lock held - daemon will release it when it writes its PID
         return daemon;
       }
 
-      // Wait 100ms before checking again
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
-    // Timeout - daemon failed to start
     daemon.kill();
     throw new DaemonStartupError('Daemon failed to start within 5 seconds', 'DAEMON_START_TIMEOUT');
   } catch (error) {
-    // Release lock on any error
     releaseDaemonLock();
     throw error;
   }

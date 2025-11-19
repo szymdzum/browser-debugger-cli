@@ -45,25 +45,20 @@ export class ResponseHandler {
       `[daemon] Received worker response: ${message.type} (requestId: ${message.requestId})`
     );
 
-    // Check for ready signal (not a command response)
     if (message.type === 'worker_ready') {
       console.error('[daemon] Worker ready signal (already processed during launch)');
       return;
     }
 
-    // Check if this is a command response
     if (isCommandResponse(message.type)) {
-      // Look up pending request
       const pending = this.pendingRequests.get(message.requestId);
       if (!pending) {
         console.error(`[daemon] No pending request found for requestId: ${message.requestId}`);
         return;
       }
 
-      // Remove from pending (includes clearing timeout)
       this.pendingRequests.remove(message.requestId);
 
-      // Forward response to client
       this.forwardCommandResponse(pending.socket, pending.sessionId, message, pending);
     }
   }
@@ -144,7 +139,6 @@ export class ResponseHandler {
       return;
     }
 
-    // Special handling for worker_status - merge with base status data
     if (commandName === 'worker_status') {
       this.forwardWorkerStatusResponse(
         socket,
@@ -155,7 +149,6 @@ export class ResponseHandler {
       return;
     }
 
-    // Special handling for worker_peek - transform to PeekResponse format
     if (commandName === 'worker_peek') {
       const {
         requestId: _requestId,
@@ -194,7 +187,6 @@ export class ResponseHandler {
       return;
     }
 
-    // Special handling for worker_har_data - transform to HARDataResponse format
     if (commandName === 'worker_har_data') {
       const {
         requestId: _requestId,
@@ -222,7 +214,6 @@ export class ResponseHandler {
       return;
     }
 
-    // Default handling for other commands
     const { requestId: _requestId, success, ...rest } = workerResponse;
 
     const response: ClientResponse<typeof commandName> = {

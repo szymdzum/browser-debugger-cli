@@ -114,7 +114,6 @@ export function setupStdinListener(
 
   process.stdin.on('error', (error) => {
     log.debug(`[worker] stdin error: ${getErrorMessage(error)}`);
-    // Continue operation - worker can still function via CDP
   });
 
   log.debug(workerStdinListenerSetup());

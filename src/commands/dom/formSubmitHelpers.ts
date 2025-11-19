@@ -72,7 +72,6 @@ export async function submitForm(
 
   const startTime = Date.now();
 
-  // Step 1: Click the submit button
   const clickOptions: { index?: number } = {};
   if (index !== undefined) {
     clickOptions.index = index;
@@ -88,7 +87,6 @@ export async function submitForm(
     };
   }
 
-  // If no waiting requested, return immediately
   if (waitNetwork === 0 && !waitNavigation) {
     return {
       success: true,
@@ -100,7 +98,6 @@ export async function submitForm(
     };
   }
 
-  // Step 2: Wait for network idle and/or navigation
   try {
     const waitResult = await waitForCompletion(cdp, {
       waitNavigation,
@@ -158,10 +155,8 @@ async function waitForCompletion(
   let timeoutHandle: NodeJS.Timeout | null = null;
 
   return new Promise((resolve, reject) => {
-    // Store cleanup functions for proper cleanup
     const cleanupFunctions: Array<() => void> = [];
 
-    // Set up timeout
     timeoutHandle = setTimeout(() => {
       cleanup();
       reject(
@@ -173,7 +168,6 @@ async function waitForCompletion(
     }, timeout);
 
     const checkCompletion = (): void => {
-      // Check if all conditions are met
       const networkIdle = waitNetwork === 0 || activeRequests === 0;
       const navigationComplete = !waitNavigation || navigationOccurred;
 
@@ -183,7 +177,6 @@ async function waitForCompletion(
       }
     };
 
-    // Monitor network requests
     const onRequestStarted = (): void => {
       networkRequests++;
       activeRequests++;
@@ -196,20 +189,17 @@ async function waitForCompletion(
     const onRequestFinished = (): void => {
       activeRequests--;
       if (activeRequests === 0 && waitNetwork > 0) {
-        // Start idle timer
         idleTimeout = setTimeout(() => {
           checkCompletion();
         }, waitNetwork);
       }
     };
 
-    // Monitor navigation
     const onNavigated = (): void => {
       navigationOccurred = true;
       checkCompletion();
     };
 
-    // Register event listeners and store cleanup functions
     cleanupFunctions.push(cdp.on('Network.requestWillBeSent', onRequestStarted));
     cleanupFunctions.push(cdp.on('Network.loadingFinished', onRequestFinished));
     cleanupFunctions.push(cdp.on('Network.loadingFailed', onRequestFinished));
@@ -218,13 +208,11 @@ async function waitForCompletion(
       cleanupFunctions.push(cdp.on('Page.frameNavigated', onNavigated));
     }
 
-    // Enable network monitoring if not already enabled
     cdp.send('Network.enable').catch((error: Error) => {
       cleanup();
       reject(new CDPConnectionError('Failed to enable network monitoring', error));
     });
 
-    // Start initial check (in case no network requests happen)
     if (waitNetwork === 0 || activeRequests === 0) {
       idleTimeout = setTimeout(() => {
         checkCompletion();
@@ -235,7 +223,6 @@ async function waitForCompletion(
       if (idleTimeout) clearTimeout(idleTimeout);
       if (timeoutHandle) clearTimeout(timeoutHandle);
 
-      // Call all cleanup functions
       cleanupFunctions.forEach((cleanup) => cleanup());
     }
   });

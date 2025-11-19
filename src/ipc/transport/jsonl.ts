@@ -38,7 +38,6 @@ export class JSONLBuffer {
   process(chunk: string): string[] {
     this.buffer += chunk;
 
-    // Check buffer size before processing to prevent OOM
     if (this.buffer.length > MAX_JSONL_BUFFER_SIZE) {
       throw new JSONLBufferOverflowError(this.buffer.length, MAX_JSONL_BUFFER_SIZE);
     }

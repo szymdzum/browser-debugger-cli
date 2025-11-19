@@ -20,7 +20,6 @@ export function getVersion(): string {
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
     cachedVersion = pkg.version ?? '0.0.0';
   } catch {
-    // Fallback if package.json cannot be read
     cachedVersion = '0.0.0';
   }
 

@@ -31,8 +31,6 @@ export function formatDomQuery(data: DomQueryResult): string {
   const fmt = new OutputFormatter();
 
   if (count === 0) {
-    // Escape backslashes first, then single quotes to keep the suggestion command valid
-    // CodeQL: This addresses incomplete-string-escaping-or-encoding
     const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
     return fmt
@@ -168,7 +166,6 @@ export function formatDomScreenshot(data: {
 }): string {
   const fmt = new OutputFormatter();
 
-  // Format file size
   const sizeKB = data.size / 1024;
   const sizeStr = sizeKB < 1024 ? `${sizeKB.toFixed(1)} KB` : `${(sizeKB / 1024).toFixed(1)} MB`;
 

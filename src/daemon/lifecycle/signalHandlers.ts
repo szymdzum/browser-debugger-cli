@@ -21,19 +21,16 @@ import {
 export function setupSignalHandlers(context: CleanupContext, timeout?: number): void {
   const { log } = context;
 
-  // SIGTERM handler (graceful shutdown from daemon)
   process.on('SIGTERM', () => {
     log.debug(workerReceivedSIGTERM());
     void cleanupWorker('normal', context).then(() => process.exit(0));
   });
 
-  // SIGINT handler (Ctrl+C)
   process.on('SIGINT', () => {
     log.debug(workerReceivedSIGINT());
     void cleanupWorker('normal', context).then(() => process.exit(0));
   });
 
-  // Timeout handler (auto-stop after configured duration)
   if (timeout) {
     console.error(`[worker] Auto-stop after ${timeout}s`);
     setTimeout(() => {

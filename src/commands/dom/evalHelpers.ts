@@ -20,12 +20,10 @@ function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.Eval
 
   const obj = value as Record<string, unknown>;
 
-  // Must have either result or exceptionDetails (or both)
   if (!('result' in obj) && !('exceptionDetails' in obj)) {
     return false;
   }
 
-  // Validate exceptionDetails structure if present
   if ('exceptionDetails' in obj) {
     const exceptionDetails = obj['exceptionDetails'];
     if (typeof exceptionDetails !== 'object' || exceptionDetails === null) {
@@ -46,7 +44,6 @@ function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.Eval
     }
   }
 
-  // Validate result structure if present
   if ('result' in obj) {
     const result = obj['result'];
     if (typeof result !== 'object' || result === null) {
@@ -143,7 +140,6 @@ export async function executeScript(
     awaitPromise: true,
   });
 
-  // Validate response structure at runtime
   if (!isRuntimeEvaluateResult(response)) {
     throw new CommandError(
       'Invalid CDP Runtime.evaluate response structure',
@@ -155,7 +151,6 @@ export async function executeScript(
     );
   }
 
-  // Check for execution exceptions
   if (response.exceptionDetails) {
     const errorMsg =
       response.exceptionDetails.exception?.description ?? 'Unknown error executing script';

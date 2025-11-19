@@ -133,13 +133,11 @@ function buildMethodSchema(domainName: string, command: Command): MethodSchema {
   const parameters = command.parameters?.map(paramToSchema) ?? [];
   const returns = command.returns?.map(returnToSchema) ?? [];
 
-  // Generate example
   const example: MethodSchema['example'] = {
     command: `bdg cdp ${domainName}.${command.name}`,
   };
 
   if (parameters.length > 0) {
-    // Create example params with placeholder values
     const exampleParams: Record<string, unknown> = {};
     parameters.forEach((p) => {
       if (!p.required) return; // Skip optional params in example

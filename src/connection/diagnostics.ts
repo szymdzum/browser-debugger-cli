@@ -1,5 +1,10 @@
 import * as chromeLauncher from 'chrome-launcher';
 
+import { getErrorMessage } from '@/connection/errors.js';
+import { createLogger } from '@/ui/logging/index.js';
+
+const log = createLogger('diagnostics');
+
 /**
  * Chrome installation diagnostics information
  */
@@ -28,15 +33,15 @@ export function getChromeDiagnostics(): ChromeDiagnostics {
   let defaultPath: string | null = null;
   try {
     defaultPath = chromeLauncher.getChromePath();
-  } catch {
-    // getChromePath() may throw if no Chrome found
+  } catch (error) {
+    log.debug(`Failed to get default Chrome path: ${getErrorMessage(error)}`);
   }
 
   let installations: string[] = [];
   try {
     installations = chromeLauncher.Launcher.getInstallations();
-  } catch {
-    // getInstallations() may throw on detection failure
+  } catch (error) {
+    log.debug(`Failed to get Chrome installations: ${getErrorMessage(error)}`);
   }
 
   cachedDiagnostics = {

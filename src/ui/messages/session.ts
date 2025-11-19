@@ -81,10 +81,6 @@ export function sessionStopped(outputPath: string): string {
   return `Session stopped. Output saved to: ${outputPath}`;
 }
 
-// ============================================================================
-// Stop Command Messages
-// ============================================================================
-
 /**
  * Standard messages for stop command operations.
  */

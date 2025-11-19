@@ -77,7 +77,6 @@ function buildSessionOptions(options: CollectorOptions): {
     max: 100,
   });
 
-  // Expand tilde in userDataDir path
   let userDataDir = options.userDataDir;
   if (userDataDir?.startsWith('~/')) {
     userDataDir = userDataDir.replace(/^~/, os.homedir());
@@ -105,10 +104,8 @@ function buildSessionOptions(options: CollectorOptions): {
 async function collectorAction(url: string, options: CollectorOptions): Promise<void> {
   const sessionOptions = buildSessionOptions(options);
 
-  // Always collect all 3 types (dom, network, console)
   const telemetry: TelemetryType[] = ['dom', 'network', 'console'];
 
-  // Dispatch to daemon via IPC instead of running in-process
   await startSessionViaDaemon(url, sessionOptions, telemetry);
 }
 
@@ -119,17 +116,14 @@ async function collectorAction(url: string, options: CollectorOptions): Promise<
  * @returns void
  */
 export function registerStartCommands(program: Command): void {
-  // Default command: always collects all 3 types (dom, network, console)
   applyCollectorOptions(
     program.argument('[url]', 'Target URL (example.com or localhost:3000)')
   ).action(async (url: string | undefined, options: CollectorOptions) => {
-    // Show friendly help if no URL provided
     if (!url) {
       console.error(startCommandHelpMessage());
       process.exit(0);
     }
 
-    // Validate URL before starting session
     const { validateUrl } = await import('@/utils/url.js');
     const validation = validateUrl(url);
     if (!validation.valid) {

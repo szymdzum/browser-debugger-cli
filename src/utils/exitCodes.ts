@@ -39,8 +39,6 @@ export const EXIT_CODES = {
   /** Generic failure (use specific codes when possible) */
   GENERIC_FAILURE: 1,
 
-  // User Errors (80-99): Issues caused by user input or environment
-
   /** Invalid URL format or unreachable URL */
   INVALID_URL: 80,
 
@@ -61,8 +59,6 @@ export const EXIT_CODES = {
 
   /** Daemon already running when trying to start */
   DAEMON_ALREADY_RUNNING: 86,
-
-  // Software Errors (100-119): Internal failures or integration issues
 
   /** Chrome browser failed to launch */
   CHROME_LAUNCH_FAILURE: 100,

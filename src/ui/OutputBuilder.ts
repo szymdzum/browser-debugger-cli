@@ -58,12 +58,10 @@ export class OutputBuilder {
         url: target.url,
         title: target.title,
       },
-      // Only final outputs are complete (partial=false)
       partial: mode !== 'final',
     };
 
     if (mode === 'preview') {
-      // Lightweight preview: metadata only, last 1000 items
       const previewData: Record<string, unknown> = {};
 
       if (activeTelemetry.includes('network')) {
@@ -74,7 +72,6 @@ export class OutputBuilder {
           timestamp: req.timestamp,
           status: req.status,
           mimeType: req.mimeType,
-          // Exclude requestBody, responseBody, headers for lightweight preview
         }));
       }
 
@@ -83,11 +80,8 @@ export class OutputBuilder {
           type: msg.type,
           text: msg.text,
           timestamp: msg.timestamp,
-          // Exclude args for lightweight preview
         }));
       }
-
-      // DOM omitted in preview (only captured on stop)
 
       return {
         ...baseOutput,
@@ -96,7 +90,6 @@ export class OutputBuilder {
     }
 
     if (mode === 'full') {
-      // Full mode: complete data with bodies
       const fullData: Record<string, unknown> = {};
 
       if (activeTelemetry.includes('network')) {
@@ -107,15 +100,12 @@ export class OutputBuilder {
         fullData['console'] = consoleLogs; // All data with args
       }
 
-      // DOM omitted (only captured on stop)
-
       return {
         ...baseOutput,
         data: fullData,
       };
     }
 
-    // Final mode - includes DOM, partial=false
     const finalData: Record<string, unknown> = {};
 
     if (activeTelemetry.includes('network')) {

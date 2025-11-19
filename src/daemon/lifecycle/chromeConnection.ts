@@ -93,7 +93,6 @@ async function setupLaunchedChrome(
   writeChromePid(chrome.pid);
   log.debug(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);
 
-  // Find page target
   console.error(`[worker] Connecting to Chrome via CDP...`);
   const targets = await fetchCDPTargets(config.port, log);
   const foundTarget = targets.find((t) => t.type === 'page');

@@ -108,8 +108,6 @@ export function registerStatusCommand(program: Command): void {
             const errorMessage = getErrorMessage(error);
             if (isDaemonConnectionError(error)) {
               const cleaned = cleanupStaleDaemonPid();
-              // Use unified daemon error helper to keep messaging consistent
-              // across commands.
               return {
                 success: false,
                 error: daemonNotRunningError({ staleCleanedUp: cleaned }),

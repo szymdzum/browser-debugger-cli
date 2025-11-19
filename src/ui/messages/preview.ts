@@ -5,27 +5,15 @@
  * tips, and interactive command suggestions.
  * */
 
-// ============================================================================
-// Empty State Messages
-// ============================================================================
-
 export const PREVIEW_EMPTY_STATES = {
   NO_DATA: '(none)',
   NO_NETWORK_REQUESTS: 'No network requests yet',
   NO_CONSOLE_MESSAGES: 'No console messages yet',
 } as const;
 
-// ============================================================================
-// Header Messages
-// ============================================================================
-
 export const PREVIEW_HEADERS = {
   LIVE_PREVIEW: 'Live Preview (Partial Data)',
 } as const;
-
-// ============================================================================
-// Tips and Command Suggestions
-// ============================================================================
 
 /**
  * Generate compact mode tip message.
@@ -49,10 +37,6 @@ export function verboseCommandsMessage(): string {
     '  Watch live:      bdg tail',
   ].join('\n');
 }
-
-// ============================================================================
-// Follow Mode Messages
-// ============================================================================
 
 /**
  * Generate message for following preview mode.

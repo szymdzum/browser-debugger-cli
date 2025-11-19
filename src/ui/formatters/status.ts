@@ -23,7 +23,6 @@ export interface StatusData {
   stale?: boolean;
   stalePid?: number;
   warning?: string;
-  // Enhanced activity data
   activity?: SessionActivity;
   pageState?: PageState;
 }
@@ -43,10 +42,8 @@ export function formatSessionStatus(
   pageState?: PageState,
   verbose = false
 ): string {
-  // Calculate duration using business logic module
   const duration = calculateDuration(metadata.startTime);
 
-  // Check if Chrome is alive
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
 
   const fmt = new OutputFormatter();
@@ -73,7 +70,6 @@ export function formatSessionStatus(
 
   fmt.keyValue('Port', metadata.port.toString(), 18);
 
-  // Target Information (from live worker data)
   if (pageState) {
     fmt.blank().text('Target Information').separator('━', 50);
     fmt.keyValue('URL', pageState.url, 18);
@@ -82,7 +78,6 @@ export function formatSessionStatus(
     }
   }
 
-  // Activity Section (from live worker data)
   if (activity) {
     fmt.blank().text('Activity').separator('━', 50);
     fmt.keyValue('Network Requests', `${activity.networkRequestsCaptured} captured`, 18);
@@ -95,10 +90,8 @@ export function formatSessionStatus(
     }
   }
 
-  // Telemetry Section
   fmt.blank().text('Collectors').separator('━', 50);
 
-  // Use activeTelemetry from metadata, fallback to all telemetry modules for backward compatibility
   const activeTelemetry = metadata.activeTelemetry ?? ['network', 'console', 'dom'];
 
   fmt.keyValueList(
@@ -110,11 +103,9 @@ export function formatSessionStatus(
     18
   );
 
-  // Add verbose Chrome diagnostics if requested
   if (verbose) {
     fmt.blank().text('Chrome Diagnostics').separator('━', 50);
 
-    // Get diagnostics using shared utility (cached to avoid repeated scans)
     const diagnostics = getChromeDiagnostics();
     const diagnosticLines = formatDiagnosticsForStatus(diagnostics);
     diagnosticLines.forEach((line) => fmt.text(line));
@@ -157,10 +148,8 @@ export function formatStatusAsJson(
     };
   }
 
-  // Calculate duration using business logic module
   const duration = calculateDuration(metadata.startTime);
 
-  // Check if Chrome is alive
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
 
   return {
@@ -175,7 +164,6 @@ export function formatStatusAsJson(
     port: metadata.port,
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
-    // Use activeTelemetry from metadata, fallback to all telemetry types for backward compatibility
     telemetry: metadata.activeTelemetry ?? ['network', 'console', 'dom'],
   };
 }

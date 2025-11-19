@@ -52,7 +52,6 @@ export async function startSessionViaDaemon(
   try {
     log.debug('Connecting to daemon...');
 
-    // Send start_session_request to daemon
     const response = await sendStartSessionRequest(
       url,
       filterDefined({
@@ -67,9 +66,7 @@ export async function startSessionViaDaemon(
       })
     );
 
-    // Check for errors
     if (response.status === 'error') {
-      // Special handling for SESSION_ALREADY_RUNNING with helpful context
       if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && response.existingSession) {
         const { pid, targetUrl, duration } = response.existingSession;
         const durationMs = duration ? duration * 1000 : 0;
@@ -80,30 +77,23 @@ export async function startSessionViaDaemon(
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 
-    // Extract metadata from response
     const { data } = response;
     if (!data) {
       console.error(invalidResponseError('missing data'));
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 
-    // Display landing page with session information
     const landing = landingPage({
       url: data.targetUrl,
     });
 
     console.error(landing);
 
-    // Session runs in background worker - CLI exits immediately
-    // This allows user to run other commands in the same terminal
     process.exit(0);
   } catch (error) {
-    // Handle connection errors
     const errorMessage = getErrorMessage(error);
 
     if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
-      // Daemon is not reachable; use the unified helper so this matches
-      // other commands (status, stop, etc.).
       console.error(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }));
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }

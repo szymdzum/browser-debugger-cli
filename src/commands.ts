@@ -34,13 +34,11 @@ const addCommandGroup = (groupName: string): CommandRegistrar => {
 export const commandRegistry: CommandRegistrar[] = [
   registerStartCommands,
 
-  // Session Management Commands
   addCommandGroup('Session Management:'),
   registerStatusCommand,
   registerStopCommand,
   registerCleanupCommand,
 
-  // Data Inspection Commands
   addCommandGroup('Data Inspection:'),
   registerPeekCommand,
   registerTailCommand,
@@ -48,15 +46,12 @@ export const commandRegistry: CommandRegistrar[] = [
   registerDomCommands,
   registerFormInteractionCommands,
 
-  // CDP Commands
   addCommandGroup('CDP Commands:'),
   registerCdpCommand,
 
-  // Network Commands
   addCommandGroup('Network Commands:'),
   registerNetworkCommands,
 
-  // Console Commands
   addCommandGroup('Console Commands:'),
   registerConsoleCommand,
 ];

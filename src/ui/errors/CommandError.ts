@@ -64,7 +64,6 @@ export class CommandError extends Error {
     this.metadata = metadata;
     this.exitCode = exitCode;
 
-    // Maintains proper stack trace for where our error was thrown
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, CommandError);
     }

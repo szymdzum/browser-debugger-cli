@@ -11,7 +11,6 @@ import { IPCServer } from '@/daemon/ipcServer.js';
 
 const server = new IPCServer();
 
-// Graceful shutdown handlers
 process.on('SIGINT', () => {
   console.error('\n[daemon] Received SIGINT, shutting down...');
   void server.stop().then(() => process.exit(0));
@@ -22,7 +21,6 @@ process.on('SIGTERM', () => {
   void server.stop().then(() => process.exit(0));
 });
 
-// Start the server
 void (async () => {
   try {
     await server.start();

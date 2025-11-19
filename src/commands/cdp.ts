@@ -60,32 +60,26 @@ export function registerCdpCommand(program: Command): void {
     .action(async (method: string | undefined, options: CdpOptions) => {
       await runCommand(
         async (opts) => {
-          // Mode 1: Search methods
           if (opts.search) {
             return await handleSearch(opts.search);
           }
 
-          // Mode 2: List all domains
           if (opts.list && !method) {
             return handleListDomains();
           }
 
-          // Mode 3: List domain methods
           if (opts.list && method) {
             return handleListDomainMethods(method);
           }
 
-          // Mode 4: Describe method
           if (opts.describe && method) {
             return handleDescribeMethod(method);
           }
 
-          // Mode 5: Execute method
           if (method) {
             return await handleExecuteMethod(method, opts.params);
           }
 
-          // No mode selected - show help
           throw new CommandError(
             'Missing required argument or flag',
             {
@@ -95,7 +89,7 @@ export function registerCdpCommand(program: Command): void {
             EXIT_CODES.INVALID_ARGUMENTS
           );
         },
-        { ...options, json: true } // Always output JSON for CDP commands
+        { ...options, json: true }
       );
     });
 }
@@ -115,7 +109,6 @@ function findSimilarMethods(methodName: string, domain?: string): string[] {
   const searchName = methodName.toLowerCase();
 
   for (const domainSummary of allDomains) {
-    // If domain specified, only search that domain
     if (domain && domainSummary.name.toLowerCase() !== domain.toLowerCase()) {
       continue;
     }
@@ -125,21 +118,17 @@ function findSimilarMethods(methodName: string, domain?: string): string[] {
       const fullName = method.name.toLowerCase();
       const methodOnly = method.method.toLowerCase();
 
-      // Calculate distance for both full name and method name
       const distanceFull = levenshteinDistance(searchName, fullName);
       const distanceMethod = levenshteinDistance(searchName, methodOnly);
 
-      // Use the smaller distance
       const distance = Math.min(distanceFull, distanceMethod);
 
-      // Only consider if distance is reasonable (less than half the length)
       if (distance <= Math.max(searchName.length / 2, 3)) {
         candidates.push({ name: method.name, distance });
       }
     }
   }
 
-  // Sort by distance and return top 3
   return candidates
     .sort((a, b) => a.distance - b.distance)
     .slice(0, 3)
@@ -268,13 +257,11 @@ function handleDescribeMethod(methodName: string): {
   exitCode?: number;
   errorContext?: Record<string, unknown>;
 } {
-  // Parse domain and method
   const [domainName, method] = methodName.includes('.')
     ? methodName.split('.')
     : [methodName, undefined];
 
   if (!method) {
-    // If no dot, assume it's just a domain - show domain summary
     const summary = getDomainSummary(domainName);
     if (!summary) {
       const similar = findSimilarMethods(methodName);
@@ -310,7 +297,6 @@ function handleDescribeMethod(methodName: string): {
     };
   }
 
-  // Get method schema
   const schema = getMethodSchema(domainName, method);
   if (!schema) {
     const similar = findSimilarMethods(methodName, domainName);
@@ -379,7 +365,6 @@ async function handleExecuteMethod(
   exitCode?: number;
   errorContext?: Record<string, unknown>;
 }> {
-  // Normalize method name (case-insensitive)
   const normalized = normalizeMethod(methodName);
   if (!normalized) {
     const similar = findSimilarMethods(methodName);
@@ -400,7 +385,6 @@ async function handleExecuteMethod(
     };
   }
 
-  // Parse parameters if provided
   let params: Record<string, unknown> | undefined;
   if (paramsJson) {
     try {
@@ -417,10 +401,8 @@ async function handleExecuteMethod(
     }
   }
 
-  // Send CDP call request to daemon
   const response = await callCDP(normalized, params);
 
-  // Validate IPC response (throws on error)
   validateIPCResponse(response);
 
   return {

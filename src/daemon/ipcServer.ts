@@ -48,12 +48,10 @@ export class IPCServer {
   private readonly pendingRequests = new PendingRequestManager();
   private readonly sessionService = new SessionService();
 
-  // Delegate handlers
   private readonly requestHandlers: RequestHandlers;
   private readonly responseHandler: ResponseHandler;
 
   constructor() {
-    // Initialize handlers with dependencies
     this.requestHandlers = new RequestHandlers(
       this.workerManager,
       this.pendingRequests,
@@ -68,7 +66,6 @@ export class IPCServer {
       (socket, response) => this.sendResponse(socket, response)
     );
 
-    // Wire up worker events
     this.workerManager.on('message', (message) =>
       this.responseHandler.handleWorkerResponse(message)
     );
@@ -88,7 +85,6 @@ export class IPCServer {
    * Start the IPC server on Unix domain socket.
    */
   async start(): Promise<void> {
-    // Ensure ~/.bdg directory exists
     ensureSessionDir();
 
     const socketPath = getSessionFilePath('DAEMON_SOCKET');
@@ -107,7 +103,6 @@ export class IPCServer {
     socket.on('data', (chunk: Buffer) => {
       buffer += chunk.toString('utf-8');
 
-      // Process complete JSONL frames (separated by newlines)
       const lines = buffer.split('\n');
       buffer = lines.pop() ?? ''; // Keep incomplete line in buffer
 
@@ -134,7 +129,6 @@ export class IPCServer {
     console.error('[daemon] Raw frame:', line);
 
     try {
-      // Parse message - could be either IPC message or command request
       const parsed: unknown = JSON.parse(line);
 
       if (!isValidIPCMessage(parsed)) {
@@ -144,19 +138,16 @@ export class IPCServer {
 
       const message = parsed;
 
-      // Check if this is a command request
       if (isCommandRequest(message.type)) {
         this.requestHandlers.handleCommandRequest(socket, message as ClientRequestUnion);
         return;
       }
 
-      // Filter out response messages (should never be received from client)
       if (message.type.endsWith('_response')) {
         console.error(`[daemon] Unexpected response message from client: ${message.type}`);
         return;
       }
 
-      // Route to appropriate handler
       switch (message.type) {
         case 'handshake_request':
           this.requestHandlers.handleHandshake(socket, message);
@@ -182,7 +173,6 @@ export class IPCServer {
         case 'har_data_response':
         case 'start_session_response':
         case 'stop_session_response':
-          // Already filtered above, but keeping cases for exhaustiveness check
           console.error('[daemon] Unexpected response message (should have been filtered)');
           break;
       }
@@ -198,7 +188,6 @@ export class IPCServer {
     await this.socketServer.stop();
     this.workerManager.dispose();
 
-    // Cleanup files
     const socketPath = getSessionFilePath('DAEMON_SOCKET');
     try {
       unlinkSync(socketPath);

@@ -112,7 +112,6 @@ export async function launchSessionInWorker(
   url: string,
   options: LaunchWorkerOptions = {}
 ): Promise<WorkerMetadata> {
-  // Validate URL (P1 Fix #3)
   const validation = validateUrl(url);
   if (!validation.valid) {
     throw new WorkerStartError(
@@ -122,7 +121,6 @@ export async function launchSessionInWorker(
     );
   }
 
-  // Use filterDefined to build config, automatically omitting undefined values
   const config = filterDefined({
     url,
     port: options.port ?? 9222,
@@ -135,13 +133,11 @@ export async function launchSessionInWorker(
     chromeWsUrl: options.chromeWsUrl,
   });
 
-  // Resolve worker script path
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const workerPath = join(currentDir, 'worker.js');
 
   log.debug(daemonSpawningWorker(workerPath, config));
 
-  // Spawn worker process
   let worker: ChildProcess;
   try {
     worker = spawn('node', [workerPath, JSON.stringify(config)], {
@@ -161,14 +157,11 @@ export async function launchSessionInWorker(
     log.debug(daemonWorkerSpawned(worker.pid));
   }
 
-  // Wait for worker_ready signal
   return new Promise<WorkerMetadata>((resolve, reject) => {
     let stdoutBuffer = '';
     let stderrBuffer = '';
     let resolved = false;
 
-    // Timeout for ready signal (40 seconds)
-    // Must exceed DEFAULT_PAGE_READINESS_TIMEOUT_MS (30s) + Chrome launch time (~2s) + buffer
     const readyTimeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
@@ -183,12 +176,10 @@ export async function launchSessionInWorker(
       }
     }, 40000);
 
-    // Handle stdout (ready signal)
     if (worker.stdout) {
       worker.stdout.on('data', (chunk: Buffer) => {
         stdoutBuffer += chunk.toString('utf-8');
 
-        // Look for complete JSONL message (ends with newline)
         const lines = stdoutBuffer.split('\n');
         stdoutBuffer = lines.pop() ?? ''; // Keep incomplete line in buffer
 
@@ -199,7 +190,6 @@ export async function launchSessionInWorker(
             const parsed: unknown = JSON.parse(line);
 
             if (!isWorkerReadyMessage(parsed)) {
-              // Not a worker_ready message, might be a log line
               continue;
             }
 
@@ -210,7 +200,6 @@ export async function launchSessionInWorker(
               log.debug(daemonWorkerReady(parsed.workerPid, parsed.chromePid));
 
               // NOTE: Don't unref() - we need to keep the worker reference for IPC
-              // Worker continues running as detached process
 
               resolve({
                 workerPid: parsed.workerPid,
@@ -229,16 +218,13 @@ export async function launchSessionInWorker(
       });
     }
 
-    // Handle stderr (log messages)
     if (worker.stderr) {
       worker.stderr.on('data', (chunk: Buffer) => {
         stderrBuffer += chunk.toString('utf-8');
-        // Forward worker stderr to daemon stderr
         process.stderr.write(chunk);
       });
     }
 
-    // Handle worker exit
     worker.on('exit', (code, signal) => {
       if (!resolved) {
         resolved = true;
@@ -253,7 +239,6 @@ export async function launchSessionInWorker(
       }
     });
 
-    // Handle spawn errors
     worker.on('error', (error) => {
       if (!resolved) {
         resolved = true;

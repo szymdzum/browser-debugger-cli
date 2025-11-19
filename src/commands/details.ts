@@ -47,13 +47,11 @@ export function registerDetailsCommand(program: Command): void {
     .argument('<id>', 'Request ID (for network) or index (for console)')
     .addOption(jsonOption)
     .action(async (type: string, id: string, options: DetailsOptions) => {
-      // Store arguments in options for handler (type assertion safe due to validation below)
       options.type = type as 'network' | 'console';
       options.id = id;
 
       await runCommand<DetailsOptions, DetailsResult>(
         async (opts) => {
-          // Validate type argument
           if (opts.type !== 'network' && opts.type !== 'console') {
             return {
               success: false,
@@ -62,13 +60,10 @@ export function registerDetailsCommand(program: Command): void {
             };
           }
 
-          // Fetch details via IPC from daemon/worker
           const response = await getDetails(opts.type, opts.id);
 
-          // Validate IPC response (throws on error)
           validateIPCResponse(response);
 
-          // Check for data in response
           if (!response.data?.item) {
             return {
               success: false,

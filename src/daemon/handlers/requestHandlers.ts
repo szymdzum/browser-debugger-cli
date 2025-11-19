@@ -45,7 +45,6 @@ export class RequestHandlers {
     sendResponse: SendResponseFn,
     daemonStartTime: number
   ) {
-    // Initialize specialized handlers
     this.sessionHandlers = new SessionHandlers(workerManager, sessionService, sendResponse);
 
     this.queryHandlers = new QueryHandlers(

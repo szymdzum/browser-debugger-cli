@@ -440,6 +440,40 @@ void describe('CommandRegistry', () => {
     });
   });
 
+  void describe('worker_har_data', () => {
+    void it('returns all captured network requests', async () => {
+      store.networkRequests.push(
+        {
+          requestId: 'req-1',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://example.com',
+          status: 200,
+          mimeType: 'text/html',
+        },
+        {
+          requestId: 'req-2',
+          timestamp: 200,
+          method: 'POST',
+          url: 'http://api.example.com',
+          status: 201,
+          mimeType: 'application/json',
+        }
+      );
+
+      const result = await registry.worker_har_data(mockCdp, {});
+
+      assert.equal(result.requests.length, 2);
+      assert.equal(result.requests[0]?.requestId, 'req-1');
+      assert.equal(result.requests[1]?.requestId, 'req-2');
+    });
+
+    void it('returns empty array when no requests captured', async () => {
+      const result = await registry.worker_har_data(mockCdp, {});
+      assert.equal(result.requests.length, 0);
+    });
+  });
+
   void describe('cdp_call', () => {
     void it('forwards CDP method call and returns result', async () => {
       const mockResult = { cookies: [{ name: 'session', value: 'abc123' }] };

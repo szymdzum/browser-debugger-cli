@@ -61,12 +61,9 @@ function findOrphanedDaemons(): number[] {
   const orphanedPids: number[] = [];
 
   try {
-    // Get currently tracked daemon PID (if any)
     const daemonPidPath = getSessionFilePath('DAEMON_PID');
     const currentDaemonPid = readPidFromFile(daemonPidPath);
 
-    // Find all node processes running dist/daemon.js
-    // Platform-specific ps command
     const psCommand =
       process.platform === 'win32'
         ? 'wmic process where "commandline like \'%dist/daemon.js%\'" get processid'
@@ -74,22 +71,18 @@ function findOrphanedDaemons(): number[] {
 
     const output = execSync(psCommand, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] });
 
-    // Parse PIDs from output
     const lines = output.trim().split('\n');
 
     for (const line of lines) {
-      // Extract PID based on platform
       let pid: number;
 
       if (process.platform === 'win32') {
-        // Windows: ProcessId column
         const match = line.trim().match(/(\d+)/);
         if (!match?.[1]) {
           continue;
         }
         pid = parseInt(match[1], 10);
       } else {
-        // Unix/macOS: Second column in ps output
         const parts = line.trim().split(/\s+/);
         if (parts.length < 2 || !parts[1]) {
           continue;
@@ -101,12 +94,10 @@ function findOrphanedDaemons(): number[] {
         continue;
       }
 
-      // Skip if this is the current daemon
       if (currentDaemonPid && pid === currentDaemonPid) {
         continue;
       }
 
-      // Verify process is still alive
       if (isProcessAlive(pid)) {
         orphanedPids.push(pid);
       }
@@ -252,22 +243,15 @@ export function cleanupStaleSession(): boolean {
  * WHY: Ensures clean slate for next session while preserving user preferences.
  */
 export function cleanupSession(): void {
-  // Clean up worker session files
   cleanupPidFile();
   releaseSessionLock();
 
-  // Remove session metadata
   try {
     fs.rmSync(getSessionFilePath('METADATA'), { force: true });
   } catch (error) {
     log.debug(`Failed to remove metadata file: ${getErrorMessage(error)}`);
   }
 
-  // NOTE: chrome.pid is intentionally NOT removed here
-  // It's used for emergency cleanup (bdg cleanup --chrome)
-  // and is automatically cleaned when Chrome process dies (via readChromePid)
-
-  // Remove daemon files
   try {
     fs.rmSync(getSessionFilePath('DAEMON_PID'), { force: true });
   } catch (error) {
@@ -285,13 +269,6 @@ export function cleanupSession(): void {
   } catch (error) {
     log.debug(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
   }
-
-  // NOTE: session.json (OUTPUT) is intentionally NOT removed
-  // User needs to read the output file after session ends
-  // They can manually delete it or use `bdg cleanup` to remove all files
-
-  // NOTE: chrome-profile/ directory is intentionally NOT removed
-  // to preserve user preferences, cookies, and cached data across sessions
 }
 
 /**

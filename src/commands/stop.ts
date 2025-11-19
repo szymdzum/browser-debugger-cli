@@ -78,16 +78,13 @@ export function registerStopCommand(program: Command): void {
       await runCommand<StopOptions, StopResult>(
         async (opts) => {
           try {
-            // Try to stop session via IPC (daemon)
             const response = await stopSession();
 
             if (response.status === 'ok') {
-              // Session stopped successfully via daemon
               let chromeStopped = false;
               let orphanedDaemonsCount = 0;
               const warnings: string[] = [];
 
-              // Handle Chrome if requested (daemon captured Chrome PID before cleanup)
               if (opts.killChrome) {
                 const chromePid = response.chromePid;
                 if (chromePid) {
@@ -106,7 +103,6 @@ export function registerStopCommand(program: Command): void {
                 }
               }
 
-              // Automatically cleanup orphaned daemon processes
               orphanedDaemonsCount = cleanupOrphanedDaemons();
 
               return {
@@ -119,8 +115,6 @@ export function registerStopCommand(program: Command): void {
                 },
               };
             } else {
-              // Daemon returned error
-              // Special case: NO_SESSION should fail with helpful error message
               if (response.errorCode === IPCErrorCode.NO_SESSION) {
                 return {
                   success: false,
@@ -129,7 +123,6 @@ export function registerStopCommand(program: Command): void {
                 };
               }
 
-              // Other errors are actual failures
               const exitCode = getExitCodeForDaemonError(response.errorCode);
               return {
                 success: false,
@@ -138,10 +131,8 @@ export function registerStopCommand(program: Command): void {
               };
             }
           } catch (error: unknown) {
-            // IPC transport failure (ENOENT, ECONNREFUSED, timeout, etc.)
             const errorMessage = getErrorMessage(error);
 
-            // Check if it's a connection error (daemon not running)
             if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
               return {
                 success: false,
@@ -153,7 +144,6 @@ export function registerStopCommand(program: Command): void {
               };
             }
 
-            // Other errors (timeout, parse failures, etc.)
             return {
               success: false,
               error: stopFailedError(errorMessage),

@@ -60,7 +60,6 @@ export async function cleanupWorker(
       }
     }
 
-    // Collect DOM on normal shutdown
     if (reason === 'normal' && telemetryStore.activeTelemetry.includes('dom') && cdp) {
       log.debug(workerCollectingDOM());
       try {
@@ -71,7 +70,6 @@ export async function cleanupWorker(
       }
     }
 
-    // Run cleanup functions
     log.debug(workerRunningCleanup());
     for (const cleanup of cleanupFunctions) {
       try {
@@ -81,7 +79,6 @@ export async function cleanupWorker(
       }
     }
 
-    // Close CDP connection
     if (cdp) {
       try {
         log.debug(workerClosingCDP());
@@ -91,14 +88,12 @@ export async function cleanupWorker(
       }
     }
 
-    // Terminate Chrome
     if (chrome && chromePid) {
       await terminateChrome(chrome, chromePid, log);
     } else if (!chrome) {
       console.error(`[worker] ${chromeExternalSkipTerminationMessage()}`);
     }
 
-    // Write output
     writeOutput(reason, telemetryStore, log);
 
     log.debug(workerShutdownComplete());
@@ -119,7 +114,6 @@ async function terminateChrome(
     console.error(`[worker] Terminating Chrome (PID ${chromePid})...`);
     await chrome.kill();
 
-    // Wait for Chrome to die (max 5 seconds)
     let attempts = 0;
     const maxAttempts = 10;
     while (attempts < maxAttempts) {
@@ -131,7 +125,6 @@ async function terminateChrome(
       attempts++;
     }
 
-    // Force kill if still alive
     if (isProcessAlive(chromePid)) {
       console.error(`[worker] Chrome did not die gracefully, force killing...`);
       try {

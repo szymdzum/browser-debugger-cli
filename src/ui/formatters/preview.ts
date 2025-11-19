@@ -49,10 +49,8 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
  * BREAKING CHANGE: Previously wrapped in preview object, now returns at root level.
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
-  // Build a new data object so we never mutate the original output
   const data = { ...output.data };
 
-  // Apply filters
   if (options.network) {
     delete data.console;
     delete data.dom;
@@ -66,7 +64,6 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
     delete data.console;
   }
 
-  // Apply --last limit
   const lastCount = options.last;
   if (lastCount > 0) {
     if (data.network && data.network.length > lastCount) {
@@ -77,7 +74,6 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
     }
   }
 
-  // Return standard bdg output format (consistent with stop command)
   const jsonOutput: BdgOutput = {
     ...output,
     data,
@@ -90,7 +86,6 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
  * Format preview as human-readable output
  */
 function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions): string {
-  // Use verbose format if requested, otherwise use compact
   if (options.verbose) {
     return formatPreviewVerbose(output, options);
   }
@@ -104,12 +99,10 @@ function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions):
 function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): string {
   const fmt = new OutputFormatter();
 
-  // Header with data collection timestamp
   fmt.text(
     `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`
   );
 
-  // In follow mode, add current refresh time to show live updates
   if (options.follow && options.viewedAt) {
     fmt.text(`Viewed at: ${options.viewedAt.toISOString()}`);
   }
@@ -120,9 +113,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   const hasNetworkData = output.data.network && output.data.network.length > 0;
   const hasConsoleData = output.data.console && output.data.console.length > 0;
 
-  // Show network requests only if not filtered out or has data
   if (!options.console && output.data.network) {
-    // Hide empty section if console filter is active and there's no network data
     if (options.console === undefined || hasNetworkData) {
       const requests = output.data.network.slice(-lastCount);
       fmt.text(`NETWORK (${requests.length}/${output.data.network.length}):`);
@@ -140,9 +131,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     }
   }
 
-  // Show console messages only if not filtered out or has data
   if (!options.network && output.data.console) {
-    // Hide empty section if network filter is active and there's no console data
     if (options.network === undefined || hasConsoleData) {
       const messages = output.data.console.slice(-lastCount);
       fmt.text(`CONSOLE (${messages.length}/${output.data.console.length}):`);
@@ -160,7 +149,6 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     }
   }
 
-  // Show DOM/A11y tree if --dom flag is present
   if (options.dom && output.data.dom?.a11yTree) {
     const tree = output.data.dom.a11yTree;
     fmt.text(`DOM/A11Y TREE (${tree.count} nodes):`);
@@ -176,7 +164,6 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     fmt.blank();
   }
 
-  // Suppress tips in follow mode to reduce screen clutter during live updates
   if (!options.follow) {
     fmt.text(compactTipsMessage());
   }
@@ -200,7 +187,6 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     18
   );
 
-  // In follow mode, add current refresh time to show live updates
   if (options.follow && options.viewedAt) {
     fmt.keyValue('Viewed at', options.viewedAt.toISOString(), 18);
   }
@@ -211,9 +197,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   const hasNetworkData = output.data.network && output.data.network.length > 0;
   const hasConsoleData = output.data.console && output.data.console.length > 0;
 
-  // Show network requests only if not filtered out or has data
   if (!options.console && output.data.network) {
-    // Hide empty section if console filter is active and there's no network data
     if (options.console === undefined || hasNetworkData) {
       const requests = output.data.network.slice(-lastCount);
       fmt
@@ -238,9 +222,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     }
   }
 
-  // Show console messages only if not filtered out or has data
   if (!options.network && output.data.console) {
-    // Hide empty section if network filter is active and there's no console data
     if (options.network === undefined || hasConsoleData) {
       const messages = output.data.console.slice(-lastCount);
       fmt
@@ -258,7 +240,6 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     }
   }
 
-  // Suppress tips in follow mode to reduce screen clutter during live updates
   if (!options.follow) {
     fmt.text(verboseCommandsMessage());
   }

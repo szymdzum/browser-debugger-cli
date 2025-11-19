@@ -8,10 +8,6 @@
 
 import { safeParseUrl } from '@/utils/url.js';
 
-// ============================================================================
-// Output Formatter Class
-// ============================================================================
-
 /**
  * Fluent builder for constructing formatted console output.
  *
@@ -69,10 +65,6 @@ export class OutputFormatter {
     return this.lines.join('\n');
   }
 }
-
-// ============================================================================
-// Visual/Text Utilities
-// ============================================================================
 
 export function joinLines(...lines: Array<string | null | undefined | false>): string {
   return lines

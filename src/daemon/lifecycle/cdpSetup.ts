@@ -41,7 +41,6 @@ export async function setupCDPAndNavigate(
     throw new CDPConnectionError('Failed to obtain target information');
   }
 
-  // Connect to CDP (inject logger for structured logging)
   const cdp = new CDPConnection(log);
   await cdp.connect(telemetryStore.targetInfo.webSocketDebuggerUrl, {
     autoReconnect: false,
@@ -54,12 +53,10 @@ export async function setupCDPAndNavigate(
   });
   log.info('CDP connection established');
 
-  // Activate telemetry collectors BEFORE navigation
   console.error(`[worker] Activating collectors before navigation...`);
   const cleanupFunctions = await startTelemetryCollectors(cdp, config, telemetryStore, log);
   console.error(`[worker] Collectors active and ready to capture telemetry`);
 
-  // Navigate to target URL
   const normalizedUrl = normalizeUrl(config.url);
   console.error(`[worker] Navigating to ${normalizedUrl}...`);
   await cdp.send('Page.navigate', { url: normalizedUrl });
@@ -69,7 +66,6 @@ export async function setupCDPAndNavigate(
   });
   console.error(`[worker] Page ready`);
 
-  // Update target info after navigation
   if (chrome && telemetryStore.targetInfo) {
     const currentTargetId = telemetryStore.targetInfo.id;
     const updatedTargets = await fetchCDPTargets(config.port, log);

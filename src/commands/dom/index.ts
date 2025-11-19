@@ -164,7 +164,6 @@ interface DomEvalOptions extends BaseCommandOptions {
 async function handleDomEval(script: string, options: DomEvalOptions): Promise<void> {
   await runCommand(
     async () => {
-      // Lazy load CDP connection (only needed for eval command)
       const { CDPConnection } = await import('@/connection/cdp.js');
       const {
         validateActiveSession,
@@ -173,13 +172,10 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
         executeScript,
       } = await import('@/commands/dom/evalHelpers.js');
 
-      // Validate session is running
       validateActiveSession();
 
-      // Get and validate session metadata
       const metadata = getValidatedSessionMetadata();
 
-      // Verify target still exists
       const port = parsePositiveIntOption('port', options.port, {
         defaultValue: 9222,
         min: 1,
@@ -187,9 +183,7 @@ async function handleDomEval(script: string, options: DomEvalOptions): Promise<v
       });
       await verifyTargetExists(metadata, port);
 
-      // Create temporary CDP connection and execute script
       const cdp = new CDPConnection();
-      // getValidatedSessionMetadata ensures webSocketDebuggerUrl is defined
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       await cdp.connect(metadata.webSocketDebuggerUrl!);
 

@@ -92,10 +92,6 @@ export function shouldActivatePlugin(plugin: TelemetryPlugin, store: TelemetrySt
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Registry helpers - allow other modules/tests to register custom plugins
-// ---------------------------------------------------------------------------
-
 const pluginRegistry: TelemetryPlugin[] = createDefaultTelemetryPlugins();
 
 export function getRegisteredTelemetryPlugins(): TelemetryPlugin[] {

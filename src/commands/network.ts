@@ -153,7 +153,6 @@ function formatHARExport(data: { file: string; entries: number }): string {
 export function registerNetworkCommands(program: Command): void {
   const networkCmd = program.command('network').description('Inspect network state and resources');
 
-  // bdg network har [output-file]
   networkCmd
     .command('har [output-file]')
     .description('Export network data as HAR 1.2 format')
@@ -189,7 +188,6 @@ export function registerNetworkCommands(program: Command): void {
       );
     });
 
-  // bdg network getCookies
   networkCmd
     .command('getCookies')
     .description('List cookies from the current page')

@@ -69,7 +69,6 @@ export function registerCleanupCommand(program: Command): void {
     .action(async (options: CleanupOptions) => {
       await runCommand<CleanupOptions, CleanupResult>(
         async (opts) => {
-          // Import cleanup functions dynamically
           const { cleanupStaleChrome } = await import('@/session/chrome.js');
           const { cleanupOrphanedDaemons } = await import('@/session/cleanup.js');
 
@@ -80,9 +79,7 @@ export function registerCleanupCommand(program: Command): void {
           let cleanedDaemons = false;
           const warnings: string[] = [];
 
-          // Handle aggressive cleanup first if requested
           if (opts.aggressive) {
-            // Kill orphaned daemon processes
             const daemonsKilled = cleanupOrphanedDaemons();
             if (daemonsKilled > 0) {
               cleanedDaemons = true;
@@ -90,7 +87,6 @@ export function registerCleanupCommand(program: Command): void {
               console.error(`✓ Killed ${daemonsKilled} orphaned daemon process(es)`);
             }
 
-            // Kill stale Chrome processes
             const errorCount = await cleanupStaleChrome();
             cleanedChrome = true;
             if (errorCount > 0) {
@@ -99,7 +95,6 @@ export function registerCleanupCommand(program: Command): void {
             didCleanup = true;
           }
 
-          // Check for stale daemon PID (even if no session.pid exists)
           const daemonPidPath = getSessionFilePath('DAEMON_PID');
           if (fs.existsSync(daemonPidPath)) {
             try {
@@ -107,14 +102,12 @@ export function registerCleanupCommand(program: Command): void {
               const daemonPid = parseInt(daemonPidStr, 10);
 
               if (isNaN(daemonPid) || !isProcessAlive(daemonPid)) {
-                // Stale daemon PID - clean it up
                 console.error(staleSessionFoundMessage(daemonPid));
                 fs.unlinkSync(daemonPidPath);
                 cleanedSession = true;
                 didCleanup = true;
               }
             } catch {
-              // Failed to read - remove it anyway
               try {
                 fs.unlinkSync(daemonPidPath);
                 cleanedSession = true;
@@ -126,12 +119,10 @@ export function registerCleanupCommand(program: Command): void {
             }
           }
 
-          // Handle session PID cleanup using early-exit pattern
           const pid = readPid();
           if (pid) {
             const isAlive = isProcessAlive(pid);
 
-            // Early exit: session is active and force flag not provided
             if (isAlive && !opts.force) {
               return {
                 success: false,
@@ -145,7 +136,6 @@ export function registerCleanupCommand(program: Command): void {
               };
             }
 
-            // Handle force cleanup of active session
             if (isAlive) {
               warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
               console.error(forceCleanupWarningMessage(pid));
@@ -160,7 +150,6 @@ export function registerCleanupCommand(program: Command): void {
                 warnings.push(`Could not kill Chrome processes: ${errorMessage}`);
               }
             } else {
-              // Handle stale session cleanup
               console.error(staleSessionFoundMessage(pid));
             }
 
@@ -169,7 +158,6 @@ export function registerCleanupCommand(program: Command): void {
             didCleanup = true;
           }
 
-          // Also remove session.json output file if --all flag is specified
           if (opts.all) {
             const outputPath = getSessionFilePath('OUTPUT');
             if (fs.existsSync(outputPath)) {
@@ -184,7 +172,6 @@ export function registerCleanupCommand(program: Command): void {
             }
           }
 
-          // Check if any cleanup was performed
           if (!didCleanup) {
             return {
               success: true,

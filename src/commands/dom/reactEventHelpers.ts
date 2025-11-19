@@ -29,7 +29,6 @@ export const REACT_FILL_SCRIPT = `
     };
   }
   
-  // Check if element is fillable
   const tagName = el.tagName.toLowerCase();
   const inputType = el.type?.toLowerCase();
   
@@ -49,16 +48,12 @@ export const REACT_FILL_SCRIPT = `
     };
   }
   
-  // Focus element first
   el.focus();
   
-  // Handle different input types
   if (tagName === 'select') {
-    // For select elements
     el.value = value;
     el.dispatchEvent(new Event('change', { bubbles: true }));
   } else if (inputType === 'checkbox' || inputType === 'radio') {
-    // For checkbox/radio, value should be "true" or "false"
     const shouldCheck = value === 'true' || value === true;
     el.checked = shouldCheck;
     el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -69,11 +64,9 @@ export const REACT_FILL_SCRIPT = `
       suggestion: 'Use: bdg cdp DOM.setFileInputFiles --params {\\"files\\":[\\"path\\"]}'
     };
   } else if (el.isContentEditable) {
-    // For contenteditable elements
     el.textContent = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
   } else {
-    // For text inputs, use native setter (React compatibility)
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype,
       'value'
@@ -94,15 +87,12 @@ export const REACT_FILL_SCRIPT = `
       el.value = value;
     }
     
-    // Dispatch events that React/Vue/Angular listen for
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
   
-  // Blur if requested (triggers validation in many forms)
   if (options.blur !== false) {
     el.blur();
-    // Dispatch focusout event for React/framework validation handlers
     el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
   }
   
@@ -128,7 +118,6 @@ export const CLICK_ELEMENT_SCRIPT = `
 (function(selector) {
   let el = document.querySelector(selector);
   
-  // If not found, return error
   if (!el) {
     return {
       success: false,
@@ -137,25 +126,17 @@ export const CLICK_ELEMENT_SCRIPT = `
     };
   }
   
-  // Check if there are multiple matches and pick the visible one
   const allMatches = document.querySelectorAll(selector);
   if (allMatches.length > 1) {
-    // Find first visible element using bounding rect and computed styles
     for (const candidate of allMatches) {
       const style = window.getComputedStyle(candidate);
       const rect = candidate.getBoundingClientRect();
       
-      // Check if element is actually visible:
-      // - Must have dimensions (non-zero width/height)
-      // - Must not be display:none or visibility:hidden
-      // - Opacity check (but allow semi-transparent elements)
-      // - offsetParent check (but position:fixed elements have null offsetParent, so also check position)
       const hasSize = rect.width > 0 && rect.height > 0;
       const isDisplayed = style.display !== 'none' && style.visibility !== 'hidden';
       const isOpaque = parseFloat(style.opacity) > 0;
       const isPositioned = candidate.offsetParent !== null || style.position === 'fixed';
       
-      // Don't filter out elements without text - icon buttons, inputs, etc. are valid
       const isVisible = hasSize && isDisplayed && isOpaque && isPositioned;
       
       if (isVisible) {
@@ -165,7 +146,6 @@ export const CLICK_ELEMENT_SCRIPT = `
     }
   }
   
-  // Check if element is clickable (has click handler or is a button/link)
   const tagName = el.tagName.toLowerCase();
   const isClickable = (
     tagName === 'button' ||
@@ -180,10 +160,8 @@ export const CLICK_ELEMENT_SCRIPT = `
     console.warn('Warning: Element may not be clickable:', el);
   }
   
-  // Scroll element into view first
   el.scrollIntoView({ behavior: 'auto', block: 'center' });
   
-  // Click the element
   el.click();
   
   return {
@@ -225,24 +203,19 @@ export const GET_ELEMENT_BY_INDEX_SCRIPT = `
     };
   }
   
-  // Return element info (we'll use this to build a more specific selector)
   const el = elements[index - 1]; // Convert to 0-based
   
-  // Build a truly unique selector by constructing a scoped DOM path
   function buildUniquePath(element: Element): string {
-    // If element has an ID, that's unique enough
     if (element.id) {
       return \`#\${CSS.escape(element.id)}\`;
     }
     
-    // Build path from root using nth-of-type for each ancestor
     const path: string[] = [];
     let current: Element | null = element;
     
     while (current && current !== document.documentElement) {
       let selector = current.tagName.toLowerCase();
       
-      // Use nth-of-type to ensure uniqueness within parent
       if (current.parentElement) {
         const siblings = Array.from(current.parentElement.children);
         const sameTagSiblings = siblings.filter(
@@ -259,7 +232,6 @@ export const GET_ELEMENT_BY_INDEX_SCRIPT = `
       current = current.parentElement;
     }
     
-    // Prefix with html to anchor to document root
     return 'html > ' + path.join(' > ');
   }
   

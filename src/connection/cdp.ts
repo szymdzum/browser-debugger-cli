@@ -6,7 +6,6 @@ import type { CDPMessage, ConnectionOptions, CreateOptions, Logger } from './typ
 import { DEFAULT_CDP_CONFIG, WEBSOCKET_CONFIG, UTF8_ENCODING } from './config.js';
 import { CDPConnectionError, CDPTimeoutError, getErrorMessage } from './errors.js';
 
-// Error Messages
 const CONNECTION_TIMEOUT_ERROR = 'Connection timeout';
 const WEBSOCKET_CONNECTION_CLOSED_ERROR = 'WebSocket connection closed';
 const CONNECTION_CLOSED_ERROR = 'Connection closed';
@@ -18,7 +17,6 @@ const PONG_TIMEOUT_MESSAGE = 'Pong timeout - connection may be stale';
 const NO_PONG_RECEIVED_REASON = 'No pong received';
 const NORMAL_CLOSURE_REASON = 'Normal closure';
 
-// Message Templates
 const CONNECTION_ATTEMPT_FAILED_MESSAGE = (attempt: number, delay: number): string =>
   `Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`;
 const FAILED_CONNECT_ATTEMPTS_ERROR = (maxRetries: number, lastErrorMessage?: string): string =>
@@ -653,7 +651,6 @@ export class CDPConnection implements CDPEventSource {
     const handlerId = ++this.nextHandlerId;
     handlersForEvent.set(handlerId, handler as (params: unknown) => void);
 
-    // Return cleanup function (CDPEventSource interface)
     return () => this.off(event, handlerId);
   }
 

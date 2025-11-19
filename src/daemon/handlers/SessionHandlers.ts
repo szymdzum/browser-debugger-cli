@@ -49,15 +49,12 @@ export class SessionHandlers {
     );
 
     try {
-      // Check for existing session (concurrency guard)
       const sessionPid = this.sessionService.readPid();
       if (sessionPid && this.sessionService.isProcessAlive(sessionPid)) {
-        // Read session metadata to provide helpful error context
         const metadata = this.sessionService.readMetadata({ warnOnCorruption: false });
         const startTime = metadata?.startTime;
         const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : undefined;
 
-        // Try to get target URL from CDP
         let targetUrl: string | undefined;
         if (metadata?.port && metadata?.targetId) {
           try {
@@ -92,7 +89,6 @@ export class SessionHandlers {
         return;
       }
 
-      // Launch worker
       console.error('[daemon] Launching worker...');
       try {
         const metadata = await this.workerManager.launch(
@@ -111,7 +107,6 @@ export class SessionHandlers {
 
         console.error('[daemon] Worker launched successfully');
 
-        // Build response data
         const data: StartSessionResponseData = {
           workerPid: metadata.workerPid,
           chromePid: metadata.chromePid,
@@ -131,12 +126,10 @@ export class SessionHandlers {
         this.sendResponse(socket, response);
         console.error('[daemon] Start session response sent');
       } catch (error) {
-        // Map worker errors to IPC error codes
         let errorCode: IPCErrorCode = IPCErrorCode.WORKER_START_FAILED;
         let errorMessage = 'Failed to start worker';
 
         if (error instanceof WorkerStartError) {
-          // Include error details (contains worker stderr) for debugging
           errorMessage = error.details ? `${error.message}\n${error.details}` : error.message;
           switch (error.code) {
             case 'SPAWN_FAILED':
@@ -184,7 +177,6 @@ export class SessionHandlers {
     console.error(`[daemon] Stop session request received (sessionId: ${request.sessionId})`);
 
     try {
-      // Check for active session
       const sessionPid = this.sessionService.readPid();
       if (!sessionPid || !this.sessionService.isProcessAlive(sessionPid)) {
         const response: StopSessionResponse = {
@@ -200,14 +192,12 @@ export class SessionHandlers {
         return;
       }
 
-      // Capture Chrome PID BEFORE cleanup (so CLI can kill Chrome if needed)
       const metadata = this.sessionService.readMetadata({ warnOnCorruption: true });
       const chromePid = metadata?.chromePid;
       if (chromePid) {
         console.error(`[daemon] Captured Chrome PID ${chromePid} before cleanup`);
       }
 
-      // Kill the session process (use SIGTERM for graceful shutdown)
       try {
         process.kill(sessionPid, 'SIGTERM');
         console.error(`[daemon] Sent SIGTERM to session process (PID ${sessionPid})`);
@@ -226,11 +216,9 @@ export class SessionHandlers {
         return;
       }
 
-      // Clean up session files
       this.sessionService.cleanup();
       console.error('[daemon] Cleaned up session files');
 
-      // Clear worker process reference
       this.workerManager.dispose();
       console.error('[daemon] Cleared worker process reference');
 
@@ -245,12 +233,9 @@ export class SessionHandlers {
       this.sendResponse(socket, response);
       console.error('[daemon] Stop session response sent');
 
-      // Release lock immediately so new sessions can start
       this.sessionService.releaseLock();
       console.error('[daemon] Daemon lock released');
 
-      // Shutdown daemon after successful stop
-      // Give socket time to flush response, then exit gracefully
       setTimeout(() => {
         console.error('[daemon] Shutting down daemon after successful stop');
         process.exit(0);

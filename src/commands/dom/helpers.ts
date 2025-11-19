@@ -22,7 +22,6 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
 
-// Re-export types for backward compatibility
 export type { DomQueryResult, DomGetResult, ScreenshotResult, DomGetOptions, ScreenshotOptions };
 
 /**
@@ -39,17 +38,14 @@ const CDP_CONCURRENCY_LIMIT = 10;
  * @throws CDPConnectionError if CDP operation fails
  */
 export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
-  // Enable DOM domain
   await callCDP('DOM.enable', {});
 
-  // Get document root
   const docResponse = await callCDP('DOM.getDocument', {});
   const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
   if (!doc?.root?.nodeId) {
     throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
   }
 
-  // Query selector
   const queryResponse = await callCDP('DOM.querySelectorAll', {
     nodeId: doc.root.nodeId,
     selector,
@@ -59,17 +55,14 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
     | undefined;
   const nodeIds = queryResult?.nodeIds ?? [];
 
-  // Log progress for large queries
   if (nodeIds.length > 20) {
     log.debug(`Querying ${nodeIds.length} elements with selector: ${selector}`);
   }
 
-  // Get info for each node with concurrency control
   const limiter = new ConcurrencyLimiter(CDP_CONCURRENCY_LIMIT);
   const nodes = await Promise.all(
     nodeIds.map((nodeId, index) =>
       limiter.run(async () => {
-        // Describe node
         const descResponse = await callCDP('DOM.describeNode', { nodeId });
         const descResult = descResponse.data?.result as
           | Protocol.DOM.DescribeNodeResponse
@@ -80,7 +73,6 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
           return { index, nodeId };
         }
 
-        // Parse attributes
         const attributes: Record<string, string> = {};
         if (nodeDesc.attributes) {
           for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
@@ -92,18 +84,15 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
           }
         }
 
-        // Extract classes and create preview
         const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
         const tag = nodeDesc.nodeName.toLowerCase();
 
-        // Get outer HTML for preview
         const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
         const htmlResult = htmlResponse.data?.result as
           | Protocol.DOM.GetOuterHTMLResponse
           | undefined;
         const outerHTML = htmlResult?.outerHTML ?? '';
 
-        // Create preview text
         const textContent = outerHTML
           .replace(/<[^>]*>/g, '')
           .replace(/\s+/g, ' ')
@@ -149,14 +138,12 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
   if (options.nodeId !== undefined) {
     nodeIds = [options.nodeId];
   } else if (options.selector) {
-    // Get document root
     const docResponse = await callCDP('DOM.getDocument', {});
     const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
     if (!doc?.root?.nodeId) {
       throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
     }
 
-    // Query selector
     const queryResponse = await callCDP('DOM.querySelectorAll', {
       nodeId: doc.root.nodeId,
       selector: options.selector,
@@ -174,7 +161,6 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
       );
     }
 
-    // Apply filtering
     if (options.nth !== undefined) {
       if (options.nth < 1 || options.nth > nodeIds.length) {
         throw new CommandError(
@@ -193,7 +179,6 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
       }
       nodeIds = [nthNode];
     } else if (!options.all) {
-      // Default: return first match only
       const firstNode = nodeIds[0];
       if (firstNode === undefined) {
         throw new CommandError('No elements found', {}, EXIT_CODES.RESOURCE_NOT_FOUND);
@@ -208,17 +193,14 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     );
   }
 
-  // Log progress for large fetches
   if (nodeIds.length > 20) {
     log.debug(`Fetching details for ${nodeIds.length} DOM elements`);
   }
 
-  // Fetch node details with concurrency control
   const limiter = new ConcurrencyLimiter(CDP_CONCURRENCY_LIMIT);
   const nodes = await Promise.all(
     nodeIds.map((nodeId) =>
       limiter.run(async () => {
-        // Describe node
         const descResponse = await callCDP('DOM.describeNode', { nodeId });
         const descResult = descResponse.data?.result as
           | Protocol.DOM.DescribeNodeResponse
@@ -229,7 +211,6 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
           return { nodeId };
         }
 
-        // Parse attributes
         const attributes: Record<string, string> = {};
         if (nodeDesc.attributes) {
           for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
@@ -241,11 +222,9 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
           }
         }
 
-        // Extract classes
         const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
         const tag = nodeDesc.nodeName.toLowerCase();
 
-        // Get outer HTML
         const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
         const htmlResult = htmlResponse.data?.result as
           | Protocol.DOM.GetOuterHTMLResponse
@@ -289,7 +268,6 @@ export async function capturePageScreenshot(
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
   const fullPage = options.fullPage ?? true;
 
-  // Get viewport dimensions
   const metricsResponse = await callCDP('Page.getLayoutMetrics', {});
   const metricsResult = metricsResponse.data?.result as
     | Protocol.Page.GetLayoutMetricsResponse
@@ -298,7 +276,6 @@ export async function capturePageScreenshot(
   const contentSize = metricsResult?.contentSize ?? { width: 0, height: 0 };
   const viewport = metricsResult?.visualViewport ?? { clientWidth: 0, clientHeight: 0 };
 
-  // Capture screenshot
   const screenshotResponse = await callCDP('Page.captureScreenshot', {
     format,
     ...(quality !== undefined && { quality }),

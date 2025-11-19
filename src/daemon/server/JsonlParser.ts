@@ -25,9 +25,7 @@ export class JsonlParser {
   parse(chunk: Buffer): unknown[] {
     this.buffer += chunk.toString('utf-8');
 
-    // Split on newlines to find complete messages
     const lines = this.buffer.split('\n');
-    // Keep incomplete line in buffer for next chunk
     this.buffer = lines.pop() ?? '';
 
     const messages: unknown[] = [];

@@ -52,7 +52,6 @@ export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRul
 
   return {
     validate: (value: unknown): number => {
-      // Handle undefined with default or required check
       if (value === undefined || value === null) {
         if (defaultValue !== undefined) {
           return defaultValue;
@@ -63,7 +62,6 @@ export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRul
         throw new CommandError('Value is required', {}, EXIT_CODES.INVALID_ARGUMENTS);
       }
 
-      // Parse string to number - only accept strings and numbers
       if (typeof value !== 'string' && typeof value !== 'number') {
         throw new CommandError(
           `Value must be a number, got ${typeof value}`,
@@ -75,18 +73,15 @@ export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRul
       const strValue = String(value).trim();
       const parsed = parseInt(strValue, 10);
 
-      // Build error options conditionally to satisfy exactOptionalPropertyTypes
       const errorOptions: { min?: number; max?: number } = {};
       if (min !== undefined) errorOptions.min = min;
       if (max !== undefined) errorOptions.max = max;
 
-      // Validate it's a number
       if (isNaN(parsed)) {
         const message = invalidIntegerError('value', strValue, errorOptions);
         throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
       }
 
-      // Validate range
       if (min !== undefined && parsed < min) {
         const message = invalidIntegerError('value', strValue, errorOptions);
         throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
