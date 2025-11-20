@@ -134,15 +134,11 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       let targetRequest;
 
       if (!params.id) {
-        targetRequest = store.networkRequests
-          .slice()
-          .reverse()
-          .find((r) => r.mimeType?.includes('html'));
+        targetRequest = store.networkRequests.findLast((r) => r.mimeType?.includes('html'));
 
-        targetRequest ??= store.networkRequests
-          .slice()
-          .reverse()
-          .find((r) => r.responseHeaders && Object.keys(r.responseHeaders).length > 0);
+        targetRequest ??= store.networkRequests.findLast(
+          (r) => r.responseHeaders && Object.keys(r.responseHeaders).length > 0
+        );
 
         if (!targetRequest) {
           return Promise.reject(new Error('No network requests with headers found'));
