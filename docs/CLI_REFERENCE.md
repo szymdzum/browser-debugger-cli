@@ -35,8 +35,27 @@ bdg peek --last 50              # Show last 50 items
 bdg peek --network              # Show only network requests
 bdg peek --console              # Show only console messages
 bdg peek --dom                  # Show DOM/A11y tree (available after stop)
+bdg peek --type Document        # Filter by resource type (Document requests only)
+bdg peek --type XHR,Fetch       # Multiple types (XHR or Fetch requests)
 bdg peek --json                 # JSON output
-bdg peek --verbose              # Verbose output (full URLs, emojis)
+bdg peek --verbose              # Verbose output (full URLs, resource types)
+```
+
+**Resource Type Filtering:**
+The `--type` flag filters network requests by CDP resource type. Case-insensitive, comma-separated.
+
+Valid types: `Document`, `Stylesheet`, `Image`, `Media`, `Font`, `Script`, `TextTrack`, `XHR`, `Fetch`, `Prefetch`, `EventSource`, `WebSocket`, `Manifest`, `SignedExchange`, `Ping`, `CSPViolationReport`, `Preflight`, `FedCM`, `Other`
+
+**Examples:**
+```bash
+# Debug CSP headers on main HTML document
+bdg peek --type Document --verbose
+
+# Monitor AJAX requests only
+bdg peek --type XHR,Fetch --follow
+
+# Show all script loads
+bdg peek --type Script --last 100
 ```
 
 **Note:** DOM data (including A11y tree) is only captured when the session stops. During a live session, `bdg peek --dom` will show "(none)".

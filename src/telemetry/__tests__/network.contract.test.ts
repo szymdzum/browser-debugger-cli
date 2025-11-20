@@ -284,6 +284,160 @@ void describe('Network telemetry contract', () => {
     });
   });
 
+  void describe('Resource type capture', () => {
+    void it('should capture resourceType from requestWillBeSent when present', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        includeAll: true,
+      });
+
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({ url: 'https://example.com/', method: 'GET' }),
+          type: 'Document',
+        })
+      );
+
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
+        requestId: 'req-1',
+        timestamp: 1100,
+        encodedDataLength: 1234,
+      });
+
+      assert.equal(requests.length, 1);
+      assert.ok(requests[0]);
+      assert.equal(requests[0].resourceType, 'Document');
+
+      void cleanup();
+    });
+
+    void it('should update resourceType from responseReceived', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        includeAll: true,
+      });
+
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-1',
+          request: createTestRequest({ url: 'https://api.example.com/data', method: 'GET' }),
+          type: 'XHR',
+        })
+      );
+
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-1',
+          type: 'Fetch',
+          response: createTestResponse({ status: 200, mimeType: 'application/json' }),
+        })
+      );
+
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
+        requestId: 'req-1',
+        timestamp: 1100,
+        encodedDataLength: 1234,
+      });
+
+      assert.equal(requests.length, 1);
+      assert.ok(requests[0]);
+      assert.equal(requests[0].resourceType, 'Fetch');
+
+      void cleanup();
+    });
+
+    void it('should handle all 19 CDP ResourceType values', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        includeAll: true,
+      });
+
+      const resourceTypes: Protocol.Network.ResourceType[] = [
+        'Document',
+        'Stylesheet',
+        'Image',
+        'Media',
+        'Font',
+        'Script',
+        'TextTrack',
+        'XHR',
+        'Fetch',
+        'Prefetch',
+        'EventSource',
+        'WebSocket',
+        'Manifest',
+        'SignedExchange',
+        'Ping',
+        'CSPViolationReport',
+        'Preflight',
+        'Other',
+      ];
+
+      resourceTypes.forEach((type, index) => {
+        mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+          'Network.requestWillBeSent',
+          createRequestEvent({
+            requestId: `req-${index}`,
+            request: createTestRequest({ url: `https://example.com/${index}` }),
+            type,
+          })
+        );
+        mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
+          requestId: `req-${index}`,
+          timestamp: 1100 + index,
+          encodedDataLength: 1234,
+        });
+      });
+
+      assert.equal(requests.length, resourceTypes.length);
+      requests.forEach((req, index) => {
+        assert.ok(req);
+        assert.equal(req.resourceType, resourceTypes[index]);
+      });
+
+      void cleanup();
+    });
+
+    void it('should handle missing resourceType in requestWillBeSent', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        includeAll: true,
+      });
+
+      // Emit request without type field (omitted, not undefined)
+      const requestEvent = createRequestEvent({
+        requestId: 'req-1',
+        request: createTestRequest({ url: 'https://example.com/' }),
+      });
+      // Don't set type field at all to test optional behavior
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        requestEvent
+      );
+
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-1',
+          type: 'Document',
+          response: createTestResponse({ status: 200 }),
+        })
+      );
+
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
+        requestId: 'req-1',
+        timestamp: 1100,
+        encodedDataLength: 1234,
+      });
+
+      assert.equal(requests.length, 1);
+      assert.ok(requests[0]);
+      assert.equal(requests[0].resourceType, 'Document');
+
+      void cleanup();
+    });
+  });
+
   void describe('Edge case: Out-of-order events', () => {
     void it('should handle response arriving before request', async () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);

@@ -105,6 +105,8 @@ export interface Entry {
   connection?: string;
   /** Comment (optional) */
   comment?: string;
+  /** CDP resource type (custom field per HAR spec) */
+  _resourceType?: string;
 }
 
 /**

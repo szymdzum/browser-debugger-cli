@@ -73,6 +73,7 @@ function createNetworkRequest(
     requestHeaders: params.request.headers,
     ...(params.request.postData !== undefined && { requestBody: params.request.postData }),
     ...(navigationId !== undefined && { navigationId }),
+    ...(params.type !== undefined && { resourceType: params.type }),
   };
 }
 
@@ -190,6 +191,7 @@ export async function startNetworkCollection(
     entry.request.status = status;
     entry.request.mimeType = mimeType;
     entry.request.responseHeaders = headers;
+    entry.request.resourceType = params.type;
 
     if (timing) {
       const {

@@ -429,11 +429,13 @@ bdg stop                        # Stop daemon and write output
 
 ### Live Monitoring
 ```bash
-bdg peek                        # Preview (last 10 items, compact)
-bdg peek --verbose              # Verbose format (full URLs, emojis)
+bdg peek                        # Preview (last 10 items, compact with resource types)
+bdg peek --verbose              # Verbose format (full URLs, resource types, MIME types)
 bdg peek --last 50              # Show last 50 items
 bdg peek --network              # Only network requests
 bdg peek --console              # Only console messages
+bdg peek --type Document        # Filter by resource type (Document only)
+bdg peek --type XHR,Fetch       # Multiple types (AJAX requests)
 bdg peek --follow               # Live updates every second
 bdg details network <id>        # Full request/response details
 bdg details console <index>     # Full console message details

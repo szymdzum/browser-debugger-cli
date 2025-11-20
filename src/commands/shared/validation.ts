@@ -5,6 +5,7 @@
  * Eliminates scattered validation logic across commands.
  */
 
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { invalidIntegerError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -93,6 +94,128 @@ export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRul
       }
 
       return parsed;
+    },
+  };
+}
+
+/**
+ * Valid CDP ResourceType values for filtering.
+ * Matches Protocol.Network.ResourceType enum.
+ */
+const VALID_RESOURCE_TYPES = [
+  'Document',
+  'Stylesheet',
+  'Image',
+  'Media',
+  'Font',
+  'Script',
+  'TextTrack',
+  'XHR',
+  'Fetch',
+  'Prefetch',
+  'EventSource',
+  'WebSocket',
+  'Manifest',
+  'SignedExchange',
+  'Ping',
+  'CSPViolationReport',
+  'Preflight',
+  'FedCM',
+  'Other',
+] as const;
+
+/**
+ * Parse comma-separated string into trimmed, non-empty tokens.
+ *
+ * @param value - Comma-separated string
+ * @returns Array of trimmed, non-empty tokens
+ */
+function parseCommaSeparated(value: string): string[] {
+  return value
+    .split(',')
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+}
+
+/**
+ * Normalize resource type string to CDP format (case-insensitive lookup).
+ *
+ * @param type - User input (e.g., "document", "xhr")
+ * @returns Normalized CDP type or undefined if invalid
+ */
+function normalizeResourceType(type: string): Protocol.Network.ResourceType | undefined {
+  const found = VALID_RESOURCE_TYPES.find((valid) => valid.toLowerCase() === type.toLowerCase());
+  return found;
+}
+
+/**
+ * Validate and normalize array of resource type strings.
+ *
+ * @param types - Array of type strings to validate
+ * @returns Object with normalized types and invalid entries
+ */
+function validateResourceTypes(types: string[]): {
+  normalized: Protocol.Network.ResourceType[];
+  invalid: string[];
+} {
+  const normalized: Protocol.Network.ResourceType[] = [];
+  const invalid: string[] = [];
+
+  for (const type of types) {
+    const normalizedType = normalizeResourceType(type);
+    if (normalizedType) {
+      normalized.push(normalizedType);
+    } else {
+      invalid.push(type);
+    }
+  }
+
+  return { normalized, invalid };
+}
+
+/**
+ * Create a resource type validation rule for comma-separated type filters.
+ * Performs case-insensitive matching and normalization.
+ *
+ * @returns Validation rule that parses and validates resource types
+ *
+ * @example
+ * ```typescript
+ * const rules = {
+ *   type: resourceTypeRule(),
+ * };
+ * const validated = validateOptions(options, rules);
+ * // Input: "document,xhr" → Output: ["Document", "XHR"]
+ * ```
+ */
+export function resourceTypeRule(): ValidationRule<Protocol.Network.ResourceType[]> {
+  return {
+    validate: (value: unknown): Protocol.Network.ResourceType[] => {
+      // Handle empty input
+      if (value === undefined || value === null || value === '') {
+        return [];
+      }
+
+      // Type guard
+      if (typeof value !== 'string') {
+        throw new CommandError('Resource type must be a string', {}, EXIT_CODES.INVALID_ARGUMENTS);
+      }
+
+      // Parse and validate
+      const types = parseCommaSeparated(value);
+      const { normalized, invalid } = validateResourceTypes(types);
+
+      // Report errors if any invalid types
+      if (invalid.length > 0) {
+        const validList = VALID_RESOURCE_TYPES.join(', ');
+        throw new CommandError(
+          `Invalid resource type(s): ${invalid.join(', ')}`,
+          { suggestion: `Valid types: ${validList}` },
+          EXIT_CODES.INVALID_ARGUMENTS
+        );
+      }
+
+      return normalized;
     },
   };
 }

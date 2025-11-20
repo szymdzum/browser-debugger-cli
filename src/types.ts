@@ -33,6 +33,12 @@ export interface NetworkRequest {
   timestamp: number;
   status?: number;
   mimeType?: string;
+  /**
+   * CDP resource type classification (Document, XHR, Script, Image, etc.)
+   * Enables filtering and identification of request types.
+   * Captured from Network.requestWillBeSent and Network.responseReceived events.
+   */
+  resourceType?: Protocol.Network.ResourceType;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
   requestBody?: string;

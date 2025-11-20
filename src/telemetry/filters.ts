@@ -2,6 +2,8 @@
  * Default filters for reducing noise in collected data
  */
 
+import type { Protocol } from '@/connection/typed-cdp.js';
+import type { NetworkRequest } from '@/types.js';
 import { extractHostname, extractHostnameWithPath } from '@/utils/url.js';
 
 /**
@@ -428,5 +430,35 @@ export function shouldExcludeUrl(
     includePatterns,
     excludePatterns,
     defaultBehavior: 'include',
+  });
+}
+
+/**
+ * Filter network requests by resource type.
+ * Returns requests matching any of the specified types.
+ *
+ * @param requests - Array of network requests to filter
+ * @param types - Array of resource types to include (empty array = no filtering)
+ * @returns Filtered array of network requests
+ *
+ * @example
+ * ```typescript
+ * const documentRequests = filterByResourceType(allRequests, ['Document']);
+ * const ajaxRequests = filterByResourceType(allRequests, ['XHR', 'Fetch']);
+ * ```
+ */
+export function filterByResourceType(
+  requests: NetworkRequest[],
+  types: Protocol.Network.ResourceType[]
+): NetworkRequest[] {
+  if (types.length === 0) {
+    return requests;
+  }
+
+  return requests.filter((req) => {
+    if (!req.resourceType) {
+      return false;
+    }
+    return types.includes(req.resourceType);
   });
 }

@@ -1,3 +1,4 @@
+import type { Protocol } from '@/connection/typed-cdp.js';
 import type { BdgOutput } from '@/types';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
@@ -8,6 +9,43 @@ import {
 } from '@/ui/messages/preview.js';
 
 import { semantic } from './semantic.js';
+
+/**
+ * Resource type abbreviation mapping for compact display.
+ * Defined at module level to avoid recreation on every call.
+ */
+const RESOURCE_TYPE_ABBREVIATIONS: Record<string, string> = {
+  Document: 'DOC',
+  Stylesheet: 'CSS',
+  Image: 'IMG',
+  Media: 'MED',
+  Font: 'FNT',
+  Script: 'SCR',
+  TextTrack: 'TXT',
+  XHR: 'XHR',
+  Fetch: 'FET',
+  Prefetch: 'PRE',
+  EventSource: 'EVT',
+  WebSocket: 'WS',
+  Manifest: 'MAN',
+  SignedExchange: 'SGX',
+  Ping: 'PNG',
+  CSPViolationReport: 'CSP',
+  Preflight: 'FLT',
+  FedCM: 'FED',
+  Other: 'OTH',
+};
+
+/**
+ * Get compact abbreviation for resource type (for token-efficient display).
+ *
+ * @param resourceType - CDP ResourceType value
+ * @returns 3-4 character abbreviation (e.g., DOC, XHR, SCR)
+ */
+function getResourceTypeAbbr(resourceType: Protocol.Network.ResourceType | undefined): string {
+  if (!resourceType) return '???';
+  return RESOURCE_TYPE_ABBREVIATIONS[resourceType] ?? 'UNK';
+}
 
 /**
  * Flags that shape how preview output is rendered for `bdg peek`.
@@ -121,9 +159,10 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
         fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       } else {
         const networkLines = requests.map((req) => {
+          const typeAbbr = getResourceTypeAbbr(req.resourceType);
           const status = req.status ?? 'pending';
           const url = truncateUrl(req.url, 50);
-          return `${status} ${req.method} ${url} [${req.requestId}]`;
+          return `[${typeAbbr}] ${status} ${req.method} ${url} [${req.requestId}]`;
         });
         fmt.list(networkLines, 2);
       }
@@ -210,8 +249,11 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           const statusColor = req.status && req.status >= 400 ? 'ERR' : 'OK';
           const status = req.status ?? 'pending';
           fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
+          if (req.resourceType) {
+            fmt.text(`  Resource: ${req.resourceType}`);
+          }
           if (req.mimeType) {
-            fmt.text(`  Type: ${req.mimeType}`);
+            fmt.text(`  MIME: ${req.mimeType}`);
           }
           fmt.text(
             `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`

@@ -210,9 +210,11 @@ bdg dom a11y query role=button      # Find elements by ARIA role
 bdg dom a11y describe "#login"      # Get a11y info for element
 
 # Inspect collected data
-bdg peek                 # Quick snapshot
-bdg peek --network       # Just network data
-bdg tail                 # Stream like tail -f
+bdg peek                        # Quick snapshot (shows resource types)
+bdg peek --network              # Just network data
+bdg peek --type Document        # Filter by resource type
+bdg peek --type XHR,Fetch       # Multiple types (AJAX requests)
+bdg tail                        # Stream like tail -f
 
 # Export network data
 bdg network har          # Export as HAR 1.2 format

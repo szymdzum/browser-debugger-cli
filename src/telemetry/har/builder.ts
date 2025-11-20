@@ -106,6 +106,10 @@ function buildEntry(req: NetworkRequest): Entry {
     entry.connection = req.connection;
   }
 
+  if (req.resourceType) {
+    entry._resourceType = req.resourceType;
+  }
+
   return entry;
 }
 

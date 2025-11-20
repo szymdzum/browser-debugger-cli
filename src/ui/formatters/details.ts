@@ -14,6 +14,7 @@ export function formatNetworkDetails(request: NetworkRequest): string {
       ['URL', request.url],
       ['Method', request.method],
       ['Status', request.status?.toString() ?? 'pending'],
+      ['Resource Type', request.resourceType ?? 'N/A'],
       ['MIME Type', request.mimeType ?? 'N/A'],
     ],
     13

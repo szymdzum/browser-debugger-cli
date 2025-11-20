@@ -2,9 +2,10 @@ import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
-import { positiveIntRule } from '@/commands/shared/validation.js';
+import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import { filterByResourceType } from '@/telemetry/filters.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
@@ -18,6 +19,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 interface PeekCommandOptions
   extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'dom' | 'verbose' | 'follow'> {
   last?: string;
+  type?: string;
 }
 
 /**
@@ -36,9 +38,16 @@ export function registerPeekCommand(program: Command): void {
     .option('-d, --dom', 'Show DOM/A11y tree data', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
+    .option(
+      '--type <types>',
+      'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
+    )
     .action(async (options: PeekCommandOptions) => {
       const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
       const lastN = lastRule.validate(options.last);
+
+      const typeRule = resourceTypeRule();
+      const resourceTypes = typeRule.validate(options.type);
 
       const previewBase: PreviewOptions = {
         json: options.json,
@@ -95,7 +104,17 @@ export function registerPeekCommand(program: Command): void {
             ? { ...previewBase, viewedAt: new Date() }
             : previewBase;
 
-          console.log(formatPreview(output, previewOptions));
+          const filteredOutput: BdgOutput = {
+            ...output,
+            data: {
+              ...output.data,
+              ...(output.data.network && {
+                network: filterByResourceType(output.data.network, resourceTypes),
+              }),
+            },
+          };
+
+          console.log(formatPreview(filteredOutput, previewOptions));
         } catch {
           const result = handleDaemonConnectionError('Daemon not running', {
             json: options.json,

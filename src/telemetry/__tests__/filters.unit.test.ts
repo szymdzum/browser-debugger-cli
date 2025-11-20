@@ -1,16 +1,19 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { Protocol } from '@/connection/typed-cdp.js';
 import {
   matchesWildcard,
   shouldFetchBody,
   shouldExcludeUrl,
   shouldExcludeDomain,
   shouldExcludeConsoleMessage,
+  filterByResourceType,
   DEFAULT_SKIP_BODY_PATTERNS,
   DEFAULT_EXCLUDED_DOMAINS,
   DEFAULT_EXCLUDED_CONSOLE_PATTERNS,
 } from '@/telemetry/filters.js';
+import type { NetworkRequest } from '@/types.js';
 
 void describe('filters - matchesWildcard', () => {
   void it('should match exact strings', () => {
@@ -350,5 +353,150 @@ void describe('filters - constants', () => {
     assert.ok(DEFAULT_EXCLUDED_CONSOLE_PATTERNS.includes('webpack-dev-server'));
     assert.ok(DEFAULT_EXCLUDED_CONSOLE_PATTERNS.includes('[HMR]'));
     assert.ok(DEFAULT_EXCLUDED_CONSOLE_PATTERNS.includes('[WDS]'));
+  });
+});
+
+void describe('filters - filterByResourceType', () => {
+  const createMockRequest = (
+    url: string,
+    resourceType?: Protocol.Network.ResourceType
+  ): NetworkRequest => {
+    const base: NetworkRequest = {
+      requestId: `req-${url}`,
+      url,
+      method: 'GET',
+      timestamp: Date.now(),
+    };
+    if (resourceType !== undefined) {
+      base.resourceType = resourceType;
+    }
+    return base;
+  };
+
+  void it('should return all requests when types array is empty', () => {
+    const requests = [
+      createMockRequest('https://example.com/', 'Document'),
+      createMockRequest('https://example.com/api/data', 'XHR'),
+      createMockRequest('https://example.com/app.js', 'Script'),
+    ];
+
+    const result = filterByResourceType(requests, []);
+
+    assert.equal(result.length, 3);
+    assert.deepEqual(result, requests);
+  });
+
+  void it('should filter by single resource type', () => {
+    const requests = [
+      createMockRequest('https://example.com/', 'Document'),
+      createMockRequest('https://example.com/api/data', 'XHR'),
+      createMockRequest('https://example.com/style.css', 'Stylesheet'),
+      createMockRequest('https://example.com/app.js', 'Script'),
+    ];
+
+    const result = filterByResourceType(requests, ['Document']);
+
+    assert.equal(result.length, 1);
+    assert.ok(result[0]);
+    assert.equal(result[0].resourceType, 'Document');
+    assert.equal(result[0].url, 'https://example.com/');
+  });
+
+  void it('should filter by multiple resource types', () => {
+    const requests = [
+      createMockRequest('https://example.com/', 'Document'),
+      createMockRequest('https://example.com/api/users', 'XHR'),
+      createMockRequest('https://example.com/api/posts', 'Fetch'),
+      createMockRequest('https://example.com/app.js', 'Script'),
+      createMockRequest('https://example.com/logo.png', 'Image'),
+    ];
+
+    const result = filterByResourceType(requests, ['XHR', 'Fetch']);
+
+    assert.equal(result.length, 2);
+    assert.ok(result[0] && result[1]);
+    assert.equal(result[0].resourceType, 'XHR');
+    assert.equal(result[1].resourceType, 'Fetch');
+  });
+
+  void it('should exclude requests without resourceType', () => {
+    const requests = [
+      createMockRequest('https://example.com/', 'Document'),
+      createMockRequest('https://example.com/api/data', undefined),
+      createMockRequest('https://example.com/app.js', 'Script'),
+    ];
+
+    const result = filterByResourceType(requests, ['Document', 'Script']);
+
+    assert.equal(result.length, 2);
+    assert.ok(result.every((req) => req.resourceType !== undefined));
+  });
+
+  void it('should handle all 19 CDP ResourceType values', () => {
+    const types: Protocol.Network.ResourceType[] = [
+      'Document',
+      'Stylesheet',
+      'Image',
+      'Media',
+      'Font',
+      'Script',
+      'TextTrack',
+      'XHR',
+      'Fetch',
+      'Prefetch',
+      'EventSource',
+      'WebSocket',
+      'Manifest',
+      'SignedExchange',
+      'Ping',
+      'CSPViolationReport',
+      'Preflight',
+      'Other',
+    ];
+
+    const requests = types.map((type) => createMockRequest(`https://example.com/${type}`, type));
+
+    types.forEach((type) => {
+      const result = filterByResourceType(requests, [type]);
+      assert.equal(result.length, 1);
+      assert.ok(result[0]);
+      assert.equal(result[0].resourceType, type);
+    });
+  });
+
+  void it('should return empty array when no requests match', () => {
+    const requests = [
+      createMockRequest('https://example.com/app.js', 'Script'),
+      createMockRequest('https://example.com/style.css', 'Stylesheet'),
+    ];
+
+    const result = filterByResourceType(requests, ['Document']);
+
+    assert.equal(result.length, 0);
+  });
+
+  void it('should handle empty requests array', () => {
+    const result = filterByResourceType([], ['Document']);
+
+    assert.equal(result.length, 0);
+  });
+
+  void it('should preserve request properties', () => {
+    const fullRequest: NetworkRequest = {
+      requestId: 'req-1',
+      url: 'https://example.com/',
+      method: 'POST',
+      timestamp: 1234567890,
+      resourceType: 'Document',
+      status: 200,
+      mimeType: 'text/html',
+      requestHeaders: { 'User-Agent': 'Test' },
+      responseHeaders: { 'Content-Type': 'text/html' },
+    };
+
+    const result = filterByResourceType([fullRequest], ['Document']);
+
+    assert.equal(result.length, 1);
+    assert.deepEqual(result[0], fullRequest);
   });
 });
