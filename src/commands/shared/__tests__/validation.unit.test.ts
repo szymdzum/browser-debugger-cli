@@ -12,7 +12,6 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-
 void describe('validation - resourceTypeRule', () => {
   void it('should return empty array for undefined input', () => {
     const rule = resourceTypeRule();
@@ -110,9 +109,9 @@ void describe('validation - resourceTypeRule', () => {
       () => rule.validate('InvalidType'),
       (error: unknown) => {
         assert.ok(error instanceof CommandError);
-        assert.ok((error).message.includes('Invalid resource type'));
-        assert.ok((error).message.includes('InvalidType'));
-        assert.equal((error).exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+        assert.ok(error.message.includes('Invalid resource type'));
+        assert.ok(error.message.includes('InvalidType'));
+        assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
         return true;
       }
     );
@@ -125,9 +124,9 @@ void describe('validation - resourceTypeRule', () => {
       () => rule.validate('Document,BadType1,XHR,BadType2'),
       (error: unknown) => {
         assert.ok(error instanceof CommandError);
-        assert.ok((error).message.includes('Invalid resource type'));
-        assert.ok((error).message.includes('BadType1'));
-        assert.ok((error).message.includes('BadType2'));
+        assert.ok(error.message.includes('Invalid resource type'));
+        assert.ok(error.message.includes('BadType1'));
+        assert.ok(error.message.includes('BadType2'));
         return true;
       }
     );
@@ -157,7 +156,7 @@ void describe('validation - resourceTypeRule', () => {
       () => rule.validate(123),
       (error: unknown) => {
         assert.ok(error instanceof CommandError);
-        assert.ok((error).message.includes('must be a string'));
+        assert.ok(error.message.includes('must be a string'));
         return true;
       }
     );
