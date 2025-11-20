@@ -60,9 +60,10 @@ export const BDG_CHROME_FLAGS = [
   '--no-default-browser-check',
   '--disable-search-engine-choice-screen',
   '--disable-session-crashed-bubble', // Suppress "Restore Pages?" popup after unclean shutdown
+  '--hide-crash-restore-bubble', // New flag to hide crash restore bubble
   '--disable-infobars', // Disable all info bars including restore prompt
   '--disable-notifications', // Suppress notification permission prompts
-  '--disable-features=Translate', // Suppress Google Translate popup (replaces deprecated --disable-translate)
+  '--disable-features=Translate,SessionCrashedBubble', // Suppress Google Translate popup and SessionCrashedBubble
   '--disable-background-mode', // Attempt to prevent focus stealing (doesn't work reliably on macOS)
 ];
 
@@ -89,6 +90,7 @@ export const BDG_CHROME_PREFS: Record<string, unknown> = {
   'browser.show_quit_confirmation_dialog': false, // Disable quit confirmation for automation
   'translate.enabled': false, // Disable Google Translate popup
   translate_site_blacklist: ['*'], // Block translate for all sites
+  'profile.exit_type': 'Normal', // Trick Chrome into thinking it shut down correctly
 };
 
 // ============================================================================
