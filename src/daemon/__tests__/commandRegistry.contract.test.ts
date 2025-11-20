@@ -526,4 +526,288 @@ void describe('CommandRegistry', () => {
       );
     });
   });
+
+  void describe('worker_network_headers', () => {
+    void describe('smart default selection', () => {
+      void it('selects most recent HTML request', async () => {
+        store.networkRequests.push(
+          {
+            requestId: 'req-1',
+            timestamp: 100,
+            method: 'GET',
+            url: 'http://a.com',
+            mimeType: 'text/html',
+            responseHeaders: { 'content-type': 'text/html' },
+          },
+          {
+            requestId: 'req-2',
+            timestamp: 200,
+            method: 'GET',
+            url: 'http://b.com/image.png',
+            mimeType: 'image/png',
+            responseHeaders: { 'content-type': 'image/png' },
+          },
+          {
+            requestId: 'req-3',
+            timestamp: 300,
+            method: 'GET',
+            url: 'http://c.com',
+            mimeType: 'text/html',
+            responseHeaders: { 'content-type': 'text/html; charset=utf-8' },
+          }
+        );
+
+        const result = await registry.worker_network_headers(mockCdp, {});
+
+        assert.equal(result.requestId, 'req-3');
+        assert.equal(result.url, 'http://c.com');
+      });
+
+      void it('falls back to most recent request with headers when no HTML', async () => {
+        store.networkRequests.push(
+          {
+            requestId: 'req-1',
+            timestamp: 100,
+            method: 'GET',
+            url: 'http://a.com/image.png',
+            mimeType: 'image/png',
+            responseHeaders: {},
+          },
+          {
+            requestId: 'req-2',
+            timestamp: 200,
+            method: 'GET',
+            url: 'http://b.com/api',
+            mimeType: 'application/json',
+            responseHeaders: { 'content-type': 'application/json' },
+          }
+        );
+
+        const result = await registry.worker_network_headers(mockCdp, {});
+
+        assert.equal(result.requestId, 'req-2');
+        assert.equal(result.url, 'http://b.com/api');
+      });
+
+      void it('returns request even when headers are undefined', async () => {
+        store.networkRequests.push({
+          requestId: 'req-1',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://a.com',
+          mimeType: 'text/html',
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, {});
+
+        assert.equal(result.requestId, 'req-1');
+        assert.deepEqual(result.requestHeaders, {});
+        assert.deepEqual(result.responseHeaders, {});
+      });
+
+      void it('rejects when no requests captured at all', async () => {
+        await assert.rejects(
+          async () => {
+            await registry.worker_network_headers(mockCdp, {});
+          },
+          {
+            message: 'No network requests with headers found',
+          }
+        );
+      });
+    });
+
+    void describe('specific request ID', () => {
+      void it('returns headers for matching request ID', async () => {
+        store.networkRequests.push({
+          requestId: 'ABC123',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://example.com',
+          requestHeaders: { 'User-Agent': 'Chrome', Accept: 'text/html' },
+          responseHeaders: { 'Content-Type': 'text/html', 'Cache-Control': 'max-age=3600' },
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, { id: 'ABC123' });
+
+        assert.equal(result.requestId, 'ABC123');
+        assert.equal(result.url, 'http://example.com');
+        assert.deepEqual(result.requestHeaders, { 'User-Agent': 'Chrome', Accept: 'text/html' });
+        assert.deepEqual(result.responseHeaders, {
+          'Content-Type': 'text/html',
+          'Cache-Control': 'max-age=3600',
+        });
+      });
+
+      void it('handles missing requestHeaders gracefully', async () => {
+        store.networkRequests.push({
+          requestId: 'REQ1',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://example.com',
+          responseHeaders: { 'Content-Type': 'text/html' },
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, { id: 'REQ1' });
+
+        assert.deepEqual(result.requestHeaders, {});
+        assert.deepEqual(result.responseHeaders, { 'Content-Type': 'text/html' });
+      });
+
+      void it('handles missing responseHeaders gracefully', async () => {
+        store.networkRequests.push({
+          requestId: 'REQ2',
+          timestamp: 100,
+          method: 'POST',
+          url: 'http://api.example.com',
+          requestHeaders: { 'Content-Type': 'application/json' },
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, { id: 'REQ2' });
+
+        assert.deepEqual(result.requestHeaders, { 'Content-Type': 'application/json' });
+        assert.deepEqual(result.responseHeaders, {});
+      });
+
+      void it('rejects when request ID not found', async () => {
+        store.networkRequests.push({
+          requestId: 'VALID',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://example.com',
+        });
+
+        await assert.rejects(
+          async () => {
+            await registry.worker_network_headers(mockCdp, { id: 'MISSING' });
+          },
+          {
+            message: 'Network request not found: MISSING',
+          }
+        );
+      });
+    });
+
+    void describe('header filtering', () => {
+      void it('filters to specific header (case-insensitive)', async () => {
+        store.networkRequests.push({
+          requestId: 'req-1',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://example.com',
+          mimeType: 'text/html',
+          requestHeaders: { 'User-Agent': 'Chrome', Accept: 'text/html' },
+          responseHeaders: {
+            'Content-Type': 'text/html',
+            'Cache-Control': 'max-age=3600',
+            'X-Frame-Options': 'SAMEORIGIN',
+          },
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, {
+          headerName: 'content-type',
+        });
+
+        assert.deepEqual(result.responseHeaders, { 'Content-Type': 'text/html' });
+        assert.deepEqual(result.requestHeaders, {});
+      });
+
+      void it('preserves original header casing in filtered results', async () => {
+        store.networkRequests.push({
+          requestId: 'req-1',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://example.com',
+          mimeType: 'text/html',
+          responseHeaders: {
+            'Content-Type': 'text/html',
+            'X-Custom-Header': 'value',
+          },
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, {
+          headerName: 'X-CUSTOM-HEADER',
+        });
+
+        assert.deepEqual(result.responseHeaders, { 'X-Custom-Header': 'value' });
+      });
+
+      void it('returns empty objects when filtered header not found', async () => {
+        store.networkRequests.push({
+          requestId: 'req-1',
+          timestamp: 100,
+          method: 'GET',
+          url: 'http://example.com',
+          mimeType: 'text/html',
+          responseHeaders: { 'Content-Type': 'text/html' },
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, {
+          headerName: 'x-nonexistent',
+        });
+
+        assert.deepEqual(result.requestHeaders, {});
+        assert.deepEqual(result.responseHeaders, {});
+      });
+
+      void it('filters both request and response headers', async () => {
+        store.networkRequests.push({
+          requestId: 'req-1',
+          timestamp: 100,
+          method: 'POST',
+          url: 'http://api.example.com',
+          mimeType: 'application/json',
+          requestHeaders: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer token',
+          },
+          responseHeaders: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+          },
+        });
+
+        const result = await registry.worker_network_headers(mockCdp, {
+          headerName: 'content-type',
+        });
+
+        assert.deepEqual(result.requestHeaders, { 'Content-Type': 'application/json' });
+        assert.deepEqual(result.responseHeaders, { 'Content-Type': 'application/json' });
+      });
+    });
+
+    void describe('combined: specific ID + header filter', () => {
+      void it('applies header filter to specific request', async () => {
+        store.networkRequests.push(
+          {
+            requestId: 'req-1',
+            timestamp: 100,
+            method: 'GET',
+            url: 'http://a.com',
+            mimeType: 'text/html',
+            responseHeaders: { 'Content-Type': 'text/html' },
+          },
+          {
+            requestId: 'req-2',
+            timestamp: 200,
+            method: 'GET',
+            url: 'http://b.com',
+            mimeType: 'application/json',
+            responseHeaders: {
+              'Content-Type': 'application/json',
+              'X-Custom': 'value',
+            },
+          }
+        );
+
+        const result = await registry.worker_network_headers(mockCdp, {
+          id: 'req-2',
+          headerName: 'x-custom',
+        });
+
+        assert.equal(result.requestId, 'req-2');
+        assert.deepEqual(result.responseHeaders, { 'X-Custom': 'value' });
+      });
+    });
+  });
 });
