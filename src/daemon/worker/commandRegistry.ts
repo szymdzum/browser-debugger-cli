@@ -138,7 +138,13 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       let targetRequest;
 
       if (!params.id) {
-        targetRequest = store.networkRequests.findLast((r) => r.mimeType?.includes('html'));
+        const currentNavId = store.getCurrentNavigationId?.() ?? 0;
+
+        targetRequest = store.networkRequests.findLast(
+          (r) => r.navigationId === currentNavId && r.resourceType === 'Document'
+        );
+
+        targetRequest ??= store.networkRequests.findLast((r) => r.mimeType?.includes('html'));
 
         targetRequest ??= store.networkRequests.findLast(
           (r) => r.responseHeaders && Object.keys(r.responseHeaders).length > 0

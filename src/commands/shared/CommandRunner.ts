@@ -28,6 +28,8 @@ export interface CommandResult<T = unknown> {
   exitCode?: number;
   /** Optional error context (suggestions, examples, etc.) */
   errorContext?: Record<string, unknown>;
+  /** Optional hint message to display on stderr (for successful commands with guidance) */
+  hint?: string;
 }
 
 /**
@@ -104,6 +106,10 @@ export async function runCommand<TOptions extends BaseCommandOptions, TResult = 
         }
       }
       process.exit(result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION);
+    }
+
+    if (result.hint) {
+      console.error(result.hint);
     }
 
     if (options.json) {

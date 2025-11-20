@@ -4,6 +4,7 @@
 
 import type { Command, Option, Argument } from 'commander';
 
+import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { isDaemonRunning } from '@/daemon/launcher.js';
 import { readPid } from '@/session/pid.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
@@ -240,19 +241,24 @@ function generateRuntimeState(): RuntimeState {
 /**
  * Generates capabilities summary.
  *
- * Provides overview of CDP and high-level command capabilities
- * for agent discovery and planning.
+ * Dynamically calculates CDP and high-level command capabilities
+ * from protocol schema and task mappings.
  *
  * @returns Capabilities object
  */
 function generateCapabilities(): Capabilities {
+  const domainSummaries = getAllDomainSummaries();
+  const taskMappings = getAllTaskMappings();
+
+  const totalMethods = domainSummaries.reduce((sum, domain) => sum + domain.commandCount, 0);
+
   return {
     cdp: {
-      domains: 53,
-      methods: '300+',
+      domains: domainSummaries.length,
+      methods: totalMethods.toString(),
     },
     highLevel: {
-      commands: 15,
+      commands: Object.keys(taskMappings).length,
       coverage: ['dom', 'network', 'console', 'session', 'monitoring'],
     },
   };

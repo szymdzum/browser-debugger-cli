@@ -37,6 +37,23 @@ const RESOURCE_TYPE_ABBREVIATIONS: Record<string, string> = {
 };
 
 /**
+ * Rules for inferring resource types from MIME patterns.
+ * Ordered by precedence (first match wins).
+ */
+const MIME_TYPE_RULES: Array<{
+  type: Protocol.Network.ResourceType;
+  match: RegExp;
+}> = [
+  { type: 'Document', match: /text\/html/i },
+  { type: 'Stylesheet', match: /text\/css/i },
+  { type: 'Script', match: /(java|ecma)script/i },
+  { type: 'Image', match: /^image\//i },
+  { type: 'Font', match: /font/i },
+  { type: 'Media', match: /^(video|audio)\//i },
+  { type: 'XHR', match: /json|xml/i },
+];
+
+/**
  * Infer resource type from MIME type when CDP doesn't provide it.
  *
  * @param mimeType - MIME type string (e.g., 'application/json', 'text/html')
@@ -46,18 +63,7 @@ function inferResourceTypeFromMime(
   mimeType: string | undefined
 ): Protocol.Network.ResourceType | undefined {
   if (!mimeType) return undefined;
-
-  const mime = mimeType.toLowerCase();
-
-  if (mime.includes('text/html')) return 'Document';
-  if (mime.includes('text/css')) return 'Stylesheet';
-  if (mime.includes('javascript') || mime.includes('ecmascript')) return 'Script';
-  if (mime.startsWith('image/')) return 'Image';
-  if (mime.startsWith('font/') || mime.includes('font')) return 'Font';
-  if (mime.startsWith('video/') || mime.startsWith('audio/')) return 'Media';
-  if (mime.includes('json') || mime.includes('xml')) return 'XHR';
-
-  return undefined;
+  return MIME_TYPE_RULES.find((rule) => rule.match.test(mimeType))?.type;
 }
 
 /**

@@ -364,6 +364,7 @@ async function handleExecuteMethod(
   error?: string;
   exitCode?: number;
   errorContext?: Record<string, unknown>;
+  hint?: string;
 }> {
   const normalized = normalizeMethod(methodName);
   if (!normalized) {
@@ -405,15 +406,21 @@ async function handleExecuteMethod(
 
   validateIPCResponse(response);
 
-  if (response.data?.hint) {
-    console.error(response.data.hint);
-  }
-
-  return {
+  const result: {
+    success: boolean;
+    data: { method: string; result: unknown };
+    hint?: string;
+  } = {
     success: true,
     data: {
       method: normalized,
       result: response.data?.result,
     },
   };
+
+  if (response.data?.hint) {
+    result.hint = response.data.hint;
+  }
+
+  return result;
 }
