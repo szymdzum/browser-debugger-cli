@@ -67,6 +67,18 @@ function inferResourceTypeFromMime(
 }
 
 /**
+ * Format limit hint when data is truncated.
+ *
+ * @param showing - Number of items currently shown
+ * @param total - Total number of items available
+ * @returns Hint string with suggestion to use --last, or empty string if showing all
+ */
+function formatLimitHint(showing: number, total: number): string {
+  if (showing >= total) return '';
+  return ` (showing last ${showing}, use --last ${total} to see all)`;
+}
+
+/**
  * Get compact abbreviation for resource type.
  *
  * Falls back to MIME type inference when CDP doesn't provide resourceType.
@@ -190,8 +202,12 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
 
   if (!options.console && output.data.network) {
     if (options.console === undefined || hasNetworkData) {
-      const requests = output.data.network.slice(-lastCount);
-      fmt.text(`NETWORK (${requests.length}/${output.data.network.length}):`);
+      const requests =
+        lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
+      const showingCount = requests.length;
+      const totalCount = output.data.network.length;
+      const limitHint = formatLimitHint(showingCount, totalCount);
+      fmt.text(`NETWORK (${showingCount}/${totalCount})${limitHint}:`);
       if (requests.length === 0) {
         fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       } else {
@@ -199,7 +215,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
           const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
           const status = req.status ?? 'pending';
           const url = truncateUrl(req.url, 50);
-          return `[${typeAbbr}] ${status} ${req.method} ${url} [${req.requestId}]`;
+          return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}`;
         });
         fmt.list(networkLines, 2);
       }
@@ -209,8 +225,12 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
 
   if (!options.network && output.data.console) {
     if (options.network === undefined || hasConsoleData) {
-      const messages = output.data.console.slice(-lastCount);
-      fmt.text(`CONSOLE (${messages.length}/${output.data.console.length}):`);
+      const messages =
+        lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
+      const showingCount = messages.length;
+      const totalCount = output.data.console.length;
+      const limitHint = formatLimitHint(showingCount, totalCount);
+      fmt.text(`CONSOLE (${showingCount}/${totalCount})${limitHint}:`);
       if (messages.length === 0) {
         fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       } else {
@@ -275,10 +295,13 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
 
   if (!options.console && output.data.network) {
     if (options.console === undefined || hasNetworkData) {
-      const requests = output.data.network.slice(-lastCount);
-      fmt
-        .text(`Network Requests (last ${requests.length} of ${output.data.network.length})`)
-        .separator('━', 50);
+      const requests =
+        lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
+      const title =
+        lastCount === 0
+          ? `Network Requests (all ${requests.length})`
+          : `Network Requests (last ${requests.length} of ${output.data.network.length})`;
+      fmt.text(title).separator('━', 50);
       if (requests.length === 0) {
         fmt.text(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
       } else {
@@ -303,10 +326,13 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
 
   if (!options.network && output.data.console) {
     if (options.network === undefined || hasConsoleData) {
-      const messages = output.data.console.slice(-lastCount);
-      fmt
-        .text(`Console Messages (last ${messages.length} of ${output.data.console.length})`)
-        .separator('━', 50);
+      const messages =
+        lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
+      const title =
+        lastCount === 0
+          ? `Console Messages (all ${messages.length})`
+          : `Console Messages (last ${messages.length} of ${output.data.console.length})`;
+      fmt.text(title).separator('━', 50);
       if (messages.length === 0) {
         fmt.text(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);
       } else {

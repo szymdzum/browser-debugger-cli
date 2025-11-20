@@ -37,13 +37,13 @@ export function registerPeekCommand(program: Command): void {
     .option('-c, --console', 'Show only console messages', false)
     .option('-d, --dom', 'Show DOM/A11y tree data', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
-    .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
+    .option('--last <count>', 'Show last N items (0 = all, default: 10)', '10')
     .option(
       '--type <types>',
       'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
     )
     .action(async (options: PeekCommandOptions) => {
-      const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
+      const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10, allowZeroForAll: true });
       const lastN = lastRule.validate(options.last);
 
       const typeRule = resourceTypeRule();

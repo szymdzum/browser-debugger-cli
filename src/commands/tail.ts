@@ -133,5 +133,12 @@ export function registerTailCommand(program: Command): void {
         console.error(stoppedFollowingPreviewMessage());
         process.exit(EXIT_CODES.SUCCESS);
       });
+
+      process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EPIPE') {
+          clearInterval(followInterval);
+          process.exit(EXIT_CODES.SUCCESS);
+        }
+      });
     });
 }

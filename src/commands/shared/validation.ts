@@ -32,6 +32,8 @@ export interface IntegerRuleOptions {
   default?: number;
   /** Whether the field is required */
   required?: boolean;
+  /** Allow 0 to represent "all items" or unlimited */
+  allowZeroForAll?: boolean;
 }
 
 /**
@@ -49,7 +51,7 @@ export interface IntegerRuleOptions {
  * ```
  */
 export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRule<number> {
-  const { min, max, default: defaultValue, required = true } = options;
+  const { min, max, default: defaultValue, required = true, allowZeroForAll = false } = options;
 
   return {
     validate: (value: unknown): number => {
@@ -58,7 +60,7 @@ export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRul
           return defaultValue;
         }
         if (!required) {
-          return 0; // Return 0 for optional fields (caller should check)
+          return 0;
         }
         throw new CommandError('Value is required', {}, EXIT_CODES.INVALID_ARGUMENTS);
       }
@@ -81,6 +83,10 @@ export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRul
       if (isNaN(parsed)) {
         const message = invalidIntegerError('value', strValue, errorOptions);
         throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
+      }
+
+      if (parsed === 0 && allowZeroForAll) {
+        return 0;
       }
 
       if (min !== undefined && parsed < min) {

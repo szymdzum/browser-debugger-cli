@@ -5,7 +5,7 @@ import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/comma
 import type { DomGetOptions as DomGetHelperOptions } from '@/commands/dom/helpers.js';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { getA11yNodeBySelector } from '@/telemetry/a11y.js';
+import { resolveA11yNode } from '@/telemetry/a11y.js';
 import type { A11yNode } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import {
@@ -49,6 +49,7 @@ interface DomScreenshotOptions extends BaseCommandOptions {
  *
  * Queries the DOM using a CSS selector and displays matching elements.
  * Uses CDP relay through worker's persistent connection.
+ * Results are cached for index-based access via "bdg dom get <index>".
  *
  * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
  * @param options - Command options
@@ -57,6 +58,10 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
   await runCommand(
     async () => {
       const result = await queryDOMElements(selector);
+
+      const { setSessionQueryCache } = await import('@/session/queryCache.js');
+      setSessionQueryCache(result);
+
       return { success: true, data: result };
     },
     options,
@@ -65,15 +70,113 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 }
 
 /**
+ * Retrieve cached node by index with validation.
+ *
+ * @param index - Zero-based index from query results
+ * @returns Node from cache
+ * @throws CommandError if cache missing, index out of range, or node not found
+ */
+async function getCachedNodeByIndex(index: number): Promise<{ nodeId: number }> {
+  const { getSessionQueryCache } = await import('@/session/queryCache.js');
+
+  const cachedQuery = getSessionQueryCache();
+
+  if (!cachedQuery) {
+    throw new CommandError(
+      'No cached query results found',
+      {
+        suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+      },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+
+  if (index < 0 || index >= cachedQuery.nodes.length) {
+    throw new CommandError(
+      `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+      {
+        suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
+      },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+
+  const targetNode = cachedQuery.nodes[index];
+  if (!targetNode) {
+    throw new CommandError(
+      `Element at index ${index} not found`,
+      {},
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+
+  return targetNode;
+}
+
+/**
  * Handle bdg dom get command
  *
  * Retrieves semantic accessibility structure by default (70% token reduction).
  * Use --raw flag for full HTML output.
+ * Supports index-based access from query results (e.g., "bdg dom get 0").
  *
- * @param selector - CSS selector (e.g., ".error")
+ * @param selectorOrIndex - CSS selector (e.g., ".error") or numeric index from query results
  * @param options - Command options including --all, --nth, nodeId, and raw
  */
-async function handleDomGet(selector: string, options: DomGetOptions): Promise<void> {
+async function handleDomGet(selectorOrIndex: string, options: DomGetOptions): Promise<void> {
+  const isNumericIndex = /^\d+$/.test(selectorOrIndex);
+
+  if (isNumericIndex) {
+    await handleIndexGet(parseInt(selectorOrIndex, 10), options);
+  } else {
+    await handleSelectorGet(selectorOrIndex, options);
+  }
+}
+
+/**
+ * Handle get command with numeric index
+ */
+async function handleIndexGet(index: number, options: DomGetOptions): Promise<void> {
+  if (options.raw) {
+    await runCommand(
+      async () => {
+        const targetNode = await getCachedNodeByIndex(index);
+        const getOptions = filterDefined({
+          nodeId: targetNode.nodeId,
+        }) as DomGetHelperOptions;
+
+        const result = await getDOMElements(getOptions);
+        return { success: true, data: result };
+      },
+      options,
+      formatDomGet
+    );
+  } else {
+    await runCommand(
+      async () => {
+        const targetNode = await getCachedNodeByIndex(index);
+        const node = await resolveA11yNode('', targetNode.nodeId);
+
+        if (!node) {
+          throw new CommandError(
+            elementNotFoundError(`index ${index}`),
+            {},
+            EXIT_CODES.RESOURCE_NOT_FOUND
+          );
+        }
+
+        return { success: true, data: node };
+      },
+      options,
+      formatSemanticNode
+    );
+  }
+}
+
+/**
+ * Handle get command with CSS selector
+ */
+async function handleSelectorGet(selector: string, options: DomGetOptions): Promise<void> {
   if (options.raw) {
     await runCommand(
       async () => {
@@ -93,7 +196,7 @@ async function handleDomGet(selector: string, options: DomGetOptions): Promise<v
   } else {
     await runCommand(
       async () => {
-        const node = await getA11yNodeBySelector(selector);
+        const node = await resolveA11yNode(selector);
 
         if (!node) {
           throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
@@ -102,16 +205,21 @@ async function handleDomGet(selector: string, options: DomGetOptions): Promise<v
         return { success: true, data: node };
       },
       options,
-      (node: A11yNode) => {
-        const fakeTree = {
-          root: node,
-          nodes: new Map([[node.nodeId, node]]),
-          count: 1,
-        };
-        return semantic(fakeTree);
-      }
+      formatSemanticNode
     );
   }
+}
+
+/**
+ * Formatter for single semantic node
+ */
+function formatSemanticNode(node: A11yNode): string {
+  const fakeTree = {
+    root: node,
+    nodes: new Map([[node.nodeId, node]]),
+    count: 1,
+  };
+  return semantic(fakeTree);
 }
 
 /**

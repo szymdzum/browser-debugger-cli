@@ -71,9 +71,13 @@ function getExitCodeForDaemonError(errorCode?: IPCErrorCode): number {
 export function registerStopCommand(program: Command): void {
   program
     .command('stop')
-    .description('Stop daemon and write collected telemetry to session.json')
+    .description('Stop daemon and write collected telemetry to ~/.bdg/session.json')
     .option('--kill-chrome', 'Also kill Chrome browser process', false)
     .addOption(jsonOption)
+    .addHelpText(
+      'after',
+      '\nOutput Location:\n  Default: ~/.bdg/session.json\n  Tip: Copy to custom location with: cp ~/.bdg/session.json /path/to/output.json'
+    )
     .action(async (options: StopOptions) => {
       await runCommand<StopOptions, StopResult>(
         async (opts) => {

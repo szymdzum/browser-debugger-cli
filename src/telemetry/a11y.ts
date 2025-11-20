@@ -219,6 +219,7 @@ function matchesPattern(node: A11yNode, pattern: A11yQueryPattern): boolean {
  * Parses query pattern string into A11yQueryPattern object.
  *
  * Supports format: "role:button name:Submit description:Main"
+ * Also accepts = as separator: "role=button name=Submit"
  * Fields are separated by spaces, case-insensitive.
  *
  * @param patternString - Query pattern string
@@ -229,8 +230,8 @@ function matchesPattern(node: A11yNode, pattern: A11yQueryPattern): boolean {
  * parseQueryPattern('role:button name:Submit')
  * // => { role: 'button', name: 'Submit' }
  *
- * parseQueryPattern('role:textbox')
- * // => { role: 'textbox' }
+ * parseQueryPattern('role=heading')
+ * // => { role: 'heading' }
  *
  * parseQueryPattern('name:Email')
  * // => { name: 'Email' }
@@ -241,8 +242,14 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
   const parts = patternString.trim().split(/\s+/);
 
   for (const part of parts) {
-    const [key, ...valueParts] = part.split(':');
-    const value = valueParts.join(':');
+    const separatorMatch = part.match(/[:=]/);
+    if (!separatorMatch) {
+      continue;
+    }
+
+    const separator = separatorMatch[0];
+    const [key, ...valueParts] = part.split(separator);
+    const value = valueParts.join(separator);
 
     if (!value) {
       continue;
@@ -266,36 +273,48 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
 }
 
 /**
- * Gets accessibility properties for a DOM node by CSS selector via IPC.
+ * Resolve accessibility properties for a DOM node by CSS selector or nodeId via IPC.
  *
  * Uses the worker's persistent CDP connection through callCDP for consistency.
+ * Supports direct nodeId lookup (bypassing selector) for index-based access patterns.
  *
- * @param selector - CSS selector
+ * @param selector - CSS selector (ignored if nodeId provided)
+ * @param nodeId - Optional nodeId to use directly instead of querying by selector
  * @returns A11y node or null if not found
  * @throws Error if selector is invalid or element not found
  */
-export async function getA11yNodeBySelector(selector: string): Promise<A11yNode | null> {
+export async function resolveA11yNode(selector: string, nodeId?: number): Promise<A11yNode | null> {
   await callCDP('Accessibility.enable', {});
 
   try {
-    const docResponse = await callCDP('DOM.getDocument', {});
-    const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-    if (!doc?.root?.nodeId) {
-      throw new Error('Failed to get document root');
-    }
+    let targetNodeId: number;
 
-    const nodeResponse = await callCDP('DOM.querySelector', {
-      nodeId: doc.root.nodeId,
-      selector,
-    });
-    const nodeResult = nodeResponse.data?.result as Protocol.DOM.QuerySelectorResponse | undefined;
+    if (nodeId !== undefined) {
+      targetNodeId = nodeId;
+    } else {
+      const docResponse = await callCDP('DOM.getDocument', {});
+      const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
+      if (!doc?.root?.nodeId) {
+        throw new Error('Failed to get document root');
+      }
 
-    if (!nodeResult?.nodeId) {
-      return null;
+      const nodeResponse = await callCDP('DOM.querySelector', {
+        nodeId: doc.root.nodeId,
+        selector,
+      });
+      const nodeResult = nodeResponse.data?.result as
+        | Protocol.DOM.QuerySelectorResponse
+        | undefined;
+
+      if (!nodeResult?.nodeId) {
+        return null;
+      }
+
+      targetNodeId = nodeResult.nodeId;
     }
 
     const a11yResponse = await callCDP('Accessibility.getPartialAXTree', {
-      nodeId: nodeResult.nodeId,
+      nodeId: targetNodeId,
       fetchRelatives: false,
     });
     const a11yResult = a11yResponse.data?.result as

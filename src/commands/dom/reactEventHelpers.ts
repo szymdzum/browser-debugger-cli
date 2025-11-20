@@ -205,13 +205,13 @@ export const GET_ELEMENT_BY_INDEX_SCRIPT = `
   
   const el = elements[index - 1]; // Convert to 0-based
   
-  function buildUniquePath(element: Element): string {
+  function buildUniquePath(element) {
     if (element.id) {
       return \`#\${CSS.escape(element.id)}\`;
     }
     
-    const path: string[] = [];
-    let current: Element | null = element;
+    const path = [];
+    let current = element;
     
     while (current && current !== document.documentElement) {
       let selector = current.tagName.toLowerCase();

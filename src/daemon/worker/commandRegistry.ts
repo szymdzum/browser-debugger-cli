@@ -41,6 +41,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           url: req.url,
           status: req.status,
           mimeType: req.mimeType,
+          resourceType: req.resourceType,
         })
       );
 

@@ -441,6 +441,34 @@ bdg details network <id>        # Full request/response details
 bdg details console <index>     # Full console message details
 ```
 
+### DOM Interaction Patterns
+
+**Index-based access:** Query-based commands cache results for fast index access.
+
+**Two patterns for working with elements:**
+
+1. **Direct index access (0-based)** - For inspection commands:
+```bash
+bdg dom query "input"           # Cache results with indices
+bdg dom get 0                   # Get first element (semantic view)
+bdg dom get 0 --raw             # Get first element (raw HTML)
+bdg dom a11y describe 0         # Get accessibility info for first element
+```
+
+2. **Selector with --index option (1-based)** - For interaction commands:
+```bash
+bdg dom query "button"          # See which buttons exist
+bdg dom fill "input" "value" --index 2    # Fill second input
+bdg dom click "button" --index 1          # Click first button
+bdg dom submit "button" --index 1         # Submit via first button
+```
+
+**Why two patterns?**
+- **Inspection commands** (`get`, `a11y describe`) support direct index arguments for quick queries
+- **Interaction commands** (`fill`, `click`, `submit`) use `--index` option because they need the selector for element resolution
+
+**Tip:** Always run `bdg dom query <selector>` first to see indices before using them.
+
 ### Maintenance
 ```bash
 bdg cleanup                     # Clean stale sessions

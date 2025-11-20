@@ -16,6 +16,7 @@ import { readChromePid, clearChromePid } from './chrome.js';
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile, readPidFromFile } from './pid.js';
+import { clearSessionQueryCache } from './queryCache.js';
 
 const log = createLogger('cleanup');
 
@@ -269,6 +270,8 @@ export function cleanupSession(): void {
   } catch (error) {
     log.debug(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
   }
+
+  clearSessionQueryCache();
 }
 
 /**

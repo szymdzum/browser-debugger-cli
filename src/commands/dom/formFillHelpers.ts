@@ -3,6 +3,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -15,6 +16,41 @@ import {
   type ClickResult,
   type ElementByIndexResult,
 } from './reactEventHelpers.js';
+
+/**
+ * Format exception details into a user-friendly error message with troubleshooting hints.
+ *
+ * @param exceptionDetails - CDP exception details
+ * @param selector - CSS selector that was used
+ * @param operationType - Type of operation (fill or click) for tailored hints
+ * @returns Formatted error message with context
+ */
+function formatScriptExecutionError(
+  exceptionDetails: Protocol.Runtime.ExceptionDetails,
+  selector: string,
+  operationType: 'fill' | 'click' = 'fill'
+): string {
+  const errorText = exceptionDetails.text || 'Unknown error';
+  const location =
+    exceptionDetails.lineNumber !== undefined && exceptionDetails.columnNumber !== undefined
+      ? ` at line ${exceptionDetails.lineNumber + 1}, column ${exceptionDetails.columnNumber + 1}`
+      : '';
+
+  const troubleshootingSteps =
+    operationType === 'fill'
+      ? [
+          `1. Verify element exists: bdg dom query "${selector}"`,
+          '2. Check element is visible and not disabled',
+          `3. Try direct eval: bdg dom eval "document.querySelector('${escapeSelectorForJS(selector)}').value = 'your-value'"`,
+        ]
+      : [
+          `1. Verify element exists: bdg dom query "${selector}"`,
+          '2. Check element is visible and clickable',
+          `3. Try direct eval: bdg dom eval "document.querySelector('${escapeSelectorForJS(selector)}').click()"`,
+        ];
+
+  return `Script execution failed: ${errorText}${location}\n\nTroubleshooting:\n  ${troubleshootingSteps.join('\n  ')}`;
+}
 
 /**
  * Fill a form element with a value in a React-compatible way.
@@ -68,16 +104,17 @@ export async function fillElement(
     });
 
     const cdpResponse = response as {
-      exceptionDetails?: { text?: string };
+      exceptionDetails?: Protocol.Runtime.ExceptionDetails;
       result?: { value?: unknown };
     };
 
     if (cdpResponse.exceptionDetails) {
-      throw new CommandError(
-        'Script execution failed',
-        { note: cdpResponse.exceptionDetails.text ?? 'Unknown error' },
-        EXIT_CODES.SOFTWARE_ERROR
+      const errorMessage = formatScriptExecutionError(
+        cdpResponse.exceptionDetails,
+        selector,
+        'fill'
       );
+      throw new CommandError(errorMessage, {}, EXIT_CODES.SOFTWARE_ERROR);
     }
 
     if (cdpResponse.result?.value) {
@@ -152,16 +189,13 @@ export async function clickElement(
     });
 
     const cdpResponse = response as {
-      exceptionDetails?: { text?: string };
+      exceptionDetails?: Protocol.Runtime.ExceptionDetails;
       result?: { value?: unknown };
     };
 
     if (cdpResponse.exceptionDetails) {
-      throw new CommandError(
-        'Script execution failed',
-        { note: cdpResponse.exceptionDetails.text ?? 'Unknown error' },
-        EXIT_CODES.SOFTWARE_ERROR
-      );
+      const errorMessage = formatScriptExecutionError(cdpResponse.exceptionDetails, selector);
+      throw new CommandError(errorMessage, {}, EXIT_CODES.SOFTWARE_ERROR);
     }
 
     if (cdpResponse.result?.value) {

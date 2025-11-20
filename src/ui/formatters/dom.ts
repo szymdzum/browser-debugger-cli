@@ -48,13 +48,17 @@ export function formatDomQuery(data: DomQueryResult): string {
     return `[${node.index}] <${node.tag}${classInfo}> ${node.preview}`;
   });
 
+  const hasMultipleResults = count > 1;
+  const exampleIndex = hasMultipleResults ? (nodes[0]?.index ?? 0) : 0;
+
   return fmt
     .text(`Found ${count} element${count === 1 ? '' : 's'} matching "${selector}":`)
     .list(nodeLines)
     .blank()
     .section('Next steps:', [
-      'Get HTML:   bdg dom get <index>',
-      'Inspect:    bdg details dom <index>',
+      `Get HTML:        bdg dom get ${exampleIndex}`,
+      `Extract text:    bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector('${selector.replace(/'/g, "\\'")}').textContent"}'`,
+      `Full details:    bdg details dom ${exampleIndex}`,
     ])
     .build();
 }
