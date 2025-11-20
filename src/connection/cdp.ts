@@ -587,16 +587,16 @@ export class CDPConnection implements CDPEventSource {
           `Command timeout: ${method}\n\n` +
           `The browser did not respond within ${timeoutSeconds}s.\n\n` +
           `Possible causes:\n` +
-          `  • Browser became unresponsive or frozen\n` +
-          `  • Heavy page load or JavaScript execution\n` +
-          `  • Network issues or slow connection\n` +
-          `  • Method requires user interaction\n\n` +
+          `  - Browser became unresponsive or frozen\n` +
+          `  - Heavy page load or JavaScript execution\n` +
+          `  - Network issues or slow connection\n` +
+          `  - Method requires user interaction\n\n` +
           `Try:\n` +
-          `  • Check if page is still loading (look for spinner)\n` +
-          `  • Open Chrome DevTools to check for JavaScript errors\n` +
-          `  • Reload page and retry: bdg stop && bdg <url>\n` +
-          `  • Use simpler CDP method or reduce data size\n` +
-          `  • Check Chrome console: chrome://inspect`;
+          `  - Check if page is still loading (look for spinner)\n` +
+          `  - Open Chrome DevTools to check for JavaScript errors\n` +
+          `  - Reload page and retry: bdg stop && bdg <url>\n` +
+          `  - Use simpler CDP method or reduce data size\n` +
+          `  - Check Chrome console: chrome://inspect`;
         reject(new CDPTimeoutError(errorMessage));
       }, this.config.commandTimeout);
 

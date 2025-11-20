@@ -4,7 +4,12 @@
 
 import type { Command, Option, Argument } from 'commander';
 
+import { isDaemonRunning } from '@/daemon/launcher.js';
+import { readPid } from '@/session/pid.js';
+import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
 import { filterDefined } from '@/utils/objects.js';
+import { isProcessAlive } from '@/utils/process.js';
+import { getAllTaskMappings, type TaskMapping } from '@/utils/taskMappings.js';
 
 /**
  * Option metadata for machine-readable help.
@@ -65,6 +70,38 @@ export interface CommandMetadata {
 }
 
 /**
+ * Runtime state information for dynamic command availability.
+ */
+export interface RuntimeState {
+  /** Whether a session is currently active */
+  sessionActive: boolean;
+  /** Whether the daemon is running */
+  daemonRunning: boolean;
+  /** Commands available in current state */
+  availableCommands: string[];
+}
+
+/**
+ * Tool capabilities summary for agent discovery.
+ */
+export interface Capabilities {
+  /** CDP protocol capabilities */
+  cdp: {
+    /** Number of CDP domains */
+    domains: number;
+    /** Number of CDP methods (approximate) */
+    methods: string;
+  };
+  /** High-level command capabilities */
+  highLevel: {
+    /** Number of high-level commands */
+    commands: number;
+    /** Domain coverage areas */
+    coverage: string[];
+  };
+}
+
+/**
  * Root machine-readable help structure.
  */
 export interface MachineReadableHelp {
@@ -85,6 +122,14 @@ export interface MachineReadableHelp {
     /** Exit code description */
     description: string;
   }[];
+  /** Task-to-command mappings with CDP alternatives */
+  taskMappings: Record<string, TaskMapping>;
+  /** Current runtime state */
+  runtimeState: RuntimeState;
+  /** Intent-based decision trees */
+  decisionTrees: Record<string, DecisionTree>;
+  /** Tool capabilities summary */
+  capabilities: Capabilities;
 }
 
 /**
@@ -141,7 +186,88 @@ function convertCommand(command: Command): CommandMetadata {
 }
 
 /**
+ * Checks if a session is currently active.
+ *
+ * @returns True if session is active, false otherwise
+ */
+function isSessionActive(): boolean {
+  const sessionPid = readPid();
+  if (sessionPid === null) {
+    return false;
+  }
+  return isProcessAlive(sessionPid);
+}
+
+/**
+ * Generates runtime state information.
+ *
+ * Checks current daemon and session status to provide state-aware
+ * command availability information.
+ *
+ * @returns Runtime state object
+ */
+function generateRuntimeState(): RuntimeState {
+  const daemonRunning = isDaemonRunning();
+  const sessionActive = isSessionActive();
+
+  const availableCommands: string[] = [];
+
+  if (!daemonRunning && !sessionActive) {
+    availableCommands.push('bdg <url>', 'cleanup', '--help', '--version');
+  } else if (daemonRunning && sessionActive) {
+    availableCommands.push(
+      'peek',
+      'tail',
+      'details',
+      'dom',
+      'network',
+      'console',
+      'cdp',
+      'status',
+      'stop'
+    );
+  } else if (daemonRunning && !sessionActive) {
+    availableCommands.push('bdg <url>', 'cleanup', 'status');
+  }
+
+  return {
+    sessionActive,
+    daemonRunning,
+    availableCommands,
+  };
+}
+
+/**
+ * Generates capabilities summary.
+ *
+ * Provides overview of CDP and high-level command capabilities
+ * for agent discovery and planning.
+ *
+ * @returns Capabilities object
+ */
+function generateCapabilities(): Capabilities {
+  return {
+    cdp: {
+      domains: 53,
+      methods: '300+',
+    },
+    highLevel: {
+      commands: 15,
+      coverage: ['dom', 'network', 'console', 'session', 'monitoring'],
+    },
+  };
+}
+
+/**
  * Generates machine-readable help from a Commander program.
+ *
+ * Includes comprehensive metadata for agent discovery:
+ * - Command structure and options
+ * - Exit codes with semantic meanings
+ * - Task-to-command mappings with CDP alternatives
+ * - Runtime state and command availability
+ * - Intent-based decision trees
+ * - Capabilities summary
  *
  * @param program - Commander program instance
  * @returns Machine-readable help structure
@@ -220,5 +346,9 @@ export function generateMachineReadableHelp(program: Command): MachineReadableHe
         description: 'Inter-process communication error',
       },
     ],
+    taskMappings: getAllTaskMappings(),
+    runtimeState: generateRuntimeState(),
+    decisionTrees: getAllDecisionTrees(),
+    capabilities: generateCapabilities(),
   };
 }

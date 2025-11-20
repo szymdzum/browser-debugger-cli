@@ -269,7 +269,7 @@ function handleDescribeMethod(methodName: string): {
       if (similar.length > 0) {
         suggestions.push('');
         suggestions.push('Did you mean:');
-        similar.forEach((name) => suggestions.push(`  • ${name}`));
+        similar.forEach((name) => suggestions.push(`  - ${name}`));
       }
 
       return {
@@ -304,7 +304,7 @@ function handleDescribeMethod(methodName: string): {
     if (similar.length > 0) {
       suggestions.push('');
       suggestions.push('Did you mean:');
-      similar.forEach((name) => suggestions.push(`  • ${name}`));
+      similar.forEach((name) => suggestions.push(`  - ${name}`));
     }
 
     return {
@@ -372,7 +372,7 @@ async function handleExecuteMethod(
     if (similar.length > 0) {
       suggestions.push('');
       suggestions.push('Did you mean:');
-      similar.forEach((name) => suggestions.push(`  • ${name}`));
+      similar.forEach((name) => suggestions.push(`  - ${name}`));
     }
 
     return {
@@ -404,6 +404,10 @@ async function handleExecuteMethod(
   const response = await callCDP(normalized, params);
 
   validateIPCResponse(response);
+
+  if (response.data?.hint) {
+    console.error(response.data.hint);
+  }
 
   return {
     success: true,

@@ -37,14 +37,45 @@ const RESOURCE_TYPE_ABBREVIATIONS: Record<string, string> = {
 };
 
 /**
- * Get compact abbreviation for resource type (for token-efficient display).
+ * Infer resource type from MIME type when CDP doesn't provide it.
+ *
+ * @param mimeType - MIME type string (e.g., 'application/json', 'text/html')
+ * @returns Inferred Protocol.Network.ResourceType or undefined
+ */
+function inferResourceTypeFromMime(
+  mimeType: string | undefined
+): Protocol.Network.ResourceType | undefined {
+  if (!mimeType) return undefined;
+
+  const mime = mimeType.toLowerCase();
+
+  if (mime.includes('text/html')) return 'Document';
+  if (mime.includes('text/css')) return 'Stylesheet';
+  if (mime.includes('javascript') || mime.includes('ecmascript')) return 'Script';
+  if (mime.startsWith('image/')) return 'Image';
+  if (mime.startsWith('font/') || mime.includes('font')) return 'Font';
+  if (mime.startsWith('video/') || mime.startsWith('audio/')) return 'Media';
+  if (mime.includes('json') || mime.includes('xml')) return 'XHR';
+
+  return undefined;
+}
+
+/**
+ * Get compact abbreviation for resource type.
+ *
+ * Falls back to MIME type inference when CDP doesn't provide resourceType.
  *
  * @param resourceType - CDP ResourceType value
+ * @param mimeType - MIME type for fallback inference
  * @returns 3-4 character abbreviation (e.g., DOC, XHR, SCR)
  */
-function getResourceTypeAbbr(resourceType: Protocol.Network.ResourceType | undefined): string {
-  if (!resourceType) return '???';
-  return RESOURCE_TYPE_ABBREVIATIONS[resourceType] ?? 'UNK';
+function getResourceTypeAbbr(
+  resourceType: Protocol.Network.ResourceType | undefined,
+  mimeType: string | undefined
+): string {
+  const type = resourceType ?? inferResourceTypeFromMime(mimeType);
+  if (!type) return 'OTH';
+  return RESOURCE_TYPE_ABBREVIATIONS[type] ?? 'UNK';
 }
 
 /**
@@ -159,7 +190,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
         fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       } else {
         const networkLines = requests.map((req) => {
-          const typeAbbr = getResourceTypeAbbr(req.resourceType);
+          const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
           const status = req.status ?? 'pending';
           const url = truncateUrl(req.url, 50);
           return `[${typeAbbr}] ${status} ${req.method} ${url} [${req.requestId}]`;

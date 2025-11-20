@@ -130,3 +130,92 @@ export function unknownError(): string {
 export function invalidResponseError(reason: string): string {
   return `[bdg] Invalid response from daemon: ${reason}`;
 }
+
+/**
+ * Generate session not active error with state-aware suggestion.
+ *
+ * Provides context-appropriate guidance based on what operation was attempted.
+ *
+ * @param operation - Operation that was attempted (e.g., "peek", "dom query")
+ * @returns Formatted error message with suggestions
+ *
+ * @example
+ * ```typescript
+ * throw new CommandError(
+ *   sessionNotActiveError('peek'),
+ *   {},
+ *   EXIT_CODES.RESOURCE_NOT_FOUND
+ * );
+ * ```
+ */
+export function sessionNotActiveError(operation: string): string {
+  return joinLines(
+    `Error: Cannot ${operation} - no active session`,
+    '',
+    'Start a session first:',
+    '  bdg <url>',
+    '',
+    'Example:',
+    '  bdg https://example.com',
+    `  bdg ${operation}`
+  );
+}
+
+/**
+ * Generate element not found error with CDP fallback.
+ *
+ * Provides guidance for when high-level DOM commands fail to find elements,
+ * including CDP alternatives for complex queries.
+ *
+ * @param selector - CSS selector that failed
+ * @returns Formatted error message with fallback suggestions
+ *
+ * @example
+ * ```typescript
+ * throw new CommandError(
+ *   elementNotFoundError('#missing-element'),
+ *   { cdpAlternative: 'Use Runtime.evaluate for complex queries' },
+ *   EXIT_CODES.RESOURCE_NOT_FOUND
+ * );
+ * ```
+ */
+export function elementNotFoundError(selector: string): string {
+  return joinLines(
+    `Error: Element not found: ${selector}`,
+    '',
+    'Suggestions:',
+    '  - Check the selector syntax',
+    '  - Wait for the element to load (page might still be loading)',
+    '  - Use bdg peek to see if page loaded correctly',
+    '',
+    'Advanced: Use CDP for complex queries:',
+    `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector('${selector}')"}'`
+  );
+}
+
+/**
+ * Generate command requires session error.
+ *
+ * Generic error for commands that require an active session but one is not found.
+ * Provides clear guidance on starting a session.
+ *
+ * @param commandName - Name of command that was attempted
+ * @returns Formatted error message
+ *
+ * @example
+ * ```typescript
+ * const error = commandRequiresSessionError('dom query');
+ * console.error(error);
+ * ```
+ */
+export function commandRequiresSessionError(commandName: string): string {
+  return joinLines(
+    `Error: '${commandName}' requires an active session`,
+    '',
+    'Start a session:',
+    '  bdg <url>',
+    '',
+    'Check session status:',
+    '  bdg status'
+  );
+}

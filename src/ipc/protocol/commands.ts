@@ -80,6 +80,8 @@ export interface CdpCallCommand {
 export interface CdpCallData {
   /** Result from CDP method call. */
   result: unknown;
+  /** Optional hint for more efficient alternative command. */
+  hint?: string;
 }
 
 /**

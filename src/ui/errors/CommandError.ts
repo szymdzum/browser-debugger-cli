@@ -10,7 +10,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * Metadata that can be attached to command errors.
  *
  * Provides structured context for error messages including user-facing
- * suggestions, technical notes, and additional context.
+ * suggestions, technical notes, fallback commands, and additional context.
  */
 export interface ErrorMetadata {
   /** User-facing suggestion for resolving the error */
@@ -19,6 +19,10 @@ export interface ErrorMetadata {
   note?: string;
   /** Additional contextual key-value pairs */
   context?: Record<string, string>;
+  /** Alternative fallback command to try when high-level command fails */
+  fallback?: string;
+  /** CDP alternative for advanced use cases */
+  cdpAlternative?: string;
 }
 
 /**

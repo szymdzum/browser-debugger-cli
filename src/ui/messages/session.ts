@@ -5,7 +5,15 @@
  * status displays, and session management messages.
  */
 
-import { section, joinLines } from '@/ui/formatting.js';
+import {
+  buildCommonTasksSection,
+  buildDomainCommandsSection,
+  buildLiveMonitoringSection,
+  buildSessionManagementSection,
+  buildCdpSection,
+  buildDiscoverySection,
+} from '@/ui/formatters/sessionFormatters.js';
+import { joinLines } from '@/ui/formatting.js';
 
 /**
  * Options for the landing page display.
@@ -18,7 +26,17 @@ export interface LandingPageOptions {
 /**
  * Generate the landing page display for session start.
  *
- * Shows a clean, organized overview of available commands grouped by domain.
+ * Shows a clean, organized overview of available commands grouped by priority.
+ * High-level commands are presented first to guide agents toward token-efficient
+ * wrappers before falling back to verbose CDP commands.
+ *
+ * Section order optimized for agent discoverability:
+ * 1. Common tasks with token savings estimates
+ * 2. Comprehensive domain command coverage (12+ commands)
+ * 3. Live monitoring capabilities
+ * 4. Session management
+ * 5. Advanced CDP access (positioned as fallback)
+ * 6. Discovery resources for agents
  *
  * @param options - Landing page options
  * @returns Formatted landing page string
@@ -36,37 +54,21 @@ export function landingPage(options: LandingPageOptions): string {
 
   return joinLines(
     '',
-    '◆ Session Started',
+    'Session Started',
     '',
     `Target: ${url}`,
     '',
-    section('Raw CDP Access (53 domains, 300+ methods):', [
-      'bdg cdp --list             List all domains',
-      'bdg cdp Network --list     List Network methods',
-      'bdg cdp --search cookie    Search methods',
-      'bdg cdp runtime.evaluate --params \'{"expression":"document.title"}\'',
-    ]),
+    buildCommonTasksSection(),
     '',
-    section('Live Monitoring:', [
-      'bdg peek        Preview collected data (last 10 items)',
-      'bdg tail        Continuous monitoring (live updates)',
-      'bdg details <type> <id>    Full request/console details',
-    ]),
+    buildDomainCommandsSection(),
     '',
-    section('Domain Wrappers:', [
-      'bdg dom query <selector>   Query DOM elements',
-      'bdg dom eval <js>          Execute JavaScript',
-    ]),
+    buildLiveMonitoringSection(),
     '',
-    section('Session:', [
-      'bdg status      Check session state',
-      'bdg stop        End session & save output',
-    ]),
+    buildSessionManagementSection(),
     '',
-    section('Discovery (for AI agents):', [
-      'bdg --help --json          Machine-readable schema (commands, options, exit codes)',
-      '.claude/skills/bdg/        Claude skill with 15+ recipes & patterns',
-    ]),
+    buildCdpSection(),
+    '',
+    buildDiscoverySection(),
     ''
   );
 }

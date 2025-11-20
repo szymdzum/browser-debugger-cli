@@ -1,14 +1,41 @@
+import { Option } from 'commander';
+
 import type { Command } from 'commander';
 
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { filterOption, jsonOption, lastOption } from '@/commands/shared/commonOptions.js';
+import { filterOption, jsonOption } from '@/commands/shared/commonOptions.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { BdgOutput, ConsoleMessage } from '@/types.js';
+import { CommandError } from '@/ui/errors/index.js';
 import { joinLines } from '@/ui/formatting.js';
 import { noConsoleMessagesMessage, consoleMessagesHeader } from '@/ui/messages/consoleMessages.js';
+import { invalidLastRangeError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/**
+ * Validation limits for --last option.
+ */
+const MIN_LAST_ITEMS = 0;
+const MAX_LAST_ITEMS = 10000;
+
+/**
+ * Console-specific --last option with accurate description.
+ */
+const consoleLastOption = new Option('--last <n>', 'Show last N console messages (0 = all)')
+  .default(MIN_LAST_ITEMS)
+  .argParser((val) => {
+    const n = parseInt(val, 10);
+    if (isNaN(n) || n < MIN_LAST_ITEMS || n > MAX_LAST_ITEMS) {
+      throw new CommandError(
+        invalidLastRangeError(MIN_LAST_ITEMS, MAX_LAST_ITEMS),
+        {},
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
+    return n;
+  });
 
 /**
  * Options for console command.
@@ -76,7 +103,7 @@ export function registerConsoleCommand(program: Command): void {
   program
     .command('console')
     .description('Query console logs from the active session')
-    .addOption(lastOption)
+    .addOption(consoleLastOption)
     .addOption(filterOption(['log', 'error', 'warning', 'info']))
     .addOption(jsonOption)
     .action(async (options: ConsoleOptions) => {

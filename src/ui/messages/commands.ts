@@ -5,6 +5,12 @@
  * cleaning up stale files, and validating command arguments.
  */
 
+import {
+  buildAgentDiscoveryHelp,
+  buildCommonTaskExamples,
+  buildUrlExamples,
+  buildSessionManagementReminder,
+} from '@/ui/formatters/helpFormatters.js';
 import { joinLines } from '@/ui/formatting.js';
 
 /**
@@ -109,22 +115,30 @@ export function sessionStillActiveError(pid: number): string {
 /**
  * Generate help message when no URL is provided to start command.
  *
+ * Displays comprehensive guidance optimized for agent discovery:
+ * - Agent-specific resources (machine-readable schema, CDP discovery)
+ * - Complete task workflow examples
+ * - URL format guidance
+ * - Session management commands
+ *
+ * Organized to prioritize agent needs (discovery first) while maintaining
+ * human readability with clear task-oriented examples.
+ *
  * @returns Multi-line help message with examples
  * */
 export function startCommandHelpMessage(): string {
   return joinLines(
     '',
-    'Start a new session by providing a URL:',
+    buildAgentDiscoveryHelp(),
     '',
-    '  bdg example.com',
-    '  bdg localhost:3000',
-    '  bdg https://github.com',
+    buildCommonTaskExamples(),
     '',
-    'Or manage existing session:',
+    buildUrlExamples(),
     '',
-    '  bdg status      Check session state',
-    '  bdg stop        End session',
-    '  bdg --help      Show all commands',
+    buildSessionManagementReminder(),
+    '',
+    'Not sure which command? Start a session to see all available commands:',
+    '  bdg <url>',
     ''
   );
 }

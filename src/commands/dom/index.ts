@@ -15,6 +15,7 @@ import {
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
 import { semantic } from '@/ui/formatters/semantic.js';
+import { elementNotFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { parsePositiveIntOption } from '@/utils/validation.js';
@@ -95,11 +96,7 @@ async function handleDomGet(selector: string, options: DomGetOptions): Promise<v
         const node = await getA11yNodeBySelector(selector);
 
         if (!node) {
-          throw new CommandError(
-            `Element not found or has no accessibility information: ${selector}`,
-            { suggestion: 'Try: bdg dom query <selector> to verify element exists' },
-            EXIT_CODES.RESOURCE_NOT_FOUND
-          );
+          throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 
         return { success: true, data: node };

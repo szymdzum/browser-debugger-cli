@@ -22,6 +22,7 @@ import {
 } from '@/telemetry/a11y.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { formatA11yTree, formatA11yQueryResult, formatA11yNode } from '@/ui/formatters/a11y.js';
+import { elementNotFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -138,13 +139,7 @@ async function handleA11yDescribe(selector: string, options: A11yDescribeOptions
       const node = await getA11yNodeBySelector(selector);
 
       if (!node) {
-        throw new CommandError(
-          `Element not found or has no accessibility information: ${selector}`,
-          {
-            suggestion: 'Verify the selector matches an element: bdg dom query <selector>',
-          },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
+        throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
       }
 
       return { success: true, data: node };

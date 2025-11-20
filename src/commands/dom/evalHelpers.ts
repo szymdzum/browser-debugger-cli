@@ -3,6 +3,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js';
 import { readPid } from '@/session/pid.js';
 import { CommandError } from '@/ui/errors/index.js';
+import { sessionNotActiveError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargetById } from '@/utils/http.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -58,14 +59,14 @@ function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.Eval
  * Validate that an active session is running
  *
  * @returns PID of running session
- * @throws Error When no active session is found
+ * @throws CommandError When no active session is found
  */
 export function validateActiveSession(): number {
   const pid = readPid();
   if (!pid || !isProcessAlive(pid)) {
     throw new CommandError(
-      'No active session running',
-      { suggestion: 'Start a session with: bdg <url>' },
+      sessionNotActiveError('execute DOM operations'),
+      {},
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
