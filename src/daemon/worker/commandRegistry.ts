@@ -130,6 +130,51 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       });
     },
 
+    worker_network_headers: async (_cdp, params) => {
+      let targetRequest;
+
+      if (!params.id) {
+        targetRequest = store.networkRequests
+          .slice()
+          .reverse()
+          .find((r) => r.mimeType?.includes('html'));
+
+        targetRequest ??= store.networkRequests
+          .slice()
+          .reverse()
+          .find((r) => r.responseHeaders && Object.keys(r.responseHeaders).length > 0);
+
+        if (!targetRequest) {
+          return Promise.reject(new Error('No network requests with headers found'));
+        }
+      } else {
+        targetRequest = store.networkRequests.find((r) => r.requestId === params.id);
+        if (!targetRequest) {
+          return Promise.reject(new Error(`Network request not found: ${params.id}`));
+        }
+      }
+
+      let requestHeaders = targetRequest.requestHeaders ?? {};
+      let responseHeaders = targetRequest.responseHeaders ?? {};
+
+      if (params.headerName) {
+        const name = params.headerName.toLowerCase();
+        requestHeaders = Object.fromEntries(
+          Object.entries(requestHeaders).filter(([k]) => k.toLowerCase() === name)
+        );
+        responseHeaders = Object.fromEntries(
+          Object.entries(responseHeaders).filter(([k]) => k.toLowerCase() === name)
+        );
+      }
+
+      return Promise.resolve({
+        url: targetRequest.url,
+        requestId: targetRequest.requestId,
+        requestHeaders,
+        responseHeaders,
+      });
+    },
+
     cdp_call: async (cdp, params) => {
       const result = await cdp.send(params.method, params.params ?? {});
       return { result };

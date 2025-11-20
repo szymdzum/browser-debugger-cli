@@ -227,6 +227,71 @@ bdg stop
 bdg network har final.har
 ```
 
+### HTTP Headers Inspection
+
+Inspect HTTP request and response headers from captured network requests.
+
+```bash
+# Show headers from main page navigation (smart default)
+bdg network headers
+
+# Show headers from specific request ID
+bdg peek --json | jq -r '.data.preview.data.network[0].requestId'
+bdg network headers <request-id>
+
+# Filter to specific header (case-insensitive)
+bdg network headers --header content-security-policy
+bdg network headers --header Content-Type
+
+# Combine request ID and header filter
+bdg network headers <request-id> --header content-type
+
+# JSON output for scripting
+bdg network headers --json
+bdg network headers --json | jq '.data.responseHeaders["content-security-policy"]'
+```
+
+**Smart Defaults:**
+- Without arguments, shows headers from the main page navigation (most recent Document request)
+- Fallback: If no Document request found, uses most recent request with headers
+- "Just works" philosophy - most common use case requires no configuration
+
+**Output:**
+- **Human-readable format** (default):
+  - URL of the request
+  - Response headers (alphabetically sorted)
+  - Request headers (alphabetically sorted)
+  - Request ID for correlation with `bdg peek` output
+- **JSON format** (`--json` flag):
+  - Structured data with `url`, `requestId`, `requestHeaders`, `responseHeaders`
+  - Ideal for scripting and automation
+
+**Use Cases:**
+- Security auditing (CSP, HSTS, X-Frame-Options headers)
+- CORS troubleshooting (Access-Control-* headers)
+- Caching analysis (Cache-Control, ETag, Last-Modified)
+- Content negotiation (Accept, Content-Type, Content-Encoding)
+
+**Example workflow:**
+```bash
+# Start session
+bdg https://example.com
+
+# Quick check of main page security headers
+bdg network headers --header content-security-policy
+bdg network headers --header strict-transport-security
+
+# Inspect specific request (XHR, fetch, etc.)
+bdg peek --json | jq -r '.data.preview.data.network[] | select(.url | contains("api")) | .requestId'
+bdg network headers <api-request-id>
+
+# Export all headers for analysis
+bdg network headers --json > headers.json
+
+# Stop session
+bdg stop
+```
+
 ## Maintenance
 
 ### Clean up stale sessions

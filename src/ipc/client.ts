@@ -235,6 +235,42 @@ export async function getDetails(
 }
 
 /**
+ * Get headers for a network request.
+ * Defaults to main document navigation if no ID specified.
+ *
+ * @param options - Optional request ID and header name filter
+ * @returns Response with request and response headers
+ * @throws Error if connection fails or request not found
+ *
+ * @example
+ * ```typescript
+ * const response = await getNetworkHeaders();
+ * if (response.status === 'ok' && response.data) {
+ *   console.log('Response headers:', response.data.responseHeaders);
+ * }
+ * ```
+ *
+ * @example
+ * ```typescript
+ * const response = await getNetworkHeaders({ id: 'ABC-123' });
+ * ```
+ *
+ * @example
+ * ```typescript
+ * const response = await getNetworkHeaders({ headerName: 'content-security-policy' });
+ * ```
+ */
+export async function getNetworkHeaders(options?: {
+  id?: string;
+  headerName?: string;
+}): Promise<ClientResponse<'worker_network_headers'>> {
+  return sendCommand('worker_network_headers', {
+    ...(options?.id && { id: options.id }),
+    ...(options?.headerName && { headerName: options.headerName }),
+  });
+}
+
+/**
  * Execute arbitrary CDP method via the daemon's worker.
  * Forwards CDP commands to the worker's active CDP connection.
  *

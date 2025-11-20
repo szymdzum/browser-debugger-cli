@@ -112,6 +112,30 @@ export interface WorkerHARDataData {
 }
 
 /**
+ * Worker network headers command request schema.
+ */
+export interface WorkerNetworkHeadersCommand {
+  /** Optional request ID to get headers from. Defaults to main page navigation. */
+  id?: string;
+  /** Optional header name to filter results. Case-insensitive. */
+  headerName?: string;
+}
+
+/**
+ * Worker network headers command response data.
+ */
+export interface WorkerNetworkHeadersData {
+  /** URL of the request. */
+  url: string;
+  /** Request ID for correlation with peek output. */
+  requestId: string;
+  /** Request headers. */
+  requestHeaders: Record<string, string>;
+  /** Response headers. */
+  responseHeaders: Record<string, string>;
+}
+
+/**
  * Command definition structure.
  */
 type CommandDef<TReq, TRes> = { requestSchema: TReq; responseSchema: TRes };
@@ -124,6 +148,7 @@ export type RegistryShape = {
   worker_details: CommandDef<WorkerDetailsCommand, WorkerDetailsData>;
   worker_status: CommandDef<WorkerStatusCommand, WorkerStatusData>;
   worker_har_data: CommandDef<WorkerHARDataCommand, WorkerHARDataData>;
+  worker_network_headers: CommandDef<WorkerNetworkHeadersCommand, WorkerNetworkHeadersData>;
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
 };
 
@@ -144,6 +169,10 @@ export const COMMANDS = {
   worker_har_data: {
     requestSchema: {} as WorkerHARDataCommand,
     responseSchema: {} as WorkerHARDataData,
+  },
+  worker_network_headers: {
+    requestSchema: {} as WorkerNetworkHeadersCommand,
+    responseSchema: {} as WorkerNetworkHeadersData,
   },
   cdp_call: { requestSchema: {} as CdpCallCommand, responseSchema: {} as CdpCallData },
 } as const satisfies RegistryShape;

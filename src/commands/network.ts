@@ -6,14 +6,14 @@ import type { Command } from 'commander';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
-import { getHARData, callCDP } from '@/ipc/client.js';
+import { getHARData, callCDP, getNetworkHeaders } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import type { BdgOutput, NetworkRequest } from '@/types.js';
 import { isDaemonConnectionError } from '@/ui/errors/utils.js';
 import type { Cookie } from '@/ui/formatters/index.js';
-import { formatCookies } from '@/ui/formatters/index.js';
+import { formatCookies, formatNetworkHeaders } from '@/ui/formatters/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
@@ -32,6 +32,14 @@ interface GetCookiesOptions extends BaseCommandOptions {
 interface HAROptions extends BaseCommandOptions {
   /** Output file path (optional, defaults to timestamped filename) */
   outputFile?: string;
+}
+
+/**
+ * Options for the `bdg network headers` command.
+ */
+interface NetworkHeadersOptions extends BaseCommandOptions {
+  /** Filter to specific header name */
+  header?: string;
 }
 
 /**
@@ -214,6 +222,39 @@ export function registerNetworkCommands(program: Command): void {
         },
         options,
         formatCookies
+      );
+    });
+
+  networkCmd
+    .command('headers [id]')
+    .description('Show HTTP headers (defaults to main page navigation)')
+    .option('--header <name>', 'Filter to specific header name')
+    .addOption(jsonOption)
+    .action(async (id: string | undefined, options: NetworkHeadersOptions) => {
+      await runCommand(
+        async (opts) => {
+          const response = await getNetworkHeaders({
+            ...(id && { id }),
+            ...(opts.header && { headerName: opts.header }),
+          });
+
+          validateIPCResponse(response);
+
+          if (!response.data) {
+            return {
+              success: false,
+              error: 'No data returned from worker',
+              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+            };
+          }
+
+          return {
+            success: true,
+            data: response.data,
+          };
+        },
+        options,
+        formatNetworkHeaders
       );
     });
 }
