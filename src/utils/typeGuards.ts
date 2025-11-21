@@ -33,13 +33,13 @@ export function isNetworkRequest(value: unknown): value is NetworkRequest {
     return false;
   }
 
-  const obj = value as Record<string, unknown>;
+  const record = value as Record<string, unknown>;
 
   return (
-    typeof obj['requestId'] === 'string' &&
-    typeof obj['url'] === 'string' &&
-    typeof obj['method'] === 'string' &&
-    typeof obj['timestamp'] === 'number'
+    typeof record['requestId'] === 'string' &&
+    typeof record['url'] === 'string' &&
+    typeof record['method'] === 'string' &&
+    typeof record['timestamp'] === 'number'
   );
 }
 
@@ -63,12 +63,12 @@ export function isConsoleMessage(value: unknown): value is ConsoleMessage {
     return false;
   }
 
-  const obj = value as Record<string, unknown>;
+  const record = value as Record<string, unknown>;
 
   return (
-    typeof obj['type'] === 'string' &&
-    typeof obj['text'] === 'string' &&
-    typeof obj['timestamp'] === 'number'
+    typeof record['type'] === 'string' &&
+    typeof record['text'] === 'string' &&
+    typeof record['timestamp'] === 'number'
   );
 }
 
