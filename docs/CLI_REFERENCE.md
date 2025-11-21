@@ -194,23 +194,51 @@ bdg dom eval --json                               # JSON output with full Runtim
 
 ### Form Interaction
 
-Interact with page elements using React-compatible events.
+Interact with page elements using React-compatible events. All interaction commands automatically wait for network stability after the action (disable with `--no-wait`).
 
 ```bash
 # Fill inputs
 bdg dom fill "#username" "admin"
 bdg dom fill "input[type='password']" "secret" --no-blur
 bdg dom fill "#search" "query" --index 1          # Use 1-based index for multiple matches
+bdg dom fill 0 "value"                            # Use cached query index (0-based)
 
 # Click elements
 bdg dom click "#login-btn"
 bdg dom click "button.submit" --index 2
+bdg dom click 0                                   # Use cached query index (0-based)
+bdg dom click "#fast-btn" --no-wait               # Skip network stability wait
+
+# Press keys (for Enter-to-submit, keyboard navigation)
+bdg dom pressKey ".new-todo" Enter                # TodoMVC pattern: submit with Enter
+bdg dom pressKey "#search" Enter                  # Search box submit
+bdg dom pressKey "input" Tab                      # Tab to next field
+bdg dom pressKey "input" ArrowDown --times 3     # Navigate autocomplete
+bdg dom pressKey "body" Escape                    # Close modal/dialog
+bdg dom pressKey "textarea" a --modifiers ctrl   # Select all (Ctrl+A)
+bdg dom pressKey 0 Enter                          # Use cached query index
 
 # Submit forms (smart wait for navigation/network)
 bdg dom submit "#login-form"
 bdg dom submit "#login-form" --wait-network 2000  # Wait 2s for network idle
 bdg dom submit "#login-form" --wait-navigation    # Wait for page navigation
 ```
+
+**Press Key Options:**
+| Option | Description |
+|--------|-------------|
+| `--index <n>` | Element index if selector matches multiple (1-based) |
+| `--times <n>` | Press key multiple times (default: 1) |
+| `--modifiers <mods>` | Modifier keys: shift,ctrl,alt,meta (comma-separated) |
+| `--no-wait` | Skip network stability check |
+
+**Supported Keys:**
+- Navigation: `Enter`, `Tab`, `Escape`, `Space`, `Backspace`, `Delete`
+- Arrows: `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`
+- Page: `Home`, `End`, `PageUp`, `PageDown`
+- Letters: `a`-`z`
+- Digits: `0`-`9`
+- Function: `F1`-`F12`
 
 ### Screen Capture
 

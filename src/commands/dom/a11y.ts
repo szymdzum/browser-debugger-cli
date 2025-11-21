@@ -223,7 +223,6 @@ async function handleA11yDescribe(
         );
       }
 
-      // Fetch DOM context using backendDOMNodeId or the cached nodeId
       let domContext: DomContext | null = null;
       const domNodeId = node.backendDOMNodeId ?? nodeId;
       if (domNodeId) {
@@ -253,7 +252,6 @@ export function registerA11yCommands(domCmd: Command): void {
     .addOption(jsonOption)
     .action(async (search: string | undefined, options: A11yDescribeOptions) => {
       if (!search) {
-        // No argument - show help
         a11y.help();
         return;
       }
@@ -262,13 +260,10 @@ export function registerA11yCommands(domCmd: Command): void {
       const isPatternQuery = search.includes(':') || search.includes('=');
 
       if (isNumericIndex) {
-        // Numeric index → describe
         await handleA11yDescribe(search, options);
       } else if (isPatternQuery) {
-        // Contains ":" or "=" → query with pattern as-is (e.g., role:button, role=button)
         await handleA11yQuery(search, options);
       } else {
-        // Plain text → search by name with wildcards
         await handleA11yQuery(`name:*${search}*`, options);
       }
     });

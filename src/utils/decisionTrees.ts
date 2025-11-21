@@ -60,6 +60,11 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
         noAction: 'next',
       },
       {
+        question: 'Need to press a key (Enter, Tab, Escape)?',
+        yesCommand: 'dom pressKey',
+        noAction: 'next',
+      },
+      {
         question: 'Need to execute custom JavaScript?',
         yesCommand: 'dom eval',
         noAction: 'next',

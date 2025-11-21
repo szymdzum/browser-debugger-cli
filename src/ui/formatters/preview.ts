@@ -213,7 +213,6 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       const limitHint = formatLimitHint(showingCount, totalCount);
       fmt.text(`NETWORK (${showingCount}/${totalCount})${limitHint}:`);
       if (requests.length === 0) {
-        // Show helpful message when --type filter matches nothing
         if (
           options.filteredTypes &&
           options.filteredTypes.length > 0 &&
@@ -321,7 +320,6 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           : `Network Requests (last ${requests.length} of ${output.data.network.length})`;
       fmt.text(title).separator('━', 50);
       if (requests.length === 0) {
-        // Show helpful message when --type filter matches nothing
         if (
           options.filteredTypes &&
           options.filteredTypes.length > 0 &&

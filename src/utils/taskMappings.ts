@@ -53,6 +53,12 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     cdpAlternative: 'Runtime.evaluate with click()',
   },
 
+  press_key: {
+    commands: ['dom pressKey'],
+    description: 'Press keyboard key on element (Enter, Tab, Escape, etc.)',
+    cdpAlternative: 'Input.dispatchKeyEvent',
+  },
+
   get_element_details: {
     commands: ['dom get'],
     description: 'Get detailed element information',

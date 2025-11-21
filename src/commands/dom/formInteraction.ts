@@ -7,7 +7,9 @@ import type { Command } from 'commander';
 import {
   fillElement,
   clickElement,
+  pressKeyElement,
   waitForActionStability,
+  type PressKeyResult,
 } from '@/commands/dom/formFillHelpers.js';
 import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
@@ -106,7 +108,6 @@ export function registerFormInteractionCommands(program: Command): void {
             const isNumericIndex = /^\d+$/.test(selectorOrIndex);
 
             if (isNumericIndex) {
-              // Use cached query results like `dom get` does
               const { getSessionQueryCache } = await import('@/session/queryCache.js');
               const cachedQuery = getSessionQueryCache();
 
@@ -129,7 +130,6 @@ export function registerFormInteractionCommands(program: Command): void {
                 };
               }
 
-              // Fill using the cached selector with 1-based index
               const fillOptions = filterDefined({
                 index: index + 1,
                 blur: options.blur,
@@ -147,7 +147,6 @@ export function registerFormInteractionCommands(program: Command): void {
                 };
               }
 
-              // Wait for page stability after fill (unless --no-wait)
               if (options.wait !== false) {
                 await waitForActionStability(cdp);
               }
@@ -155,7 +154,6 @@ export function registerFormInteractionCommands(program: Command): void {
               return { success: true, data: result };
             }
 
-            // Regular selector-based fill
             const fillOptions = filterDefined({
               index: options.index,
               blur: options.blur,
@@ -173,7 +171,6 @@ export function registerFormInteractionCommands(program: Command): void {
               };
             }
 
-            // Wait for page stability after fill (unless --no-wait)
             if (options.wait !== false) {
               await waitForActionStability(cdp);
             }
@@ -200,7 +197,6 @@ export function registerFormInteractionCommands(program: Command): void {
             const isNumericIndex = /^\d+$/.test(selectorOrIndex);
 
             if (isNumericIndex) {
-              // Use cached query results like `dom get` does
               const { getSessionQueryCache } = await import('@/session/queryCache.js');
               const cachedQuery = getSessionQueryCache();
 
@@ -223,7 +219,6 @@ export function registerFormInteractionCommands(program: Command): void {
                 };
               }
 
-              // Click using the cached selector with 1-based index
               const result = await clickElement(cdp, cachedQuery.selector, { index: index + 1 });
 
               if (!result.success) {
@@ -236,7 +231,6 @@ export function registerFormInteractionCommands(program: Command): void {
                 };
               }
 
-              // Wait for page stability after click (unless --no-wait)
               if (options.wait !== false) {
                 await waitForActionStability(cdp);
               }
@@ -244,7 +238,6 @@ export function registerFormInteractionCommands(program: Command): void {
               return { success: true, data: result };
             }
 
-            // Regular selector-based click
             const clickOptions = filterDefined({
               index: options.index,
             }) as { index?: number };
@@ -261,7 +254,6 @@ export function registerFormInteractionCommands(program: Command): void {
               };
             }
 
-            // Wait for page stability after click (unless --no-wait)
             if (options.wait !== false) {
               await waitForActionStability(cdp);
             }
@@ -290,7 +282,6 @@ export function registerFormInteractionCommands(program: Command): void {
             const isNumericIndex = /^\d+$/.test(selectorOrIndex);
 
             if (isNumericIndex) {
-              // Use cached query results like `dom get` does
               const { getSessionQueryCache } = await import('@/session/queryCache.js');
               const cachedQuery = getSessionQueryCache();
 
@@ -313,7 +304,6 @@ export function registerFormInteractionCommands(program: Command): void {
                 };
               }
 
-              // Submit using the cached selector with 1-based index
               const submitOptions = filterDefined({
                 index: index + 1,
                 waitNavigation: options.waitNavigation,
@@ -343,7 +333,6 @@ export function registerFormInteractionCommands(program: Command): void {
               return { success: true, data: result };
             }
 
-            // Regular selector-based submit
             const submitOptions = filterDefined({
               index: options.index,
               waitNavigation: options.waitNavigation,
@@ -377,6 +366,100 @@ export function registerFormInteractionCommands(program: Command): void {
         formatSubmitOutput
       );
     });
+
+  domCommand
+    .command('pressKey')
+    .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
+    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<key>', 'Key to press (Enter, Tab, Escape, Space, ArrowUp, etc.)')
+    .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
+    .option('--times <n>', 'Press key multiple times (default: 1)', parseInt)
+    .option('--modifiers <mods>', 'Modifier keys: shift,ctrl,alt,meta (comma-separated)')
+    .option('--no-wait', 'Skip waiting for network stability after key press')
+    .addOption(jsonOption)
+    .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
+      await runCommand(
+        async () => {
+          return await withCDPConnection(async (cdp) => {
+            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
+
+            if (isNumericIndex) {
+              const { getSessionQueryCache } = await import('@/session/queryCache.js');
+              const cachedQuery = getSessionQueryCache();
+
+              if (!cachedQuery) {
+                return {
+                  success: false,
+                  error: 'No cached query results found',
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+                };
+              }
+
+              const index = parseInt(selectorOrIndex, 10);
+              if (index < 0 || index >= cachedQuery.nodes.length) {
+                return {
+                  success: false,
+                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
+                };
+              }
+
+              const pressKeyOptions = filterDefined({
+                index: index + 1,
+                times: options.times,
+                modifiers: options.modifiers,
+              }) as { index?: number; times?: number; modifiers?: string };
+
+              const result = await pressKeyElement(cdp, cachedQuery.selector, key, pressKeyOptions);
+
+              if (!result.success) {
+                return {
+                  success: false,
+                  error: result.error ?? 'Failed to press key',
+                  exitCode: result.error?.includes('not found')
+                    ? EXIT_CODES.RESOURCE_NOT_FOUND
+                    : EXIT_CODES.INVALID_ARGUMENTS,
+                };
+              }
+
+              if (options.wait !== false) {
+                await waitForActionStability(cdp);
+              }
+
+              return { success: true, data: result };
+            }
+
+            const pressKeyOptions = filterDefined({
+              index: options.index,
+              times: options.times,
+              modifiers: options.modifiers,
+            }) as { index?: number; times?: number; modifiers?: string };
+
+            const result = await pressKeyElement(cdp, selectorOrIndex, key, pressKeyOptions);
+
+            if (!result.success) {
+              return {
+                success: false,
+                error: result.error ?? 'Failed to press key',
+                exitCode: result.error?.includes('not found')
+                  ? EXIT_CODES.RESOURCE_NOT_FOUND
+                  : EXIT_CODES.INVALID_ARGUMENTS,
+              };
+            }
+
+            if (options.wait !== false) {
+              await waitForActionStability(cdp);
+            }
+
+            return { success: true, data: result };
+          });
+        },
+        options,
+        formatPressKeyOutput
+      );
+    });
 }
 
 /**
@@ -406,6 +489,17 @@ interface SubmitCommandOptions {
   waitNavigation?: boolean;
   waitNetwork: string;
   timeout: string;
+  json?: boolean;
+}
+
+/**
+ * Options for pressKey command.
+ */
+interface PressKeyCommandOptions {
+  index?: number;
+  times?: number;
+  modifiers?: string;
+  wait: boolean;
   json?: boolean;
 }
 
@@ -508,6 +602,42 @@ function formatSubmitOutput(result: SubmitResult): string {
     'bdg console --last 5             Check console messages',
     'bdg status                       Check session state',
   ]);
+
+  return fmt.build();
+}
+
+/**
+ * Format pressKey command output for human-readable display.
+ *
+ * @param result - Press key result
+ * @returns Formatted string
+ */
+function formatPressKeyOutput(result: PressKeyResult): string {
+  const fmt = new OutputFormatter();
+
+  fmt.text('✓ Key Pressed');
+  fmt.blank();
+
+  const details: [string, string][] = [
+    ['Key', result.key ?? 'unknown'],
+    ['Selector', result.selector ?? 'unknown'],
+    ['Element Type', result.elementType ?? 'unknown'],
+  ];
+
+  if (result.times && result.times > 1) {
+    details.push(['Times', result.times.toString()]);
+  }
+
+  if (result.modifiers && result.modifiers > 0) {
+    const mods: string[] = [];
+    if (result.modifiers & 1) mods.push('Shift');
+    if (result.modifiers & 2) mods.push('Ctrl');
+    if (result.modifiers & 4) mods.push('Alt');
+    if (result.modifiers & 8) mods.push('Meta');
+    details.push(['Modifiers', mods.join('+')]);
+  }
+
+  fmt.keyValueList(details, 15);
 
   return fmt.build();
 }

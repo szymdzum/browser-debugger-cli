@@ -257,6 +257,8 @@ For reference, these patterns worked excellently across all tests:
 8. **`bdg dom get <index> --raw`** - Raw HTML extraction always works
 9. **`bdg dom eval`** - Reliable workaround for interactions
 10. **Session startup hints** - Command suggestions help discoverability
+11. **`bdg dom pressKey`** - Keyboard interactions for TodoMVC/Enter-to-submit patterns
+12. **`bdg dom click/fill`** - Auto-wait for network stability ("it just works")
 
 ---
 
@@ -323,3 +325,4 @@ For reference, these patterns worked excellently across all tests:
 - ✅ **#6**: `--type` filter now shows helpful message when no matches found
 - ✅ **#7**: `bdg dom a11y` now has smart default action (routes based on input type)
 - ✅ **#12**: `bdg dom click` and `fill` now auto-wait for network stability (with `--no-wait` opt-out)
+- ✅ **NEW**: `bdg dom pressKey` command for keyboard interactions (Enter-to-submit, Tab navigation, Escape to close)
