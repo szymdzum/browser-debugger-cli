@@ -9,6 +9,7 @@ import { validateIPCResponse } from '@/ipc/index.js';
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { validateDetailsItem } from '@/utils/typeGuards.js';
 
 /**
  * Options for details command.
@@ -72,10 +73,12 @@ export function registerDetailsCommand(program: Command): void {
             };
           }
 
+          const validatedItem = validateDetailsItem(response.data.item, opts.type);
+
           return {
             success: true,
             data: {
-              item: response.data.item as unknown as NetworkRequest | ConsoleMessage,
+              item: validatedItem,
               type: opts.type,
             },
           };

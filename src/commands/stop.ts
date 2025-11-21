@@ -7,8 +7,7 @@ import type { StopResult } from '@/commands/types.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
-import { clearChromePid } from '@/session/chrome.js';
-import { cleanupOrphanedDaemons } from '@/session/cleanup.js';
+import { performSessionCleanup } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
@@ -17,8 +16,8 @@ import {
   warningMessage,
 } from '@/ui/messages/commands.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
+import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { killChromeProcess } from '@/utils/process.js';
 
 /**
  * Flags supported by `bdg stop`.
@@ -49,21 +48,6 @@ function formatStop(data: StopResult): string {
 }
 
 /**
- * Map daemon error codes to appropriate exit codes.
- *
- * Only NO_SESSION has special handling (RESOURCE_NOT_FOUND).
- * All other error codes map to UNHANDLED_EXCEPTION.
- *
- * @param errorCode - IPC error code from daemon response
- * @returns Semantic exit code
- */
-function getExitCodeForDaemonError(errorCode?: IPCErrorCode): number {
-  return errorCode === IPCErrorCode.NO_SESSION
-    ? EXIT_CODES.RESOURCE_NOT_FOUND
-    : EXIT_CODES.UNHANDLED_EXCEPTION;
-}
-
-/**
  * Register stop command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -85,37 +69,26 @@ export function registerStopCommand(program: Command): void {
             const response = await stopSession();
 
             if (response.status === 'ok') {
-              let chromeStopped = false;
-              let orphanedDaemonsCount = 0;
-              const warnings: string[] = [];
+              const cleanupResult = await performSessionCleanup({
+                killChrome: opts.killChrome,
+                chromePid: response.chromePid,
+              });
 
-              if (opts.killChrome) {
-                const chromePid = response.chromePid;
-                if (chromePid) {
-                  try {
-                    killChromeProcess(chromePid, 'SIGTERM');
-                    chromeStopped = true;
-                    console.error(chromeKilledMessage(chromePid));
-                    clearChromePid();
-                  } catch (chromeError: unknown) {
-                    const errorMessage =
-                      chromeError instanceof Error ? chromeError.message : String(chromeError);
-                    warnings.push(`Could not kill Chrome: ${errorMessage}`);
-                  }
-                } else {
-                  warnings.push('Chrome PID not found (Chrome was not launched by bdg)');
-                }
+              if (cleanupResult.cleaned.chrome) {
+                console.error(chromeKilledMessage(response.chromePid));
               }
-
-              orphanedDaemonsCount = await cleanupOrphanedDaemons();
 
               return {
                 success: true,
                 data: {
-                  stopped: { bdg: true, chrome: chromeStopped, daemons: orphanedDaemonsCount > 0 },
-                  orphanedDaemonsCount,
+                  stopped: {
+                    bdg: true,
+                    chrome: cleanupResult.cleaned.chrome,
+                    daemons: cleanupResult.cleaned.daemons,
+                  },
+                  orphanedDaemonsCount: cleanupResult.orphanedDaemonsCount,
                   message: response.message ?? STOP_MESSAGES.SUCCESS,
-                  ...(warnings.length > 0 && { warnings }),
+                  ...(cleanupResult.warnings.length > 0 && { warnings: cleanupResult.warnings }),
                 },
               };
             } else {
@@ -127,7 +100,7 @@ export function registerStopCommand(program: Command): void {
                 };
               }
 
-              const exitCode = getExitCodeForDaemonError(response.errorCode);
+              const exitCode = getExitCodeForIPCError(response.errorCode);
               return {
                 success: false,
                 error: response.message ?? STOP_MESSAGES.FAILED,
@@ -137,7 +110,7 @@ export function registerStopCommand(program: Command): void {
           } catch (error: unknown) {
             const errorMessage = getErrorMessage(error);
 
-            if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
+            if (isDaemonNotRunningError(errorMessage)) {
               return {
                 success: false,
                 error: STOP_MESSAGES.DAEMON_NOT_RUNNING,

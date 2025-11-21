@@ -1,14 +1,10 @@
-import * as fs from 'fs';
-
 import type { Command } from 'commander';
 
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CleanupResult } from '@/commands/types.js';
-import { getErrorMessage } from '@/connection/errors.js';
-import { cleanupSession } from '@/session/cleanup.js';
-import { getSessionFilePath } from '@/session/paths.js';
+import { performSessionCleanup } from '@/session/cleanup.js';
 import { readPid } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
@@ -16,8 +12,6 @@ import {
   sessionOutputRemovedMessage,
   sessionDirectoryCleanMessage,
   noSessionFilesMessage,
-  staleSessionFoundMessage,
-  forceCleanupWarningMessage,
   sessionStillActiveError,
   warningMessage,
 } from '@/ui/messages/commands.js';
@@ -69,60 +63,9 @@ export function registerCleanupCommand(program: Command): void {
     .action(async (options: CleanupOptions) => {
       await runCommand<CleanupOptions, CleanupResult>(
         async (opts) => {
-          const { cleanupStaleChrome } = await import('@/session/chrome.js');
-          const { cleanupOrphanedDaemons } = await import('@/session/cleanup.js');
-
-          let didCleanup = false;
-          let cleanedSession = false;
-          let cleanedOutput = false;
-          let cleanedChrome = false;
-          let cleanedDaemons = false;
-          const warnings: string[] = [];
-
-          if (opts.aggressive) {
-            const daemonsKilled = await cleanupOrphanedDaemons();
-            if (daemonsKilled > 0) {
-              cleanedDaemons = true;
-              didCleanup = true;
-              console.error(`✓ Killed ${daemonsKilled} orphaned daemon process(es)`);
-            }
-
-            const errorCount = await cleanupStaleChrome();
-            cleanedChrome = true;
-            if (errorCount > 0) {
-              warnings.push('Some Chrome processes could not be killed');
-            }
-            didCleanup = true;
-          }
-
-          const daemonPidPath = getSessionFilePath('DAEMON_PID');
-          if (fs.existsSync(daemonPidPath)) {
-            try {
-              const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
-              const daemonPid = parseInt(daemonPidStr, 10);
-
-              if (isNaN(daemonPid) || !isProcessAlive(daemonPid)) {
-                console.error(staleSessionFoundMessage(daemonPid));
-                fs.unlinkSync(daemonPidPath);
-                cleanedSession = true;
-                didCleanup = true;
-              }
-            } catch {
-              try {
-                fs.unlinkSync(daemonPidPath);
-                cleanedSession = true;
-                didCleanup = true;
-              } catch (removeError) {
-                const errorMessage = getErrorMessage(removeError);
-                warnings.push(`Could not remove daemon.pid: ${errorMessage}`);
-              }
-            }
-          }
-
           const pid = readPid();
           if (pid) {
             const isAlive = isProcessAlive(pid);
-
             if (isAlive && !opts.force) {
               return {
                 success: false,
@@ -135,42 +78,19 @@ export function registerCleanupCommand(program: Command): void {
                 },
               };
             }
-
-            if (isAlive) {
-              warnings.push(`Process ${pid} is still running but forcing cleanup anyway`);
-              console.error(forceCleanupWarningMessage(pid));
-
-              try {
-                const killedCount = await cleanupStaleChrome();
-                if (killedCount > 0) {
-                  cleanedChrome = true;
-                }
-              } catch (error) {
-                const errorMessage = getErrorMessage(error);
-                warnings.push(`Could not kill Chrome processes: ${errorMessage}`);
-              }
-            } else {
-              console.error(staleSessionFoundMessage(pid));
-            }
-
-            cleanupSession();
-            cleanedSession = true;
-            didCleanup = true;
           }
 
-          if (opts.all) {
-            const outputPath = getSessionFilePath('OUTPUT');
-            if (fs.existsSync(outputPath)) {
-              try {
-                fs.unlinkSync(outputPath);
-                cleanedOutput = true;
-                didCleanup = true;
-              } catch (error: unknown) {
-                const errorMessage = getErrorMessage(error);
-                warnings.push(`Could not remove session.json: ${errorMessage}`);
-              }
-            }
-          }
+          const cleanupResult = await performSessionCleanup({
+            force: opts.force,
+            aggressive: opts.aggressive,
+            removeOutput: opts.all,
+          });
+
+          const didCleanup =
+            cleanupResult.cleaned.session ||
+            cleanupResult.cleaned.chrome ||
+            cleanupResult.cleaned.daemons ||
+            cleanupResult.cleaned.output;
 
           if (!didCleanup) {
             return {
@@ -186,13 +106,13 @@ export function registerCleanupCommand(program: Command): void {
             success: true,
             data: {
               cleaned: {
-                session: cleanedSession,
-                output: cleanedOutput,
-                chrome: cleanedChrome,
-                daemons: cleanedDaemons,
+                session: cleanupResult.cleaned.session,
+                output: cleanupResult.cleaned.output,
+                chrome: cleanupResult.cleaned.chrome,
+                daemons: cleanupResult.cleaned.daemons,
               },
               message: sessionDirectoryCleanMessage(),
-              ...(warnings.length > 0 && { warnings }),
+              ...(cleanupResult.warnings.length > 0 && { warnings: cleanupResult.warnings }),
             },
           };
         },

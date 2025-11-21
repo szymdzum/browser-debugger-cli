@@ -9,6 +9,7 @@ import { filterByResourceType } from '@/telemetry/filters.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
+import { getExitCodeForConnectionError } from '@/utils/errorMapping.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -67,9 +68,7 @@ export function registerPeekCommand(program: Command): void {
             validateIPCResponse(response);
           } catch {
             const errorMsg = response.error ?? 'Unknown error';
-            const exitCode = errorMsg.includes('No active session')
-              ? EXIT_CODES.RESOURCE_NOT_FOUND
-              : EXIT_CODES.SESSION_FILE_ERROR;
+            const exitCode = getExitCodeForConnectionError(errorMsg);
             const result = handleDaemonConnectionError(errorMsg, {
               json: options.json,
               follow: options.follow,
@@ -100,7 +99,6 @@ export function registerPeekCommand(program: Command): void {
             console.clear();
           }
 
-          // Track unfiltered count for feedback when filter matches nothing
           const unfilteredNetworkCount = output.data.network?.length ?? 0;
           const filteredNetwork = output.data.network
             ? filterByResourceType(output.data.network, resourceTypes)
@@ -109,7 +107,6 @@ export function registerPeekCommand(program: Command): void {
           const previewOptions: PreviewOptions = {
             ...previewBase,
             ...(previewBase.follow && { viewedAt: new Date() }),
-            // Pass filter info for feedback when no matches
             ...(resourceTypes.length > 0 && {
               filteredTypes: resourceTypes,
               unfilteredNetworkCount,

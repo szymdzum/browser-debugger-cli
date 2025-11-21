@@ -341,3 +341,239 @@ export async function cleanupOrphanedDaemons(): Promise<number> {
 
   return killedCount;
 }
+
+/**
+ * Options for unified session cleanup.
+ */
+export interface SessionCleanupOptions {
+  /** Kill the associated Chrome process. */
+  killChrome?: boolean | undefined;
+  /** Force cleanup even if session appears active. */
+  force?: boolean | undefined;
+  /** Aggressively kill all orphaned processes. */
+  aggressive?: boolean | undefined;
+  /** Also remove the session.json output file. */
+  removeOutput?: boolean | undefined;
+  /** Chrome PID from daemon response (for stop command). */
+  chromePid?: number | undefined;
+}
+
+/**
+ * Result of session cleanup operation.
+ */
+export interface SessionCleanupResult {
+  /** What was cleaned up. */
+  cleaned: {
+    /** Session files (PID, metadata, socket, lock). */
+    session: boolean;
+    /** Chrome browser process. */
+    chrome: boolean;
+    /** Orphaned daemon processes. */
+    daemons: boolean;
+    /** Session output file (session.json). */
+    output: boolean;
+  };
+  /** Number of orphaned daemons killed. */
+  orphanedDaemonsCount: number;
+  /** Warnings encountered during cleanup. */
+  warnings: string[];
+}
+
+/**
+ * Mutable state accumulator for cleanup operations.
+ */
+interface CleanupState {
+  warnings: string[];
+  cleanedSession: boolean;
+  cleanedChrome: boolean;
+  cleanedDaemons: boolean;
+  cleanedOutput: boolean;
+  orphanedDaemonsCount: number;
+}
+
+function createCleanupState(): CleanupState {
+  return {
+    warnings: [],
+    cleanedSession: false,
+    cleanedChrome: false,
+    cleanedDaemons: false,
+    cleanedOutput: false,
+    orphanedDaemonsCount: 0,
+  };
+}
+
+/**
+ * Kill a specific Chrome process by PID.
+ */
+function killSpecificChrome(
+  chromePid: number,
+  clearChromePid: () => void,
+  state: CleanupState
+): void {
+  try {
+    killChromeProcess(chromePid, 'SIGTERM');
+    state.cleanedChrome = true;
+    clearChromePid();
+  } catch (error: unknown) {
+    state.warnings.push(`Could not kill Chrome: ${getErrorMessage(error)}`);
+  }
+}
+
+/**
+ * Clean up stale daemon PID file if process is dead.
+ */
+function cleanupStaleDaemonPidFile(state: CleanupState): void {
+  const daemonPidPath = getSessionFilePath('DAEMON_PID');
+  if (!fs.existsSync(daemonPidPath)) {
+    return;
+  }
+
+  try {
+    const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
+    const daemonPid = parseInt(daemonPidStr, 10);
+
+    if (Number.isNaN(daemonPid) || !isProcessAlive(daemonPid)) {
+      log.info(`Removing stale daemon PID file (PID ${daemonPid})`);
+      fs.unlinkSync(daemonPidPath);
+      state.cleanedSession = true;
+    }
+  } catch {
+    try {
+      fs.unlinkSync(daemonPidPath);
+      state.cleanedSession = true;
+    } catch (removeError) {
+      state.warnings.push(`Could not remove daemon.pid: ${getErrorMessage(removeError)}`);
+    }
+  }
+}
+
+/**
+ * Clean up session files, optionally forcing cleanup of active sessions.
+ */
+async function cleanupSessionFiles(
+  force: boolean,
+  cleanupStaleChrome: () => Promise<number>,
+  state: CleanupState
+): Promise<void> {
+  const sessionPid = readPid();
+  if (!sessionPid) {
+    return;
+  }
+
+  const isAlive = isProcessAlive(sessionPid);
+  if (isAlive && !force) {
+    return;
+  }
+
+  if (isAlive && force) {
+    state.warnings.push(`Process ${sessionPid} is still running but forcing cleanup anyway`);
+    log.info(`Force cleanup: killing Chrome for active session ${sessionPid}`);
+
+    try {
+      await cleanupStaleChrome();
+      state.cleanedChrome = true;
+    } catch (error) {
+      state.warnings.push(`Could not kill Chrome processes: ${getErrorMessage(error)}`);
+    }
+  }
+
+  cleanupSession();
+  state.cleanedSession = true;
+}
+
+/**
+ * Remove session output file.
+ */
+function removeOutputFile(state: CleanupState): void {
+  const outputPath = getSessionFilePath('OUTPUT');
+  if (!fs.existsSync(outputPath)) {
+    return;
+  }
+
+  try {
+    fs.unlinkSync(outputPath);
+    state.cleanedOutput = true;
+  } catch (error: unknown) {
+    state.warnings.push(`Could not remove session.json: ${getErrorMessage(error)}`);
+  }
+}
+
+/**
+ * Unified session cleanup for stop and cleanup commands.
+ *
+ * Consolidates cleanup logic from stop.ts and cleanup.ts into a single
+ * reusable function. Handles Chrome processes, daemon PIDs, session files,
+ * and orphaned processes.
+ *
+ * @param options - Cleanup options
+ * @returns Cleanup result with what was cleaned and any warnings
+ *
+ * @example
+ * ```typescript
+ * // From stop command
+ * const result = await performSessionCleanup({
+ *   killChrome: opts.killChrome,
+ *   chromePid: response.chromePid,
+ * });
+ *
+ * // From cleanup command
+ * const result = await performSessionCleanup({
+ *   force: true,
+ *   aggressive: true,
+ *   removeOutput: true,
+ * });
+ * ```
+ */
+export async function performSessionCleanup(
+  options: SessionCleanupOptions
+): Promise<SessionCleanupResult> {
+  const { cleanupStaleChrome, clearChromePid } = await import('./chrome.js');
+  const state = createCleanupState();
+
+  if (options.aggressive) {
+    const daemonsKilled = await cleanupOrphanedDaemons();
+    if (daemonsKilled > 0) {
+      state.cleanedDaemons = true;
+      state.orphanedDaemonsCount = daemonsKilled;
+      console.error(`✓ Killed ${daemonsKilled} orphaned daemon process(es)`);
+    }
+
+    const errorCount = await cleanupStaleChrome();
+    state.cleanedChrome = true;
+    if (errorCount > 0) {
+      state.warnings.push('Some Chrome processes could not be killed');
+    }
+  }
+
+  if (options.killChrome && options.chromePid) {
+    killSpecificChrome(options.chromePid, clearChromePid, state);
+  } else if (options.killChrome && !options.chromePid) {
+    state.warnings.push('Chrome PID not found (Chrome was not launched by bdg)');
+  }
+
+  cleanupStaleDaemonPidFile(state);
+  await cleanupSessionFiles(options.force ?? false, cleanupStaleChrome, state);
+
+  if (!options.aggressive) {
+    const daemonsKilled = await cleanupOrphanedDaemons();
+    if (daemonsKilled > 0) {
+      state.cleanedDaemons = true;
+      state.orphanedDaemonsCount = daemonsKilled;
+    }
+  }
+
+  if (options.removeOutput) {
+    removeOutputFile(state);
+  }
+
+  return {
+    cleaned: {
+      session: state.cleanedSession,
+      chrome: state.cleanedChrome,
+      daemons: state.cleanedDaemons,
+      output: state.cleanedOutput,
+    },
+    orphanedDaemonsCount: state.orphanedDaemonsCount,
+    warnings: state.warnings,
+  };
+}
