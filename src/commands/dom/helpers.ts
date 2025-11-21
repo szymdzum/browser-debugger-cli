@@ -24,22 +24,36 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 const log = createLogger('dom');
 
 /**
- * Result of resolving a selector or index argument to an element target.
+ * Successful result of resolving a selector or index argument.
  */
-export interface ElementTargetResult {
-  /** Whether resolution succeeded */
-  success: boolean;
+export interface ElementTargetSuccess {
+  /** Resolution succeeded */
+  success: true;
   /** CSS selector to use */
-  selector?: string | undefined;
+  selector: string;
   /** 1-based index for selector (if resolved from cached query) */
   index?: number | undefined;
-  /** Error message if resolution failed */
-  error?: string | undefined;
-  /** Exit code if resolution failed */
-  exitCode?: number | undefined;
+}
+
+/**
+ * Failed result of resolving a selector or index argument.
+ */
+export interface ElementTargetFailure {
+  /** Resolution failed */
+  success: false;
+  /** Error message */
+  error: string;
+  /** Exit code for the error */
+  exitCode: number;
   /** Suggestion for fixing the error */
   suggestion?: string | undefined;
 }
+
+/**
+ * Result of resolving a selector or index argument to an element target.
+ * Discriminated union that guarantees selector exists when success is true.
+ */
+export type ElementTargetResult = ElementTargetSuccess | ElementTargetFailure;
 
 /**
  * Resolve a selectorOrIndex argument to an element target.

@@ -122,7 +122,7 @@ export function registerFormInteractionCommands(program: Command): void {
               blur: options.blur,
             }) as { index?: number; blur?: boolean };
 
-            const result = await fillElement(cdp, target.selector!, value, fillOptions);
+            const result = await fillElement(cdp, target.selector, value, fillOptions);
 
             if (!result.success) {
               return {
@@ -172,7 +172,7 @@ export function registerFormInteractionCommands(program: Command): void {
               index: target.index,
             }) as { index?: number };
 
-            const result = await clickElement(cdp, target.selector!, clickOptions);
+            const result = await clickElement(cdp, target.selector, clickOptions);
 
             if (!result.success) {
               return {
@@ -232,7 +232,7 @@ export function registerFormInteractionCommands(program: Command): void {
               timeout?: number;
             };
 
-            const result = await submitForm(cdp, target.selector!, submitOptions);
+            const result = await submitForm(cdp, target.selector, submitOptions);
 
             if (!result.success) {
               return {
@@ -285,7 +285,7 @@ export function registerFormInteractionCommands(program: Command): void {
               modifiers: options.modifiers,
             }) as { index?: number; times?: number; modifiers?: string };
 
-            const result = await pressKeyElement(cdp, target.selector!, key, pressKeyOptions);
+            const result = await pressKeyElement(cdp, target.selector, key, pressKeyOptions);
 
             if (!result.success) {
               return {
