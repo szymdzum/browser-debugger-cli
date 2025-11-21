@@ -116,6 +116,10 @@ export interface PreviewOptions {
   follow?: boolean | undefined;
   /** Current view timestamp (for follow mode to show refresh time). */
   viewedAt?: Date | undefined;
+  /** Resource types that were filtered (for showing feedback when no matches). */
+  filteredTypes?: string[] | undefined;
+  /** Total network requests before filtering (for showing feedback when no matches). */
+  unfilteredNetworkCount?: number | undefined;
 }
 
 /**
@@ -201,7 +205,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   const hasConsoleData = output.data.console && output.data.console.length > 0;
 
   if (!options.console && output.data.network) {
-    if (options.console === undefined || hasNetworkData) {
+    if (!options.console || hasNetworkData) {
       const requests =
         lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
       const showingCount = requests.length;
@@ -209,7 +213,21 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       const limitHint = formatLimitHint(showingCount, totalCount);
       fmt.text(`NETWORK (${showingCount}/${totalCount})${limitHint}:`);
       if (requests.length === 0) {
-        fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+        // Show helpful message when --type filter matches nothing
+        if (
+          options.filteredTypes &&
+          options.filteredTypes.length > 0 &&
+          options.unfilteredNetworkCount &&
+          options.unfilteredNetworkCount > 0
+        ) {
+          const typesStr = options.filteredTypes.join(', ');
+          fmt.text(
+            `  No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
+          );
+          fmt.text(`  Try: bdg peek --network (to see all types)`);
+        } else {
+          fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+        }
       } else {
         const networkLines = requests.map((req) => {
           const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
@@ -294,7 +312,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   const hasConsoleData = output.data.console && output.data.console.length > 0;
 
   if (!options.console && output.data.network) {
-    if (options.console === undefined || hasNetworkData) {
+    if (!options.console || hasNetworkData) {
       const requests =
         lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
       const title =
@@ -303,7 +321,21 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           : `Network Requests (last ${requests.length} of ${output.data.network.length})`;
       fmt.text(title).separator('━', 50);
       if (requests.length === 0) {
-        fmt.text(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
+        // Show helpful message when --type filter matches nothing
+        if (
+          options.filteredTypes &&
+          options.filteredTypes.length > 0 &&
+          options.unfilteredNetworkCount &&
+          options.unfilteredNetworkCount > 0
+        ) {
+          const typesStr = options.filteredTypes.join(', ');
+          fmt.text(
+            `No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
+          );
+          fmt.text(`Try: bdg peek --network (to see all resource types)`);
+        } else {
+          fmt.text(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
+        }
       } else {
         requests.forEach((req) => {
           const statusColor = req.status && req.status >= 400 ? 'ERR' : 'OK';

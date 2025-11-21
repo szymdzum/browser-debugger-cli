@@ -4,7 +4,11 @@
 
 import type { Command } from 'commander';
 
-import { fillElement, clickElement } from '@/commands/dom/formFillHelpers.js';
+import {
+  fillElement,
+  clickElement,
+  waitForActionStability,
+} from '@/commands/dom/formFillHelpers.js';
 import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
 import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
@@ -88,11 +92,12 @@ export function registerFormInteractionCommands(program: Command): void {
 
   domCommand
     .command('fill')
-    .description('Fill a form field with a value (React-compatible)')
+    .description('Fill a form field with a value (React-compatible, waits for stability)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .argument('<value>', 'Value to fill')
     .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
+    .option('--no-wait', 'Skip waiting for network stability after fill')
     .addOption(jsonOption)
     .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
@@ -142,6 +147,11 @@ export function registerFormInteractionCommands(program: Command): void {
                 };
               }
 
+              // Wait for page stability after fill (unless --no-wait)
+              if (options.wait !== false) {
+                await waitForActionStability(cdp);
+              }
+
               return { success: true, data: result };
             }
 
@@ -163,6 +173,11 @@ export function registerFormInteractionCommands(program: Command): void {
               };
             }
 
+            // Wait for page stability after fill (unless --no-wait)
+            if (options.wait !== false) {
+              await waitForActionStability(cdp);
+            }
+
             return { success: true, data: result };
           });
         },
@@ -173,9 +188,10 @@ export function registerFormInteractionCommands(program: Command): void {
 
   domCommand
     .command('click')
-    .description('Click an element (accepts CSS selector or cached query index)')
+    .description('Click an element and wait for stability (accepts selector or index)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
+    .option('--no-wait', 'Skip waiting for network stability after click')
     .addOption(jsonOption)
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
       await runCommand(
@@ -220,6 +236,11 @@ export function registerFormInteractionCommands(program: Command): void {
                 };
               }
 
+              // Wait for page stability after click (unless --no-wait)
+              if (options.wait !== false) {
+                await waitForActionStability(cdp);
+              }
+
               return { success: true, data: result };
             }
 
@@ -238,6 +259,11 @@ export function registerFormInteractionCommands(program: Command): void {
                   ? EXIT_CODES.RESOURCE_NOT_FOUND
                   : EXIT_CODES.INVALID_ARGUMENTS,
               };
+            }
+
+            // Wait for page stability after click (unless --no-wait)
+            if (options.wait !== false) {
+              await waitForActionStability(cdp);
             }
 
             return { success: true, data: result };
@@ -359,6 +385,7 @@ export function registerFormInteractionCommands(program: Command): void {
 interface FillCommandOptions {
   index?: number;
   blur: boolean;
+  wait: boolean;
   json?: boolean;
 }
 
@@ -367,6 +394,7 @@ interface FillCommandOptions {
  */
 interface ClickCommandOptions {
   index?: number;
+  wait: boolean;
   json?: boolean;
 }
 

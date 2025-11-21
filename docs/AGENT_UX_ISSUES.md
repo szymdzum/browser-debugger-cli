@@ -16,7 +16,7 @@ bdg dom screenshot /tmp/amazon.png
 # Now works! Captured 18.8 MB screenshot (36613px tall page)
 ```
 
-**Fix**: Buffer size increased or chunking implemented to handle large screenshots.
+**Fix**: `MAX_JSONL_BUFFER_SIZE` increased from 10MB to 50MB in `src/constants.ts`.
 
 ---
 
@@ -108,42 +108,37 @@ bdg dom a11y describe 0
 
 ## High Priority Issues
 
-### 6. `--type` Filter Confusion When No Matches (NEW)
+### 6. ~~`--type` Filter Confusion When No Matches~~ ✅ FIXED
 
-**Severity**: High (misleading output)
+**Status**: Fixed in current branch
 
-**Symptoms**:
-- When `--type` filter matches nothing, shows different data type without indication
-- User thinks filter worked but sees unrelated data
+**Fix**: Condition bug in `src/ui/formatters/preview.ts:208` fixed. Changed `options.console === undefined` to `!options.console` so the NETWORK section displays even when filtered results are empty.
 
-**Reproduction**:
+**New Behavior**:
 ```bash
-bdg https://developer.mozilla.org/...
 bdg peek --type Stylesheet    # No stylesheets in preview window
-# Output shows CONSOLE messages instead, with no indication filter failed
+# Now shows: "No Stylesheet requests found (filtered from N total requests)"
+# Suggests: "Try: bdg peek --network (to see all types)"
 ```
-
-**Expected**: Clear message like "No Stylesheet requests found. Showing all data."
 
 ---
 
-### 7. `bdg dom a11y` Subcommand Not Discoverable (NEW)
+### 7. ~~`bdg dom a11y` Subcommand Not Discoverable~~ ✅ FIXED
 
-**Severity**: Medium (requires help lookup)
+**Status**: Fixed in current branch
 
-**Symptoms**:
-- `bdg dom a11y "nav"` fails with "unknown command 'nav'"
-- Must use `bdg dom a11y query "role:navigation"` or `bdg dom a11y describe <index>`
-- Subcommand structure not obvious from parent help
+**Fix**: Added smart default action that routes based on input type:
+- Numeric index → `describe` (e.g., `bdg dom a11y 0`)
+- Pattern with `:` or `=` → `query` (e.g., `bdg dom a11y role:button`)
+- Plain text → name search (e.g., `bdg dom a11y "Submit"` → `query "name:*Submit*"`)
 
-**Reproduction**:
+**New Behavior**:
 ```bash
-bdg dom a11y "nav"           # FAILS - unknown command
-bdg dom a11y --help          # Shows: tree, query, describe subcommands
-bdg dom a11y query "role:navigation"  # Works
+bdg dom a11y 0                 # Routes to: bdg dom a11y describe 0
+bdg dom a11y role:button       # Routes to: bdg dom a11y query "role:button"
+bdg dom a11y role=navigation   # Routes to: bdg dom a11y query "role=navigation"
+bdg dom a11y "Submit"          # Routes to: bdg dom a11y query "name:*Submit*"
 ```
-
-**Impact**: Agents try intuitive syntax first, fail, then need to read help.
 
 ---
 
@@ -169,9 +164,7 @@ bdg dom a11y query "role:navigation"  # Works
 
 **Severity**: Medium (friction for common operations)
 
-**Symptoms**:
-- URLs with `?` or `&` cause shell glob expansion errors
-- Not immediately obvious to users
+**Note**: This is a shell-level issue that cannot be caught by bdg. URLs with `?` or `&` cause shell glob expansion before bdg receives them.
 
 **Workaround**:
 ```bash
@@ -204,23 +197,20 @@ bdg "https://www.amazon.com/s?k=echo+dot"  # Quote the URL
 
 ---
 
-### 12. No Network Idle Wait (NEW)
+### 12. ~~No Network Idle Wait~~ ✅ FIXED
 
-**Severity**: Medium (required for SPAs)
+**Status**: Fixed in current branch
 
-**Symptoms**:
-- No built-in way to wait for network activity to settle
-- Must use `sleep` commands as workaround
-- SPAs require waiting after navigation for content to load
+**Fix**: `bdg dom click` and `bdg dom fill` now automatically wait for network stability after the action (150ms idle threshold, 2s max timeout).
 
-**Current Workaround**:
+**New Behavior**:
 ```bash
-bdg dom click "a" --index 1
-sleep 2                        # Manual wait
-bdg dom query "..."            # Now check for content
+bdg dom click "a" --index 1    # Waits for network to settle before returning
+bdg dom fill "input" "value"   # Waits for network to settle before returning
+bdg dom click "a" --no-wait    # Skip waiting (immediate return)
 ```
 
-**Expected**: `bdg wait --network-idle` or similar command.
+**Implementation**: `waitForActionStability()` helper in `src/commands/dom/formFillHelpers.ts` monitors network activity and returns when idle for 150ms or timeout reached.
 
 ---
 
@@ -298,6 +288,17 @@ For reference, these patterns worked excellently across all tests:
 | Click reliability | HN comments link, CodePen title link | ✅ PASS |
 | Index consistency | `bdg dom click 0` after query | ✅ PASS |
 
+### Set 4 (Current Branch Verification)
+| Issue | Test | Result |
+|-------|------|--------|
+| #1 Buffer overflow | `MAX_JSONL_BUFFER_SIZE = 50MB` | ✅ PASS |
+| #2 dom click unreliable | `bdg dom click 0` after query | ✅ PASS |
+| #3 Index inconsistency | click, fill, submit accept 0-based | ✅ PASS |
+| #6 --type filter feedback | Shows "No X requests found" message | ✅ PASS |
+| #7 dom a11y discoverability | Routes index→describe, pattern→query | ✅ PASS |
+| #9 URL params quoting | Shell-level issue, N/A | ⏭️ N/A |
+| #12 Network idle wait | `waitForActionStability` + `--no-wait` | ✅ PASS |
+
 ---
 
 ## Recommended Priority
@@ -305,17 +306,20 @@ For reference, these patterns worked excellently across all tests:
 1. ~~**P0**: Fix buffer overflow on large pages~~ ✅ FIXED
 2. ~~**P0**: Fix `bdg dom click` command reliability~~ ✅ FIXED
 3. ~~**P0**: Unify index handling (0-based everywhere, accept index directly)~~ ✅ FIXED
-4. **P1**: Improve `--type` filter feedback when no matches
+4. ~~**P1**: Improve `--type` filter feedback when no matches~~ ✅ FIXED
 5. ~~**P1**: Improve `bdg dom a11y describe` output consistency~~ ✅ FIXED
 6. **P1**: Document headless mode limitations and workarounds
-7. **P2**: Add network idle wait command
+7. ~~**P2**: Add network idle wait command~~ ✅ FIXED (built into click/fill)
 8. **P2**: Add command aliases
 9. ~~**P2**: Improve error messages with actionable suggestions~~ (less urgent now that click works)
 
 ## Fixed Issues (Current Branch)
 
-- ✅ **#1**: Buffer overflow fixed - 18.8MB Amazon screenshot now works
+- ✅ **#1**: Buffer overflow fixed - `MAX_JSONL_BUFFER_SIZE` increased to 50MB
 - ✅ **#2**: `bdg dom click` now works reliably + accepts direct index argument
 - ✅ **#3**: Index consistency - `dom click 0` now works (0-based, matches query output)
 - ✅ **#4**: `bdg dom get` now includes DOM context when a11y name is missing
 - ✅ **#5**: `bdg dom a11y describe` now shows tag, classes, and text preview as fallback
+- ✅ **#6**: `--type` filter now shows helpful message when no matches found
+- ✅ **#7**: `bdg dom a11y` now has smart default action (routes based on input type)
+- ✅ **#12**: `bdg dom click` and `fill` now auto-wait for network stability (with `--no-wait` opt-out)

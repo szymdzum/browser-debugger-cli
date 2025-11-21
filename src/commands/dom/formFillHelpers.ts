@@ -5,6 +5,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
@@ -14,6 +15,15 @@ import {
   type FillResult,
   type ClickResult,
 } from './reactEventHelpers.js';
+
+const log = createLogger('dom');
+
+/** Network idle threshold for post-action stability (ms) */
+const ACTION_NETWORK_IDLE_MS = 150;
+/** Maximum time to wait for post-action stability (ms) */
+const ACTION_STABILITY_TIMEOUT_MS = 2000;
+/** Check interval for stability polling (ms) */
+const STABILITY_CHECK_INTERVAL_MS = 50;
 
 /**
  * Format exception details into a user-friendly error message with troubleshooting hints.
@@ -197,27 +207,103 @@ export async function clickElement(
 }
 
 /**
- * Escape CSS selector for safe inclusion in JavaScript string.
- * Uses JSON.stringify to handle all special characters safely.
+ * Escape CSS selector for safe inclusion in JavaScript single-quoted string.
+ * Uses JSON.stringify for special characters, then escapes single quotes
+ * since the expression wrapper uses single quotes.
  *
  * @param selector - CSS selector to escape
- * @returns Escaped selector (without surrounding quotes)
+ * @returns Escaped selector safe for single-quoted JS string
  *
  * @internal
  */
 function escapeSelectorForJS(selector: string): string {
-  return JSON.stringify(selector).slice(1, -1);
+  // JSON.stringify escapes special chars but not single quotes (valid in JSON)
+  // We must escape single quotes since expression uses single-quoted strings
+  return JSON.stringify(selector).slice(1, -1).replace(/'/g, "\\'");
 }
 
 /**
- * Escape value for safe inclusion in JavaScript string.
- * Uses JSON.stringify to handle all special characters safely.
+ * Escape value for safe inclusion in JavaScript single-quoted string.
+ * Uses JSON.stringify for special characters, then escapes single quotes
+ * since the expression wrapper uses single quotes.
  *
  * @param value - Value to escape
- * @returns Escaped value (without surrounding quotes)
+ * @returns Escaped value safe for single-quoted JS string
  *
  * @internal
  */
 function escapeValueForJS(value: string): string {
-  return JSON.stringify(value).slice(1, -1);
+  // JSON.stringify escapes special chars but not single quotes (valid in JSON)
+  // We must escape single quotes since expression uses single-quoted strings
+  return JSON.stringify(value).slice(1, -1).replace(/'/g, "\\'");
+}
+
+/**
+ * Wait for page to stabilize after an action (click, fill, etc.).
+ *
+ * This is a lightweight stability check designed for post-action waiting:
+ * - Waits for network to be idle for 150ms
+ * - Times out after 2s to avoid hanging
+ * - Does not block on slow background requests
+ *
+ * @param cdp - CDP connection
+ * @returns Promise that resolves when stable or timeout reached
+ *
+ * @remarks
+ * This is intentionally less strict than page readiness on initial load.
+ * It's designed to catch immediate reactions to user actions (AJAX, re-renders)
+ * without waiting for unrelated background activity.
+ */
+export async function waitForActionStability(cdp: CDPConnection): Promise<void> {
+  const deadline = Date.now() + ACTION_STABILITY_TIMEOUT_MS;
+
+  let activeRequests = 0;
+  let lastActivity = Date.now();
+
+  const requestHandler = (): void => {
+    activeRequests++;
+    lastActivity = Date.now();
+  };
+
+  const finishHandler = (): void => {
+    activeRequests--;
+    if (activeRequests === 0) {
+      lastActivity = Date.now();
+    }
+  };
+
+  await cdp.send('Network.enable');
+
+  const cleanupRequest = cdp.on('Network.requestWillBeSent', requestHandler);
+  const cleanupFinished = cdp.on('Network.loadingFinished', finishHandler);
+  const cleanupFailed = cdp.on('Network.loadingFailed', finishHandler);
+
+  try {
+    while (Date.now() < deadline) {
+      if (activeRequests === 0) {
+        const idleTime = Date.now() - lastActivity;
+        if (idleTime >= ACTION_NETWORK_IDLE_MS) {
+          log.debug(`Network stable after ${idleTime}ms idle`);
+          return;
+        }
+      }
+
+      await delay(STABILITY_CHECK_INTERVAL_MS);
+    }
+
+    log.debug('Stability timeout reached, proceeding');
+  } finally {
+    cleanupRequest();
+    cleanupFinished();
+    cleanupFailed();
+  }
+}
+
+/**
+ * Delay utility.
+ *
+ * @param ms - Milliseconds to delay
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

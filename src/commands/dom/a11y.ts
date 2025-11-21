@@ -245,7 +245,33 @@ async function handleA11yDescribe(
 export function registerA11yCommands(domCmd: Command): void {
   const a11y = domCmd
     .command('a11y')
-    .description('Accessibility tree inspection and semantic queries');
+    .description('Accessibility tree inspection and semantic queries')
+    .argument(
+      '[search]',
+      'Quick search: index (describe), pattern with ":" (query), or name search'
+    )
+    .addOption(jsonOption)
+    .action(async (search: string | undefined, options: A11yDescribeOptions) => {
+      if (!search) {
+        // No argument - show help
+        a11y.help();
+        return;
+      }
+
+      const isNumericIndex = /^\d+$/.test(search);
+      const isPatternQuery = search.includes(':') || search.includes('=');
+
+      if (isNumericIndex) {
+        // Numeric index → describe
+        await handleA11yDescribe(search, options);
+      } else if (isPatternQuery) {
+        // Contains ":" or "=" → query with pattern as-is (e.g., role:button, role=button)
+        await handleA11yQuery(search, options);
+      } else {
+        // Plain text → search by name with wildcards
+        await handleA11yQuery(`name:*${search}*`, options);
+      }
+    });
 
   a11y
     .command('tree')

@@ -120,7 +120,24 @@ export function validateUrl(url: string): {
     return {
       valid: false,
       error: `Invalid URL format: '${url}' (contains spaces)`,
-      suggestion: 'URLs cannot contain spaces',
+      suggestion:
+        'URLs cannot contain spaces. If your URL has query parameters, wrap it in quotes: bdg "https://example.com/search?q=test"',
+    };
+  }
+
+  // Check for signs of shell glob expansion issues
+  // If URL looks like it might have been mangled by shell expansion
+  if (!url.includes('?') && !url.includes('&') && /^[a-z]+:\/\/[^/]+\/[^/]+$/.test(url)) {
+    // URL has path but no query params - might be fine, continue validation
+  }
+
+  // Detect if URL looks truncated (common when shell expands ? as glob)
+  if (url.endsWith('?') || url.endsWith('&')) {
+    return {
+      valid: false,
+      error: `URL appears truncated: '${url}'`,
+      suggestion:
+        'URLs with query parameters (? or &) must be quoted: bdg "https://example.com/search?q=test"',
     };
   }
 
@@ -176,7 +193,8 @@ export function validateUrl(url: string): {
     return {
       valid: false,
       error: `Invalid URL format: '${url}'`,
-      suggestion: 'URLs must include a valid protocol (http:// or https://)',
+      suggestion:
+        'URLs must include a valid protocol (http:// or https://). If URL has query parameters, quote it: bdg "https://example.com?q=test"',
     };
   }
 }

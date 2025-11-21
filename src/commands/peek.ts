@@ -100,17 +100,27 @@ export function registerPeekCommand(program: Command): void {
             console.clear();
           }
 
-          const previewOptions: PreviewOptions = previewBase.follow
-            ? { ...previewBase, viewedAt: new Date() }
-            : previewBase;
+          // Track unfiltered count for feedback when filter matches nothing
+          const unfilteredNetworkCount = output.data.network?.length ?? 0;
+          const filteredNetwork = output.data.network
+            ? filterByResourceType(output.data.network, resourceTypes)
+            : undefined;
+
+          const previewOptions: PreviewOptions = {
+            ...previewBase,
+            ...(previewBase.follow && { viewedAt: new Date() }),
+            // Pass filter info for feedback when no matches
+            ...(resourceTypes.length > 0 && {
+              filteredTypes: resourceTypes,
+              unfilteredNetworkCount,
+            }),
+          };
 
           const filteredOutput: BdgOutput = {
             ...output,
             data: {
               ...output.data,
-              ...(output.data.network && {
-                network: filterByResourceType(output.data.network, resourceTypes),
-              }),
+              ...(filteredNetwork !== undefined && { network: filteredNetwork }),
             },
           };
 
