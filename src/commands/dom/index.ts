@@ -1,8 +1,13 @@
 import type { Command } from 'commander';
 
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
-import { queryDOMElements, getDOMElements, capturePageScreenshot } from '@/commands/dom/helpers.js';
-import type { DomGetOptions as DomGetHelperOptions } from '@/commands/dom/helpers.js';
+import {
+  queryDOMElements,
+  getDOMElements,
+  capturePageScreenshot,
+  getDomContext,
+} from '@/commands/dom/helpers.js';
+import type { DomGetOptions as DomGetHelperOptions, DomContext } from '@/commands/dom/helpers.js';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
@@ -14,7 +19,6 @@ import {
   formatDomEval,
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
-import { semantic } from '@/ui/formatters/semantic.js';
 import { elementNotFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -155,7 +159,10 @@ async function handleIndexGet(index: number, options: DomGetOptions): Promise<vo
     await runCommand(
       async () => {
         const targetNode = await getCachedNodeByIndex(index);
-        const node = await resolveA11yNode('', targetNode.nodeId);
+        const [node, domContext] = await Promise.all([
+          resolveA11yNode('', targetNode.nodeId),
+          getDomContext(targetNode.nodeId),
+        ]);
 
         if (!node) {
           throw new CommandError(
@@ -165,10 +172,10 @@ async function handleIndexGet(index: number, options: DomGetOptions): Promise<vo
           );
         }
 
-        return { success: true, data: node };
+        return { success: true, data: { node, domContext } };
       },
       options,
-      formatSemanticNode
+      formatSemanticNodeWithContext
     );
   }
 }
@@ -202,24 +209,79 @@ async function handleSelectorGet(selector: string, options: DomGetOptions): Prom
           throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
         }
 
-        return { success: true, data: node };
+        // Fetch DOM context using backendDOMNodeId if available
+        let domContext: DomContext | null = null;
+        if (node.backendDOMNodeId) {
+          domContext = await getDomContext(node.backendDOMNodeId);
+        }
+
+        return { success: true, data: { node, domContext } };
       },
       options,
-      formatSemanticNode
+      formatSemanticNodeWithContext
     );
   }
 }
 
 /**
- * Formatter for single semantic node
+ * Data structure for semantic node with DOM context.
  */
-function formatSemanticNode(node: A11yNode): string {
-  const fakeTree = {
-    root: node,
-    nodes: new Map([[node.nodeId, node]]),
-    count: 1,
-  };
-  return semantic(fakeTree);
+interface SemanticNodeWithContext {
+  node: A11yNode;
+  domContext: DomContext | null;
+}
+
+/**
+ * Formatter for single semantic node with DOM context fallback.
+ *
+ * When a11y name is missing, shows DOM context (tag, classes, text preview)
+ * to provide useful information instead of just "[Role]".
+ */
+function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
+  const { node, domContext } = data;
+
+  // Build the role text
+  let roleText = `[${capitalize(node.role)}]`;
+  if (node.role.toLowerCase() === 'heading' && node.properties?.['level'] !== undefined) {
+    const level = node.properties['level'];
+    const levelNum = typeof level === 'number' ? level : Number(level);
+    if (!isNaN(levelNum)) {
+      roleText = `[Heading L${levelNum}]`;
+    }
+  }
+
+  // Build the name/context text
+  let contextText = '';
+  if (node.name) {
+    // Use a11y name when available
+    contextText = ` "${node.name}"`;
+  } else if (domContext) {
+    // Fallback to DOM context when a11y name is missing
+    const tagPart = `<${domContext.tag}`;
+    const classPart =
+      domContext.classes && domContext.classes.length > 0
+        ? `.${domContext.classes.slice(0, 3).join('.')}`
+        : '';
+    const previewPart = domContext.preview ? ` "${domContext.preview}"` : '';
+    contextText = ` ${tagPart}${classPart}>${previewPart}`;
+  }
+
+  // Build properties text
+  const props: string[] = [];
+  if (node.focusable) props.push('focusable');
+  if (node.focused) props.push('focused');
+  if (node.disabled) props.push('disabled');
+  if (node.required) props.push('required');
+  const propsText = props.length > 0 ? ` (${props.join(', ')})` : '';
+
+  return `${roleText}${contextText}${propsText}`;
+}
+
+/**
+ * Capitalize first letter of string.
+ */
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 /**

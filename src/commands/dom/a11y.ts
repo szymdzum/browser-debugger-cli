@@ -11,6 +11,8 @@
 
 import type { Command } from 'commander';
 
+import { getDomContext } from '@/commands/dom/helpers.js';
+import type { DomContext } from '@/commands/dom/helpers.js';
 import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -20,8 +22,13 @@ import {
   parseQueryPattern,
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
+import type { A11yNode } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
-import { formatA11yTree, formatA11yQueryResult, formatA11yNode } from '@/ui/formatters/a11y.js';
+import {
+  formatA11yTree,
+  formatA11yQueryResult,
+  formatA11yNodeWithContext,
+} from '@/ui/formatters/a11y.js';
 import { elementNotFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -162,11 +169,20 @@ async function getCachedNodeByIndex(index: number): Promise<{ nodeId: number }> 
 }
 
 /**
+ * Data structure for a11y node with DOM context.
+ */
+interface A11yNodeWithContext {
+  node: A11yNode;
+  domContext: DomContext | null;
+}
+
+/**
  * Handle bdg dom a11y describe <selectorOrIndex> command
  *
  * Gets accessibility properties for a DOM element by CSS selector or numeric index.
  * Supports index-based access from query results (e.g., "bdg dom a11y describe 0").
  * Useful for understanding how an element is exposed to assistive technologies.
+ * Includes DOM context (tag, classes, text preview) when a11y data is sparse.
  *
  * @param selectorOrIndex - CSS selector (e.g., "button.submit") or numeric index from query results
  * @param options - Command options
@@ -187,12 +203,14 @@ async function handleA11yDescribe(
 
   await runCommand(
     async () => {
-      let node: Awaited<ReturnType<typeof resolveA11yNode>>;
+      let node: A11yNode | null;
+      let nodeId: number | undefined;
 
       if (isNumericIndex) {
         const index = parseInt(selectorOrIndex, 10);
         const targetNode = await getCachedNodeByIndex(index);
-        node = await resolveA11yNode('', targetNode.nodeId);
+        nodeId = targetNode.nodeId;
+        node = await resolveA11yNode('', nodeId);
       } else {
         node = await resolveA11yNode(selectorOrIndex);
       }
@@ -205,10 +223,17 @@ async function handleA11yDescribe(
         );
       }
 
-      return { success: true, data: node };
+      // Fetch DOM context using backendDOMNodeId or the cached nodeId
+      let domContext: DomContext | null = null;
+      const domNodeId = node.backendDOMNodeId ?? nodeId;
+      if (domNodeId) {
+        domContext = await getDomContext(domNodeId);
+      }
+
+      return { success: true, data: { node, domContext } as A11yNodeWithContext };
     },
     options,
-    formatA11yNode
+    formatA11yNodeWithContext
   );
 }
 

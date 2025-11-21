@@ -1,5 +1,14 @@
+import type { DomContext } from '@/types/dom.js';
 import type { A11yTree, A11yQueryResult, A11yNode } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+
+/**
+ * Data structure for a11y node with DOM context.
+ */
+interface A11yNodeWithContext {
+  node: A11yNode;
+  domContext: DomContext | null;
+}
 
 /**
  * Maximum number of nodes to display in tree output before truncating.
@@ -102,6 +111,78 @@ export function formatA11yNode(node: A11yNode): string {
     props.push(['Value', node.value]);
   }
 
+  if (node.focusable) {
+    props.push(['Focusable', 'yes']);
+  }
+  if (node.focused) {
+    props.push(['Focused', 'yes']);
+  }
+  if (node.disabled) {
+    props.push(['Disabled', 'yes']);
+  }
+  if (node.required) {
+    props.push(['Required', 'yes']);
+  }
+
+  props.push(['Node ID', node.nodeId]);
+  if (node.backendDOMNodeId) {
+    props.push(['DOM Node ID', String(node.backendDOMNodeId)]);
+  }
+
+  fmt.keyValueList(props, 16);
+
+  if (node.properties && Object.keys(node.properties).length > 0) {
+    fmt.blank().text('Additional Properties:').blank();
+    const additionalProps = Object.entries(node.properties).map(
+      ([key, value]) => [key, String(value)] as [string, string]
+    );
+    fmt.keyValueList(additionalProps, 20);
+  }
+
+  return fmt.build();
+}
+
+/**
+ * Format single accessibility node with DOM context fallback.
+ *
+ * Shows detailed properties including role, name, description, value, and states.
+ * When a11y data is sparse, includes DOM context (tag, classes, text preview).
+ *
+ * @param data - Accessibility node with DOM context
+ * @returns Formatted output string
+ */
+export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
+  const { node, domContext } = data;
+  const fmt = new OutputFormatter();
+
+  fmt.text(`Accessibility Node: ${node.role}`).separator('─', SEPARATOR_WIDTH).blank();
+
+  const props: [string, string][] = [];
+
+  // A11y properties
+  if (node.name) {
+    props.push(['Name', node.name]);
+  }
+  if (node.description) {
+    props.push(['Description', node.description]);
+  }
+  if (node.value !== undefined) {
+    props.push(['Value', node.value]);
+  }
+
+  // DOM context fallback when a11y data is sparse
+  if (domContext) {
+    props.push(['Tag', `<${domContext.tag}>`]);
+    if (domContext.classes && domContext.classes.length > 0) {
+      props.push(['Classes', domContext.classes.join(' ')]);
+    }
+    if (domContext.preview && !node.name && !node.description) {
+      // Only show text preview if no a11y name/description
+      props.push(['Text Preview', domContext.preview]);
+    }
+  }
+
+  // State properties
   if (node.focusable) {
     props.push(['Focusable', 'yes']);
   }

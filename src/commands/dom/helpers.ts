@@ -14,6 +14,7 @@ import type {
   ScreenshotResult,
   DomGetOptions,
   ScreenshotOptions,
+  DomContext,
 } from '@/types/dom.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -22,7 +23,14 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
 
-export type { DomQueryResult, DomGetResult, ScreenshotResult, DomGetOptions, ScreenshotOptions };
+export type {
+  DomQueryResult,
+  DomGetResult,
+  ScreenshotResult,
+  DomGetOptions,
+  ScreenshotOptions,
+  DomContext,
+};
 
 /**
  * Maximum concurrent CDP calls for DOM operations.
@@ -121,6 +129,61 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
     count: nodes.length,
     nodes,
   };
+}
+
+/**
+ * Fetch DOM context (tag, classes, text preview) for a node by its nodeId.
+ *
+ * Used to enrich semantic output when a11y name is missing.
+ *
+ * @param nodeId - CDP node ID
+ * @returns DOM context with tag, classes, and text preview
+ */
+export async function getDomContext(nodeId: number): Promise<DomContext | null> {
+  try {
+    await callCDP('DOM.enable', {});
+
+    const descResponse = await callCDP('DOM.describeNode', { nodeId });
+    const descResult = descResponse.data?.result as Protocol.DOM.DescribeNodeResponse | undefined;
+    const nodeDesc = descResult?.node;
+
+    if (!nodeDesc) {
+      return null;
+    }
+
+    const attributes: Record<string, string> = {};
+    if (nodeDesc.attributes) {
+      for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
+        const key = nodeDesc.attributes[i];
+        const value = nodeDesc.attributes[i + 1];
+        if (key !== undefined && value !== undefined) {
+          attributes[key] = value;
+        }
+      }
+    }
+
+    const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
+    const tag = nodeDesc.nodeName.toLowerCase();
+
+    const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
+    const htmlResult = htmlResponse.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined;
+    const outerHTML = htmlResult?.outerHTML ?? '';
+
+    const textContent = outerHTML
+      .replace(/<[^>]*>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
+
+    const context: DomContext = { tag };
+    if (classes && classes.length > 0) context.classes = classes;
+    if (preview) context.preview = preview;
+
+    return context;
+  } catch (error) {
+    log.debug(`Failed to get DOM context for nodeId ${nodeId}: ${String(error)}`);
+    return null;
+  }
 }
 
 /**

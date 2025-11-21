@@ -89,21 +89,69 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('fill')
     .description('Fill a form field with a value (React-compatible)')
-    .argument('<selector>', 'CSS selector for the element')
+    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .argument('<value>', 'Value to fill')
     .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
     .addOption(jsonOption)
-    .action(async (selector: string, value: string, options: FillCommandOptions) => {
+    .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
         async () => {
           return await withCDPConnection(async (cdp) => {
+            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
+
+            if (isNumericIndex) {
+              // Use cached query results like `dom get` does
+              const { getSessionQueryCache } = await import('@/session/queryCache.js');
+              const cachedQuery = getSessionQueryCache();
+
+              if (!cachedQuery) {
+                return {
+                  success: false,
+                  error: 'No cached query results found',
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+                };
+              }
+
+              const index = parseInt(selectorOrIndex, 10);
+              if (index < 0 || index >= cachedQuery.nodes.length) {
+                return {
+                  success: false,
+                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
+                };
+              }
+
+              // Fill using the cached selector with 1-based index
+              const fillOptions = filterDefined({
+                index: index + 1,
+                blur: options.blur,
+              }) as { index?: number; blur?: boolean };
+
+              const result = await fillElement(cdp, cachedQuery.selector, value, fillOptions);
+
+              if (!result.success) {
+                return {
+                  success: false,
+                  error: result.error ?? 'Failed to fill element',
+                  exitCode: result.error?.includes('not found')
+                    ? EXIT_CODES.RESOURCE_NOT_FOUND
+                    : EXIT_CODES.INVALID_ARGUMENTS,
+                };
+              }
+
+              return { success: true, data: result };
+            }
+
+            // Regular selector-based fill
             const fillOptions = filterDefined({
               index: options.index,
               blur: options.blur,
             }) as { index?: number; blur?: boolean };
 
-            const result = await fillElement(cdp, selector, value, fillOptions);
+            const result = await fillElement(cdp, selectorOrIndex, value, fillOptions);
 
             if (!result.success) {
               return {
@@ -125,19 +173,62 @@ export function registerFormInteractionCommands(program: Command): void {
 
   domCommand
     .command('click')
-    .description('Click an element')
-    .argument('<selector>', 'CSS selector for the element')
+    .description('Click an element (accepts CSS selector or cached query index)')
+    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
     .addOption(jsonOption)
-    .action(async (selector: string, options: ClickCommandOptions) => {
+    .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
       await runCommand(
         async () => {
           return await withCDPConnection(async (cdp) => {
+            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
+
+            if (isNumericIndex) {
+              // Use cached query results like `dom get` does
+              const { getSessionQueryCache } = await import('@/session/queryCache.js');
+              const cachedQuery = getSessionQueryCache();
+
+              if (!cachedQuery) {
+                return {
+                  success: false,
+                  error: 'No cached query results found',
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+                };
+              }
+
+              const index = parseInt(selectorOrIndex, 10);
+              if (index < 0 || index >= cachedQuery.nodes.length) {
+                return {
+                  success: false,
+                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
+                };
+              }
+
+              // Click using the cached selector with 1-based index
+              const result = await clickElement(cdp, cachedQuery.selector, { index: index + 1 });
+
+              if (!result.success) {
+                return {
+                  success: false,
+                  error: result.error ?? 'Failed to click element',
+                  exitCode: result.error?.includes('not found')
+                    ? EXIT_CODES.RESOURCE_NOT_FOUND
+                    : EXIT_CODES.INVALID_ARGUMENTS,
+                };
+              }
+
+              return { success: true, data: result };
+            }
+
+            // Regular selector-based click
             const clickOptions = filterDefined({
               index: options.index,
             }) as { index?: number };
 
-            const result = await clickElement(cdp, selector, clickOptions);
+            const result = await clickElement(cdp, selectorOrIndex, clickOptions);
 
             if (!result.success) {
               return {
@@ -160,16 +251,73 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('submit')
     .description('Submit a form by clicking submit button and waiting for completion')
-    .argument('<selector>', 'CSS selector for the submit button')
+    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
     .option('--wait-navigation', 'Wait for page navigation after submit')
     .option('--wait-network <ms>', 'Wait for network idle after submit (milliseconds)', '1000')
     .option('--timeout <ms>', 'Maximum time to wait (milliseconds)', '10000')
     .addOption(jsonOption)
-    .action(async (selector: string, options: SubmitCommandOptions) => {
+    .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
         async () => {
           return await withCDPConnection(async (cdp) => {
+            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
+
+            if (isNumericIndex) {
+              // Use cached query results like `dom get` does
+              const { getSessionQueryCache } = await import('@/session/queryCache.js');
+              const cachedQuery = getSessionQueryCache();
+
+              if (!cachedQuery) {
+                return {
+                  success: false,
+                  error: 'No cached query results found',
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+                };
+              }
+
+              const index = parseInt(selectorOrIndex, 10);
+              if (index < 0 || index >= cachedQuery.nodes.length) {
+                return {
+                  success: false,
+                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
+                };
+              }
+
+              // Submit using the cached selector with 1-based index
+              const submitOptions = filterDefined({
+                index: index + 1,
+                waitNavigation: options.waitNavigation,
+                waitNetwork: parseInt(options.waitNetwork, 10),
+                timeout: parseInt(options.timeout, 10),
+              }) as {
+                index?: number;
+                waitNavigation?: boolean;
+                waitNetwork?: number;
+                timeout?: number;
+              };
+
+              const result = await submitForm(cdp, cachedQuery.selector, submitOptions);
+
+              if (!result.success) {
+                return {
+                  success: false,
+                  error: result.error ?? 'Failed to submit form',
+                  exitCode: result.error?.includes('not found')
+                    ? EXIT_CODES.RESOURCE_NOT_FOUND
+                    : result.error?.includes('Timeout')
+                      ? EXIT_CODES.CDP_TIMEOUT
+                      : EXIT_CODES.INVALID_ARGUMENTS,
+                };
+              }
+
+              return { success: true, data: result };
+            }
+
+            // Regular selector-based submit
             const submitOptions = filterDefined({
               index: options.index,
               waitNavigation: options.waitNavigation,
@@ -182,7 +330,7 @@ export function registerFormInteractionCommands(program: Command): void {
               timeout?: number;
             };
 
-            const result = await submitForm(cdp, selector, submitOptions);
+            const result = await submitForm(cdp, selectorOrIndex, submitOptions);
 
             if (!result.success) {
               return {

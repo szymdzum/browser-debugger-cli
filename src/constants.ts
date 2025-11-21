@@ -166,11 +166,15 @@ export const DEFAULT_PAGE_READINESS_TIMEOUT_MS = 2000;
 // ============================================================================
 
 /**
- * Maximum JSONL buffer size in bytes (10MB)
+ * Maximum JSONL buffer size in bytes (50MB)
  * Prevents OOM attacks from malicious/buggy processes sending data without newlines
  * If buffer exceeds this size, connection is terminated with protocol error
+ *
+ * Set to 50MB to accommodate large screenshots (base64-encoded full-page captures
+ * of content-heavy pages like Amazon can exceed 10MB).
+ * Matches CHROME_NETWORK_BUFFER_TOTAL for consistency.
  */
-export const MAX_JSONL_BUFFER_SIZE = 10 * 1024 * 1024; // 10MB
+export const MAX_JSONL_BUFFER_SIZE = 50 * 1024 * 1024; // 50MB
 
 /**
  * IPC request timeout in milliseconds (45 seconds in production, 5 seconds in tests)

@@ -62,15 +62,15 @@ void describe('JSONLBuffer', () => {
   void it('throws on buffer overflow', () => {
     const buffer = new JSONLBuffer();
 
-    // Create a chunk larger than MAX_JSONL_BUFFER_SIZE (10MB) without newlines
-    const largeChunk = 'x'.repeat(11 * 1024 * 1024); // 11MB
+    // Create a chunk larger than MAX_JSONL_BUFFER_SIZE (50MB) without newlines
+    const largeChunk = 'x'.repeat(51 * 1024 * 1024); // 51MB
 
     assert.throws(
       () => {
         buffer.process(largeChunk);
       },
       (error: unknown) => {
-        return error instanceof JSONLBufferOverflowError && error.message.includes('10485760');
+        return error instanceof JSONLBufferOverflowError && error.message.includes('52428800');
       }
     );
   });
@@ -78,8 +78,8 @@ void describe('JSONLBuffer', () => {
   void it('allows chunks under buffer limit', () => {
     const buffer = new JSONLBuffer();
 
-    // Create a chunk just under the limit
-    const largeButValidChunk = '{"data":"' + 'x'.repeat(9 * 1024 * 1024) + '"}\n';
+    // Create a chunk just under the limit (40MB is well under 50MB limit)
+    const largeButValidChunk = '{"data":"' + 'x'.repeat(40 * 1024 * 1024) + '"}\n';
 
     // Should not throw
     const lines = buffer.process(largeButValidChunk);

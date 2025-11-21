@@ -19,14 +19,34 @@
  */
 export const REACT_FILL_SCRIPT = `
 (function(selector, value, options) {
-  const el = document.querySelector(selector);
+  const allMatches = document.querySelectorAll(selector);
   
-  if (!el) {
+  if (allMatches.length === 0) {
     return { 
       success: false, 
       error: 'Element not found',
       selector: selector
     };
+  }
+  
+  let el;
+  const index = options.index;
+  
+  // If index is provided, use it directly (1-based)
+  if (typeof index === 'number' && index > 0) {
+    if (index > allMatches.length) {
+      return {
+        success: false,
+        error: 'Index out of range',
+        selector: selector,
+        matchCount: allMatches.length,
+        requestedIndex: index,
+        suggestion: 'Use --index between 1 and ' + allMatches.length
+      };
+    }
+    el = allMatches[index - 1];
+  } else {
+    el = allMatches[0];
   }
   
   const tagName = el.tagName.toLowerCase();
@@ -111,14 +131,15 @@ export const REACT_FILL_SCRIPT = `
  * JavaScript function to click an element.
  *
  * @remarks
- * Simple click implementation that works with buttons, links, and custom components.
- * When selector matches multiple elements, prioritizes visible ones.
+ * Handles both direct selector matching and indexed selection.
+ * When index is provided, selects the nth matching element (1-based).
+ * When selector matches multiple elements without index, prioritizes visible ones.
  */
 export const CLICK_ELEMENT_SCRIPT = `
-(function(selector) {
-  let el = document.querySelector(selector);
+(function(selector, index) {
+  const allMatches = document.querySelectorAll(selector);
   
-  if (!el) {
+  if (allMatches.length === 0) {
     return {
       success: false,
       error: 'Element not found',
@@ -126,8 +147,27 @@ export const CLICK_ELEMENT_SCRIPT = `
     };
   }
   
-  const allMatches = document.querySelectorAll(selector);
-  if (allMatches.length > 1) {
+  let el;
+  
+  // If index is provided, use it directly (1-based)
+  if (typeof index === 'number' && index > 0) {
+    if (index > allMatches.length) {
+      return {
+        success: false,
+        error: 'Index out of range',
+        selector: selector,
+        matchCount: allMatches.length,
+        requestedIndex: index,
+        suggestion: 'Use --index between 1 and ' + allMatches.length
+      };
+    }
+    el = allMatches[index - 1];
+  } else if (allMatches.length === 1) {
+    // Single match - use it directly
+    el = allMatches[0];
+  } else {
+    // Multiple matches without index - find first visible one
+    el = allMatches[0];
     for (const candidate of allMatches) {
       const style = window.getComputedStyle(candidate);
       const rect = candidate.getBoundingClientRect();
@@ -168,7 +208,9 @@ export const CLICK_ELEMENT_SCRIPT = `
     success: true,
     selector: selector,
     elementType: tagName,
-    clickable: isClickable
+    clickable: isClickable,
+    matchCount: allMatches.length,
+    selectedIndex: typeof index === 'number' ? index : undefined
   };
 })
 `;
@@ -280,6 +322,10 @@ export interface ClickResult {
   selector?: string;
   elementType?: string;
   clickable?: boolean;
+  matchCount?: number;
+  selectedIndex?: number;
+  requestedIndex?: number;
+  suggestion?: string;
 }
 
 /**

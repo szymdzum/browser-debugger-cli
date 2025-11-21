@@ -6,6 +6,16 @@
  */
 
 /**
+ * DOM context information for enriching semantic output.
+ * Used when a11y name is missing to provide useful element context.
+ */
+export interface DomContext {
+  tag: string;
+  classes?: string[];
+  preview?: string;
+}
+
+/**
  * Result of a DOM query operation
  */
 export interface DomQueryResult {
