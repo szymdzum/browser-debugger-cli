@@ -62,6 +62,8 @@ export type ElementTargetResult = ElementTargetSuccess | ElementTargetFailure;
  * - A CSS selector string (used directly)
  * - A numeric index (resolved from cached query results)
  *
+ * Validates cache staleness by checking navigationId against current page state.
+ *
  * @param selectorOrIndex - CSS selector or numeric index from query results
  * @param explicitIndex - Optional explicit --index flag value (1-based)
  * @returns Resolution result with selector and optional index
@@ -82,18 +84,19 @@ export async function resolveElementTarget(
   const isNumericIndex = /^\d+$/.test(selectorOrIndex);
 
   if (isNumericIndex) {
-    const { getSessionQueryCache } = await import('@/session/queryCache.js');
-    const cachedQuery = getSessionQueryCache();
+    const { validateQueryCache } = await import('@/session/queryCache.js');
+    const validation = await validateQueryCache();
 
-    if (!cachedQuery) {
+    if (!validation.valid || !validation.cache) {
       return {
         success: false,
-        error: 'No cached query results found',
+        error: validation.error ?? 'No cached query results found',
         exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-        suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+        suggestion: validation.suggestion,
       };
     }
 
+    const cachedQuery = validation.cache;
     const index = parseInt(selectorOrIndex, 10);
     if (index < 0 || index >= cachedQuery.nodes.length) {
       return {

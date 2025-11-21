@@ -244,6 +244,7 @@ export class ResponseHandler {
         ...baseStatusData,
         activity: data.activity,
         pageState: data.target,
+        navigationId: data.navigationId,
       };
 
       const statusResponse: StatusResponse = {

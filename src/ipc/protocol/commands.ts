@@ -98,6 +98,8 @@ export interface WorkerStatusData {
   target: PageState;
   activeTelemetry: string[];
   activity: SessionActivity;
+  /** Current navigation counter (increments on each page navigation). */
+  navigationId: number;
 }
 
 /**

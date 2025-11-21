@@ -42,6 +42,8 @@ export interface StatusResponseData {
   activity?: SessionActivity;
   /** Current page state. */
   pageState?: PageState;
+  /** Current navigation counter (increments on each page navigation). */
+  navigationId?: number;
 }
 
 /**

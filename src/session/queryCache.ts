@@ -7,6 +7,9 @@
  *
  * Uses file-based persistence to work across separate CLI process invocations.
  * Cache is stored in ~/.bdg/query-cache.json and cleared when session ends.
+ *
+ * Cache includes navigationId for staleness detection - when the page navigates,
+ * cached node IDs become invalid and users should re-run their query.
  */
 
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'fs';
@@ -85,4 +88,92 @@ export function clearSessionQueryCache(): void {
   } catch (error) {
     log.debug(`Failed to clear query cache: ${getErrorMessage(error)}`);
   }
+}
+
+/**
+ * Result of validating query cache against current navigation state.
+ */
+export interface QueryCacheValidation {
+  /** Whether the cache is valid for use. */
+  valid: boolean;
+  /** The cached query result (if exists). */
+  cache: DomQueryResult | null;
+  /** Error message if cache is invalid. */
+  error?: string;
+  /** Suggestion for fixing the error. */
+  suggestion?: string;
+}
+
+/**
+ * Get current navigation ID from the daemon.
+ *
+ * @returns Current navigation ID or null if unavailable
+ */
+export async function getCurrentNavigationId(): Promise<number | null> {
+  try {
+    const { getStatus } = await import('@/ipc/client.js');
+    const response = await getStatus();
+
+    if (response.status === 'ok' && response.data?.navigationId !== undefined) {
+      return response.data.navigationId;
+    }
+
+    return null;
+  } catch (error) {
+    log.debug(`Failed to get current navigation ID: ${getErrorMessage(error)}`);
+    return null;
+  }
+}
+
+/**
+ * Validate query cache against current navigation state.
+ *
+ * Checks if the cached query results are still valid by comparing
+ * the stored navigationId with the current one from the daemon.
+ *
+ * @returns Validation result with cache and error info
+ *
+ * @example
+ * ```typescript
+ * const validation = await validateQueryCache();
+ * if (!validation.valid) {
+ *   throw new CommandError(validation.error, { suggestion: validation.suggestion });
+ * }
+ * const cache = validation.cache;
+ * ```
+ */
+export async function validateQueryCache(): Promise<QueryCacheValidation> {
+  const cache = getSessionQueryCache();
+
+  if (!cache) {
+    return {
+      valid: false,
+      cache: null,
+      error: 'No cached query results found',
+      suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+    };
+  }
+
+  if (cache.navigationId === undefined) {
+    log.debug('Query cache missing navigationId (legacy format), allowing access');
+    return { valid: true, cache };
+  }
+
+  const currentNavId = await getCurrentNavigationId();
+
+  if (currentNavId === null) {
+    log.debug('Could not get current navigationId, allowing cache access');
+    return { valid: true, cache };
+  }
+
+  if (cache.navigationId !== currentNavId) {
+    return {
+      valid: false,
+      cache,
+      error: `Query cache is stale (page has navigated since query was run)`,
+      suggestion: `Re-run "bdg dom query ${cache.selector}" to refresh cached results`,
+    };
+  }
+
+  return { valid: true, cache };
 }

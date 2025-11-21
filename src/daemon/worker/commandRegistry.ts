@@ -124,6 +124,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           lastNetworkRequestAt?: number;
           lastConsoleMessageAt?: number;
         },
+        navigationId: store.getCurrentNavigationId?.() ?? 0,
       };
 
       return Promise.resolve(result);

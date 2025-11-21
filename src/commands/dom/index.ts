@@ -63,8 +63,15 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
     async () => {
       const result = await queryDOMElements(selector);
 
-      const { setSessionQueryCache } = await import('@/session/queryCache.js');
-      setSessionQueryCache(result);
+      const { setSessionQueryCache, getCurrentNavigationId } = await import(
+        '@/session/queryCache.js'
+      );
+      const navigationId = await getCurrentNavigationId();
+      const resultWithNavId = {
+        ...result,
+        ...(navigationId !== null && { navigationId }),
+      };
+      setSessionQueryCache(resultWithNavId);
 
       return { success: true, data: result };
     },
@@ -76,24 +83,26 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
 /**
  * Retrieve cached node by index with validation.
  *
+ * Validates cache staleness by checking navigationId against current page state.
+ *
  * @param index - Zero-based index from query results
  * @returns Node from cache
- * @throws CommandError if cache missing, index out of range, or node not found
+ * @throws CommandError if cache missing, stale, index out of range, or node not found
  */
 async function getCachedNodeByIndex(index: number): Promise<{ nodeId: number }> {
-  const { getSessionQueryCache } = await import('@/session/queryCache.js');
+  const { validateQueryCache } = await import('@/session/queryCache.js');
 
-  const cachedQuery = getSessionQueryCache();
+  const validation = await validateQueryCache();
 
-  if (!cachedQuery) {
+  if (!validation.valid || !validation.cache) {
     throw new CommandError(
-      'No cached query results found',
-      {
-        suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
-      },
+      validation.error ?? 'No cached query results found',
+      validation.suggestion ? { suggestion: validation.suggestion } : {},
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
+
+  const cachedQuery = validation.cache;
 
   if (index < 0 || index >= cachedQuery.nodes.length) {
     throw new CommandError(

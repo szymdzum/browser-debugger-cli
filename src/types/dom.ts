@@ -28,6 +28,8 @@ export interface DomQueryResult {
     classes?: string[];
     preview?: string;
   }>;
+  /** Navigation ID when query was performed (for staleness detection). */
+  navigationId?: number;
 }
 
 /**
