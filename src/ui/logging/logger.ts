@@ -127,7 +127,6 @@ export function createLogger(context: LogContext): Logger {
  * Log an error with context using debug level.
  *
  * Convenience function that combines error message extraction with debug logging.
- * Reduces boilerplate of `log.debug(\`Failed to X: \${getErrorMessage(error)}\`)`.
  *
  * @param log - Logger instance to use
  * @param context - Human-readable description of what failed
