@@ -8,6 +8,7 @@ export {
   createLogger,
   enableDebugLogging,
   isDebugEnabled,
+  logDebugError,
   type LogContext,
   type LogLevel,
   type Logger,

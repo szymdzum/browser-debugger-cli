@@ -200,3 +200,47 @@ export function getIPCRequestTimeout(): number {
  * Description for port option in CLI commands
  */
 export const PORT_OPTION_DESCRIPTION = 'Chrome debugging port';
+
+/**
+ * CDP resource type to compact abbreviation mapping.
+ * Used for token-efficient display in preview/peek output.
+ */
+export const RESOURCE_TYPE_ABBREVIATIONS: Record<string, string> = {
+  Document: 'DOC',
+  Stylesheet: 'CSS',
+  Image: 'IMG',
+  Media: 'MED',
+  Font: 'FNT',
+  Script: 'SCR',
+  TextTrack: 'TXT',
+  XHR: 'XHR',
+  Fetch: 'FET',
+  Prefetch: 'PRE',
+  EventSource: 'EVT',
+  WebSocket: 'WS',
+  Manifest: 'MAN',
+  SignedExchange: 'SGX',
+  Ping: 'PNG',
+  CSPViolationReport: 'CSP',
+  Preflight: 'FLT',
+  FedCM: 'FED',
+  Other: 'OTH',
+};
+
+/**
+ * Rules for inferring resource types from MIME patterns.
+ * Ordered by precedence (first match wins).
+ * Type uses string to avoid circular dependency with typed-cdp.
+ */
+export const MIME_TYPE_RULES: Array<{
+  type: string;
+  match: RegExp;
+}> = [
+  { type: 'Document', match: /text\/html/i },
+  { type: 'Stylesheet', match: /text\/css/i },
+  { type: 'Script', match: /(java|ecma)script/i },
+  { type: 'Image', match: /^image\//i },
+  { type: 'Font', match: /font/i },
+  { type: 'Media', match: /^(video|audio)\//i },
+  { type: 'XHR', match: /json|xml/i },
+];

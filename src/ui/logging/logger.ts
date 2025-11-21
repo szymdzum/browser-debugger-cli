@@ -6,9 +6,7 @@
  * flag to enable verbose 'debug' level logs.
  */
 
-// ============================================================================
-// Global Debug State
-// ============================================================================
+import { getErrorMessage } from '@/connection/errors.js';
 
 let debugEnabled = false;
 
@@ -30,10 +28,6 @@ export function enableDebugLogging(): void {
 export function isDebugEnabled(): boolean {
   return debugEnabled || process.env['BDG_DEBUG'] === '1';
 }
-
-// ============================================================================
-// Log Levels
-// ============================================================================
 
 /**
  * Log level determines visibility of log messages.
@@ -67,10 +61,6 @@ export type LogContext =
   | 'diagnostics'
   | 'atomic-file';
 
-// ============================================================================
-// Logger Interface
-// ============================================================================
-
 /**
  * Logger instance with support for different log levels.
  */
@@ -93,10 +83,6 @@ export interface Logger {
    */
   (message: string): void;
 }
-
-// ============================================================================
-// Logger Implementation
-// ============================================================================
 
 /**
  * Create a logger instance for a specific context.
@@ -135,4 +121,29 @@ export function createLogger(context: LogContext): Logger {
   logger.debug = (message: string) => logMessage(message, 'debug');
 
   return logger;
+}
+
+/**
+ * Log an error with context using debug level.
+ *
+ * Convenience function that combines error message extraction with debug logging.
+ * Reduces boilerplate of `log.debug(\`Failed to X: \${getErrorMessage(error)}\`)`.
+ *
+ * @param log - Logger instance to use
+ * @param context - Human-readable description of what failed
+ * @param error - The caught error (unknown type from catch block)
+ *
+ * @example
+ * ```typescript
+ * const log = createLogger('cleanup');
+ * try {
+ *   fs.rmSync(filePath);
+ * } catch (error) {
+ *   logDebugError(log, 'remove session file', error);
+ * }
+ * // Logs: [cleanup] Failed to remove session file: ENOENT: no such file
+ * ```
+ */
+export function logDebugError(log: Logger, context: string, error: unknown): void {
+  log.debug(`Failed to ${context}: ${getErrorMessage(error)}`);
 }

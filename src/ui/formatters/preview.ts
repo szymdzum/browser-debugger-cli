@@ -1,4 +1,5 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
 import type { BdgOutput } from '@/types';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
@@ -11,57 +12,12 @@ import {
 import { semantic } from './semantic.js';
 
 /**
- * Resource type abbreviation mapping for compact display.
- * Defined at module level to avoid recreation on every call.
- */
-const RESOURCE_TYPE_ABBREVIATIONS: Record<string, string> = {
-  Document: 'DOC',
-  Stylesheet: 'CSS',
-  Image: 'IMG',
-  Media: 'MED',
-  Font: 'FNT',
-  Script: 'SCR',
-  TextTrack: 'TXT',
-  XHR: 'XHR',
-  Fetch: 'FET',
-  Prefetch: 'PRE',
-  EventSource: 'EVT',
-  WebSocket: 'WS',
-  Manifest: 'MAN',
-  SignedExchange: 'SGX',
-  Ping: 'PNG',
-  CSPViolationReport: 'CSP',
-  Preflight: 'FLT',
-  FedCM: 'FED',
-  Other: 'OTH',
-};
-
-/**
- * Rules for inferring resource types from MIME patterns.
- * Ordered by precedence (first match wins).
- */
-const MIME_TYPE_RULES: Array<{
-  type: Protocol.Network.ResourceType;
-  match: RegExp;
-}> = [
-  { type: 'Document', match: /text\/html/i },
-  { type: 'Stylesheet', match: /text\/css/i },
-  { type: 'Script', match: /(java|ecma)script/i },
-  { type: 'Image', match: /^image\//i },
-  { type: 'Font', match: /font/i },
-  { type: 'Media', match: /^(video|audio)\//i },
-  { type: 'XHR', match: /json|xml/i },
-];
-
-/**
  * Infer resource type from MIME type when CDP doesn't provide it.
  *
  * @param mimeType - MIME type string (e.g., 'application/json', 'text/html')
- * @returns Inferred Protocol.Network.ResourceType or undefined
+ * @returns Inferred resource type string or undefined
  */
-function inferResourceTypeFromMime(
-  mimeType: string | undefined
-): Protocol.Network.ResourceType | undefined {
+function inferResourceTypeFromMime(mimeType: string | undefined): string | undefined {
   if (!mimeType) return undefined;
   return MIME_TYPE_RULES.find((rule) => rule.match.test(mimeType))?.type;
 }
