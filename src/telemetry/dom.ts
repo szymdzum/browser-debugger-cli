@@ -135,17 +135,23 @@ async function collectA11yTree(
  * Capture a complete DOM snapshot of the current page.
  *
  * Called during session shutdown to get the final state of the page.
+ * Parallelizes independent CDP calls for better performance.
  *
  * @param cdp - CDP connection instance
  * @returns DOM data including URL, title, full HTML, and A11y tree
  */
 export async function collectDOM(cdp: CDPConnection): Promise<DOMData> {
   try {
-    const root = await getDocumentRoot(cdp);
+    // Run independent CDP calls in parallel for better performance
+    const [root, frame, title, a11yTree] = await Promise.all([
+      getDocumentRoot(cdp),
+      getMainFrame(cdp),
+      getDocumentTitle(cdp),
+      collectA11yTree(cdp),
+    ]);
+
+    // getOuterHTML depends on root.nodeId, so it must be sequential
     const outerHTML = await getOuterHTML(cdp, root.nodeId);
-    const frame = await getMainFrame(cdp);
-    const title = await getDocumentTitle(cdp);
-    const a11yTree = await collectA11yTree(cdp);
 
     return {
       url: frame.url,

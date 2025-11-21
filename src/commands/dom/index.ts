@@ -71,7 +71,7 @@ async function handleDomQuery(selector: string, options: DomQueryOptions): Promi
         ...result,
         ...(navigationId !== null && { navigationId }),
       };
-      setSessionQueryCache(resultWithNavId);
+      await setSessionQueryCache(resultWithNavId);
 
       return { success: true, data: result };
     },

@@ -107,7 +107,7 @@ export function registerStopCommand(program: Command): void {
                 }
               }
 
-              orphanedDaemonsCount = cleanupOrphanedDaemons();
+              orphanedDaemonsCount = await cleanupOrphanedDaemons();
 
               return {
                 success: true,

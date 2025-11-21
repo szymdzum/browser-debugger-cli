@@ -80,7 +80,7 @@ export function registerCleanupCommand(program: Command): void {
           const warnings: string[] = [];
 
           if (opts.aggressive) {
-            const daemonsKilled = cleanupOrphanedDaemons();
+            const daemonsKilled = await cleanupOrphanedDaemons();
             if (daemonsKilled > 0) {
               cleanedDaemons = true;
               didCleanup = true;

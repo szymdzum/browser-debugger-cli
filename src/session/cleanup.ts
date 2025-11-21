@@ -5,8 +5,11 @@
  * WHY: Centralized cleanup logic ensures consistent cleanup across error paths and normal shutdown.
  */
 
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
 import * as fs from 'fs';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -58,7 +61,7 @@ function killCachedChromeProcess(reason: string): void {
  *
  * @returns Array of orphaned daemon PIDs
  */
-function findOrphanedDaemons(): number[] {
+async function findOrphanedDaemons(): Promise<number[]> {
   const orphanedPids: number[] = [];
 
   try {
@@ -70,7 +73,7 @@ function findOrphanedDaemons(): number[] {
         ? 'wmic process where "commandline like \'%dist/daemon.js%\'" get processid'
         : 'ps aux | grep -E "node.*dist/daemon\\.js" | grep -v grep';
 
-    const output = execSync(psCommand, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] });
+    const { stdout: output } = await execAsync(psCommand);
 
     const lines = output.trim().split('\n');
 
@@ -271,7 +274,7 @@ export function cleanupSession(): void {
     log.debug(`Failed to remove daemon lock: ${getErrorMessage(error)}`);
   }
 
-  clearSessionQueryCache();
+  void clearSessionQueryCache();
 }
 
 /**
@@ -355,8 +358,8 @@ export function cleanupStaleDaemonPid(): boolean {
  * }
  * ```
  */
-export function cleanupOrphanedDaemons(): number {
-  const orphanedPids = findOrphanedDaemons();
+export async function cleanupOrphanedDaemons(): Promise<number> {
+  const orphanedPids = await findOrphanedDaemons();
 
   if (orphanedPids.length === 0) {
     log.debug('No orphaned daemon processes found');

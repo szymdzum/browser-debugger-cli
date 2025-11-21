@@ -55,6 +55,12 @@ export const DEFAULT_EXCLUDED_DOMAINS = [
 ] as const;
 
 /**
+ * Pre-compiled Set of excluded domains for O(1) exact match lookup.
+ * Lowercase for case-insensitive matching.
+ */
+const EXCLUDED_DOMAINS_SET = new Set(DEFAULT_EXCLUDED_DOMAINS.map((d) => d.toLowerCase()));
+
+/**
  * Console message types to exclude by default (Redux/React DevTools noise)
  */
 export const DEFAULT_EXCLUDED_CONSOLE_TYPES = [
@@ -139,7 +145,15 @@ export const DEFAULT_SKIP_BODY_MIME_TYPES = [
 ] as const;
 
 /**
+ * Pre-compiled Set of MIME types to skip for O(1) lookup.
+ */
+const SKIP_BODY_MIME_TYPES_SET = new Set(DEFAULT_SKIP_BODY_MIME_TYPES.map((m) => m.toLowerCase()));
+
+/**
  * Check if a URL should be excluded based on domain filtering.
+ *
+ * Uses pre-compiled Set for O(1) exact match, with O(n) fallback for subdomain matching.
+ * Optimized to check exact match first (most common case) before iterating.
  *
  * @param url - URL to check against exclusion list
  * @param includeAll - If true, disables all filtering
@@ -151,7 +165,21 @@ export function shouldExcludeDomain(url: string, includeAll: boolean = false): b
   }
 
   const hostname = extractHostname(url).toLowerCase();
-  return DEFAULT_EXCLUDED_DOMAINS.some((domain) => hostname.includes(domain.toLowerCase()));
+
+  // O(1) exact match check (most common case)
+  if (EXCLUDED_DOMAINS_SET.has(hostname)) {
+    return true;
+  }
+
+  // O(n) subdomain check - hostname ends with excluded domain
+  // e.g., "www.googletagmanager.com" matches "googletagmanager.com"
+  for (const domain of EXCLUDED_DOMAINS_SET) {
+    if (hostname.endsWith(`.${domain}`)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -316,10 +344,7 @@ export function shouldFetchBody(
 
   if (mimeType) {
     const normalizedMimeType = mimeType.toLowerCase().split(';')[0]?.trim() ?? '';
-    if (
-      normalizedMimeType &&
-      DEFAULT_SKIP_BODY_MIME_TYPES.some((skipType) => normalizedMimeType === skipType.toLowerCase())
-    ) {
+    if (normalizedMimeType && SKIP_BODY_MIME_TYPES_SET.has(normalizedMimeType)) {
       return false;
     }
   }

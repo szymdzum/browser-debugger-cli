@@ -38,12 +38,29 @@ function shouldFilterRequest(
 }
 
 /**
- * Fetch response body for a request.
+ * Fetch response body for a request with cancellation support.
+ *
+ * @param cdp - CDP connection instance
+ * @param requestId - Request ID to fetch body for
+ * @param request - Network request object to populate with body
+ * @param pendingFetches - Set to track pending fetch operations for cleanup
  */
-function fetchResponseBody(cdp: CDPConnection, requestId: string, request: NetworkRequest): void {
+function fetchResponseBody(
+  cdp: CDPConnection,
+  requestId: string,
+  request: NetworkRequest,
+  pendingFetches: Set<string>
+): void {
+  pendingFetches.add(requestId);
+
   void cdp
     .send('Network.getResponseBody', { requestId })
     .then((response) => {
+      // Skip if cleanup has already removed this from pending
+      if (!pendingFetches.has(requestId)) {
+        return;
+      }
+
       const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
       request.responseBody = typedResponse.body;
       if (typedResponse.body) {
@@ -54,6 +71,9 @@ function fetchResponseBody(cdp: CDPConnection, requestId: string, request: Netwo
       log.debug(
         `Failed to fetch response body for request ${requestId}: ${getErrorMessage(error)}`
       );
+    })
+    .finally(() => {
+      pendingFetches.delete(requestId);
     });
 }
 
@@ -79,6 +99,9 @@ function createNetworkRequest(
 
 /**
  * Clean up stale requests from the request map.
+ *
+ * Optimized to leverage Map insertion order - iterates from oldest entries
+ * and exits early once a non-stale request is found, avoiding O(n) full scan.
  */
 function cleanupStaleRequests(
   requestMap: Map<string, { request: NetworkRequest; timestamp: number }>
@@ -86,15 +109,22 @@ function cleanupStaleRequests(
   const now = Date.now();
   const staleRequests: string[] = [];
 
-  requestMap.forEach((value, requestId) => {
+  // Maps maintain insertion order, so oldest entries come first.
+  // Exit early once we find a non-stale request since newer ones won't be stale either.
+  for (const [requestId, value] of requestMap) {
     if (now - value.timestamp > STALE_REQUEST_TIMEOUT) {
       staleRequests.push(requestId);
+    } else {
+      // Found first non-stale request, stop iterating
+      break;
     }
-  });
+  }
 
   if (staleRequests.length > 0) {
     log.debug(`Cleaning up ${staleRequests.length} stale network requests`);
-    staleRequests.forEach((requestId) => requestMap.delete(requestId));
+    for (const requestId of staleRequests) {
+      requestMap.delete(requestId);
+    }
   }
 }
 
@@ -145,6 +175,7 @@ export async function startNetworkCollection(
     getCurrentNavigationId,
   } = options;
   const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
+  const pendingFetches = new Set<string>();
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
 
@@ -271,7 +302,7 @@ export async function startNetworkCollection(
 
     if (decision.should) {
       bodiesFetched++;
-      fetchResponseBody(cdp, params.requestId, request);
+      fetchResponseBody(cdp, params.requestId, request, pendingFetches);
     } else {
       bodiesSkipped++;
       request.responseBody = `[SKIPPED: ${decision.reason}]`;
@@ -309,8 +340,13 @@ export async function startNetworkCollection(
       );
     }
 
+    if (pendingFetches.size > 0) {
+      log.debug(`[PERF] Cancelling ${pendingFetches.size} pending body fetches`);
+    }
+
     clearInterval(cleanupInterval);
     registry.cleanup();
     requestMap.clear();
+    pendingFetches.clear();
   };
 }
