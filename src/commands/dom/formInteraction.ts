@@ -13,6 +13,7 @@ import {
 } from '@/commands/dom/formFillHelpers.js';
 import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
+import { resolveElementTarget } from '@/commands/dom/helpers.js';
 import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -104,62 +105,24 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
         async () => {
+          const target = await resolveElementTarget(selectorOrIndex, options.index);
+
+          if (!target.success) {
+            return {
+              success: false,
+              error: target.error ?? 'Failed to resolve element target',
+              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              suggestion: target.suggestion,
+            };
+          }
+
           return await withCDPConnection(async (cdp) => {
-            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
-
-            if (isNumericIndex) {
-              const { getSessionQueryCache } = await import('@/session/queryCache.js');
-              const cachedQuery = getSessionQueryCache();
-
-              if (!cachedQuery) {
-                return {
-                  success: false,
-                  error: 'No cached query results found',
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
-                };
-              }
-
-              const index = parseInt(selectorOrIndex, 10);
-              if (index < 0 || index >= cachedQuery.nodes.length) {
-                return {
-                  success: false,
-                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
-                };
-              }
-
-              const fillOptions = filterDefined({
-                index: index + 1,
-                blur: options.blur,
-              }) as { index?: number; blur?: boolean };
-
-              const result = await fillElement(cdp, cachedQuery.selector, value, fillOptions);
-
-              if (!result.success) {
-                return {
-                  success: false,
-                  error: result.error ?? 'Failed to fill element',
-                  exitCode: result.error?.includes('not found')
-                    ? EXIT_CODES.RESOURCE_NOT_FOUND
-                    : EXIT_CODES.INVALID_ARGUMENTS,
-                };
-              }
-
-              if (options.wait !== false) {
-                await waitForActionStability(cdp);
-              }
-
-              return { success: true, data: result };
-            }
-
             const fillOptions = filterDefined({
-              index: options.index,
+              index: target.index,
               blur: options.blur,
             }) as { index?: number; blur?: boolean };
 
-            const result = await fillElement(cdp, selectorOrIndex, value, fillOptions);
+            const result = await fillElement(cdp, target.selector!, value, fillOptions);
 
             if (!result.success) {
               return {
@@ -193,56 +156,23 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
       await runCommand(
         async () => {
+          const target = await resolveElementTarget(selectorOrIndex, options.index);
+
+          if (!target.success) {
+            return {
+              success: false,
+              error: target.error ?? 'Failed to resolve element target',
+              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              suggestion: target.suggestion,
+            };
+          }
+
           return await withCDPConnection(async (cdp) => {
-            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
-
-            if (isNumericIndex) {
-              const { getSessionQueryCache } = await import('@/session/queryCache.js');
-              const cachedQuery = getSessionQueryCache();
-
-              if (!cachedQuery) {
-                return {
-                  success: false,
-                  error: 'No cached query results found',
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
-                };
-              }
-
-              const index = parseInt(selectorOrIndex, 10);
-              if (index < 0 || index >= cachedQuery.nodes.length) {
-                return {
-                  success: false,
-                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
-                };
-              }
-
-              const result = await clickElement(cdp, cachedQuery.selector, { index: index + 1 });
-
-              if (!result.success) {
-                return {
-                  success: false,
-                  error: result.error ?? 'Failed to click element',
-                  exitCode: result.error?.includes('not found')
-                    ? EXIT_CODES.RESOURCE_NOT_FOUND
-                    : EXIT_CODES.INVALID_ARGUMENTS,
-                };
-              }
-
-              if (options.wait !== false) {
-                await waitForActionStability(cdp);
-              }
-
-              return { success: true, data: result };
-            }
-
             const clickOptions = filterDefined({
-              index: options.index,
+              index: target.index,
             }) as { index?: number };
 
-            const result = await clickElement(cdp, selectorOrIndex, clickOptions);
+            const result = await clickElement(cdp, target.selector!, clickOptions);
 
             if (!result.success) {
               return {
@@ -278,63 +208,20 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
         async () => {
+          const target = await resolveElementTarget(selectorOrIndex, options.index);
+
+          if (!target.success) {
+            return {
+              success: false,
+              error: target.error ?? 'Failed to resolve element target',
+              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              suggestion: target.suggestion,
+            };
+          }
+
           return await withCDPConnection(async (cdp) => {
-            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
-
-            if (isNumericIndex) {
-              const { getSessionQueryCache } = await import('@/session/queryCache.js');
-              const cachedQuery = getSessionQueryCache();
-
-              if (!cachedQuery) {
-                return {
-                  success: false,
-                  error: 'No cached query results found',
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
-                };
-              }
-
-              const index = parseInt(selectorOrIndex, 10);
-              if (index < 0 || index >= cachedQuery.nodes.length) {
-                return {
-                  success: false,
-                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
-                };
-              }
-
-              const submitOptions = filterDefined({
-                index: index + 1,
-                waitNavigation: options.waitNavigation,
-                waitNetwork: parseInt(options.waitNetwork, 10),
-                timeout: parseInt(options.timeout, 10),
-              }) as {
-                index?: number;
-                waitNavigation?: boolean;
-                waitNetwork?: number;
-                timeout?: number;
-              };
-
-              const result = await submitForm(cdp, cachedQuery.selector, submitOptions);
-
-              if (!result.success) {
-                return {
-                  success: false,
-                  error: result.error ?? 'Failed to submit form',
-                  exitCode: result.error?.includes('not found')
-                    ? EXIT_CODES.RESOURCE_NOT_FOUND
-                    : result.error?.includes('Timeout')
-                      ? EXIT_CODES.CDP_TIMEOUT
-                      : EXIT_CODES.INVALID_ARGUMENTS,
-                };
-              }
-
-              return { success: true, data: result };
-            }
-
             const submitOptions = filterDefined({
-              index: options.index,
+              index: target.index,
               waitNavigation: options.waitNavigation,
               waitNetwork: parseInt(options.waitNetwork, 10),
               timeout: parseInt(options.timeout, 10),
@@ -345,7 +232,7 @@ export function registerFormInteractionCommands(program: Command): void {
               timeout?: number;
             };
 
-            const result = await submitForm(cdp, selectorOrIndex, submitOptions);
+            const result = await submitForm(cdp, target.selector!, submitOptions);
 
             if (!result.success) {
               return {
@@ -380,64 +267,25 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
       await runCommand(
         async () => {
+          const target = await resolveElementTarget(selectorOrIndex, options.index);
+
+          if (!target.success) {
+            return {
+              success: false,
+              error: target.error ?? 'Failed to resolve element target',
+              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              suggestion: target.suggestion,
+            };
+          }
+
           return await withCDPConnection(async (cdp) => {
-            const isNumericIndex = /^\d+$/.test(selectorOrIndex);
-
-            if (isNumericIndex) {
-              const { getSessionQueryCache } = await import('@/session/queryCache.js');
-              const cachedQuery = getSessionQueryCache();
-
-              if (!cachedQuery) {
-                return {
-                  success: false,
-                  error: 'No cached query results found',
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
-                };
-              }
-
-              const index = parseInt(selectorOrIndex, 10);
-              if (index < 0 || index >= cachedQuery.nodes.length) {
-                return {
-                  success: false,
-                  error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
-                  exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-                  suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
-                };
-              }
-
-              const pressKeyOptions = filterDefined({
-                index: index + 1,
-                times: options.times,
-                modifiers: options.modifiers,
-              }) as { index?: number; times?: number; modifiers?: string };
-
-              const result = await pressKeyElement(cdp, cachedQuery.selector, key, pressKeyOptions);
-
-              if (!result.success) {
-                return {
-                  success: false,
-                  error: result.error ?? 'Failed to press key',
-                  exitCode: result.error?.includes('not found')
-                    ? EXIT_CODES.RESOURCE_NOT_FOUND
-                    : EXIT_CODES.INVALID_ARGUMENTS,
-                };
-              }
-
-              if (options.wait !== false) {
-                await waitForActionStability(cdp);
-              }
-
-              return { success: true, data: result };
-            }
-
             const pressKeyOptions = filterDefined({
-              index: options.index,
+              index: target.index,
               times: options.times,
               modifiers: options.modifiers,
             }) as { index?: number; times?: number; modifiers?: string };
 
-            const result = await pressKeyElement(cdp, selectorOrIndex, key, pressKeyOptions);
+            const result = await pressKeyElement(cdp, target.selector!, key, pressKeyOptions);
 
             if (!result.success) {
               return {

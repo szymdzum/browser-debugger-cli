@@ -23,6 +23,87 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
 
+/**
+ * Result of resolving a selector or index argument to an element target.
+ */
+export interface ElementTargetResult {
+  /** Whether resolution succeeded */
+  success: boolean;
+  /** CSS selector to use */
+  selector?: string | undefined;
+  /** 1-based index for selector (if resolved from cached query) */
+  index?: number | undefined;
+  /** Error message if resolution failed */
+  error?: string | undefined;
+  /** Exit code if resolution failed */
+  exitCode?: number | undefined;
+  /** Suggestion for fixing the error */
+  suggestion?: string | undefined;
+}
+
+/**
+ * Resolve a selectorOrIndex argument to an element target.
+ *
+ * Handles the common pattern of accepting either:
+ * - A CSS selector string (used directly)
+ * - A numeric index (resolved from cached query results)
+ *
+ * @param selectorOrIndex - CSS selector or numeric index from query results
+ * @param explicitIndex - Optional explicit --index flag value (1-based)
+ * @returns Resolution result with selector and optional index
+ *
+ * @example
+ * ```typescript
+ * const target = await resolveElementTarget('button');
+ * // { success: true, selector: 'button' }
+ *
+ * const target = await resolveElementTarget('0');
+ * // { success: true, selector: '.cached-selector', index: 1 }
+ * ```
+ */
+export async function resolveElementTarget(
+  selectorOrIndex: string,
+  explicitIndex?: number
+): Promise<ElementTargetResult> {
+  const isNumericIndex = /^\d+$/.test(selectorOrIndex);
+
+  if (isNumericIndex) {
+    const { getSessionQueryCache } = await import('@/session/queryCache.js');
+    const cachedQuery = getSessionQueryCache();
+
+    if (!cachedQuery) {
+      return {
+        success: false,
+        error: 'No cached query results found',
+        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+        suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+      };
+    }
+
+    const index = parseInt(selectorOrIndex, 10);
+    if (index < 0 || index >= cachedQuery.nodes.length) {
+      return {
+        success: false,
+        error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+        suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
+      };
+    }
+
+    return {
+      success: true,
+      selector: cachedQuery.selector,
+      index: index + 1,
+    };
+  }
+
+  return {
+    success: true,
+    selector: selectorOrIndex,
+    index: explicitIndex,
+  };
+}
+
 export type {
   DomQueryResult,
   DomGetResult,
