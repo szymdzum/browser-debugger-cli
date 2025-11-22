@@ -96,7 +96,7 @@ export class IPCServer {
    * Handle new client connection.
    */
   private handleConnection(socket: Socket): void {
-    console.error('[daemon] Client connected');
+    log.debug('Client connected');
 
     let buffer = '';
 
@@ -114,11 +114,11 @@ export class IPCServer {
     });
 
     socket.on('end', () => {
-      console.error('[daemon] Client disconnected');
+      log.debug('Client disconnected');
     });
 
     socket.on('error', (err) => {
-      console.error('[daemon] Socket error:', err);
+      log.debug(`Socket error: ${getErrorMessage(err)}`);
     });
   }
 
@@ -126,13 +126,13 @@ export class IPCServer {
    * Handle incoming JSONL message - route to appropriate handler.
    */
   private handleMessage(socket: Socket, line: string): void {
-    console.error('[daemon] Raw frame:', line);
+    log.debug(`Raw frame: ${line}`);
 
     try {
       const parsed: unknown = JSON.parse(line);
 
       if (!isValidIPCMessage(parsed)) {
-        console.error('[daemon] Invalid message structure:', parsed);
+        log.debug(`Invalid message structure: missing 'type' or 'sessionId' field`);
         return;
       }
 
@@ -144,7 +144,7 @@ export class IPCServer {
       }
 
       if (message.type.endsWith('_response')) {
-        console.error(`[daemon] Unexpected response message from client: ${message.type}`);
+        log.debug(`Unexpected response message from client: ${message.type}`);
         return;
       }
 
@@ -173,11 +173,11 @@ export class IPCServer {
         case 'har_data_response':
         case 'start_session_response':
         case 'stop_session_response':
-          console.error('[daemon] Unexpected response message (should have been filtered)');
+          log.debug(`Unexpected response message received: ${message.type}`);
           break;
       }
     } catch (error) {
-      console.error('[daemon] Failed to parse message:', error);
+      log.debug(`Failed to parse IPC message: ${getErrorMessage(error)}`);
     }
   }
 

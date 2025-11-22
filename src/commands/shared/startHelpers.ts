@@ -9,6 +9,7 @@ import { landingPage } from '@/commands/shared/landingPage.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
+import { isConnectionError } from '@/ipc/utils/errors.js';
 import type { TelemetryType } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -91,14 +92,12 @@ export async function startSessionViaDaemon(
 
     process.exit(0);
   } catch (error) {
-    const errorMessage = getErrorMessage(error);
-
-    if (errorMessage.includes('ENOENT') || errorMessage.includes('ECONNREFUSED')) {
+    if (isConnectionError(error)) {
       console.error(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }));
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 
-    console.error(genericError(errorMessage));
+    console.error(genericError(getErrorMessage(error)));
     process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
   }
 }

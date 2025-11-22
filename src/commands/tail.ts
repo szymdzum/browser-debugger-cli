@@ -61,64 +61,60 @@ export function registerTailCommand(program: Command): void {
       }
 
       /**
+       * Handle daemon connection or response errors.
+       * Returns true if the error was handled and execution should stop.
+       */
+      const handleError = (errorMessage: string, exitCode?: number): boolean => {
+        const result = handleDaemonConnectionError(errorMessage, {
+          json: options.json,
+          follow: true,
+          retryIntervalMs: interval,
+          exitCode,
+        });
+        if (result.shouldExit) {
+          process.exit(result.exitCode);
+        }
+        return true;
+      };
+
+      /**
        * Fetch and display preview data.
        */
       const showPreview = async (): Promise<void> => {
+        let response;
         try {
-          const response = await getPeek();
-
-          try {
-            validateIPCResponse(response);
-          } catch {
-            const result = handleDaemonConnectionError(response.error ?? 'Unknown error', {
-              json: options.json,
-              follow: true,
-              retryIntervalMs: interval,
-              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
-            });
-            if (result.shouldExit) {
-              process.exit(result.exitCode);
-            }
-            return;
-          }
-
-          const output = response.data?.preview as BdgOutput | undefined;
-          if (!output) {
-            const result = handleDaemonConnectionError('No preview data in response', {
-              json: options.json,
-              follow: true,
-              retryIntervalMs: interval,
-              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
-            });
-            if (result.shouldExit) {
-              process.exit(result.exitCode);
-            }
-            return;
-          }
-
-          console.clear();
-
-          const previewOptions: PreviewOptions = {
-            json: options.json,
-            network: options.network,
-            console: options.console,
-            last: lastN,
-            verbose: options.verbose,
-            follow: true,
-            viewedAt: new Date(),
-          };
-
-          console.log(formatPreview(output, previewOptions));
+          response = await getPeek();
         } catch {
-          const result = handleDaemonConnectionError('Daemon not running', {
-            json: options.json,
-            follow: true,
-            retryIntervalMs: interval,
-          });
-          if (result.shouldExit) {
-            process.exit(result.exitCode);
-          }
+          handleError('Daemon not running');
+          return;
         }
+
+        try {
+          validateIPCResponse(response);
+        } catch {
+          handleError(response.error ?? 'Unknown error', EXIT_CODES.SESSION_FILE_ERROR);
+          return;
+        }
+
+        const output = response.data?.preview as BdgOutput | undefined;
+        if (!output) {
+          handleError('No preview data in response', EXIT_CODES.SESSION_FILE_ERROR);
+          return;
+        }
+
+        console.clear();
+
+        const previewOptions: PreviewOptions = {
+          json: options.json,
+          network: options.network,
+          console: options.console,
+          last: lastN,
+          verbose: options.verbose,
+          follow: true,
+          viewedAt: new Date(),
+        };
+
+        console.log(formatPreview(output, previewOptions));
       };
 
       console.error(followingPreviewMessage());

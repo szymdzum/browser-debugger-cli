@@ -73,9 +73,12 @@ export async function cleanupWorker(
     log.debug(workerRunningCleanup());
     for (const cleanup of cleanupFunctions) {
       try {
-        cleanup();
+        const result = cleanup();
+        if (result instanceof Promise) {
+          await result;
+        }
       } catch (error) {
-        console.error(`[worker] Cleanup function error: ${getErrorMessage(error)}`);
+        log.debug(`Cleanup function error: ${getErrorMessage(error)}`);
       }
     }
 

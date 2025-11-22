@@ -233,7 +233,9 @@ export function cleanupSession(): void {
   safeRemoveFile(getSessionFilePath('DAEMON_SOCKET'), 'daemon socket', log);
   safeRemoveFile(getSessionFilePath('DAEMON_LOCK'), 'daemon lock', log);
 
-  void clearSessionQueryCache();
+  void clearSessionQueryCache().catch((error) => {
+    logDebugError(log, 'clear query cache', error);
+  });
 }
 
 /**

@@ -155,7 +155,11 @@ export async function executeScript(
   if (response.exceptionDetails) {
     const errorMsg =
       response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
-    throw new Error(errorMsg);
+    throw new CommandError(
+      errorMsg,
+      { note: 'Script execution failed in browser context' },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   }
 
   return response;

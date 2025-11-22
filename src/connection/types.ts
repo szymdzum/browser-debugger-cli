@@ -102,5 +102,6 @@ export interface Logger {
 
 /**
  * Cleanup function type for resource management.
+ * Supports both synchronous and asynchronous cleanup operations.
  */
-export type CleanupFunction = () => void;
+export type CleanupFunction = () => void | Promise<void>;

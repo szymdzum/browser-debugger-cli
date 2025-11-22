@@ -4,6 +4,7 @@
  * Sets up process signal handlers for graceful shutdown.
  */
 
+import { getErrorMessage } from '@/connection/errors.js';
 import type { CleanupContext } from '@/daemon/lifecycle/workerCleanup.js';
 import { cleanupWorker } from '@/daemon/lifecycle/workerCleanup.js';
 import {
@@ -23,19 +24,34 @@ export function setupSignalHandlers(context: CleanupContext, timeout?: number): 
 
   process.on('SIGTERM', () => {
     log.debug(workerReceivedSIGTERM());
-    void cleanupWorker('normal', context).then(() => process.exit(0));
+    cleanupWorker('normal', context)
+      .then(() => process.exit(0))
+      .catch((error) => {
+        log.debug(`Cleanup error during SIGTERM: ${getErrorMessage(error)}`);
+        process.exit(1);
+      });
   });
 
   process.on('SIGINT', () => {
     log.debug(workerReceivedSIGINT());
-    void cleanupWorker('normal', context).then(() => process.exit(0));
+    cleanupWorker('normal', context)
+      .then(() => process.exit(0))
+      .catch((error) => {
+        log.debug(`Cleanup error during SIGINT: ${getErrorMessage(error)}`);
+        process.exit(1);
+      });
   });
 
   if (timeout) {
     console.error(`[worker] Auto-stop after ${timeout}s`);
     setTimeout(() => {
       log.debug(workerTimeoutReached());
-      void cleanupWorker('timeout', context).then(() => process.exit(0));
+      cleanupWorker('timeout', context)
+        .then(() => process.exit(0))
+        .catch((error) => {
+          log.debug(`Cleanup error during timeout: ${getErrorMessage(error)}`);
+          process.exit(1);
+        });
     }, timeout * 1000);
   }
 }
