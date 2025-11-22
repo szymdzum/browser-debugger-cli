@@ -1,17 +1,11 @@
+import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { CommandError, isDaemonConnectionError } from '@/ui/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-/**
- * Standard options supported by CommandRunner.
- * All commands that use CommandRunner must extend this interface.
- */
-export interface BaseCommandOptions {
-  /** Output as JSON instead of human-readable format */
-  json?: boolean;
-}
+export type { BaseOptions };
 
 /**
  * Result from a command handler.
@@ -36,7 +30,7 @@ export interface CommandResult<T = unknown> {
  * Handler function type.
  * Command logic should be implemented as a function matching this signature.
  */
-export type CommandHandler<TOptions extends BaseCommandOptions, TResult = unknown> = (
+export type CommandHandler<TOptions extends BaseOptions, TResult = unknown> = (
   options: TOptions
 ) => Promise<CommandResult<TResult>>;
 
@@ -74,7 +68,7 @@ export type CommandFormatter<TResult = unknown> = (data: TResult) => string;
  * );
  * ```
  */
-export async function runCommand<TOptions extends BaseCommandOptions, TResult = unknown>(
+export async function runCommand<TOptions extends BaseOptions, TResult = unknown>(
   handler: CommandHandler<TOptions, TResult>,
   options: TOptions,
   formatter?: CommandFormatter<TResult>

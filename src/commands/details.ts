@@ -1,8 +1,8 @@
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { DetailsCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { DetailsResult } from '@/commands/types.js';
 import { getDetails } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
@@ -10,16 +10,6 @@ import type { NetworkRequest, ConsoleMessage } from '@/types.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateDetailsItem } from '@/utils/typeGuards.js';
-
-/**
- * Options for details command.
- */
-interface DetailsOptions extends BaseCommandOptions {
-  /** Type of item ('network' or 'console') */
-  type: 'network' | 'console';
-  /** Request ID or console index */
-  id: string;
-}
 
 /**
  * Format details for human-readable output.
@@ -47,11 +37,11 @@ export function registerDetailsCommand(program: Command): void {
     .argument('<type>', 'Type of item: "network" or "console"')
     .argument('<id>', 'Request ID (for network) or index (for console)')
     .addOption(jsonOption)
-    .action(async (type: string, id: string, options: DetailsOptions) => {
+    .action(async (type: string, id: string, options: DetailsCommandOptions) => {
       options.type = type as 'network' | 'console';
       options.id = id;
 
-      await runCommand<DetailsOptions, DetailsResult>(
+      await runCommand<DetailsCommandOptions, DetailsResult>(
         async (opts) => {
           if (opts.type !== 'network' && opts.type !== 'console') {
             return {

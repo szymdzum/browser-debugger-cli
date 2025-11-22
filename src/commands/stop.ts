@@ -1,8 +1,8 @@
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { stopSession } from '@/ipc/client.js';
@@ -18,14 +18,6 @@ import {
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-/**
- * Flags supported by `bdg stop`.
- */
-interface StopOptions extends BaseCommandOptions {
-  /** Kill the associated Chrome process after stopping bdg. */
-  killChrome?: boolean;
-}
 
 /**
  * Format stop result for human-readable output.
@@ -62,8 +54,8 @@ export function registerStopCommand(program: Command): void {
       'after',
       '\nOutput Location:\n  Default: ~/.bdg/session.json\n  Tip: Copy to custom location with: cp ~/.bdg/session.json /path/to/output.json'
     )
-    .action(async (options: StopOptions) => {
-      await runCommand<StopOptions, StopResult>(
+    .action(async (options: StopCommandOptions) => {
+      await runCommand<StopCommandOptions, StopResult>(
         async (opts) => {
           try {
             const response = await stopSession();

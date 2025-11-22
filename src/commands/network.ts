@@ -3,9 +3,13 @@ import * as path from 'path';
 
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type {
+  NetworkCookiesCommandOptions,
+  NetworkHarCommandOptions,
+  NetworkHeadersCommandOptions,
+} from '@/commands/shared/optionTypes.js';
 import { getHARData, callCDP, getNetworkHeaders } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { getSessionFilePath } from '@/session/paths.js';
@@ -18,30 +22,6 @@ import { sessionNotActiveError } from '@/ui/messages/errors.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
-
-/**
- * Options for the `bdg network getCookies` command.
- */
-interface GetCookiesOptions extends BaseCommandOptions {
-  /** Filter cookies by URL */
-  url?: string;
-}
-
-/**
- * Options for the `bdg network har` command.
- */
-interface HAROptions extends BaseCommandOptions {
-  /** Output file path (optional, defaults to timestamped filename) */
-  outputFile?: string;
-}
-
-/**
- * Options for the `bdg network headers` command.
- */
-interface NetworkHeadersOptions extends BaseCommandOptions {
-  /** Filter to specific header name */
-  header?: string;
-}
 
 /**
  * Generate timestamped filename for HAR export in ~/.bdg/ directory.
@@ -166,7 +146,7 @@ export function registerNetworkCommands(program: Command): void {
     .command('har [output-file]')
     .description('Export network data as HAR 1.2 format')
     .addOption(jsonOption)
-    .action(async (outputFile: string | undefined, options: HAROptions) => {
+    .action(async (outputFile: string | undefined, options: NetworkHarCommandOptions) => {
       await runCommand(
         async () => {
           const requests = await getNetworkRequests();
@@ -202,7 +182,7 @@ export function registerNetworkCommands(program: Command): void {
     .description('List cookies from the current page')
     .option('--url <url>', 'Filter cookies by URL')
     .addOption(jsonOption)
-    .action(async (options: GetCookiesOptions) => {
+    .action(async (options: NetworkCookiesCommandOptions) => {
       await runCommand(
         async (opts) => {
           const params: Record<string, unknown> = {};
@@ -235,7 +215,7 @@ export function registerNetworkCommands(program: Command): void {
       'after',
       '\nNote: Without [id], shows headers for the current main document.\n      If the page has navigated, this will be the latest navigation, not the original URL.'
     )
-    .action(async (id: string | undefined, options: NetworkHeadersOptions) => {
+    .action(async (id: string | undefined, options: NetworkHeadersCommandOptions) => {
       await runCommand(
         async (opts) => {
           const response = await getNetworkHeaders({
@@ -268,7 +248,7 @@ export function registerNetworkCommands(program: Command): void {
     .description('Show main HTML document request details (alias for headers without ID)')
     .option('--header <name>', 'Filter to specific header name')
     .addOption(jsonOption)
-    .action(async (options: NetworkHeadersOptions) => {
+    .action(async (options: NetworkHeadersCommandOptions) => {
       await runCommand(
         async (opts) => {
           const response = await getNetworkHeaders({

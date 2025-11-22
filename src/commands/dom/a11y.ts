@@ -11,11 +11,16 @@
 
 import type { Command } from 'commander';
 
+import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { getDomContext } from '@/commands/dom/helpers.js';
 import type { DomContext } from '@/commands/dom/helpers.js';
-import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type {
+  A11yTreeCommandOptions,
+  A11yQueryCommandOptions,
+  A11yDescribeCommandOptions,
+} from '@/commands/shared/optionTypes.js';
 import {
   collectA11yTree,
   queryA11yTree,
@@ -33,21 +38,6 @@ import { elementNotFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Options for A11y tree command
- */
-type A11yTreeOptions = BaseCommandOptions;
-
-/**
- * Options for A11y query command
- */
-type A11yQueryOptions = BaseCommandOptions;
-
-/**
- * Options for A11y describe command
- */
-type A11yDescribeOptions = BaseCommandOptions;
-
-/**
  * Handle bdg dom a11y tree command
  *
  * Dumps the full accessibility tree for the current page via IPC.
@@ -55,7 +45,7 @@ type A11yDescribeOptions = BaseCommandOptions;
  *
  * @param options - Command options
  */
-async function handleA11yTree(options: A11yTreeOptions): Promise<void> {
+async function handleA11yTree(options: A11yTreeCommandOptions): Promise<void> {
   const tree = await collectA11yTree();
 
   if (options.json) {
@@ -87,7 +77,7 @@ async function handleA11yTree(options: A11yTreeOptions): Promise<void> {
  * bdg dom a11y query "name:Email"
  * ```
  */
-async function handleA11yQuery(pattern: string, options: A11yQueryOptions): Promise<void> {
+async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions): Promise<void> {
   await runCommand(
     async () => {
       const queryPattern = parseQueryPattern(pattern);
@@ -125,52 +115,6 @@ async function handleA11yQuery(pattern: string, options: A11yQueryOptions): Prom
 }
 
 /**
- * Retrieve cached node by index with validation.
- *
- * Validates cache staleness by checking navigationId against current page state.
- *
- * @param index - Zero-based index from query results
- * @returns Node from cache
- * @throws CommandError if cache missing, stale, index out of range, or node not found
- */
-async function getCachedNodeByIndex(index: number): Promise<{ nodeId: number }> {
-  const { validateQueryCache } = await import('@/session/queryCache.js');
-
-  const validation = await validateQueryCache();
-
-  if (!validation.valid || !validation.cache) {
-    throw new CommandError(
-      validation.error ?? 'No cached query results found',
-      validation.suggestion ? { suggestion: validation.suggestion } : {},
-      EXIT_CODES.INVALID_ARGUMENTS
-    );
-  }
-
-  const cachedQuery = validation.cache;
-
-  if (index < 0 || index >= cachedQuery.nodes.length) {
-    throw new CommandError(
-      `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
-      {
-        suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
-      },
-      EXIT_CODES.INVALID_ARGUMENTS
-    );
-  }
-
-  const targetNode = cachedQuery.nodes[index];
-  if (!targetNode) {
-    throw new CommandError(
-      `Element at index ${index} not found`,
-      {},
-      EXIT_CODES.RESOURCE_NOT_FOUND
-    );
-  }
-
-  return targetNode;
-}
-
-/**
  * Data structure for a11y node with DOM context.
  */
 interface A11yNodeWithContext {
@@ -199,9 +143,10 @@ interface A11yNodeWithContext {
  */
 async function handleA11yDescribe(
   selectorOrIndex: string,
-  options: A11yDescribeOptions
+  options: A11yDescribeCommandOptions
 ): Promise<void> {
-  const isNumericIndex = /^\d+$/.test(selectorOrIndex);
+  const resolver = DomElementResolver.getInstance();
+  const isNumericIndex = resolver.isNumericIndex(selectorOrIndex);
 
   await runCommand(
     async () => {
@@ -210,7 +155,7 @@ async function handleA11yDescribe(
 
       if (isNumericIndex) {
         const index = parseInt(selectorOrIndex, 10);
-        const targetNode = await getCachedNodeByIndex(index);
+        const targetNode = await resolver.getNodeIdForIndex(index);
         nodeId = targetNode.nodeId;
         node = await resolveA11yNode('', nodeId);
       } else {
@@ -252,7 +197,7 @@ export function registerA11yCommands(domCmd: Command): void {
       'Quick search: index (describe), pattern with ":" (query), or name search'
     )
     .addOption(jsonOption)
-    .action(async (search: string | undefined, options: A11yDescribeOptions) => {
+    .action(async (search: string | undefined, options: A11yDescribeCommandOptions) => {
       if (!search) {
         a11y.help();
         return;
@@ -274,7 +219,7 @@ export function registerA11yCommands(domCmd: Command): void {
     .command('tree')
     .description('Dump full accessibility tree (filters ignored nodes)')
     .addOption(jsonOption)
-    .action(async (options: A11yTreeOptions) => {
+    .action(async (options: A11yTreeCommandOptions) => {
       await handleA11yTree(options);
     });
 
@@ -286,7 +231,7 @@ export function registerA11yCommands(domCmd: Command): void {
       'Pattern with field prefix - role:button, name:Submit, name:*search* (supports wildcards)'
     )
     .addOption(jsonOption)
-    .action(async (pattern: string, options: A11yQueryOptions) => {
+    .action(async (pattern: string, options: A11yQueryCommandOptions) => {
       await handleA11yQuery(pattern, options);
     });
 
@@ -298,7 +243,7 @@ export function registerA11yCommands(domCmd: Command): void {
       'CSS selector (e.g., "button.submit") or numeric index from query results'
     )
     .addOption(jsonOption)
-    .action(async (selectorOrIndex: string, options: A11yDescribeOptions) => {
+    .action(async (selectorOrIndex: string, options: A11yDescribeCommandOptions) => {
       await handleA11yDescribe(selectorOrIndex, options);
     });
 }

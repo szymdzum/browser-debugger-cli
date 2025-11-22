@@ -2,9 +2,9 @@ import { Option } from 'commander';
 
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { filterOption, jsonOption } from '@/commands/shared/commonOptions.js';
+import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { BdgOutput, ConsoleMessage } from '@/types.js';
@@ -36,16 +36,6 @@ const consoleLastOption = new Option('--last <n>', 'Show last N console messages
     }
     return n;
   });
-
-/**
- * Options for console command.
- */
-interface ConsoleOptions extends BaseCommandOptions {
-  /** Number of last messages to show (0 = all) */
-  last: number;
-  /** Filter by console message type */
-  filter?: string;
-}
 
 /**
  * Format single console message for human-readable output.
@@ -106,7 +96,7 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(consoleLastOption)
     .addOption(filterOption(['log', 'error', 'warning', 'info']))
     .addOption(jsonOption)
-    .action(async (options: ConsoleOptions) => {
+    .action(async (options: ConsoleCommandOptions) => {
       await runCommand(
         async (opts) => {
           const response = await getPeek();

@@ -4,6 +4,7 @@
 
 import type { Command } from 'commander';
 
+import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import {
   fillElement,
   clickElement,
@@ -13,10 +14,15 @@ import {
 } from '@/commands/dom/formFillHelpers.js';
 import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
-import { resolveElementTarget } from '@/commands/dom/helpers.js';
 import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type {
+  FillCommandOptions,
+  ClickCommandOptions,
+  SubmitCommandOptions,
+  PressKeyCommandOptions,
+} from '@/commands/shared/optionTypes.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { CommandError } from '@/ui/errors/index.js';
@@ -105,7 +111,10 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await resolveElementTarget(selectorOrIndex, options.index);
+          const target = await DomElementResolver.getInstance().resolve(
+            selectorOrIndex,
+            options.index
+          );
 
           if (!target.success) {
             return {
@@ -156,7 +165,10 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await resolveElementTarget(selectorOrIndex, options.index);
+          const target = await DomElementResolver.getInstance().resolve(
+            selectorOrIndex,
+            options.index
+          );
 
           if (!target.success) {
             return {
@@ -208,7 +220,10 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await resolveElementTarget(selectorOrIndex, options.index);
+          const target = await DomElementResolver.getInstance().resolve(
+            selectorOrIndex,
+            options.index
+          );
 
           if (!target.success) {
             return {
@@ -267,7 +282,10 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await resolveElementTarget(selectorOrIndex, options.index);
+          const target = await DomElementResolver.getInstance().resolve(
+            selectorOrIndex,
+            options.index
+          );
 
           if (!target.success) {
             return {
@@ -308,47 +326,6 @@ export function registerFormInteractionCommands(program: Command): void {
         formatPressKeyOutput
       );
     });
-}
-
-/**
- * Options for fill command.
- */
-interface FillCommandOptions {
-  index?: number;
-  blur: boolean;
-  wait: boolean;
-  json?: boolean;
-}
-
-/**
- * Options for click command.
- */
-interface ClickCommandOptions {
-  index?: number;
-  wait: boolean;
-  json?: boolean;
-}
-
-/**
- * Options for submit command.
- */
-interface SubmitCommandOptions {
-  index?: number;
-  waitNavigation?: boolean;
-  waitNetwork: string;
-  timeout: string;
-  json?: boolean;
-}
-
-/**
- * Options for pressKey command.
- */
-interface PressKeyCommandOptions {
-  index?: number;
-  times?: number;
-  modifiers?: string;
-  wait: boolean;
-  json?: boolean;
 }
 
 /**

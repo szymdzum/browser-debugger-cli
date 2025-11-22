@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 
-import { runCommand, type BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
+import { runCommand } from '@/commands/shared/CommandRunner.js';
+import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { getStatus } from '@/ipc/client.js';
@@ -18,16 +19,6 @@ import { invalidResponseError, daemonNotRunningError } from '@/ui/messages/error
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Options for the `bdg status` command.
- */
-interface StatusOptions extends BaseCommandOptions {
-  /** Print structured JSON instead of the default human output. */
-  json?: boolean;
-  /** Show detailed Chrome diagnostics (binary path, port, PID). */
-  verbose?: boolean;
-}
-
-/**
  * Register status command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -39,13 +30,13 @@ export function registerStatusCommand(program: Command): void {
     .description('Show active session status and collection statistics')
     .option('-j, --json', 'Output as JSON', false)
     .option('-v, --verbose', 'Show detailed Chrome diagnostics', false)
-    .action(async (options: StatusOptions) => {
+    .action(async (options: StatusCommandOptions) => {
       let latestMetadata: SessionMetadata | null = null;
       let latestSessionPid: number | null = null;
       let latestActivity: SessionActivity | undefined;
       let latestPageState: PageState | undefined;
 
-      await runCommand<StatusOptions, StatusResult>(
+      await runCommand<StatusCommandOptions, StatusResult>(
         async () => {
           try {
             const response = await getStatus();

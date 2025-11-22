@@ -1,8 +1,8 @@
 import type { Command } from 'commander';
 
-import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { CleanupCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { CleanupResult } from '@/commands/types.js';
 import { performSessionCleanup } from '@/session/cleanup.js';
 import { readPid } from '@/session/pid.js';
@@ -17,18 +17,6 @@ import {
 } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { isProcessAlive } from '@/utils/process.js';
-
-/**
- * Flags consumed by the `bdg cleanup` command.
- */
-interface CleanupOptions extends BaseCommandOptions {
-  /** Force removal even if the tracked process is alive. */
-  force?: boolean;
-  /** Also delete the persisted `session.json` artifact. */
-  removeOutput?: boolean;
-  /** Aggressively kill all Chrome processes (uses chrome-launcher killAll). */
-  aggressive?: boolean;
-}
 
 /**
  * Format cleanup result for human-readable output.
@@ -60,8 +48,8 @@ export function registerCleanupCommand(program: Command): void {
     .option('--remove-output', 'Also remove session.json output file', false)
     .option('--aggressive', 'Kill orphaned daemon processes and all stale Chrome instances', false)
     .addOption(jsonOption)
-    .action(async (options: CleanupOptions) => {
-      await runCommand<CleanupOptions, CleanupResult>(
+    .action(async (options: CleanupCommandOptions) => {
+      await runCommand<CleanupCommandOptions, CleanupResult>(
         async (opts) => {
           const pid = readPid();
           if (pid) {

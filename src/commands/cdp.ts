@@ -7,28 +7,14 @@ import {
   getDomainSummary,
   getMethodSchema,
 } from '@/cdp/schema.js';
-import type { BaseCommandOptions } from '@/commands/shared/CommandRunner.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
+import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { levenshteinDistance } from '@/utils/levenshtein.js';
-
-/**
- * Options for the `bdg cdp` command.
- */
-interface CdpOptions extends BaseCommandOptions {
-  /** CDP method parameters as JSON string */
-  params?: string;
-  /** List all domains or methods in a domain */
-  list?: boolean;
-  /** Describe a method's signature and parameters */
-  describe?: boolean;
-  /** Search methods by keyword */
-  search?: string;
-}
 
 /**
  * Register CDP command with full introspection support.
@@ -57,7 +43,7 @@ export function registerCdpCommand(program: Command): void {
     .option('--list', 'List all domains or methods in a domain')
     .option('--describe', 'Show method signature and parameters')
     .option('--search <query>', 'Search methods by keyword')
-    .action(async (method: string | undefined, options: CdpOptions) => {
+    .action(async (method: string | undefined, options: CdpCommandOptions) => {
       await runCommand(
         async (opts) => {
           if (opts.search) {
