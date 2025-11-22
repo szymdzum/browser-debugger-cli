@@ -53,11 +53,23 @@ describe('Machine-readable help capabilities', () => {
   });
 
   describe('high-level command capabilities', () => {
-    test('highLevel.commands matches task mapping count', () => {
+    test('highLevel.commands contains all unique commands from task mappings', () => {
       const help = generateMachineReadableHelp(program);
       const taskMappings = getAllTaskMappings();
 
-      assert.strictEqual(help.capabilities.highLevel.commands, Object.keys(taskMappings).length);
+      const expectedCommands = new Set(
+        Object.values(taskMappings).flatMap((mapping) => mapping.commands)
+      );
+
+      assert.ok(Array.isArray(help.capabilities.highLevel.commands));
+      assert.strictEqual(help.capabilities.highLevel.commands.length, expectedCommands.size);
+
+      for (const cmd of expectedCommands) {
+        assert.ok(
+          help.capabilities.highLevel.commands.includes(cmd),
+          `Expected commands to include "${cmd}"`
+        );
+      }
     });
 
     test('highLevel.coverage includes expected domains', () => {
@@ -87,19 +99,23 @@ describe('Machine-readable help capabilities', () => {
       assert.ok(methodCount > 600);
     });
 
-    test('high-level command count is greater than 10', () => {
+    test('high-level command list has more than 10 commands', () => {
       const help = generateMachineReadableHelp(program);
 
-      assert.ok(help.capabilities.highLevel.commands > 10);
+      assert.ok(help.capabilities.highLevel.commands.length > 10);
     });
   });
 
   describe('dynamic calculation prevents drift', () => {
-    test('adding new task mapping increases command count', () => {
+    test('command list updates when task mappings change', () => {
       const help = generateMachineReadableHelp(program);
       const taskMappings = getAllTaskMappings();
 
-      assert.strictEqual(help.capabilities.highLevel.commands, Object.keys(taskMappings).length);
+      const expectedCommands = new Set(
+        Object.values(taskMappings).flatMap((mapping) => mapping.commands)
+      );
+
+      assert.strictEqual(help.capabilities.highLevel.commands.length, expectedCommands.size);
     });
 
     test('CDP counts change if protocol changes', () => {
@@ -127,8 +143,25 @@ describe('Machine-readable help capabilities', () => {
 
       assert.strictEqual(typeof help.capabilities.cdp.domains, 'number');
       assert.strictEqual(typeof help.capabilities.cdp.methods, 'string');
-      assert.strictEqual(typeof help.capabilities.highLevel.commands, 'number');
+      assert.ok(Array.isArray(help.capabilities.highLevel.commands));
       assert.ok(Array.isArray(help.capabilities.highLevel.coverage));
+    });
+
+    test('highLevel.commands contains only strings', () => {
+      const help = generateMachineReadableHelp(program);
+
+      for (const cmd of help.capabilities.highLevel.commands) {
+        assert.strictEqual(typeof cmd, 'string');
+        assert.ok(cmd.length > 0, 'Command should not be empty');
+      }
+    });
+
+    test('highLevel.commands is sorted alphabetically', () => {
+      const help = generateMachineReadableHelp(program);
+      const commands = help.capabilities.highLevel.commands;
+      const sorted = [...commands].sort();
+
+      assert.deepStrictEqual(commands, sorted);
     });
   });
 });

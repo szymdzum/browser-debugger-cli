@@ -2,7 +2,10 @@
 
 import { Command } from 'commander';
 
-import { generateMachineReadableHelp } from '@/commands/machineReadableHelp.js';
+import {
+  generateMachineReadableHelp,
+  generateSubcommandHelp,
+} from '@/commands/machineReadableHelp.js';
 import { commandRegistry } from '@/commands.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
@@ -25,6 +28,38 @@ const CLI_NAME = 'bdg';
 const CLI_DESCRIPTION = 'Browser telemetry via Chrome DevTools Protocol';
 
 const log = createLogger('bdg');
+
+/**
+ * Extract command path from argv for subcommand help routing.
+ *
+ * Parses argv to find command names before --help flag.
+ * Stops at first flag (starts with -) or --help.
+ *
+ * @param argv - Process arguments array
+ * @returns Array of command names (e.g., ['dom', 'query'])
+ *
+ * @example
+ * ```typescript
+ * extractCommandPath(['node', 'bdg', 'dom', 'query', '--help', '--json'])
+ * // Returns: ['dom', 'query']
+ *
+ * extractCommandPath(['node', 'bdg', '--help', '--json'])
+ * // Returns: []
+ * ```
+ */
+function extractCommandPath(argv: string[]): string[] {
+  const commandPath: string[] = [];
+  const args = argv.slice(2);
+
+  for (const arg of args) {
+    if (arg.startsWith('-')) {
+      break;
+    }
+    commandPath.push(arg);
+  }
+
+  return commandPath;
+}
 
 /**
  * Check if the current process is running as the daemon worker.
@@ -96,7 +131,11 @@ async function main(): Promise<void> {
   commandRegistry.forEach((register) => register(program));
 
   if (process.argv.includes('--help') && process.argv.includes('--json')) {
-    const help = generateMachineReadableHelp(program);
+    const commandPath = extractCommandPath(process.argv);
+    const help =
+      commandPath.length > 0
+        ? generateSubcommandHelp(program, commandPath)
+        : generateMachineReadableHelp(program);
     console.log(JSON.stringify(help, null, 2));
     process.exit(0);
   }

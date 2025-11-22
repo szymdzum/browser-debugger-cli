@@ -95,8 +95,8 @@ export interface Capabilities {
   };
   /** High-level command capabilities */
   highLevel: {
-    /** Number of high-level commands */
-    commands: number;
+    /** List of high-level commands available */
+    commands: string[];
     /** Domain coverage areas */
     coverage: string[];
   };
@@ -239,6 +239,47 @@ function generateRuntimeState(): RuntimeState {
 }
 
 /**
+ * Extracts unique command strings from task mappings.
+ *
+ * Flattens all command arrays from task mappings and deduplicates them.
+ *
+ * @param taskMappings - Task mapping registry
+ * @returns Sorted array of unique command strings
+ */
+function extractCommandList(taskMappings: Record<string, TaskMapping>): string[] {
+  const allCommands = Object.values(taskMappings).flatMap((mapping) => mapping.commands);
+  const uniqueCommands = [...new Set(allCommands)];
+  return uniqueCommands.sort();
+}
+
+/**
+ * Exit code documentation for machine-readable help.
+ */
+const EXIT_CODE_DOCS = [
+  { code: 0, name: 'SUCCESS', description: 'Operation completed successfully' },
+  { code: 1, name: 'GENERIC_FAILURE', description: 'Generic failure' },
+  { code: 80, name: 'INVALID_URL', description: 'Invalid URL format provided' },
+  { code: 81, name: 'INVALID_ARGUMENTS', description: 'Invalid command arguments' },
+  { code: 82, name: 'PERMISSION_DENIED', description: 'Insufficient permissions' },
+  { code: 83, name: 'RESOURCE_NOT_FOUND', description: 'Required resource not found' },
+  { code: 84, name: 'RESOURCE_BUSY', description: 'Resource is currently in use' },
+  {
+    code: 85,
+    name: 'OPERATION_NOT_PERMITTED',
+    description: 'Operation not permitted in current state',
+  },
+  { code: 86, name: 'DAEMON_ALREADY_RUNNING', description: 'Daemon is already running' },
+  { code: 100, name: 'CHROME_LAUNCH_FAILURE', description: 'Failed to launch Chrome browser' },
+  {
+    code: 101,
+    name: 'CDP_CONNECTION_FAILURE',
+    description: 'Failed to connect to Chrome DevTools Protocol',
+  },
+  { code: 102, name: 'CDP_TIMEOUT', description: 'CDP operation timed out' },
+  { code: 110, name: 'IPC_ERROR', description: 'Inter-process communication error' },
+] as const;
+
+/**
  * Generates capabilities summary.
  *
  * Dynamically calculates CDP and high-level command capabilities
@@ -251,6 +292,7 @@ function generateCapabilities(): Capabilities {
   const taskMappings = getAllTaskMappings();
 
   const totalMethods = domainSummaries.reduce((sum, domain) => sum + domain.commandCount, 0);
+  const commandList = extractCommandList(taskMappings);
 
   return {
     cdp: {
@@ -258,7 +300,7 @@ function generateCapabilities(): Capabilities {
       methods: totalMethods.toString(),
     },
     highLevel: {
-      commands: Object.keys(taskMappings).length,
+      commands: commandList,
       coverage: ['dom', 'network', 'console', 'session', 'monitoring'],
     },
   };
@@ -293,65 +335,71 @@ export function generateMachineReadableHelp(program: Command): MachineReadableHe
     version: program.version() ?? 'unknown',
     description: program.description(),
     command: convertCommand(program),
-    exitCodes: [
-      { code: 0, name: 'SUCCESS', description: 'Operation completed successfully' },
-      { code: 1, name: 'GENERIC_FAILURE', description: 'Generic failure' },
-      {
-        code: 80,
-        name: 'INVALID_URL',
-        description: 'Invalid URL format provided',
-      },
-      {
-        code: 81,
-        name: 'INVALID_ARGUMENTS',
-        description: 'Invalid command arguments',
-      },
-      {
-        code: 82,
-        name: 'PERMISSION_DENIED',
-        description: 'Insufficient permissions',
-      },
-      {
-        code: 83,
-        name: 'RESOURCE_NOT_FOUND',
-        description: 'Required resource not found',
-      },
-      {
-        code: 84,
-        name: 'RESOURCE_BUSY',
-        description: 'Resource is currently in use',
-      },
-      {
-        code: 85,
-        name: 'OPERATION_NOT_PERMITTED',
-        description: 'Operation not permitted in current state',
-      },
-      {
-        code: 86,
-        name: 'DAEMON_ALREADY_RUNNING',
-        description: 'Daemon is already running',
-      },
-      {
-        code: 100,
-        name: 'CHROME_LAUNCH_FAILURE',
-        description: 'Failed to launch Chrome browser',
-      },
-      {
-        code: 101,
-        name: 'CDP_CONNECTION_FAILURE',
-        description: 'Failed to connect to Chrome DevTools Protocol',
-      },
-      {
-        code: 102,
-        name: 'CDP_TIMEOUT',
-        description: 'CDP operation timed out',
-      },
-      {
-        code: 110,
-        name: 'IPC_ERROR',
-        description: 'Inter-process communication error',
-      },
-    ],
+    exitCodes: [...EXIT_CODE_DOCS],
+    taskMappings: getAllTaskMappings(),
+    runtimeState: generateRuntimeState(),
+    decisionTrees: getAllDecisionTrees(),
+    capabilities: generateCapabilities(),
+  };
+}
+
+/**
+ * Finds a subcommand by traversing the command path.
+ *
+ * @param program - Root Commander program instance
+ * @param commandPath - Array of command names to traverse (e.g., ['dom', 'query'])
+ * @returns The target Command if found, null otherwise
+ */
+function findSubcommand(program: Command, commandPath: string[]): Command | null {
+  let current: Command = program;
+
+  for (const name of commandPath) {
+    const found = current.commands.find(
+      (cmd) => cmd.name() === name || cmd.aliases().includes(name)
+    );
+    if (!found) {
+      return null;
+    }
+    current = found;
+  }
+
+  return current;
+}
+
+/**
+ * Generates machine-readable help for a specific subcommand.
+ *
+ * Returns the same structure as generateMachineReadableHelp but with
+ * the command field focused on the requested subcommand. If the subcommand
+ * is not found, falls back to full root help.
+ *
+ * @param program - Root Commander program instance
+ * @param commandPath - Array of command names (e.g., ['dom', 'query'])
+ * @returns Machine-readable help structure for the subcommand
+ *
+ * @example
+ * ```typescript
+ * // Get help for 'bdg dom query'
+ * const help = generateSubcommandHelp(program, ['dom', 'query']);
+ * console.log(help.command.name); // 'query'
+ * ```
+ */
+export function generateSubcommandHelp(
+  program: Command,
+  commandPath: string[]
+): MachineReadableHelp {
+  const targetCommand = findSubcommand(program, commandPath);
+
+  if (!targetCommand) {
+    return generateMachineReadableHelp(program);
+  }
+
+  return {
+    name: program.name(),
+    version: program.version() ?? 'unknown',
+    description: program.description(),
+    command: convertCommand(targetCommand),
+    exitCodes: [...EXIT_CODE_DOCS],
     taskMappings: getAllTaskMappings(),
     runtimeState: generateRuntimeState(),
     decisionTrees: getAllDecisionTrees(),
