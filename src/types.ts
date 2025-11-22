@@ -130,6 +130,8 @@ export interface A11yNode {
   childIds?: string[];
   /** Associated DOM node ID for querying */
   backendDOMNodeId?: number;
+  /** True when node is synthesized from DOM context (a11y unavailable) */
+  inferred?: boolean;
 }
 
 /**

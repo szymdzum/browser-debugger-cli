@@ -18,6 +18,7 @@ import type {
 } from '@/commands/shared/optionTypes.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
+import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import {
@@ -105,10 +106,14 @@ async function handleIndexGet(index: number, options: DomGetCommandOptions): Pro
     await runCommand(
       async () => {
         const targetNode = await resolver.getNodeIdForIndex(index);
-        const [node, domContext] = await Promise.all([
+        const [a11yNode, domContext] = await Promise.all([
           resolveA11yNode('', targetNode.nodeId),
           getDomContext(targetNode.nodeId),
         ]);
+
+        // Graceful degradation: synthesize node from DOM context when a11y unavailable
+        const node =
+          a11yNode ?? (domContext ? synthesizeA11yNode(domContext, targetNode.nodeId) : null);
 
         if (!node) {
           throw new CommandError(
@@ -149,16 +154,39 @@ async function handleSelectorGet(selector: string, options: DomGetCommandOptions
   } else {
     await runCommand(
       async () => {
-        const node = await resolveA11yNode(selector);
+        const a11yNode = await resolveA11yNode(selector);
+
+        // Fetch DOM context for enrichment or fallback
+        let domContext: DomContext | null = null;
+        let nodeId: number | undefined;
+
+        if (a11yNode?.backendDOMNodeId) {
+          nodeId = a11yNode.backendDOMNodeId;
+          domContext = await getDomContext(nodeId);
+        } else if (!a11yNode) {
+          // Try to get DOM context by querying the selector directly
+          const { callCDP } = await import('@/ipc/client.js');
+          const docResponse = await callCDP('DOM.getDocument', {});
+          const doc = docResponse.data?.result as { root?: { nodeId?: number } } | undefined;
+          if (doc?.root?.nodeId) {
+            const queryResponse = await callCDP('DOM.querySelector', {
+              nodeId: doc.root.nodeId,
+              selector,
+            });
+            const queryResult = queryResponse.data?.result as { nodeId?: number } | undefined;
+            if (queryResult?.nodeId) {
+              nodeId = queryResult.nodeId;
+              domContext = await getDomContext(nodeId);
+            }
+          }
+        }
+
+        // Graceful degradation: synthesize node from DOM context when a11y unavailable
+        const node =
+          a11yNode ?? (domContext && nodeId ? synthesizeA11yNode(domContext, nodeId) : null);
 
         if (!node) {
           throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
-
-        // Fetch DOM context using backendDOMNodeId if available
-        let domContext: DomContext | null = null;
-        if (node.backendDOMNodeId) {
-          domContext = await getDomContext(node.backendDOMNodeId);
         }
 
         return { success: true, data: { node, domContext } };
@@ -182,6 +210,7 @@ interface SemanticNodeWithContext {
  *
  * When a11y name is missing, shows DOM context (tag, classes, text preview)
  * to provide useful information instead of just "[Role]".
+ * Shows "(inferred from DOM)" indicator when node is synthesized.
  */
 function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
   const { node, domContext } = data;
@@ -220,7 +249,10 @@ function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
   if (node.required) props.push('required');
   const propsText = props.length > 0 ? ` (${props.join(', ')})` : '';
 
-  return `${roleText}${contextText}${propsText}`;
+  // Add inferred indicator when node is synthesized from DOM
+  const inferredText = node.inferred ? ' (inferred from DOM)' : '';
+
+  return `${roleText}${contextText}${propsText}${inferredText}`;
 }
 
 /**
