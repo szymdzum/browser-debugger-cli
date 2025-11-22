@@ -2,8 +2,8 @@
 
 **Purpose:** Track implementation status of UX improvements proposed in [`UX_IMPROVEMENTS.md`](./UX_IMPROVEMENTS.md)
 
-**Last Updated:** 2025-11-13
-**Current Version:** v0.6.0
+**Last Updated:** 2025-11-22
+**Current Version:** v0.6.7
 
 ---
 
@@ -466,6 +466,7 @@ Track these to measure improvement impact:
 
 | Version | Date | UX Improvements |
 |---------|------|-----------------|
+| **v0.6.7** | **2025-11-22** | **Smart console inspection** ✅ (`bdg console` with deduplication, stack traces, `--follow`, `--list`) - Issue #85 |
 | **v0.7.0-alpha** | **2025-11-19** | **Accessibility Engine Phase 1 & 2** ✅ (semantic output, a11y tree, query commands) |
 | **v0.6.0** | **2025-11-13** | **React/SPA form interaction** ✅, CDP self-discovery, error context (CDP only), DOM module refactoring |
 | v0.5.1 | 2025-11-12 | Improved cleanup, orphaned process handling |

@@ -71,12 +71,34 @@ export interface NetworkRequest {
   connection?: string;
 }
 
+/**
+ * Stack frame representing a location in source code.
+ * Used for error stack traces and source locations in console messages.
+ */
+export interface StackFrame {
+  /** Source file URL or path */
+  url: string;
+  /** 0-based line number in the source */
+  lineNumber: number;
+  /** 0-based column number in the source */
+  columnNumber: number;
+  /** Function name, if available */
+  functionName?: string;
+  /** Script ID from CDP */
+  scriptId?: string;
+}
+
 export interface ConsoleMessage {
   type: Protocol.Runtime.ConsoleAPICalledEvent['type'] | 'error';
   text: string;
   timestamp: number;
   args?: unknown[];
   navigationId?: number;
+  /**
+   * Stack trace captured when the console call was made.
+   * First frame indicates the source location of the console call.
+   */
+  stackTrace?: StackFrame[];
 }
 
 export interface BdgOutput {

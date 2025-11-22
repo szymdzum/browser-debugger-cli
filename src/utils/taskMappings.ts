@@ -89,9 +89,21 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     cdpAlternative: 'Network.getResponseBody + event data',
   },
 
-  query_console_logs: {
-    commands: ['console query'],
-    description: 'Query and filter console log messages',
+  inspect_console: {
+    commands: ['console'],
+    description: 'Smart console inspection with error/warning deduplication',
+    cdpAlternative: 'Runtime.consoleAPICalled events',
+  },
+
+  stream_console: {
+    commands: ['console --follow'],
+    description: 'Stream console messages in real-time',
+    cdpAlternative: 'Runtime.consoleAPICalled event subscription',
+  },
+
+  list_console_messages: {
+    commands: ['console --list'],
+    description: 'List all console messages chronologically',
     cdpAlternative: 'Runtime.consoleAPICalled events',
   },
 

@@ -449,6 +449,15 @@ bdg details network <id>        # Full request/response details
 bdg details console <index>     # Full console message details
 ```
 
+### Console Inspection
+```bash
+bdg console                     # Smart summary (errors/warnings with deduplication)
+bdg console --list              # List all messages chronologically
+bdg console --follow            # Stream console messages in real-time
+bdg console --json              # Machine-readable output with summary stats
+bdg console --last 50           # Limit to last 50 messages
+```
+
 ### DOM Interaction Patterns
 
 **Index-based access:** Query-based commands cache results for fast index access.

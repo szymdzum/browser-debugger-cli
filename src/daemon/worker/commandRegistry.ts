@@ -49,6 +49,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         timestamp: msg.timestamp,
         type: msg.type,
         text: msg.text,
+        ...(msg.stackTrace && { stackTrace: msg.stackTrace }),
       }));
 
       return Promise.resolve({

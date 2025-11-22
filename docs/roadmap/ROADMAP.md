@@ -1,14 +1,21 @@
 # Roadmap: browser-debugger-cli
 
-**Last Updated**: 2025-11-20
-**Current Version**: 0.6.4
+**Last Updated**: 2025-11-22
+**Current Version**: 0.6.7
 **Status**: In active development
 
 ---
 
-## Current Status (v0.6.4 - November 2025)
+## Current Status (v0.6.7 - November 2025)
 
 ### ✅ Recently Completed
+
+**v0.6.7 (2025-11-22)**:
+- Smart console inspection (`bdg console`) with deduplication - Issue #85
+- Error/warning grouping with occurrence counts
+- Source location extraction (file:line:col) from stack traces
+- Live streaming (`--follow`) and chronological list (`--list`)
+- JSON output with summary statistics
 
 **v0.6.4 (2025-11-20)**:
 - HAR 1.2 Export (`bdg network har`) with complete timing data - Issue #65
@@ -216,19 +223,26 @@ Make Chrome DevTools Protocol accessible from the terminal to two audiences with
 
 ---
 
-### M7: Console and Diagnostics (Months 6–9)
+### M7: Console and Diagnostics (Months 6–9) ✅ CORE COMPLETE
 **Target**: v1.0.0-rc.1
 
-**Deliverables**:
-- Console filtering and tailing (`console.tail`)
-- Error tracing (`console.errors`)
-- Logpoint injection (`console.inject`)
-- Log/request correlation
+**Delivered (v0.6.7)**:
+- ✅ Smart console inspection with `bdg console` - Issue #85
+- ✅ Error/warning deduplication with occurrence counts
+- ✅ Source location extraction (file:line:col)
+- ✅ Stack trace capture from CDP events
+- ✅ Live streaming with `--follow`
+- ✅ Chronological list with `--list`
+- ✅ JSON output with summary statistics
+
+**Remaining Deliverables**:
+- Log/request correlation (deferred)
+- Logpoint injection (`console.inject`) (deferred)
 
 **Success Criteria**:
-- [ ] Tail and filter console reliably
-- [ ] Correlate logs with network requests
-- [ ] Exception summaries with stack traces
+- [x] Tail and filter console reliably (`bdg console --follow`)
+- [ ] Correlate logs with network requests (deferred)
+- [x] Exception summaries with stack traces
 
 ---
 
@@ -594,39 +608,32 @@ bdg net.show --id req_123 --waterfall
 
 ### Console Domain
 
-**Current State** (v0.2.0):
-- ✅ Basic console message capture and display
+**Current State** (v0.6.7+):
+- ✅ Smart console inspection with `bdg console`
+- ✅ Error/warning deduplication with occurrence counts
+- ✅ Source location extraction (file:line:col)
+- ✅ Stack trace capture from CDP events
+- ✅ Live streaming with `--follow`
+- ✅ Chronological list with `--list`
+- ✅ JSON output with summary statistics
 
-**What Agents Actually Need**:
-- ✅ Event streaming wrapper (`console.tail`) - stateful operation
-- 📝 Documentation for filtering using raw CDP
-- 📝 Example scripts for exception handling
-
-**Gaps for Humans**:
-- Tail and grep-style filters
-- Level selection (info, warn, error)
-- Structured export
-- Exception summaries with source snippets
-
-**Proposed Wrappers and Patterns**:
+**Implemented Commands**:
 ```bash
-# Stateful Wrappers (build these)
-bdg console.tail --levels error,warn --filter "text:token" --ndjson
-
-# Raw CDP Patterns (document these)
-bdg cdp Runtime.enable
-bdg cdp Log.enable
-# Then listen to Console.messageAdded events
-
-# Human Commands (visual value)
-bdg console.stats --since 5m
-bdg console.errors --group-by type
+bdg console              # Smart summary (errors/warnings deduplicated)
+bdg console --list       # All messages chronologically
+bdg console --follow     # Live streaming (like tail -f)
+bdg console --json       # Machine-readable with summary stats
+bdg console --last 50    # Limit to last N messages
 ```
 
+**Remaining Gaps**:
+- 📝 Log/network request correlation
+- 📝 Logpoint injection for debugging
+
 **Priority Order**:
-1. P1: `console.tail` + CDP documentation (unblocks monitoring)
-2. P2: `console.stats`, `console.errors` (human diagnostics)
-3. P3: Advanced features only if validated
+1. ✅ DONE: Smart console inspection with deduplication
+2. P2: Log/network correlation (if requested)
+3. P3: Logpoint injection (if validated)
 
 ---
 

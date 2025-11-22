@@ -2,46 +2,31 @@
  * Console command messages (bdg console)
  *
  * User-facing messages for the console command output and formatting.
- * */
-
-import { joinLines } from '@/ui/formatting.js';
+ */
 
 /**
- * Generate "no console messages found" message.
+ * Generate message for following console output.
  *
- * @param filter - Optional filter type that was applied
- * @returns Formatted message with optional filter context
- *
- * @example
- * ```typescript
- * console.log(noConsoleMessagesMessage());
- * // "No console messages found"
- *
- * console.log(noConsoleMessagesMessage('error'));
- * // "No console messages found\n(filtered by type: error)"
- * ```
+ * @returns Status message for stderr
  */
-export function noConsoleMessagesMessage(filter?: string): string {
-  const base = 'No console messages found';
-  return filter ? `${base}\n(filtered by type: ${filter})` : base;
+export function followingConsoleMessage(): string {
+  return 'Streaming console messages... (Ctrl+C to stop)';
 }
 
 /**
- * Generate console messages header.
+ * Generate message when stopping console follow mode.
  *
- * @param count - Total number of console messages
- * @param filter - Optional filter type that was applied
- * @returns Formatted header with count and optional filter info
- *
- * @example
- * ```typescript
- * console.log(consoleMessagesHeader(42));
- * // "Console messages (42 total):"
- *
- * console.log(consoleMessagesHeader(10, 'error'));
- * // "Console messages (10 total):\nFiltered by type: error"
- * ```
+ * @returns Status message for stderr
  */
-export function consoleMessagesHeader(count: number, filter?: string): string {
-  return joinLines(`Console messages (${count} total):`, filter && `Filtered by type: ${filter}`);
+export function stoppedFollowingConsoleMessage(): string {
+  return 'Stopped streaming console messages';
+}
+
+/**
+ * Generate message when no console data is available.
+ *
+ * @returns Error message with context
+ */
+export function noConsoleDataMessage(): string {
+  return 'No console data available. Console messages are captured during browser session.';
 }

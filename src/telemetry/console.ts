@@ -1,12 +1,38 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
-import type { ConsoleMessage, CleanupFunction } from '@/types';
+import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
 import { pushWithLimit } from './utils.js';
+
+/**
+ * Convert CDP stack trace to StackFrame array.
+ *
+ * @param stackTrace - CDP stack trace from Runtime events
+ * @returns Array of StackFrame objects, or undefined if no stack trace
+ */
+function convertStackTrace(stackTrace?: Protocol.Runtime.StackTrace): StackFrame[] | undefined {
+  if (!stackTrace?.callFrames?.length) {
+    return undefined;
+  }
+
+  return stackTrace.callFrames.map((frame) => {
+    const stackFrame: StackFrame = {
+      url: frame.url,
+      lineNumber: frame.lineNumber,
+      columnNumber: frame.columnNumber,
+      scriptId: frame.scriptId,
+    };
+    if (frame.functionName) {
+      stackFrame.functionName = frame.functionName;
+    }
+    return stackFrame;
+  });
+}
 
 const log = createLogger('console');
 
@@ -62,12 +88,14 @@ export async function startConsoleCollection(
     }
 
     const navigationId = getCurrentNavigationId?.();
+    const stackTrace = convertStackTrace(params.stackTrace);
     const message: ConsoleMessage = {
       type: params.type,
       text,
       timestamp: params.timestamp,
       args: params.args,
       ...(navigationId !== undefined && { navigationId }),
+      ...(stackTrace && { stackTrace }),
     };
     pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
       log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
@@ -83,11 +111,13 @@ export async function startConsoleCollection(
     }
 
     const navigationId = getCurrentNavigationId?.();
+    const stackTrace = convertStackTrace(exception.stackTrace);
     const message: ConsoleMessage = {
       type: 'error',
       text,
       timestamp: params.timestamp,
       ...(navigationId !== undefined && { navigationId }),
+      ...(stackTrace && { stackTrace }),
     };
     pushWithLimit(messages, message, MAX_CONSOLE_MESSAGES, () => {
       log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
