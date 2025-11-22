@@ -7,6 +7,7 @@ import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
+import { formatConsoleArgs } from './remoteObject.js';
 import { pushWithLimit } from './utils.js';
 
 /**
@@ -63,25 +64,7 @@ export async function startConsoleCollection(
   await cdp.send('Runtime.enable');
 
   registry.registerTyped(typed, 'Runtime.consoleAPICalled', (params) => {
-    const text = params.args
-      .map((arg) => {
-        if (arg.value !== undefined) {
-          const value: unknown = arg.value;
-          if (
-            typeof value === 'string' ||
-            typeof value === 'number' ||
-            typeof value === 'boolean'
-          ) {
-            return String(value);
-          }
-          return arg.description ?? '[object]';
-        }
-        if (arg.description !== undefined) {
-          return arg.description;
-        }
-        return '';
-      })
-      .join(' ');
+    const text = formatConsoleArgs(params.args);
 
     if (shouldExcludeConsoleMessage(text, params.type, includeAll)) {
       return;

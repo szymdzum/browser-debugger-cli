@@ -396,8 +396,12 @@ bdg network getCookies --json
 Inspect console messages with smart error/warning prioritization and deduplication.
 
 ```bash
-# Smart summary (default) - shows errors and warnings with deduplication
+# Smart summary (default) - current page, errors/warnings deduplicated
 bdg console
+
+# Show messages from all page loads (not just current)
+bdg console --history
+bdg console -H
 
 # List all messages chronologically
 bdg console --list
@@ -414,10 +418,13 @@ bdg console -f
 bdg console --json
 ```
 
-**Default output** shows:
+**Default behavior:**
+- Shows messages from **current page load only** (most recent navigation)
 - Errors deduplicated with occurrence count and source location
-- Warnings listed
+- Warnings listed with source location
 - Summary count of info/debug messages
+
+Use `--history` to see messages from all page loads during the session.
 
 ## CDP Commands
 

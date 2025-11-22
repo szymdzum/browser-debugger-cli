@@ -50,6 +50,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         type: msg.type,
         text: msg.text,
         ...(msg.stackTrace && { stackTrace: msg.stackTrace }),
+        ...(msg.navigationId !== undefined && { navigationId: msg.navigationId }),
       }));
 
       return Promise.resolve({

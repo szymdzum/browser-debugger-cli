@@ -107,8 +107,13 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
     intent: 'Inspect console logs and messages',
     steps: [
       {
-        question: 'Need smart error/warning summary with deduplication?',
+        question: 'Need current page errors/warnings with deduplication?',
         yesCommand: 'console',
+        noAction: 'next',
+      },
+      {
+        question: 'Need messages from all page loads (history)?',
+        yesCommand: 'console --history',
         noAction: 'next',
       },
       {

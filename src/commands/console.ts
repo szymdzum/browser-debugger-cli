@@ -66,6 +66,15 @@ const followOption = new Option('-f, --follow', 'Stream console messages in real
 );
 
 /**
+ * --history option to show messages from all page loads.
+ * By default, only current navigation messages are shown.
+ */
+const historyOption = new Option(
+  '-H, --history',
+  'Show messages from all page loads (default: current only)'
+).default(false);
+
+/**
  * Fetch console messages from the daemon.
  *
  * @param options - Command options for error handling context
@@ -124,33 +133,72 @@ async function fetchConsoleMessages(
 }
 
 /**
+ * Filter messages to only include those from the current (most recent) navigation.
+ *
+ * Finds the highest navigationId (most recent page load) and returns only
+ * messages from that navigation. Messages without navigationId are excluded.
+ *
+ * @param messages - All console messages
+ * @returns Messages from the current page load only
+ */
+export function filterByCurrentNavigation(messages: ConsoleMessage[]): ConsoleMessage[] {
+  if (messages.length === 0) {
+    return messages;
+  }
+
+  // Find the maximum navigationId (current page load)
+  const maxNavigationId = Math.max(
+    ...messages.map((m) => m.navigationId ?? 0).filter((id) => id !== undefined)
+  );
+
+  // Filter to only messages from current navigation
+  return messages.filter((m) => m.navigationId === maxNavigationId);
+}
+
+/**
  * Display console output based on options.
  *
  * @param messages - Console messages to display
  * @param options - Command options
  */
 function displayConsole(messages: ConsoleMessage[], options: ConsoleCommandOptions): void {
+  let filteredMessages = messages;
+
+  // Default: show only current navigation. Use --history for all.
+  if (!options.history) {
+    filteredMessages = filterByCurrentNavigation(messages);
+  }
+
   const formatOptions: ConsoleFormatOptions = {
     json: options.json,
     list: options.list,
     follow: options.follow,
     last: options.last,
+    history: options.history,
   };
 
   if (options.follow) {
     console.clear();
   }
 
-  console.log(formatConsole(messages, formatOptions));
+  console.log(formatConsole(filteredMessages, formatOptions));
 }
 
 /**
  * Display console in follow mode with streaming updates.
  *
  * @param messages - Console messages to display
+ * @param options - Command options (for --history flag)
  */
-function displayConsoleStreaming(messages: ConsoleMessage[]): void {
-  const lastMessages = messages.slice(-FOLLOW_MODE_MESSAGE_LIMIT);
+function displayConsoleStreaming(messages: ConsoleMessage[], options: ConsoleCommandOptions): void {
+  let filteredMessages = messages;
+
+  // Default: show only current navigation. Use --history for all.
+  if (!options.history) {
+    filteredMessages = filterByCurrentNavigation(messages);
+  }
+
+  const lastMessages = filteredMessages.slice(-FOLLOW_MODE_MESSAGE_LIMIT);
   console.clear();
   console.log(formatConsoleFollow(lastMessages));
 }
@@ -172,6 +220,7 @@ export function registerConsoleCommand(program: Command): void {
     .description('Console message inspection and analysis')
     .addOption(listOption)
     .addOption(followOption)
+    .addOption(historyOption)
     .addOption(consoleLastOption)
     .addOption(jsonOption)
     .action(async (options: ConsoleCommandOptions) => {
@@ -181,7 +230,7 @@ export function registerConsoleCommand(program: Command): void {
         const showConsole = async (): Promise<void> => {
           const messages = await fetchConsoleMessages(options);
           if (messages) {
-            displayConsoleStreaming(messages);
+            displayConsoleStreaming(messages, options);
           }
         };
 

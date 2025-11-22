@@ -7,6 +7,7 @@
 
 import type { ConsoleMessage, StackFrame } from '@/types.js';
 import { OutputFormatter, pluralize } from '@/ui/formatting.js';
+import { truncateByLength } from '@/utils/strings.js';
 
 /**
  * Console message levels for classification.
@@ -53,6 +54,8 @@ export interface ConsoleFormatOptions {
   follow?: boolean | undefined;
   /** Limit to last N messages */
   last?: number | undefined;
+  /** Show messages from all navigations (default: current only) */
+  history?: boolean | undefined;
 }
 
 /**
@@ -378,10 +381,14 @@ export function formatConsoleSummary(messages: ConsoleMessage[]): string {
   return fmt.build();
 }
 
+/** Maximum text length before truncation in list view */
+const MAX_LIST_TEXT_LENGTH = 200;
+
 /**
  * Format console output as chronological list (--list mode).
  *
  * Shows all messages in order with timestamps and levels.
+ * Includes navigation markers when page reloads are detected.
  *
  * @param messages - All console messages
  * @param options - Format options
@@ -398,10 +405,11 @@ export function formatConsoleChronological(
     displayMessages = messages.slice(-options.last);
   }
 
+  const headerSuffix = options.history ? ' (all navigations)' : '';
   const header =
     displayMessages.length === messages.length
-      ? `Console Messages (${messages.length} total)`
-      : `Console Messages (last ${displayMessages.length} of ${messages.length})`;
+      ? `Console Messages (${messages.length} total)${headerSuffix}`
+      : `Console Messages (last ${displayMessages.length} of ${messages.length})${headerSuffix}`;
 
   fmt.text(header);
   fmt.separator('━', 50);
@@ -412,13 +420,25 @@ export function formatConsoleChronological(
   }
 
   const baseIndex = messages.length - displayMessages.length;
+  let lastNavigationId: number | undefined;
 
   for (const [i, msg] of displayMessages.entries()) {
     const index = baseIndex + i;
     const time = new Date(msg.timestamp).toLocaleTimeString();
     const level = msg.type.padEnd(7);
 
-    fmt.text(`[${index}]  ${level} ${time}  ${msg.text}`);
+    // Show navigation marker when page reloads
+    if (msg.navigationId !== undefined && msg.navigationId !== lastNavigationId) {
+      if (lastNavigationId !== undefined) {
+        fmt.blank();
+        fmt.text(`─── Page Reload (navigation #${msg.navigationId}) ───`);
+        fmt.blank();
+      }
+      lastNavigationId = msg.navigationId;
+    }
+
+    const truncatedText = truncateByLength(msg.text, MAX_LIST_TEXT_LENGTH);
+    fmt.text(`[${index}]  ${level} ${time}  ${truncatedText}`);
 
     const source = formatSourceLocation(msg.stackTrace);
     if (source) {
