@@ -27,24 +27,6 @@ export interface BaseOptions {
 }
 
 /**
- * Options for commands that filter telemetry data by count.
- */
-export interface FilterCountOptions {
-  /** Number of items to show (e.g., --last 10) */
-  last?: number;
-}
-
-/**
- * Options for commands that filter telemetry by type.
- */
-export interface FilterTypeOptions {
-  /** Filter by telemetry type (e.g., --filter log,error) */
-  filter?: string;
-  /** Filter by resource type (e.g., --type Document,XHR) */
-  type?: string;
-}
-
-/**
  * Options for commands with verbose output.
  */
 export interface VerboseOptions {

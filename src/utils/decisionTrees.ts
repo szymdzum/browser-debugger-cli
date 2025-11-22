@@ -173,33 +173,10 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
 };
 
 /**
- * Get decision tree by domain key.
- *
- * @param treeKey - Decision tree identifier
- * @returns Decision tree if found, undefined otherwise
- */
-export function getDecisionTree(treeKey: string): DecisionTree | undefined {
-  return DECISION_TREES[treeKey];
-}
-
-/**
  * Get all decision trees.
  *
  * @returns Complete decision tree registry
  */
 export function getAllDecisionTrees(): Record<string, DecisionTree> {
   return DECISION_TREES;
-}
-
-/**
- * Search decision trees by intent keyword.
- *
- * @param keyword - Search term (case-insensitive)
- * @returns Matching decision trees with keys
- */
-export function searchDecisionTrees(keyword: string): Array<{ key: string; tree: DecisionTree }> {
-  const lowerKeyword = keyword.toLowerCase();
-  return Object.entries(DECISION_TREES)
-    .filter(([, tree]) => tree.intent.toLowerCase().includes(lowerKeyword))
-    .map(([key, tree]) => ({ key, tree }));
 }

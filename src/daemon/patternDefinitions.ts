@@ -59,25 +59,6 @@ export const PATTERNS: PatternDefinition[] = [
 ];
 
 /**
- * Get pattern by name.
- *
- * @param name - Pattern identifier
- * @returns Pattern definition if found, undefined otherwise
- */
-export function getPattern(name: string): PatternDefinition | undefined {
-  return PATTERNS.find((p) => p.name === name);
-}
-
-/**
- * Get all patterns.
- *
- * @returns Complete pattern registry
- */
-export function getAllPatterns(): PatternDefinition[] {
-  return PATTERNS;
-}
-
-/**
  * Find patterns matching a CDP method.
  *
  * @param method - CDP method name (e.g., "Runtime.evaluate")

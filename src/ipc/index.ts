@@ -17,9 +17,4 @@ export * from './session/index.js';
 
 export * from './protocol/index.js';
 
-export {
-  validateIPCResponse,
-  extractIPCData,
-  requireIPCData,
-  type IPCDataResult,
-} from './utils/responseValidator.js';
+export { validateIPCResponse } from './utils/responseValidator.js';

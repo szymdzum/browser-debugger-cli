@@ -121,33 +121,10 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
 };
 
 /**
- * Get task mapping by key.
- *
- * @param taskKey - Task identifier
- * @returns Task mapping if found, undefined otherwise
- */
-export function getTaskMapping(taskKey: string): TaskMapping | undefined {
-  return TASK_MAPPINGS[taskKey];
-}
-
-/**
  * Get all task mappings.
  *
  * @returns Complete task mapping registry
  */
 export function getAllTaskMappings(): Record<string, TaskMapping> {
   return TASK_MAPPINGS;
-}
-
-/**
- * Search task mappings by description keyword.
- *
- * @param keyword - Search term (case-insensitive)
- * @returns Matching task mappings with keys
- */
-export function searchTaskMappings(keyword: string): Array<{ key: string; mapping: TaskMapping }> {
-  const lowerKeyword = keyword.toLowerCase();
-  return Object.entries(TASK_MAPPINGS)
-    .filter(([, mapping]) => mapping.description.toLowerCase().includes(lowerKeyword))
-    .map(([key, mapping]) => ({ key, mapping }));
 }

@@ -87,62 +87,6 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
 }
 
 /**
- * Format single accessibility node for human-readable output.
- *
- * Shows detailed properties including role, name, description, value, and states.
- *
- * @param node - Accessibility node
- * @returns Formatted output string
- */
-export function formatA11yNode(node: A11yNode): string {
-  const fmt = new OutputFormatter();
-
-  fmt.text(`Accessibility Node: ${node.role}`).separator('─', SEPARATOR_WIDTH).blank();
-
-  const props: [string, string][] = [];
-
-  if (node.name) {
-    props.push(['Name', node.name]);
-  }
-  if (node.description) {
-    props.push(['Description', node.description]);
-  }
-  if (node.value !== undefined) {
-    props.push(['Value', node.value]);
-  }
-
-  if (node.focusable) {
-    props.push(['Focusable', 'yes']);
-  }
-  if (node.focused) {
-    props.push(['Focused', 'yes']);
-  }
-  if (node.disabled) {
-    props.push(['Disabled', 'yes']);
-  }
-  if (node.required) {
-    props.push(['Required', 'yes']);
-  }
-
-  props.push(['Node ID', node.nodeId]);
-  if (node.backendDOMNodeId) {
-    props.push(['DOM Node ID', String(node.backendDOMNodeId)]);
-  }
-
-  fmt.keyValueList(props, 16);
-
-  if (node.properties && Object.keys(node.properties).length > 0) {
-    fmt.blank().text('Additional Properties:').blank();
-    const additionalProps = Object.entries(node.properties).map(
-      ([key, value]) => [key, String(value)] as [string, string]
-    );
-    fmt.keyValueList(additionalProps, 20);
-  }
-
-  return fmt.build();
-}
-
-/**
  * Format single accessibility node with DOM context fallback.
  *
  * Shows detailed properties including role, name, description, value, and states.

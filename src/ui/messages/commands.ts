@@ -80,29 +80,6 @@ export function noSessionFilesMessage(): string {
 }
 
 /**
- * Generate stale session found message.
- *
- * @param pid - Process ID that is not running
- * @returns Formatted message
- */
-export function staleSessionFoundMessage(pid: number): string {
-  return `Found stale session (PID ${pid} not running)`;
-}
-/**
- * Generate force cleanup warning message.
- *
- * @param pid - Process ID that is still running
- * @returns Multi-line warning message
- * */
-export function forceCleanupWarningMessage(pid: number): string {
-  return joinLines(
-    `Warning: Process ${pid} is still running!`,
-    'Forcing cleanup anyway...',
-    '(The process will continue running but lose session tracking)'
-  );
-}
-
-/**
  * Generate session still active error.
  *
  * @param pid - Active process ID

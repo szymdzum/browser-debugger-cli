@@ -192,30 +192,3 @@ export function elementNotFoundError(selector: string): string {
     `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector('${selector}')"}'`
   );
 }
-
-/**
- * Generate command requires session error.
- *
- * Generic error for commands that require an active session but one is not found.
- * Provides clear guidance on starting a session.
- *
- * @param commandName - Name of command that was attempted
- * @returns Formatted error message
- *
- * @example
- * ```typescript
- * const error = commandRequiresSessionError('dom query');
- * console.error(error);
- * ```
- */
-export function commandRequiresSessionError(commandName: string): string {
-  return joinLines(
-    `Error: '${commandName}' requires an active session`,
-    '',
-    'Start a session:',
-    '  bdg <url>',
-    '',
-    'Check session status:',
-    '  bdg status'
-  );
-}

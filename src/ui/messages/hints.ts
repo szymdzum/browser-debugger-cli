@@ -29,22 +29,3 @@ export function generatePatternHint(pattern: PatternDefinition): string {
     ''
   );
 }
-
-/**
- * Generate hint for multiple Runtime.evaluate calls.
- *
- * Specialized hint for the common pattern of multiple evaluate calls
- * that could be consolidated.
- *
- * @param count - Number of Runtime.evaluate calls detected
- * @returns Formatted hint message
- */
-export function generateMultipleEvaluateHint(count: number): string {
-  return joinLines(
-    '',
-    `Hint: Detected ${count} Runtime.evaluate calls`,
-    `   Consider using 'bdg dom eval' for JavaScript execution`,
-    `   Or 'bdg dom query' for DOM queries`,
-    ''
-  );
-}

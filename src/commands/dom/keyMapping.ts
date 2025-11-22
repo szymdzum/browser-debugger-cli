@@ -102,15 +102,6 @@ export function getKeyDefinition(keyName: string): KeyDefinition | undefined {
 }
 
 /**
- * Get list of all supported key names.
- *
- * @returns Array of supported key names
- */
-export function getSupportedKeys(): string[] {
-  return Object.keys(KEY_DEFINITIONS);
-}
-
-/**
  * Parse modifier string into CDP modifier flags.
  *
  * @param modifiers - Comma-separated modifier names (e.g., "ctrl,shift")

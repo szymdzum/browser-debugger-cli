@@ -216,80 +216,6 @@ export const CLICK_ELEMENT_SCRIPT = `
 `;
 
 /**
- * JavaScript function to get multiple elements by selector.
- *
- * @remarks
- * Used when --index is specified to select from multiple matches.
- */
-export const GET_ELEMENT_BY_INDEX_SCRIPT = `
-(function(selector, index) {
-  const elements = document.querySelectorAll(selector);
-  
-  if (elements.length === 0) {
-    return {
-      success: false,
-      error: 'No elements found',
-      selector: selector,
-      matchCount: 0
-    };
-  }
-  
-  if (index < 1 || index > elements.length) {
-    return {
-      success: false,
-      error: 'Index out of range',
-      selector: selector,
-      matchCount: elements.length,
-      requestedIndex: index,
-      suggestion: \`Use --index between 1 and \${elements.length}\`
-    };
-  }
-  
-  const el = elements[index - 1]; // Convert to 0-based
-  
-  function buildUniquePath(element) {
-    if (element.id) {
-      return \`#\${CSS.escape(element.id)}\`;
-    }
-    
-    const path = [];
-    let current = element;
-    
-    while (current && current !== document.documentElement) {
-      let selector = current.tagName.toLowerCase();
-      
-      if (current.parentElement) {
-        const siblings = Array.from(current.parentElement.children);
-        const sameTagSiblings = siblings.filter(
-          (sibling) => sibling.tagName === current!.tagName
-        );
-        
-        if (sameTagSiblings.length > 1) {
-          const index = sameTagSiblings.indexOf(current) + 1;
-          selector += \`:nth-of-type(\${index})\`;
-        }
-      }
-      
-      path.unshift(selector);
-      current = current.parentElement;
-    }
-    
-    return 'html > ' + path.join(' > ');
-  }
-  
-  const uniqueSelector = buildUniquePath(el);
-  
-  return {
-    success: true,
-    selector: selector,
-    matchCount: elements.length,
-    selectedIndex: index,
-    uniqueSelector: uniqueSelector
-  };
-})
-`;
-
-/**
  * Options for filling an element.
  */
 export interface FillOptions {
@@ -325,19 +251,5 @@ export interface ClickResult {
   matchCount?: number;
   selectedIndex?: number;
   requestedIndex?: number;
-  suggestion?: string;
-}
-
-/**
- * Result of getting element by index.
- */
-export interface ElementByIndexResult {
-  success: boolean;
-  error?: string;
-  selector?: string;
-  matchCount?: number;
-  selectedIndex?: number;
-  requestedIndex?: number;
-  uniqueSelector?: string;
   suggestion?: string;
 }
