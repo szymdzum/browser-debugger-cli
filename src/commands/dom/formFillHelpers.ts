@@ -12,6 +12,8 @@ import { getKeyDefinition, parseModifiers, type KeyDefinition } from './keyMappi
 import {
   REACT_FILL_SCRIPT,
   CLICK_ELEMENT_SCRIPT,
+  isFillResult,
+  isClickResult,
   type FillOptions,
   type FillResult,
   type ClickResult,
@@ -97,7 +99,7 @@ export async function fillElement(
     const response = await cdp.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
-      userGesture: true, // Treat as user-initiated action
+      userGesture: true,
     });
 
     const cdpResponse = response as {
@@ -114,13 +116,13 @@ export async function fillElement(
       throw new CommandError(errorMessage, {}, EXIT_CODES.SOFTWARE_ERROR);
     }
 
-    if (cdpResponse.result?.value) {
-      return cdpResponse.result.value as FillResult;
+    if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
+      return cdpResponse.result.value;
     }
 
     throw new CommandError(
       'Unexpected response format',
-      { note: 'CDP response missing result.value' },
+      { note: 'CDP response missing result.value or invalid FillResult structure' },
       EXIT_CODES.SOFTWARE_ERROR
     );
   } catch (error) {
@@ -183,13 +185,13 @@ export async function clickElement(
       throw new CommandError(errorMessage, {}, EXIT_CODES.SOFTWARE_ERROR);
     }
 
-    if (cdpResponse.result?.value) {
-      return cdpResponse.result.value as ClickResult;
+    if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
+      return cdpResponse.result.value;
     }
 
     throw new CommandError(
       'Unexpected response format',
-      { note: 'CDP response missing result.value' },
+      { note: 'CDP response missing result.value or invalid ClickResult structure' },
       EXIT_CODES.SOFTWARE_ERROR
     );
   } catch (error) {
@@ -255,12 +257,12 @@ export async function waitForActionStability(cdp: CDPConnection): Promise<void> 
   let activeRequests = 0;
   let lastActivity = Date.now();
 
-  const requestHandler = (): void => {
+  const onRequestStarted = (): void => {
     activeRequests++;
     lastActivity = Date.now();
   };
 
-  const finishHandler = (): void => {
+  const onRequestFinished = (): void => {
     activeRequests--;
     if (activeRequests === 0) {
       lastActivity = Date.now();
@@ -269,9 +271,9 @@ export async function waitForActionStability(cdp: CDPConnection): Promise<void> 
 
   await cdp.send('Network.enable');
 
-  const cleanupRequest = cdp.on('Network.requestWillBeSent', requestHandler);
-  const cleanupFinished = cdp.on('Network.loadingFinished', finishHandler);
-  const cleanupFailed = cdp.on('Network.loadingFailed', finishHandler);
+  const cleanupRequest = cdp.on('Network.requestWillBeSent', onRequestStarted);
+  const cleanupFinished = cdp.on('Network.loadingFinished', onRequestFinished);
+  const cleanupFailed = cdp.on('Network.loadingFailed', onRequestFinished);
 
   try {
     while (Date.now() < deadline) {

@@ -253,3 +253,27 @@ export interface ClickResult {
   requestedIndex?: number;
   suggestion?: string;
 }
+
+/**
+ * Type guard for FillResult.
+ *
+ * @param value - Value to check
+ * @returns True if value is a valid FillResult
+ */
+export function isFillResult(value: unknown): value is FillResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj['success'] === 'boolean';
+}
+
+/**
+ * Type guard for ClickResult.
+ *
+ * @param value - Value to check
+ * @returns True if value is a valid ClickResult
+ */
+export function isClickResult(value: unknown): value is ClickResult {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj['success'] === 'boolean';
+}

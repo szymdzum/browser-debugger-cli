@@ -16,6 +16,7 @@ import type {
   DomScreenshotCommandOptions,
   DomEvalCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { positiveIntRule } from '@/commands/shared/validation.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
@@ -30,7 +31,6 @@ import {
 import { elementNotFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
-import { parsePositiveIntOption } from '@/utils/validation.js';
 
 /**
  * Handle bdg dom query <selector> command
@@ -317,11 +317,8 @@ async function handleDomEval(script: string, options: DomEvalCommandOptions): Pr
 
       const metadata = getValidatedSessionMetadata();
 
-      const port = parsePositiveIntOption('port', options.port, {
-        defaultValue: 9222,
-        min: 1,
-        max: 65535,
-      });
+      const portRule = positiveIntRule({ min: 1, max: 65535, default: 9222 });
+      const port = portRule.validate(options.port);
       await verifyTargetExists(metadata, port);
 
       const cdp = new CDPConnection();

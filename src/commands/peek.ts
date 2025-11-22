@@ -2,7 +2,9 @@ import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
@@ -11,17 +13,6 @@ import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 import { getExitCodeForConnectionError } from '@/utils/errorMapping.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-/**
- * Options as received from Commander for the peek command.
- * These mirror CLI flags and keep raw string values for options that
- * need validation/parsing (like --last).
- */
-interface PeekCommandOptions
-  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'dom' | 'verbose' | 'follow'> {
-  last?: string;
-  type?: string;
-}
 
 /**
  * Register peek command.
@@ -66,8 +57,8 @@ export function registerPeekCommand(program: Command): void {
 
           try {
             validateIPCResponse(response);
-          } catch {
-            const errorMsg = response.error ?? 'Unknown error';
+          } catch (validationError) {
+            const errorMsg = getErrorMessage(validationError);
             const exitCode = getExitCodeForConnectionError(errorMsg);
             const result = handleDaemonConnectionError(errorMsg, {
               json: options.json,

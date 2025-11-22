@@ -2,10 +2,7 @@
 
 import { Command } from 'commander';
 
-import {
-  generateMachineReadableHelp,
-  generateSubcommandHelp,
-} from '@/commands/machineReadableHelp.js';
+import { generateMachineReadableHelp, generateSubcommandHelp } from '@/commands/helpJson.js';
 import { commandRegistry } from '@/commands.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';

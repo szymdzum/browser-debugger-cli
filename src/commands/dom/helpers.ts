@@ -5,7 +5,7 @@
  * All operations go through IPC callCDP() for optimal performance.
  */
 
-import { CDPConnectionError } from '@/connection/errors.js';
+import { CDPConnectionError, getErrorMessage } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { callCDP } from '@/ipc/client.js';
 import type {
@@ -181,7 +181,7 @@ export async function getDomContext(nodeId: number): Promise<DomContext | null> 
 
     return context;
   } catch (error) {
-    log.debug(`Failed to get DOM context for nodeId ${nodeId}: ${String(error)}`);
+    log.debug(`Failed to get DOM context for nodeId ${nodeId}: ${getErrorMessage(error)}`);
     return null;
   }
 }

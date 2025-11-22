@@ -93,8 +93,8 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
         console.error(result.error ? genericError(result.error) : unknownError());
         if (result.errorContext && typeof result.errorContext === 'object') {
           for (const value of Object.values(result.errorContext)) {
-            if (typeof value === 'string') {
-              console.error(value);
+            if (value !== undefined && value !== null) {
+              console.error(typeof value === 'string' ? value : JSON.stringify(value));
             }
           }
         }

@@ -2,25 +2,15 @@ import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import type { TailCommandOptions } from '@/commands/shared/optionTypes.js';
+import { positiveIntRule } from '@/commands/shared/validation.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { parsePositiveIntOption } from '@/utils/validation.js';
-
-/**
- * Options as received from Commander for the tail command.
- * These mirror CLI flags and keep raw string values for options that
- * need validation/parsing (like --last and --interval).
- */
-interface TailCommandOptions
-  extends Pick<PreviewOptions, 'json' | 'network' | 'console' | 'verbose'> {
-  last?: string;
-  /** Update interval in milliseconds */
-  interval?: string;
-}
 
 /**
  * Register tail command for continuous monitoring.
@@ -41,20 +31,14 @@ export function registerTailCommand(program: Command): void {
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailCommandOptions) => {
+      const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
+      const intervalRule = positiveIntRule({ min: 100, max: 60000, default: 1000 });
+
       let lastN: number;
       let interval: number;
       try {
-        lastN = parsePositiveIntOption('last', options.last, {
-          defaultValue: 10,
-          min: 1,
-          max: 1000,
-        });
-
-        interval = parsePositiveIntOption('interval', options.interval, {
-          defaultValue: 1000,
-          min: 100,
-          max: 60000,
-        });
+        lastN = lastRule.validate(options.last);
+        interval = intervalRule.validate(options.interval);
       } catch (error) {
         console.error(error instanceof Error ? error.message : String(error));
         process.exit(EXIT_CODES.INVALID_ARGUMENTS);
@@ -91,8 +75,8 @@ export function registerTailCommand(program: Command): void {
 
         try {
           validateIPCResponse(response);
-        } catch {
-          handleError(response.error ?? 'Unknown error', EXIT_CODES.SESSION_FILE_ERROR);
+        } catch (validationError) {
+          handleError(getErrorMessage(validationError), EXIT_CODES.SESSION_FILE_ERROR);
           return;
         }
 

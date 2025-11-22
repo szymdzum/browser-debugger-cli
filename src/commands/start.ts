@@ -3,12 +3,12 @@ import os from 'node:os';
 import type { Command } from 'commander';
 
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
+import { positiveIntRule } from '@/commands/shared/validation.js';
 import { DEFAULT_DEBUG_PORT, PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { genericError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { parseOptionalIntOption } from '@/utils/validation.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -72,10 +72,13 @@ function buildSessionOptions(options: CollectorOptions): {
   headless: boolean;
   chromeWsUrl: string | undefined;
 } {
-  const maxBodySizeMB = parseOptionalIntOption('max-body-size', options.maxBodySize, {
-    min: 1,
-    max: 100,
-  });
+  const maxBodySizeRule = positiveIntRule({ min: 1, max: 100, required: false });
+  const timeoutRule = positiveIntRule({ min: 1, max: 3600, required: false });
+
+  const maxBodySizeMB = options.maxBodySize
+    ? maxBodySizeRule.validate(options.maxBodySize)
+    : undefined;
+  const timeout = options.timeout ? timeoutRule.validate(options.timeout) : undefined;
 
   let userDataDir = options.userDataDir;
   if (userDataDir?.startsWith('~/')) {
@@ -84,7 +87,7 @@ function buildSessionOptions(options: CollectorOptions): {
 
   return {
     port: parseInt(options.port, 10),
-    timeout: parseOptionalIntOption('timeout', options.timeout, { min: 1, max: 3600 }),
+    timeout,
     userDataDir,
     includeAll: options.all ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,

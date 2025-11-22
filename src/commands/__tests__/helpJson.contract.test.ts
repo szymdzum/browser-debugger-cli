@@ -15,7 +15,7 @@ import { describe, test, beforeEach } from 'node:test';
 import { Command } from 'commander';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
-import { generateMachineReadableHelp } from '@/commands/machineReadableHelp.js';
+import { generateMachineReadableHelp } from '@/commands/helpJson.js';
 import { getAllTaskMappings } from '@/utils/taskMappings.js';
 
 describe('Machine-readable help capabilities', () => {

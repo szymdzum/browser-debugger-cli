@@ -220,3 +220,44 @@ export type NetworkHeadersCommandOptions = BaseOptions & { header?: string };
 
 /** Options for console command (last has default 0 via Commander) */
 export type ConsoleCommandOptions = BaseOptions & { last: number; filter?: string };
+
+/**
+ * Options for preview display.
+ * Shared between peek and tail commands.
+ */
+export interface PreviewDisplayOptions {
+  /** Show only network requests */
+  network?: boolean;
+  /** Show only console messages */
+  console?: boolean;
+  /** Show DOM/A11y tree data */
+  dom?: boolean;
+  /** Use verbose output with full URLs and formatting */
+  verbose?: boolean;
+  /** Watch for updates (like tail -f) */
+  follow?: boolean;
+}
+
+/**
+ * Options for peek command.
+ * Includes preview options plus last count and resource type filter.
+ */
+export interface PeekCommandOptions extends BaseOptions, PreviewDisplayOptions {
+  /** Show last N items (string from CLI, default: 10) */
+  last?: string;
+  /** Filter network requests by resource type (comma-separated) */
+  type?: string;
+}
+
+/**
+ * Options for tail command.
+ * Includes preview options plus last count and update interval.
+ */
+export interface TailCommandOptions
+  extends BaseOptions,
+    Omit<PreviewDisplayOptions, 'dom' | 'follow'> {
+  /** Show last N items (string from CLI, default: 10) */
+  last?: string;
+  /** Update interval in milliseconds (string from CLI, default: 1000) */
+  interval?: string;
+}
