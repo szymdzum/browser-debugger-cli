@@ -25,7 +25,7 @@ interface CleanupOptions extends BaseCommandOptions {
   /** Force removal even if the tracked process is alive. */
   force?: boolean;
   /** Also delete the persisted `session.json` artifact. */
-  all?: boolean;
+  removeOutput?: boolean;
   /** Aggressively kill all Chrome processes (uses chrome-launcher killAll). */
   aggressive?: boolean;
 }
@@ -57,7 +57,7 @@ export function registerCleanupCommand(program: Command): void {
     .command('cleanup')
     .description('Clean up stale session files')
     .option('-f, --force', 'Force cleanup even if session appears active', false)
-    .option('-a, --all', 'Also remove session.json output file', false)
+    .option('--remove-output', 'Also remove session.json output file', false)
     .option('--aggressive', 'Kill orphaned daemon processes and all stale Chrome instances', false)
     .addOption(jsonOption)
     .action(async (options: CleanupOptions) => {
@@ -83,7 +83,7 @@ export function registerCleanupCommand(program: Command): void {
           const cleanupResult = await performSessionCleanup({
             force: opts.force,
             aggressive: opts.aggressive,
-            removeOutput: opts.all,
+            removeOutput: opts.removeOutput,
           });
 
           const didCleanup =

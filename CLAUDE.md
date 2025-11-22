@@ -207,12 +207,20 @@ npm run dev           # Build and run (tsc && node dist/index.js)
 node dist/index.js    # Run compiled version directly
 ```
 
-### Testing Locally
+### Running bdg
+
+**Always use the `bdg` command** (not `node dist/index.js`):
 ```bash
-node dist/index.js --help
-node dist/index.js --version
-node dist/index.js localhost:3000
+bdg --help
+bdg --version
+bdg localhost:3000
 ```
+
+After `npm link`, `bdg` is globally available and is the correct way to run the tool.
+
+**Only use `node dist/index.js` when:**
+- Initial setup before running `npm link`
+- Debugging startup issues with the linked binary
 
 ## Code Quality Guidelines
 
