@@ -107,7 +107,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
     .option('--no-wait', 'Skip waiting for network stability after fill')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
         async () => {
@@ -161,7 +161,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .option('--index <n>', 'Element index if selector matches multiple (1-based)', parseInt)
     .option('--no-wait', 'Skip waiting for network stability after click')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
       await runCommand(
         async () => {
@@ -216,7 +216,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--wait-navigation', 'Wait for page navigation after submit')
     .option('--wait-network <ms>', 'Wait for network idle after submit (milliseconds)', '1000')
     .option('--timeout <ms>', 'Maximum time to wait (milliseconds)', '10000')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
         async () => {
@@ -278,7 +278,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--times <n>', 'Press key multiple times (default: 1)', parseInt)
     .option('--modifiers <mods>', 'Modifier keys: shift,ctrl,alt,meta (comma-separated)')
     .option('--no-wait', 'Skip waiting for network stability after key press')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
       await runCommand(
         async () => {

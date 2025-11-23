@@ -145,7 +145,7 @@ export function registerNetworkCommands(program: Command): void {
   networkCmd
     .command('har [output-file]')
     .description('Export network data as HAR 1.2 format')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (outputFile: string | undefined, options: NetworkHarCommandOptions) => {
       await runCommand(
         async () => {
@@ -181,7 +181,7 @@ export function registerNetworkCommands(program: Command): void {
     .command('getCookies')
     .description('List cookies from the current page')
     .option('--url <url>', 'Filter cookies by URL')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (options: NetworkCookiesCommandOptions) => {
       await runCommand(
         async (opts) => {
@@ -210,7 +210,7 @@ export function registerNetworkCommands(program: Command): void {
     .command('headers [id]')
     .description('Show HTTP headers (defaults to current main document)')
     .option('--header <name>', 'Filter to specific header name')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .addHelpText(
       'after',
       '\nNote: Without [id], shows headers for the current main document.\n      If the page has navigated, this will be the latest navigation, not the original URL.'
@@ -247,7 +247,7 @@ export function registerNetworkCommands(program: Command): void {
     .command('document')
     .description('Show main HTML document request details (alias for headers without ID)')
     .option('--header <name>', 'Filter to specific header name')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (options: NetworkHeadersCommandOptions) => {
       await runCommand(
         async (opts) => {

@@ -8,6 +8,37 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 export type { BaseOptions };
 
 /**
+ * Execute an async function and output JSON result with proper error handling.
+ *
+ * Use this for early JSON exits when runCommand's formatter isn't needed.
+ * Handles errors consistently, outputting `{ success: false, error: "..." }` on failure.
+ *
+ * @param fn - Async function that returns data to serialize
+ *
+ * @example
+ * ```typescript
+ * if (options.json) {
+ *   await runJsonCommand(async () => {
+ *     const data = await fetchData();
+ *     return data;
+ *   });
+ * }
+ * ```
+ */
+export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
+  try {
+    const data = await fn();
+    console.log(JSON.stringify(data, null, 2));
+    process.exit(EXIT_CODES.SUCCESS);
+  } catch (error) {
+    const exitCode =
+      error instanceof CommandError ? error.exitCode : EXIT_CODES.UNHANDLED_EXCEPTION;
+    console.log(JSON.stringify(OutputBuilder.buildJsonError(getErrorMessage(error)), null, 2));
+    process.exit(exitCode);
+  }
+}
+
+/**
  * Result from a command handler.
  * Handler functions should return this structure to indicate success/failure.
  */

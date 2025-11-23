@@ -222,7 +222,7 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(followOption)
     .addOption(historyOption)
     .addOption(consoleLastOption)
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (options: ConsoleCommandOptions) => {
       if (options.follow) {
         console.error(followingConsoleMessage());

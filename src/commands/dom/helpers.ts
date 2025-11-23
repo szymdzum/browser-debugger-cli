@@ -218,7 +218,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
 
     if (nodeIds.length === 0) {
       throw new CommandError(
-        `No elements found matching "${options.selector}"`,
+        `No nodes found matching "${options.selector}"`,
         { suggestion: 'Verify the CSS selector is correct' },
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
@@ -227,7 +227,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     if (options.nth !== undefined) {
       if (options.nth < 1 || options.nth > nodeIds.length) {
         throw new CommandError(
-          `--nth ${options.nth} out of range (found ${nodeIds.length} elements)`,
+          `--nth ${options.nth} out of range (found ${nodeIds.length} nodes)`,
           { suggestion: `Use a value between 1 and ${nodeIds.length}` },
           EXIT_CODES.INVALID_ARGUMENTS
         );
@@ -244,7 +244,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     } else if (!options.all) {
       const firstNode = nodeIds[0];
       if (firstNode === undefined) {
-        throw new CommandError('No elements found', {}, EXIT_CODES.RESOURCE_NOT_FOUND);
+        throw new CommandError('No nodes found', {}, EXIT_CODES.RESOURCE_NOT_FOUND);
       }
       nodeIds = [firstNode];
     }

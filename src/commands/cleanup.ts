@@ -47,7 +47,7 @@ export function registerCleanupCommand(program: Command): void {
     .option('-f, --force', 'Force cleanup even if session appears active', false)
     .option('--remove-output', 'Also remove session.json output file', false)
     .option('--aggressive', 'Kill orphaned daemon processes and all stale Chrome instances', false)
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (options: CleanupCommandOptions) => {
       await runCommand<CleanupCommandOptions, CleanupResult>(
         async (opts) => {

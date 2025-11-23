@@ -4,8 +4,8 @@ import { OutputFormatter } from '@/ui/formatting.js';
 /**
  * Format DOM query results for human-readable output.
  *
- * Displays found elements with their index, tag, classes, and preview text.
- * Shows helpful message when no elements are found.
+ * Displays found nodes with their index, tag, classes, and preview text.
+ * Shows helpful message when no nodes are found.
  *
  * @param data - DOM query result containing selector, count, and matching nodes
  * @returns Formatted output string
@@ -21,7 +21,7 @@ import { OutputFormatter } from '@/ui/formatting.js';
  *   ]
  * });
  * // Output:
- * // Found 2 elements matching ".error":
+ * // Found 2 nodes matching ".error":
  * //   [0] <div class="error"> Invalid input
  * //   [1] <span class="error"> Required field
  * ```
@@ -34,7 +34,7 @@ export function formatDomQuery(data: DomQueryResult): string {
     const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
     return fmt
-      .text(`No elements found matching "${selector}"`)
+      .text(`No nodes found matching "${selector}"`)
       .blank()
       .section('Suggestions:', [
         `Verify selector: bdg dom eval "document.querySelector('${safeSelector}')"`,
@@ -52,7 +52,7 @@ export function formatDomQuery(data: DomQueryResult): string {
   const exampleIndex = hasMultipleResults ? (nodes[0]?.index ?? 0) : 0;
 
   return fmt
-    .text(`Found ${count} element${count === 1 ? '' : 's'} matching "${selector}":`)
+    .text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`)
     .list(nodeLines)
     .blank()
     .section('Next steps:', [

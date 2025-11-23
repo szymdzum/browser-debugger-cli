@@ -1,14 +1,18 @@
 import { Option } from 'commander';
 
 /**
- * Shared --json flag for all commands that support JSON output.
- * Standard option for machine-readable output.
+ * Create a --json flag for machine-readable output.
+ *
+ * Returns a new Option instance each time to avoid Commander.js state issues
+ * when the same option is used across multiple commands/subcommands.
+ *
+ * @returns Commander Option instance for --json flag
  *
  * @example
  * ```typescript
  * program
  *   .command('status')
- *   .addOption(jsonOption)
+ *   .addOption(jsonOption())
  *   .action((options) => {
  *     if (options.json) {
  *       console.log(JSON.stringify(data));
@@ -16,7 +20,9 @@ import { Option } from 'commander';
  *   });
  * ```
  */
-export const jsonOption = new Option('-j, --json', 'Output as JSON').default(false);
+export function jsonOption(): Option {
+  return new Option('-j, --json', 'Output as JSON').default(false);
+}
 
 /**
  * Create a --filter option with specified valid choices.

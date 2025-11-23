@@ -36,7 +36,7 @@ export function registerDetailsCommand(program: Command): void {
     .description('Get detailed information for a specific request or console message')
     .argument('<type>', 'Type of item: "network" or "console"')
     .argument('<id>', 'Request ID (for network) or index (for console)')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .action(async (type: string, id: string, options: DetailsCommandOptions) => {
       options.type = type as 'network' | 'console';
       options.id = id;

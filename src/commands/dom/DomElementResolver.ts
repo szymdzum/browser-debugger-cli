@@ -137,7 +137,7 @@ export class DomElementResolver {
       if (index < 0 || index >= cachedQuery.nodes.length) {
         return {
           success: false,
-          error: `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+          error: `Index ${index} out of range (found ${cachedQuery.nodes.length} nodes from query "${cachedQuery.selector}")`,
           exitCode: EXIT_CODES.INVALID_ARGUMENTS,
           suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
         };
@@ -187,7 +187,7 @@ export class DomElementResolver {
 
     if (index < 0 || index >= cachedQuery.nodes.length) {
       throw new CommandError(
-        `Index ${index} out of range (found ${cachedQuery.nodes.length} elements)`,
+        `Index ${index} out of range (found ${cachedQuery.nodes.length} nodes from query "${cachedQuery.selector}")`,
         {
           suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
         },

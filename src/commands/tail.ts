@@ -24,7 +24,7 @@ export function registerTailCommand(program: Command): void {
   program
     .command('tail')
     .description('Continuously monitor session data (like tail -f)')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)

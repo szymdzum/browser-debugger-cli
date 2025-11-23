@@ -23,7 +23,7 @@ export function registerPeekCommand(program: Command): void {
   program
     .command('peek')
     .description('Preview collected data without stopping the session')
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)

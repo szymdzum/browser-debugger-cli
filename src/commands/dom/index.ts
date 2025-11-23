@@ -345,7 +345,10 @@ async function handleDomEval(script: string, options: DomEvalCommandOptions): Pr
  * @param program - Commander.js Command instance
  */
 export function registerDomCommands(program: Command): void {
-  const dom = program.command('dom').description('DOM inspection and manipulation');
+  const dom = program
+    .command('dom')
+    .description('DOM inspection and manipulation')
+    .enablePositionalOptions();
 
   registerA11yCommands(dom);
 

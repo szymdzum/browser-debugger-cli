@@ -49,7 +49,7 @@ export function registerStopCommand(program: Command): void {
     .command('stop')
     .description('Stop daemon and write collected telemetry to ~/.bdg/session.json')
     .option('--kill-chrome', 'Also kill Chrome browser process', false)
-    .addOption(jsonOption)
+    .addOption(jsonOption())
     .addHelpText(
       'after',
       '\nOutput Location:\n  Default: ~/.bdg/session.json\n  Tip: Copy to custom location with: cp ~/.bdg/session.json /path/to/output.json'
