@@ -1,5 +1,10 @@
+/**
+ * Shared utilities and helper commands for network subcommands.
+ *
+ * Contains getCookies and headers commands, plus shared data fetching utilities.
+ */
+
 import * as fs from 'fs';
-import * as path from 'path';
 
 import type { Command } from 'commander';
 
@@ -7,45 +12,17 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type {
   NetworkCookiesCommandOptions,
-  NetworkHarCommandOptions,
   NetworkHeadersCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { getHARData, callCDP, getNetworkHeaders } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { getSessionFilePath } from '@/session/paths.js';
-import { buildHAR } from '@/telemetry/har/builder.js';
 import type { BdgOutput, NetworkRequest } from '@/types.js';
 import { isDaemonConnectionError } from '@/ui/errors/utils.js';
 import type { Cookie } from '@/ui/formatters/index.js';
 import { formatCookies, formatNetworkHeaders } from '@/ui/formatters/index.js';
 import { sessionNotActiveError } from '@/ui/messages/errors.js';
-import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { VERSION } from '@/utils/version.js';
-
-/**
- * Generate timestamped filename for HAR export in ~/.bdg/ directory.
- *
- * @returns Full path to HAR file in ~/.bdg/capture-YYYY-MM-DD-HHMMSS.har
- *
- * @example
- * ```typescript
- * generateHARFilename(); // "~/.bdg/capture-2025-11-19-143045.har"
- * ```
- */
-function generateHARFilename(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
-
-  const filename = `capture-${year}-${month}-${day}-${hours}${minutes}${seconds}.har`;
-  const sessionDir = path.dirname(getSessionFilePath('OUTPUT'));
-  return path.join(sessionDir, filename);
-}
 
 /**
  * Fetch network requests from live daemon session.
@@ -53,7 +30,7 @@ function generateHARFilename(): string {
  * @returns Network requests array
  * @throws Error if daemon connection fails or no network data available
  */
-async function fetchFromLiveSession(): Promise<NetworkRequest[]> {
+export async function fetchFromLiveSession(): Promise<NetworkRequest[]> {
   const response = await getHARData();
   validateIPCResponse(response);
 
@@ -70,7 +47,7 @@ async function fetchFromLiveSession(): Promise<NetworkRequest[]> {
  * @returns Network requests array
  * @throws Error if session file not found or no network data available
  */
-function fetchFromOfflineSession(): NetworkRequest[] {
+export function fetchFromOfflineSession(): NetworkRequest[] {
   const sessionPath = getSessionFilePath('OUTPUT');
 
   if (!fs.existsSync(sessionPath)) {
@@ -96,7 +73,7 @@ function fetchFromOfflineSession(): NetworkRequest[] {
  * @param error - Error to check
  * @returns True if error indicates no active session or daemon connection failure
  */
-function isDaemonUnavailable(error: unknown): boolean {
+export function isDaemonUnavailable(error: unknown): boolean {
   if (isDaemonConnectionError(error)) {
     return true;
   }
@@ -113,7 +90,7 @@ function isDaemonUnavailable(error: unknown): boolean {
  * @returns Network requests array
  * @throws Error if no session available (live or offline)
  */
-async function getNetworkRequests(): Promise<NetworkRequest[]> {
+export async function getNetworkRequests(): Promise<NetworkRequest[]> {
   try {
     return await fetchFromLiveSession();
   } catch (error) {
@@ -125,58 +102,11 @@ async function getNetworkRequests(): Promise<NetworkRequest[]> {
 }
 
 /**
- * Format HAR export success message for human output.
+ * Register getCookies command.
  *
- * @param data - HAR export result data
- * @returns Formatted success message
+ * @param networkCmd - Network parent command
  */
-function formatHARExport(data: { file: string; entries: number }): string {
-  return `✓ Exported ${data.entries} requests to ${data.file}`;
-}
-
-/**
- * Register network commands.
- *
- * @param program - Commander.js Command instance to register commands on
- */
-export function registerNetworkCommands(program: Command): void {
-  const networkCmd = program.command('network').description('Inspect network state and resources');
-
-  networkCmd
-    .command('har [output-file]')
-    .description('Export network data as HAR 1.2 format')
-    .addOption(jsonOption())
-    .action(async (outputFile: string | undefined, options: NetworkHarCommandOptions) => {
-      await runCommand(
-        async () => {
-          const requests = await getNetworkRequests();
-
-          const outputPath = outputFile ?? generateHARFilename();
-
-          const dir = path.dirname(outputPath);
-          if (dir !== '.' && !fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-          }
-
-          const har = buildHAR(requests, {
-            version: VERSION,
-          });
-
-          await AtomicFileWriter.writeAsync(outputPath, JSON.stringify(har, null, 2));
-
-          return {
-            success: true,
-            data: {
-              file: outputPath,
-              entries: har.log.entries.length,
-            },
-          };
-        },
-        options,
-        formatHARExport
-      );
-    });
-
+export function registerGetCookiesCommand(networkCmd: Command): void {
   networkCmd
     .command('getCookies')
     .description('List cookies from the current page')
@@ -205,7 +135,14 @@ export function registerNetworkCommands(program: Command): void {
         formatCookies
       );
     });
+}
 
+/**
+ * Register headers command.
+ *
+ * @param networkCmd - Network parent command
+ */
+export function registerHeadersCommand(networkCmd: Command): void {
   networkCmd
     .command('headers [id]')
     .description('Show HTTP headers (defaults to current main document)')
@@ -242,7 +179,14 @@ export function registerNetworkCommands(program: Command): void {
         formatNetworkHeaders
       );
     });
+}
 
+/**
+ * Register document command.
+ *
+ * @param networkCmd - Network parent command
+ */
+export function registerDocumentCommand(networkCmd: Command): void {
   networkCmd
     .command('document')
     .description('Show main HTML document request details (alias for headers without ID)')

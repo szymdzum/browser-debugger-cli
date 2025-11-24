@@ -6,7 +6,7 @@ import { registerConsoleCommand } from '@/commands/console.js';
 import { registerDetailsCommand } from '@/commands/details.js';
 import { registerFormInteractionCommands } from '@/commands/dom/formInteraction.js';
 import { registerDomCommands } from '@/commands/dom/index.js';
-import { registerNetworkCommands } from '@/commands/network.js';
+import { registerNetworkCommands } from '@/commands/network/index.js';
 import { registerPeekCommand } from '@/commands/peek.js';
 import { registerStartCommands } from '@/commands/start.js';
 import { registerStatusCommand } from '@/commands/status.js';

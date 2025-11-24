@@ -35,6 +35,13 @@ export function registerPeekCommand(program: Command): void {
       'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
     )
     .action(async (options: PeekCommandOptions) => {
+      // Deprecation warning for --network flag
+      if (options.network && !options.json) {
+        console.error(
+          'Note: "bdg peek --network" is deprecated. Use "bdg network list" for enhanced filtering.'
+        );
+      }
+
       const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
       const lastN = lastRule.validate(options.last);
 

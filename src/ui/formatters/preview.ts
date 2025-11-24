@@ -17,7 +17,7 @@ import { semantic } from './semantic.js';
  * @param mimeType - MIME type string (e.g., 'application/json', 'text/html')
  * @returns Inferred resource type string or undefined
  */
-function inferResourceTypeFromMime(mimeType: string | undefined): string | undefined {
+export function inferResourceTypeFromMime(mimeType: string | undefined): string | undefined {
   if (!mimeType) return undefined;
   return MIME_TYPE_RULES.find((rule) => rule.match.test(mimeType))?.type;
 }
@@ -43,7 +43,7 @@ function formatLimitHint(showing: number, total: number): string {
  * @param mimeType - MIME type for fallback inference
  * @returns 3-4 character abbreviation (e.g., DOC, XHR, SCR)
  */
-function getResourceTypeAbbr(
+export function getResourceTypeAbbr(
   resourceType: Protocol.Network.ResourceType | undefined,
   mimeType: string | undefined
 ): string {
