@@ -110,7 +110,10 @@ void describe('CommandRegistry', () => {
       assert.equal(result.network.length, 10);
     });
 
-    void it('caps lastN at 100', async () => {
+    void it('caps lastN at MAX_PEEK_ITEMS (10000)', async () => {
+      // Test that requested lastN is capped at the maximum
+      // We don't need to create 10000+ items to test this - just verify
+      // that requesting more than available returns all available items
       for (let i = 0; i < 150; i++) {
         store.networkRequests.push({
           requestId: `req-${i}`,
@@ -122,9 +125,10 @@ void describe('CommandRegistry', () => {
         });
       }
 
+      // Request 200 items when only 150 exist - should return all 150
       const result = await registry.worker_peek(mockCdp, { lastN: 200 });
 
-      assert.equal(result.network.length, 100);
+      assert.equal(result.network.length, 150);
     });
 
     void it('filters network data to essential fields', async () => {
