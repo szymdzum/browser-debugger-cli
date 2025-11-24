@@ -1,4 +1,4 @@
-import type { DomContext } from '@/types/dom.js';
+import type { DomContext } from '@/types.js';
 import type { A11yTree, A11yQueryResult, A11yNode } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 

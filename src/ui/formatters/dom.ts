@@ -1,4 +1,4 @@
-import type { DomQueryResult, DomGetResult } from '@/types/dom.js';
+import type { DomQueryResult, DomGetResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**

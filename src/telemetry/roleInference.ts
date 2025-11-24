@@ -7,7 +7,7 @@
  * @see https://www.w3.org/TR/html-aria/#docconformance
  */
 
-import type { DomContext } from '@/types/dom.js';
+import type { DomContext } from '@/types.js';
 import type { A11yNode } from '@/types.js';
 
 /**

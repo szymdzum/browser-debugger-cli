@@ -6,7 +6,7 @@
  * - Filter application produces expected request subsets
  * - Validation returns helpful error messages
  *
- * Following test philosophy: Test behavior (input -> output), not implementation.
+ * Following test philosophy: Test behavior (input to output), not implementation.
  */
 
 import assert from 'node:assert/strict';

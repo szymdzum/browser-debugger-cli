@@ -23,28 +23,3 @@ import { Option } from 'commander';
 export function jsonOption(): Option {
   return new Option('-j, --json', 'Output as JSON').default(false);
 }
-
-/**
- * Create a --filter option with specified valid choices.
- * Includes built-in validation using Commander's .choices() method.
- *
- * @param validTypes - Array of valid filter values
- * @returns Commander Option instance
- *
- * @example
- * ```typescript
- * program
- *   .command('console')
- *   .addOption(filterOption(['log', 'error', 'warning', 'info']))
- *   .action((options) => {
- *     if (options.filter) {
- *       filtered = logs.filter(log => log.type === options.filter);
- *     }
- *   });
- * ```
- */
-export function filterOption(validTypes: string[]): Option {
-  return new Option('--filter <type>', `Filter by type (${validTypes.join(', ')})`).choices(
-    validTypes
-  );
-}

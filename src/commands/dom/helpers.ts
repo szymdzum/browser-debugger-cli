@@ -15,7 +15,7 @@ import type {
   DomGetOptions,
   ScreenshotOptions,
   DomContext,
-} from '@/types/dom.js';
+} from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';

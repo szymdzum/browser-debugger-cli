@@ -6,10 +6,6 @@
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { truncateByLength } from '@/utils/strings.js';
-
-/** Maximum length for formatted text before truncation */
-const MAX_TEXT_LENGTH = 500;
 
 /**
  * Format a preview property value.
@@ -132,17 +128,4 @@ export function formatRemoteObject(arg: Protocol.Runtime.RemoteObject): string {
  */
 export function formatConsoleArgs(args: Protocol.Runtime.RemoteObject[]): string {
   return args.map(formatRemoteObject).join(' ');
-}
-
-/**
- * Truncate text to maximum length with ellipsis.
- *
- * Re-exported from shared utils for backward compatibility.
- *
- * @param text - Text to truncate
- * @param maxLength - Maximum length (default: MAX_TEXT_LENGTH)
- * @returns Truncated text with ellipsis if needed
- */
-export function truncateText(text: string, maxLength: number = MAX_TEXT_LENGTH): string {
-  return truncateByLength(text, maxLength);
 }
