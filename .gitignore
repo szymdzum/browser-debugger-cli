@@ -37,3 +37,4 @@ analysis/
 
 # Docker test output
 docker-output/
+.wiki/
