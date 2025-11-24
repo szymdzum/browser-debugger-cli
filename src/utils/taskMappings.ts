@@ -91,8 +91,9 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
 
   inspect_console: {
     commands: ['console'],
-    description: 'Smart console inspection (current page, errors/warnings deduplicated)',
-    cdpAlternative: 'Runtime.consoleAPICalled events',
+    description:
+      'Smart console inspection (current page, errors/warnings deduplicated, objects expanded)',
+    cdpAlternative: 'Runtime.consoleAPICalled events + Runtime.getProperties',
   },
 
   console_history: {

@@ -7,7 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- Empty for now - add here as you work -->
+### Added
+
+- **Console object expansion** - Rich nested object display in console messages (#90)
+  - Objects automatically expanded: `{user: {name: "John", id: 123}}` instead of `{user: Object}`
+  - Arrays show contents: `[1, 2, 3]` instead of `Array(3)`
+  - Special types formatted: Date, RegExp, Error, Map, Set
+  - Large objects truncated with `…` indicator
+  - Async expansion via `Runtime.getProperties` when CDP preview is incomplete
+  - Messages maintain timestamp order even with async expansion
+  - Configurable via `OBJECT_EXPANSION_MAX_DEPTH` and `OBJECT_EXPANSION_MAX_PROPERTIES` constants
+
+### Changed
+
+- **Refactored telemetry modules** - Improved code organization
+  - New `remoteObjectUtils.ts` with shared predicates and formatters
+  - New `objectExpander.ts` for async CDP-based expansion
+  - Failure tracking with threshold warning for CDP connection issues
 
 ## [0.6.8] - 2025-11-22
 

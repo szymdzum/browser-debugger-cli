@@ -423,8 +423,26 @@ bdg console --json
 - Errors deduplicated with occurrence count and source location
 - Warnings listed with source location
 - Summary count of info/debug messages
+- **Objects automatically expanded** with nested structure visible
 
 Use `--history` to see messages from all page loads during the session.
+
+**Object Expansion:**
+
+Console messages with objects are automatically expanded to show nested values:
+
+```
+# Before (without expansion)
+[log] User: [object Object]
+
+# After (with expansion)
+[log] User: {name: "John", roles: ["admin", "user"]}
+```
+
+- Nested objects expanded up to 3 levels deep
+- Arrays show actual contents: `[1, 2, 3]` instead of `Array(3)`
+- Large objects truncated with `…` indicator
+- Special types formatted: Date, RegExp, Error, Map, Set
 
 ## CDP Commands
 
