@@ -109,6 +109,28 @@ export const MAX_NETWORK_REQUESTS = 10000;
  */
 export const MAX_CONSOLE_MESSAGES = 10000;
 
+// ============================================================================
+// OBJECT EXPANSION CONFIGURATION
+// ============================================================================
+
+/**
+ * Maximum depth for nested object expansion via Runtime.getProperties
+ * Prevents infinite recursion and excessive CDP calls for deeply nested objects
+ */
+export const OBJECT_EXPANSION_MAX_DEPTH = 3;
+
+/**
+ * Maximum properties to expand per object
+ * Limits output size and CDP calls for objects with many properties
+ */
+export const OBJECT_EXPANSION_MAX_PROPERTIES = 10;
+
+/**
+ * Maximum consecutive expansion failures before logging warning
+ * Helps detect CDP connection issues without spamming logs
+ */
+export const OBJECT_EXPANSION_FAILURE_THRESHOLD = 5;
+
 /**
  * Maximum response body size to capture (5MB)
  * Response bodies larger than this will be skipped with a placeholder message

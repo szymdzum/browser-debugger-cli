@@ -59,7 +59,8 @@ export type LogContext =
   | 'dom'
   | 'network'
   | 'diagnostics'
-  | 'atomic-file';
+  | 'atomic-file'
+  | 'object-expander';
 
 /**
  * Logger instance with support for different log levels.
