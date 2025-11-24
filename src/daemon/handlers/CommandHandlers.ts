@@ -29,7 +29,12 @@ type SendResponseFn = (socket: Socket, response: unknown) => void;
  * Handles handshake and generic command forwarding.
  */
 export class CommandHandlers extends BaseHandler {
-  private static readonly COMMAND_TIMEOUT = 10000;
+  /**
+   * Default timeout for IPC command forwarding.
+   * Matches CDP command timeout (30s) to prevent IPC layer from timing out
+   * before CDP operations complete (e.g., HeapProfiler, Memory domain).
+   */
+  private static readonly COMMAND_TIMEOUT = 30000;
 
   constructor(
     workerManager: WorkerManager,

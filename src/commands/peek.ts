@@ -60,7 +60,8 @@ export function registerPeekCommand(program: Command): void {
 
       const showPreview = async (): Promise<void> => {
         try {
-          const response = await getPeek();
+          // Pass lastN to worker so it returns the appropriate number of items
+          const response = await getPeek({ lastN });
 
           try {
             validateIPCResponse(response);

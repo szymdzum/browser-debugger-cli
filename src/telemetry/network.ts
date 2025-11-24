@@ -56,10 +56,7 @@ function fetchResponseBody(
   void cdp
     .send('Network.getResponseBody', { requestId })
     .then((response) => {
-      // Skip if cleanup has already removed this from pending
-      if (!pendingFetches.has(requestId)) {
-        return;
-      }
+      if (!pendingFetches.has(requestId)) return;
 
       const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
       request.responseBody = typedResponse.body;
@@ -100,8 +97,8 @@ function createNetworkRequest(
 /**
  * Clean up stale requests from the request map.
  *
- * Optimized to leverage Map insertion order - iterates from oldest entries
- * and exits early once a non-stale request is found, avoiding O(n) full scan.
+ * Leverages Map insertion order to iterate from oldest entries first,
+ * exiting early once a non-stale request is found (O(k) where k = stale count).
  */
 function cleanupStaleRequests(
   requestMap: Map<string, { request: NetworkRequest; timestamp: number }>
@@ -109,13 +106,10 @@ function cleanupStaleRequests(
   const now = Date.now();
   const staleRequests: string[] = [];
 
-  // Maps maintain insertion order, so oldest entries come first.
-  // Exit early once we find a non-stale request since newer ones won't be stale either.
   for (const [requestId, value] of requestMap) {
     if (now - value.timestamp > STALE_REQUEST_TIMEOUT) {
       staleRequests.push(requestId);
     } else {
-      // Found first non-stale request, stop iterating
       break;
     }
   }
@@ -327,6 +321,21 @@ export async function startNetworkCollection(
     }
 
     entry.request.status = 0;
+
+    if (params.errorText) {
+      entry.request.errorText = params.errorText;
+    }
+    if (params.canceled) {
+      entry.request.canceled = true;
+    }
+    if (params.blockedReason) {
+      entry.request.blocked = true;
+      entry.request.blockedReason = params.blockedReason;
+    }
+    if (params.type) {
+      entry.request.resourceType = params.type;
+    }
+
     requests.push(entry.request);
     requestMap.delete(params.requestId);
   });

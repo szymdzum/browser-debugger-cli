@@ -6,6 +6,7 @@
  */
 
 import { landingPage } from '@/commands/shared/landingPage.js';
+import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
@@ -38,16 +39,7 @@ const log = createLogger('bdg');
  */
 export async function startSessionViaDaemon(
   url: string,
-  options: {
-    port: number;
-    timeout: number | undefined;
-    userDataDir: string | undefined;
-    includeAll: boolean;
-    maxBodySize: number | undefined;
-    compact: boolean;
-    headless: boolean;
-    chromeWsUrl: string | undefined;
-  },
+  options: SessionStartOptions,
   telemetry: TelemetryType[]
 ): Promise<void> {
   try {
@@ -84,11 +76,14 @@ export async function startSessionViaDaemon(
       process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
     }
 
-    const landing = landingPage({
-      url: data.targetUrl,
-    });
-
-    console.error(landing);
+    if (options.quiet) {
+      console.error(`Session started: ${data.targetUrl}`);
+    } else {
+      const landing = landingPage({
+        url: data.targetUrl,
+      });
+      console.error(landing);
+    }
 
     process.exit(0);
   } catch (error) {

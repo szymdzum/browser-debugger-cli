@@ -30,6 +30,8 @@ interface CollectorOptions {
   headless?: boolean;
   /** WebSocket URL for connecting to existing Chrome instance (skips Chrome launch). */
   chromeWsUrl?: string;
+  /** Quiet mode - suppress verbose landing page output for AI agents. */
+  quiet?: boolean;
 }
 
 /**
@@ -53,7 +55,8 @@ function applyCollectorOptions(command: Command): Command {
     .option(
       '--chrome-ws-url <url>',
       'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
-    );
+    )
+    .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false);
 }
 
 /**
@@ -71,6 +74,7 @@ function buildSessionOptions(options: CollectorOptions): {
   compact: boolean;
   headless: boolean;
   chromeWsUrl: string | undefined;
+  quiet: boolean;
 } {
   const maxBodySizeRule = positiveIntRule({ min: 1, max: 100, required: false });
   const timeoutRule = positiveIntRule({ min: 1, max: 3600, required: false });
@@ -94,6 +98,7 @@ function buildSessionOptions(options: CollectorOptions): {
     compact: options.compact ?? false,
     headless: options.headless ?? false,
     chromeWsUrl: options.chromeWsUrl,
+    quiet: options.quiet ?? false,
   };
 }
 

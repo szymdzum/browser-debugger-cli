@@ -147,10 +147,13 @@ export class QueryHandlers extends BaseHandler {
       return;
     }
 
+    // Use client's lastN if provided, otherwise default to 10 for preview
+    const lastN = request.lastN ?? 10;
+
     const workerRequest: WorkerRequest<'worker_peek'> = {
       type: 'worker_peek_request',
       requestId: generateRequestId('worker_peek'),
-      lastN: 10, // Default limit for preview items (PeekRequest doesn't include lastN)
+      lastN,
     };
 
     this.forwardToWorker({

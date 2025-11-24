@@ -186,7 +186,8 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       } else {
         const networkLines = requests.map((req) => {
           const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
-          const status = req.status ?? 'pending';
+          // Show error text for failed requests (SSL errors, connection failures, etc.)
+          const status = req.errorText ? `FAILED (${req.errorText})` : (req.status ?? 'pending');
           const url = truncateUrl(req.url, 50);
           return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}`;
         });
@@ -292,9 +293,17 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
         }
       } else {
         requests.forEach((req) => {
-          const statusColor = req.status && req.status >= 400 ? 'ERR' : 'OK';
-          const status = req.status ?? 'pending';
+          const isFailed =
+            Boolean(req.errorText) || (req.status !== undefined && req.status >= 400);
+          const statusColor = isFailed ? 'ERR' : 'OK';
+          const status = req.errorText ? `FAILED` : (req.status?.toString() ?? 'pending');
           fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
+          if (req.errorText) {
+            fmt.text(`  Error: ${req.errorText}`);
+          }
+          if (req.blockedReason) {
+            fmt.text(`  Blocked: ${req.blockedReason}`);
+          }
           if (req.resourceType) {
             fmt.text(`  Resource: ${req.resourceType}`);
           }

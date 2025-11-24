@@ -13,7 +13,9 @@ import { CommandError } from '@/ui/errors/index.js';
 import {
   formatConsole,
   formatConsoleFollow,
+  LEVEL_MAP,
   type ConsoleFormatOptions,
+  type ConsoleLevel,
 } from '@/ui/formatters/console.js';
 import {
   followingConsoleMessage,
@@ -75,6 +77,19 @@ const historyOption = new Option(
 ).default(false);
 
 /**
+ * Valid console levels for filtering.
+ */
+const VALID_LEVELS: ConsoleLevel[] = ['error', 'warning', 'info', 'debug'];
+
+/**
+ * --level option for filtering by message level.
+ */
+const levelOption = new Option(
+  '--level <level>',
+  'Filter by message level (error, warning, info, debug)'
+).choices(VALID_LEVELS);
+
+/**
  * Fetch console messages from the daemon.
  *
  * @param options - Command options for error handling context
@@ -84,7 +99,9 @@ async function fetchConsoleMessages(
   options: ConsoleCommandOptions
 ): Promise<ConsoleMessage[] | null> {
   try {
-    const response = await getPeek();
+    // Pass lastN=0 to get all messages (worker applies filtering)
+    // We request all and filter client-side for flexibility
+    const response = await getPeek({ lastN: 0 });
 
     try {
       validateIPCResponse(response);
@@ -156,48 +173,75 @@ export function filterByCurrentNavigation(messages: ConsoleMessage[]): ConsoleMe
 }
 
 /**
+ * Filter messages by level.
+ *
+ * @param messages - Console messages to filter
+ * @param level - Level to filter by (error, warning, info, debug)
+ * @returns Filtered messages matching the specified level
+ */
+export function filterByLevel(messages: ConsoleMessage[], level: ConsoleLevel): ConsoleMessage[] {
+  return messages.filter((m) => LEVEL_MAP[m.type] === level);
+}
+
+/**
+ * Apply navigation and level filters to console messages.
+ *
+ * @param messages - Raw console messages
+ * @param options - Filter options (history and level)
+ * @returns Filtered messages
+ */
+function applyMessageFilters(
+  messages: ConsoleMessage[],
+  options: Pick<ConsoleCommandOptions, 'history' | 'level'>
+): ConsoleMessage[] {
+  let filtered = options.history ? messages : filterByCurrentNavigation(messages);
+  if (options.level) {
+    filtered = filterByLevel(filtered, options.level);
+  }
+  return filtered;
+}
+
+/**
+ * Build format options from command options.
+ *
+ * @param options - Command options
+ * @returns Format options for console formatters
+ */
+function buildFormatOptions(options: ConsoleCommandOptions): ConsoleFormatOptions {
+  return {
+    json: options.json,
+    list: options.list,
+    follow: options.follow,
+    last: options.last,
+    history: options.history,
+    level: options.level,
+  };
+}
+
+/**
  * Display console output based on options.
  *
  * @param messages - Console messages to display
  * @param options - Command options
  */
 function displayConsole(messages: ConsoleMessage[], options: ConsoleCommandOptions): void {
-  let filteredMessages = messages;
-
-  // Default: show only current navigation. Use --history for all.
-  if (!options.history) {
-    filteredMessages = filterByCurrentNavigation(messages);
-  }
-
-  const formatOptions: ConsoleFormatOptions = {
-    json: options.json,
-    list: options.list,
-    follow: options.follow,
-    last: options.last,
-    history: options.history,
-  };
+  const filteredMessages = applyMessageFilters(messages, options);
 
   if (options.follow) {
     console.clear();
   }
 
-  console.log(formatConsole(filteredMessages, formatOptions));
+  console.log(formatConsole(filteredMessages, buildFormatOptions(options)));
 }
 
 /**
  * Display console in follow mode with streaming updates.
  *
  * @param messages - Console messages to display
- * @param options - Command options (for --history flag)
+ * @param options - Command options (for --history and --level flags)
  */
 function displayConsoleStreaming(messages: ConsoleMessage[], options: ConsoleCommandOptions): void {
-  let filteredMessages = messages;
-
-  // Default: show only current navigation. Use --history for all.
-  if (!options.history) {
-    filteredMessages = filterByCurrentNavigation(messages);
-  }
-
+  const filteredMessages = applyMessageFilters(messages, options);
   const lastMessages = filteredMessages.slice(-FOLLOW_MODE_MESSAGE_LIMIT);
   console.clear();
   console.log(formatConsoleFollow(lastMessages));
@@ -221,6 +265,7 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(listOption)
     .addOption(followOption)
     .addOption(historyOption)
+    .addOption(levelOption)
     .addOption(consoleLastOption)
     .addOption(jsonOption())
     .action(async (options: ConsoleCommandOptions) => {

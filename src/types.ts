@@ -69,6 +69,23 @@ export interface NetworkRequest {
   decodedBodyLength?: number;
   serverIPAddress?: string;
   connection?: string;
+  /**
+   * Network error text from loadingFailed events.
+   * Contains specific error codes like net::ERR_CERT_DATE_INVALID, net::ERR_CONNECTION_REFUSED.
+   */
+  errorText?: string;
+  /**
+   * Whether the request was canceled (e.g., navigation away, fetch abort).
+   */
+  canceled?: boolean;
+  /**
+   * Whether the request was blocked (e.g., CORS, mixed content).
+   */
+  blocked?: boolean;
+  /**
+   * Reason for blocking (e.g., 'cors', 'mixed-content', 'inspector').
+   */
+  blockedReason?: string;
 }
 
 /**
@@ -100,6 +117,12 @@ export interface ConsoleMessage {
    */
   stackTrace?: StackFrame[];
 }
+
+/**
+ * Console message level categories for user-facing filtering.
+ * Used by --level option in console command.
+ */
+export type ConsoleLevel = 'error' | 'warning' | 'info' | 'debug';
 
 export interface BdgOutput {
   version: string; // Package version for schema tracking

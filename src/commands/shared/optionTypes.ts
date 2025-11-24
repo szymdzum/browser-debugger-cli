@@ -219,6 +219,38 @@ export type NetworkHarCommandOptions = BaseOptions & { outputFile?: string };
 export type NetworkHeadersCommandOptions = BaseOptions & { header?: string };
 
 /**
+ * Options for session start command.
+ * Used by startSessionViaDaemon in startHelpers.ts.
+ */
+export interface SessionStartOptions {
+  /** CDP port number */
+  port: number;
+  /** Auto-stop timeout in seconds */
+  timeout: number | undefined;
+  /** Custom Chrome user data directory */
+  userDataDir: string | undefined;
+  /** Include all data (disable filtering) */
+  includeAll: boolean;
+  /** Maximum response body size in MB */
+  maxBodySize: number | undefined;
+  /** Use compact JSON output */
+  compact: boolean;
+  /** Launch Chrome in headless mode */
+  headless: boolean;
+  /** Connect to existing Chrome instance via WebSocket URL */
+  chromeWsUrl: string | undefined;
+  /** Quiet mode - minimal output for AI agents */
+  quiet: boolean;
+}
+
+// ConsoleLevel is defined in types.ts for proper architectural layering
+// Re-export for convenience in command files
+export type { ConsoleLevel } from '@/types.js';
+
+// Import locally for use in ConsoleCommandOptions
+import type { ConsoleLevel } from '@/types.js';
+
+/**
  * Options for console command.
  * Supports smart summary (default), list view (--list), and streaming (--follow).
  * By default shows only current navigation; use --history for all.
@@ -232,6 +264,8 @@ export interface ConsoleCommandOptions extends BaseOptions {
   follow?: boolean;
   /** Show messages from all page loads (default: current only) */
   history?: boolean;
+  /** Filter by message level (error, warning, info, debug) */
+  level?: ConsoleLevel;
 }
 
 /**

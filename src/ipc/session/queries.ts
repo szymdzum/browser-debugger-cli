@@ -61,6 +61,8 @@ export interface StatusResponse extends IPCMessage {
  */
 export interface PeekRequest extends IPCMessage {
   type: 'peek_request';
+  /** Number of recent items to return. 0 = all. */
+  lastN?: number;
 }
 
 /**

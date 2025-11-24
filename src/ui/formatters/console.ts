@@ -5,14 +5,18 @@
  * smart summary view with deduplication, chronological view, and JSON output.
  */
 
-import type { ConsoleMessage, StackFrame } from '@/types.js';
+import type { ConsoleLevel, ConsoleMessage, StackFrame } from '@/types.js';
 import { OutputFormatter, pluralize } from '@/ui/formatting.js';
 import { truncateByLength } from '@/utils/strings.js';
 
+// Re-export ConsoleLevel for consumers that import from this module
+export type { ConsoleLevel } from '@/types.js';
+
 /**
- * Console message levels for classification.
+ * Internal console level including 'other' for classification.
+ * Used internally by formatter for message grouping.
  */
-type ConsoleLevel = 'error' | 'warning' | 'info' | 'debug' | 'other';
+type ConsoleInternalLevel = ConsoleLevel | 'other';
 
 /**
  * Deduplicated console message with occurrence count.
@@ -56,6 +60,8 @@ export interface ConsoleFormatOptions {
   last?: number | undefined;
   /** Show messages from all navigations (default: current only) */
   history?: boolean | undefined;
+  /** Filter by level (error, warning, info, debug) */
+  level?: ConsoleLevel | undefined;
 }
 
 /**
@@ -86,7 +92,7 @@ export interface ConsoleJsonOutput {
 interface GroupedMessages {
   errors: DeduplicatedMessage[];
   warnings: DeduplicatedMessage[];
-  counts: Record<ConsoleLevel, number>;
+  counts: Record<ConsoleInternalLevel, number>;
 }
 
 /**
@@ -99,8 +105,9 @@ interface AnalysisResult {
 
 /**
  * Mapping from console message types to level categories.
+ * Exported for use by console command filtering.
  */
-const LEVEL_MAP: Record<ConsoleMessage['type'], ConsoleLevel> = {
+export const LEVEL_MAP: Record<ConsoleMessage['type'], ConsoleInternalLevel> = {
   error: 'error',
   warning: 'warning',
   info: 'info',
@@ -127,8 +134,23 @@ const LEVEL_MAP: Record<ConsoleMessage['type'], ConsoleLevel> = {
  * @param type - Console message type from CDP
  * @returns Normalized level category
  */
-function classifyLevel(type: ConsoleMessage['type']): ConsoleLevel {
+function classifyLevel(type: ConsoleMessage['type']): ConsoleInternalLevel {
   return LEVEL_MAP[type];
+}
+
+/**
+ * Format timestamp with milliseconds precision.
+ *
+ * @param timestamp - Unix timestamp in milliseconds
+ * @returns Formatted time string like "12:34:56.789"
+ */
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const seconds = date.getSeconds().toString().padStart(2, '0');
+  const ms = date.getMilliseconds().toString().padStart(3, '0');
+  return `${hours}:${minutes}:${seconds}.${ms}`;
 }
 
 /**
@@ -180,7 +202,7 @@ function deduplicate(messages: ConsoleMessage[]): DeduplicatedMessage[] {
  * @returns Grouped and processed message data
  */
 function groupByLevel(messages: ConsoleMessage[]): GroupedMessages {
-  const byLevel: Record<ConsoleLevel, ConsoleMessage[]> = {
+  const byLevel: Record<ConsoleInternalLevel, ConsoleMessage[]> = {
     error: [],
     warning: [],
     info: [],
@@ -241,9 +263,27 @@ function analyzeMessages(messages: ConsoleMessage[]): AnalysisResult {
 }
 
 /**
- * Format source location as "file:line:col".
+ * Extract filename from URL for display.
  *
- * Extracts filename from URL for concise display.
+ * @param url - Full URL or empty string
+ * @param functionName - Optional function name for inline scripts
+ * @returns Concise filename representation
+ */
+function getFilenameFromUrl(url: string | undefined, functionName?: string): string {
+  if (!url || url === '') {
+    return functionName ? `<${functionName}>` : '<inline>';
+  }
+  if (url.startsWith('eval')) {
+    return '<eval>';
+  }
+  if (url.includes('/')) {
+    return url.split('/').pop() ?? url;
+  }
+  return url;
+}
+
+/**
+ * Format source location as "file:line:col".
  *
  * @param stackTrace - Stack trace frames
  * @returns Formatted source location string, or undefined if no source
@@ -252,8 +292,7 @@ function formatSourceLocation(stackTrace?: StackFrame[]): string | undefined {
   const frame = stackTrace?.[0];
   if (!frame) return undefined;
 
-  const url = frame.url;
-  const filename = url.includes('/') ? (url.split('/').pop() ?? url) : url;
+  const filename = getFilenameFromUrl(frame.url, frame.functionName);
   const line = frame.lineNumber + 1;
   const col = frame.columnNumber + 1;
 
@@ -424,7 +463,7 @@ export function formatConsoleChronological(
 
   for (const [i, msg] of displayMessages.entries()) {
     const index = baseIndex + i;
-    const time = new Date(msg.timestamp).toLocaleTimeString();
+    const time = formatTimestamp(msg.timestamp);
     const level = msg.type.padEnd(7);
 
     // Show navigation marker when page reloads
@@ -469,7 +508,7 @@ export function formatConsoleFollow(messages: ConsoleMessage[]): string {
   }
 
   for (const msg of messages) {
-    const time = new Date(msg.timestamp).toLocaleTimeString();
+    const time = formatTimestamp(msg.timestamp);
     const level = msg.type.padEnd(7);
     fmt.text(`${time} ${level} ${msg.text}`);
 

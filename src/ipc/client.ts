@@ -76,6 +76,7 @@ export async function getStatus(): Promise<StatusResponse> {
  * Request preview data from the daemon.
  * Returns snapshot of collected telemetry without stopping session.
  *
+ * @param options - Optional parameters for the peek request (lastN: number of items, 0 = all)
  * @returns Peek response with preview data
  * @throws Error if connection fails, times out, or no active session
  *
@@ -87,9 +88,18 @@ export async function getStatus(): Promise<StatusResponse> {
  *   console.log('Console messages:', response.data.preview.data.console?.length);
  * }
  * ```
+ *
+ * @example
+ * ```typescript
+ * // Get all messages (no limit)
+ * const response = await getPeek({ lastN: 0 });
+ * ```
  */
-export async function getPeek(): Promise<PeekResponse> {
-  const request: PeekRequest = withSession({ type: 'peek_request' });
+export async function getPeek(options?: { lastN?: number }): Promise<PeekResponse> {
+  const request: PeekRequest = withSession({
+    type: 'peek_request',
+    ...(options?.lastN !== undefined && { lastN: options.lastN }),
+  });
   return sendRequest<PeekRequest, PeekResponse>(request, 'peek', 'peek_response');
 }
 
