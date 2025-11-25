@@ -10,7 +10,6 @@ import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 import { BDG_CHROME_PREFS, DEFAULT_CDP_PORT, CHROME_PROFILE_DIR } from '@/constants.js';
 import { DEFAULT_CHROME_LOG_LEVEL, DEFAULT_CHROME_HANDLE_SIGINT } from '@/constants.js';
 import {
-  formatDiagnosticsForError,
   chromeLaunchSuccessMessage,
   chromeUserDataDirMessage,
   invalidPortError,
@@ -20,7 +19,7 @@ import {
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
 
-import { getChromeDiagnostics } from './diagnostics.js';
+import { getFormattedDiagnostics } from './diagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from './errors.js';
 import { resolveChromeBinary } from './launcher/binaryResolver.js';
 import { buildChromeFlags } from './launcher/flagsBuilder.js';
@@ -36,19 +35,6 @@ const defaultLogger: Logger = {
   info: (msg) => console.error(msg),
   debug: () => {}, // No-op by default
 };
-
-/**
- * Get formatted Chrome diagnostics for error messages.
- *
- * Retrieves Chrome installation information and formats it for display
- * in error messages. Uses cached diagnostics to avoid repeated filesystem scans.
- *
- * @returns Array of formatted diagnostic strings
- */
-function getFormattedDiagnostics(): string[] {
-  const diagnostics = getChromeDiagnostics();
-  return formatDiagnosticsForError(diagnostics);
-}
 
 /**
  * Options that control how Chrome is launched for CDP sessions.
@@ -254,7 +240,7 @@ function getPersistentUserDataDir(baseDir?: string): string {
  */
 function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const userPrefs = loadChromePrefs(options);
-  const userDataDir = options.userDataDir ?? getPersistentUserDataDir();
+  const userDataDir = options.userDataDir ?? getPersistentUserDataDir(options.baseDir);
   const chromePathOverride = resolveChromeBinary(options);
 
   const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;

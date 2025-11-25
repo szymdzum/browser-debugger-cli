@@ -1,18 +1,7 @@
 import type ProtocolMapping from 'devtools-protocol/types/protocol-mapping';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { TypedCDPConnection } from '@/connection/typed-cdp.js';
-
-/**
- * Extract event parameter type from a CDP event.
- */
-type EventParams<T extends keyof ProtocolMapping.Events> = ProtocolMapping.Events[T] extends [
-  infer P,
-]
-  ? P
-  : ProtocolMapping.Events[T] extends []
-    ? void
-    : never;
+import type { EventParams, TypedCDPConnection } from '@/connection/typed-cdp.js';
 
 /**
  * Registry for managing CDP event handlers with automatic cleanup.

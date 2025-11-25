@@ -6,7 +6,7 @@ import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
 import { startNavigationTracking } from '@/telemetry/navigation.js';
-import { startNetworkCollection } from '@/telemetry/network.js';
+import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
 import type { CleanupFunction, TelemetryType } from '@/types';
 import type { Logger } from '@/ui/logging/index.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -58,6 +58,13 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
           }),
         };
         return startNetworkCollection(cdp, store.networkRequests, networkOptions);
+      },
+    },
+    {
+      name: 'websocket',
+      telemetry: 'network',
+      async start({ cdp, store }) {
+        return startWebSocketCollection(cdp, store.websocketConnections);
       },
     },
     {

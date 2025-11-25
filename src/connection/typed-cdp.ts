@@ -41,13 +41,12 @@ type CommandReturn<T extends keyof ProtocolMapping.Commands> =
  * If event has no parameters, returns empty object.
  * If event has single parameter array, returns first element.
  */
-type EventParams<T extends keyof ProtocolMapping.Events> = ProtocolMapping.Events[T] extends [
-  infer P,
-]
-  ? P
-  : ProtocolMapping.Events[T] extends []
-    ? void
-    : never;
+export type EventParams<T extends keyof ProtocolMapping.Events> =
+  ProtocolMapping.Events[T] extends [infer P]
+    ? P
+    : ProtocolMapping.Events[T] extends []
+      ? void
+      : never;
 
 /**
  * Type-safe wrapper around CDPConnection.
@@ -139,7 +138,7 @@ export class TypedCDPConnection {
   /**
    * Remove an event handler by ID.
    *
-   * @param event - CDP event name
+   * @param event - CDP event name (type-safe)
    * @param handlerId - Handler ID returned from on()
    *
    * @example
@@ -149,7 +148,7 @@ export class TypedCDPConnection {
    * typed.off('Network.requestWillBeSent', id);
    * ```
    */
-  off(event: string, handlerId: number): void {
+  off<T extends keyof ProtocolMapping.Events>(event: T, handlerId: number): void {
     this.cdp.off(event, handlerId);
   }
 

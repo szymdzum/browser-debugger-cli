@@ -7,9 +7,8 @@
 
 import * as fs from 'fs';
 
-import { getChromeDiagnostics } from '@/connection/diagnostics.js';
+import { getFormattedDiagnostics } from '@/connection/diagnostics.js';
 import { ChromeLaunchError, getErrorMessage } from '@/connection/errors.js';
-import { formatDiagnosticsForError } from '@/ui/messages/chrome.js';
 import {
   chromeBinaryOverrideNotFound,
   chromeBinaryOverrideNotExecutable,
@@ -22,19 +21,6 @@ import {
 export interface BinaryResolverOptions {
   /** Explicit Chrome binary path (overrides CHROME_PATH env var) */
   chromePath?: string | undefined;
-}
-
-/**
- * Get formatted Chrome diagnostics for error messages.
- *
- * Retrieves Chrome installation information and formats it for display
- * in error messages. Uses cached diagnostics to avoid repeated filesystem scans.
- *
- * @returns Array of formatted diagnostic strings
- */
-function getFormattedDiagnostics(): string[] {
-  const diagnostics = getChromeDiagnostics();
-  return formatDiagnosticsForError(diagnostics);
 }
 
 /**

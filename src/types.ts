@@ -26,6 +26,44 @@ export interface DOMData {
   };
 }
 
+/**
+ * WebSocket frame data captured during connection.
+ */
+export interface WebSocketFrame {
+  /** Timestamp when frame was sent/received */
+  timestamp: number;
+  /** Direction: 'sent' or 'received' */
+  direction: 'sent' | 'received';
+  /** WebSocket opcode (1 = text, 2 = binary) */
+  opcode: number;
+  /** Frame payload data */
+  payloadData: string;
+}
+
+/**
+ * WebSocket connection with lifecycle and frame data.
+ */
+export interface WebSocketConnection {
+  /** Request ID from CDP */
+  requestId: string;
+  /** WebSocket URL */
+  url: string;
+  /** Timestamp when connection was created */
+  timestamp: number;
+  /** Initiator URL (page that opened the WebSocket) */
+  initiatorUrl?: string;
+  /** Response status from handshake */
+  status?: number;
+  /** Response headers from handshake */
+  responseHeaders?: Record<string, string>;
+  /** Captured frames (sent and received) */
+  frames: WebSocketFrame[];
+  /** Timestamp when connection was closed */
+  closedTime?: number;
+  /** Error message if connection failed */
+  errorMessage?: string;
+}
+
 export interface NetworkRequest {
   requestId: string;
   url: string;
@@ -137,6 +175,7 @@ export interface BdgOutput {
     dom?: DOMData;
     network?: NetworkRequest[];
     console?: ConsoleMessage[];
+    websockets?: WebSocketConnection[];
   };
   error?: string;
   partial?: boolean; // Flag to indicate this is partial/incomplete data (live preview)

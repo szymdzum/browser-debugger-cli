@@ -9,7 +9,11 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { getErrorMessage } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { createLogger } from '@/ui/logging/index.js';
+
+const log = createLogger('readiness');
 
 /** Network idle threshold in milliseconds - network is stable when no requests for this duration */
 const NETWORK_IDLE_THRESHOLD_MS = 200;
@@ -64,18 +68,17 @@ export async function waitForPageReady(
 
   try {
     await waitForLoadEvent(cdp, deadline);
-    console.error('[readiness] ✓ Load event');
+    log.info('Load event fired');
 
     const networkIdleMs = await waitForNetworkStable(cdp, deadline);
-    console.error(`[readiness] ✓ Network stable (${networkIdleMs}ms idle)`);
+    log.info(`Network stable (${networkIdleMs}ms idle)`);
 
     const domIdleMs = await waitForDOMStable(cdp, deadline);
-    console.error(`[readiness] ✓ DOM stable (${domIdleMs}ms idle)`);
+    log.info(`DOM stable (${domIdleMs}ms idle)`);
 
-    console.error('[readiness] ✓ Page ready');
+    log.info('Page ready');
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`[readiness] ${message}, proceeding anyway`);
+    log.info(`${getErrorMessage(error)}, proceeding anyway`);
   }
 }
 
@@ -108,9 +111,7 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
       return;
     }
   } catch (error) {
-    console.error(
-      `[readiness] Failed to check document.readyState: ${error instanceof Error ? error.message : String(error)}`
-    );
+    log.debug(`Failed to check document.readyState: ${getErrorMessage(error)}`);
   }
 
   return new Promise((resolve, reject) => {
@@ -281,7 +282,9 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
         delete window.__bdg_lastMutation;
       `,
       })
-      .catch(() => {});
+      .catch((error) => {
+        log.debug(`Failed to clean up DOM observer: ${getErrorMessage(error)}`);
+      });
   }
 }
 

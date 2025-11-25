@@ -12,7 +12,7 @@ import {
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT,
 } from '@/constants.js';
-import type { NetworkRequest, CleanupFunction } from '@/types';
+import type { NetworkRequest, WebSocketConnection, WebSocketFrame, CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
@@ -357,5 +357,152 @@ export async function startNetworkCollection(
     registry.cleanup();
     requestMap.clear();
     pendingFetches.clear();
+  };
+}
+
+/** Maximum WebSocket connections to track */
+const MAX_WEBSOCKET_CONNECTIONS = 100;
+
+/** Maximum frames to capture per WebSocket connection */
+const MAX_FRAMES_PER_CONNECTION = 1000;
+
+/** Maximum payload size to capture per frame (100KB) */
+const MAX_FRAME_PAYLOAD_SIZE = 100 * 1024;
+
+/**
+ * Start collecting WebSocket connections and frames via CDP Network domain.
+ *
+ * Tracks WebSocket lifecycle (creation, handshake, frames, close) separately from HTTP requests.
+ * Network.enable must be called before this (typically by startNetworkCollection).
+ *
+ * @param cdp - CDP connection instance
+ * @param connections - Array to populate with WebSocket connections
+ * @returns Cleanup function to remove event handlers
+ */
+export function startWebSocketCollection(
+  cdp: CDPConnection,
+  connections: WebSocketConnection[]
+): CleanupFunction {
+  const connectionMap = new Map<string, WebSocketConnection>();
+  const registry = new CDPHandlerRegistry();
+  const typed = new TypedCDPConnection(cdp);
+
+  registry.registerTyped(typed, 'Network.webSocketCreated', (params) => {
+    if (connectionMap.size >= MAX_WEBSOCKET_CONNECTIONS) {
+      log.debug(
+        `WebSocket connection limit reached (${MAX_WEBSOCKET_CONNECTIONS}), skipping new connection`
+      );
+      return;
+    }
+
+    const connection: WebSocketConnection = {
+      requestId: params.requestId,
+      url: params.url,
+      timestamp: Date.now(),
+      frames: [],
+    };
+
+    if (params.initiator?.url) {
+      connection.initiatorUrl = params.initiator.url;
+    }
+
+    connectionMap.set(params.requestId, connection);
+    log.debug(`WebSocket created: ${params.url}`);
+  });
+
+  registry.registerTyped(typed, 'Network.webSocketHandshakeResponseReceived', (params) => {
+    const connection = connectionMap.get(params.requestId);
+    if (!connection) return;
+
+    connection.status = params.response.status;
+    if (params.response.headers) {
+      connection.responseHeaders = params.response.headers;
+    }
+  });
+
+  registry.registerTyped(typed, 'Network.webSocketFrameSent', (params) => {
+    const connection = connectionMap.get(params.requestId);
+    if (!connection) return;
+
+    if (connection.frames.length >= MAX_FRAMES_PER_CONNECTION) {
+      return;
+    }
+
+    let payloadData = params.response.payloadData;
+    if (payloadData.length > MAX_FRAME_PAYLOAD_SIZE) {
+      payloadData =
+        payloadData.substring(0, MAX_FRAME_PAYLOAD_SIZE) +
+        `... [truncated, ${payloadData.length} bytes total]`;
+    }
+
+    const frame: WebSocketFrame = {
+      timestamp: Date.now(),
+      direction: 'sent',
+      opcode: params.response.opcode,
+      payloadData,
+    };
+
+    connection.frames.push(frame);
+  });
+
+  registry.registerTyped(typed, 'Network.webSocketFrameReceived', (params) => {
+    const connection = connectionMap.get(params.requestId);
+    if (!connection) return;
+
+    if (connection.frames.length >= MAX_FRAMES_PER_CONNECTION) {
+      return;
+    }
+
+    let payloadData = params.response.payloadData;
+    if (payloadData.length > MAX_FRAME_PAYLOAD_SIZE) {
+      payloadData =
+        payloadData.substring(0, MAX_FRAME_PAYLOAD_SIZE) +
+        `... [truncated, ${payloadData.length} bytes total]`;
+    }
+
+    const frame: WebSocketFrame = {
+      timestamp: Date.now(),
+      direction: 'received',
+      opcode: params.response.opcode,
+      payloadData,
+    };
+
+    connection.frames.push(frame);
+  });
+
+  registry.registerTyped(typed, 'Network.webSocketFrameError', (params) => {
+    const connection = connectionMap.get(params.requestId);
+    if (!connection) return;
+
+    connection.errorMessage = params.errorMessage;
+    log.debug(`WebSocket frame error for ${connection.url}: ${params.errorMessage}`);
+  });
+
+  registry.registerTyped(typed, 'Network.webSocketClosed', (params) => {
+    const connection = connectionMap.get(params.requestId);
+    if (!connection) return;
+
+    connection.closedTime = Date.now();
+
+    connections.push(connection);
+    connectionMap.delete(params.requestId);
+
+    log.debug(`WebSocket closed: ${connection.url} (${connection.frames.length} frames captured)`);
+  });
+
+  return () => {
+    for (const connection of connectionMap.values()) {
+      connections.push(connection);
+    }
+
+    const totalFrames = connections.reduce((sum, c) => sum + c.frames.length, 0);
+    if (connections.length > 0) {
+      log.debug(
+        `[PERF] WebSockets: ${connections.length} connections, ${totalFrames} frames captured`
+      );
+    }
+
+    registry.cleanup();
+    connectionMap.clear();
   };
 }

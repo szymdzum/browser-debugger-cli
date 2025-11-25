@@ -59,6 +59,7 @@ export type LogContext =
   | 'dom'
   | 'network'
   | 'diagnostics'
+  | 'readiness'
   | 'atomic-file'
   | 'object-expander';
 

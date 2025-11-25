@@ -6,6 +6,7 @@ import type {
   DOMData,
   NetworkRequest,
   TelemetryType,
+  WebSocketConnection,
 } from '@/types';
 import { VERSION } from '@/utils/version.js';
 
@@ -13,6 +14,7 @@ export class TelemetryStore {
   readonly networkRequests: NetworkRequest[] = [];
   readonly consoleMessages: ConsoleMessage[] = [];
   readonly navigationEvents: NavigationEvent[] = [];
+  readonly websocketConnections: WebSocketConnection[] = [];
 
   domData: DOMData | null = null;
   activeTelemetry: TelemetryType[] = [];
@@ -48,6 +50,9 @@ export class TelemetryStore {
     }
     if (this.domData) {
       data.dom = this.domData;
+    }
+    if (this.websocketConnections.length > 0) {
+      data.websockets = this.websocketConnections;
     }
 
     return {

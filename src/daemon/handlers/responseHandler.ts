@@ -13,6 +13,7 @@ import type { WorkerIPCResponse } from '@/daemon/workerIpc.js';
 import {
   type ClientResponse,
   type CommandName,
+  type HARDataResponse,
   type PeekResponse,
   type StatusResponse,
   type StatusResponseData,
@@ -100,6 +101,17 @@ export class ResponseHandler {
           error: errorMessage,
         };
         this.sendResponse(pending.socket, peekResponse);
+        continue;
+      }
+
+      if (pending.commandName === 'worker_har_data') {
+        const harDataResponse: HARDataResponse = {
+          type: 'har_data_response',
+          sessionId: pending.sessionId,
+          status: 'error',
+          error: errorMessage,
+        };
+        this.sendResponse(pending.socket, harDataResponse);
         continue;
       }
 
