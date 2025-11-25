@@ -5,6 +5,8 @@
  * for each command. This enables compile-time checking of formatter inputs.
  */
 
+import type { NetworkRequest, ConsoleMessage } from '@/types.js';
+
 /**
  * Status command result
  *
@@ -41,9 +43,10 @@ export interface CleanupResult {
 }
 
 /**
- * Details command result
+ * Details command result using discriminated union for type safety.
+ * The `type` field discriminates between network and console results,
+ * allowing TypeScript to narrow the `item` type automatically.
  */
-export interface DetailsResult {
-  item: unknown; // NetworkRequest | ConsoleMessage
-  type: 'network' | 'console';
-}
+export type DetailsResult =
+  | { type: 'network'; item: NetworkRequest }
+  | { type: 'console'; item: ConsoleMessage };

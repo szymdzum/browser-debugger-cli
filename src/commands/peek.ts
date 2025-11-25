@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import { getErrorMessage } from '@/connection/errors.js';
@@ -134,16 +135,10 @@ export function registerPeekCommand(program: Command): void {
       };
 
       if (options.follow) {
-        console.error(followingPreviewMessage());
-        await showPreview();
-        const followInterval = setInterval(() => {
-          void showPreview();
-        }, 1000);
-
-        process.on('SIGINT', () => {
-          clearInterval(followInterval);
-          console.error(stoppedFollowingPreviewMessage());
-          process.exit(EXIT_CODES.SUCCESS);
+        await setupFollowMode(showPreview, {
+          startMessage: followingPreviewMessage,
+          stopMessage: stoppedFollowingPreviewMessage,
+          intervalMs: 1000,
         });
       } else {
         await showPreview();

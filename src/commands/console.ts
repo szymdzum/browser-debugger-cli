@@ -4,6 +4,7 @@ import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { getPeek } from '@/ipc/client.js';
@@ -270,8 +271,6 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(jsonOption())
     .action(async (options: ConsoleCommandOptions) => {
       if (options.follow) {
-        console.error(followingConsoleMessage());
-
         const showConsole = async (): Promise<void> => {
           const messages = await fetchConsoleMessages(options);
           if (messages) {
@@ -279,15 +278,10 @@ export function registerConsoleCommand(program: Command): void {
           }
         };
 
-        await showConsole();
-        const followInterval = setInterval(() => {
-          void showConsole();
-        }, 1000);
-
-        process.on('SIGINT', () => {
-          clearInterval(followInterval);
-          console.error(stoppedFollowingConsoleMessage());
-          process.exit(EXIT_CODES.SUCCESS);
+        await setupFollowMode(showConsole, {
+          startMessage: followingConsoleMessage,
+          stopMessage: stoppedFollowingConsoleMessage,
+          intervalMs: 1000,
         });
       } else {
         const messages = await fetchConsoleMessages(options);

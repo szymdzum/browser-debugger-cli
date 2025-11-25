@@ -78,17 +78,27 @@ export function isConsoleMessage(value: unknown): value is ConsoleMessage {
  * Replaces unsafe `as unknown as` assertions with runtime validation.
  * Throws CommandError if validation fails.
  *
+ * Uses function overloads to return the correct type based on the `type` parameter,
+ * enabling proper type narrowing in discriminated unions.
+ *
  * @param item - Unknown item from IPC response
  * @param type - Expected type ('network' or 'console')
- * @returns Validated NetworkRequest or ConsoleMessage
+ * @returns Validated NetworkRequest or ConsoleMessage based on type parameter
  * @throws CommandError if item fails validation
  *
  * @example
  * ```typescript
- * const validatedItem = validateDetailsItem(response.data.item, 'network');
- * // validatedItem is now typed as NetworkRequest | ConsoleMessage
+ * const networkItem = validateDetailsItem(response.data.item, 'network');
+ * // networkItem is typed as NetworkRequest
+ *
+ * const consoleItem = validateDetailsItem(response.data.item, 'console');
+ * // consoleItem is typed as ConsoleMessage
  * ```
  */
+export function validateDetailsItem(item: unknown, type: 'network'): NetworkRequest;
+// eslint-disable-next-line no-redeclare
+export function validateDetailsItem(item: unknown, type: 'console'): ConsoleMessage;
+// eslint-disable-next-line no-redeclare
 export function validateDetailsItem(
   item: unknown,
   type: 'network' | 'console'

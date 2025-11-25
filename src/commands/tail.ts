@@ -2,6 +2,7 @@ import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { TailCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { getErrorMessage } from '@/connection/errors.js';
@@ -101,24 +102,11 @@ export function registerTailCommand(program: Command): void {
         console.log(formatPreview(output, previewOptions));
       };
 
-      console.error(followingPreviewMessage());
-      await showPreview();
-
-      const followInterval = setInterval(() => {
-        void showPreview();
-      }, interval);
-
-      process.on('SIGINT', () => {
-        clearInterval(followInterval);
-        console.error(stoppedFollowingPreviewMessage());
-        process.exit(EXIT_CODES.SUCCESS);
-      });
-
-      process.stdout.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EPIPE') {
-          clearInterval(followInterval);
-          process.exit(EXIT_CODES.SUCCESS);
-        }
+      await setupFollowMode(showPreview, {
+        startMessage: followingPreviewMessage,
+        stopMessage: stoppedFollowingPreviewMessage,
+        intervalMs: interval,
+        handleEpipe: true,
       });
     });
 }

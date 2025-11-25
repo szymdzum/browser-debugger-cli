@@ -9,6 +9,8 @@ import { Option, type Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { setupFollowMode } from '@/commands/shared/followMode.js';
+import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { getErrorMessage } from '@/connection/errors.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
@@ -32,8 +34,11 @@ const DEFAULT_LAST_ITEMS = 100;
 const FOLLOW_MODE_LIMIT = 50;
 const FOLLOW_INTERVAL_MS = 1000;
 
-interface NetworkListCommandOptions {
-  json?: boolean;
+/**
+ * Options for network list command.
+ * Extends BaseOptions to inherit standard json flag handling.
+ */
+interface NetworkListCommandOptions extends BaseOptions {
   filter?: string;
   preset?: string;
   last?: number;
@@ -276,20 +281,12 @@ async function processNetworkRequests(
  * Run follow mode with periodic updates.
  */
 async function runFollowMode(options: NetworkListCommandOptions): Promise<void> {
-  console.error(followingNetworkMessage());
-
   const refresh = (): Promise<void> => processNetworkRequests(options, displayNetworkStreaming);
 
-  await refresh();
-
-  const intervalId = setInterval(() => {
-    void refresh();
-  }, FOLLOW_INTERVAL_MS);
-
-  process.on('SIGINT', () => {
-    clearInterval(intervalId);
-    console.error(stoppedFollowingNetworkMessage());
-    process.exit(EXIT_CODES.SUCCESS);
+  await setupFollowMode(refresh, {
+    startMessage: followingNetworkMessage,
+    stopMessage: stoppedFollowingNetworkMessage,
+    intervalMs: FOLLOW_INTERVAL_MS,
   });
 }
 

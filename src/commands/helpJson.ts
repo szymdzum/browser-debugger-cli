@@ -8,7 +8,6 @@ import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { isDaemonRunning } from '@/daemon/launcher.js';
 import { readPid } from '@/session/pid.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
-import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
 import { getAllTaskMappings, type TaskMapping } from '@/utils/taskMappings.js';
 
@@ -136,36 +135,58 @@ export interface MachineReadableHelp {
 /**
  * Converts a Commander Option to OptionMetadata.
  *
+ * Builds the metadata object directly with proper types,
+ * only including optional fields when they have values.
+ *
  * @param option - Commander option instance
  * @returns Option metadata
  */
 function convertOption(option: Option): OptionMetadata {
-  return filterDefined({
+  const metadata: OptionMetadata = {
     flags: option.flags,
     description: option.description,
     required: option.required,
     optional: option.optional,
-    defaultValue: option.defaultValue as unknown,
-    defaultValueDescription: option.defaultValueDescription,
-    choices: option.argChoices,
-  }) as unknown as OptionMetadata;
+  };
+
+  if (option.defaultValue !== undefined) {
+    metadata.defaultValue = option.defaultValue;
+  }
+  if (option.defaultValueDescription) {
+    metadata.defaultValueDescription = option.defaultValueDescription;
+  }
+  if (option.argChoices) {
+    metadata.choices = option.argChoices;
+  }
+
+  return metadata;
 }
 
 /**
  * Converts a Commander Argument to ArgumentMetadata.
  *
+ * Builds the metadata object directly with proper types,
+ * only including optional fields when they have values.
+ *
  * @param argument - Commander argument instance
  * @returns Argument metadata
  */
 function convertArgument(argument: Argument): ArgumentMetadata {
-  return filterDefined({
+  const metadata: ArgumentMetadata = {
     name: argument.name(),
     description: argument.description,
     required: argument.required,
     variadic: argument.variadic,
-    defaultValue: argument.defaultValue as unknown,
-    choices: argument.argChoices,
-  }) as unknown as ArgumentMetadata;
+  };
+
+  if (argument.defaultValue !== undefined) {
+    metadata.defaultValue = argument.defaultValue;
+  }
+  if (argument.argChoices) {
+    metadata.choices = argument.argChoices;
+  }
+
+  return metadata;
 }
 
 /**

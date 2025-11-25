@@ -31,8 +31,8 @@ export function registerStatusCommand(program: Command): void {
     .option('-j, --json', 'Output as JSON', false)
     .option('-v, --verbose', 'Show detailed Chrome diagnostics', false)
     .action(async (options: StatusCommandOptions) => {
-      let latestMetadata: SessionMetadata | null = null;
-      let latestSessionPid: number | null = null;
+      let latestMetadata: SessionMetadata | undefined;
+      let latestSessionPid: number | undefined;
       let latestActivity: SessionActivity | undefined;
       let latestPageState: PageState | undefined;
 
@@ -61,8 +61,8 @@ export function registerStatusCommand(program: Command): void {
             latestPageState = data.pageState;
 
             if (!data.sessionPid || !data.sessionMetadata) {
-              latestMetadata = null;
-              latestSessionPid = null;
+              latestMetadata = undefined;
+              latestSessionPid = undefined;
               const jsonOutput = formatStatusAsJson(null, null);
               if (data.activity) {
                 jsonOutput.activity = data.activity;
@@ -119,7 +119,7 @@ export function registerStatusCommand(program: Command): void {
             return formatNoSessionMessage();
           }
 
-          if (!latestMetadata || latestSessionPid === null) {
+          if (!latestMetadata || latestSessionPid === undefined) {
             return formatNoSessionMessage();
           }
 
