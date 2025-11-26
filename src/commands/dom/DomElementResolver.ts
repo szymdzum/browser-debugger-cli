@@ -5,7 +5,9 @@
  * - Numeric indices (referencing cached query results)
  * - CSS selectors (used directly)
  *
- * Handles cache validation, staleness detection, and consistent error handling.
+ * Handles cache validation, staleness detection, and automatic refresh.
+ * When cache is stale due to navigation, automatically re-runs the original
+ * query to provide seamless "just works" experience.
  *
  * @example
  * ```typescript
@@ -26,7 +28,10 @@
 
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { CommandError } from '@/ui/errors/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('dom');
 
 /**
  * Successful result of resolving a selector or index argument.
@@ -63,7 +68,8 @@ export type ElementTargetResult = ElementTargetSuccess | ElementTargetFailure;
 /**
  * Singleton resolver for DOM element access patterns.
  *
- * Centralizes element resolution with cache validation and consistent error handling.
+ * Centralizes element resolution with cache validation, automatic refresh,
+ * and consistent error handling.
  */
 export class DomElementResolver {
   private static instance: DomElementResolver | null = null;
@@ -76,6 +82,33 @@ export class DomElementResolver {
    */
   constructor(cacheManager?: QueryCacheManager) {
     this.cacheManager = cacheManager ?? QueryCacheManager.getInstance();
+  }
+
+  /**
+   * Refresh stale cache by re-running the original query.
+   *
+   * Called automatically when cache validation fails due to navigation.
+   * Re-queries using the stored selector and updates the cache with fresh results.
+   *
+   * @param selector - Original CSS selector from stale cache
+   * @returns Fresh query result
+   */
+  private async refreshCache(selector: string): Promise<void> {
+    log.debug(`Cache stale, auto-refreshing query "${selector}"`);
+
+    const { queryDOMElements } = await import('@/commands/dom/helpers.js');
+    const result = await queryDOMElements(selector);
+
+    const navigationId = await this.cacheManager.getCurrentNavigationId();
+    const resultWithNavId = {
+      ...result,
+      ...(navigationId !== null && { navigationId }),
+    };
+
+    await this.cacheManager.set(resultWithNavId);
+    this.cacheManager.invalidateNavigationCache();
+
+    log.debug(`Cache refreshed: found ${result.count} elements`);
   }
 
   /**
@@ -102,7 +135,9 @@ export class DomElementResolver {
    * - A CSS selector string (used directly)
    * - A numeric index (resolved from cached query results)
    *
-   * Validates cache staleness by checking navigationId against current page state.
+   * Automatically refreshes stale cache by re-running the original query.
+   * This provides a "just works" experience where navigation doesn't break
+   * index-based access.
    *
    * @param selectorOrIndex - CSS selector or numeric index from query results
    * @param explicitIndex - Optional explicit --index flag value (1-based)
@@ -121,7 +156,13 @@ export class DomElementResolver {
     const isNumericIndex = /^\d+$/.test(selectorOrIndex);
 
     if (isNumericIndex) {
-      const validation = await this.cacheManager.validate();
+      let validation = await this.cacheManager.validate();
+
+      // Auto-refresh: if cache is stale but has selector, re-run query
+      if (!validation.valid && validation.cache?.selector) {
+        await this.refreshCache(validation.cache.selector);
+        validation = await this.cacheManager.validate();
+      }
 
       if (!validation.valid || !validation.cache) {
         return {
@@ -138,8 +179,11 @@ export class DomElementResolver {
         return {
           success: false,
           error: `Index ${index} out of range (found ${cachedQuery.nodes.length} nodes from query "${cachedQuery.selector}")`,
-          exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-          suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
+          exitCode: EXIT_CODES.STALE_CACHE,
+          suggestion:
+            cachedQuery.nodes.length === 0
+              ? `No elements found after refresh. The selector "${cachedQuery.selector}" may no longer match any elements.`
+              : `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
         };
       }
 
@@ -160,11 +204,12 @@ export class DomElementResolver {
   /**
    * Get nodeId for a cached index.
    *
-   * Validates cache staleness and throws CommandError if invalid.
+   * Automatically refreshes stale cache by re-running the original query.
+   * Throws CommandError only if refresh fails or index is out of range after refresh.
    *
    * @param index - Zero-based index from query results
    * @returns Node with nodeId from cache
-   * @throws CommandError if cache missing, stale, index out of range, or node not found
+   * @throws CommandError if cache missing, index out of range after refresh, or node not found
    *
    * @example
    * ```typescript
@@ -173,7 +218,13 @@ export class DomElementResolver {
    * ```
    */
   async getNodeIdForIndex(index: number): Promise<{ nodeId: number }> {
-    const validation = await this.cacheManager.validate();
+    let validation = await this.cacheManager.validate();
+
+    // Auto-refresh: if cache is stale but has selector, re-run query
+    if (!validation.valid && validation.cache?.selector) {
+      await this.refreshCache(validation.cache.selector);
+      validation = await this.cacheManager.validate();
+    }
 
     if (!validation.valid || !validation.cache) {
       throw new CommandError(
@@ -186,12 +237,15 @@ export class DomElementResolver {
     const cachedQuery = validation.cache;
 
     if (index < 0 || index >= cachedQuery.nodes.length) {
+      const suggestion =
+        cachedQuery.nodes.length === 0
+          ? `No elements found after refresh. The selector "${cachedQuery.selector}" may no longer match any elements.`
+          : `Use an index between 0 and ${cachedQuery.nodes.length - 1}`;
+
       throw new CommandError(
         `Index ${index} out of range (found ${cachedQuery.nodes.length} nodes from query "${cachedQuery.selector}")`,
-        {
-          suggestion: `Use an index between 0 and ${cachedQuery.nodes.length - 1}`,
-        },
-        EXIT_CODES.INVALID_ARGUMENTS
+        { suggestion },
+        EXIT_CODES.STALE_CACHE
       );
     }
 
@@ -210,13 +264,19 @@ export class DomElementResolver {
   /**
    * Get the count of cached elements.
    *
-   * Validates cache and returns element count, or throws if cache is invalid.
+   * Automatically refreshes stale cache by re-running the original query.
    *
    * @returns Number of cached elements
-   * @throws CommandError if cache is missing or stale
+   * @throws CommandError if cache is missing or refresh fails
    */
   async getElementCount(): Promise<number> {
-    const validation = await this.cacheManager.validate();
+    let validation = await this.cacheManager.validate();
+
+    // Auto-refresh: if cache is stale but has selector, re-run query
+    if (!validation.valid && validation.cache?.selector) {
+      await this.refreshCache(validation.cache.selector);
+      validation = await this.cacheManager.validate();
+    }
 
     if (!validation.valid || !validation.cache) {
       throw new CommandError(

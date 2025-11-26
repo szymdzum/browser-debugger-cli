@@ -82,6 +82,15 @@ export async function startNavigationTracking(
     }
   });
 
+  // Track DOM.documentUpdated for SPA re-renders and document replacements
+  // This fires when the document is completely replaced (React root re-renders, etc.)
+  await cdp.send('DOM.enable');
+
+  registry.registerTyped(typed, 'DOM.documentUpdated', () => {
+    navigationCounter++;
+    log.debug(`DOM document updated [${navigationCounter}]`);
+  });
+
   return {
     cleanup: () => {
       registry.cleanup();

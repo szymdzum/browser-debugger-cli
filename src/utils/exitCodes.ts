@@ -60,6 +60,9 @@ export const EXIT_CODES = {
   /** Daemon already running when trying to start */
   DAEMON_ALREADY_RUNNING: 86,
 
+  /** Cache invalidated by navigation or DOM changes */
+  STALE_CACHE: 87,
+
   /** Chrome browser failed to launch */
   CHROME_LAUNCH_FAILURE: 100,
 
