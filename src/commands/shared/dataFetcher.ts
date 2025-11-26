@@ -98,16 +98,28 @@ export function createDaemonNotRunningError(): FetchError {
   };
 }
 
+interface ErrorResult {
+  success: false;
+  error: string;
+  exitCode: number;
+  errorContext: { suggestion: string };
+}
+
 /**
  * Create command result with suggestion.
+ *
+ * @param error - Error message
+ * @param exitCode - Exit code for the error
+ * @param suggestion - Suggestion text for the user
+ * @returns Error result object
  */
 export function createErrorResult(
   error: string,
   exitCode: number,
   suggestion = 'Start a session with: bdg <url>'
-) {
+): ErrorResult {
   return {
-    success: false as const,
+    success: false,
     error,
     exitCode,
     errorContext: { suggestion },

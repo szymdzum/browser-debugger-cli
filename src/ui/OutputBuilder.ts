@@ -30,7 +30,16 @@ export function buildSuccessResponse<T>(data: T): BdgResponse<T> {
   return { version: VERSION, success: true, data };
 }
 
-function buildBaseOutput(target: CDPTarget, startTime: number, partial: boolean) {
+interface BaseOutput {
+  version: string;
+  success: true;
+  timestamp: string;
+  duration: number;
+  target: { url: string; title: string };
+  partial: boolean;
+}
+
+function buildBaseOutput(target: CDPTarget, startTime: number, partial: boolean): BaseOutput {
   return {
     version: VERSION,
     success: true,

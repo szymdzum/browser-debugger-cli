@@ -63,8 +63,8 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'websocket',
       telemetry: 'network',
-      async start({ cdp, store }) {
-        return startWebSocketCollection(cdp, store.websocketConnections);
+      start({ cdp, store }) {
+        return Promise.resolve(startWebSocketCollection(cdp, store.websocketConnections));
       },
     },
     {
@@ -83,7 +83,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
       name: 'dom',
       telemetry: 'dom',
       async start({ cdp }) {
-        return prepareDOMCollection(cdp);
+        return await prepareDOMCollection(cdp);
       },
     },
   ];

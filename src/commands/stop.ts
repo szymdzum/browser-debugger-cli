@@ -69,7 +69,7 @@ export function registerStopCommand(program: Command): void {
                 chromePid: response.chromePid,
               });
 
-              if (cleanupResult.cleaned.chrome) {
+              if (cleanupResult.cleaned.chrome && !opts.json) {
                 log.info(chromeKilledMessage(response.chromePid));
               }
 

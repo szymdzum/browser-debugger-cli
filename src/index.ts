@@ -114,6 +114,18 @@ function getExitCodeFromError(error: unknown): number {
  * 4. Initialize Commander and register command handlers
  * 5. Parse arguments and route to appropriate command
  */
+/**
+ * Check if JSON output mode is requested.
+ *
+ * Detects --json flag early to suppress human-readable log messages
+ * that would break JSON parsing.
+ *
+ * @returns True if --json flag is present in arguments
+ */
+function isJsonOutputMode(): boolean {
+  return process.argv.includes('--json');
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--debug')) {
     enableDebugLogging();
@@ -138,7 +150,7 @@ async function main(): Promise<void> {
   }
 
   if (!isDaemonWorkerProcess()) {
-    await ensureDaemonRunning();
+    await ensureDaemonRunning(isJsonOutputMode());
   }
 
   program.parse();
@@ -156,22 +168,23 @@ async function main(): Promise<void> {
  * - Custom exit code from DAEMON_ALREADY_RUNNING error (typically 1)
  * - 1 for all other daemon launch failures
  *
+ * @param silent - Suppress info-level logs (for JSON output mode)
  * @throws Never - exits process on error instead
  */
-async function ensureDaemonRunning(): Promise<void> {
+async function ensureDaemonRunning(silent = false): Promise<void> {
   if (!isDaemonRunning()) {
-    log.info(DAEMON_STARTING_MESSAGE);
+    if (!silent) log.info(DAEMON_STARTING_MESSAGE);
     log.debug('Checking daemon PID file and acquiring lock...');
     try {
       await launchDaemon();
-      log.info(DAEMON_STARTED_MESSAGE);
+      if (!silent) log.info(DAEMON_STARTED_MESSAGE);
       log.debug('Daemon process spawned and socket ready');
     } catch (error: unknown) {
       if (isDaemonAlreadyRunningError(error)) {
-        log.info(getErrorMessage(error));
+        if (!silent) log.info(getErrorMessage(error));
         process.exit(getExitCodeFromError(error));
       }
-      log.info(`${DAEMON_START_FAILED_PREFIX} ${getErrorMessage(error)}`);
+      if (!silent) log.info(`${DAEMON_START_FAILED_PREFIX} ${getErrorMessage(error)}`);
       process.exit(DEFAULT_EXIT_CODE_ON_ERROR);
     }
   } else {
