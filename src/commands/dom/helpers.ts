@@ -15,6 +15,7 @@ import type {
   DomGetOptions,
   ScreenshotOptions,
   DomContext,
+  ElementBounds,
 } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -30,6 +31,7 @@ export type {
   DomGetOptions,
   ScreenshotOptions,
   DomContext,
+  ElementBounds,
 };
 
 /**
@@ -378,6 +380,146 @@ export async function capturePageScreenshot(
       width: viewport.clientWidth,
       height: viewport.clientHeight,
     };
+  }
+
+  return result;
+}
+
+/**
+ * Get element bounding box via CDP DOM.getBoxModel.
+ *
+ * Extracts the content box coordinates from the box model quad array.
+ * The content quad is an array of 8 numbers: [x1,y1, x2,y2, x3,y3, x4,y4]
+ * representing the four corners of the content box.
+ *
+ * @param nodeId - CDP node ID
+ * @returns Element bounds (x, y, width, height)
+ * @throws CommandError if element not found or has zero dimensions
+ */
+export async function getElementBounds(nodeId: number): Promise<ElementBounds> {
+  const response = await callCDP('DOM.getBoxModel', { nodeId });
+  const boxModel = response.data?.result as Protocol.DOM.GetBoxModelResponse | undefined;
+
+  if (!boxModel?.model?.content) {
+    throw new CommandError(
+      'Failed to get element bounds',
+      { suggestion: 'Element may not be rendered or visible' },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+
+  const content = boxModel.model.content;
+  const x = content[0] ?? 0;
+  const y = content[1] ?? 0;
+  const width = (content[2] ?? 0) - x;
+  const height = (content[5] ?? 0) - y;
+
+  if (width <= 0 || height <= 0) {
+    throw new CommandError(
+      'Element has zero dimensions (not visible)',
+      { suggestion: 'Element may be hidden or collapsed' },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+
+  return { x, y, width, height };
+}
+
+/**
+ * Resolve CSS selector to CDP nodeId.
+ *
+ * Queries the document for a single element matching the selector.
+ *
+ * @param selector - CSS selector string
+ * @returns CDP nodeId
+ * @throws CommandError if element not found
+ */
+export async function resolveSelector(selector: string): Promise<number> {
+  await callCDP('DOM.enable', {});
+
+  const docResponse = await callCDP('DOM.getDocument', {});
+  const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
+
+  if (!doc?.root?.nodeId) {
+    throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
+  }
+
+  const queryResponse = await callCDP('DOM.querySelector', {
+    nodeId: doc.root.nodeId,
+    selector,
+  });
+  const queryResult = queryResponse.data?.result as Protocol.DOM.QuerySelectorResponse | undefined;
+
+  if (!queryResult?.nodeId) {
+    throw new CommandError(
+      `Element not found: "${selector}"`,
+      { suggestion: "Run 'bdg dom query' to verify element exists" },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+
+  return queryResult.nodeId;
+}
+
+/**
+ * Capture screenshot of a specific element.
+ *
+ * Uses the element's bounding box to clip the screenshot region.
+ *
+ * @param outputPath - Output file path
+ * @param nodeId - CDP node ID of element
+ * @param options - Format and quality options
+ * @returns Screenshot result with element bounds
+ */
+export async function captureElementScreenshot(
+  outputPath: string,
+  nodeId: number,
+  options: { format?: 'png' | 'jpeg'; quality?: number } = {}
+): Promise<ScreenshotResult> {
+  const bounds = await getElementBounds(nodeId);
+
+  const format = options.format ?? 'png';
+  const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
+
+  const screenshotResponse = await callCDP('Page.captureScreenshot', {
+    format,
+    ...(quality !== undefined && { quality }),
+    clip: {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      scale: 1,
+    },
+    captureBeyondViewport: true,
+  });
+
+  const screenshotResult = screenshotResponse.data?.result as
+    | Protocol.Page.CaptureScreenshotResponse
+    | undefined;
+
+  if (!screenshotResult?.data) {
+    throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
+  }
+
+  const path = await import('path');
+  const { AtomicFileWriter } = await import('@/utils/atomicFile.js');
+  const buffer = Buffer.from(screenshotResult.data, 'base64');
+
+  const absolutePath = path.resolve(outputPath);
+  await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
+
+  const result: ScreenshotResult = {
+    path: absolutePath,
+    format,
+    width: bounds.width,
+    height: bounds.height,
+    size: buffer.length,
+    fullPage: false,
+  };
+
+  if (quality !== undefined) {
+    result.quality = quality;
   }
 
   return result;

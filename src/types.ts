@@ -302,6 +302,16 @@ export interface DomGetResult {
 }
 
 /**
+ * Element bounding box coordinates.
+ */
+export interface ElementBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
  * Result of a screenshot operation.
  */
 export interface ScreenshotResult {
@@ -316,6 +326,11 @@ export interface ScreenshotResult {
     height: number;
   };
   fullPage: boolean;
+  element?: {
+    selector?: string;
+    index?: number;
+    bounds: ElementBounds;
+  };
 }
 
 /**

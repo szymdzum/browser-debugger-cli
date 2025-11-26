@@ -93,6 +93,16 @@ export interface ScreenshotOptions {
   quality?: number;
   /** Capture full page vs viewport only */
   fullPage?: boolean;
+  /** CSS selector for element capture */
+  selector?: string;
+  /** Cached element index (0-based) from previous query */
+  index?: number;
+  /** Continuous capture mode to directory */
+  follow?: boolean;
+  /** Capture interval in ms for follow mode (string from CLI) */
+  interval?: string;
+  /** Max frames for follow mode (string from CLI) */
+  limit?: string;
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { DomQueryResult, DomGetResult } from '@/types.js';
+import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
@@ -136,7 +136,10 @@ export function formatDomEval(data: { result: unknown }): string {
 /**
  * Format screenshot capture result for human-readable display.
  *
- * @param data - Screenshot metadata
+ * Supports both page and element screenshots. Element screenshots show
+ * the selector/index and bounding box information.
+ *
+ * @param data - Screenshot metadata including optional element info
  * @returns Formatted string with screenshot details
  *
  * @example
@@ -158,37 +161,63 @@ export function formatDomEval(data: { result: unknown }): string {
  * // Full page: yes
  * ```
  */
-export function formatDomScreenshot(data: {
-  path: string;
-  format: 'png' | 'jpeg';
-  quality?: number;
-  width: number;
-  height: number;
-  size: number;
-  viewport?: { width: number; height: number };
-  fullPage: boolean;
-}): string {
+export function formatDomScreenshot(data: ScreenshotResult): string {
   const fmt = new OutputFormatter();
+  const sizeStr = formatFileSize(data.size);
+  const title = data.element ? 'Element screenshot captured' : 'Screenshot captured';
 
-  const sizeKB = data.size / 1024;
-  const sizeStr = sizeKB < 1024 ? `${sizeKB.toFixed(1)} KB` : `${(sizeKB / 1024).toFixed(1)} MB`;
+  fmt.text(title).blank();
 
-  fmt
-    .text('Screenshot captured')
-    .blank()
-    .keyValueList([
-      ['Path', data.path],
-      ['Format', data.format.toUpperCase()],
-      ...(data.format === 'jpeg' && data.quality !== undefined
-        ? [['Quality', `${data.quality}%`] as [string, string]]
-        : []),
-      ['Dimensions', `${data.width}x${data.height}`],
-      ['Size', sizeStr],
-      ['Full page', data.fullPage ? 'yes' : 'no'],
-      ...(data.viewport
-        ? [['Viewport', `${data.viewport.width}x${data.viewport.height}`] as [string, string]]
-        : []),
-    ]);
+  const kvPairs: [string, string][] = [
+    ['Path', data.path],
+    ['Format', data.format.toUpperCase()],
+  ];
+
+  if (data.format === 'jpeg' && data.quality !== undefined) {
+    kvPairs.push(['Quality', `${data.quality}%`]);
+  }
+
+  kvPairs.push(['Dimensions', `${data.width}x${data.height}`]);
+  kvPairs.push(['Size', sizeStr]);
+
+  if (data.element) {
+    const elementTarget = formatElementTarget(data.element);
+    kvPairs.push(['Element', elementTarget]);
+  } else {
+    kvPairs.push(['Full page', data.fullPage ? 'yes' : 'no']);
+    if (data.viewport) {
+      kvPairs.push(['Viewport', `${data.viewport.width}x${data.viewport.height}`]);
+    }
+  }
+
+  fmt.keyValueList(kvPairs);
 
   return fmt.build();
+}
+
+/**
+ * Format file size in human-readable units.
+ *
+ * @param bytes - Size in bytes
+ * @returns Formatted size string (e.g., "240.0 KB" or "1.5 MB")
+ */
+function formatFileSize(bytes: number): string {
+  const kb = bytes / 1024;
+  return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * Format element target description.
+ *
+ * @param element - Element info with selector or index
+ * @returns Formatted element description
+ */
+function formatElementTarget(element: NonNullable<ScreenshotResult['element']>): string {
+  if (element.selector !== undefined) {
+    return element.selector;
+  }
+  if (element.index !== undefined) {
+    return `index ${element.index}`;
+  }
+  return 'unknown';
 }

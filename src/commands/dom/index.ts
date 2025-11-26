@@ -1,4 +1,5 @@
 import type { Command } from 'commander';
+import type * as FsModule from 'fs';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
@@ -6,10 +7,13 @@ import {
   queryDOMElements,
   getDOMElements,
   capturePageScreenshot,
+  captureElementScreenshot,
+  resolveSelector,
   getDomContext,
 } from '@/commands/dom/helpers.js';
 import type { DomGetOptions as DomGetHelperOptions, DomContext } from '@/commands/dom/helpers.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type {
   DomQueryCommandOptions,
   DomGetCommandOptions,
@@ -20,7 +24,7 @@ import { positiveIntRule } from '@/commands/shared/validation.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
-import type { A11yNode } from '@/types.js';
+import type { A11yNode, ScreenshotResult, ElementBounds } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import {
   formatDomQuery,
@@ -33,20 +37,282 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
- * Handle bdg dom query <selector> command
+ * Screenshot options after filtering undefined values.
+ */
+type FilteredScreenshotOptions = { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean };
+
+/**
+ * Element screenshot options after filtering undefined values.
+ */
+type FilteredElementOptions = { format?: 'png' | 'jpeg'; quality?: number };
+
+/**
+ * Data structure for semantic node with DOM context.
+ */
+interface SemanticNodeWithContext {
+  node: A11yNode;
+  domContext: DomContext | null;
+}
+
+/**
+ * Build filtered screenshot options from command options.
  *
- * Queries the DOM using a CSS selector and displays matching elements.
- * Uses CDP relay through worker's persistent connection.
- * Results are cached for index-based access via "bdg dom get <index>".
+ * @param options - Raw command options
+ * @returns Filtered options with undefined values removed
+ */
+function buildPageScreenshotOptions(
+  options: DomScreenshotCommandOptions
+): FilteredScreenshotOptions {
+  return filterDefined({
+    format: options.format,
+    quality: options.quality,
+    fullPage: options.fullPage,
+  }) as FilteredScreenshotOptions;
+}
+
+/**
+ * Build filtered element screenshot options from command options.
  *
- * @param selector - CSS selector to query (e.g., ".error", "#app", "button")
+ * @param options - Raw command options
+ * @returns Filtered options with undefined values removed
+ */
+function buildElementScreenshotOptions(
+  options: DomScreenshotCommandOptions
+): FilteredElementOptions {
+  return filterDefined({
+    format: options.format,
+    quality: options.quality,
+  }) as FilteredElementOptions;
+}
+
+/**
+ * Check if options specify an element target.
+ *
+ * @param options - Screenshot command options
+ * @returns True if selector or index is specified
+ */
+function hasElementTarget(options: DomScreenshotCommandOptions): boolean {
+  return options.selector !== undefined || options.index !== undefined;
+}
+
+/**
+ * Resolve element nodeId from selector or cached index.
+ *
+ * @param options - Options containing selector or index
+ * @returns CDP nodeId
+ * @throws CommandError if neither selector nor index provided
+ */
+async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<number> {
+  if (options.index !== undefined) {
+    const resolver = DomElementResolver.getInstance();
+    const node = await resolver.getNodeIdForIndex(options.index);
+    return node.nodeId;
+  }
+
+  if (options.selector !== undefined) {
+    return resolveSelector(options.selector);
+  }
+
+  throw new CommandError(
+    'Either --selector or --index must be provided for element screenshot',
+    {},
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
+}
+
+/**
+ * Add element metadata to screenshot result.
+ *
+ * @param result - Base screenshot result
+ * @param options - Options containing selector or index
+ * @returns Screenshot result with element info
+ */
+function addElementInfo(
+  result: ScreenshotResult,
+  options: DomScreenshotCommandOptions
+): ScreenshotResult {
+  const bounds: ElementBounds = {
+    x: 0,
+    y: 0,
+    width: result.width,
+    height: result.height,
+  };
+
+  return {
+    ...result,
+    element: {
+      ...(options.selector !== undefined && { selector: options.selector }),
+      ...(options.index !== undefined && { index: options.index }),
+      bounds,
+    },
+  };
+}
+
+/**
+ * Ensure directory exists, creating it if necessary.
+ *
+ * @param dirPath - Directory path to ensure
+ * @param fs - File system module
+ */
+function ensureDirectory(dirPath: string, fs: typeof FsModule): void {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
+
+/**
+ * Format frame filename with zero-padded number.
+ *
+ * @param frameNumber - Frame number (1-based)
+ * @param format - Image format extension
+ * @returns Formatted filename
+ */
+function formatFrameFilename(frameNumber: number, format: string): string {
+  return `${String(frameNumber).padStart(3, '0')}.${format}`;
+}
+
+/**
+ * Capitalize first letter of string.
+ *
+ * @param str - Input string
+ * @returns String with first letter capitalized
+ */
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Build role text for accessibility node display.
+ *
+ * @param node - Accessibility node
+ * @returns Formatted role text
+ */
+function buildRoleText(node: A11yNode): string {
+  if (node.role.toLowerCase() === 'heading' && node.properties?.['level'] !== undefined) {
+    const level = node.properties['level'];
+    const levelNum = typeof level === 'number' ? level : Number(level);
+    if (!isNaN(levelNum)) {
+      return `[Heading L${levelNum}]`;
+    }
+  }
+  return `[${capitalize(node.role)}]`;
+}
+
+/**
+ * Build context text from a11y name or DOM context fallback.
+ *
+ * @param node - Accessibility node
+ * @param domContext - DOM context for fallback
+ * @returns Formatted context text
+ */
+function buildContextText(node: A11yNode, domContext: DomContext | null): string {
+  if (node.name) {
+    return ` "${node.name}"`;
+  }
+
+  if (domContext) {
+    const tagPart = `<${domContext.tag}`;
+    const classPart =
+      domContext.classes && domContext.classes.length > 0
+        ? `.${domContext.classes.slice(0, 3).join('.')}`
+        : '';
+    const previewPart = domContext.preview ? ` "${domContext.preview}"` : '';
+    return ` ${tagPart}${classPart}>${previewPart}`;
+  }
+
+  return '';
+}
+
+/**
+ * Build properties text from accessibility node state.
+ *
+ * @param node - Accessibility node
+ * @returns Formatted properties text
+ */
+function buildPropertiesText(node: A11yNode): string {
+  const props: string[] = [];
+  if (node.focusable) props.push('focusable');
+  if (node.focused) props.push('focused');
+  if (node.disabled) props.push('disabled');
+  if (node.required) props.push('required');
+  return props.length > 0 ? ` (${props.join(', ')})` : '';
+}
+
+/**
+ * Format semantic node with DOM context for display.
+ *
+ * @param data - Node and context data
+ * @returns Formatted string representation
+ */
+function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
+  const { node, domContext } = data;
+  const roleText = buildRoleText(node);
+  const contextText = buildContextText(node, domContext);
+  const propsText = buildPropertiesText(node);
+  const inferredText = node.inferred ? ' (inferred from DOM)' : '';
+
+  return `${roleText}${contextText}${propsText}${inferredText}`;
+}
+
+/**
+ * Resolve node with graceful degradation to synthesized node.
+ *
+ * @param a11yNode - Accessibility node or null
+ * @param domContext - DOM context for synthesis fallback
+ * @param nodeId - Node ID for synthesis
+ * @returns Resolved node or null
+ */
+function resolveNodeWithFallback(
+  a11yNode: A11yNode | null,
+  domContext: DomContext | null,
+  nodeId: number | undefined
+): A11yNode | null {
+  if (a11yNode) return a11yNode;
+  if (domContext && nodeId) return synthesizeA11yNode(domContext, nodeId);
+  return null;
+}
+
+/**
+ * Query DOM context by selector when a11y node is unavailable.
+ *
+ * @param selector - CSS selector
+ * @returns Object with nodeId and domContext
+ */
+async function queryDomContextBySelector(
+  selector: string
+): Promise<{ nodeId: number | undefined; domContext: DomContext | null }> {
+  const { callCDP } = await import('@/ipc/client.js');
+  const docResponse = await callCDP('DOM.getDocument', {});
+  const doc = docResponse.data?.result as { root?: { nodeId?: number } } | undefined;
+
+  if (!doc?.root?.nodeId) {
+    return { nodeId: undefined, domContext: null };
+  }
+
+  const queryResponse = await callCDP('DOM.querySelector', {
+    nodeId: doc.root.nodeId,
+    selector,
+  });
+  const queryResult = queryResponse.data?.result as { nodeId?: number } | undefined;
+
+  if (!queryResult?.nodeId) {
+    return { nodeId: undefined, domContext: null };
+  }
+
+  const domContext = await getDomContext(queryResult.nodeId);
+  return { nodeId: queryResult.nodeId, domContext };
+}
+
+/**
+ * Handle bdg dom query command.
+ *
+ * @param selector - CSS selector to query
  * @param options - Command options
  */
 async function handleDomQuery(selector: string, options: DomQueryCommandOptions): Promise<void> {
   await runCommand(
     async () => {
       const result = await queryDOMElements(selector);
-
       const cacheManager = QueryCacheManager.getInstance();
       const navigationId = await cacheManager.getCurrentNavigationId();
       const resultWithNavId = {
@@ -54,7 +320,6 @@ async function handleDomQuery(selector: string, options: DomQueryCommandOptions)
         ...(navigationId !== null && { navigationId }),
       };
       await cacheManager.set(resultWithNavId);
-
       return { success: true, data: result };
     },
     options,
@@ -63,14 +328,157 @@ async function handleDomQuery(selector: string, options: DomQueryCommandOptions)
 }
 
 /**
- * Handle bdg dom get command
+ * Handle get command with numeric index in raw mode.
  *
- * Retrieves semantic accessibility structure by default (70% token reduction).
- * Use --raw flag for full HTML output.
- * Supports index-based access from query results (e.g., "bdg dom get 0").
+ * @param index - Element index
+ * @param options - Command options
+ */
+async function handleIndexGetRaw(index: number, options: DomGetCommandOptions): Promise<void> {
+  const resolver = DomElementResolver.getInstance();
+  await runCommand(
+    async () => {
+      const targetNode = await resolver.getNodeIdForIndex(index);
+      const getOptions = filterDefined({ nodeId: targetNode.nodeId }) as DomGetHelperOptions;
+      const result = await getDOMElements(getOptions);
+      return { success: true, data: result };
+    },
+    options,
+    formatDomGet
+  );
+}
+
+/**
+ * Handle get command with numeric index in semantic mode.
  *
- * @param selectorOrIndex - CSS selector (e.g., ".error") or numeric index from query results
- * @param options - Command options including --all, --nth, nodeId, and raw
+ * @param index - Element index
+ * @param options - Command options
+ */
+async function handleIndexGetSemantic(index: number, options: DomGetCommandOptions): Promise<void> {
+  const resolver = DomElementResolver.getInstance();
+  await runCommand(
+    async () => {
+      const targetNode = await resolver.getNodeIdForIndex(index);
+      const [a11yNode, domContext] = await Promise.all([
+        resolveA11yNode('', targetNode.nodeId),
+        getDomContext(targetNode.nodeId),
+      ]);
+
+      const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
+
+      if (!node) {
+        throw new CommandError(
+          elementNotFoundError(`index ${index}`),
+          {},
+          EXIT_CODES.RESOURCE_NOT_FOUND
+        );
+      }
+
+      return { success: true, data: { node, domContext } };
+    },
+    options,
+    formatSemanticNodeWithContext
+  );
+}
+
+/**
+ * Handle get command with numeric index.
+ *
+ * @param index - Element index
+ * @param options - Command options
+ */
+async function handleIndexGet(index: number, options: DomGetCommandOptions): Promise<void> {
+  if (options.raw) {
+    await handleIndexGetRaw(index, options);
+  } else {
+    await handleIndexGetSemantic(index, options);
+  }
+}
+
+/**
+ * Handle get command with CSS selector in raw mode.
+ *
+ * @param selector - CSS selector
+ * @param options - Command options
+ */
+async function handleSelectorGetRaw(
+  selector: string,
+  options: DomGetCommandOptions
+): Promise<void> {
+  await runCommand(
+    async () => {
+      const getOptions = filterDefined({
+        selector,
+        all: options.all,
+        nth: options.nth,
+        nodeId: options.nodeId,
+      }) as DomGetHelperOptions;
+
+      const result = await getDOMElements(getOptions);
+      return { success: true, data: result };
+    },
+    options,
+    formatDomGet
+  );
+}
+
+/**
+ * Handle get command with CSS selector in semantic mode.
+ *
+ * @param selector - CSS selector
+ * @param options - Command options
+ */
+async function handleSelectorGetSemantic(
+  selector: string,
+  options: DomGetCommandOptions
+): Promise<void> {
+  await runCommand(
+    async () => {
+      const a11yNode = await resolveA11yNode(selector);
+
+      let domContext: DomContext | null = null;
+      let nodeId: number | undefined;
+
+      if (a11yNode?.backendDOMNodeId) {
+        nodeId = a11yNode.backendDOMNodeId;
+        domContext = await getDomContext(nodeId);
+      } else if (!a11yNode) {
+        const queryResult = await queryDomContextBySelector(selector);
+        nodeId = queryResult.nodeId;
+        domContext = queryResult.domContext;
+      }
+
+      const node = resolveNodeWithFallback(a11yNode, domContext, nodeId);
+
+      if (!node) {
+        throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
+      }
+
+      return { success: true, data: { node, domContext } };
+    },
+    options,
+    formatSemanticNodeWithContext
+  );
+}
+
+/**
+ * Handle get command with CSS selector.
+ *
+ * @param selector - CSS selector
+ * @param options - Command options
+ */
+async function handleSelectorGet(selector: string, options: DomGetCommandOptions): Promise<void> {
+  if (options.raw) {
+    await handleSelectorGetRaw(selector, options);
+  } else {
+    await handleSelectorGetSemantic(selector, options);
+  }
+}
+
+/**
+ * Handle bdg dom get command.
+ *
+ * @param selectorOrIndex - CSS selector or numeric index
+ * @param options - Command options
  */
 async function handleDomGet(selectorOrIndex: string, options: DomGetCommandOptions): Promise<void> {
   const isNumericIndex = /^\d+$/.test(selectorOrIndex);
@@ -83,208 +491,19 @@ async function handleDomGet(selectorOrIndex: string, options: DomGetCommandOptio
 }
 
 /**
- * Handle get command with numeric index
- */
-async function handleIndexGet(index: number, options: DomGetCommandOptions): Promise<void> {
-  const resolver = DomElementResolver.getInstance();
-
-  if (options.raw) {
-    await runCommand(
-      async () => {
-        const targetNode = await resolver.getNodeIdForIndex(index);
-        const getOptions = filterDefined({
-          nodeId: targetNode.nodeId,
-        }) as DomGetHelperOptions;
-
-        const result = await getDOMElements(getOptions);
-        return { success: true, data: result };
-      },
-      options,
-      formatDomGet
-    );
-  } else {
-    await runCommand(
-      async () => {
-        const targetNode = await resolver.getNodeIdForIndex(index);
-        const [a11yNode, domContext] = await Promise.all([
-          resolveA11yNode('', targetNode.nodeId),
-          getDomContext(targetNode.nodeId),
-        ]);
-
-        // Graceful degradation: synthesize node from DOM context when a11y unavailable
-        const node =
-          a11yNode ?? (domContext ? synthesizeA11yNode(domContext, targetNode.nodeId) : null);
-
-        if (!node) {
-          throw new CommandError(
-            elementNotFoundError(`index ${index}`),
-            {},
-            EXIT_CODES.RESOURCE_NOT_FOUND
-          );
-        }
-
-        return { success: true, data: { node, domContext } };
-      },
-      options,
-      formatSemanticNodeWithContext
-    );
-  }
-}
-
-/**
- * Handle get command with CSS selector
- */
-async function handleSelectorGet(selector: string, options: DomGetCommandOptions): Promise<void> {
-  if (options.raw) {
-    await runCommand(
-      async () => {
-        const getOptions = filterDefined({
-          selector,
-          all: options.all,
-          nth: options.nth,
-          nodeId: options.nodeId,
-        }) as DomGetHelperOptions;
-
-        const result = await getDOMElements(getOptions);
-        return { success: true, data: result };
-      },
-      options,
-      formatDomGet
-    );
-  } else {
-    await runCommand(
-      async () => {
-        const a11yNode = await resolveA11yNode(selector);
-
-        // Fetch DOM context for enrichment or fallback
-        let domContext: DomContext | null = null;
-        let nodeId: number | undefined;
-
-        if (a11yNode?.backendDOMNodeId) {
-          nodeId = a11yNode.backendDOMNodeId;
-          domContext = await getDomContext(nodeId);
-        } else if (!a11yNode) {
-          // Try to get DOM context by querying the selector directly
-          const { callCDP } = await import('@/ipc/client.js');
-          const docResponse = await callCDP('DOM.getDocument', {});
-          const doc = docResponse.data?.result as { root?: { nodeId?: number } } | undefined;
-          if (doc?.root?.nodeId) {
-            const queryResponse = await callCDP('DOM.querySelector', {
-              nodeId: doc.root.nodeId,
-              selector,
-            });
-            const queryResult = queryResponse.data?.result as { nodeId?: number } | undefined;
-            if (queryResult?.nodeId) {
-              nodeId = queryResult.nodeId;
-              domContext = await getDomContext(nodeId);
-            }
-          }
-        }
-
-        // Graceful degradation: synthesize node from DOM context when a11y unavailable
-        const node =
-          a11yNode ?? (domContext && nodeId ? synthesizeA11yNode(domContext, nodeId) : null);
-
-        if (!node) {
-          throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
-        }
-
-        return { success: true, data: { node, domContext } };
-      },
-      options,
-      formatSemanticNodeWithContext
-    );
-  }
-}
-
-/**
- * Data structure for semantic node with DOM context.
- */
-interface SemanticNodeWithContext {
-  node: A11yNode;
-  domContext: DomContext | null;
-}
-
-/**
- * Formatter for single semantic node with DOM context fallback.
+ * Handle page-level screenshot capture.
  *
- * When a11y name is missing, shows DOM context (tag, classes, text preview)
- * to provide useful information instead of just "[Role]".
- * Shows "(inferred from DOM)" indicator when node is synthesized.
+ * @param outputPath - Output file path
+ * @param options - Screenshot options
  */
-function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
-  const { node, domContext } = data;
-
-  // Build the role text
-  let roleText = `[${capitalize(node.role)}]`;
-  if (node.role.toLowerCase() === 'heading' && node.properties?.['level'] !== undefined) {
-    const level = node.properties['level'];
-    const levelNum = typeof level === 'number' ? level : Number(level);
-    if (!isNaN(levelNum)) {
-      roleText = `[Heading L${levelNum}]`;
-    }
-  }
-
-  // Build the name/context text
-  let contextText = '';
-  if (node.name) {
-    // Use a11y name when available
-    contextText = ` "${node.name}"`;
-  } else if (domContext) {
-    // Fallback to DOM context when a11y name is missing
-    const tagPart = `<${domContext.tag}`;
-    const classPart =
-      domContext.classes && domContext.classes.length > 0
-        ? `.${domContext.classes.slice(0, 3).join('.')}`
-        : '';
-    const previewPart = domContext.preview ? ` "${domContext.preview}"` : '';
-    contextText = ` ${tagPart}${classPart}>${previewPart}`;
-  }
-
-  // Build properties text
-  const props: string[] = [];
-  if (node.focusable) props.push('focusable');
-  if (node.focused) props.push('focused');
-  if (node.disabled) props.push('disabled');
-  if (node.required) props.push('required');
-  const propsText = props.length > 0 ? ` (${props.join(', ')})` : '';
-
-  // Add inferred indicator when node is synthesized from DOM
-  const inferredText = node.inferred ? ' (inferred from DOM)' : '';
-
-  return `${roleText}${contextText}${propsText}${inferredText}`;
-}
-
-/**
- * Capitalize first letter of string.
- */
-function capitalize(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1);
-}
-
-/**
- * Handle bdg dom screenshot <path> command
- *
- * Captures a screenshot of the current page and saves it to disk.
- * Supports PNG and JPEG formats with customizable quality and viewport options.
- * Uses CDP relay through worker's persistent connection.
- *
- * @param path - Output file path (absolute or relative)
- * @param options - Screenshot options (format, quality, fullPage)
- */
-async function handleDomScreenshot(
-  path: string,
+async function handlePageScreenshot(
+  outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
   await runCommand(
     async () => {
-      const screenshotOptions = filterDefined({
-        format: options.format,
-        quality: options.quality,
-        fullPage: options.fullPage,
-      }) as { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean };
-
-      const result = await capturePageScreenshot(path, screenshotOptions);
+      const screenshotOptions = buildPageScreenshotOptions(options);
+      const result = await capturePageScreenshot(outputPath, screenshotOptions);
       return { success: true, data: result };
     },
     options,
@@ -293,14 +512,121 @@ async function handleDomScreenshot(
 }
 
 /**
- * Handle bdg dom eval <script> command
+ * Handle element-level screenshot capture.
  *
- * Evaluates arbitrary JavaScript in the browser context and returns the result.
- * Requires an active session. Uses CDP Runtime.evaluate with async support.
- * Note: This command uses direct CDP connection (not IPC) so it follows a different pattern.
+ * @param outputPath - Output file path
+ * @param options - Screenshot options with selector or index
+ */
+async function handleElementScreenshot(
+  outputPath: string,
+  options: DomScreenshotCommandOptions
+): Promise<void> {
+  await runCommand(
+    async () => {
+      const nodeId = await resolveElementNodeId(options);
+      const screenshotOptions = buildElementScreenshotOptions(options);
+      const result = await captureElementScreenshot(outputPath, nodeId, screenshotOptions);
+      const elementResult = addElementInfo(result, options);
+      return { success: true, data: elementResult };
+    },
+    options,
+    formatDomScreenshot
+  );
+}
+
+/**
+ * Capture a single frame in sequence mode.
  *
- * @param script - JavaScript expression to evaluate (e.g., "document.title", "window.location.href")
- * @param options - Command options including port and json formatting
+ * @param outputPath - Full path for the frame file
+ * @param options - Screenshot options
+ */
+async function captureSequenceFrame(
+  outputPath: string,
+  options: DomScreenshotCommandOptions
+): Promise<void> {
+  if (hasElementTarget(options)) {
+    const nodeId = await resolveElementNodeId(options);
+    const elementOptions = buildElementScreenshotOptions(options);
+    await captureElementScreenshot(outputPath, nodeId, elementOptions);
+  } else {
+    const pageOptions = buildPageScreenshotOptions(options);
+    await capturePageScreenshot(outputPath, pageOptions);
+  }
+}
+
+/**
+ * Handle screenshot sequence capture to directory.
+ *
+ * @param outputDir - Output directory path
+ * @param options - Screenshot options with interval and limit
+ */
+async function handleSequenceCapture(
+  outputDir: string,
+  options: DomScreenshotCommandOptions
+): Promise<void> {
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const absoluteDir = path.resolve(outputDir);
+  ensureDirectory(absoluteDir, fs);
+
+  const intervalRule = positiveIntRule({ min: 100, max: 60000, default: 1000 });
+  const limitRule = positiveIntRule({ min: 1, max: 10000, required: false });
+
+  const interval = intervalRule.validate(options.interval);
+  const limit = options.limit ? limitRule.validate(options.limit) : 0;
+
+  const format = options.format ?? 'png';
+  let frameCount = 0;
+
+  const captureFrame = async (): Promise<void> => {
+    frameCount++;
+    const filename = formatFrameFilename(frameCount, format);
+    const outputPath = path.join(absoluteDir, filename);
+
+    await captureSequenceFrame(outputPath, options);
+    console.error(`Frame ${frameCount}: ${filename}`);
+
+    if (limit > 0 && frameCount >= limit) {
+      process.emit('SIGINT');
+    }
+  };
+
+  await setupFollowMode(captureFrame, {
+    startMessage: () => `Capturing to ${absoluteDir} every ${interval}ms...`,
+    stopMessage: () => `Captured ${frameCount} frames`,
+    intervalMs: interval,
+  });
+}
+
+/**
+ * Handle bdg dom screenshot command.
+ *
+ * @param outputPath - Output file path or directory
+ * @param options - Screenshot options
+ */
+async function handleDomScreenshot(
+  outputPath: string,
+  options: DomScreenshotCommandOptions
+): Promise<void> {
+  if (options.follow) {
+    await handleSequenceCapture(outputPath, options);
+    return;
+  }
+
+  if (hasElementTarget(options)) {
+    await handleElementScreenshot(outputPath, options);
+    return;
+  }
+
+  await handlePageScreenshot(outputPath, options);
+}
+
+/**
+ * Handle bdg dom eval command.
+ *
+ * @param script - JavaScript expression to evaluate
+ * @param options - Command options
  */
 async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
@@ -340,7 +666,7 @@ async function handleDomEval(script: string, options: DomEvalCommandOptions): Pr
 }
 
 /**
- * Register DOM telemetry commands
+ * Register DOM telemetry commands.
  *
  * @param program - Commander.js Command instance
  */
@@ -386,11 +712,16 @@ export function registerDomCommands(program: Command): void {
 
   dom
     .command('screenshot')
-    .description('Capture page screenshot')
-    .argument('<path>', 'Output file path (e.g., "./screenshot.png")')
+    .description('Capture page or element screenshot')
+    .argument('<path>', 'Output file path, or directory for --follow mode')
+    .option('--selector <selector>', 'CSS selector for element capture')
+    .option('--index <number>', 'Cached element index (0-based) from previous query', parseInt)
     .option('--format <format>', 'Image format: png or jpeg (default: png)')
     .option('--quality <number>', 'JPEG quality 0-100 (default: 90)', parseInt)
     .option('--no-full-page', 'Capture viewport only (default: full page)')
+    .option('-f, --follow', 'Continuous capture mode to directory')
+    .option('--interval <ms>', 'Capture interval for --follow (default: 1000)')
+    .option('--limit <count>', 'Max frames for --follow')
     .option('-j, --json', 'Output as JSON')
     .action(async (path: string, options: DomScreenshotCommandOptions) => {
       await handleDomScreenshot(path, options);
