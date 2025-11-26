@@ -1,8 +1,8 @@
 import type { CDPConnection } from '@/connection/cdp.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { DOMData, CleanupFunction, A11yNode } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 import { buildTreeFromRawNodes } from './a11y.js';
 import { withTimeout } from './utils.js';

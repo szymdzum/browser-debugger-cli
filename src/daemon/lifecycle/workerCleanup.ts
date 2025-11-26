@@ -5,7 +5,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { writeChromePid } from '@/session/chrome.js';
 import { writeSessionOutput } from '@/session/output.js';
@@ -22,6 +21,8 @@ import {
   workerShutdownComplete,
   workerWritingOutput,
 } from '@/ui/messages/debug.js';
+import { delay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
 /**
@@ -124,7 +125,7 @@ async function terminateChrome(
         log.debug(`[worker] Chrome process ${chromePid} confirmed dead`);
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await delay(500);
       attempts++;
     }
 
@@ -132,7 +133,7 @@ async function terminateChrome(
       console.error(`[worker] Chrome did not die gracefully, force killing...`);
       try {
         killChromeProcess(chromePid, 'SIGKILL');
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await delay(500);
 
         if (isProcessAlive(chromePid)) {
           console.error(`[worker] WARNING: Chrome process ${chromePid} survived SIGKILL`);

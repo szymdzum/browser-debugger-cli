@@ -1,8 +1,8 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('atomic-file');
 

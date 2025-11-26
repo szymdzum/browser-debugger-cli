@@ -8,6 +8,7 @@ import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { isDaemonRunning } from '@/daemon/launcher.js';
 import { readPid } from '@/session/pid.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
+import { EXIT_CODE_REGISTRY } from '@/utils/exitCodes.js';
 import { isProcessAlive } from '@/utils/process.js';
 import { getAllTaskMappings, type TaskMapping } from '@/utils/taskMappings.js';
 
@@ -274,31 +275,12 @@ function extractCommandList(taskMappings: Record<string, TaskMapping>): string[]
 }
 
 /**
- * Exit code documentation for machine-readable help.
+ * Exit code documentation derived from the central registry.
+ *
+ * Uses EXIT_CODE_REGISTRY as the single source of truth to prevent
+ * documentation drift from actual exit code values.
  */
-const EXIT_CODE_DOCS = [
-  { code: 0, name: 'SUCCESS', description: 'Operation completed successfully' },
-  { code: 1, name: 'GENERIC_FAILURE', description: 'Generic failure' },
-  { code: 80, name: 'INVALID_URL', description: 'Invalid URL format provided' },
-  { code: 81, name: 'INVALID_ARGUMENTS', description: 'Invalid command arguments' },
-  { code: 82, name: 'PERMISSION_DENIED', description: 'Insufficient permissions' },
-  { code: 83, name: 'RESOURCE_NOT_FOUND', description: 'Required resource not found' },
-  { code: 84, name: 'RESOURCE_BUSY', description: 'Resource is currently in use' },
-  {
-    code: 85,
-    name: 'OPERATION_NOT_PERMITTED',
-    description: 'Operation not permitted in current state',
-  },
-  { code: 86, name: 'DAEMON_ALREADY_RUNNING', description: 'Daemon is already running' },
-  { code: 100, name: 'CHROME_LAUNCH_FAILURE', description: 'Failed to launch Chrome browser' },
-  {
-    code: 101,
-    name: 'CDP_CONNECTION_FAILURE',
-    description: 'Failed to connect to Chrome DevTools Protocol',
-  },
-  { code: 102, name: 'CDP_TIMEOUT', description: 'CDP operation timed out' },
-  { code: 110, name: 'IPC_ERROR', description: 'Inter-process communication error' },
-] as const;
+const EXIT_CODE_DOCS = EXIT_CODE_REGISTRY;
 
 /**
  * Generates capabilities summary.

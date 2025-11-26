@@ -1,113 +1,26 @@
 /**
  * Validation layer for command options.
- *
- * Provides centralized validation with type safety and consistent error messages.
- * Eliminates scattered validation logic across commands.
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { invalidIntegerError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { findSimilar } from '@/utils/suggestions.js';
 
-/**
- * Base validation rule interface
- */
 export interface ValidationRule<T> {
-  /** Validate and transform the value */
   validate: (value: unknown) => T;
-  /** Optional custom error message */
   errorMessage?: (value: unknown) => string;
 }
 
-/**
- * Validation options for integer rules
- */
 export interface IntegerRuleOptions {
-  /** Minimum allowed value */
   min?: number;
-  /** Maximum allowed value */
   max?: number;
-  /** Default value if not provided */
   default?: number;
-  /** Whether the field is required */
   required?: boolean;
-  /** Allow 0 to represent "all items" or unlimited */
   allowZeroForAll?: boolean;
 }
 
-/**
- * Create a positive integer validation rule
- *
- * @param options - Validation constraints
- * @returns Validation rule that parses and validates integers
- *
- * @example
- * ```typescript
- * const rules = {
- *   last: positiveIntRule({ min: 1, max: 1000, default: 10 }),
- *   timeout: positiveIntRule({ min: 1, max: 3600, required: false }),
- * };
- * ```
- */
-export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRule<number> {
-  const { min, max, default: defaultValue, required = true, allowZeroForAll = false } = options;
-
-  return {
-    validate: (value: unknown): number => {
-      if (value === undefined || value === null) {
-        if (defaultValue !== undefined) {
-          return defaultValue;
-        }
-        if (!required) {
-          return 0;
-        }
-        throw new CommandError('Value is required', {}, EXIT_CODES.INVALID_ARGUMENTS);
-      }
-
-      if (typeof value !== 'string' && typeof value !== 'number') {
-        throw new CommandError(
-          `Value must be a number, got ${typeof value}`,
-          {},
-          EXIT_CODES.INVALID_ARGUMENTS
-        );
-      }
-
-      const strValue = String(value).trim();
-      const parsed = parseInt(strValue, 10);
-
-      const errorOptions: { min?: number; max?: number } = {};
-      if (min !== undefined) errorOptions.min = min;
-      if (max !== undefined) errorOptions.max = max;
-
-      if (isNaN(parsed)) {
-        const message = invalidIntegerError('value', strValue, errorOptions);
-        throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
-      }
-
-      if (parsed === 0 && allowZeroForAll) {
-        return 0;
-      }
-
-      if (min !== undefined && parsed < min) {
-        const message = invalidIntegerError('value', strValue, errorOptions);
-        throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
-      }
-
-      if (max !== undefined && parsed > max) {
-        const message = invalidIntegerError('value', strValue, errorOptions);
-        throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
-      }
-
-      return parsed;
-    },
-  };
-}
-
-/**
- * Valid CDP ResourceType values for filtering.
- * Matches Protocol.Network.ResourceType enum.
- */
 const VALID_RESOURCE_TYPES = [
   'Document',
   'Stylesheet',
@@ -130,12 +43,73 @@ const VALID_RESOURCE_TYPES = [
   'Other',
 ] as const;
 
-/**
- * Parse comma-separated string into trimmed, non-empty tokens.
- *
- * @param value - Comma-separated string
- * @returns Array of trimmed, non-empty tokens
- */
+function buildRangeSuggestion(min?: number, max?: number): string {
+  if (min !== undefined && max !== undefined) return `Use a value between ${min} and ${max}`;
+  if (min !== undefined) return `Use a value >= ${min}`;
+  if (max !== undefined) return `Use a value <= ${max}`;
+  return 'Provide a valid integer';
+}
+
+function throwValidationError(message: string, suggestion: string): never {
+  throw new CommandError(message, { suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+function buildErrorOptions(min?: number, max?: number): { min?: number; max?: number } {
+  const opts: { min?: number; max?: number } = {};
+  if (min !== undefined) opts.min = min;
+  if (max !== undefined) opts.max = max;
+  return opts;
+}
+
+function parseInteger(value: unknown, options: IntegerRuleOptions): number {
+  const { min, max, default: defaultValue, required = true, allowZeroForAll = false } = options;
+
+  if (value === undefined || value === null) {
+    if (defaultValue !== undefined) return defaultValue;
+    if (!required) return 0;
+    throwValidationError('Value is required', 'Provide a numeric value for this option');
+  }
+
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    throwValidationError(`Value must be a number, got ${typeof value}`, 'Provide a numeric value');
+  }
+
+  const parsed = parseInt(String(value).trim(), 10);
+  const rangeSuggestion = buildRangeSuggestion(min, max);
+  const errorOptions = buildErrorOptions(min, max);
+
+  if (isNaN(parsed)) {
+    throwValidationError(
+      invalidIntegerError('value', String(value), errorOptions),
+      rangeSuggestion
+    );
+  }
+
+  if (parsed === 0 && allowZeroForAll) return 0;
+
+  if (min !== undefined && parsed < min) {
+    throwValidationError(
+      invalidIntegerError('value', String(value), errorOptions),
+      rangeSuggestion
+    );
+  }
+
+  if (max !== undefined && parsed > max) {
+    throwValidationError(
+      invalidIntegerError('value', String(value), errorOptions),
+      rangeSuggestion
+    );
+  }
+
+  return parsed;
+}
+
+export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRule<number> {
+  return {
+    validate: (value: unknown): number => parseInteger(value, options),
+  };
+}
+
 function parseCommaSeparated(value: string): string[] {
   return value
     .split(',')
@@ -143,23 +117,10 @@ function parseCommaSeparated(value: string): string[] {
     .filter((t) => t.length > 0);
 }
 
-/**
- * Normalize resource type string to CDP format (case-insensitive lookup).
- *
- * @param type - User input (e.g., "document", "xhr")
- * @returns Normalized CDP type or undefined if invalid
- */
 function normalizeResourceType(type: string): Protocol.Network.ResourceType | undefined {
-  const found = VALID_RESOURCE_TYPES.find((valid) => valid.toLowerCase() === type.toLowerCase());
-  return found;
+  return VALID_RESOURCE_TYPES.find((valid) => valid.toLowerCase() === type.toLowerCase());
 }
 
-/**
- * Validate and normalize array of resource type strings.
- *
- * @param types - Array of type strings to validate
- * @returns Object with normalized types and invalid entries
- */
 function validateResourceTypes(types: string[]): {
   normalized: Protocol.Network.ResourceType[];
   invalid: string[];
@@ -179,45 +140,33 @@ function validateResourceTypes(types: string[]): {
   return { normalized, invalid };
 }
 
-/**
- * Create a resource type validation rule for comma-separated type filters.
- * Performs case-insensitive matching and normalization.
- *
- * @returns Validation rule that parses and validates resource types
- *
- * @example
- * ```typescript
- * const rules = {
- *   type: resourceTypeRule(),
- * };
- * const validated = validateOptions(options, rules);
- * // Input: "document,xhr" → Output: ["Document", "XHR"]
- * ```
- */
+function buildTypoSuggestion(invalid: string[]): string {
+  const similar = invalid.flatMap((inv) => findSimilar(inv, VALID_RESOURCE_TYPES));
+  const uniqueSimilar = [...new Set(similar)];
+  return uniqueSimilar.length > 0
+    ? `Did you mean: ${uniqueSimilar.join(', ')}?`
+    : `Valid types: ${VALID_RESOURCE_TYPES.join(', ')}`;
+}
+
 export function resourceTypeRule(): ValidationRule<Protocol.Network.ResourceType[]> {
   return {
     validate: (value: unknown): Protocol.Network.ResourceType[] => {
-      // Handle empty input
-      if (value === undefined || value === null || value === '') {
-        return [];
-      }
+      if (value === undefined || value === null || value === '') return [];
 
-      // Type guard
       if (typeof value !== 'string') {
-        throw new CommandError('Resource type must be a string', {}, EXIT_CODES.INVALID_ARGUMENTS);
+        throwValidationError(
+          'Resource type must be a string',
+          `Valid types: ${VALID_RESOURCE_TYPES.join(', ')}`
+        );
       }
 
-      // Parse and validate
       const types = parseCommaSeparated(value);
       const { normalized, invalid } = validateResourceTypes(types);
 
-      // Report errors if any invalid types
       if (invalid.length > 0) {
-        const validList = VALID_RESOURCE_TYPES.join(', ');
-        throw new CommandError(
+        throwValidationError(
           `Invalid resource type(s): ${invalid.join(', ')}`,
-          { suggestion: `Valid types: ${validList}` },
-          EXIT_CODES.INVALID_ARGUMENTS
+          buildTypoSuggestion(invalid)
         );
       }
 

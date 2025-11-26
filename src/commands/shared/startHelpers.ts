@@ -7,7 +7,6 @@
 
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { isConnectionError } from '@/ipc/utils/errors.js';
@@ -19,6 +18,8 @@ import {
   invalidResponseError,
   genericError,
 } from '@/ui/messages/errors.js';
+import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -67,13 +68,13 @@ export async function startSessionViaDaemon(
       } else {
         console.error(genericError(`Daemon error: ${response.message ?? 'Unknown error'}`));
       }
-      process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+      process.exit(getExitCodeForIPCError(response.errorCode));
     }
 
     const { data } = response;
     if (!data) {
       console.error(invalidResponseError('missing data'));
-      process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+      process.exit(EXIT_CODES.SOFTWARE_ERROR);
     }
 
     if (options.quiet) {
@@ -89,10 +90,10 @@ export async function startSessionViaDaemon(
   } catch (error) {
     if (isConnectionError(error)) {
       console.error(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }));
-      process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+      process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }
 
     console.error(genericError(getErrorMessage(error)));
-    process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+    process.exit(EXIT_CODES.SOFTWARE_ERROR);
   }
 }

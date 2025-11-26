@@ -7,12 +7,13 @@
 
 import * as fs from 'fs';
 
-import { ChromeLaunchError, getErrorMessage } from '@/connection/errors.js';
+import { ChromeLaunchError } from '@/connection/errors.js';
 import {
   prefsFileNotFoundError,
   invalidPrefsFormatError,
   prefsLoadError,
 } from '@/ui/messages/chrome.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * JSONLike type matching chrome-launcher's internal type definition.

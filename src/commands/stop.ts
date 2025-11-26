@@ -4,12 +4,12 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { performSessionCleanup } from '@/session/cleanup.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { joinLines } from '@/ui/formatting.js';
+import { createLogger } from '@/ui/logging/index.js';
 import {
   chromeKilledMessage,
   orphanedDaemonsCleanedMessage,
@@ -17,7 +17,10 @@ import {
 } from '@/ui/messages/commands.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('cleanup');
 
 /**
  * Format stop result for human-readable output.
@@ -67,7 +70,7 @@ export function registerStopCommand(program: Command): void {
               });
 
               if (cleanupResult.cleaned.chrome) {
-                console.error(chromeKilledMessage(response.chromePid));
+                log.info(chromeKilledMessage(response.chromePid));
               }
 
               return {
@@ -116,7 +119,7 @@ export function registerStopCommand(program: Command): void {
             return {
               success: false,
               error: stopFailedError(errorMessage),
-              exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+              exitCode: EXIT_CODES.SOFTWARE_ERROR,
             };
           }
         },

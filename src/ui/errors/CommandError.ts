@@ -15,8 +15,6 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 export interface ErrorMetadata {
   /** User-facing suggestion for resolving the error */
   suggestion?: string;
-  /** Technical note or additional context */
-  note?: string;
   /** Additional contextual key-value pairs */
   context?: Record<string, string>;
   /** Alternative fallback command to try when high-level command fails */

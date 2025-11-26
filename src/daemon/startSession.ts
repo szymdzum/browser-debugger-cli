@@ -12,7 +12,6 @@ import { spawn, type ChildProcess } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import type { TelemetryType } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -21,6 +20,7 @@ import {
   daemonWorkerReady,
   daemonParseError,
 } from '@/ui/messages/debug.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { validateUrl } from '@/utils/url.js';
 

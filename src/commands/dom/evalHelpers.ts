@@ -85,7 +85,7 @@ export function getValidatedSessionMetadata(): SessionMetadata {
   if (!metadata?.targetId || !metadata.webSocketDebuggerUrl) {
     throw new CommandError(
       'No target information in session metadata',
-      { note: 'Session may have been started with an older version' },
+      { suggestion: 'Session may have been started with an older version' },
       EXIT_CODES.SESSION_FILE_ERROR
     );
   }
@@ -145,8 +145,8 @@ export async function executeScript(
     throw new CommandError(
       'Invalid CDP Runtime.evaluate response structure',
       {
-        note: 'CDP response did not match expected format',
-        suggestion: 'This may indicate a CDP protocol version mismatch',
+        suggestion:
+          'CDP response did not match expected format. This may indicate a CDP protocol version mismatch',
       },
       EXIT_CODES.CDP_CONNECTION_FAILURE
     );
@@ -157,7 +157,7 @@ export async function executeScript(
       response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
     throw new CommandError(
       errorMsg,
-      { note: 'Script execution failed in browser context' },
+      { suggestion: 'Script execution failed in browser context' },
       EXIT_CODES.SOFTWARE_ERROR
     );
   }

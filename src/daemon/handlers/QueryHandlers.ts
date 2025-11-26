@@ -7,7 +7,6 @@
 import type { PendingRequestManager } from './pendingRequests.js';
 import type { Socket } from 'net';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { ISessionService } from '@/daemon/services/SessionService.js';
 import {
@@ -20,6 +19,7 @@ import {
   type WorkerRequestUnion,
 } from '@/ipc/index.js';
 import { generateRequestId } from '@/ipc/utils/requestId.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
 import { BaseHandler } from './BaseHandler.js';

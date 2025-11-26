@@ -4,7 +4,6 @@
  * Sets up process signal handlers for graceful shutdown.
  */
 
-import { getErrorMessage } from '@/connection/errors.js';
 import type { CleanupContext } from '@/daemon/lifecycle/workerCleanup.js';
 import { cleanupWorker } from '@/daemon/lifecycle/workerCleanup.js';
 import {
@@ -12,6 +11,7 @@ import {
   workerReceivedSIGINT,
   workerTimeoutReached,
 } from '@/ui/messages/debug.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Setup signal handlers for graceful shutdown.

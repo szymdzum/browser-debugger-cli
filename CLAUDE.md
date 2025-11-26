@@ -98,7 +98,8 @@ throw new CommandError(
 );
 
 // Connection errors (CDP, Chrome, timeouts)
-import { ChromeLaunchError, CDPConnectionError, getErrorMessage } from '@/connection/errors.js';
+import { ChromeLaunchError, CDPConnectionError } from '@/connection/errors.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 throw new ChromeLaunchError('Chrome binary not found', cause);
 ```

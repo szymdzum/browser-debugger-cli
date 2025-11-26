@@ -1,26 +1,62 @@
+/**
+ * Tail command for continuous session monitoring.
+ */
+
 import type { Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { fetchPreviewOutput } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { TailCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
-import { getErrorMessage } from '@/connection/errors.js';
-import { getPeek } from '@/ipc/client.js';
-import { validateIPCResponse } from '@/ipc/index.js';
-import type { BdgOutput } from '@/types.js';
+import { OutputBuilder } from '@/ui/OutputBuilder.js';
+import { CommandError } from '@/ui/errors/index.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-/**
- * Register tail command for continuous monitoring.
- *
- * Tail command is like `tail -f` for bdg session data.
- * It continuously polls and displays updates from the running session.
- *
- * @param program - Commander.js Command instance to register commands on
- */
+function parseOptions(options: TailCommandOptions): { lastN: number; interval: number } {
+  const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
+  const intervalRule = positiveIntRule({ min: 100, max: 60000, default: 1000 });
+  return {
+    lastN: lastRule.validate(options.last),
+    interval: intervalRule.validate(options.interval),
+  };
+}
+
+function handleValidationError(error: unknown, json: boolean): never {
+  if (error instanceof CommandError) {
+    if (json) {
+      const errorOptions: { exitCode: number; suggestion?: string } = {
+        exitCode: error.exitCode,
+      };
+      if (error.metadata.suggestion) {
+        errorOptions.suggestion = error.metadata.suggestion;
+      }
+      console.log(JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions)));
+    } else {
+      console.error(error.message);
+      if (error.metadata.suggestion) console.error(error.metadata.suggestion);
+    }
+    process.exit(error.exitCode);
+  }
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+function createPreviewOptions(options: TailCommandOptions, lastN: number): PreviewOptions {
+  return {
+    json: options.json,
+    network: options.network,
+    console: options.console,
+    last: lastN,
+    verbose: options.verbose,
+    follow: true,
+    viewedAt: new Date(),
+  };
+}
+
 export function registerTailCommand(program: Command): void {
   program
     .command('tail')
@@ -32,74 +68,33 @@ export function registerTailCommand(program: Command): void {
     .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailCommandOptions) => {
-      const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
-      const intervalRule = positiveIntRule({ min: 100, max: 60000, default: 1000 });
-
       let lastN: number;
       let interval: number;
+
       try {
-        lastN = lastRule.validate(options.last);
-        interval = intervalRule.validate(options.interval);
+        const parsed = parseOptions(options);
+        lastN = parsed.lastN;
+        interval = parsed.interval;
       } catch (error) {
-        console.error(error instanceof Error ? error.message : String(error));
-        process.exit(EXIT_CODES.INVALID_ARGUMENTS);
+        handleValidationError(error, options.json ?? false);
       }
 
-      /**
-       * Handle daemon connection or response errors.
-       * Returns true if the error was handled and execution should stop.
-       */
-      const handleError = (errorMessage: string, exitCode?: number): boolean => {
-        const result = handleDaemonConnectionError(errorMessage, {
-          json: options.json,
-          follow: true,
-          retryIntervalMs: interval,
-          exitCode,
-        });
-        if (result.shouldExit) {
-          process.exit(result.exitCode);
-        }
-        return true;
-      };
-
-      /**
-       * Fetch and display preview data.
-       */
       const showPreview = async (): Promise<void> => {
-        let response;
-        try {
-          response = await getPeek();
-        } catch {
-          handleError('Daemon not running');
-          return;
-        }
+        const result = await fetchPreviewOutput();
 
-        try {
-          validateIPCResponse(response);
-        } catch (validationError) {
-          handleError(getErrorMessage(validationError), EXIT_CODES.SESSION_FILE_ERROR);
-          return;
-        }
-
-        const output = response.data?.preview as BdgOutput | undefined;
-        if (!output) {
-          handleError('No preview data in response', EXIT_CODES.SESSION_FILE_ERROR);
+        if (!result.success) {
+          const errorResult = handleDaemonConnectionError(result.error, {
+            json: options.json,
+            follow: true,
+            retryIntervalMs: interval,
+            exitCode: result.exitCode,
+          });
+          if (errorResult.shouldExit) process.exit(errorResult.exitCode);
           return;
         }
 
         console.clear();
-
-        const previewOptions: PreviewOptions = {
-          json: options.json,
-          network: options.network,
-          console: options.console,
-          last: lastN,
-          verbose: options.verbose,
-          follow: true,
-          viewedAt: new Date(),
-        };
-
-        console.log(formatPreview(output, previewOptions));
+        console.log(formatPreview(result.data, createPreviewOptions(options, lastN)));
       };
 
       await setupFollowMode(showPreview, {

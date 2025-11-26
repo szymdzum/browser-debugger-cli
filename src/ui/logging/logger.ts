@@ -6,7 +6,7 @@
  * flag to enable verbose 'debug' level logs.
  */
 
-import { getErrorMessage } from '@/connection/errors.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 let debugEnabled = false;
 
@@ -61,7 +61,8 @@ export type LogContext =
   | 'diagnostics'
   | 'readiness'
   | 'atomic-file'
-  | 'object-expander';
+  | 'object-expander'
+  | 'fetcher';
 
 /**
  * Logger instance with support for different log levels.

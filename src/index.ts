@@ -4,9 +4,9 @@ import { Command } from 'commander';
 
 import { generateMachineReadableHelp, generateSubcommandHelp } from '@/commands/helpJson.js';
 import { commandRegistry } from '@/commands.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
 import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
 const DAEMON_WORKER_ENV_VAR = 'BDG_DAEMON';

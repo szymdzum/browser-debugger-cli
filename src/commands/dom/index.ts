@@ -32,9 +32,12 @@ import {
   formatDomEval,
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { elementNotFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
+
+const log = createLogger('dom');
 
 /**
  * Screenshot options after filtering undefined values.
@@ -450,7 +453,11 @@ async function handleSelectorGetSemantic(
       const node = resolveNodeWithFallback(a11yNode, domContext, nodeId);
 
       if (!node) {
-        throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
+        throw new CommandError(
+          elementNotFoundError(selector),
+          { suggestion: 'Verify the selector matches an element on the page' },
+          EXIT_CODES.RESOURCE_NOT_FOUND
+        );
       }
 
       return { success: true, data: { node, domContext } };
@@ -585,7 +592,7 @@ async function handleSequenceCapture(
     const outputPath = path.join(absoluteDir, filename);
 
     await captureSequenceFrame(outputPath, options);
-    console.error(`Frame ${frameCount}: ${filename}`);
+    log.info(`Frame ${frameCount}: ${filename}`);
 
     if (limit > 0 && frameCount >= limit) {
       process.emit('SIGINT');

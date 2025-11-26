@@ -64,7 +64,7 @@ async function withCDPConnection<T>(
   if (!metadata.webSocketDebuggerUrl) {
     throw new CommandError(
       'Missing webSocketDebuggerUrl in session metadata',
-      { note: 'Session metadata may be corrupted or from an older version' },
+      { suggestion: 'Session metadata may be corrupted or from an older version' },
       EXIT_CODES.SESSION_FILE_ERROR
     );
   }
@@ -94,7 +94,7 @@ export function registerFormInteractionCommands(program: Command): void {
   if (!domCommand) {
     throw new CommandError(
       'DOM command group not found',
-      { note: 'This is an internal error - DOM commands may not be registered' },
+      { suggestion: 'This is an internal error - DOM commands may not be registered' },
       EXIT_CODES.SOFTWARE_ERROR
     );
   }

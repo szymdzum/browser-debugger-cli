@@ -8,10 +8,10 @@
 import type { PendingRequestManager } from './pendingRequests.js';
 import type { Socket } from 'net';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { CommandName, WorkerRequestUnion } from '@/ipc/index.js';
 import type { StatusResponseData } from '@/ipc/session/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Response sender function type.

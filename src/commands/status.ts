@@ -3,7 +3,6 @@ import type { Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
@@ -16,6 +15,7 @@ import {
   type StatusData,
 } from '@/ui/formatters/status.js';
 import { invalidResponseError, daemonNotRunningError } from '@/ui/messages/errors.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -44,7 +44,7 @@ export function registerStatusCommand(program: Command): void {
               return {
                 success: false,
                 error: `Daemon error: ${response.error ?? 'Unknown error'}`,
-                exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+                exitCode: EXIT_CODES.SOFTWARE_ERROR,
               };
             }
 
@@ -53,7 +53,7 @@ export function registerStatusCommand(program: Command): void {
               return {
                 success: false,
                 error: invalidResponseError('missing data'),
-                exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+                exitCode: EXIT_CODES.SOFTWARE_ERROR,
               };
             }
 
@@ -109,7 +109,7 @@ export function registerStatusCommand(program: Command): void {
             return {
               success: false,
               error: `Error checking status: ${errorMessage}`,
-              exitCode: EXIT_CODES.UNHANDLED_EXCEPTION,
+              exitCode: EXIT_CODES.SOFTWARE_ERROR,
             };
           }
         },

@@ -28,10 +28,10 @@ import { existsSync } from 'fs';
 import { readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import { getSessionDir } from '@/session/paths.js';
 import type { DomQueryResult } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
 

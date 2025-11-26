@@ -137,6 +137,42 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     description: 'Check current session and daemon status',
     cdpAlternative: 'IPC ping + process checks',
   },
+
+  cleanup_session: {
+    commands: ['cleanup'],
+    description: 'Clean up stale session files and processes',
+    cdpAlternative: 'Manual process termination + file cleanup',
+  },
+
+  stop_session: {
+    commands: ['stop'],
+    description: 'Stop session and write collected telemetry',
+    cdpAlternative: 'Target.closeTarget + file write',
+  },
+
+  submit_form: {
+    commands: ['dom submit'],
+    description: 'Submit form by clicking submit button and waiting for completion',
+    cdpAlternative: 'Runtime.evaluate with form.submit() or button.click()',
+  },
+
+  navigate_to_url: {
+    commands: ['bdg <url>'],
+    description: 'Start session and navigate to URL',
+    cdpAlternative: 'Page.navigate',
+  },
+
+  filter_network_requests: {
+    commands: ['network list --filter', 'network list --preset'],
+    description: 'Filter network requests by type, status, or preset',
+    cdpAlternative: 'Network domain events with client-side filtering',
+  },
+
+  get_network_details: {
+    commands: ['details network <id>'],
+    description: 'Get full request/response details including body',
+    cdpAlternative: 'Network.getResponseBody',
+  },
 };
 
 /**

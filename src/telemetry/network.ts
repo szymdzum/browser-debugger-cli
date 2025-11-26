@@ -1,5 +1,4 @@
 import type { CDPConnection } from '@/connection/cdp.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -14,6 +13,7 @@ import {
 } from '@/constants.js';
 import type { NetworkRequest, WebSocketConnection, WebSocketFrame, CleanupFunction } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 

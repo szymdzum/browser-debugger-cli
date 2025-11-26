@@ -6,7 +6,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import type { CommandRegistry } from '@/daemon/worker/commandRegistry.js';
 import type { CommandName, WorkerRequestUnion, WorkerResponse } from '@/ipc/index.js';
 import type { Logger } from '@/ui/logging/index.js';
@@ -18,6 +17,7 @@ import {
   workerStdinClosed,
   workerStdinListenerSetup,
 } from '@/ui/messages/debug.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Type guard to validate parsed JSON is a valid WorkerRequest.

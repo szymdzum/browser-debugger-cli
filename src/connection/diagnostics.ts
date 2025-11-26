@@ -1,8 +1,8 @@
 import * as chromeLauncher from 'chrome-launcher';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatDiagnosticsForError } from '@/ui/messages/chrome.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('diagnostics');
 

@@ -4,7 +4,7 @@
  * Utilities for detecting IPC transport-level errors.
  */
 
-import { getErrorMessage } from '@/connection/errors.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Detect whether an error indicates the daemon socket is unavailable.

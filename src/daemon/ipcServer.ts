@@ -12,7 +12,6 @@ import { unlinkSync } from 'fs';
 
 import type { Socket } from 'net';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import { PendingRequestManager } from '@/daemon/handlers/pendingRequests.js';
 import { RequestHandlers } from '@/daemon/handlers/requestHandlers.js';
 import { ResponseHandler } from '@/daemon/handlers/responseHandler.js';
@@ -25,6 +24,7 @@ import { ensureSessionDir, getSessionFilePath, getDaemonSocketPath } from '@/ses
 import { readPidFromFile } from '@/session/pid.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('daemon');
 

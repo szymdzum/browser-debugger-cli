@@ -60,7 +60,7 @@ export function registerCleanupCommand(program: Command): void {
                 error: sessionStillActiveError(pid),
                 exitCode: EXIT_CODES.RESOURCE_BUSY,
                 errorContext: {
-                  suggestions: ['Stop gracefully: bdg stop', 'Force cleanup: bdg cleanup --force'],
+                  suggestion: 'Stop gracefully: bdg stop\nForce cleanup: bdg cleanup --force',
                   warning:
                     'Force cleanup will remove session files but will NOT kill the running process',
                 },

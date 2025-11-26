@@ -7,9 +7,9 @@
 
 import * as fs from 'fs';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';

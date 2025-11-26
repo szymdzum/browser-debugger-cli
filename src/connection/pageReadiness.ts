@@ -9,9 +9,10 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { getErrorMessage } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { delay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('readiness');
 
@@ -286,13 +287,4 @@ async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<n
         log.debug(`Failed to clean up DOM observer: ${getErrorMessage(error)}`);
       });
   }
-}
-
-/**
- * Delay utility
- *
- * @param ms - Milliseconds to delay
- */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

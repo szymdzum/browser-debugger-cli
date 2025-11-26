@@ -253,7 +253,7 @@ export class DomElementResolver {
     if (!targetNode) {
       throw new CommandError(
         `Element at index ${index} not found`,
-        {},
+        { suggestion: `Re-run "bdg dom query ${cachedQuery.selector}" to refresh the cache` },
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
     }

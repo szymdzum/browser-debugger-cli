@@ -1,6 +1,96 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 
 /**
+ * Standard response envelope for all bdg command JSON output.
+ *
+ * **STABILITY: This is a stable API contract.**
+ *
+ * All commands returning JSON MUST use this envelope structure.
+ * Breaking changes require a major version bump.
+ *
+ * @example Success response
+ * ```json
+ * {
+ *   "version": "0.6.8",
+ *   "success": true,
+ *   "data": { "count": 10, "items": [...] }
+ * }
+ * ```
+ *
+ * @example Error response
+ * ```json
+ * {
+ *   "version": "0.6.8",
+ *   "success": false,
+ *   "error": "Session not found",
+ *   "exitCode": 83,
+ *   "suggestion": "Start a session with: bdg <url>"
+ * }
+ * ```
+ */
+export interface BdgResponse<T = unknown> {
+  /** Tool version for schema compatibility checking */
+  version: string;
+
+  /** Whether the command succeeded */
+  success: boolean;
+
+  /** Response data (present when success=true) */
+  data?: T;
+
+  /** Error message (present when success=false) */
+  error?: string;
+
+  /** Semantic exit code (present when success=false) */
+  exitCode?: number;
+
+  /** Actionable suggestion for error recovery */
+  suggestion?: string;
+}
+
+/**
+ * Type guard to validate BdgResponse structure.
+ *
+ * Use this to verify responses from commands or IPC.
+ *
+ * @param value - Unknown value to check
+ * @returns True if value is a valid BdgResponse
+ */
+export function isBdgResponse(value: unknown): value is BdgResponse {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const obj = value as Record<string, unknown>;
+
+  return typeof obj['version'] === 'string' && typeof obj['success'] === 'boolean';
+}
+
+/**
+ * Type guard for successful BdgResponse.
+ *
+ * @param value - Unknown value to check
+ * @returns True if value is a successful BdgResponse with data
+ */
+export function isSuccessResponse<T>(
+  value: unknown
+): value is BdgResponse<T> & { success: true; data: T } {
+  return isBdgResponse(value) && value.success === true && value.data !== undefined;
+}
+
+/**
+ * Type guard for error BdgResponse.
+ *
+ * @param value - Unknown value to check
+ * @returns True if value is an error BdgResponse
+ */
+export function isErrorResponse(
+  value: unknown
+): value is BdgResponse & { success: false; error: string } {
+  return isBdgResponse(value) && value.success === false && typeof value.error === 'string';
+}
+
+/**
  * Re-export connection types for backward compatibility.
  *
  * These types are now defined in connection/connectionTypes.ts for better cohesion.

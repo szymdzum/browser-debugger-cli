@@ -15,12 +15,13 @@ import { fileURLToPath } from 'url';
 
 import type { ChildProcess } from 'child_process';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import { DaemonStartupError } from '@/daemon/errors.js';
 import { cleanupStaleSession } from '@/session/cleanup.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { delay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { isProcessAlive } from '@/utils/process.js';
 
@@ -118,7 +119,7 @@ export async function launchDaemon(): Promise<ChildProcess> {
         return daemon;
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await delay(100);
     }
 
     daemon.kill();

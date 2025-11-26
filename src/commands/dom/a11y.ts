@@ -86,8 +86,7 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
         throw new CommandError(
           'Query pattern must specify at least one field',
           {
-            suggestion: 'Try: bdg dom a11y query "role:button" or "name:Submit"',
-            note: `Received: "${pattern}"`,
+            suggestion: `Received: "${pattern}". Try: bdg dom a11y query "role:button" or "name:Submit"`,
           },
           EXIT_CODES.INVALID_ARGUMENTS
         );
@@ -100,8 +99,7 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
         throw new CommandError(
           'No nodes found matching pattern',
           {
-            suggestion: 'Try a broader query or use "bdg dom a11y tree" to see all elements',
-            note: `Pattern: ${JSON.stringify(queryPattern)}`,
+            suggestion: `Pattern: ${JSON.stringify(queryPattern)}. Try a broader query or use "bdg dom a11y tree" to see all elements`,
           },
           EXIT_CODES.RESOURCE_NOT_FOUND
         );

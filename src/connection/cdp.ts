@@ -3,8 +3,11 @@ import WebSocket from 'ws';
 import type { CDPEventSource, EventCleanup } from './events.js';
 import type { CDPMessage, ConnectionOptions, CreateOptions, Logger } from './types.js';
 
+import { delay as asyncDelay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
 import { DEFAULT_CDP_CONFIG, WEBSOCKET_CONFIG, UTF8_ENCODING } from './config.js';
-import { CDPConnectionError, CDPTimeoutError, getErrorMessage } from './errors.js';
+import { CDPConnectionError, CDPTimeoutError } from './errors.js';
 
 const CONNECTION_TIMEOUT_ERROR = 'Connection timeout';
 const WEBSOCKET_CONNECTION_CLOSED_ERROR = 'WebSocket connection closed';
@@ -166,7 +169,7 @@ export class CDPConnection implements CDPEventSource {
         if (attempt < maxRetries - 1) {
           const delay = this.calculateBackoffDelay(attempt, this.config.maxRetryDelay);
           this.logger.info(CONNECTION_ATTEMPT_FAILED_MESSAGE(attempt, delay));
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          await asyncDelay(delay);
         }
       }
     }
@@ -471,7 +474,7 @@ export class CDPConnection implements CDPEventSource {
       RECONNECTING_MESSAGE(delay, this.reconnectAttempts, this.config.maxReconnectAttempts)
     );
 
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    await asyncDelay(delay);
 
     try {
       await this.attemptConnection(this.wsUrl, this.connectionOptions);

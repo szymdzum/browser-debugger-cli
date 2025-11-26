@@ -6,6 +6,7 @@
 
 import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { getSuggestion } from '@/utils/suggestions.js';
 
 /**
  * Filter preset definition.
@@ -75,10 +76,12 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
 export function resolvePreset(name: string): string {
   const preset = FILTER_PRESETS[name.toLowerCase()];
   if (!preset) {
-    const available = Object.keys(FILTER_PRESETS).join(', ');
+    const presetNames = Object.keys(FILTER_PRESETS);
+    const typoSuggestion = getSuggestion(name, presetNames);
+    const suggestion = typoSuggestion || `Available presets: ${presetNames.join(', ')}`;
     throw new CommandError(
       `Unknown preset: "${name}"`,
-      { suggestion: `Available presets: ${available}` },
+      { suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }

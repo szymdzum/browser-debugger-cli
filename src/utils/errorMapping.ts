@@ -40,10 +40,16 @@ export function getExitCodeForIPCError(errorCode?: IPCErrorCode): number {
       return EXIT_CODES.CDP_TIMEOUT;
 
     case IPCErrorCode.SESSION_KILL_FAILED:
+      return EXIT_CODES.SESSION_FILE_ERROR;
+
     case IPCErrorCode.WORKER_START_FAILED:
+      return EXIT_CODES.CDP_CONNECTION_FAILURE;
+
     case IPCErrorCode.DAEMON_ERROR:
+      return EXIT_CODES.SOFTWARE_ERROR;
+
     case undefined:
-      return EXIT_CODES.UNHANDLED_EXCEPTION;
+      return EXIT_CODES.SOFTWARE_ERROR;
   }
 }
 

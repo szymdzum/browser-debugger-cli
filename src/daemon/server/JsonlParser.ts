@@ -5,8 +5,8 @@
  * Maintains internal buffer to handle partial messages across chunks.
  */
 
-import { getErrorMessage } from '@/connection/errors.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Parses JSONL (newline-delimited JSON) from streaming data.

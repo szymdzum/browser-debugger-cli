@@ -11,8 +11,8 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-import { getErrorMessage } from '@/connection/errors.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { safeRemoveFile } from '@/utils/file.js';
 import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 

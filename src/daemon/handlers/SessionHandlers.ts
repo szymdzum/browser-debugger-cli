@@ -6,7 +6,6 @@
 
 import type { Socket } from 'net';
 
-import { getErrorMessage } from '@/connection/errors.js';
 import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { ISessionService } from '@/daemon/services/SessionService.js';
 import { WorkerStartError } from '@/daemon/startSession.js';
@@ -20,6 +19,7 @@ import {
 } from '@/ipc/index.js';
 import type { CDPTarget } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 

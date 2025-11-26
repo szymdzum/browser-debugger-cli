@@ -1,12 +1,10 @@
 /**
  * Structured output building for CLI commands.
- *
- * Provides helpers for building consistent JSON output across all commands.
- * Moved from commands/shared to ui layer as it's presentation logic, not command logic.
  */
 
 import type {
   BdgOutput,
+  BdgResponse,
   CDPTarget,
   NetworkRequest,
   ConsoleMessage,
@@ -16,14 +14,8 @@ import type {
 import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
-/**
- * Output mode determines what data is included and how partial flag is set
- */
 export type OutputMode = 'preview' | 'full' | 'final';
 
-/**
- * Options for building output payloads
- */
 export interface OutputBuilderOptions {
   mode: OutputMode;
   target: CDPTarget;
@@ -34,107 +26,101 @@ export interface OutputBuilderOptions {
   activeTelemetry: TelemetryType[];
 }
 
-/**
- * Helper: build output payloads for different modes with consistent metadata.
- * Modes: preview (metadata only), full (with bodies), final (complete with DOM).
- */
+export function buildSuccessResponse<T>(data: T): BdgResponse<T> {
+  return { version: VERSION, success: true, data };
+}
+
+function buildBaseOutput(target: CDPTarget, startTime: number, partial: boolean) {
+  return {
+    version: VERSION,
+    success: true,
+    timestamp: new Date().toISOString(),
+    duration: Date.now() - startTime,
+    target: { url: target.url, title: target.title },
+    partial,
+  };
+}
+
+function buildPreviewData(
+  networkRequests: NetworkRequest[],
+  consoleLogs: ConsoleMessage[],
+  activeTelemetry: TelemetryType[]
+): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+
+  if (activeTelemetry.includes('network')) {
+    data['network'] = networkRequests.slice(-1000).map((req) => ({
+      requestId: req.requestId,
+      url: req.url,
+      method: req.method,
+      timestamp: req.timestamp,
+      status: req.status,
+      mimeType: req.mimeType,
+    }));
+  }
+
+  if (activeTelemetry.includes('console')) {
+    data['console'] = consoleLogs.slice(-1000).map((msg) => ({
+      type: msg.type,
+      text: msg.text,
+      timestamp: msg.timestamp,
+    }));
+  }
+
+  return data;
+}
+
+function buildFullData(
+  networkRequests: NetworkRequest[],
+  consoleLogs: ConsoleMessage[],
+  activeTelemetry: TelemetryType[]
+): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (activeTelemetry.includes('network')) data['network'] = networkRequests;
+  if (activeTelemetry.includes('console')) data['console'] = consoleLogs;
+  return data;
+}
+
+function buildFinalData(
+  networkRequests: NetworkRequest[],
+  consoleLogs: ConsoleMessage[],
+  domData: DOMData | undefined,
+  activeTelemetry: TelemetryType[]
+): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  if (activeTelemetry.includes('network')) data['network'] = networkRequests;
+  if (activeTelemetry.includes('console')) data['console'] = consoleLogs;
+  if (activeTelemetry.includes('dom') && domData) data['dom'] = domData;
+  return data;
+}
+
 export class OutputBuilder {
-  /**
-   * Build session output with consistent metadata.
-   *
-   * @param options - Configuration for output construction
-   * @returns BdgOutput payload
-   */
   static build(options: OutputBuilderOptions): BdgOutput {
     const { mode, target, startTime, networkRequests, consoleLogs, domData, activeTelemetry } =
       options;
 
-    const baseOutput = {
-      version: VERSION,
-      success: true,
-      timestamp: new Date().toISOString(),
-      duration: Date.now() - startTime,
-      target: {
-        url: target.url,
-        title: target.title,
-      },
-      partial: mode !== 'final',
-    };
+    const baseOutput = buildBaseOutput(target, startTime, mode !== 'final');
 
-    if (mode === 'preview') {
-      const previewData: Record<string, unknown> = {};
-
-      if (activeTelemetry.includes('network')) {
-        previewData['network'] = networkRequests.slice(-1000).map((req) => ({
-          requestId: req.requestId,
-          url: req.url,
-          method: req.method,
-          timestamp: req.timestamp,
-          status: req.status,
-          mimeType: req.mimeType,
-        }));
-      }
-
-      if (activeTelemetry.includes('console')) {
-        previewData['console'] = consoleLogs.slice(-1000).map((msg) => ({
-          type: msg.type,
-          text: msg.text,
-          timestamp: msg.timestamp,
-        }));
-      }
-
-      return {
-        ...baseOutput,
-        data: previewData,
-      };
+    switch (mode) {
+      case 'preview':
+        return {
+          ...baseOutput,
+          data: buildPreviewData(networkRequests, consoleLogs, activeTelemetry),
+        };
+      case 'full':
+        return {
+          ...baseOutput,
+          data: buildFullData(networkRequests, consoleLogs, activeTelemetry),
+        };
+      case 'final':
+        return {
+          ...baseOutput,
+          partial: false,
+          data: buildFinalData(networkRequests, consoleLogs, domData, activeTelemetry),
+        };
     }
-
-    if (mode === 'full') {
-      const fullData: Record<string, unknown> = {};
-
-      if (activeTelemetry.includes('network')) {
-        fullData['network'] = networkRequests; // All data with bodies
-      }
-
-      if (activeTelemetry.includes('console')) {
-        fullData['console'] = consoleLogs; // All data with args
-      }
-
-      return {
-        ...baseOutput,
-        data: fullData,
-      };
-    }
-
-    const finalData: Record<string, unknown> = {};
-
-    if (activeTelemetry.includes('network')) {
-      finalData['network'] = networkRequests;
-    }
-
-    if (activeTelemetry.includes('console')) {
-      finalData['console'] = consoleLogs;
-    }
-
-    if (activeTelemetry.includes('dom') && domData) {
-      finalData['dom'] = domData;
-    }
-
-    return {
-      ...baseOutput,
-      partial: false,
-      data: finalData,
-    };
   }
 
-  /**
-   * Build error output with consistent structure.
-   *
-   * @param error - Error object or string
-   * @param startTime - Session start timestamp
-   * @param target - Optional target information
-   * @returns BdgOutput payload with error
-   */
   static buildError(error: unknown, startTime: number, target?: CDPTarget): BdgOutput {
     return {
       version: VERSION,
@@ -147,22 +133,9 @@ export class OutputBuilder {
     };
   }
 
-  /**
-   * Build a simple JSON error response for commands.
-   * Used by commands that don't follow the full BdgOutput structure (stop, cleanup, query).
-   *
-   * @param error - Error message or Error object
-   * @param options - Optional fields (exitCode, additional data)
-   * @returns JSON-serializable error object
-   */
   static buildJsonError(
     error: string | Error,
-    options?: {
-      exitCode?: number;
-      suggestion?: string;
-      note?: string;
-      context?: Record<string, string>;
-    }
+    options?: { exitCode?: number; suggestion?: string; context?: Record<string, string> }
   ): Record<string, unknown> {
     return {
       version: VERSION,
@@ -172,18 +145,7 @@ export class OutputBuilder {
     };
   }
 
-  /**
-   * Build a simple JSON success response for commands.
-   * Used by commands that don't follow the full BdgOutput structure (stop, cleanup, query).
-   *
-   * @param data - Response data
-   * @returns JSON-serializable success object
-   */
   static buildJsonSuccess(data: Record<string, unknown>): Record<string, unknown> {
-    return {
-      version: VERSION,
-      success: true,
-      ...data,
-    };
+    return { version: VERSION, success: true, ...data };
   }
 }
