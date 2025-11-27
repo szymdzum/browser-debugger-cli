@@ -4,7 +4,39 @@
 
 **Branch:** `fix/agent-friendly-consistency`  
 **Created:** 2025-11-26  
-**Status:** Planning
+**Status:** Mostly Complete (2025-11-27)
+
+---
+
+## Implementation Status
+
+| Gap | Description | Status | Notes |
+|-----|-------------|--------|-------|
+| G1 | Exit code 87 missing from help | ✅ Done | Already in `--help --json` |
+| G2 | Inconsistent exit code usage | ⚠️ Acceptable | UNHANDLED_EXCEPTION used appropriately |
+| G3 | SOFTWARE_ERROR never used | ✅ Done | Now used in 20+ places |
+| G4 | Typo detection only for CDP | ⚠️ Deferred | Low priority, CDP is main use case |
+| G5 | Inconsistent JSON structures | ✅ Done | Schema contract tests exist |
+| G6 | Commands bypass runCommand | ✅ Reviewed | `tail.ts` intentional (follow mode) |
+| G7 | suggestion vs suggestions | ✅ Done | Keeping `suggestion` (singular) |
+| G8 | Errors missing suggestions | ✅ Declined | Many errors intentionally have none |
+| G9 | stdout/stderr consistency | ⚠️ Acceptable | Current behavior is correct |
+| G10 | Hints on stderr | ⚠️ Acceptable | Follows Unix convention |
+| G11 | Task mappings missing | ⚠️ Deferred | Low priority |
+
+### Prevention Mechanisms Status
+
+| Mechanism | Status | Notes |
+|-----------|--------|-------|
+| Custom ESLint rules | ❌ Declined | TypeScript sufficient |
+| Type-level enforcement | ✅ In place | Via `ErrorMetadata`, `BdgResponse` |
+| Schema validation in CI | ✅ Exists | `schema.contract.test.ts` |
+| Pre-commit hooks | ✅ Exists | lint-staged configured |
+| Code review checklist | 📋 Reference | In this document |
+
+### Additional Fixes (2025-11-27)
+
+- **Index consistency**: Unified `--index` to 0-based across all commands
 
 ---
 
