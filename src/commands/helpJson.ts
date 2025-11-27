@@ -5,12 +5,32 @@
 import type { Command, Option, Argument } from 'commander';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
+import { getOptionBehavior } from '@/commands/optionBehaviors.js';
 import { isDaemonRunning } from '@/daemon/launcher.js';
 import { readPid } from '@/session/pid.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
 import { EXIT_CODE_REGISTRY } from '@/utils/exitCodes.js';
 import { isProcessAlive } from '@/utils/process.js';
 import { getAllTaskMappings, type TaskMapping } from '@/utils/taskMappings.js';
+
+/**
+ * Behavioral metadata for self-documenting options.
+ *
+ * Provides rich context for agents to understand option effects
+ * without trial-and-error or source code inspection.
+ */
+export interface OptionBehavior {
+  /** What happens by default when option is not specified */
+  default?: string;
+  /** What happens when option is enabled/specified */
+  whenEnabled?: string;
+  /** What happens when option is disabled (for --no-* flags) */
+  whenDisabled?: string;
+  /** Automatic behaviors that may override user intent */
+  automaticBehavior?: string;
+  /** Token cost implications for AI agents */
+  tokenImpact?: string;
+}
 
 /**
  * Option metadata for machine-readable help.
@@ -30,6 +50,8 @@ export interface OptionMetadata {
   defaultValueDescription?: string;
   /** Allowed choices if restricted */
   choices?: readonly string[];
+  /** Rich behavioral metadata for agent discovery */
+  behavior?: OptionBehavior;
 }
 
 /**
@@ -138,11 +160,13 @@ export interface MachineReadableHelp {
  *
  * Builds the metadata object directly with proper types,
  * only including optional fields when they have values.
+ * Enriches with behavioral metadata when available.
  *
  * @param option - Commander option instance
- * @returns Option metadata
+ * @param commandName - Name of the command containing this option
+ * @returns Option metadata with behavioral context
  */
-function convertOption(option: Option): OptionMetadata {
+function convertOption(option: Option, commandName: string): OptionMetadata {
   const metadata: OptionMetadata = {
     flags: option.flags,
     description: option.description,
@@ -158,6 +182,11 @@ function convertOption(option: Option): OptionMetadata {
   }
   if (option.argChoices) {
     metadata.choices = option.argChoices;
+  }
+
+  const behavior = getOptionBehavior(commandName, option.flags);
+  if (behavior) {
+    metadata.behavior = behavior;
   }
 
   return metadata;
@@ -193,17 +222,20 @@ function convertArgument(argument: Argument): ArgumentMetadata {
 /**
  * Recursively converts a Commander Command to CommandMetadata.
  *
+ * Passes command name to option converter for behavioral metadata lookup.
+ *
  * @param command - Commander command instance
- * @returns Command metadata
+ * @returns Command metadata with enriched options
  */
 function convertCommand(command: Command): CommandMetadata {
+  const commandName = command.name();
   return {
-    name: command.name(),
+    name: commandName,
     aliases: command.aliases(),
     description: command.description(),
     usage: command.usage(),
     arguments: command.registeredArguments.map(convertArgument),
-    options: command.options.map(convertOption),
+    options: command.options.map((opt) => convertOption(opt, commandName)),
     subcommands: command.commands.map(convertCommand),
   };
 }
