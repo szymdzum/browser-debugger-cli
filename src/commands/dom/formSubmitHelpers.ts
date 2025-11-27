@@ -13,7 +13,7 @@ import { clickElement } from './formFillHelpers.js';
  * Options for submitting a form.
  */
 export interface SubmitOptions {
-  /** Element index if selector matches multiple (1-based) */
+  /** Element index if selector matches multiple (0-based) */
   index?: number;
   /** Wait for page navigation after submit (default: false) */
   waitNavigation?: boolean;

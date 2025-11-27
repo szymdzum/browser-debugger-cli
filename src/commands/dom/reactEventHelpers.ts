@@ -32,19 +32,19 @@ export const REACT_FILL_SCRIPT = `
   let el;
   const index = options.index;
   
-  // If index is provided, use it directly (1-based)
-  if (typeof index === 'number' && index > 0) {
-    if (index > allMatches.length) {
+  // If index is provided, use it directly (0-based)
+  if (typeof index === 'number' && index >= 0) {
+    if (index >= allMatches.length) {
       return {
         success: false,
         error: 'Index out of range',
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
-        suggestion: 'Use --index between 1 and ' + allMatches.length
+        suggestion: 'Use --index between 0 and ' + (allMatches.length - 1)
       };
     }
-    el = allMatches[index - 1];
+    el = allMatches[index];
   } else {
     el = allMatches[0];
   }
@@ -132,7 +132,7 @@ export const REACT_FILL_SCRIPT = `
  *
  * @remarks
  * Handles both direct selector matching and indexed selection.
- * When index is provided, selects the nth matching element (1-based).
+ * When index is provided, selects the nth matching element (0-based).
  * When selector matches multiple elements without index, prioritizes visible ones.
  */
 export const CLICK_ELEMENT_SCRIPT = `
@@ -149,19 +149,19 @@ export const CLICK_ELEMENT_SCRIPT = `
   
   let el;
   
-  // If index is provided, use it directly (1-based)
-  if (typeof index === 'number' && index > 0) {
-    if (index > allMatches.length) {
+  // If index is provided, use it directly (0-based)
+  if (typeof index === 'number' && index >= 0) {
+    if (index >= allMatches.length) {
       return {
         success: false,
         error: 'Index out of range',
         selector: selector,
         matchCount: allMatches.length,
         requestedIndex: index,
-        suggestion: 'Use --index between 1 and ' + allMatches.length
+        suggestion: 'Use --index between 0 and ' + (allMatches.length - 1)
       };
     }
-    el = allMatches[index - 1];
+    el = allMatches[index];
   } else if (allMatches.length === 1) {
     // Single match - use it directly
     el = allMatches[0];
@@ -221,7 +221,7 @@ export const CLICK_ELEMENT_SCRIPT = `
 export interface FillOptions {
   /** Whether to blur the element after filling (default: true) */
   blur?: boolean;
-  /** Index to use if selector matches multiple elements (1-based) */
+  /** Index to use if selector matches multiple elements (0-based) */
   index?: number;
 }
 

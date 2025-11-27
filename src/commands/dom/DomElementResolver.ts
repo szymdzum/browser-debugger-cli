@@ -41,7 +41,7 @@ export interface ElementTargetSuccess {
   success: true;
   /** CSS selector to use */
   selector: string;
-  /** 1-based index for selector (if resolved from cached query) */
+  /** 0-based index for selector (if resolved from cached query) */
   index?: number | undefined;
 }
 
@@ -140,7 +140,7 @@ export class DomElementResolver {
    * index-based access.
    *
    * @param selectorOrIndex - CSS selector or numeric index from query results
-   * @param explicitIndex - Optional explicit --index flag value (1-based)
+   * @param explicitIndex - Optional explicit --index flag value (0-based)
    * @returns Resolution result with selector and optional index
    *
    * @example

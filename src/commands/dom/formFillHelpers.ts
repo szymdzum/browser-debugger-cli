@@ -309,7 +309,7 @@ export async function waitForActionStability(cdp: CDPConnection): Promise<void> 
  * Options for pressing a key on an element.
  */
 export interface PressKeyOptions {
-  /** Element index if selector matches multiple (1-based) */
+  /** Element index if selector matches multiple (0-based) */
   index?: number;
   /** Number of times to press the key (default: 1) */
   times?: number;
@@ -343,14 +343,14 @@ const FOCUS_ELEMENT_SCRIPT = `
   }
 
   let el;
-  if (typeof index === 'number' && index > 0) {
-    if (index > allMatches.length) {
+  if (typeof index === 'number' && index >= 0) {
+    if (index >= allMatches.length) {
       return { 
         success: false, 
-        error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes)' 
+        error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')' 
       };
     }
-    el = allMatches[index - 1];
+    el = allMatches[index];
   } else {
     el = allMatches[0];
   }

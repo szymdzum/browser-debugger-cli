@@ -39,7 +39,7 @@ export interface VerboseOptions {
  * Used by DOM interaction commands (fill, click, submit, pressKey).
  */
 export interface IndexOptions {
-  /** 1-based index for selecting nth element matching selector */
+  /** 0-based index for selecting nth element matching selector */
   index?: number;
 }
 
@@ -77,7 +77,7 @@ export interface RawOptions {
 export interface SelectionOptions {
   /** Select all matching elements */
   all?: boolean;
-  /** Select nth element (1-based) */
+  /** Select nth element (0-based) */
   nth?: number;
   /** Use specific nodeId directly */
   nodeId?: number;

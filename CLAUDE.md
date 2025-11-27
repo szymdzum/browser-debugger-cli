@@ -468,23 +468,21 @@ bdg console --last 50           # Limit to last 50 messages
 
 1. **Direct index access (0-based)** - For inspection commands:
 ```bash
-bdg dom query "input"           # Cache results with indices
+bdg dom query "input"           # Cache results with indices [0], [1], [2]...
 bdg dom get 0                   # Get first element (semantic view)
 bdg dom get 0 --raw             # Get first element (raw HTML)
 bdg dom a11y describe 0         # Get accessibility info for first element
 ```
 
-2. **Selector with --index option (1-based)** - For interaction commands:
+2. **Selector with --index option (0-based)** - For interaction commands:
 ```bash
-bdg dom query "button"          # See which buttons exist
-bdg dom fill "input" "value" --index 2    # Fill second input
-bdg dom click "button" --index 1          # Click first button
-bdg dom submit "button" --index 1         # Submit via first button
+bdg dom query "button"          # See which buttons exist [0], [1], [2]...
+bdg dom fill "input" "value" --index 1    # Fill second input (index 1)
+bdg dom click "button" --index 0          # Click first button (index 0)
+bdg dom submit "button" --index 2         # Submit via third button (index 2)
 ```
 
-**Why two patterns?**
-- **Inspection commands** (`get`, `a11y describe`) support direct index arguments for quick queries
-- **Interaction commands** (`fill`, `click`, `submit`) use `--index` option because they need the selector for element resolution
+**All indices are 0-based** - matching the query display output.
 
 **Tip:** Always run `bdg dom query <selector>` first to see indices before using them.
 

@@ -228,18 +228,18 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     }
 
     if (options.nth !== undefined) {
-      if (options.nth < 1 || options.nth > nodeIds.length) {
+      if (options.nth < 0 || options.nth >= nodeIds.length) {
         throw new CommandError(
           `--nth ${options.nth} out of range (found ${nodeIds.length} nodes)`,
-          { suggestion: `Use a value between 1 and ${nodeIds.length}` },
+          { suggestion: `Use a value between 0 and ${nodeIds.length - 1}` },
           EXIT_CODES.INVALID_ARGUMENTS
         );
       }
-      const nthNode = nodeIds[options.nth - 1];
+      const nthNode = nodeIds[options.nth];
       if (nthNode === undefined) {
         throw new CommandError(
           `Element at index ${options.nth} not found`,
-          { suggestion: `Use --index between 1 and ${nodeIds.length}` },
+          { suggestion: `Use --index between 0 and ${nodeIds.length - 1}` },
           EXIT_CODES.RESOURCE_NOT_FOUND
         );
       }
