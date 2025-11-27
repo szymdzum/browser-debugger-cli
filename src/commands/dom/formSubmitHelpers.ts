@@ -34,6 +34,7 @@ export interface SubmitResult {
   networkRequests?: number;
   navigationOccurred?: boolean;
   waitTimeMs?: number;
+  suggestion?: string;
 }
 
 /**

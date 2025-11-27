@@ -269,6 +269,115 @@ bdg dom screenshot high-res.jpg --format jpeg --quality 100
 
 ## Network Commands
 
+### List Network Requests
+
+List and filter captured network requests using Chrome DevTools-compatible filter syntax.
+
+```bash
+# List recent requests (default: last 100)
+bdg network list
+
+# Show all requests
+bdg network list --last 0
+
+# Filter by status code
+bdg network list --filter "status-code:>=400"      # Errors (4xx, 5xx)
+bdg network list --filter "status-code:200"        # Only 200 OK
+bdg network list --filter "status-code:>=500"      # Server errors only
+
+# Filter by domain (supports wildcards)
+bdg network list --filter "domain:api.*"           # API subdomain
+bdg network list --filter "domain:*.example.com"   # All subdomains
+bdg network list --filter "!domain:cdn.*"          # Exclude CDN
+
+# Filter by HTTP method
+bdg network list --filter "method:POST"
+bdg network list --filter "method:DELETE"
+
+# Filter by MIME type
+bdg network list --filter "mime-type:application/json"
+bdg network list --filter "mime-type:text/html"
+
+# Filter by response size
+bdg network list --filter "larger-than:1MB"
+bdg network list --filter "larger-than:100KB"
+
+# Filter by response headers
+bdg network list --filter "has-response-header:set-cookie"
+bdg network list --filter "has-response-header:content-security-policy"
+
+# Filter by state
+bdg network list --filter "is:from-cache"          # Cached responses
+bdg network list --filter "is:running"             # In-progress requests
+
+# Filter by URL scheme
+bdg network list --filter "scheme:https"
+bdg network list --filter "scheme:wss"             # WebSocket secure
+
+# Combine multiple filters (AND logic)
+bdg network list --filter "domain:api.* status-code:>=400"
+bdg network list --filter "method:POST mime-type:application/json"
+
+# Use presets for common filters
+bdg network list --preset errors                   # status-code:>=400
+bdg network list --preset api                      # resource-type:XHR,Fetch
+bdg network list --preset large                    # larger-than:1MB
+bdg network list --preset cached                   # is:from-cache
+bdg network list --preset documents                # resource-type:Document
+bdg network list --preset media                    # resource-type:Image,Media
+bdg network list --preset scripts                  # resource-type:Script
+bdg network list --preset pending                  # is:running
+
+# Combine preset with additional filters
+bdg network list --preset api --filter "status-code:>=400"
+
+# Filter by resource type (alternative to --filter)
+bdg network list --type XHR,Fetch
+bdg network list --type Document,Script
+
+# Stream in real-time
+bdg network list --follow
+bdg network list --follow --filter "status-code:>=400"
+
+# Verbose output (full URLs)
+bdg network list --verbose
+
+# JSON output
+bdg network list --json
+```
+
+**Filter Syntax Reference:**
+
+| Filter | Description | Examples |
+|--------|-------------|----------|
+| `status-code:<op><n>` | HTTP status code | `status-code:404`, `status-code:>=400` |
+| `domain:<pattern>` | Domain with wildcards | `domain:api.*`, `domain:*.example.com` |
+| `method:<method>` | HTTP method | `method:POST`, `method:DELETE` |
+| `mime-type:<type>` | Response MIME type | `mime-type:application/json` |
+| `resource-type:<types>` | CDP resource type(s) | `resource-type:XHR,Fetch` |
+| `larger-than:<size>` | Response size threshold | `larger-than:1MB`, `larger-than:100KB` |
+| `has-response-header:<name>` | Has specific header | `has-response-header:set-cookie` |
+| `is:from-cache` | Cached responses | |
+| `is:running` | In-progress requests | |
+| `scheme:<scheme>` | URL scheme | `scheme:https`, `scheme:wss` |
+
+**Operators (for status-code and larger-than):**
+- `=` - Equal (default)
+- `>=` - Greater than or equal
+- `<=` - Less than or equal
+- `>` - Greater than
+- `<` - Less than
+
+**Negation:**
+- Use `!` prefix to exclude matches: `!domain:cdn.*`, `!method:GET`
+- Note: Use `!` instead of `-` to avoid CLI conflicts
+
+**Size Units:**
+- `B` - Bytes
+- `KB` - Kilobytes (1024 bytes)
+- `MB` - Megabytes
+- `GB` - Gigabytes
+
 ### HAR Export
 
 Export collected network requests as HAR 1.2 format (HTTP Archive).

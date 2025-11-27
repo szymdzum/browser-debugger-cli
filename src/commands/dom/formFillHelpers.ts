@@ -325,6 +325,7 @@ export interface PressKeyResult {
   times?: number;
   modifiers?: number;
   elementType?: string | undefined;
+  suggestion?: string;
 }
 
 /**
