@@ -242,18 +242,30 @@ bdg dom submit "#login-form" --wait-navigation    # Wait for page navigation
 
 ### Screen Capture
 
-Capture screenshots of the current page.
+Capture screenshots of the current page. By default, images are auto-resized to fit within Claude Vision's optimal token budget (~1,600 tokens, 1568px max edge).
 
 ```bash
-# Capture full page (default)
+# Capture full page (default, auto-resized for Claude Vision)
 bdg dom screenshot output.png
 
 # Capture viewport only
 bdg dom screenshot visible.jpg --format jpeg --no-full-page
 
+# Full resolution (disable auto-resize)
+bdg dom screenshot full-res.png --no-resize
+
+# Scroll to element before capture (captures viewport)
+bdg dom screenshot footer.png --scroll "footer"
+
 # Custom quality
 bdg dom screenshot high-res.jpg --format jpeg --quality 100
 ```
+
+**Auto-resize behavior:**
+- Images exceeding 1568px on longest edge are scaled down
+- Tall pages (aspect ratio > 3:1) automatically capture viewport only
+- Use `--no-resize` for full resolution when needed
+- Token estimates account for device pixel ratio (Retina displays)
 
 ## Network Commands
 

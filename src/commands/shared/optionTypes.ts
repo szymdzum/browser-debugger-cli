@@ -103,6 +103,10 @@ export interface ScreenshotOptions {
   interval?: string;
   /** Max frames for follow mode (string from CLI) */
   limit?: string;
+  /** Auto-resize enabled (--no-resize sets to false via Commander.js convention) */
+  resize?: boolean;
+  /** Scroll element into view before capture */
+  scroll?: string;
 }
 
 /**

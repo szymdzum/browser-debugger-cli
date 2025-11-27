@@ -5,6 +5,12 @@
  * All operations go through IPC callCDP() for optimal performance.
  */
 
+import {
+  calculateImageTokens,
+  calculateResizeScale,
+  isTallPage,
+  shouldResize,
+} from '@/commands/dom/screenshotResize.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { callCDP } from '@/ipc/client.js';
@@ -23,6 +29,7 @@ import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
+
 const log = createLogger('dom');
 
 export type {
@@ -40,6 +47,38 @@ export type {
  * Prevents overwhelming CDP connection with too many simultaneous requests.
  */
 const CDP_CONCURRENCY_LIMIT = 10;
+
+/**
+ * Scroll an element into view before capture.
+ *
+ * @param selector - CSS selector of element to scroll to
+ * @throws CommandError if element not found
+ */
+async function scrollToElement(selector: string): Promise<void> {
+  const result = await callCDP('Runtime.evaluate', {
+    expression: `
+      (() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return { found: false };
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        return { found: true };
+      })()
+    `,
+    returnByValue: true,
+  });
+
+  const value = (result.data?.result as { result?: { value?: { found?: boolean } } })?.result
+    ?.value;
+  if (!value?.found) {
+    throw new CommandError(
+      `Element not found: ${selector}`,
+      { suggestion: 'Verify the selector matches an element on the page' },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
 
 /**
  * Query DOM elements by CSS selector using CDP relay.
@@ -325,9 +364,13 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
 /**
  * Capture a screenshot of the page using CDP relay.
  *
+ * By default, auto-resizes images exceeding 1568px on longest edge to optimize
+ * for Claude Vision token cost (~1,600 tokens max). Tall pages (aspect ratio > 3:1)
+ * automatically fall back to viewport capture. Use noResize option to disable.
+ *
  * @param outputPath - Path to save screenshot
- * @param options - Screenshot options (format, quality, fullPage)
- * @returns Screenshot result with path, format, dimensions, and size
+ * @param options - Screenshot options (format, quality, fullPage, noResize, scroll)
+ * @returns Screenshot result with path, format, dimensions, size, and capture metadata
  * @throws CDPConnectionError if CDP operation fails
  */
 export async function capturePageScreenshot(
@@ -336,7 +379,19 @@ export async function capturePageScreenshot(
 ): Promise<ScreenshotResult> {
   const format = options.format ?? 'png';
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
-  const fullPage = options.fullPage ?? true;
+  const requestedFullPage = options.fullPage ?? true;
+  const noResize = options.noResize ?? false;
+
+  if (options.scroll) {
+    await scrollToElement(options.scroll);
+  }
+
+  const dprResponse = await callCDP('Runtime.evaluate', {
+    expression: 'window.devicePixelRatio',
+    returnByValue: true,
+  });
+  const devicePixelRatio =
+    (dprResponse.data?.result as { result?: { value?: number } })?.result?.value ?? 1;
 
   const metricsResponse = await callCDP('Page.getLayoutMetrics', {});
   const metricsResult = metricsResponse.data?.result as
@@ -346,10 +401,28 @@ export async function capturePageScreenshot(
   const contentSize = metricsResult?.contentSize ?? { width: 0, height: 0 };
   const viewport = metricsResult?.visualViewport ?? { clientWidth: 0, clientHeight: 0 };
 
+  const pageIsTooTall =
+    !noResize && requestedFullPage && isTallPage(contentSize.width, contentSize.height);
+  const useScroll = options.scroll !== undefined;
+  const effectiveFullPage = useScroll ? false : pageIsTooTall ? false : requestedFullPage;
+
+  const captureWidth = effectiveFullPage ? contentSize.width : viewport.clientWidth;
+  const captureHeight = effectiveFullPage ? contentSize.height : viewport.clientHeight;
+
+  const resized = shouldResize(captureWidth, captureHeight, noResize);
+  const scale = resized ? calculateResizeScale(captureWidth, captureHeight) : 1;
+
   const screenshotResponse = await callCDP('Page.captureScreenshot', {
     format,
     ...(quality !== undefined && { quality }),
-    captureBeyondViewport: fullPage,
+    captureBeyondViewport: effectiveFullPage,
+    clip: {
+      x: 0,
+      y: 0,
+      width: captureWidth,
+      height: captureHeight,
+      scale,
+    },
   });
 
   const screenshotResult = screenshotResponse.data?.result as
@@ -367,24 +440,52 @@ export async function capturePageScreenshot(
   const absolutePath = path.resolve(outputPath);
   await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
 
+  const finalCssWidth = Math.round(captureWidth * scale);
+  const finalCssHeight = Math.round(captureHeight * scale);
+  const actualWidth = Math.round(finalCssWidth * devicePixelRatio);
+  const actualHeight = Math.round(finalCssHeight * devicePixelRatio);
+
   const result: ScreenshotResult = {
     path: absolutePath,
     format,
-    width: fullPage ? contentSize.width : viewport.clientWidth,
-    height: fullPage ? contentSize.height : viewport.clientHeight,
+    width: actualWidth,
+    height: actualHeight,
     size: buffer.length,
-    fullPage,
+    fullPage: effectiveFullPage,
+    captureMode: effectiveFullPage ? 'full_page' : 'viewport',
+    finalTokens: calculateImageTokens(actualWidth, actualHeight),
   };
 
   if (quality !== undefined) {
     result.quality = quality;
   }
 
-  if (!fullPage) {
+  if (!effectiveFullPage) {
     result.viewport = {
       width: viewport.clientWidth,
       height: viewport.clientHeight,
     };
+  }
+
+  if (resized) {
+    const originalActualWidth = Math.round(captureWidth * devicePixelRatio);
+    const originalActualHeight = Math.round(captureHeight * devicePixelRatio);
+    result.resized = true;
+    result.originalWidth = originalActualWidth;
+    result.originalHeight = originalActualHeight;
+    result.originalTokens = calculateImageTokens(originalActualWidth, originalActualHeight);
+  }
+
+  if (pageIsTooTall && !useScroll) {
+    result.fullPageSkipped = {
+      reason: 'page_too_tall',
+      originalHeight: contentSize.height,
+      aspectRatio: Math.round((contentSize.height / contentSize.width) * 10) / 10,
+    };
+  }
+
+  if (useScroll && options.scroll) {
+    result.scrolledTo = options.scroll;
   }
 
   return result;
@@ -470,21 +571,36 @@ export async function resolveSelector(selector: string): Promise<number> {
  * Capture screenshot of a specific element.
  *
  * Uses the element's bounding box to clip the screenshot region.
+ * By default, auto-resizes images exceeding 1568px on longest edge to optimize
+ * for Claude Vision token cost (~1,600 tokens max). Use noResize option to disable.
  *
  * @param outputPath - Output file path
  * @param nodeId - CDP node ID of element
- * @param options - Format and quality options
- * @returns Screenshot result with element bounds
+ * @param options - Format, quality, and noResize options
+ * @returns Screenshot result with element bounds and resize metadata
  */
 export async function captureElementScreenshot(
   outputPath: string,
   nodeId: number,
-  options: { format?: 'png' | 'jpeg'; quality?: number } = {}
+  options: { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean } = {}
 ): Promise<ScreenshotResult> {
   const bounds = await getElementBounds(nodeId);
 
   const format = options.format ?? 'png';
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
+  const noResize = options.noResize ?? false;
+
+  const dprResponse = await callCDP('Runtime.evaluate', {
+    expression: 'window.devicePixelRatio',
+    returnByValue: true,
+  });
+  const devicePixelRatio =
+    (dprResponse.data?.result as { result?: { value?: number } })?.result?.value ?? 1;
+
+  const originalWidth = bounds.width;
+  const originalHeight = bounds.height;
+  const resized = shouldResize(originalWidth, originalHeight, noResize);
+  const scale = resized ? calculateResizeScale(originalWidth, originalHeight) : 1;
 
   const screenshotResponse = await callCDP('Page.captureScreenshot', {
     format,
@@ -494,7 +610,7 @@ export async function captureElementScreenshot(
       y: bounds.y,
       width: bounds.width,
       height: bounds.height,
-      scale: 1,
+      scale,
     },
     captureBeyondViewport: true,
   });
@@ -514,17 +630,32 @@ export async function captureElementScreenshot(
   const absolutePath = path.resolve(outputPath);
   await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
 
+  const finalCssWidth = Math.round(originalWidth * scale);
+  const finalCssHeight = Math.round(originalHeight * scale);
+  const actualWidth = Math.round(finalCssWidth * devicePixelRatio);
+  const actualHeight = Math.round(finalCssHeight * devicePixelRatio);
+
   const result: ScreenshotResult = {
     path: absolutePath,
     format,
-    width: bounds.width,
-    height: bounds.height,
+    width: actualWidth,
+    height: actualHeight,
     size: buffer.length,
     fullPage: false,
+    finalTokens: calculateImageTokens(actualWidth, actualHeight),
   };
 
   if (quality !== undefined) {
     result.quality = quality;
+  }
+
+  if (resized) {
+    const originalActualWidth = Math.round(originalWidth * devicePixelRatio);
+    const originalActualHeight = Math.round(originalHeight * devicePixelRatio);
+    result.resized = true;
+    result.originalWidth = originalActualWidth;
+    result.originalHeight = originalActualHeight;
+    result.originalTokens = calculateImageTokens(originalActualWidth, originalActualHeight);
   }
 
   return result;

@@ -42,12 +42,18 @@ const log = createLogger('dom');
 /**
  * Screenshot options after filtering undefined values.
  */
-type FilteredScreenshotOptions = { format?: 'png' | 'jpeg'; quality?: number; fullPage?: boolean };
+type FilteredScreenshotOptions = {
+  format?: 'png' | 'jpeg';
+  quality?: number;
+  fullPage?: boolean;
+  noResize?: boolean;
+  scroll?: string;
+};
 
 /**
  * Element screenshot options after filtering undefined values.
  */
-type FilteredElementOptions = { format?: 'png' | 'jpeg'; quality?: number };
+type FilteredElementOptions = { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean };
 
 /**
  * Data structure for semantic node with DOM context.
@@ -70,6 +76,8 @@ function buildPageScreenshotOptions(
     format: options.format,
     quality: options.quality,
     fullPage: options.fullPage,
+    noResize: options.resize === false,
+    scroll: options.scroll,
   }) as FilteredScreenshotOptions;
 }
 
@@ -85,6 +93,7 @@ function buildElementScreenshotOptions(
   return filterDefined({
     format: options.format,
     quality: options.quality,
+    noResize: options.resize === false,
   }) as FilteredElementOptions;
 }
 
@@ -726,6 +735,8 @@ export function registerDomCommands(program: Command): void {
     .option('--format <format>', 'Image format: png or jpeg (default: png)')
     .option('--quality <number>', 'JPEG quality 0-100 (default: 90)', parseInt)
     .option('--no-full-page', 'Capture viewport only (default: full page)')
+    .option('--no-resize', 'Disable auto-resize (full resolution)')
+    .option('--scroll <selector>', 'Scroll element into view before capture')
     .option('-f, --follow', 'Continuous capture mode to directory')
     .option('--interval <ms>', 'Capture interval for --follow (default: 1000)')
     .option('--limit <count>', 'Max frames for --follow')

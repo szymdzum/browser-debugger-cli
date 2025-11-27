@@ -136,88 +136,26 @@ export function formatDomEval(data: { result: unknown }): string {
 /**
  * Format screenshot capture result for human-readable display.
  *
- * Supports both page and element screenshots. Element screenshots show
- * the selector/index and bounding box information.
+ * Shows concise single-line output. Resize/capture metadata available in --json output.
  *
- * @param data - Screenshot metadata including optional element info
- * @returns Formatted string with screenshot details
+ * @param data - Screenshot metadata
+ * @returns Formatted string with screenshot path and optional viewport message
  *
  * @example
  * ```typescript
- * formatDomScreenshot({
- *   path: '/path/to/screenshot.png',
- *   format: 'png',
- *   width: 1920,
- *   height: 1080,
- *   size: 245632,
- *   fullPage: true
- * });
- * // Output:
- * // Screenshot captured
- * // Path: /path/to/screenshot.png
- * // Format: png
- * // Dimensions: 1920x1080
- * // Size: 240.0 KB
- * // Full page: yes
+ * formatDomScreenshot({ path: './page.png', ... });
+ * // Output: Screenshot saved to ./page.png
+ *
+ * formatDomScreenshot({ path: './page.png', fullPageSkipped: { reason: 'page_too_tall', ... } });
+ * // Output: Screenshot saved to ./page.png (viewport only - page too tall)
  * ```
  */
 export function formatDomScreenshot(data: ScreenshotResult): string {
-  const fmt = new OutputFormatter();
-  const sizeStr = formatFileSize(data.size);
-  const title = data.element ? 'Element screenshot captured' : 'Screenshot captured';
+  let output = `Screenshot saved to ${data.path}`;
 
-  fmt.text(title).blank();
-
-  const kvPairs: [string, string][] = [
-    ['Path', data.path],
-    ['Format', data.format.toUpperCase()],
-  ];
-
-  if (data.format === 'jpeg' && data.quality !== undefined) {
-    kvPairs.push(['Quality', `${data.quality}%`]);
+  if (data.fullPageSkipped && !data.scrolledTo) {
+    output += ' (viewport only - page too tall)';
   }
 
-  kvPairs.push(['Dimensions', `${data.width}x${data.height}`]);
-  kvPairs.push(['Size', sizeStr]);
-
-  if (data.element) {
-    const elementTarget = formatElementTarget(data.element);
-    kvPairs.push(['Element', elementTarget]);
-  } else {
-    kvPairs.push(['Full page', data.fullPage ? 'yes' : 'no']);
-    if (data.viewport) {
-      kvPairs.push(['Viewport', `${data.viewport.width}x${data.viewport.height}`]);
-    }
-  }
-
-  fmt.keyValueList(kvPairs);
-
-  return fmt.build();
-}
-
-/**
- * Format file size in human-readable units.
- *
- * @param bytes - Size in bytes
- * @returns Formatted size string (e.g., "240.0 KB" or "1.5 MB")
- */
-function formatFileSize(bytes: number): string {
-  const kb = bytes / 1024;
-  return kb < 1024 ? `${kb.toFixed(1)} KB` : `${(kb / 1024).toFixed(1)} MB`;
-}
-
-/**
- * Format element target description.
- *
- * @param element - Element info with selector or index
- * @returns Formatted element description
- */
-function formatElementTarget(element: NonNullable<ScreenshotResult['element']>): string {
-  if (element.selector !== undefined) {
-    return element.selector;
-  }
-  if (element.index !== undefined) {
-    return `index ${element.index}`;
-  }
-  return 'unknown';
+  return output;
 }

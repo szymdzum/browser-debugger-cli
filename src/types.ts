@@ -421,6 +421,26 @@ export interface ScreenshotResult {
     index?: number;
     bounds: ElementBounds;
   };
+  /** Capture mode used */
+  captureMode?: 'full_page' | 'viewport';
+  /** Whether the image was auto-resized to fit token budget */
+  resized?: boolean;
+  /** Original width before resize (pixels) */
+  originalWidth?: number;
+  /** Original height before resize (pixels) */
+  originalHeight?: number;
+  /** Estimated tokens at original size */
+  originalTokens?: number;
+  /** Estimated tokens at final size */
+  finalTokens?: number;
+  /** Present when full page was requested but skipped */
+  fullPageSkipped?: {
+    reason: 'page_too_tall';
+    originalHeight: number;
+    aspectRatio: number;
+  };
+  /** Selector scrolled to before capture */
+  scrolledTo?: string;
 }
 
 /**
@@ -440,4 +460,8 @@ export interface ScreenshotOptions {
   format?: 'png' | 'jpeg';
   quality?: number;
   fullPage?: boolean;
+  /** Disable auto-resize to 1568px max edge */
+  noResize?: boolean;
+  /** Scroll element into view before capture */
+  scroll?: string;
 }

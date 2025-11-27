@@ -160,6 +160,16 @@ bdg --help                                 # Run (after npm link)
 - **No empty catch** - Use `log.debug()` for visibility
 - **No inline comments** - Use TSDoc comments
 
+#### Function Design
+- **Single responsibility** - Extract large functions into smaller, focused units
+- **Max ~30 lines** - If longer, consider splitting
+- **Consolidate patterns** - Identify repeated logic, use appropriate abstractions
+
+#### Readability
+- **Descriptive names** - Functions/variables should be self-documenting
+- **Early returns** - Reduce nesting with guard clauses
+- **Consistent structure** - Similar operations should look similar
+
 ---
 
 ## Common Commands
