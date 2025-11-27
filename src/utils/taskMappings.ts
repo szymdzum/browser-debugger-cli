@@ -173,6 +173,12 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     description: 'Get full request/response details including body',
     cdpAlternative: 'Network.getResponseBody',
   },
+
+  get_document_headers: {
+    commands: ['network document'],
+    description: 'Show main HTML document request headers (shortcut for document request)',
+    cdpAlternative: 'Network.requestWillBeSent + Network.responseReceived for Document type',
+  },
 };
 
 /**
