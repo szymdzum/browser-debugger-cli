@@ -407,31 +407,19 @@ export function formatSuggestions(suggestions: string[], prefix = 'Did you mean'
 
 ## Prevention Mechanisms
 
-### 1. ESLint Rules (Custom)
+### 1. ESLint Rules (Custom) - EVALUATED AND DECLINED
 
-Create custom ESLint rules to enforce patterns:
+**Status:** Not implementing. Evaluated 2025-11-27.
 
-```typescript
-// eslint-local-rules/enforce-bdg-response.ts
-// Rule: All functions returning JSON must return BdgResponse type
+**Proposed rules:**
 
-// eslint-local-rules/no-plural-suggestions.ts  
-// Rule: Disallow 'suggestions' property, suggest 'suggestion'
+| Rule | Purpose | Decision | Reason |
+|------|---------|----------|--------|
+| `enforce-bdg-response` | All JSON returns BdgResponse | ❌ Skip | TypeScript already enforces via types |
+| `no-plural-suggestions` | Disallow `suggestions` property | ❌ Skip | Not a real problem - `suggestions` used correctly as local variables for building typo hints |
+| `require-error-suggestion` | CommandError must have suggestion | ❌ Skip | Too strict - many errors legitimately have no actionable suggestion (e.g., "CDP connection lost") |
 
-// eslint-local-rules/require-error-suggestion.ts
-// Rule: CommandError must have non-empty suggestion
-```
-
-Add to `.eslintrc.json`:
-```json
-{
-  "rules": {
-    "local/enforce-bdg-response": "error",
-    "local/no-plural-suggestions": "error",
-    "local/require-error-suggestion": "warn"
-  }
-}
-```
+**Conclusion:** Custom ESLint rules add maintenance burden without meaningful benefit. TypeScript's type system and code review provide sufficient enforcement.
 
 ### 2. Type-Level Enforcement
 
