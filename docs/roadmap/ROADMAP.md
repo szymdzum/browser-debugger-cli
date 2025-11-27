@@ -1,6 +1,6 @@
 # bdg Feature Roadmap
 
-**Last Updated:** 2025-11-26
+**Last Updated:** 2025-11-27
 **Status:** Living Document
 
 This document consolidates planned features, enhancements, and strategic directions for bdg. Features are organized by priority tier and estimated effort.
@@ -376,7 +376,51 @@ bdg dom query "input"  # Now queries within iframe
 
 ---
 
-### 3.4 Multi-Tab Management
+### 3.9 HAR Analysis Tooling
+
+**Problem:** HAR files are exported but require external tools for analysis.
+
+**Solution:**
+```bash
+bdg network har-analyze session.har
+# Output:
+#   Summary
+#   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#   Total Requests: 127
+#   Total Size: 4.2 MB (1.1 MB transferred)
+#   Total Time: 3.4s
+#   
+#   Slowest Requests
+#   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#   1. GET /api/products (1,234ms) - Blocked: 800ms, Wait: 400ms
+#   2. GET /images/hero.jpg (890ms) - Download: 850ms
+#   
+#   By Type
+#   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#   Document: 1 (45 KB)
+#   Script: 23 (1.8 MB)
+#   Stylesheet: 8 (234 KB)
+#   Image: 67 (1.9 MB)
+#   XHR/Fetch: 28 (312 KB)
+
+bdg network har-analyze session.har --errors
+# Show only failed requests with details
+
+bdg network har-analyze session.har --waterfall
+# ASCII waterfall visualization
+```
+
+**Implementation:**
+- Parse HAR 1.2 format
+- Calculate timing breakdowns (blocked, DNS, connect, SSL, send, wait, receive)
+- Group by resource type, domain, status
+- Identify optimization opportunities
+
+**Files:** `src/commands/network/harAnalyze.ts`, `src/utils/harParser.ts`
+
+---
+
+### 3.10 Multi-Tab Management
 
 **Problem:** Single tab per session.
 
@@ -401,7 +445,7 @@ bdg tabs close 0
 
 ---
 
-### 3.5 Screenshot & Recording (Screenshots ✅ COMPLETED v0.6.10)
+### 3.11 Screenshot & Recording (Screenshots ✅ COMPLETED v0.6.10)
 
 **Problem:** No visual capture capability.
 
@@ -550,4 +594,5 @@ Feature requests and implementation proposals are welcome. When proposing new fe
 
 ## Changelog
 
+- **2025-11-27** - Added Tier 3 strategic features: Memory leak detection (3.2), Streaming telemetry (3.5), Error correlation (3.6), HAR analysis (3.9)
 - **2025-11-25** - Initial roadmap consolidation
