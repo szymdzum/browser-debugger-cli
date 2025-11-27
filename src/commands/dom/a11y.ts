@@ -163,6 +163,15 @@ async function handleA11yDescribe(
     }
 
     if (!node) {
+      if (isNumericIndex) {
+        throw new CommandError(
+          `Element at index ${selectorOrIndex} not accessible`,
+          {
+            suggestion: `Re-run "bdg dom query <selector>" to refresh cache, or use "bdg dom get ${selectorOrIndex}" for DOM fallback`,
+          },
+          EXIT_CODES.STALE_CACHE
+        );
+      }
       throw new CommandError(
         elementNotFoundError(selectorOrIndex),
         {},
