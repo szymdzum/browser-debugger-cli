@@ -33,7 +33,11 @@ import {
   formatDomScreenshot,
 } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { elementNotFoundError } from '@/ui/messages/errors.js';
+import {
+  missingArgumentError,
+  elementAtIndexNotFoundError,
+  noNodesFoundError,
+} from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -125,11 +129,8 @@ async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promi
     return resolveSelector(options.selector);
   }
 
-  throw new CommandError(
-    'Either --selector or --index must be provided for element screenshot',
-    {},
-    EXIT_CODES.INVALID_ARGUMENTS
-  );
+  const err = missingArgumentError('--selector "css-selector" or --index N from a previous query');
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 /**
@@ -378,9 +379,10 @@ async function handleIndexGetSemantic(index: number, options: DomGetCommandOptio
       const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
 
       if (!node) {
+        const err = elementAtIndexNotFoundError(index, 'cached query');
         throw new CommandError(
-          elementNotFoundError(`index ${index}`),
-          {},
+          err.message,
+          { suggestion: err.suggestion },
           EXIT_CODES.RESOURCE_NOT_FOUND
         );
       }
@@ -462,9 +464,10 @@ async function handleSelectorGetSemantic(
       const node = resolveNodeWithFallback(a11yNode, domContext, nodeId);
 
       if (!node) {
+        const err = noNodesFoundError(selector);
         throw new CommandError(
-          elementNotFoundError(selector),
-          { suggestion: 'Verify the selector matches an element on the page' },
+          err.message,
+          { suggestion: err.suggestion },
           EXIT_CODES.RESOURCE_NOT_FOUND
         );
       }

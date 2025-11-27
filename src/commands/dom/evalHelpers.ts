@@ -3,7 +3,12 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { readSessionMetadata, type SessionMetadata } from '@/session/metadata.js';
 import { readPid } from '@/session/pid.js';
 import { CommandError } from '@/ui/errors/index.js';
-import { sessionNotActiveError } from '@/ui/messages/errors.js';
+import {
+  sessionNotActiveError,
+  sessionMetadataMissingError,
+  sessionTargetNotFoundError,
+  scriptExecutionError,
+} from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargetById } from '@/utils/http.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -83,9 +88,10 @@ export function getValidatedSessionMetadata(): SessionMetadata {
   const metadata = readSessionMetadata();
 
   if (!metadata?.targetId || !metadata.webSocketDebuggerUrl) {
+    const err = sessionMetadataMissingError('targetId or webSocketDebuggerUrl');
     throw new CommandError(
-      'No target information in session metadata',
-      { suggestion: 'Session may have been started with an older version' },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.SESSION_FILE_ERROR
     );
   }
@@ -105,9 +111,10 @@ export function getValidatedSessionMetadata(): SessionMetadata {
  */
 export async function verifyTargetExists(metadata: SessionMetadata, port: number): Promise<void> {
   if (!metadata.targetId) {
+    const err = sessionMetadataMissingError('targetId');
     throw new CommandError(
-      'Session metadata missing targetId',
-      { suggestion: 'Start a new session with: bdg <url>' },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
@@ -115,9 +122,10 @@ export async function verifyTargetExists(metadata: SessionMetadata, port: number
   const target = await fetchCDPTargetById(metadata.targetId, port);
 
   if (!target) {
+    const err = sessionTargetNotFoundError();
     throw new CommandError(
-      'Session target not found (tab may have been closed)',
-      { suggestion: 'Start a new session with: bdg <url>' },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
@@ -155,11 +163,8 @@ export async function executeScript(
   if (response.exceptionDetails) {
     const errorMsg =
       response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
-    throw new CommandError(
-      errorMsg,
-      { suggestion: 'Script execution failed in browser context' },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
+    const err = scriptExecutionError(errorMsg);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
 
   return response;

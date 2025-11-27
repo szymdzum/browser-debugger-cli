@@ -25,6 +25,13 @@ import type {
 } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
+import {
+  noNodesFoundError,
+  indexOutOfRangeError,
+  elementNotVisibleError,
+  elementZeroDimensionsError,
+  eitherArgumentRequiredError,
+} from '@/ui/messages/errors.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -48,35 +55,179 @@ export type {
 const CDP_CONCURRENCY_LIMIT = 10;
 
 /**
- * Scroll an element into view before capture.
- *
- * @param selector - CSS selector of element to scroll to
- * @throws CommandError if element not found
+ * Scroll position before a scroll operation.
  */
-async function scrollToElement(selector: string): Promise<void> {
-  const result = await callCDP('Runtime.evaluate', {
+interface ScrollPosition {
+  x: number;
+  y: number;
+}
+
+/** Network idle threshold after scroll (shorter than page load) */
+const POST_SCROLL_NETWORK_IDLE_MS = 150;
+/** DOM stable threshold after scroll (shorter than page load) */
+const POST_SCROLL_DOM_STABLE_MS = 200;
+/** Maximum wait for post-scroll stability */
+const POST_SCROLL_MAX_WAIT_MS = 2000;
+/** Check interval for stability polling */
+const STABILITY_CHECK_INTERVAL_MS = 50;
+
+/**
+ * Wait for page to stabilize after scrolling.
+ *
+ * Detects lazy-loaded content and DOM mutations triggered by scroll.
+ * Uses shorter thresholds than full page load since we're only waiting
+ * for scroll-triggered content, not initial page load.
+ *
+ * @returns Promise that resolves when page is stable or timeout reached
+ */
+async function waitForPostScrollStability(): Promise<void> {
+  const deadline = Date.now() + POST_SCROLL_MAX_WAIT_MS;
+
+  await callCDP('Runtime.evaluate', {
     expression: `
       (() => {
-        const el = document.querySelector(${JSON.stringify(selector)});
-        if (!el) return { found: false };
-        el.scrollIntoView({ block: 'center', behavior: 'instant' });
-        return { found: true };
+        window.__bdg_scrollStability = {
+          lastNetworkActivity: Date.now(),
+          lastDomMutation: Date.now(),
+          activeRequests: 0
+        };
+
+        const state = window.__bdg_scrollStability;
+
+        // Track network activity via Performance Observer
+        if (window.PerformanceObserver) {
+          const perfObserver = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+              if (entry.entryType === 'resource') {
+                state.lastNetworkActivity = Date.now();
+              }
+            }
+          });
+          try {
+            perfObserver.observe({ entryTypes: ['resource'] });
+            state.perfObserver = perfObserver;
+          } catch (e) {}
+        }
+
+        // Track DOM mutations
+        const mutationObserver = new MutationObserver(() => {
+          state.lastDomMutation = Date.now();
+        });
+        mutationObserver.observe(document.body || document.documentElement, {
+          childList: true,
+          subtree: true,
+          attributes: true
+        });
+        state.mutationObserver = mutationObserver;
       })()
     `,
     returnByValue: true,
   });
 
-  const value = (result.data?.result as { result?: { value?: { found?: boolean } } })?.result
-    ?.value;
+  try {
+    while (Date.now() < deadline) {
+      const checkResult = await callCDP('Runtime.evaluate', {
+        expression: `
+          (() => {
+            const state = window.__bdg_scrollStability;
+            if (!state) return { networkIdle: 999, domIdle: 999 };
+            return {
+              networkIdle: Date.now() - state.lastNetworkActivity,
+              domIdle: Date.now() - state.lastDomMutation
+            };
+          })()
+        `,
+        returnByValue: true,
+      });
+
+      const value = (
+        checkResult.data?.result as {
+          result?: { value?: { networkIdle?: number; domIdle?: number } };
+        }
+      )?.result?.value;
+      const networkIdle = value?.networkIdle ?? 0;
+      const domIdle = value?.domIdle ?? 0;
+
+      if (networkIdle >= POST_SCROLL_NETWORK_IDLE_MS && domIdle >= POST_SCROLL_DOM_STABLE_MS) {
+        log.debug(`Post-scroll stable: network ${networkIdle}ms, DOM ${domIdle}ms`);
+        return;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, STABILITY_CHECK_INTERVAL_MS));
+    }
+
+    log.debug('Post-scroll stability timeout, proceeding anyway');
+  } finally {
+    await callCDP('Runtime.evaluate', {
+      expression: `
+        (() => {
+          const state = window.__bdg_scrollStability;
+          if (state) {
+            state.perfObserver?.disconnect();
+            state.mutationObserver?.disconnect();
+            delete window.__bdg_scrollStability;
+          }
+        })()
+      `,
+      returnByValue: true,
+    });
+  }
+}
+
+/**
+ * Scroll an element into view before capture.
+ *
+ * Returns the original scroll position so it can be restored after capture.
+ * Waits for lazy-loaded content and DOM mutations to stabilize before returning.
+ *
+ * @param selector - CSS selector of element to scroll to
+ * @returns Original scroll position before scrolling
+ * @throws CommandError if element not found
+ */
+async function scrollToElement(selector: string): Promise<ScrollPosition> {
+  const result = await callCDP('Runtime.evaluate', {
+    expression: `
+      (() => {
+        const el = document.querySelector(${JSON.stringify(selector)});
+        if (!el) return { found: false };
+        const originalX = window.scrollX;
+        const originalY = window.scrollY;
+        el.scrollIntoView({ block: 'center', behavior: 'instant' });
+        return { found: true, originalX, originalY };
+      })()
+    `,
+    returnByValue: true,
+  });
+
+  const value = (
+    result.data?.result as {
+      result?: { value?: { found?: boolean; originalX?: number; originalY?: number } };
+    }
+  )?.result?.value;
   if (!value?.found) {
+    const err = noNodesFoundError(selector);
     throw new CommandError(
-      `Element not found: ${selector}`,
-      { suggestion: 'Verify the selector matches an element on the page' },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
 
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await waitForPostScrollStability();
+
+  return { x: value.originalX ?? 0, y: value.originalY ?? 0 };
+}
+
+/**
+ * Restore scroll position after capture.
+ *
+ * @param position - Scroll position to restore
+ */
+async function restoreScrollPosition(position: ScrollPosition): Promise<void> {
+  await callCDP('Runtime.evaluate', {
+    expression: `window.scrollTo(${position.x}, ${position.y})`,
+    returnByValue: true,
+  });
 }
 
 /**
@@ -258,26 +409,29 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     nodeIds = queryResult?.nodeIds ?? [];
 
     if (nodeIds.length === 0) {
+      const err = noNodesFoundError(options.selector);
       throw new CommandError(
-        `No nodes found matching "${options.selector}"`,
-        { suggestion: 'Verify the CSS selector is correct' },
+        err.message,
+        { suggestion: err.suggestion },
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
     }
 
     if (options.nth !== undefined) {
       if (options.nth < 0 || options.nth >= nodeIds.length) {
+        const err = indexOutOfRangeError(options.nth, nodeIds.length - 1);
         throw new CommandError(
-          `--nth ${options.nth} out of range (found ${nodeIds.length} nodes)`,
-          { suggestion: `Use a value between 0 and ${nodeIds.length - 1}` },
+          err.message,
+          { suggestion: err.suggestion },
           EXIT_CODES.INVALID_ARGUMENTS
         );
       }
       const nthNode = nodeIds[options.nth];
       if (nthNode === undefined) {
+        const err = indexOutOfRangeError(options.nth, nodeIds.length - 1);
         throw new CommandError(
-          `Element at index ${options.nth} not found`,
-          { suggestion: `Use --index between 0 and ${nodeIds.length - 1}` },
+          err.message,
+          { suggestion: err.suggestion },
           EXIT_CODES.RESOURCE_NOT_FOUND
         );
       }
@@ -285,18 +439,24 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     } else if (!options.all) {
       const firstNode = nodeIds[0];
       if (firstNode === undefined) {
+        const err = noNodesFoundError(options.selector ?? '');
         throw new CommandError(
-          'No nodes found',
-          { suggestion: 'Verify the selector matches elements on the page' },
+          err.message,
+          { suggestion: err.suggestion },
           EXIT_CODES.RESOURCE_NOT_FOUND
         );
       }
       nodeIds = [firstNode];
     }
   } else {
+    const err = eitherArgumentRequiredError(
+      'selector',
+      'nodeId',
+      'bdg dom get <selector> or bdg dom get --node-id <id>'
+    );
     throw new CommandError(
-      'Either selector or nodeId must be provided',
-      { suggestion: 'Use: bdg dom get <selector> or bdg dom get --node-id <id>' },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
@@ -381,8 +541,9 @@ export async function capturePageScreenshot(
   const requestedFullPage = options.fullPage ?? true;
   const noResize = options.noResize ?? false;
 
+  let originalScrollPosition: ScrollPosition | undefined;
   if (options.scroll) {
-    await scrollToElement(options.scroll);
+    originalScrollPosition = await scrollToElement(options.scroll);
   }
 
   const dprResponse = await callCDP('Runtime.evaluate', {
@@ -411,22 +572,64 @@ export async function capturePageScreenshot(
   const resized = shouldResize(captureWidth, captureHeight, noResize);
   const scale = resized ? calculateResizeScale(captureWidth, captureHeight) : 1;
 
-  const screenshotResponse = await callCDP('Page.captureScreenshot', {
-    format,
-    ...(quality !== undefined && { quality }),
-    captureBeyondViewport: effectiveFullPage,
-    clip: {
-      x: 0,
-      y: 0,
-      width: captureWidth,
-      height: captureHeight,
-      scale,
-    },
-  });
+  const finalWidth = Math.round(captureWidth * scale);
+  const finalHeight = Math.round(captureHeight * scale);
 
-  const screenshotResult = screenshotResponse.data?.result as
-    | Protocol.Page.CaptureScreenshotResponse
-    | undefined;
+  if (devicePixelRatio !== 1) {
+    await callCDP('Emulation.setDeviceMetricsOverride', {
+      width: Math.round(viewport.clientWidth),
+      height: Math.round(viewport.clientHeight),
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+
+    // Re-scroll after DPR override (setDeviceMetricsOverride resets scroll position)
+    if (options.scroll) {
+      await callCDP('Runtime.evaluate', {
+        expression: `document.querySelector(${JSON.stringify(options.scroll)})?.scrollIntoView({ block: 'center', behavior: 'instant' })`,
+        returnByValue: true,
+      });
+    }
+  }
+
+  // Get scroll position for clip coordinates (clip uses document coordinates, not viewport)
+  let clipX = 0;
+  let clipY = 0;
+  if (useScroll && !effectiveFullPage) {
+    const scrollResponse = await callCDP('Runtime.evaluate', {
+      expression: 'JSON.stringify({ x: window.scrollX, y: window.scrollY })',
+      returnByValue: true,
+    });
+    const scrollPos = JSON.parse(
+      (scrollResponse.data?.result as { result?: { value?: string } })?.result?.value ??
+        '{"x":0,"y":0}'
+    ) as { x: number; y: number };
+    clipX = scrollPos.x;
+    clipY = scrollPos.y;
+  }
+
+  let screenshotResult: Protocol.Page.CaptureScreenshotResponse | undefined;
+  try {
+    const screenshotResponse = await callCDP('Page.captureScreenshot', {
+      format,
+      ...(quality !== undefined && { quality }),
+      captureBeyondViewport: effectiveFullPage,
+      clip: {
+        x: clipX,
+        y: clipY,
+        width: captureWidth,
+        height: captureHeight,
+        scale,
+      },
+    });
+    screenshotResult = screenshotResponse.data?.result as
+      | Protocol.Page.CaptureScreenshotResponse
+      | undefined;
+  } finally {
+    if (devicePixelRatio !== 1) {
+      await callCDP('Emulation.clearDeviceMetricsOverride', {});
+    }
+  }
 
   if (!screenshotResult?.data) {
     throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
@@ -439,20 +642,15 @@ export async function capturePageScreenshot(
   const absolutePath = path.resolve(outputPath);
   await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
 
-  const finalCssWidth = Math.round(captureWidth * scale);
-  const finalCssHeight = Math.round(captureHeight * scale);
-  const actualWidth = Math.round(finalCssWidth * devicePixelRatio);
-  const actualHeight = Math.round(finalCssHeight * devicePixelRatio);
-
   const result: ScreenshotResult = {
     path: absolutePath,
     format,
-    width: actualWidth,
-    height: actualHeight,
+    width: finalWidth,
+    height: finalHeight,
     size: buffer.length,
     fullPage: effectiveFullPage,
     captureMode: effectiveFullPage ? 'full_page' : 'viewport',
-    finalTokens: calculateImageTokens(actualWidth, actualHeight),
+    finalTokens: calculateImageTokens(finalWidth, finalHeight),
   };
 
   if (quality !== undefined) {
@@ -467,24 +665,28 @@ export async function capturePageScreenshot(
   }
 
   if (resized) {
-    const originalActualWidth = Math.round(captureWidth * devicePixelRatio);
-    const originalActualHeight = Math.round(captureHeight * devicePixelRatio);
     result.resized = true;
-    result.originalWidth = originalActualWidth;
-    result.originalHeight = originalActualHeight;
-    result.originalTokens = calculateImageTokens(originalActualWidth, originalActualHeight);
+    result.originalWidth = captureWidth;
+    result.originalHeight = captureHeight;
+    result.originalTokens = calculateImageTokens(captureWidth, captureHeight);
   }
 
   if (pageIsTooTall && !useScroll) {
+    const aspectRatio = Math.round((contentSize.height / contentSize.width) * 10) / 10;
     result.fullPageSkipped = {
       reason: 'page_too_tall',
       originalHeight: contentSize.height,
-      aspectRatio: Math.round((contentSize.height / contentSize.width) * 10) / 10,
+      aspectRatio,
     };
+    result.warning = `Full page capture skipped: page too tall (${aspectRatio}:1 aspect ratio). Only viewport captured.`;
   }
 
   if (useScroll && options.scroll) {
     result.scrolledTo = options.scroll;
+  }
+
+  if (originalScrollPosition) {
+    await restoreScrollPosition(originalScrollPosition);
   }
 
   return result;
@@ -506,9 +708,10 @@ export async function getElementBounds(nodeId: number): Promise<ElementBounds> {
   const boxModel = response.data?.result as Protocol.DOM.GetBoxModelResponse | undefined;
 
   if (!boxModel?.model?.content) {
+    const err = elementNotVisibleError();
     throw new CommandError(
-      'Failed to get element bounds',
-      { suggestion: 'Element may not be rendered or visible' },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
@@ -520,9 +723,10 @@ export async function getElementBounds(nodeId: number): Promise<ElementBounds> {
   const height = (content[5] ?? 0) - y;
 
   if (width <= 0 || height <= 0) {
+    const err = elementZeroDimensionsError();
     throw new CommandError(
-      'Element has zero dimensions (not visible)',
-      { suggestion: 'Element may be hidden or collapsed' },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
@@ -556,9 +760,10 @@ export async function resolveSelector(selector: string): Promise<number> {
   const queryResult = queryResponse.data?.result as Protocol.DOM.QuerySelectorResponse | undefined;
 
   if (!queryResult?.nodeId) {
+    const err = noNodesFoundError(selector);
     throw new CommandError(
-      `Element not found: "${selector}"`,
-      { suggestion: "Run 'bdg dom query' to verify element exists" },
+      err.message,
+      { suggestion: err.suggestion },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
@@ -601,22 +806,46 @@ export async function captureElementScreenshot(
   const resized = shouldResize(originalWidth, originalHeight, noResize);
   const scale = resized ? calculateResizeScale(originalWidth, originalHeight) : 1;
 
-  const screenshotResponse = await callCDP('Page.captureScreenshot', {
-    format,
-    ...(quality !== undefined && { quality }),
-    clip: {
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: bounds.height,
-      scale,
-    },
-    captureBeyondViewport: true,
-  });
+  const finalWidth = Math.round(originalWidth * scale);
+  const finalHeight = Math.round(originalHeight * scale);
 
-  const screenshotResult = screenshotResponse.data?.result as
-    | Protocol.Page.CaptureScreenshotResponse
+  const metricsResponse = await callCDP('Page.getLayoutMetrics', {});
+  const metricsResult = metricsResponse.data?.result as
+    | Protocol.Page.GetLayoutMetricsResponse
     | undefined;
+  const viewport = metricsResult?.visualViewport ?? { clientWidth: 800, clientHeight: 600 };
+
+  if (devicePixelRatio !== 1) {
+    await callCDP('Emulation.setDeviceMetricsOverride', {
+      width: Math.round(viewport.clientWidth),
+      height: Math.round(viewport.clientHeight),
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+  }
+
+  let screenshotResult: Protocol.Page.CaptureScreenshotResponse | undefined;
+  try {
+    const screenshotResponse = await callCDP('Page.captureScreenshot', {
+      format,
+      ...(quality !== undefined && { quality }),
+      clip: {
+        x: bounds.x,
+        y: bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        scale,
+      },
+      captureBeyondViewport: true,
+    });
+    screenshotResult = screenshotResponse.data?.result as
+      | Protocol.Page.CaptureScreenshotResponse
+      | undefined;
+  } finally {
+    if (devicePixelRatio !== 1) {
+      await callCDP('Emulation.clearDeviceMetricsOverride', {});
+    }
+  }
 
   if (!screenshotResult?.data) {
     throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
@@ -629,19 +858,14 @@ export async function captureElementScreenshot(
   const absolutePath = path.resolve(outputPath);
   await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
 
-  const finalCssWidth = Math.round(originalWidth * scale);
-  const finalCssHeight = Math.round(originalHeight * scale);
-  const actualWidth = Math.round(finalCssWidth * devicePixelRatio);
-  const actualHeight = Math.round(finalCssHeight * devicePixelRatio);
-
   const result: ScreenshotResult = {
     path: absolutePath,
     format,
-    width: actualWidth,
-    height: actualHeight,
+    width: finalWidth,
+    height: finalHeight,
     size: buffer.length,
     fullPage: false,
-    finalTokens: calculateImageTokens(actualWidth, actualHeight),
+    finalTokens: calculateImageTokens(finalWidth, finalHeight),
   };
 
   if (quality !== undefined) {
@@ -649,12 +873,10 @@ export async function captureElementScreenshot(
   }
 
   if (resized) {
-    const originalActualWidth = Math.round(originalWidth * devicePixelRatio);
-    const originalActualHeight = Math.round(originalHeight * devicePixelRatio);
     result.resized = true;
-    result.originalWidth = originalActualWidth;
-    result.originalHeight = originalActualHeight;
-    result.originalTokens = calculateImageTokens(originalActualWidth, originalActualHeight);
+    result.originalWidth = originalWidth;
+    result.originalHeight = originalHeight;
+    result.originalTokens = calculateImageTokens(originalWidth, originalHeight);
   }
 
   return result;

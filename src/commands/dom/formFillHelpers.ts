@@ -6,6 +6,13 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
+import {
+  fillableElementNotFoundError,
+  clickableElementNotFoundError,
+  keyPressFailedError,
+  unexpectedResponseFormatError,
+  operationFailedError,
+} from '@/ui/messages/errors.js';
 import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -114,9 +121,10 @@ export async function fillElement(
         selector,
         'fill'
       );
+      const err = fillableElementNotFoundError(selector);
       throw new CommandError(
         errorMessage,
-        { suggestion: 'Verify the selector matches a fillable element (input, textarea, select)' },
+        { suggestion: err.suggestion },
         EXIT_CODES.SOFTWARE_ERROR
       );
     }
@@ -125,21 +133,15 @@ export async function fillElement(
       return cdpResponse.result.value;
     }
 
-    throw new CommandError(
-      'Unexpected response format',
-      { suggestion: 'CDP response missing result.value or invalid FillResult structure' },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
+    const err = unexpectedResponseFormatError('FillResult');
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   } catch (error) {
     if (error instanceof CommandError) {
       throw error;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new CommandError(
-      'Failed to fill element',
-      { suggestion: errorMessage },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
+    const err = operationFailedError('fill element', errorMessage);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
 }
 
@@ -187,9 +189,10 @@ export async function clickElement(
         selector,
         'click'
       );
+      const err = clickableElementNotFoundError(selector);
       throw new CommandError(
         errorMessage,
-        { suggestion: 'Verify the selector matches a clickable element' },
+        { suggestion: err.suggestion },
         EXIT_CODES.SOFTWARE_ERROR
       );
     }
@@ -198,21 +201,15 @@ export async function clickElement(
       return cdpResponse.result.value;
     }
 
-    throw new CommandError(
-      'Unexpected response format',
-      { suggestion: 'CDP response missing result.value or invalid ClickResult structure' },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
+    const err = unexpectedResponseFormatError('ClickResult');
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   } catch (error) {
     if (error instanceof CommandError) {
       throw error;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new CommandError(
-      'Failed to click element',
-      { suggestion: errorMessage },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
+    const err = operationFailedError('click element', errorMessage);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
 }
 
@@ -421,9 +418,10 @@ export async function pressKeyElement(
     };
 
     if (focusCdpResponse.exceptionDetails) {
+      const err = keyPressFailedError(`focus: ${focusCdpResponse.exceptionDetails.text}`);
       throw new CommandError(
-        `Failed to focus element: ${focusCdpResponse.exceptionDetails.text}`,
-        { suggestion: `Selector: ${selector}` },
+        err.message,
+        { suggestion: err.suggestion },
         EXIT_CODES.SOFTWARE_ERROR
       );
     }
@@ -461,11 +459,8 @@ export async function pressKeyElement(
       throw error;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new CommandError(
-      'Failed to press key',
-      { suggestion: errorMessage },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
+    const err = operationFailedError('press key', errorMessage);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
 }
 

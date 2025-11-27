@@ -50,6 +50,20 @@ throw new CommandError(
 ### Message Centralization (`src/ui/messages/`)
 All user-facing strings must use centralized functions - no inline strings.
 
+### Error Messages with Suggestions (`src/ui/messages/errors.ts`)
+Common error patterns with recovery suggestions. Use existing functions or add new ones:
+```typescript
+// Existing: elementNotFoundError, sessionNotActiveError, daemonNotRunningError
+throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
+
+// Context-specific: pass suggestion inline
+throw new CommandError(
+  `Index ${index} out of range (found ${count} nodes)`,
+  { suggestion: 'Re-run query to refresh cache' },
+  EXIT_CODES.STALE_CACHE
+);
+```
+
 ### Option Behaviors (`src/commands/optionBehaviors.ts`)
 When adding commands/flags with non-obvious behaviors, register in `OPTION_BEHAVIORS`:
 ```typescript

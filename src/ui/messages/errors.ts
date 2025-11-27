@@ -192,3 +192,205 @@ export function elementNotFoundError(selector: string): string {
     `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector('${selector}')"}'`
   );
 }
+
+/**
+ * Error with suggestion pair for CommandError usage.
+ */
+export interface ErrorWithSuggestion {
+  message: string;
+  suggestion: string;
+}
+
+/**
+ * Index out of range error.
+ */
+export function indexOutOfRangeError(index: number, max: number): ErrorWithSuggestion {
+  return {
+    message: `Index ${index} out of range (found ${max + 1} nodes)`,
+    suggestion: `Use an index between 0 and ${max}`,
+  };
+}
+
+/**
+ * Element at index not found (stale cache).
+ */
+export function elementAtIndexNotFoundError(index: number, selector: string): ErrorWithSuggestion {
+  return {
+    message: `Element at index ${index} not found`,
+    suggestion: `Re-run "bdg dom query ${selector}" to refresh the cache`,
+  };
+}
+
+/**
+ * No nodes found for selector.
+ */
+export function noNodesFoundError(selector: string): ErrorWithSuggestion {
+  return {
+    message: `No nodes found matching "${selector}"`,
+    suggestion: 'Verify the CSS selector is correct',
+  };
+}
+
+/**
+ * Element not visible/rendered.
+ */
+export function elementNotVisibleError(): ErrorWithSuggestion {
+  return {
+    message: 'Failed to get element bounds',
+    suggestion: 'Element may not be rendered or visible',
+  };
+}
+
+/**
+ * Element has zero dimensions.
+ */
+export function elementZeroDimensionsError(): ErrorWithSuggestion {
+  return {
+    message: 'Element has zero dimensions (not visible)',
+    suggestion: 'Element may be hidden or collapsed',
+  };
+}
+
+/**
+ * Missing required argument.
+ */
+export function missingArgumentError(usage: string): ErrorWithSuggestion {
+  return {
+    message: 'Missing required argument or flag',
+    suggestion: usage,
+  };
+}
+
+/**
+ * Either/or argument required.
+ */
+export function eitherArgumentRequiredError(
+  arg1: string,
+  arg2: string,
+  example: string
+): ErrorWithSuggestion {
+  return {
+    message: `Either ${arg1} or ${arg2} must be provided`,
+    suggestion: example,
+  };
+}
+
+/**
+ * Invalid query pattern.
+ */
+export function invalidQueryPatternError(pattern: string): ErrorWithSuggestion {
+  return {
+    message: 'Query pattern must specify at least one field',
+    suggestion: `Received: "${pattern}". Try: bdg dom a11y query "role:button" or "name:Submit"`,
+  };
+}
+
+/**
+ * No a11y nodes matching pattern.
+ */
+export function noA11yNodesFoundError(pattern: string): ErrorWithSuggestion {
+  return {
+    message: 'No nodes found matching pattern',
+    suggestion: `Pattern: ${pattern}. Try a broader query or use "bdg dom a11y tree" to see all elements`,
+  };
+}
+
+/**
+ * Element not accessible (a11y).
+ */
+export function elementNotAccessibleError(index: number): ErrorWithSuggestion {
+  return {
+    message: `Element at index ${index} not accessible`,
+    suggestion: 'Re-run query to refresh cache',
+  };
+}
+
+/**
+ * Fillable element not found.
+ */
+export function fillableElementNotFoundError(selector: string): ErrorWithSuggestion {
+  return {
+    message: `Element not found: ${selector}`,
+    suggestion: 'Verify the selector matches a fillable element (input, textarea, select)',
+  };
+}
+
+/**
+ * Clickable element not found.
+ */
+export function clickableElementNotFoundError(selector: string): ErrorWithSuggestion {
+  return {
+    message: `Element not found: ${selector}`,
+    suggestion: 'Verify the selector matches a clickable element',
+  };
+}
+
+/**
+ * Key press failed.
+ */
+export function keyPressFailedError(details: string): ErrorWithSuggestion {
+  return {
+    message: 'Failed to press key',
+    suggestion: details,
+  };
+}
+
+/**
+ * Session target not found.
+ */
+export function sessionTargetNotFoundError(): ErrorWithSuggestion {
+  return {
+    message: 'Session target not found (tab may have been closed)',
+    suggestion: 'Start a new session with: bdg <url>',
+  };
+}
+
+/**
+ * Session metadata missing.
+ */
+export function sessionMetadataMissingError(field: string): ErrorWithSuggestion {
+  return {
+    message: `Session metadata missing ${field}`,
+    suggestion: 'Start a new session with: bdg <url>',
+  };
+}
+
+/**
+ * Script execution error.
+ */
+export function scriptExecutionError(details: string): ErrorWithSuggestion {
+  return {
+    message: details,
+    suggestion: 'Check JavaScript syntax and ensure the expression is valid',
+  };
+}
+
+/**
+ * Unexpected CDP response format.
+ */
+export function unexpectedResponseFormatError(context: string): ErrorWithSuggestion {
+  return {
+    message: 'Unexpected response format',
+    suggestion: `CDP response missing result.value or invalid ${context} structure`,
+  };
+}
+
+/**
+ * Generic operation failure with dynamic error message.
+ */
+export function operationFailedError(operation: string, errorMessage: string): ErrorWithSuggestion {
+  return {
+    message: `Failed to ${operation}`,
+    suggestion: errorMessage,
+  };
+}
+
+/**
+ * Internal error (should not happen in normal usage).
+ */
+export function internalError(context: string): ErrorWithSuggestion {
+  return {
+    message: context,
+    suggestion: 'This is an internal error - please report this issue',
+  };
+}

@@ -29,6 +29,7 @@
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { elementAtIndexNotFoundError, indexOutOfRangeError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
@@ -237,23 +238,16 @@ export class DomElementResolver {
     const cachedQuery = validation.cache;
 
     if (index < 0 || index >= cachedQuery.nodes.length) {
-      const suggestion =
-        cachedQuery.nodes.length === 0
-          ? `No elements found after refresh. The selector "${cachedQuery.selector}" may no longer match any elements.`
-          : `Use an index between 0 and ${cachedQuery.nodes.length - 1}`;
-
-      throw new CommandError(
-        `Index ${index} out of range (found ${cachedQuery.nodes.length} nodes from query "${cachedQuery.selector}")`,
-        { suggestion },
-        EXIT_CODES.STALE_CACHE
-      );
+      const err = indexOutOfRangeError(index, cachedQuery.nodes.length - 1);
+      throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
     }
 
     const targetNode = cachedQuery.nodes[index];
     if (!targetNode) {
+      const err = elementAtIndexNotFoundError(index, cachedQuery.selector);
       throw new CommandError(
-        `Element at index ${index} not found`,
-        { suggestion: `Re-run "bdg dom query ${cachedQuery.selector}" to refresh the cache` },
+        err.message,
+        { suggestion: err.suggestion },
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
     }

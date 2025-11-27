@@ -19,6 +19,7 @@ import type { NetworkRequest } from '@/types.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { formatNetworkList, type NetworkListOptions } from '@/ui/formatters/networkList.js';
+import { operationFailedError } from '@/ui/messages/errors.js';
 import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,
@@ -70,9 +71,13 @@ function validateAndGetFilters(options: NetworkListCommandOptions): void {
 
   const validation = validateFilterString(filterString);
   if (!validation.valid) {
+    const err = operationFailedError(
+      'validate filter',
+      validation.suggestion ?? 'Check filter syntax'
+    );
     throw new CommandError(
       validation.error,
-      { suggestion: validation.suggestion ?? 'Check filter syntax' },
+      { suggestion: err.suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }

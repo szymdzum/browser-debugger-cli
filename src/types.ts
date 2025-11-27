@@ -441,6 +441,8 @@ export interface ScreenshotResult {
   };
   /** Selector scrolled to before capture */
   scrolledTo?: string;
+  /** Top-level warning for conditions that may affect interpretation (e.g., partial capture) */
+  warning?: string;
 }
 
 /**

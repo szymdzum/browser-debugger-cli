@@ -34,7 +34,12 @@ import {
   formatA11yQueryResult,
   formatA11yNodeWithContext,
 } from '@/ui/formatters/a11y.js';
-import { elementNotFoundError } from '@/ui/messages/errors.js';
+import {
+  elementNotFoundError,
+  invalidQueryPatternError,
+  noA11yNodesFoundError,
+  elementNotAccessibleError,
+} from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -83,11 +88,10 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
       const queryPattern = parseQueryPattern(pattern);
 
       if (!queryPattern.role && !queryPattern.name && !queryPattern.description) {
+        const err = invalidQueryPatternError(pattern);
         throw new CommandError(
-          'Query pattern must specify at least one field',
-          {
-            suggestion: `Received: "${pattern}". Try: bdg dom a11y query "role:button" or "name:Submit"`,
-          },
+          err.message,
+          { suggestion: err.suggestion },
           EXIT_CODES.INVALID_ARGUMENTS
         );
       }
@@ -96,11 +100,10 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
       const result = queryA11yTree(tree, queryPattern);
 
       if (result.count === 0) {
+        const err = noA11yNodesFoundError(pattern);
         throw new CommandError(
-          'No nodes found matching pattern',
-          {
-            suggestion: `Pattern: ${JSON.stringify(queryPattern)}. Try a broader query or use "bdg dom a11y tree" to see all elements`,
-          },
+          err.message,
+          { suggestion: err.suggestion },
           EXIT_CODES.RESOURCE_NOT_FOUND
         );
       }
@@ -164,13 +167,8 @@ async function handleA11yDescribe(
 
     if (!node) {
       if (isNumericIndex) {
-        throw new CommandError(
-          `Element at index ${selectorOrIndex} not accessible`,
-          {
-            suggestion: `Re-run "bdg dom query <selector>" to refresh cache, or use "bdg dom get ${selectorOrIndex}" for DOM fallback`,
-          },
-          EXIT_CODES.STALE_CACHE
-        );
+        const err = elementNotAccessibleError(parseInt(selectorOrIndex, 10));
+        throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
       }
       throw new CommandError(
         elementNotFoundError(selectorOrIndex),

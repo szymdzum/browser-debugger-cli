@@ -17,6 +17,7 @@ import { getSessionFilePath } from '@/session/paths.js';
 import { applyFilters, parseFilterString, validateFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import { CommandError } from '@/ui/errors/index.js';
+import { operationFailedError } from '@/ui/messages/errors.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
@@ -88,8 +89,15 @@ export function registerHarCommand(networkCmd: Command): void {
           if (options.filter) {
             const validation = validateFilterString(options.filter);
             if (!validation.valid) {
-              const metadata = validation.suggestion ? { suggestion: validation.suggestion } : {};
-              throw new CommandError(validation.error, metadata, EXIT_CODES.INVALID_ARGUMENTS);
+              const err = operationFailedError(
+                'validate filter',
+                validation.suggestion ?? 'Check filter syntax'
+              );
+              throw new CommandError(
+                validation.error,
+                { suggestion: err.suggestion },
+                EXIT_CODES.INVALID_ARGUMENTS
+              );
             }
 
             const filters = parseFilterString(options.filter);
