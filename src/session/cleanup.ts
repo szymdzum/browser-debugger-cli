@@ -185,7 +185,7 @@ export function cleanupStaleSession(): boolean {
       return false;
     }
 
-    log.info('Removing stale session files...');
+    log.debug('Removing stale session files...');
 
     killCachedChromeProcess('stale session cleanup');
 
@@ -196,7 +196,7 @@ export function cleanupStaleSession(): boolean {
     safeRemoveFile(getSessionFilePath('DAEMON_SOCKET'), 'daemon socket', log);
     safeRemoveFile(getSessionFilePath('DAEMON_LOCK'), 'daemon lock', log);
 
-    log.info('Stale session cleanup complete');
+    log.debug('Stale session cleanup complete');
 
     return true;
   } finally {
@@ -330,14 +330,14 @@ export async function cleanupOrphanedDaemons(): Promise<number> {
     return 0;
   }
 
-  log.info(`Found ${orphanedPids.length} orphaned daemon process(es): ${orphanedPids.join(', ')}`);
+  log.debug(`Found ${orphanedPids.length} orphaned daemon process(es): ${orphanedPids.join(', ')}`);
 
   let killedCount = 0;
 
   for (const pid of orphanedPids) {
     try {
       process.kill(pid, 'SIGKILL');
-      log.info(`Killed orphaned daemon process ${pid}`);
+      log.debug(`Killed orphaned daemon process ${pid}`);
       killedCount++;
     } catch (error) {
       logDebugError(log, `kill orphaned daemon ${pid}`, error);

@@ -10,19 +10,19 @@ import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandle
 import { fetchNetworkRequests, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
-import { resourceTypeRule } from '@/commands/shared/validation.js';
+import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
+import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { formatNetworkList, type NetworkListOptions } from '@/ui/formatters/networkList.js';
 import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,
 } from '@/ui/messages/networkMessages.js';
-import { invalidLastRangeError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const MIN_LAST = 0;
@@ -35,7 +35,7 @@ interface NetworkListCommandOptions extends BaseOptions {
   filter?: string;
   preset?: string;
   type?: string;
-  last?: number;
+  last?: string;
   follow?: boolean;
   verbose?: boolean;
 }
@@ -43,19 +43,7 @@ interface NetworkListCommandOptions extends BaseOptions {
 const networkLastOption = new Option(
   '--last <n>',
   `Show last N requests (0 = all, default: ${DEFAULT_LAST})`
-)
-  .default(DEFAULT_LAST)
-  .argParser((val) => {
-    const n = parseInt(val, 10);
-    if (isNaN(n) || n < MIN_LAST || n > MAX_LAST) {
-      throw new CommandError(
-        invalidLastRangeError(MIN_LAST, MAX_LAST),
-        { suggestion: `Use a value between ${MIN_LAST} and ${MAX_LAST}` },
-        EXIT_CODES.INVALID_ARGUMENTS
-      );
-    }
-    return n;
-  });
+).default(String(DEFAULT_LAST));
 
 /**
  * Validate preset option early with typo detection.
@@ -98,6 +86,32 @@ function validateAndGetFilters(options: NetworkListCommandOptions): void {
  */
 function parseResourceTypes(typeOption?: string): Protocol.Network.ResourceType[] {
   return resourceTypeRule().validate(typeOption);
+}
+
+/**
+ * Handle validation errors with proper JSON/human formatting.
+ *
+ * @param error - Error from validation
+ * @param json - Whether to output JSON format
+ */
+function handleValidationError(error: unknown, json: boolean): never {
+  if (error instanceof CommandError) {
+    if (json) {
+      const errorOptions: { exitCode: number; suggestion?: string } = {
+        exitCode: error.exitCode,
+      };
+      if (error.metadata.suggestion) {
+        errorOptions.suggestion = error.metadata.suggestion;
+      }
+      console.log(JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions)));
+    } else {
+      console.error(error.message);
+      if (error.metadata.suggestion) console.error(error.metadata.suggestion);
+    }
+    process.exit(error.exitCode);
+  }
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 /**
@@ -213,10 +227,19 @@ export function registerListCommand(networkCmd: Command): void {
     .addOption(new Option('-v, --verbose', 'Show full URLs and additional details').default(false))
     .addHelpText('after', `\n${getFilterHelpText()}\n\nPresets:\n${formatPresetHelp()}`)
     .action(async (options: NetworkListCommandOptions) => {
-      validatePreset(options.preset);
-      validateAndGetFilters(options);
+      let resourceTypes: Protocol.Network.ResourceType[];
+      let lastN: number;
 
-      const resourceTypes = parseResourceTypes(options.type);
+      try {
+        validatePreset(options.preset);
+        validateAndGetFilters(options);
+        resourceTypes = parseResourceTypes(options.type);
+        lastN = positiveIntRule({ min: MIN_LAST, max: MAX_LAST, default: DEFAULT_LAST }).validate(
+          options.last
+        );
+      } catch (error) {
+        handleValidationError(error, options.json ?? false);
+      }
 
       if (options.follow) {
         await runFollowMode(options, resourceTypes);
@@ -242,11 +265,10 @@ export function registerListCommand(networkCmd: Command): void {
         },
         options,
         (data: NetworkListResult) => {
-          const lastCount = options.last ?? DEFAULT_LAST;
-          const displayRequests = lastCount === 0 ? data.filtered : data.filtered.slice(-lastCount);
+          const displayRequests = lastN === 0 ? data.filtered : data.filtered.slice(-lastN);
           return formatNetworkList(
             displayRequests,
-            buildFormatOptions(options, data.totalCount, lastCount)
+            buildFormatOptions(options, data.totalCount, lastN)
           );
         }
       );

@@ -266,8 +266,8 @@ import type { ConsoleLevel } from '@/types.js';
  * By default shows only current navigation; use --history for all.
  */
 export interface ConsoleCommandOptions extends BaseOptions {
-  /** Show last N messages (0 = all, default: 100) */
-  last: number;
+  /** Show last N messages (string from CLI, 0 = all, default: 100) */
+  last?: string;
   /** List all messages chronologically (default: smart summary) */
   list?: boolean;
   /** Stream console messages in real-time */
