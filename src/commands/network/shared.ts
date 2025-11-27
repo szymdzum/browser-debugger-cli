@@ -167,6 +167,9 @@ export function registerHeadersCommand(networkCmd: Command): void {
               success: false,
               error: 'No data returned from worker',
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              errorContext: {
+                suggestion: 'No network requests captured yet. Navigate to a page first.',
+              },
             };
           }
 
@@ -206,6 +209,9 @@ export function registerDocumentCommand(networkCmd: Command): void {
               success: false,
               error: 'No data returned from worker',
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              errorContext: {
+                suggestion: 'No document request found. Navigate to a page first.',
+              },
             };
           }
 

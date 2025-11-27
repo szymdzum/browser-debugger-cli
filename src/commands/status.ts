@@ -45,6 +45,9 @@ export function registerStatusCommand(program: Command): void {
                 success: false,
                 error: `Daemon error: ${response.error ?? 'Unknown error'}`,
                 exitCode: EXIT_CODES.SOFTWARE_ERROR,
+                errorContext: {
+                  suggestion: 'Try: bdg cleanup --force && bdg <url>',
+                },
               };
             }
 
@@ -54,6 +57,9 @@ export function registerStatusCommand(program: Command): void {
                 success: false,
                 error: invalidResponseError('missing data'),
                 exitCode: EXIT_CODES.SOFTWARE_ERROR,
+                errorContext: {
+                  suggestion: 'This is unexpected. Try: bdg cleanup --force && bdg <url>',
+                },
               };
             }
 
@@ -110,6 +116,9 @@ export function registerStatusCommand(program: Command): void {
               success: false,
               error: `Error checking status: ${errorMessage}`,
               exitCode: EXIT_CODES.SOFTWARE_ERROR,
+              errorContext: {
+                suggestion: 'Try: bdg cleanup --force to reset session state',
+              },
             };
           }
         },

@@ -48,6 +48,9 @@ export function registerDetailsCommand(program: Command): void {
               success: false,
               error: `Unknown type: ${String(opts.type)}. Valid types: network, console`,
               exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              errorContext: {
+                suggestion: 'Usage: bdg details network <requestId> or bdg details console <index>',
+              },
             };
           }
 
@@ -60,6 +63,12 @@ export function registerDetailsCommand(program: Command): void {
               success: false,
               error: 'No data in response',
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              errorContext: {
+                suggestion:
+                  opts.type === 'network'
+                    ? 'Use bdg peek --network to see available request IDs'
+                    : 'Use bdg peek --console to see available console message indices',
+              },
             };
           }
 

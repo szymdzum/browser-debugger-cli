@@ -92,6 +92,9 @@ export function registerStopCommand(program: Command): void {
                   success: false,
                   error: response.message ?? STOP_MESSAGES.NO_SESSION,
                   exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+                  errorContext: {
+                    suggestion: 'Start a session first with: bdg <url>',
+                  },
                 };
               }
 
@@ -100,6 +103,9 @@ export function registerStopCommand(program: Command): void {
                 success: false,
                 error: response.message ?? STOP_MESSAGES.FAILED,
                 exitCode,
+                errorContext: {
+                  suggestion: 'Check session status with: bdg status',
+                },
               };
             }
           } catch (error: unknown) {
@@ -120,6 +126,9 @@ export function registerStopCommand(program: Command): void {
               success: false,
               error: stopFailedError(errorMessage),
               exitCode: EXIT_CODES.SOFTWARE_ERROR,
+              errorContext: {
+                suggestion: 'Try: bdg cleanup --force to reset session state',
+              },
             };
           }
         },
