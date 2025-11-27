@@ -50,6 +50,133 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'JPEG quality 90 (good balance of quality and size)',
     whenEnabled: 'Lower values reduce file size but increase compression artifacts',
   },
+
+  'get:--raw': {
+    default:
+      'Returns semantic accessibility structure: [Role] "Name" (properties) - 70-99% token reduction',
+    whenEnabled: 'Returns full HTML with all attributes and classes',
+    tokenImpact:
+      'Semantic output uses 70-99% fewer tokens than raw HTML. Use --raw only when you need exact HTML structure.',
+  },
+  'get:--all': {
+    default: 'Returns first matching element only',
+    whenEnabled: 'Returns all matching elements (only works with --raw)',
+  },
+  'get:--nth': {
+    default: 'Returns first matching element',
+    whenEnabled: 'Returns the nth matching element (1-based index, only works with --raw)',
+  },
+
+  'console:-H': {
+    default: 'Shows messages from current page load only (most recent navigation)',
+    whenEnabled: 'Shows messages from ALL page loads during the session',
+    automaticBehavior:
+      'Page navigations create new "navigation contexts" - default filters to latest context',
+  },
+  'console:--history': {
+    default: 'Shows messages from current page load only (most recent navigation)',
+    whenEnabled: 'Shows messages from ALL page loads during the session',
+    automaticBehavior:
+      'Page navigations create new "navigation contexts" - default filters to latest context',
+  },
+  'console:-l': {
+    default: 'Smart summary with errors deduplicated and warnings grouped',
+    whenEnabled: 'Lists all messages chronologically without deduplication',
+  },
+  'console:--list': {
+    default: 'Smart summary with errors deduplicated and warnings grouped',
+    whenEnabled: 'Lists all messages chronologically without deduplication',
+  },
+  'console:--level': {
+    default: 'Shows all log levels (error, warning, log, info, debug)',
+    whenEnabled: 'Filters to specific level: error, warning, log, info, or debug',
+  },
+
+  'fill:--no-wait': {
+    default: 'Waits for network stability after filling input (200ms idle)',
+    whenDisabled: 'Returns immediately without waiting for network',
+    automaticBehavior:
+      'Network wait helps ensure React/Vue state updates complete before next action',
+  },
+  'fill:--no-blur': {
+    default: 'Triggers blur event after filling (validates most form fields)',
+    whenDisabled: 'Keeps focus on element after filling',
+    automaticBehavior:
+      'Blur triggers validation in most frameworks - disable only if you need to continue typing',
+  },
+  'click:--no-wait': {
+    default: 'Waits for network stability after click (200ms idle)',
+    whenDisabled: 'Returns immediately without waiting for network',
+    automaticBehavior: 'Network wait helps ensure AJAX requests triggered by click complete',
+  },
+  'pressKey:--no-wait': {
+    default: 'Waits for network stability after key press (200ms idle)',
+    whenDisabled: 'Returns immediately without waiting for network',
+  },
+  'pressKey:--times': {
+    default: 'Presses key once',
+    whenEnabled: 'Presses key N times (useful for ArrowDown in autocomplete, Tab navigation)',
+  },
+  'pressKey:--modifiers': {
+    whenEnabled:
+      'Adds modifier keys: shift, ctrl, alt, meta (comma-separated). Example: --modifiers ctrl for Ctrl+key',
+  },
+  'submit:--wait-navigation': {
+    default: 'Waits for network stability only',
+    whenEnabled: 'Waits for page navigation to complete (use for forms that redirect)',
+  },
+  'submit:--wait-network': {
+    default: 'Default network idle timeout',
+    whenEnabled: 'Custom network idle timeout in ms (use for slow APIs)',
+  },
+
+  'peek:--type': {
+    whenEnabled:
+      'Filters network requests by CDP resource type. Case-insensitive, comma-separated. Valid: Document, Stylesheet, Image, Media, Font, Script, XHR, Fetch, WebSocket, etc.',
+  },
+  'peek:-f': {
+    default: 'Shows snapshot of current data',
+    whenEnabled: 'Continuous monitoring - refreshes every second (like tail -f)',
+  },
+  'peek:--follow': {
+    default: 'Shows snapshot of current data',
+    whenEnabled: 'Continuous monitoring - refreshes every second (like tail -f)',
+  },
+  'peek:-v': {
+    default: 'Compact output (truncated URLs, no resource types)',
+    whenEnabled: 'Verbose output with full URLs and resource types',
+  },
+  'peek:--verbose': {
+    default: 'Compact output (truncated URLs, no resource types)',
+    whenEnabled: 'Verbose output with full URLs and resource types',
+  },
+  'peek:--dom': {
+    automaticBehavior:
+      'DOM data only available after session stops. During live session shows "(none)".',
+  },
+
+  'cleanup:--force': {
+    default: 'Only cleans up if session process is dead',
+    whenEnabled: 'Forces cleanup even if session appears active (use when stuck)',
+  },
+  'cleanup:--aggressive': {
+    whenEnabled:
+      'Kills ALL Chrome processes on system (uses chrome-launcher killAll). Use with caution!',
+  },
+
+  'stop:--kill-chrome': {
+    default: 'Stops session but leaves Chrome running for potential reconnection',
+    whenEnabled: 'Stops session AND terminates the Chrome browser process',
+  },
+
+  'status:-v': {
+    default: 'Basic session status (daemon running, session active, URL)',
+    whenEnabled: 'Includes Chrome diagnostics and CDP connection details',
+  },
+  'status:--verbose': {
+    default: 'Basic session status (daemon running, session active, URL)',
+    whenEnabled: 'Includes Chrome diagnostics and CDP connection details',
+  },
 };
 
 /**

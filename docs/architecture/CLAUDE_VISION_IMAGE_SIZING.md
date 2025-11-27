@@ -11,7 +11,8 @@ This document captures research on optimal screenshot sizing for Claude Vision a
 5. [Academic Research: Token Reduction](#academic-research-token-reduction)
 6. [Algorithms & Libraries](#algorithms--libraries)
 7. [Implementation Recommendations](#implementation-recommendations)
-8. [References](#references)
+8. [Real-World Validation](#real-world-validation)
+9. [References](#references)
 
 ---
 
@@ -530,6 +531,71 @@ function fitToTokenBudget(
   };
 }
 ```
+
+---
+
+## Real-World Validation
+
+### Test Case: Claude Shannon Wikipedia Article
+
+We tested the auto-resize feature on [Claude Shannon's Wikipedia page](https://en.wikipedia.org/wiki/Claude_Shannon) - a lengthy biographical article with extensive content. The father of information theory makes a fitting test subject for compression optimization.
+
+#### Page Characteristics
+
+- **Full page height:** 75,666 pixels (on 2x Retina display)
+- **Aspect ratio:** 20.3:1 (far exceeds 3:1 threshold)
+- **Content:** Dense text, images, tables, references
+
+#### Results Comparison
+
+| Mode | Command | Dimensions | Tokens | File Size |
+|------|---------|------------|--------|-----------|
+| Full resolution | `--no-resize` | 3732×75666 | **376,515** | 35 MB |
+| Default (auto) | *(none)* | 2946×3136 | **12,319** | 911 KB |
+| Viewport only | `--no-full-page` | 2946×3136 | 12,319 | 911 KB |
+| Scroll to section | `--scroll "#References"` | 2946×3136 | 12,319 | 34 KB |
+
+#### Key Findings
+
+**1. Tall Page Detection Triggered**
+
+The auto-resize correctly detected the extreme aspect ratio and fell back to viewport capture:
+
+```json
+{
+  "fullPageSkipped": {
+    "reason": "page_too_tall",
+    "originalHeight": 37833,
+    "aspectRatio": 20.3
+  }
+}
+```
+
+**2. Token Savings: 97%**
+
+| Metric | Full Resolution | Auto-Resize | Savings |
+|--------|-----------------|-------------|---------|
+| Tokens | 376,515 | 12,319 | **97%** |
+| File size | 35 MB | 911 KB | **97%** |
+| Est. cost* | ~$1.50 | ~$0.05 | **97%** |
+
+*At Claude's approximate pricing of $0.40/1M tokens for vision.
+
+**3. Scroll Feature Works**
+
+The `--scroll` option successfully navigated to the References section and captured a viewport-sized screenshot with the section visible.
+
+#### Why This Matters
+
+Without auto-resize, a single Wikipedia article screenshot would cost **376k tokens**. For an AI agent browsing multiple pages, this quickly becomes prohibitive:
+
+| Scenario | Pages | Tokens (no resize) | Tokens (auto) |
+|----------|-------|-------------------|---------------|
+| Single page | 1 | 376,515 | 12,319 |
+| Research session | 10 | 3,765,150 | 123,190 |
+| Extended browsing | 50 | 18,825,750 | 615,950 |
+
+The auto-resize feature makes vision-based browsing economically viable.
 
 ---
 

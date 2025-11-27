@@ -50,6 +50,17 @@ throw new CommandError(
 ### Message Centralization (`src/ui/messages/`)
 All user-facing strings must use centralized functions - no inline strings.
 
+### Option Behaviors (`src/commands/optionBehaviors.ts`)
+When adding commands/flags with non-obvious behaviors, register in `OPTION_BEHAVIORS`:
+```typescript
+'commandName:--flag': {
+  default: 'What happens without this flag',
+  whenEnabled: 'What happens with this flag',
+  automaticBehavior: 'Hidden behaviors agents should know',
+  tokenImpact: 'Token cost implications (if relevant)',
+}
+```
+
 ### Logging (`src/ui/logging/`)
 ```typescript
 const log = createLogger('module-name');
