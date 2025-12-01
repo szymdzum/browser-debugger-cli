@@ -524,7 +524,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
  * Capture a screenshot of the page using CDP relay.
  *
  * By default, auto-resizes images exceeding 1568px on longest edge to optimize
- * for Claude Vision token cost (~1,600 tokens max). Tall pages (aspect ratio > 3:1)
+ * for Claude Vision token cost (~1,600 tokens max). Tall pages (aspect ratio greater than 3:1)
  * automatically fall back to viewport capture. Use noResize option to disable.
  *
  * @param outputPath - Path to save screenshot

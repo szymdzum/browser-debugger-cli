@@ -35,6 +35,11 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
     intent: 'Interact with page elements and DOM',
     steps: [
       {
+        question: 'Need to discover forms with semantic labels?',
+        yesCommand: 'dom form',
+        noAction: 'next',
+      },
+      {
         question: 'Need to capture a screenshot?',
         yesCommand: 'dom screenshot',
         noAction: 'next',

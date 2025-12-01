@@ -43,6 +43,8 @@ export const EXIT_CODES = {
   RESOURCE_BUSY: 85,
   DAEMON_ALREADY_RUNNING: 86,
   STALE_CACHE: 87,
+  NO_FORMS_FOUND: 88,
+  FORM_IN_IFRAME: 89,
   CHROME_LAUNCH_FAILURE: 100,
   CDP_CONNECTION_FAILURE: 101,
   CDP_TIMEOUT: 102,
@@ -113,6 +115,16 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.STALE_CACHE,
     name: 'STALE_CACHE',
     description: 'Cache invalidated by navigation or DOM changes',
+  },
+  {
+    code: EXIT_CODES.NO_FORMS_FOUND,
+    name: 'NO_FORMS_FOUND',
+    description: 'No forms discovered on the page',
+  },
+  {
+    code: EXIT_CODES.FORM_IN_IFRAME,
+    name: 'FORM_IN_IFRAME',
+    description: 'Form is inside an iframe (cross-origin or same-origin)',
   },
   {
     code: EXIT_CODES.CHROME_LAUNCH_FAILURE,

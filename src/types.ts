@@ -467,3 +467,162 @@ export interface ScreenshotOptions {
   /** Scroll element into view before capture */
   scroll?: string;
 }
+
+// ============================================================================
+// Form Discovery Types
+// ============================================================================
+
+/**
+ * Field validation state from HTML5 or custom validation.
+ */
+export interface FieldValidation {
+  valid: boolean;
+  message?: string | undefined;
+  source?: 'native' | 'aria' | 'sibling' | 'heuristic' | undefined;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+/**
+ * Option for select/radio fields.
+ */
+export interface FieldOption {
+  value: string;
+  label: string;
+  selected: boolean;
+}
+
+/**
+ * Field types supported by form discovery.
+ */
+export type FormFieldType =
+  | 'text'
+  | 'email'
+  | 'password'
+  | 'tel'
+  | 'url'
+  | 'number'
+  | 'search'
+  | 'date'
+  | 'time'
+  | 'datetime-local'
+  | 'month'
+  | 'week'
+  | 'color'
+  | 'file'
+  | 'checkbox'
+  | 'radio'
+  | 'select'
+  | 'textarea'
+  | 'textbox'
+  | 'combobox'
+  | 'listbox'
+  | 'switch'
+  | 'contenteditable'
+  | 'hidden'
+  | 'unknown';
+
+/**
+ * Field state values.
+ */
+export type FieldState = 'empty' | 'filled' | 'checked' | 'unchecked' | 'partial';
+
+/**
+ * Form field discovered on the page.
+ */
+export interface FormField {
+  index: number;
+  formIndex: number;
+  selector: string;
+  type: FormFieldType;
+  inputType?: string | undefined;
+  label: string;
+  name: string | null;
+  placeholder?: string | undefined;
+  required: boolean;
+  disabled: boolean;
+  readOnly: boolean;
+  hidden: boolean;
+  native: boolean;
+  interactionWarning?: string | undefined;
+  state: FieldState;
+  value: string | boolean | string[];
+  maskedValue?: string | undefined;
+  validation: FieldValidation;
+  options?: FieldOption[] | undefined;
+  command: string;
+  selectorCommand: string;
+  alternativeCommand?: string | undefined;
+}
+
+/**
+ * Form button discovered on the page.
+ */
+export interface FormButton {
+  index: number;
+  selector: string;
+  label: string;
+  type: 'submit' | 'reset' | 'button';
+  primary: boolean;
+  enabled: boolean;
+  disabledReason?: string | undefined;
+  command: string;
+}
+
+/**
+ * Blocker preventing form submission.
+ */
+export interface FormBlocker {
+  index: number;
+  label: string;
+  reason: string;
+  command: string;
+}
+
+/**
+ * Summary statistics for a form.
+ */
+export interface FormSummary {
+  totalFields: number;
+  filledFields: number;
+  emptyFields: number;
+  validFields: number;
+  invalidFields: number;
+  requiredTotal: number;
+  requiredFilled: number;
+  requiredRemaining: number;
+  readyToSubmit: boolean;
+  blockers: FormBlocker[];
+}
+
+/**
+ * Multi-step form progress indicator.
+ */
+export interface FormStep {
+  current: number;
+  total: number;
+}
+
+/**
+ * Complete form structure with fields, buttons, and summary.
+ */
+export interface DiscoveredForm {
+  index: number;
+  name: string | null;
+  action: string | null;
+  method: string;
+  step?: FormStep | undefined;
+  relevanceScore: number;
+  fields: FormField[];
+  buttons: FormButton[];
+  summary: FormSummary;
+}
+
+/**
+ * Complete form discovery response.
+ */
+export interface FormDiscoveryResult {
+  formCount: number;
+  selectedForm: number;
+  forms: DiscoveredForm[];
+  brief?: boolean | undefined;
+}

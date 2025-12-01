@@ -130,6 +130,19 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'Custom network idle timeout in ms (use for slow APIs)',
   },
 
+  'form:--all': {
+    default: 'Shows primary form (highest relevance), mentions others exist',
+    whenEnabled: 'Expands all forms on the page with full details',
+    automaticBehavior:
+      'Forms in header/nav/aside score lower; forms with submit buttons score higher',
+    tokenImpact: 'Multi-form pages may have 3-5 forms; potentially 10x more output',
+  },
+  'form:--brief': {
+    default: 'Full form details with values, validation, and ready-to-use commands',
+    whenEnabled: 'Quick scan: field names, types, and required status only',
+    tokenImpact: 'Reduces output ~50% for initial discovery',
+  },
+
   'peek:--type': {
     whenEnabled:
       'Filters network requests by CDP resource type. Case-insensitive, comma-separated. Valid: Document, Stylesheet, Image, Media, Font, Script, XHR, Fetch, WebSocket, etc.',

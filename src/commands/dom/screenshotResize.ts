@@ -41,7 +41,7 @@ export function calculateImageTokens(width: number, height: number): number {
  *
  * @param width - Original width in pixels
  * @param height - Original height in pixels
- * @returns Scale factor (1.0 if no resize needed, <1.0 to shrink)
+ * @returns Scale factor (1.0 if no resize needed, less than 1.0 to shrink)
  */
 export function calculateResizeScale(width: number, height: number): number {
   const longestEdge = Math.max(width, height);

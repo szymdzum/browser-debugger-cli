@@ -41,6 +41,12 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     cdpAlternative: 'Runtime.evaluate',
   },
 
+  discover_forms: {
+    commands: ['dom form'],
+    description: 'Discover forms with semantic labels, state, and validation',
+    cdpAlternative: 'Runtime.evaluate with form/input queries + Accessibility.getPartialAXTree',
+  },
+
   fill_form_input: {
     commands: ['dom fill'],
     description: 'Fill form input field by selector',

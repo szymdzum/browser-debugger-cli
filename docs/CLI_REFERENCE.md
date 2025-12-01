@@ -255,6 +255,96 @@ Shell quote damage detected:
 Try: bdg dom eval 'document.querySelector("input")'
 ```
 
+### Form Discovery
+
+Discover forms on the page with semantic labels, current values, validation state, and suggested commands.
+
+```bash
+# Basic discovery (auto-selects most relevant form)
+bdg dom form
+
+# JSON output for programmatic use
+bdg dom form --json
+
+# Show all forms on page
+bdg dom form --all
+
+# Quick scan (names, types, required only)
+bdg dom form --brief
+```
+
+**Human Output:**
+```
+FORMS DISCOVERED: 1
+══════════════════════════════════════════════════════════════════════
+
+Form: "Create Account" (step 2 of 3)
+──────────────────────────────────────────────────────────────────────
+   #  Type         Label                    Value                Status
+──────────────────────────────────────────────────────────────────────
+   0  email        Email address*           empty                required
+   1  password     Password*                empty                required
+   2  password     Confirm password*        empty                required
+   3  checkbox     Newsletter               unchecked            ok
+   4  checkbox     Terms & Conditions*      unchecked            required
+──────────────────────────────────────────────────────────────────────
+   5  button       Back                     (secondary)          enabled
+   6  button       Create Account           (primary)            enabled
+══════════════════════════════════════════════════════════════════════
+Summary: 0/5 fields filled | 3 required remaining | NOT ready
+
+Remaining:
+  bdg dom fill 0 "<value>"                   # Email address
+  bdg dom fill 1 "<value>"                   # Password
+  bdg dom click 4                            # Terms & Conditions
+```
+
+**JSON Output Structure:**
+```json
+{
+  "formCount": 1,
+  "selectedForm": 0,
+  "forms": [{
+    "index": 0,
+    "name": "Create Account",
+    "step": { "current": 2, "total": 3 },
+    "fields": [...],
+    "buttons": [...],
+    "summary": {
+      "totalFields": 5,
+      "filledFields": 0,
+      "requiredRemaining": 3,
+      "readyToSubmit": false,
+      "blockers": [...]
+    }
+  }]
+}
+```
+
+**Key Features:**
+- **Semantic labels**: Extracts labels from `<label>`, `aria-label`, `placeholder`, etc.
+- **State detection**: Shows current values, checked/unchecked state
+- **Validation**: Detects HTML5 and custom validation errors
+- **Custom components**: Flags non-native inputs with interaction warnings
+- **Ready-to-use commands**: Shows exact commands to fill each field
+
+**Workflow Example:**
+```bash
+# 1. Discover form structure
+bdg dom form --json | jq '.forms[0].summary.readyToSubmit'
+
+# 2. Fill required fields using provided indices
+bdg dom fill 0 "user@example.com"
+bdg dom fill 1 "SecurePass123"
+bdg dom click 4                              # Accept terms
+
+# 3. Check progress
+bdg dom form
+
+# 4. Submit when ready
+bdg dom click 6                              # Primary submit button
+```
+
 ### Form Interaction
 
 Interact with page elements using React-compatible events. All interaction commands automatically wait for network stability after the action (disable with `--no-wait`).

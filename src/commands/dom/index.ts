@@ -3,6 +3,7 @@ import type * as FsModule from 'fs';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
+import { registerFormCommand } from '@/commands/dom/form.js';
 import {
   queryDOMElements,
   getDOMElements,
@@ -696,6 +697,7 @@ export function registerDomCommands(program: Command): void {
     .enablePositionalOptions();
 
   registerA11yCommands(dom);
+  registerFormCommand(dom);
 
   dom
     .command('query')

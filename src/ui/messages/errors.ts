@@ -477,3 +477,69 @@ export function internalError(context: string): ErrorWithSuggestion {
     suggestion: 'This is an internal error - please report this issue',
   };
 }
+
+/**
+ * No forms found on page.
+ */
+export function noFormsFoundError(): ErrorWithSuggestion {
+  return {
+    message: 'No forms discovered on the page',
+    suggestion:
+      'Check if forms exist with: bdg dom query "form, input, [role=textbox]" or inspect the page manually',
+  };
+}
+
+/**
+ * Form selection out of range.
+ */
+export function formSelectionOutOfRangeError(index: number, count: number): ErrorWithSuggestion {
+  return {
+    message: `Form index ${index} out of range (found ${count} form${count === 1 ? '' : 's'})`,
+    suggestion: count > 0 ? `Use an index between 0 and ${count - 1}` : 'No forms found on page',
+  };
+}
+
+/**
+ * Form selection by name not found.
+ */
+export function formSelectionByNameNotFoundError(
+  name: string,
+  availableNames: string[]
+): ErrorWithSuggestion {
+  const nameList =
+    availableNames.length > 0
+      ? `Available forms: ${availableNames.join(', ')}`
+      : 'No named forms found';
+  return {
+    message: `No form found matching "${name}"`,
+    suggestion: `${nameList}. Use --all to see all forms.`,
+  };
+}
+
+/**
+ * Form in iframe (cross-origin or same-origin).
+ */
+export function formInIframeError(iframeUrl: string, crossOrigin: boolean): ErrorWithSuggestion {
+  const originNote = crossOrigin
+    ? 'Cross-origin iframe - cannot inspect directly'
+    : 'Same-origin iframe - use frame commands to access';
+  return {
+    message: `Form is inside an iframe: ${iframeUrl}`,
+    suggestion: crossOrigin
+      ? `${originNote}. Manual interaction required for cross-origin frames.`
+      : `${originNote}. Try: bdg dom frame list, then bdg dom frame attach <id>`,
+  };
+}
+
+/**
+ * Custom component interaction warning.
+ */
+export function customComponentWarning(
+  elementType: string,
+  suggestedAction: string
+): ErrorWithSuggestion {
+  return {
+    message: `Custom component detected: ${elementType}`,
+    suggestion: `Standard fill may not work. Try: ${suggestedAction}`,
+  };
+}
