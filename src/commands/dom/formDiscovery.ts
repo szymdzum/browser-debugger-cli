@@ -245,6 +245,64 @@ export const FORM_DISCOVERY_SCRIPT = `
     return null;
   }
 
+  function findNearbyHeading(formEl) {
+    let sibling = formEl.previousElementSibling;
+    let distance = 0;
+    while (sibling && distance < 3) {
+      if (sibling.matches('h1, h2, h3, h4, h5, h6, [role="heading"]')) {
+        return sibling.textContent.trim();
+      }
+      const heading = sibling.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]');
+      if (heading) return heading.textContent.trim();
+      sibling = sibling.previousElementSibling;
+      distance++;
+    }
+    const parent = formEl.parentElement;
+    if (parent) {
+      const heading = parent.querySelector(':scope > h1, :scope > h2, :scope > h3');
+      if (heading && heading.compareDocumentPosition(formEl) & Node.DOCUMENT_POSITION_FOLLOWING) {
+        return heading.textContent.trim();
+      }
+    }
+    return null;
+  }
+
+  function matchesWord(text, word) {
+    const pattern = new RegExp('\\\\b' + word + '\\\\b', 'i');
+    return pattern.test(text);
+  }
+
+  function inferFormType(formEl) {
+    const inputs = formEl.querySelectorAll('input, textarea, select');
+    const types = Array.from(inputs).map(i => i.type?.toLowerCase() || i.tagName.toLowerCase());
+    const names = Array.from(inputs).map(i => (i.name || '').toLowerCase());
+    const allText = (Array.from(inputs).map(i => i.name + ' ' + i.placeholder + ' ' + i.id).join(' ')).toLowerCase();
+    if (types.includes('password')) {
+      if (types.filter(t => t === 'password').length >= 2) return 'Change Password';
+      if (matchesWord(allText, 'register') || matchesWord(allText, 'signup') || matchesWord(allText, 'create')) return 'Registration';
+      return 'Login';
+    }
+    const hasSearchRole = formEl.closest('[role="search"]') || formEl.getAttribute('role') === 'search';
+    const hasSearchInput = formEl.querySelector('[type="search"], [aria-label*="search" i]');
+    if (hasSearchRole || hasSearchInput) return 'Search';
+    const interactiveTypes = types.filter(t => !['hidden', 'submit', 'button', 'reset', 'image'].includes(t));
+    if (interactiveTypes.length <= 2 && matchesWord(allText, 'search')) return 'Search';
+    if (matchesWord(allText, 'address') || matchesWord(allText, 'street') || matchesWord(allText, 'postcode') ||
+        matchesWord(allText, 'zipcode') || matchesWord(allText, 'city') || matchesWord(allText, 'county')) {
+      return 'Address';
+    }
+    if (matchesWord(allText, 'email') && (matchesWord(allText, 'message') || matchesWord(allText, 'subject'))) {
+      return 'Contact';
+    }
+    if (matchesWord(allText, 'card') || matchesWord(allText, 'cvv') || matchesWord(allText, 'expiry')) {
+      return 'Payment';
+    }
+    if (names.some(n => matchesWord(n, 'subscribe') || matchesWord(n, 'newsletter'))) {
+      return 'Newsletter';
+    }
+    return null;
+  }
+
   function extractFormName(formEl) {
     const ariaLabel = formEl.getAttribute('aria-label');
     if (ariaLabel) return ariaLabel;
@@ -253,8 +311,12 @@ export const FORM_DISCOVERY_SCRIPT = `
       const labelEl = document.getElementById(ariaLabelledBy);
       if (labelEl) return labelEl.textContent.trim();
     }
-    const heading = formEl.querySelector('h1, h2, h3, h4, h5, h6, [role="heading"]');
-    if (heading) return heading.textContent.trim();
+    const headings = formEl.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]');
+    for (const h of headings) {
+      if (!h.closest('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) {
+        return h.textContent.trim();
+      }
+    }
     const legend = formEl.querySelector('legend');
     if (legend) return legend.textContent.trim();
     const title = formEl.getAttribute('title');
@@ -266,6 +328,10 @@ export const FORM_DISCOVERY_SCRIPT = `
         .replace(/([a-z])([A-Z])/g, '$1 $2')
         .replace(/^./, s => s.toUpperCase());
     }
+    const nearbyHeading = findNearbyHeading(formEl);
+    if (nearbyHeading) return nearbyHeading;
+    const inferredType = inferFormType(formEl);
+    if (inferredType) return inferredType;
     return null;
   }
 
