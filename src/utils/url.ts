@@ -3,6 +3,13 @@
  */
 
 /**
+ * Dangerous URL protocols that must be explicitly blocked.
+ *
+ * These protocols can execute arbitrary code and are security risks.
+ */
+const DANGEROUS_PROTOCOLS = ['vbscript:', 'jscript:'] as const;
+
+/**
  * Valid URL protocols for Chrome navigation.
  *
  * Excludes legacy protocols (vbscript) and limits to protocols
@@ -171,6 +178,15 @@ export function validateUrl(url: string): {
 
   try {
     const parsed = new URL(normalized);
+
+    // Explicitly block dangerous protocols (CodeQL js/incomplete-url-scheme-check)
+    if (DANGEROUS_PROTOCOLS.includes(parsed.protocol as (typeof DANGEROUS_PROTOCOLS)[number])) {
+      return {
+        valid: false,
+        error: `Blocked dangerous protocol: '${parsed.protocol}'`,
+        suggestion: 'This protocol is not allowed for security reasons',
+      };
+    }
 
     if (!VALID_PROTOCOLS.includes(parsed.protocol as (typeof VALID_PROTOCOLS)[number])) {
       return {
