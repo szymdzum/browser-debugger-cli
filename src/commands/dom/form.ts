@@ -223,7 +223,8 @@ function buildFieldCommand(index: number, type: string): string {
  */
 function buildSelectorCommand(selector: string, type: string): string {
   const lowerType = type.toLowerCase();
-  const escaped = selector.replace(/"/g, '\\"');
+  // Escape backslashes first, then double quotes (CodeQL js/incomplete-string-escaping)
+  const escaped = selector.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
   if (lowerType === 'checkbox' || lowerType === 'radio' || lowerType === 'switch') {
     return `bdg dom click "${escaped}"`;
