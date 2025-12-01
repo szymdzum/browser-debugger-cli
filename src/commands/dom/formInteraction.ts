@@ -52,9 +52,8 @@ async function withCDPConnection<T>(
   fn: (cdp: CDPConnection, metadata: SessionMetadata) => Promise<T>
 ): Promise<T> {
   const { CDPConnection } = await import('@/connection/cdp.js');
-  const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } = await import(
-    '@/commands/dom/evalHelpers.js'
-  );
+  const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
+    await import('@/commands/dom/evalHelpers.js');
 
   validateActiveSession();
   const metadata = getValidatedSessionMetadata();

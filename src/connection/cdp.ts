@@ -576,7 +576,7 @@ export class CDPConnection implements CDPEventSource {
     }
 
     const id = ++this.messageId;
-    const message: CDPMessage & { sessionId?: string } = { id, method, params };
+    const message: CDPMessage = { id, method, params };
 
     if (sessionId) {
       message.sessionId = sessionId;

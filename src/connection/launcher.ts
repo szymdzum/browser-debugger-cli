@@ -41,19 +41,18 @@ const defaultLogger: Logger = {
  * Options that control how Chrome is launched for CDP sessions.
  * Extended to support chrome-launcher advanced features.
  */
-export interface LaunchOptions
-  extends Pick<
-    ChromeLaunchOptions,
-    | 'logLevel'
-    | 'connectionPollInterval'
-    | 'maxConnectionRetries'
-    | 'portStrictMode'
-    | 'envVars'
-    | 'handleSIGINT'
-    | 'ignoreDefaultFlags'
-    | 'chromeFlags'
-    | 'chromePath'
-  > {
+export interface LaunchOptions extends Pick<
+  ChromeLaunchOptions,
+  | 'logLevel'
+  | 'connectionPollInterval'
+  | 'maxConnectionRetries'
+  | 'portStrictMode'
+  | 'envVars'
+  | 'handleSIGINT'
+  | 'ignoreDefaultFlags'
+  | 'chromeFlags'
+  | 'chromePath'
+> {
   /** Remote debugging port (defaults to 9222 when omitted) */
   port?: number;
   /** Directory for Chrome profile data. Falls back to persistent ~/.bdg/chrome-profile directory */

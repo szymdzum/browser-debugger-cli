@@ -234,7 +234,7 @@ export interface StackFrame {
 }
 
 export interface ConsoleMessage {
-  type: Protocol.Runtime.ConsoleAPICalledEvent['type'] | 'error';
+  type: Protocol.Runtime.ConsoleAPICalledEvent['type'];
   text: string;
   timestamp: number;
   args?: unknown[];

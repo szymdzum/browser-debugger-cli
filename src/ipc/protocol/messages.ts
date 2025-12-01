@@ -14,7 +14,7 @@ import type { COMMANDS, CommandName } from './commands.js';
 export type WorkerRequest<T extends CommandName> = {
   type: `${T}_request`;
   requestId: string;
-} & (typeof COMMANDS)[T]['requestSchema'];
+} & Omit<(typeof COMMANDS)[T]['requestSchema'], 'type' | 'requestId'>;
 
 /**
  * Worker response message (worker → daemon).
@@ -35,7 +35,7 @@ export type WorkerResponse<T extends CommandName> = {
 export type ClientRequest<T extends CommandName> = {
   type: `${T}_request`;
   sessionId: string;
-} & (typeof COMMANDS)[T]['requestSchema'];
+} & Omit<(typeof COMMANDS)[T]['requestSchema'], 'type' | 'sessionId'>;
 
 /**
  * Client response message (daemon → CLI).

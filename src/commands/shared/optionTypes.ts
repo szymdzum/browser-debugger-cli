@@ -315,8 +315,7 @@ export interface PeekCommandOptions extends BaseOptions, PreviewDisplayOptions {
  * Includes preview options plus last count and update interval.
  */
 export interface TailCommandOptions
-  extends BaseOptions,
-    Omit<PreviewDisplayOptions, 'dom' | 'follow'> {
+  extends BaseOptions, Omit<PreviewDisplayOptions, 'dom' | 'follow'> {
   /** Show last N items (string from CLI, default: 10) */
   last?: string;
   /** Update interval in milliseconds (string from CLI, default: 1000) */
