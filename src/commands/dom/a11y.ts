@@ -48,6 +48,10 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * Dumps the full accessibility tree for the current page via IPC.
  * Filters out ignored nodes for cleaner output.
  *
+ * JSON output returns nodes as an array for natural jq filtering:
+ *   bdg dom a11y tree --json | jq '.data.nodes[] | select(.role == "checkbox")'
+ *   bdg dom a11y tree --json | jq '.data.nodes[0]'
+ *
  * @param options - Command options
  */
 async function handleA11yTree(options: A11yTreeCommandOptions): Promise<void> {
@@ -56,7 +60,7 @@ async function handleA11yTree(options: A11yTreeCommandOptions): Promise<void> {
       const tree = await collectA11yTree();
       return {
         root: tree.root,
-        nodes: Object.fromEntries(tree.nodes),
+        nodes: Array.from(tree.nodes.values()),
         count: tree.count,
       };
     });

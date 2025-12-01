@@ -163,7 +163,7 @@ export async function executeScript(
   if (response.exceptionDetails) {
     const errorMsg =
       response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
-    const err = scriptExecutionError(errorMsg);
+    const err = scriptExecutionError(errorMsg, script);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
 

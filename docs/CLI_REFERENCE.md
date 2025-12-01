@@ -114,6 +114,37 @@ bdg dom a11y describe --json                      # JSON output
 - Ignored nodes are automatically filtered out
 - Human-readable format limited to 50 nodes (use `--json` for complete output)
 
+**JSON Output (jq-friendly):**
+
+The `--json` output returns nodes as an array for natural jq filtering:
+
+```bash
+# Get first node
+bdg dom a11y tree --json | jq '.nodes[0]'
+
+# Find all checkboxes
+bdg dom a11y tree --json | jq '[.nodes[] | select(.role == "checkbox")]'
+
+# Find by name pattern
+bdg dom a11y tree --json | jq '[.nodes[] | select(.name | test("submit"; "i"))]'
+
+# Get roles and names only
+bdg dom a11y tree --json | jq '.nodes[] | {role, name}'
+```
+
+**Shell Quote Handling:**
+
+Attribute selectors with quotes can be tricky due to shell escaping. If you see "Element not found" with an attribute selector, the shell may have stripped quotes.
+
+Recommended pattern for attribute selectors:
+```bash
+# Step 1: Query first (caches results)
+bdg dom query '[data-test-id="marketing-consent"]'
+
+# Step 2: Use index to inspect (0-based)
+bdg dom a11y describe 0
+```
+
 ### Element Inspection
 
 Get semantic accessibility structure or raw HTML for page elements.
@@ -190,6 +221,38 @@ Execute JavaScript in the page context.
 bdg dom eval "document.title"                     # Evaluate expression
 bdg dom eval "document.querySelector('h1').textContent"
 bdg dom eval --json                               # JSON output with full Runtime.evaluate response
+```
+
+**Shell Quote Handling:**
+
+JavaScript expressions with quotes require careful escaping. If you see a SyntaxError, the shell may have stripped quotes.
+
+```bash
+# Recommended: Use single quotes around the script
+bdg dom eval 'document.querySelector("h1").textContent'
+
+# If script contains single quotes, use double quotes outside
+bdg dom eval "document.querySelector('h1').textContent"
+
+# For complex scripts, use heredoc
+bdg dom eval "$(cat <<'EOF'
+(() => {
+  const el = document.querySelector("input");
+  return el ? el.value : null;
+})()
+EOF
+)"
+```
+
+When errors occur, bdg shows the script as received to help diagnose shell escaping issues:
+```
+Error: ReferenceError: input is not defined
+Script received: document.querySelector(input).value
+
+Shell quote damage detected:
+  querySelector(input) - quotes stripped by shell
+
+Try: bdg dom eval 'document.querySelector("input")'
 ```
 
 ### Form Interaction
@@ -588,6 +651,41 @@ bdg cdp Network.getCookies --describe
 bdg cdp Network.getCookies
 bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 ```
+
+**Event-Based Domains:**
+
+Some CDP domains use event-based reporting rather than synchronous responses. When methods return empty results, bdg provides contextual hints:
+
+```bash
+bdg cdp Audits.checkContrast
+# This method triggers contrast analysis but results are sent via Audits.issueAdded events.
+# Alternative: bdg dom eval with getComputedStyle() for direct contrast checking.
+# {
+#   "method": "Audits.checkContrast",
+#   "result": {}
+# }
+```
+
+The `--describe` output includes domain notes for event-based APIs:
+
+```bash
+bdg cdp Audits --describe
+# {
+#   "type": "domain",
+#   "domain": "Audits",
+#   "note": "Event-based domain. Results arrive via events (e.g., Audits.issueAdded)..."
+# }
+```
+
+**Domains with Event-Based Patterns:**
+
+| Domain | Behavior | Alternative |
+|--------|----------|-------------|
+| Audits | Issues via `Audits.issueAdded` events | `bdg dom eval` with `getComputedStyle()` |
+| Profiler | Data after `Profiler.stop` | Call start, perform actions, then stop |
+| HeapProfiler | Events after `takeHeapSnapshot` | Collect events or use snapshots |
+| Tracing | Data via `Tracing.dataCollected` | Call start, perform actions, then end |
+| Overlay | Visual only, returns empty | Use `Overlay.hideHighlight` to clear |
 
 ## Maintenance
 

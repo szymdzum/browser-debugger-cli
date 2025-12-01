@@ -14,7 +14,73 @@ import { validateIPCResponse } from '@/ipc/index.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { levenshteinDistance } from '@/utils/levenshtein.js';
+import { findSimilar } from '@/utils/suggestions.js';
+
+/**
+ * Domain-specific notes for event-based or special behavior CDP domains.
+ *
+ * These notes are shown in --describe output and when methods return empty results.
+ * Helps agents understand async/event-based CDP patterns that don't fit request-response model.
+ */
+const DOMAIN_NOTES: Record<string, string> = {
+  Audits:
+    'Event-based domain. Results arrive via events (e.g., Audits.issueAdded), not method responses. ' +
+    "For contrast checking, use: bdg dom eval 'getComputedStyle(el).color'",
+  Overlay:
+    'Visual debugging domain. Methods like highlightNode show overlays but return empty. ' +
+    'Use Overlay.hideHighlight to clear.',
+  Profiler:
+    'Sampling profiler. Call Profiler.start, perform actions, then Profiler.stop to get results.',
+  HeapProfiler:
+    'Heap profiler. Results collected via events after takeHeapSnapshot or startSampling.',
+  Tracing:
+    'Performance tracing. Call Tracing.start, perform actions, then Tracing.end. ' +
+    'Data arrives via Tracing.dataCollected events.',
+};
+
+/**
+ * Method-specific notes for methods with non-obvious behavior.
+ */
+const METHOD_NOTES: Record<string, string> = {
+  'Audits.checkContrast':
+    'This method triggers contrast analysis but results are sent via Audits.issueAdded events. ' +
+    'Alternative: bdg dom eval with getComputedStyle() for direct contrast checking.',
+  'Audits.enable': 'Enables the Audits domain. Issues will arrive via Audits.issueAdded events.',
+  'Overlay.highlightNode':
+    'Highlights a node visually. Returns empty on success. Use Overlay.hideHighlight to clear.',
+  'Profiler.start':
+    'Starts CPU profiling. Returns empty. Call Profiler.stop to get the profile data.',
+  'Tracing.start': 'Starts tracing. Returns empty. Data arrives via events after Tracing.end.',
+};
+
+/**
+ * Check if a CDP result is empty (null, undefined, or empty object).
+ */
+function isEmptyResult(result: unknown): boolean {
+  if (result === null || result === undefined) {
+    return true;
+  }
+  if (typeof result === 'object' && Object.keys(result).length === 0) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Get contextual hint for a method based on domain notes and result.
+ */
+function getMethodHint(methodName: string, result: unknown): string | undefined {
+  if (METHOD_NOTES[methodName]) {
+    return METHOD_NOTES[methodName];
+  }
+
+  const domain = methodName.split('.')[0];
+  if (domain && DOMAIN_NOTES[domain] && isEmptyResult(result)) {
+    return DOMAIN_NOTES[domain];
+  }
+
+  return undefined;
+}
 
 /**
  * Register CDP command with full introspection support.
@@ -84,15 +150,15 @@ export function registerCdpCommand(program: Command): void {
  * Find similar methods to suggest when a method is not found.
  * Returns up to 3 closest matches based on edit distance.
  *
+ * Uses the shared findSimilar utility for consistency with other typo detection.
+ *
  * @param methodName - The method name that was not found
  * @param domain - Optional domain to search within
  * @returns Array of similar method names
  */
 function findSimilarMethods(methodName: string, domain?: string): string[] {
   const allDomains = getAllDomainSummaries();
-  const candidates: Array<{ name: string; distance: number }> = [];
-
-  const searchName = methodName.toLowerCase();
+  const candidates: string[] = [];
 
   for (const domainSummary of allDomains) {
     if (domain && domainSummary.name.toLowerCase() !== domain.toLowerCase()) {
@@ -101,24 +167,15 @@ function findSimilarMethods(methodName: string, domain?: string): string[] {
 
     const methods = getDomainMethods(domainSummary.name);
     for (const method of methods) {
-      const fullName = method.name.toLowerCase();
-      const methodOnly = method.method.toLowerCase();
-
-      const distanceFull = levenshteinDistance(searchName, fullName);
-      const distanceMethod = levenshteinDistance(searchName, methodOnly);
-
-      const distance = Math.min(distanceFull, distanceMethod);
-
-      if (distance <= Math.max(searchName.length / 2, 3)) {
-        candidates.push({ name: method.name, distance });
-      }
+      candidates.push(method.name);
     }
   }
 
-  return candidates
-    .sort((a, b) => a.distance - b.distance)
-    .slice(0, 3)
-    .map((c) => c.name);
+  return findSimilar(methodName, candidates, {
+    maxDistance: Math.max(Math.floor(methodName.length / 2), 3),
+    maxSuggestions: 3,
+    caseInsensitive: true,
+  });
 }
 
 /**
@@ -268,6 +325,7 @@ function handleDescribeMethod(methodName: string): {
       };
     }
 
+    const domainNote = DOMAIN_NOTES[summary.name];
     return {
       success: true,
       data: {
@@ -278,6 +336,7 @@ function handleDescribeMethod(methodName: string): {
         events: summary.eventCount,
         experimental: summary.experimental,
         deprecated: summary.deprecated,
+        note: domainNote,
         nextStep: `Use: bdg cdp ${summary.name} --list (to see all methods)`,
       },
     };
@@ -303,6 +362,7 @@ function handleDescribeMethod(methodName: string): {
     };
   }
 
+  const methodNote = METHOD_NOTES[schema.name] ?? DOMAIN_NOTES[schema.domain];
   return {
     success: true,
     data: {
@@ -313,6 +373,7 @@ function handleDescribeMethod(methodName: string): {
       description: schema.description,
       experimental: schema.experimental,
       deprecated: schema.deprecated,
+      note: methodNote,
       parameters: schema.parameters.map((p) => ({
         name: p.name,
         type: p.type,
@@ -392,6 +453,8 @@ async function handleExecuteMethod(
 
   validateIPCResponse(response);
 
+  const cdpResult = response.data?.result;
+
   const result: {
     success: boolean;
     data: { method: string; result: unknown };
@@ -400,12 +463,17 @@ async function handleExecuteMethod(
     success: true,
     data: {
       method: normalized,
-      result: response.data?.result,
+      result: cdpResult,
     },
   };
 
   if (response.data?.hint) {
     result.hint = response.data.hint;
+  }
+
+  const methodHint = getMethodHint(normalized, cdpResult);
+  if (methodHint) {
+    result.hint = result.hint ? `${result.hint}\n${methodHint}` : methodHint;
   }
 
   return result;

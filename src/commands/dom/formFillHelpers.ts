@@ -15,6 +15,7 @@ import {
 } from '@/ui/messages/errors.js';
 import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { detectSelectorQuoteDamage } from '@/utils/shellDetection.js';
 
 import { getKeyDefinition, parseModifiers, type KeyDefinition } from './keyMapping.js';
 import {
@@ -39,21 +40,49 @@ const STABILITY_CHECK_INTERVAL_MS = 50;
 /**
  * Format exception details into a user-friendly error message with troubleshooting hints.
  *
+ * Shows the actual expression sent to CDP to help diagnose escaping issues.
+ * Detects shell quote damage patterns and provides specific recovery suggestions.
+ *
  * @param exceptionDetails - CDP exception details
  * @param selector - CSS selector that was used
  * @param operationType - Type of operation (fill or click) for tailored hints
+ * @param expression - The actual JavaScript expression sent to CDP
  * @returns Formatted error message with context
  */
 function formatScriptExecutionError(
   exceptionDetails: Protocol.Runtime.ExceptionDetails,
   selector: string,
-  operationType: 'fill' | 'click' = 'fill'
+  operationType: 'fill' | 'click' = 'fill',
+  expression?: string
 ): string {
   const errorText = exceptionDetails.text || 'Unknown error';
   const location =
     exceptionDetails.lineNumber !== undefined && exceptionDetails.columnNumber !== undefined
       ? ` at line ${exceptionDetails.lineNumber + 1}, column ${exceptionDetails.columnNumber + 1}`
       : '';
+
+  const lines: string[] = [];
+  lines.push(`Script execution failed: ${errorText}${location}`);
+
+  if (expression) {
+    const truncated = expression.length > 150 ? expression.slice(0, 150) + '...' : expression;
+    lines.push('');
+    lines.push(`Expression received: ${truncated}`);
+
+    const selectorCheck = detectSelectorQuoteDamage(selector);
+    if (selectorCheck.damaged) {
+      lines.push('');
+      lines.push('Shell quote damage detected in selector:');
+      if (selectorCheck.details) {
+        lines.push(`  ${selectorCheck.details}`);
+      }
+      lines.push('');
+      lines.push('Try using the two-step pattern:');
+      lines.push(`  1. bdg dom query '${selector}'`);
+      lines.push(`  2. bdg dom ${operationType} 0${operationType === 'fill' ? ' "value"' : ''}`);
+      return lines.join('\n');
+    }
+  }
 
   const troubleshootingSteps =
     operationType === 'fill'
@@ -68,7 +97,11 @@ function formatScriptExecutionError(
           `3. Try direct eval: bdg dom eval "document.querySelector('${escapeSelectorForJS(selector)}').click()"`,
         ];
 
-  return `Script execution failed: ${errorText}${location}\n\nTroubleshooting:\n  ${troubleshootingSteps.join('\n  ')}`;
+  lines.push('');
+  lines.push('Troubleshooting:');
+  lines.push(`  ${troubleshootingSteps.join('\n  ')}`);
+
+  return lines.join('\n');
 }
 
 /**
@@ -119,7 +152,8 @@ export async function fillElement(
       const errorMessage = formatScriptExecutionError(
         cdpResponse.exceptionDetails,
         selector,
-        'fill'
+        'fill',
+        expression
       );
       const err = fillableElementNotFoundError(selector);
       throw new CommandError(
@@ -187,7 +221,8 @@ export async function clickElement(
       const errorMessage = formatScriptExecutionError(
         cdpResponse.exceptionDetails,
         selector,
-        'click'
+        'click',
+        expression
       );
       const err = clickableElementNotFoundError(selector);
       throw new CommandError(

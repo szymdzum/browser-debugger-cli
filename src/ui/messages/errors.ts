@@ -5,6 +5,11 @@
  */
 
 import { formatDuration, joinLines } from '@/ui/formatting.js';
+import {
+  detectSelectorQuoteDamage,
+  detectScriptQuoteDamage,
+  hasAttributeSelector,
+} from '@/utils/shellDetection.js';
 
 /**
  * Generate "session already running" error message.
@@ -162,24 +167,60 @@ export function sessionNotActiveError(operation: string): string {
 }
 
 /**
- * Generate element not found error with CDP fallback.
+ * Generate element not found error with shell quote detection and CDP fallback.
  *
- * Provides guidance for when high-level DOM commands fail to find elements,
- * including CDP alternatives for complex queries.
+ * Provides guidance for when high-level DOM commands fail to find elements.
+ * Detects shell quote damage for attribute selectors and provides specific
+ * recovery suggestions including the two-step query-then-inspect pattern.
  *
- * @param selector - CSS selector that failed
- * @returns Formatted error message with fallback suggestions
+ * @param selector - CSS selector that failed (as received by the command)
+ * @returns Formatted error message with context-aware suggestions
  *
  * @example
  * ```typescript
- * throw new CommandError(
- *   elementNotFoundError('#missing-element'),
- *   { cdpAlternative: 'Use Runtime.evaluate for complex queries' },
- *   EXIT_CODES.RESOURCE_NOT_FOUND
- * );
+ * // Simple selector - standard suggestions
+ * elementNotFoundError('#missing-element')
+ *
+ * // Attribute selector with shell damage detected
+ * elementNotFoundError('[data-test-id=value]')
+ * // Shows: "Shell quote handling detected. Selector received without quotes."
  * ```
  */
 export function elementNotFoundError(selector: string): string {
+  const quoteCheck = detectSelectorQuoteDamage(selector);
+
+  if (quoteCheck.damaged) {
+    return joinLines(
+      `Error: Element not found: ${selector}`,
+      '',
+      'Shell quote handling detected. Selector received without quotes.',
+      quoteCheck.details && `  ${quoteCheck.details}`,
+      '',
+      'Discovery path (recommended):',
+      `  1. Query first:  bdg dom query '${selector}'`,
+      '  2. Then inspect: bdg dom a11y describe 0',
+      '',
+      'Or escape quotes for direct use:',
+      `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\\"${selector.replace(/=/g, '=\\\\\\"')}\\\\\\"\\")"}'`
+    );
+  }
+
+  if (hasAttributeSelector(selector)) {
+    return joinLines(
+      `Error: Element not found: ${selector}`,
+      '',
+      'Attribute selector detected. If quotes were stripped by shell:',
+      '',
+      'Discovery path (recommended):',
+      `  1. Query first:  bdg dom query '${selector}'`,
+      '  2. Then inspect: bdg dom a11y describe 0',
+      '',
+      'Or verify element exists:',
+      '  - Use bdg peek --dom to see page structure',
+      '  - Check if element loads asynchronously'
+    );
+  }
+
   return joinLines(
     `Error: Element not found: ${selector}`,
     '',
@@ -189,7 +230,7 @@ export function elementNotFoundError(selector: string): string {
     '  - Use bdg peek to see if page loaded correctly',
     '',
     'Advanced: Use CDP for complex queries:',
-    `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector('${selector}')"}'`
+    `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\\"${selector}\\")"}'`
   );
 }
 
@@ -356,12 +397,54 @@ export function sessionMetadataMissingError(field: string): ErrorWithSuggestion 
 }
 
 /**
- * Script execution error.
+ * Script execution error with shell quote detection.
+ *
+ * Shows the script as received to help diagnose shell quote stripping issues.
+ * Detects common patterns like `querySelector(input)` that indicate shell damage.
+ *
+ * @param errorMessage - The JavaScript error message
+ * @param receivedScript - The script as received by the command (optional for backwards compat)
+ * @returns Error with context-aware suggestions
  */
-export function scriptExecutionError(details: string): ErrorWithSuggestion {
+export function scriptExecutionError(
+  errorMessage: string,
+  receivedScript?: string
+): ErrorWithSuggestion {
+  if (!receivedScript) {
+    return {
+      message: errorMessage,
+      suggestion: 'Check JavaScript syntax and ensure the expression is valid',
+    };
+  }
+
+  const quoteCheck = detectScriptQuoteDamage(receivedScript);
+  const truncatedScript =
+    receivedScript.length > 100 ? receivedScript.slice(0, 100) + '...' : receivedScript;
+
+  const lines: string[] = [];
+  lines.push(`Script received: ${truncatedScript}`);
+
+  if (quoteCheck.damaged) {
+    lines.push('');
+    lines.push('Shell quote damage detected:');
+    if (quoteCheck.details) {
+      lines.push(`  ${quoteCheck.details}`);
+    }
+    if (quoteCheck.suggestion) {
+      lines.push('');
+      lines.push(quoteCheck.suggestion);
+    }
+  } else {
+    lines.push('');
+    lines.push('Tips:');
+    lines.push("  - Use single quotes around script: bdg dom eval '...'");
+    lines.push('  - For complex scripts, use heredoc or --file option');
+    lines.push('  - Escape inner quotes: \\" or use opposite quote style');
+  }
+
   return {
-    message: details,
-    suggestion: 'Check JavaScript syntax and ensure the expression is valid',
+    message: errorMessage,
+    suggestion: lines.join('\n'),
   };
 }
 
