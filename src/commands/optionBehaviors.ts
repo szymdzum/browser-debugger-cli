@@ -130,6 +130,34 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'Custom network idle timeout in ms (use for slow APIs)',
   },
 
+  'scroll:--down': {
+    whenEnabled: 'Scrolls page down by specified pixel amount',
+  },
+  'scroll:--up': {
+    whenEnabled: 'Scrolls page up by specified pixel amount',
+  },
+  'scroll:--left': {
+    whenEnabled: 'Scrolls page left by specified pixel amount (horizontal scroll)',
+  },
+  'scroll:--right': {
+    whenEnabled: 'Scrolls page right by specified pixel amount (horizontal scroll)',
+  },
+  'scroll:--top': {
+    whenEnabled: 'Scrolls to the very top of the page (position 0,0)',
+  },
+  'scroll:--bottom': {
+    whenEnabled: 'Scrolls to the very bottom of the page',
+  },
+  'scroll:--no-wait': {
+    default: 'Waits for lazy-loaded content to stabilize after scroll (200ms network idle)',
+    whenDisabled: 'Returns immediately without waiting for lazy-loaded content',
+    automaticBehavior:
+      'Wait helps ensure images and infinite scroll content load before next action',
+  },
+  'scroll:--index': {
+    whenEnabled: 'If selector matches multiple elements, scrolls to the nth element (0-based)',
+  },
+
   'form:--all': {
     default: 'Shows primary form (highest relevance), mentions others exist',
     whenEnabled: 'Expands all forms on the page with full details',

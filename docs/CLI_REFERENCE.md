@@ -177,7 +177,7 @@ bdg dom get "h1" --raw --json                # HTML as JSON
 | **Filtering** | First match only | `--all`, `--nth`, `--node-id` |
 
 **Semantic Output Examples:**
-```
+```text
 [Heading L1] "Welcome"
 [Button] "Submit Form" (focusable)
 [Link] "Learn more" (focusable)
@@ -245,7 +245,7 @@ EOF
 ```
 
 When errors occur, bdg shows the script as received to help diagnose shell escaping issues:
-```
+```text
 Error: ReferenceError: input is not defined
 Script received: document.querySelector(input).value
 
@@ -274,7 +274,7 @@ bdg dom form --brief
 ```
 
 **Human Output:**
-```
+```sql
 FORMS DISCOVERED: 1
 ══════════════════════════════════════════════════════════════════════
 
@@ -375,6 +375,13 @@ bdg dom pressKey 0 Enter                          # Use cached query index
 bdg dom submit "#login-form"
 bdg dom submit "#login-form" --wait-network 2000  # Wait 2s for network idle
 bdg dom submit "#login-form" --wait-navigation    # Wait for page navigation
+
+# Scroll page (waits for lazy-loaded content)
+bdg dom scroll "footer"                           # Scroll element into view
+bdg dom scroll --down 500                         # Scroll down by pixels
+bdg dom scroll --bottom                           # Scroll to page bottom
+bdg dom scroll --top                              # Scroll to page top
+bdg dom scroll "li.item" --index 5               # Scroll to nth match
 ```
 
 **Press Key Options:**
@@ -705,7 +712,7 @@ Use `--history` to see messages from all page loads during the session.
 
 Console messages with objects are automatically expanded to show nested values:
 
-```
+```text
 # Before (without expansion)
 [log] User: [object Object]
 

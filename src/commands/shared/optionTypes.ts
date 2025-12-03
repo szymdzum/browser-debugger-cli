@@ -211,6 +211,27 @@ export interface PressKeyCommandOptions extends BaseOptions, IndexOptions, KeyPr
   wait: boolean;
 }
 
+/**
+ * Options for scroll command.
+ * Supports scrolling to elements, by pixels, or to page boundaries.
+ */
+export interface ScrollCommandOptions extends BaseOptions, IndexOptions {
+  /** Scroll down by pixels */
+  down?: number;
+  /** Scroll up by pixels */
+  up?: number;
+  /** Scroll left by pixels */
+  left?: number;
+  /** Scroll right by pixels */
+  right?: number;
+  /** Scroll to page top */
+  top?: boolean;
+  /** Scroll to page bottom */
+  bottom?: boolean;
+  /** Wait for stability after scroll (--no-wait sets to false) */
+  wait: boolean;
+}
+
 /** Options for A11y tree command */
 export type A11yTreeCommandOptions = BaseOptions;
 

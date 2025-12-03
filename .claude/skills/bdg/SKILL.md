@@ -107,9 +107,14 @@ bdg cdp Page.captureScreenshot --params '{
 - `bdg cdp Page.captureScreenshot` - Take screenshot
 - `bdg cdp Network.enable` - Enable network tracking
 
+### DOM Interaction
+- `bdg dom query <selector>` - Query DOM elements
+- `bdg dom click <selector>` - Click element
+- `bdg dom fill <selector> <value>` - Fill input
+- `bdg dom scroll <selector>` - Scroll to element (or `--down`, `--bottom`)
+
 ### Discovery
 - `bdg --help --json` - Machine-readable command reference
-- `bdg dom query <selector>` - Query DOM elements
 - `bdg dom eval <js>` - Evaluate JavaScript
 
 ## Error Handling

@@ -152,7 +152,7 @@ All indices are 0-based everywhere (query output, `--index` option, `dom get`).
 ## Project Overview
 
 **bdg** is a CLI for browser telemetry via Chrome DevTools Protocol. Architecture:
-```
+```text
 CLI Command → Unix Socket → Daemon → Worker (CDP connection)
 ```
 
@@ -215,6 +215,7 @@ bdg dom query "selector"     # Find elements [0], [1], [2]...
 bdg dom get 0                # Get first element
 bdg dom fill "input" "val"   # Fill form
 bdg dom click "button"       # Click
+bdg dom scroll "footer"      # Scroll to element (or --down 500, --bottom)
 
 # CDP
 bdg cdp Runtime.evaluate --params '{"expression":"document.title"}'

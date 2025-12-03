@@ -9,8 +9,10 @@ import {
   fillElement,
   clickElement,
   pressKeyElement,
+  scrollPage,
   waitForActionStability,
   type PressKeyResult,
+  type ScrollResult,
 } from '@/commands/dom/formFillHelpers.js';
 import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
@@ -22,6 +24,7 @@ import type {
   ClickCommandOptions,
   SubmitCommandOptions,
   PressKeyCommandOptions,
+  ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { SessionMetadata } from '@/session/metadata.js';
@@ -341,6 +344,88 @@ export function registerFormInteractionCommands(program: Command): void {
         formatPressKeyOutput
       );
     });
+
+  domCommand
+    .command('scroll')
+    .description('Scroll page to element, by pixels, or to page boundaries')
+    .argument('[selector]', 'CSS selector to scroll into view (optional)')
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
+    .option('--down <pixels>', 'Scroll down by pixels', parseInt)
+    .option('--up <pixels>', 'Scroll up by pixels', parseInt)
+    .option('--left <pixels>', 'Scroll left by pixels', parseInt)
+    .option('--right <pixels>', 'Scroll right by pixels', parseInt)
+    .option('--top', 'Scroll to page top')
+    .option('--bottom', 'Scroll to page bottom')
+    .option('--no-wait', 'Skip waiting for lazy-loaded content after scroll')
+    .addOption(jsonOption())
+    .action(async (selector: string | undefined, options: ScrollCommandOptions) => {
+      await runCommand(
+        async () => {
+          const hasOffsetOrPosition =
+            options.down !== undefined ||
+            options.up !== undefined ||
+            options.left !== undefined ||
+            options.right !== undefined ||
+            options.top === true ||
+            options.bottom === true;
+
+          if (!selector && !hasOffsetOrPosition) {
+            return {
+              success: false,
+              error: 'No scroll target specified',
+              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              errorContext: {
+                suggestion:
+                  'Provide a selector (bdg dom scroll "footer") or offset (--down 500, --bottom)',
+              },
+            };
+          }
+
+          return await withCDPConnection(async (cdp) => {
+            const scrollOptions = filterDefined({
+              index: options.index,
+              down: options.down,
+              up: options.up,
+              left: options.left,
+              right: options.right,
+              top: options.top,
+              bottom: options.bottom,
+            }) as {
+              index?: number;
+              down?: number;
+              up?: number;
+              left?: number;
+              right?: number;
+              top?: boolean;
+              bottom?: boolean;
+            };
+
+            const result = await scrollPage(cdp, selector, scrollOptions);
+
+            if (!result.success) {
+              return {
+                success: false,
+                error: result.error ?? 'Failed to scroll',
+                exitCode: result.error?.includes('not found')
+                  ? EXIT_CODES.RESOURCE_NOT_FOUND
+                  : EXIT_CODES.INVALID_ARGUMENTS,
+                errorContext: {
+                  suggestion: result.suggestion ?? 'Verify the selector exists on the page',
+                },
+              };
+            }
+
+            if (options.wait !== false) {
+              await waitForActionStability(cdp);
+            }
+
+            return { success: true, data: result };
+          });
+        },
+        options,
+        formatScrollOutput
+      );
+    });
 }
 
 /**
@@ -475,6 +560,45 @@ function formatPressKeyOutput(result: PressKeyResult): string {
     if (result.modifiers & 4) mods.push('Alt');
     if (result.modifiers & 8) mods.push('Meta');
     details.push(['Modifiers', mods.join('+')]);
+  }
+
+  fmt.keyValueList(details, 15);
+
+  return fmt.build();
+}
+
+/**
+ * Format scroll command output for human-readable display.
+ *
+ * @param result - Scroll result
+ * @returns Formatted string
+ */
+function formatScrollOutput(result: ScrollResult): string {
+  const fmt = new OutputFormatter();
+
+  fmt.text('✓ Page Scrolled');
+  fmt.blank();
+
+  const details: [string, string][] = [['Scroll Type', result.scrollType]];
+
+  if (result.selector) {
+    details.push(['Selector', result.selector]);
+  }
+
+  if (result.scrolledTo) {
+    details.push(['Position', `(${result.scrolledTo.x}, ${result.scrolledTo.y})`]);
+  }
+
+  if (result.scrolledBy && (result.scrolledBy.x !== 0 || result.scrolledBy.y !== 0)) {
+    details.push(['Scrolled By', `(${result.scrolledBy.x}, ${result.scrolledBy.y})`]);
+  }
+
+  if (result.viewportSize) {
+    details.push(['Viewport', `${result.viewportSize.width}x${result.viewportSize.height}`]);
+  }
+
+  if (result.pageSize) {
+    details.push(['Page Size', `${result.pageSize.width}x${result.pageSize.height}`]);
   }
 
   fmt.keyValueList(details, 15);
