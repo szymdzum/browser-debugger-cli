@@ -196,45 +196,43 @@ bdg cdp Network.emulateNetworkConditions --params '{
 
 ### Pattern 5: Take Screenshots
 
-Capture page screenshots:
+Use `bdg dom screenshot` for simple, high-level screenshots:
 
 ```bash
-# Full page screenshot (PNG)
-SCREENSHOT=$(bdg cdp Page.captureScreenshot --params '{
+# Full page screenshot (PNG) - saves directly to file
+bdg dom screenshot ./screenshot.png
+
+# Viewport only (not full page)
+bdg dom screenshot ./viewport.png --no-full-page
+
+# JPEG format with quality
+bdg dom screenshot ./page.jpg --format jpeg --quality 85
+
+# Element screenshot by selector
+bdg dom screenshot ./element.png --selector "#logo"
+
+# Element screenshot by cached index (after dom query)
+bdg dom query ".card"
+bdg dom screenshot ./card.png --index 0
+
+# Scroll element into view before capture
+bdg dom screenshot ./footer.png --selector "footer" --scroll "footer"
+
+# Continuous capture mode (screenshots to directory)
+bdg dom screenshot ./frames/ --follow --interval 500 --limit 10
+
+# Full resolution (no auto-resize)
+bdg dom screenshot ./full-res.png --no-resize
+```
+
+**Alternative: Raw CDP** (for advanced control):
+
+```bash
+# Full page via CDP (returns base64, requires manual decoding)
+bdg cdp Page.captureScreenshot --params '{
   "format": "png",
   "captureBeyondViewport": true
-}')
-
-# Save to file
-echo "$SCREENSHOT" | jq -r '.data' | base64 -d > screenshot.png
-
-# Viewport screenshot (JPEG)
-bdg cdp Page.captureScreenshot --params '{
-  "format": "jpeg",
-  "quality": 80
-}' | jq -r '.data' | base64 -d > viewport.jpg
-
-# Specific element screenshot (requires coordinates)
-RECT=$(bdg cdp Runtime.evaluate --params '{
-  "expression": "document.querySelector(\"#logo\").getBoundingClientRect()",
-  "returnByValue": true
-}' | jq '.result.value')
-
-X=$(echo "$RECT" | jq '.x')
-Y=$(echo "$RECT" | jq '.y')
-WIDTH=$(echo "$RECT" | jq '.width')
-HEIGHT=$(echo "$RECT" | jq '.height')
-
-bdg cdp Page.captureScreenshot --params "{
-  \"format\": \"png\",
-  \"clip\": {
-    \"x\": $X,
-    \"y\": $Y,
-    \"width\": $WIDTH,
-    \"height\": $HEIGHT,
-    \"scale\": 1
-  }
-}" | jq -r '.data' | base64 -d > element.png
+}' | jq -r '.data' | base64 -d > screenshot.png
 ```
 
 ---

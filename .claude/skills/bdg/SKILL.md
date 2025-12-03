@@ -86,10 +86,14 @@ done
 ### Take Screenshot
 
 ```bash
-bdg cdp Page.captureScreenshot --params '{
-  "format": "png",
-  "captureBeyondViewport": true
-}' | jq -r '.data' | base64 -d > screenshot.png
+# Simple - saves directly to file
+bdg dom screenshot ./screenshot.png
+
+# Element screenshot
+bdg dom screenshot ./element.png --selector "#logo"
+
+# Viewport only (not full page)
+bdg dom screenshot ./viewport.png --no-full-page
 ```
 
 ## Key Commands
@@ -106,6 +110,12 @@ bdg cdp Page.captureScreenshot --params '{
 - `bdg cdp Page.navigate` - Navigate to URL
 - `bdg cdp Page.captureScreenshot` - Take screenshot
 - `bdg cdp Network.enable` - Enable network tracking
+
+### Screenshots
+- `bdg dom screenshot <path>` - Capture full-page screenshot
+- `bdg dom screenshot <path> --selector <css>` - Capture specific element
+- `bdg dom screenshot <path> --no-full-page` - Viewport only
+- `bdg dom screenshot <dir> --follow` - Continuous capture mode
 
 ### Discovery
 - `bdg --help --json` - Machine-readable command reference
@@ -215,7 +225,8 @@ bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 | Get page title | `bdg cdp Runtime.evaluate --params '{"expression": "document.title", "returnByValue": true}'` |
 | Get all links | `bdg cdp Runtime.evaluate --params '{"expression": "Array.from(document.querySelectorAll(\"a\")).map(a => a.href)", "returnByValue": true}'` |
 | Navigate to URL | `bdg cdp Page.navigate --params '{"url": "https://example.com"}'` |
-| Take screenshot | `bdg cdp Page.captureScreenshot --params '{"format": "png"}'` |
+| Take screenshot | `bdg dom screenshot ./screenshot.png` |
+| Element screenshot | `bdg dom screenshot ./element.png --selector "#id"` |
 | Disable cache | `bdg cdp Network.enable && bdg cdp Network.setCacheDisabled --params '{"cacheDisabled": true}'` |
 | Get cookies | `bdg cdp Network.enable && bdg cdp Network.getCookies` |
 | Reload page | `bdg cdp Page.reload --params '{"ignoreCache": true}'` |
