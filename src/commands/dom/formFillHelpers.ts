@@ -617,6 +617,7 @@ export interface ScrollResult {
   success: boolean;
   error?: string;
   suggestion?: string;
+  exitCode?: number;
   scrollType: 'element' | 'position' | 'offset';
   selector?: string;
   scrolledTo?: {
@@ -788,6 +789,7 @@ export async function scrollPage(
       if (cdpResponse.exceptionDetails) {
         return {
           success: false,
+          exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
           scrollType: 'element',
           error: `Script execution failed: ${cdpResponse.exceptionDetails.text}`,
           suggestion: `Verify element exists: bdg dom query "${selector}"`,
@@ -798,8 +800,24 @@ export async function scrollPage(
         return cdpResponse.result.value;
       }
 
+      // Handle error results from script that don't have scrollType
+      const scriptResult = cdpResponse.result?.value as {
+        success?: boolean;
+        error?: string;
+      };
+      if (scriptResult?.success === false && scriptResult.error) {
+        return {
+          success: false,
+          exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+          scrollType: 'element',
+          error: scriptResult.error,
+          suggestion: `Verify element exists: bdg dom query "${selector}"`,
+        };
+      }
+
       return {
         success: false,
+        exitCode: EXIT_CODES.SOFTWARE_ERROR,
         scrollType: 'element',
         error: 'Unexpected response format',
       };
@@ -829,6 +847,7 @@ export async function scrollPage(
     if (cdpResponse.exceptionDetails) {
       return {
         success: false,
+        exitCode: EXIT_CODES.SOFTWARE_ERROR,
         scrollType: 'offset',
         error: `Script execution failed: ${cdpResponse.exceptionDetails.text}`,
       };
@@ -840,6 +859,7 @@ export async function scrollPage(
 
     return {
       success: false,
+      exitCode: EXIT_CODES.SOFTWARE_ERROR,
       scrollType: 'offset',
       error: 'Unexpected response format',
     };
@@ -847,6 +867,7 @@ export async function scrollPage(
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       success: false,
+      exitCode: EXIT_CODES.SOFTWARE_ERROR,
       scrollType: selector ? 'element' : 'offset',
       error: `Scroll failed: ${errorMessage}`,
     };

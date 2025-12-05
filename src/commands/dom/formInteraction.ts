@@ -361,6 +361,36 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selector: string | undefined, options: ScrollCommandOptions) => {
       await runCommand(
         async () => {
+          // Validate --index requires selector
+          if (options.index !== undefined && !selector) {
+            return {
+              success: false,
+              error: '--index requires a selector',
+              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              errorContext: {
+                suggestion: 'Use: bdg dom scroll "selector" --index 2',
+              },
+            };
+          }
+
+          // Validate conflicting scroll directions
+          const hasConflictingVertical = options.down !== undefined && options.up !== undefined;
+          const hasConflictingHorizontal =
+            options.left !== undefined && options.right !== undefined;
+
+          if (hasConflictingVertical || hasConflictingHorizontal) {
+            return {
+              success: false,
+              error: 'Conflicting scroll directions specified',
+              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              errorContext: {
+                suggestion: hasConflictingVertical
+                  ? 'Use either --down or --up, not both'
+                  : 'Use either --left or --right, not both',
+              },
+            };
+          }
+
           const hasOffsetOrPosition =
             options.down !== undefined ||
             options.up !== undefined ||
@@ -406,9 +436,7 @@ export function registerFormInteractionCommands(program: Command): void {
               return {
                 success: false,
                 error: result.error ?? 'Failed to scroll',
-                exitCode: result.error?.includes('not found')
-                  ? EXIT_CODES.RESOURCE_NOT_FOUND
-                  : EXIT_CODES.INVALID_ARGUMENTS,
+                exitCode: result.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
                 errorContext: {
                   suggestion: result.suggestion ?? 'Verify the selector exists on the page',
                 },
