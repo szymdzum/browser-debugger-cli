@@ -10,4 +10,6 @@ export interface WorkerConfig {
   maxBodySize?: number;
   headless?: boolean;
   chromeWsUrl?: string;
+  /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
+  chromeFlags?: string[];
 }

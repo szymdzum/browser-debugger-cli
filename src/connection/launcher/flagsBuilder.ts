@@ -62,6 +62,31 @@ export function isDocker(): boolean {
 }
 
 /**
+ * Parse custom Chrome flags from BDG_CHROME_FLAGS environment variable.
+ *
+ * Supports space-separated flags, with proper handling of flags containing
+ * equals signs (e.g., --window-size=1920,1080).
+ *
+ * @returns Array of Chrome flags parsed from environment variable
+ *
+ * @example
+ * ```bash
+ * # Single flag
+ * BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost:5173
+ *
+ * # Multiple flags
+ * BDG_CHROME_FLAGS="--ignore-certificate-errors --disable-web-security" bdg https://localhost:5173
+ * ```
+ */
+export function getEnvChromeFlags(): string[] {
+  const envFlags = process.env['BDG_CHROME_FLAGS'];
+  if (!envFlags) {
+    return [];
+  }
+  return envFlags.split(' ').filter(Boolean);
+}
+
+/**
  * Build Chrome flags array from launch options.
  *
  * Uses chrome-launcher default flags as base (unless ignoreDefaultFlags is true)
@@ -70,6 +95,12 @@ export function isDocker(): boolean {
  *
  * When running in Docker, automatically adds GPU-disabling flags to work around
  * graphics limitations in containerized environments.
+ *
+ * Custom flags can be provided via:
+ * 1. BDG_CHROME_FLAGS environment variable (space-separated)
+ * 2. chromeFlags option array (from --chrome-flag CLI option)
+ *
+ * CLI flags take precedence over env var flags for the same setting.
  *
  * @param options - Launch options containing flag preferences
  * @returns Array of Chrome command-line flags
@@ -89,6 +120,9 @@ export function isDocker(): boolean {
  * // Docker environment (auto-detects)
  * const flags = buildChromeFlags({ port: 9222 });
  * // Includes --disable-gpu, --no-sandbox if in Docker
+ *
+ * // Environment variable
+ * // BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost
  * ```
  */
 export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
@@ -100,15 +134,13 @@ export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
 
   const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
 
+  // Custom flags from environment variable and CLI option
+  const envFlags = getEnvChromeFlags();
+  const cliFlags = options.chromeFlags ?? [];
+
   if (options.headless) {
-    return [
-      HEADLESS_FLAG,
-      ...baseFlags,
-      ...bdgFlags,
-      ...dockerFlags,
-      ...(options.chromeFlags ?? []),
-    ];
+    return [HEADLESS_FLAG, ...baseFlags, ...bdgFlags, ...dockerFlags, ...envFlags, ...cliFlags];
   }
 
-  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...(options.chromeFlags ?? [])];
+  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...envFlags, ...cliFlags];
 }

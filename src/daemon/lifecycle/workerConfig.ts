@@ -66,6 +66,9 @@ export function parseWorkerConfig(): WorkerConfig {
     if (config.chromeWsUrl !== undefined) {
       normalized.chromeWsUrl = config.chromeWsUrl;
     }
+    if (config.chromeFlags !== undefined) {
+      normalized.chromeFlags = config.chromeFlags;
+    }
 
     return normalized;
   } catch (error) {

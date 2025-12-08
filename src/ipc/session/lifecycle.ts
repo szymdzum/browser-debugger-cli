@@ -52,6 +52,8 @@ export interface SessionOptions {
   headless?: boolean;
   /** Connect to existing Chrome instance. */
   chromeWsUrl?: string;
+  /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']). */
+  chromeFlags?: string[];
 }
 
 /**
@@ -77,6 +79,8 @@ export interface StartSessionRequest extends IPCMessage {
   headless?: boolean;
   /** Connect to existing Chrome instance. */
   chromeWsUrl?: string;
+  /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']). */
+  chromeFlags?: string[];
 }
 
 /**

@@ -85,6 +85,7 @@ async function setupLaunchedChrome(
     ...filterDefined({
       userDataDir: config.userDataDir,
       headless: config.headless,
+      chromeFlags: config.chromeFlags,
     }),
   });
 

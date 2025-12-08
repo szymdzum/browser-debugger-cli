@@ -80,6 +80,8 @@ export interface LaunchWorkerOptions {
   maxBodySize?: number;
   headless?: boolean;
   chromeWsUrl?: string;
+  /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
+  chromeFlags?: string[];
 }
 
 /**
@@ -131,6 +133,7 @@ export async function launchSessionInWorker(
     maxBodySize: options.maxBodySize,
     headless: options.headless,
     chromeWsUrl: options.chromeWsUrl,
+    chromeFlags: options.chromeFlags,
   });
 
   const currentDir = dirname(fileURLToPath(import.meta.url));

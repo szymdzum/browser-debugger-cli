@@ -160,6 +160,7 @@ export async function startSession(
       maxBodySize: options.maxBodySize,
       headless: options.headless,
       chromeWsUrl: options.chromeWsUrl,
+      chromeFlags: options.chromeFlags,
     }),
   });
 

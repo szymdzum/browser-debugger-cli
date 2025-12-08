@@ -255,6 +255,8 @@ export interface SessionStartOptions {
   chromeWsUrl: string | undefined;
   /** Quiet mode - minimal output for AI agents */
   quiet: boolean;
+  /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
+  chromeFlags: string[] | undefined;
 }
 
 // ConsoleLevel is defined in types.ts for proper architectural layering

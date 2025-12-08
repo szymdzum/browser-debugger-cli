@@ -102,6 +102,7 @@ export class SessionHandlers {
             maxBodySize: request.maxBodySize,
             headless: request.headless,
             chromeWsUrl: request.chromeWsUrl,
+            chromeFlags: request.chromeFlags,
           })
         );
 

@@ -32,6 +32,8 @@ interface CollectorOptions {
   chromeWsUrl?: string;
   /** Quiet mode - suppress verbose landing page output for AI agents. */
   quiet?: boolean;
+  /** Custom Chrome flags (can be specified multiple times). */
+  chromeFlag?: string[];
 }
 
 /**
@@ -56,7 +58,13 @@ function applyCollectorOptions(command: Command): Command {
       '--chrome-ws-url <url>',
       'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
     )
-    .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false);
+    .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
+    .option(
+      '--chrome-flag <flag>',
+      'Custom Chrome flag (can be used multiple times, e.g., --chrome-flag="--ignore-certificate-errors")',
+      (value: string, previous: string[]) => previous.concat([value]),
+      [] as string[]
+    );
 }
 
 /**
@@ -75,6 +83,7 @@ function buildSessionOptions(options: CollectorOptions): {
   headless: boolean;
   chromeWsUrl: string | undefined;
   quiet: boolean;
+  chromeFlags: string[] | undefined;
 } {
   const maxBodySizeRule = positiveIntRule({ min: 1, max: 100, required: false });
   const timeoutRule = positiveIntRule({ min: 1, max: 3600, required: false });
@@ -89,6 +98,10 @@ function buildSessionOptions(options: CollectorOptions): {
     userDataDir = userDataDir.replace(/^~/, os.homedir());
   }
 
+  // Only pass chromeFlags if flags were provided
+  const chromeFlags =
+    options.chromeFlag && options.chromeFlag.length > 0 ? options.chromeFlag : undefined;
+
   return {
     port: parseInt(options.port, 10),
     timeout,
@@ -99,6 +112,7 @@ function buildSessionOptions(options: CollectorOptions): {
     headless: options.headless ?? false,
     chromeWsUrl: options.chromeWsUrl,
     quiet: options.quiet ?? false,
+    chromeFlags,
   };
 }
 

@@ -57,6 +57,7 @@ export async function startSessionViaDaemon(
         maxBodySize: options.maxBodySize,
         headless: options.headless,
         chromeWsUrl: options.chromeWsUrl,
+        chromeFlags: options.chromeFlags,
       })
     );
 
