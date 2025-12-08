@@ -98,9 +98,11 @@ function buildSessionOptions(options: CollectorOptions): {
     userDataDir = userDataDir.replace(/^~/, os.homedir());
   }
 
-  // Only pass chromeFlags if flags were provided
-  const chromeFlags =
-    options.chromeFlag && options.chromeFlag.length > 0 ? options.chromeFlag : undefined;
+  // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
+  const envFlags = process.env['BDG_CHROME_FLAGS']?.split(' ').filter(Boolean) ?? [];
+  const cliFlags = options.chromeFlag ?? [];
+  const combinedFlags = [...envFlags, ...cliFlags];
+  const chromeFlags = combinedFlags.length > 0 ? combinedFlags : undefined;
 
   return {
     port: parseInt(options.port, 10),
