@@ -87,6 +87,34 @@ bdg status
 rm -rf ~/.bdg/daemon.*
 ```
 
+## SSL/Certificate Issues
+
+### Self-signed certificates or local HTTPS servers
+```bash
+# Use --chrome-flags to ignore certificate errors
+bdg https://localhost:5173 --chrome-flags="--ignore-certificate-errors"
+
+# Or via environment variable
+BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost:5173
+```
+
+### Multiple custom Chrome flags
+```bash
+# Space-separated in quotes
+bdg https://example.com --chrome-flags="--ignore-certificate-errors --disable-web-security"
+
+# Or via environment variable
+BDG_CHROME_FLAGS="--ignore-certificate-errors --disable-web-security" bdg https://example.com
+```
+
+### Common Chrome flags for development
+| Flag | Use Case |
+|------|----------|
+| `--ignore-certificate-errors` | Self-signed SSL certs |
+| `--disable-web-security` | CORS issues in development |
+| `--allow-insecure-localhost` | Insecure localhost |
+| `--disable-features=IsolateOrigins,site-per-process` | Cross-origin iframes |
+
 ## Common Error Messages
 
 ### "Session already running"

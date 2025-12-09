@@ -32,8 +32,8 @@ interface CollectorOptions {
   chromeWsUrl?: string;
   /** Quiet mode - suppress verbose landing page output for AI agents. */
   quiet?: boolean;
-  /** Custom Chrome flags (can be specified multiple times). */
-  chromeFlag?: string[];
+  /** Custom Chrome flags (space-separated string). */
+  chromeFlags?: string;
 }
 
 /**
@@ -60,10 +60,8 @@ function applyCollectorOptions(command: Command): Command {
     )
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .option(
-      '--chrome-flag <flag>',
-      'Custom Chrome flag (can be used multiple times, e.g., --chrome-flag="--ignore-certificate-errors")',
-      (value: string, previous: string[]) => previous.concat([value]),
-      [] as string[]
+      '--chrome-flags <flags>',
+      'Custom Chrome flags (space-separated, e.g., --chrome-flags="--ignore-certificate-errors --disable-web-security")'
     );
 }
 
@@ -100,7 +98,7 @@ function buildSessionOptions(options: CollectorOptions): {
 
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
   const envFlags = process.env['BDG_CHROME_FLAGS']?.split(' ').filter(Boolean) ?? [];
-  const cliFlags = options.chromeFlag ?? [];
+  const cliFlags = options.chromeFlags?.split(' ').filter(Boolean) ?? [];
   const combinedFlags = [...envFlags, ...cliFlags];
   const chromeFlags = combinedFlags.length > 0 ? combinedFlags : undefined;
 

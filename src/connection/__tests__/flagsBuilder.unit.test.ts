@@ -61,62 +61,48 @@ describe('getEnvChromeFlags', () => {
 });
 
 describe('buildChromeFlags with custom flags', () => {
-  const originalEnv = process.env['BDG_CHROME_FLAGS'];
+  // BDG_CHROME_FLAGS env var is parsed by CLI in src/commands/start.ts
+  // and passed via chromeFlags option. buildChromeFlags only receives the merged array.
 
-  afterEach(() => {
-    // Restore original env var
-    if (originalEnv === undefined) {
-      delete process.env['BDG_CHROME_FLAGS'];
-    } else {
-      process.env['BDG_CHROME_FLAGS'] = originalEnv;
-    }
-  });
-
-  test('includes env var flags in output', () => {
-    process.env['BDG_CHROME_FLAGS'] = '--ignore-certificate-errors';
-    const flags = buildChromeFlags({ port: 9222 });
+  test('includes chromeFlags in output', () => {
+    const flags = buildChromeFlags({
+      port: 9222,
+      chromeFlags: ['--ignore-certificate-errors'],
+    });
     assert.ok(flags.includes('--ignore-certificate-errors'));
   });
 
-  test('includes CLI chromeFlags in output', () => {
-    delete process.env['BDG_CHROME_FLAGS'];
+  test('includes multiple chromeFlags in output', () => {
     const flags = buildChromeFlags({
       port: 9222,
-      chromeFlags: ['--disable-web-security'],
-    });
-    assert.ok(flags.includes('--disable-web-security'));
-  });
-
-  test('includes both env var and CLI flags', () => {
-    process.env['BDG_CHROME_FLAGS'] = '--ignore-certificate-errors';
-    const flags = buildChromeFlags({
-      port: 9222,
-      chromeFlags: ['--disable-web-security'],
+      chromeFlags: ['--ignore-certificate-errors', '--disable-web-security'],
     });
     assert.ok(flags.includes('--ignore-certificate-errors'));
     assert.ok(flags.includes('--disable-web-security'));
   });
 
-  test('CLI flags come after env var flags', () => {
-    process.env['BDG_CHROME_FLAGS'] = '--env-flag';
+  test('chromeFlags are appended at the end', () => {
     const flags = buildChromeFlags({
       port: 9222,
-      chromeFlags: ['--cli-flag'],
+      chromeFlags: ['--custom-flag'],
     });
-    const envIndex = flags.indexOf('--env-flag');
-    const cliIndex = flags.indexOf('--cli-flag');
-    assert.ok(envIndex < cliIndex, 'CLI flags should come after env var flags');
+    const customIndex = flags.indexOf('--custom-flag');
+    assert.strictEqual(customIndex, flags.length - 1, 'Custom flags should be at the end');
   });
 
   test('works with headless mode and custom flags', () => {
-    process.env['BDG_CHROME_FLAGS'] = '--ignore-certificate-errors';
     const flags = buildChromeFlags({
       port: 9222,
       headless: true,
-      chromeFlags: ['--disable-web-security'],
+      chromeFlags: ['--ignore-certificate-errors', '--disable-web-security'],
     });
     assert.ok(flags.includes('--headless=new'));
     assert.ok(flags.includes('--ignore-certificate-errors'));
     assert.ok(flags.includes('--disable-web-security'));
+  });
+
+  test('works without chromeFlags option', () => {
+    const flags = buildChromeFlags({ port: 9222 });
+    assert.ok(flags.includes('--remote-debugging-port=9222'));
   });
 });

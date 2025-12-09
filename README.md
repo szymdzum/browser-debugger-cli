@@ -45,6 +45,8 @@ npm install -g browser-debugger-cli@alpha
 
 ```bash
 bdg example.com                    # Start session
+bdg https://localhost:5173 --chrome-flags="--ignore-certificate-errors"  # Self-signed certs
+bdg https://localhost:5173 --chrome-flags="--disable-web-security"       # Disable CORS
 bdg cdp --search cookie            # Discover commands
 bdg cdp Network.getCookies         # Run any CDP method
 bdg dom query "button"             # High-level helpers
