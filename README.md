@@ -1,5 +1,8 @@
 # Browser Debugger CLI
 
+[![Run in Smithery](https://smithery.ai/badge/skills/szymdzum)](https://smithery.ai/skills?ns=szymdzum&utm_source=github&utm_medium=badge)
+
+
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/szymdzum/browser-debugger-cli/pulls)
 [![CI](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/ci.yml)
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
