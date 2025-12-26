@@ -51,6 +51,14 @@ bdg dom query "button"             # High-level helpers
 bdg stop                           # End session
 ```
 
+## Claude Code Integration
+
+```bash
+bdg-integrate                      # Symlinks bdg skill to ~/.claude/skills/
+```
+
+That's it! No MCP server needed - Claude gets direct access to browser APIs. Registers bdg as a [Claude Code skill](https://docs.anthropic.com/en/docs/claude-code).
+
 ## Current State
 
 **Raw CDP access is complete.** All 644 protocol methods (53 domains) work now. High-level wrappers (`bdg dom`, `bdg network`) are being added for common operations. See [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) for full reference.
