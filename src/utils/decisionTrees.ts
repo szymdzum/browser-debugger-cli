@@ -179,7 +179,7 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
         noAction: 'next',
       },
       {
-        question: 'Ready to end session and save output?',
+        question: 'Ready to end session?',
         yesCommand: 'stop',
         noAction: 'next',
       },

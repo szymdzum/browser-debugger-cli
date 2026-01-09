@@ -48,19 +48,28 @@ export function formatDomQuery(data: DomQueryResult): string {
     return `[${node.index}] <${node.tag}${classInfo}> ${node.preview}`;
   });
 
-  const hasMultipleResults = count > 1;
-  const exampleIndex = hasMultipleResults ? (nodes[0]?.index ?? 0) : 0;
+  // Escape selector for shell command
+  const escapedSelector = selector.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-  return fmt
-    .text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`)
-    .list(nodeLines)
-    .blank()
-    .section('Next steps:', [
-      `Get HTML:        bdg dom get ${exampleIndex}`,
-      `Extract text:    bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector('${selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').textContent"}'`,
-      `Full details:    bdg details dom ${exampleIndex}`,
-    ])
-    .build();
+  fmt.text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`);
+  fmt.list(nodeLines);
+  fmt.blank();
+
+  if (count === 1) {
+    fmt.section('Next steps:', [
+      `Get HTML:     bdg dom get "${escapedSelector}"`,
+      `Click:        bdg dom click "${escapedSelector}"`,
+      `Fill:         bdg dom fill "${escapedSelector}" "value"`,
+    ]);
+  } else {
+    fmt.section('Next steps (use --index N to select specific match):', [
+      `Click [0]:    bdg dom click "${escapedSelector}" --index 0`,
+      `Click [1]:    bdg dom click "${escapedSelector}" --index 1`,
+      `Fill [0]:     bdg dom fill "${escapedSelector}" --index 0 "value"`,
+    ]);
+  }
+
+  return fmt.build();
 }
 
 /**

@@ -21,7 +21,7 @@ export const PREVIEW_HEADERS = {
  * @returns Single-line tip for basic peek usage
  */
 export function compactTipsMessage(): string {
-  return 'Tip: bdg stop | bdg peek --last 50 | bdg peek --verbose';
+  return 'Tip: bdg peek --last 50 | bdg peek --verbose';
 }
 
 /**
@@ -32,9 +32,9 @@ export function compactTipsMessage(): string {
 export function verboseCommandsMessage(): string {
   return [
     'Commands:',
-    '  Stop session:    bdg stop',
     '  Full preview:    bdg peek --last 50',
     '  Watch live:      bdg tail',
+    '  End session:     bdg stop',
   ].join('\n');
 }
 

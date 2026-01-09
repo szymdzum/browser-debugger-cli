@@ -369,13 +369,10 @@ export interface DomQueryResult {
   count: number;
   nodes: Array<{
     index: number;
-    nodeId: number;
     tag?: string;
     classes?: string[];
     preview?: string;
   }>;
-  /** Navigation ID when query was performed (for staleness detection). */
-  navigationId?: number;
 }
 
 /**
@@ -383,7 +380,6 @@ export interface DomQueryResult {
  */
 export interface DomGetResult {
   nodes: Array<{
-    nodeId: number;
     tag?: string;
     attributes?: Record<string, unknown>;
     classes?: string[];

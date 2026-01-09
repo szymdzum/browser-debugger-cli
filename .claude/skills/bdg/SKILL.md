@@ -47,33 +47,45 @@ bdg dom screenshot /tmp/el.png --selector "#main"   # Element only
 bdg dom screenshot /tmp/scroll.png --scroll "#target" # Scroll to element first
 ```
 
+## Playwright Selectors
+
+Use Playwright-style selectors for precise element targeting:
+
+```bash
+bdg dom click 'button:has-text("Submit")'     # Contains text
+bdg dom click ':text("Login")'                 # Smallest element with text
+bdg dom fill 'input:has-text("Email")' "me@example.com"
+bdg dom click 'button:visible'                 # Only visible elements
+bdg dom click 'button.primary:has-text("Save")' # CSS + text
+```
+
+When multiple elements match, use `--index`:
+```bash
+bdg dom query "button"            # Shows [0], [1], [2]...
+bdg dom click "button" --index 0  # Click first match
+```
+
 ## Form Interaction
 
 ```bash
-# Discover forms
-bdg dom form --brief              # Quick scan: field names, types, required
-
-# Fill and interact
-bdg dom fill "input[name='user']" "myuser"    # Fill by selector
-bdg dom fill 0 "value"                         # Fill by index (from query)
-bdg dom click "button.submit"                  # Click element
-bdg dom submit "form" --wait-navigation        # Submit and wait for page load
-bdg dom pressKey "input" Enter                 # Press Enter key
-
-# Options
---no-wait          # Skip network stability wait
---wait-navigation  # Wait for page navigation (traditional forms)
---wait-network <ms> # Wait for network idle (SPA forms)
---index <n>        # Select nth element when multiple match
+bdg dom form --brief                           # Quick scan: names, types, required
+bdg dom fill "input[name='user']" "myuser"     # Fill by attribute
+bdg dom fill 'input:has-text("Username")' "me" # Fill by label text
+bdg dom click 'button:text("Submit")'          # Click by text
+bdg dom submit "form" --wait-navigation        # Submit and wait
+bdg dom pressKey "input" Enter                 # Press key
+bdg dom pressKey "input" Tab --times 3         # Press key multiple times
 ```
+
+Options: `--no-wait`, `--wait-navigation`, `--wait-network <ms>`, `--index <n>`
 
 ## DOM Inspection
 
 ```bash
-bdg dom query "selector"     # Find elements, returns [0], [1], [2]...
+bdg dom query "selector"     # Find elements matching selector
 bdg dom get "selector"       # Get semantic a11y info (token-efficient)
 bdg dom get "selector" --raw # Get full HTML
-bdg dom eval "js expression" # Run JavaScript
+bdg dom eval "js expression" # Run JavaScript (handles DOM elements)
 ```
 
 ## CDP Access
@@ -103,7 +115,7 @@ bdg https://example.com/login
 bdg dom form --brief
 bdg dom fill "input[name='username']" "$USER"
 bdg dom fill "input[name='password']" "$PASS"
-bdg dom submit "button[type='submit']" --wait-navigation
+bdg dom click 'button:text("Log in")' --wait-navigation
 bdg dom screenshot /tmp/result.png
 bdg stop
 ```
@@ -118,6 +130,12 @@ for i in {1..20}; do
   [ "$EXISTS" = "true" ] && break
   sleep 0.5
 done
+```
+
+### Click Button by Text
+```bash
+bdg dom click 'button:text("Submit")'
+bdg dom click 'button:has-text("Save")' --wait-navigation
 ```
 
 ### Extract Data
@@ -177,37 +195,23 @@ bdg https://example.com --chrome-flags="--ignore-certificate-errors --disable-we
 **Prefer DOM queries over screenshots** for verification:
 
 ```bash
-# GOOD: Fast, precise, scriptable
+# Check element with text exists
+bdg dom query 'div:has-text("Success")'
+
+# Check specific text content
 bdg cdp Runtime.evaluate --params '{
   "expression": "document.querySelector(\".error-message\")?.textContent",
   "returnByValue": true
 }'
 
-# GOOD: Check element exists
-bdg dom query ".submit-btn"
-
-# GOOD: Check text content
+# Check text anywhere on page
 bdg cdp Runtime.evaluate --params '{
   "expression": "document.body.innerText.includes(\"Success\")",
   "returnByValue": true
 }'
-
-# AVOID: Screenshots for simple verification (slow, requires visual inspection)
-bdg dom screenshot /tmp/check.png  # Only use when you need visual proof
 ```
 
-**When to use screenshots:**
-- Visual regression testing
-- Capturing proof for user review
-- Debugging layout issues
-- When DOM structure is unknown
-
-**When to use DOM queries:**
-- Verifying text content appeared
-- Checking element exists/visible
-- Validating form state
-- Counting elements
-- Any programmatic assertion
+Use screenshots only for visual proof or when DOM structure is unknown.
 
 ## When NOT to Use bdg
 

@@ -4,7 +4,6 @@
 
 import type { Command } from 'commander';
 
-import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import {
   fillElement,
   clickElement,
@@ -109,36 +108,22 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('fill')
     .description('Fill a form field with a value (React-compatible, waits for stability)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selector>', 'CSS/Playwright selector (e.g., "#email", ":has-text(\'Email\')")')
     .argument('<value>', 'Value to fill')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
     .option('--no-wait', 'Skip waiting for network stability after fill')
     .addOption(jsonOption())
-    .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
+    .action(async (selector: string, value: string, options: FillCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await DomElementResolver.getInstance().resolve(
-            selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
           return await withCDPConnection(async (cdp) => {
             const fillOptions = filterDefined({
-              index: target.index,
+              index: options.index,
               blur: options.blur,
             }) as { index?: number; blur?: boolean };
 
-            const result = await fillElement(cdp, target.selector, value, fillOptions);
+            const result = await fillElement(cdp, selector, value, fillOptions);
 
             if (!result.success) {
               return {
@@ -169,34 +154,20 @@ export function registerFormInteractionCommands(program: Command): void {
 
   domCommand
     .command('click')
-    .description('Click an element and wait for stability (accepts selector or index)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .description('Click an element and wait for stability')
+    .argument('<selector>', 'CSS/Playwright selector (e.g., "button", ":text(\'Submit\')")')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
     .option('--no-wait', 'Skip waiting for network stability after click')
     .addOption(jsonOption())
-    .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
+    .action(async (selector: string, options: ClickCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await DomElementResolver.getInstance().resolve(
-            selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
           return await withCDPConnection(async (cdp) => {
             const clickOptions = filterDefined({
-              index: target.index,
+              index: options.index,
             }) as { index?: number };
 
-            const result = await clickElement(cdp, target.selector, clickOptions);
+            const result = await clickElement(cdp, selector, clickOptions);
 
             if (!result.success) {
               return {
@@ -227,32 +198,18 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('submit')
     .description('Submit a form by clicking submit button and waiting for completion')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selector>', 'CSS/Playwright selector for form or submit button')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
     .option('--wait-navigation', 'Wait for page navigation after submit')
     .option('--wait-network <ms>', 'Wait for network idle after submit (milliseconds)', '1000')
     .option('--timeout <ms>', 'Maximum time to wait (milliseconds)', '10000')
     .addOption(jsonOption())
-    .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
+    .action(async (selector: string, options: SubmitCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await DomElementResolver.getInstance().resolve(
-            selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
           return await withCDPConnection(async (cdp) => {
             const submitOptions = filterDefined({
-              index: target.index,
+              index: options.index,
               waitNavigation: options.waitNavigation,
               waitNetwork: parseInt(options.waitNetwork, 10),
               timeout: parseInt(options.timeout, 10),
@@ -263,7 +220,7 @@ export function registerFormInteractionCommands(program: Command): void {
               timeout?: number;
             };
 
-            const result = await submitForm(cdp, target.selector, submitOptions);
+            const result = await submitForm(cdp, selector, submitOptions);
 
             if (!result.success) {
               return {
@@ -292,38 +249,24 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('pressKey')
     .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selector>', 'CSS/Playwright selector for the element')
     .argument('<key>', 'Key to press (Enter, Tab, Escape, Space, ArrowUp, etc.)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
     .option('--times <n>', 'Press key multiple times (default: 1)', parseInt)
     .option('--modifiers <mods>', 'Modifier keys: shift,ctrl,alt,meta (comma-separated)')
     .option('--no-wait', 'Skip waiting for network stability after key press')
     .addOption(jsonOption())
-    .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
+    .action(async (selector: string, key: string, options: PressKeyCommandOptions) => {
       await runCommand(
         async () => {
-          const target = await DomElementResolver.getInstance().resolve(
-            selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
           return await withCDPConnection(async (cdp) => {
             const pressKeyOptions = filterDefined({
-              index: target.index,
+              index: options.index,
               times: options.times,
               modifiers: options.modifiers,
             }) as { index?: number; times?: number; modifiers?: string };
 
-            const result = await pressKeyElement(cdp, target.selector, key, pressKeyOptions);
+            const result = await pressKeyElement(cdp, selector, key, pressKeyOptions);
 
             if (!result.success) {
               return {
@@ -354,7 +297,7 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('scroll')
     .description('Scroll page to element, by pixels, or to page boundaries')
-    .argument('[selector]', 'CSS selector to scroll into view (optional)')
+    .argument('[selector]', 'CSS/Playwright selector to scroll into view (optional)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
     .option('--down <pixels>', 'Scroll down by pixels', parseInt)
     .option('--up <pixels>', 'Scroll up by pixels', parseInt)

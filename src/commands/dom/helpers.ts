@@ -1,8 +1,12 @@
 /**
  * DOM helpers using CDP relay pattern.
  *
- * Provides query, get, and screenshot functionality using the worker's persistent CDP connection.
- * All operations go through IPC callCDP() for optimal performance.
+ * All queries use Playwright-style selector support via JS evaluation.
+ * Supports standard CSS selectors and Playwright pseudo-classes:
+ * - `:has-text("text")` - Element contains text (case-insensitive)
+ * - `:text("text")` - Smallest element with text
+ * - `:text-is("text")` - Exact text match
+ * - `:visible` - Element is visible
  */
 
 import {
@@ -27,13 +31,9 @@ import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   noNodesFoundError,
-  indexOutOfRangeError,
   elementNotVisibleError,
   elementZeroDimensionsError,
-  eitherArgumentRequiredError,
 } from '@/ui/messages/errors.js';
-import { ConcurrencyLimiter } from '@/utils/concurrency.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
@@ -47,12 +47,6 @@ export type {
   DomContext,
   ElementBounds,
 };
-
-/**
- * Maximum concurrent CDP calls for DOM operations.
- * Prevents overwhelming CDP connection with too many simultaneous requests.
- */
-const CDP_CONCURRENCY_LIMIT = 10;
 
 /**
  * Scroll position before a scroll operation.
@@ -70,6 +64,98 @@ const POST_SCROLL_DOM_STABLE_MS = 200;
 const POST_SCROLL_MAX_WAIT_MS = 2000;
 /** Check interval for stability polling */
 const STABILITY_CHECK_INTERVAL_MS = 50;
+
+/**
+ * JavaScript helper for Playwright-style selector support.
+ * Injected into browser context for all DOM queries.
+ */
+const QUERY_ELEMENTS_JS = `
+function __bdgQueryElements(selector) {
+  // Quick check for Playwright pseudo-classes
+  if (!/:(?:has-text|text-is|text|visible)\\s*(?:\\(|$)/.test(selector)) {
+    return [...document.querySelectorAll(selector)];
+  }
+
+  // Parse out Playwright pseudo-classes
+  const pseudoMatches = [];
+  let cssSelector = selector;
+
+  // Extract :has-text("...")
+  cssSelector = cssSelector.replace(/:has-text\\((['"])(.*?)\\1\\)/g, (_, q, text) => {
+    pseudoMatches.push({ type: 'has-text', arg: text });
+    return '';
+  });
+
+  // Extract :text-is("...") - must come before :text
+  cssSelector = cssSelector.replace(/:text-is\\((['"])(.*?)\\1\\)/g, (_, q, text) => {
+    pseudoMatches.push({ type: 'text-is', arg: text });
+    return '';
+  });
+
+  // Extract :text("...")
+  cssSelector = cssSelector.replace(/:text\\((['"])(.*?)\\1\\)/g, (_, q, text) => {
+    pseudoMatches.push({ type: 'text', arg: text });
+    return '';
+  });
+
+  // Extract :visible
+  cssSelector = cssSelector.replace(/:visible/g, () => {
+    pseudoMatches.push({ type: 'visible' });
+    return '';
+  });
+
+  // Clean up any trailing/multiple spaces
+  cssSelector = cssSelector.replace(/\\s+/g, ' ').trim() || '*';
+
+  // Query with CSS selector
+  let elements = [...document.querySelectorAll(cssSelector)];
+
+  // Apply filters for each pseudo-class
+  for (const pseudo of pseudoMatches) {
+    elements = elements.filter(el => {
+      switch (pseudo.type) {
+        case 'has-text': {
+          const text = pseudo.arg.toLowerCase();
+          return el.textContent?.toLowerCase().includes(text);
+        }
+        case 'text': {
+          const text = pseudo.arg.toLowerCase();
+          const elText = el.textContent?.replace(/\\s+/g, ' ').trim().toLowerCase() || '';
+          if (!elText.includes(text)) return false;
+          // Check no child has the complete match (we want the smallest container)
+          for (const child of el.children) {
+            const childText = child.textContent?.replace(/\\s+/g, ' ').trim().toLowerCase() || '';
+            if (childText.includes(text)) return false;
+          }
+          return true;
+        }
+        case 'text-is': {
+          return el.textContent?.replace(/\\s+/g, ' ').trim() === pseudo.arg;
+        }
+        case 'visible': {
+          const style = window.getComputedStyle(el);
+          if (style.display === 'none') return false;
+          if (style.visibility === 'hidden') return false;
+          if (style.opacity === '0') return false;
+          const rect = el.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }
+        default:
+          return true;
+      }
+    });
+  }
+
+  return elements;
+}
+`;
+
+/**
+ * Escape selector for safe inclusion in JavaScript string.
+ */
+function escapeSelector(selector: string): string {
+  return selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+}
 
 /**
  * Wait for page to stabilize after scrolling.
@@ -180,16 +266,19 @@ async function waitForPostScrollStability(): Promise<void> {
  * Returns the original scroll position so it can be restored after capture.
  * Waits for lazy-loaded content and DOM mutations to stabilize before returning.
  *
- * @param selector - CSS selector of element to scroll to
+ * @param selector - CSS/Playwright selector of element to scroll to
  * @returns Original scroll position before scrolling
  * @throws CommandError if element not found
  */
 async function scrollToElement(selector: string): Promise<ScrollPosition> {
+  const escapedSelector = escapeSelector(selector);
   const result = await callCDP('Runtime.evaluate', {
     expression: `
+      ${QUERY_ELEMENTS_JS}
       (() => {
-        const el = document.querySelector(${JSON.stringify(selector)});
-        if (!el) return { found: false };
+        const elements = __bdgQueryElements('${escapedSelector}');
+        if (elements.length === 0) return { found: false };
+        const el = elements[0];
         const originalX = window.scrollX;
         const originalY = window.scrollY;
         el.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -231,90 +320,45 @@ async function restoreScrollPosition(position: ScrollPosition): Promise<void> {
 }
 
 /**
- * Query DOM elements by CSS selector using CDP relay.
+ * Query DOM elements by selector.
  *
- * @param selector - CSS selector to query
+ * Supports standard CSS selectors and Playwright-style pseudo-classes.
+ *
+ * @param selector - CSS/Playwright selector
  * @returns Query result with matched nodes
- * @throws CDPConnectionError if CDP operation fails
  */
 export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
-  await callCDP('DOM.enable', {});
+  const escapedSelector = escapeSelector(selector);
 
-  const docResponse = await callCDP('DOM.getDocument', {});
-  const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-  if (!doc?.root?.nodeId) {
-    throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
-  }
-
-  const queryResponse = await callCDP('DOM.querySelectorAll', {
-    nodeId: doc.root.nodeId,
-    selector,
+  const result = await callCDP('Runtime.evaluate', {
+    expression: `
+      ${QUERY_ELEMENTS_JS}
+      (() => {
+        const elements = __bdgQueryElements('${escapedSelector}');
+        return elements.map((el, index) => {
+          const tag = el.tagName?.toLowerCase() || '';
+          const classes = el.className?.split?.(/\\s+/).filter(c => c.length > 0) || [];
+          const textContent = el.textContent?.replace(/<[^>]*>/g, '').replace(/\\s+/g, ' ').trim() || '';
+          const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
+          return { index, tag, classes, preview };
+        });
+      })()
+    `,
+    returnByValue: true,
   });
-  const queryResult = queryResponse.data?.result as
-    | Protocol.DOM.QuerySelectorAllResponse
-    | undefined;
-  const nodeIds = queryResult?.nodeIds ?? [];
 
-  if (nodeIds.length > 20) {
-    log.debug(`Querying ${nodeIds.length} elements with selector: ${selector}`);
+  const nodes =
+    (
+      result.data?.result as {
+        result?: {
+          value?: Array<{ index: number; tag: string; classes: string[]; preview: string }>;
+        };
+      }
+    )?.result?.value ?? [];
+
+  if (nodes.length > 20) {
+    log.debug(`Found ${nodes.length} elements for selector: ${selector}`);
   }
-
-  const limiter = new ConcurrencyLimiter(CDP_CONCURRENCY_LIMIT);
-  const nodes = await Promise.all(
-    nodeIds.map((nodeId, index) =>
-      limiter.run(async () => {
-        const descResponse = await callCDP('DOM.describeNode', { nodeId });
-        const descResult = descResponse.data?.result as
-          | Protocol.DOM.DescribeNodeResponse
-          | undefined;
-        const nodeDesc = descResult?.node;
-
-        if (!nodeDesc) {
-          return { index, nodeId };
-        }
-
-        const attributes: Record<string, string> = {};
-        if (nodeDesc.attributes) {
-          for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-            const key = nodeDesc.attributes[i];
-            const value = nodeDesc.attributes[i + 1];
-            if (key !== undefined && value !== undefined) {
-              attributes[key] = value;
-            }
-          }
-        }
-
-        const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
-        const tag = nodeDesc.nodeName.toLowerCase();
-
-        const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
-        const htmlResult = htmlResponse.data?.result as
-          | Protocol.DOM.GetOuterHTMLResponse
-          | undefined;
-        const outerHTML = htmlResult?.outerHTML ?? '';
-
-        const textContent = outerHTML
-          .replace(/<[^>]*>/g, '')
-          .replace(/\s+/g, ' ')
-          .trim();
-        const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
-
-        const node: {
-          index: number;
-          nodeId: number;
-          tag?: string;
-          classes?: string[];
-          preview?: string;
-        } = { index, nodeId };
-
-        if (tag) node.tag = tag;
-        if (classes) node.classes = classes;
-        if (preview) node.preview = preview;
-
-        return node;
-      })
-    )
-  );
 
   return {
     selector,
@@ -324,136 +368,167 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
 }
 
 /**
- * Fetch DOM context (tag, classes, text preview) for a node by its nodeId.
+ * Get full HTML and attributes for DOM elements.
  *
- * Used to enrich semantic output when a11y name is missing.
+ * @param options - Get options (selector required)
+ * @returns Get result with node details
+ */
+export async function getDOMElements(options: DomGetOptions): Promise<DomGetResult> {
+  if (!options.selector) {
+    throw new CommandError(
+      'Selector is required',
+      { suggestion: 'Use: bdg dom get <selector>' },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+
+  const escapedSelector = escapeSelector(options.selector);
+
+  const result = await callCDP('Runtime.evaluate', {
+    expression: `
+      ${QUERY_ELEMENTS_JS}
+      (() => {
+        const elements = __bdgQueryElements('${escapedSelector}');
+        ${options.all ? '' : 'elements.splice(1);'} // Keep only first unless --all
+        return elements.map(el => {
+          const tag = el.tagName?.toLowerCase() || '';
+          const attributes = {};
+          for (const attr of el.attributes || []) {
+            attributes[attr.name] = attr.value;
+          }
+          const classes = el.className?.split?.(/\\s+/).filter(c => c.length > 0) || [];
+          return { tag, attributes, classes, outerHTML: el.outerHTML };
+        });
+      })()
+    `,
+    returnByValue: true,
+  });
+
+  const nodes =
+    (
+      result.data?.result as {
+        result?: {
+          value?: Array<{
+            tag: string;
+            attributes: Record<string, string>;
+            classes: string[];
+            outerHTML: string;
+          }>;
+        };
+      }
+    )?.result?.value ?? [];
+
+  if (nodes.length === 0) {
+    const err = noNodesFoundError(options.selector);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+
+  return { nodes };
+}
+
+/**
+ * Fetch DOM context (tag, classes, text preview) for first matching element.
  *
- * @param nodeId - CDP node ID
+ * @param selector - CSS/Playwright selector
  * @returns DOM context with tag, classes, and text preview
  */
-export async function getDomContext(nodeId: number): Promise<DomContext | null> {
+export async function getDomContext(selector: string): Promise<DomContext | null> {
   try {
-    await callCDP('DOM.enable', {});
+    const escapedSelector = escapeSelector(selector);
 
-    const descResponse = await callCDP('DOM.describeNode', { nodeId });
-    const descResult = descResponse.data?.result as Protocol.DOM.DescribeNodeResponse | undefined;
-    const nodeDesc = descResult?.node;
+    const result = await callCDP('Runtime.evaluate', {
+      expression: `
+        ${QUERY_ELEMENTS_JS}
+        (() => {
+          const elements = __bdgQueryElements('${escapedSelector}');
+          if (elements.length === 0) return null;
+          const el = elements[0];
+          const tag = el.tagName?.toLowerCase() || '';
+          const classes = el.className?.split?.(/\\s+/).filter(c => c.length > 0) || [];
+          const textContent = el.textContent?.replace(/\\s+/g, ' ').trim() || '';
+          const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
+          return { tag, classes, preview };
+        })()
+      `,
+      returnByValue: true,
+    });
 
-    if (!nodeDesc) {
-      return null;
-    }
-
-    const attributes: Record<string, string> = {};
-    if (nodeDesc.attributes) {
-      for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-        const key = nodeDesc.attributes[i];
-        const value = nodeDesc.attributes[i + 1];
-        if (key !== undefined && value !== undefined) {
-          attributes[key] = value;
-        }
+    const context = (
+      result.data?.result as {
+        result?: { value?: { tag: string; classes: string[]; preview: string } | null };
       }
-    }
+    )?.result?.value;
 
-    const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
-    const tag = nodeDesc.nodeName.toLowerCase();
+    if (!context) return null;
 
-    const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
-    const htmlResult = htmlResponse.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined;
-    const outerHTML = htmlResult?.outerHTML ?? '';
+    const domContext: DomContext = { tag: context.tag };
+    if (context.classes.length > 0) domContext.classes = context.classes;
+    if (context.preview) domContext.preview = context.preview;
 
-    const textContent = outerHTML
-      .replace(/<[^>]*>/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const preview = textContent.slice(0, 80) + (textContent.length > 80 ? '...' : '');
-
-    const context: DomContext = { tag };
-    if (classes && classes.length > 0) context.classes = classes;
-    if (preview) context.preview = preview;
-
-    return context;
-  } catch (error) {
-    log.debug(`Failed to get DOM context for nodeId ${nodeId}: ${getErrorMessage(error)}`);
+    return domContext;
+  } catch {
     return null;
   }
 }
 
 /**
- * Get full HTML and attributes for DOM elements using CDP relay.
+ * Get element bounding box via JS getBoundingClientRect.
  *
- * @param options - Get options (selector or nodeId, plus optional --all or --nth flags)
- * @returns Get result with node details
- * @throws CDPConnectionError if CDP operation fails
+ * @param selector - CSS/Playwright selector
+ * @returns Element bounds (x, y, width, height) in document coordinates
+ * @throws CommandError if element not found or has zero dimensions
  */
-export async function getDOMElements(options: DomGetOptions): Promise<DomGetResult> {
-  await callCDP('DOM.enable', {});
+export async function getElementBounds(selector: string): Promise<ElementBounds> {
+  const escapedSelector = escapeSelector(selector);
 
-  let nodeIds: number[] = [];
+  const result = await callCDP('Runtime.evaluate', {
+    expression: `
+      ${QUERY_ELEMENTS_JS}
+      (() => {
+        const elements = __bdgQueryElements('${escapedSelector}');
+        if (elements.length === 0) return { found: false };
+        const el = elements[0];
+        const rect = el.getBoundingClientRect();
+        return {
+          found: true,
+          x: rect.left + window.scrollX,
+          y: rect.top + window.scrollY,
+          width: rect.width,
+          height: rect.height
+        };
+      })()
+    `,
+    returnByValue: true,
+  });
 
-  if (options.nodeId !== undefined) {
-    nodeIds = [options.nodeId];
-  } else if (options.selector) {
-    const docResponse = await callCDP('DOM.getDocument', {});
-    const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-    if (!doc?.root?.nodeId) {
-      throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
+  const value = (
+    result.data?.result as {
+      result?: {
+        value?: { found: boolean; x?: number; y?: number; width?: number; height?: number };
+      };
     }
+  )?.result?.value;
 
-    const queryResponse = await callCDP('DOM.querySelectorAll', {
-      nodeId: doc.root.nodeId,
-      selector: options.selector,
-    });
-    const queryResult = queryResponse.data?.result as
-      | Protocol.DOM.QuerySelectorAllResponse
-      | undefined;
-    nodeIds = queryResult?.nodeIds ?? [];
-
-    if (nodeIds.length === 0) {
-      const err = noNodesFoundError(options.selector);
-      throw new CommandError(
-        err.message,
-        { suggestion: err.suggestion },
-        EXIT_CODES.RESOURCE_NOT_FOUND
-      );
-    }
-
-    if (options.nth !== undefined) {
-      if (options.nth < 0 || options.nth >= nodeIds.length) {
-        const err = indexOutOfRangeError(options.nth, nodeIds.length - 1);
-        throw new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.INVALID_ARGUMENTS
-        );
-      }
-      const nthNode = nodeIds[options.nth];
-      if (nthNode === undefined) {
-        const err = indexOutOfRangeError(options.nth, nodeIds.length - 1);
-        throw new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
-      }
-      nodeIds = [nthNode];
-    } else if (!options.all) {
-      const firstNode = nodeIds[0];
-      if (firstNode === undefined) {
-        const err = noNodesFoundError(options.selector ?? '');
-        throw new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
-      }
-      nodeIds = [firstNode];
-    }
-  } else {
-    const err = eitherArgumentRequiredError(
-      'selector',
-      'nodeId',
-      'bdg dom get <selector> or bdg dom get --node-id <id>'
+  if (!value?.found) {
+    const err = elementNotVisibleError();
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_NOT_FOUND
     );
+  }
+
+  const x = value.x ?? 0;
+  const y = value.y ?? 0;
+  const width = value.width ?? 0;
+  const height = value.height ?? 0;
+
+  if (width <= 0 || height <= 0) {
+    const err = elementZeroDimensionsError();
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
@@ -461,63 +536,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     );
   }
 
-  if (nodeIds.length > 20) {
-    log.debug(`Fetching details for ${nodeIds.length} DOM elements`);
-  }
-
-  const limiter = new ConcurrencyLimiter(CDP_CONCURRENCY_LIMIT);
-  const nodes = await Promise.all(
-    nodeIds.map((nodeId) =>
-      limiter.run(async () => {
-        const descResponse = await callCDP('DOM.describeNode', { nodeId });
-        const descResult = descResponse.data?.result as
-          | Protocol.DOM.DescribeNodeResponse
-          | undefined;
-        const nodeDesc = descResult?.node;
-
-        if (!nodeDesc) {
-          return { nodeId };
-        }
-
-        const attributes: Record<string, string> = {};
-        if (nodeDesc.attributes) {
-          for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-            const key = nodeDesc.attributes[i];
-            const value = nodeDesc.attributes[i + 1];
-            if (key !== undefined && value !== undefined) {
-              attributes[key] = value;
-            }
-          }
-        }
-
-        const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
-        const tag = nodeDesc.nodeName.toLowerCase();
-
-        const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
-        const htmlResult = htmlResponse.data?.result as
-          | Protocol.DOM.GetOuterHTMLResponse
-          | undefined;
-        const outerHTML = htmlResult?.outerHTML;
-
-        const node: {
-          nodeId: number;
-          tag?: string;
-          attributes?: Record<string, unknown>;
-          classes?: string[];
-          outerHTML?: string;
-        } = { nodeId };
-
-        if (tag) node.tag = tag;
-        if (Object.keys(attributes).length > 0) node.attributes = attributes;
-        if (classes) node.classes = classes;
-        if (outerHTML) node.outerHTML = outerHTML;
-
-        return node;
-      })
-    )
-  );
-
-  return { nodes };
+  return { x, y, width, height };
 }
 
 /**
@@ -585,8 +604,17 @@ export async function capturePageScreenshot(
 
     // Re-scroll after DPR override (setDeviceMetricsOverride resets scroll position)
     if (options.scroll) {
+      const escapedSelector = escapeSelector(options.scroll);
       await callCDP('Runtime.evaluate', {
-        expression: `document.querySelector(${JSON.stringify(options.scroll)})?.scrollIntoView({ block: 'center', behavior: 'instant' })`,
+        expression: `
+          ${QUERY_ELEMENTS_JS}
+          (() => {
+            const elements = __bdgQueryElements('${escapedSelector}');
+            if (elements.length > 0) {
+              elements[0].scrollIntoView({ block: 'center', behavior: 'instant' });
+            }
+          })()
+        `,
         returnByValue: true,
       });
     }
@@ -693,85 +721,6 @@ export async function capturePageScreenshot(
 }
 
 /**
- * Get element bounding box via CDP DOM.getBoxModel.
- *
- * Extracts the content box coordinates from the box model quad array.
- * The content quad is an array of 8 numbers: [x1,y1, x2,y2, x3,y3, x4,y4]
- * representing the four corners of the content box.
- *
- * @param nodeId - CDP node ID
- * @returns Element bounds (x, y, width, height)
- * @throws CommandError if element not found or has zero dimensions
- */
-export async function getElementBounds(nodeId: number): Promise<ElementBounds> {
-  const response = await callCDP('DOM.getBoxModel', { nodeId });
-  const boxModel = response.data?.result as Protocol.DOM.GetBoxModelResponse | undefined;
-
-  if (!boxModel?.model?.content) {
-    const err = elementNotVisibleError();
-    throw new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.RESOURCE_NOT_FOUND
-    );
-  }
-
-  const content = boxModel.model.content;
-  const x = content[0] ?? 0;
-  const y = content[1] ?? 0;
-  const width = (content[2] ?? 0) - x;
-  const height = (content[5] ?? 0) - y;
-
-  if (width <= 0 || height <= 0) {
-    const err = elementZeroDimensionsError();
-    throw new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.INVALID_ARGUMENTS
-    );
-  }
-
-  return { x, y, width, height };
-}
-
-/**
- * Resolve CSS selector to CDP nodeId.
- *
- * Queries the document for a single element matching the selector.
- *
- * @param selector - CSS selector string
- * @returns CDP nodeId
- * @throws CommandError if element not found
- */
-export async function resolveSelector(selector: string): Promise<number> {
-  await callCDP('DOM.enable', {});
-
-  const docResponse = await callCDP('DOM.getDocument', {});
-  const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-
-  if (!doc?.root?.nodeId) {
-    throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
-  }
-
-  const queryResponse = await callCDP('DOM.querySelector', {
-    nodeId: doc.root.nodeId,
-    selector,
-  });
-  const queryResult = queryResponse.data?.result as Protocol.DOM.QuerySelectorResponse | undefined;
-
-  if (!queryResult?.nodeId) {
-    const err = noNodesFoundError(selector);
-    throw new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.RESOURCE_NOT_FOUND
-    );
-  }
-
-  return queryResult.nodeId;
-}
-
-/**
  * Capture screenshot of a specific element.
  *
  * Uses the element's bounding box to clip the screenshot region.
@@ -779,16 +728,16 @@ export async function resolveSelector(selector: string): Promise<number> {
  * for Claude Vision token cost (~1,600 tokens max). Use noResize option to disable.
  *
  * @param outputPath - Output file path
- * @param nodeId - CDP node ID of element
+ * @param selector - CSS/Playwright selector for element
  * @param options - Format, quality, and noResize options
  * @returns Screenshot result with element bounds and resize metadata
  */
 export async function captureElementScreenshot(
   outputPath: string,
-  nodeId: number,
+  selector: string,
   options: { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean } = {}
 ): Promise<ScreenshotResult> {
-  const bounds = await getElementBounds(nodeId);
+  const bounds = await getElementBounds(selector);
 
   const format = options.format ?? 'png';
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;

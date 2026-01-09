@@ -153,14 +153,14 @@ function extractHeadingLevel(tag: string): number | null {
  * // => { nodeId: '123', role: 'link', name: 'Main page', inferred: true, backendDOMNodeId: 123 }
  * ```
  */
-export function synthesizeA11yNode(domContext: DomContext, nodeId: number): A11yNode {
+export function synthesizeA11yNode(domContext: DomContext, nodeId?: number): A11yNode {
   const role = inferRoleFromTag(domContext.tag);
 
   const node: A11yNode = {
-    nodeId: String(nodeId),
+    nodeId: nodeId !== undefined ? String(nodeId) : 'synthesized',
     role,
     inferred: true,
-    backendDOMNodeId: nodeId,
+    ...(nodeId !== undefined && { backendDOMNodeId: nodeId }),
   };
 
   // Use text preview as accessible name (truncated if needed)

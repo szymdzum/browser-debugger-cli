@@ -4,8 +4,6 @@
  * Contains getCookies and headers commands, plus shared data fetching utilities.
  */
 
-import * as fs from 'fs';
-
 import type { Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
@@ -16,12 +14,9 @@ import type {
 } from '@/commands/shared/optionTypes.js';
 import { getHARData, callCDP, getNetworkHeaders } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
-import { getSessionFilePath } from '@/session/paths.js';
-import type { BdgOutput, NetworkRequest } from '@/types.js';
-import { isDaemonConnectionError } from '@/ui/errors/utils.js';
+import type { NetworkRequest } from '@/types.js';
 import type { Cookie } from '@/ui/formatters/index.js';
 import { formatCookies, formatNetworkHeaders } from '@/ui/formatters/index.js';
-import { sessionNotActiveError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -42,63 +37,13 @@ export async function fetchFromLiveSession(): Promise<NetworkRequest[]> {
 }
 
 /**
- * Fetch network requests from offline session.json file.
+ * Get network requests from live daemon session.
  *
  * @returns Network requests array
- * @throws Error if session file not found or no network data available
- */
-export function fetchFromOfflineSession(): NetworkRequest[] {
-  const sessionPath = getSessionFilePath('OUTPUT');
-
-  if (!fs.existsSync(sessionPath)) {
-    throw new Error(sessionNotActiveError('export network data'), {
-      cause: { code: EXIT_CODES.RESOURCE_NOT_FOUND },
-    });
-  }
-
-  const sessionData = JSON.parse(fs.readFileSync(sessionPath, 'utf-8')) as BdgOutput;
-
-  if (!sessionData.data?.network) {
-    throw new Error('No network data in session file', {
-      cause: { code: EXIT_CODES.RESOURCE_NOT_FOUND },
-    });
-  }
-
-  return sessionData.data.network;
-}
-
-/**
- * Check if error indicates daemon is unavailable.
- *
- * @param error - Error to check
- * @returns True if error indicates no active session or daemon connection failure
- */
-export function isDaemonUnavailable(error: unknown): boolean {
-  if (isDaemonConnectionError(error)) {
-    return true;
-  }
-
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  return errorMessage.includes('No active session');
-}
-
-/**
- * Get network requests from live session or session.json.
- *
- * Tries live daemon first, falls back to offline session file.
- *
- * @returns Network requests array
- * @throws Error if no session available (live or offline)
+ * @throws Error if daemon connection fails or no network data available
  */
 export async function getNetworkRequests(): Promise<NetworkRequest[]> {
-  try {
-    return await fetchFromLiveSession();
-  } catch (error) {
-    if (isDaemonUnavailable(error)) {
-      return fetchFromOfflineSession();
-    }
-    throw error;
-  }
+  return fetchFromLiveSession();
 }
 
 /**

@@ -84,7 +84,7 @@ export function buildSessionManagementSection(): string {
   return section('Session Management:', [
     'bdg status        Check session state',
     'bdg status --verbose     Include Chrome diagnostics',
-    'bdg stop          End session & save output',
+    'bdg stop          End session',
     'bdg cleanup       Clean stale sessions',
   ]);
 }

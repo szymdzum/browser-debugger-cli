@@ -21,6 +21,7 @@ import { getKeyDefinition, parseModifiers, type KeyDefinition } from './keyMappi
 import {
   REACT_FILL_SCRIPT,
   CLICK_ELEMENT_SCRIPT,
+  QUERY_ELEMENTS_HELPER,
   isFillResult,
   isClickResult,
   type FillOptions,
@@ -364,32 +365,21 @@ export interface PressKeyResult {
 }
 
 /**
- * Script to focus an element by selector and optional index.
+ * Script to focus an element by selector.
  *
  * @returns Object with success status and element info
  */
 const FOCUS_ELEMENT_SCRIPT = `
-(function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
-  if (allMatches.length === 0) {
+(function(selector) {
+${QUERY_ELEMENTS_HELPER}
+  const elements = __bdgQueryElements(selector);
+  if (elements.length === 0) {
     return { success: false, error: 'No nodes found matching selector: ' + selector };
   }
 
-  let el;
-  if (typeof index === 'number' && index >= 0) {
-    if (index >= allMatches.length) {
-      return { 
-        success: false, 
-        error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')' 
-      };
-    }
-    el = allMatches[index];
-  } else {
-    el = allMatches[0];
-  }
-
+  const el = elements[0];
   el.focus();
-  
+
   return {
     success: true,
     selector: selector,
@@ -439,8 +429,7 @@ export async function pressKeyElement(
 
   const times = options.times ?? 1;
   const modifierFlags = parseModifiers(options.modifiers);
-  const indexArg = options.index ?? 'null';
-  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}')`;
 
   try {
     const focusResponse = await cdp.send('Runtime.evaluate', {
@@ -642,30 +631,15 @@ export interface ScrollResult {
  * Script to scroll an element into view.
  */
 const SCROLL_TO_ELEMENT_SCRIPT = `
-(function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
-  if (allMatches.length === 0) {
+(function(selector) {
+${QUERY_ELEMENTS_HELPER}
+  const elements = __bdgQueryElements(selector);
+  if (elements.length === 0) {
     return { success: false, error: 'No nodes found matching selector: ' + selector };
   }
 
-  let el;
-  if (typeof index === 'number' && index >= 0) {
-    if (index >= allMatches.length) {
-      return {
-        success: false,
-        error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')'
-      };
-    }
-    el = allMatches[index];
-  } else {
-    el = allMatches[0];
-  }
-
+  const el = elements[0];
   el.scrollIntoView({ behavior: 'instant', block: 'center' });
-
-  const rect = el.getBoundingClientRect();
-  const scrollX = window.scrollX + rect.left + rect.width / 2 - window.innerWidth / 2;
-  const scrollY = window.scrollY + rect.top + rect.height / 2 - window.innerHeight / 2;
 
   return {
     success: true,
@@ -773,8 +747,7 @@ export async function scrollPage(
 ): Promise<ScrollResult> {
   try {
     if (selector) {
-      const indexArg = options.index ?? 'null';
-      const expression = `(${SCROLL_TO_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+      const expression = `(${SCROLL_TO_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}')`;
 
       const response = await cdp.send('Runtime.evaluate', {
         expression,
