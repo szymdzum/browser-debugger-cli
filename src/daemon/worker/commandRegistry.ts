@@ -320,6 +320,12 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       });
     },
 
+    worker_websockets: async (_cdp, _params) => {
+      return Promise.resolve({
+        connections: store.websocketConnections,
+      });
+    },
+
     cdp_call: async (cdp, params) => {
       const result = await cdp.send(params.method, params.params ?? {});
 

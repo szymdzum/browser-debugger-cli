@@ -17,6 +17,7 @@ import {
   type PeekResponse,
   type StatusResponse,
   type StatusResponseData,
+  type WebSocketConnectionsResponse,
   type WorkerResponse,
   type WorkerResponseUnion,
   getCommandName,
@@ -112,6 +113,17 @@ export class ResponseHandler {
           error: errorMessage,
         };
         this.sendResponse(pending.socket, harDataResponse);
+        continue;
+      }
+
+      if (pending.commandName === 'worker_websockets') {
+        const websocketConnectionsResponse: WebSocketConnectionsResponse = {
+          type: 'websocket_connections_response',
+          sessionId: pending.sessionId,
+          status: 'error',
+          error: errorMessage,
+        };
+        this.sendResponse(pending.socket, websocketConnectionsResponse);
         continue;
       }
 
@@ -222,6 +234,33 @@ export class ResponseHandler {
       this.sendResponse(socket, harDataResponse);
       console.error(
         '[daemon] Forwarded worker_har_data_response to client (transformed to HARDataResponse)'
+      );
+      return;
+    }
+
+    if (commandName === 'worker_websockets') {
+      const {
+        requestId: _requestId,
+        success,
+        data,
+        error,
+      } = workerResponse as WorkerResponse<'worker_websockets'>;
+      const websocketConnectionsResponse = {
+        type: 'websocket_connections_response' as const,
+        sessionId,
+        status: success ? ('ok' as const) : ('error' as const),
+        ...(success &&
+          data && {
+            data: {
+              sessionPid: this.sessionService.readPid() ?? 0,
+              connections: data.connections,
+            },
+          }),
+        ...(error && { error }),
+      };
+      this.sendResponse(socket, websocketConnectionsResponse);
+      console.error(
+        '[daemon] Forwarded worker_websockets_response to client (transformed to WebSocketConnectionsResponse)'
       );
       return;
     }

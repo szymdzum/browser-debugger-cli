@@ -7,7 +7,7 @@
 import type { IPCMessage } from './lifecycle.js';
 import type { PageState, SessionActivity } from './types.js';
 
-import type { NetworkRequest, TelemetryType } from '@/types.js';
+import type { NetworkRequest, TelemetryType, WebSocketConnection } from '@/types.js';
 
 /**
  * Status request (client → daemon).
@@ -121,6 +121,33 @@ export interface HARDataResponse extends IPCMessage {
 }
 
 /**
+ * WebSocket connections request (client → daemon).
+ */
+export interface WebSocketConnectionsRequest extends IPCMessage {
+  type: 'websocket_connections_request';
+}
+
+/**
+ * WebSocket connections response data.
+ */
+export interface WebSocketConnectionsResponseData {
+  /** Worker process ID. */
+  sessionPid: number;
+  /** WebSocket connections with frames. */
+  connections: WebSocketConnection[];
+}
+
+/**
+ * WebSocket connections response (daemon → client).
+ */
+export interface WebSocketConnectionsResponse extends IPCMessage {
+  type: 'websocket_connections_response';
+  status: 'ok' | 'error';
+  data?: WebSocketConnectionsResponseData;
+  error?: string;
+}
+
+/**
  * Union of all session query message types.
  */
 export type QueryMessageType =
@@ -129,4 +156,6 @@ export type QueryMessageType =
   | PeekRequest
   | PeekResponse
   | HARDataRequest
-  | HARDataResponse;
+  | HARDataResponse
+  | WebSocketConnectionsRequest
+  | WebSocketConnectionsResponse;

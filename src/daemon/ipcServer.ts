@@ -161,6 +161,9 @@ export class IPCServer {
         case 'har_data_request':
           this.requestHandlers.handleHARDataRequest(socket, message);
           break;
+        case 'websocket_connections_request':
+          this.requestHandlers.handleWebSocketConnectionsRequest(socket, message);
+          break;
         case 'start_session_request':
           void this.requestHandlers.handleStartSessionRequest(socket, message);
           break;
@@ -171,6 +174,7 @@ export class IPCServer {
         case 'status_response':
         case 'peek_response':
         case 'har_data_response':
+        case 'websocket_connections_response':
         case 'start_session_response':
         case 'stop_session_response':
           log.debug(`Unexpected response message received: ${message.type}`);

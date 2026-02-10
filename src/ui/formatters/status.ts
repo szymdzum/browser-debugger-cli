@@ -114,9 +114,9 @@ export function formatSessionStatus(
   fmt
     .blank()
     .section('Commands:', [
-      'Stop session:    bdg stop',
       'Peek data:       bdg peek',
       'Query browser:   bdg query <script>',
+      'End session:     bdg stop',
     ]);
 
   return fmt.build();

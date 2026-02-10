@@ -15,6 +15,7 @@ import {
   type StatusRequest,
   type StatusResponse,
   type StatusResponseData,
+  type WebSocketConnectionsRequest,
   type WorkerRequest,
   type WorkerRequestUnion,
 } from '@/ipc/index.js';
@@ -160,6 +161,37 @@ export class QueryHandlers extends BaseHandler {
       socket,
       sessionId: request.sessionId,
       commandName: 'worker_peek',
+      workerRequest: workerRequest as WorkerRequestUnion,
+    });
+  }
+
+  /**
+   * Handle WebSocket connections request - forward to worker via IPC.
+   */
+  handleWebSocketConnections(socket: Socket, request: WebSocketConnectionsRequest): void {
+    console.error(
+      `[daemon] WebSocket connections request received (sessionId: ${request.sessionId})`
+    );
+
+    if (!this.hasActiveWorker()) {
+      this.sendNoWorkerResponse(
+        socket,
+        request.sessionId,
+        'websocket_connections',
+        'No active session'
+      );
+      return;
+    }
+
+    const workerRequest: WorkerRequest<'worker_websockets'> = {
+      type: 'worker_websockets_request',
+      requestId: generateRequestId('worker_websockets'),
+    };
+
+    this.forwardToWorker({
+      socket,
+      sessionId: request.sessionId,
+      commandName: 'worker_websockets',
       workerRequest: workerRequest as WorkerRequestUnion,
     });
   }

@@ -34,7 +34,7 @@ bdg peek                        # Last 10 items (compact format)
 bdg peek --last 50              # Show last 50 items
 bdg peek --network              # Show only network requests
 bdg peek --console              # Show only console messages
-bdg peek --dom                  # Show DOM/A11y tree (available after stop)
+bdg peek --dom                  # Show DOM/A11y tree
 bdg peek --type Document        # Filter by resource type (Document requests only)
 bdg peek --type XHR,Fetch       # Multiple types (XHR or Fetch requests)
 bdg peek --json                 # JSON output

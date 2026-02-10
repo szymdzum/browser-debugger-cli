@@ -98,6 +98,19 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     automaticBehavior:
       'Network wait helps ensure React/Vue state updates complete before next action',
   },
+
+  'websockets:--last': {
+    default: 'Shows last 10 frames per WebSocket connection',
+    whenEnabled: 'Shows specified number of recent frames (use 0 to show all frames)',
+    automaticBehavior:
+      'Frames are always shown in chronological order (oldest to newest within the limit)',
+  },
+  'websockets:--verbose': {
+    default: 'Truncates message payloads to 500 characters',
+    whenEnabled: 'Shows up to 5,000 characters of message payload data',
+    automaticBehavior:
+      'Falls back to JavaScript-based interception if CDP WebSocket events not firing (e.g., external Chrome)',
+  },
   'fill:--no-blur': {
     default: 'Triggers blur event after filling (validates most form fields)',
     whenDisabled: 'Keeps focus on element after filling',

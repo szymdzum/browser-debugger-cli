@@ -8,6 +8,7 @@ import { registerFormInteractionCommands } from '@/commands/dom/formInteraction.
 import { registerDomCommands } from '@/commands/dom/index.js';
 import { registerNetworkCommands } from '@/commands/network/index.js';
 import { registerPeekCommand } from '@/commands/peek.js';
+import { registerScreenshotCommand } from '@/commands/screenshot.js';
 import { registerStartCommands } from '@/commands/start.js';
 import { registerStatusCommand } from '@/commands/status.js';
 import { registerStopCommand } from '@/commands/stop.js';
@@ -43,6 +44,7 @@ export const commandRegistry: CommandRegistrar[] = [
   registerPeekCommand,
   registerTailCommand,
   registerDetailsCommand,
+  registerScreenshotCommand,
   registerDomCommands,
   registerFormInteractionCommands,
 

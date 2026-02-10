@@ -6,7 +6,7 @@
  */
 
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
-import type { NetworkRequest } from '@/types.js';
+import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 
 /**
  * Worker peek command request schema.
@@ -140,6 +140,19 @@ export interface WorkerNetworkHeadersData {
 }
 
 /**
+ * Worker websockets command request schema (no parameters required).
+ */
+export type WorkerWebSocketsCommand = Record<string, unknown>;
+
+/**
+ * Worker websockets command response data.
+ */
+export interface WorkerWebSocketsData {
+  /** All collected WebSocket connections with frames. */
+  connections: WebSocketConnection[];
+}
+
+/**
  * Command definition structure.
  */
 type CommandDef<TReq, TRes> = { requestSchema: TReq; responseSchema: TRes };
@@ -153,6 +166,7 @@ export type RegistryShape = {
   worker_status: CommandDef<WorkerStatusCommand, WorkerStatusData>;
   worker_har_data: CommandDef<WorkerHARDataCommand, WorkerHARDataData>;
   worker_network_headers: CommandDef<WorkerNetworkHeadersCommand, WorkerNetworkHeadersData>;
+  worker_websockets: CommandDef<WorkerWebSocketsCommand, WorkerWebSocketsData>;
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
 };
 
@@ -177,6 +191,10 @@ export const COMMANDS = {
   worker_network_headers: {
     requestSchema: {} as WorkerNetworkHeadersCommand,
     responseSchema: {} as WorkerNetworkHeadersData,
+  },
+  worker_websockets: {
+    requestSchema: {} as WorkerWebSocketsCommand,
+    responseSchema: {} as WorkerWebSocketsData,
   },
   cdp_call: { requestSchema: {} as CdpCallCommand, responseSchema: {} as CdpCallData },
 } as const satisfies RegistryShape;

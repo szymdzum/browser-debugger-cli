@@ -164,7 +164,11 @@ export type DomQueryCommandOptions = BaseOptions;
 export type DomGetCommandOptions = BaseOptions & RawOptions & SelectionOptions;
 
 /** Options for DOM screenshot command */
-export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;
+export type DomScreenshotCommandOptions = BaseOptions &
+  ScreenshotOptions & {
+    /** Connect directly to Chrome via WebSocket URL (bypasses daemon) */
+    chromeWsUrl?: string;
+  };
 
 /** Options for DOM eval command */
 export type DomEvalCommandOptions = BaseOptions & PortOptions;

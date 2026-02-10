@@ -7,6 +7,7 @@
  * - getCookies: List cookies
  * - headers: Show HTTP headers
  * - document: Show main document headers
+ * - websockets: Show WebSocket connections and message frames
  */
 
 import type { Command } from 'commander';
@@ -18,6 +19,7 @@ import {
   registerHeadersCommand,
   registerDocumentCommand,
 } from './shared.js';
+import { registerWebSocketsCommand } from './websockets.js';
 
 /**
  * Register all network subcommands.
@@ -32,4 +34,5 @@ export function registerNetworkCommands(program: Command): void {
   registerGetCookiesCommand(networkCmd);
   registerHeadersCommand(networkCmd);
   registerDocumentCommand(networkCmd);
+  registerWebSocketsCommand(networkCmd);
 }

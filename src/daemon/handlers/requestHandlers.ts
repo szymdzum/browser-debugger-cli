@@ -18,6 +18,7 @@ import {
   type StartSessionRequest,
   type StatusRequest,
   type StopSessionRequest,
+  type WebSocketConnectionsRequest,
 } from '@/ipc/index.js';
 
 import { CommandHandlers } from './CommandHandlers.js';
@@ -84,6 +85,13 @@ export class RequestHandlers {
    */
   handleHARDataRequest(socket: Socket, request: HARDataRequest): void {
     this.queryHandlers.handleHARData(socket, request);
+  }
+
+  /**
+   * Handle WebSocket connections request.
+   */
+  handleWebSocketConnectionsRequest(socket: Socket, request: WebSocketConnectionsRequest): void {
+    this.queryHandlers.handleWebSocketConnections(socket, request);
   }
 
   /**
