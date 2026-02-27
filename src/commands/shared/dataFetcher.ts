@@ -71,9 +71,11 @@ export async function fetchPreviewData(lastN?: number): Promise<FetchResult<Prev
 
 /**
  * Fetch network requests from daemon.
+ *
+ * @param lastN - Number of items to fetch (0 = all, undefined = daemon default)
  */
-export async function fetchNetworkRequests(): Promise<FetchResult<NetworkRequest[]>> {
-  const result = await fetchPreviewData();
+export async function fetchNetworkRequests(lastN?: number): Promise<FetchResult<NetworkRequest[]>> {
+  const result = await fetchPreviewData(lastN);
   if (!result.success) return result;
   return { success: true, data: result.data.network };
 }

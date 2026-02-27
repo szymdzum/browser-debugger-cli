@@ -7,6 +7,103 @@
  */
 
 /**
+ * JavaScript helper body to query elements with Playwright-style selector support.
+ *
+ * Supports:
+ * - `:has-text("text")` - Element contains text (case-insensitive)
+ * - `:text("text")` - Smallest element with text (case-insensitive)
+ * - `:text-is("text")` - Exact text match (case-sensitive)
+ * - `:visible` - Element is visible
+ * - Frame targeting via optional frameSelector parameter
+ *
+ * This is embedded inside each form interaction script to enable Playwright selectors.
+ * Must be defined inside an IIFE to be accessible by the script logic.
+ */
+const QUERY_ELEMENTS_HELPER_BODY = `
+  function __bdgQueryElements(sel, frameSelector) {
+    // Get the document to query (main document or iframe contentDocument)
+    let doc = document;
+    let win = window;
+    if (frameSelector) {
+      const frame = document.querySelector(frameSelector);
+      if (!frame) return [];
+      doc = frame.contentDocument;
+      if (!doc) return []; // Cross-origin iframe
+      win = doc.defaultView || window;
+    }
+
+    const pseudoMatches = [];
+    let cssSelector = sel;
+
+    const hasTextPattern = /:has-text\\((['"])(.*?)\\1\\)/g;
+    let match;
+    while ((match = hasTextPattern.exec(sel)) !== null) {
+      pseudoMatches.push({ type: 'has-text', arg: match[2] });
+    }
+    cssSelector = cssSelector.replace(hasTextPattern, '');
+
+    const textIsPattern = /:text-is\\((['"])(.*?)\\1\\)/g;
+    while ((match = textIsPattern.exec(sel)) !== null) {
+      pseudoMatches.push({ type: 'text-is', arg: match[2] });
+    }
+    cssSelector = cssSelector.replace(textIsPattern, '');
+
+    const textPattern = /:text\\((['"])(.*?)\\1\\)/g;
+    while ((match = textPattern.exec(sel)) !== null) {
+      pseudoMatches.push({ type: 'text', arg: match[2] });
+    }
+    cssSelector = cssSelector.replace(textPattern, '');
+
+    if (sel.includes(':visible')) {
+      pseudoMatches.push({ type: 'visible' });
+      cssSelector = cssSelector.split(':visible').join('');
+    }
+
+    cssSelector = cssSelector.replace(/  +/g, ' ').trim() || '*';
+    let elements = Array.from(doc.querySelectorAll(cssSelector));
+
+    for (const pseudo of pseudoMatches) {
+      elements = elements.filter(el => {
+        switch (pseudo.type) {
+          case 'has-text': {
+            const text = pseudo.arg.toLowerCase();
+            return el.textContent && el.textContent.toLowerCase().includes(text);
+          }
+          case 'text': {
+            const text = pseudo.arg.toLowerCase();
+            const elText = (el.textContent || '').replace(/  +/g, ' ').trim().toLowerCase();
+            if (!elText.includes(text)) return false;
+            for (const child of el.children) {
+              const childText = (child.textContent || '').replace(/  +/g, ' ').trim().toLowerCase();
+              if (childText.includes(text)) return false;
+            }
+            return true;
+          }
+          case 'text-is': {
+            return (el.textContent || '').replace(/  +/g, ' ').trim() === pseudo.arg;
+          }
+          case 'visible': {
+            const style = win.getComputedStyle(el);
+            if (style.display === 'none') return false;
+            if (style.visibility === 'hidden') return false;
+            if (style.opacity === '0') return false;
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+          }
+          default:
+            return true;
+        }
+      });
+    }
+    return elements;
+  }`;
+
+/**
+ * Export for use in other modules that need the helper (e.g., formFillHelpers.ts).
+ */
+export const QUERY_ELEMENTS_HELPER = QUERY_ELEMENTS_HELPER_BODY;
+
+/**
  * JavaScript function to fill an input element in a React-compatible way.
  *
  * This approach:
@@ -19,16 +116,18 @@
  */
 export const REACT_FILL_SCRIPT = `
 (function(selector, value, options) {
-  const allMatches = document.querySelectorAll(selector);
-  
+${QUERY_ELEMENTS_HELPER_BODY}
+  const frameSelector = options.frame || null;
+  const allMatches = __bdgQueryElements(selector, frameSelector);
+
   if (allMatches.length === 0) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       error: 'Element not found',
       selector: selector
     };
   }
-  
+
   let el;
   const index = options.index;
   
@@ -136,9 +235,10 @@ export const REACT_FILL_SCRIPT = `
  * When selector matches multiple elements without index, prioritizes visible ones.
  */
 export const CLICK_ELEMENT_SCRIPT = `
-(function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
-  
+(function(selector, index, frameSelector) {
+${QUERY_ELEMENTS_HELPER_BODY}
+  const allMatches = __bdgQueryElements(selector, frameSelector || null);
+
   if (allMatches.length === 0) {
     return {
       success: false,
@@ -146,9 +246,9 @@ export const CLICK_ELEMENT_SCRIPT = `
       selector: selector
     };
   }
-  
+
   let el;
-  
+
   // If index is provided, use it directly (0-based)
   if (typeof index === 'number' && index >= 0) {
     if (index >= allMatches.length) {
@@ -223,6 +323,8 @@ export interface FillOptions {
   blur?: boolean;
   /** Index to use if selector matches multiple elements (0-based) */
   index?: number;
+  /** CSS selector for iframe to query within */
+  frame?: string;
 }
 
 /**

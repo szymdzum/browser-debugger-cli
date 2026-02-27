@@ -2,6 +2,7 @@ import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { CommandError, isDaemonConnectionError } from '@/ui/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
+import { logError } from '@/utils/errorLog.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -33,6 +34,7 @@ export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
   } catch (error) {
     const exitCode =
       error instanceof CommandError ? error.exitCode : EXIT_CODES.UNHANDLED_EXCEPTION;
+    logError(process.argv, error instanceof Error ? error : new Error(String(error)), exitCode);
     console.log(JSON.stringify(OutputBuilder.buildJsonError(getErrorMessage(error)), null, 2));
     process.exit(exitCode);
   }
@@ -108,6 +110,8 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     const result = await handler(options);
 
     if (!result.success) {
+      const exitCode = result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION;
+      logError(process.argv, new Error(result.error ?? 'Unknown error'), exitCode);
       if (options.json) {
         const errorData: Record<string, unknown> = {
           ...(result.exitCode !== undefined && { exitCode: result.exitCode }),
@@ -130,7 +134,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           }
         }
       }
-      process.exit(result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION);
+      process.exit(exitCode);
     }
 
     if (result.hint) {
@@ -149,6 +153,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
     if (error instanceof CommandError) {
+      logError(process.argv, error, error.exitCode);
       if (options.json) {
         console.log(
           JSON.stringify(OutputBuilder.buildJsonError(error.message, error.metadata), null, 2)
@@ -165,6 +170,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     const errorMessage = getErrorMessage(error);
 
     if (isDaemonConnectionError(error)) {
+      logError(process.argv, new Error('Daemon not running'), EXIT_CODES.RESOURCE_NOT_FOUND);
       if (options.json) {
         console.log(
           JSON.stringify(
@@ -181,6 +187,11 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }
 
+    logError(
+      process.argv,
+      error instanceof Error ? error : new Error(errorMessage),
+      EXIT_CODES.UNHANDLED_EXCEPTION
+    );
     if (options.json) {
       console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMessage), null, 2));
     } else {

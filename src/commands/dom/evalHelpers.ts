@@ -134,18 +134,22 @@ export async function verifyTargetExists(metadata: SessionMetadata, port: number
 /**
  * Execute JavaScript in browser context via CDP
  *
+ * Handles non-serializable results (like DOM nodes) gracefully by returning
+ * a description instead of failing with "Object reference chain is too long".
+ *
  * @param cdp - CDP connection instance
  * @param script - JavaScript expression to execute
- * @returns Execution result
+ * @returns Execution result with value or description for non-serializable objects
  * @throws Error When script execution throws exception or returns invalid response
  */
 export async function executeScript(
   cdp: CDPConnection,
   script: string
 ): Promise<Protocol.Runtime.EvaluateResponse> {
+  // First try without returnByValue to safely get result type
   const response = await cdp.send('Runtime.evaluate', {
     expression: script,
-    returnByValue: true,
+    returnByValue: false,
     awaitPromise: true,
   });
 
@@ -167,5 +171,56 @@ export async function executeScript(
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
 
-  return response;
+  const result = response.result as Protocol.Runtime.RemoteObject | undefined;
+  if (!result) {
+    return response;
+  }
+
+  // For DOM nodes, return description since they can't be serialized
+  if (result.subtype === 'node') {
+    return {
+      ...response,
+      result: {
+        ...result,
+        value: result.description ?? `[${result.className ?? 'Node'}]`,
+      },
+    };
+  }
+
+  // For primitives and simple types, CDP already provides the value
+  const primitiveTypes = ['string', 'number', 'boolean', 'undefined'];
+  if (primitiveTypes.includes(result.type) || result.subtype === 'null') {
+    return {
+      ...response,
+      result: {
+        ...result,
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        value: result.value,
+      },
+    };
+  }
+
+  // For objects/arrays, try to serialize with returnByValue
+  try {
+    const serializedResponse = await cdp.send('Runtime.evaluate', {
+      expression: script,
+      returnByValue: true,
+      awaitPromise: true,
+    });
+
+    if (isRuntimeEvaluateResult(serializedResponse) && !serializedResponse.exceptionDetails) {
+      return serializedResponse;
+    }
+  } catch {
+    // Serialization failed, fall through to description
+  }
+
+  // Return description for complex objects that can't be serialized
+  return {
+    ...response,
+    result: {
+      ...result,
+      value: result.description ?? `[${result.className ?? result.type}]`,
+    },
+  };
 }

@@ -28,8 +28,6 @@ interface CollectorOptions {
   compact?: boolean;
   /** Launch Chrome in headless mode. Default: true if no display, false if display available. */
   headless?: boolean;
-  /** WebSocket URL for connecting to existing Chrome instance (skips Chrome launch). */
-  chromeWsUrl?: string;
   /** Quiet mode - suppress verbose landing page output for AI agents. */
   quiet?: boolean;
   /** Custom Chrome flags (space-separated string). */
@@ -56,27 +54,27 @@ function applyCollectorOptions(command: Command): Command {
   // Default to headless if no display available
   const defaultHeadless = !hasDisplay();
 
-  return command
-    .option('-p, --port <number>', PORT_OPTION_DESCRIPTION)
-    .option(
-      '-t, --timeout <seconds>',
-      'Auto-stop after timeout in seconds (unlimited if not specified)'
-    )
-    .option('-u, --user-data-dir <path>', 'Chrome user data directory (defaults to session dir)')
-    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)', false)
-    .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
-    .option('--compact', 'Use compact JSON format (no indentation) for output files', false)
-    .option('--headless', 'Run in headless mode (auto if no display)', defaultHeadless)
-    .option('--no-headless', 'Show browser window')
-    .option(
-      '--chrome-ws-url <url>',
-      'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
-    )
-    .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
-    .option(
-      '--chrome-flags <flags>',
-      'Custom Chrome flags (space-separated, e.g., --chrome-flags="--ignore-certificate-errors --disable-web-security")'
-    );
+  return (
+    command
+      .option('-p, --port <number>', PORT_OPTION_DESCRIPTION)
+      .option(
+        '-t, --timeout <seconds>',
+        'Auto-stop after timeout in seconds (unlimited if not specified)'
+      )
+      .option('-u, --user-data-dir <path>', 'Chrome user data directory (defaults to session dir)')
+      .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)', false)
+      .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
+      .option('--compact', 'Use compact JSON format (no indentation) for output files', false)
+      .option('--headless', 'Run in headless mode (auto if no display)', defaultHeadless)
+      .option('--no-headless', 'Show browser window')
+      // NOTE: --chrome-ws-url is NOT included here to avoid conflicts with subcommands
+      // (e.g., dom screenshot --chrome-ws-url). Direct mode is handled by dom/cdp commands.
+      .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
+      .option(
+        '--chrome-flags <flags>',
+        'Custom Chrome flags (space-separated, e.g., --chrome-flags="--ignore-certificate-errors --disable-web-security")'
+      )
+  );
 }
 
 /**
@@ -93,7 +91,7 @@ function buildSessionOptions(options: CollectorOptions): {
   maxBodySize: number | undefined;
   compact: boolean;
   headless: boolean;
-  chromeWsUrl: string | undefined;
+  chromeWsUrl: undefined;
   quiet: boolean;
   chromeFlags: string[] | undefined;
 } {
@@ -124,7 +122,7 @@ function buildSessionOptions(options: CollectorOptions): {
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
     compact: options.compact ?? false,
     headless: options.headless ?? !hasDisplay(),
-    chromeWsUrl: options.chromeWsUrl,
+    chromeWsUrl: undefined, // Direct mode not supported via start command
     quiet: options.quiet ?? false,
     chromeFlags,
   };

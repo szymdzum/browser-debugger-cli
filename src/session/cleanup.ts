@@ -16,12 +16,10 @@ import { getErrorMessage } from '@/utils/errors.js';
 import { safeRemoveFile } from '@/utils/file.js';
 import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
-import { QueryCacheManager } from './QueryCacheManager.js';
 import { readChromePid, clearChromePid } from './chrome.js';
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile, readPidFromFile } from './pid.js';
-// Note: QueryCacheManager must be after chrome.js per alphabetical order
 
 const log = createLogger('cleanup');
 
@@ -281,12 +279,6 @@ export function cleanupSession(): void {
   safeRemoveFile(getSessionFilePath('DAEMON_PID'), 'daemon PID file', log);
   safeRemoveFile(getSessionFilePath('DAEMON_SOCKET'), 'daemon socket', log);
   safeRemoveFile(getSessionFilePath('DAEMON_LOCK'), 'daemon lock', log);
-
-  void QueryCacheManager.getInstance()
-    .clear()
-    .catch((error) => {
-      logDebugError(log, 'clear query cache', error);
-    });
 }
 
 /**

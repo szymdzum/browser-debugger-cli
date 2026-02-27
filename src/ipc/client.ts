@@ -173,7 +173,7 @@ export async function startSession(
 
 /**
  * Request session stop from the daemon.
- * Stops telemetry collection, closes Chrome, and writes output file.
+ * Stops telemetry collection and closes Chrome.
  *
  * @returns Stop session response with termination status
  * @throws Error if connection fails, times out, or no active session
@@ -285,6 +285,8 @@ export async function getNetworkHeaders(options?: {
  * Execute arbitrary CDP method via the daemon's worker.
  * Forwards CDP commands to the worker's active CDP connection.
  *
+ * If direct mode is active (--chrome-ws-url), uses direct connection instead.
+ *
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
  * @returns Response with CDP method result
@@ -302,5 +304,11 @@ export async function callCDP(
   method: string,
   params?: Record<string, unknown>
 ): Promise<ClientResponse<'cdp_call'>> {
+  // Check if direct mode is active (--chrome-ws-url without daemon)
+  const { isDirectMode, callCDPDirect } = await import('@/connection/directMode.js');
+  if (isDirectMode()) {
+    return callCDPDirect(method, params);
+  }
+
   return sendCommand('cdp_call', { method, ...(params && { params }) });
 }

@@ -21,6 +21,7 @@ import { getKeyDefinition, parseModifiers, type KeyDefinition } from './keyMappi
 import {
   REACT_FILL_SCRIPT,
   CLICK_ELEMENT_SCRIPT,
+  QUERY_ELEMENTS_HELPER,
   isFillResult,
   isClickResult,
   type FillOptions,
@@ -89,12 +90,12 @@ function formatScriptExecutionError(
       ? [
           `1. Verify element exists: bdg dom query "${selector}"`,
           '2. Check element is visible and not disabled',
-          `3. Try direct eval: bdg dom eval "document.querySelector('${escapeSelectorForJS(selector)}').value = 'your-value'"`,
+          `3. Try direct eval: bdg eval "document.querySelector('${escapeSelectorForJS(selector)}').value = 'your-value'"`,
         ]
       : [
           `1. Verify element exists: bdg dom query "${selector}"`,
           '2. Check element is visible and clickable',
-          `3. Try direct eval: bdg dom eval "document.querySelector('${escapeSelectorForJS(selector)}').click()"`,
+          `3. Try direct eval: bdg eval "document.querySelector('${escapeSelectorForJS(selector)}').click()"`,
         ];
 
   lines.push('');
@@ -132,6 +133,7 @@ export async function fillElement(
   const scriptOptions = {
     blur: options.blur ?? true,
     index: options.index,
+    frame: options.frame,
   };
 
   const expression = `(${REACT_FILL_SCRIPT})('${escapeSelectorForJS(selector)}', '${escapeValueForJS(value)}', ${JSON.stringify(scriptOptions)})`;
@@ -200,10 +202,11 @@ export async function fillElement(
 export async function clickElement(
   cdp: CDPConnection,
   selector: string,
-  options: { index?: number } = {}
+  options: { index?: number; frame?: string } = {}
 ): Promise<ClickResult> {
   const indexArg = options.index ?? 'null';
-  const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+  const frameArg = options.frame ? `'${escapeSelectorForJS(options.frame)}'` : 'null';
+  const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg}, ${frameArg})`;
 
   try {
     const response = await cdp.send('Runtime.evaluate', {
@@ -345,6 +348,8 @@ export interface PressKeyOptions {
   index?: number;
   /** Number of times to press the key (default: 1) */
   times?: number;
+  /** CSS selector for iframe to query within */
+  frame?: string;
   /** Comma-separated modifier keys (shift, ctrl, alt, meta) */
   modifiers?: string;
 }
@@ -364,32 +369,21 @@ export interface PressKeyResult {
 }
 
 /**
- * Script to focus an element by selector and optional index.
+ * Script to focus an element by selector.
  *
  * @returns Object with success status and element info
  */
 const FOCUS_ELEMENT_SCRIPT = `
-(function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
-  if (allMatches.length === 0) {
+(function(selector, frameSelector) {
+${QUERY_ELEMENTS_HELPER}
+  const elements = __bdgQueryElements(selector, frameSelector || null);
+  if (elements.length === 0) {
     return { success: false, error: 'No nodes found matching selector: ' + selector };
   }
 
-  let el;
-  if (typeof index === 'number' && index >= 0) {
-    if (index >= allMatches.length) {
-      return { 
-        success: false, 
-        error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')' 
-      };
-    }
-    el = allMatches[index];
-  } else {
-    el = allMatches[0];
-  }
-
+  const el = elements[0];
   el.focus();
-  
+
   return {
     success: true,
     selector: selector,
@@ -439,8 +433,8 @@ export async function pressKeyElement(
 
   const times = options.times ?? 1;
   const modifierFlags = parseModifiers(options.modifiers);
-  const indexArg = options.index ?? 'null';
-  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+  const frameArg = options.frame ? `'${escapeSelectorForJS(options.frame)}'` : 'null';
+  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${frameArg})`;
 
   try {
     const focusResponse = await cdp.send('Runtime.evaluate', {
@@ -608,6 +602,8 @@ export interface ScrollOptions {
   bottom?: boolean;
   /** Element index if selector matches multiple (0-based) */
   index?: number;
+  /** CSS selector for iframe to query within */
+  frame?: string;
 }
 
 /**
@@ -642,30 +638,15 @@ export interface ScrollResult {
  * Script to scroll an element into view.
  */
 const SCROLL_TO_ELEMENT_SCRIPT = `
-(function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
-  if (allMatches.length === 0) {
+(function(selector, frameSelector) {
+${QUERY_ELEMENTS_HELPER}
+  const elements = __bdgQueryElements(selector, frameSelector || null);
+  if (elements.length === 0) {
     return { success: false, error: 'No nodes found matching selector: ' + selector };
   }
 
-  let el;
-  if (typeof index === 'number' && index >= 0) {
-    if (index >= allMatches.length) {
-      return {
-        success: false,
-        error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')'
-      };
-    }
-    el = allMatches[index];
-  } else {
-    el = allMatches[0];
-  }
-
+  const el = elements[0];
   el.scrollIntoView({ behavior: 'instant', block: 'center' });
-
-  const rect = el.getBoundingClientRect();
-  const scrollX = window.scrollX + rect.left + rect.width / 2 - window.innerWidth / 2;
-  const scrollY = window.scrollY + rect.top + rect.height / 2 - window.innerHeight / 2;
 
   return {
     success: true,
@@ -773,8 +754,8 @@ export async function scrollPage(
 ): Promise<ScrollResult> {
   try {
     if (selector) {
-      const indexArg = options.index ?? 'null';
-      const expression = `(${SCROLL_TO_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+      const frameArg = options.frame ? `'${escapeSelectorForJS(options.frame)}'` : 'null';
+      const expression = `(${SCROLL_TO_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${frameArg})`;
 
       const response = await cdp.send('Runtime.evaluate', {
         expression,

@@ -36,7 +36,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   execute_javascript: {
-    commands: ['dom eval'],
+    commands: ['eval'],
     description: 'Execute arbitrary JavaScript in page context',
     cdpAlternative: 'Runtime.evaluate',
   },

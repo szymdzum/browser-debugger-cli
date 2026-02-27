@@ -62,7 +62,8 @@ export type LogContext =
   | 'readiness'
   | 'atomic-file'
   | 'object-expander'
-  | 'fetcher';
+  | 'fetcher'
+  | 'electron';
 
 /**
  * Logger instance with support for different log levels.

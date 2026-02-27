@@ -1,13 +1,12 @@
 /**
  * Worker Cleanup
  *
- * Handles worker cleanup: DOM collection, CDP closure, Chrome termination, and output writing.
+ * Handles worker cleanup: DOM collection, CDP closure, and Chrome termination.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { writeChromePid } from '@/session/chrome.js';
-import { writeSessionOutput } from '@/session/output.js';
 import { collectDOM } from '@/telemetry/dom.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
 import type { Logger } from '@/ui/logging/index.js';
@@ -19,7 +18,6 @@ import {
   workerRunningCleanup,
   workerClosingCDP,
   workerShutdownComplete,
-  workerWritingOutput,
 } from '@/ui/messages/debug.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -100,8 +98,6 @@ export async function cleanupWorker(
     }
     // If both chrome and cdp are null, Chrome launch failed - nothing to terminate
 
-    writeOutput(reason, telemetryStore, log);
-
     log.debug(workerShutdownComplete());
   } catch (error) {
     console.error(`[worker] Error during cleanup: ${getErrorMessage(error)}`);
@@ -148,32 +144,5 @@ async function terminateChrome(
     }
   } catch (error) {
     console.error(`[worker] Error killing Chrome: ${getErrorMessage(error)}`);
-  }
-}
-
-/**
- * Write session output.
- */
-function writeOutput(
-  reason: 'normal' | 'crash' | 'timeout',
-  telemetryStore: TelemetryStore,
-  log: Logger
-): void {
-  if (reason === 'normal') {
-    try {
-      log.debug(workerWritingOutput());
-      const finalOutput = telemetryStore.buildOutput(false);
-      writeSessionOutput(finalOutput);
-    } catch (error) {
-      console.error(`[worker] Error writing final output: ${getErrorMessage(error)}`);
-    }
-  } else {
-    try {
-      log.debug(`[worker] Writing partial output (reason: ${reason})`);
-      const partialOutput = telemetryStore.buildOutput(true);
-      writeSessionOutput(partialOutput);
-    } catch (error) {
-      console.error(`[worker] Error writing partial output: ${getErrorMessage(error)}`);
-    }
   }
 }

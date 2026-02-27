@@ -48,7 +48,7 @@ export const PATTERNS: PatternDefinition[] = [
     name: 'multiple_runtime_evaluations',
     cdpMethods: ['Runtime.evaluate'],
     threshold: 4,
-    alternative: 'bdg dom eval <javascript>',
+    alternative: 'bdg eval <javascript>',
   },
   {
     name: 'network_body_fetching',

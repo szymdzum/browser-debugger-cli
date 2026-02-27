@@ -1,7 +1,6 @@
 import type { Command } from 'commander';
 import type * as FsModule from 'fs';
 
-import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import {
@@ -9,7 +8,6 @@ import {
   getDOMElements,
   capturePageScreenshot,
   captureElementScreenshot,
-  resolveSelector,
   getDomContext,
 } from '@/commands/dom/helpers.js';
 import type { DomGetOptions as DomGetHelperOptions, DomContext } from '@/commands/dom/helpers.js';
@@ -19,26 +17,15 @@ import type {
   DomQueryCommandOptions,
   DomGetCommandOptions,
   DomScreenshotCommandOptions,
-  DomEvalCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
-import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode, ScreenshotResult, ElementBounds } from '@/types.js';
 import { CommandError } from '@/ui/errors/index.js';
-import {
-  formatDomQuery,
-  formatDomGet,
-  formatDomEval,
-  formatDomScreenshot,
-} from '@/ui/formatters/dom.js';
+import { formatDomQuery, formatDomGet, formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
-import {
-  missingArgumentError,
-  elementAtIndexNotFoundError,
-  noNodesFoundError,
-} from '@/ui/messages/errors.js';
+import { noNodesFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -103,48 +90,13 @@ function buildElementScreenshotOptions(
 }
 
 /**
- * Check if options specify an element target.
- *
- * @param options - Screenshot command options
- * @returns True if selector or index is specified
- */
-function hasElementTarget(options: DomScreenshotCommandOptions): boolean {
-  return options.selector !== undefined || options.index !== undefined;
-}
-
-/**
- * Resolve element nodeId from selector or cached index.
- *
- * @param options - Options containing selector or index
- * @returns CDP nodeId
- * @throws CommandError if neither selector nor index provided
- */
-async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<number> {
-  if (options.index !== undefined) {
-    const resolver = DomElementResolver.getInstance();
-    const node = await resolver.getNodeIdForIndex(options.index);
-    return node.nodeId;
-  }
-
-  if (options.selector !== undefined) {
-    return resolveSelector(options.selector);
-  }
-
-  const err = missingArgumentError('--selector "css-selector" or --index N from a previous query');
-  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
-}
-
-/**
  * Add element metadata to screenshot result.
  *
  * @param result - Base screenshot result
- * @param options - Options containing selector or index
+ * @param selector - Element selector
  * @returns Screenshot result with element info
  */
-function addElementInfo(
-  result: ScreenshotResult,
-  options: DomScreenshotCommandOptions
-): ScreenshotResult {
+function addElementInfo(result: ScreenshotResult, selector: string): ScreenshotResult {
   const bounds: ElementBounds = {
     x: 0,
     y: 0,
@@ -155,8 +107,7 @@ function addElementInfo(
   return {
     ...result,
     element: {
-      ...(options.selector !== undefined && { selector: options.selector }),
-      ...(options.index !== undefined && { index: options.index }),
+      selector,
       bounds,
     },
   };
@@ -273,67 +224,27 @@ function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
  *
  * @param a11yNode - Accessibility node or null
  * @param domContext - DOM context for synthesis fallback
- * @param nodeId - Node ID for synthesis
  * @returns Resolved node or null
  */
 function resolveNodeWithFallback(
   a11yNode: A11yNode | null,
-  domContext: DomContext | null,
-  nodeId: number | undefined
+  domContext: DomContext | null
 ): A11yNode | null {
   if (a11yNode) return a11yNode;
-  if (domContext && nodeId) return synthesizeA11yNode(domContext, nodeId);
+  if (domContext) return synthesizeA11yNode(domContext);
   return null;
-}
-
-/**
- * Query DOM context by selector when a11y node is unavailable.
- *
- * @param selector - CSS selector
- * @returns Object with nodeId and domContext
- */
-async function queryDomContextBySelector(
-  selector: string
-): Promise<{ nodeId: number | undefined; domContext: DomContext | null }> {
-  const { callCDP } = await import('@/ipc/client.js');
-  const docResponse = await callCDP('DOM.getDocument', {});
-  const doc = docResponse.data?.result as { root?: { nodeId?: number } } | undefined;
-
-  if (!doc?.root?.nodeId) {
-    return { nodeId: undefined, domContext: null };
-  }
-
-  const queryResponse = await callCDP('DOM.querySelector', {
-    nodeId: doc.root.nodeId,
-    selector,
-  });
-  const queryResult = queryResponse.data?.result as { nodeId?: number } | undefined;
-
-  if (!queryResult?.nodeId) {
-    return { nodeId: undefined, domContext: null };
-  }
-
-  const domContext = await getDomContext(queryResult.nodeId);
-  return { nodeId: queryResult.nodeId, domContext };
 }
 
 /**
  * Handle bdg dom query command.
  *
- * @param selector - CSS selector to query
+ * @param selector - CSS/Playwright selector to query
  * @param options - Command options
  */
 async function handleDomQuery(selector: string, options: DomQueryCommandOptions): Promise<void> {
   await runCommand(
     async () => {
-      const result = await queryDOMElements(selector);
-      const cacheManager = QueryCacheManager.getInstance();
-      const navigationId = await cacheManager.getCurrentNavigationId();
-      const resultWithNavId = {
-        ...result,
-        ...(navigationId !== null && { navigationId }),
-      };
-      await cacheManager.set(resultWithNavId);
+      const result = await queryDOMElements(selector, options.frame);
       return { success: true, data: result };
     },
     options,
@@ -342,77 +253,9 @@ async function handleDomQuery(selector: string, options: DomQueryCommandOptions)
 }
 
 /**
- * Handle get command with numeric index in raw mode.
+ * Handle get command with selector in raw mode.
  *
- * @param index - Element index
- * @param options - Command options
- */
-async function handleIndexGetRaw(index: number, options: DomGetCommandOptions): Promise<void> {
-  const resolver = DomElementResolver.getInstance();
-  await runCommand(
-    async () => {
-      const targetNode = await resolver.getNodeIdForIndex(index);
-      const getOptions = filterDefined({ nodeId: targetNode.nodeId }) as DomGetHelperOptions;
-      const result = await getDOMElements(getOptions);
-      return { success: true, data: result };
-    },
-    options,
-    formatDomGet
-  );
-}
-
-/**
- * Handle get command with numeric index in semantic mode.
- *
- * @param index - Element index
- * @param options - Command options
- */
-async function handleIndexGetSemantic(index: number, options: DomGetCommandOptions): Promise<void> {
-  const resolver = DomElementResolver.getInstance();
-  await runCommand(
-    async () => {
-      const targetNode = await resolver.getNodeIdForIndex(index);
-      const [a11yNode, domContext] = await Promise.all([
-        resolveA11yNode('', targetNode.nodeId),
-        getDomContext(targetNode.nodeId),
-      ]);
-
-      const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
-
-      if (!node) {
-        const err = elementAtIndexNotFoundError(index, 'cached query');
-        throw new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
-      }
-
-      return { success: true, data: { node, domContext } };
-    },
-    options,
-    formatSemanticNodeWithContext
-  );
-}
-
-/**
- * Handle get command with numeric index.
- *
- * @param index - Element index
- * @param options - Command options
- */
-async function handleIndexGet(index: number, options: DomGetCommandOptions): Promise<void> {
-  if (options.raw) {
-    await handleIndexGetRaw(index, options);
-  } else {
-    await handleIndexGetSemantic(index, options);
-  }
-}
-
-/**
- * Handle get command with CSS selector in raw mode.
- *
- * @param selector - CSS selector
+ * @param selector - CSS/Playwright selector
  * @param options - Command options
  */
 async function handleSelectorGetRaw(
@@ -424,8 +267,7 @@ async function handleSelectorGetRaw(
       const getOptions = filterDefined({
         selector,
         all: options.all,
-        nth: options.nth,
-        nodeId: options.nodeId,
+        frame: options.frame,
       }) as DomGetHelperOptions;
 
       const result = await getDOMElements(getOptions);
@@ -437,9 +279,9 @@ async function handleSelectorGetRaw(
 }
 
 /**
- * Handle get command with CSS selector in semantic mode.
+ * Handle get command with selector in semantic mode.
  *
- * @param selector - CSS selector
+ * @param selector - CSS/Playwright selector
  * @param options - Command options
  */
 async function handleSelectorGetSemantic(
@@ -449,20 +291,8 @@ async function handleSelectorGetSemantic(
   await runCommand(
     async () => {
       const a11yNode = await resolveA11yNode(selector);
-
-      let domContext: DomContext | null = null;
-      let nodeId: number | undefined;
-
-      if (a11yNode?.backendDOMNodeId) {
-        nodeId = a11yNode.backendDOMNodeId;
-        domContext = await getDomContext(nodeId);
-      } else if (!a11yNode) {
-        const queryResult = await queryDomContextBySelector(selector);
-        nodeId = queryResult.nodeId;
-        domContext = queryResult.domContext;
-      }
-
-      const node = resolveNodeWithFallback(a11yNode, domContext, nodeId);
+      const domContext = await getDomContext(selector);
+      const node = resolveNodeWithFallback(a11yNode, domContext);
 
       if (!node) {
         const err = noNodesFoundError(selector);
@@ -481,32 +311,16 @@ async function handleSelectorGetSemantic(
 }
 
 /**
- * Handle get command with CSS selector.
+ * Handle bdg dom get command.
  *
- * @param selector - CSS selector
+ * @param selector - CSS/Playwright selector
  * @param options - Command options
  */
-async function handleSelectorGet(selector: string, options: DomGetCommandOptions): Promise<void> {
+async function handleDomGet(selector: string, options: DomGetCommandOptions): Promise<void> {
   if (options.raw) {
     await handleSelectorGetRaw(selector, options);
   } else {
     await handleSelectorGetSemantic(selector, options);
-  }
-}
-
-/**
- * Handle bdg dom get command.
- *
- * @param selectorOrIndex - CSS selector or numeric index
- * @param options - Command options
- */
-async function handleDomGet(selectorOrIndex: string, options: DomGetCommandOptions): Promise<void> {
-  const isNumericIndex = /^\d+$/.test(selectorOrIndex);
-
-  if (isNumericIndex) {
-    await handleIndexGet(parseInt(selectorOrIndex, 10), options);
-  } else {
-    await handleSelectorGet(selectorOrIndex, options);
   }
 }
 
@@ -535,18 +349,19 @@ async function handlePageScreenshot(
  * Handle element-level screenshot capture.
  *
  * @param outputPath - Output file path
- * @param options - Screenshot options with selector or index
+ * @param selector - Element selector
+ * @param options - Screenshot options
  */
 async function handleElementScreenshot(
   outputPath: string,
+  selector: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
   await runCommand(
     async () => {
-      const nodeId = await resolveElementNodeId(options);
       const screenshotOptions = buildElementScreenshotOptions(options);
-      const result = await captureElementScreenshot(outputPath, nodeId, screenshotOptions);
-      const elementResult = addElementInfo(result, options);
+      const result = await captureElementScreenshot(outputPath, selector, screenshotOptions);
+      const elementResult = addElementInfo(result, selector);
       return { success: true, data: elementResult };
     },
     options,
@@ -564,10 +379,9 @@ async function captureSequenceFrame(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
-  if (hasElementTarget(options)) {
-    const nodeId = await resolveElementNodeId(options);
+  if (options.selector) {
     const elementOptions = buildElementScreenshotOptions(options);
-    await captureElementScreenshot(outputPath, nodeId, elementOptions);
+    await captureElementScreenshot(outputPath, options.selector, elementOptions);
   } else {
     const pageOptions = buildPageScreenshotOptions(options);
     await capturePageScreenshot(outputPath, pageOptions);
@@ -625,71 +439,27 @@ async function handleSequenceCapture(
  * @param outputPath - Output file path or directory
  * @param options - Screenshot options
  */
-async function handleDomScreenshot(
+export async function handleDomScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
+  // Set up direct mode if --chrome-ws-url provided
+  if (options.chromeWsUrl) {
+    const { setDirectWsUrl } = await import('@/connection/directMode.js');
+    setDirectWsUrl(options.chromeWsUrl);
+  }
+
   if (options.follow) {
     await handleSequenceCapture(outputPath, options);
     return;
   }
 
-  if (hasElementTarget(options)) {
-    await handleElementScreenshot(outputPath, options);
+  if (options.selector) {
+    await handleElementScreenshot(outputPath, options.selector, options);
     return;
   }
 
   await handlePageScreenshot(outputPath, options);
-}
-
-/**
- * Handle bdg dom eval command.
- *
- * @param script - JavaScript expression to evaluate
- * @param options - Command options
- */
-async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
-  await runCommand(
-    async () => {
-      const { CDPConnection } = await import('@/connection/cdp.js');
-      const {
-        validateActiveSession,
-        getValidatedSessionMetadata,
-        verifyTargetExists,
-        executeScript,
-      } = await import('@/commands/dom/evalHelpers.js');
-
-      validateActiveSession();
-
-      const metadata = getValidatedSessionMetadata();
-
-      // Use port from session metadata, not CLI option
-      const port = metadata.port;
-      if (!port) {
-        throw new CommandError(
-          'Session metadata missing port',
-          { suggestion: 'Restart the session with: bdg stop && bdg <url>' },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
-      }
-      await verifyTargetExists(metadata, port);
-
-      const cdp = new CDPConnection();
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-      const result = await executeScript(cdp, script);
-      cdp.close();
-
-      return {
-        success: true,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        data: { result: result.result?.value },
-      };
-    },
-    options,
-    formatDomEval
-  );
 }
 
 /**
@@ -708,31 +478,24 @@ export function registerDomCommands(program: Command): void {
 
   dom
     .command('query')
-    .description('Find elements by CSS selector')
-    .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
+    .description('Find elements by CSS/Playwright selector')
+    .argument(
+      '<selector>',
+      'CSS selector or Playwright selector (e.g., "button:has-text(\'Submit\')")'
+    )
+    .option('--frame <selector>', 'Query inside iframe matching selector')
     .option('-j, --json', 'Output as JSON')
     .action(async (selector: string, options: DomQueryCommandOptions) => {
       await handleDomQuery(selector, options);
     });
 
   dom
-    .command('eval')
-    .description('Evaluate JavaScript expression in the page context')
-    .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
-    .option('-p, --port <number>', 'Chrome debugging port (default: 9222)')
-    .option('-j, --json', 'Wrap result in version/success format')
-    .action(async (script: string, options: DomEvalCommandOptions) => {
-      await handleDomEval(script, options);
-    });
-
-  dom
     .command('get')
     .description('Get semantic accessibility structure (default) or raw HTML (--raw)')
-    .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
+    .argument('<selector>', 'CSS selector or Playwright selector')
     .option('--raw', 'Output raw HTML with all filtering options')
     .option('--all', 'Get all matches (only with --raw)')
-    .option('--nth <n>', 'Get nth match (only with --raw)', parseInt)
-    .option('--node-id <id>', 'Use nodeId directly (only with --raw)', parseInt)
+    .option('--frame <selector>', 'Query inside iframe matching selector')
     .option('-j, --json', 'Output as JSON')
     .action(async (selector: string, options: DomGetCommandOptions) => {
       await handleDomGet(selector, options);
@@ -742,8 +505,11 @@ export function registerDomCommands(program: Command): void {
     .command('screenshot')
     .description('Capture page or element screenshot')
     .argument('<path>', 'Output file path, or directory for --follow mode')
-    .option('--selector <selector>', 'CSS selector for element capture')
-    .option('--index <number>', 'Cached element index (0-based) from previous query', parseInt)
+    .option(
+      '--chrome-ws-url <url>',
+      'Connect directly to Chrome via WebSocket URL (bypasses daemon)'
+    )
+    .option('--selector <selector>', 'CSS/Playwright selector for element capture')
     .option('--format <format>', 'Image format: png or jpeg (default: png)')
     .option('--quality <number>', 'JPEG quality 0-100 (default: 90)', parseInt)
     .option('--no-full-page', 'Capture viewport only (default: full page)')

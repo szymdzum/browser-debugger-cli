@@ -59,7 +59,7 @@ function checkBareArgument(script: string): ShellDamageResult {
     damaged: true,
     type: 'unquoted-argument',
     details: `${funcName}(${bareArg}) - quotes stripped by shell`,
-    suggestion: `Try: bdg dom eval '${fixedScript}'`,
+    suggestion: `Try: bdg eval '${fixedScript}'`,
   };
 }
 
@@ -72,7 +72,7 @@ function checkUnexpectedIdentifier(script: string): ShellDamageResult {
     damaged: true,
     type: 'unquoted-argument',
     details: 'Unexpected identifier suggests quotes were stripped',
-    suggestion: "Use single quotes around the script: bdg dom eval '...'",
+    suggestion: "Use single quotes around the script: bdg eval '...'",
   };
 }
 

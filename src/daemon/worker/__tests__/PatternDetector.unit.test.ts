@@ -89,7 +89,7 @@ describe('PatternDetector', () => {
       const result4 = detector.trackCommand('Runtime.evaluate');
 
       assert.strictEqual(result4.shouldShow, true);
-      assert.ok(result4.pattern?.alternative.includes('bdg dom eval'));
+      assert.ok(result4.pattern?.alternative.includes('bdg eval'));
     });
   });
 

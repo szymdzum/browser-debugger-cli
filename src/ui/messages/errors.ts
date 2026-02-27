@@ -437,7 +437,7 @@ export function scriptExecutionError(
   } else {
     lines.push('');
     lines.push('Tips:');
-    lines.push("  - Use single quotes around script: bdg dom eval '...'");
+    lines.push("  - Use single quotes around script: bdg eval '...'");
     lines.push('  - For complex scripts, use heredoc or --file option');
     lines.push('  - Escape inner quotes: \\" or use opposite quote style');
   }

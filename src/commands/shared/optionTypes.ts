@@ -44,6 +44,15 @@ export interface IndexOptions {
 }
 
 /**
+ * Options for iframe targeting.
+ * Used by DOM commands to query inside iframes.
+ */
+export interface FrameOptions {
+  /** CSS selector for iframe to query within */
+  frame?: string;
+}
+
+/**
  * Options for Chrome process management.
  */
 export interface ChromeOptions {
@@ -158,13 +167,17 @@ export type DetailsCommandOptions = BaseOptions & {
 };
 
 /** Options for DOM query command */
-export type DomQueryCommandOptions = BaseOptions;
+export type DomQueryCommandOptions = BaseOptions & FrameOptions;
 
 /** Options for DOM get command */
-export type DomGetCommandOptions = BaseOptions & RawOptions & SelectionOptions;
+export type DomGetCommandOptions = BaseOptions & RawOptions & SelectionOptions & FrameOptions;
 
 /** Options for DOM screenshot command */
-export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;
+export type DomScreenshotCommandOptions = BaseOptions &
+  ScreenshotOptions & {
+    /** Connect directly to Chrome via WebSocket URL (bypasses daemon) */
+    chromeWsUrl?: string;
+  };
 
 /** Options for DOM eval command */
 export type DomEvalCommandOptions = BaseOptions & PortOptions;
@@ -173,7 +186,7 @@ export type DomEvalCommandOptions = BaseOptions & PortOptions;
  * Options for fill command.
  * Note: Commander parses --no-blur and --no-wait as boolean flags.
  */
-export interface FillCommandOptions extends BaseOptions, IndexOptions {
+export interface FillCommandOptions extends BaseOptions, IndexOptions, FrameOptions {
   /** Blur element after filling (--no-blur sets to false) */
   blur: boolean;
   /** Wait for stability after fill (--no-wait sets to false) */
@@ -184,7 +197,7 @@ export interface FillCommandOptions extends BaseOptions, IndexOptions {
  * Options for click command.
  * Note: Commander parses --no-wait as boolean flag.
  */
-export interface ClickCommandOptions extends BaseOptions, IndexOptions {
+export interface ClickCommandOptions extends BaseOptions, IndexOptions, FrameOptions {
   /** Wait for stability after click (--no-wait sets to false) */
   wait: boolean;
 }
@@ -206,7 +219,8 @@ export interface SubmitCommandOptions extends BaseOptions, IndexOptions {
  * Options for pressKey command.
  * Note: Commander parses --no-wait as boolean flag.
  */
-export interface PressKeyCommandOptions extends BaseOptions, IndexOptions, KeyPressOptions {
+export interface PressKeyCommandOptions
+  extends BaseOptions, IndexOptions, FrameOptions, KeyPressOptions {
   /** Wait for stability after key press (--no-wait sets to false) */
   wait: boolean;
 }
@@ -215,7 +229,7 @@ export interface PressKeyCommandOptions extends BaseOptions, IndexOptions, KeyPr
  * Options for scroll command.
  * Supports scrolling to elements, by pixels, or to page boundaries.
  */
-export interface ScrollCommandOptions extends BaseOptions, IndexOptions {
+export interface ScrollCommandOptions extends BaseOptions, IndexOptions, FrameOptions {
   /** Scroll down by pixels */
   down?: number;
   /** Scroll up by pixels */

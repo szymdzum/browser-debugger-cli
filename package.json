@@ -46,6 +46,7 @@
   "dependencies": {
     "chrome-launcher": "^1.2.1",
     "commander": "^14.0.2",
+    "css-selector-parser": "^3.3.0",
     "devtools-protocol": "^0.0.1558402",
     "ws": "^8.18.0"
   },

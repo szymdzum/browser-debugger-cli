@@ -6,8 +6,11 @@ import { registerConsoleCommand } from '@/commands/console.js';
 import { registerDetailsCommand } from '@/commands/details.js';
 import { registerFormInteractionCommands } from '@/commands/dom/formInteraction.js';
 import { registerDomCommands } from '@/commands/dom/index.js';
+import { registerElectronCommand } from '@/commands/electron.js';
+import { registerEvalCommand } from '@/commands/eval.js';
 import { registerNetworkCommands } from '@/commands/network/index.js';
 import { registerPeekCommand } from '@/commands/peek.js';
+import { registerScreenshotCommand } from '@/commands/screenshot.js';
 import { registerStartCommands } from '@/commands/start.js';
 import { registerStatusCommand } from '@/commands/status.js';
 import { registerStopCommand } from '@/commands/stop.js';
@@ -33,6 +36,7 @@ const addCommandGroup = (groupName: string): CommandRegistrar => {
  */
 export const commandRegistry: CommandRegistrar[] = [
   registerStartCommands,
+  registerElectronCommand,
 
   addCommandGroup('Session Management:'),
   registerStatusCommand,
@@ -43,8 +47,10 @@ export const commandRegistry: CommandRegistrar[] = [
   registerPeekCommand,
   registerTailCommand,
   registerDetailsCommand,
+  registerScreenshotCommand,
   registerDomCommands,
   registerFormInteractionCommands,
+  registerEvalCommand,
 
   addCommandGroup('CDP Commands:'),
   registerCdpCommand,

@@ -28,14 +28,10 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { formatFormDiscovery } from '@/ui/formatters/form.js';
-import { createLogger } from '@/ui/logging/index.js';
 import { noFormsFoundError, formInIframeError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-const log = createLogger('dom');
 
 /**
  * Execute form discovery in page context.
@@ -194,36 +190,15 @@ function buildInteractionWarning(raw: RawField): string | undefined {
 }
 
 /**
- * Build fill command for a field.
- *
- * @param index - Global element index
- * @param type - Field type
- * @returns Command string
- */
-function buildFieldCommand(index: number, type: string): string {
-  const lowerType = type.toLowerCase();
-
-  if (lowerType === 'checkbox' || lowerType === 'radio' || lowerType === 'switch') {
-    return `bdg dom click ${index}`;
-  }
-
-  if (lowerType === 'file') {
-    return `bdg dom click ${index}`;
-  }
-
-  return `bdg dom fill ${index} "<value>"`;
-}
-
-/**
- * Build selector-based command for a field.
+ * Build fill command for a field using selector.
  *
  * @param selector - CSS selector
  * @param type - Field type
  * @returns Command string
  */
-function buildSelectorCommand(selector: string, type: string): string {
+function buildFieldCommand(selector: string, type: string): string {
   const lowerType = type.toLowerCase();
-  // Escape backslashes first, then double quotes (CodeQL js/incomplete-string-escaping)
+  // Escape backslashes first, then double quotes
   const escaped = selector.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
   if (lowerType === 'checkbox' || lowerType === 'radio' || lowerType === 'switch') {
@@ -240,19 +215,20 @@ function buildSelectorCommand(selector: string, type: string): string {
 /**
  * Build alternative command for non-native fields.
  *
- * @param index - Global element index
+ * @param selector - CSS selector
  * @param raw - Raw field data
  * @returns Alternative command or undefined
  */
-function buildAlternativeCommand(index: number, raw: RawField): string | undefined {
+function buildAlternativeCommand(selector: string, raw: RawField): string | undefined {
   if (raw.native) {
     return undefined;
   }
 
   const type = raw.type.toLowerCase();
+  const escaped = selector.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
   if (type === 'contenteditable' || type === 'textbox') {
-    return `bdg dom click ${index} && bdg dom pressKey ${index} "<value>"`;
+    return `bdg dom click "${escaped}" && bdg dom pressKey "${escaped}" "<value>"`;
   }
 
   return undefined;
@@ -265,6 +241,7 @@ function buildAlternativeCommand(index: number, raw: RawField): string | undefin
  * @returns Structured FormField
  */
 function transformField(raw: RawField): FormField {
+  const command = buildFieldCommand(raw.selector, raw.type);
   return {
     index: raw.index,
     formIndex: raw.formIndex,
@@ -285,9 +262,9 @@ function transformField(raw: RawField): FormField {
     maskedValue: buildMaskedValue(raw),
     validation: buildValidation(raw),
     options: raw.options,
-    command: buildFieldCommand(raw.index, raw.type),
-    selectorCommand: buildSelectorCommand(raw.selector, raw.type),
-    alternativeCommand: buildAlternativeCommand(raw.index, raw),
+    command,
+    selectorCommand: command,
+    alternativeCommand: buildAlternativeCommand(raw.selector, raw),
   };
 }
 
@@ -298,6 +275,7 @@ function transformField(raw: RawField): FormField {
  * @returns Structured FormButton
  */
 function transformButton(raw: RawButton): FormButton {
+  const escaped = raw.selector.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   return {
     index: raw.index,
     selector: raw.selector,
@@ -306,7 +284,7 @@ function transformButton(raw: RawButton): FormButton {
     primary: raw.isPrimary,
     enabled: !raw.disabled,
     disabledReason: raw.disabled ? 'Button is disabled' : undefined,
-    command: `bdg dom click ${raw.index}`,
+    command: `bdg dom click "${escaped}"`,
   };
 }
 
@@ -397,49 +375,6 @@ function transformForm(raw: RawForm): DiscoveredForm {
 }
 
 /**
- * Cache form elements for index-based access.
- *
- * @param forms - Discovered forms
- */
-async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
-  const cacheManager = QueryCacheManager.getInstance();
-  const allElements: Array<{ index: number; nodeId: number; selector: string }> = [];
-
-  for (const form of forms) {
-    for (const field of form.fields) {
-      allElements.push({
-        index: field.index,
-        nodeId: 0,
-        selector: field.selector,
-      });
-    }
-    for (const button of form.buttons) {
-      allElements.push({
-        index: button.index,
-        nodeId: 0,
-        selector: button.selector,
-      });
-    }
-  }
-
-  const navigationId = await cacheManager.getCurrentNavigationId();
-
-  await cacheManager.set({
-    selector: 'form:auto-discovered',
-    count: allElements.length,
-    nodes: allElements.map((el) => ({
-      index: el.index,
-      nodeId: el.nodeId,
-      tag: 'input',
-      preview: el.selector,
-    })),
-    ...(navigationId !== null && { navigationId }),
-  });
-
-  log.debug(`Cached ${allElements.length} form elements`);
-}
-
-/**
  * Execute CDP connection lifecycle for form discovery.
  *
  * @param fn - Function to execute with CDP connection
@@ -515,9 +450,6 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
 
         const allForms = rawData.forms.map(transformForm);
         const forms = options.all ? allForms : [allForms[0] as DiscoveredForm];
-
-        // Cache ALL forms so global indices work with bdg dom fill/click
-        await cacheFormElements(allForms);
 
         const result: FormDiscoveryResult = {
           formCount: rawData.forms.length,

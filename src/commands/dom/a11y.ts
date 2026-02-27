@@ -11,7 +11,6 @@
 
 import type { Command } from 'commander';
 
-import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { getDomContext } from '@/commands/dom/helpers.js';
 import type { DomContext } from '@/commands/dom/helpers.js';
 import { runCommand, runJsonCommand } from '@/commands/shared/CommandRunner.js';
@@ -38,7 +37,6 @@ import {
   elementNotFoundError,
   invalidQueryPatternError,
   noA11yNodesFoundError,
-  elementNotAccessibleError,
 } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -128,14 +126,13 @@ interface A11yNodeWithContext {
 }
 
 /**
- * Handle bdg dom a11y describe <selectorOrIndex> command
+ * Handle bdg dom a11y describe <selector> command
  *
- * Gets accessibility properties for a DOM element by CSS selector or numeric index.
- * Supports index-based access from query results (e.g., "bdg dom a11y describe 0").
+ * Gets accessibility properties for a DOM element by CSS/Playwright selector.
  * Useful for understanding how an element is exposed to assistive technologies.
  * Includes DOM context (tag, classes, text preview) when a11y data is sparse.
  *
- * @param selectorOrIndex - CSS selector (e.g., "button.submit") or numeric index from query results
+ * @param selector - CSS/Playwright selector (e.g., "button.submit", ":text('Login')")
  * @param options - Command options
  *
  * @example
@@ -143,49 +140,24 @@ interface A11yNodeWithContext {
  * bdg dom a11y describe "button.submit"
  * bdg dom a11y describe "#email"
  * bdg dom a11y describe "form input[type=password]"
- * bdg dom a11y describe 0                  # Uses cached query results
+ * bdg dom a11y describe ":has-text('Submit')"
  * ```
  */
 async function handleA11yDescribe(
-  selectorOrIndex: string,
+  selector: string,
   options: A11yDescribeCommandOptions
 ): Promise<void> {
-  const resolver = DomElementResolver.getInstance();
-  const isNumericIndex = resolver.isNumericIndex(selectorOrIndex);
-
   /**
-   * Fetch a11y node data for a given selector or index.
+   * Fetch a11y node data for a given selector.
    */
   async function fetchA11yNodeData(): Promise<A11yNodeWithContext> {
-    let node: A11yNode | null;
-    let nodeId: number | undefined;
-
-    if (isNumericIndex) {
-      const index = parseInt(selectorOrIndex, 10);
-      const targetNode = await resolver.getNodeIdForIndex(index);
-      nodeId = targetNode.nodeId;
-      node = await resolveA11yNode('', nodeId);
-    } else {
-      node = await resolveA11yNode(selectorOrIndex);
-    }
+    const node = await resolveA11yNode(selector);
 
     if (!node) {
-      if (isNumericIndex) {
-        const err = elementNotAccessibleError(parseInt(selectorOrIndex, 10));
-        throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
-      }
-      throw new CommandError(
-        elementNotFoundError(selectorOrIndex),
-        {},
-        EXIT_CODES.RESOURCE_NOT_FOUND
-      );
+      throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
     }
 
-    let domContext: DomContext | null = null;
-    const domNodeId = node.backendDOMNodeId ?? nodeId;
-    if (domNodeId) {
-      domContext = await getDomContext(domNodeId);
-    }
+    const domContext = await getDomContext(selector);
 
     return { node, domContext };
   }
@@ -215,7 +187,7 @@ export function registerA11yCommands(domCmd: Command): void {
     .description('Accessibility tree inspection and semantic queries')
     .argument(
       '[search]',
-      'Quick search: index (describe), CSS selector (#id, .class), pattern with ":" (query), or name search'
+      'Quick search: CSS selector (#id, .class), pattern with "role:" or "name:" (query), or name search'
     )
     .enablePositionalOptions()
     .action(async (search: string | undefined, options: A11yDescribeCommandOptions) => {
@@ -224,15 +196,15 @@ export function registerA11yCommands(domCmd: Command): void {
         return;
       }
 
-      const isNumericIndex = /^\d+$/.test(search);
       const isCssSelector = /^[#.[]/u.test(search) || search.includes(' ');
-      const isPatternQuery = search.includes(':') || search.includes('=');
+      const isPatternQuery = /(?:role|name|description):/i.test(search);
 
-      if (isNumericIndex || isCssSelector) {
+      if (isCssSelector) {
         await handleA11yDescribe(search, options);
       } else if (isPatternQuery) {
         await handleA11yQuery(search, options);
       } else {
+        // Default: treat as name search
         await handleA11yQuery(`name:*${search}*`, options);
       }
     });
@@ -259,13 +231,13 @@ export function registerA11yCommands(domCmd: Command): void {
 
   a11y
     .command('describe')
-    .description('Get accessibility properties for CSS selector or index')
+    .description('Get accessibility properties for CSS/Playwright selector')
     .argument(
-      '<selectorOrIndex>',
-      'CSS selector (e.g., "button.submit") or numeric index from query results'
+      '<selector>',
+      'CSS/Playwright selector (e.g., "button.submit", ":has-text(\'Login\')")'
     )
     .addOption(jsonOption())
-    .action(async (selectorOrIndex: string, options: A11yDescribeCommandOptions) => {
-      await handleA11yDescribe(selectorOrIndex, options);
+    .action(async (selector: string, options: A11yDescribeCommandOptions) => {
+      await handleA11yDescribe(selector, options);
     });
 }

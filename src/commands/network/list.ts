@@ -253,7 +253,8 @@ export function registerListCommand(networkCmd: Command): void {
 
       await runCommand(
         async () => {
-          const result = await fetchNetworkRequests();
+          // Fetch all requests (0 = no limit) to allow proper client-side filtering
+          const result = await fetchNetworkRequests(0);
 
           if (!result.success) {
             if (result.exitCode === EXIT_CODES.SUCCESS) {

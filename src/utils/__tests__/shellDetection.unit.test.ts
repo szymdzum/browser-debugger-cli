@@ -200,10 +200,10 @@ void describe('Shell Detection Utilities', () => {
         assert.ok(result.suggestion?.includes('element.closest("div").textContent'));
       });
 
-      void it('includes bdg dom eval command', () => {
+      void it('includes bdg eval command', () => {
         const result = detectScriptQuoteDamage('func(arg)');
 
-        assert.ok(result.suggestion?.includes('bdg dom eval'));
+        assert.ok(result.suggestion?.includes('bdg eval'));
       });
     });
 

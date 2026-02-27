@@ -25,7 +25,7 @@ import { findSimilar } from '@/utils/suggestions.js';
 const DOMAIN_NOTES: Record<string, string> = {
   Audits:
     'Event-based domain. Results arrive via events (e.g., Audits.issueAdded), not method responses. ' +
-    "For contrast checking, use: bdg dom eval 'getComputedStyle(el).color'",
+    "For contrast checking, use: bdg eval 'getComputedStyle(el).color'",
   Overlay:
     'Visual debugging domain. Methods like highlightNode show overlays but return empty. ' +
     'Use Overlay.hideHighlight to clear.',
@@ -44,7 +44,7 @@ const DOMAIN_NOTES: Record<string, string> = {
 const METHOD_NOTES: Record<string, string> = {
   'Audits.checkContrast':
     'This method triggers contrast analysis but results are sent via Audits.issueAdded events. ' +
-    'Alternative: bdg dom eval with getComputedStyle() for direct contrast checking.',
+    'Alternative: bdg eval with getComputedStyle() for direct contrast checking.',
   'Audits.enable': 'Enables the Audits domain. Issues will arrive via Audits.issueAdded events.',
   'Overlay.highlightNode':
     'Highlights a node visually. Returns empty on success. Use Overlay.hideHighlight to clear.',
