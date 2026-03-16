@@ -498,7 +498,7 @@ export class CDPConnection implements CDPEventSource {
    */
   private startKeepalive(interval: number): void {
     this.pingInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      if (this.ws?.readyState === WebSocket.OPEN) {
         this.missedPongs++;
 
         if (this.missedPongs >= this.config.maxMissedPongs) {
@@ -571,7 +571,7 @@ export class CDPConnection implements CDPEventSource {
     params: Record<string, unknown> = {},
     sessionId?: string
   ): Promise<unknown> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
       throw new CDPConnectionError(NOT_CONNECTED_BROWSER_ERROR);
     }
 
