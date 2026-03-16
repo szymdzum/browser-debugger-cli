@@ -76,11 +76,10 @@ export function landingPage(options: LandingPageOptions): string {
 /**
  * Generate "session stopped" success message.
  *
- * @param outputPath - Path to session output file
  * @returns Formatted success message
  */
-export function sessionStopped(outputPath: string): string {
-  return `Session stopped. Output saved to: ${outputPath}`;
+export function sessionStopped(): string {
+  return 'Session stopped';
 }
 
 /**

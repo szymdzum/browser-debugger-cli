@@ -20,8 +20,8 @@ bdg <url>                  # Start session (1920x1080, headless if no display)
 bdg <url> --headless       # Force headless mode
 bdg <url> --no-headless    # Force visible browser window
 bdg status                 # Check session status
-bdg peek                   # Preview data without stopping
-bdg stop                   # Stop and save output
+bdg peek                   # Preview collected telemetry
+bdg stop                   # End session (use sparingly)
 bdg cleanup --force        # Kill stale session
 bdg cleanup --aggressive   # Kill all Chrome processes
 ```
@@ -35,6 +35,8 @@ bdg dom screenshot /tmp/s.png  # Check anytime
 bdg peek                       # Preview collected data
 # No need to stop/restart - Chrome stays on the page
 ```
+
+**Don't stop sessions prematurely** - use `bdg peek` to inspect data. Only call `bdg stop` when completely done with browser automation.
 
 ## Screenshots
 

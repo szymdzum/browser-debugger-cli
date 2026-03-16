@@ -173,7 +173,7 @@ export async function startSession(
 
 /**
  * Request session stop from the daemon.
- * Stops telemetry collection, closes Chrome, and writes output file.
+ * Stops telemetry collection and closes Chrome.
  *
  * @returns Stop session response with termination status
  * @throws Error if connection fails, times out, or no active session

@@ -168,31 +168,23 @@ log_success "Extracted $LINK_COUNT links"
 record_metric "link_count" "$LINK_COUNT"
 
 # ============================================================================
-# SECTION 7: Stop Session and Validate Final Output
+# SECTION 7: Validate Telemetry and Stop Session
 # ============================================================================
-log_step "Stopping session and validating final output"
+log_step "Validating telemetry and stopping session"
 
-bdg stop >/dev/null
-
-log_success "Session stopped"
-
-# Wait for session.json to be created and validated
-SESSION_JSON_PATH="$HOME/.bdg/session.json"
-if ! wait_for_session_json 10; then
-  die "session.json not created or invalid after bdg stop"
-fi
-
-# Extract final metrics
-DURATION=$(jq -r '.duration' "$SESSION_JSON_PATH")
-NET_REQUESTS=$(jq '.data.network | length' "$SESSION_JSON_PATH")
-CONSOLE_MSGS=$(jq '.data.console | length' "$SESSION_JSON_PATH")
+# Get telemetry data via peek before stopping
+PEEK_DATA=$(bdg peek --json --last 0 2>/dev/null)
+NET_REQUESTS=$(echo "$PEEK_DATA" | jq '.data.preview.data.network | length')
+CONSOLE_MSGS=$(echo "$PEEK_DATA" | jq '.data.preview.data.console | length')
 
 assert_gte "$NET_REQUESTS" 1 "Should have captured network requests"
-log_success "Final session: ${DURATION}ms, $NET_REQUESTS requests, $CONSOLE_MSGS console messages"
+log_success "Telemetry: $NET_REQUESTS requests, $CONSOLE_MSGS console messages"
 
-record_metric "session_duration_ms" "$DURATION"
 record_metric "network_requests" "$NET_REQUESTS"
 record_metric "console_messages" "$CONSOLE_MSGS"
+
+bdg stop >/dev/null
+log_success "Session stopped"
 
 # End timing
 end_time=$(date +%s)

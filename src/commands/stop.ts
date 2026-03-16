@@ -7,7 +7,6 @@ import type { StopResult } from '@/commands/types.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { performSessionCleanup } from '@/session/cleanup.js';
-import { getSessionFilePath } from '@/session/paths.js';
 import { joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -28,7 +27,7 @@ const log = createLogger('cleanup');
  * @param data - Stop result data
  */
 function formatStop(data: StopResult): string {
-  const outputLine = data.stopped.bdg ? sessionStopped(getSessionFilePath('OUTPUT')) : undefined;
+  const outputLine = data.stopped.bdg ? sessionStopped() : undefined;
   const daemonsLine =
     data.stopped.daemons && data.orphanedDaemonsCount
       ? orphanedDaemonsCleanedMessage(data.orphanedDaemonsCount)
@@ -50,13 +49,9 @@ function formatStop(data: StopResult): string {
 export function registerStopCommand(program: Command): void {
   program
     .command('stop')
-    .description('Stop daemon and write collected telemetry to ~/.bdg/session.json')
+    .description('Stop daemon and close browser session')
     .option('--kill-chrome', 'Also kill Chrome browser process', false)
     .addOption(jsonOption())
-    .addHelpText(
-      'after',
-      '\nOutput Location:\n  Default: ~/.bdg/session.json\n  Tip: Copy to custom location with: cp ~/.bdg/session.json /path/to/output.json'
-    )
     .action(async (options: StopCommandOptions) => {
       await runCommand<StopCommandOptions, StopResult>(
         async (opts) => {
