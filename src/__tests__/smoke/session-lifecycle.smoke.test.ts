@@ -1,7 +1,7 @@
 /**
  * Session lifecycle smoke tests.
  *
- * Tests the complete user flow: start → collect data → stop → verify output.
+ * Tests the complete user flow: start → collect data → peek → stop.
  * WHY: Highest-risk path with 0% coverage despite being critical user flow.
  */
 
@@ -13,7 +13,6 @@ import {
   cleanupAllSessions,
   isDaemonRunning,
   isSessionActive,
-  readSessionOutput,
   waitForDaemon,
 } from '@/__testutils__/daemonHelpers.js';
 import type { BdgOutput } from '@/types.js';
@@ -80,8 +79,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
     assert.equal(stopResult.exitCode, 0, `Stop failed: ${stopResult.stderr}`);
   });
 
-  void it('should write output on stop', async () => {
-    // Start session with unique port
+  void it('should provide data via peek before stop', async () => {
     const startResult = await runCommand(
       'http://example.com',
       ['--port', allocatedPort.toString(), '--headless'],
@@ -92,30 +90,15 @@ void describe('Session Lifecycle Smoke Tests', () => {
     assert.equal(startResult.exitCode, 0, `Session start failed: ${startResult.stderr}`);
     await waitForDaemon(5000);
 
-    // Give Chrome time to collect data
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Stop session
+    const peekResult = await runCommandJSON<BdgOutput>('peek', ['--json']);
+    assert.ok(peekResult, 'Peek should return data before stop');
+    assert.ok('version' in peekResult);
+    assert.ok('data' in peekResult);
+
     const stopResult = await runCommand('stop', [], { timeout: 60000 });
-
-    // Should succeed
     assert.equal(stopResult.exitCode, 0, `Stop failed: ${stopResult.stderr}`);
-
-    // Give filesystem time to write the file (increased for test stability)
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    // Output file should exist
-    const output = readSessionOutput();
-    assert.ok(output, 'Session output file should exist after stop');
-    assert.ok(typeof output === 'object');
-
-    // Output should have expected structure
-    assert.ok('version' in output);
-    assert.ok('success' in output);
-    assert.equal((output as { success: boolean }).success, true);
-    assert.ok('timestamp' in output);
-    assert.ok('data' in output);
-    assert.ok('target' in output);
   });
 
   void it('should cleanup daemon on stop', async () => {
