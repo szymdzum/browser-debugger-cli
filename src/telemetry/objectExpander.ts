@@ -29,13 +29,6 @@ const log = createLogger('object-expander');
 let consecutiveFailures = 0;
 
 /**
- * Reset the failure counter (useful for testing).
- */
-export function resetFailureCounter(): void {
-  consecutiveFailures = 0;
-}
-
-/**
  * Record an expansion failure and log warning if threshold exceeded.
  */
 function recordFailure(error: unknown): void {

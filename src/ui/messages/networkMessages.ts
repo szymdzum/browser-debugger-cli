@@ -21,12 +21,3 @@ export function followingNetworkMessage(): string {
 export function stoppedFollowingNetworkMessage(): string {
   return '\nStopped following network requests.';
 }
-
-/**
- * Generate message when no network data is available.
- *
- * @returns Info message with context
- */
-export function noNetworkDataMessage(): string {
-  return 'No network requests collected yet.';
-}

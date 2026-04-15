@@ -130,18 +130,3 @@ export async function getSessionPort(explicitPort?: number | null): Promise<numb
   writeSessionPort(newPort);
   return newPort;
 }
-
-/**
- * Clear the saved port from the session directory.
- * Called during session cleanup.
- */
-export function clearSessionPort(): void {
-  try {
-    const portPath = getSessionFilePath('PORT');
-    if (fs.existsSync(portPath)) {
-      fs.unlinkSync(portPath);
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
-}

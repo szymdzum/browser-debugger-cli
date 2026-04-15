@@ -87,17 +87,6 @@ export async function fetchConsoleMessages(): Promise<FetchResult<ConsoleMessage
   return { success: true, data: result.data.console };
 }
 
-/**
- * Create error result for daemon not running.
- */
-export function createDaemonNotRunningError(): FetchError {
-  return {
-    success: false,
-    error: 'Daemon not running',
-    exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
-  };
-}
-
 interface ErrorResult {
   success: false;
   error: string;

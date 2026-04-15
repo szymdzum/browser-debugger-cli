@@ -137,36 +137,6 @@ export function invalidResponseError(reason: string): string {
 }
 
 /**
- * Generate session not active error with state-aware suggestion.
- *
- * Provides context-appropriate guidance based on what operation was attempted.
- *
- * @param operation - Operation that was attempted (e.g., "peek", "dom query")
- * @returns Formatted error message with suggestions
- *
- * @example
- * ```typescript
- * throw new CommandError(
- *   sessionNotActiveError('peek'),
- *   {},
- *   EXIT_CODES.RESOURCE_NOT_FOUND
- * );
- * ```
- */
-export function sessionNotActiveError(operation: string): string {
-  return joinLines(
-    `Error: Cannot ${operation} - no active session`,
-    '',
-    'Start a session first:',
-    '  bdg <url>',
-    '',
-    'Example:',
-    '  bdg https://example.com',
-    `  bdg ${operation}`
-  );
-}
-
-/**
  * Generate element not found error with shell quote detection and CDP fallback.
  *
  * Provides guidance for when high-level DOM commands fail to find elements.
@@ -377,26 +347,6 @@ export function keyPressFailedError(details: string): ErrorWithSuggestion {
 }
 
 /**
- * Session target not found.
- */
-export function sessionTargetNotFoundError(): ErrorWithSuggestion {
-  return {
-    message: 'Session target not found (tab may have been closed)',
-    suggestion: 'Start a new session with: bdg <url>',
-  };
-}
-
-/**
- * Session metadata missing.
- */
-export function sessionMetadataMissingError(field: string): ErrorWithSuggestion {
-  return {
-    message: `Session metadata missing ${field}`,
-    suggestion: 'Start a new session with: bdg <url>',
-  };
-}
-
-/**
  * Script execution error with shell quote detection.
  *
  * Shows the script as received to help diagnose shell quote stripping issues.
@@ -490,33 +440,6 @@ export function noFormsFoundError(): ErrorWithSuggestion {
 }
 
 /**
- * Form selection out of range.
- */
-export function formSelectionOutOfRangeError(index: number, count: number): ErrorWithSuggestion {
-  return {
-    message: `Form index ${index} out of range (found ${count} form${count === 1 ? '' : 's'})`,
-    suggestion: count > 0 ? `Use an index between 0 and ${count - 1}` : 'No forms found on page',
-  };
-}
-
-/**
- * Form selection by name not found.
- */
-export function formSelectionByNameNotFoundError(
-  name: string,
-  availableNames: string[]
-): ErrorWithSuggestion {
-  const nameList =
-    availableNames.length > 0
-      ? `Available forms: ${availableNames.join(', ')}`
-      : 'No named forms found';
-  return {
-    message: `No form found matching "${name}"`,
-    suggestion: `${nameList}. Use --all to see all forms.`,
-  };
-}
-
-/**
  * Form in iframe (cross-origin or same-origin).
  */
 export function formInIframeError(iframeUrl: string, crossOrigin: boolean): ErrorWithSuggestion {
@@ -528,18 +451,5 @@ export function formInIframeError(iframeUrl: string, crossOrigin: boolean): Erro
     suggestion: crossOrigin
       ? `${originNote}. Manual interaction required for cross-origin frames.`
       : `${originNote}. Try: bdg dom frame list, then bdg dom frame attach <id>`,
-  };
-}
-
-/**
- * Custom component interaction warning.
- */
-export function customComponentWarning(
-  elementType: string,
-  suggestedAction: string
-): ErrorWithSuggestion {
-  return {
-    message: `Custom component detected: ${elementType}`,
-    suggestion: `Standard fill may not work. Try: ${suggestedAction}`,
   };
 }
