@@ -9,9 +9,9 @@
 
 import type { Command } from 'commander';
 
-import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { type PressKeyResult, type ScrollResult } from '@/commands/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
+import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -58,56 +58,21 @@ export function registerFormInteractionCommands(program: Command): void {
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, value: string, options: FillCommandOptions) => {
       await runCommand(
-        async () => {
-          const target = await DomElementResolver.getInstance().resolve(
+        () =>
+          runElementCommand<Parameters<typeof domFill>[0], FillResult>({
             selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
-          const response = await domFill({
-            selector: target.selector,
-            value,
-            ...(target.index !== undefined && { index: target.index }),
-            ...(options.blur !== undefined && { blur: options.blur }),
-            wait: options.wait !== false,
-          });
-
-          if (response.status === 'error' || !response.data) {
-            return {
-              success: false,
-              error: response.error ?? 'Failed to fill element',
-              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
-            };
-          }
-
-          const result = response.data;
-          if (!result.success) {
-            return {
-              success: false,
-              error: result.error ?? 'Failed to fill element',
-              exitCode: result.error?.includes('not found')
-                ? EXIT_CODES.RESOURCE_NOT_FOUND
-                : EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion:
-                  result.suggestion ??
-                  'Verify the selector matches a fillable element (input, textarea, select)',
-              },
-            };
-          }
-
-          return { success: true, data: result };
-        },
+            index: options.index,
+            buildRequest: (target) => ({
+              ...target,
+              value,
+              ...(options.blur !== undefined && { blur: options.blur }),
+              wait: options.wait !== false,
+            }),
+            call: domFill,
+            action: 'fill element',
+            failureSuggestion:
+              'Verify the selector matches a fillable element (input, textarea, select)',
+          }),
         options,
         formatFillOutput
       );
@@ -122,52 +87,18 @@ export function registerFormInteractionCommands(program: Command): void {
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
       await runCommand(
-        async () => {
-          const target = await DomElementResolver.getInstance().resolve(
+        () =>
+          runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
             selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
-          const response = await domClick({
-            selector: target.selector,
-            ...(target.index !== undefined && { index: target.index }),
-            wait: options.wait !== false,
-          });
-
-          if (response.status === 'error' || !response.data) {
-            return {
-              success: false,
-              error: response.error ?? 'Failed to click element',
-              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
-            };
-          }
-
-          const result = response.data;
-          if (!result.success) {
-            return {
-              success: false,
-              error: result.error ?? 'Failed to click element',
-              exitCode: result.error?.includes('not found')
-                ? EXIT_CODES.RESOURCE_NOT_FOUND
-                : EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion: result.suggestion ?? 'Verify the selector matches a clickable element',
-              },
-            };
-          }
-
-          return { success: true, data: result };
-        },
+            index: options.index,
+            buildRequest: (target) => ({
+              ...target,
+              wait: options.wait !== false,
+            }),
+            call: domClick,
+            action: 'click element',
+            failureSuggestion: 'Verify the selector matches a clickable element',
+          }),
         options,
         formatClickOutput
       );
@@ -184,57 +115,24 @@ export function registerFormInteractionCommands(program: Command): void {
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
-        async () => {
-          const target = await DomElementResolver.getInstance().resolve(
+        () =>
+          runElementCommand<Parameters<typeof domSubmit>[0], SubmitResult>({
             selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
-          const response = await domSubmit({
-            selector: target.selector,
-            ...(target.index !== undefined && { index: target.index }),
-            ...(options.waitNavigation !== undefined && { waitNavigation: options.waitNavigation }),
-            waitNetwork: parseInt(options.waitNetwork, 10),
-            timeout: parseInt(options.timeout, 10),
-          });
-
-          if (response.status === 'error' || !response.data) {
-            return {
-              success: false,
-              error: response.error ?? 'Failed to submit form',
-              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
-            };
-          }
-
-          const result = response.data;
-          if (!result.success) {
-            return {
-              success: false,
-              error: result.error ?? 'Failed to submit form',
-              exitCode: result.error?.includes('not found')
-                ? EXIT_CODES.RESOURCE_NOT_FOUND
-                : result.error?.includes('Timeout')
-                  ? EXIT_CODES.CDP_TIMEOUT
-                  : EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion:
-                  result.suggestion ?? 'Verify the selector matches a form or submit button',
-              },
-            };
-          }
-
-          return { success: true, data: result };
-        },
+            index: options.index,
+            buildRequest: (target) => ({
+              ...target,
+              ...(options.waitNavigation !== undefined && {
+                waitNavigation: options.waitNavigation,
+              }),
+              waitNetwork: parseInt(options.waitNetwork, 10),
+              timeout: parseInt(options.timeout, 10),
+            }),
+            call: domSubmit,
+            action: 'submit form',
+            failureSuggestion: 'Verify the selector matches a form or submit button',
+            mapExitCode: (result) =>
+              result.error?.includes('Timeout') ? EXIT_CODES.CDP_TIMEOUT : undefined,
+          }),
         options,
         formatSubmitOutput
       );
@@ -252,55 +150,21 @@ export function registerFormInteractionCommands(program: Command): void {
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
       await runCommand(
-        async () => {
-          const target = await DomElementResolver.getInstance().resolve(
+        () =>
+          runElementCommand<Parameters<typeof domPressKey>[0], PressKeyResult>({
             selectorOrIndex,
-            options.index
-          );
-
-          if (!target.success) {
-            return {
-              success: false,
-              error: target.error ?? 'Failed to resolve element target',
-              exitCode: target.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
-          const response = await domPressKey({
-            selector: target.selector,
-            key,
-            ...(target.index !== undefined && { index: target.index }),
-            ...(options.times !== undefined && { times: options.times }),
-            ...(options.modifiers !== undefined && { modifiers: options.modifiers }),
-            wait: options.wait !== false,
-          });
-
-          if (response.status === 'error' || !response.data) {
-            return {
-              success: false,
-              error: response.error ?? 'Failed to press key',
-              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
-            };
-          }
-
-          const result = response.data;
-          if (!result.success) {
-            return {
-              success: false,
-              error: result.error ?? 'Failed to press key',
-              exitCode: result.error?.includes('not found')
-                ? EXIT_CODES.RESOURCE_NOT_FOUND
-                : EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion: result.suggestion ?? 'Verify the selector matches a focusable element',
-              },
-            };
-          }
-
-          return { success: true, data: result };
-        },
+            index: options.index,
+            buildRequest: (target) => ({
+              ...target,
+              key,
+              ...(options.times !== undefined && { times: options.times }),
+              ...(options.modifiers !== undefined && { modifiers: options.modifiers }),
+              wait: options.wait !== false,
+            }),
+            call: domPressKey,
+            action: 'press key',
+            failureSuggestion: 'Verify the selector matches a focusable element',
+          }),
         options,
         formatPressKeyOutput
       );

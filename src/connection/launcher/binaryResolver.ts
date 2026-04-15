@@ -7,12 +7,12 @@
 
 import * as fs from 'fs';
 
-import { getFormattedDiagnostics } from '@/connection/diagnostics.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import {
   chromeBinaryOverrideNotFound,
   chromeBinaryOverrideNotExecutable,
   chromeBinaryOverrideIsDirectory,
+  getFormattedDiagnostics,
 } from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 

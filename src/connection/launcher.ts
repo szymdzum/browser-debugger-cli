@@ -20,12 +20,12 @@ import {
   invalidPortError,
   userDataDirError,
   chromeLaunchFailedError,
+  getFormattedDiagnostics,
 } from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
 
-import { getFormattedDiagnostics } from './diagnostics.js';
 import { ChromeLaunchError } from './errors.js';
 import { resolveChromeBinary } from './launcher/binaryResolver.js';
 import { buildChromeFlags } from './launcher/flagsBuilder.js';

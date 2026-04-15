@@ -36,6 +36,14 @@ await runCommand(
 ```
 
 ### Error Handling
+
+**Convention:** `process.exit` and `console.error` belong at entrypoints only (`src/index.ts`, `CommandRunner`, signal handlers, daemon/worker bootstrap). Below that layer, choose one of two structured styles:
+
+- **Throw `CommandError`** — from deep helpers when the caller can't reasonably recover. `CommandRunner` catches and formats.
+- **Return `{ success, error?, exitCode?, errorContext? }`** — from composable operations whose callers branch on failure (e.g., CLI command action handlers, `FetchResult`).
+
+Never mix: a helper shouldn't log-and-exit when its surrounding function already returns a structured shape.
+
 ```typescript
 import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';

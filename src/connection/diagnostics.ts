@@ -1,7 +1,6 @@
 import * as chromeLauncher from 'chrome-launcher';
 
 import { createLogger } from '@/ui/logging/index.js';
-import { formatDiagnosticsForError } from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('diagnostics');
@@ -52,17 +51,4 @@ export function getChromeDiagnostics(): ChromeDiagnostics {
   };
 
   return cachedDiagnostics;
-}
-
-/**
- * Get formatted Chrome diagnostics for error messages.
- *
- * Retrieves Chrome installation information and formats it for display
- * in error messages. Uses cached diagnostics to avoid repeated filesystem scans.
- *
- * @returns Array of formatted diagnostic strings
- */
-export function getFormattedDiagnostics(): string[] {
-  const diagnostics = getChromeDiagnostics();
-  return formatDiagnosticsForError(diagnostics);
 }

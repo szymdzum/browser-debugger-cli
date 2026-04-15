@@ -426,14 +426,14 @@ async function handleExecuteMethod(
 }> {
   const normalized = normalizeMethod(methodName);
 
-  // Block methods that return large binary data
-  // Output error to stderr only and exit - no JSON output to avoid confusing pipelines
   if (normalized && BLOCKED_CDP_METHODS[normalized]) {
     const blocked = BLOCKED_CDP_METHODS[normalized];
-    console.error(`Error: ${normalized} is blocked via raw CDP`);
-    console.error(`Reason: ${blocked.reason}`);
-    console.error(`Use: ${blocked.alternative}`);
-    process.exit(1);
+    return {
+      success: false,
+      error: `${normalized} is blocked via raw CDP: ${blocked.reason}`,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: { suggestion: `Use: ${blocked.alternative}` },
+    };
   }
   if (!normalized) {
     const similar = findSimilarMethods(methodName);

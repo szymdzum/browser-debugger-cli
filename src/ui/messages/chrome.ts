@@ -4,8 +4,17 @@
  * Centralized location for Chrome diagnostics, launch errors, and troubleshooting messages.
  */
 
-import type { ChromeDiagnostics } from '@/connection/diagnostics.js';
+import { getChromeDiagnostics, type ChromeDiagnostics } from '@/connection/diagnostics.js';
 import { pluralize, joinLines } from '@/ui/formatting.js';
+
+/**
+ * Retrieve Chrome diagnostics and format for error messages.
+ *
+ * @returns Array of formatted diagnostic strings
+ */
+export function getFormattedDiagnostics(): string[] {
+  return formatDiagnosticsForError(getChromeDiagnostics());
+}
 
 /**
  * Format Chrome diagnostics for error reporting when Chrome launch fails.
