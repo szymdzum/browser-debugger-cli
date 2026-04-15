@@ -2,7 +2,7 @@
  * `bdg dom query` — find elements by CSS selector and populate the query cache.
  */
 
-import { queryDOMElements } from '@/commands/dom/helpers.js';
+import { queryDOMElements } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomQueryCommandOptions } from '@/commands/shared/optionTypes.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';

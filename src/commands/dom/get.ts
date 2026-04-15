@@ -12,7 +12,7 @@ import {
   getDomContext,
   type DomGetOptions as DomGetHelperOptions,
   type DomContext,
-} from '@/commands/dom/helpers.js';
+} from '@/commands/dom/helpers/index.js';
 import {
   formatSemanticNodeWithContext,
   queryDomContextBySelector,

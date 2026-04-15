@@ -7,7 +7,7 @@ import type { ClickResult } from './reactEventHelpers.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPTimeoutError } from '@/connection/errors.js';
 
-import { clickElement } from './formFillHelpers.js';
+import { clickElement } from './formFillHelpers/index.js';
 
 /**
  * Options for submitting a form.

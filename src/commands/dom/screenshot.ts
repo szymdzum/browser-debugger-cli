@@ -9,7 +9,7 @@ import {
   capturePageScreenshot,
   captureElementScreenshot,
   resolveSelector,
-} from '@/commands/dom/helpers.js';
+} from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';

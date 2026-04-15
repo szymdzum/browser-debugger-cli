@@ -6,7 +6,7 @@
  * of the two data sources is available.
  */
 
-import { getDomContext, type DomContext } from '@/commands/dom/helpers.js';
+import { getDomContext, type DomContext } from '@/commands/dom/helpers/index.js';
 import { callCDP } from '@/ipc/client.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';

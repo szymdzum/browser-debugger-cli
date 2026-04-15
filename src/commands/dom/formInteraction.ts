@@ -10,7 +10,7 @@
 import type { Command } from 'commander';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { type PressKeyResult, type ScrollResult } from '@/commands/dom/formFillHelpers.js';
+import { type PressKeyResult, type ScrollResult } from '@/commands/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
 import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';

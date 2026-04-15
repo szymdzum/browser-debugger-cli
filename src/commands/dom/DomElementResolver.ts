@@ -97,7 +97,7 @@ export class DomElementResolver {
   private async refreshCache(selector: string): Promise<void> {
     log.debug(`Cache stale, auto-refreshing query "${selector}"`);
 
-    const { queryDOMElements } = await import('@/commands/dom/helpers.js');
+    const { queryDOMElements } = await import('@/commands/dom/helpers/index.js');
     const result = await queryDOMElements(selector);
 
     const navigationId = await this.cacheManager.getCurrentNavigationId();

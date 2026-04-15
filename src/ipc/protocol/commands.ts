@@ -5,7 +5,7 @@
  * Each command has a request schema (input) and response data schema (output).
  */
 
-import type { PressKeyResult, ScrollResult } from '@/commands/dom/formFillHelpers.js';
+import type { PressKeyResult, ScrollResult } from '@/commands/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/commands/dom/formTypes.js';
 import type { ClickResult, FillResult } from '@/commands/dom/reactEventHelpers.js';

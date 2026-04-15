@@ -8,7 +8,7 @@ import {
   pressKeyElement,
   scrollPage,
   waitForActionStability,
-} from '@/commands/dom/formFillHelpers.js';
+} from '@/commands/dom/formFillHelpers/index.js';
 import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/commands/dom/formTypes.js';
 import type { CDPConnection } from '@/connection/cdp.js';
