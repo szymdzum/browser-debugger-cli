@@ -18,7 +18,6 @@ import { readPidFromFile } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { isProcessAlive } from '@/utils/process.js';
 
-
 const execAsync = promisify(exec);
 const log = createLogger('cleanup');
 
