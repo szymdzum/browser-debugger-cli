@@ -153,8 +153,4 @@ export class OutputBuilder {
       ...options,
     };
   }
-
-  static buildJsonSuccess(data: Record<string, unknown>): Record<string, unknown> {
-    return { version: VERSION, success: true, ...data };
-  }
 }

@@ -720,7 +720,7 @@ export function registerDomCommands(program: Command): void {
     .description('Evaluate JavaScript expression in the page context')
     .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
     .option('-p, --port <number>', 'Chrome debugging port (default: 9222)')
-    .option('-j, --json', 'Wrap result in version/success format')
+    .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);
     });
