@@ -4,10 +4,10 @@
  * that CDP skips (keypress / input / change / submit).
  */
 
-import { escapeSelectorForJS } from '@/commands/dom/formFillHelpers/shared.js';
-import { getKeyDefinition, parseModifiers, type KeyDefinition } from '@/commands/dom/keyMapping.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
+import { getKeyDefinition, parseModifiers, type KeyDefinition } from '@/runtime/dom/keyMapping.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { keyPressFailedError, operationFailedError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';

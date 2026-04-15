@@ -3,9 +3,9 @@
  * page boundaries.
  */
 
-import { escapeSelectorForJS } from '@/commands/dom/formFillHelpers/shared.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

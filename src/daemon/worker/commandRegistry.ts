@@ -1,20 +1,20 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
-import { executeScript } from '@/commands/dom/evalHelpers.js';
-import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/commands/dom/formDiscovery.js';
+import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
+import { PatternDetector } from '@/daemon/patternDetector.js';
+import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
+import { executeScript } from '@/runtime/dom/evalHelpers.js';
+import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import {
   fillElement,
   clickElement,
   pressKeyElement,
   scrollPage,
   waitForActionStability,
-} from '@/commands/dom/formFillHelpers/index.js';
-import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
-import type { RawFormData } from '@/commands/dom/formTypes.js';
-import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
-import { PatternDetector } from '@/daemon/patternDetector.js';
-import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
+} from '@/runtime/dom/formFillHelpers/index.js';
+import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
+import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { generatePatternHint } from '@/ui/messages/hints.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';

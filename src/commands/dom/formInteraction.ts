@@ -9,10 +9,7 @@
 
 import type { Command } from 'commander';
 
-import { type PressKeyResult, type ScrollResult } from '@/commands/dom/formFillHelpers/index.js';
-import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
-import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type {
@@ -23,6 +20,9 @@ import type {
   ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
+import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
+import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
+import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { internalError } from '@/ui/messages/errors.js';

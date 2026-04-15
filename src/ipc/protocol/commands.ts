@@ -5,11 +5,11 @@
  * Each command has a request schema (input) and response data schema (output).
  */
 
-import type { PressKeyResult, ScrollResult } from '@/commands/dom/formFillHelpers/index.js';
-import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
-import type { RawFormData } from '@/commands/dom/formTypes.js';
-import type { ClickResult, FillResult } from '@/commands/dom/reactEventHelpers.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
+import type { PressKeyResult, ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
+import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
+import type { RawFormData } from '@/runtime/dom/formTypes.js';
+import type { ClickResult, FillResult } from '@/runtime/dom/reactEventHelpers.js';
 import type { NetworkRequest } from '@/types.js';
 
 /**
