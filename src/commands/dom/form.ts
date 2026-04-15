@@ -411,7 +411,8 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
         return {
           success: false,
           error: response.error ?? 'Form discovery failed',
-          exitCode: EXIT_CODES.SOFTWARE_ERROR,
+          exitCode: response.exitCode ?? EXIT_CODES.SOFTWARE_ERROR,
+          ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
       }
       const rawData = response.data;

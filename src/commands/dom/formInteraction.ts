@@ -85,7 +85,8 @@ export function registerFormInteractionCommands(program: Command): void {
             return {
               success: false,
               error: response.error ?? 'Failed to fill element',
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
             };
           }
 
@@ -146,7 +147,8 @@ export function registerFormInteractionCommands(program: Command): void {
             return {
               success: false,
               error: response.error ?? 'Failed to click element',
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
             };
           }
 
@@ -209,7 +211,8 @@ export function registerFormInteractionCommands(program: Command): void {
             return {
               success: false,
               error: response.error ?? 'Failed to submit form',
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
             };
           }
 
@@ -277,7 +280,8 @@ export function registerFormInteractionCommands(program: Command): void {
             return {
               success: false,
               error: response.error ?? 'Failed to press key',
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
             };
           }
 
@@ -380,7 +384,8 @@ export function registerFormInteractionCommands(program: Command): void {
             return {
               success: false,
               error: response.error ?? 'Failed to scroll',
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
             };
           }
 

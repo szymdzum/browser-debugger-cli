@@ -22,7 +22,8 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
         return {
           success: false,
           error: response.error ?? 'Failed to evaluate script',
-          exitCode: EXIT_CODES.CDP_CONNECTION_FAILURE,
+          exitCode: response.exitCode ?? EXIT_CODES.CDP_CONNECTION_FAILURE,
+          ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
       }
       return { success: true, data: { result: response.data.value } };

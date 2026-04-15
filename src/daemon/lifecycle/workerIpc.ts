@@ -9,6 +9,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { CommandRegistry } from '@/daemon/worker/commandRegistry.js';
 import type { CommandName, WorkerResponse } from '@/ipc/index.js';
 import { COMMANDS } from '@/ipc/protocol/commands.js';
+import { CommandError } from '@/ui/errors/index.js';
 import type { Logger } from '@/ui/logging/index.js';
 import {
   workerUnknownCommand,
@@ -52,19 +53,48 @@ function isValidWorkerRequest(obj: unknown): obj is ValidatedWorkerRequest {
 }
 
 /**
- * Send a typed error response for a known requestId.
- *
- * Carved out so both the "unknown command" early-return path and the
- * handler-threw path emit responses in the same format — previously the
- * unknown-command path just logged and dropped the request, causing the
- * client to time out rather than see a typed error.
+ * Error metadata preserved across the IPC boundary so the CLI can render
+ * the same exit code and recovery hint a local `CommandError` would have
+ * produced. Populated from `CommandError` when available.
  */
-function sendErrorResponse(commandName: string, requestId: string, error: string): void {
+interface ForwardedErrorInfo {
+  error: string;
+  exitCode?: number;
+  suggestion?: string;
+}
+
+/**
+ * Extract forwardable error metadata from a thrown value.
+ */
+function extractErrorInfo(error: unknown): ForwardedErrorInfo {
+  if (error instanceof CommandError) {
+    const info: ForwardedErrorInfo = {
+      error: error.message,
+      exitCode: error.exitCode,
+    };
+    const suggestion = error.metadata['suggestion'];
+    if (typeof suggestion === 'string') {
+      info.suggestion = suggestion;
+    }
+    return info;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return { error: message };
+}
+
+/**
+ * Send a typed error response for a known requestId. Both the unknown-
+ * command early-return path and the handler-threw path use this so the
+ * client sees a consistent failure envelope.
+ */
+function sendErrorResponse(commandName: string, requestId: string, info: ForwardedErrorInfo): void {
   const response = {
     type: `${commandName}_response`,
     requestId,
     success: false,
-    error,
+    error: info.error,
+    ...(info.exitCode !== undefined && { exitCode: info.exitCode }),
+    ...(info.suggestion !== undefined && { suggestion: info.suggestion }),
   };
   console.log(JSON.stringify(response));
 }
@@ -83,7 +113,9 @@ async function handleWorkerIPC(
 
   if (!handler) {
     log.debug(workerUnknownCommand(commandName));
-    sendErrorResponse(commandName, message.requestId, `Unknown command: ${commandName}`);
+    sendErrorResponse(commandName, message.requestId, {
+      error: `Unknown command: ${commandName}`,
+    });
     return;
   }
 
@@ -108,9 +140,9 @@ async function handleWorkerIPC(
     console.log(JSON.stringify(response));
     log.debug(workerCommandResponse(commandName, true));
   } catch (error) {
-    const errorMessage = getErrorMessage(error);
-    sendErrorResponse(commandName, message.requestId, errorMessage);
-    log.debug(workerCommandResponse(commandName, false, errorMessage));
+    const info = extractErrorInfo(error);
+    sendErrorResponse(commandName, message.requestId, info);
+    log.debug(workerCommandResponse(commandName, false, info.error));
   }
 }
 
