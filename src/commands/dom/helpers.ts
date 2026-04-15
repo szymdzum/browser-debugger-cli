@@ -231,13 +231,15 @@ async function restoreScrollPosition(position: ScrollPosition): Promise<void> {
 }
 
 /**
- * Query DOM elements by CSS selector using CDP relay.
+ * Enable the DOM domain and fetch the document root nodeId.
  *
- * @param selector - CSS selector to query
- * @returns Query result with matched nodes
- * @throws CDPConnectionError if CDP operation fails
+ * Extracted helper: every DOM operation that starts from a selector needs
+ * to do this exact dance first.
+ *
+ * @returns The root document's nodeId
+ * @throws CDPConnectionError if the root cannot be obtained
  */
-export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
+async function getDocumentRootId(): Promise<number> {
   await callCDP('DOM.enable', {});
 
   const docResponse = await callCDP('DOM.getDocument', {});
@@ -245,9 +247,41 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
   if (!doc?.root?.nodeId) {
     throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
   }
+  return doc.root.nodeId;
+}
+
+/**
+ * Convert CDP's flat attribute array `["key1", "val1", "key2", "val2"]` into
+ * a plain object. CDP returns attributes as a string array for wire efficiency.
+ *
+ * @param attributes - Raw flat attribute array from DOM.describeNode
+ * @returns Attribute map
+ */
+function unpackAttributes(attributes: string[] | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!attributes) return result;
+  for (let i = 0; i < attributes.length; i += 2) {
+    const key = attributes[i];
+    const value = attributes[i + 1];
+    if (key !== undefined && value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Query DOM elements by CSS selector using CDP relay.
+ *
+ * @param selector - CSS selector to query
+ * @returns Query result with matched nodes
+ * @throws CDPConnectionError if CDP operation fails
+ */
+export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
+  const rootNodeId = await getDocumentRootId();
 
   const queryResponse = await callCDP('DOM.querySelectorAll', {
-    nodeId: doc.root.nodeId,
+    nodeId: rootNodeId,
     selector,
   });
   const queryResult = queryResponse.data?.result as
@@ -273,17 +307,7 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
           return { index, nodeId };
         }
 
-        const attributes: Record<string, string> = {};
-        if (nodeDesc.attributes) {
-          for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-            const key = nodeDesc.attributes[i];
-            const value = nodeDesc.attributes[i + 1];
-            if (key !== undefined && value !== undefined) {
-              attributes[key] = value;
-            }
-          }
-        }
-
+        const attributes = unpackAttributes(nodeDesc.attributes);
         const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
         const tag = nodeDesc.nodeName.toLowerCase();
 
@@ -343,17 +367,7 @@ export async function getDomContext(nodeId: number): Promise<DomContext | null> 
       return null;
     }
 
-    const attributes: Record<string, string> = {};
-    if (nodeDesc.attributes) {
-      for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-        const key = nodeDesc.attributes[i];
-        const value = nodeDesc.attributes[i + 1];
-        if (key !== undefined && value !== undefined) {
-          attributes[key] = value;
-        }
-      }
-    }
-
+    const attributes = unpackAttributes(nodeDesc.attributes);
     const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
     const tag = nodeDesc.nodeName.toLowerCase();
 
@@ -386,21 +400,16 @@ export async function getDomContext(nodeId: number): Promise<DomContext | null> 
  * @throws CDPConnectionError if CDP operation fails
  */
 export async function getDOMElements(options: DomGetOptions): Promise<DomGetResult> {
-  await callCDP('DOM.enable', {});
-
   let nodeIds: number[] = [];
 
   if (options.nodeId !== undefined) {
+    await callCDP('DOM.enable', {});
     nodeIds = [options.nodeId];
   } else if (options.selector) {
-    const docResponse = await callCDP('DOM.getDocument', {});
-    const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-    if (!doc?.root?.nodeId) {
-      throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
-    }
+    const rootNodeId = await getDocumentRootId();
 
     const queryResponse = await callCDP('DOM.querySelectorAll', {
-      nodeId: doc.root.nodeId,
+      nodeId: rootNodeId,
       selector: options.selector,
     });
     const queryResult = queryResponse.data?.result as
@@ -479,16 +488,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
           return { nodeId };
         }
 
-        const attributes: Record<string, string> = {};
-        if (nodeDesc.attributes) {
-          for (let i = 0; i < nodeDesc.attributes.length; i += 2) {
-            const key = nodeDesc.attributes[i];
-            const value = nodeDesc.attributes[i + 1];
-            if (key !== undefined && value !== undefined) {
-              attributes[key] = value;
-            }
-          }
-        }
+        const attributes = unpackAttributes(nodeDesc.attributes);
 
         const classes = attributes['class']?.split(/\s+/).filter((c) => c.length > 0);
         const tag = nodeDesc.nodeName.toLowerCase();
@@ -744,17 +744,10 @@ export async function getElementBounds(nodeId: number): Promise<ElementBounds> {
  * @throws CommandError if element not found
  */
 export async function resolveSelector(selector: string): Promise<number> {
-  await callCDP('DOM.enable', {});
-
-  const docResponse = await callCDP('DOM.getDocument', {});
-  const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-
-  if (!doc?.root?.nodeId) {
-    throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
-  }
+  const rootNodeId = await getDocumentRootId();
 
   const queryResponse = await callCDP('DOM.querySelector', {
-    nodeId: doc.root.nodeId,
+    nodeId: rootNodeId,
     selector,
   });
   const queryResult = queryResponse.data?.result as Protocol.DOM.QuerySelectorResponse | undefined;
