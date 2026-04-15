@@ -1,31 +1,32 @@
 /**
  * Runtime hint message generators.
  *
- * Provides formatted hint messages that guide agents toward more
- * efficient command patterns during active sessions.
+ * Boundary formatter for structured `HintDetails` DTOs the worker emits
+ * alongside CDP command results. Keeps hint wording out of core so the
+ * worker stays free of UI imports.
  */
 
-import type { PatternDefinition } from '@/daemon/patternDefinitions.js';
+import type { HintDetails } from '@/errors/notices.js';
 import { joinLines } from '@/ui/formatting.js';
 
 /**
- * Generate runtime pattern hint message.
+ * Format a structured hint into a user-facing string.
  *
- * Creates a formatted hint suggesting a more efficient command alternative.
- *
- * @param pattern - Detected pattern with alternative suggestion
- * @returns Formatted hint message
- *
- * @example
- * ```typescript
- * const hint = generatePatternHint(pattern);
- * console.error(hint);
- * ```
+ * Called at the UI boundary (CLI command layer) when a `HintDetails`
+ * payload arrives from the worker. Core emits the DTO; this is the
+ * only place hint prose is assembled.
  */
-export function generatePatternHint(pattern: PatternDefinition): string {
-  return joinLines(
-    '',
-    `Hint: Consider using '${pattern.alternative}' instead of ${pattern.cdpMethods.join(' or ')}`,
-    ''
-  );
+export function formatHint(hint: HintDetails): string {
+  const ctx = hint.context ?? {};
+  switch (hint.code) {
+    case 'PATTERN_HINT': {
+      const alternative = ctx['alternative'] as string;
+      const cdpMethods = (ctx['cdpMethods'] as string[] | undefined) ?? [];
+      return joinLines(
+        '',
+        `Hint: Consider using '${alternative}' instead of ${cdpMethods.join(' or ')}`,
+        ''
+      );
+    }
+  }
 }

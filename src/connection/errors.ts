@@ -4,23 +4,46 @@
  * Provides structured error handling for CDP connections and Chrome launches.
  */
 
+import type { IssueDetails } from '@/errors/issues.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/**
+ * Options accepted by ConnectionError subclasses.
+ */
+export interface ConnectionErrorOptions {
+  /** Underlying error that triggered this one. */
+  cause?: Error;
+  /** Structured issue payload for boundary formatters. */
+  issue?: IssueDetails;
+}
 
 /**
  * Base error class for all connection-related errors.
  *
  * Extends native Error with error codes for programmatic handling,
  * exit codes for semantic exit codes, and cause chaining for nested errors.
+ * Optionally carries a structured {@link IssueDetails} payload so callers at
+ * the UI boundary can format messages deterministically.
  */
 export abstract class ConnectionError extends Error {
   abstract readonly code: string;
   abstract readonly exitCode: number;
+  readonly issue?: IssueDetails;
 
-  constructor(message: string, cause?: Error) {
+  constructor(message: string, options?: ConnectionErrorOptions | Error) {
     super(message);
     this.name = this.constructor.name;
-    if (cause) {
-      this.cause = cause;
+
+    if (options instanceof Error) {
+      this.cause = options;
+      return;
+    }
+
+    if (options?.cause) {
+      this.cause = options.cause;
+    }
+    if (options?.issue) {
+      this.issue = options.issue;
     }
   }
 }

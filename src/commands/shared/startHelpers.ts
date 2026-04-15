@@ -7,17 +7,17 @@
 
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
-import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
-import { IPCErrorCode } from '@/ipc/index.js';
-import { isConnectionError } from '@/ipc/utils/errors.js';
-import type { TelemetryType } from '@/types.js';
-import { createLogger } from '@/ui/logging/index.js';
 import {
   sessionAlreadyRunningError,
   daemonNotRunningError,
   invalidResponseError,
   genericError,
-} from '@/ui/messages/errors.js';
+} from '@/errors/messages.js';
+import { startSession as sendStartSessionRequest } from '@/ipc/client.js';
+import { IPCErrorCode } from '@/ipc/index.js';
+import { isConnectionError } from '@/ipc/utils/errors.js';
+import type { TelemetryType } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';

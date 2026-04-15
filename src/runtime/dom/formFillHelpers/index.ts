@@ -11,15 +11,15 @@
  * resolves to this barrel.
  */
 
-export { fillElement, clickElement } from '@/commands/dom/formFillHelpers/fill.js';
+export { fillElement, clickElement } from '@/runtime/dom/formFillHelpers/fill.js';
 export {
   pressKeyElement,
   type PressKeyOptions,
   type PressKeyResult,
-} from '@/commands/dom/formFillHelpers/pressKey.js';
+} from '@/runtime/dom/formFillHelpers/pressKey.js';
 export {
   scrollPage,
   type ScrollOptions,
   type ScrollResult,
-} from '@/commands/dom/formFillHelpers/scroll.js';
-export { waitForActionStability } from '@/commands/dom/formFillHelpers/stability.js';
+} from '@/runtime/dom/formFillHelpers/scroll.js';
+export { waitForActionStability } from '@/runtime/dom/formFillHelpers/stability.js';

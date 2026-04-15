@@ -3,7 +3,7 @@
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { CommandError } from '@/ui/errors/index.js';
+import { CommandError } from '@/errors/index.js';
 import { invalidIntegerError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';

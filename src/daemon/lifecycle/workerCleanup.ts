@@ -5,12 +5,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
-import { writeChromePid } from '@/session/chrome.js';
-import { collectDOM } from '@/telemetry/dom.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types';
-import type { Logger } from '@/ui/logging/index.js';
-import { chromeExternalSkipTerminationMessage } from '@/ui/messages/chrome.js';
 import {
   workerCollectingDOM,
   workerDOMCollected,
@@ -18,7 +12,13 @@ import {
   workerRunningCleanup,
   workerClosingCDP,
   workerShutdownComplete,
-} from '@/ui/messages/debug.js';
+} from '@/daemon/messages.js';
+import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
+import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
+import { writeChromePid } from '@/session/chrome.js';
+import { collectDOM } from '@/telemetry/dom.js';
+import type { CleanupFunction, LaunchedChrome } from '@/types';
+import type { Logger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
@@ -32,6 +32,7 @@ export interface CleanupContext {
   cleanupFunctions: CleanupFunction[];
   telemetryStore: TelemetryStore;
   log: Logger;
+  notify: NoticeSink<ChromeNoticeCode>;
 }
 
 /**
@@ -44,7 +45,7 @@ export async function cleanupWorker(
   reason: 'normal' | 'crash' | 'timeout',
   context: CleanupContext
 ): Promise<void> {
-  const { chrome, cdp, cleanupFunctions, telemetryStore, log } = context;
+  const { chrome, cdp, cleanupFunctions, telemetryStore, log, notify } = context;
 
   log.debug(`[worker] Cleanup started (reason: ${reason})`);
 
@@ -93,8 +94,7 @@ export async function cleanupWorker(
     if (chrome && chromePid) {
       await terminateChrome(chrome, chromePid, log);
     } else if (!chrome && cdp) {
-      // External Chrome mode (connected via --chrome-ws-url)
-      console.error(`[worker] ${chromeExternalSkipTerminationMessage()}`);
+      notify({ code: 'EXTERNAL_CHROME_SKIP_TERMINATION' });
     }
     // If both chrome and cdp are null, Chrome launch failed - nothing to terminate
 

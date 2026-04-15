@@ -14,11 +14,11 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
+import { CommandError } from '@/errors/index.js';
+import { missingArgumentError } from '@/errors/messages.js';
 import type { ScreenshotResult, ElementBounds } from '@/types.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { missingArgumentError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 

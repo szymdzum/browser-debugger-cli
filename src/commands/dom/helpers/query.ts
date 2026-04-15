@@ -7,15 +7,15 @@
 
 import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { callCDP } from '@/ipc/client.js';
-import type { DomQueryResult, DomGetResult, DomGetOptions, DomContext } from '@/types.js';
-import { CommandError } from '@/ui/errors/index.js';
-import { createLogger } from '@/ui/logging/index.js';
+import { CommandError } from '@/errors/index.js';
 import {
   noNodesFoundError,
   indexOutOfRangeError,
   eitherArgumentRequiredError,
-} from '@/ui/messages/errors.js';
+} from '@/errors/messages.js';
+import { callCDP } from '@/ipc/client.js';
+import type { DomQueryResult, DomGetResult, DomGetOptions, DomContext } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';

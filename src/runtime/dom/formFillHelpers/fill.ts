@@ -3,11 +3,20 @@
  * and unpack structured results.
  */
 
+import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
+import {
+  fillableElementNotFoundError,
+  clickableElementNotFoundError,
+  unexpectedResponseFormatError,
+  operationFailedError,
+} from '@/errors/messages.js';
 import {
   escapeSelectorForJS,
   escapeValueForJS,
   formatScriptExecutionError,
-} from '@/commands/dom/formFillHelpers/shared.js';
+} from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   REACT_FILL_SCRIPT,
   CLICK_ELEMENT_SCRIPT,
@@ -16,16 +25,7 @@ import {
   type FillOptions,
   type FillResult,
   type ClickResult,
-} from '@/commands/dom/reactEventHelpers.js';
-import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
-import { CommandError } from '@/ui/errors/index.js';
-import {
-  fillableElementNotFoundError,
-  clickableElementNotFoundError,
-  unexpectedResponseFormatError,
-  operationFailedError,
-} from '@/ui/messages/errors.js';
+} from '@/runtime/dom/reactEventHelpers.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

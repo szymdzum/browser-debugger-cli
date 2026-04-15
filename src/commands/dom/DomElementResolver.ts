@@ -26,10 +26,10 @@
  * ```
  */
 
+import { CommandError } from '@/errors/index.js';
+import { elementAtIndexNotFoundError, indexOutOfRangeError } from '@/errors/messages.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { elementAtIndexNotFoundError, indexOutOfRangeError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');

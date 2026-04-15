@@ -21,6 +21,13 @@ import type {
   A11yQueryCommandOptions,
   A11yDescribeCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { CommandError } from '@/errors/index.js';
+import {
+  elementNotFoundError,
+  invalidQueryPatternError,
+  noA11yNodesFoundError,
+  elementNotAccessibleError,
+} from '@/errors/messages.js';
 import {
   collectA11yTree,
   queryA11yTree,
@@ -28,18 +35,11 @@ import {
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
 import type { A11yNode } from '@/types.js';
-import { CommandError } from '@/ui/errors/index.js';
 import {
   formatA11yTree,
   formatA11yQueryResult,
   formatA11yNodeWithContext,
 } from '@/ui/formatters/a11y.js';
-import {
-  elementNotFoundError,
-  invalidQueryPatternError,
-  noA11yNodesFoundError,
-  elementNotAccessibleError,
-} from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

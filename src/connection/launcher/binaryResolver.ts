@@ -7,13 +7,7 @@
 
 import * as fs from 'fs';
 
-import { getFormattedDiagnostics } from '@/connection/diagnostics.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
-import {
-  chromeBinaryOverrideNotFound,
-  chromeBinaryOverrideNotExecutable,
-  chromeBinaryOverrideIsDirectory,
-} from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 /**
@@ -64,16 +58,29 @@ export function resolveChromeBinary(options: BinaryResolverOptions): string | un
   const sourceLabel = options.chromePath ? 'chromePath option' : 'CHROME_PATH';
 
   if (!fs.existsSync(chromePath)) {
-    const diagnostics = getFormattedDiagnostics();
     throw new ChromeLaunchError(
-      `${chromeBinaryOverrideNotFound(chromePath, sourceLabel)}\n\n${diagnostics.join('\n')}`
+      `Chrome binary override (${sourceLabel}) points to "${chromePath}", but that file does not exist.`,
+      {
+        issue: {
+          code: 'CHROME_BINARY_NOT_FOUND',
+          context: { chromePath, source: sourceLabel },
+        },
+      }
     );
   }
 
   try {
     const stats = fs.statSync(chromePath);
     if (stats.isDirectory()) {
-      throw new ChromeLaunchError(chromeBinaryOverrideIsDirectory(chromePath, sourceLabel));
+      throw new ChromeLaunchError(
+        `Chrome binary override (${sourceLabel}) points to "${chromePath}", which is a directory.`,
+        {
+          issue: {
+            code: 'CHROME_BINARY_IS_DIRECTORY',
+            context: { chromePath, source: sourceLabel },
+          },
+        }
+      );
     }
 
     fs.accessSync(chromePath, fs.constants.X_OK);
@@ -83,8 +90,14 @@ export function resolveChromeBinary(options: BinaryResolverOptions): string | un
     }
 
     throw new ChromeLaunchError(
-      `${chromeBinaryOverrideNotExecutable(chromePath, sourceLabel)}\n\n${getErrorMessage(error)}`,
-      error instanceof Error ? error : undefined
+      `Chrome binary override (${sourceLabel}) points to "${chromePath}", but it is not executable.`,
+      {
+        ...(error instanceof Error && { cause: error }),
+        issue: {
+          code: 'CHROME_BINARY_NOT_EXECUTABLE',
+          context: { chromePath, source: sourceLabel, reason: getErrorMessage(error) },
+        },
+      }
     );
   }
 

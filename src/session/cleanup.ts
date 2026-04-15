@@ -5,11 +5,7 @@
  * WHY: Centralized cleanup logic ensures consistent cleanup across error paths and normal shutdown.
  */
 
-import { exec } from 'child_process';
 import * as fs from 'fs';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
 
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -18,9 +14,12 @@ import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
 import { QueryCacheManager } from './QueryCacheManager.js';
 import { readChromePid, clearChromePid } from './chrome.js';
+import { cleanupOrphanedDaemons } from './cleanup/orphanedDaemons.js';
 import { acquireSessionLock, releaseSessionLock } from './lock.js';
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 import { readPid, cleanupPidFile, readPidFromFile } from './pid.js';
+
+export { cleanupOrphanedDaemons } from './cleanup/orphanedDaemons.js';
 // Note: QueryCacheManager must be after chrome.js per alphabetical order
 
 const log = createLogger('cleanup');
@@ -53,114 +52,6 @@ function killCachedChromeProcess(reason: string): void {
       clearChromePid();
     }
   }
-}
-
-/**
- * Get the BDG_SESSION_DIR for a given process by reading /proc/PID/environ.
- *
- * @param pid - Process ID to check
- * @returns Session directory or null if not found/accessible
- */
-function getProcessSessionDir(pid: number): string | null {
-  try {
-    const environPath = `/proc/${pid}/environ`;
-    const environ = fs.readFileSync(environPath, 'utf-8');
-    // Environment variables are null-separated
-    const vars = environ.split('\0');
-    for (const v of vars) {
-      if (v.startsWith('BDG_SESSION_DIR=')) {
-        return v.substring('BDG_SESSION_DIR='.length);
-      }
-    }
-    return null;
-  } catch {
-    // Process may have exited or we don't have permissions
-    return null;
-  }
-}
-
-/**
- * Find all orphaned daemon processes and return their PIDs.
- *
- * Orphaned daemons are node processes running dist/daemon.js that:
- * 1. Are not the currently tracked daemon in the PID file
- * 2. Belong to the same BDG_SESSION_DIR as the current session
- *
- * This ensures that daemons from other sessions (with different BDG_SESSION_DIR)
- * are NOT killed, providing proper session isolation.
- *
- * @returns Array of orphaned daemon PIDs
- */
-async function findOrphanedDaemons(): Promise<number[]> {
-  const orphanedPids: number[] = [];
-
-  try {
-    const daemonPidPath = getSessionFilePath('DAEMON_PID');
-    const currentDaemonPid = readPidFromFile(daemonPidPath);
-    const currentSessionDir = process.env['BDG_SESSION_DIR'] ?? null;
-
-    const psCommand =
-      process.platform === 'win32'
-        ? 'wmic process where "commandline like \'%dist/daemon.js%\'" get processid'
-        : 'ps aux | grep -E "node.*dist/daemon\\.js" | grep -v grep';
-
-    const { stdout: output } = await execAsync(psCommand);
-
-    const lines = output.trim().split('\n');
-
-    for (const line of lines) {
-      let pid: number;
-
-      if (process.platform === 'win32') {
-        const match = line.trim().match(/(\d+)/);
-        if (!match?.[1]) {
-          continue;
-        }
-        pid = parseInt(match[1], 10);
-      } else {
-        const parts = line.trim().split(/\s+/);
-        if (parts.length < 2 || !parts[1]) {
-          continue;
-        }
-        pid = parseInt(parts[1], 10);
-      }
-
-      if (Number.isNaN(pid)) {
-        continue;
-      }
-
-      if (currentDaemonPid && pid === currentDaemonPid) {
-        continue;
-      }
-
-      if (!isProcessAlive(pid)) {
-        continue;
-      }
-
-      // Cross-session safety: Only consider daemons from THIS session directory
-      // Daemons from other sessions should not be touched
-      if (process.platform !== 'win32') {
-        const processSessionDir = getProcessSessionDir(pid);
-        // If we can determine the daemon's session dir and it differs from ours, skip it
-        if (processSessionDir !== null && processSessionDir !== currentSessionDir) {
-          log.debug(`Skipping daemon ${pid} from different session: ${processSessionDir}`);
-          continue;
-        }
-        // If process session dir is null but current session dir is set,
-        // this daemon may be from a session without BDG_SESSION_DIR - still skip for safety
-        if (processSessionDir === null && currentSessionDir !== null) {
-          log.debug(`Skipping daemon ${pid} with unknown session dir (safety)`);
-          continue;
-        }
-      }
-
-      orphanedPids.push(pid);
-    }
-  } catch (error) {
-    logDebugError(log, 'find orphaned daemons', error);
-  }
-
-  return orphanedPids;
 }
 
 /**
@@ -348,51 +239,6 @@ export function cleanupStaleDaemonPid(): boolean {
       return false;
     }
   }
-}
-
-/**
- * Aggressively cleanup orphaned daemon processes.
- *
- * Finds and kills all node processes running dist/daemon.js that are not
- * the currently tracked daemon. This prevents accumulation of zombie daemon
- * processes from test failures, timeouts, or crashes.
- *
- * WHY: Stale daemon processes accumulate from test runs and failures, causing
- * resource leaks and confusion. Aggressive cleanup prevents this.
- *
- * @returns Number of orphaned daemons killed
- *
- * @example
- * ```typescript
- * const killedCount = cleanupOrphanedDaemons();
- * if (killedCount > 0) {
- *   console.log(`Killed ${killedCount} orphaned daemon process(es)`);
- * }
- * ```
- */
-export async function cleanupOrphanedDaemons(): Promise<number> {
-  const orphanedPids = await findOrphanedDaemons();
-
-  if (orphanedPids.length === 0) {
-    log.debug('No orphaned daemon processes found');
-    return 0;
-  }
-
-  log.debug(`Found ${orphanedPids.length} orphaned daemon process(es): ${orphanedPids.join(', ')}`);
-
-  let killedCount = 0;
-
-  for (const pid of orphanedPids) {
-    try {
-      process.kill(pid, 'SIGKILL');
-      log.debug(`Killed orphaned daemon process ${pid}`);
-      killedCount++;
-    } catch (error) {
-      logDebugError(log, `kill orphaned daemon ${pid}`, error);
-    }
-  }
-
-  return killedCount;
 }
 
 /**

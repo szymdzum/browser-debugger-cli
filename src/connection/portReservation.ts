@@ -7,8 +7,6 @@
 
 import * as net from 'net';
 
-import { portInUseError } from '@/ui/messages/chrome.js';
-
 import { ChromeLaunchError } from './errors.js';
 
 /**
@@ -50,7 +48,11 @@ export async function reservePort(port: number): Promise<PortReservation> {
 
     server.once('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        reject(new ChromeLaunchError(portInUseError(port)));
+        reject(
+          new ChromeLaunchError(`Port ${port} is already in use`, {
+            issue: { code: 'PORT_IN_USE', context: { port } },
+          })
+        );
       } else {
         reject(err);
       }

@@ -9,9 +9,10 @@ import {
 } from '@/cdp/schema.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
+import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
-import { CommandError } from '@/ui/errors/index.js';
+import { formatHint } from '@/ui/messages/hints.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -426,14 +427,14 @@ async function handleExecuteMethod(
 }> {
   const normalized = normalizeMethod(methodName);
 
-  // Block methods that return large binary data
-  // Output error to stderr only and exit - no JSON output to avoid confusing pipelines
   if (normalized && BLOCKED_CDP_METHODS[normalized]) {
     const blocked = BLOCKED_CDP_METHODS[normalized];
-    console.error(`Error: ${normalized} is blocked via raw CDP`);
-    console.error(`Reason: ${blocked.reason}`);
-    console.error(`Use: ${blocked.alternative}`);
-    process.exit(1);
+    return {
+      success: false,
+      error: `${normalized} is blocked via raw CDP: ${blocked.reason}`,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: { suggestion: `Use: ${blocked.alternative}` },
+    };
   }
   if (!normalized) {
     const similar = findSimilarMethods(methodName);
@@ -489,7 +490,7 @@ async function handleExecuteMethod(
   };
 
   if (response.data?.hint) {
-    result.hint = response.data.hint;
+    result.hint = formatHint(response.data.hint);
   }
 
   const methodHint = getMethodHint(normalized, cdpResult);

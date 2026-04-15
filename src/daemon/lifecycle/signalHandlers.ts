@@ -10,7 +10,7 @@ import {
   workerReceivedSIGTERM,
   workerReceivedSIGINT,
   workerTimeoutReached,
-} from '@/ui/messages/debug.js';
+} from '@/daemon/messages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 /**

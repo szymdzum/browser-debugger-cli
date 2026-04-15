@@ -23,19 +23,8 @@ export interface SubmitOptions {
   timeout?: number;
 }
 
-/**
- * Result of form submission.
- */
-export interface SubmitResult {
-  success: boolean;
-  error?: string;
-  selector?: string;
-  clicked?: boolean;
-  networkRequests?: number;
-  navigationOccurred?: boolean;
-  waitTimeMs?: number;
-  suggestion?: string;
-}
+import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
+export type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 
 /**
  * Submit a form by clicking the submit button and waiting for completion.

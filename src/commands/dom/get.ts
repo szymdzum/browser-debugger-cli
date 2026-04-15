@@ -20,10 +20,10 @@ import {
 } from '@/commands/dom/semanticUtils.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomGetCommandOptions } from '@/commands/shared/optionTypes.js';
+import { CommandError } from '@/errors/index.js';
+import { elementAtIndexNotFoundError, noNodesFoundError } from '@/errors/messages.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { formatDomGet } from '@/ui/formatters/dom.js';
-import { elementAtIndexNotFoundError, noNodesFoundError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 

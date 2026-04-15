@@ -4,7 +4,7 @@
  * Provides convenient shortcuts for frequently used filter combinations.
  */
 
-import { CommandError } from '@/ui/errors/index.js';
+import { CommandError } from '@/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { getSuggestion } from '@/utils/suggestions.js';
 

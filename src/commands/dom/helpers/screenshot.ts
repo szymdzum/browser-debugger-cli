@@ -13,15 +13,15 @@ import {
 } from '@/commands/dom/screenshotResize.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { callCDP } from '@/ipc/client.js';
-import type { ScreenshotResult, ScreenshotOptions, ElementBounds } from '@/types.js';
-import { CommandError } from '@/ui/errors/index.js';
-import { createLogger } from '@/ui/logging/index.js';
+import { CommandError } from '@/errors/index.js';
 import {
   noNodesFoundError,
   elementNotVisibleError,
   elementZeroDimensionsError,
-} from '@/ui/messages/errors.js';
+} from '@/errors/messages.js';
+import { callCDP } from '@/ipc/client.js';
+import type { ScreenshotResult, ScreenshotOptions, ElementBounds } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');

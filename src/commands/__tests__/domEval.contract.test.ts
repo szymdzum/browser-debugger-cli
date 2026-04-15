@@ -19,8 +19,8 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import { createResponse } from '@/__testfixtures__/cdpMessages.js';
 import { FakeWebSocket } from '@/__testutils__/FakeWebSocket.js';
-import { executeScript } from '@/commands/dom/evalHelpers.js';
 import { CDPConnection } from '@/connection/cdp.js';
+import { executeScript } from '@/runtime/dom/evalHelpers.js';
 
 /**
  * Mock CDP connection that simulates browser responses

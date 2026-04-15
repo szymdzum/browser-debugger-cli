@@ -10,15 +10,10 @@ import { launchChrome } from '@/connection/launcher.js';
 import { ConfigError } from '@/daemon/errors.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
+import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
 import type { LaunchedChrome } from '@/types';
 import type { Logger } from '@/ui/logging/index.js';
-import {
-  chromeExternalConnectionMessage,
-  chromeExternalWebSocketMessage,
-  chromeExternalNoPidMessage,
-  noPageTargetFoundError,
-} from '@/ui/messages/chrome.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -30,10 +25,11 @@ import { filterDefined } from '@/utils/objects.js';
 export async function setupChromeConnection(
   config: WorkerConfig,
   telemetryStore: TelemetryStore,
-  log: Logger
+  log: Logger,
+  notify: NoticeSink<ChromeNoticeCode>
 ): Promise<LaunchedChrome | null> {
   if (config.chromeWsUrl) {
-    return setupExternalChrome(config, telemetryStore);
+    return setupExternalChrome(config, telemetryStore, notify);
   } else {
     return setupLaunchedChrome(config, telemetryStore, log);
   }
@@ -42,7 +38,11 @@ export async function setupChromeConnection(
 /**
  * Connect to existing external Chrome instance.
  */
-function setupExternalChrome(config: WorkerConfig, telemetryStore: TelemetryStore): null {
+function setupExternalChrome(
+  config: WorkerConfig,
+  telemetryStore: TelemetryStore,
+  notify: NoticeSink<ChromeNoticeCode>
+): null {
   const wsUrl = config.chromeWsUrl;
   if (!wsUrl) {
     throw new ConfigError(
@@ -51,8 +51,8 @@ function setupExternalChrome(config: WorkerConfig, telemetryStore: TelemetryStor
     );
   }
 
-  console.error(`[worker] ${chromeExternalConnectionMessage()}`);
-  console.error(`[worker] ${chromeExternalWebSocketMessage(wsUrl)}`);
+  notify({ code: 'EXTERNAL_CHROME_CONNECTING' });
+  notify({ code: 'EXTERNAL_CHROME_WS_URL', context: { wsUrl } });
 
   const targetId = wsUrl.split('/').pop() ?? 'external';
 
@@ -64,7 +64,7 @@ function setupExternalChrome(config: WorkerConfig, telemetryStore: TelemetryStor
     webSocketDebuggerUrl: wsUrl,
   });
 
-  console.error(`[worker] ${chromeExternalNoPidMessage()}`);
+  notify({ code: 'EXTERNAL_CHROME_NO_PID' });
 
   return null;
 }
@@ -106,7 +106,12 @@ async function setupLaunchedChrome(
           .join('\n')
       : null;
 
-    throw new ChromeLaunchError(noPageTargetFoundError(config.port, availableTargets));
+    throw new ChromeLaunchError('No page target found after Chrome launch', {
+      issue: {
+        code: 'NO_PAGE_TARGET_FOUND',
+        context: { port: config.port, availableTargets },
+      },
+    });
   }
 
   telemetryStore.setTargetInfo(foundTarget);

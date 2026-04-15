@@ -1,21 +1,21 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
-import { executeScript } from '@/commands/dom/evalHelpers.js';
-import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/commands/dom/formDiscovery.js';
+import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
+import { PatternDetector } from '@/daemon/patternDetector.js';
+import type { HintDetails } from '@/errors/notices.js';
+import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
+import { executeScript } from '@/runtime/dom/evalHelpers.js';
+import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import {
   fillElement,
   clickElement,
   pressKeyElement,
   scrollPage,
   waitForActionStability,
-} from '@/commands/dom/formFillHelpers/index.js';
-import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
-import type { RawFormData } from '@/commands/dom/formTypes.js';
-import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
-import { PatternDetector } from '@/daemon/patternDetector.js';
-import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
-import { generatePatternHint } from '@/ui/messages/hints.js';
+} from '@/runtime/dom/formFillHelpers/index.js';
+import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
+import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -336,13 +336,19 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       const result = await cdp.send(params.method, params.params ?? {});
 
       const detectionResult = patternDetector.trackCommand(params.method);
-      let hint: string | undefined;
+      let hint: HintDetails | undefined;
 
       if (detectionResult.shouldShow && detectionResult.pattern) {
-        hint = generatePatternHint(detectionResult.pattern);
+        hint = {
+          code: 'PATTERN_HINT',
+          context: {
+            alternative: detectionResult.pattern.alternative,
+            cdpMethods: detectionResult.pattern.cdpMethods,
+          },
+        };
       }
 
-      return { result, hint };
+      return { result, ...(hint !== undefined && { hint }) };
     },
 
     dom_eval: async (cdp, params) => {

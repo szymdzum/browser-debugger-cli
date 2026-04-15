@@ -8,12 +8,12 @@ import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
+import { workerExitingConnectionLoss } from '@/daemon/messages.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { startTelemetryCollectors } from '@/daemon/worker/collectors.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
 import type { Logger } from '@/ui/logging/index.js';
-import { workerExitingConnectionLoss } from '@/ui/messages/debug.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 

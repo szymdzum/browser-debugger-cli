@@ -5,7 +5,7 @@
  * and returns structured data for agent consumption.
  */
 
-import type { RawFormData } from '@/commands/dom/formTypes.js';
+import type { RawFormData } from '@/runtime/dom/formTypes.js';
 
 /**
  * Page-context script for form discovery.
