@@ -17,6 +17,7 @@ import { describe, test } from 'node:test';
 
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { reservePort } from '@/connection/portReservation.js';
+import { formatChromeIssue } from '@/ui/messages/chrome.js';
 
 describe('Port Reservation - Success Cases', () => {
   test('successfully reserves an available port', async () => {
@@ -122,7 +123,7 @@ describe('Port Reservation - Failure Cases', () => {
     }
   });
 
-  test('error message includes helpful troubleshooting steps', async () => {
+  test('error carries PORT_IN_USE issue that formats to troubleshooting steps', async () => {
     const port = await findAvailablePort();
     const server = await createTestServer(port);
 
@@ -132,16 +133,18 @@ describe('Port Reservation - Failure Cases', () => {
           await reservePort(port);
         },
         (error: Error) => {
-          // Contract: error message should help user troubleshoot
-          assert.ok(error.message.includes('bdg cleanup'), 'Should suggest cleanup command');
-          assert.ok(error.message.includes('lsof'), 'Should suggest checking processes');
-          assert.ok(
-            error.message.includes(`--port ${port + 1}`),
-            'Should suggest alternative port'
-          );
+          assert.ok(error instanceof ChromeLaunchError, 'Should be ChromeLaunchError');
+          assert.equal(error.issue?.code, 'PORT_IN_USE', 'Should carry PORT_IN_USE issue');
+          assert.equal(error.issue?.context?.['port'], port, 'Should carry port in context');
+
+          // Contract: UI formatter turns the issue into actionable prose
+          const formatted = formatChromeIssue(error.issue);
+          assert.ok(formatted.includes('bdg cleanup'), 'Should suggest cleanup command');
+          assert.ok(formatted.includes('lsof'), 'Should suggest checking processes');
+          assert.ok(formatted.includes(`--port ${port + 1}`), 'Should suggest alternative port');
           return true;
         },
-        'Error message should include troubleshooting steps'
+        'Error should carry a formattable issue'
       );
     } finally {
       await closeServer(server);

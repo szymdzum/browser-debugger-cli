@@ -6,4 +6,6 @@
 
 export { CommandError, type ErrorMetadata } from './CommandError.js';
 
+export type { IssueCode, IssueDetails } from './issues.js';
+
 export { isDaemonConnectionError } from './utils.js';

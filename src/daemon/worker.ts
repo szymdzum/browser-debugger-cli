@@ -7,6 +7,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { ConnectionError } from '@/connection/errors.js';
 import { WorkerError } from '@/daemon/errors.js';
 import { setupCDPAndNavigate } from '@/daemon/lifecycle/cdpSetup.js';
 import { setupChromeConnection } from '@/daemon/lifecycle/chromeConnection.js';
@@ -21,6 +22,7 @@ import { writeSessionMetadata } from '@/session/metadata.js';
 import { writePid } from '@/session/pid.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
+import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { workerSessionActive } from '@/ui/messages/debug.js';
 
 const log = createLogger('worker');
@@ -114,9 +116,13 @@ async function main(): Promise<void> {
 
     log.debug(workerSessionActive());
   } catch (error) {
-    console.error(
-      `[worker] Fatal error: ${error instanceof Error ? error.message : String(error)}`
-    );
+    const message =
+      error instanceof ConnectionError && error.issue
+        ? formatChromeIssue(error.issue)
+        : error instanceof Error
+          ? error.message
+          : String(error);
+    console.error(`[worker] Fatal error: ${message}`);
     await cleanupWorker('crash', { chrome, cdp, cleanupFunctions, telemetryStore, log });
     process.exit(1);
   }

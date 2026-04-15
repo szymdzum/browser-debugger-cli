@@ -8,11 +8,6 @@
 import * as fs from 'fs';
 
 import { ChromeLaunchError } from '@/connection/errors.js';
-import {
-  prefsFileNotFoundError,
-  invalidPrefsFormatError,
-  prefsLoadError,
-} from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 /**
@@ -73,21 +68,27 @@ export function loadChromePrefs(
   options: PreferencesLoaderOptions
 ): Record<string, unknown> | undefined {
   if (options.prefsFile) {
-    if (!fs.existsSync(options.prefsFile)) {
-      throw new ChromeLaunchError(
-        prefsFileNotFoundError(options.prefsFile),
-        new Error('File does not exist')
-      );
+    const file = options.prefsFile;
+
+    if (!fs.existsSync(file)) {
+      throw new ChromeLaunchError(`Chrome preferences file not found: ${file}`, {
+        issue: { code: 'PREFS_FILE_NOT_FOUND', context: { file } },
+      });
     }
 
     try {
-      const prefsContent = fs.readFileSync(options.prefsFile, 'utf8');
+      const prefsContent = fs.readFileSync(file, 'utf8');
       const parsed: unknown = JSON.parse(prefsContent);
 
       if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         throw new ChromeLaunchError(
-          invalidPrefsFormatError(options.prefsFile, typeof parsed),
-          new Error('Invalid JSON structure')
+          `Invalid Chrome preferences format in ${file}: expected object, got ${typeof parsed}`,
+          {
+            issue: {
+              code: 'PREFS_INVALID_FORMAT',
+              context: { file, actualType: Array.isArray(parsed) ? 'array' : typeof parsed },
+            },
+          }
         );
       }
 
@@ -97,10 +98,13 @@ export function loadChromePrefs(
         throw error;
       }
 
-      throw new ChromeLaunchError(
-        prefsLoadError(options.prefsFile, getErrorMessage(error)),
-        error instanceof Error ? error : undefined
-      );
+      throw new ChromeLaunchError(`Failed to load Chrome preferences from ${file}`, {
+        ...(error instanceof Error && { cause: error }),
+        issue: {
+          code: 'PREFS_LOAD_FAILED',
+          context: { file, reason: getErrorMessage(error) },
+        },
+      });
     }
   }
 

@@ -17,7 +17,6 @@ import {
   chromeExternalConnectionMessage,
   chromeExternalWebSocketMessage,
   chromeExternalNoPidMessage,
-  noPageTargetFoundError,
 } from '@/ui/messages/chrome.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -106,7 +105,12 @@ async function setupLaunchedChrome(
           .join('\n')
       : null;
 
-    throw new ChromeLaunchError(noPageTargetFoundError(config.port, availableTargets));
+    throw new ChromeLaunchError('No page target found after Chrome launch', {
+      issue: {
+        code: 'NO_PAGE_TARGET_FOUND',
+        context: { port: config.port, availableTargets },
+      },
+    });
   }
 
   telemetryStore.setTargetInfo(foundTarget);

@@ -5,7 +5,85 @@
  */
 
 import { getChromeDiagnostics, type ChromeDiagnostics } from '@/connection/diagnostics.js';
+import type { IssueDetails } from '@/errors/issues.js';
 import { pluralize, joinLines } from '@/ui/formatting.js';
+
+/**
+ * Format a structured Chrome-related issue into a user-facing message.
+ *
+ * Called at the UI boundary when a ChromeLaunchError with `issue` details
+ * reaches a CLI or daemon log sink. Core modules produce the IssueDetails;
+ * this function is the only place wording is assembled.
+ */
+export function formatChromeIssue(issue: IssueDetails): string {
+  const ctx = issue.context ?? {};
+  switch (issue.code) {
+    case 'PORT_IN_USE':
+      return portInUseError(ctx['port'] as number);
+    case 'INVALID_PORT':
+      return invalidPortError(ctx['port'] as number);
+    case 'USER_DATA_DIR_CREATE_FAILED':
+      return userDataDirError(ctx['userDataDir'] as string, (ctx['reason'] as string) ?? '');
+    case 'CHROME_LAUNCH_FAILED':
+    case 'CHROME_DIED_AFTER_LAUNCH': {
+      const port = ctx['port'] as number;
+      const reason = ctx['reason'] as string | undefined;
+      const pid = typeof ctx['pid'] === 'number' ? ctx['pid'] : 'unknown';
+      const header =
+        issue.code === 'CHROME_DIED_AFTER_LAUNCH'
+          ? `Chrome died immediately after launch (PID: ${pid})`
+          : reason
+            ? chromeLaunchFailedError(reason)
+            : `Chrome failed to launch`;
+      const diagnostics = getFormattedDiagnostics();
+      return joinLines(
+        header,
+        '',
+        'Possible causes:',
+        `  - Port ${port} conflict (check: lsof -ti:${port})`,
+        `  - Chrome binary not found`,
+        `  - Insufficient permissions`,
+        `  - Chrome crashed on startup`,
+        '',
+        ...diagnostics,
+        '',
+        'Try:',
+        `  - bdg cleanup`,
+        `  - Kill conflicting process: kill $(lsof -ti:${port})`,
+        `  - Use different port: bdg <url> --port ${port + 1}`
+      );
+    }
+    case 'NO_PAGE_TARGET_FOUND':
+      return noPageTargetFoundError(
+        ctx['port'] as number,
+        ctx['availableTargets'] as string | null
+      );
+    case 'CHROME_BINARY_NOT_FOUND': {
+      const diagnostics = getFormattedDiagnostics();
+      return joinLines(
+        chromeBinaryOverrideNotFound(ctx['chromePath'] as string, ctx['source'] as string),
+        '',
+        ...diagnostics
+      );
+    }
+    case 'CHROME_BINARY_IS_DIRECTORY':
+      return chromeBinaryOverrideIsDirectory(ctx['chromePath'] as string, ctx['source'] as string);
+    case 'CHROME_BINARY_NOT_EXECUTABLE': {
+      const reason = ctx['reason'] as string | undefined;
+      const base = chromeBinaryOverrideNotExecutable(
+        ctx['chromePath'] as string,
+        ctx['source'] as string
+      );
+      return reason ? `${base}\n\n${reason}` : base;
+    }
+    case 'PREFS_FILE_NOT_FOUND':
+      return prefsFileNotFoundError(ctx['file'] as string);
+    case 'PREFS_INVALID_FORMAT':
+      return invalidPrefsFormatError(ctx['file'] as string, ctx['actualType'] as string);
+    case 'PREFS_LOAD_FAILED':
+      return prefsLoadError(ctx['file'] as string, (ctx['reason'] as string) ?? '');
+  }
+}
 
 /**
  * Retrieve Chrome diagnostics and format for error messages.

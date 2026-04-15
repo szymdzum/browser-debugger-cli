@@ -14,14 +14,7 @@ import {
   DEFAULT_CHROME_LOG_LEVEL,
   DEFAULT_CHROME_HANDLE_SIGINT,
 } from '@/constants.js';
-import {
-  chromeLaunchSuccessMessage,
-  chromeUserDataDirMessage,
-  invalidPortError,
-  userDataDirError,
-  chromeLaunchFailedError,
-  getFormattedDiagnostics,
-} from '@/ui/messages/chrome.js';
+import { chromeLaunchSuccessMessage, chromeUserDataDirMessage } from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -102,7 +95,9 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   const port = options.port ?? DEFAULT_CDP_PORT;
 
   if (port < 1 || port > 65535) {
-    throw new ChromeLaunchError(invalidPortError(port));
+    throw new ChromeLaunchError(`Invalid port number: ${port}`, {
+      issue: { code: 'INVALID_PORT', context: { port } },
+    });
   }
 
   const reservation = await reservePort(port);
@@ -114,10 +109,13 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     try {
       fs.mkdirSync(userDataDir, { recursive: true });
     } catch (error) {
-      throw new ChromeLaunchError(
-        userDataDirError(userDataDir, getErrorMessage(error)),
-        error as Error
-      );
+      throw new ChromeLaunchError(`Failed to create user data directory`, {
+        cause: error as Error,
+        issue: {
+          code: 'USER_DATA_DIR_CREATE_FAILED',
+          context: { userDataDir, reason: getErrorMessage(error) },
+        },
+      });
     }
   }
 
@@ -143,25 +141,16 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       launcher.kill();
       launcher.destroyTmp();
 
-      const diagnosticLines = getFormattedDiagnostics();
-
-      const errorType =
-        !chromeProcessPid || chromeProcessPid <= 0
-          ? 'failed to launch'
-          : 'died immediately after launch';
+      const didNotStart = !chromeProcessPid || chromeProcessPid <= 0;
 
       throw new ChromeLaunchError(
-        `Chrome ${errorType} (PID: ${chromeProcessPid})\n\n` +
-          `Possible causes:\n` +
-          `  - Port ${port} conflict (check: lsof -ti:${port})\n` +
-          `  - Chrome binary not found\n` +
-          `  - Insufficient permissions\n` +
-          `  - Chrome crashed on startup\n\n` +
-          `${diagnosticLines.join('\n')}\n\n` +
-          `Try:\n` +
-          `  - bdg cleanup\n` +
-          `  - Kill conflicting process: kill $(lsof -ti:${port})\n` +
-          `  - Use different port: bdg <url> --port ${port + 1}`
+        `Chrome ${didNotStart ? 'failed to launch' : 'died immediately after launch'} (PID: ${chromeProcessPid})`,
+        {
+          issue: {
+            code: didNotStart ? 'CHROME_LAUNCH_FAILED' : 'CHROME_DIED_AFTER_LAUNCH',
+            context: { port, pid: chromeProcessPid },
+          },
+        }
       );
     }
 
@@ -186,12 +175,13 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       throw error;
     }
 
-    const diagnosticLines = getFormattedDiagnostics();
-
-    throw new ChromeLaunchError(
-      `${chromeLaunchFailedError(getErrorMessage(error))}\n\n${diagnosticLines.join('\n')}`,
-      error instanceof Error ? error : undefined
-    );
+    throw new ChromeLaunchError(`Failed to launch Chrome: ${getErrorMessage(error)}`, {
+      ...(error instanceof Error && { cause: error }),
+      issue: {
+        code: 'CHROME_LAUNCH_FAILED',
+        context: { port, reason: getErrorMessage(error) },
+      },
+    });
   }
 }
 
@@ -227,7 +217,13 @@ function getPersistentUserDataDir(baseDir?: string): string {
     try {
       fs.mkdirSync(userDataDir, { recursive: true });
     } catch (error) {
-      throw new Error(userDataDirError(userDataDir, getErrorMessage(error)));
+      throw new ChromeLaunchError(`Failed to create user data directory`, {
+        cause: error as Error,
+        issue: {
+          code: 'USER_DATA_DIR_CREATE_FAILED',
+          context: { userDataDir, reason: getErrorMessage(error) },
+        },
+      });
     }
   }
 
