@@ -655,10 +655,10 @@ async function handleDomEval(script: string, options: DomEvalCommandOptions): Pr
     async () => {
       return await withCDPConnection(async (cdp) => {
         const result = await executeScript(cdp, script);
+        const value = result.result?.value as unknown;
         return {
           success: true,
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-          data: { result: result.result?.value },
+          data: { result: value },
         };
       });
     },
