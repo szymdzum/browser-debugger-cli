@@ -225,34 +225,8 @@ export interface FillOptions {
   index?: number;
 }
 
-/**
- * Result of filling an element.
- */
-export interface FillResult {
-  success: boolean;
-  error?: string;
-  selector?: string;
-  value?: string;
-  elementType?: string;
-  inputType?: string | null;
-  checked?: boolean;
-  suggestion?: string;
-}
-
-/**
- * Result of clicking an element.
- */
-export interface ClickResult {
-  success: boolean;
-  error?: string;
-  selector?: string;
-  elementType?: string;
-  clickable?: boolean;
-  matchCount?: number;
-  selectedIndex?: number;
-  requestedIndex?: number;
-  suggestion?: string;
-}
+import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
+export type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
 
 /**
  * Type guard for FillResult.

@@ -160,6 +160,12 @@ export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;
 /** Options for DOM eval command */
 export type DomEvalCommandOptions = BaseOptions;
 
+/** Options for DOM form command */
+export interface FormCommandOptions extends BaseOptions {
+  all?: boolean;
+  brief?: boolean;
+}
+
 /**
  * Options for fill command.
  * Note: Commander parses --no-blur and --no-wait as boolean flags.

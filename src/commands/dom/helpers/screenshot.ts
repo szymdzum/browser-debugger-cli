@@ -13,9 +13,9 @@ import {
 } from '@/commands/dom/screenshotResize.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
 import type { ScreenshotResult, ScreenshotOptions, ElementBounds } from '@/types.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   noNodesFoundError,

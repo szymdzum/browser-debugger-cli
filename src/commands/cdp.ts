@@ -9,9 +9,9 @@ import {
 } from '@/cdp/schema.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
+import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';

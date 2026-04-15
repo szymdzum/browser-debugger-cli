@@ -21,21 +21,8 @@ export interface ScrollOptions {
   index?: number;
 }
 
-/**
- * Scroll result.
- */
-export interface ScrollResult {
-  success: boolean;
-  error?: string;
-  suggestion?: string;
-  exitCode?: number;
-  scrollType: 'element' | 'position' | 'offset';
-  selector?: string;
-  scrolledTo?: { x: number; y: number };
-  scrolledBy?: { x: number; y: number };
-  viewportSize?: { width: number; height: number };
-  pageSize?: { width: number; height: number };
-}
+import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
+export type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 
 const SCROLL_TO_ELEMENT_SCRIPT = `
 (function(selector, index) {

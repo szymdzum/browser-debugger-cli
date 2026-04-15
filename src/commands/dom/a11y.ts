@@ -21,6 +21,7 @@ import type {
   A11yQueryCommandOptions,
   A11yDescribeCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { CommandError } from '@/errors/index.js';
 import {
   collectA11yTree,
   queryA11yTree,
@@ -28,7 +29,6 @@ import {
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
 import type { A11yNode } from '@/types.js';
-import { CommandError } from '@/ui/errors/index.js';
 import {
   formatA11yTree,
   formatA11yQueryResult,

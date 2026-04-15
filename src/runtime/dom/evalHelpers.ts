@@ -1,6 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { CommandError } from '@/ui/errors/index.js';
+import { CommandError } from '@/errors/index.js';
 import { scriptExecutionError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 

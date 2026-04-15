@@ -6,9 +6,9 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
 import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
 import { getKeyDefinition, parseModifiers, type KeyDefinition } from '@/runtime/dom/keyMapping.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { keyPressFailedError, operationFailedError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -21,19 +21,8 @@ export interface PressKeyOptions {
   modifiers?: string;
 }
 
-/**
- * Result of pressing a key.
- */
-export interface PressKeyResult {
-  success: boolean;
-  error?: string;
-  selector?: string;
-  key?: string;
-  times?: number;
-  modifiers?: number;
-  elementType?: string | undefined;
-  suggestion?: string;
-}
+import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
+export type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 
 const FOCUS_ELEMENT_SCRIPT = `
 (function(selector, index) {

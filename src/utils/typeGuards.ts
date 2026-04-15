@@ -9,8 +9,8 @@
  * maintaining type safety.
  */
 
+import { CommandError } from '@/errors/index.js';
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

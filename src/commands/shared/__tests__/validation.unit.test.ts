@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import { resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { CommandError } from '@/ui/errors/index.js';
+import { CommandError } from '@/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 void describe('validation - resourceTypeRule', () => {

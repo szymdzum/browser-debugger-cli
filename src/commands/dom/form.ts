@@ -9,9 +9,9 @@ import type { Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
+import type { FormCommandOptions } from '@/commands/shared/optionTypes.js';
 import { domFormDiscover } from '@/ipc/client.js';
 import type {
-  FormCommandOptions,
   FormDiscoveryResult,
   DiscoveredForm,
   FormField,

@@ -1,5 +1,5 @@
+import { CommandError } from '@/errors/index.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

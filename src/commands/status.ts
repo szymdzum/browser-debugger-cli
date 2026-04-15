@@ -3,11 +3,11 @@ import type { Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
+import { isDaemonConnectionError } from '@/errors/index.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
 import type { SessionMetadata } from '@/session/metadata.js';
-import { isDaemonConnectionError } from '@/ui/errors/index.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,

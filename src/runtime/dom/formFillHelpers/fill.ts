@@ -5,6 +5,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
 import {
   escapeSelectorForJS,
   escapeValueForJS,
@@ -19,7 +20,6 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
-import { CommandError } from '@/ui/errors/index.js';
 import {
   fillableElementNotFoundError,
   clickableElementNotFoundError,
