@@ -3,6 +3,7 @@ import type * as FsModule from 'fs';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
+import { executeScript } from '@/commands/dom/evalHelpers.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import {
   queryDOMElements,
@@ -13,6 +14,7 @@ import {
   getDomContext,
 } from '@/commands/dom/helpers.js';
 import type { DomGetOptions as DomGetHelperOptions, DomContext } from '@/commands/dom/helpers.js';
+import { withCDPConnection } from '@/commands/dom/withCDPConnection.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type {
@@ -651,41 +653,14 @@ async function handleDomScreenshot(
 async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
     async () => {
-      const { CDPConnection } = await import('@/connection/cdp.js');
-      const {
-        validateActiveSession,
-        getValidatedSessionMetadata,
-        verifyTargetExists,
-        executeScript,
-      } = await import('@/commands/dom/evalHelpers.js');
-
-      validateActiveSession();
-
-      const metadata = getValidatedSessionMetadata();
-
-      // Use port from session metadata, not CLI option
-      const port = metadata.port;
-      if (!port) {
-        throw new CommandError(
-          'Session metadata missing port',
-          { suggestion: 'Restart the session with: bdg stop && bdg <url>' },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
-      }
-      await verifyTargetExists(metadata, port);
-
-      const cdp = new CDPConnection();
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      await cdp.connect(metadata.webSocketDebuggerUrl!);
-
-      const result = await executeScript(cdp, script);
-      cdp.close();
-
-      return {
-        success: true,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        data: { result: result.result?.value },
-      };
+      return await withCDPConnection(async (cdp) => {
+        const result = await executeScript(cdp, script);
+        return {
+          success: true,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          data: { result: result.result?.value },
+        };
+      });
     },
     options,
     formatDomEval
@@ -719,7 +694,6 @@ export function registerDomCommands(program: Command): void {
     .command('eval')
     .description('Evaluate JavaScript expression in the page context')
     .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
-    .option('-p, --port <number>', 'Chrome debugging port (default: 9222)')
     .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);

@@ -17,6 +17,7 @@ import {
 import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
 import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
 import type { FillResult, ClickResult } from '@/commands/dom/reactEventHelpers.js';
+import { withCDPConnection } from '@/commands/dom/withCDPConnection.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type {
@@ -26,66 +27,11 @@ import type {
   PressKeyCommandOptions,
   ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
-import type { CDPConnection } from '@/connection/cdp.js';
-import type { SessionMetadata } from '@/session/metadata.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { sessionMetadataMissingError, internalError } from '@/ui/messages/errors.js';
+import { internalError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
-
-/**
- * Execute a function with an active CDP connection.
- *
- * Handles the full connection lifecycle:
- * 1. Validates active session
- * 2. Gets session metadata
- * 3. Verifies target exists
- * 4. Creates and connects CDP
- * 5. Executes callback
- * 6. Closes CDP connection (even on error)
- *
- * @param fn - Callback to execute with CDP connection
- * @returns Result from callback
- * @throws Error if session validation or connection fails
- *
- * @internal
- */
-async function withCDPConnection<T>(
-  fn: (cdp: CDPConnection, metadata: SessionMetadata) => Promise<T>
-): Promise<T> {
-  const { CDPConnection } = await import('@/connection/cdp.js');
-  const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-    await import('@/commands/dom/evalHelpers.js');
-
-  validateActiveSession();
-  const metadata = getValidatedSessionMetadata();
-  if (!metadata.port) {
-    throw new CommandError(
-      'Session metadata missing port',
-      { suggestion: 'Restart the session with: bdg stop && bdg <url>' },
-      EXIT_CODES.SESSION_FILE_ERROR
-    );
-  }
-  await verifyTargetExists(metadata, metadata.port);
-
-  const cdp = new CDPConnection();
-  if (!metadata.webSocketDebuggerUrl) {
-    const err = sessionMetadataMissingError('webSocketDebuggerUrl');
-    throw new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.SESSION_FILE_ERROR
-    );
-  }
-  await cdp.connect(metadata.webSocketDebuggerUrl);
-
-  try {
-    return await fn(cdp, metadata);
-  } finally {
-    cdp.close();
-  }
-}
 
 /**
  * Register form interaction commands.

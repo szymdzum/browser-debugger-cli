@@ -24,6 +24,7 @@ import type {
   FieldState,
   FormFieldType,
 } from '@/commands/dom/formTypes.js';
+import { withCDPConnection } from '@/commands/dom/withCDPConnection.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -437,45 +438,6 @@ async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
   });
 
   log.debug(`Cached ${allElements.length} form elements`);
-}
-
-/**
- * Execute CDP connection lifecycle for form discovery.
- *
- * @param fn - Function to execute with CDP connection
- * @returns Result from function
- */
-async function withCDPConnection<T>(fn: (cdp: CDPConnection) => Promise<T>): Promise<T> {
-  const { CDPConnection } = await import('@/connection/cdp.js');
-  const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-    await import('@/commands/dom/evalHelpers.js');
-
-  validateActiveSession();
-  const metadata = getValidatedSessionMetadata();
-  if (!metadata.port) {
-    throw new CommandError(
-      'Session metadata missing port',
-      { suggestion: 'Restart the session with: bdg stop && bdg <url>' },
-      EXIT_CODES.SESSION_FILE_ERROR
-    );
-  }
-  await verifyTargetExists(metadata, metadata.port);
-
-  const cdp = new CDPConnection();
-  if (!metadata.webSocketDebuggerUrl) {
-    throw new CommandError(
-      'Session metadata missing webSocketDebuggerUrl',
-      { suggestion: 'Start a new session with: bdg <url>' },
-      EXIT_CODES.SESSION_FILE_ERROR
-    );
-  }
-  await cdp.connect(metadata.webSocketDebuggerUrl);
-
-  try {
-    return await fn(cdp);
-  } finally {
-    cdp.close();
-  }
 }
 
 /**
