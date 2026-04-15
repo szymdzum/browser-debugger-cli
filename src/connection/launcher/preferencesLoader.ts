@@ -139,10 +139,13 @@ export function ensureJSONCompatiblePrefs(
   try {
     JSON.stringify(prefs);
   } catch (error) {
-    throw new ChromeLaunchError(
-      `Chrome preferences must be JSON-serializable: ${getErrorMessage(error)}`,
-      error instanceof Error ? error : undefined
-    );
+    throw new ChromeLaunchError('Chrome preferences must be JSON-serializable', {
+      ...(error instanceof Error && { cause: error }),
+      issue: {
+        code: 'PREFS_NOT_JSON_SERIALIZABLE',
+        context: { reason: getErrorMessage(error) },
+      },
+    });
   }
 
   return prefs as Record<string, JSONLike>;

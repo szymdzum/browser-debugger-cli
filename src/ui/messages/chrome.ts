@@ -6,7 +6,27 @@
 
 import { getChromeDiagnostics, type ChromeDiagnostics } from '@/connection/diagnostics.js';
 import type { IssueDetails } from '@/errors/issues.js';
+import type { ChromeNoticeCode, NoticeDetails } from '@/errors/notices.js';
 import { pluralize, joinLines } from '@/ui/formatting.js';
+
+/**
+ * Format a structured Chrome-related notice into a user-facing log line.
+ *
+ * Counterpart to {@link formatChromeIssue} for happy-path events. Wire a
+ * NoticeSink that does `log.info(formatChromeNotice(notice))` at the
+ * boundary so core modules stay free of UI imports.
+ */
+export function formatChromeNotice(notice: NoticeDetails<ChromeNoticeCode>): string {
+  const ctx = notice.context ?? {};
+  switch (notice.code) {
+    case 'EXTERNAL_CHROME_CONNECTING':
+      return chromeExternalConnectionMessage();
+    case 'EXTERNAL_CHROME_WS_URL':
+      return chromeExternalWebSocketMessage(ctx['wsUrl'] as string);
+    case 'EXTERNAL_CHROME_NO_PID':
+      return chromeExternalNoPidMessage();
+  }
+}
 
 /**
  * Format a structured Chrome-related issue into a user-facing message.
@@ -82,6 +102,8 @@ export function formatChromeIssue(issue: IssueDetails): string {
       return invalidPrefsFormatError(ctx['file'] as string, ctx['actualType'] as string);
     case 'PREFS_LOAD_FAILED':
       return prefsLoadError(ctx['file'] as string, (ctx['reason'] as string) ?? '');
+    case 'PREFS_NOT_JSON_SERIALIZABLE':
+      return `Chrome preferences must be JSON-serializable: ${(ctx['reason'] as string) ?? 'unknown error'}`;
   }
 }
 

@@ -20,7 +20,8 @@ export type IssueCode =
   | 'CHROME_BINARY_IS_DIRECTORY'
   | 'PREFS_FILE_NOT_FOUND'
   | 'PREFS_INVALID_FORMAT'
-  | 'PREFS_LOAD_FAILED';
+  | 'PREFS_LOAD_FAILED'
+  | 'PREFS_NOT_JSON_SERIALIZABLE';
 
 export interface IssueDetails {
   code: IssueCode;

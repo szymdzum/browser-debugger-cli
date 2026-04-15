@@ -22,7 +22,7 @@ import { writeSessionMetadata } from '@/session/metadata.js';
 import { writePid } from '@/session/pid.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
-import { formatChromeIssue } from '@/ui/messages/chrome.js';
+import { formatChromeIssue, formatChromeNotice } from '@/ui/messages/chrome.js';
 import { workerSessionActive } from '@/ui/messages/debug.js';
 
 const log = createLogger('worker');
@@ -86,7 +86,9 @@ async function main(): Promise<void> {
     initializeTelemetryStore();
     writePid(process.pid);
 
-    chrome = await setupChromeConnection(config, telemetryStore, log);
+    chrome = await setupChromeConnection(config, telemetryStore, log, (notice) =>
+      console.error(`[worker] ${formatChromeNotice(notice)}`)
+    );
 
     const result = await setupCDPAndNavigate(config, telemetryStore, chrome, log, () => {
       void cleanupWorker('crash', { chrome, cdp, cleanupFunctions, telemetryStore, log }).then(() =>
