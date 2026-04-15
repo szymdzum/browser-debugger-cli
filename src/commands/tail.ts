@@ -8,13 +8,11 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchPreviewOutput } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
+import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { TailCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
-import { OutputBuilder } from '@/ui/OutputBuilder.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 function parseOptions(options: TailCommandOptions): { lastN: number; interval: number } {
   const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
@@ -23,26 +21,6 @@ function parseOptions(options: TailCommandOptions): { lastN: number; interval: n
     lastN: lastRule.validate(options.last),
     interval: intervalRule.validate(options.interval),
   };
-}
-
-function handleValidationError(error: unknown, json: boolean): never {
-  if (error instanceof CommandError) {
-    if (json) {
-      const errorOptions: { exitCode: number; suggestion?: string } = {
-        exitCode: error.exitCode,
-      };
-      if (error.metadata.suggestion) {
-        errorOptions.suggestion = error.metadata.suggestion;
-      }
-      console.log(JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions)));
-    } else {
-      console.error(error.message);
-      if (error.metadata.suggestion) console.error(error.metadata.suggestion);
-    }
-    process.exit(error.exitCode);
-  }
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 function createPreviewOptions(options: TailCommandOptions, lastN: number): PreviewOptions {

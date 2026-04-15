@@ -9,6 +9,7 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchNetworkRequests, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
+import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -16,7 +17,6 @@ import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemet
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
-import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { CommandError } from '@/ui/errors/index.js';
 import { formatNetworkList, type NetworkListOptions } from '@/ui/formatters/networkList.js';
 import { operationFailedError } from '@/ui/messages/errors.js';
@@ -91,32 +91,6 @@ function validateAndGetFilters(options: NetworkListCommandOptions): void {
  */
 function parseResourceTypes(typeOption?: string): Protocol.Network.ResourceType[] {
   return resourceTypeRule().validate(typeOption);
-}
-
-/**
- * Handle validation errors with proper JSON/human formatting.
- *
- * @param error - Error from validation
- * @param json - Whether to output JSON format
- */
-function handleValidationError(error: unknown, json: boolean): never {
-  if (error instanceof CommandError) {
-    if (json) {
-      const errorOptions: { exitCode: number; suggestion?: string } = {
-        exitCode: error.exitCode,
-      };
-      if (error.metadata.suggestion) {
-        errorOptions.suggestion = error.metadata.suggestion;
-      }
-      console.log(JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions)));
-    } else {
-      console.error(error.message);
-      if (error.metadata.suggestion) console.error(error.metadata.suggestion);
-    }
-    process.exit(error.exitCode);
-  }
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 /**

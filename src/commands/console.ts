@@ -9,11 +9,10 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchConsoleMessages, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
+import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import type { ConsoleMessage } from '@/types.js';
-import { OutputBuilder } from '@/ui/OutputBuilder.js';
-import { CommandError } from '@/ui/errors/index.js';
 import {
   formatConsole,
   formatConsoleFollow,
@@ -25,7 +24,6 @@ import {
   followingConsoleMessage,
   stoppedFollowingConsoleMessage,
 } from '@/ui/messages/consoleMessages.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const MIN_LAST = 0;
 const MAX_LAST = 10000;
@@ -37,32 +35,6 @@ const consoleLastOption = new Option(
   '--last <n>',
   `Show last N console messages (0 = all, default: ${DEFAULT_LAST})`
 ).default(String(DEFAULT_LAST));
-
-/**
- * Handle validation errors with proper JSON/human formatting.
- *
- * @param error - Error from validation
- * @param json - Whether to output JSON format
- */
-function handleValidationError(error: unknown, json: boolean): never {
-  if (error instanceof CommandError) {
-    if (json) {
-      const errorOptions: { exitCode: number; suggestion?: string } = {
-        exitCode: error.exitCode,
-      };
-      if (error.metadata.suggestion) {
-        errorOptions.suggestion = error.metadata.suggestion;
-      }
-      console.log(JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions)));
-    } else {
-      console.error(error.message);
-      if (error.metadata.suggestion) console.error(error.metadata.suggestion);
-    }
-    process.exit(error.exitCode);
-  }
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(EXIT_CODES.INVALID_ARGUMENTS);
-}
 
 export function filterByCurrentNavigation(messages: ConsoleMessage[]): ConsoleMessage[] {
   if (messages.length === 0) return messages;
