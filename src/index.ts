@@ -126,6 +126,24 @@ function isJsonOutputMode(): boolean {
   return process.argv.includes('--json');
 }
 
+/**
+ * Check if the invocation is a documentation request that should not
+ * trigger daemon startup.
+ *
+ * Commander short-circuits on `--help` / `--version` (and prints help when
+ * no command is given), so spawning a daemon first is an unwanted side
+ * effect. See issue #216.
+ *
+ * @returns True if argv only asks for help or version output
+ */
+function isDocumentationRequest(): boolean {
+  const args = process.argv.slice(2);
+  if (args.length === 0) return true;
+  return args.some(
+    (arg) => arg === '--help' || arg === '-h' || arg === '--version' || arg === '-V'
+  );
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--debug')) {
     enableDebugLogging();
@@ -149,7 +167,7 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  if (!isDaemonWorkerProcess()) {
+  if (!isDaemonWorkerProcess() && !isDocumentationRequest()) {
     await ensureDaemonRunning(isJsonOutputMode());
   }
 
