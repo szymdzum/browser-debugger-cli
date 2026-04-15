@@ -165,15 +165,6 @@ export function workerDOMCollectionFailed(error: string): string {
 }
 
 /**
- * Generate writing final output message.
- *
- * @returns Formatted debug message
- */
-export function workerWritingOutput(): string {
-  return 'Writing final output...';
-}
-
-/**
  * Generate running cleanup functions message.
  *
  * @returns Formatted debug message

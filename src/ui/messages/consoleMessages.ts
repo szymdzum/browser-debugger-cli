@@ -21,12 +21,3 @@ export function followingConsoleMessage(): string {
 export function stoppedFollowingConsoleMessage(): string {
   return 'Stopped streaming console messages';
 }
-
-/**
- * Generate message when no console data is available.
- *
- * @returns Error message with context
- */
-export function noConsoleDataMessage(): string {
-  return 'No console data available. Console messages are captured during browser session.';
-}

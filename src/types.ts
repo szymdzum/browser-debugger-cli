@@ -49,48 +49,6 @@ export interface BdgResponse<T = unknown> {
 }
 
 /**
- * Type guard to validate BdgResponse structure.
- *
- * Use this to verify responses from commands or IPC.
- *
- * @param value - Unknown value to check
- * @returns True if value is a valid BdgResponse
- */
-export function isBdgResponse(value: unknown): value is BdgResponse {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const obj = value as Record<string, unknown>;
-
-  return typeof obj['version'] === 'string' && typeof obj['success'] === 'boolean';
-}
-
-/**
- * Type guard for successful BdgResponse.
- *
- * @param value - Unknown value to check
- * @returns True if value is a successful BdgResponse with data
- */
-export function isSuccessResponse<T>(
-  value: unknown
-): value is BdgResponse<T> & { success: true; data: T } {
-  return isBdgResponse(value) && value.success === true && value.data !== undefined;
-}
-
-/**
- * Type guard for error BdgResponse.
- *
- * @param value - Unknown value to check
- * @returns True if value is an error BdgResponse
- */
-export function isErrorResponse(
-  value: unknown
-): value is BdgResponse & { success: false; error: string } {
-  return isBdgResponse(value) && value.success === false && typeof value.error === 'string';
-}
-
-/**
  * Re-export connection types for backward compatibility.
  *
  * These types are now defined in connection/connectionTypes.ts for better cohesion.

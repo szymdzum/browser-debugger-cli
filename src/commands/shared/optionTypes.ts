@@ -120,15 +120,6 @@ export interface KeyPressOptions {
 }
 
 /**
- * Options for port configuration.
- * Commander passes port as string from CLI.
- */
-export interface PortOptions {
-  /** CDP port number (string from CLI) */
-  port?: string;
-}
-
-/**
  * Options for CDP command operations.
  */
 export interface CdpMethodOptions {
@@ -167,7 +158,7 @@ export type DomGetCommandOptions = BaseOptions & RawOptions & SelectionOptions;
 export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;
 
 /** Options for DOM eval command */
-export type DomEvalCommandOptions = BaseOptions & PortOptions;
+export type DomEvalCommandOptions = BaseOptions;
 
 /**
  * Options for fill command.

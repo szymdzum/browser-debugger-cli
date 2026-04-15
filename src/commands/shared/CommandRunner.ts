@@ -1,5 +1,5 @@
 import { type BaseOptions } from '@/commands/shared/optionTypes.js';
-import { OutputBuilder } from '@/ui/OutputBuilder.js';
+import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { CommandError, isDaemonConnectionError } from '@/ui/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -28,7 +28,7 @@ export type { BaseOptions };
 export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
   try {
     const data = await fn();
-    console.log(JSON.stringify(data, null, 2));
+    console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
     const exitCode =
@@ -138,12 +138,12 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     }
 
     if (options.json) {
-      console.log(JSON.stringify(result.data, null, 2));
+      console.log(JSON.stringify(buildSuccessResponse(result.data), null, 2));
     } else if (formatter) {
       const formattedOutput = formatter(result.data as TResult);
       console.log(formattedOutput);
     } else {
-      console.log(JSON.stringify(result.data, null, 2));
+      console.log(JSON.stringify(buildSuccessResponse(result.data), null, 2));
     }
 
     process.exit(EXIT_CODES.SUCCESS);

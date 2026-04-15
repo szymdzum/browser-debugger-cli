@@ -18,7 +18,11 @@ export type WorkerRequest<T extends CommandName> = {
 
 /**
  * Worker response message (worker → daemon).
- * Includes success flag and optional error.
+ *
+ * On failure the worker can propagate structured error semantics
+ * (`exitCode`, `suggestion`) originating from a `CommandError`, so the CLI
+ * can render the same exit code and recovery hint it would have produced
+ * when running the operation locally.
  */
 export type WorkerResponse<T extends CommandName> = {
   type: `${T}_response`;
@@ -26,6 +30,10 @@ export type WorkerResponse<T extends CommandName> = {
   success: boolean;
   data?: (typeof COMMANDS)[T]['responseSchema'];
   error?: string;
+  /** Semantic exit code forwarded from the handler (present on failure). */
+  exitCode?: number;
+  /** Recovery suggestion forwarded from the handler (present on failure). */
+  suggestion?: string;
 };
 
 /**
@@ -39,7 +47,10 @@ export type ClientRequest<T extends CommandName> = {
 
 /**
  * Client response message (daemon → CLI).
- * Uses status instead of success for consistency with session messages.
+ *
+ * Mirrors `WorkerResponse` in the error case: semantic `exitCode` and
+ * `suggestion` are preserved end-to-end so CLI-side handlers can stop
+ * guessing with hardcoded fallback codes.
  */
 export type ClientResponse<T extends CommandName> = {
   type: `${T}_response`;
@@ -47,6 +58,10 @@ export type ClientResponse<T extends CommandName> = {
   status: 'ok' | 'error';
   data?: (typeof COMMANDS)[T]['responseSchema'];
   error?: string;
+  /** Semantic exit code forwarded from the handler (present on failure). */
+  exitCode?: number;
+  /** Recovery suggestion forwarded from the handler (present on failure). */
+  suggestion?: string;
 };
 
 /**

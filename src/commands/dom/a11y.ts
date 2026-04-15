@@ -12,8 +12,8 @@
 import type { Command } from 'commander';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { getDomContext } from '@/commands/dom/helpers.js';
-import type { DomContext } from '@/commands/dom/helpers.js';
+import { getDomContext } from '@/commands/dom/helpers/index.js';
+import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { runCommand, runJsonCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type {

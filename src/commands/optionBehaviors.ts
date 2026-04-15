@@ -244,15 +244,3 @@ export function getOptionBehavior(commandName: string, flags: string): OptionBeh
   const key = buildKey(commandName, flags);
   return OPTION_BEHAVIORS[key];
 }
-
-/**
- * Check if an option has registered behavioral metadata.
- *
- * @param commandName - Name of the command containing the option
- * @param flags - Option flags string from Commander
- * @returns True if behavior metadata exists
- */
-export function hasOptionBehavior(commandName: string, flags: string): boolean {
-  const key = buildKey(commandName, flags);
-  return key in OPTION_BEHAVIORS;
-}

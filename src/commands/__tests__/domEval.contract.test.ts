@@ -19,9 +19,8 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
 import { createResponse } from '@/__testfixtures__/cdpMessages.js';
 import { FakeWebSocket } from '@/__testutils__/FakeWebSocket.js';
-import { verifyTargetExists, executeScript } from '@/commands/dom/evalHelpers.js';
+import { executeScript } from '@/commands/dom/evalHelpers.js';
 import { CDPConnection } from '@/connection/cdp.js';
-import type { SessionMetadata } from '@/session/metadata.js';
 
 /**
  * Mock CDP connection that simulates browser responses
@@ -77,89 +76,6 @@ describe('DOM Eval Command Smoke Tests', () => {
       mockCDP.close();
     }
     mock.restoreAll();
-  });
-
-  describe('verifyTargetExists', () => {
-    it('throws error when target not found in CDP list', async () => {
-      // Test CONTRACT: Missing target → error
-
-      // Mock fetch to return targets without our targetId
-      // eslint-disable-next-line @typescript-eslint/require-await
-      globalThis.fetch = mock.fn(async () => {
-        return {
-          // eslint-disable-next-line @typescript-eslint/require-await
-          json: async () => [
-            { id: 'page-456', type: 'page' },
-            { id: 'page-789', type: 'page' },
-          ],
-        } as Response;
-      });
-
-      const metadata: SessionMetadata = {
-        bdgPid: 12345,
-        startTime: Date.now(),
-        port: 9222,
-        targetId: 'page-123',
-        webSocketDebuggerUrl: 'ws://localhost:9222/devtools/page/123',
-      };
-
-      await assert.rejects(async () => verifyTargetExists(metadata, 9222), {
-        message: /Session target not found/,
-      });
-    });
-
-    it('succeeds when target exists', async () => {
-      // Test CONTRACT: Target exists → no error
-
-      // eslint-disable-next-line @typescript-eslint/require-await
-      globalThis.fetch = mock.fn(async () => {
-        return {
-          ok: true,
-          // eslint-disable-next-line @typescript-eslint/require-await
-          json: async () => [
-            { id: 'page-123', type: 'page' },
-            { id: 'page-456', type: 'page' },
-          ],
-        } as Response;
-      });
-
-      const metadata: SessionMetadata = {
-        bdgPid: 12345,
-        startTime: Date.now(),
-        port: 9222,
-        targetId: 'page-123',
-        webSocketDebuggerUrl: 'ws://localhost:9222/devtools/page/123',
-      };
-
-      await assert.doesNotReject(async () => verifyTargetExists(metadata, 9222));
-    });
-
-    it('throws error when CDP response is invalid', async () => {
-      // Test CONTRACT: Invalid CDP response → treated as target not found
-      // After refactoring to use fetchCDPTargetById, invalid responses
-      // are handled uniformly with missing targets (both return null)
-
-      // eslint-disable-next-line @typescript-eslint/require-await
-      globalThis.fetch = mock.fn(async () => {
-        return {
-          ok: true,
-          // eslint-disable-next-line @typescript-eslint/require-await
-          json: async () => ({ invalid: 'response' }),
-        } as Response;
-      });
-
-      const metadata: SessionMetadata = {
-        bdgPid: 12345,
-        startTime: Date.now(),
-        port: 9222,
-        targetId: 'page-123',
-        webSocketDebuggerUrl: 'ws://localhost:9222/devtools/page/123',
-      };
-
-      await assert.rejects(async () => verifyTargetExists(metadata, 9222), {
-        message: /Session target not found/,
-      });
-    });
   });
 
   describe('executeScript', () => {

@@ -15,12 +15,6 @@
 export const DEFAULT_CDP_PORT = 9222;
 
 /**
- * Default Chrome debugging port (string version for CLI argument parsing)
- * Derived from DEFAULT_CDP_PORT to maintain single source of truth
- */
-export const DEFAULT_DEBUG_PORT = String(DEFAULT_CDP_PORT);
-
-/**
  * Default Chrome launcher log level for quiet operation
  */
 export const DEFAULT_CHROME_LOG_LEVEL = 'silent';

@@ -7,7 +7,6 @@
 
 import type { Command } from 'commander';
 
-import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/commands/dom/formDiscovery.js';
 import type {
   FormCommandOptions,
   FormDiscoveryResult,
@@ -17,7 +16,6 @@ import type {
   FormSummary,
   FormBlocker,
   FieldValidation,
-  RawFormData,
   RawForm,
   RawField,
   RawButton,
@@ -26,53 +24,14 @@ import type {
 } from '@/commands/dom/formTypes.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
-import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
+import { domFormDiscover } from '@/ipc/client.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
-import { CommandError } from '@/ui/errors/index.js';
 import { formatFormDiscovery } from '@/ui/formatters/form.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { noFormsFoundError, formInIframeError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
-
-/**
- * Execute form discovery in page context.
- *
- * @param cdp - CDP connection
- * @returns Raw form data from page
- */
-async function executeFormDiscovery(cdp: CDPConnection): Promise<RawFormData> {
-  const response = await cdp.send('Runtime.evaluate', {
-    expression: FORM_DISCOVERY_SCRIPT,
-    returnByValue: true,
-  });
-
-  const cdpResponse = response as {
-    exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-    result?: { value?: unknown };
-  };
-
-  if (cdpResponse.exceptionDetails) {
-    throw new CommandError(
-      `Form discovery failed: ${cdpResponse.exceptionDetails.text}`,
-      { suggestion: 'Check if page has loaded completely' },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
-  }
-
-  const rawData = cdpResponse.result?.value;
-  if (!isRawFormData(rawData)) {
-    throw new CommandError(
-      'Unexpected form discovery response',
-      { suggestion: 'This may be a bug - please report it' },
-      EXIT_CODES.SOFTWARE_ERROR
-    );
-  }
-
-  return rawData;
-}
 
 /**
  * Build validation state from raw field data.
@@ -440,45 +399,6 @@ async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
 }
 
 /**
- * Execute CDP connection lifecycle for form discovery.
- *
- * @param fn - Function to execute with CDP connection
- * @returns Result from function
- */
-async function withCDPConnection<T>(fn: (cdp: CDPConnection) => Promise<T>): Promise<T> {
-  const { CDPConnection } = await import('@/connection/cdp.js');
-  const { validateActiveSession, getValidatedSessionMetadata, verifyTargetExists } =
-    await import('@/commands/dom/evalHelpers.js');
-
-  validateActiveSession();
-  const metadata = getValidatedSessionMetadata();
-  if (!metadata.port) {
-    throw new CommandError(
-      'Session metadata missing port',
-      { suggestion: 'Restart the session with: bdg stop && bdg <url>' },
-      EXIT_CODES.SESSION_FILE_ERROR
-    );
-  }
-  await verifyTargetExists(metadata, metadata.port);
-
-  const cdp = new CDPConnection();
-  if (!metadata.webSocketDebuggerUrl) {
-    throw new CommandError(
-      'Session metadata missing webSocketDebuggerUrl',
-      { suggestion: 'Start a new session with: bdg <url>' },
-      EXIT_CODES.SESSION_FILE_ERROR
-    );
-  }
-  await cdp.connect(metadata.webSocketDebuggerUrl);
-
-  try {
-    return await fn(cdp);
-  } finally {
-    cdp.close();
-  }
-}
-
-/**
  * Handle form discovery command.
  *
  * @param options - Command options
@@ -486,48 +406,55 @@ async function withCDPConnection<T>(fn: (cdp: CDPConnection) => Promise<T>): Pro
 async function handleFormCommand(options: FormCommandOptions): Promise<void> {
   await runCommand(
     async () => {
-      return await withCDPConnection(async (cdp) => {
-        const rawData = await executeFormDiscovery(cdp);
-
-        if (rawData.forms.length === 0) {
-          const err = noFormsFoundError();
-          return {
-            success: false,
-            error: err.message,
-            exitCode: EXIT_CODES.NO_FORMS_FOUND,
-            errorContext: { suggestion: err.suggestion },
-          };
-        }
-
-        const iframeForm = rawData.forms.find((f) => f.inIframe);
-        if (iframeForm && rawData.forms.length === 1) {
-          const err = formInIframeError(
-            iframeForm.iframeUrl ?? 'unknown',
-            iframeForm.crossOrigin ?? false
-          );
-          return {
-            success: false,
-            error: err.message,
-            exitCode: EXIT_CODES.FORM_IN_IFRAME,
-            errorContext: { suggestion: err.suggestion },
-          };
-        }
-
-        const allForms = rawData.forms.map(transformForm);
-        const forms = options.all ? allForms : [allForms[0] as DiscoveredForm];
-
-        // Cache ALL forms so global indices work with bdg dom fill/click
-        await cacheFormElements(allForms);
-
-        const result: FormDiscoveryResult = {
-          formCount: rawData.forms.length,
-          selectedForm: 0,
-          forms,
-          brief: options.brief,
+      const response = await domFormDiscover();
+      if (response.status === 'error' || !response.data) {
+        return {
+          success: false,
+          error: response.error ?? 'Form discovery failed',
+          exitCode: response.exitCode ?? EXIT_CODES.SOFTWARE_ERROR,
+          ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
+      }
+      const rawData = response.data;
 
-        return { success: true, data: result };
-      });
+      if (rawData.forms.length === 0) {
+        const err = noFormsFoundError();
+        return {
+          success: false,
+          error: err.message,
+          exitCode: EXIT_CODES.NO_FORMS_FOUND,
+          errorContext: { suggestion: err.suggestion },
+        };
+      }
+
+      const iframeForm = rawData.forms.find((f) => f.inIframe);
+      if (iframeForm && rawData.forms.length === 1) {
+        const err = formInIframeError(
+          iframeForm.iframeUrl ?? 'unknown',
+          iframeForm.crossOrigin ?? false
+        );
+        return {
+          success: false,
+          error: err.message,
+          exitCode: EXIT_CODES.FORM_IN_IFRAME,
+          errorContext: { suggestion: err.suggestion },
+        };
+      }
+
+      const allForms = rawData.forms.map(transformForm);
+      const forms = options.all ? allForms : [allForms[0] as DiscoveredForm];
+
+      // Cache ALL forms so global indices work with bdg dom fill/click
+      await cacheFormElements(allForms);
+
+      const result: FormDiscoveryResult = {
+        formCount: rawData.forms.length,
+        selectedForm: 0,
+        forms,
+        brief: options.brief,
+      };
+
+      return { success: true, data: result };
     },
     options,
     formatFormDiscovery
