@@ -7,6 +7,12 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  fillableElementNotFoundError,
+  clickableElementNotFoundError,
+  unexpectedResponseFormatError,
+  operationFailedError,
+} from '@/errors/messages.js';
+import {
   escapeSelectorForJS,
   escapeValueForJS,
   formatScriptExecutionError,
@@ -20,12 +26,6 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
-import {
-  fillableElementNotFoundError,
-  clickableElementNotFoundError,
-  unexpectedResponseFormatError,
-  operationFailedError,
-} from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

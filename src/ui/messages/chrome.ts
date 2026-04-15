@@ -272,27 +272,6 @@ export function noPageTargetFoundError(port: number, availableTargets: string | 
 }
 
 /**
- * Generate Chrome launch success message.
- *
- * @param pid - Chrome process ID
- * @param duration - Launch duration in milliseconds
- * @returns Formatted message
- */
-export function chromeLaunchSuccessMessage(pid: number, duration: number): string {
-  return `Chrome launched successfully (PID: ${pid}, ${duration}ms)`;
-}
-
-/**
- * Generate user data directory info message.
- *
- * @param dir - User data directory path
- * @returns Formatted message
- */
-export function chromeUserDataDirMessage(dir: string): string {
-  return `User data directory: ${dir}`;
-}
-
-/**
  * Generate preferences file not found error.
  *
  * @param file - Preferences file path

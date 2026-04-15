@@ -2,8 +2,8 @@
  * Shared utilities for handling daemon connection errors in commands.
  */
 
+import { genericError } from '@/errors/messages.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
-import { genericError } from '@/ui/messages/errors.js';
 import {
   connectionLostRetryMessage,
   connectionLostStopHintMessage,

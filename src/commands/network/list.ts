@@ -14,12 +14,12 @@ import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
+import { operationFailedError } from '@/errors/messages.js';
 import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
 import { formatNetworkList, type NetworkListOptions } from '@/ui/formatters/networkList.js';
-import { operationFailedError } from '@/ui/messages/errors.js';
 import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,

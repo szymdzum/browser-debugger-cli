@@ -6,11 +6,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { CommandRegistry } from '@/daemon/worker/commandRegistry.js';
-import { CommandError } from '@/errors/index.js';
-import type { CommandName, WorkerResponse } from '@/ipc/index.js';
-import { COMMANDS } from '@/ipc/protocol/commands.js';
-import type { Logger } from '@/ui/logging/index.js';
 import {
   workerUnknownCommand,
   workerHandlingCommand,
@@ -18,7 +13,12 @@ import {
   workerIPCParseError,
   workerStdinClosed,
   workerStdinListenerSetup,
-} from '@/ui/messages/debug.js';
+} from '@/daemon/messages.js';
+import type { CommandRegistry } from '@/daemon/worker/commandRegistry.js';
+import { CommandError } from '@/errors/index.js';
+import type { CommandName, WorkerResponse } from '@/ipc/index.js';
+import { COMMANDS } from '@/ipc/protocol/commands.js';
+import type { Logger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 /**

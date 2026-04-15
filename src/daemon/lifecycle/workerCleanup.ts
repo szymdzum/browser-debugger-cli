@@ -5,12 +5,6 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
-import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
-import { writeChromePid } from '@/session/chrome.js';
-import { collectDOM } from '@/telemetry/dom.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types';
-import type { Logger } from '@/ui/logging/index.js';
 import {
   workerCollectingDOM,
   workerDOMCollected,
@@ -18,7 +12,13 @@ import {
   workerRunningCleanup,
   workerClosingCDP,
   workerShutdownComplete,
-} from '@/ui/messages/debug.js';
+} from '@/daemon/messages.js';
+import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
+import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
+import { writeChromePid } from '@/session/chrome.js';
+import { collectDOM } from '@/telemetry/dom.js';
+import type { CleanupFunction, LaunchedChrome } from '@/types';
+import type { Logger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { isProcessAlive, killChromeProcess } from '@/utils/process.js';

@@ -1,7 +1,7 @@
 import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
+import { daemonNotRunningError, unknownError, genericError } from '@/errors/messages.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
-import { daemonNotRunningError, unknownError, genericError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 

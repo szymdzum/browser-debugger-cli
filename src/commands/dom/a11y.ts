@@ -23,6 +23,12 @@ import type {
 } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  elementNotFoundError,
+  invalidQueryPatternError,
+  noA11yNodesFoundError,
+  elementNotAccessibleError,
+} from '@/errors/messages.js';
+import {
   collectA11yTree,
   queryA11yTree,
   parseQueryPattern,
@@ -34,12 +40,6 @@ import {
   formatA11yQueryResult,
   formatA11yNodeWithContext,
 } from '@/ui/formatters/a11y.js';
-import {
-  elementNotFoundError,
-  invalidQueryPatternError,
-  noA11yNodesFoundError,
-  elementNotAccessibleError,
-} from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

@@ -5,9 +5,9 @@ import type { Command } from 'commander';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
+import { genericError } from '@/errors/messages.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
-import { genericError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

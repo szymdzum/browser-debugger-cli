@@ -12,15 +12,15 @@ import { spawn, type ChildProcess } from 'child_process';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-import { getSessionPort } from '@/session/port.js';
-import type { TelemetryType } from '@/types.js';
-import { createLogger } from '@/ui/logging/index.js';
 import {
   daemonSpawningWorker,
   daemonWorkerSpawned,
   daemonWorkerReady,
   daemonParseError,
-} from '@/ui/messages/debug.js';
+} from '@/daemon/messages.js';
+import { getSessionPort } from '@/session/port.js';
+import type { TelemetryType } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { validateUrl } from '@/utils/url.js';

@@ -14,7 +14,6 @@ import {
   DEFAULT_CHROME_LOG_LEVEL,
   DEFAULT_CHROME_HANDLE_SIGINT,
 } from '@/constants.js';
-import { chromeLaunchSuccessMessage, chromeUserDataDirMessage } from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -120,7 +119,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   }
 
   logger.info(`Launching Chrome on port ${port}...`);
-  logger.debug(chromeUserDataDirMessage(userDataDir));
+  logger.debug(`User data directory: ${userDataDir}`);
 
   const chromeOptions = buildChromeOptions(options);
   const launcher = new chromeLauncher.Launcher(chromeOptions);
@@ -154,7 +153,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       );
     }
 
-    logger.info(chromeLaunchSuccessMessage(chromeProcessPid, launchDurationMs));
+    logger.info(`Chrome launched successfully (PID: ${chromeProcessPid}, ${launchDurationMs}ms)`);
 
     return {
       pid: chromeProcessPid,

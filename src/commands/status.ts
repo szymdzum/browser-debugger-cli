@@ -4,6 +4,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
 import { isDaemonConnectionError } from '@/errors/index.js';
+import { invalidResponseError, daemonNotRunningError } from '@/errors/messages.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { cleanupStaleDaemonPid } from '@/session/cleanup.js';
@@ -14,7 +15,6 @@ import {
   formatNoSessionMessage,
   type StatusData,
 } from '@/ui/formatters/status.js';
-import { invalidResponseError, daemonNotRunningError } from '@/ui/messages/errors.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 

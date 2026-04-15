@@ -10,6 +10,7 @@ import type { Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { FormCommandOptions } from '@/commands/shared/optionTypes.js';
+import { noFormsFoundError, formInIframeError } from '@/errors/messages.js';
 import { domFormDiscover } from '@/ipc/client.js';
 import type {
   FormDiscoveryResult,
@@ -28,7 +29,6 @@ import type {
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { formatFormDiscovery } from '@/ui/formatters/form.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { noFormsFoundError, formInIframeError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');

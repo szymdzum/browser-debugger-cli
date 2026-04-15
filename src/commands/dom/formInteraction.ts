@@ -20,12 +20,12 @@ import type {
   ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
+import { internalError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { internalError } from '@/ui/messages/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**

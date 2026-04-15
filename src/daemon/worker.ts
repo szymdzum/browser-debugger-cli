@@ -15,6 +15,7 @@ import { setupSignalHandlers } from '@/daemon/lifecycle/signalHandlers.js';
 import { cleanupWorker } from '@/daemon/lifecycle/workerCleanup.js';
 import { parseWorkerConfig } from '@/daemon/lifecycle/workerConfig.js';
 import { setupStdinListener } from '@/daemon/lifecycle/workerIpc.js';
+import { workerSessionActive } from '@/daemon/messages.js';
 import { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { createCommandRegistry } from '@/daemon/worker/commandRegistry.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
@@ -24,7 +25,6 @@ import { writePid } from '@/session/pid.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeIssue, formatChromeNotice } from '@/ui/messages/chrome.js';
-import { workerSessionActive } from '@/ui/messages/debug.js';
 
 const log = createLogger('worker');
 const telemetryStore = new TelemetryStore();
