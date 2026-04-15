@@ -1,6 +1,18 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
+import { executeScript } from '@/commands/dom/evalHelpers.js';
+import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/commands/dom/formDiscovery.js';
+import {
+  fillElement,
+  clickElement,
+  pressKeyElement,
+  scrollPage,
+  waitForActionStability,
+} from '@/commands/dom/formFillHelpers.js';
+import { submitForm } from '@/commands/dom/formSubmitHelpers.js';
+import type { RawFormData } from '@/commands/dom/formTypes.js';
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
 import { generatePatternHint } from '@/ui/messages/hints.js';
@@ -331,6 +343,92 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       }
 
       return { result, hint };
+    },
+
+    dom_eval: async (cdp, params) => {
+      const result = await executeScript(cdp, params.script);
+      const value = result.result?.value as unknown;
+      return { value };
+    },
+
+    dom_fill: async (cdp, params) => {
+      const fillOptions = filterDefined({
+        index: params.index,
+        blur: params.blur,
+      });
+      const result = await fillElement(cdp, params.selector, params.value, fillOptions);
+      if (result.success && params.wait !== false) {
+        await waitForActionStability(cdp);
+      }
+      return result;
+    },
+
+    dom_click: async (cdp, params) => {
+      const clickOptions = filterDefined({ index: params.index });
+      const result = await clickElement(cdp, params.selector, clickOptions);
+      if (result.success && params.wait !== false) {
+        await waitForActionStability(cdp);
+      }
+      return result;
+    },
+
+    dom_submit: async (cdp, params) => {
+      const submitOptions = filterDefined({
+        index: params.index,
+        waitNavigation: params.waitNavigation,
+        waitNetwork: params.waitNetwork,
+        timeout: params.timeout,
+      });
+      return await submitForm(cdp, params.selector, submitOptions);
+    },
+
+    dom_press_key: async (cdp, params) => {
+      const pressKeyOptions = filterDefined({
+        index: params.index,
+        times: params.times,
+        modifiers: params.modifiers,
+      });
+      const result = await pressKeyElement(cdp, params.selector, params.key, pressKeyOptions);
+      if (result.success && params.wait !== false) {
+        await waitForActionStability(cdp);
+      }
+      return result;
+    },
+
+    dom_scroll: async (cdp, params) => {
+      const scrollOptions = filterDefined({
+        index: params.index,
+        down: params.down,
+        up: params.up,
+        left: params.left,
+        right: params.right,
+        top: params.top,
+        bottom: params.bottom,
+      });
+      const result = await scrollPage(cdp, params.selector, scrollOptions);
+      if (result.success && params.wait !== false) {
+        await waitForActionStability(cdp);
+      }
+      return result;
+    },
+
+    dom_form_discover: async (cdp): Promise<RawFormData> => {
+      const response = await cdp.send('Runtime.evaluate', {
+        expression: FORM_DISCOVERY_SCRIPT,
+        returnByValue: true,
+      });
+      const cdpResponse = response as {
+        exceptionDetails?: Protocol.Runtime.ExceptionDetails;
+        result?: { value?: unknown };
+      };
+      if (cdpResponse.exceptionDetails) {
+        throw new Error(`Form discovery failed: ${cdpResponse.exceptionDetails.text}`);
+      }
+      const rawData = cdpResponse.result?.value;
+      if (!isRawFormData(rawData)) {
+        throw new Error('Unexpected form discovery response');
+      }
+      return rawData;
     },
   } as CommandRegistry;
 }

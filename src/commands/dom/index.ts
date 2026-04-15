@@ -3,7 +3,6 @@ import type * as FsModule from 'fs';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
-import { executeScript } from '@/commands/dom/evalHelpers.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import {
   queryDOMElements,
@@ -14,7 +13,6 @@ import {
   getDomContext,
 } from '@/commands/dom/helpers.js';
 import type { DomGetOptions as DomGetHelperOptions, DomContext } from '@/commands/dom/helpers.js';
-import { withCDPConnection } from '@/commands/dom/withCDPConnection.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type {
@@ -24,6 +22,7 @@ import type {
   DomEvalCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
+import { domEval } from '@/ipc/client.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
@@ -653,14 +652,15 @@ async function handleDomScreenshot(
 async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
     async () => {
-      return await withCDPConnection(async (cdp) => {
-        const result = await executeScript(cdp, script);
-        const value = result.result?.value as unknown;
+      const response = await domEval(script);
+      if (response.status === 'error' || !response.data) {
         return {
-          success: true,
-          data: { result: value },
+          success: false,
+          error: response.error ?? 'Failed to evaluate script',
+          exitCode: EXIT_CODES.CDP_CONNECTION_FAILURE,
         };
-      });
+      }
+      return { success: true, data: { result: response.data.value } };
     },
     options,
     formatDomEval

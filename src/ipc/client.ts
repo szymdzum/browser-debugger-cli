@@ -304,3 +304,53 @@ export async function callCDP(
 ): Promise<ClientResponse<'cdp_call'>> {
   return sendCommand('cdp_call', { method, ...(params && { params }) });
 }
+
+/**
+ * Evaluate a JavaScript expression in the active page context via the worker.
+ */
+export async function domEval(script: string): Promise<ClientResponse<'dom_eval'>> {
+  return sendCommand('dom_eval', { script });
+}
+
+/**
+ * Fill a form field. Worker subscribes to CDP events and optionally waits for
+ * network stability — CLI never opens its own CDP connection.
+ */
+export async function domFill(
+  params: NoType<(typeof COMMANDS)['dom_fill']['requestSchema']>
+): Promise<ClientResponse<'dom_fill'>> {
+  return sendCommand('dom_fill', params);
+}
+
+/** Click an element with optional post-action stability wait. */
+export async function domClick(
+  params: NoType<(typeof COMMANDS)['dom_click']['requestSchema']>
+): Promise<ClientResponse<'dom_click'>> {
+  return sendCommand('dom_click', params);
+}
+
+/** Submit a form with navigation/network-idle waiting. */
+export async function domSubmit(
+  params: NoType<(typeof COMMANDS)['dom_submit']['requestSchema']>
+): Promise<ClientResponse<'dom_submit'>> {
+  return sendCommand('dom_submit', params);
+}
+
+/** Dispatch a key event on an element. */
+export async function domPressKey(
+  params: NoType<(typeof COMMANDS)['dom_press_key']['requestSchema']>
+): Promise<ClientResponse<'dom_press_key'>> {
+  return sendCommand('dom_press_key', params);
+}
+
+/** Scroll the page or an element into view. */
+export async function domScroll(
+  params: NoType<(typeof COMMANDS)['dom_scroll']['requestSchema']>
+): Promise<ClientResponse<'dom_scroll'>> {
+  return sendCommand('dom_scroll', params);
+}
+
+/** Run form discovery and return the raw structured form data. */
+export async function domFormDiscover(): Promise<ClientResponse<'dom_form_discover'>> {
+  return sendCommand('dom_form_discover', {});
+}

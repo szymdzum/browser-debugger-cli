@@ -5,6 +5,10 @@
  * Each command has a request schema (input) and response data schema (output).
  */
 
+import type { PressKeyResult, ScrollResult } from '@/commands/dom/formFillHelpers.js';
+import type { SubmitResult } from '@/commands/dom/formSubmitHelpers.js';
+import type { RawFormData } from '@/commands/dom/formTypes.js';
+import type { ClickResult, FillResult } from '@/commands/dom/reactEventHelpers.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
 import type { NetworkRequest } from '@/types.js';
 
@@ -140,6 +144,92 @@ export interface WorkerNetworkHeadersData {
 }
 
 /**
+ * dom_eval: evaluate a JavaScript expression in the page and return its value.
+ */
+export interface DomEvalCommand {
+  script: string;
+}
+
+export interface DomEvalData {
+  value: unknown;
+}
+
+/**
+ * dom_fill: fill a form field, optionally waiting for network stability after.
+ */
+export interface DomFillCommand {
+  selector: string;
+  value: string;
+  index?: number;
+  blur?: boolean;
+  wait?: boolean;
+}
+
+export type DomFillData = FillResult;
+
+/**
+ * dom_click: click an element, optionally waiting for stability after.
+ */
+export interface DomClickCommand {
+  selector: string;
+  index?: number;
+  wait?: boolean;
+}
+
+export type DomClickData = ClickResult;
+
+/**
+ * dom_submit: submit a form with smart waiting (navigation / network idle).
+ */
+export interface DomSubmitCommand {
+  selector: string;
+  index?: number;
+  waitNavigation?: boolean;
+  waitNetwork?: number;
+  timeout?: number;
+}
+
+export type DomSubmitData = SubmitResult;
+
+/**
+ * dom_press_key: dispatch a key event on an element.
+ */
+export interface DomPressKeyCommand {
+  selector: string;
+  key: string;
+  index?: number;
+  times?: number;
+  modifiers?: string;
+  wait?: boolean;
+}
+
+export type DomPressKeyData = PressKeyResult;
+
+/**
+ * dom_scroll: scroll the page or an element into view.
+ */
+export interface DomScrollCommand {
+  selector?: string;
+  index?: number;
+  down?: number;
+  up?: number;
+  left?: number;
+  right?: number;
+  top?: boolean;
+  bottom?: boolean;
+  wait?: boolean;
+}
+
+export type DomScrollData = ScrollResult;
+
+/**
+ * dom_form_discover: run the form discovery script and return raw form data.
+ */
+export type DomFormDiscoverCommand = Record<string, never>;
+
+export type DomFormDiscoverData = RawFormData;
+
+/**
  * Command definition structure.
  */
 type CommandDef<TReq, TRes> = { requestSchema: TReq; responseSchema: TRes };
@@ -154,6 +244,13 @@ export type RegistryShape = {
   worker_har_data: CommandDef<WorkerHARDataCommand, WorkerHARDataData>;
   worker_network_headers: CommandDef<WorkerNetworkHeadersCommand, WorkerNetworkHeadersData>;
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
+  dom_eval: CommandDef<DomEvalCommand, DomEvalData>;
+  dom_fill: CommandDef<DomFillCommand, DomFillData>;
+  dom_click: CommandDef<DomClickCommand, DomClickData>;
+  dom_submit: CommandDef<DomSubmitCommand, DomSubmitData>;
+  dom_press_key: CommandDef<DomPressKeyCommand, DomPressKeyData>;
+  dom_scroll: CommandDef<DomScrollCommand, DomScrollData>;
+  dom_form_discover: CommandDef<DomFormDiscoverCommand, DomFormDiscoverData>;
 };
 
 /**
@@ -179,6 +276,19 @@ export const COMMANDS = {
     responseSchema: {} as WorkerNetworkHeadersData,
   },
   cdp_call: { requestSchema: {} as CdpCallCommand, responseSchema: {} as CdpCallData },
+  dom_eval: { requestSchema: {} as DomEvalCommand, responseSchema: {} as DomEvalData },
+  dom_fill: { requestSchema: {} as DomFillCommand, responseSchema: {} as DomFillData },
+  dom_click: { requestSchema: {} as DomClickCommand, responseSchema: {} as DomClickData },
+  dom_submit: { requestSchema: {} as DomSubmitCommand, responseSchema: {} as DomSubmitData },
+  dom_press_key: {
+    requestSchema: {} as DomPressKeyCommand,
+    responseSchema: {} as DomPressKeyData,
+  },
+  dom_scroll: { requestSchema: {} as DomScrollCommand, responseSchema: {} as DomScrollData },
+  dom_form_discover: {
+    requestSchema: {} as DomFormDiscoverCommand,
+    responseSchema: {} as DomFormDiscoverData,
+  },
 } as const satisfies RegistryShape;
 
 /**
