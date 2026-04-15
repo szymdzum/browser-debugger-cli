@@ -5,6 +5,7 @@
  * Each command has a request schema (input) and response data schema (output).
  */
 
+import type { HintDetails } from '@/errors/notices.js';
 import type {
   ClickResult,
   FillResult,
@@ -88,8 +89,8 @@ export interface CdpCallCommand {
 export interface CdpCallData {
   /** Result from CDP method call. */
   result: unknown;
-  /** Optional hint for more efficient alternative command. */
-  hint?: string;
+  /** Structured hint suggesting a more efficient alternative. UI formats at boundary. */
+  hint?: HintDetails;
 }
 
 /**

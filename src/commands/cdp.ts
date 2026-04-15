@@ -12,6 +12,7 @@ import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import { formatHint } from '@/ui/messages/hints.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -489,7 +490,7 @@ async function handleExecuteMethod(
   };
 
   if (response.data?.hint) {
-    result.hint = response.data.hint;
+    result.hint = formatHint(response.data.hint);
   }
 
   const methodHint = getMethodHint(normalized, cdpResult);

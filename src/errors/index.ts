@@ -8,6 +8,13 @@ export { CommandError, type ErrorMetadata } from './CommandError.js';
 
 export type { IssueCode, IssueDetails } from './issues.js';
 
-export type { ChromeNoticeCode, NoticeCode, NoticeDetails, NoticeSink } from './notices.js';
+export type {
+  ChromeNoticeCode,
+  HintCode,
+  HintDetails,
+  NoticeCode,
+  NoticeDetails,
+  NoticeSink,
+} from './notices.js';
 
 export { isDaemonConnectionError } from './utils.js';

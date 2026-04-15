@@ -18,6 +18,7 @@ import { setupStdinListener } from '@/daemon/lifecycle/workerIpc.js';
 import { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { createCommandRegistry } from '@/daemon/worker/commandRegistry.js';
 import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
+import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writePid } from '@/session/pid.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types';
@@ -86,14 +87,20 @@ async function main(): Promise<void> {
     initializeTelemetryStore();
     writePid(process.pid);
 
-    chrome = await setupChromeConnection(config, telemetryStore, log, (notice) =>
-      console.error(`[worker] ${formatChromeNotice(notice)}`)
-    );
+    const notify: NoticeSink<ChromeNoticeCode> = (notice) =>
+      console.error(`[worker] ${formatChromeNotice(notice)}`);
+
+    chrome = await setupChromeConnection(config, telemetryStore, log, notify);
 
     const result = await setupCDPAndNavigate(config, telemetryStore, chrome, log, () => {
-      void cleanupWorker('crash', { chrome, cdp, cleanupFunctions, telemetryStore, log }).then(() =>
-        process.exit(1)
-      );
+      void cleanupWorker('crash', {
+        chrome,
+        cdp,
+        cleanupFunctions,
+        telemetryStore,
+        log,
+        notify,
+      }).then(() => process.exit(1));
     });
 
     cdp = result.cdp;
@@ -114,7 +121,10 @@ async function main(): Promise<void> {
 
     sendReadySignal(process.pid, chrome?.pid ?? 0, config.port);
 
-    setupSignalHandlers({ chrome, cdp, cleanupFunctions, telemetryStore, log }, config.timeout);
+    setupSignalHandlers(
+      { chrome, cdp, cleanupFunctions, telemetryStore, log, notify },
+      config.timeout
+    );
 
     log.debug(workerSessionActive());
   } catch (error) {
@@ -125,7 +135,16 @@ async function main(): Promise<void> {
           ? error.message
           : String(error);
     console.error(`[worker] Fatal error: ${message}`);
-    await cleanupWorker('crash', { chrome, cdp, cleanupFunctions, telemetryStore, log });
+    const notify: NoticeSink<ChromeNoticeCode> = (n) =>
+      console.error(`[worker] ${formatChromeNotice(n)}`);
+    await cleanupWorker('crash', {
+      chrome,
+      cdp,
+      cleanupFunctions,
+      telemetryStore,
+      log,
+      notify,
+    });
     process.exit(1);
   }
 }

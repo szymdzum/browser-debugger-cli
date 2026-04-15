@@ -11,9 +11,21 @@
 export type ChromeNoticeCode =
   | 'EXTERNAL_CHROME_CONNECTING'
   | 'EXTERNAL_CHROME_WS_URL'
-  | 'EXTERNAL_CHROME_NO_PID';
+  | 'EXTERNAL_CHROME_NO_PID'
+  | 'EXTERNAL_CHROME_SKIP_TERMINATION';
+
+/**
+ * Hint codes: soft suggestions surfaced to the caller alongside a result.
+ * Distinct from notices conceptually but share the same transport shape.
+ */
+export type HintCode = 'PATTERN_HINT';
 
 export type NoticeCode = ChromeNoticeCode;
+
+export interface HintDetails<C extends HintCode = HintCode> {
+  code: C;
+  context?: Record<string, unknown>;
+}
 
 export interface NoticeDetails<C extends NoticeCode = NoticeCode> {
   code: C;

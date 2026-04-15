@@ -25,6 +25,8 @@ export function formatChromeNotice(notice: NoticeDetails<ChromeNoticeCode>): str
       return chromeExternalWebSocketMessage(ctx['wsUrl'] as string);
     case 'EXTERNAL_CHROME_NO_PID':
       return chromeExternalNoPidMessage();
+    case 'EXTERNAL_CHROME_SKIP_TERMINATION':
+      return chromeExternalSkipTerminationMessage();
   }
 }
 
