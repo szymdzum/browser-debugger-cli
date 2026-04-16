@@ -13,16 +13,13 @@ import { Option, type Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { NetworkHarCommandOptions } from '@/commands/shared/optionTypes.js';
-import { CommandError } from '@/errors/index.js';
-import { operationFailedError } from '@/errors/messages.js';
 import { getSessionFilePath } from '@/session/paths.js';
-import { applyFilters, parseFilterString, validateFilterString } from '@/telemetry/filterDsl.js';
+import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
-import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 
-import { getNetworkRequests } from './shared.js';
+import { getNetworkRequests, validateFilterOption } from './shared.js';
 
 /**
  * HAR command options with filter support.
@@ -87,19 +84,7 @@ export function registerHarCommand(networkCmd: Command): void {
           let filtered = false;
 
           if (options.filter) {
-            const validation = validateFilterString(options.filter);
-            if (!validation.valid) {
-              const err = operationFailedError(
-                'validate filter',
-                validation.suggestion ?? 'Check filter syntax'
-              );
-              throw new CommandError(
-                validation.error,
-                { suggestion: err.suggestion },
-                EXIT_CODES.INVALID_ARGUMENTS
-              );
-            }
-
+            validateFilterOption(options.filter);
             const filters = parseFilterString(options.filter);
             const originalCount = requests.length;
             requests = applyFilters(requests, filters);

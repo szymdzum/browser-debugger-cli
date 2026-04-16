@@ -12,8 +12,11 @@ import type {
   NetworkCookiesCommandOptions,
   NetworkHeadersCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { CommandError } from '@/errors/index.js';
+import { operationFailedError } from '@/errors/messages.js';
 import { getHARData, callCDP, getNetworkHeaders } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import { validateFilterString } from '@/telemetry/filterDsl.js';
 import type { NetworkRequest } from '@/types.js';
 import type { Cookie } from '@/ui/formatters/index.js';
 import { formatCookies, formatNetworkHeaders } from '@/ui/formatters/index.js';
@@ -44,6 +47,29 @@ export async function fetchFromLiveSession(): Promise<NetworkRequest[]> {
  */
 export async function getNetworkRequests(): Promise<NetworkRequest[]> {
   return fetchFromLiveSession();
+}
+
+/**
+ * Validate a filter DSL string and throw a CommandError on invalid input.
+ *
+ * Centralises the parse-validate-throw flow used by network commands so each
+ * command site stays a single line.
+ *
+ * @param filterString - Filter DSL string to validate
+ * @throws CommandError with INVALID_ARGUMENTS exit code on invalid syntax
+ */
+export function validateFilterOption(filterString: string): void {
+  const validation = validateFilterString(filterString);
+  if (validation.valid) return;
+  const err = operationFailedError(
+    'validate filter',
+    validation.suggestion ?? 'Check filter syntax'
+  );
+  throw new CommandError(
+    validation.error,
+    { suggestion: err.suggestion },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
 }
 
 /**

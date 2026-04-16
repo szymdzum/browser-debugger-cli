@@ -13,8 +13,6 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { CommandError } from '@/errors/index.js';
-import { operationFailedError } from '@/errors/messages.js';
 import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemetry/filterDsl.js';
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
@@ -25,6 +23,8 @@ import {
   stoppedFollowingNetworkMessage,
 } from '@/ui/messages/networkMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+import { validateFilterOption } from './shared.js';
 
 const MIN_LAST = 0;
 const MAX_LAST = 10000;
@@ -68,19 +68,7 @@ function buildFilterString(options: NetworkListCommandOptions): string {
 function validateAndGetFilters(options: NetworkListCommandOptions): void {
   const filterString = buildFilterString(options);
   if (!filterString) return;
-
-  const validation = validateFilterString(filterString);
-  if (!validation.valid) {
-    const err = operationFailedError(
-      'validate filter',
-      validation.suggestion ?? 'Check filter syntax'
-    );
-    throw new CommandError(
-      validation.error,
-      { suggestion: err.suggestion },
-      EXIT_CODES.INVALID_ARGUMENTS
-    );
-  }
+  validateFilterOption(filterString);
 }
 
 /**
