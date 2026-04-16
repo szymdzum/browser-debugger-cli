@@ -70,13 +70,27 @@ function mapLaunchError(error: unknown): { errorCode: IPCErrorCode; errorMessage
 type SendResponseFn = (socket: Socket, response: unknown) => void;
 
 /**
+ * Callback invoked after a successful stop, signalling that the daemon
+ * process should shut down. The handler does not own the shutdown itself so
+ * that `process.exit` stays out of the request-handling path and tests can
+ * observe the shutdown intent without mocking `process`.
+ */
+type RequestShutdownFn = () => void;
+
+/**
+ * Result of a worker-termination attempt.
+ */
+type TerminateResult = { ok: true } | { ok: false; reason: string };
+
+/**
  * Handles session start and stop requests.
  */
 export class SessionHandlers {
   constructor(
     private readonly workerManager: WorkerManager,
     private readonly sessionService: ISessionService,
-    private readonly sendResponse: SendResponseFn
+    private readonly sendResponse: SendResponseFn,
+    private readonly requestShutdown: RequestShutdownFn
   ) {}
 
   /**
@@ -237,86 +251,136 @@ export class SessionHandlers {
 
   /**
    * Handle stop session request.
+   *
+   * Flow:
+   * 1. Locate the active session (respond `NO_SESSION` if absent).
+   * 2. Terminate the worker (respond `SESSION_KILL_FAILED` if the signal fails).
+   * 3. Finalize cleanup (session files, worker reference, daemon lock).
+   * 4. Send success, then request daemon shutdown via the injected callback.
    */
   handleStopSession(socket: Socket, request: StopSessionRequest): void {
     log.info(`Stop session request received (sessionId: ${request.sessionId})`);
 
     try {
-      const sessionPid = this.sessionService.readPid();
-      if (!sessionPid || !this.sessionService.isProcessAlive(sessionPid)) {
-        const response: StopSessionResponse = {
-          type: 'stop_session_response',
-          sessionId: request.sessionId,
-          status: 'error',
-          message: 'No active session found',
-          errorCode: IPCErrorCode.NO_SESSION,
-        };
-
-        this.sendResponse(socket, response);
-        log.info('Stop session error response sent (no session)');
+      const active = this.findActiveSession();
+      if (!active) {
+        this.sendStopErrorResponse(
+          socket,
+          request,
+          'No active session found',
+          IPCErrorCode.NO_SESSION,
+          'no session'
+        );
         return;
       }
 
-      const metadata = this.sessionService.readMetadata({ warnOnCorruption: true });
-      const chromePid = metadata?.chromePid;
-      if (chromePid) {
-        log.info(`Captured Chrome PID ${chromePid} before cleanup`);
+      if (active.chromePid) {
+        log.info(`Captured Chrome PID ${active.chromePid} before cleanup`);
       }
 
-      try {
-        process.kill(sessionPid, 'SIGTERM');
-        log.info(`Sent SIGTERM to session process (PID ${sessionPid})`);
-      } catch (killError: unknown) {
-        const errorMessage = killError instanceof Error ? killError.message : String(killError);
-        const response: StopSessionResponse = {
-          type: 'stop_session_response',
-          sessionId: request.sessionId,
-          status: 'error',
-          message: `Failed to kill session process: ${errorMessage}`,
-          errorCode: IPCErrorCode.SESSION_KILL_FAILED,
-        };
-
-        this.sendResponse(socket, response);
-        log.info('Stop session error response sent (kill failed)');
+      const kill = this.terminateWorker(active.pid);
+      if (!kill.ok) {
+        this.sendStopErrorResponse(
+          socket,
+          request,
+          `Failed to kill session process: ${kill.reason}`,
+          IPCErrorCode.SESSION_KILL_FAILED,
+          'kill failed'
+        );
         return;
       }
 
-      this.sessionService.cleanup();
-      log.info('Cleaned up session files');
-
-      this.workerManager.dispose();
-      log.info('Cleared worker process reference');
-
-      const response: StopSessionResponse = {
-        type: 'stop_session_response',
-        sessionId: request.sessionId,
-        status: 'ok',
-        message: 'Session stopped successfully',
-        ...(chromePid !== undefined && { chromePid }),
-      };
-
-      this.sendResponse(socket, response);
-      log.info('Stop session response sent');
-
-      this.sessionService.releaseLock();
-      log.info('Daemon lock released');
-
-      setTimeout(() => {
-        log.info('Shutting down daemon after successful stop');
-        process.exit(0);
-      }, 100);
+      this.finalizeStopCleanup();
+      this.sendStopSuccessResponse(socket, request, active.chromePid);
+      this.requestShutdown();
     } catch (error) {
-      const response: StopSessionResponse = {
-        type: 'stop_session_response',
-        sessionId: request.sessionId,
-        status: 'error',
-        message: `Failed to stop session: ${getErrorMessage(error)}`,
-        errorCode: IPCErrorCode.DAEMON_ERROR,
-      };
-
-      this.sendResponse(socket, response);
-      log.info('Stop session error response sent');
+      this.sendStopErrorResponse(
+        socket,
+        request,
+        `Failed to stop session: ${getErrorMessage(error)}`,
+        IPCErrorCode.DAEMON_ERROR
+      );
     }
+  }
+
+  /**
+   * Return the active session's worker PID (and Chrome PID if bdg launched it),
+   * or null when no live session is recorded.
+   */
+  private findActiveSession(): { pid: number; chromePid?: number } | null {
+    const pid = this.sessionService.readPid();
+    if (!pid || !this.sessionService.isProcessAlive(pid)) {
+      return null;
+    }
+    const metadata = this.sessionService.readMetadata({ warnOnCorruption: true });
+    return metadata?.chromePid !== undefined ? { pid, chromePid: metadata.chromePid } : { pid };
+  }
+
+  /**
+   * SIGTERM the worker and report success/failure. Does not wait for the
+   * worker to actually exit — the OS signal delivery is synchronous enough
+   * for a human-facing response.
+   */
+  private terminateWorker(pid: number): TerminateResult {
+    try {
+      process.kill(pid, 'SIGTERM');
+      log.info(`Sent SIGTERM to session process (PID ${pid})`);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: getErrorMessage(error) };
+    }
+  }
+
+  /**
+   * Remove session-scoped files, drop the worker reference, and release the
+   * daemon lock. Kept as a single named step so the stop flow reads as
+   * `terminate → finalize → respond → shutdown`.
+   */
+  private finalizeStopCleanup(): void {
+    this.sessionService.cleanup();
+    log.info('Cleaned up session files');
+
+    this.workerManager.dispose();
+    log.info('Cleared worker process reference');
+
+    this.sessionService.releaseLock();
+    log.info('Daemon lock released');
+  }
+
+  private sendStopSuccessResponse(
+    socket: Socket,
+    request: StopSessionRequest,
+    chromePid: number | undefined
+  ): void {
+    const response: StopSessionResponse = {
+      type: 'stop_session_response',
+      sessionId: request.sessionId,
+      status: 'ok',
+      message: 'Session stopped successfully',
+      ...(chromePid !== undefined && { chromePid }),
+    };
+
+    this.sendResponse(socket, response);
+    log.info('Stop session response sent');
+  }
+
+  private sendStopErrorResponse(
+    socket: Socket,
+    request: StopSessionRequest,
+    message: string,
+    errorCode: IPCErrorCode,
+    logContext?: string
+  ): void {
+    const response: StopSessionResponse = {
+      type: 'stop_session_response',
+      sessionId: request.sessionId,
+      status: 'error',
+      message,
+      errorCode,
+    };
+
+    this.sendResponse(socket, response);
+    log.info(`Stop session error response sent${logContext ? ` (${logContext})` : ''}`);
   }
 
   /**

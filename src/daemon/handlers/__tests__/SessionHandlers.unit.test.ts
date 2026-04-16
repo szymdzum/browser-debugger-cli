@@ -14,7 +14,13 @@ import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import { SessionHandlers } from '@/daemon/handlers/SessionHandlers.js';
 import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { ISessionService } from '@/daemon/services/SessionService.js';
-import { IPCErrorCode, type StartSessionRequest, type StartSessionResponse } from '@/ipc/index.js';
+import {
+  IPCErrorCode,
+  type StartSessionRequest,
+  type StartSessionResponse,
+  type StopSessionRequest,
+  type StopSessionResponse,
+} from '@/ipc/index.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 
 type FakeSessionService = {
@@ -112,6 +118,16 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
   let originalFetch: typeof global.fetch;
   let sentResponses: unknown[];
   let sendResponse: ReturnType<typeof mock.fn>;
+  let requestShutdown: ReturnType<typeof mock.fn>;
+
+  function makeHandler(worker: FakeWorkerManager, service: FakeSessionService): SessionHandlers {
+    return new SessionHandlers(
+      worker,
+      service as unknown as ISessionService,
+      sendResponse as unknown as (socket: unknown, response: unknown) => void,
+      requestShutdown as unknown as () => void
+    );
+  }
 
   beforeEach(() => {
     originalFetch = global.fetch;
@@ -119,6 +135,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
     sendResponse = mock.fn((_socket: unknown, response: unknown) => {
       sentResponses.push(response);
     });
+    requestShutdown = mock.fn(() => undefined);
   });
 
   afterEach(() => {
@@ -129,11 +146,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
     global.fetch = aliveFetchStub() as unknown as typeof global.fetch;
     const service = makeSessionService();
     const worker = makeWorkerManager(successfulLaunch);
-    const handler = new SessionHandlers(
-      worker,
-      service as unknown as ISessionService,
-      sendResponse as unknown as (socket: unknown, response: unknown) => void
-    );
+    const handler = makeHandler(worker, service);
 
     await handler.handleStartSession({} as never, makeRequest());
 
@@ -152,11 +165,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
       readMetadata: () => metadata({ targetId: 'tgt-1' }),
     });
     const worker = makeWorkerManager(successfulLaunch);
-    const handler = new SessionHandlers(
-      worker,
-      service as unknown as ISessionService,
-      sendResponse as unknown as (socket: unknown, response: unknown) => void
-    );
+    const handler = makeHandler(worker, service);
 
     await handler.handleStartSession({} as never, makeRequest());
 
@@ -175,11 +184,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
       readMetadata: () => metadata({ webSocketDebuggerUrl: ws }),
     });
     const worker = makeWorkerManager(successfulLaunch);
-    const handler = new SessionHandlers(
-      worker,
-      service as unknown as ISessionService,
-      sendResponse as unknown as (socket: unknown, response: unknown) => void
-    );
+    const handler = makeHandler(worker, service);
 
     await handler.handleStartSession({} as never, makeRequest({ chromeWsUrl: ws }));
 
@@ -197,11 +202,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
         metadata({ webSocketDebuggerUrl: 'ws://host-a:9222/devtools/browser/abc' }),
     });
     const worker = makeWorkerManager(successfulLaunch);
-    const handler = new SessionHandlers(
-      worker,
-      service as unknown as ISessionService,
-      sendResponse as unknown as (socket: unknown, response: unknown) => void
-    );
+    const handler = makeHandler(worker, service);
 
     await handler.handleStartSession(
       {} as never,
@@ -226,11 +227,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
       readMetadata: () => metadata(),
     });
     const worker = makeWorkerManager(successfulLaunch);
-    const handler = new SessionHandlers(
-      worker,
-      service as unknown as ISessionService,
-      sendResponse as unknown as (socket: unknown, response: unknown) => void
-    );
+    const handler = makeHandler(worker, service);
 
     await handler.handleStartSession(
       {} as never,
@@ -250,11 +247,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
       readMetadata: () => metadata({ webSocketDebuggerUrl: staleWs, chromePid: 9999 }),
     });
     const worker = makeWorkerManager(successfulLaunch);
-    const handler = new SessionHandlers(
-      worker,
-      service as unknown as ISessionService,
-      sendResponse as unknown as (socket: unknown, response: unknown) => void
-    );
+    const handler = makeHandler(worker, service);
 
     await handler.handleStartSession(
       {} as never,
@@ -277,5 +270,106 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
     assert.equal(response.status, 'ok');
     assert.equal(response.data?.recovered, true);
     assert.equal(response.data?.previousTarget, staleWs);
+  });
+});
+
+void describe('SessionHandlers.handleStopSession — shutdown callback + response contract', () => {
+  let sentResponses: unknown[];
+  let sendResponse: ReturnType<typeof mock.fn>;
+  let requestShutdown: ReturnType<typeof mock.fn>;
+
+  function makeHandler(worker: FakeWorkerManager, service: FakeSessionService): SessionHandlers {
+    return new SessionHandlers(
+      worker,
+      service as unknown as ISessionService,
+      sendResponse as unknown as (socket: unknown, response: unknown) => void,
+      requestShutdown as unknown as () => void
+    );
+  }
+
+  function stopRequest(): StopSessionRequest {
+    return { type: 'stop_session_request', sessionId: 'stop-1' };
+  }
+
+  beforeEach(() => {
+    sentResponses = [];
+    sendResponse = mock.fn((_socket: unknown, response: unknown) => {
+      sentResponses.push(response);
+    });
+    requestShutdown = mock.fn(() => undefined);
+  });
+
+  void it('responds with NO_SESSION and does not request shutdown when no session is recorded', () => {
+    const service = makeSessionService({ readPid: () => null });
+    const worker = makeWorkerManager(successfulLaunch);
+    const handler = makeHandler(worker, service);
+
+    handler.handleStopSession({} as never, stopRequest());
+
+    const response = sentResponses[0] as StopSessionResponse;
+    assert.equal(response.status, 'error');
+    assert.equal(response.errorCode, IPCErrorCode.NO_SESSION);
+    assert.equal(requestShutdown.mock.callCount(), 0);
+    assert.equal(service.cleanup.mock.callCount(), 0);
+  });
+
+  void it('responds with SESSION_KILL_FAILED when SIGTERM throws and does not request shutdown', () => {
+    const service = makeSessionService({
+      readPid: () => 4242,
+      isProcessAlive: () => true,
+      readMetadata: () => metadata(),
+    });
+    const worker = makeWorkerManager(successfulLaunch);
+    const handler = makeHandler(worker, service);
+
+    const originalKill = process.kill.bind(process);
+    process.kill = ((_pid: number, _signal: NodeJS.Signals) => {
+      throw new Error('EPERM: operation not permitted');
+    }) as typeof process.kill;
+
+    try {
+      handler.handleStopSession({} as never, stopRequest());
+    } finally {
+      process.kill = originalKill;
+    }
+
+    const response = sentResponses[0] as StopSessionResponse;
+    assert.equal(response.status, 'error');
+    assert.equal(response.errorCode, IPCErrorCode.SESSION_KILL_FAILED);
+    assert.match(response.message ?? '', /EPERM/);
+    assert.equal(requestShutdown.mock.callCount(), 0);
+    assert.equal(service.cleanup.mock.callCount(), 0, 'cleanup must not run after kill failure');
+  });
+
+  void it('requests shutdown exactly once on successful stop', () => {
+    const service = makeSessionService({
+      readPid: () => 4242,
+      isProcessAlive: () => true,
+      readMetadata: () => metadata({ chromePid: 5000 }),
+    });
+    const worker = makeWorkerManager(successfulLaunch);
+    const handler = makeHandler(worker, service);
+
+    const originalKill = process.kill.bind(process);
+    let killedPid: number | undefined;
+    process.kill = ((pid: number, _signal: NodeJS.Signals) => {
+      killedPid = pid;
+      return true;
+    }) as typeof process.kill;
+
+    try {
+      handler.handleStopSession({} as never, stopRequest());
+    } finally {
+      process.kill = originalKill;
+    }
+
+    assert.equal(killedPid, 4242);
+    const response = sentResponses[0] as StopSessionResponse;
+    assert.equal(response.status, 'ok');
+    assert.equal(response.chromePid, 5000);
+    assert.equal(service.cleanup.mock.callCount(), 1);
+    assert.equal(worker.dispose.mock.callCount(), 1);
+    assert.equal(service.releaseLock.mock.callCount(), 1);
+    assert.equal(requestShutdown.mock.callCount(), 1);
   });
 });
