@@ -165,10 +165,20 @@ function formatPresetHelp(): string {
     .join('\n');
 }
 
+/**
+ * Shape of `bdg network list --json` output (wrapped in the standard
+ * `data` envelope).
+ *
+ * `requests` is always the final result: filter + resource-type + `--last`
+ * slicing applied. Consumers reading `.data.requests` get what the
+ * corresponding human output shows — no hidden unfiltered field to miss.
+ *
+ * `matchCount` is the count of requests that matched the filter before
+ * `--last` slicing. `totalCount` is the unfiltered capture count.
+ */
 interface NetworkListResult {
   requests: NetworkRequest[];
-  filtered: NetworkRequest[];
-  filteredTotal: number;
+  matchCount: number;
   totalCount: number;
 }
 
@@ -202,9 +212,12 @@ export function registerListCommand(networkCmd: Command): void {
         validatePreset(options.preset);
         validateAndGetFilters(options);
         resourceTypes = parseResourceTypes(options.type);
-        lastN = positiveIntRule({ min: MIN_LAST, max: MAX_LAST, default: DEFAULT_LAST }).validate(
-          options.last
-        );
+        lastN = positiveIntRule({
+          min: MIN_LAST,
+          max: MAX_LAST,
+          default: DEFAULT_LAST,
+          fieldName: 'last',
+        }).validate(options.last);
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }
@@ -222,7 +235,7 @@ export function registerListCommand(networkCmd: Command): void {
             if (result.exitCode === EXIT_CODES.SUCCESS) {
               return {
                 success: true,
-                data: { requests: [], filtered: [], filteredTotal: 0, totalCount: 0 },
+                data: { requests: [], matchCount: 0, totalCount: 0 },
               };
             }
             return createErrorResult(result.error, result.exitCode);
@@ -233,16 +246,15 @@ export function registerListCommand(networkCmd: Command): void {
           return {
             success: true,
             data: {
-              requests: result.data,
-              filtered: displayed,
-              filteredTotal: filtered.length,
+              requests: displayed,
+              matchCount: filtered.length,
               totalCount: result.data.length,
             },
           };
         },
         options,
         (data: NetworkListResult) =>
-          formatNetworkList(data.filtered, buildFormatOptions(options, data.totalCount, lastN))
+          formatNetworkList(data.requests, buildFormatOptions(options, data.totalCount, lastN))
       );
     });
 }
