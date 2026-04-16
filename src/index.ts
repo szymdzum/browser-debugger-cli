@@ -160,10 +160,12 @@ function isDocumentationRequest(): boolean {
  * Commands that should report "no session" locally when no daemon is running.
  *
  * `status` and `stop` are session-state queries that already handle the
- * daemon-not-running case gracefully. Spawning a fresh daemon just to be
- * told the session doesn't exist is wasteful and slow.
+ * daemon-not-running case gracefully. `cleanup` operates directly on the
+ * filesystem (~/.bdg) and doesn't need a daemon to do its job. Spawning a
+ * fresh daemon just to be told the session doesn't exist is wasteful and
+ * slow.
  */
-const LOCAL_ONLY_WHEN_NO_DAEMON = new Set(['status', 'stop']);
+const LOCAL_ONLY_WHEN_NO_DAEMON = new Set(['status', 'stop', 'cleanup']);
 
 /**
  * Check if the invocation is a read-only session query that doesn't need
