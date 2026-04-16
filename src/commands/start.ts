@@ -147,8 +147,18 @@ function buildSessionOptions(options: CollectorOptions): {
   verbose: boolean;
   chromeFlags: string[] | undefined;
 } {
-  const maxBodySizeRule = positiveIntRule({ min: 1, max: 100, required: false });
-  const timeoutRule = positiveIntRule({ min: 1, max: 3600, required: false });
+  const maxBodySizeRule = positiveIntRule({
+    min: 1,
+    max: 100,
+    required: false,
+    fieldName: 'max-body-size',
+  });
+  const timeoutRule = positiveIntRule({
+    min: 1,
+    max: 3600,
+    required: false,
+    fieldName: 'timeout',
+  });
 
   const maxBodySizeMB = options.maxBodySize
     ? maxBodySizeRule.validate(options.maxBodySize)
@@ -219,11 +229,10 @@ export function registerStartCommands(program: Command): void {
       if (options.chromeWsUrl !== undefined) {
         assertValidChromeWsUrl(options.chromeWsUrl);
       }
+      await collectorAction(url, options);
     } catch (error) {
       handleValidationError(error, false);
     }
-
-    await collectorAction(url, options);
   });
 }
 
