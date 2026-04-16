@@ -11,7 +11,6 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
-import { validateIPCResponse } from '@/ipc/index.js';
 import { formatHint } from '@/ui/messages/hints.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -473,7 +472,20 @@ async function handleExecuteMethod(
 
   const response = await callCDP(normalized, params);
 
-  validateIPCResponse(response);
+  if (response.status === 'error') {
+    const errMsg = response.error ?? 'CDP call failed';
+    const isInvalidParams = /invalid parameters|must have|is required/i.test(errMsg);
+    return {
+      success: false,
+      error: errMsg,
+      exitCode: isInvalidParams ? EXIT_CODES.INVALID_ARGUMENTS : EXIT_CODES.SOFTWARE_ERROR,
+      errorContext: {
+        suggestion: isInvalidParams
+          ? `See required parameters: bdg cdp ${normalized} --describe`
+          : `List methods: bdg cdp ${normalized.split('.')[0]} --list`,
+      },
+    };
+  }
 
   const cdpResult = response.data?.result;
 

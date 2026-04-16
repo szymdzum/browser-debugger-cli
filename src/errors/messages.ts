@@ -259,11 +259,19 @@ export function indexOutOfRangeError(index: number, max: number): ErrorWithSugge
 
 /**
  * Element at index not found (stale cache).
+ *
+ * @param index - Zero-based index from the cached query
+ * @param selector - Original selector used by the cache, when known. When
+ *   omitted (e.g. callers that don't carry the selector forward), a generic
+ *   suggestion is emitted so the message never renders a literal "cached
+ *   query" placeholder as if it were a real argument.
  */
-export function elementAtIndexNotFoundError(index: number, selector: string): ErrorWithSuggestion {
+export function elementAtIndexNotFoundError(index: number, selector?: string): ErrorWithSuggestion {
   return {
     message: `Element at index ${index} not found`,
-    suggestion: `Re-run "bdg dom query ${selector}" to refresh the cache`,
+    suggestion: selector
+      ? `Re-run "bdg dom query ${selector}" to refresh the cache`
+      : 'Re-run your original query to refresh the cache',
   };
 }
 

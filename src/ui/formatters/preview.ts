@@ -8,6 +8,7 @@ import {
   compactTipsMessage,
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
+import { isQuietMode } from '@/utils/outputMode.js';
 
 import { semantic } from './semantic.js';
 
@@ -157,66 +158,61 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   fmt.blank();
 
   const lastCount = options.last;
-  const hasNetworkData = output.data.network && output.data.network.length > 0;
-  const hasConsoleData = output.data.console && output.data.console.length > 0;
+  const hasExplicitFilter =
+    Boolean(options.network) || Boolean(options.console) || Boolean(options.dom);
+  const showNetwork = (!hasExplicitFilter || options.network) && Boolean(output.data.network);
+  const showConsole = (!hasExplicitFilter || options.console) && Boolean(output.data.console);
 
-  if (!options.console && output.data.network) {
-    if (!options.console || hasNetworkData) {
-      const requests =
-        lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
-      const showingCount = requests.length;
-      const totalCount = output.data.network.length;
-      const limitHint = formatLimitHint(showingCount, totalCount);
-      fmt.text(`NETWORK (${showingCount}/${totalCount})${limitHint}:`);
-      if (requests.length === 0) {
-        if (
-          options.filteredTypes &&
-          options.filteredTypes.length > 0 &&
-          options.unfilteredNetworkCount &&
-          options.unfilteredNetworkCount > 0
-        ) {
-          const typesStr = options.filteredTypes.join(', ');
-          fmt.text(
-            `  No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
-          );
-          fmt.text(`  Try: bdg peek --network (to see all types)`);
-        } else {
-          fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
-        }
+  if (showNetwork && output.data.network) {
+    const requests = lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
+    const showingCount = requests.length;
+    const totalCount = output.data.network.length;
+    const limitHint = formatLimitHint(showingCount, totalCount);
+    fmt.text(`NETWORK (${showingCount}/${totalCount})${limitHint}:`);
+    if (requests.length === 0) {
+      if (
+        options.filteredTypes &&
+        options.filteredTypes.length > 0 &&
+        options.unfilteredNetworkCount &&
+        options.unfilteredNetworkCount > 0
+      ) {
+        const typesStr = options.filteredTypes.join(', ');
+        fmt.text(
+          `  No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
+        );
+        fmt.text(`  Try: bdg peek --network (to see all types)`);
       } else {
-        const networkLines = requests.map((req) => {
-          const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
-          // Show error text for failed requests (SSL errors, connection failures, etc.)
-          const status = req.errorText ? `FAILED (${req.errorText})` : (req.status ?? 'pending');
-          const url = truncateUrl(req.url, 50);
-          return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}`;
-        });
-        fmt.list(networkLines, 2);
+        fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       }
-      fmt.blank();
+    } else {
+      const networkLines = requests.map((req) => {
+        const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
+        const status = req.errorText ? `FAILED (${req.errorText})` : (req.status ?? 'pending');
+        const url = truncateUrl(req.url, 50);
+        return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}`;
+      });
+      fmt.list(networkLines, 2);
     }
+    fmt.blank();
   }
 
-  if (!options.network && output.data.console) {
-    if (options.network === undefined || hasConsoleData) {
-      const messages =
-        lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
-      const showingCount = messages.length;
-      const totalCount = output.data.console.length;
-      const limitHint = formatLimitHint(showingCount, totalCount);
-      fmt.text(`CONSOLE (${showingCount}/${totalCount})${limitHint}:`);
-      if (messages.length === 0) {
-        fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
-      } else {
-        const consoleLines = messages.map((msg) => {
-          const prefix = msg.type.toUpperCase().padEnd(5);
-          const text = truncateText(msg.text, 2);
-          return `${prefix} ${text}`;
-        });
-        fmt.list(consoleLines, 2);
-      }
-      fmt.blank();
+  if (showConsole && output.data.console) {
+    const messages = lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
+    const showingCount = messages.length;
+    const totalCount = output.data.console.length;
+    const limitHint = formatLimitHint(showingCount, totalCount);
+    fmt.text(`CONSOLE (${showingCount}/${totalCount})${limitHint}:`);
+    if (messages.length === 0) {
+      fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
+    } else {
+      const consoleLines = messages.map((msg) => {
+        const prefix = msg.type.toUpperCase().padEnd(5);
+        const text = truncateText(msg.text, 2);
+        return `${prefix} ${text}`;
+      });
+      fmt.list(consoleLines, 2);
     }
+    fmt.blank();
   }
 
   if (options.dom && output.data.dom?.a11yTree) {
@@ -234,7 +230,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     fmt.blank();
   }
 
-  if (!options.follow) {
+  if (!options.follow && !isQuietMode()) {
     fmt.text(compactTipsMessage());
   }
 
@@ -264,83 +260,78 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   fmt.blank();
 
   const lastCount = options.last;
-  const hasNetworkData = output.data.network && output.data.network.length > 0;
-  const hasConsoleData = output.data.console && output.data.console.length > 0;
+  const hasExplicitFilter =
+    Boolean(options.network) || Boolean(options.console) || Boolean(options.dom);
+  const showNetwork = (!hasExplicitFilter || options.network) && Boolean(output.data.network);
+  const showConsole = (!hasExplicitFilter || options.console) && Boolean(output.data.console);
 
-  if (!options.console && output.data.network) {
-    if (!options.console || hasNetworkData) {
-      const requests =
-        lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
-      const title =
-        lastCount === 0
-          ? `Network Requests (all ${requests.length})`
-          : `Network Requests (last ${requests.length} of ${output.data.network.length})`;
-      fmt.text(title).separator('━', 50);
-      if (requests.length === 0) {
-        if (
-          options.filteredTypes &&
-          options.filteredTypes.length > 0 &&
-          options.unfilteredNetworkCount &&
-          options.unfilteredNetworkCount > 0
-        ) {
-          const typesStr = options.filteredTypes.join(', ');
-          fmt.text(
-            `No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
-          );
-          fmt.text(`Try: bdg peek --network (to see all resource types)`);
-        } else {
-          fmt.text(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
+  if (showNetwork && output.data.network) {
+    const requests = lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
+    const title =
+      lastCount === 0
+        ? `Network Requests (all ${requests.length})`
+        : `Network Requests (last ${requests.length} of ${output.data.network.length})`;
+    fmt.text(title).separator('━', 50);
+    if (requests.length === 0) {
+      if (
+        options.filteredTypes &&
+        options.filteredTypes.length > 0 &&
+        options.unfilteredNetworkCount &&
+        options.unfilteredNetworkCount > 0
+      ) {
+        const typesStr = options.filteredTypes.join(', ');
+        fmt.text(
+          `No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
+        );
+        fmt.text(`Try: bdg peek --network (to see all resource types)`);
+      } else {
+        fmt.text(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
+      }
+    } else {
+      requests.forEach((req) => {
+        const isFailed = Boolean(req.errorText) || (req.status !== undefined && req.status >= 400);
+        const statusColor = isFailed ? 'ERR' : 'OK';
+        const status = req.errorText ? `FAILED` : (req.status?.toString() ?? 'pending');
+        fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
+        if (req.errorText) {
+          fmt.text(`  Error: ${req.errorText}`);
         }
-      } else {
-        requests.forEach((req) => {
-          const isFailed =
-            Boolean(req.errorText) || (req.status !== undefined && req.status >= 400);
-          const statusColor = isFailed ? 'ERR' : 'OK';
-          const status = req.errorText ? `FAILED` : (req.status?.toString() ?? 'pending');
-          fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
-          if (req.errorText) {
-            fmt.text(`  Error: ${req.errorText}`);
-          }
-          if (req.blockedReason) {
-            fmt.text(`  Blocked: ${req.blockedReason}`);
-          }
-          if (req.resourceType) {
-            fmt.text(`  Resource: ${req.resourceType}`);
-          }
-          if (req.mimeType) {
-            fmt.text(`  MIME: ${req.mimeType}`);
-          }
-          fmt.text(
-            `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
-          );
-        });
-      }
-      fmt.blank();
+        if (req.blockedReason) {
+          fmt.text(`  Blocked: ${req.blockedReason}`);
+        }
+        if (req.resourceType) {
+          fmt.text(`  Resource: ${req.resourceType}`);
+        }
+        if (req.mimeType) {
+          fmt.text(`  MIME: ${req.mimeType}`);
+        }
+        fmt.text(
+          `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
+        );
+      });
     }
+    fmt.blank();
   }
 
-  if (!options.network && output.data.console) {
-    if (options.network === undefined || hasConsoleData) {
-      const messages =
-        lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
-      const title =
-        lastCount === 0
-          ? `Console Messages (all ${messages.length})`
-          : `Console Messages (last ${messages.length} of ${output.data.console.length})`;
-      fmt.text(title).separator('━', 50);
-      if (messages.length === 0) {
-        fmt.text(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);
-      } else {
-        messages.forEach((msg) => {
-          const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
-          fmt.text(`${icon} [${msg.type}] ${msg.text}`);
-        });
-      }
-      fmt.blank();
+  if (showConsole && output.data.console) {
+    const messages = lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
+    const title =
+      lastCount === 0
+        ? `Console Messages (all ${messages.length})`
+        : `Console Messages (last ${messages.length} of ${output.data.console.length})`;
+    fmt.text(title).separator('━', 50);
+    if (messages.length === 0) {
+      fmt.text(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);
+    } else {
+      messages.forEach((msg) => {
+        const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
+        fmt.text(`${icon} [${msg.type}] ${msg.text}`);
+      });
     }
+    fmt.blank();
   }
 
-  if (!options.follow) {
+  if (!options.follow && !isQuietMode()) {
     fmt.text(verboseCommandsMessage());
   }
 

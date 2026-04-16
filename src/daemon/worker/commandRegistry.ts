@@ -194,15 +194,12 @@ function findTargetRequestForHeaders(
   );
   if (byDocument) return byDocument;
 
-  const byHtml = store.networkRequests.findLast((r) => r.mimeType?.includes('html'));
-  if (byHtml) return byHtml;
+  const anyDocument = store.networkRequests.findLast((r) => r.resourceType === 'Document');
+  if (anyDocument) return anyDocument;
 
-  const byHeaders = store.networkRequests.findLast(
-    (r) => r.responseHeaders && Object.keys(r.responseHeaders).length > 0
+  throw new Error(
+    'No main document request captured. Navigate to a page first, or pass a specific request ID.'
   );
-  if (byHeaders) return byHeaders;
-
-  throw new Error('No network requests with headers found');
 }
 
 /**

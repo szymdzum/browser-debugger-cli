@@ -185,7 +185,11 @@ async function waitForCompletion(
       }
     };
 
-    const onNavigated = (): void => {
+    const onNavigated = (event: unknown): void => {
+      const frame = (event as { frame?: { parentId?: string } })?.frame;
+      // Only count main-frame navigations; subframe navigations during form
+      // submit (ads, iframes, etc.) shouldn't flip navigationOccurred.
+      if (frame?.parentId !== undefined) return;
       navigationOccurred = true;
       checkCompletion();
     };
@@ -194,9 +198,9 @@ async function waitForCompletion(
     cleanupFunctions.push(cdp.on('Network.loadingFinished', onRequestFinished));
     cleanupFunctions.push(cdp.on('Network.loadingFailed', onRequestFinished));
 
-    if (waitNavigation) {
-      cleanupFunctions.push(cdp.on('Page.frameNavigated', onNavigated));
-    }
+    // Always observe navigation so the result reports navigationOccurred
+    // accurately; `waitNavigation` only controls whether we block for it.
+    cleanupFunctions.push(cdp.on('Page.frameNavigated', onNavigated));
 
     cdp.send('Network.enable').catch((error: Error) => {
       cleanup();
