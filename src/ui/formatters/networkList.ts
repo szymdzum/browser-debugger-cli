@@ -70,6 +70,12 @@ function buildHeader(
     return `NETWORK REQUESTS (showing ${showingCount} of ${totalCount})`;
   }
 
+  if (showingCount === 0) {
+    return totalCount === 0
+      ? 'NETWORK REQUESTS (none captured)'
+      : `NETWORK REQUESTS (no matches; ${totalCount} captured)`;
+  }
+
   const lastLimit = options.last ?? 0;
   if (lastLimit > 0 && totalCount > showingCount) {
     return `NETWORK REQUESTS (last ${showingCount} of ${totalCount})`;
