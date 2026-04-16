@@ -82,13 +82,13 @@ export async function startSessionViaDaemon(
       if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && response.existingSession) {
         const { pid, targetUrl, duration } = response.existingSession;
         const durationMs = duration ? duration * 1000 : 0;
-        console.error(sessionAlreadyRunningError(pid, durationMs, targetUrl));
+        console.error(genericError(sessionAlreadyRunningError(pid, durationMs, targetUrl)));
       } else if (response.errorCode === IPCErrorCode.SESSION_TARGET_MISMATCH) {
         // Absent existingSession.targetUrl signals launched-mode current — the
         // daemon omits it in that case to keep targetUrl URL-shaped for agents.
         const current = response.existingSession?.targetUrl ?? LAUNCHED_CHROME_DESCRIPTION;
         const requested = options.chromeWsUrl ?? LAUNCHED_CHROME_DESCRIPTION;
-        console.error(sessionTargetMismatchError(current, requested));
+        console.error(genericError(sessionTargetMismatchError(current, requested)));
       } else {
         console.error(genericError(`Daemon error: ${response.message ?? 'Unknown error'}`));
       }
@@ -113,7 +113,9 @@ export async function startSessionViaDaemon(
     process.exit(0);
   } catch (error) {
     if (isConnectionError(error)) {
-      console.error(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }));
+      console.error(
+        genericError(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }))
+      );
       process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }
 

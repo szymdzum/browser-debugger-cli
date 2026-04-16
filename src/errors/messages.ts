@@ -32,7 +32,7 @@ export function sessionAlreadyRunningError(
 ): string {
   return joinLines(
     '',
-    'Error: Session already running',
+    'Session already running',
     '',
     `  PID:      ${pid}`,
     targetUrl && `  Target:   ${targetUrl}`,
@@ -70,7 +70,7 @@ export function sessionTargetMismatchError(
 ): string {
   return joinLines(
     '',
-    'Error: Active session is attached to a different Chrome target',
+    'Active session is attached to a different Chrome target',
     '',
     `  Current:   ${currentTarget ?? '(unknown)'}`,
     `  Requested: ${requestedTarget ?? '(unknown)'}`,
@@ -119,7 +119,7 @@ export interface DaemonErrorContext {
  */
 export function daemonNotRunningError(context?: DaemonErrorContext): string {
   return joinLines(
-    'Error: Daemon not running',
+    'Daemon not running',
     context?.staleCleanedUp && '(Stale PID file was cleaned up)',
     context?.lastError && `Last error: ${context.lastError}`,
     '',
@@ -158,7 +158,7 @@ export function genericError(message: string, context?: string): string {
  * @returns Formatted error message
  */
 export function unknownError(): string {
-  return 'Error: Unknown error';
+  return 'Unknown error';
 }
 
 /**
@@ -196,7 +196,7 @@ export function elementNotFoundError(selector: string): string {
 
   if (quoteCheck.damaged) {
     return joinLines(
-      `Error: Element not found: ${selector}`,
+      `Element not found: ${selector}`,
       '',
       'Shell quote handling detected. Selector received without quotes.',
       quoteCheck.details && `  ${quoteCheck.details}`,
@@ -212,7 +212,7 @@ export function elementNotFoundError(selector: string): string {
 
   if (hasAttributeSelector(selector)) {
     return joinLines(
-      `Error: Element not found: ${selector}`,
+      `Element not found: ${selector}`,
       '',
       'Attribute selector detected. If quotes were stripped by shell:',
       '',
@@ -227,7 +227,7 @@ export function elementNotFoundError(selector: string): string {
   }
 
   return joinLines(
-    `Error: Element not found: ${selector}`,
+    `Element not found: ${selector}`,
     '',
     'Suggestions:',
     '  - Check the selector syntax',
