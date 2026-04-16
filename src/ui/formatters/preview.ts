@@ -198,7 +198,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   }
 
   if (!options.network && output.data.console) {
-    if (options.network === undefined || hasConsoleData) {
+    if (options.console || !options.network || hasConsoleData) {
       const messages =
         lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
       const showingCount = messages.length;
@@ -320,7 +320,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   }
 
   if (!options.network && output.data.console) {
-    if (options.network === undefined || hasConsoleData) {
+    if (options.console || !options.network || hasConsoleData) {
       const messages =
         lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
       const title =
