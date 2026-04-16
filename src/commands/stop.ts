@@ -6,7 +6,7 @@ import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
-import { performSessionCleanup } from '@/session/cleanup.js';
+import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {

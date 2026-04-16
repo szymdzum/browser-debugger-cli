@@ -10,7 +10,11 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import * as os from 'os';
 import * as path from 'path';
 
-import { cleanupStaleSession, cleanupSession, cleanupStaleDaemonPid } from '@/session/cleanup.js';
+import { cleanupAfterSessionEnd } from '@/session/cleanup/postSession.js';
+import {
+  cleanupBeforeDaemonStart,
+  cleanupStaleDaemonArtifacts,
+} from '@/session/cleanup/preStart.js';
 import { acquireSessionLock, releaseSessionLock } from '@/session/lock.js';
 
 describe('Cleanup Contract', () => {
@@ -35,7 +39,7 @@ describe('Cleanup Contract', () => {
     fs.writeFileSync(pidPath, '99999999');
     fs.writeFileSync(metaPath, '{}');
 
-    const cleaned = cleanupStaleSession();
+    const cleaned = cleanupBeforeDaemonStart();
 
     assert.strictEqual(cleaned, true, 'Should clean up stale session');
     assert.strictEqual(fs.existsSync(pidPath), false, 'PID file should be removed');
@@ -45,7 +49,7 @@ describe('Cleanup Contract', () => {
   it('skips cleanup when lock is held', () => {
     acquireSessionLock();
 
-    const cleaned = cleanupStaleSession();
+    const cleaned = cleanupBeforeDaemonStart();
 
     assert.strictEqual(cleaned, false, 'Should not clean up when lock is held');
 
@@ -56,15 +60,15 @@ describe('Cleanup Contract', () => {
     const pidPath = path.join(testDir, 'session.pid');
     fs.writeFileSync(pidPath, '99999999');
 
-    cleanupStaleSession();
-    cleanupStaleSession();
-    cleanupStaleSession();
+    cleanupBeforeDaemonStart();
+    cleanupBeforeDaemonStart();
+    cleanupBeforeDaemonStart();
 
     assert.strictEqual(fs.existsSync(pidPath), false, 'Multiple cleanups should not error');
   });
 
   it('handles missing files gracefully', () => {
-    const cleaned = cleanupStaleSession();
+    const cleaned = cleanupBeforeDaemonStart();
     assert.strictEqual(cleaned, true, 'Should handle empty session dir');
   });
 
@@ -77,7 +81,7 @@ describe('Cleanup Contract', () => {
     fs.writeFileSync(daemonSocketPath, '');
     fs.writeFileSync(daemonLockPath, '99999999');
 
-    const cleaned = cleanupStaleDaemonPid();
+    const cleaned = cleanupStaleDaemonArtifacts();
 
     assert.strictEqual(cleaned, true, 'Should clean up stale daemon');
     assert.strictEqual(fs.existsSync(daemonPidPath), false, 'Daemon PID should be removed');
@@ -89,18 +93,18 @@ describe('Cleanup Contract', () => {
     const daemonPidPath = path.join(testDir, 'daemon.pid');
     fs.writeFileSync(daemonPidPath, process.pid.toString());
 
-    const cleaned = cleanupStaleDaemonPid();
+    const cleaned = cleanupStaleDaemonArtifacts();
 
     assert.strictEqual(cleaned, false, 'Should not clean up running daemon');
     assert.strictEqual(fs.existsSync(daemonPidPath), true, 'Daemon PID should still exist');
   });
 
-  it('cleanupSession removes session files', () => {
+  it('cleanupAfterSessionEnd removes session files', () => {
     const metaPath = path.join(testDir, 'session.meta.json');
     fs.writeFileSync(metaPath, '{}');
     acquireSessionLock();
 
-    cleanupSession();
+    cleanupAfterSessionEnd();
 
     assert.strictEqual(fs.existsSync(metaPath), false, 'Metadata should be removed');
     const lockAcquired = acquireSessionLock();

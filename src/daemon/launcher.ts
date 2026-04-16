@@ -16,7 +16,7 @@ import { fileURLToPath } from 'url';
 import type { ChildProcess } from 'child_process';
 
 import { DaemonStartupError } from '@/daemon/errors.js';
-import { cleanupStaleSession } from '@/session/cleanup.js';
+import { cleanupBeforeDaemonStart } from '@/session/cleanup/preStart.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { ensureSessionDir, getSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -56,7 +56,7 @@ export async function launchDaemon(): Promise<ChildProcess> {
 
   try {
     log.debug('Checking for stale session files...');
-    const cleaned = cleanupStaleSession();
+    const cleaned = cleanupBeforeDaemonStart();
     if (cleaned) {
       log.debug('Cleaned up stale session files');
     }

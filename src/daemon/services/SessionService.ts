@@ -5,7 +5,8 @@
  * Prevents handlers from coupling to filesystem implementation details.
  */
 
-import { cleanupSession, forceRecoverStaleSession } from '@/session/cleanup.js';
+import { cleanupAfterSessionEnd } from '@/session/cleanup/postSession.js';
+import { recoverStaleSessionAtRuntime } from '@/session/cleanup/runtime.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { readSessionMetadata, writeSessionMetadata } from '@/session/metadata.js';
 import type { SessionMetadata } from '@/session/metadata.js';
@@ -121,11 +122,11 @@ export class SessionService implements ISessionService {
   }
 
   cleanup(): void {
-    cleanupSession();
+    cleanupAfterSessionEnd();
   }
 
   async forceRecoverStaleSession(workerPid: number, chromePid?: number): Promise<void> {
-    await forceRecoverStaleSession(workerPid, chromePid);
+    await recoverStaleSessionAtRuntime(workerPid, chromePid);
   }
 
   acquireLock(): void {

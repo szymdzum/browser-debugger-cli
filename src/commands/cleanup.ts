@@ -4,7 +4,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CleanupCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { CleanupResult } from '@/commands/types.js';
-import { performSessionCleanup } from '@/session/cleanup.js';
+import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { readPid } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
