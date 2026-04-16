@@ -130,6 +130,9 @@ export function formatDomGet(data: DomGetResult): string {
  * ```
  */
 export function formatDomEval(data: { result: unknown }): string {
+  if (typeof data.result === 'string') {
+    return data.result;
+  }
   return JSON.stringify(data.result, null, 2);
 }
 
