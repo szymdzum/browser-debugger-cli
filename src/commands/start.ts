@@ -35,6 +35,8 @@ interface CollectorOptions {
   chromeWsUrl?: string;
   /** Quiet mode - suppress verbose landing page output for AI agents. */
   quiet?: boolean;
+  /** Verbose mode - force the post-start landing page even when stdout isn't a TTY. */
+  verbose?: boolean;
   /** Custom Chrome flags (space-separated string). */
   chromeFlags?: string;
 }
@@ -119,6 +121,7 @@ function applyCollectorOptions(command: Command): Command {
       'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
     )
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
+    .option('--verbose', 'Show the post-start landing page even when stdout is not a TTY', false)
     .option(
       '--chrome-flags <flags>',
       'Custom Chrome flags (space-separated, e.g., --chrome-flags="--ignore-certificate-errors --disable-web-security")'
@@ -141,6 +144,7 @@ function buildSessionOptions(options: CollectorOptions): {
   headless: boolean;
   chromeWsUrl: string | undefined;
   quiet: boolean;
+  verbose: boolean;
   chromeFlags: string[] | undefined;
 } {
   const maxBodySizeRule = positiveIntRule({ min: 1, max: 100, required: false });
@@ -174,6 +178,7 @@ function buildSessionOptions(options: CollectorOptions): {
     headless: options.headless ?? !hasDisplay(),
     chromeWsUrl: options.chromeWsUrl,
     quiet: options.quiet ?? false,
+    verbose: options.verbose ?? false,
     chromeFlags,
   };
 }

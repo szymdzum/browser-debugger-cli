@@ -7,6 +7,21 @@
 
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
+
+/**
+ * Decide whether the post-start landing page should print.
+ *
+ * Humans sitting at an interactive terminal benefit from the one-time
+ * walkthrough of next-step commands, but scripts and CI logs end up with
+ * 50+ lines of decorative text that drowns the actual session output.
+ * Use stdout's TTY status as the signal, with explicit --verbose /
+ * --quiet overrides for users who want to force either outcome.
+ */
+function shouldShowLandingPage(options: SessionStartOptions): boolean {
+  if (options.quiet) return false;
+  if (options.verbose) return true;
+  return process.stdout.isTTY === true;
+}
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   sessionAlreadyRunningError,
@@ -86,13 +101,13 @@ export async function startSessionViaDaemon(
       process.exit(EXIT_CODES.SOFTWARE_ERROR);
     }
 
-    if (options.quiet) {
-      console.error(`Session started: ${data.targetUrl}`);
-    } else {
+    if (shouldShowLandingPage(options)) {
       const landing = landingPage({
         url: data.targetUrl,
       });
       console.error(landing);
+    } else if (!options.quiet) {
+      console.error(`Session started: ${data.targetUrl}`);
     }
 
     process.exit(0);
