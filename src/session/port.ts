@@ -10,7 +10,9 @@ import * as fs from 'fs';
 import * as net from 'net';
 
 import { DEFAULT_CDP_PORT } from '@/constants.js';
+import { CommandError } from '@/errors/index.js';
 import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Port range for automatic selection.
@@ -54,9 +56,10 @@ async function findAvailablePort(startPort: number = PORT_RANGE_START): Promise<
       return port;
     }
   }
-  throw new Error(
-    `No available port found in range ${PORT_RANGE_START}-${PORT_RANGE_END}. ` +
-      `Try stopping some bdg sessions or Chrome instances.`
+  throw new CommandError(
+    `No available port found in range ${PORT_RANGE_START}-${PORT_RANGE_END}.`,
+    { suggestion: 'Stop some bdg sessions or Chrome instances and retry.' },
+    EXIT_CODES.SOFTWARE_ERROR
   );
 }
 

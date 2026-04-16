@@ -1,6 +1,8 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult } from '@/types.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Builds accessibility tree from raw CDP nodes.
@@ -28,7 +30,11 @@ export function buildTreeFromRawNodes(rawNodes: Protocol.Accessibility.AXNode[])
   }
 
   if (!root) {
-    throw new Error('No root node found in accessibility tree');
+    throw new CommandError(
+      'No root node found in accessibility tree',
+      { suggestion: 'The page may not be fully loaded. Wait and retry.' },
+      EXIT_CODES.SOFTWARE_ERROR
+    );
   }
 
   return {
@@ -56,7 +62,11 @@ export async function collectA11yTree(): Promise<A11yTree> {
       | Protocol.Accessibility.GetFullAXTreeResponse
       | undefined;
     if (!result?.nodes) {
-      throw new Error('Failed to get accessibility tree');
+      throw new CommandError(
+        'Failed to get accessibility tree',
+        { suggestion: 'CDP returned no nodes. The page may not be fully loaded.' },
+        EXIT_CODES.SOFTWARE_ERROR
+      );
     }
 
     return buildTreeFromRawNodes(result.nodes);
@@ -295,7 +305,11 @@ export async function resolveA11yNode(selector: string, nodeId?: number): Promis
       const docResponse = await callCDP('DOM.getDocument', {});
       const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
       if (!doc?.root?.nodeId) {
-        throw new Error('Failed to get document root');
+        throw new CommandError(
+          'Failed to get document root',
+          { suggestion: 'CDP DOM.getDocument returned no root. The page may not be fully loaded.' },
+          EXIT_CODES.SOFTWARE_ERROR
+        );
       }
 
       const nodeResponse = await callCDP('DOM.querySelector', {
