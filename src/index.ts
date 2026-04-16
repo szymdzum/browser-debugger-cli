@@ -7,6 +7,7 @@ import { commandRegistry } from '@/commands.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
 import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 
 const DAEMON_WORKER_ENV_VAR = 'BDG_DAEMON';
@@ -163,6 +164,36 @@ function skipsDaemonLaunchWhenAbsent(): boolean {
   return LOCAL_ONLY_WHEN_NO_DAEMON.has(firstArg);
 }
 
+/**
+ * Map Commander's built-in error codes to bdg's semantic exit codes.
+ *
+ * Commander defaults most validation failures (unknown option, missing
+ * required argument, too-many arguments, invalid argument value) to exit
+ * 1, which lumps them in with generic runtime crashes. Normalize the
+ * user-input cases to EXIT_CODES.INVALID_ARGUMENTS so automation can
+ * discriminate between usage errors and real failures.
+ *
+ * Commander's help/version short-circuits still exit 0.
+ */
+function mapCommanderErrorToExitCode(code: string | undefined): number {
+  if (code === 'commander.helpDisplayed' || code === 'commander.version') {
+    return EXIT_CODES.SUCCESS;
+  }
+  if (
+    code === 'commander.unknownOption' ||
+    code === 'commander.unknownCommand' ||
+    code === 'commander.missingArgument' ||
+    code === 'commander.missingMandatoryOptionValue' ||
+    code === 'commander.invalidArgument' ||
+    code === 'commander.excessArguments' ||
+    code === 'commander.optionMissingArgument' ||
+    code === 'commander.help'
+  ) {
+    return EXIT_CODES.INVALID_ARGUMENTS;
+  }
+  return EXIT_CODES.GENERIC_FAILURE;
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--debug')) {
     enableDebugLogging();
@@ -173,7 +204,10 @@ async function main(): Promise<void> {
     .description(CLI_DESCRIPTION)
     .version(VERSION)
     .allowExcessArguments(false)
-    .option('--debug', 'Enable debug logging (verbose output)');
+    .option('--debug', 'Enable debug logging (verbose output)')
+    .exitOverride((err) => {
+      process.exit(mapCommanderErrorToExitCode(err.code));
+    });
 
   commandRegistry.forEach((register) => register(program));
 
