@@ -9,7 +9,7 @@ import type { Socket } from 'net';
 import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { ISessionService } from '@/daemon/services/SessionService.js';
 import { WorkerStartError } from '@/daemon/startSession.js';
-import { sessionTargetMismatchError } from '@/errors/messages.js';
+import { LAUNCHED_CHROME_DESCRIPTION, sessionTargetMismatchError } from '@/errors/messages.js';
 import {
   type StartSessionRequest,
   type StartSessionResponse,
@@ -382,13 +382,14 @@ export class SessionHandlers {
     metadata: SessionMetadata | null,
     targetUrl: string | undefined
   ): NonNullable<StartSessionResponse['existingSession']> {
-    const startTime = metadata?.startTime;
-    const duration = startTime ? Math.floor((Date.now() - startTime) / 1000) : undefined;
+    const startTime = typeof metadata?.startTime === 'number' ? metadata.startTime : undefined;
+    const duration =
+      startTime !== undefined ? Math.floor((Date.now() - startTime) / 1000) : undefined;
 
     return {
       pid: sessionPid,
       ...(targetUrl && { targetUrl }),
-      ...(startTime && { startTime }),
+      ...(startTime !== undefined && { startTime }),
       ...(duration !== undefined && { duration }),
     };
   }
@@ -429,13 +430,19 @@ export class SessionHandlers {
     metadata: SessionMetadata | null,
     mismatch: TargetMismatch
   ): void {
+    // mismatch.current may be the LAUNCHED_CHROME_DESCRIPTION placeholder when
+    // the active session is launched-mode. That string is a human label, not a
+    // URL, so don't leak it into existingSession.targetUrl (which agents parse
+    // programmatically) — the full-text message still renders it.
+    const existingTargetUrl =
+      mismatch.current === LAUNCHED_CHROME_DESCRIPTION ? undefined : mismatch.current;
     const response: StartSessionResponse = {
       type: 'start_session_response',
       sessionId: request.sessionId,
       status: 'error',
       message: sessionTargetMismatchError(mismatch.current, mismatch.requested),
       errorCode: IPCErrorCode.SESSION_TARGET_MISMATCH,
-      existingSession: this.buildExistingSession(sessionPid, metadata, mismatch.current),
+      existingSession: this.buildExistingSession(sessionPid, metadata, existingTargetUrl),
     };
 
     this.sendResponse(socket, response);

@@ -9,6 +9,7 @@ import { genericError } from '@/errors/messages.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -205,7 +206,6 @@ export function registerStartCommands(program: Command): void {
       process.exit(0);
     }
 
-    const { validateUrl, validateChromeWsUrl } = await import('@/utils/url.js');
     const validation = validateUrl(url);
     if (!validation.valid) {
       console.error(genericError(validation.error));

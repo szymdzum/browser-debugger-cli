@@ -162,7 +162,12 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
     const service = makeSessionService({
       readPid: () => 4242,
       isProcessAlive: () => true,
-      readMetadata: () => metadata({ targetId: 'tgt-1' }),
+      readMetadata: () =>
+        metadata({
+          targetId: 'tgt-1',
+          chromePid: 4243,
+          webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/page/tgt-1',
+        }),
     });
     const worker = makeWorkerManager(successfulLaunch);
     const handler = makeHandler(worker, service);
@@ -224,7 +229,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
     const service = makeSessionService({
       readPid: () => 4242,
       isProcessAlive: () => true,
-      readMetadata: () => metadata(),
+      readMetadata: () => metadata({ chromePid: 4243 }),
     });
     const worker = makeWorkerManager(successfulLaunch);
     const handler = makeHandler(worker, service);
