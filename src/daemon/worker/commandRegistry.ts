@@ -149,6 +149,9 @@ function findNetworkRequestOrThrow(
  * @throws Error if invalid index or not found
  */
 function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
+  if (messages.length === 0) {
+    throw new Error('No console messages captured yet for this session');
+  }
   const index = parseInt(indexStr, 10);
   if (isNaN(index) || index < 0 || index >= messages.length) {
     throw new Error(
