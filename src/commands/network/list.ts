@@ -168,6 +168,7 @@ function formatPresetHelp(): string {
 interface NetworkListResult {
   requests: NetworkRequest[];
   filtered: NetworkRequest[];
+  filteredTotal: number;
   totalCount: number;
 }
 
@@ -219,25 +220,29 @@ export function registerListCommand(networkCmd: Command): void {
 
           if (!result.success) {
             if (result.exitCode === EXIT_CODES.SUCCESS) {
-              return { success: true, data: { requests: [], filtered: [], totalCount: 0 } };
+              return {
+                success: true,
+                data: { requests: [], filtered: [], filteredTotal: 0, totalCount: 0 },
+              };
             }
             return createErrorResult(result.error, result.exitCode);
           }
 
           const filtered = filterRequests(result.data, options, resourceTypes);
+          const displayed = lastN === 0 ? filtered : filtered.slice(-lastN);
           return {
             success: true,
-            data: { requests: result.data, filtered, totalCount: result.data.length },
+            data: {
+              requests: result.data,
+              filtered: displayed,
+              filteredTotal: filtered.length,
+              totalCount: result.data.length,
+            },
           };
         },
         options,
-        (data: NetworkListResult) => {
-          const displayRequests = lastN === 0 ? data.filtered : data.filtered.slice(-lastN);
-          return formatNetworkList(
-            displayRequests,
-            buildFormatOptions(options, data.totalCount, lastN)
-          );
-        }
+        (data: NetworkListResult) =>
+          formatNetworkList(data.filtered, buildFormatOptions(options, data.totalCount, lastN))
       );
     });
 }
