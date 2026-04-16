@@ -2,6 +2,8 @@
  * URL normalization, validation, and parsing utilities.
  */
 
+import { invalid, valid, type ValidationResult } from '@/utils/validation.js';
+
 /**
  * Dangerous URL protocols that must be explicitly blocked.
  *
@@ -110,53 +112,34 @@ export function normalizeUrl(url: string): string {
  * All URLs are normalized before validation to support convenient formats like
  * 'localhost:3000' or 'example.com'.
  */
-export function validateUrl(url: string): {
-  valid: boolean;
-  error?: string;
-  suggestion?: string;
-} {
+export function validateUrl(url: string): ValidationResult {
   if (!url || url.trim().length === 0) {
-    return {
-      valid: false,
-      error: 'URL cannot be empty',
-      suggestion: 'Provide a valid URL, e.g.: http://localhost:3000',
-    };
+    return invalid('URL cannot be empty', 'Provide a valid URL, e.g.: http://localhost:3000');
   }
 
   if (url.includes(' ')) {
-    return {
-      valid: false,
-      error: `Invalid URL format: '${url}' (contains spaces)`,
-      suggestion:
-        'URLs cannot contain spaces. If your URL has query parameters, wrap it in quotes: bdg "https://example.com/search?q=test"',
-    };
-  }
-
-  // Check for signs of shell glob expansion issues
-  // If URL looks like it might have been mangled by shell expansion
-  if (!url.includes('?') && !url.includes('&') && /^[a-z]+:\/\/[^/]+\/[^/]+$/.test(url)) {
-    // URL has path but no query params - might be fine, continue validation
+    return invalid(
+      `Invalid URL format: '${url}' (contains spaces)`,
+      'URLs cannot contain spaces. If your URL has query parameters, wrap it in quotes: bdg "https://example.com/search?q=test"'
+    );
   }
 
   // Detect if URL looks truncated (common when shell expands ? as glob)
   if (url.endsWith('?') || url.endsWith('&')) {
-    return {
-      valid: false,
-      error: `URL appears truncated: '${url}'`,
-      suggestion:
-        'URLs with query parameters (? or &) must be quoted: bdg "https://example.com/search?q=test"',
-    };
+    return invalid(
+      `URL appears truncated: '${url}'`,
+      'URLs with query parameters (? or &) must be quoted: bdg "https://example.com/search?q=test"'
+    );
   }
 
   const normalized = normalizeUrl(url);
 
   const urlLower = url.toLowerCase();
   if (urlLower.startsWith('vbscript:')) {
-    return {
-      valid: false,
-      error: `Dangerous protocol: 'vbscript:' is not allowed`,
-      suggestion: 'Use http://, https://, or other safe protocols',
-    };
+    return invalid(
+      `Dangerous protocol: 'vbscript:' is not allowed`,
+      'Use http://, https://, or other safe protocols'
+    );
   }
 
   const isSpecialProtocol =
@@ -167,12 +150,10 @@ export function validateUrl(url: string): {
   if (!isSpecialProtocol) {
     const beforePath = url.split('/')[0] ?? '';
     if (/[!@#$%^&*()=+[\]{}\\|;'",<>?]/.test(beforePath)) {
-      return {
-        valid: false,
-        error: `Invalid URL format: '${url}' (contains invalid characters)`,
-        suggestion:
-          'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol',
-      };
+      return invalid(
+        `Invalid URL format: '${url}' (contains invalid characters)`,
+        'URLs cannot contain special characters like !, @, #, etc. in hostname or protocol'
+      );
     }
   }
 
@@ -181,37 +162,32 @@ export function validateUrl(url: string): {
 
     // Explicitly block dangerous protocols (CodeQL js/incomplete-url-scheme-check)
     if (DANGEROUS_PROTOCOLS.includes(parsed.protocol as (typeof DANGEROUS_PROTOCOLS)[number])) {
-      return {
-        valid: false,
-        error: `Blocked dangerous protocol: '${parsed.protocol}'`,
-        suggestion: 'This protocol is not allowed for security reasons',
-      };
+      return invalid(
+        `Blocked dangerous protocol: '${parsed.protocol}'`,
+        'This protocol is not allowed for security reasons'
+      );
     }
 
     if (!VALID_PROTOCOLS.includes(parsed.protocol as (typeof VALID_PROTOCOLS)[number])) {
-      return {
-        valid: false,
-        error: `Invalid protocol: '${parsed.protocol}'`,
-        suggestion: 'URLs must use http://, https://, or other valid protocols',
-      };
+      return invalid(
+        `Invalid protocol: '${parsed.protocol}'`,
+        'URLs must use http://, https://, or other valid protocols'
+      );
     }
 
     if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.hostname) {
-      return {
-        valid: false,
-        error: `Invalid URL format: '${url}' (missing hostname)`,
-        suggestion: 'URLs must include a valid hostname, e.g.: http://example.com',
-      };
+      return invalid(
+        `Invalid URL format: '${url}' (missing hostname)`,
+        'URLs must include a valid hostname, e.g.: http://example.com'
+      );
     }
 
-    return { valid: true };
+    return valid();
   } catch {
-    return {
-      valid: false,
-      error: `Invalid URL format: '${url}'`,
-      suggestion:
-        'URLs must include a valid protocol (http:// or https://). If URL has query parameters, quote it: bdg "https://example.com?q=test"',
-    };
+    return invalid(
+      `Invalid URL format: '${url}'`,
+      'URLs must include a valid protocol (http:// or https://). If URL has query parameters, quote it: bdg "https://example.com?q=test"'
+    );
   }
 }
 
@@ -253,49 +229,40 @@ export function safeParseUrl(input: string): URL | null {
  * @param url - ws URL to validate
  * @returns Validation result with error/suggestion when invalid
  */
-export function validateChromeWsUrl(url: string): {
-  valid: boolean;
-  error?: string;
-  suggestion?: string;
-} {
+export function validateChromeWsUrl(url: string): ValidationResult {
   const trimmed = url.trim();
   if (!trimmed) {
-    return {
-      valid: false,
-      error: '--chrome-ws-url cannot be empty',
-      suggestion: 'Expected: ws://host:port/devtools/browser/<uuid>',
-    };
+    return invalid(
+      '--chrome-ws-url cannot be empty',
+      'Expected: ws://host:port/devtools/browser/<uuid>'
+    );
   }
 
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
-    return {
-      valid: false,
-      error: `--chrome-ws-url is not a valid URL: '${url}'`,
-      suggestion: 'Expected: ws://host:port/devtools/browser/<uuid>',
-    };
+    return invalid(
+      `--chrome-ws-url is not a valid URL: '${url}'`,
+      'Expected: ws://host:port/devtools/browser/<uuid>'
+    );
   }
 
   if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
-    return {
-      valid: false,
-      error: `--chrome-ws-url must use ws:// or wss://, got '${parsed.protocol}'`,
-      suggestion:
-        "Discover the URL with: curl -s http://127.0.0.1:9222/json | jq -r '.[0].webSocketDebuggerUrl'",
-    };
+    return invalid(
+      `--chrome-ws-url must use ws:// or wss://, got '${parsed.protocol}'`,
+      "Discover the URL with: curl -s http://127.0.0.1:9222/json | jq -r '.[0].webSocketDebuggerUrl'"
+    );
   }
 
   if (!parsed.hostname) {
-    return {
-      valid: false,
-      error: `--chrome-ws-url is missing a hostname: '${url}'`,
-      suggestion: 'Expected: ws://host:port/devtools/browser/<uuid>',
-    };
+    return invalid(
+      `--chrome-ws-url is missing a hostname: '${url}'`,
+      'Expected: ws://host:port/devtools/browser/<uuid>'
+    );
   }
 
-  return { valid: true };
+  return valid();
 }
 
 /**

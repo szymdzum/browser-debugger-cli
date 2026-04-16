@@ -27,9 +27,11 @@ void describe('URL utility contracts', () => {
   });
 
   void it('rejects malformed protocols before normalization', () => {
-    const invalid = validateUrl('ht!tp://example.com');
-    assert.equal(invalid.valid, false);
-    assert.match(invalid.error ?? '', /invalid characters/i);
+    const result = validateUrl('ht!tp://example.com');
+    assert.equal(result.valid, false);
+    if (!result.valid) {
+      assert.match(result.error, /invalid characters/i);
+    }
   });
 
   void it('includes port information when extracting hostname with path', () => {
@@ -70,19 +72,25 @@ void describe('validateChromeWsUrl', () => {
   void it('rejects empty input', () => {
     const result = validateChromeWsUrl('   ');
     assert.equal(result.valid, false);
-    assert.match(result.error ?? '', /cannot be empty/i);
+    if (!result.valid) {
+      assert.match(result.error, /cannot be empty/i);
+    }
   });
 
   void it('rejects non-URL garbage', () => {
     const result = validateChromeWsUrl('not a url');
     assert.equal(result.valid, false);
-    assert.match(result.error ?? '', /not a valid url/i);
+    if (!result.valid) {
+      assert.match(result.error, /not a valid url/i);
+    }
   });
 
   void it('rejects http:// scheme with a helpful suggestion', () => {
     const result = validateChromeWsUrl('http://127.0.0.1:9222/json');
     assert.equal(result.valid, false);
-    assert.match(result.error ?? '', /ws:\/\/ or wss:\/\//);
-    assert.ok(result.suggestion && result.suggestion.length > 0);
+    if (!result.valid) {
+      assert.match(result.error, /ws:\/\/ or wss:\/\//);
+      assert.ok(result.suggestion && result.suggestion.length > 0);
+    }
   });
 });

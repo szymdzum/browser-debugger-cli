@@ -117,11 +117,7 @@ export async function launchSessionInWorker(
 ): Promise<WorkerMetadata> {
   const validation = validateUrl(url);
   if (!validation.valid) {
-    throw new WorkerStartError(
-      validation.error ?? 'Invalid URL',
-      'SPAWN_FAILED',
-      validation.suggestion
-    );
+    throw new WorkerStartError(validation.error, 'SPAWN_FAILED', validation.suggestion);
   }
 
   // Get or allocate a port for this session
