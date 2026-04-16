@@ -2,7 +2,21 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { scriptExecutionError } from '@/errors/messages.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('dom');
+
+/**
+ * Per-script evaluation deadline passed to CDP as Runtime.evaluate's own
+ * `timeout` parameter. Chrome terminates the script when it elapses and
+ * returns `exceptionDetails`, so a runaway `while(true)` no longer wedges
+ * the Runtime for subsequent calls.
+ *
+ * 10 s is well above normal sync/async scripts but short enough that the
+ * user gets a prompt error for genuinely stuck code.
+ */
+const EVAL_TIMEOUT_MS = 10_000;
 
 /**
  * Type guard to validate CDP Runtime.evaluate response structure
@@ -63,11 +77,31 @@ export async function executeScript(
   cdp: CDPConnection,
   script: string
 ): Promise<Protocol.Runtime.EvaluateResponse> {
-  const response = await cdp.send('Runtime.evaluate', {
-    expression: script,
-    returnByValue: true,
-    awaitPromise: true,
-  });
+  let response: unknown;
+  try {
+    response = await cdp.send('Runtime.evaluate', {
+      expression: script,
+      returnByValue: true,
+      awaitPromise: true,
+      // Let Chrome terminate the script itself after the deadline. Without
+      // this, cdp.send times out at 30s while the Runtime keeps spinning
+      // and every subsequent call hangs the same way.
+      timeout: EVAL_TIMEOUT_MS,
+    });
+  } catch {
+    // cdp.send timeout or transport error — attempt to kill any runaway
+    // execution so the next call can run, then surface a dedicated
+    // CDP_TIMEOUT (102) instead of CDP_CONNECTION_FAILURE (101).
+    await terminateRuntimeExecution(cdp);
+    throw new CommandError(
+      `Script evaluation timed out after ${EVAL_TIMEOUT_MS / 1000}s`,
+      {
+        suggestion:
+          'Simplify the script or remove blocking loops. Runtime was terminated; retry when ready.',
+      },
+      EXIT_CODES.CDP_TIMEOUT
+    );
+  }
 
   if (!isRuntimeEvaluateResult(response)) {
     throw new CommandError(
@@ -83,6 +117,19 @@ export async function executeScript(
   if (response.exceptionDetails) {
     const errorMsg =
       response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
+    // Chrome signals the `timeout` param elapsed by surfacing an exception
+    // whose text mentions termination. Map that to CDP_TIMEOUT so agents can
+    // distinguish a runaway script from a thrown error.
+    if (/execution was terminated|Execution terminated/i.test(errorMsg)) {
+      await terminateRuntimeExecution(cdp);
+      throw new CommandError(
+        `Script evaluation timed out after ${EVAL_TIMEOUT_MS / 1000}s`,
+        {
+          suggestion: 'Simplify the script or remove blocking loops.',
+        },
+        EXIT_CODES.CDP_TIMEOUT
+      );
+    }
     const err = scriptExecutionError(errorMsg, script);
     // User-authored script threw — classify as invalid arguments, not software
     // error. SOFTWARE_ERROR (110) is reserved for bdg bugs; a ReferenceError
@@ -95,4 +142,17 @@ export async function executeScript(
   }
 
   return response;
+}
+
+/**
+ * Kill any in-flight Runtime.evaluate so the session isn't wedged for
+ * subsequent calls. Best-effort — the call itself may fail if the target
+ * has disconnected; log at debug and move on.
+ */
+async function terminateRuntimeExecution(cdp: CDPConnection): Promise<void> {
+  try {
+    await cdp.send('Runtime.terminateExecution', {});
+  } catch (err) {
+    log.debug(`Runtime.terminateExecution failed: ${String(err)}`);
+  }
 }

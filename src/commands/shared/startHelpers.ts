@@ -7,21 +7,6 @@
 
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
-
-/**
- * Decide whether the post-start landing page should print.
- *
- * Humans sitting at an interactive terminal benefit from the one-time
- * walkthrough of next-step commands, but scripts and CI logs end up with
- * 50+ lines of decorative text that drowns the actual session output.
- * Use stdout's TTY status as the signal, with explicit --verbose /
- * --quiet overrides for users who want to force either outcome.
- */
-function shouldShowLandingPage(options: SessionStartOptions): boolean {
-  if (options.quiet) return false;
-  if (options.verbose) return true;
-  return process.stdout.isTTY === true;
-}
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   sessionAlreadyRunningError,
@@ -41,6 +26,21 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('bdg');
+
+/**
+ * Decide whether the post-start landing page should print.
+ *
+ * Humans sitting at an interactive terminal benefit from the one-time
+ * walkthrough of next-step commands, but scripts and CI logs end up with
+ * 50+ lines of decorative text that drowns the actual session output.
+ * Use stdout's TTY status as the signal, with explicit --verbose /
+ * --quiet overrides for users who want to force either outcome.
+ */
+function shouldShowLandingPage(options: SessionStartOptions): boolean {
+  if (options.quiet) return false;
+  if (options.verbose) return true;
+  return process.stdout.isTTY === true;
+}
 
 /**
  * Start a session via the daemon using IPC.
