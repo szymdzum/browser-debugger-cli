@@ -99,11 +99,11 @@ export function registerGetCookiesCommand(networkCmd: Command): void {
 
           return {
             success: true,
-            data: cookies,
+            data: { cookies },
           };
         },
         options,
-        formatCookies
+        (data: { cookies: Cookie[] }) => formatCookies(data.cookies)
       );
     });
 }
