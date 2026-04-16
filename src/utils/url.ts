@@ -91,6 +91,28 @@ export function normalizeUrl(url: string): string {
 }
 
 /**
+ * Heuristic: does this input have the shape of a URL or a bare host token?
+ *
+ * Accepts: explicit scheme (`http://…`, `chrome:…`), anything with `.` (host
+ * like `example.com` or IP `1.2.3.4`), anything with `/` (`localhost/api`),
+ * anything with `:` (port `localhost:3000` or scheme separator), bare
+ * `localhost`. Rejects bare single-word tokens like `unknown` or `foo`.
+ *
+ * Rationale: bdg's URL normaliser prepends `http://` to any unscoped input,
+ * so a typo like `bdg foo` silently launches Chrome at `http://foo/`. Guard
+ * that case here; users with a genuine bare intranet hostname can disambiguate
+ * with an explicit `bdg http://foo` or a port.
+ */
+function looksLikeUrl(input: string): boolean {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(input)) return true;
+  if (input.includes('.')) return true;
+  if (input.includes('/')) return true;
+  if (input.includes(':')) return true;
+  if (/^localhost$/i.test(input)) return true;
+  return false;
+}
+
+/**
  * Validate that a URL is valid and usable for Chrome navigation.
  *
  * @param url - URL string to validate
@@ -121,6 +143,13 @@ export function validateUrl(url: string): ValidationResult {
     return invalid(
       `Invalid URL format: '${url}' (contains spaces)`,
       'URLs cannot contain spaces. If your URL has query parameters, wrap it in quotes: bdg "https://example.com/search?q=test"'
+    );
+  }
+
+  if (!looksLikeUrl(url)) {
+    return invalid(
+      `Not a URL or command: '${url}'`,
+      `If this is a hostname, add a scheme or port: 'bdg http://${url}' or 'bdg ${url}:80'. If this was meant to be a command, run 'bdg --help' to list commands.`
     );
   }
 

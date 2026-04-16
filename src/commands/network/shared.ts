@@ -155,6 +155,14 @@ export function registerHeadersCommand(networkCmd: Command): void {
             };
           }
 
+          if (!id && !opts.json) {
+            return {
+              success: true,
+              data: response.data,
+              hint: 'Hint: no request ID given — showing main document. List requests: bdg network list',
+            };
+          }
+
           return {
             success: true,
             data: response.data,
