@@ -27,6 +27,7 @@ import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isQuietMode } from '@/utils/outputMode.js';
 
 /**
  * Register form interaction commands.
@@ -339,13 +340,15 @@ function formatSubmitOutput(result: SubmitResult): string {
   if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
 
   fmt.keyValueList(details, 20);
-  fmt.blank();
-  fmt.text('Next steps:');
-  fmt.section('', [
-    'bdg peek --network --last 10    Check network requests',
-    'bdg console --last 5             Check console messages',
-    'bdg status                       Check session state',
-  ]);
+  if (!isQuietMode()) {
+    fmt.blank();
+    fmt.text('Next steps:');
+    fmt.section('', [
+      'bdg network list --last 10   Check network requests',
+      'bdg console --last 5          Check console messages',
+      'bdg status                    Check session state',
+    ]);
+  }
   return fmt.build();
 }
 

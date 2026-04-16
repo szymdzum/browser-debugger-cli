@@ -4,6 +4,7 @@ import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { formatDiagnosticsForStatus } from '@/ui/messages/chrome.js';
+import { isQuietMode } from '@/utils/outputMode.js';
 import { isProcessAlive } from '@/utils/process.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -111,13 +112,15 @@ export function formatSessionStatus(
     diagnosticLines.forEach((line) => fmt.text(line));
   }
 
-  fmt
-    .blank()
-    .section('Commands:', [
-      'Peek data:       bdg peek',
-      'Query browser:   bdg dom eval <script>',
-      'End session:     bdg stop',
-    ]);
+  if (!isQuietMode()) {
+    fmt
+      .blank()
+      .section('Commands:', [
+        'Peek data:       bdg peek',
+        'Query browser:   bdg dom eval <script>',
+        'End session:     bdg stop',
+      ]);
+  }
 
   return fmt.build();
 }
@@ -174,9 +177,9 @@ export function formatStatusAsJson(
 export function formatNoSessionMessage(): string {
   const fmt = new OutputFormatter();
 
-  return fmt
-    .text('No active session found')
-    .blank()
-    .section('Suggestions:', ['Start a new session:     bdg <url>'])
-    .build();
+  fmt.text('No active session found');
+  if (!isQuietMode()) {
+    fmt.blank().section('Suggestions:', ['Start a new session:     bdg <url>']);
+  }
+  return fmt.build();
 }

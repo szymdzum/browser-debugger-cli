@@ -8,6 +8,7 @@ import {
   compactTipsMessage,
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
+import { isQuietMode } from '@/utils/outputMode.js';
 
 import { semantic } from './semantic.js';
 
@@ -229,7 +230,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     fmt.blank();
   }
 
-  if (!options.follow) {
+  if (!options.follow && !isQuietMode()) {
     fmt.text(compactTipsMessage());
   }
 
@@ -330,7 +331,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
     fmt.blank();
   }
 
-  if (!options.follow) {
+  if (!options.follow && !isQuietMode()) {
     fmt.text(verboseCommandsMessage());
   }
 

@@ -128,6 +128,17 @@ function isJsonOutputMode(): boolean {
 }
 
 /**
+ * Check if quiet mode is requested.
+ *
+ * Parallels isJsonOutputMode for the early daemon-launch log-silence path —
+ * we can't call Commander's parsed options here because the daemon spawn
+ * happens before parsing.
+ */
+function isQuietOutputMode(): boolean {
+  return process.argv.includes('--quiet') || process.argv.includes('-q');
+}
+
+/**
  * Check if the invocation is a documentation request that should not
  * trigger daemon startup.
  *
@@ -223,7 +234,7 @@ async function main(): Promise<void> {
 
   if (!isDaemonWorkerProcess() && !isDocumentationRequest()) {
     if (!skipsDaemonLaunchWhenAbsent() || isDaemonRunning()) {
-      await ensureDaemonRunning(isJsonOutputMode());
+      await ensureDaemonRunning(isJsonOutputMode() || isQuietOutputMode());
     }
   }
 
