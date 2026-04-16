@@ -84,7 +84,14 @@ export async function executeScript(
     const errorMsg =
       response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
     const err = scriptExecutionError(errorMsg, script);
-    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
+    // User-authored script threw — classify as invalid arguments, not software
+    // error. SOFTWARE_ERROR (110) is reserved for bdg bugs; a ReferenceError
+    // from user code is not a bdg crash.
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
   }
 
   return response;
