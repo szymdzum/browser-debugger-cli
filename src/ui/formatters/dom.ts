@@ -57,11 +57,12 @@ export function formatDomQuery(data: DomQueryResult): string {
   if (!quiet) {
     const hasMultipleResults = count > 1;
     const exampleIndex = hasMultipleResults ? (nodes[0]?.index ?? 0) : 0;
+    const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     fmt
       .blank()
       .section('Next steps:', [
         `Get HTML:        bdg dom get ${exampleIndex}`,
-        `Extract text:    bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector('${selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').textContent"}'`,
+        `Extract text:    bdg dom eval "document.querySelector('${safeSelector}').textContent"`,
         `Accessibility:   bdg dom a11y describe ${exampleIndex}`,
       ]);
   }

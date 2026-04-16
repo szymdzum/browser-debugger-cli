@@ -131,7 +131,18 @@ export function registerHeadersCommand(networkCmd: Command): void {
             ...(opts.header && { headerName: opts.header }),
           });
 
-          validateIPCResponse(response);
+          if (response.status === 'error') {
+            return {
+              success: false,
+              error: response.error ?? 'Network request not found',
+              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              errorContext: {
+                suggestion: id
+                  ? 'List captured requests: bdg network list'
+                  : 'No main document captured. Navigate to a page first.',
+              },
+            };
+          }
 
           if (!response.data) {
             return {
@@ -173,7 +184,16 @@ export function registerDocumentCommand(networkCmd: Command): void {
             ...(opts.header && { headerName: opts.header }),
           });
 
-          validateIPCResponse(response);
+          if (response.status === 'error') {
+            return {
+              success: false,
+              error: response.error ?? 'No main document captured',
+              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              errorContext: {
+                suggestion: 'No main document captured. Navigate to a page first.',
+              },
+            };
+          }
 
           if (!response.data) {
             return {
