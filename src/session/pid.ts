@@ -85,6 +85,16 @@ export function readPid(): number | null {
 }
 
 /**
+ * Read the PID from the daemon PID file.
+ *
+ * @returns The daemon PID if file exists and is valid, null otherwise
+ */
+export function readDaemonPid(): number | null {
+  const pidPath = getSessionFilePath('DAEMON_PID');
+  return readPidFromFile(pidPath);
+}
+
+/**
  * Remove the PID file.
  *
  * Safe to call multiple times (idempotent).
