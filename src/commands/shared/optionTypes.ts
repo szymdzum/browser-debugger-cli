@@ -252,7 +252,15 @@ export type NetworkHeadersCommandOptions = BaseOptions & { header?: string };
 
 /**
  * Options for session start command.
- * Used by startSessionViaDaemon in startHelpers.ts.
+ *
+ * CLI-layer shape: fields are "required-with-undefined" (`| undefined`) to
+ * match what Commander parsing produces. Maps to the canonical
+ * `SessionOptions` (IPC/worker shape) via `filterDefined` in
+ * `startSessionViaDaemon`, which strips undefined keys.
+ *
+ * Kept as its own interface (not `extends SessionOptions`) because
+ * `exactOptionalPropertyTypes: true` treats `?: T` and `: T | undefined` as
+ * incompatible assignability-wise, and the CLI produces the latter.
  */
 export interface SessionStartOptions {
   /** CDP port number */

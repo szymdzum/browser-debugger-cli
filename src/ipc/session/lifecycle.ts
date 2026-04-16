@@ -33,7 +33,12 @@ export interface HandshakeResponse extends IPCMessage {
 }
 
 /**
- * Session start options.
+ * Canonical session options — single source of truth for session knobs.
+ *
+ * The CLI, the daemon IPC request (`StartSessionRequest`), and the worker
+ * launcher (`LaunchWorkerOptions`) all reference this shape. Adding a new
+ * session option means editing this interface + the Commander flag — nothing
+ * else.
  */
 export interface SessionOptions {
   /** CDP port to use. */
@@ -58,29 +63,14 @@ export interface SessionOptions {
 
 /**
  * Start session request (client → daemon).
+ *
+ * Derived from `SessionOptions` so a new option flows end-to-end without
+ * redeclaring fields here.
  */
-export interface StartSessionRequest extends IPCMessage {
+export interface StartSessionRequest extends IPCMessage, SessionOptions {
   type: 'start_session_request';
   /** Target URL to navigate to. */
   url: string;
-  /** CDP port to use. */
-  port?: number;
-  /** Auto-stop timeout in seconds. */
-  timeout?: number;
-  /** Telemetry collectors to enable. */
-  telemetry?: TelemetryType[];
-  /** Include all data (disable filtering). */
-  includeAll?: boolean;
-  /** Custom Chrome user data directory. */
-  userDataDir?: string;
-  /** Max response body size in MB. */
-  maxBodySize?: number;
-  /** Launch Chrome in headless mode. */
-  headless?: boolean;
-  /** Connect to existing Chrome instance. */
-  chromeWsUrl?: string;
-  /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']). */
-  chromeFlags?: string[];
 }
 
 /**

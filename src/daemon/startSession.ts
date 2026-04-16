@@ -18,8 +18,8 @@ import {
   daemonWorkerReady,
   daemonParseError,
 } from '@/daemon/messages.js';
+import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import { getSessionPort } from '@/session/port.js';
-import type { TelemetryType } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -71,19 +71,11 @@ export interface WorkerMetadata {
 
 /**
  * Options for launching a worker session.
+ *
+ * Aliased to `SessionOptions` (the canonical shape used by the CLI and IPC
+ * layers) so that adding a new knob does not require editing multiple types.
  */
-export interface LaunchWorkerOptions {
-  port?: number;
-  timeout?: number;
-  telemetry?: TelemetryType[];
-  includeAll?: boolean;
-  userDataDir?: string;
-  maxBodySize?: number;
-  headless?: boolean;
-  chromeWsUrl?: string;
-  /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
-  chromeFlags?: string[];
-}
+export type LaunchWorkerOptions = SessionOptions;
 
 /**
  * Error thrown when worker fails to start.

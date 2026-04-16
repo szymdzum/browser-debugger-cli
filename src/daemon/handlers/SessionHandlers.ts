@@ -174,20 +174,10 @@ export class SessionHandlers {
   ): Promise<void> {
     log.info('Launching worker...');
     try {
-      const metadata = await this.workerManager.launch(
-        request.url,
-        filterDefined({
-          port: request.port,
-          timeout: request.timeout,
-          telemetry: request.telemetry,
-          includeAll: request.includeAll,
-          userDataDir: request.userDataDir,
-          maxBodySize: request.maxBodySize,
-          headless: request.headless,
-          chromeWsUrl: request.chromeWsUrl,
-          chromeFlags: request.chromeFlags,
-        })
-      );
+      // StartSessionRequest extends SessionOptions; stripping the IPC envelope
+      // (type, sessionId, url) leaves the worker-launch option shape.
+      const { type: _type, sessionId: _sessionId, url, ...options } = request;
+      const metadata = await this.workerManager.launch(url, filterDefined(options));
 
       log.info('Worker launched successfully');
 
