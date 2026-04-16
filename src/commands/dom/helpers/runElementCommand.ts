@@ -52,6 +52,39 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
 }
 
 /**
+ * Reject inputs that would reach `document.querySelectorAll()` as invalid CSS
+ * (e.g. `""`, `"   "`, `"-1"`). Without this guard, the helper script throws
+ * SyntaxError inside the browser and the CLI leaks its internal JS source.
+ *
+ * Numeric indices (`/^\d+$/`) are handled by `DomElementResolver.resolve`
+ * against the cached query; anything starting with `-` is neither a valid
+ * selector nor a valid 0-based index.
+ */
+function validateSelectorOrIndex(selectorOrIndex: string): CommandResult<never> | null {
+  if (selectorOrIndex.trim() === '') {
+    return {
+      success: false,
+      error: 'selector cannot be empty',
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: {
+        suggestion: 'Pass a CSS selector or a numeric index from bdg dom query',
+      },
+    };
+  }
+  if (/^-\d+$/.test(selectorOrIndex)) {
+    return {
+      success: false,
+      error: `index cannot be negative: ${selectorOrIndex}`,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: {
+        suggestion: 'Indices are 0-based. Use bdg dom query to see valid indices.',
+      },
+    };
+  }
+  return null;
+}
+
+/**
  * Resolve an element target, invoke the IPC call, and normalize failures
  * into the structured `CommandRunner` result shape.
  */
@@ -60,6 +93,9 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
 ): Promise<CommandResult<Res>> {
   const { selectorOrIndex, index, buildRequest, call, action, failureSuggestion, mapExitCode } =
     options;
+
+  const validation = validateSelectorOrIndex(selectorOrIndex);
+  if (validation) return validation;
 
   const target = await DomElementResolver.getInstance().resolve(selectorOrIndex, index);
 
