@@ -71,9 +71,13 @@ export async function fetchPreviewData(lastN?: number): Promise<FetchResult<Prev
 
 /**
  * Fetch network requests from daemon.
+ *
+ * Passes `lastN=0` (unlimited) so callers receive the full list and can
+ * apply their own `--last` slicing. The daemon's peek handler otherwise
+ * defaults to 10, silently truncating command output.
  */
 export async function fetchNetworkRequests(): Promise<FetchResult<NetworkRequest[]>> {
-  const result = await fetchPreviewData();
+  const result = await fetchPreviewData(0);
   if (!result.success) return result;
   return { success: true, data: result.data.network };
 }
