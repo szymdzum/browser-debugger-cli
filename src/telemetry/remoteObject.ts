@@ -215,12 +215,104 @@ export function formatRemoteObject(arg: RemoteObject): string {
 /**
  * Format multiple RemoteObjects as console message text.
  *
- * Joins formatted arguments with spaces, similar to how console.log
- * displays multiple arguments.
+ * When the first argument is a format string, substitution specifiers
+ * (`%s`, `%d`/`%i`, `%f`, `%o`/`%O`, `%c`, `%%`) consume subsequent args
+ * per the WHATWG console spec — `%c` silently drops its CSS argument so
+ * styling metadata doesn't leak into the rendered text.
  *
  * @param args - Array of CDP RemoteObjects
  * @returns Joined formatted string
  */
 export function formatConsoleArgs(args: RemoteObject[]): string {
+  if (args.length === 0) return '';
+  const [first, ...rest] = args;
+  if (
+    first?.type === 'string' &&
+    typeof first.value === 'string' &&
+    /%[csdifoO%]/.test(first.value)
+  ) {
+    const { text, consumed } = applyFormatString(first.value, rest);
+    const leftover = rest.slice(consumed);
+    if (leftover.length === 0) return text;
+    return `${text} ${leftover.map(formatRemoteObject).join(' ')}`;
+  }
   return args.map(formatRemoteObject).join(' ');
+}
+
+/**
+ * Apply console format-string substitution.
+ *
+ * Implements the WHATWG console spec's formatter subset that covers the
+ * cases we've actually seen in the wild. Unknown directives pass through
+ * as literal text so agents still see the raw source.
+ */
+function applyFormatString(
+  format: string,
+  args: RemoteObject[]
+): { text: string; consumed: number } {
+  let out = '';
+  let argIdx = 0;
+  let i = 0;
+  while (i < format.length) {
+    const ch = format[i];
+    const next: string = i + 1 < format.length ? (format[i + 1] ?? '') : '';
+    if (ch !== '%' || next === '') {
+      out += ch ?? '';
+      i += 1;
+      continue;
+    }
+    const arg: RemoteObject | undefined = args[argIdx];
+    switch (next) {
+      case '%':
+        out += '%';
+        break;
+      case 'c':
+        argIdx += 1;
+        break;
+      case 's':
+        if (arg !== undefined) {
+          out +=
+            arg.type === 'string' && typeof arg.value === 'string'
+              ? arg.value
+              : formatRemoteObject(arg);
+          argIdx += 1;
+        } else {
+          out += '%s';
+        }
+        break;
+      case 'd':
+      case 'i':
+        if (arg !== undefined) {
+          const n = Number(arg.value);
+          out += Number.isFinite(n) ? String(Math.trunc(n)) : 'NaN';
+          argIdx += 1;
+        } else {
+          out += `%${next}`;
+        }
+        break;
+      case 'f':
+        if (arg !== undefined) {
+          const n = Number(arg.value);
+          out += Number.isFinite(n) ? String(n) : 'NaN';
+          argIdx += 1;
+        } else {
+          out += '%f';
+        }
+        break;
+      case 'o':
+      case 'O':
+        if (arg !== undefined) {
+          out += formatRemoteObject(arg);
+          argIdx += 1;
+        } else {
+          out += `%${next}`;
+        }
+        break;
+      default:
+        out += `%${next}`;
+        break;
+    }
+    i += 2;
+  }
+  return { text: out, consumed: argIdx };
 }
