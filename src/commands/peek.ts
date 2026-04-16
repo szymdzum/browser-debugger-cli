@@ -17,10 +17,12 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { BdgOutput } from '@/types.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 interface ProcessedPreview {
   output: BdgOutput;
@@ -120,7 +122,7 @@ export function registerPeekCommand(program: Command): void {
     .description('Preview collected data without stopping the session')
     .addOption(jsonOption())
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
-    .option('-n, --network', 'Show only network requests', false)
+    .option('-n, --network', '[REMOVED] Use "bdg network list" instead', false)
     .option('-c, --console', 'Show only console messages', false)
     .option('-d, --dom', 'Show DOM/A11y tree data', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
@@ -130,9 +132,17 @@ export function registerPeekCommand(program: Command): void {
       'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
     )
     .action(async (options: PeekCommandOptions) => {
-      if (options.network && !options.json) {
-        console.error(
-          'Note: "bdg peek --network" is deprecated. Use "bdg network list" for enhanced filtering.'
+      if (options.network) {
+        handleValidationError(
+          new CommandError(
+            '`bdg peek --network` has been removed.',
+            {
+              suggestion:
+                'Use `bdg network list` for enhanced filtering, presets, and full results.',
+            },
+            EXIT_CODES.INVALID_ARGUMENTS
+          ),
+          options.json ?? false
         );
       }
 
