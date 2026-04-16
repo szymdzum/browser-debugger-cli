@@ -47,6 +47,49 @@ function hasDisplay(): boolean {
 }
 
 /**
+ * Expand a leading `~/` in a path to the user's home directory.
+ * Chrome itself does not expand `~`, so bdg normalizes it for users.
+ */
+export function expandHome(value: string): string {
+  return value.startsWith('~/') ? value.replace(/^~/, os.homedir()) : value;
+}
+
+/**
+ * Extract `--user-data-dir` from a flags array.
+ *
+ * Supports both `--user-data-dir=<path>` and `--user-data-dir <path>` forms.
+ * When found, returns the path (with `~/` expanded) and the remaining flags
+ * with every matching entry removed, so callers can avoid passing the same
+ * switch to Chrome twice.
+ */
+export function extractUserDataDirFromFlags(flags: string[]): {
+  userDataDir: string | undefined;
+  rest: string[];
+} {
+  const rest: string[] = [];
+  let userDataDir: string | undefined;
+
+  for (let i = 0; i < flags.length; i++) {
+    const flag = flags[i] as string;
+    if (flag.startsWith('--user-data-dir=')) {
+      userDataDir = flag.slice('--user-data-dir='.length);
+      continue;
+    }
+    if (flag === '--user-data-dir' && i + 1 < flags.length) {
+      userDataDir = flags[i + 1];
+      i++;
+      continue;
+    }
+    rest.push(flag);
+  }
+
+  return {
+    userDataDir: userDataDir ? expandHome(userDataDir) : undefined,
+    rest,
+  };
+}
+
+/**
  * Apply shared telemetry options to a command
  *
  * @param command - Commander.js Command instance to apply options to
@@ -105,15 +148,17 @@ function buildSessionOptions(options: CollectorOptions): {
     : undefined;
   const timeout = options.timeout ? timeoutRule.validate(options.timeout) : undefined;
 
-  let userDataDir = options.userDataDir;
-  if (userDataDir?.startsWith('~/')) {
-    userDataDir = userDataDir.replace(/^~/, os.homedir());
-  }
-
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
   const envFlags = process.env['BDG_CHROME_FLAGS']?.split(' ').filter(Boolean) ?? [];
   const cliFlags = options.chromeFlags?.split(' ').filter(Boolean) ?? [];
-  const combinedFlags = [...envFlags, ...cliFlags];
+  const { userDataDir: flagUserDataDir, rest: combinedFlags } = extractUserDataDirFromFlags([
+    ...envFlags,
+    ...cliFlags,
+  ]);
+
+  // Precedence: -u / --user-data-dir > --chrome-flags / BDG_CHROME_FLAGS > default
+  const userDataDir = options.userDataDir ? expandHome(options.userDataDir) : flagUserDataDir;
+
   const chromeFlags = combinedFlags.length > 0 ? combinedFlags : undefined;
 
   return {
