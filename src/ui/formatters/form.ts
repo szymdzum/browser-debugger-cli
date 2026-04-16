@@ -259,27 +259,43 @@ function formatSingleForm(form: DiscoveredForm, fmt: OutputFormatter, brief = fa
  * @param fmt - Output formatter
  */
 function formatBriefFields(form: DiscoveredForm, fmt: OutputFormatter): void {
-  fmt.text('IDX  TYPE         LABEL                    REQ');
-  fmt.text('─'.repeat(50));
+  fmt.text('IDX  TYPE         LABEL                  VAL              REQ');
+  fmt.text('─'.repeat(65));
 
   for (const field of form.fields) {
     if (field.hidden) continue;
     const idx = `[${field.index}]`.padEnd(4);
     const type = (field.inputType ?? field.type).slice(0, 11).padEnd(12);
-    const label = (field.label ?? field.name ?? '(no label)').slice(0, 23).padEnd(24);
+    const label = (field.label ?? field.name ?? '(no label)').slice(0, 21).padEnd(22);
+    const value = briefValueSummary(field).slice(0, 15).padEnd(16);
     const req = field.required ? '*' : '';
-    fmt.text(`${idx} ${type} ${label} ${req}`);
+    fmt.text(`${idx} ${type} ${label} ${value} ${req}`);
   }
 
   if (form.buttons.length > 0) {
-    fmt.text('─'.repeat(50));
+    fmt.text('─'.repeat(65));
     for (const button of form.buttons) {
       const idx = `[${button.index}]`.padEnd(4);
       const type = 'button'.padEnd(12);
-      const label = (button.label || button.type).slice(0, 23).padEnd(24);
+      const label = (button.label || button.type).slice(0, 21).padEnd(22);
       fmt.text(`${idx} ${type} ${label}`);
     }
   }
+}
+
+/**
+ * Render a compact cell showing the current state of a form field.
+ *
+ * Text inputs show the value (empty-string → "∅"); checkbox/radio fields
+ * show their checked state. Agents using `--brief` rely on this column to
+ * verify that a prior `fill` or `click` actually landed.
+ */
+function briefValueSummary(field: FormField): string {
+  if (field.state === 'checked') return '[x]';
+  if (field.state === 'unchecked') return '[ ]';
+  const raw = field.maskedValue ?? (typeof field.value === 'string' ? field.value : '');
+  if (!raw) return '∅';
+  return `"${raw}"`;
 }
 
 /**
