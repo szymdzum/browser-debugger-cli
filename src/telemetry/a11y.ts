@@ -171,6 +171,19 @@ function extractRole(rawNode: Protocol.Accessibility.AXNode): string {
  * queryA11yTree(tree, { name: 'Email' });
  * ```
  */
+/**
+ * Drop leading/trailing `*` wildcards from a pattern value.
+ *
+ * Matching is already substring-based via `String.includes`, so callers that
+ * wrap their term in asterisks (e.g. the bare-mode shorthand `name:*Foo*`) no
+ * longer produce patterns that only match a literal asterisk. Internal
+ * asterisks are preserved so users who rely on them to match a literal `*`
+ * still get the current behavior.
+ */
+function stripWildcards(value: string): string {
+  return value.replace(/^\*+/, '').replace(/\*+$/, '');
+}
+
 export function queryA11yTree(tree: A11yTree, pattern: A11yQueryPattern): A11yQueryResult {
   const matches: A11yNode[] = [];
 
@@ -259,7 +272,8 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
 
     const separator = separatorMatch[0];
     const [key, ...valueParts] = part.split(separator);
-    const value = valueParts.join(separator);
+    const rawValue = valueParts.join(separator);
+    const value = stripWildcards(rawValue);
 
     if (!value) {
       continue;
