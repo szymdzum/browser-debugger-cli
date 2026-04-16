@@ -51,7 +51,9 @@ export interface NavigationEvent {
  */
 export async function startNavigationTracking(
   cdp: CDPConnection,
-  navigations: NavigationEvent[]
+  navigations: NavigationEvent[],
+  onMainFrameNavigation?: (url: string) => void,
+  onPageLoaded?: () => void
 ): Promise<{ cleanup: CleanupFunction; getCurrentNavigationId: () => number }> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
@@ -77,9 +79,26 @@ export async function startNavigationTracking(
       };
 
       navigations.push(navigation);
+      onMainFrameNavigation?.(params.frame.url);
 
       log.debug(`Main frame navigation detected [${navigationCounter}]: ${params.frame.url}`);
     }
+  });
+
+  registry.registerTyped(typed, 'Page.navigatedWithinDocument', (params) => {
+    navigationCounter++;
+    const navigation: NavigationEvent = {
+      url: params.url,
+      timestamp: Date.now(),
+      navigationId: navigationCounter,
+    };
+    navigations.push(navigation);
+    onMainFrameNavigation?.(params.url);
+    log.debug(`In-document navigation detected [${navigationCounter}]: ${params.url}`);
+  });
+
+  registry.registerTyped(typed, 'Page.loadEventFired', () => {
+    onPageLoaded?.();
   });
 
   // Track DOM.documentUpdated for SPA re-renders and document replacements
