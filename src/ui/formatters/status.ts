@@ -115,7 +115,7 @@ export function formatSessionStatus(
     .blank()
     .section('Commands:', [
       'Peek data:       bdg peek',
-      'Query browser:   bdg query <script>',
+      'Query browser:   bdg dom eval <script>',
       'End session:     bdg stop',
     ]);
 
@@ -177,9 +177,6 @@ export function formatNoSessionMessage(): string {
   return fmt
     .text('No active session found')
     .blank()
-    .section('Suggestions:', [
-      'Start a new session:     bdg <url>',
-      'List Chrome tabs:        bdg tabs',
-    ])
+    .section('Suggestions:', ['Start a new session:     bdg <url>'])
     .build();
 }
