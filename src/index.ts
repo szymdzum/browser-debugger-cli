@@ -153,6 +153,7 @@ async function main(): Promise<void> {
     .name(CLI_NAME)
     .description(CLI_DESCRIPTION)
     .version(VERSION)
+    .allowExcessArguments(false)
     .option('--debug', 'Enable debug logging (verbose output)');
 
   commandRegistry.forEach((register) => register(program));
