@@ -10,6 +10,7 @@ import { CommandError } from '@/errors/index.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { findSimilar } from '@/utils/suggestions.js';
 import { validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
@@ -208,6 +209,7 @@ export function registerStartCommands(program: Command): void {
     }
 
     try {
+      assertNotCommandTypo(url, program);
       assertValidUrl(url);
       if (options.chromeWsUrl !== undefined) {
         assertValidChromeWsUrl(options.chromeWsUrl);
@@ -218,6 +220,28 @@ export function registerStartCommands(program: Command): void {
 
     await collectorAction(url, options);
   });
+}
+
+/**
+ * Reject when the URL argument looks like a misspelled command name.
+ *
+ * Without this guard, `bdg statsu` (meant `bdg status`) gets interpreted
+ * as the URL `http://statsu` and Commander launches a browser session
+ * there, which is destructive when a daemon isn't already running.
+ *
+ * Exact command-name matches are handled by Commander before this action
+ * runs, so we only see strings that fell through — the typo case.
+ */
+function assertNotCommandTypo(input: string, program: Command): void {
+  const commandNames = program.commands.map((cmd) => cmd.name()).filter((n) => n.length > 0);
+  const suggestions = findSimilar(input, commandNames, { maxDistance: 2, maxSuggestions: 2 });
+  if (suggestions.length === 0) return;
+  const list = suggestions.map((s) => `bdg ${s}`).join(', ');
+  throw new CommandError(
+    `Unknown command: '${input}'`,
+    { suggestion: `Did you mean: ${list}? (Use 'bdg --help' to list commands.)` },
+    EXIT_CODES.INVALID_ARGUMENTS
+  );
 }
 
 function assertValidUrl(url: string): void {
