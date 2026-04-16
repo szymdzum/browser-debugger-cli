@@ -41,3 +41,6 @@ docker-output/
 
 # Private docs
 docs/priv/
+
+# Claude Code agent worktrees
+.claude/worktrees/
