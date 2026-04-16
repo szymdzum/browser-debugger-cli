@@ -22,6 +22,11 @@ export enum IPCErrorCode {
   CHROME_LAUNCH_FAILED = 'CHROME_LAUNCH_FAILED',
   /** CDP connection timeout. */
   CDP_TIMEOUT = 'CDP_TIMEOUT',
+  /**
+   * Main-frame navigation failed (unreachable host, SSL error, DNS failure).
+   * Chrome rendered a chrome-error page, so the session is unusable.
+   */
+  NAVIGATION_FAILED = 'NAVIGATION_FAILED',
   /** Generic daemon error. */
   DAEMON_ERROR = 'DAEMON_ERROR',
 }

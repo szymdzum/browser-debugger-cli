@@ -61,6 +61,8 @@ function mapLaunchError(
     switch (error.code) {
       case 'READY_TIMEOUT':
         return { errorCode: IPCErrorCode.CDP_TIMEOUT, errorMessage };
+      case 'NAVIGATION_FAILED':
+        return { errorCode: IPCErrorCode.NAVIGATION_FAILED, errorMessage };
       case 'SPAWN_FAILED':
       case 'WORKER_CRASH':
       case 'INVALID_READY_MESSAGE':

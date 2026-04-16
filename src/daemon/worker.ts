@@ -9,7 +9,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { ConnectionError } from '@/connection/errors.js';
 import { WorkerError } from '@/daemon/errors.js';
-import { setupCDPAndNavigate } from '@/daemon/lifecycle/cdpSetup.js';
+import { setupCDPAndNavigate, NavigationFailedError } from '@/daemon/lifecycle/cdpSetup.js';
 import { setupChromeConnection } from '@/daemon/lifecycle/chromeConnection.js';
 import { setupSignalHandlers } from '@/daemon/lifecycle/signalHandlers.js';
 import { cleanupWorker } from '@/daemon/lifecycle/workerCleanup.js';
@@ -72,6 +72,22 @@ function initializeTelemetryStore(): void {
   telemetryStore.consoleMessages.length = 0;
   telemetryStore.navigationEvents.length = 0;
   telemetryStore.setTargetInfo(null);
+}
+
+/**
+ * Derive the process exit code to use when the worker's main() throws.
+ *
+ * Errors that carry a `.exitCode` property (NavigationFailedError,
+ * CommandError) get forwarded verbatim so the daemon can tell them apart
+ * from a generic worker crash; everything else exits 1.
+ */
+function extractExitCode(error: unknown): number {
+  if (error instanceof NavigationFailedError) return error.exitCode;
+  if (error instanceof Error) {
+    const maybe = (error as { exitCode?: number }).exitCode;
+    if (typeof maybe === 'number') return maybe;
+  }
+  return 1;
 }
 
 /**
@@ -145,7 +161,12 @@ async function main(): Promise<void> {
       log,
       notify,
     });
-    process.exit(1);
+    // Carry the semantic exit code through the child-process boundary so the
+    // daemon can distinguish (for example) a navigation failure from a
+    // generic worker crash. The daemon maps `code` back to an IPC error in
+    // startSession.ts.
+    const exitCode = extractExitCode(error);
+    process.exit(exitCode);
   }
 }
 
