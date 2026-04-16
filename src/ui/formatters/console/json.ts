@@ -32,12 +32,16 @@ function toJsonError(dedup: DeduplicatedMessage, includeStackTrace: boolean): Js
 }
 
 /**
- * Format console output as JSON.
+ * Build the rich JSON output shape (summary + deduped errors/warnings, plus
+ * the full message list when --list is requested).
+ *
+ * Returns a plain object so callers (e.g. runCommand's JSON envelope) can
+ * embed it without re-parsing a stringified payload.
  */
-export function formatConsoleJson(
+export function buildConsoleJsonOutput(
   messages: ConsoleMessage[],
   options: ConsoleFormatOptions
-): string {
+): ConsoleJsonOutput {
   const { grouped, summary } = analyzeMessages(messages);
 
   const output: ConsoleJsonOutput = {
@@ -53,5 +57,16 @@ export function formatConsoleJson(
     output.messages = displayMessages;
   }
 
-  return JSON.stringify(output, null, 2);
+  return output;
+}
+
+/**
+ * Format console output as a JSON string. Thin wrapper around
+ * buildConsoleJsonOutput for callers that want a serialized payload.
+ */
+export function formatConsoleJson(
+  messages: ConsoleMessage[],
+  options: ConsoleFormatOptions
+): string {
+  return JSON.stringify(buildConsoleJsonOutput(messages, options), null, 2);
 }
