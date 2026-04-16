@@ -27,6 +27,10 @@ export const FORM_DISCOVERY_SCRIPT = `
     }
     if (element.name) {
       const tag = element.tagName.toLowerCase();
+      const type = element.type?.toLowerCase();
+      if ((type === 'radio' || type === 'checkbox') && element.value) {
+        return tag + '[name="' + CSS.escape(element.name) + '"][value="' + CSS.escape(element.value) + '"]';
+      }
       return tag + '[name="' + CSS.escape(element.name) + '"]';
     }
     const tag = element.tagName.toLowerCase();

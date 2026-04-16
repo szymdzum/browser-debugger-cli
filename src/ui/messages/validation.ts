@@ -18,43 +18,54 @@ export interface IntegerValidationOptions {
   exampleValue?: number;
 }
 
+function formatRange(options?: IntegerValidationOptions): string | undefined {
+  if (options?.min !== undefined && options?.max !== undefined) {
+    return `Valid range: ${options.min} to ${options.max}`;
+  }
+  if (options?.min !== undefined) return `Must be at least ${options.min}`;
+  if (options?.max !== undefined) return `Must be at most ${options.max}`;
+  return undefined;
+}
+
+function formatExample(fieldName: string, options?: IntegerValidationOptions): string {
+  const example = options?.exampleValue ?? options?.min ?? 30;
+  return `Example: --${fieldName} ${example}`;
+}
+
 /**
- * Generate invalid integer error message with context.
+ * Generate "not a valid integer" error message (for non-numeric input).
  *
- * @param fieldName - Name of the field being validated
- * @param value - The invalid value provided
- * @param options - Optional range and example information
- * @returns Formatted error message with suggestions
- *
- * @example
- * ```typescript
- * // Basic usage
- * throw new Error(invalidIntegerError('timeout', 'abc'));
- *
- * // With range
- * throw new Error(invalidIntegerError('timeout', 'abc', { min: 1, max: 3600 }));
- *
- * // With example
- * throw new Error(invalidIntegerError('port', 'xyz', { min: 1024, max: 65535, exampleValue: 9222 }));
- * ```
+ * Use for values that failed to parse as integers (e.g., "abc").
+ * Use {@link outOfRangeError} for values that parsed but violated min/max.
  */
 export function invalidIntegerError(
   fieldName: string,
   value: string,
   options?: IntegerValidationOptions
 ): string {
-  const header = `Error: Invalid ${fieldName}: "${value}" is not a valid integer`;
+  return joinLines(
+    `Invalid --${fieldName}: "${value}" is not a valid integer`,
+    formatRange(options),
+    '',
+    formatExample(fieldName, options)
+  );
+}
 
-  let rangeInfo: string | undefined;
-  if (options?.min !== undefined && options?.max !== undefined) {
-    rangeInfo = `Valid range: ${options.min} to ${options.max}`;
-  } else if (options?.min !== undefined) {
-    rangeInfo = `Must be at least ${options.min}`;
-  } else if (options?.max !== undefined) {
-    rangeInfo = `Must be at most ${options.max}`;
-  }
-
-  const example = options?.exampleValue ?? options?.min ?? 30;
-
-  return joinLines(header, rangeInfo, '', `Example: --${fieldName} ${example}`);
+/**
+ * Generate "out of range" error message (for integers that violate min/max).
+ *
+ * Use when the value parsed as an integer but fell outside the permitted range.
+ * The message must NOT claim the value isn't an integer — it is.
+ */
+export function outOfRangeError(
+  fieldName: string,
+  value: string,
+  options?: IntegerValidationOptions
+): string {
+  return joinLines(
+    `--${fieldName} out of range: ${value}`,
+    formatRange(options),
+    '',
+    formatExample(fieldName, options)
+  );
 }

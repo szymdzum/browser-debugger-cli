@@ -4,8 +4,9 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { DetailsCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { DetailsResult } from '@/commands/types.js';
+import { CommandError } from '@/errors/index.js';
 import { getDetails } from '@/ipc/client.js';
-import { validateIPCResponse } from '@/ipc/index.js';
+import { IPCError } from '@/ipc/transport/IPCError.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateDetailsItem } from '@/utils/typeGuards.js';
@@ -56,7 +57,25 @@ export function registerDetailsCommand(program: Command): void {
 
           const response = await getDetails(opts.type, opts.id);
 
-          validateIPCResponse(response);
+          if (response.status === 'error') {
+            // Daemon raises plain Error for "not found" (see
+            // src/daemon/worker/commandRegistry.ts). Translate to a
+            // CommandError with RESOURCE_NOT_FOUND so callers don't see 104.
+            const message = response.error ?? 'Unknown error';
+            if (/not found/i.test(message) || /No console messages/i.test(message)) {
+              throw new CommandError(
+                message,
+                {
+                  suggestion:
+                    opts.type === 'network'
+                      ? 'List captured requests: bdg network list'
+                      : 'List captured messages: bdg console --list',
+                },
+                EXIT_CODES.RESOURCE_NOT_FOUND
+              );
+            }
+            throw new IPCError(message);
+          }
 
           if (!response.data?.item) {
             return {

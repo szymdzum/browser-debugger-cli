@@ -1,5 +1,6 @@
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { isQuietMode } from '@/utils/outputMode.js';
 
 /**
  * Format DOM query results for human-readable output.
@@ -30,17 +31,20 @@ export function formatDomQuery(data: DomQueryResult): string {
   const { count, nodes, selector } = data;
   const fmt = new OutputFormatter();
 
-  if (count === 0) {
-    const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const quiet = isQuietMode();
 
-    return fmt
-      .text(`No nodes found matching "${selector}"`)
-      .blank()
-      .section('Suggestions:', [
-        `Verify selector: bdg dom eval "document.querySelector('${safeSelector}')"`,
-        'List elements:   bdg dom query "*"',
-      ])
-      .build();
+  if (count === 0) {
+    fmt.text(`No nodes found matching "${selector}"`);
+    if (!quiet) {
+      const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      fmt
+        .blank()
+        .section('Suggestions:', [
+          `Verify selector: bdg dom eval "document.querySelector('${safeSelector}')"`,
+          'List elements:   bdg dom query "*"',
+        ]);
+    }
+    return fmt.build();
   }
 
   const nodeLines = nodes.map((node) => {
@@ -48,19 +52,22 @@ export function formatDomQuery(data: DomQueryResult): string {
     return `[${node.index}] <${node.tag}${classInfo}> ${node.preview}`;
   });
 
-  const hasMultipleResults = count > 1;
-  const exampleIndex = hasMultipleResults ? (nodes[0]?.index ?? 0) : 0;
+  fmt.text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`).list(nodeLines);
 
-  return fmt
-    .text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`)
-    .list(nodeLines)
-    .blank()
-    .section('Next steps:', [
-      `Get HTML:        bdg dom get ${exampleIndex}`,
-      `Extract text:    bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector('${selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').textContent"}'`,
-      `Full details:    bdg details dom ${exampleIndex}`,
-    ])
-    .build();
+  if (!quiet) {
+    const hasMultipleResults = count > 1;
+    const exampleIndex = hasMultipleResults ? (nodes[0]?.index ?? 0) : 0;
+    const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    fmt
+      .blank()
+      .section('Next steps:', [
+        `Get HTML:        bdg dom get ${exampleIndex}`,
+        `Extract text:    bdg dom eval "document.querySelector('${safeSelector}').textContent"`,
+        `Accessibility:   bdg dom a11y describe ${exampleIndex}`,
+      ]);
+  }
+
+  return fmt.build();
 }
 
 /**
@@ -130,6 +137,9 @@ export function formatDomGet(data: DomGetResult): string {
  * ```
  */
 export function formatDomEval(data: { result: unknown }): string {
+  if (typeof data.result === 'string') {
+    return data.result;
+  }
   return JSON.stringify(data.result, null, 2);
 }
 

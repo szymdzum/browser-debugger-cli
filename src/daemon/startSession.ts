@@ -22,6 +22,7 @@ import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import { getSessionPort } from '@/session/port.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { validateUrl } from '@/utils/url.js';
 
@@ -80,6 +81,16 @@ export type LaunchWorkerOptions = SessionOptions;
 /**
  * Error thrown when worker fails to start.
  */
+/**
+ * Pull the concrete navigation error out of the worker's stderr buffer so
+ * the daemon can forward it to the CLI. The worker logs
+ * `[worker] Fatal error: Navigation to <url> failed: <errorText>`.
+ */
+function extractNavigationErrorMessage(stderrBuffer: string): string | undefined {
+  const match = stderrBuffer.match(/\[worker\] Fatal error: (Navigation to .+)/);
+  return match?.[1]?.trim();
+}
+
 export class WorkerStartError extends Error {
   constructor(
     message: string,
@@ -87,6 +98,7 @@ export class WorkerStartError extends Error {
       | 'SPAWN_FAILED'
       | 'READY_TIMEOUT'
       | 'WORKER_CRASH'
+      | 'NAVIGATION_FAILED'
       | 'INVALID_READY_MESSAGE',
     public readonly details?: string
   ) {
@@ -226,6 +238,20 @@ export async function launchSessionInWorker(
       if (!resolved) {
         resolved = true;
         clearTimeout(readyTimeout);
+        // The worker uses semantic exit codes for known-terminal conditions
+        // (see `extractExitCode` in daemon/worker.ts). NAVIGATION_FAILED is
+        // the one we care about here — surface it as a distinct IPC error
+        // so the CLI exits 91 instead of the generic WORKER_START_FAILURE.
+        if (code === EXIT_CODES.NAVIGATION_FAILED) {
+          reject(
+            new WorkerStartError(
+              extractNavigationErrorMessage(stderrBuffer) ?? 'Navigation failed',
+              'NAVIGATION_FAILED',
+              `stderr: ${stderrBuffer}`
+            )
+          );
+          return;
+        }
         reject(
           new WorkerStartError(
             `Worker process exited before sending ready signal (code: ${code}, signal: ${signal})`,

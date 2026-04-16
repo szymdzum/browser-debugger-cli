@@ -7,6 +7,7 @@ import { commandRegistry } from '@/commands.js';
 import { isDaemonRunning, launchDaemon } from '@/daemon/launcher.js';
 import { createLogger, enableDebugLogging } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 
 const DAEMON_WORKER_ENV_VAR = 'BDG_DAEMON';
@@ -127,6 +128,17 @@ function isJsonOutputMode(): boolean {
 }
 
 /**
+ * Check if quiet mode is requested.
+ *
+ * Parallels isJsonOutputMode for the early daemon-launch log-silence path —
+ * we can't call Commander's parsed options here because the daemon spawn
+ * happens before parsing.
+ */
+function isQuietOutputMode(): boolean {
+  return process.argv.includes('--quiet') || process.argv.includes('-q');
+}
+
+/**
  * Check if the invocation is a documentation request that should not
  * trigger daemon startup.
  *
@@ -144,6 +156,57 @@ function isDocumentationRequest(): boolean {
   );
 }
 
+/**
+ * Commands that should report "no session" locally when no daemon is running.
+ *
+ * `status` and `stop` are session-state queries that already handle the
+ * daemon-not-running case gracefully. `cleanup` operates directly on the
+ * filesystem (~/.bdg) and doesn't need a daemon to do its job. Spawning a
+ * fresh daemon just to be told the session doesn't exist is wasteful and
+ * slow.
+ */
+const LOCAL_ONLY_WHEN_NO_DAEMON = new Set(['status', 'stop', 'cleanup']);
+
+/**
+ * Check if the invocation is a read-only session query that doesn't need
+ * a daemon spawned on its behalf.
+ */
+function skipsDaemonLaunchWhenAbsent(): boolean {
+  const firstArg = process.argv[2];
+  if (!firstArg) return false;
+  return LOCAL_ONLY_WHEN_NO_DAEMON.has(firstArg);
+}
+
+/**
+ * Map Commander's built-in error codes to bdg's semantic exit codes.
+ *
+ * Commander defaults most validation failures (unknown option, missing
+ * required argument, too-many arguments, invalid argument value) to exit
+ * 1, which lumps them in with generic runtime crashes. Normalize the
+ * user-input cases to EXIT_CODES.INVALID_ARGUMENTS so automation can
+ * discriminate between usage errors and real failures.
+ *
+ * Commander's help/version short-circuits still exit 0.
+ */
+function mapCommanderErrorToExitCode(code: string | undefined): number {
+  if (code === 'commander.helpDisplayed' || code === 'commander.version') {
+    return EXIT_CODES.SUCCESS;
+  }
+  if (
+    code === 'commander.unknownOption' ||
+    code === 'commander.unknownCommand' ||
+    code === 'commander.missingArgument' ||
+    code === 'commander.missingMandatoryOptionValue' ||
+    code === 'commander.invalidArgument' ||
+    code === 'commander.excessArguments' ||
+    code === 'commander.optionMissingArgument' ||
+    code === 'commander.help'
+  ) {
+    return EXIT_CODES.INVALID_ARGUMENTS;
+  }
+  return EXIT_CODES.GENERIC_FAILURE;
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes('--debug')) {
     enableDebugLogging();
@@ -153,7 +216,11 @@ async function main(): Promise<void> {
     .name(CLI_NAME)
     .description(CLI_DESCRIPTION)
     .version(VERSION)
-    .option('--debug', 'Enable debug logging (verbose output)');
+    .allowExcessArguments(false)
+    .option('--debug', 'Enable debug logging (verbose output)')
+    .exitOverride((err) => {
+      process.exit(mapCommanderErrorToExitCode(err.code));
+    });
 
   commandRegistry.forEach((register) => register(program));
 
@@ -168,7 +235,9 @@ async function main(): Promise<void> {
   }
 
   if (!isDaemonWorkerProcess() && !isDocumentationRequest()) {
-    await ensureDaemonRunning(isJsonOutputMode());
+    if (!skipsDaemonLaunchWhenAbsent() || isDaemonRunning()) {
+      await ensureDaemonRunning(isJsonOutputMode() || isQuietOutputMode());
+    }
   }
 
   program.parse();

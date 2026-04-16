@@ -28,13 +28,17 @@ export { formatConsoleSummary } from './console/summarize.js';
 
 /**
  * Format console output based on options. Routes to the per-mode formatter.
+ *
+ * An explicit `--level` filter implies chronological mode — the summary view
+ * is tuned for the default (all-level) input and misreports 'No errors or
+ * warnings found' when the caller has already narrowed to info/debug.
  */
 export function formatConsole(messages: ConsoleMessage[], options: ConsoleFormatOptions): string {
   if (options.json) {
     return formatConsoleJson(messages, options);
   }
 
-  if (options.list) {
+  if (options.list || options.level) {
     return formatConsoleChronological(messages, options);
   }
 

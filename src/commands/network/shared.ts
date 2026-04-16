@@ -99,11 +99,11 @@ export function registerGetCookiesCommand(networkCmd: Command): void {
 
           return {
             success: true,
-            data: cookies,
+            data: { cookies },
           };
         },
         options,
-        formatCookies
+        (data: { cookies: Cookie[] }) => formatCookies(data.cookies)
       );
     });
 }
@@ -131,7 +131,18 @@ export function registerHeadersCommand(networkCmd: Command): void {
             ...(opts.header && { headerName: opts.header }),
           });
 
-          validateIPCResponse(response);
+          if (response.status === 'error') {
+            return {
+              success: false,
+              error: response.error ?? 'Network request not found',
+              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              errorContext: {
+                suggestion: id
+                  ? 'List captured requests: bdg network list'
+                  : 'No main document captured. Navigate to a page first.',
+              },
+            };
+          }
 
           if (!response.data) {
             return {
@@ -141,6 +152,14 @@ export function registerHeadersCommand(networkCmd: Command): void {
               errorContext: {
                 suggestion: 'No network requests captured yet. Navigate to a page first.',
               },
+            };
+          }
+
+          if (!id && !opts.json) {
+            return {
+              success: true,
+              data: response.data,
+              hint: 'Hint: no request ID given — showing main document. List requests: bdg network list',
             };
           }
 
@@ -173,7 +192,16 @@ export function registerDocumentCommand(networkCmd: Command): void {
             ...(opts.header && { headerName: opts.header }),
           });
 
-          validateIPCResponse(response);
+          if (response.status === 'error') {
+            return {
+              success: false,
+              error: response.error ?? 'No main document captured',
+              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+              errorContext: {
+                suggestion: 'No main document captured. Navigate to a page first.',
+              },
+            };
+          }
 
           if (!response.data) {
             return {

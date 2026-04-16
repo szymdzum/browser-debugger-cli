@@ -55,6 +55,6 @@ function formatHeaderSection(fmt: OutputFormatter, headers: Record<string, strin
   const maxKeyLength = Math.max(...entries.map(([k]) => k.length));
 
   entries.forEach(([key, value]) => {
-    fmt.keyValue(`  ${key}:`, value, maxKeyLength + 4);
+    fmt.keyValue(`  ${key}`, value, maxKeyLength + 4);
   });
 }

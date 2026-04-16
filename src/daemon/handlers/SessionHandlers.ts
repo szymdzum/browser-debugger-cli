@@ -46,12 +46,23 @@ type ReconcileOutcome =
  * Kept as a pure function so the orchestrator stays focused on flow control
  * rather than error classification.
  */
-function mapLaunchError(error: unknown): { errorCode: IPCErrorCode; errorMessage: string } {
+function mapLaunchError(
+  error: unknown,
+  chromeWsUrl?: string
+): { errorCode: IPCErrorCode; errorMessage: string } {
   if (error instanceof WorkerStartError) {
-    const errorMessage = error.details ? `${error.message}\n${error.details}` : error.message;
+    // Worker stderr is already forwarded to the daemon log; don't splice it
+    // into the user-facing error. Agents see a clean one-line message and
+    // can read ~/.bdg/daemon.log for the raw worker output.
+    const errorMessage =
+      error.code === 'WORKER_CRASH' && chromeWsUrl
+        ? `Could not attach to Chrome at ${chromeWsUrl} (connection refused or invalid WebSocket URL). Check the URL and ensure Chrome is reachable.`
+        : error.message;
     switch (error.code) {
       case 'READY_TIMEOUT':
         return { errorCode: IPCErrorCode.CDP_TIMEOUT, errorMessage };
+      case 'NAVIGATION_FAILED':
+        return { errorCode: IPCErrorCode.NAVIGATION_FAILED, errorMessage };
       case 'SPAWN_FAILED':
       case 'WORKER_CRASH':
       case 'INVALID_READY_MESSAGE':
@@ -204,7 +215,7 @@ export class SessionHandlers {
       this.sendResponse(socket, response);
       log.info('Start session response sent');
     } catch (error) {
-      const { errorCode, errorMessage } = mapLaunchError(error);
+      const { errorCode, errorMessage } = mapLaunchError(error, request.chromeWsUrl);
       const response: StartSessionResponse = {
         type: 'start_session_response',
         sessionId: request.sessionId,

@@ -28,6 +28,21 @@ import { filterDefined } from '@/utils/objects.js';
 const log = createLogger('bdg');
 
 /**
+ * Decide whether the post-start landing page should print.
+ *
+ * Humans sitting at an interactive terminal benefit from the one-time
+ * walkthrough of next-step commands, but scripts and CI logs end up with
+ * 50+ lines of decorative text that drowns the actual session output.
+ * Use stdout's TTY status as the signal, with explicit --verbose /
+ * --quiet overrides for users who want to force either outcome.
+ */
+function shouldShowLandingPage(options: SessionStartOptions): boolean {
+  if (options.quiet) return false;
+  if (options.verbose) return true;
+  return process.stdout.isTTY === true;
+}
+
+/**
  * Start a session via the daemon using IPC.
  *
  * This replaces the in-process sessionController.startSession() by:
@@ -67,13 +82,13 @@ export async function startSessionViaDaemon(
       if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && response.existingSession) {
         const { pid, targetUrl, duration } = response.existingSession;
         const durationMs = duration ? duration * 1000 : 0;
-        console.error(sessionAlreadyRunningError(pid, durationMs, targetUrl));
+        console.error(genericError(sessionAlreadyRunningError(pid, durationMs, targetUrl)));
       } else if (response.errorCode === IPCErrorCode.SESSION_TARGET_MISMATCH) {
         // Absent existingSession.targetUrl signals launched-mode current — the
         // daemon omits it in that case to keep targetUrl URL-shaped for agents.
         const current = response.existingSession?.targetUrl ?? LAUNCHED_CHROME_DESCRIPTION;
         const requested = options.chromeWsUrl ?? LAUNCHED_CHROME_DESCRIPTION;
-        console.error(sessionTargetMismatchError(current, requested));
+        console.error(genericError(sessionTargetMismatchError(current, requested)));
       } else {
         console.error(genericError(`Daemon error: ${response.message ?? 'Unknown error'}`));
       }
@@ -86,19 +101,21 @@ export async function startSessionViaDaemon(
       process.exit(EXIT_CODES.SOFTWARE_ERROR);
     }
 
-    if (options.quiet) {
-      console.error(`Session started: ${data.targetUrl}`);
-    } else {
+    if (shouldShowLandingPage(options)) {
       const landing = landingPage({
         url: data.targetUrl,
       });
       console.error(landing);
+    } else if (!options.quiet) {
+      console.error(`Session started: ${data.targetUrl}`);
     }
 
     process.exit(0);
   } catch (error) {
     if (isConnectionError(error)) {
-      console.error(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }));
+      console.error(
+        genericError(daemonNotRunningError({ suggestStatus: true, suggestRetry: true }))
+      );
       process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }
 

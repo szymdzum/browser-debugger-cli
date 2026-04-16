@@ -54,12 +54,8 @@ async function handleIndexGetSemantic(index: number, options: DomGetCommandOptio
       const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
 
       if (!node) {
-        const err = elementAtIndexNotFoundError(index, 'cached query');
-        throw new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
+        const err = elementAtIndexNotFoundError(index);
+        throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
       }
 
       return { success: true, data: { node, domContext } };

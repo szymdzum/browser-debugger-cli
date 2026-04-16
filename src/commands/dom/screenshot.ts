@@ -162,8 +162,13 @@ async function handleSequenceCapture(
   const absoluteDir = path.resolve(outputDir);
   ensureDirectory(absoluteDir, fs);
 
-  const intervalRule = positiveIntRule({ min: 100, max: 60000, default: 1000 });
-  const limitRule = positiveIntRule({ min: 1, max: 10000, required: false });
+  const intervalRule = positiveIntRule({
+    min: 100,
+    max: 60000,
+    default: 1000,
+    fieldName: 'interval',
+  });
+  const limitRule = positiveIntRule({ min: 1, max: 10000, required: false, fieldName: 'limit' });
 
   const interval = intervalRule.validate(options.interval);
   const limit = options.limit ? limitRule.validate(options.limit) : 0;

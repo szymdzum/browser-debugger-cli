@@ -281,6 +281,8 @@ export interface SessionStartOptions {
   chromeWsUrl: string | undefined;
   /** Quiet mode - minimal output for AI agents */
   quiet: boolean;
+  /** Verbose mode - force the post-start landing page even when stdout isn't a TTY */
+  verbose: boolean;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
   chromeFlags: string[] | undefined;
 }

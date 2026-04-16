@@ -220,7 +220,7 @@ export function registerA11yCommands(domCmd: Command): void {
     .enablePositionalOptions()
     .action(async (search: string | undefined, options: A11yDescribeCommandOptions) => {
       if (!search) {
-        a11y.help();
+        await handleA11yTree(options);
         return;
       }
 
@@ -233,7 +233,7 @@ export function registerA11yCommands(domCmd: Command): void {
       } else if (isPatternQuery) {
         await handleA11yQuery(search, options);
       } else {
-        await handleA11yQuery(`name:*${search}*`, options);
+        await handleA11yQuery(`name:${search}`, options);
       }
     });
 

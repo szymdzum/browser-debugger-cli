@@ -121,7 +121,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           )
         );
       } else {
-        console.error(result.error ? genericError(result.error) : unknownError());
+        console.error(genericError(result.error ?? unknownError()));
         if (result.errorContext && typeof result.errorContext === 'object') {
           for (const value of Object.values(result.errorContext)) {
             if (value !== undefined && value !== null) {
@@ -176,7 +176,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           )
         );
       } else {
-        console.error(daemonNotRunningError());
+        console.error(genericError(daemonNotRunningError()));
       }
       process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }

@@ -46,6 +46,7 @@ export const EXIT_CODES = {
   NO_FORMS_FOUND: 88,
   FORM_IN_IFRAME: 89,
   RESOURCE_CONFLICT: 90,
+  NAVIGATION_FAILED: 91,
   CHROME_LAUNCH_FAILURE: 100,
   CDP_CONNECTION_FAILURE: 101,
   CDP_TIMEOUT: 102,
@@ -133,6 +134,12 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     name: 'RESOURCE_CONFLICT',
     description:
       'Request conflicts with current state (e.g., session attached to different target)',
+  },
+  {
+    code: EXIT_CODES.NAVIGATION_FAILED,
+    name: 'NAVIGATION_FAILED',
+    description:
+      'Main-frame navigation failed (unreachable host, SSL error, DNS failure, connection refused)',
   },
   {
     code: EXIT_CODES.CHROME_LAUNCH_FAILURE,

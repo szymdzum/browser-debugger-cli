@@ -4,7 +4,7 @@
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { invalidIntegerError } from '@/ui/messages/validation.js';
+import { invalidIntegerError, outOfRangeError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
 
@@ -19,6 +19,14 @@ export interface IntegerRuleOptions {
   default?: number;
   required?: boolean;
   allowZeroForAll?: boolean;
+  /**
+   * Flag name without dashes (e.g. `'last'`, `'max-body-size'`).
+   *
+   * Surfaced in error messages as `--<fieldName>`. Defaults to `'value'` only
+   * as a safety net — every caller should pass a real name so users see the
+   * flag they typed, not a placeholder.
+   */
+  fieldName?: string;
 }
 
 const VALID_RESOURCE_TYPES = [
@@ -62,16 +70,26 @@ function buildErrorOptions(min?: number, max?: number): { min?: number; max?: nu
 }
 
 function parseInteger(value: unknown, options: IntegerRuleOptions): number {
-  const { min, max, default: defaultValue, required = true, allowZeroForAll = false } = options;
+  const {
+    min,
+    max,
+    default: defaultValue,
+    required = true,
+    allowZeroForAll = false,
+    fieldName = 'value',
+  } = options;
 
   if (value === undefined || value === null) {
     if (defaultValue !== undefined) return defaultValue;
     if (!required) return 0;
-    throwValidationError('Value is required', 'Provide a numeric value for this option');
+    throwValidationError(`--${fieldName} is required`, 'Provide a numeric value for this option');
   }
 
   if (typeof value !== 'string' && typeof value !== 'number') {
-    throwValidationError(`Value must be a number, got ${typeof value}`, 'Provide a numeric value');
+    throwValidationError(
+      `--${fieldName} must be a number, got ${typeof value}`,
+      'Provide a numeric value'
+    );
   }
 
   const parsed = parseInt(String(value).trim(), 10);
@@ -80,7 +98,7 @@ function parseInteger(value: unknown, options: IntegerRuleOptions): number {
 
   if (isNaN(parsed)) {
     throwValidationError(
-      invalidIntegerError('value', String(value), errorOptions),
+      invalidIntegerError(fieldName, String(value), errorOptions),
       rangeSuggestion
     );
   }
@@ -88,17 +106,11 @@ function parseInteger(value: unknown, options: IntegerRuleOptions): number {
   if (parsed === 0 && allowZeroForAll) return 0;
 
   if (min !== undefined && parsed < min) {
-    throwValidationError(
-      invalidIntegerError('value', String(value), errorOptions),
-      rangeSuggestion
-    );
+    throwValidationError(outOfRangeError(fieldName, String(value), errorOptions), rangeSuggestion);
   }
 
   if (max !== undefined && parsed > max) {
-    throwValidationError(
-      invalidIntegerError('value', String(value), errorOptions),
-      rangeSuggestion
-    );
+    throwValidationError(outOfRangeError(fieldName, String(value), errorOptions), rangeSuggestion);
   }
 
   return parsed;

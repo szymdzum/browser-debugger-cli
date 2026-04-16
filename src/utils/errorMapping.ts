@@ -48,6 +48,9 @@ export function getExitCodeForIPCError(errorCode?: IPCErrorCode): number {
     case IPCErrorCode.WORKER_START_FAILED:
       return EXIT_CODES.WORKER_START_FAILURE;
 
+    case IPCErrorCode.NAVIGATION_FAILED:
+      return EXIT_CODES.NAVIGATION_FAILED;
+
     case IPCErrorCode.DAEMON_ERROR:
       return EXIT_CODES.SOFTWARE_ERROR;
 

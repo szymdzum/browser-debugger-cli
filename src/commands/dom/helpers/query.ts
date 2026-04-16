@@ -66,6 +66,22 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
     nodeId: rootNodeId,
     selector,
   });
+  // Surface CDP-side rejection of the selector as an argument error rather
+  // than silently returning "no nodes found". CDP returns status:'error' +
+  // "DOM Error while querying" when a selector has a syntax problem.
+  if (queryResponse.status === 'error') {
+    const cdpError = queryResponse.error ?? 'CDP rejected the selector';
+    if (/DOM Error|invalid.*selector|SyntaxError/i.test(cdpError)) {
+      throw new CommandError(
+        `Invalid CSS selector: ${selector}`,
+        {
+          suggestion: 'Check the selector syntax. Examples: ".class", "#id", "tag[attr=value]"',
+        },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
+    throw new CommandError(cdpError, {}, EXIT_CODES.CDP_CONNECTION_FAILURE);
+  }
   const queryResult = queryResponse.data?.result as
     | Protocol.DOM.QuerySelectorAllResponse
     | undefined;

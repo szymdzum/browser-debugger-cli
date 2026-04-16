@@ -32,7 +32,7 @@ export function sessionAlreadyRunningError(
 ): string {
   return joinLines(
     '',
-    'Error: Session already running',
+    'Session already running',
     '',
     `  PID:      ${pid}`,
     targetUrl && `  Target:   ${targetUrl}`,
@@ -70,7 +70,7 @@ export function sessionTargetMismatchError(
 ): string {
   return joinLines(
     '',
-    'Error: Active session is attached to a different Chrome target',
+    'Active session is attached to a different Chrome target',
     '',
     `  Current:   ${currentTarget ?? '(unknown)'}`,
     `  Requested: ${requestedTarget ?? '(unknown)'}`,
@@ -119,7 +119,7 @@ export interface DaemonErrorContext {
  */
 export function daemonNotRunningError(context?: DaemonErrorContext): string {
   return joinLines(
-    'Error: Daemon not running',
+    'Daemon not running',
     context?.staleCleanedUp && '(Stale PID file was cleaned up)',
     context?.lastError && `Last error: ${context.lastError}`,
     '',
@@ -158,7 +158,7 @@ export function genericError(message: string, context?: string): string {
  * @returns Formatted error message
  */
 export function unknownError(): string {
-  return 'Error: Unknown error';
+  return 'Unknown error';
 }
 
 /**
@@ -196,7 +196,7 @@ export function elementNotFoundError(selector: string): string {
 
   if (quoteCheck.damaged) {
     return joinLines(
-      `Error: Element not found: ${selector}`,
+      `Element not found: ${selector}`,
       '',
       'Shell quote handling detected. Selector received without quotes.',
       quoteCheck.details && `  ${quoteCheck.details}`,
@@ -212,7 +212,7 @@ export function elementNotFoundError(selector: string): string {
 
   if (hasAttributeSelector(selector)) {
     return joinLines(
-      `Error: Element not found: ${selector}`,
+      `Element not found: ${selector}`,
       '',
       'Attribute selector detected. If quotes were stripped by shell:',
       '',
@@ -227,7 +227,7 @@ export function elementNotFoundError(selector: string): string {
   }
 
   return joinLines(
-    `Error: Element not found: ${selector}`,
+    `Element not found: ${selector}`,
     '',
     'Suggestions:',
     '  - Check the selector syntax',
@@ -259,11 +259,19 @@ export function indexOutOfRangeError(index: number, max: number): ErrorWithSugge
 
 /**
  * Element at index not found (stale cache).
+ *
+ * @param index - Zero-based index from the cached query
+ * @param selector - Original selector used by the cache, when known. When
+ *   omitted (e.g. callers that don't carry the selector forward), a generic
+ *   suggestion is emitted so the message never renders a literal "cached
+ *   query" placeholder as if it were a real argument.
  */
-export function elementAtIndexNotFoundError(index: number, selector: string): ErrorWithSuggestion {
+export function elementAtIndexNotFoundError(index: number, selector?: string): ErrorWithSuggestion {
   return {
     message: `Element at index ${index} not found`,
-    suggestion: `Re-run "bdg dom query ${selector}" to refresh the cache`,
+    suggestion: selector
+      ? `Re-run "bdg dom query ${selector}" to refresh the cache`
+      : 'Re-run your original query to refresh the cache',
   };
 }
 
@@ -423,7 +431,11 @@ export function scriptExecutionError(
     lines.push('');
     lines.push('Tips:');
     lines.push("  - Use single quotes around script: bdg dom eval '...'");
-    lines.push('  - For complex scripts, use heredoc or --file option');
+    lines.push('  - For complex scripts, pipe in via a heredoc:');
+    lines.push("      bdg dom eval \"$(cat <<'EOF'");
+    lines.push('        /* script */');
+    lines.push('      EOF');
+    lines.push('      )"');
     lines.push('  - Escape inner quotes: \\" or use opposite quote style');
   }
 
