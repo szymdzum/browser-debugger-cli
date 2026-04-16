@@ -2,10 +2,11 @@ import os from 'node:os';
 
 import type { Command } from 'commander';
 
+import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
-import { genericError } from '@/errors/messages.js';
+import { CommandError } from '@/errors/index.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -206,26 +207,35 @@ export function registerStartCommands(program: Command): void {
       process.exit(0);
     }
 
-    const validation = validateUrl(url);
-    if (!validation.valid) {
-      console.error(genericError(validation.error));
-      if (validation.suggestion) {
-        console.error(`Suggestion: ${validation.suggestion}`);
+    try {
+      assertValidUrl(url);
+      if (options.chromeWsUrl !== undefined) {
+        assertValidChromeWsUrl(options.chromeWsUrl);
       }
-      process.exit(EXIT_CODES.INVALID_URL);
-    }
-
-    if (options.chromeWsUrl !== undefined) {
-      const wsValidation = validateChromeWsUrl(options.chromeWsUrl);
-      if (!wsValidation.valid) {
-        console.error(genericError(wsValidation.error));
-        if (wsValidation.suggestion) {
-          console.error(`Suggestion: ${wsValidation.suggestion}`);
-        }
-        process.exit(EXIT_CODES.INVALID_URL);
-      }
+    } catch (error) {
+      handleValidationError(error, false);
     }
 
     await collectorAction(url, options);
   });
+}
+
+function assertValidUrl(url: string): void {
+  const result = validateUrl(url);
+  if (result.valid) return;
+  throw new CommandError(
+    result.error,
+    result.suggestion ? { suggestion: result.suggestion } : {},
+    EXIT_CODES.INVALID_URL
+  );
+}
+
+function assertValidChromeWsUrl(url: string): void {
+  const result = validateChromeWsUrl(url);
+  if (result.valid) return;
+  throw new CommandError(
+    result.error,
+    result.suggestion ? { suggestion: result.suggestion } : {},
+    EXIT_CODES.INVALID_URL
+  );
 }

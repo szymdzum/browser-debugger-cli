@@ -28,7 +28,7 @@
 
 import { CommandError } from '@/errors/index.js';
 import { elementAtIndexNotFoundError, indexOutOfRangeError } from '@/errors/messages.js';
-import { QueryCacheManager } from '@/session/QueryCacheManager.js';
+import { QueryCacheManager, type QueryCacheValidation } from '@/session/QueryCacheManager.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -112,6 +112,13 @@ export class DomElementResolver {
     log.debug(`Cache refreshed: found ${result.count} elements`);
   }
 
+  private async validateWithAutoRefresh(): Promise<QueryCacheValidation> {
+    const validation = await this.cacheManager.validate();
+    if (validation.valid || !validation.cache?.selector) return validation;
+    await this.refreshCache(validation.cache.selector);
+    return this.cacheManager.validate();
+  }
+
   /**
    * Get the singleton instance.
    *
@@ -157,13 +164,7 @@ export class DomElementResolver {
     const isNumericIndex = /^\d+$/.test(selectorOrIndex);
 
     if (isNumericIndex) {
-      let validation = await this.cacheManager.validate();
-
-      // Auto-refresh: if cache is stale but has selector, re-run query
-      if (!validation.valid && validation.cache?.selector) {
-        await this.refreshCache(validation.cache.selector);
-        validation = await this.cacheManager.validate();
-      }
+      const validation = await this.validateWithAutoRefresh();
 
       if (!validation.valid || !validation.cache) {
         return {
@@ -245,13 +246,7 @@ export class DomElementResolver {
    * ```
    */
   async getNodeIdForIndex(index: number): Promise<{ nodeId: number }> {
-    let validation = await this.cacheManager.validate();
-
-    // Auto-refresh: if cache is stale but has selector, re-run query
-    if (!validation.valid && validation.cache?.selector) {
-      await this.refreshCache(validation.cache.selector);
-      validation = await this.cacheManager.validate();
-    }
+    const validation = await this.validateWithAutoRefresh();
 
     if (!validation.valid || !validation.cache) {
       throw new CommandError(
@@ -290,13 +285,7 @@ export class DomElementResolver {
    * @throws CommandError if cache is missing or refresh fails
    */
   async getElementCount(): Promise<number> {
-    let validation = await this.cacheManager.validate();
-
-    // Auto-refresh: if cache is stale but has selector, re-run query
-    if (!validation.valid && validation.cache?.selector) {
-      await this.refreshCache(validation.cache.selector);
-      validation = await this.cacheManager.validate();
-    }
+    const validation = await this.validateWithAutoRefresh();
 
     if (!validation.valid || !validation.cache) {
       throw new CommandError(

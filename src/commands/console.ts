@@ -14,6 +14,7 @@ import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import type { ConsoleMessage } from '@/types.js';
 import {
+  buildConsoleJsonOutput,
   formatConsole,
   formatConsoleFollow,
   LEVEL_MAP,
@@ -134,17 +135,26 @@ export function registerConsoleCommand(program: Command): void {
         return;
       }
 
-      await runCommand(
+      await runCommand<ConsoleCommandOptions, unknown>(
         async () => {
           const result = await fetchConsoleMessages();
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode);
           }
           const filtered = applyFilters(result.data, options);
+          if (options.json) {
+            return {
+              success: true,
+              data: buildConsoleJsonOutput(filtered, buildFormatOptions(options, lastN)),
+            };
+          }
           return { success: true, data: { messages: result.data, filtered } };
         },
         options,
-        (data: ConsoleResult) => formatConsole(data.filtered, buildFormatOptions(options, lastN))
+        (data) => {
+          const { filtered } = data as ConsoleResult;
+          return formatConsole(filtered, buildFormatOptions(options, lastN));
+        }
       );
     });
 }

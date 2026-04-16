@@ -6,8 +6,7 @@ import type { Command, Option, Argument } from 'commander';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { getOptionBehavior } from '@/commands/optionBehaviors.js';
-import { isDaemonRunning } from '@/daemon/launcher.js';
-import { readPid } from '@/session/pid.js';
+import { readDaemonPid, readPid } from '@/session/pid.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
 import { EXIT_CODE_REGISTRY } from '@/utils/exitCodes.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -254,6 +253,19 @@ function isSessionActive(): boolean {
 }
 
 /**
+ * Checks if the daemon is currently running by reading its PID file.
+ *
+ * @returns True if daemon process is alive, false otherwise
+ */
+function isDaemonAlive(): boolean {
+  const daemonPid = readDaemonPid();
+  if (daemonPid === null) {
+    return false;
+  }
+  return isProcessAlive(daemonPid);
+}
+
+/**
  * Generates runtime state information.
  *
  * Checks current daemon and session status to provide state-aware
@@ -262,7 +274,7 @@ function isSessionActive(): boolean {
  * @returns Runtime state object
  */
 function generateRuntimeState(): RuntimeState {
-  const daemonRunning = isDaemonRunning();
+  const daemonRunning = isDaemonAlive();
   const sessionActive = isSessionActive();
 
   const availableCommands: string[] = [];
