@@ -30,6 +30,12 @@ import { SessionHandlers } from './SessionHandlers.js';
 type SendResponseFn = (socket: Socket, response: unknown) => void;
 
 /**
+ * Callback invoked when a handler requests daemon shutdown (e.g., after a
+ * successful stop_session).
+ */
+type RequestShutdownFn = () => void;
+
+/**
  * Facade for all request handlers.
  * Delegates to specialized handler classes.
  */
@@ -43,9 +49,15 @@ export class RequestHandlers {
     pendingRequests: PendingRequestManager,
     sessionService: ISessionService,
     sendResponse: SendResponseFn,
-    daemonStartTime: number
+    daemonStartTime: number,
+    requestShutdown: RequestShutdownFn
   ) {
-    this.sessionHandlers = new SessionHandlers(workerManager, sessionService, sendResponse);
+    this.sessionHandlers = new SessionHandlers(
+      workerManager,
+      sessionService,
+      sendResponse,
+      requestShutdown
+    );
 
     this.queryHandlers = new QueryHandlers(
       workerManager,

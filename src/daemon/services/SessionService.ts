@@ -5,7 +5,8 @@
  * Prevents handlers from coupling to filesystem implementation details.
  */
 
-import { cleanupSession } from '@/session/cleanup.js';
+import { cleanupAfterSessionEnd } from '@/session/cleanup/postSession.js';
+import { recoverStaleSessionAtRuntime } from '@/session/cleanup/runtime.js';
 import { acquireDaemonLock, releaseDaemonLock } from '@/session/lock.js';
 import { readSessionMetadata, writeSessionMetadata } from '@/session/metadata.js';
 import type { SessionMetadata } from '@/session/metadata.js';
@@ -63,6 +64,17 @@ export interface ISessionService {
   cleanup(): void;
 
   /**
+   * Force-recover a stale session detected while the daemon is alive.
+   *
+   * Kills the worker (and bdg-launched Chrome if known) and clears session
+   * files. Leaves daemon files untouched.
+   *
+   * @param workerPid - Worker process ID to terminate
+   * @param chromePid - Chrome PID when bdg launched Chrome (otherwise omit)
+   */
+  forceRecoverStaleSession(workerPid: number, chromePid?: number): Promise<void>;
+
+  /**
    * Acquire daemon lock to prevent concurrent sessions.
    *
    * @throws Error if lock cannot be acquired
@@ -110,7 +122,11 @@ export class SessionService implements ISessionService {
   }
 
   cleanup(): void {
-    cleanupSession();
+    cleanupAfterSessionEnd();
+  }
+
+  async forceRecoverStaleSession(workerPid: number, chromePid?: number): Promise<void> {
+    await recoverStaleSessionAtRuntime(workerPid, chromePid);
   }
 
   acquireLock(): void {

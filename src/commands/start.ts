@@ -9,6 +9,7 @@ import { genericError } from '@/errors/messages.js';
 import type { TelemetryType } from '@/types';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -205,14 +206,24 @@ export function registerStartCommands(program: Command): void {
       process.exit(0);
     }
 
-    const { validateUrl } = await import('@/utils/url.js');
     const validation = validateUrl(url);
     if (!validation.valid) {
-      console.error(genericError(validation.error ?? 'Invalid URL'));
+      console.error(genericError(validation.error));
       if (validation.suggestion) {
         console.error(`Suggestion: ${validation.suggestion}`);
       }
       process.exit(EXIT_CODES.INVALID_URL);
+    }
+
+    if (options.chromeWsUrl !== undefined) {
+      const wsValidation = validateChromeWsUrl(options.chromeWsUrl);
+      if (!wsValidation.valid) {
+        console.error(genericError(wsValidation.error));
+        if (wsValidation.suggestion) {
+          console.error(`Suggestion: ${wsValidation.suggestion}`);
+        }
+        process.exit(EXIT_CODES.INVALID_URL);
+      }
     }
 
     await collectorAction(url, options);

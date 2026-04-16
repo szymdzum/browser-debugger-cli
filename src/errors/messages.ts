@@ -46,6 +46,41 @@ export function sessionAlreadyRunningError(
 }
 
 /**
+ * Human-readable description of a bdg-launched Chrome (as opposed to one
+ * reached via `--chrome-ws-url`). Used in mismatch errors where the active
+ * session or the caller's intent is launched-mode.
+ */
+export const LAUNCHED_CHROME_DESCRIPTION = 'launched Chrome (bdg-managed)';
+
+/**
+ * Generate "session target mismatch" error message.
+ *
+ * Raised when a new start-session request names a different Chrome target
+ * (or switches between launched and attached modes) while an active session
+ * is healthy. Distinct from `sessionAlreadyRunningError` so agents can react
+ * programmatically via exit code + IPC error code.
+ *
+ * @param currentTarget - Target URL / ws URL / description of the active session
+ * @param requestedTarget - The ws URL / description of what the caller asked for
+ * @returns Formatted error message
+ */
+export function sessionTargetMismatchError(
+  currentTarget: string | undefined,
+  requestedTarget: string | undefined
+): string {
+  return joinLines(
+    '',
+    'Error: Active session is attached to a different Chrome target',
+    '',
+    `  Current:   ${currentTarget ?? '(unknown)'}`,
+    `  Requested: ${requestedTarget ?? '(unknown)'}`,
+    '',
+    "Run 'bdg stop' before attaching to a different target.",
+    ''
+  );
+}
+
+/**
  * Context for daemon error messages.
  */
 export interface DaemonErrorContext {

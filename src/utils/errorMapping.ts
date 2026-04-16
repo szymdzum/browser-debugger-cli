@@ -33,6 +33,9 @@ export function getExitCodeForIPCError(errorCode?: IPCErrorCode): number {
     case IPCErrorCode.SESSION_ALREADY_RUNNING:
       return EXIT_CODES.RESOURCE_ALREADY_EXISTS;
 
+    case IPCErrorCode.SESSION_TARGET_MISMATCH:
+      return EXIT_CODES.RESOURCE_CONFLICT;
+
     case IPCErrorCode.CHROME_LAUNCH_FAILED:
       return EXIT_CODES.CHROME_LAUNCH_FAILURE;
 
@@ -43,7 +46,7 @@ export function getExitCodeForIPCError(errorCode?: IPCErrorCode): number {
       return EXIT_CODES.SESSION_FILE_ERROR;
 
     case IPCErrorCode.WORKER_START_FAILED:
-      return EXIT_CODES.CDP_CONNECTION_FAILURE;
+      return EXIT_CODES.WORKER_START_FAILURE;
 
     case IPCErrorCode.DAEMON_ERROR:
       return EXIT_CODES.SOFTWARE_ERROR;

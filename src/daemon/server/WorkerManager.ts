@@ -95,7 +95,7 @@ export class WorkerManager extends EventEmitter {
     this.worker = worker;
 
     if (!worker.stdout) {
-      console.error('[daemon] Worker stdout not available');
+      this.log.info('Worker stdout not available');
     } else {
       worker.stdout.on('data', (chunk: Buffer) => this.handleStdout(chunk));
     }
@@ -107,7 +107,7 @@ export class WorkerManager extends EventEmitter {
     }
 
     worker.on('exit', (code, signal) => {
-      this.log.info(`[daemon] Worker exited (code: ${code} signal: ${signal ?? 'null'})`);
+      this.log.info(`Worker exited (code: ${code} signal: ${signal ?? 'null'})`);
       this.emit('exit', code, signal);
       this.dispose();
     });

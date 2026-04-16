@@ -11,7 +11,10 @@ import type { Socket } from 'net';
 import type { WorkerManager } from '@/daemon/server/WorkerManager.js';
 import type { CommandName, WorkerRequestUnion } from '@/ipc/index.js';
 import type { StatusResponseData } from '@/ipc/session/index.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+
+const log = createLogger('daemon');
 
 /**
  * Response sender function type.
@@ -72,7 +75,7 @@ export class BaseHandler {
       error: errorMessage,
     };
     this.sendResponse(socket, response);
-    console.error(`[daemon] ${commandName} error response sent (no worker)`);
+    log.info(`${commandName} error response sent (no worker)`);
   }
 
   /**
@@ -99,7 +102,7 @@ export class BaseHandler {
       ...(statusData && { data: statusData }),
     };
     this.sendResponse(socket, response);
-    console.error(`[daemon] ${commandName} error response sent: ${error}`);
+    log.info(`${commandName} error response sent: ${error}`);
   }
 
   /**
@@ -139,7 +142,7 @@ export class BaseHandler {
 
     try {
       this.workerManager.send(workerRequest);
-      console.error(`[daemon] Forwarded ${workerRequest.type} to worker (requestId: ${requestId})`);
+      log.info(`Forwarded ${workerRequest.type} to worker (requestId: ${requestId})`);
     } catch (error) {
       this.pendingRequests.remove(requestId);
       this.sendErrorResponse(socket, sessionId, commandName, getErrorMessage(error), statusData);

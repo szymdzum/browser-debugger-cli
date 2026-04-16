@@ -30,12 +30,12 @@ export class SocketServer {
       });
 
       this.server.on('error', (error) => {
-        console.error(`[daemon] Socket server error: ${error.message}`);
+        this.log.info(`Socket server error: ${error.message}`);
         reject(error);
       });
 
       this.server.listen(socketPath, () => {
-        this.log.info(`[daemon] IPC server listening on ${socketPath}`);
+        this.log.info(`IPC server listening on ${socketPath}`);
         resolve();
       });
     });
@@ -53,7 +53,7 @@ export class SocketServer {
     if (this.server) {
       await new Promise<void>((resolve) => {
         this.server?.close(() => {
-          this.log.info('[daemon] IPC server stopped');
+          this.log.info('IPC server stopped');
           resolve();
         });
       });

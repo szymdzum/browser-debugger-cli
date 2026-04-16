@@ -19,10 +19,13 @@ import {
   type WorkerRequestUnion,
 } from '@/ipc/index.js';
 import { generateRequestId } from '@/ipc/utils/requestId.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
 import { BaseHandler } from './BaseHandler.js';
+
+const log = createLogger('daemon');
 
 /**
  * Response sender function type.
@@ -47,7 +50,7 @@ export class QueryHandlers extends BaseHandler {
    * Handle status request.
    */
   handleStatus(socket: Socket, request: StatusRequest): void {
-    console.error(`[daemon] Status request received (sessionId: ${request.sessionId})`);
+    log.info(`Status request received (sessionId: ${request.sessionId})`);
 
     try {
       const data: StatusResponseData = {
@@ -98,7 +101,7 @@ export class QueryHandlers extends BaseHandler {
       };
 
       this.sendResponse(socket, response);
-      console.error('[daemon] Status response sent');
+      log.info('Status response sent');
     } catch (error) {
       const response: StatusResponse = {
         type: 'status_response',
@@ -108,7 +111,7 @@ export class QueryHandlers extends BaseHandler {
       };
 
       this.sendResponse(socket, response);
-      console.error('[daemon] Status error response sent');
+      log.info('Status error response sent');
     }
   }
 
@@ -116,7 +119,7 @@ export class QueryHandlers extends BaseHandler {
    * Handle HAR data request - forward to worker via IPC.
    */
   handleHARData(socket: Socket, request: HARDataRequest): void {
-    console.error(`[daemon] HAR data request received (sessionId: ${request.sessionId})`);
+    log.info(`HAR data request received (sessionId: ${request.sessionId})`);
 
     if (!this.hasActiveWorker()) {
       this.sendNoWorkerResponse(socket, request.sessionId, 'har_data', 'No active session');
@@ -140,7 +143,7 @@ export class QueryHandlers extends BaseHandler {
    * Handle peek request - forward to worker via IPC.
    */
   handlePeek(socket: Socket, request: PeekRequest): void {
-    console.error(`[daemon] Peek request received (sessionId: ${request.sessionId})`);
+    log.info(`Peek request received (sessionId: ${request.sessionId})`);
 
     if (!this.hasActiveWorker()) {
       this.sendNoWorkerResponse(socket, request.sessionId, 'peek', 'No active session');

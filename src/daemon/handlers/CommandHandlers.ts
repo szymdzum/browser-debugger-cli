@@ -17,8 +17,11 @@ import {
   type WorkerRequestUnion,
 } from '@/ipc/index.js';
 import { generateRequestId } from '@/ipc/utils/requestId.js';
+import { createLogger } from '@/ui/logging/index.js';
 
 import { BaseHandler } from './BaseHandler.js';
+
+const log = createLogger('daemon');
 
 /**
  * Response sender function type.
@@ -48,7 +51,7 @@ export class CommandHandlers extends BaseHandler {
    * Handle handshake request.
    */
   handleHandshake(socket: Socket, request: HandshakeRequest): void {
-    console.error(`[daemon] Handshake request received (sessionId: ${request.sessionId})`);
+    log.info(`Handshake request received (sessionId: ${request.sessionId})`);
 
     const response: HandshakeResponse = {
       type: 'handshake_response',
@@ -58,7 +61,7 @@ export class CommandHandlers extends BaseHandler {
     };
 
     this.sendResponse(socket, response);
-    console.error('[daemon] Handshake response sent');
+    log.info('Handshake response sent');
   }
 
   /**
@@ -67,7 +70,7 @@ export class CommandHandlers extends BaseHandler {
   handleCommand(socket: Socket, request: ClientRequestUnion): void {
     const commandName = request.type.replace('_request', '') as CommandName;
 
-    console.error(`[daemon] ${commandName} request received (sessionId: ${request.sessionId})`);
+    log.info(`${commandName} request received (sessionId: ${request.sessionId})`);
 
     if (!this.hasActiveWorker()) {
       this.sendNoWorkerResponse(socket, request.sessionId, commandName);

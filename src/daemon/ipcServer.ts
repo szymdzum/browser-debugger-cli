@@ -57,7 +57,8 @@ export class IPCServer {
       this.pendingRequests,
       this.sessionService,
       (socket, response) => this.sendResponse(socket, response),
-      this.startTime
+      this.startTime,
+      () => this.scheduleShutdown()
     );
 
     this.responseHandler = new ResponseHandler(
@@ -79,6 +80,20 @@ export class IPCServer {
    */
   private sendResponse(socket: Socket, response: unknown): void {
     socket.write(JSON.stringify(response) + '\n');
+  }
+
+  /**
+   * Schedule daemon shutdown after a successful stop.
+   *
+   * Delays the exit so the response write can flush to the client socket
+   * before the event loop tears down. Kept here (not in SessionHandlers) so
+   * `process.exit` stays at the daemon boundary, not inside request handling.
+   */
+  private scheduleShutdown(): void {
+    setTimeout(() => {
+      log.info('Shutting down daemon after successful stop');
+      process.exit(0);
+    }, 100);
   }
 
   /**
@@ -214,9 +229,9 @@ export class IPCServer {
     try {
       AtomicFileWriter.writeSync(pidPath, process.pid.toString(), { encoding: 'utf-8' });
       releaseDaemonLock(); // Release lock after PID is written (P0 Fix #1)
-      console.error(`[daemon] PID file written: ${pidPath}`);
+      log.info(`PID file written: ${pidPath}`);
     } catch (error) {
-      console.error('[daemon] Failed to write PID file:', error);
+      log.info(`Failed to write PID file: ${getErrorMessage(error)}`);
     }
   }
 

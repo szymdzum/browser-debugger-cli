@@ -45,12 +45,14 @@ export const EXIT_CODES = {
   STALE_CACHE: 87,
   NO_FORMS_FOUND: 88,
   FORM_IN_IFRAME: 89,
+  RESOURCE_CONFLICT: 90,
   CHROME_LAUNCH_FAILURE: 100,
   CDP_CONNECTION_FAILURE: 101,
   CDP_TIMEOUT: 102,
   SESSION_FILE_ERROR: 103,
   UNHANDLED_EXCEPTION: 104,
   SIGNAL_HANDLER_ERROR: 105,
+  WORKER_START_FAILURE: 106,
   SOFTWARE_ERROR: 110,
 } as const;
 
@@ -127,6 +129,12 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     description: 'Form is inside an iframe (cross-origin or same-origin)',
   },
   {
+    code: EXIT_CODES.RESOURCE_CONFLICT,
+    name: 'RESOURCE_CONFLICT',
+    description:
+      'Request conflicts with current state (e.g., session attached to different target)',
+  },
+  {
     code: EXIT_CODES.CHROME_LAUNCH_FAILURE,
     name: 'CHROME_LAUNCH_FAILURE',
     description: 'Chrome browser failed to launch',
@@ -151,6 +159,11 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.SIGNAL_HANDLER_ERROR,
     name: 'SIGNAL_HANDLER_ERROR',
     description: 'Signal handler error',
+  },
+  {
+    code: EXIT_CODES.WORKER_START_FAILURE,
+    name: 'WORKER_START_FAILURE',
+    description: 'Worker process failed to start (spawn, ready-signal, or crash)',
   },
   {
     code: EXIT_CODES.SOFTWARE_ERROR,

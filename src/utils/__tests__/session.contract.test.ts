@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { mockProcessAlive, restoreProcessAlive } from '@/__testutils__/testProcess.js';
-import { cleanupStaleSession } from '@/session/cleanup.js';
+import { cleanupBeforeDaemonStart } from '@/session/cleanup/preStart.js';
 import { acquireSessionLock, releaseSessionLock } from '@/session/lock.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionFilePath } from '@/session/paths.js';
@@ -214,7 +214,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([]);
 
       // Act
-      const cleaned = cleanupStaleSession();
+      const cleaned = cleanupBeforeDaemonStart();
 
       // Assert
       assert.equal(cleaned, true, 'Should return true when cleanup was performed');
@@ -241,7 +241,7 @@ void describe('Session Utilities Contract Tests', () => {
       // Only worker PID is alive
       mockProcessAlive([88888]);
 
-      const cleaned = cleanupStaleSession();
+      const cleaned = cleanupBeforeDaemonStart();
 
       assert.equal(cleaned, true, 'Should clean up when daemon died but worker survived');
       assert.equal(
@@ -275,7 +275,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([88888, 66666]);
 
       // Act
-      const cleaned = cleanupStaleSession();
+      const cleaned = cleanupBeforeDaemonStart();
 
       // Assert
       assert.equal(cleaned, false, 'Should return false when session is active');
@@ -294,7 +294,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([66666]);
 
       // Act
-      const cleaned = cleanupStaleSession();
+      const cleaned = cleanupBeforeDaemonStart();
 
       // Assert
       assert.equal(cleaned, false, 'Should return false when daemon is still alive');
@@ -318,7 +318,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([]);
 
       // Act
-      const cleaned = cleanupStaleSession();
+      const cleaned = cleanupBeforeDaemonStart();
 
       // Assert
       assert.equal(cleaned, true, 'Should cleanup when daemon is dead');
@@ -339,7 +339,7 @@ void describe('Session Utilities Contract Tests', () => {
       mockProcessAlive([]);
 
       // Act - should not throw
-      const cleaned = cleanupStaleSession();
+      const cleaned = cleanupBeforeDaemonStart();
 
       // Assert
       assert.equal(cleaned, true, 'Should succeed even with no files');
