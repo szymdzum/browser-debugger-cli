@@ -533,13 +533,14 @@ void describe('CommandRegistry', () => {
 
   void describe('worker_network_headers', () => {
     void describe('smart default selection', () => {
-      void it('selects most recent HTML request', async () => {
+      void it('selects most recent Document resource', async () => {
         store.networkRequests.push(
           {
             requestId: 'req-1',
             timestamp: 100,
             method: 'GET',
             url: 'http://a.com',
+            resourceType: 'Document',
             mimeType: 'text/html',
             responseHeaders: { 'content-type': 'text/html' },
           },
@@ -548,6 +549,7 @@ void describe('CommandRegistry', () => {
             timestamp: 200,
             method: 'GET',
             url: 'http://b.com/image.png',
+            resourceType: 'Image',
             mimeType: 'image/png',
             responseHeaders: { 'content-type': 'image/png' },
           },
@@ -556,6 +558,7 @@ void describe('CommandRegistry', () => {
             timestamp: 300,
             method: 'GET',
             url: 'http://c.com',
+            resourceType: 'Document',
             mimeType: 'text/html',
             responseHeaders: { 'content-type': 'text/html; charset=utf-8' },
           }
@@ -567,30 +570,36 @@ void describe('CommandRegistry', () => {
         assert.equal(result.url, 'http://c.com');
       });
 
-      void it('falls back to most recent request with headers when no HTML', async () => {
+      void it('rejects when no Document request exists (avoids picking favicon/API by mimeType)', async () => {
         store.networkRequests.push(
           {
-            requestId: 'req-1',
+            requestId: 'req-favicon',
             timestamp: 100,
             method: 'GET',
-            url: 'http://a.com/image.png',
-            mimeType: 'image/png',
-            responseHeaders: {},
+            url: 'http://a.com/favicon.ico',
+            resourceType: 'Other',
+            mimeType: 'text/html',
+            responseHeaders: { 'content-type': 'text/html' },
           },
           {
-            requestId: 'req-2',
+            requestId: 'req-api',
             timestamp: 200,
             method: 'GET',
             url: 'http://b.com/api',
+            resourceType: 'XHR',
             mimeType: 'application/json',
             responseHeaders: { 'content-type': 'application/json' },
           }
         );
 
-        const result = await registry.worker_network_headers(mockCdp, {});
-
-        assert.equal(result.requestId, 'req-2');
-        assert.equal(result.url, 'http://b.com/api');
+        await assert.rejects(
+          async () => {
+            await registry.worker_network_headers(mockCdp, {});
+          },
+          {
+            message: /No main document request captured/,
+          }
+        );
       });
 
       void it('returns request even when headers are undefined', async () => {
@@ -599,6 +608,7 @@ void describe('CommandRegistry', () => {
           timestamp: 100,
           method: 'GET',
           url: 'http://a.com',
+          resourceType: 'Document',
           mimeType: 'text/html',
         });
 
@@ -615,7 +625,7 @@ void describe('CommandRegistry', () => {
             await registry.worker_network_headers(mockCdp, {});
           },
           {
-            message: 'No network requests with headers found',
+            message: /No main document request captured/,
           }
         );
       });
@@ -699,6 +709,7 @@ void describe('CommandRegistry', () => {
           timestamp: 100,
           method: 'GET',
           url: 'http://example.com',
+          resourceType: 'Document',
           mimeType: 'text/html',
           requestHeaders: { 'User-Agent': 'Chrome', Accept: 'text/html' },
           responseHeaders: {
@@ -722,6 +733,7 @@ void describe('CommandRegistry', () => {
           timestamp: 100,
           method: 'GET',
           url: 'http://example.com',
+          resourceType: 'Document',
           mimeType: 'text/html',
           responseHeaders: {
             'Content-Type': 'text/html',
@@ -742,6 +754,7 @@ void describe('CommandRegistry', () => {
           timestamp: 100,
           method: 'GET',
           url: 'http://example.com',
+          resourceType: 'Document',
           mimeType: 'text/html',
           responseHeaders: { 'Content-Type': 'text/html' },
         });
@@ -760,6 +773,7 @@ void describe('CommandRegistry', () => {
           timestamp: 100,
           method: 'POST',
           url: 'http://api.example.com',
+          resourceType: 'Document',
           mimeType: 'application/json',
           requestHeaders: {
             'Content-Type': 'application/json',
