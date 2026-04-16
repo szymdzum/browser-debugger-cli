@@ -571,7 +571,8 @@ export class CDPConnection implements CDPEventSource {
     params: Record<string, unknown> = {},
     sessionId?: string
   ): Promise<unknown> {
-    if (this.ws?.readyState !== WebSocket.OPEN) {
+    const ws = this.ws;
+    if (ws?.readyState !== WebSocket.OPEN) {
       throw new CDPConnectionError(NOT_CONNECTED_BROWSER_ERROR);
     }
 
@@ -615,8 +616,7 @@ export class CDPConnection implements CDPEventSource {
         timeout,
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      this.ws!.send(JSON.stringify(message));
+      ws.send(JSON.stringify(message));
     });
   }
 
