@@ -14,6 +14,8 @@ export enum IPCErrorCode {
   SESSION_KILL_FAILED = 'SESSION_KILL_FAILED',
   /** Attempted to start session when one is already running. */
   SESSION_ALREADY_RUNNING = 'SESSION_ALREADY_RUNNING',
+  /** Active session is attached to a different target than the new request. */
+  SESSION_TARGET_MISMATCH = 'SESSION_TARGET_MISMATCH',
   /** Worker process failed to start. */
   WORKER_START_FAILED = 'WORKER_START_FAILED',
   /** Chrome browser failed to launch. */

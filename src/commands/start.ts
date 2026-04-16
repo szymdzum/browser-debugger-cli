@@ -205,7 +205,7 @@ export function registerStartCommands(program: Command): void {
       process.exit(0);
     }
 
-    const { validateUrl } = await import('@/utils/url.js');
+    const { validateUrl, validateChromeWsUrl } = await import('@/utils/url.js');
     const validation = validateUrl(url);
     if (!validation.valid) {
       console.error(genericError(validation.error ?? 'Invalid URL'));
@@ -213,6 +213,17 @@ export function registerStartCommands(program: Command): void {
         console.error(`Suggestion: ${validation.suggestion}`);
       }
       process.exit(EXIT_CODES.INVALID_URL);
+    }
+
+    if (options.chromeWsUrl !== undefined) {
+      const wsValidation = validateChromeWsUrl(options.chromeWsUrl);
+      if (!wsValidation.valid) {
+        console.error(genericError(wsValidation.error ?? 'Invalid --chrome-ws-url'));
+        if (wsValidation.suggestion) {
+          console.error(`Suggestion: ${wsValidation.suggestion}`);
+        }
+        process.exit(EXIT_CODES.INVALID_URL);
+      }
     }
 
     await collectorAction(url, options);

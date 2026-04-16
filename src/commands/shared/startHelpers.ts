@@ -8,7 +8,9 @@
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
 import {
+  LAUNCHED_CHROME_DESCRIPTION,
   sessionAlreadyRunningError,
+  sessionTargetMismatchError,
   daemonNotRunningError,
   invalidResponseError,
   genericError,
@@ -66,6 +68,10 @@ export async function startSessionViaDaemon(
         const { pid, targetUrl, duration } = response.existingSession;
         const durationMs = duration ? duration * 1000 : 0;
         console.error(sessionAlreadyRunningError(pid, durationMs, targetUrl));
+      } else if (response.errorCode === IPCErrorCode.SESSION_TARGET_MISMATCH) {
+        const current = response.existingSession?.targetUrl;
+        const requested = options.chromeWsUrl ?? LAUNCHED_CHROME_DESCRIPTION;
+        console.error(sessionTargetMismatchError(current, requested));
       } else {
         console.error(genericError(`Daemon error: ${response.message ?? 'Unknown error'}`));
       }

@@ -33,6 +33,9 @@ export function getExitCodeForIPCError(errorCode?: IPCErrorCode): number {
     case IPCErrorCode.SESSION_ALREADY_RUNNING:
       return EXIT_CODES.RESOURCE_ALREADY_EXISTS;
 
+    case IPCErrorCode.SESSION_TARGET_MISMATCH:
+      return EXIT_CODES.RESOURCE_BUSY;
+
     case IPCErrorCode.CHROME_LAUNCH_FAILED:
       return EXIT_CODES.CHROME_LAUNCH_FAILURE;
 

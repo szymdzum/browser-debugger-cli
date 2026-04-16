@@ -244,6 +244,61 @@ export function safeParseUrl(input: string): URL | null {
 }
 
 /**
+ * Validate a `--chrome-ws-url` value.
+ *
+ * Accepted schemes: `ws://` and `wss://`. Rejects other schemes, malformed
+ * URLs, and empty input so users hear about the problem at the CLI boundary
+ * instead of after a daemon round-trip.
+ *
+ * @param url - ws URL to validate
+ * @returns Validation result with error/suggestion when invalid
+ */
+export function validateChromeWsUrl(url: string): {
+  valid: boolean;
+  error?: string;
+  suggestion?: string;
+} {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return {
+      valid: false,
+      error: '--chrome-ws-url cannot be empty',
+      suggestion: 'Expected: ws://host:port/devtools/browser/<uuid>',
+    };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return {
+      valid: false,
+      error: `--chrome-ws-url is not a valid URL: '${url}'`,
+      suggestion: 'Expected: ws://host:port/devtools/browser/<uuid>',
+    };
+  }
+
+  if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
+    return {
+      valid: false,
+      error: `--chrome-ws-url must use ws:// or wss://, got '${parsed.protocol}'`,
+      suggestion:
+        "Discover the URL with: curl -s http://127.0.0.1:9222/json | jq -r '.[0].webSocketDebuggerUrl'",
+    };
+  }
+
+  if (!parsed.hostname) {
+    return {
+      valid: false,
+      error: `--chrome-ws-url is missing a hostname: '${url}'`,
+      suggestion: 'Expected: ws://host:port/devtools/browser/<uuid>',
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Extract hostname from a URL string safely.
  *
  * @param input - URL string to extract hostname from

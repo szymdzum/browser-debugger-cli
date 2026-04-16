@@ -11,6 +11,16 @@ import type { Logger } from '@/ui/logging/index.js';
 const CDP_HTTP_TIMEOUT_MS = 5000;
 
 /**
+ * Options for CDP HTTP target fetch.
+ */
+export interface FetchCDPTargetsOptions {
+  /** Host to reach Chrome on (defaults to HTTP_LOCALHOST). */
+  host?: string;
+  /** Request timeout in milliseconds (defaults to CDP_HTTP_TIMEOUT_MS). */
+  timeoutMs?: number;
+}
+
+/**
  * Fetch CDP targets from Chrome's HTTP API.
  *
  * Uses centralized constants for host and default port to ensure consistency
@@ -19,23 +29,27 @@ const CDP_HTTP_TIMEOUT_MS = 5000;
  *
  * @param port - Chrome debugging port (defaults to centralized DEFAULT_CDP_PORT)
  * @param logger - Optional logger for debug output
+ * @param options - Optional host override and custom timeout (for liveness probes against remote Chrome)
  * @returns Promise resolving to array of CDP targets, or empty array on error
  *
  * @remarks
- * - Uses HTTP_LOCALHOST constant for consistent host addressing
+ * - Uses HTTP_LOCALHOST constant by default for host addressing
  * - Returns empty array on HTTP errors, but logs details for debugging
- * - 5-second timeout prevents hanging when Chrome is unreachable
+ * - Default 5-second timeout; override via `options.timeoutMs` for fast probes
  * - Network errors are logged to help diagnose Chrome connectivity issues
  */
 export async function fetchCDPTargets(
   port: number = DEFAULT_CDP_PORT,
-  logger?: Logger
+  logger?: Logger,
+  options?: FetchCDPTargetsOptions
 ): Promise<CDPTarget[]> {
-  const url = `http://${HTTP_LOCALHOST}:${port}/json/list`;
+  const host = options?.host ?? HTTP_LOCALHOST;
+  const timeoutMs = options?.timeoutMs ?? CDP_HTTP_TIMEOUT_MS;
+  const url = `http://${host}:${port}/json/list`;
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CDP_HTTP_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url, { signal: controller.signal });
@@ -62,7 +76,7 @@ export async function fetchCDPTargets(
   } catch (error) {
     if (error instanceof Error) {
       if (error.name === 'AbortError') {
-        logger?.debug(`CDP HTTP request timeout after ${CDP_HTTP_TIMEOUT_MS}ms (${url})`);
+        logger?.debug(`CDP HTTP request timeout after ${timeoutMs}ms (${url})`);
       } else {
         logger?.debug(`CDP HTTP request error: ${error.message} (${url})`);
       }

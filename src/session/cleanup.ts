@@ -144,6 +144,51 @@ export function cleanupStaleSession(): boolean {
 }
 
 /**
+ * Force-recover a stale session while the daemon is still running.
+ *
+ * Unlike `cleanupStaleSession`, this helper is safe to call from inside the
+ * daemon when its worker's CDP connection has died but the worker process may
+ * still be alive. It terminates the worker (and bdg-launched Chrome, if any)
+ * and clears only the session-scoped files, leaving daemon files intact so
+ * the daemon can immediately start a fresh session.
+ *
+ * WHY: Fix for #221 — daemon must recover from dead CDP state rather than
+ * reusing a stale `webSocketDebuggerUrl` from a previous launch.
+ *
+ * @param workerPid - Worker process ID to terminate
+ * @param chromePid - Optional Chrome PID (only set when bdg launched Chrome)
+ */
+export async function forceRecoverStaleSession(
+  workerPid: number,
+  chromePid?: number
+): Promise<void> {
+  try {
+    process.kill(workerPid, 'SIGKILL');
+    log.info(`Stale session recovery: SIGKILL sent to worker PID ${workerPid}`);
+  } catch (error) {
+    log.debug(`Worker PID ${workerPid} could not be signaled: ${getErrorMessage(error)}`);
+  }
+
+  if (chromePid) {
+    try {
+      killChromeProcess(chromePid, 'SIGKILL');
+      log.info(`Stale session recovery: SIGKILL sent to Chrome PID ${chromePid}`);
+    } catch (error) {
+      log.debug(`Chrome PID ${chromePid} could not be signaled: ${getErrorMessage(error)}`);
+    }
+  }
+
+  cleanupPidFile();
+  safeRemoveFile(getSessionFilePath('METADATA'), 'stale metadata', log);
+
+  try {
+    await QueryCacheManager.getInstance().clear();
+  } catch (error) {
+    logDebugError(log, 'clear stale query cache', error);
+  }
+}
+
+/**
  * Cleanup all session files after a session ends.
  *
  * Removes session-specific files while preserving chrome-profile directory
