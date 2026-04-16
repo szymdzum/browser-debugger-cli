@@ -22,6 +22,9 @@ import {
   getCommandName,
   isCommandResponse,
 } from '@/ipc/index.js';
+import { createLogger } from '@/ui/logging/index.js';
+
+const log = createLogger('daemon');
 
 /**
  * Response sender function type.
@@ -42,19 +45,17 @@ export class ResponseHandler {
    * Handle response from worker (lifecycle signals or command responses).
    */
   handleWorkerResponse(message: WorkerIPCResponse | WorkerResponseUnion): void {
-    console.error(
-      `[daemon] Received worker response: ${message.type} (requestId: ${message.requestId})`
-    );
+    log.info(`Received worker response: ${message.type} (requestId: ${message.requestId})`);
 
     if (message.type === 'worker_ready') {
-      console.error('[daemon] Worker ready signal (already processed during launch)');
+      log.info('Worker ready signal (already processed during launch)');
       return;
     }
 
     if (isCommandResponse(message.type)) {
       const pending = this.pendingRequests.get(message.requestId);
       if (!pending) {
-        console.error(`[daemon] No pending request found for requestId: ${message.requestId}`);
+        log.info(`No pending request found for requestId: ${message.requestId}`);
         return;
       }
 
@@ -68,9 +69,7 @@ export class ResponseHandler {
    * Handle worker exit event.
    */
   handleWorkerExit(code: number | null, signal: NodeJS.Signals | null): void {
-    console.error(
-      `[daemon] Worker exit detected (code: ${code ?? 'null'}, signal: ${signal ?? 'null'})`
-    );
+    log.info(`Worker exit detected (code: ${code ?? 'null'}, signal: ${signal ?? 'null'})`);
 
     if (this.pendingRequests.size === 0) {
       return;
@@ -147,7 +146,7 @@ export class ResponseHandler {
   ): void {
     const commandName = getCommandName(workerResponse.type);
     if (!commandName) {
-      console.error(`[daemon] Invalid worker response type: ${workerResponse.type}`);
+      log.info(`Invalid worker response type: ${workerResponse.type}`);
       return;
     }
 
@@ -193,9 +192,7 @@ export class ResponseHandler {
         ...(error && { error }),
       };
       this.sendResponse(socket, peekResponse);
-      console.error(
-        '[daemon] Forwarded worker_peek_response to client (transformed to PeekResponse)'
-      );
+      log.info('Forwarded worker_peek_response to client (transformed to PeekResponse)');
       return;
     }
 
@@ -220,9 +217,7 @@ export class ResponseHandler {
         ...(error && { error }),
       };
       this.sendResponse(socket, harDataResponse);
-      console.error(
-        '[daemon] Forwarded worker_har_data_response to client (transformed to HARDataResponse)'
-      );
+      log.info('Forwarded worker_har_data_response to client (transformed to HARDataResponse)');
       return;
     }
 
@@ -236,7 +231,7 @@ export class ResponseHandler {
     } as ClientResponse<typeof commandName>;
 
     this.sendResponse(socket, response);
-    console.error(`[daemon] Forwarded ${commandName}_response to client`);
+    log.info(`Forwarded ${commandName}_response to client`);
   }
 
   /**
@@ -267,9 +262,7 @@ export class ResponseHandler {
       };
 
       this.sendResponse(socket, statusResponse);
-      console.error(
-        '[daemon] Forwarded worker_status_response to client (enriched with activity data)'
-      );
+      log.info('Forwarded worker_status_response to client (enriched with activity data)');
       return;
     }
 
@@ -283,9 +276,7 @@ export class ResponseHandler {
       };
 
       this.sendResponse(socket, statusResponse);
-      console.error(
-        '[daemon] Forwarded status_response to client (worker query failed, using base data only)'
-      );
+      log.info('Forwarded status_response to client (worker query failed, using base data only)');
       return;
     }
 
@@ -297,6 +288,6 @@ export class ResponseHandler {
     };
 
     this.sendResponse(socket, fallback);
-    console.error('[daemon] Forwarded status_response error (no base data available)');
+    log.info('Forwarded status_response error (no base data available)');
   }
 }

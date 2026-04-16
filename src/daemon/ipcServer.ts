@@ -214,9 +214,9 @@ export class IPCServer {
     try {
       AtomicFileWriter.writeSync(pidPath, process.pid.toString(), { encoding: 'utf-8' });
       releaseDaemonLock(); // Release lock after PID is written (P0 Fix #1)
-      console.error(`[daemon] PID file written: ${pidPath}`);
+      log.info(`PID file written: ${pidPath}`);
     } catch (error) {
-      console.error('[daemon] Failed to write PID file:', error);
+      log.info(`Failed to write PID file: ${getErrorMessage(error)}`);
     }
   }
 

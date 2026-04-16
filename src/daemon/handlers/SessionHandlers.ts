@@ -91,8 +91,8 @@ export class SessionHandlers {
    * 2. Launch a fresh worker.
    */
   async handleStartSession(socket: Socket, request: StartSessionRequest): Promise<void> {
-    console.error(
-      `[daemon] Start session request received (sessionId: ${request.sessionId}, url: ${request.url})`
+    log.info(
+      `Start session request received (sessionId: ${request.sessionId}, url: ${request.url})`
     );
 
     try {
@@ -158,7 +158,7 @@ export class SessionHandlers {
     request: StartSessionRequest,
     recoveredPreviousTarget: string | undefined
   ): Promise<void> {
-    console.error('[daemon] Launching worker...');
+    log.info('Launching worker...');
     try {
       const metadata = await this.workerManager.launch(
         request.url,
@@ -175,7 +175,7 @@ export class SessionHandlers {
         })
       );
 
-      console.error('[daemon] Worker launched successfully');
+      log.info('Worker launched successfully');
 
       const data: StartSessionResponseData = {
         workerPid: metadata.workerPid,
@@ -198,7 +198,7 @@ export class SessionHandlers {
       };
 
       this.sendResponse(socket, response);
-      console.error('[daemon] Start session response sent');
+      log.info('Start session response sent');
     } catch (error) {
       const { errorCode, errorMessage } = mapLaunchError(error);
       const response: StartSessionResponse = {
@@ -210,7 +210,7 @@ export class SessionHandlers {
       };
 
       this.sendResponse(socket, response);
-      console.error(`[daemon] Start session error response sent (${errorCode})`);
+      log.info(`Start session error response sent (${errorCode})`);
     }
   }
 
@@ -232,14 +232,14 @@ export class SessionHandlers {
     };
 
     this.sendResponse(socket, response);
-    console.error('[daemon] Start session error response sent (daemon error)');
+    log.info('Start session error response sent (daemon error)');
   }
 
   /**
    * Handle stop session request.
    */
   handleStopSession(socket: Socket, request: StopSessionRequest): void {
-    console.error(`[daemon] Stop session request received (sessionId: ${request.sessionId})`);
+    log.info(`Stop session request received (sessionId: ${request.sessionId})`);
 
     try {
       const sessionPid = this.sessionService.readPid();
@@ -253,19 +253,19 @@ export class SessionHandlers {
         };
 
         this.sendResponse(socket, response);
-        console.error('[daemon] Stop session error response sent (no session)');
+        log.info('Stop session error response sent (no session)');
         return;
       }
 
       const metadata = this.sessionService.readMetadata({ warnOnCorruption: true });
       const chromePid = metadata?.chromePid;
       if (chromePid) {
-        console.error(`[daemon] Captured Chrome PID ${chromePid} before cleanup`);
+        log.info(`Captured Chrome PID ${chromePid} before cleanup`);
       }
 
       try {
         process.kill(sessionPid, 'SIGTERM');
-        console.error(`[daemon] Sent SIGTERM to session process (PID ${sessionPid})`);
+        log.info(`Sent SIGTERM to session process (PID ${sessionPid})`);
       } catch (killError: unknown) {
         const errorMessage = killError instanceof Error ? killError.message : String(killError);
         const response: StopSessionResponse = {
@@ -277,15 +277,15 @@ export class SessionHandlers {
         };
 
         this.sendResponse(socket, response);
-        console.error('[daemon] Stop session error response sent (kill failed)');
+        log.info('Stop session error response sent (kill failed)');
         return;
       }
 
       this.sessionService.cleanup();
-      console.error('[daemon] Cleaned up session files');
+      log.info('Cleaned up session files');
 
       this.workerManager.dispose();
-      console.error('[daemon] Cleared worker process reference');
+      log.info('Cleared worker process reference');
 
       const response: StopSessionResponse = {
         type: 'stop_session_response',
@@ -296,13 +296,13 @@ export class SessionHandlers {
       };
 
       this.sendResponse(socket, response);
-      console.error('[daemon] Stop session response sent');
+      log.info('Stop session response sent');
 
       this.sessionService.releaseLock();
-      console.error('[daemon] Daemon lock released');
+      log.info('Daemon lock released');
 
       setTimeout(() => {
-        console.error('[daemon] Shutting down daemon after successful stop');
+        log.info('Shutting down daemon after successful stop');
         process.exit(0);
       }, 100);
     } catch (error) {
@@ -315,7 +315,7 @@ export class SessionHandlers {
       };
 
       this.sendResponse(socket, response);
-      console.error('[daemon] Stop session error response sent');
+      log.info('Stop session error response sent');
     }
   }
 
@@ -360,7 +360,7 @@ export class SessionHandlers {
     };
 
     this.sendResponse(socket, response);
-    console.error('[daemon] Start session error response sent (session already running)');
+    log.info('Start session error response sent (session already running)');
   }
 
   /**
@@ -385,6 +385,6 @@ export class SessionHandlers {
     };
 
     this.sendResponse(socket, response);
-    console.error('[daemon] Start session error response sent (target mismatch)');
+    log.info('Start session error response sent (target mismatch)');
   }
 }
