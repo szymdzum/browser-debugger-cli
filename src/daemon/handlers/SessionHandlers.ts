@@ -28,12 +28,17 @@ import { detectTargetMismatch, probeSessionAlive, type TargetMismatch } from './
 const log = createLogger('daemon');
 
 /**
- * Sentinel returned by `reconcileExistingSession` when it has already
- * produced a response (idempotent "already running" or mismatch error).
- * Using a unique symbol avoids overloading the string/undefined return
- * channel that carries the recovered previous target.
+ * Outcome of reconciling a start-session request against existing state.
+ *
+ * - `handled`: a response was already sent (idempotent or mismatch); caller stops.
+ * - `fresh`: no prior session existed; caller should launch cleanly.
+ * - `recovered`: a stale session was force-killed; caller launches and echoes
+ *   the previous target so clients can tell recovery happened.
  */
-const HANDLED_SENTINEL = Symbol('start_session_handled');
+type ReconcileOutcome =
+  | { kind: 'handled' }
+  | { kind: 'fresh' }
+  | { kind: 'recovered'; previousTarget: string };
 
 /**
  * Map a thrown worker-launch error to the IPC error shape.
@@ -91,10 +96,12 @@ export class SessionHandlers {
     );
 
     try {
-      const recoveredPreviousTarget = await this.reconcileExistingSession(socket, request);
-      if (recoveredPreviousTarget === HANDLED_SENTINEL) {
+      const outcome = await this.reconcileExistingSession(socket, request);
+      if (outcome.kind === 'handled') {
         return;
       }
+      const recoveredPreviousTarget =
+        outcome.kind === 'recovered' ? outcome.previousTarget : undefined;
       await this.launchAndRespond(socket, request, recoveredPreviousTarget);
     } catch (error) {
       this.sendDaemonErrorResponse(socket, request, error);
@@ -105,18 +112,14 @@ export class SessionHandlers {
    * Check for an existing session and either respond inline (idempotent or
    * mismatch), silently recover a stale one, or signal that the caller should
    * proceed to launch a new worker.
-   *
-   * @returns `HANDLED_SENTINEL` when a response has already been sent,
-   *          otherwise the previous ws URL if a stale session was recovered,
-   *          or `undefined` when no prior session existed.
    */
   private async reconcileExistingSession(
     socket: Socket,
     request: StartSessionRequest
-  ): Promise<string | undefined | typeof HANDLED_SENTINEL> {
+  ): Promise<ReconcileOutcome> {
     const sessionPid = this.sessionService.readPid();
     if (!sessionPid || !this.sessionService.isProcessAlive(sessionPid)) {
-      return undefined;
+      return { kind: 'fresh' };
     }
 
     const metadata = this.sessionService.readMetadata({ warnOnCorruption: false });
@@ -129,12 +132,9 @@ export class SessionHandlers {
       } else {
         this.sendAlreadyRunningResponse(socket, request, sessionPid, metadata, probe.targetUrl);
       }
-      return HANDLED_SENTINEL;
+      return { kind: 'handled' };
     }
 
-    // log.info (not console.error) — this notice is user-facing: callers should
-    // see that a stale session was silently recovered. Internal daemon progress
-    // continues through console.error('[daemon] ...') above/below.
     log.info(
       `Stale session detected (PID ${sessionPid}, target ${
         metadata?.webSocketDebuggerUrl ?? `port ${metadata?.port ?? 'unknown'}`
@@ -145,7 +145,8 @@ export class SessionHandlers {
     // `workerManager.launch()` doesn't race the child 'exit' event and throw
     // WORKER_ALREADY_RUNNING. dispose() is idempotent.
     this.workerManager.dispose();
-    return metadata?.webSocketDebuggerUrl ?? probe.targetUrl;
+    const previousTarget = metadata?.webSocketDebuggerUrl ?? probe.targetUrl;
+    return previousTarget !== undefined ? { kind: 'recovered', previousTarget } : { kind: 'fresh' };
   }
 
   /**
