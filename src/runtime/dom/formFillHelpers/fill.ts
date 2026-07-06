@@ -12,6 +12,7 @@ import {
   unexpectedResponseFormatError,
   operationFailedError,
 } from '@/errors/messages.js';
+import { inspectElementEventListenersBySelector } from '@/runtime/dom/eventListeners.js';
 import {
   escapeSelectorForJS,
   escapeValueForJS,
@@ -26,7 +27,11 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('dom');
 
 /**
  * Fill a form element with a value in a React-compatible way.
@@ -72,7 +77,7 @@ export async function fillElement(
     }
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
-      return cdpResponse.result.value;
+      return await withEventListeners(cdp, selector, cdpResponse.result.value, options.index);
     }
 
     const err = unexpectedResponseFormatError('FillResult');
@@ -126,7 +131,16 @@ export async function clickElement(
     }
 
     if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
-      return cdpResponse.result.value;
+      const result = await withEventListeners(
+        cdp,
+        selector,
+        cdpResponse.result.value,
+        options.index
+      );
+      if (result.eventListeners && hasClickLikeListeners(result.eventListeners.interactionTypes)) {
+        return { ...result, clickable: true };
+      }
+      return result;
     }
 
     const err = unexpectedResponseFormatError('ClickResult');
@@ -139,4 +153,45 @@ export async function clickElement(
     const err = operationFailedError('click element', errorMessage);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
+}
+
+async function withEventListeners<T extends FillResult | ClickResult>(
+  cdp: CDPConnection,
+  selector: string,
+  result: T,
+  fallbackIndex: number | undefined
+): Promise<T> {
+  if (!result.success) {
+    return result;
+  }
+
+  try {
+    const index = result.selectedIndex ?? fallbackIndex ?? 0;
+    const eventListeners = await inspectElementEventListenersBySelector(cdp, selector, index, {
+      includeParent: true,
+    });
+    if (eventListeners === undefined) {
+      return result;
+    }
+
+    return { ...result, eventListeners };
+  } catch (error) {
+    log.debug(`Unable to inspect event listeners for ${selector}: ${getErrorMessage(error)}`);
+    return result;
+  }
+}
+
+function hasClickLikeListeners(types: string[]): boolean {
+  return types.some((type) =>
+    [
+      'click',
+      'dblclick',
+      'mousedown',
+      'mouseup',
+      'pointerdown',
+      'pointerup',
+      'touchstart',
+      'touchend',
+    ].includes(type)
+  );
 }

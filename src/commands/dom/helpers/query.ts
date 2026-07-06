@@ -14,6 +14,11 @@ import {
   eitherArgumentRequiredError,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
+import type { DomEventListenerSummary } from '@/ipc/protocol/domTypes.js';
+import {
+  inspectElementEventListeners,
+  type EventListenerCDPSender,
+} from '@/runtime/dom/eventListeners.js';
 import type { DomQueryResult, DomGetResult, DomGetOptions, DomContext } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
@@ -24,6 +29,13 @@ const log = createLogger('dom');
 
 /** Maximum concurrent CDP calls to avoid overwhelming the connection. */
 const CDP_CONCURRENCY_LIMIT = 10;
+
+const ipcCdpSender: EventListenerCDPSender = {
+  async send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+    const response = await callCDP(method, params);
+    return response.data?.result ?? {};
+  },
+};
 
 /**
  * Enable the DOM domain and fetch the document root nodeId.
@@ -59,7 +71,10 @@ function unpackAttributes(attributes: string[] | undefined): Record<string, stri
 /**
  * Query DOM elements by CSS selector via CDP relay.
  */
-export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
+export async function queryDOMElements(
+  selector: string,
+  options: { interactive?: boolean } = {}
+): Promise<DomQueryResult> {
   const rootNodeId = await getDocumentRootId();
 
   const queryResponse = await callCDP('DOM.querySelectorAll', {
@@ -111,21 +126,31 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
           tag?: string;
           classes?: string[];
           preview?: string;
+          eventListeners?: DomEventListenerSummary;
         } = { index, nodeId };
 
         if (tag) node.tag = tag;
         if (classes) node.classes = classes;
         if (preview) node.preview = preview;
+        if (options.interactive) {
+          node.eventListeners = await inspectElementEventListeners(ipcCdpSender, nodeId, {
+            includeParent: true,
+          });
+        }
 
         return node;
       })
     )
   );
 
+  const filteredNodes = options.interactive
+    ? nodes.filter((node) => node.eventListeners?.hasInteractionListeners)
+    : nodes;
+
   return {
     selector,
-    count: nodes.length,
-    nodes,
+    count: filteredNodes.length,
+    nodes: filteredNodes,
   };
 }
 
@@ -278,12 +303,16 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
           attributes?: Record<string, unknown>;
           classes?: string[];
           outerHTML?: string;
+          eventListeners?: DomEventListenerSummary;
         } = { nodeId };
 
         if (tag) node.tag = tag;
         if (Object.keys(attributes).length > 0) node.attributes = attributes;
         if (classes) node.classes = classes;
         if (outerHTML) node.outerHTML = outerHTML;
+        node.eventListeners = await inspectElementEventListeners(ipcCdpSender, nodeId, {
+          includeParent: true,
+        });
 
         return node;
       })

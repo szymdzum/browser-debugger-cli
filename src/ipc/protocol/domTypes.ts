@@ -9,6 +9,34 @@
 
 import type { FormStep, FieldOption } from '@/types.js';
 
+/** Source where an event listener was attached relative to the inspected element. */
+export type DomEventListenerSource = 'target' | 'parent';
+
+/** Normalized event listener metadata from Chrome DevTools Protocol. */
+export interface DomEventListenerInfo {
+  type: string;
+  source: DomEventListenerSource;
+  useCapture: boolean;
+  passive: boolean;
+  once: boolean;
+  scriptId: string;
+  lineNumber: number;
+  columnNumber: number;
+  handlerDescription?: string;
+  backendNodeId?: number;
+}
+
+/** Summary of listeners that may make a DOM element interactive. */
+export interface DomEventListenerSummary {
+  count: number;
+  types: string[];
+  targetTypes: string[];
+  delegatedTypes: string[];
+  interactionTypes: string[];
+  hasInteractionListeners: boolean;
+  listeners: DomEventListenerInfo[];
+}
+
 /**
  * Result of filling an element.
  */
@@ -21,6 +49,9 @@ export interface FillResult {
   inputType?: string | null;
   checked?: boolean;
   suggestion?: string;
+  eventListeners?: DomEventListenerSummary;
+  matchCount?: number;
+  selectedIndex?: number;
 }
 
 /**
@@ -36,6 +67,7 @@ export interface ClickResult {
   selectedIndex?: number;
   requestedIndex?: number;
   suggestion?: string;
+  eventListeners?: DomEventListenerSummary;
 }
 
 /**
@@ -80,6 +112,7 @@ export interface SubmitResult {
   navigationOccurred?: boolean;
   waitTimeMs?: number;
   suggestion?: string;
+  eventListeners?: DomEventListenerSummary;
 }
 
 /**

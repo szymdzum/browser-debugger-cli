@@ -1,4 +1,5 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
+import type { DomEventListenerSummary } from '@/ipc/protocol/domTypes.js';
 
 /**
  * Standard response envelope for all bdg command JSON output.
@@ -331,6 +332,7 @@ export interface DomQueryResult {
     tag?: string;
     classes?: string[];
     preview?: string;
+    eventListeners?: DomEventListenerSummary;
   }>;
   /** Navigation ID when query was performed (for staleness detection). */
   navigationId?: number;
@@ -346,6 +348,7 @@ export interface DomGetResult {
     attributes?: Record<string, unknown>;
     classes?: string[];
     outerHTML?: string;
+    eventListeners?: DomEventListenerSummary;
   }>;
 }
 
@@ -411,6 +414,7 @@ export interface DomGetOptions {
   nodeId?: number;
   all?: boolean;
   nth?: number;
+  interactive?: boolean;
 }
 
 /**

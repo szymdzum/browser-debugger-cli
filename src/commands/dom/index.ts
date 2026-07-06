@@ -43,6 +43,7 @@ export function registerDomCommands(program: Command): void {
     .description('Find elements by CSS selector')
     .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option('-j, --json', 'Output as JSON')
+    .option('--interactive', 'Only show elements with direct or delegated event listeners')
     .action(async (selector: string, options: DomQueryCommandOptions) => {
       await handleDomQuery(selector, options);
     });
