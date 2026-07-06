@@ -20,7 +20,8 @@ export async function handleDomQuery(
 ): Promise<void> {
   await runCommand(
     async () => {
-      const result = await queryDOMElements(selector);
+      const interactive = (options as { interactive?: boolean }).interactive ?? false;
+      const result = await queryDOMElements(selector, { interactive });
       const cacheManager = QueryCacheManager.getInstance();
       const navigationId = await cacheManager.getCurrentNavigationId();
       const resultWithNavId = {

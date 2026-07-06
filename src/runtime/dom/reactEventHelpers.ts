@@ -30,6 +30,7 @@ export const REACT_FILL_SCRIPT = `
   }
   
   let el;
+  let selectedIndex;
   const index = options.index;
   
   // If index is provided, use it directly (0-based)
@@ -45,8 +46,10 @@ export const REACT_FILL_SCRIPT = `
       };
     }
     el = allMatches[index];
+    selectedIndex = index;
   } else {
     el = allMatches[0];
+    selectedIndex = 0;
   }
   
   const tagName = el.tagName.toLowerCase();
@@ -122,7 +125,9 @@ export const REACT_FILL_SCRIPT = `
     value: el.value || el.textContent,
     elementType: tagName,
     inputType: inputType || null,
-    checked: el.checked || undefined
+    checked: el.checked || undefined,
+    matchCount: allMatches.length,
+    selectedIndex: selectedIndex
   };
 })
 `;
@@ -148,6 +153,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   }
   
   let el;
+  let selectedIndex;
   
   // If index is provided, use it directly (0-based)
   if (typeof index === 'number' && index >= 0) {
@@ -162,13 +168,17 @@ export const CLICK_ELEMENT_SCRIPT = `
       };
     }
     el = allMatches[index];
+    selectedIndex = index;
   } else if (allMatches.length === 1) {
     // Single match - use it directly
     el = allMatches[0];
+    selectedIndex = 0;
   } else {
     // Multiple matches without index - find first visible one
     el = allMatches[0];
-    for (const candidate of allMatches) {
+    selectedIndex = 0;
+    for (let candidateIndex = 0; candidateIndex < allMatches.length; candidateIndex++) {
+      const candidate = allMatches[candidateIndex];
       const style = window.getComputedStyle(candidate);
       const rect = candidate.getBoundingClientRect();
       
@@ -181,6 +191,7 @@ export const CLICK_ELEMENT_SCRIPT = `
       
       if (isVisible) {
         el = candidate;
+        selectedIndex = candidateIndex;
         break;
       }
     }
@@ -210,7 +221,7 @@ export const CLICK_ELEMENT_SCRIPT = `
     elementType: tagName,
     clickable: isClickable,
     matchCount: allMatches.length,
-    selectedIndex: typeof index === 'number' ? index : undefined
+    selectedIndex: selectedIndex
   };
 })
 `;

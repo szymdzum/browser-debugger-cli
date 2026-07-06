@@ -22,6 +22,7 @@ import type {
 import { CommandError } from '@/errors/index.js';
 import { internalError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
+import type { DomEventListenerSummary } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
@@ -273,6 +274,63 @@ export function registerFormInteractionCommands(program: Command): void {
     });
 }
 
+const FILL_EVENT_TYPES = ['beforeinput', 'change', 'input'];
+const CLICK_EVENT_TYPES = [
+  'click',
+  'dblclick',
+  'mousedown',
+  'mouseup',
+  'pointerdown',
+  'pointerup',
+  'touchend',
+  'touchstart',
+];
+const SUBMIT_EVENT_TYPES = ['click', 'submit', 'mousedown', 'pointerdown'];
+
+/**
+ * Format inspected event listeners for compact human-readable output.
+ */
+function formatListenerSummary(summary: DomEventListenerSummary | undefined): string {
+  if (!summary) return 'unavailable';
+  if (summary.count === 0) return 'none detected';
+
+  const parts: string[] = [];
+  if (summary.targetTypes.length > 0) parts.push(`target: ${summary.targetTypes.join(', ')}`);
+  if (summary.delegatedTypes.length > 0) {
+    parts.push(`parent: ${summary.delegatedTypes.join(', ')}`);
+  }
+  return parts.join('; ');
+}
+
+/**
+ * Return true when inspected listeners include any expected interaction type.
+ */
+function hasExpectedListener(
+  summary: DomEventListenerSummary | undefined,
+  expectedTypes: string[]
+): boolean {
+  if (!summary) return true;
+  return expectedTypes.some((type) => summary.interactionTypes.includes(type));
+}
+
+/**
+ * Append listener metadata and a non-fatal warning for suspicious interactions.
+ */
+function appendListenerDiagnostics(
+  fmt: OutputFormatter,
+  summary: DomEventListenerSummary | undefined,
+  expectedTypes: string[],
+  warning: string
+): void {
+  fmt.blank();
+  fmt.keyValueList([['Event Listeners', formatListenerSummary(summary)]], 15);
+
+  if (!hasExpectedListener(summary, expectedTypes)) {
+    fmt.blank();
+    fmt.text(warning);
+  }
+}
+
 /**
  * Format fill command output for human-readable display.
  */
@@ -294,6 +352,12 @@ function formatFillOutput(result: FillResult): string {
   }
 
   fmt.keyValueList(details, 15);
+  appendListenerDiagnostics(
+    fmt,
+    result.eventListeners,
+    FILL_EVENT_TYPES,
+    '⚠ Warning: No input/change listener detected on the target or immediate parent'
+  );
   return fmt.build();
 }
 
@@ -312,9 +376,15 @@ function formatClickOutput(result: ClickResult): string {
     ],
     15
   );
+  appendListenerDiagnostics(
+    fmt,
+    result.eventListeners,
+    CLICK_EVENT_TYPES,
+    '⚠ Warning: No click-like listener detected on the target or immediate parent'
+  );
   if (!result.clickable) {
     fmt.blank();
-    fmt.text('⚠ Warning: Element may not have a click handler');
+    fmt.text('⚠ Warning: Element may not be semantically clickable');
   }
   return fmt.build();
 }
@@ -339,6 +409,12 @@ function formatSubmitOutput(result: SubmitResult): string {
   if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
 
   fmt.keyValueList(details, 20);
+  appendListenerDiagnostics(
+    fmt,
+    result.eventListeners,
+    SUBMIT_EVENT_TYPES,
+    '⚠ Warning: No submit/click listener detected on the target or immediate parent'
+  );
   fmt.blank();
   fmt.text('Next steps:');
   fmt.section('', [

@@ -1,5 +1,21 @@
+import type { DomEventListenerSummary } from '@/ipc/protocol/domTypes.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+
+/**
+ * Format listener metadata for concise human-readable DOM output.
+ */
+function formatListenerSummary(summary: DomEventListenerSummary | undefined): string | null {
+  if (!summary) return null;
+  if (summary.count === 0) return 'Event listeners: none detected';
+
+  const parts: string[] = [];
+  if (summary.targetTypes.length > 0) parts.push(`target: ${summary.targetTypes.join(', ')}`);
+  if (summary.delegatedTypes.length > 0) {
+    parts.push(`parent: ${summary.delegatedTypes.join(', ')}`);
+  }
+  return `Event listeners: ${parts.join('; ')}`;
+}
 
 /**
  * Format DOM query results for human-readable output.
@@ -45,7 +61,9 @@ export function formatDomQuery(data: DomQueryResult): string {
 
   const nodeLines = nodes.map((node) => {
     const classInfo = node.classes?.length ? ` class="${node.classes.join(' ')}"` : '';
-    return `[${node.index}] <${node.tag}${classInfo}> ${node.preview}`;
+    const listenerInfo = formatListenerSummary(node.eventListeners);
+    const listenerSuffix = listenerInfo ? ` — ${listenerInfo}` : '';
+    return `[${node.index}] <${node.tag}${classInfo}> ${node.preview}${listenerSuffix}`;
   });
 
   const hasMultipleResults = count > 1;
@@ -97,12 +115,17 @@ export function formatDomGet(data: DomGetResult): string {
 
   if (nodes.length === 1) {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return nodes[0]!.outerHTML ?? '';
+    const node = nodes[0]!;
+    const html = node.outerHTML ?? '';
+    const listenerInfo = formatListenerSummary(node.eventListeners);
+    return listenerInfo ? `${html}\n\n${listenerInfo}` : html;
   }
 
   const fmt = new OutputFormatter();
   nodes.forEach((node, i) => {
+    const listenerInfo = formatListenerSummary(node.eventListeners);
     fmt.text(`[${i + 1}] ${node.outerHTML}`);
+    if (listenerInfo) fmt.text(`    ${listenerInfo}`);
   });
 
   return fmt.build();

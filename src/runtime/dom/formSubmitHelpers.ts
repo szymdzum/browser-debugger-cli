@@ -6,6 +6,9 @@ import type { ClickResult } from './reactEventHelpers.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPTimeoutError } from '@/connection/errors.js';
+import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
+
+export type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 
 import { clickElement } from './formFillHelpers/index.js';
 
@@ -22,9 +25,6 @@ export interface SubmitOptions {
   /** Maximum time to wait in milliseconds (default: 10000) */
   timeout?: number;
 }
-
-import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
-export type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 
 /**
  * Submit a form by clicking the submit button and waiting for completion.
@@ -74,6 +74,7 @@ export async function submitForm(
       error: clickResult.error ?? 'Click failed',
       selector: clickResult.selector ?? selector,
       clicked: false,
+      ...(clickResult.eventListeners && { eventListeners: clickResult.eventListeners }),
     };
   }
 
@@ -85,6 +86,7 @@ export async function submitForm(
       networkRequests: 0,
       navigationOccurred: false,
       waitTimeMs: Date.now() - startTime,
+      ...(clickResult.eventListeners && { eventListeners: clickResult.eventListeners }),
     };
   }
 
@@ -102,6 +104,7 @@ export async function submitForm(
       networkRequests: waitResult.networkRequests,
       navigationOccurred: waitResult.navigationOccurred,
       waitTimeMs: Date.now() - startTime,
+      ...(clickResult.eventListeners && { eventListeners: clickResult.eventListeners }),
     };
   } catch (error) {
     if (error instanceof CDPTimeoutError) {
@@ -111,6 +114,7 @@ export async function submitForm(
         selector: selector,
         clicked: true,
         waitTimeMs: Date.now() - startTime,
+        ...(clickResult.eventListeners && { eventListeners: clickResult.eventListeners }),
       };
     }
     throw error;
