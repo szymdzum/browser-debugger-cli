@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<!-- Empty for now - add here as you work -->
+### Security
+
+- **Remove `tsc-alias` build dependency** - Replaced with `scripts/rewrite-aliases.mjs`, eliminating the unpatched `braces` advisory (GHSA-vfj7-8cjw-p6xm) from the dev dependency tree; build output is byte-identical
+- **Dependency audit** - Resolved remaining `npm audit` findings (`ws`, `shell-quote`, `js-yaml`, `fast-uri`, `brace-expansion`, `smol-toml`, `@humanfs/node`)
 
 ## [0.7.2] - 2025-12-17
 

@@ -7,12 +7,12 @@
     "bdg": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "tsc && node scripts/rewrite-aliases.mjs",
     "postbuild": "node -e \"require('fs').chmodSync('dist/index.js', 0o755)\" && node -e \"const fs = require('fs'); const path = require('path'); const src = 'src/__tests__/fixtures'; const dest = 'dist/__tests__/fixtures'; if (fs.existsSync(src)) { fs.mkdirSync(dest, { recursive: true }); fs.readdirSync(src).filter(f => f.endsWith('.json')).forEach(f => fs.copyFileSync(path.join(src, f), path.join(dest, f))); console.log('✅ Copied test fixtures'); }\"",
-    "dev": "tsc && tsc-alias && node dist/index.js",
+    "dev": "npm run build && node dist/index.js",
     "watch": "concurrently \"npm:watch:tsc\" \"npm:watch:alias\"",
     "watch:tsc": "tsc --watch",
-    "watch:alias": "tsc-alias --watch",
+    "watch:alias": "node --watch-path=dist scripts/rewrite-aliases.mjs",
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
@@ -69,7 +69,6 @@
     "knip": "^6.4.1",
     "lint-staged": "^16.2.6",
     "prettier": "^3.7.3",
-    "tsc-alias": "^1.8.9",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   },
