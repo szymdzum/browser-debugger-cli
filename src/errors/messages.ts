@@ -119,8 +119,8 @@ export interface DaemonErrorContext {
  */
 export function daemonNotRunningError(context?: DaemonErrorContext): string {
   return joinLines(
-    'Error: Daemon not running',
-    context?.staleCleanedUp && '(Stale PID file was cleaned up)',
+    'Error: No active session (daemon not running)',
+    context?.staleCleanedUp && '(Stale daemon files were cleaned up)',
     context?.lastError && `Last error: ${context.lastError}`,
     '',
     'Start a new session:',

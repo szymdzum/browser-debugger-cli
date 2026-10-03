@@ -8,10 +8,11 @@
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { ConfigError } from '@/daemon/errors.js';
-import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
-import type { WorkerConfig } from '@/daemon/worker/types.js';
+import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
+import type { SessionConfig } from '@/daemon/session/types.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
+import { getSessionDir } from '@/session/paths.js';
 import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { fetchCDPTargets } from '@/utils/http.js';
@@ -23,7 +24,7 @@ import { filterDefined } from '@/utils/objects.js';
  * @returns Launched Chrome instance (null if connecting to external Chrome)
  */
 export async function setupChromeConnection(
-  config: WorkerConfig,
+  config: SessionConfig,
   telemetryStore: TelemetryStore,
   log: Logger,
   notify: NoticeSink<ChromeNoticeCode>
@@ -31,7 +32,7 @@ export async function setupChromeConnection(
   if (config.chromeWsUrl) {
     return setupExternalChrome(config, telemetryStore, notify);
   } else {
-    return setupLaunchedChrome(config, telemetryStore, log);
+    return setupLaunchedChrome(config, log);
   }
 }
 
@@ -39,7 +40,7 @@ export async function setupChromeConnection(
  * Connect to existing external Chrome instance.
  */
 function setupExternalChrome(
-  config: WorkerConfig,
+  config: SessionConfig,
   telemetryStore: TelemetryStore,
   notify: NoticeSink<ChromeNoticeCode>
 ): null {
@@ -70,16 +71,13 @@ function setupExternalChrome(
 }
 
 /**
- * Launch new Chrome instance and find page target.
+ * Launch a new Chrome instance and record its PID for crash cleanup.
  */
-async function setupLaunchedChrome(
-  config: WorkerConfig,
-  telemetryStore: TelemetryStore,
-  log: Logger
-): Promise<LaunchedChrome> {
+async function setupLaunchedChrome(config: SessionConfig, log: Logger): Promise<LaunchedChrome> {
   const chrome = await launchChrome({
     port: config.port,
     logger: log,
+    sessionDir: getSessionDir(),
     ...filterDefined({
       userDataDir: config.userDataDir,
       headless: config.headless,
@@ -90,9 +88,28 @@ async function setupLaunchedChrome(
   log.info(`Chrome launched (PID ${chrome.pid})`);
 
   writeChromePid(chrome.pid);
-  log.debug(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);
+  log.debug(`Chrome PID ${chrome.pid} cached for emergency cleanup`);
 
-  console.error(`[worker] Connecting to Chrome via CDP...`);
+  return chrome;
+}
+
+/**
+ * Find the page target of a Chrome that bdg launched.
+ *
+ * Kept separate from the launch so the session owns Chrome before this can
+ * fail, and tears it down if it does.
+ *
+ * @param config - Session configuration
+ * @param telemetryStore - Store receiving the target info
+ * @param log - Logger
+ * @throws ChromeLaunchError if Chrome exposes no page target
+ */
+export async function findPageTarget(
+  config: SessionConfig,
+  telemetryStore: TelemetryStore,
+  log: Logger
+): Promise<void> {
+  log.info(`Connecting to Chrome via CDP...`);
   const targets = await fetchCDPTargets(config.port, log);
   const foundTarget = targets.find((t) => t.type === 'page');
 
@@ -115,7 +132,5 @@ async function setupLaunchedChrome(
   }
 
   telemetryStore.setTargetInfo(foundTarget);
-  console.error(`[worker] Found target: ${foundTarget.title} (${foundTarget.url})`);
-
-  return chrome;
+  log.info(`Found target: ${foundTarget.title} (${foundTarget.url})`);
 }

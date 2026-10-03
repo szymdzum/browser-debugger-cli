@@ -23,8 +23,10 @@ const log = createLogger('chrome');
  * @returns Parsed PID or null if invalid
  */
 function parseChromePid(pidStr: string): number | null {
-  const pid = parseInt(pidStr.trim(), 10);
-  return Number.isNaN(pid) ? null : pid;
+  const trimmed = pidStr.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const pid = Number(trimmed);
+  return pid > 0 ? pid : null;
 }
 
 /**
@@ -117,63 +119,5 @@ export function clearChromePid(): void {
     fs.rmSync(cachePath, { force: true });
   } catch (error) {
     log.debug(`Failed to clear Chrome PID cache: ${getErrorMessage(error)}`);
-  }
-}
-
-/**
- * Aggressively cleanup stale Chrome processes launched by bdg.
- *
- * Kills Chrome instances that were launched by bdg by:
- * 1. Reading the Chrome PID from persistent cache
- * 2. Killing that specific Chrome process using cross-platform kill logic
- *
- * The cache survives session cleanup, so this works even after a normal session end.
- *
- * Cross-platform killing:
- * - Windows: Uses `taskkill /pid <pid> /T /F` to kill process tree
- * - Unix/macOS: Uses `process.kill(-pid, 'SIGKILL')` to kill process group
- *
- * Note: We can't use chromeLauncher.killAll() because it only tracks instances
- * created via chromeLauncher.launch(), but we use new chromeLauncher.Launcher()
- * which doesn't register in that tracking set.
- *
- * @returns Number of errors encountered during cleanup
- */
-export async function cleanupStaleChrome(): Promise<number> {
-  const {
-    cleanupChromeAttemptingMessage,
-    cleanupChromePidNotFoundMessage,
-    cleanupChromeKillingMessage,
-    cleanupChromeSuccessMessage,
-    cleanupChromeFailedMessage,
-    cleanupChromeProcessFailedMessage,
-  } = await import('@/ui/messages/chrome.js');
-
-  console.error(cleanupChromeAttemptingMessage());
-
-  try {
-    const { killChromeProcess } = await import('@/utils/process.js');
-
-    const chromePid = readChromePid();
-
-    if (!chromePid) {
-      console.error(cleanupChromePidNotFoundMessage());
-      return 0;
-    }
-
-    console.error(cleanupChromeKillingMessage(chromePid));
-
-    try {
-      killChromeProcess(chromePid, 'SIGKILL');
-      console.error(cleanupChromeSuccessMessage());
-      clearChromePid();
-      return 0;
-    } catch (killError) {
-      console.error(cleanupChromeFailedMessage(getErrorMessage(killError)));
-      return 1;
-    }
-  } catch (error) {
-    console.error(cleanupChromeProcessFailedMessage(getErrorMessage(error)));
-    return 1;
   }
 }

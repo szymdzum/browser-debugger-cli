@@ -37,7 +37,7 @@ await runCommand(
 
 ### Error Handling
 
-**Convention:** `process.exit` and `console.error` belong at entrypoints only (`src/index.ts`, `CommandRunner`, signal handlers, daemon/worker bootstrap). Below that layer, choose one of two structured styles:
+**Convention:** `process.exit` and `console.error` belong at entrypoints only (`src/index.ts`, `CommandRunner`, signal handlers, daemon bootstrap). Below that layer, choose one of two structured styles:
 
 - **Throw `CommandError`** — from deep helpers when the caller can't reasonably recover. `CommandRunner` catches and formats.
 - **Return `{ success, error?, exitCode?, errorContext? }`** — from composable operations whose callers branch on failure (e.g., CLI command action handlers, `FetchResult`).
@@ -45,7 +45,7 @@ await runCommand(
 Never mix: a helper shouldn't log-and-exit when its surrounding function already returns a structured shape.
 
 ```typescript
-import { CommandError } from '@/ui/errors/index.js';
+import { CommandError } from '@/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 throw new CommandError(
@@ -58,7 +58,7 @@ throw new CommandError(
 ### Message Centralization (`src/ui/messages/`)
 All user-facing strings must use centralized functions - no inline strings.
 
-### Error Messages with Suggestions (`src/ui/messages/errors.ts`)
+### Error Messages with Suggestions (`src/errors/messages.ts`)
 Common error patterns with recovery suggestions. Use existing functions or add new ones:
 ```typescript
 // Existing: elementNotFoundError, sessionNotActiveError, daemonNotRunningError
@@ -161,13 +161,13 @@ All indices are 0-based everywhere (query output, `--index` option, `dom get`).
 
 **bdg** is a CLI for browser telemetry via Chrome DevTools Protocol. Architecture:
 ```text
-CLI Command → Unix Socket → Daemon → Worker (CDP connection)
+CLI Command → Unix Socket → Daemon (= the session: Chrome + CDP connection)
 ```
 
 ### Key Modules
 - `src/commands/` - CLI handlers using CommandRunner
 - `src/connection/` - CDP WebSocket, Chrome launcher
-- `src/daemon/` - IPC server, worker process
+- `src/daemon/` - IPC server, session controller, in-process session (`src/daemon/session/`)
 - `src/telemetry/` - DOM, network, console collectors
 - `src/ui/` - Errors, logging, messages, formatters
 - `src/utils/` - Exit codes, validation, suggestions
@@ -235,10 +235,14 @@ See `docs/CLI_REFERENCE.md` for complete reference.
 
 ## Session Files
 
-Location: `~/.bdg/`
-- `daemon.pid`, `daemon.sock` - Daemon state
+Location: `~/.bdg/` (override with `BDG_SESSION_DIR`)
+- `daemon.sock` - Daemon socket; the **only** liveness signal (connectable = session running)
+- `daemon.pid` - Informational; verified by command line before any signal
 - `session.meta.json` - Session metadata
-- `session.json` - Final output (on stop)
+- `chrome.pid` - Launched Chrome, kept until Chrome is confirmed dead (crash recovery)
+- `daemon.log` - Daemon output
+
+The daemon hosts exactly one session and exits when it ends. Only `bdg <url>` spawns it.
 
 ---
 
@@ -246,6 +250,6 @@ Location: `~/.bdg/`
 
 ```bash
 bdg status --verbose         # Diagnostics
-bdg cleanup --force          # Kill stale session
-bdg cleanup --aggressive     # Kill all Chrome processes
+bdg cleanup                  # Remove files left by a crashed session
+bdg cleanup --force          # Kill a stuck session (daemon + its Chrome)
 ```

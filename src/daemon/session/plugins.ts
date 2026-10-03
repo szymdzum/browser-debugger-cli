@@ -1,5 +1,5 @@
 import type { TelemetryStore } from './TelemetryStore.js';
-import type { WorkerConfig } from './types.js';
+import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
@@ -20,7 +20,7 @@ export interface TelemetryPlugin {
 
 export interface TelemetryPluginContext {
   cdp: CDPConnection;
-  config: WorkerConfig;
+  config: SessionConfig;
   store: TelemetryStore;
   logger: Logger;
 }

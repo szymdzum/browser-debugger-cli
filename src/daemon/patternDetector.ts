@@ -13,83 +13,55 @@ import { findPatternsForMethod, type PatternDefinition } from './patternDefiniti
 export interface PatternDetectionResult {
   /** Whether a hint should be shown */
   shouldShow: boolean;
-  /** Pattern that was detected */
+  /** Pattern whose hint should be shown */
   pattern?: PatternDefinition;
-  /** How many times this hint has been shown */
-  shownCount?: number;
 }
 
 /**
  * Pattern detector for tracking CDP usage and suggesting alternatives.
  *
- * Maintains state for pattern occurrence counts and hint display limits.
- * Designed to provide helpful guidance without overwhelming users.
+ * Counts calls per pattern, so related methods (e.g. `Network.getCookies` and
+ * `Network.getAllCookies`) share one count. Once a pattern reaches its threshold
+ * its hint is shown at most `MAX_HINTS_PER_PATTERN` times. When several patterns
+ * qualify, the one with the highest threshold wins as the most specific signal.
  */
 export class PatternDetector {
-  private readonly methodCounts: Map<string, number> = new Map();
+  private static readonly MAX_HINTS_PER_PATTERN = 3;
+  private readonly patternCounts: Map<string, number> = new Map();
   private readonly hintShownCounts: Map<string, number> = new Map();
-  private readonly maxHintsPerPattern = 3;
 
   /**
    * Track a CDP command execution.
    *
-   * Records the command and checks if any patterns are triggered.
-   * Returns detection result indicating if a hint should be shown.
-   *
-   * @param method - CDP method that was executed (e.g., "Runtime.evaluate")
-   * @returns Detection result with hint information
+   * @param method - CDP method that was executed (case-insensitive, e.g. "Runtime.evaluate")
+   * @returns Detection result indicating whether a hint should be shown
    */
   trackCommand(method: string): PatternDetectionResult {
-    const currentCount = (this.methodCounts.get(method) ?? 0) + 1;
-    this.methodCounts.set(method, currentCount);
+    let selected: PatternDefinition | undefined;
 
-    const matchingPatterns = findPatternsForMethod(method);
-
-    for (const pattern of matchingPatterns) {
-      if (currentCount >= pattern.threshold) {
-        const shownCount = this.hintShownCounts.get(pattern.name) ?? 0;
-
-        if (shownCount < this.maxHintsPerPattern) {
-          this.hintShownCounts.set(pattern.name, shownCount + 1);
-          return {
-            shouldShow: true,
-            pattern,
-            shownCount: shownCount + 1,
-          };
-        }
+    for (const pattern of findPatternsForMethod(method)) {
+      const count = (this.patternCounts.get(pattern.name) ?? 0) + 1;
+      this.patternCounts.set(pattern.name, count);
+      if (count < pattern.threshold || !this.canShowHint(pattern)) continue;
+      if (!selected || pattern.threshold > selected.threshold) {
+        selected = pattern;
       }
     }
 
-    return { shouldShow: false };
+    if (!selected) {
+      return { shouldShow: false };
+    }
+    this.hintShownCounts.set(selected.name, (this.hintShownCounts.get(selected.name) ?? 0) + 1);
+    return { shouldShow: true, pattern: selected };
   }
 
   /**
-   * Reset all pattern tracking state.
+   * Check whether a pattern's hint is still under its display limit.
    *
-   * Useful for testing or when starting a fresh analysis.
+   * @param pattern - Pattern to check
+   * @returns True if the hint may be shown again
    */
-  reset(): void {
-    this.methodCounts.clear();
-    this.hintShownCounts.clear();
-  }
-
-  /**
-   * Get current method count for a specific CDP method.
-   *
-   * @param method - CDP method name
-   * @returns Number of times method has been called
-   */
-  getMethodCount(method: string): number {
-    return this.methodCounts.get(method) ?? 0;
-  }
-
-  /**
-   * Get hint shown count for a specific pattern.
-   *
-   * @param patternName - Pattern identifier
-   * @returns Number of times hint has been shown for this pattern
-   */
-  getHintShownCount(patternName: string): number {
-    return this.hintShownCounts.get(patternName) ?? 0;
+  private canShowHint(pattern: PatternDefinition): boolean {
+    return (this.hintShownCounts.get(pattern.name) ?? 0) < PatternDetector.MAX_HINTS_PER_PATTERN;
   }
 }

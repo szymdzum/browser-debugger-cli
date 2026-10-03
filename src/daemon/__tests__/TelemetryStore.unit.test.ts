@@ -8,7 +8,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it, beforeEach } from 'node:test';
 
-import { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
+import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { CDPTarget, ConsoleMessage, DOMData, NetworkRequest } from '@/types.js';
 import { VERSION } from '@/utils/version.js';
 

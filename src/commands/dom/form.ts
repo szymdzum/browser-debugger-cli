@@ -26,7 +26,7 @@ import type {
   FieldState,
   FormFieldType,
 } from '@/runtime/dom/formTypes.js';
-import { QueryCacheManager } from '@/session/QueryCacheManager.js';
+import { FORM_DISCOVERY_CACHE_SELECTOR, QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { formatFormDiscovery } from '@/ui/formatters/form.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -384,13 +384,12 @@ async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
   const navigationId = await cacheManager.getCurrentNavigationId();
 
   await cacheManager.set({
-    selector: 'form:auto-discovered',
+    selector: FORM_DISCOVERY_CACHE_SELECTOR,
     count: allElements.length,
     nodes: allElements.map((el) => ({
       index: el.index,
       nodeId: el.nodeId,
-      tag: 'input',
-      preview: el.selector,
+      selector: el.selector,
     })),
     ...(navigationId !== null && { navigationId }),
   });

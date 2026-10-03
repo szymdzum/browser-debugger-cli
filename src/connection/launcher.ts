@@ -68,6 +68,8 @@ export interface LaunchOptions extends Pick<
   prefsFile?: string | undefined;
   /** Override Chrome binary detection with an explicit path */
   chromePath?: string;
+  /** bdg session directory, recorded as a marker flag on the Chrome command line */
+  sessionDir?: string | undefined;
 }
 
 /**

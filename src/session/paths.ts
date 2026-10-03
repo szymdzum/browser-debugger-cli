@@ -14,14 +14,11 @@ import * as path from 'path';
  * Centralized definition for all session-related files.
  */
 const SESSION_FILES = {
-  PID: 'session.pid',
   OUTPUT: 'session.json',
-  LOCK: 'session.lock',
   METADATA: 'session.meta.json',
   CHROME_PID: 'chrome.pid',
   DAEMON_PID: 'daemon.pid',
   DAEMON_SOCKET: 'daemon.sock',
-  DAEMON_LOCK: 'daemon.lock',
   PORT: 'port.txt',
 } as const;
 
@@ -56,7 +53,7 @@ export function getSessionDir(): string {
  *
  * @example
  * ```typescript
- * getSessionFilePath('PID')        // → ~/.bdg/session.pid
+ * getSessionFilePath('METADATA')   // → ~/.bdg/session.meta.json
  * getSessionFilePath('DAEMON_PID') // → ~/.bdg/daemon.pid
  * ```
  */

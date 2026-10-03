@@ -20,10 +20,8 @@ bdg status --json               # JSON output
 
 ### Stop the session
 ```bash
-bdg stop                        # Stop session only
-bdg stop --kill-chrome          # Stop session and kill Chrome
-# OR
-bdg stop && bdg cleanup --aggressive  # Alternative way to kill Chrome
+bdg stop                        # Stop session (closes Chrome launched by bdg)
+bdg stop --kill-chrome          # Kept for compatibility (no additional effect)
 ```
 
 ## Live Monitoring
@@ -788,17 +786,17 @@ bdg cdp Audits --describe
 
 ### Clean up stale sessions
 ```bash
-bdg cleanup                     # Remove stale session files
-bdg cleanup --force             # Force cleanup even if session appears active
-bdg cleanup --all               # Also remove session.json output file
-bdg cleanup --aggressive        # Kill all Chrome processes (uses chrome-launcher killAll)
+bdg cleanup                     # Remove files left by a crashed session, kill its orphaned Chrome
+bdg cleanup --force             # Kill a stuck session (daemon + its Chrome), then clean up
+bdg cleanup --aggressive        # Alias for --force
+bdg cleanup --remove-output     # Also remove legacy session.json
 bdg cleanup --json              # JSON output
 ```
 
 ## Collection Options
 
 **Note:** All three collectors (DOM, network, console) are enabled by default.
-DOM data is captured as a snapshot at session end, while network and console data stream continuously.
+Network and console data stream continuously; DOM state is queried live with `bdg dom` commands.
 
 ### Basic Options
 ```bash
@@ -821,19 +819,20 @@ bdg localhost:3000 --max-body-size 10           # Set max response body size (MB
 
 ## Session Files
 
-bdg stores session data in `~/.bdg/`:
+bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`):
 
-- **daemon.pid** - Daemon process ID
-- **daemon.sock** - Unix socket for IPC
+- **daemon.sock** - Unix socket for IPC; a session is running iff it accepts connections
+- **daemon.pid** - Daemon process ID (informational)
 - **session.meta.json** - Session metadata (Chrome PID, CDP port, target info)
-- **session.json** - Final output (written on stop only)
+- **chrome.pid** - Chrome launched by bdg, kept until Chrome is confirmed dead
+- **daemon.log** - Daemon output
 - **chrome-profile/** - Chrome user data directory
 
 **Key Behaviors:**
-- **Only one session at a time**: Lock prevents concurrent sessions
-- **Automatic cleanup**: All session files removed on stop
-- **Stale session detection**: Automatically cleans up if PID is dead
-- **No intermediate writes**: Data stays in memory until stop (IPC queries access live data)
+- **One daemon = one session**: only `bdg <url>` starts the daemon; it exits when the session ends (stop, Chrome disconnect, or `--timeout`)
+- **Only one session at a time**: the daemon claims its socket atomically; a second `bdg <url>` reports the running session
+- **Commands without a session**: exit 83 ("No active session") without starting anything; `bdg status` reports `active: false` (exit 0)
+- **Crash recovery**: files left by a killed daemon are cleaned up by `bdg status`, `bdg cleanup` or the next `bdg <url>`; an orphaned Chrome is killed only if its command line carries the `--bdg-session-dir=<dir>` marker bdg adds at launch
 
 ## Output Format
 

@@ -22,8 +22,8 @@ bdg <url> --no-headless    # Force visible browser window
 bdg status                 # Check session status
 bdg peek                   # Preview collected telemetry
 bdg stop                   # End session (use sparingly)
-bdg cleanup --force        # Kill stale session
-bdg cleanup --aggressive   # Kill all Chrome processes
+bdg cleanup                # Clean up after a crashed session
+bdg cleanup --force        # Kill a stuck session (daemon + its Chrome)
 ```
 
 **Sessions run indefinitely by default** (no timeout). With HMR/hot-reload dev servers, keep the session running:
@@ -138,18 +138,18 @@ bdg cdp Runtime.evaluate --params '{
 | 1 | Blocked command | Read error message, use suggested alternative |
 | 81 | Invalid arguments | Check command syntax |
 | 83 | Resource not found | Element/session doesn't exist |
-| 101 | CDP connection failure | Run `bdg cleanup --aggressive` and retry |
+| 101 | CDP connection failure | Run `bdg cleanup --force` and retry |
 | 102 | CDP timeout | Increase timeout or check page load |
 
 ## Troubleshooting
 
 ```bash
 bdg status --verbose      # Full diagnostics
-bdg cleanup --force       # Kill stale session
-bdg cleanup --aggressive  # Kill all Chrome processes
+bdg cleanup               # Clean up after a crashed session
+bdg cleanup --force       # Kill a stuck session (daemon + its Chrome)
 ```
 
-**Chrome won't launch?** Run `bdg cleanup --aggressive` then retry.
+**Chrome won't launch?** Run `bdg cleanup --force` then retry.
 
 **Session stuck?** Run `bdg cleanup --force` to reset.
 

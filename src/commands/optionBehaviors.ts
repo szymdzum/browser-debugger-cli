@@ -196,18 +196,18 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'DOM data only available after session stops. During live session shows "(none)".',
   },
 
-  'cleanup:--force': {
-    default: 'Only cleans up if session process is dead',
-    whenEnabled: 'Forces cleanup even if session appears active (use when stuck)',
+  'cleanup:-f': {
+    default: 'Refuses to run while a session is active; removes files left by a crashed session',
+    whenEnabled: 'Kills the running daemon and its Chrome first (use when a session is stuck)',
   },
   'cleanup:--aggressive': {
-    whenEnabled:
-      'Kills ALL Chrome processes on system (uses chrome-launcher killAll). Use with caution!',
+    whenEnabled: 'Alias for --force, kept for compatibility',
   },
 
   'stop:--kill-chrome': {
-    default: 'Stops session but leaves Chrome running for potential reconnection',
-    whenEnabled: 'Stops session AND terminates the Chrome browser process',
+    default:
+      'Chrome launched by bdg is always closed on stop; an attached Chrome (--chrome-ws-url) is left running',
+    whenEnabled: 'No additional effect; kept for compatibility',
   },
 
   'status:-v': {

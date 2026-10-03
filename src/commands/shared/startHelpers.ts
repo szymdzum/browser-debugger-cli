@@ -7,6 +7,8 @@
 
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
+import { DaemonError } from '@/daemon/errors.js';
+import { launchDaemon } from '@/daemon/launcher.js';
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   sessionAlreadyRunningError,
@@ -45,6 +47,13 @@ export async function startSessionViaDaemon(
   options: SessionStartOptions,
   telemetry: TelemetryType[]
 ): Promise<void> {
+  try {
+    await launchDaemon();
+  } catch (error) {
+    console.error(genericError(`Failed to start daemon: ${getErrorMessage(error)}`));
+    process.exit(error instanceof DaemonError ? error.exitCode : EXIT_CODES.SOFTWARE_ERROR);
+  }
+
   try {
     log.debug('Connecting to daemon...');
 

@@ -1,288 +1,139 @@
 /**
- * Daemon helper utilities for smoke tests.
+ * Daemon helpers for smoke tests.
  *
- * Provides functions to check daemon status and manage session state.
- * WHY: Enables testing daemon lifecycle without exposing internals.
+ * Everything here is scoped to the isolated test session directory
+ * (`BDG_SESSION_DIR`, see testHome.ts). Helpers never touch processes or
+ * ports outside that directory, so running smoke tests locally cannot kill
+ * the developer's own bdg sessions or Chrome instances.
  */
 
 import * as fs from 'fs';
 import * as net from 'net';
 
+import { runCommand } from '@/__testutils__/commandRunner.js';
 import { getSessionFilePath } from '@/session/paths.js';
-import { readPid } from '@/session/pid.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 import { ensureTestSessionDir } from './testHome.js';
 
 ensureTestSessionDir();
 
+const SOCKET_PROBE_TIMEOUT_MS = 500;
+const PROCESS_EXIT_TIMEOUT_MS = 5000;
+
 /**
- * Check if daemon is currently running.
+ * Check whether the test daemon accepts connections on its socket.
  *
- * @returns True if daemon process is alive
- *
- * @example
- * ```typescript
- * await runCommand('http://localhost:3000', []);
- * assert.ok(await isDaemonRunning());
- * ```
+ * @returns True if a connection to the daemon socket succeeds
  */
-export function isDaemonRunning(): boolean {
-  try {
-    const daemonPidPath = getSessionFilePath('DAEMON_PID');
-
-    if (!fs.existsSync(daemonPidPath)) {
-      return false;
-    }
-
-    const pidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
-    const pid = parseInt(pidStr, 10);
-
-    if (isNaN(pid)) {
-      return false;
-    }
-
-    return isProcessAlive(pid);
-  } catch {
+export async function isDaemonRunning(): Promise<boolean> {
+  const socketPath = getSessionFilePath('DAEMON_SOCKET');
+  if (!fs.existsSync(socketPath)) {
     return false;
   }
-}
-
-/**
- * Check if session is currently active.
- *
- * @returns True if session process is alive
- *
- * @example
- * ```typescript
- * await runCommand('http://localhost:3000', []);
- * assert.ok(await isSessionActive());
- * ```
- */
-export function isSessionActive(): boolean {
-  try {
-    const sessionPid = readPid();
-
-    if (sessionPid === null) {
-      return false;
-    }
-
-    return isProcessAlive(sessionPid);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Kill daemon process forcefully.
- *
- * @param signal - Kill signal (default: SIGTERM)
- *
- * @example
- * ```typescript
- * await killDaemon('SIGKILL'); // Simulate crash
- * ```
- */
-export async function killDaemon(signal: NodeJS.Signals = 'SIGTERM'): Promise<void> {
-  const daemonPidPath = getSessionFilePath('DAEMON_PID');
-
-  if (!fs.existsSync(daemonPidPath)) {
-    return;
-  }
-
-  const pidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
-  const pid = parseInt(pidStr, 10);
-
-  if (!isNaN(pid) && isProcessAlive(pid)) {
-    process.kill(pid, signal);
-
-    // Wait for process to die
-    await new Promise((resolve) => {
-      const check = setInterval(() => {
-        if (!isProcessAlive(pid)) {
-          clearInterval(check);
-          resolve(undefined);
-        }
-      }, 100);
-
-      // Timeout after 5s
-      setTimeout(() => {
-        clearInterval(check);
-        resolve(undefined);
-      }, 5000);
+  return new Promise<boolean>((resolve) => {
+    const socket = net.createConnection(socketPath);
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve(false);
+    }, SOCKET_PROBE_TIMEOUT_MS);
+    socket.once('connect', () => {
+      clearTimeout(timer);
+      socket.end();
+      resolve(true);
     });
-  }
+    socket.once('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+  });
 }
 
 /**
- * Clean up all session files forcefully.
+ * Read the Chrome PID recorded for the test session.
  *
- * WHY: Ensures clean state between tests.
- *
- * @example
- * ```typescript
- * afterEach(async () => {
- *   await cleanupAllSessions();
- * });
- * ```
+ * @returns Chrome PID from session metadata, or null if unavailable
  */
-export async function cleanupAllSessions(): Promise<void> {
-  // Kill daemon if running via PID file
-  await killDaemon('SIGKILL');
-
-  // Kill ALL daemon/worker processes (handles orphaned processes from failed tests)
-  // This is aggressive but necessary for test isolation
+export function readTestChromePid(): number | null {
   try {
-    const { execSync } = await import('child_process');
-    execSync('pkill -9 -f "node.*dist/daemon" 2>/dev/null || true', { stdio: 'ignore' });
-    execSync('pkill -9 -f "node.*dist/daemon/worker" 2>/dev/null || true', { stdio: 'ignore' });
-  } catch {
-    // Ignore errors
-  }
-
-  // Kill Chrome on all test ports (9222-9232)
-  try {
-    const { execSync } = await import('child_process');
-    for (let port = 9222; port <= 9232; port++) {
-      execSync(`lsof -ti:${port} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
-    }
-  } catch {
-    // Ignore errors if no process on port
-  }
-
-  // Wait for processes to fully die and ports to be released
-  // Increased to 2000ms to ensure complete cleanup between tests
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // Remove all session files
-  const files = [
-    'DAEMON_PID',
-    'DAEMON_SOCKET',
-    'DAEMON_LOCK',
-    'PID',
-    'LOCK',
-    'METADATA',
-    'OUTPUT',
-  ] as const;
-
-  for (const file of files) {
-    try {
-      const filePath = getSessionFilePath(file);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
-    } catch {
-      // Ignore errors
-    }
-  }
-}
-
-/**
- * Read session output file.
- *
- * @returns Parsed session output or null if not exists
- *
- * @example
- * ```typescript
- * await runCommand('stop', []);
- * const output = readSessionOutput();
- * assert.equal(output.success, true);
- * ```
- */
-export function readSessionOutput(): unknown {
-  try {
-    const outputPath = getSessionFilePath('OUTPUT');
-
-    if (!fs.existsSync(outputPath)) {
-      return null;
-    }
-
-    const content = fs.readFileSync(outputPath, 'utf-8');
-    return JSON.parse(content);
+    const raw = fs.readFileSync(getSessionFilePath('METADATA'), 'utf-8');
+    const pid = (JSON.parse(raw) as { chromePid?: unknown }).chromePid;
+    return typeof pid === 'number' && pid > 0 ? pid : null;
   } catch {
     return null;
   }
 }
 
 /**
- * Wait for daemon to start (with timeout).
+ * Read a positive PID from a file in the test session directory.
  *
- * @param timeoutMs - Timeout in milliseconds (default: 5000)
- * @returns True if daemon started, false if timeout
- *
- * @example
- * ```typescript
- * runCommand('start', ['http://localhost:3000']); // Don't await
- * assert.ok(await waitForDaemon(5000));
- * ```
+ * @param filePath - PID file path
+ * @returns PID, or null if missing or invalid
  */
+function readPositivePid(filePath: string): number | null {
+  try {
+    const pid = parseInt(fs.readFileSync(filePath, 'utf-8').trim(), 10);
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Wait for daemon to be fully ready (socket listening + IPC responsive).
+ * Wait until a process exits.
  *
- * Enhanced version that polls for:
- * 1. PID file exists and process alive
- * 2. Daemon socket exists and is connectable
- * 3. IPC handshake succeeds (optional verification)
- *
- * @param timeoutMs - Maximum time to wait (default: 10s, increased from 5s)
- * @param verifyHandshake - Whether to verify IPC handshake (default: false for backwards compat)
- * @returns True if daemon is ready, false if timeout
+ * @param pid - Process ID
+ * @param timeoutMs - Maximum time to wait
+ * @returns True if the process is gone
  */
-export async function waitForDaemon(
-  timeoutMs: number = 10000,
-  verifyHandshake: boolean = false
+export async function waitForProcessExit(
+  pid: number,
+  timeoutMs: number = PROCESS_EXIT_TIMEOUT_MS
 ): Promise<boolean> {
-  const startTime = Date.now();
-  const pollInterval = 100;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return !isProcessAlive(pid);
+}
 
-  while (Date.now() - startTime < timeoutMs) {
-    if (!isDaemonRunning()) {
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      continue;
-    }
+/**
+ * SIGKILL a process if it is alive.
+ *
+ * @param pid - Process ID
+ */
+function killIfAlive(pid: number): void {
+  if (!isProcessAlive(pid)) return;
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    return;
+  }
+}
 
-    const socketPath = getSessionFilePath('DAEMON_SOCKET');
-    if (!fs.existsSync(socketPath)) {
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      continue;
-    }
-
-    const isListening = await new Promise<boolean>((resolve) => {
-      const socket = net.createConnection(socketPath);
-
-      socket.on('connect', () => {
-        socket.end();
-        resolve(true);
-      });
-
-      socket.on('error', () => {
-        resolve(false);
-      });
-
-      setTimeout(() => {
-        socket.destroy();
-        resolve(false);
-      }, 500);
-    });
-
-    if (!isListening) {
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      continue;
-    }
-
-    if (verifyHandshake) {
-      try {
-        const { connectToDaemon } = await import('@/ipc/client.js');
-        await connectToDaemon();
-        return true;
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
-        continue;
-      }
-    }
-
-    return true;
+/**
+ * Tear down whatever the test session left behind.
+ *
+ * Tries a graceful `bdg stop` first, then SIGKILLs only the processes recorded
+ * in the test session directory, and finally removes session state files.
+ */
+export async function cleanupAllSessions(): Promise<void> {
+  if (await isDaemonRunning()) {
+    await runCommand('stop', ['--kill-chrome'], { timeout: 15000 });
   }
 
-  return false;
+  const pids = [
+    readPositivePid(getSessionFilePath('DAEMON_PID')),
+    readPositivePid(getSessionFilePath('CHROME_PID')),
+    readTestChromePid(),
+  ];
+  const livePids = pids.filter((pid): pid is number => pid !== null);
+  livePids.forEach(killIfAlive);
+  await Promise.all(livePids.map((pid) => waitForProcessExit(pid)));
+
+  const files = ['DAEMON_PID', 'DAEMON_SOCKET', 'METADATA', 'CHROME_PID'] as const;
+  for (const file of files) {
+    fs.rmSync(getSessionFilePath(file), { force: true });
+  }
 }

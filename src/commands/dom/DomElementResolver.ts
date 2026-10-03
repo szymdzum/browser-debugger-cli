@@ -28,7 +28,11 @@
 
 import { CommandError } from '@/errors/index.js';
 import { elementAtIndexNotFoundError, indexOutOfRangeError } from '@/errors/messages.js';
-import { QueryCacheManager, type QueryCacheValidation } from '@/session/QueryCacheManager.js';
+import {
+  FORM_DISCOVERY_CACHE_SELECTOR,
+  QueryCacheManager,
+  type QueryCacheValidation,
+} from '@/session/QueryCacheManager.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -115,6 +119,7 @@ export class DomElementResolver {
   private async validateWithAutoRefresh(): Promise<QueryCacheValidation> {
     const validation = await this.cacheManager.validate();
     if (validation.valid || !validation.cache?.selector) return validation;
+    if (validation.cache.selector === FORM_DISCOVERY_CACHE_SELECTOR) return validation;
     await this.refreshCache(validation.cache.selector);
     return this.cacheManager.validate();
   }
@@ -177,25 +182,10 @@ export class DomElementResolver {
 
       const cachedQuery = validation.cache;
       const index = parseInt(selectorOrIndex, 10);
-
-      // Find node by index property (supports non-sequential indices from form discovery)
-      const targetNode = cachedQuery.nodes.find((n) => n.index === index);
+      const targetNode =
+        cachedQuery.nodes.find((n) => n.index === index) ?? cachedQuery.nodes[index];
 
       if (!targetNode) {
-        // Fall back to array-position lookup for sequential indices (standard queries)
-        if (index >= 0 && index < cachedQuery.nodes.length) {
-          const nodeByPosition = cachedQuery.nodes[index];
-          if (nodeByPosition) {
-            const fallbackSelector = nodeByPosition.preview ?? cachedQuery.selector;
-            const fallbackIndex = nodeByPosition.preview ? undefined : index + 1;
-            return {
-              success: true,
-              selector: fallbackSelector,
-              index: fallbackIndex,
-            };
-          }
-        }
-
         const validIndices = cachedQuery.nodes.map((n) => n.index).sort((a, b) => a - b);
         return {
           success: false,
@@ -208,18 +198,10 @@ export class DomElementResolver {
         };
       }
 
-      // Use node's preview selector if available (from form discovery), otherwise original selector
-      const resolvedSelector = targetNode.preview ?? cachedQuery.selector;
-
-      // If using preview selector (unique element), don't pass index
-      // Index is only needed when original selector matches multiple elements
-      const resolvedIndex = targetNode.preview ? undefined : index + 1;
-
-      return {
-        success: true,
-        selector: resolvedSelector,
-        index: resolvedIndex,
-      };
+      if (targetNode.selector) {
+        return { success: true, selector: targetNode.selector };
+      }
+      return { success: true, selector: cachedQuery.selector, index };
     }
 
     return {

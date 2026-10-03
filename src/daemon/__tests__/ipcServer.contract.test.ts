@@ -506,21 +506,4 @@ void describe('IPC Server Contract Tests', () => {
       client2.close();
     });
   });
-
-  void describe('Static helper methods', () => {
-    void it('IPCServer.isRunning() should return true when server is running', () => {
-      assert.ok(IPCServer.isRunning(), 'Server should be detected as running');
-    });
-
-    void it('IPCServer.isRunning() should return false after server stops', async () => {
-      await server.stop();
-      assert.ok(!IPCServer.isRunning(), 'Server should not be detected after stop');
-    });
-
-    void it('IPCServer.getSocketPath() should return correct socket path', () => {
-      const socketPath = IPCServer.getSocketPath();
-      const expectedPath = getSessionFilePath('DAEMON_SOCKET');
-      assert.equal(socketPath, expectedPath);
-    });
-  });
 });

@@ -1,7 +1,7 @@
 /**
  * Daemon layer error classes.
  *
- * Provides structured error handling for daemon, worker, and configuration errors.
+ * Provides structured error handling for daemon and configuration errors.
  */
 
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -28,30 +28,9 @@ export class DaemonError extends Error {
 }
 
 /**
- * Worker process error.
- *
- * Thrown when worker process fails to start, crashes, or has runtime issues.
- *
- * @example
- * ```typescript
- * throw new WorkerError(
- *   'Worker failed to start within timeout',
- *   'WORKER_START_TIMEOUT'
- * );
- * ```
- */
-export class WorkerError extends DaemonError {
-  public override readonly name = 'WorkerError';
-
-  constructor(message: string, code?: string) {
-    super(message, code, EXIT_CODES.SOFTWARE_ERROR);
-  }
-}
-
-/**
  * Configuration error.
  *
- * Thrown when worker configuration is invalid or missing required fields.
+ * Thrown when session configuration is invalid or missing required fields.
  *
  * @example
  * ```typescript

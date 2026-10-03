@@ -10,15 +10,14 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
+import { getFreePort } from '@/__testutils__/fixtureServer.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 void describe('Error Handling Smoke Tests', () => {
   let allocatedPort: number;
 
-  beforeEach(() => {
-    const basePort = 9222;
-    const portOffset = Math.floor(Math.random() * 100);
-    allocatedPort = basePort + portOffset;
+  beforeEach(async () => {
+    allocatedPort = await getFreePort();
   });
 
   afterEach(async () => {
@@ -56,7 +55,7 @@ void describe('Error Handling Smoke Tests', () => {
   void it('should provide helpful error when Chrome fails to launch', async () => {
     // Try to start with invalid Chrome path and unique port
     const result = await runCommand(
-      'http://example.com',
+      'http://127.0.0.1:9/',
       ['--port', allocatedPort.toString(), '--headless'],
       {
         timeout: 60000,

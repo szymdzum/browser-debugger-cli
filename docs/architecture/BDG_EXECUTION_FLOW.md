@@ -4,79 +4,86 @@ This document describes the complete execution flow when running `bdg <url>`.
 
 ## Overview
 
-BDG uses a **3-process architecture**:
+BDG uses a **2-process architecture**:
 1. **CLI Process** - User command (exits after starting session)
-2. **Daemon Process** - Long-running IPC server
-3. **Worker Process** - Chrome CDP session manager
+2. **Daemon Process** - Long-running IPC server that *is* the session: it hosts Chrome, the CDP connection and telemetry in-process
+
+The daemon's lifetime is the session's lifetime. Only `bdg <url>` spawns a daemon; every other command talks to an existing daemon and exits with code 83 ("No active session") when there is none.
 
 ## Execution Flow: `bdg localhost:3000`
 
-### Phase 1: CLI Entry & Daemon Check
+### Phase 1: CLI Entry & Daemon Launch
 
 **1. `src/index.ts` - Main entry point**
 ```
 main()
-  ├─ Check if running as daemon worker (BDG_DAEMON=1)
-  ├─ isDaemonRunning() - Check daemon PID file
-  └─ If not running: launchDaemon()
-```
-
-**2. `src/daemon/launcher.ts` - Daemon launcher**
-```
-launchDaemon()
-  ├─ acquireDaemonLock() - Atomic lock (prevent concurrent starts)
-  ├─ cleanupStaleSession() - Remove stale session files
-  ├─ spawn('node', ['dist/daemon.js']) - Spawn daemon (detached)
-  ├─ Wait for socket file (max 5s)
-  └─ releaseDaemonLock() - Release lock on error
-```
-
-**3. `src/daemon.ts` - Daemon entry point (separate process)**
-```
-main()
-  ├─ new IPCServer()
-  └─ server.start()
-```
-
-**4. `src/daemon/ipcServer.ts` - IPC server initialization**
-```
-start()
-  ├─ ensureSessionDir() - Create ~/.bdg/
-  ├─ createServer() - Unix socket at ~/.bdg/daemon.sock
-  └─ writePidFile() - Write daemon PID
-```
-
-### Phase 2: Command Parsing & Dispatch
-
-**5. `src/index.ts` (continued)**
-```
-main()
   ├─ new Command() - Initialize Commander
   ├─ commandRegistry.forEach() - Register commands
-  └─ program.parse() - Parse CLI arguments
+  └─ program.parseAsync() - Parse CLI arguments
 ```
 
-**6. `src/cli/commands/start.ts` - Start command handler**
+**2. `src/commands/start.ts` - Start command handler**
 ```
-registerStartCommands()
-  └─ .action()
-      ├─ buildSessionOptions() - Normalize CLI options
-      └─ collectorAction()
-          └─ startSessionViaDaemon()
+.action()
+  └─ collectorAction()
+      ├─ Normalize CLI options
+      └─ startSessionViaDaemon()
 ```
 
-**7. `src/cli/handlers/daemonSessionController.ts` - Session controller**
+**3. `src/commands/shared/startHelpers.ts` - Start helper**
 ```
 startSessionViaDaemon()
+  ├─ launchDaemon() - Ensure a daemon is running
   └─ sendStartSessionRequest(url, options) - Send IPC request
 ```
 
+**4. `src/daemon/launcher.ts` - Daemon launcher**
+```
+launchDaemon()
+  ├─ isDaemonAlive() - Probe ~/.bdg/daemon.sock; return if it accepts a connection
+  ├─ spawn(process.execPath, ['dist/daemon.js']) - Spawn daemon (detached,
+  │                                                stdout/stderr → ~/.bdg/daemon.log)
+  └─ Poll socket until it accepts connections (max 5s)
+      └─ If the spawned daemon exited, accept another daemon's socket
+         (it may have lost a single-instance race)
+```
+
+**5. `src/daemon.ts` - Daemon entry point (separate process)**
+```
+main()
+  ├─ new IPCServer()
+  ├─ Register SIGINT/SIGTERM → server.shutdown()
+  └─ server.start()
+      └─ DAEMON_ALREADY_RUNNING → exit 0 (another daemon owns the socket)
+```
+
+**6. `src/daemon/ipcServer.ts` - IPC server initialization**
+```
+start()
+  ├─ ensureSessionDir() - Create ~/.bdg/
+  ├─ socketServer.start() - Claim ~/.bdg/daemon.sock (see SocketServer)
+  ├─ writePidFile() - Write ~/.bdg/daemon.pid (informational only)
+  └─ Start idle timer (10s) - Exit if no session was started
+```
+
+**7. `src/daemon/server/SocketServer.ts` - Single-instance socket claim**
+```
+start()
+  ├─ listen() on private path ~/.bdg/daemon.sock.<pid>
+  ├─ claim() - link() private path → ~/.bdg/daemon.sock
+  │   ├─ EEXIST + socket alive → DaemonError(DAEMON_ALREADY_RUNNING)
+  │   └─ EEXIST + socket stale → remove stale file, retry once
+  └─ Remove private path
+```
+
+### Phase 2: IPC Request
+
 **8. `src/ipc/client.ts` - IPC client**
 ```
-sendStartSessionRequest()
+startSession()
   ├─ Connect to ~/.bdg/daemon.sock
   ├─ Send JSONL: {"type": "start_session_request", ...}
-  └─ Wait for response
+  └─ Wait for response (45s default, BDG_IPC_TIMEOUT_MS)
 ```
 
 ### Phase 3: Daemon Handles Request
@@ -85,153 +92,120 @@ sendStartSessionRequest()
 ```
 handleConnection()
   └─ handleMessage()
-      └─ handleStartSessionRequest()
-          ├─ Check for existing session (concurrency guard)
-          └─ launchSessionInWorker()
+      └─ route()
+          └─ controller.startSession()
 ```
 
-**10. `src/daemon/startSession.ts` - Worker launcher**
+**10. `src/daemon/SessionController.ts` - Session controller**
 ```
-launchSessionInWorker()
+startSession()
+  ├─ Concurrency guard: session running or starting → error response
+  │   (SESSION_ALREADY_RUNNING or SESSION_TARGET_MISMATCH)
+  └─ Session.start(url, options, onEnded)
+```
+
+### Phase 4: In-Process Session Initialization
+
+**11. `src/daemon/session/Session.ts` - Session start**
+```
+Session.start()
   ├─ validateUrl() - Validate target URL
-  ├─ spawn('node', ['dist/daemon/worker.js', config]) - Spawn worker
-  └─ Wait for worker_ready signal on stdout (max 40s)
+  ├─ getSessionPort() - Explicit --port, saved port.txt, or first free port
+  └─ launch()
+      ├─ killOrphanedChrome() - Kill Chrome from chrome.pid if it is still a
+      │                         bdg Chrome (skipped with --chrome-ws-url)
+      └─ setupChromeConnection()
 ```
 
-### Phase 4: Worker Process Initialization
-
-**11. `src/daemon/worker.ts` - Worker entry point (separate process)**
+**12. `src/daemon/session/chromeConnection.ts` - Chrome setup**
 ```
-main()
-  ├─ parseWorkerConfig() - Parse config from argv
-  ├─ normalizeUrl() - Add protocol if missing
-  └─ launchChrome()
+setupChromeConnection()
+  ├─ --chrome-ws-url: attach to external Chrome (no PID, never terminated)
+  └─ Otherwise:
+      ├─ launchChrome() - src/connection/launcher.ts
+      ├─ writeChromePid() - Write ~/.bdg/chrome.pid
+      └─ fetchCDPTargets() - Pick first page target
 ```
 
-**12. `src/connection/launcher.ts` - Chrome launcher**
+**13. `src/connection/launcher.ts` - Chrome launcher**
 ```
 launchChrome()
-  ├─ Auto-detect Chrome binary path
-  ├─ Spawn Chrome --remote-debugging-port=9222
-  ├─ Poll for CDP endpoint (max retries)
+  ├─ Auto-detect Chrome binary path (chrome-launcher)
+  ├─ Spawn Chrome --remote-debugging-port=<port>
+  ├─ Verify Chrome process is alive / CDP available
   └─ Return LaunchedChrome metadata
 ```
 
-**13. `src/daemon/worker.ts` (continued)**
+**14. `src/daemon/session/cdpSetup.ts` - CDP setup & navigation**
 ```
-main()
-  ├─ fetchCDPTargets() - Get available tabs via HTTP
-  └─ new CDPConnection()
-```
-
-**14. `src/connection/cdp.ts` - CDP connection**
-```
-new CDPConnection()
-  ├─ Connect to ws://localhost:9222/devtools/page/<targetId>
-  ├─ Set up message ID tracking
-  └─ Set up event subscription system
+setupCDPAndNavigate()
+  ├─ new CDPConnection().connect(webSocketDebuggerUrl)
+  │   └─ onDisconnect → session.stop('crash')
+  ├─ startTelemetryCollectors() - Activate collectors before navigation
+  ├─ cdp.send('Page.navigate', { url })
+  ├─ waitForPageReady()
+  └─ Refresh target info (title/url) for launched Chrome
 ```
 
-**15. `src/daemon/worker.ts` (continued)**
+**15. `src/daemon/session/collectors.ts` - Telemetry plugins**
 ```
-main()
-  └─ waitForPageReady()
+startTelemetryCollectors()
+  ├─ dialogs, navigation (always)
+  ├─ network, websocket (telemetry: 'network') - src/telemetry/network.ts
+  ├─ console (telemetry: 'console') - src/telemetry/console.ts
+  ├─ dom (telemetry: 'dom') - src/telemetry/dom.ts (enable domains only)
+  └─ Return cleanup functions
 ```
+See `TELEMETRY-PLUGIN.md` for the plugin contract.
 
-**16. `src/utils/pageReadiness.ts` - Page readiness detection**
+**16. `src/connection/pageReadiness.ts` - Page readiness detection**
 ```
 waitForPageReady()
-  ├─ cdp.send('Page.enable')
-  ├─ Wait for Page.loadEventFired (max 2s)
-  └─ Optional: Network/DOM stability (if waitForStability: true)
+  ├─ Wait for Page.loadEventFired
+  ├─ Wait for network stability (200ms idle)
+  └─ Wait for DOM stability (300ms idle)
+  All within a 2s budget (DEFAULT_PAGE_READINESS_TIMEOUT_MS)
 ```
 
-**17. `src/daemon/worker.ts` (continued)**
+**17. `src/daemon/session/Session.ts` (continued)**
 ```
-main()
-  └─ activateCollectors()
-```
-
-**18. `src/collectors/network.ts` - Network collector**
-```
-startNetworkCollection()
-  ├─ cdp.send('Network.enable')
-  ├─ Register event handlers:
-  │   ├─ Network.requestWillBeSent
-  │   ├─ Network.responseReceived
-  │   └─ Network.loadingFinished
-  └─ Return cleanup function
-```
-
-**19. `src/collectors/console.ts` - Console collector**
-```
-startConsoleCollection()
-  ├─ cdp.send('Runtime.enable')
-  ├─ cdp.send('Log.enable')
-  ├─ Register event handlers:
-  │   ├─ Runtime.consoleAPICalled
-  │   └─ Log.entryAdded
-  └─ Return cleanup function
-```
-
-**20. `src/collectors/dom.ts` - DOM collector (prepare only)**
-```
-prepareDOMCollection()
-  ├─ cdp.send('DOM.enable')
-  └─ Return cleanup function
-  Note: Actual snapshot happens on stop
-```
-
-**21. `src/daemon/worker.ts` (continued)**
-```
-main()
+launch()
   ├─ writeSessionMetadata() - Write ~/.bdg/session.meta.json
-  ├─ writePid() - Write ~/.bdg/session.pid
-  ├─ Send worker_ready signal to stdout (JSONL)
-  ├─ Set up stdin listener for IPC commands
-  └─ Set up shutdown handlers (SIGTERM, SIGINT)
+  └─ If --timeout: schedule session.stop('timeout')
 ```
+
+If any step fails, `teardownSession()` releases whatever was started and the error is returned to the CLI; the daemon then exits.
 
 ### Phase 5: Response & CLI Exit
 
-**22. `src/daemon/startSession.ts` - Worker launcher receives signal**
+**18. `src/daemon/SessionController.ts` - Daemon sends response**
 ```
-launchSessionInWorker()
-  ├─ Parse worker_ready message from stdout
-  └─ Return WorkerMetadata to daemon
-```
-
-**23. `src/daemon/ipcServer.ts` - Daemon sends response**
-```
-handleStartSessionRequest()
-  ├─ Store worker process reference
-  └─ Send JSONL: {"type": "start_session_response", "status": "ok", ...}
+startSession()
+  ├─ Store Session reference
+  └─ Return {"type": "start_session_response", "status": "ok", data: {...}}
+      (workerPid is the daemon PID; chromePid, port, targetUrl, targetTitle)
 ```
 
-**24. `src/ipc/client.ts` - IPC client receives response**
-```
-sendStartSessionRequest()
-  ├─ Parse JSONL response
-  └─ Return to session controller
-```
-
-**25. `src/cli/handlers/daemonSessionController.ts` - Display info**
+**19. `src/commands/shared/startHelpers.ts` - Display info**
 ```
 startSessionViaDaemon()
-  ├─ Output session metadata (PIDs, target URL, etc.)
-  ├─ Show available commands (status, peek, stop)
+  ├─ Print landing page (or one line with --quiet)
   └─ process.exit(0) - CLI exits immediately
 ```
 
 ### Phase 6: Background Operation
 
-**26. Worker continues running in background**
+**20. Daemon continues running in background**
 ```
-Worker Process (background)
-  ├─ Listen for CDP events (network, console)
-  ├─ Accumulate data in memory arrays
-  ├─ Respond to IPC commands via stdin/stdout
-  └─ Wait for stop command or timeout
+Daemon Process (background)
+  ├─ Listen for CDP events (network, console, navigation)
+  ├─ Accumulate data in TelemetryStore
+  ├─ Answer IPC requests directly via SessionController → Session.execute()
+  └─ Exit when the session ends:
+      ├─ bdg stop
+      ├─ Chrome / CDP disconnect
+      ├─ --timeout elapsed
+      └─ SIGINT / SIGTERM
 ```
 
 ## Process Architecture Diagram
@@ -241,29 +215,23 @@ Worker Process (background)
 │                         CLI Process                             │
 │  (node dist/index.js localhost:3000)                           │
 │                                                                 │
-│  index.ts → start.ts → daemonSessionController.ts              │
+│  index.ts → start.ts → startHelpers.ts → launcher.ts           │
 │                           │                                     │
 │                           │ Unix Socket                         │
 │                           │ ~/.bdg/daemon.sock                  │
 │                           ▼                                     │
 │  ┌───────────────────────────────────────────────────────────┐ │
-│  │              Daemon Process (background)                  │ │
+│  │       Daemon Process = Session (background)               │ │
 │  │         (node dist/daemon.js, detached)                   │ │
 │  │                                                           │ │
-│  │  daemon.ts → ipcServer.ts → startSession.ts              │ │
+│  │  daemon.ts → ipcServer.ts → SessionController.ts         │ │
 │  │                                  │                        │ │
-│  │                                  │ spawn worker           │ │
+│  │                                  │ in-process             │ │
 │  │                                  ▼                        │ │
-│  │  ┌────────────────────────────────────────────────────┐  │ │
-│  │  │         Worker Process (background)               │  │ │
-│  │  │   (node dist/daemon/worker.js, detached)          │  │ │
-│  │  │                                                    │  │ │
-│  │  │  worker.ts → launcher.ts → Chrome Process         │  │ │
-│  │  │           → cdp.ts (WebSocket)                    │  │ │
-│  │  │           → collectors/*.ts (Network/Console/DOM) │  │ │
-│  │  │                                                    │  │ │
-│  │  │  stdin/stdout ← IPC → daemon                      │  │ │
-│  │  └────────────────────────────────────────────────────┘  │ │
+│  │  session/Session.ts → connection/launcher.ts → Chrome    │ │
+│  │                     → connection/cdp.ts (WebSocket)       │ │
+│  │                     → session/collectors.ts (plugins)     │ │
+│  │                     → session/commandRegistry.ts          │ │
 │  └───────────────────────────────────────────────────────────┘ │
 │                                                                 │
 │  CLI exits after starting session (exit code 0)                │
@@ -275,34 +243,44 @@ Worker Process (background)
 | File | Role | Process |
 |------|------|---------|
 | `src/index.ts` | CLI entry point | CLI |
-| `src/cli/commands/start.ts` | Start command handler | CLI |
-| `src/cli/handlers/daemonSessionController.ts` | Session controller | CLI |
+| `src/commands/start.ts` | Start command handler | CLI |
+| `src/commands/shared/startHelpers.ts` | Launch daemon + send start request | CLI |
 | `src/ipc/client.ts` | IPC client | CLI |
 | `src/daemon/launcher.ts` | Daemon spawner | CLI |
+| `src/session/daemonSocket.ts` | Liveness probe (socket connectable) | CLI + Daemon |
 | `src/daemon.ts` | Daemon entry point | Daemon |
-| `src/daemon/ipcServer.ts` | IPC server (Unix socket) | Daemon |
-| `src/daemon/startSession.ts` | Worker spawner | Daemon |
-| `src/daemon/worker.ts` | Worker entry & IPC handler | Worker |
-| `src/connection/launcher.ts` | Chrome launcher | Worker |
-| `src/connection/cdp.ts` | CDP WebSocket client | Worker |
-| `src/collectors/network.ts` | Network request collector | Worker |
-| `src/collectors/console.ts` | Console message collector | Worker |
-| `src/collectors/dom.ts` | DOM snapshot collector | Worker |
-| `src/utils/pageReadiness.ts` | Page load detection | Worker |
+| `src/daemon/ipcServer.ts` | IPC server, routing, shutdown | Daemon |
+| `src/daemon/server/SocketServer.ts` | Exclusive socket claim | Daemon |
+| `src/daemon/SessionController.ts` | Request handling for the session | Daemon |
+| `src/daemon/session/Session.ts` | Session lifecycle | Daemon |
+| `src/daemon/session/chromeConnection.ts` | Launch or attach to Chrome | Daemon |
+| `src/daemon/session/cdpSetup.ts` | CDP connect, collectors, navigation | Daemon |
+| `src/daemon/session/collectors.ts` | Telemetry plugin activation | Daemon |
+| `src/daemon/session/commandRegistry.ts` | Session command handlers | Daemon |
+| `src/daemon/session/teardown.ts` | Collector cleanup, CDP close, Chrome kill | Daemon |
+| `src/connection/launcher.ts` | Chrome launcher | Daemon |
+| `src/connection/cdp.ts` | CDP WebSocket client | Daemon |
+| `src/connection/pageReadiness.ts` | Page load detection | Daemon |
+| `src/telemetry/network.ts` | Network request collector | Daemon |
+| `src/telemetry/console.ts` | Console message collector | Daemon |
+| `src/telemetry/dom.ts` | DOM collector | Daemon |
+| `src/session/cleanup/staleSession.ts` | Crash cleanup helpers | CLI + Daemon |
 
 ## Session Files
 
-During execution, BDG creates these files in `~/.bdg/`:
+During execution, BDG creates these files in `~/.bdg/` (or `$BDG_SESSION_DIR`):
 
 | File | Created By | Purpose |
 |------|------------|---------|
-| `daemon.sock` | Daemon | Unix socket for IPC |
-| `daemon.pid` | Daemon | Daemon process ID |
-| `daemon.lock` | CLI | Atomic lock during daemon startup |
-| `session.pid` | Worker | Worker process ID |
-| `session.meta.json` | Worker | Session metadata (Chrome PID, port, target) |
-| `session.json` | Worker | Final output (written on stop only) |
-| `chrome-profile/` | Worker | Chrome user data directory |
+| `daemon.sock` | Daemon | Unix socket for IPC; connectable = daemon alive |
+| `daemon.pid` | Daemon | Daemon process ID (informational, never used for liveness) |
+| `daemon.log` | CLI (launcher) | Daemon stdout/stderr |
+| `session.meta.json` | Daemon | Session metadata (Chrome PID, port, target) |
+| `chrome.pid` | Daemon | Launched Chrome PID; kept until Chrome is confirmed dead |
+| `port.txt` | Daemon | Saved CDP port, reused by the next session if free |
+| `chrome-profile/` | Daemon | Chrome user data directory |
+
+When the session ends the daemon removes `daemon.sock`, `daemon.pid`, `session.meta.json` and the query cache. `chrome.pid` is cleared by teardown only once Chrome has exited.
 
 ## Communication Protocols
 
@@ -313,30 +291,21 @@ During execution, BDG creates these files in `~/.bdg/`:
 
 **Request Types**:
 - `handshake_request` - Connection test
-- `status_request` - Get session status
+- `status_request` - Get daemon/session status
 - `start_session_request` - Start new session
 - `stop_session_request` - Stop session
 - `peek_request` - Preview collected data
-- `query_request` - Execute JavaScript
+- `har_data_request` - Network requests for HAR export
+- `<command>_request` - Session commands (`worker_details`, `cdp_call`, `dom_*`, ...)
 
 **Response Types**:
 - `<type>_response` with `status: 'ok' | 'error'`
 
-### Worker IPC (Daemon ↔ Worker)
+Command keys such as `worker_peek` keep their historical names; they are now executed in-process by the daemon.
 
-**Transport**: stdin/stdout pipes
-**Format**: JSONL
+### CDP Protocol (Daemon ↔ Chrome)
 
-**Worker → Daemon**:
-- `worker_ready` - Worker initialized successfully
-- Command responses (DOM queries, peek, etc.)
-
-**Daemon → Worker**:
-- Command requests (forwarded from CLI)
-
-### CDP Protocol (Worker ↔ Chrome)
-
-**Transport**: WebSocket (`ws://localhost:9222/devtools/page/<targetId>`)
+**Transport**: WebSocket (`webSocketDebuggerUrl` of the page target, e.g. `ws://localhost:9222/devtools/page/<targetId>`)
 **Format**: JSON-RPC 2.0
 
 **Commands**:
@@ -350,70 +319,76 @@ During execution, BDG creates these files in `~/.bdg/`:
 | Phase | Duration | Notes |
 |-------|----------|-------|
 | CLI startup | ~50ms | Node.js startup + Commander parsing |
-| Daemon check/launch | ~100ms | If daemon not running, spawn + socket wait |
+| Daemon launch | ~100ms | Spawn + socket wait (5s max) |
 | IPC request | ~10ms | Unix socket communication |
-| Worker spawn | ~50ms | Node.js process spawn |
 | Chrome launch | ~500-2000ms | Chrome startup (varies by system) |
 | CDP connection | ~50-200ms | WebSocket handshake + target discovery |
-| Page readiness | ~100-2000ms | Wait for load event (2s timeout) |
 | Collector activation | ~50ms | Enable CDP domains |
+| Page readiness | ~100-2000ms | Load event + stability (2s budget) |
 | **Total** | **~1-5 seconds** | Varies by page complexity |
 
 ## Error Handling
 
 ### Daemon Already Running
-- **Check**: `isDaemonRunning()` reads PID file
-- **Error**: Custom error with `code: 'DAEMON_ALREADY_RUNNING'`
-- **Exit Code**: `EXIT_CODES.DAEMON_ALREADY_RUNNING`
+- **Check**: `SocketServer.claim()` - `link()` to `daemon.sock` fails with EEXIST and the socket is connectable
+- **Behavior**: The new daemon exits 0; the launcher sees a live socket and the CLI talks to the existing daemon
+- **Stale socket**: If nothing is listening, the file is removed and the claim retried once
 
 ### Session Already Running
-- **Check**: Worker PID file exists and process alive
-- **Response**: `IPCErrorCode.SESSION_ALREADY_RUNNING` with session metadata
+- **Check**: `SessionController` already holds a session (or one is starting)
+- **Response**: `IPCErrorCode.SESSION_ALREADY_RUNNING` (or `SESSION_TARGET_MISMATCH` if a different target was requested) with existing session details
 - **Suggestions**: `bdg status` or `bdg stop && bdg <url>`
+
+### No Active Session
+- **Check**: Daemon socket not connectable (connection error in the IPC client)
+- **Exit Code**: `EXIT_CODES.RESOURCE_NOT_FOUND` (83)
+- **Note**: Commands other than `bdg <url>` never spawn a daemon
 
 ### Chrome Launch Failure
 - **Detection**: Chrome process exits or CDP endpoint unreachable
 - **Diagnostics**: Auto-detect Chrome installations, show troubleshooting
-- **Fallback**: Port conflicts detected, suggest `--port` flag
+- **Response**: `IPCErrorCode.WORKER_START_FAILED`; the daemon tears down and exits
 
-### Worker Timeout
-- **Timeout**: 40s for `worker_ready` signal
-- **Error**: `WorkerStartError` with code `READY_TIMEOUT`
-- **Cleanup**: Worker process killed, session files removed
+### Daemon Startup Failure
+- **Timeout**: 5s for the daemon socket to accept connections
+- **Error**: `DaemonStartupError` (`DAEMON_START_TIMEOUT`, `DAEMON_EXITED`, `DAEMON_SCRIPT_NOT_FOUND`)
+- **Diagnostics**: See `~/.bdg/daemon.log`
+
+### Crash Cleanup
+A healthy daemon cleans up after itself. After a crash or SIGKILL, `src/session/cleanup/staleSession.ts` handles leftovers:
+- `bdg status` removes a stale `daemon.sock` (file present, nothing listening)
+- `bdg cleanup` removes stale daemon files and kills the Chrome in `chrome.pid`; `--force` also kills a live daemon
+- The next session start kills the Chrome in `chrome.pid`
+- Chrome is only killed if its command line contains the `--bdg-session-dir=<session dir>` marker bdg adds at launch, so a reused PID (or a user's own debugging Chrome) is never killed
 
 ## Development Notes
 
 ### Adding New Commands
 
-1. Define types in `src/ipc/commands.ts` (command registry)
-2. Add worker handler in `src/daemon/worker.ts`
-3. Add daemon forwarding in `src/daemon/ipcServer.ts`
-4. Add client helper in `src/ipc/client.ts`
-5. Add CLI command in `src/cli/commands/*.ts`
+1. Define request/response schemas in `src/ipc/protocol/commands.ts` (`COMMANDS`)
+2. Add the handler in `src/daemon/session/commandRegistry.ts`
+3. Add a client helper in `src/ipc/client.ts` (via `sendCommand`)
+4. Add the CLI command in `src/commands/*.ts`
 
-See `docs/BIDIRECTIONAL_IPC.md` for detailed pattern.
+No daemon routing change is needed: `ipcServer.ts` routes every registered command to `SessionController.command()`.
+
+See `BIDIRECTIONAL_IPC.md` for the detailed pattern.
 
 ### Debugging Tips
 
 **Enable verbose logging**:
 ```bash
 # Watch daemon logs
-tail -f ~/.bdg/daemon.log  # (if enabled)
+tail -f ~/.bdg/daemon.log
 
-# Watch worker stderr
-ps aux | grep "node.*worker.js"
+# Debug-level logging in the CLI
+bdg status --debug
 ```
 
 **Check process tree**:
 ```bash
-ps aux | grep -E "node.*(daemon|worker)"
+ps aux | grep "node.*daemon.js"
 pstree -p $(cat ~/.bdg/daemon.pid)
-```
-
-**Monitor IPC traffic**:
-```bash
-# All IPC messages logged to daemon stderr
-# Search for "[daemon] Raw frame:" in logs
 ```
 
 **Test IPC manually**:
@@ -424,8 +399,8 @@ echo '{"type":"handshake_request","sessionId":"test"}' | nc -U ~/.bdg/daemon.soc
 
 ## Performance Optimizations
 
-1. **Daemon persistence** - Reuse daemon across commands (no spawn overhead)
-2. **Worker persistence** - Single worker handles entire session (no reconnects)
+1. **Daemon persistence** - One daemon serves every command for the session (no spawn overhead)
+2. **In-process session** - Commands execute directly against the CDP connection (no extra IPC hop)
 3. **Detached processes** - CLI exits immediately (UX improvement)
 4. **Unix sockets** - Fast local IPC (no TCP overhead)
 5. **JSONL streaming** - Efficient message framing
@@ -434,7 +409,8 @@ echo '{"type":"handshake_request","sessionId":"test"}' | nc -U ~/.bdg/daemon.soc
 
 ## Related Documentation
 
-- **IPC Architecture**: `docs/BIDIRECTIONAL_IPC.md`
-- **Command Patterns**: `CLAUDE.md` (Adding New Commands section)
-- **Chrome Setup**: `docs/CHROME_SETUP.md`
-- **Session Management**: `src/session/README.md` (if exists)
+- **IPC Architecture**: `docs/architecture/BIDIRECTIONAL_IPC.md`
+- **Telemetry Plugins**: `docs/architecture/TELEMETRY-PLUGIN.md`
+- **Migration Plan**: `docs/roadmap/DAEMON_SESSION_MIGRATION.md`
+- **CLI Reference**: `docs/CLI_REFERENCE.md`
+- **Command Patterns**: `CLAUDE.md`

@@ -4,10 +4,10 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
 import { isDaemonConnectionError } from '@/errors/index.js';
-import { invalidResponseError, daemonNotRunningError } from '@/errors/messages.js';
+import { invalidResponseError } from '@/errors/messages.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
-import { cleanupStaleDaemonArtifacts } from '@/session/cleanup/preStart.js';
+import { removeStaleDaemonFiles } from '@/session/cleanup/staleSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import {
   formatSessionStatus,
@@ -104,12 +104,10 @@ export function registerStatusCommand(program: Command): void {
           } catch (error) {
             const errorMessage = getErrorMessage(error);
             if (isDaemonConnectionError(error)) {
-              const cleaned = cleanupStaleDaemonArtifacts();
-              return {
-                success: false,
-                error: daemonNotRunningError({ staleCleanedUp: cleaned }),
-                exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
-              };
+              await removeStaleDaemonFiles();
+              latestMetadata = undefined;
+              latestSessionPid = undefined;
+              return { success: true, data: formatStatusAsJson(null, null) };
             }
 
             return {

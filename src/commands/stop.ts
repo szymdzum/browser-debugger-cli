@@ -6,9 +6,7 @@ import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
-import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { joinLines } from '@/ui/formatting.js';
-import { createLogger } from '@/ui/logging/index.js';
 import {
   chromeKilledMessage,
   orphanedDaemonsCleanedMessage,
@@ -18,8 +16,6 @@ import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/se
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-const log = createLogger('cleanup');
 
 /**
  * Format stop result for human-readable output.
@@ -50,35 +46,29 @@ export function registerStopCommand(program: Command): void {
   program
     .command('stop')
     .description('Stop daemon and close browser session')
-    .option('--kill-chrome', 'Also kill Chrome browser process', false)
+    .option(
+      '--kill-chrome',
+      'Kept for compatibility: Chrome launched by bdg is always closed on stop',
+      false
+    )
     .addOption(jsonOption())
     .action(async (options: StopCommandOptions) => {
       await runCommand<StopCommandOptions, StopResult>(
-        async (opts) => {
+        async () => {
           try {
             const response = await stopSession();
 
             if (response.status === 'ok') {
-              const cleanupResult = await performSessionCleanup({
-                killChrome: opts.killChrome,
-                chromePid: response.chromePid,
-              });
-
-              if (cleanupResult.cleaned.chrome && !opts.json) {
-                log.info(chromeKilledMessage(response.chromePid));
-              }
-
               return {
                 success: true,
                 data: {
                   stopped: {
                     bdg: true,
-                    chrome: cleanupResult.cleaned.chrome,
-                    daemons: cleanupResult.cleaned.daemons,
+                    chrome: Boolean(response.chromePid),
+                    daemons: false,
                   },
-                  orphanedDaemonsCount: cleanupResult.orphanedDaemonsCount,
+                  orphanedDaemonsCount: 0,
                   message: response.message ?? STOP_MESSAGES.SUCCESS,
-                  ...(cleanupResult.warnings.length > 0 && { warnings: cleanupResult.warnings }),
                 },
               };
             } else {

@@ -1,224 +1,108 @@
 /**
- * User-invoked cleanup: orchestrator for `bdg stop` and `bdg cleanup`.
- *
- * Composes the lower-phase cleanup modules (`preStart`, `postSession`,
- * `primitives`) plus orphaned-daemon scanning into a single entry point
- * that honors the user's `--force`, `--aggressive`, `--kill-chrome`, and
- * `--remove-output` flags.
+ * Cleanup behind the user-facing `bdg cleanup` command.
  */
 
 import * as fs from 'fs';
 
-import { cleanupOrphanedDaemons } from '@/session/cleanup/orphanedDaemons.js';
-import { cleanupAfterSessionEnd } from '@/session/cleanup/postSession.js';
+import {
+  killOrphanedChrome,
+  readLiveDaemonPid,
+  removeStaleDaemonFiles,
+} from '@/session/cleanup/staleSession.js';
+import { isDaemonAlive } from '@/session/daemonSocket.js';
 import { getSessionFilePath } from '@/session/paths.js';
-import { readPid } from '@/session/pid.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
-import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
 const log = createLogger('cleanup');
 
+const DAEMON_EXIT_WAIT_MS = 2000;
+
 /**
- * Options for unified session cleanup.
+ * Options for session cleanup.
  */
 export interface SessionCleanupOptions {
-  /** Kill the associated Chrome process. */
-  killChrome?: boolean | undefined;
-  /** Force cleanup even if session appears active. */
+  /** Kill a running (possibly hung) daemon before cleaning */
   force?: boolean | undefined;
-  /** Aggressively kill all orphaned processes. */
-  aggressive?: boolean | undefined;
-  /** Also remove the session.json output file. */
+  /** Also remove the legacy session.json output file */
   removeOutput?: boolean | undefined;
-  /** Chrome PID from daemon response (for stop command). */
-  chromePid?: number | undefined;
 }
 
 /**
- * Result of session cleanup operation.
+ * Result of session cleanup.
  */
 export interface SessionCleanupResult {
-  /** What was cleaned up. */
   cleaned: {
-    /** Session files (PID, metadata, socket, lock). */
     session: boolean;
-    /** Chrome browser process. */
     chrome: boolean;
-    /** Orphaned daemon processes. */
     daemons: boolean;
-    /** Session output file (session.json). */
     output: boolean;
   };
-  /** Number of orphaned daemons killed. */
-  orphanedDaemonsCount: number;
-  /** Warnings encountered during cleanup. */
   warnings: string[];
 }
 
 /**
- * Mutable state accumulator for cleanup operations.
- */
-interface CleanupState {
-  warnings: string[];
-  sessionCleaned: boolean;
-  chromeCleaned: boolean;
-  daemonsCleaned: boolean;
-  outputCleaned: boolean;
-  orphanedDaemonsCount: number;
-}
-
-function createCleanupState(): CleanupState {
-  return {
-    warnings: [],
-    sessionCleaned: false,
-    chromeCleaned: false,
-    daemonsCleaned: false,
-    outputCleaned: false,
-    orphanedDaemonsCount: 0,
-  };
-}
-
-function cleanupChromeProcess(
-  chromePid: number,
-  clearChromePid: () => void,
-  state: CleanupState
-): void {
-  try {
-    killChromeProcess(chromePid, 'SIGTERM');
-    state.chromeCleaned = true;
-    clearChromePid();
-  } catch (error: unknown) {
-    state.warnings.push(`Could not kill Chrome: ${getErrorMessage(error)}`);
-  }
-}
-
-function cleanupDaemonPidIfStale(state: CleanupState): void {
-  const daemonPidPath = getSessionFilePath('DAEMON_PID');
-  if (!fs.existsSync(daemonPidPath)) {
-    return;
-  }
-
-  try {
-    const daemonPidStr = fs.readFileSync(daemonPidPath, 'utf-8').trim();
-    const daemonPid = parseInt(daemonPidStr, 10);
-
-    if (Number.isNaN(daemonPid) || !isProcessAlive(daemonPid)) {
-      log.info(`Removing stale daemon PID file (PID ${daemonPid})`);
-      fs.unlinkSync(daemonPidPath);
-      state.sessionCleaned = true;
-    }
-  } catch {
-    try {
-      fs.unlinkSync(daemonPidPath);
-      state.sessionCleaned = true;
-    } catch (removeError) {
-      state.warnings.push(`Could not remove daemon.pid: ${getErrorMessage(removeError)}`);
-    }
-  }
-}
-
-async function cleanupActiveSession(
-  force: boolean,
-  cleanupStaleChrome: () => Promise<number>,
-  state: CleanupState
-): Promise<void> {
-  const sessionPid = readPid();
-  if (!sessionPid) {
-    return;
-  }
-
-  const isAlive = isProcessAlive(sessionPid);
-  if (isAlive && !force) {
-    return;
-  }
-
-  if (isAlive && force) {
-    state.warnings.push(`Process ${sessionPid} is still running but forcing cleanup anyway`);
-    log.info(`Force cleanup: killing Chrome for active session ${sessionPid}`);
-
-    try {
-      await cleanupStaleChrome();
-      state.chromeCleaned = true;
-    } catch (error) {
-      state.warnings.push(`Could not kill Chrome processes: ${getErrorMessage(error)}`);
-    }
-  }
-
-  cleanupAfterSessionEnd();
-  state.sessionCleaned = true;
-}
-
-function cleanupOutputFile(state: CleanupState): void {
-  const outputPath = getSessionFilePath('OUTPUT');
-  if (!fs.existsSync(outputPath)) {
-    return;
-  }
-
-  try {
-    fs.unlinkSync(outputPath);
-    state.outputCleaned = true;
-  } catch (error: unknown) {
-    state.warnings.push(`Could not remove session.json: ${getErrorMessage(error)}`);
-  }
-}
-
-/**
- * Unified session cleanup for stop and cleanup commands.
+ * Clean up session state.
  *
- * Handles Chrome processes, daemon PIDs, session files, and orphaned
- * processes based on the flags the user passed.
+ * With `force`, a live daemon is killed first (after verifying its command
+ * line). Then stale daemon files are removed and an orphaned bdg Chrome, if
+ * any, is killed.
+ *
+ * @param options - Cleanup options
+ * @returns What was cleaned, plus warnings
  */
 export async function performSessionCleanup(
   options: SessionCleanupOptions
 ): Promise<SessionCleanupResult> {
-  const { cleanupStaleChrome, clearChromePid } = await import('@/session/chrome.js');
-  const state = createCleanupState();
-
-  if (options.aggressive) {
-    const daemonsKilled = await cleanupOrphanedDaemons();
-    if (daemonsKilled > 0) {
-      state.daemonsCleaned = true;
-      state.orphanedDaemonsCount = daemonsKilled;
-      console.error(`✓ Killed ${daemonsKilled} orphaned daemon process(es)`);
-    }
-
-    const errorCount = await cleanupStaleChrome();
-    state.chromeCleaned = true;
-    if (errorCount > 0) {
-      state.warnings.push('Some Chrome processes could not be killed');
-    }
-  }
-
-  if (options.killChrome && options.chromePid) {
-    cleanupChromeProcess(options.chromePid, clearChromePid, state);
-  } else if (options.killChrome && !options.chromePid) {
-    state.warnings.push('Chrome PID not found (Chrome was not launched by bdg)');
-  }
-
-  cleanupDaemonPidIfStale(state);
-  await cleanupActiveSession(options.force ?? false, cleanupStaleChrome, state);
-
-  if (!options.aggressive) {
-    const daemonsKilled = await cleanupOrphanedDaemons();
-    if (daemonsKilled > 0) {
-      state.daemonsCleaned = true;
-      state.orphanedDaemonsCount = daemonsKilled;
-    }
-  }
-
-  if (options.removeOutput) {
-    cleanupOutputFile(state);
-  }
+  const warnings: string[] = [];
+  const daemonKilled = options.force ? await killLiveDaemon(warnings) : false;
+  const session = await removeStaleDaemonFiles();
+  const chrome = killOrphanedChrome();
+  const output = options.removeOutput ? removeOutputFile(warnings) : false;
 
   return {
-    cleaned: {
-      session: state.sessionCleaned,
-      chrome: state.chromeCleaned,
-      daemons: state.daemonsCleaned,
-      output: state.outputCleaned,
-    },
-    orphanedDaemonsCount: state.orphanedDaemonsCount,
-    warnings: state.warnings,
+    cleaned: { session: session || daemonKilled, chrome, daemons: daemonKilled, output },
+    warnings,
   };
+}
+
+/**
+ * SIGKILL a live bdg daemon and wait briefly for its socket to go away.
+ *
+ * @param warnings - Collector for non-fatal problems
+ * @returns True if a daemon was killed
+ */
+async function killLiveDaemon(warnings: string[]): Promise<boolean> {
+  const pid = readLiveDaemonPid();
+  if (!pid) return false;
+  try {
+    process.kill(pid, 'SIGKILL');
+    log.info(`Killed daemon (PID ${pid})`);
+  } catch (error) {
+    warnings.push(`Could not kill daemon ${pid}: ${getErrorMessage(error)}`);
+    return false;
+  }
+  const deadline = Date.now() + DAEMON_EXIT_WAIT_MS;
+  while (Date.now() < deadline && (await isDaemonAlive())) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return true;
+}
+
+/**
+ * Remove the legacy session.json output file.
+ *
+ * @param warnings - Collector for non-fatal problems
+ * @returns True if the file was removed
+ */
+function removeOutputFile(warnings: string[]): boolean {
+  const outputPath = getSessionFilePath('OUTPUT');
+  if (!fs.existsSync(outputPath)) return false;
+  try {
+    fs.unlinkSync(outputPath);
+    return true;
+  } catch (error) {
+    warnings.push(`Could not remove session.json: ${getErrorMessage(error)}`);
+    return false;
+  }
 }
