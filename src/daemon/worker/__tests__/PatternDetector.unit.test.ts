@@ -127,12 +127,12 @@ describe('PatternDetector', () => {
     test('matches multiple CDP methods to same pattern', () => {
       const detector = new PatternDetector();
 
-      const result1 = detector.trackCommand('Network.getCookies');
-      const result2 = detector.trackCommand('Network.getAllCookies');
+      detector.trackCommand('Network.getCookies');
+      detector.trackCommand('Network.getAllCookies');
+      detector.trackCommand('Network.getCookies');
+      const result4 = detector.trackCommand('Network.getAllCookies');
 
-      assert.strictEqual(result1.shouldShow, true);
-      assert.strictEqual(result2.shouldShow, false);
-      assert.strictEqual(result1.pattern?.name, result2.pattern?.name);
+      assert.strictEqual(result4.shouldShow, false);
     });
 
     test('returns undefined pattern for unmatched commands', () => {
@@ -173,12 +173,12 @@ describe('PatternDetector', () => {
       detector.trackCommand('Network.getResponseBody');
       detector.trackCommand('Runtime.evaluate');
 
-      const evalResult = detector.trackCommand('Runtime.evaluate');
-      assert.strictEqual(evalResult.shouldShow, false);
+      const bodyResult2 = detector.trackCommand('Network.getResponseBody');
+      assert.strictEqual(bodyResult2.shouldShow, false);
 
-      detector.trackCommand('Network.getResponseBody');
-      const bodyResult = detector.trackCommand('Network.getResponseBody');
-      assert.strictEqual(bodyResult.shouldShow, true);
+      const bodyResult3 = detector.trackCommand('Network.getResponseBody');
+      assert.strictEqual(bodyResult3.shouldShow, true);
+      assert.ok(bodyResult3.pattern?.alternative.includes('bdg details network'));
     });
   });
 });

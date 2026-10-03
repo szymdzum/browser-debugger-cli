@@ -12,6 +12,8 @@
   <div id="content">
     <button id="test-button">Click Me</button>
     <input type="text" id="test-input" value="test value" />
+    <input type="text" id="second-input" />
+    <button id="second-button">Second</button>
   </div>
 
   <script>
@@ -22,6 +24,9 @@
     // Add event listener for testing
     document.getElementById('test-button')?.addEventListener('click', () => {
       console.log('Button clicked');
+    });
+    document.getElementById('second-button')?.addEventListener('click', () => {
+      console.log('Second button clicked');
     });
 
     // Make a test network request

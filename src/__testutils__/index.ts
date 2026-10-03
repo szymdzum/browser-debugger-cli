@@ -13,4 +13,3 @@ export { useFakeClock, type ClockHelper } from './testClock.js';
 export { mockProcessAlive, restoreProcessAlive, isProcessMocked } from './testProcess.js';
 export { assertEventually, assertCDPMessage, assertThrowsAsync } from './assertions.js';
 export { createMockCDPMessage, createMockWebSocketUrl } from './testFixtures.js';
-export { cleanupBdgTest, cleanupPort } from './testCleanup.js';

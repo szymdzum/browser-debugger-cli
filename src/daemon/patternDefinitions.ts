@@ -61,9 +61,10 @@ export const PATTERNS: PatternDefinition[] = [
 /**
  * Find patterns matching a CDP method.
  *
- * @param method - CDP method name (e.g., "Runtime.evaluate")
+ * @param method - CDP method name, matched case-insensitively (e.g., "Runtime.evaluate")
  * @returns Matching pattern definitions
  */
 export function findPatternsForMethod(method: string): PatternDefinition[] {
-  return PATTERNS.filter((p) => p.cdpMethods.includes(method));
+  const normalized = method.toLowerCase();
+  return PATTERNS.filter((p) => p.cdpMethods.some((m) => m.toLowerCase() === normalized));
 }

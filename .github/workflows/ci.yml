@@ -137,12 +137,11 @@ jobs:
       - name: Run contract tests
         run: npm test
 
-  # Smoke tests with Chrome - only on main branch for release readiness
+  # Smoke tests with Chrome - run on every PR; shell integration suite only on main
   smoke:
     name: Smoke Tests (Chrome)
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout code
@@ -191,6 +190,7 @@ jobs:
         run: npm run test:smoke
 
       - name: Run integration tests
+        if: github.ref == 'refs/heads/main'
         run: ./tests/run-all-tests.sh --integration
 
   security:

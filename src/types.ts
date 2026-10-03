@@ -330,7 +330,10 @@ export interface DomQueryResult {
     nodeId: number;
     tag?: string;
     classes?: string[];
+    /** Text content preview (display only, never used for targeting) */
     preview?: string;
+    /** Unique selector for this node (set by form discovery) */
+    selector?: string;
   }>;
   /** Navigation ID when query was performed (for staleness detection). */
   navigationId?: number;

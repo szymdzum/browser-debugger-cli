@@ -39,6 +39,12 @@ const log = createLogger('session');
 const NAVIGATION_ID_CACHE_TTL_MS = 500;
 
 /**
+ * Pseudo-selector stored for caches written by `bdg dom form`.
+ * Such caches cannot be refreshed by re-running a query.
+ */
+export const FORM_DISCOVERY_CACHE_SELECTOR = 'form:auto-discovered';
+
+/**
  * Result of validating query cache against current navigation state.
  */
 export interface QueryCacheValidation {
