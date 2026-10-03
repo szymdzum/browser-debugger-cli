@@ -22,19 +22,24 @@ on:
         default: 'alpha'
         type: string
 
+permissions:
+  contents: write # push the version commit and tag, create the GitHub release
+
 jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
+    # Releases are cut from main only (the job pushes the version bump to main)
+    if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -72,27 +77,27 @@ jobs:
           git push origin main
           git push origin v${{ steps.version.outputs.version }}
 
+      # Prereleases go to the "next" dist-tag so `npm install browser-debugger-cli`
+      # keeps resolving to the latest stable version.
       - name: Publish to npm
-        run: npm publish
+        run: |
+          if [[ "${{ steps.version.outputs.version }}" == *-* ]]; then
+            npm publish --tag next
+          else
+            npm publish
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
-        uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          release_name: v${{ steps.version.outputs.version }}
-          body: |
-            Release ${{ steps.version.outputs.version }}
-
-            ## Installation
-            ```bash
-            npm install -g browser-debugger-cli@${{ steps.version.outputs.version }}
-            ```
-
-            ## Changes
-            See the [commit history](https://github.com/${{ github.repository }}/compare/v${{ steps.version.outputs.version }}...main) for details.
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          PRERELEASE_FLAG=""
+          if [[ "$VERSION" == *-* ]]; then PRERELEASE_FLAG="--prerelease"; fi
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            --notes "$(printf '## Installation\n\n```bash\nnpm install -g browser-debugger-cli@%s\n```\n' "$VERSION")"

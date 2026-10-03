@@ -72,7 +72,8 @@ export function formatChromeIssue(issue: IssueDetails): string {
         'Try:',
         `  - bdg cleanup`,
         `  - Kill conflicting process: kill $(lsof -ti:${port})`,
-        `  - Use different port: bdg <url> --port ${port + 1}`
+        `  - Use different port: bdg <url> --port ${port + 1}`,
+        `  - In a container where Chrome's sandbox fails: BDG_NO_SANDBOX=1 bdg <url>`
       );
     }
     case 'NO_PAGE_TARGET_FOUND':

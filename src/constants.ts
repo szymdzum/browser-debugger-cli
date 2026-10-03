@@ -70,7 +70,6 @@ export const DOCKER_CHROME_FLAGS = [
   '--disable-gpu', // Disable GPU hardware acceleration
   '--disable-dev-shm-usage', // Overcome limited resource problems in Docker
   '--disable-software-rasterizer', // Don't fall back to software rendering
-  '--single-process', // Run Chrome in single-process mode (safer in containers)
 ];
 
 /**

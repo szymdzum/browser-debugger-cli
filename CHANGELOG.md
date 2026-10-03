@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Release workflow** - Prereleases are published to the `next` npm dist-tag instead of `latest`; GitHub releases are created with `gh release create` (auto-generated notes) instead of the archived `actions/create-release`; explicit `contents: write` permission; releases only from `main`
+- **CI** - GitHub Actions bumped to their Node 24 majors (checkout, setup-node, cache, artifacts, paths-filter, setup-chrome, CodeQL); Dependabot now also updates GitHub Actions
 - **BREAKING: one JSON envelope everywhere** - Every `--json` output is a single `{ version, success, data }` / `{ version, success: false, error, exitCode }` envelope
   - `peek --json`: data is now `.data.network` / `.data.console` (was `.data.data.network`); `--network`/`--console`/`--last` filters now apply in JSON mode
   - `network list --json`: `data.requests` is the filtered list honoring `--last`, plus `totalCount` and `filteredCount` (the unfiltered `requests` and duplicate `filtered` fields are gone)
@@ -30,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Docker images** - Chrome failed to start in both images (`Running as root without --no-sandbox is not supported`). bdg now adds `--no-sandbox` only where the sandbox cannot work (Docker, root on Linux, or `BDG_NO_SANDBOX=1`) and drops the unstable `--single-process`, images run as the unprivileged `node` user, the duplicate apk Node.js is gone, and Podman containers are detected
+- **Crash recovery in Alpine/BusyBox** - Process command lines are read from `/proc/<pid>/cmdline` on Linux, so an orphaned Chrome is recognized and reaped where BusyBox `ps` lacks `-o`/`-p`
+- **npm package** - No longer ships compiled tests, test utilities or source maps (1088 → 403 files, 617 → 314 kB)
+- **`bin/bdg-wrapper`** - No infinite self-exec loop when installed as `bdg` without a build; per-repo session directories include a path hash so repos with the same folder name no longer share a session
+- **`tests/run-all-tests.sh --integration` / `--benchmark`** - No longer also run the edge-case suite
 - **Exit codes in JSON** - Error envelopes always include `exitCode`, equal to the process exit code; errors forwarded by the daemon keep their semantic code and suggestion (e.g. unknown request id → 83 instead of 104)
 - **Usage errors** - Unknown options, missing arguments, invalid values and command groups without a subcommand (`bdg dom`) exit 81 (was 1) and are JSON envelopes with `--json`
 - **`dom query` with an invalid selector** - Fails with exit 81 instead of reporting 0 matches

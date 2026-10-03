@@ -7,6 +7,7 @@
  */
 
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
 import { describe, test, afterEach } from 'node:test';
 
 import { getEnvChromeFlags, buildChromeFlags } from '@/connection/launcher/flagsBuilder.js';
@@ -116,5 +117,21 @@ describe('buildChromeFlags session marker', () => {
   test('omits the marker without a session dir', () => {
     const flags = buildChromeFlags({ port: 9222 });
     assert.ok(!flags.some((f) => f.startsWith('--bdg-session-dir=')));
+  });
+});
+
+describe('buildChromeFlags sandbox', () => {
+  afterEach(() => {
+    delete process.env['BDG_NO_SANDBOX'];
+  });
+
+  test('adds --no-sandbox when BDG_NO_SANDBOX=1', () => {
+    process.env['BDG_NO_SANDBOX'] = '1';
+    assert.ok(buildChromeFlags({ port: 9222 }).includes('--no-sandbox'));
+  });
+
+  test('keeps the sandbox on a regular (non-root, non-Docker) host', () => {
+    if (process.getuid?.() === 0 || fs.existsSync('/.dockerenv')) return;
+    assert.ok(!buildChromeFlags({ port: 9222 }).includes('--no-sandbox'));
   });
 });

@@ -5,6 +5,7 @@
  */
 
 import { spawnSync } from 'child_process';
+import * as fs from 'fs';
 
 import { createLogger } from '@/ui/logging/index.js';
 
@@ -98,11 +99,23 @@ export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM
 /**
  * Read a process's full command line.
  *
+ * Uses `/proc/<pid>/cmdline` where available (Linux, including minimal
+ * containers whose BusyBox `ps` lacks `-o`/`-p`), and `ps` elsewhere (macOS).
+ *
  * @param pid - Process ID
  * @returns Command line, or null if unavailable (process gone, or unsupported platform)
  */
 export function getProcessCommand(pid: number): string | null {
   if (process.platform === 'win32') return null;
+  const procCmdline = `/proc/${pid}/cmdline`;
+  if (fs.existsSync('/proc/self/cmdline')) {
+    try {
+      const command = fs.readFileSync(procCmdline, 'utf-8').replace(/\0/g, ' ').trim();
+      return command.length > 0 ? command : null;
+    } catch {
+      return null;
+    }
+  }
   const result = spawnSync('ps', ['-ww', '-o', 'command=', '-p', String(pid)], {
     encoding: 'utf-8',
   });

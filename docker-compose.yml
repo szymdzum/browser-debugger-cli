@@ -19,19 +19,14 @@ services:
         echo "Starting bdg capture..."
         bdg httpbin:80 --headless --port 9224 --timeout 10
         echo "Capture complete, checking output..."
-        ls -lh /root/.bdg/ || true
+        ls -lh /home/node/.bdg/ || true
     depends_on:
       - httpbin
     networks:
       - bdg-network
     environment:
       - BDG_DEBUG=0
-    # Required for Chrome to run in Docker
-    cap_add:
-      - SYS_ADMIN
-    # Alternative approach (less secure but works in restricted environments):
-    # security_opt:
-    #   - seccomp=unconfined
+    # No extra capabilities needed: bdg passes --no-sandbox inside containers
 
 networks:
   bdg-network:
