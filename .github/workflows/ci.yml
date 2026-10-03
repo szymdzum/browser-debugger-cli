@@ -153,7 +153,6 @@ jobs:
           node-version: '22'
 
       - name: Install Chrome
-        id: chrome
         uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: stable
@@ -189,14 +188,10 @@ jobs:
 
       - name: Run smoke tests
         run: npm run test:smoke
-        env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
 
       - name: Run integration tests
         if: github.ref == 'refs/heads/main'
         run: ./tests/run-all-tests.sh --integration
-        env:
-          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
 
   security:
     name: Security Audit
