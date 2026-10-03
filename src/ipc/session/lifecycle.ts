@@ -35,8 +35,8 @@ export interface HandshakeResponse extends IPCMessage {
 /**
  * Canonical session options — single source of truth for session knobs.
  *
- * The CLI, the daemon IPC request (`StartSessionRequest`), and the worker
- * launcher (`LaunchWorkerOptions`) all reference this shape. Adding a new
+ * The CLI and the daemon IPC request (`StartSessionRequest`) both reference
+ * this shape. Adding a new
  * session option means editing this interface + the Commander flag — nothing
  * else.
  */
@@ -77,8 +77,8 @@ export interface StartSessionRequest extends IPCMessage, SessionOptions {
  * Start session response data.
  */
 export interface StartSessionResponseData {
-  /** Worker process ID. */
-  workerPid: number;
+  /** Daemon process ID (the daemon hosts the session). */
+  daemonPid: number;
   /** Chrome process ID. */
   chromePid: number;
   /** CDP port. */

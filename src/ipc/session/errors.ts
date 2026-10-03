@@ -16,8 +16,8 @@ export enum IPCErrorCode {
   SESSION_ALREADY_RUNNING = 'SESSION_ALREADY_RUNNING',
   /** Active session is attached to a different target than the new request. */
   SESSION_TARGET_MISMATCH = 'SESSION_TARGET_MISMATCH',
-  /** Worker process failed to start. */
-  WORKER_START_FAILED = 'WORKER_START_FAILED',
+  /** Session (Chrome launch or CDP connection) failed to start. */
+  SESSION_START_FAILED = 'SESSION_START_FAILED',
   /** Chrome browser failed to launch. */
   CHROME_LAUNCH_FAILED = 'CHROME_LAUNCH_FAILED',
   /** CDP connection timeout. */

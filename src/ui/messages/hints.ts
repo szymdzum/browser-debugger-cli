@@ -1,9 +1,9 @@
 /**
  * Runtime hint message generators.
  *
- * Boundary formatter for structured `HintDetails` DTOs the worker emits
+ * Boundary formatter for structured `HintDetails` DTOs the session emits
  * alongside CDP command results. Keeps hint wording out of core so the
- * worker stays free of UI imports.
+ * session stays free of UI imports.
  */
 
 import type { HintDetails } from '@/errors/notices.js';
@@ -13,7 +13,7 @@ import { joinLines } from '@/ui/formatting.js';
  * Format a structured hint into a user-facing string.
  *
  * Called at the UI boundary (CLI command layer) when a `HintDetails`
- * payload arrives from the worker. Core emits the DTO; this is the
+ * payload arrives from the daemon. Core emits the DTO; this is the
  * only place hint prose is assembled.
  */
 export function formatHint(hint: HintDetails): string {

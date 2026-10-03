@@ -1,8 +1,8 @@
 /**
  * Form interaction commands for filling inputs, clicking buttons, and submitting forms.
  *
- * These commands delegate the CDP work to the daemon's worker via IPC. The CLI
- * never opens its own CDP connection — the worker owns the single persistent
+ * These commands delegate the CDP work to the daemon via IPC. The CLI
+ * never opens its own CDP connection — the daemon owns the single persistent
  * CDP session and runs the full fill/click/submit sequence (including event
  * subscriptions for network-stability waits) on behalf of the CLI.
  */

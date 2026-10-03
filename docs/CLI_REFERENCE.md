@@ -32,7 +32,6 @@ bdg peek                        # Last 10 items (compact format)
 bdg peek --last 50              # Show last 50 items
 bdg peek --network              # Show only network requests
 bdg peek --console              # Show only console messages
-bdg peek --dom                  # Show DOM/A11y tree
 bdg peek --type Document        # Filter by resource type (Document requests only)
 bdg peek --type XHR,Fetch       # Multiple types (XHR or Fetch requests)
 bdg peek --json                 # JSON output
@@ -56,7 +55,7 @@ bdg peek --type XHR,Fetch --follow
 bdg peek --type Script --last 100
 ```
 
-**Note:** DOM data (including A11y tree) is only captured when the session stops. During a live session, `bdg peek --dom` will show "(none)".
+**Note:** `peek` shows network and console data. For the page structure use `bdg dom a11y tree` (accessibility tree) or `bdg dom query`.
 
 ### Continuous monitoring
 ```bash
@@ -546,9 +545,8 @@ bdg network har                           # Default: ~/.bdg/capture-2025-11-19-1
 bdg network har myfile.har                # Custom filename (relative or absolute path)
 bdg network har ~/exports/debug.har       # Absolute path
 
-# Export after session stopped
-bdg stop
-bdg network har final.har                 # Reads from ~/.bdg/session.json
+# Export before stopping: telemetry lives in the session and is discarded by `bdg stop`
+bdg network har final.har && bdg stop
 
 # JSON output (for scripting)
 bdg network har --json                    # Returns metadata about exported file

@@ -136,7 +136,7 @@ export function registerHeadersCommand(networkCmd: Command): void {
           if (!response.data) {
             return {
               success: false,
-              error: 'No data returned from worker',
+              error: 'No data returned from the session',
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
               errorContext: {
                 suggestion: 'No network requests captured yet. Navigate to a page first.',
@@ -178,7 +178,7 @@ export function registerDocumentCommand(networkCmd: Command): void {
           if (!response.data) {
             return {
               success: false,
-              error: 'No data returned from worker',
+              error: 'No data returned from the session',
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
               errorContext: {
                 suggestion: 'No document request found. Navigate to a page first.',

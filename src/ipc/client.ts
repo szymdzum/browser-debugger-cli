@@ -129,7 +129,7 @@ export async function getHARData(): Promise<HARDataResponse> {
  *
  * @param url - Target URL to navigate to
  * @param options - Session configuration options
- * @returns Start session response with worker and Chrome PIDs
+ * @returns Start session response with daemon and Chrome PIDs
  * @throws Error if connection fails, session already running, or Chrome launch fails
  *
  * @example
@@ -140,7 +140,7 @@ export async function getHARData(): Promise<HARDataResponse> {
  *   maxBodySize: 10
  * });
  * if (response.status === 'ok' && response.data) {
- *   console.log('Session started, worker PID:', response.data.workerPid);
+ *   console.log('Session started, daemon PID:', response.data.daemonPid);
  * }
  * ```
  */
@@ -196,12 +196,12 @@ export async function stopSession(): Promise<StopSessionResponse> {
 }
 
 /**
- * Send a command to the worker process.
- * Internal helper for worker commands (details, CDP calls).
+ * Send a command to the daemon's session.
+ * Internal helper for session commands (details, CDP calls).
  *
  * @param commandName - Name of the command to send
  * @param params - Command parameters (without type field)
- * @returns Command response from worker
+ * @returns Command response from the session
  * @throws Error if connection fails or command execution fails
  */
 async function sendCommand<T extends CommandName>(
@@ -241,8 +241,8 @@ async function sendCommand<T extends CommandName>(
 export async function getDetails(
   type: 'network' | 'console',
   id: string
-): Promise<ClientResponse<'worker_details'>> {
-  return sendCommand('worker_details', { itemType: type, id });
+): Promise<ClientResponse<'session_details'>> {
+  return sendCommand('session_details', { itemType: type, id });
 }
 
 /**
@@ -274,16 +274,16 @@ export async function getDetails(
 export async function getNetworkHeaders(options?: {
   id?: string;
   headerName?: string;
-}): Promise<ClientResponse<'worker_network_headers'>> {
-  return sendCommand('worker_network_headers', {
+}): Promise<ClientResponse<'session_network_headers'>> {
+  return sendCommand('session_network_headers', {
     ...(options?.id && { id: options.id }),
     ...(options?.headerName && { headerName: options.headerName }),
   });
 }
 
 /**
- * Execute arbitrary CDP method via the daemon's worker.
- * Forwards CDP commands to the worker's active CDP connection.
+ * Execute arbitrary CDP method via the daemon.
+ * Forwards CDP commands to the session's active CDP connection.
  *
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
@@ -306,14 +306,14 @@ export async function callCDP(
 }
 
 /**
- * Evaluate a JavaScript expression in the active page context via the worker.
+ * Evaluate a JavaScript expression in the active page context via the daemon.
  */
 export async function domEval(script: string): Promise<ClientResponse<'dom_eval'>> {
   return sendCommand('dom_eval', { script });
 }
 
 /**
- * Fill a form field. Worker subscribes to CDP events and optionally waits for
+ * Fill a form field. The session subscribes to CDP events and optionally waits for
  * network stability — CLI never opens its own CDP connection.
  */
 export async function domFill(

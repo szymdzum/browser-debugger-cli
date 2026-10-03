@@ -192,10 +192,6 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Compact output (truncated URLs, no resource types)',
     whenEnabled: 'Verbose output with full URLs and resource types',
   },
-  'peek:--dom': {
-    automaticBehavior:
-      'DOM data only available after session stops. During live session shows "(none)".',
-  },
 
   'cleanup:-f': {
     default: 'Refuses to run while a session is active; removes files left by a crashed session',

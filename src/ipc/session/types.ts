@@ -1,7 +1,7 @@
 /**
  * Shared Session Types
  *
- * Common types used across session messages and worker commands.
+ * Common types used across session messages and session commands.
  */
 
 /**

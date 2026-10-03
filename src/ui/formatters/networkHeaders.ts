@@ -4,16 +4,16 @@
  * Formats network request and response headers for human-readable display.
  */
 
-import type { WorkerNetworkHeadersData } from '@/ipc/protocol/commands.js';
+import type { SessionNetworkHeadersData } from '@/ipc/protocol/commands.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
  * Format network request headers for display.
  *
- * @param data - Network headers data from worker
+ * @param data - Network headers data from the session
  * @returns Formatted string for console output
  */
-export function formatNetworkHeaders(data: WorkerNetworkHeadersData): string {
+export function formatNetworkHeaders(data: SessionNetworkHeadersData): string {
   const fmt = new OutputFormatter();
 
   fmt.text('Network Request Headers').separator('━', 60).blank();

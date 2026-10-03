@@ -63,17 +63,6 @@ export type {
   CleanupFunction,
 } from '@/connection/types.js';
 
-export interface DOMData {
-  url: string;
-  title: string;
-  outerHTML: string;
-  a11yTree?: {
-    root: A11yNode;
-    nodes: Record<string, A11yNode>;
-    count: number;
-  };
-}
-
 /**
  * WebSocket frame data captured during connection.
  */
@@ -222,7 +211,6 @@ export interface BdgOutput {
     title: string;
   };
   data: {
-    dom?: DOMData;
     network?: NetworkRequest[];
     console?: ConsoleMessage[];
     websockets?: WebSocketConnection[];

@@ -123,7 +123,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   preview_data: {
     commands: ['peek'],
     description: 'Preview collected network and console data',
-    cdpAlternative: 'Multiple IPC queries to worker state',
+    cdpAlternative: 'Multiple IPC queries to session state',
   },
 
   live_monitoring: {
@@ -135,7 +135,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   get_full_details: {
     commands: ['details network', 'details console'],
     description: 'Get complete request/response or console message details',
-    cdpAlternative: 'Worker state query + response body fetch',
+    cdpAlternative: 'Session state query + response body fetch',
   },
 
   check_session_status: {

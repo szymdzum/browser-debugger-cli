@@ -5,7 +5,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CommandError } from '@/errors/index.js';
 import type { HintDetails } from '@/errors/notices.js';
-import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
+import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
 import { executeScript } from '@/runtime/dom/evalHelpers.js';
 import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import {
@@ -246,7 +246,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
   const patternDetector = new PatternDetector();
 
   return {
-    worker_peek: async (_cdp, params) => {
+    session_peek: async (_cdp, params) => {
       const lastN = calculateLastN(params.lastN);
       const offset = params.offset ?? 0;
       const duration = Date.now() - store.sessionStartTime;
@@ -287,7 +287,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       });
     },
 
-    worker_details: async (_cdp, params) => {
+    session_details: async (_cdp, params) => {
       if (params.itemType === 'network') {
         const request = findNetworkRequestOrThrow(store, params.id);
         return Promise.resolve({ item: request });
@@ -303,12 +303,12 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       );
     },
 
-    worker_status: async (_cdp, _params) => {
+    session_status: async (_cdp, _params) => {
       const duration = Date.now() - store.sessionStartTime;
       const lastNetworkRequest = store.networkRequests[store.networkRequests.length - 1];
       const lastConsoleMessage = store.consoleMessages[store.consoleMessages.length - 1];
 
-      const result: WorkerStatusData = {
+      const result: SessionStatusData = {
         startTime: store.sessionStartTime,
         duration,
         target: {
@@ -334,13 +334,13 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       return Promise.resolve(result);
     },
 
-    worker_har_data: async (_cdp, _params) => {
+    session_har_data: async (_cdp, _params) => {
       return Promise.resolve({
         requests: store.networkRequests,
       });
     },
 
-    worker_network_headers: async (_cdp, params) => {
+    session_network_headers: async (_cdp, params) => {
       const targetRequest = findTargetRequestForHeaders(store, params.id);
 
       let requestHeaders = targetRequest.requestHeaders ?? {};

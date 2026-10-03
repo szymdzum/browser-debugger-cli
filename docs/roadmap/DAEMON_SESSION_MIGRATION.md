@@ -17,7 +17,7 @@ after:   CLI ──socket──► daemon = session (Chrome + CDP + telemetry, o
 A code review found that most of the defects in process management come from the
 daemon/worker split and from PID-file bookkeeping, not from isolated mistakes:
 
-- Worker timeouts reply with the wrong response type (`worker_status_response`), which the client rejects.
+- Worker timeouts reply with the wrong response type (`session_status_response`), which the client rejects.
 - Launch listeners are never removed, so stdout is parsed twice and the stderr buffer grows without limit.
 - The worker is spawned with `node` from PATH, while the daemon uses `process.execPath`.
 - Pre-start cleanup deletes the `daemon.lock` it was just called under, so two concurrent starts can spawn two daemons.
@@ -68,7 +68,7 @@ Each stage is a separate, green step. Smoke tests must pass before moving on.
 ## User-visible changes
 
 - Commands with no session no longer spawn a daemon. They report "no active session" (exit 83). `bdg status` keeps main's behavior: `active: false`, exit 0.
-- `workerPid` in the start response now carries the daemon PID. The field name is kept for compatibility.
+- `daemonPid` in the start response now carries the daemon PID. The field name is kept for compatibility.
 - `session.pid`, `daemon.lock` and `session.lock` disappear from `~/.bdg`.
 - `--chrome-ws-url`, `--headless`, `--timeout` and the other start flags are unchanged.
 
@@ -76,8 +76,7 @@ Each stage is a separate, green step. Smoke tests must pass before moving on.
 
 - `link()` on Unix socket files works on macOS and Linux, so the atomic claim is used. There is no lock-file fallback.
 - A stale socket plus two simultaneous starts leave a narrow window: both daemons may remove the stale file and claim the path in turn. Both CLIs then talk to the last claimant. The other daemon exits after its 10 s idle timeout and never removes a socket or PID file it no longer owns (inode/PID checked).
-- The final DOM snapshot taken on stop was removed. Its only consumer was `session.json`, which no code ever wrote. `TelemetryStore.domData`/`buildOutput` and `peek --dom` are now vestigial and can be removed in a follow-up.
-- Internal command keys keep their `worker_*` names (e.g. `worker_peek`) to leave the CLI ↔ daemon protocol untouched.
+- The final DOM snapshot taken on stop was removed. Its only consumer was `session.json`, which no code ever wrote. `TelemetryStore.domData`/`buildOutput`, `OutputBuilder.build` and `peek --dom` were removed afterwards, and the IPC session commands lost their `worker_` prefix.
 
 ## Out of scope
 

@@ -168,7 +168,7 @@ export class SessionController {
     data.sessionMetadata = this.session.metadata();
     try {
       const live = await withTimeout(
-        this.session.execute('worker_status', {}),
+        this.session.execute('session_status', {}),
         QUERY_TIMEOUT_MS,
         'Status'
       );
@@ -197,7 +197,7 @@ export class SessionController {
     }
     try {
       const data = await withTimeout(
-        this.session.execute('worker_peek', { lastN: request.lastN ?? 10 }),
+        this.session.execute('session_peek', { lastN: request.lastN ?? 10 }),
         QUERY_TIMEOUT_MS,
         'Peek'
       );
@@ -235,7 +235,7 @@ export class SessionController {
     }
     try {
       const data = await withTimeout(
-        this.session.execute('worker_har_data', {}),
+        this.session.execute('session_har_data', {}),
         QUERY_TIMEOUT_MS,
         'HAR data'
       );
@@ -246,7 +246,7 @@ export class SessionController {
   }
 
   /**
-   * Execute a session command (dom_*, cdp_call, worker_details, ...).
+   * Execute a session command (dom_*, cdp_call, session_details, ...).
    *
    * @param request - Command request
    * @returns Command response, forwarding exit code and suggestion on failure
@@ -325,7 +325,7 @@ export class SessionController {
       return {
         status: 'ok',
         message: 'Session started successfully',
-        data: { workerPid: process.pid, ...info },
+        data: { daemonPid: process.pid, ...info },
       };
     } catch (error) {
       log.info(`Session start failed: ${getErrorMessage(error)}`);
@@ -334,7 +334,7 @@ export class SessionController {
       return {
         status: 'error',
         message: describeStartError(error),
-        errorCode: IPCErrorCode.WORKER_START_FAILED,
+        errorCode: IPCErrorCode.SESSION_START_FAILED,
       };
     }
   }

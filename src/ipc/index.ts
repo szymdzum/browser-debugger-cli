@@ -1,12 +1,12 @@
 /**
  * IPC Module
  *
- * Public API for inter-process communication between CLI, daemon, and worker.
+ * Public API for inter-process communication between the CLI and the daemon.
  *
  * Organized into layers:
  * - Client API (high-level functions for CLI commands)
  * - Session messages (lifecycle and query types)
- * - Protocol (worker command schemas and type guards)
+ * - Protocol (session command schemas and type guards)
  * - Transport (low-level socket communication)
  * - Validation (response validation utilities)
  */

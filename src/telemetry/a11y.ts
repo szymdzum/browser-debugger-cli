@@ -47,7 +47,7 @@ export function buildTreeFromRawNodes(rawNodes: Protocol.Accessibility.AXNode[])
 /**
  * Collects the full accessibility tree from the page via IPC.
  *
- * Uses the worker's persistent CDP connection through callCDP for consistency
+ * Uses the session's persistent CDP connection through callCDP for consistency
  * with other DOM commands and to avoid connection conflicts.
  *
  * @returns Parsed and filtered accessibility tree
@@ -284,7 +284,7 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
 /**
  * Resolve accessibility properties for a DOM node by CSS selector or nodeId via IPC.
  *
- * Uses the worker's persistent CDP connection through callCDP for consistency.
+ * Uses the session's persistent CDP connection through callCDP for consistency.
  * Supports direct nodeId lookup (bypassing selector) for index-based access patterns.
  *
  * @param selector - CSS selector (ignored if nodeId provided)

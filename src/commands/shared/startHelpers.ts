@@ -211,7 +211,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       ...(data.targetTitle !== undefined && { targetTitle: data.targetTitle }),
       port: data.port,
       chromePid: data.chromePid,
-      daemonPid: data.workerPid,
+      daemonPid: data.daemonPid,
     };
     console.log(JSON.stringify(buildSuccessResponse(result), null, 2));
   } else if (options.quiet) {

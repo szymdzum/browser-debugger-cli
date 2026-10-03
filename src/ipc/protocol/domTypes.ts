@@ -1,7 +1,7 @@
 /**
  * Protocol-owned DTOs for DOM command results.
  *
- * These interfaces describe the shape of data the worker returns over IPC.
+ * These interfaces describe the shape of data the daemon returns over IPC.
  * Runtime implementations must produce values conforming to these shapes;
  * CLI commands and IPC transport consume them directly. Keeping the contract
  * here lets runtime and transport evolve independently.

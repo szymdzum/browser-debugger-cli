@@ -37,11 +37,6 @@
           }
         ]
       }
-    ],
-    "dom": {
-      "url": "https://example.com/",
-      "title": "Example Domain",
-      "outerHTML": "<!DOCTYPE html><html><head><title>Example Domain</title></head><body><h1>Example Domain</h1></body></html>"
-    }
+    ]
   }
 }

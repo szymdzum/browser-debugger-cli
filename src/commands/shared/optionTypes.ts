@@ -254,7 +254,7 @@ export type NetworkHeadersCommandOptions = BaseOptions & { header?: string };
  *
  * CLI-layer shape: fields are "required-with-undefined" (`| undefined`) to
  * match what Commander parsing produces. Maps to the canonical
- * `SessionOptions` (IPC/worker shape) via `filterDefined` in
+ * `SessionOptions` (IPC shape) via `filterDefined` in
  * `startSessionViaDaemon`, which strips undefined keys.
  *
  * Kept as its own interface (not `extends SessionOptions`) because
@@ -320,8 +320,6 @@ export interface PreviewDisplayOptions {
   network?: boolean;
   /** Show only console messages */
   console?: boolean;
-  /** Show DOM/A11y tree data */
-  dom?: boolean;
   /** Use verbose output with full URLs and formatting */
   verbose?: boolean;
   /** Watch for updates (like tail -f) */
@@ -343,8 +341,7 @@ export interface PeekCommandOptions extends BaseOptions, PreviewDisplayOptions {
  * Options for tail command.
  * Includes preview options plus last count and update interval.
  */
-export interface TailCommandOptions
-  extends BaseOptions, Omit<PreviewDisplayOptions, 'dom' | 'follow'> {
+export interface TailCommandOptions extends BaseOptions, Omit<PreviewDisplayOptions, 'follow'> {
   /** Show last N items (string from CLI, default: 10) */
   last?: string;
   /** Update interval in milliseconds (string from CLI, default: 1000) */
