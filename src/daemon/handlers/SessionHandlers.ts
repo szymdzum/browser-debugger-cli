@@ -36,9 +36,7 @@ const log = createLogger('daemon');
  *   the previous target so clients can tell recovery happened.
  */
 type ReconcileOutcome =
-  | { kind: 'handled' }
-  | { kind: 'fresh' }
-  | { kind: 'recovered'; previousTarget: string };
+  { kind: 'handled' } | { kind: 'fresh' } | { kind: 'recovered'; previousTarget: string };
 
 /**
  * Map a thrown worker-launch error to the IPC error shape.

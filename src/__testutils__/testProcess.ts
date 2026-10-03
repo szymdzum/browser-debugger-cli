@@ -40,7 +40,7 @@ export function mockProcessAlive(alivePids: number[]): void {
 
   const alivePidSet = new Set(alivePids);
 
-  process.kill = ((pid: number, signal?: number | NodeJS.Signals) => {
+  process.kill = (pid: number, signal?: number | NodeJS.Signals) => {
     const normalizedPid = Math.abs(pid);
     // Signal 0 is used to check if process exists (doesn't actually send signal)
     if (signal === 0 || signal === undefined) {
@@ -67,7 +67,7 @@ export function mockProcessAlive(alivePids: number[]): void {
 
     alivePidSet.delete(normalizedPid);
     return true;
-  }) as typeof process.kill;
+  };
 }
 
 /**

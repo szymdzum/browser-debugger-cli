@@ -82,7 +82,7 @@ export class CommandHandlers extends BaseHandler {
       type: `${commandName}_request` as const,
       requestId: generateRequestId(commandName),
       ...params,
-    } as WorkerRequest<typeof commandName>;
+    };
 
     this.forwardToWorker({
       socket,

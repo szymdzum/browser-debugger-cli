@@ -43,7 +43,7 @@ function buildPageScreenshotOptions(
     fullPage: options.fullPage,
     noResize: options.resize === false,
     scroll: options.scroll,
-  }) as FilteredScreenshotOptions;
+  });
 }
 
 function buildElementScreenshotOptions(
@@ -53,7 +53,7 @@ function buildElementScreenshotOptions(
     format: options.format,
     quality: options.quality,
     noResize: options.resize === false,
-  }) as FilteredElementOptions;
+  });
 }
 
 function hasElementTarget(options: DomScreenshotCommandOptions): boolean {

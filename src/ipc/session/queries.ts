@@ -124,9 +124,4 @@ export interface HARDataResponse extends IPCMessage {
  * Union of all session query message types.
  */
 export type QueryMessageType =
-  | StatusRequest
-  | StatusResponse
-  | PeekRequest
-  | PeekResponse
-  | HARDataRequest
-  | HARDataResponse;
+  StatusRequest | StatusResponse | PeekRequest | PeekResponse | HARDataRequest | HARDataResponse;

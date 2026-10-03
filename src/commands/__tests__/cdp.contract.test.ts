@@ -121,8 +121,7 @@ class MockCDPConnection extends CDPConnection {
 class MockIPCForCDP {
   private mockCDP: MockCDPConnection;
   private commandHandler:
-    | ((method: string, params?: Record<string, unknown>) => Promise<unknown>)
-    | null = null;
+    ((method: string, params?: Record<string, unknown>) => Promise<unknown>) | null = null;
 
   constructor(mockCDP: MockCDPConnection) {
     this.mockCDP = mockCDP;

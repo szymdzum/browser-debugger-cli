@@ -84,10 +84,7 @@ export class WorkerStartError extends Error {
   constructor(
     message: string,
     public readonly code:
-      | 'SPAWN_FAILED'
-      | 'READY_TIMEOUT'
-      | 'WORKER_CRASH'
-      | 'INVALID_READY_MESSAGE',
+      'SPAWN_FAILED' | 'READY_TIMEOUT' | 'WORKER_CRASH' | 'INVALID_READY_MESSAGE',
     public readonly details?: string
   ) {
     super(message);

@@ -34,8 +34,7 @@ export interface ParsedFilter {
 }
 
 export type FilterValidationResult =
-  | { valid: true; filters: ParsedFilter[] }
-  | { valid: false; error: string; suggestion?: string };
+  { valid: true; filters: ParsedFilter[] } | { valid: false; error: string; suggestion?: string };
 
 type FilterTokenResult = ParsedFilter | { error: string; suggestion?: string };
 

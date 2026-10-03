@@ -59,8 +59,7 @@ export async function collectA11yTree(): Promise<A11yTree> {
   try {
     const response = await callCDP('Accessibility.getFullAXTree', {});
     const result = response.data?.result as
-      | Protocol.Accessibility.GetFullAXTreeResponse
-      | undefined;
+      Protocol.Accessibility.GetFullAXTreeResponse | undefined;
     if (!result?.nodes) {
       throw new CommandError(
         'Failed to get accessibility tree',
@@ -317,8 +316,7 @@ export async function resolveA11yNode(selector: string, nodeId?: number): Promis
         selector,
       });
       const nodeResult = nodeResponse.data?.result as
-        | Protocol.DOM.QuerySelectorResponse
-        | undefined;
+        Protocol.DOM.QuerySelectorResponse | undefined;
 
       if (!nodeResult?.nodeId) {
         return null;
@@ -332,8 +330,7 @@ export async function resolveA11yNode(selector: string, nodeId?: number): Promis
       fetchRelatives: false,
     });
     const a11yResult = a11yResponse.data?.result as
-      | Protocol.Accessibility.GetPartialAXTreeResponse
-      | undefined;
+      Protocol.Accessibility.GetPartialAXTreeResponse | undefined;
 
     if (!a11yResult?.nodes) {
       return null;

@@ -239,8 +239,7 @@ export async function capturePageScreenshot(
 
   const metricsResponse = await callCDP('Page.getLayoutMetrics', {});
   const metricsResult = metricsResponse.data?.result as
-    | Protocol.Page.GetLayoutMetricsResponse
-    | undefined;
+    Protocol.Page.GetLayoutMetricsResponse | undefined;
 
   const contentSize = metricsResult?.contentSize ?? { width: 0, height: 0 };
   const viewport = metricsResult?.visualViewport ?? { clientWidth: 0, clientHeight: 0 };
@@ -305,8 +304,7 @@ export async function capturePageScreenshot(
       },
     });
     screenshotResult = screenshotResponse.data?.result as
-      | Protocol.Page.CaptureScreenshotResponse
-      | undefined;
+      Protocol.Page.CaptureScreenshotResponse | undefined;
   } finally {
     if (devicePixelRatio !== 1) {
       await callCDP('Emulation.clearDeviceMetricsOverride', {});
@@ -405,8 +403,7 @@ export async function captureElementScreenshot(
 
   const metricsResponse = await callCDP('Page.getLayoutMetrics', {});
   const metricsResult = metricsResponse.data?.result as
-    | Protocol.Page.GetLayoutMetricsResponse
-    | undefined;
+    Protocol.Page.GetLayoutMetricsResponse | undefined;
   const viewport = metricsResult?.visualViewport ?? { clientWidth: 800, clientHeight: 600 };
 
   if (devicePixelRatio !== 1) {
@@ -433,8 +430,7 @@ export async function captureElementScreenshot(
       captureBeyondViewport: true,
     });
     screenshotResult = screenshotResponse.data?.result as
-      | Protocol.Page.CaptureScreenshotResponse
-      | undefined;
+      Protocol.Page.CaptureScreenshotResponse | undefined;
   } finally {
     if (devicePixelRatio !== 1) {
       await callCDP('Emulation.clearDeviceMetricsOverride', {});

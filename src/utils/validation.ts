@@ -6,8 +6,7 @@
  */
 
 export type ValidationResult =
-  | { valid: true }
-  | { valid: false; error: string; suggestion?: string };
+  { valid: true } | { valid: false; error: string; suggestion?: string };
 
 /**
  * Build a successful validation result.

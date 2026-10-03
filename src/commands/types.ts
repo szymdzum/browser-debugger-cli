@@ -48,5 +48,4 @@ export interface CleanupResult {
  * allowing TypeScript to narrow the `item` type automatically.
  */
 export type DetailsResult =
-  | { type: 'network'; item: NetworkRequest }
-  | { type: 'console'; item: ConsoleMessage };
+  { type: 'network'; item: NetworkRequest } | { type: 'console'; item: ConsoleMessage };

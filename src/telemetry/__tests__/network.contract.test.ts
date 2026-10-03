@@ -140,7 +140,7 @@ function createRequestEvent(
     redirectHasExtraInfo: false,
     type: 'Other',
     ...partial,
-  } as Protocol.Network.RequestWillBeSentEvent;
+  };
 }
 
 /**

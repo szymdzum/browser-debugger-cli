@@ -16,7 +16,6 @@ import {
   type StatusResponse,
   type StatusResponseData,
   type WorkerRequest,
-  type WorkerRequestUnion,
 } from '@/ipc/index.js';
 import { generateRequestId } from '@/ipc/utils/requestId.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -86,7 +85,7 @@ export class QueryHandlers extends BaseHandler {
             socket,
             sessionId: request.sessionId,
             commandName: 'worker_status',
-            workerRequest: workerRequest as WorkerRequestUnion,
+            workerRequest: workerRequest,
             statusData: data,
           });
           return; // Will send response when worker responds
@@ -135,7 +134,7 @@ export class QueryHandlers extends BaseHandler {
       socket,
       sessionId: request.sessionId,
       commandName: 'worker_har_data',
-      workerRequest: workerRequest as WorkerRequestUnion,
+      workerRequest: workerRequest,
     });
   }
 
@@ -163,7 +162,7 @@ export class QueryHandlers extends BaseHandler {
       socket,
       sessionId: request.sessionId,
       commandName: 'worker_peek',
-      workerRequest: workerRequest as WorkerRequestUnion,
+      workerRequest: workerRequest,
     });
   }
 }

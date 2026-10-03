@@ -259,42 +259,33 @@ export type RegistryShape = {
 };
 
 /**
+ * Creates a phantom command definition that carries request/response types only.
+ *
+ * @returns Empty schema objects typed as the inferred request and response
+ */
+function defineCommand<TReq, TRes>(): CommandDef<TReq, TRes> {
+  return { requestSchema: {} as TReq, responseSchema: {} as TRes };
+}
+
+/**
  * Central registry of all worker commands.
  * Maps command names to their request/response schemas.
  */
-export const COMMANDS = {
-  worker_peek: { requestSchema: {} as WorkerPeekCommand, responseSchema: {} as WorkerPeekData },
-  worker_details: {
-    requestSchema: {} as WorkerDetailsCommand,
-    responseSchema: {} as WorkerDetailsData,
-  },
-  worker_status: {
-    requestSchema: {} as WorkerStatusCommand,
-    responseSchema: {} as WorkerStatusData,
-  },
-  worker_har_data: {
-    requestSchema: {} as WorkerHARDataCommand,
-    responseSchema: {} as WorkerHARDataData,
-  },
-  worker_network_headers: {
-    requestSchema: {} as WorkerNetworkHeadersCommand,
-    responseSchema: {} as WorkerNetworkHeadersData,
-  },
-  cdp_call: { requestSchema: {} as CdpCallCommand, responseSchema: {} as CdpCallData },
-  dom_eval: { requestSchema: {} as DomEvalCommand, responseSchema: {} as DomEvalData },
-  dom_fill: { requestSchema: {} as DomFillCommand, responseSchema: {} as DomFillData },
-  dom_click: { requestSchema: {} as DomClickCommand, responseSchema: {} as DomClickData },
-  dom_submit: { requestSchema: {} as DomSubmitCommand, responseSchema: {} as DomSubmitData },
-  dom_press_key: {
-    requestSchema: {} as DomPressKeyCommand,
-    responseSchema: {} as DomPressKeyData,
-  },
-  dom_scroll: { requestSchema: {} as DomScrollCommand, responseSchema: {} as DomScrollData },
-  dom_form_discover: {
-    requestSchema: {} as DomFormDiscoverCommand,
-    responseSchema: {} as DomFormDiscoverData,
-  },
-} as const satisfies RegistryShape;
+export const COMMANDS: RegistryShape = {
+  worker_peek: defineCommand(),
+  worker_details: defineCommand(),
+  worker_status: defineCommand(),
+  worker_har_data: defineCommand(),
+  worker_network_headers: defineCommand(),
+  cdp_call: defineCommand(),
+  dom_eval: defineCommand(),
+  dom_fill: defineCommand(),
+  dom_click: defineCommand(),
+  dom_submit: defineCommand(),
+  dom_press_key: defineCommand(),
+  dom_scroll: defineCommand(),
+  dom_form_discover: defineCommand(),
+};
 
 /**
  * All registered command schemas.

@@ -143,7 +143,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
   });
 
   void it('launches cleanly when no prior session exists', async () => {
-    global.fetch = aliveFetchStub() as unknown as typeof global.fetch;
+    global.fetch = aliveFetchStub();
     const service = makeSessionService();
     const worker = makeWorkerManager(successfulLaunch);
     const handler = makeHandler(worker, service);
@@ -158,7 +158,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
   });
 
   void it('returns SESSION_ALREADY_RUNNING when probe confirms same target (launched mode)', async () => {
-    global.fetch = aliveFetchStub() as unknown as typeof global.fetch;
+    global.fetch = aliveFetchStub();
     const service = makeSessionService({
       readPid: () => 4242,
       isProcessAlive: () => true,
@@ -181,7 +181,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
   });
 
   void it('returns SESSION_ALREADY_RUNNING when probe confirms same ws URL (attach mode)', async () => {
-    global.fetch = aliveFetchStub() as unknown as typeof global.fetch;
+    global.fetch = aliveFetchStub();
     const ws = 'ws://127.0.0.1:9222/devtools/browser/shared';
     const service = makeSessionService({
       readPid: () => 4242,
@@ -199,7 +199,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
   });
 
   void it('returns SESSION_TARGET_MISMATCH when live session is attached to a different ws URL', async () => {
-    global.fetch = aliveFetchStub() as unknown as typeof global.fetch;
+    global.fetch = aliveFetchStub();
     const service = makeSessionService({
       readPid: () => 4242,
       isProcessAlive: () => true,
@@ -225,7 +225,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
   });
 
   void it('returns SESSION_TARGET_MISMATCH when attach request collides with launched session', async () => {
-    global.fetch = aliveFetchStub() as unknown as typeof global.fetch;
+    global.fetch = aliveFetchStub();
     const service = makeSessionService({
       readPid: () => 4242,
       isProcessAlive: () => true,
@@ -244,7 +244,7 @@ void describe('SessionHandlers.handleStartSession — probe-gated state machine'
   });
 
   void it('recovers silently and launches fresh when probe fails (stale session)', async () => {
-    global.fetch = deadFetchStub() as unknown as typeof global.fetch;
+    global.fetch = deadFetchStub();
     const staleWs = 'ws://127.0.0.1:9222/devtools/browser/dead';
     const service = makeSessionService({
       readPid: () => 4242,
@@ -328,9 +328,9 @@ void describe('SessionHandlers.handleStopSession — shutdown callback + respons
     const handler = makeHandler(worker, service);
 
     const originalKill = process.kill.bind(process);
-    process.kill = ((_pid: number, _signal: NodeJS.Signals) => {
+    process.kill = (_pid: number, _signal: NodeJS.Signals) => {
       throw new Error('EPERM: operation not permitted');
-    }) as typeof process.kill;
+    };
 
     try {
       handler.handleStopSession({} as never, stopRequest());
@@ -357,10 +357,10 @@ void describe('SessionHandlers.handleStopSession — shutdown callback + respons
 
     const originalKill = process.kill.bind(process);
     let killedPid: number | undefined;
-    process.kill = ((pid: number, _signal: NodeJS.Signals) => {
+    process.kill = (pid: number, _signal: NodeJS.Signals) => {
       killedPid = pid;
       return true;
-    }) as typeof process.kill;
+    };
 
     try {
       handler.handleStopSession({} as never, stopRequest());

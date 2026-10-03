@@ -122,7 +122,7 @@ export class WorkerManager extends EventEmitter {
   private handleStdout(chunk: Buffer): void {
     const messages = this.parser.parse(chunk);
     for (const message of messages) {
-      this.emit('message', message as WorkerMessage);
+      this.emit('message', message);
     }
   }
 }

@@ -67,8 +67,7 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
     selector,
   });
   const queryResult = queryResponse.data?.result as
-    | Protocol.DOM.QuerySelectorAllResponse
-    | undefined;
+    Protocol.DOM.QuerySelectorAllResponse | undefined;
   const nodeIds = queryResult?.nodeIds ?? [];
 
   if (nodeIds.length > 20) {
@@ -81,8 +80,7 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
       limiter.run(async () => {
         const descResponse = await callCDP('DOM.describeNode', { nodeId });
         const descResult = descResponse.data?.result as
-          | Protocol.DOM.DescribeNodeResponse
-          | undefined;
+          Protocol.DOM.DescribeNodeResponse | undefined;
         const nodeDesc = descResult?.node;
 
         if (!nodeDesc) {
@@ -95,8 +93,7 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
 
         const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
         const htmlResult = htmlResponse.data?.result as
-          | Protocol.DOM.GetOuterHTMLResponse
-          | undefined;
+          Protocol.DOM.GetOuterHTMLResponse | undefined;
         const outerHTML = htmlResult?.outerHTML ?? '';
 
         const textContent = outerHTML
@@ -187,8 +184,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
       selector: options.selector,
     });
     const queryResult = queryResponse.data?.result as
-      | Protocol.DOM.QuerySelectorAllResponse
-      | undefined;
+      Protocol.DOM.QuerySelectorAllResponse | undefined;
     nodeIds = queryResult?.nodeIds ?? [];
 
     if (nodeIds.length === 0) {
@@ -254,8 +250,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
       limiter.run(async () => {
         const descResponse = await callCDP('DOM.describeNode', { nodeId });
         const descResult = descResponse.data?.result as
-          | Protocol.DOM.DescribeNodeResponse
-          | undefined;
+          Protocol.DOM.DescribeNodeResponse | undefined;
         const nodeDesc = descResult?.node;
 
         if (!nodeDesc) {
@@ -268,8 +263,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
 
         const htmlResponse = await callCDP('DOM.getOuterHTML', { nodeId });
         const htmlResult = htmlResponse.data?.result as
-          | Protocol.DOM.GetOuterHTMLResponse
-          | undefined;
+          Protocol.DOM.GetOuterHTMLResponse | undefined;
         const outerHTML = htmlResult?.outerHTML;
 
         const node: {

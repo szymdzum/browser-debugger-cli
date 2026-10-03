@@ -35,5 +35,5 @@ export function generateSessionId(): string {
  * ```
  */
 export function withSession<T extends { type: string }>(payload: T): T & { sessionId: string } {
-  return { ...payload, sessionId: generateSessionId() } as T & { sessionId: string };
+  return { ...payload, sessionId: generateSessionId() };
 }
