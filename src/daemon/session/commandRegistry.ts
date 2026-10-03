@@ -16,6 +16,7 @@ import {
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
+import type { NetworkRequest } from '@/types.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -122,18 +123,19 @@ function mapConsoleMessageToPreview(msg: ConsolePreview): ConsolePreview {
 }
 
 /**
- * Find network request by ID or throw.
+ * Find a network request by ID, finished or still in flight.
  *
- * @param requests - Array of network requests
+ * `peek` lists in-flight requests too, so ids it shows must resolve here.
+ *
+ * @param store - Telemetry store
  * @param id - Request ID to find
  * @returns Found request
  * @throws Error if not found
  */
-function findNetworkRequestOrThrow(
-  requests: { requestId: string }[],
-  id: string
-): { requestId: string } {
-  const request = requests.find((r) => r.requestId === id);
+function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRequest {
+  const request =
+    store.networkRequests.find((r) => r.requestId === id) ??
+    store.pendingNetworkRequests.get(id)?.request;
   if (!request) {
     throw new Error(`Network request not found: ${id}`);
   }
@@ -165,6 +167,11 @@ function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
 /**
  * Find target request for headers command.
  *
+ * Without an id, prefers the main document of the current page: the Document
+ * request whose URL matches the last main-frame navigation (the document
+ * request is sent before the navigation commits, so it cannot be matched by
+ * navigation id).
+ *
  * @param store - Telemetry store
  * @param requestId - Optional specific request ID
  * @returns Target request with headers
@@ -180,18 +187,13 @@ function findTargetRequestForHeaders(
   responseHeaders?: Record<string, string>;
 } {
   if (requestId) {
-    const request = store.networkRequests.find((r) => r.requestId === requestId);
-    if (!request) {
-      throw new Error(`Network request not found: ${requestId}`);
-    }
-    return request;
+    return findNetworkRequestOrThrow(store, requestId);
   }
 
-  const currentNavId = store.getCurrentNavigationId?.() ?? 0;
-
-  const byDocument = store.networkRequests.findLast(
-    (r) => r.navigationId === currentNavId && r.resourceType === 'Document'
-  );
+  const currentUrl = store.navigationEvents.at(-1)?.url;
+  const byDocument =
+    store.networkRequests.findLast((r) => r.resourceType === 'Document' && r.url === currentUrl) ??
+    store.networkRequests.findLast((r) => r.resourceType === 'Document');
   if (byDocument) return byDocument;
 
   const byHtml = store.networkRequests.findLast((r) => r.mimeType?.includes('html'));
@@ -229,13 +231,17 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       const offset = params.offset ?? 0;
       const duration = Date.now() - store.sessionStartTime;
 
-      const totalNetwork = store.networkRequests.length;
+      const allNetwork = [
+        ...store.networkRequests,
+        ...[...store.pendingNetworkRequests.values()].map((pending) => pending.request),
+      ];
+      const totalNetwork = allNetwork.length;
       const totalConsole = store.consoleMessages.length;
 
       const networkBounds = calculateSliceBounds(totalNetwork, lastN, offset);
       const consoleBounds = calculateSliceBounds(totalConsole, lastN, offset);
 
-      const recentNetwork = store.networkRequests
+      const recentNetwork = allNetwork
         .slice(networkBounds.start, networkBounds.end)
         .map(mapNetworkRequestToPreview);
 
@@ -263,7 +269,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
 
     worker_details: async (_cdp, params) => {
       if (params.itemType === 'network') {
-        const request = findNetworkRequestOrThrow(store.networkRequests, params.id);
+        const request = findNetworkRequestOrThrow(store, params.id);
         return Promise.resolve({ item: request });
       }
 
@@ -302,6 +308,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           lastConsoleMessageAt?: number;
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
+        domVersion: store.getDomVersion?.() ?? 0,
       };
 
       return Promise.resolve(result);

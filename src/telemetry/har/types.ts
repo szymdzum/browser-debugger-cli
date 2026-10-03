@@ -213,10 +213,10 @@ export interface QueryParam {
 export interface PostData {
   /** MIME type of posted data */
   mimeType: string;
-  /** List of posted parameters (parsed from request body) */
-  params: PostParam[];
-  /** Plain text posted data */
-  text: string;
+  /** List of posted parameters (mutually exclusive with `text` per HAR 1.2) */
+  params?: PostParam[];
+  /** Plain text posted data (mutually exclusive with `params` per HAR 1.2) */
+  text?: string;
   /** Comment (optional) */
   comment?: string;
 }

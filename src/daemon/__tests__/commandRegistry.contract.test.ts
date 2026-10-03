@@ -184,6 +184,23 @@ void describe('CommandRegistry', () => {
   });
 
   void describe('worker_details - network', () => {
+    void it('resolves a request that is still in flight', async () => {
+      const pending: NetworkRequest = {
+        requestId: 'pending-1',
+        timestamp: 100,
+        method: 'GET',
+        url: 'http://example.com/slow',
+      };
+      store.pendingNetworkRequests.set('pending-1', { request: pending, timestamp: 100 });
+
+      const result = await registry.worker_details(mockCdp, {
+        itemType: 'network',
+        id: 'pending-1',
+      });
+
+      assert.deepEqual(result.item, pending);
+    });
+
     void it('returns full network request by ID', async () => {
       const request: NetworkRequest = {
         requestId: 'req-1',

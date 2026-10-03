@@ -7,6 +7,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { trackInFlightRequests } from '@/connection/inFlightRequests.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 
@@ -23,31 +24,13 @@ const STABILITY_CHECK_INTERVAL_MS = 50;
 export async function waitForActionStability(cdp: CDPConnection): Promise<void> {
   const deadline = Date.now() + ACTION_STABILITY_TIMEOUT_MS;
 
-  let activeRequests = 0;
-  let lastActivity = Date.now();
-
-  const onRequestStarted = (): void => {
-    activeRequests++;
-    lastActivity = Date.now();
-  };
-
-  const onRequestFinished = (): void => {
-    activeRequests--;
-    if (activeRequests === 0) {
-      lastActivity = Date.now();
-    }
-  };
-
   await cdp.send('Network.enable');
-
-  const cleanupRequest = cdp.on('Network.requestWillBeSent', onRequestStarted);
-  const cleanupFinished = cdp.on('Network.loadingFinished', onRequestFinished);
-  const cleanupFailed = cdp.on('Network.loadingFailed', onRequestFinished);
+  const requests = trackInFlightRequests(cdp);
 
   try {
     while (Date.now() < deadline) {
-      if (activeRequests === 0) {
-        const idleTime = Date.now() - lastActivity;
+      if (requests.count === 0) {
+        const idleTime = Date.now() - requests.lastActivity;
         if (idleTime >= ACTION_NETWORK_IDLE_MS) {
           log.debug(`Network stable after ${idleTime}ms idle`);
           return;
@@ -59,8 +42,6 @@ export async function waitForActionStability(cdp: CDPConnection): Promise<void> 
 
     log.debug('Stability timeout reached, proceeding');
   } finally {
-    cleanupRequest();
-    cleanupFinished();
-    cleanupFailed();
+    requests.dispose();
   }
 }

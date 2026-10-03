@@ -6,6 +6,8 @@ import type { ClickResult } from './reactEventHelpers.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPTimeoutError } from '@/connection/errors.js';
+import { trackInFlightRequests } from '@/connection/inFlightRequests.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 
 import { clickElement } from './formFillHelpers/index.js';
@@ -138,8 +140,6 @@ async function waitForCompletion(
 ): Promise<{ networkRequests: number; navigationOccurred: boolean }> {
   const { waitNavigation, waitNetwork, timeout } = options;
 
-  let activeRequests = 0;
-  let networkRequests = 0;
   let navigationOccurred = false;
   let idleTimeout: NodeJS.Timeout | null = null;
   let timeoutHandle: NodeJS.Timeout | null = null;
@@ -158,44 +158,38 @@ async function waitForCompletion(
     }, timeout);
 
     const checkCompletion = (): void => {
-      const networkIdle = waitNetwork === 0 || activeRequests === 0;
+      const networkIdle = waitNetwork === 0 || requests.count === 0;
       const navigationComplete = !waitNavigation || navigationOccurred;
 
       if (networkIdle && navigationComplete) {
         cleanup();
-        resolve({ networkRequests, navigationOccurred });
+        resolve({ networkRequests: requests.started, navigationOccurred });
       }
     };
 
-    const onRequestStarted = (): void => {
-      networkRequests++;
-      activeRequests++;
+    const onRequestsChanged = (): void => {
       if (idleTimeout) {
         clearTimeout(idleTimeout);
         idleTimeout = null;
       }
-    };
-
-    const onRequestFinished = (): void => {
-      activeRequests--;
-      if (activeRequests === 0 && waitNetwork > 0) {
-        idleTimeout = setTimeout(() => {
-          checkCompletion();
-        }, waitNetwork);
+      if (requests.count === 0 && waitNetwork > 0) {
+        idleTimeout = setTimeout(checkCompletion, waitNetwork);
       }
     };
 
-    const onNavigated = (): void => {
+    const onNavigated = (params: Protocol.Page.FrameNavigatedEvent): void => {
+      if (params.frame.parentId !== undefined) return;
       navigationOccurred = true;
       checkCompletion();
     };
 
-    cleanupFunctions.push(cdp.on('Network.requestWillBeSent', onRequestStarted));
-    cleanupFunctions.push(cdp.on('Network.loadingFinished', onRequestFinished));
-    cleanupFunctions.push(cdp.on('Network.loadingFailed', onRequestFinished));
+    const requests = trackInFlightRequests(cdp, onRequestsChanged);
+    cleanupFunctions.push(requests.dispose);
 
     if (waitNavigation) {
-      cleanupFunctions.push(cdp.on('Page.frameNavigated', onNavigated));
+      cleanupFunctions.push(
+        cdp.on<Protocol.Page.FrameNavigatedEvent>('Page.frameNavigated', onNavigated)
+      );
     }
 
     cdp.send('Network.enable').catch((error: Error) => {
@@ -203,7 +197,7 @@ async function waitForCompletion(
       reject(new CDPConnectionError('Failed to enable network monitoring', error));
     });
 
-    if (waitNetwork === 0 || activeRequests === 0) {
+    if (waitNetwork === 0 || requests.count === 0) {
       idleTimeout = setTimeout(() => {
         checkCompletion();
       }, waitNetwork);

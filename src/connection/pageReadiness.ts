@@ -9,6 +9,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { trackInFlightRequests } from '@/connection/inFlightRequests.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
@@ -170,29 +171,12 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
 async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promise<number> {
   await cdp.send('Network.enable');
 
-  let activeRequests = 0;
-  let lastActivity = Date.now();
-
-  const requestHandler = (): void => {
-    activeRequests++;
-    lastActivity = Date.now();
-  };
-
-  const finishHandler = (): void => {
-    activeRequests--;
-    if (activeRequests === 0) {
-      lastActivity = Date.now();
-    }
-  };
-
-  const cleanupRequest = cdp.on('Network.requestWillBeSent', requestHandler);
-  const cleanupFinished = cdp.on('Network.loadingFinished', finishHandler);
-  const cleanupFailed = cdp.on('Network.loadingFailed', finishHandler);
+  const requests = trackInFlightRequests(cdp);
 
   try {
     while (Date.now() < deadline) {
-      if (activeRequests === 0) {
-        const idleTime = Date.now() - lastActivity;
+      if (requests.count === 0) {
+        const idleTime = Date.now() - requests.lastActivity;
         if (idleTime >= NETWORK_IDLE_THRESHOLD_MS) {
           return idleTime; // Success!
         }
@@ -203,9 +187,7 @@ async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promi
 
     throw new Error('Network stability timeout');
   } finally {
-    cleanupRequest();
-    cleanupFinished();
-    cleanupFailed();
+    requests.dispose();
   }
 }
 

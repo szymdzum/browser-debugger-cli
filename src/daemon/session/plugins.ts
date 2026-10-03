@@ -38,11 +38,11 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
       name: 'navigation',
       runAlways: true,
       async start({ cdp, store }) {
-        const { cleanup, getCurrentNavigationId } = await startNavigationTracking(
+        const { cleanup, getCurrentNavigationId, getDomVersion } = await startNavigationTracking(
           cdp,
           store.navigationEvents
         );
-        store.setNavigationResolver(getCurrentNavigationId);
+        store.setNavigationResolver(getCurrentNavigationId, getDomVersion);
         return cleanup;
       },
     },
@@ -53,6 +53,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
         const networkOptions = {
           includeAll: config.includeAll ?? false,
           getCurrentNavigationId: store.getCurrentNavigationId ?? undefined,
+          pendingRequests: store.pendingNetworkRequests,
           ...filterDefined({
             maxBodySize: config.maxBodySize,
           }),

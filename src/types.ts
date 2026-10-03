@@ -151,6 +151,8 @@ export interface NetworkRequest {
     receiveHeadersEnd?: number;
   };
   loadingFinishedTime?: number;
+  /** For a redirect hop: the URL it redirected to */
+  redirectURL?: string;
   encodedDataLength?: number;
   decodedBodyLength?: number;
   serverIPAddress?: string;
@@ -335,7 +337,7 @@ export interface DomQueryResult {
     /** Unique selector for this node (set by form discovery) */
     selector?: string;
   }>;
-  /** Navigation ID when query was performed (for staleness detection). */
+  /** DOM version when the query was performed (for staleness detection; field name kept for cache compatibility). */
   navigationId?: number;
 }
 

@@ -16,6 +16,7 @@ import type {
   PostData,
 } from './types.js';
 
+import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest } from '@/types.js';
 
 /**
@@ -125,7 +126,7 @@ function buildRequest(req: NetworkRequest): Request {
     method: req.method,
     url: req.url,
     httpVersion: DEFAULT_HTTP_VERSION,
-    cookies: extractCookies(req.requestHeaders),
+    cookies: extractRequestCookies(req.requestHeaders),
     headers: convertHeaders(req.requestHeaders),
     queryString: extractQueryParams(url),
     headersSize: estimateRequestHeadersSize(req.method, req.url, req.requestHeaders),
@@ -154,44 +155,39 @@ function buildResponse(req: NetworkRequest): Response {
     status: req.status ?? 0,
     statusText: getStatusText(req.status),
     httpVersion: DEFAULT_HTTP_VERSION,
-    cookies: extractCookies(req.responseHeaders),
+    cookies: extractResponseCookies(req.responseHeaders),
     headers: convertHeaders(req.responseHeaders),
     content: buildContent(req),
-    redirectURL: extractRedirectURL(req.responseHeaders),
+    redirectURL: extractRedirectURL(req),
     headersSize: estimateResponseHeadersSize(req.status, req.responseHeaders),
     bodySize,
   };
 }
 
 /**
- * Build content object for response body.
+ * Build the HAR content object for a response.
  *
- * @param req - Network request data
- * @returns HAR content object
+ * A body that bdg chose not to fetch is exported without `text` and with the
+ * reason as `comment`, instead of the placeholder pretending to be the body.
  *
- * @remarks
- * Uses decodedBodyLength if available, otherwise calculates from responseBody.
- * The size field represents the uncompressed/decoded content size.
+ * @param req - Network request
+ * @returns HAR content
  */
 function buildContent(req: NetworkRequest): Content {
+  const mimeType = req.mimeType ?? 'application/octet-stream';
+  const skipped = skippedBodyReason(req.responseBody);
+  if (skipped !== undefined) {
+    return { size: req.decodedBodyLength ?? 0, mimeType, comment: `Body not captured: ${skipped}` };
+  }
   const { text, encoding } = encodeBody(req.responseBody, req.mimeType);
   const size =
     req.decodedBodyLength ?? (req.responseBody ? Buffer.byteLength(req.responseBody, 'utf-8') : 0);
-
-  const content: Content = {
+  return {
     size,
-    mimeType: req.mimeType ?? 'application/octet-stream',
+    mimeType,
+    ...(text !== undefined && { text }),
+    ...(encoding !== undefined && { encoding }),
   };
-
-  if (text !== undefined) {
-    content.text = text;
-  }
-
-  if (encoding !== undefined) {
-    content.encoding = encoding;
-  }
-
-  return content;
 }
 
 /**
@@ -244,112 +240,64 @@ function isBinaryMimeType(mimeType: string | undefined): boolean {
 function buildPostData(req: NetworkRequest): PostData | undefined {
   if (!req.requestBody) return undefined;
 
-  const contentType = req.requestHeaders?.['content-type'] ?? 'text/plain';
+  const contentType = getHeader(req.requestHeaders, 'content-type') ?? 'text/plain';
 
   return {
     mimeType: contentType,
-    params: [],
     text: req.requestBody,
   };
 }
 
 /**
- * Build timing object from NetworkRequest timing data.
+ * Duration between two CDP timing offsets (ms), or -1 if either is unknown.
  *
- * @param req - Network request data
- * @returns HAR timings object
+ * @param start - Start offset (-1 when not applicable)
+ * @param end - End offset (-1 when not applicable)
+ * @returns Duration in ms, or -1
+ */
+function span(start: number | undefined, end: number | undefined): number {
+  if (start === undefined || end === undefined || start < 0 || end < 0 || end < start) {
+    return UNKNOWN_TIMING;
+  }
+  return end - start;
+}
+
+/**
+ * Build HAR timings from CDP resource timing.
  *
- * @remarks
- * Uses real timing data from CDP Network.responseReceived event.
- * Falls back to -1 (unknown) for missing timing fields (HAR spec compliant).
+ * HAR 1.2: blocked/dns/connect/ssl may be -1 (not applicable); send, wait
+ * and receive are required to be non-negative.
  *
- * HAR timing breakdown:
- * - blocked: Time waiting for network slot (DNS queue time)
- * - dns: DNS resolution time
- * - connect: TCP connection time
- * - ssl: SSL/TLS handshake time (if HTTPS)
- * - send: Time sending HTTP request
- * - wait: Time waiting for server response (TTFB)
- * - receive: Time receiving response data
+ * @param req - Network request
+ * @returns HAR timings
  */
 function buildTimings(req: NetworkRequest): Timings {
-  if (!req.timing) {
+  const t = req.timing;
+  if (!t) {
     return {
       blocked: UNKNOWN_TIMING,
       dns: UNKNOWN_TIMING,
       connect: UNKNOWN_TIMING,
-      send: UNKNOWN_TIMING,
-      wait: UNKNOWN_TIMING,
-      receive: UNKNOWN_TIMING,
+      send: 0,
+      wait: 0,
+      receive: 0,
       ssl: UNKNOWN_TIMING,
     };
   }
-
-  const t = req.timing;
-
-  const blocked = t.dnsStart !== undefined && t.dnsStart >= 0 ? t.dnsStart : UNKNOWN_TIMING;
-
-  const dns =
-    t.dnsStart !== undefined &&
-    t.dnsEnd !== undefined &&
-    t.dnsStart >= 0 &&
-    t.dnsEnd >= 0 &&
-    t.dnsEnd > t.dnsStart
-      ? t.dnsEnd - t.dnsStart
-      : UNKNOWN_TIMING;
-
-  const connect =
-    t.connectStart !== undefined &&
-    t.connectEnd !== undefined &&
-    t.connectStart >= 0 &&
-    t.connectEnd >= 0 &&
-    t.connectEnd > t.connectStart
-      ? t.connectEnd - t.connectStart
-      : UNKNOWN_TIMING;
-
-  const ssl =
-    t.sslStart !== undefined &&
-    t.sslEnd !== undefined &&
-    t.sslStart >= 0 &&
-    t.sslEnd >= 0 &&
-    t.sslEnd > t.sslStart
-      ? t.sslEnd - t.sslStart
-      : UNKNOWN_TIMING;
-
-  const send =
-    t.sendStart !== undefined &&
-    t.sendEnd !== undefined &&
-    t.sendStart >= 0 &&
-    t.sendEnd >= 0 &&
-    t.sendEnd > t.sendStart
-      ? t.sendEnd - t.sendStart
-      : UNKNOWN_TIMING;
-
-  const wait =
-    t.sendEnd !== undefined &&
-    t.receiveHeadersEnd !== undefined &&
-    t.sendEnd >= 0 &&
-    t.receiveHeadersEnd >= 0 &&
-    t.receiveHeadersEnd > t.sendEnd
-      ? t.receiveHeadersEnd - t.sendEnd
-      : UNKNOWN_TIMING;
-
   const receive =
     req.loadingFinishedTime !== undefined &&
     t.requestTime !== undefined &&
-    t.receiveHeadersEnd !== undefined &&
-    t.receiveHeadersEnd >= 0
+    t.receiveHeadersEnd !== undefined
       ? (req.loadingFinishedTime - t.requestTime) * 1000 - t.receiveHeadersEnd
-      : UNKNOWN_TIMING;
-
+      : 0;
   return {
-    blocked,
-    dns,
-    connect,
-    send,
-    wait,
-    receive,
-    ssl,
+    blocked: t.dnsStart !== undefined && t.dnsStart >= 0 ? t.dnsStart : UNKNOWN_TIMING,
+    dns: span(t.dnsStart, t.dnsEnd),
+    connect: span(t.connectStart, t.connectEnd),
+    ssl: span(t.sslStart, t.sslEnd),
+    send: Math.max(0, span(t.sendStart, t.sendEnd)),
+    wait: Math.max(0, span(t.sendEnd, t.receiveHeadersEnd)),
+    receive: Math.max(0, receive),
   };
 }
 
@@ -397,40 +345,104 @@ function convertHeaders(headers: Record<string, string> | undefined): Header[] {
 }
 
 /**
- * Extract cookies from headers.
+ * Look up a header value case-insensitively.
  *
- * @param headers - Headers object
- * @returns Array of HAR cookie objects
+ * CDP keeps the original header casing for HTTP/1.1 (`Content-Type`,
+ * `Set-Cookie`) and lowercases it for HTTP/2.
+ *
+ * @param headers - Header map
+ * @param name - Header name (any case)
+ * @returns Header value, if present
  */
-function extractCookies(headers: Record<string, string> | undefined): Cookie[] {
-  if (!headers) return [];
-
-  const cookieHeader = headers['cookie'] ?? headers['set-cookie'];
-  if (!cookieHeader) return [];
-
-  return parseCookies(cookieHeader);
+function getHeader(headers: Record<string, string> | undefined, name: string): string | undefined {
+  if (!headers) return undefined;
+  const lower = name.toLowerCase();
+  const key = Object.keys(headers).find((k) => k.toLowerCase() === lower);
+  return key === undefined ? undefined : headers[key];
 }
 
 /**
- * Parse cookie header string into HAR cookie objects.
+ * Extract request cookies from the `Cookie` header.
  *
- * @param cookieHeader - Cookie header string
- * @returns Array of HAR cookie objects
+ * @param headers - Request headers
+ * @returns HAR cookies
  */
-function parseCookies(cookieHeader: string): Cookie[] {
-  const cookies: Cookie[] = [];
-  const cookiePairs = cookieHeader.split(';').map((c) => c.trim());
+function extractRequestCookies(headers: Record<string, string> | undefined): Cookie[] {
+  const header = getHeader(headers, 'cookie');
+  if (!header) return [];
+  return header
+    .split(';')
+    .map((pair) => parseNameValue(pair))
+    .filter((cookie): cookie is Cookie => cookie !== null);
+}
 
-  for (const pair of cookiePairs) {
-    const [name, ...valueParts] = pair.split('=');
-    const value = valueParts.join('=');
+/**
+ * Extract response cookies from `Set-Cookie` headers.
+ *
+ * CDP joins multiple `Set-Cookie` headers with newlines; each line is one
+ * cookie whose first `name=value` pair is the cookie and the rest are
+ * attributes (Path, Domain, Expires, HttpOnly, Secure).
+ *
+ * @param headers - Response headers
+ * @returns HAR cookies
+ */
+function extractResponseCookies(headers: Record<string, string> | undefined): Cookie[] {
+  const header = getHeader(headers, 'set-cookie');
+  if (!header) return [];
+  return header
+    .split('\n')
+    .map(parseSetCookie)
+    .filter((cookie): cookie is Cookie => cookie !== null);
+}
 
-    if (name && value) {
-      cookies.push({ name: name.trim(), value: value.trim() });
+/**
+ * Parse a `name=value` pair.
+ *
+ * @param pair - Raw pair
+ * @returns Cookie, or null if there is no name
+ */
+function parseNameValue(pair: string): Cookie | null {
+  const eq = pair.indexOf('=');
+  const name = (eq === -1 ? pair : pair.slice(0, eq)).trim();
+  if (!name) return null;
+  return { name, value: eq === -1 ? '' : pair.slice(eq + 1).trim() };
+}
+
+/**
+ * Parse one `Set-Cookie` header line.
+ *
+ * @param line - Header line
+ * @returns Cookie with attributes, or null if malformed
+ */
+function parseSetCookie(line: string): Cookie | null {
+  const [first = '', ...attributes] = line.split(';');
+  const cookie = parseNameValue(first);
+  if (!cookie) return null;
+  for (const attribute of attributes) {
+    const { name, value } = parseNameValue(attribute) ?? { name: '', value: '' };
+    switch (name.toLowerCase()) {
+      case 'path':
+        cookie.path = value;
+        break;
+      case 'domain':
+        cookie.domain = value;
+        break;
+      case 'expires': {
+        const date = new Date(value);
+        if (!Number.isNaN(date.getTime())) cookie.expires = date.toISOString();
+        break;
+      }
+      case 'httponly':
+        cookie.httpOnly = true;
+        break;
+      case 'secure':
+        cookie.secure = true;
+        break;
+      default:
+        break;
     }
   }
-
-  return cookies;
+  return cookie;
 }
 
 /**
@@ -450,13 +462,13 @@ function extractQueryParams(url: URL): QueryParam[] {
 }
 
 /**
- * Extract redirect URL from Location header.
+ * Determine the redirect target of a response.
  *
- * @param headers - Response headers
- * @returns Redirect URL or empty string
+ * @param req - Network request
+ * @returns Redirect URL, or '' when the response is not a redirect
  */
-function extractRedirectURL(headers: Record<string, string> | undefined): string {
-  return headers?.['location'] ?? '';
+function extractRedirectURL(req: NetworkRequest): string {
+  return req.redirectURL ?? getHeader(req.responseHeaders, 'location') ?? '';
 }
 
 /**

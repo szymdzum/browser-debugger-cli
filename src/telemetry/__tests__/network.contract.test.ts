@@ -849,4 +849,101 @@ void describe('Network telemetry contract', () => {
       void cleanup();
     });
   });
+  void describe('Redirects and in-flight requests', () => {
+    void it('keeps every redirect hop as its own entry', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        includeAll: true,
+      });
+      mockCDP.emit(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'R',
+          request: createTestRequest({ url: 'http://example.com/login', method: 'POST' }),
+        })
+      );
+      mockCDP.emit(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'R',
+          request: createTestRequest({ url: 'http://example.com/home' }),
+          redirectResponse: createTestResponse({
+            status: 302,
+            headers: { Location: '/home' },
+          }),
+        })
+      );
+      mockCDP.emit(
+        'Network.responseReceived',
+        createResponseEvent({ requestId: 'R', response: createTestResponse({ status: 200 }) })
+      );
+      mockCDP.emit('Network.loadingFinished', {
+        requestId: 'R',
+        timestamp: 2,
+        encodedDataLength: 10,
+      });
+
+      assert.equal(requests.length, 2);
+      const [hop, final] = requests;
+      assert.equal(hop?.requestId, 'R:redirect:1');
+      assert.equal(hop?.method, 'POST');
+      assert.equal(hop?.status, 302);
+      assert.equal(hop?.redirectURL, 'http://example.com/home');
+      assert.equal(final?.requestId, 'R');
+      assert.equal(final?.url, 'http://example.com/home');
+      assert.equal(final?.status, 200);
+
+      void cleanup();
+    });
+
+    void it('never tracks requests excluded by filters', async () => {
+      const pendingRequests = new Map();
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        networkExclude: ['*/ignored/*'],
+        pendingRequests,
+      });
+      mockCDP.emit(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'X',
+          request: createTestRequest({ url: 'http://example.com/ignored/pixel.gif' }),
+        })
+      );
+      assert.equal(pendingRequests.size, 0, 'excluded request must not show up while in flight');
+      mockCDP.emit('Network.loadingFinished', {
+        requestId: 'X',
+        timestamp: 1,
+        encodedDataLength: 0,
+      });
+      assert.equal(requests.length, 0);
+
+      void cleanup();
+    });
+
+    void it('exposes in-flight requests through the provided map', async () => {
+      const pendingRequests = new Map();
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        includeAll: true,
+        pendingRequests,
+      });
+      mockCDP.emit(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'P',
+          request: createTestRequest({ url: 'http://example.com/slow' }),
+        })
+      );
+      assert.equal(pendingRequests.size, 1);
+      assert.equal(requests.length, 0);
+
+      mockCDP.emit('Network.loadingFinished', {
+        requestId: 'P',
+        timestamp: 1,
+        encodedDataLength: 0,
+      });
+      assert.equal(pendingRequests.size, 0);
+      assert.equal(requests.length, 1);
+
+      void cleanup();
+    });
+  });
 });
