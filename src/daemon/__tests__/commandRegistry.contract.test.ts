@@ -30,7 +30,7 @@ void describe('CommandRegistry', () => {
     } as unknown as CDPConnection;
   });
 
-  void describe('worker_peek', () => {
+  void describe('session_peek', () => {
     void it('returns recent network and console data', async () => {
       store.networkRequests.push(
         {
@@ -64,7 +64,7 @@ void describe('CommandRegistry', () => {
         webSocketDebuggerUrl: 'ws://localhost:9222/devtools/page/target-1',
       });
 
-      const result = await registry.worker_peek(mockCdp, { lastN: 10 });
+      const result = await registry.session_peek(mockCdp, { lastN: 10 });
 
       assert.equal(result.version, VERSION);
       assert.equal(result.target.url, 'http://example.com');
@@ -85,7 +85,7 @@ void describe('CommandRegistry', () => {
         });
       }
 
-      const result = await registry.worker_peek(mockCdp, { lastN: 5 });
+      const result = await registry.session_peek(mockCdp, { lastN: 5 });
 
       assert.equal(result.network.length, 5);
       // Should return last 5 (indices 15-19)
@@ -105,7 +105,7 @@ void describe('CommandRegistry', () => {
         });
       }
 
-      const result = await registry.worker_peek(mockCdp, {});
+      const result = await registry.session_peek(mockCdp, {});
 
       assert.equal(result.network.length, 10);
     });
@@ -126,7 +126,7 @@ void describe('CommandRegistry', () => {
       }
 
       // Request 200 items when only 150 exist - should return all 150
-      const result = await registry.worker_peek(mockCdp, { lastN: 200 });
+      const result = await registry.session_peek(mockCdp, { lastN: 200 });
 
       assert.equal(result.network.length, 150);
     });
@@ -146,7 +146,7 @@ void describe('CommandRegistry', () => {
 
       store.networkRequests.push(fullRequest);
 
-      const result = await registry.worker_peek(mockCdp, { lastN: 10 });
+      const result = await registry.session_peek(mockCdp, { lastN: 10 });
 
       const peeked = result.network[0];
       assert.ok(peeked);
@@ -168,7 +168,7 @@ void describe('CommandRegistry', () => {
     void it('includes activeTelemetry from store', async () => {
       store.activeTelemetry = ['network', 'console'];
 
-      const result = await registry.worker_peek(mockCdp, { lastN: 10 });
+      const result = await registry.session_peek(mockCdp, { lastN: 10 });
 
       assert.deepEqual(result.activeTelemetry, ['network', 'console']);
     });
@@ -176,14 +176,14 @@ void describe('CommandRegistry', () => {
     void it('calculates duration correctly', async () => {
       store.sessionStartTime = Date.now() - 5000; // 5 seconds ago
 
-      const result = await registry.worker_peek(mockCdp, { lastN: 10 });
+      const result = await registry.session_peek(mockCdp, { lastN: 10 });
 
       assert.ok(result.duration >= 5000);
       assert.ok(result.duration < 6000);
     });
   });
 
-  void describe('worker_details - network', () => {
+  void describe('session_details - network', () => {
     void it('resolves a request that is still in flight', async () => {
       const pending: NetworkRequest = {
         requestId: 'pending-1',
@@ -193,7 +193,7 @@ void describe('CommandRegistry', () => {
       };
       store.pendingNetworkRequests.set('pending-1', { request: pending, timestamp: 100 });
 
-      const result = await registry.worker_details(mockCdp, {
+      const result = await registry.session_details(mockCdp, {
         itemType: 'network',
         id: 'pending-1',
       });
@@ -215,7 +215,7 @@ void describe('CommandRegistry', () => {
 
       store.networkRequests.push(request);
 
-      const result = await registry.worker_details(mockCdp, {
+      const result = await registry.session_details(mockCdp, {
         itemType: 'network',
         id: 'req-1',
       });
@@ -226,7 +226,7 @@ void describe('CommandRegistry', () => {
     void it('rejects when network request not found', async () => {
       await assert.rejects(
         async () => {
-          await registry.worker_details(mockCdp, {
+          await registry.session_details(mockCdp, {
             itemType: 'network',
             id: 'non-existent',
           });
@@ -265,7 +265,7 @@ void describe('CommandRegistry', () => {
         }
       );
 
-      const result = await registry.worker_details(mockCdp, {
+      const result = await registry.session_details(mockCdp, {
         itemType: 'network',
         id: 'req-2',
       });
@@ -275,7 +275,7 @@ void describe('CommandRegistry', () => {
     });
   });
 
-  void describe('worker_details - console', () => {
+  void describe('session_details - console', () => {
     void it('returns console message by index', async () => {
       const message: ConsoleMessage = {
         timestamp: 100,
@@ -286,7 +286,7 @@ void describe('CommandRegistry', () => {
 
       store.consoleMessages.push(message);
 
-      const result = await registry.worker_details(mockCdp, {
+      const result = await registry.session_details(mockCdp, {
         itemType: 'console',
         id: '0',
       });
@@ -304,7 +304,7 @@ void describe('CommandRegistry', () => {
 
       await assert.rejects(
         async () => {
-          await registry.worker_details(mockCdp, {
+          await registry.session_details(mockCdp, {
             itemType: 'console',
             id: 'not-a-number',
           });
@@ -325,7 +325,7 @@ void describe('CommandRegistry', () => {
 
       await assert.rejects(
         async () => {
-          await registry.worker_details(mockCdp, {
+          await registry.session_details(mockCdp, {
             itemType: 'console',
             id: '-1',
           });
@@ -344,7 +344,7 @@ void describe('CommandRegistry', () => {
 
       await assert.rejects(
         async () => {
-          await registry.worker_details(mockCdp, {
+          await registry.session_details(mockCdp, {
             itemType: 'console',
             id: '5',
           });
@@ -362,7 +362,7 @@ void describe('CommandRegistry', () => {
         { timestamp: 300, type: 'warning', text: 'Third', args: [] }
       );
 
-      const result = await registry.worker_details(mockCdp, {
+      const result = await registry.session_details(mockCdp, {
         itemType: 'console',
         id: '1',
       });
@@ -372,11 +372,11 @@ void describe('CommandRegistry', () => {
     });
   });
 
-  void describe('worker_details - error cases', () => {
+  void describe('session_details - error cases', () => {
     void it('rejects with unknown itemType', async () => {
       await assert.rejects(
         async () => {
-          await registry.worker_details(mockCdp, {
+          await registry.session_details(mockCdp, {
             itemType: 'unknown' as 'network',
             id: '1',
           });
@@ -388,7 +388,7 @@ void describe('CommandRegistry', () => {
     });
   });
 
-  void describe('worker_status', () => {
+  void describe('session_status', () => {
     void it('returns comprehensive status data', async () => {
       store.sessionStartTime = Date.now() - 10000;
       store.setTargetInfo({
@@ -416,7 +416,7 @@ void describe('CommandRegistry', () => {
         args: [],
       });
 
-      const result = await registry.worker_status(mockCdp, {});
+      const result = await registry.session_status(mockCdp, {});
 
       assert.equal(result.target.url, 'http://example.com');
       assert.deepEqual(result.activeTelemetry, ['network', 'console', 'dom']);
@@ -427,7 +427,7 @@ void describe('CommandRegistry', () => {
     });
 
     void it('omits last activity timestamps when no data captured', async () => {
-      const result = await registry.worker_status(mockCdp, {});
+      const result = await registry.session_status(mockCdp, {});
 
       assert.equal(result.activity.networkRequestsCaptured, 0);
       assert.equal(result.activity.consoleMessagesCaptured, 0);
@@ -455,13 +455,13 @@ void describe('CommandRegistry', () => {
         }
       );
 
-      const result = await registry.worker_status(mockCdp, {});
+      const result = await registry.session_status(mockCdp, {});
 
       assert.equal(result.activity.lastNetworkRequestAt, 5000);
     });
   });
 
-  void describe('worker_har_data', () => {
+  void describe('session_har_data', () => {
     void it('returns all captured network requests', async () => {
       store.networkRequests.push(
         {
@@ -482,7 +482,7 @@ void describe('CommandRegistry', () => {
         }
       );
 
-      const result = await registry.worker_har_data(mockCdp, {});
+      const result = await registry.session_har_data(mockCdp, {});
 
       assert.equal(result.requests.length, 2);
       assert.equal(result.requests[0]?.requestId, 'req-1');
@@ -490,7 +490,7 @@ void describe('CommandRegistry', () => {
     });
 
     void it('returns empty array when no requests captured', async () => {
-      const result = await registry.worker_har_data(mockCdp, {});
+      const result = await registry.session_har_data(mockCdp, {});
       assert.equal(result.requests.length, 0);
     });
   });
@@ -548,7 +548,7 @@ void describe('CommandRegistry', () => {
     });
   });
 
-  void describe('worker_network_headers', () => {
+  void describe('session_network_headers', () => {
     void describe('smart default selection', () => {
       void it('selects most recent HTML request', async () => {
         store.networkRequests.push(
@@ -578,7 +578,7 @@ void describe('CommandRegistry', () => {
           }
         );
 
-        const result = await registry.worker_network_headers(mockCdp, {});
+        const result = await registry.session_network_headers(mockCdp, {});
 
         assert.equal(result.requestId, 'req-3');
         assert.equal(result.url, 'http://c.com');
@@ -604,7 +604,7 @@ void describe('CommandRegistry', () => {
           }
         );
 
-        const result = await registry.worker_network_headers(mockCdp, {});
+        const result = await registry.session_network_headers(mockCdp, {});
 
         assert.equal(result.requestId, 'req-2');
         assert.equal(result.url, 'http://b.com/api');
@@ -619,7 +619,7 @@ void describe('CommandRegistry', () => {
           mimeType: 'text/html',
         });
 
-        const result = await registry.worker_network_headers(mockCdp, {});
+        const result = await registry.session_network_headers(mockCdp, {});
 
         assert.equal(result.requestId, 'req-1');
         assert.deepEqual(result.requestHeaders, {});
@@ -629,7 +629,7 @@ void describe('CommandRegistry', () => {
       void it('rejects when no requests captured at all', async () => {
         await assert.rejects(
           async () => {
-            await registry.worker_network_headers(mockCdp, {});
+            await registry.session_network_headers(mockCdp, {});
           },
           {
             message: 'No network requests with headers found',
@@ -649,7 +649,7 @@ void describe('CommandRegistry', () => {
           responseHeaders: { 'Content-Type': 'text/html', 'Cache-Control': 'max-age=3600' },
         });
 
-        const result = await registry.worker_network_headers(mockCdp, { id: 'ABC123' });
+        const result = await registry.session_network_headers(mockCdp, { id: 'ABC123' });
 
         assert.equal(result.requestId, 'ABC123');
         assert.equal(result.url, 'http://example.com');
@@ -669,7 +669,7 @@ void describe('CommandRegistry', () => {
           responseHeaders: { 'Content-Type': 'text/html' },
         });
 
-        const result = await registry.worker_network_headers(mockCdp, { id: 'REQ1' });
+        const result = await registry.session_network_headers(mockCdp, { id: 'REQ1' });
 
         assert.deepEqual(result.requestHeaders, {});
         assert.deepEqual(result.responseHeaders, { 'Content-Type': 'text/html' });
@@ -684,7 +684,7 @@ void describe('CommandRegistry', () => {
           requestHeaders: { 'Content-Type': 'application/json' },
         });
 
-        const result = await registry.worker_network_headers(mockCdp, { id: 'REQ2' });
+        const result = await registry.session_network_headers(mockCdp, { id: 'REQ2' });
 
         assert.deepEqual(result.requestHeaders, { 'Content-Type': 'application/json' });
         assert.deepEqual(result.responseHeaders, {});
@@ -700,7 +700,7 @@ void describe('CommandRegistry', () => {
 
         await assert.rejects(
           async () => {
-            await registry.worker_network_headers(mockCdp, { id: 'MISSING' });
+            await registry.session_network_headers(mockCdp, { id: 'MISSING' });
           },
           {
             message: 'Network request not found: MISSING',
@@ -725,7 +725,7 @@ void describe('CommandRegistry', () => {
           },
         });
 
-        const result = await registry.worker_network_headers(mockCdp, {
+        const result = await registry.session_network_headers(mockCdp, {
           headerName: 'content-type',
         });
 
@@ -746,7 +746,7 @@ void describe('CommandRegistry', () => {
           },
         });
 
-        const result = await registry.worker_network_headers(mockCdp, {
+        const result = await registry.session_network_headers(mockCdp, {
           headerName: 'X-CUSTOM-HEADER',
         });
 
@@ -763,7 +763,7 @@ void describe('CommandRegistry', () => {
           responseHeaders: { 'Content-Type': 'text/html' },
         });
 
-        const result = await registry.worker_network_headers(mockCdp, {
+        const result = await registry.session_network_headers(mockCdp, {
           headerName: 'x-nonexistent',
         });
 
@@ -788,7 +788,7 @@ void describe('CommandRegistry', () => {
           },
         });
 
-        const result = await registry.worker_network_headers(mockCdp, {
+        const result = await registry.session_network_headers(mockCdp, {
           headerName: 'content-type',
         });
 
@@ -821,7 +821,7 @@ void describe('CommandRegistry', () => {
           }
         );
 
-        const result = await registry.worker_network_headers(mockCdp, {
+        const result = await registry.session_network_headers(mockCdp, {
           id: 'req-2',
           headerName: 'x-custom',
         });

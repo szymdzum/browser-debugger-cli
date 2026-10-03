@@ -7,8 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING: `bdg peek --dom` / `-d`** - It never showed data (DOM was only captured into `session.json`, which nothing writes since #253). Use `bdg dom a11y tree` or `bdg dom query` for page structure
+- **Vestigial session-output code** - `TelemetryStore.domData`/`buildOutput`, `OutputBuilder.build`/`buildError`, the `DOMData` type and the deprecated `getEnvChromeFlags` (unused; `BDG_CHROME_FLAGS` is parsed by the start command)
+
 ### Changed
 
+- **Session IPC commands renamed** - `worker_peek`/`worker_details`/`worker_status`/`worker_har_data`/`worker_network_headers` are now `session_*`, and the start response field `workerPid` is `daemonPid` (there is no worker process since #253). Stop a running session before upgrading: an older daemon does not understand the new names
+- **Exit code 106 renamed** - `WORKER_START_FAILURE` is now `SESSION_START_FAILURE` in `bdg --help --json` (same code, Chrome launch or CDP connection failed)
 - **Release workflow** - Prereleases are published to the `next` npm dist-tag instead of `latest`; GitHub releases are created with `gh release create` (auto-generated notes) instead of the archived `actions/create-release`; explicit `contents: write` permission; releases only from `main`
 - **CI** - GitHub Actions bumped to their Node 24 majors (checkout, setup-node, cache, artifacts, paths-filter, setup-chrome, CodeQL); Dependabot now also updates GitHub Actions
 - **BREAKING: one JSON envelope everywhere** - Every `--json` output is a single `{ version, success, data }` / `{ version, success: false, error, exitCode }` envelope
@@ -32,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Docs: HAR export after `bdg stop`** - The CLI reference claimed `bdg network har` reads `~/.bdg/session.json` after a session stops; telemetry only exists while the session runs, so export before `bdg stop`
 - **`dom pressKey`** - Printable keys and Enter now go through Chrome's native input pipeline: characters are actually inserted (`a`, `Shift+b` → `B`, `Shift+1` → `!`), Enter adds a newline in textareas and contenteditable instead of submitting the form, and no fake `keypress`/`input`/`change`/`submit` events are dispatched on top (Tab no longer fires events on the next field)
 - **`dom click`** - Clicks with real mouse events at the element's center, so components that open on `pointerdown`/`mousedown` (menus, comboboxes) respond; falls back to `el.click()` with a `warning` when the element is covered or has no size. Output reports `method: "mouse" | "dom"` instead of the misleading "may not have a click handler" warning
 - **`dom fill`** - Read-only and disabled fields fail with exit 81 instead of being silently filled; checkboxes and radios are toggled by clicking, so controlled (React) inputs keep the new state; `<select>` matches options by value or label and lists the available options when none match; `focusout` fires once on blur (was twice)

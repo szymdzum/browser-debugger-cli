@@ -93,14 +93,9 @@ describe('BdgOutput schema contract', () => {
         assert.ok(Array.isArray(golden.data.console), 'data.console must be array');
       }
 
-      // Validate dom object if present
-      if (golden.data.dom !== undefined) {
-        assert.equal(typeof golden.data.dom, 'object', 'data.dom must be object');
-      }
-
       // Should only have known telemetry types
       const dataKeys = Object.keys(golden.data);
-      const allowedKeys = ['network', 'console', 'dom'];
+      const allowedKeys = ['network', 'console', 'websockets'];
       for (const key of dataKeys) {
         assert.ok(
           allowedKeys.includes(key),
@@ -204,31 +199,6 @@ describe('BdgOutput schema contract', () => {
         assert.ok(
           allowedKeys.includes(key),
           `ConsoleMessage.${key} is not in schema. Allowed: ${allowedKeys.join(', ')}`
-        );
-      }
-    });
-
-    it('should validate DOMData structure', () => {
-      golden = loadGoldenFile('schema-v0.2.1.golden.json');
-
-      if (!golden.data.dom) {
-        assert.fail('Golden file must have dom data for validation');
-      }
-
-      const dom = golden.data.dom;
-
-      // Required fields
-      assert.equal(typeof dom.url, 'string', 'url must be string');
-      assert.equal(typeof dom.title, 'string', 'title must be string');
-      assert.equal(typeof dom.outerHTML, 'string', 'outerHTML must be string');
-
-      // Validate no unexpected fields
-      const allowedKeys = ['url', 'title', 'outerHTML'];
-      const domKeys = Object.keys(dom);
-      for (const key of domKeys) {
-        assert.ok(
-          allowedKeys.includes(key),
-          `DOMData.${key} is not in schema. Allowed: ${allowedKeys.join(', ')}`
         );
       }
     });

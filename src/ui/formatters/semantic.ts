@@ -2,7 +2,7 @@
  * Semantic output formatter for accessibility trees.
  *
  * Converts accessibility tree to token-optimized Markdown-style format.
- * Used by dom get, peek --dom, and session.json output.
+ * Used by dom get.
  */
 
 import type { A11yTree, A11yNode } from '@/types.js';

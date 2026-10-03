@@ -45,7 +45,6 @@ export type LogContext =
   | 'bdg'
   | 'launcher'
   | 'daemon'
-  | 'worker'
   | 'client'
   | 'cleanup'
   | 'session'

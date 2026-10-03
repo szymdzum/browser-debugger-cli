@@ -219,7 +219,7 @@ export function elementNotFoundError(selector: string): string {
       '  2. Then inspect: bdg dom a11y describe 0',
       '',
       'Or verify element exists:',
-      '  - Use bdg peek --dom to see page structure',
+      '  - Use bdg dom a11y tree to see page structure',
       '  - Check if element loads asynchronously'
     );
   }

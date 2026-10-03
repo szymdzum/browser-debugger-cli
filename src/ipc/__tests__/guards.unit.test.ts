@@ -11,7 +11,7 @@ import { getCommandName, isCommandRequest, isCommandResponse } from '@/ipc/proto
 
 void describe('isCommandRequest', () => {
   void it('identifies all registered command requests', () => {
-    const validCommands = ['worker_peek', 'worker_status', 'cdp_call', 'worker_details'];
+    const validCommands = ['session_peek', 'session_status', 'cdp_call', 'session_details'];
 
     validCommands.forEach((cmd) => {
       assert.ok(isCommandRequest(`${cmd}_request`), `Should identify ${cmd}_request`);
@@ -28,15 +28,15 @@ void describe('isCommandRequest', () => {
   });
 
   void it('rejects malformed request types', () => {
-    assert.ok(!isCommandRequest('worker_peek'));
-    assert.ok(!isCommandRequest('worker_peek_response'));
+    assert.ok(!isCommandRequest('session_peek'));
+    assert.ok(!isCommandRequest('session_peek_response'));
     assert.ok(!isCommandRequest('invalid_request'));
   });
 });
 
 void describe('isCommandResponse', () => {
   void it('identifies all registered command responses', () => {
-    const validCommands = ['worker_peek', 'worker_status', 'cdp_call', 'worker_details'];
+    const validCommands = ['session_peek', 'session_status', 'cdp_call', 'session_details'];
 
     validCommands.forEach((cmd) => {
       const type = `${cmd}_response`;
@@ -55,22 +55,22 @@ void describe('isCommandResponse', () => {
   });
 
   void it('rejects malformed response types', () => {
-    assert.ok(!isCommandResponse('worker_peek'));
-    assert.ok(!isCommandResponse('worker_peek_request'));
+    assert.ok(!isCommandResponse('session_peek'));
+    assert.ok(!isCommandResponse('session_peek_request'));
     assert.ok(!isCommandResponse('invalid_response'));
   });
 });
 
 void describe('getCommandName', () => {
   void it('extracts command name from request types', () => {
-    assert.equal(getCommandName('worker_peek_request'), 'worker_peek');
-    assert.equal(getCommandName('worker_status_request'), 'worker_status');
+    assert.equal(getCommandName('session_peek_request'), 'session_peek');
+    assert.equal(getCommandName('session_status_request'), 'session_status');
     assert.equal(getCommandName('cdp_call_request'), 'cdp_call');
   });
 
   void it('extracts command name from response types', () => {
-    assert.equal(getCommandName('worker_peek_response'), 'worker_peek');
-    assert.equal(getCommandName('worker_status_response'), 'worker_status');
+    assert.equal(getCommandName('session_peek_response'), 'session_peek');
+    assert.equal(getCommandName('session_status_response'), 'session_status');
     assert.equal(getCommandName('cdp_call_response'), 'cdp_call');
   });
 
@@ -81,7 +81,7 @@ void describe('getCommandName', () => {
   });
 
   void it('returns null for malformed types', () => {
-    assert.equal(getCommandName('worker_peek'), null);
+    assert.equal(getCommandName('session_peek'), null);
     assert.equal(getCommandName('_request'), null);
     assert.equal(getCommandName(''), null);
   });

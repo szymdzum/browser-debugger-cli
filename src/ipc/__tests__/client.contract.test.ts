@@ -554,7 +554,7 @@ void describe('IPC Client Contract Tests', () => {
 
   void describe('getDetails()', () => {
     void it('fetches network request details by ID', async () => {
-      // Create custom mock that responds to worker_details_request
+      // Create custom mock that responds to session_details_request
       await mockDaemon.stop();
 
       const detailsServer = net.createServer((socket) => {
@@ -567,9 +567,9 @@ void describe('IPC Client Contract Tests', () => {
           for (const line of lines) {
             if (line.trim()) {
               const request = JSON.parse(line) as { type: string; sessionId: string; id: string };
-              if (request.type === 'worker_details_request') {
+              if (request.type === 'session_details_request') {
                 const response = {
-                  type: 'worker_details_response',
+                  type: 'session_details_response',
                   sessionId: request.sessionId,
                   status: 'ok',
                   data: {
@@ -595,7 +595,7 @@ void describe('IPC Client Contract Tests', () => {
 
       const response = await ipcClient.getDetails('network', 'req-123');
 
-      assert.equal(response.type, 'worker_details_response');
+      assert.equal(response.type, 'session_details_response');
       assert.equal(response.status, 'ok');
       assert.ok(response.data);
       assert.ok(response.data.item);
@@ -607,7 +607,7 @@ void describe('IPC Client Contract Tests', () => {
     });
 
     void it('fetches console message details by ID', async () => {
-      // Create custom mock that responds to worker_details_request
+      // Create custom mock that responds to session_details_request
       await mockDaemon.stop();
 
       const detailsServer = net.createServer((socket) => {
@@ -620,9 +620,9 @@ void describe('IPC Client Contract Tests', () => {
           for (const line of lines) {
             if (line.trim()) {
               const request = JSON.parse(line) as { type: string; sessionId: string };
-              if (request.type === 'worker_details_request') {
+              if (request.type === 'session_details_request') {
                 const response = {
-                  type: 'worker_details_response',
+                  type: 'session_details_response',
                   sessionId: request.sessionId,
                   status: 'ok',
                   data: {
@@ -647,7 +647,7 @@ void describe('IPC Client Contract Tests', () => {
 
       const response = await ipcClient.getDetails('console', 'msg-456');
 
-      assert.equal(response.type, 'worker_details_response');
+      assert.equal(response.type, 'session_details_response');
       assert.equal(response.status, 'ok');
       assert.ok(response.data);
       assert.ok(response.data.item);
@@ -668,7 +668,7 @@ void describe('IPC Client Contract Tests', () => {
         },
         {
           name: 'IPCConnectionError',
-          message: /IPC worker_details connection error/,
+          message: /IPC session_details connection error/,
         }
       );
     });

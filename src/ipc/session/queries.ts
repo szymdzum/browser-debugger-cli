@@ -26,7 +26,7 @@ export interface StatusResponseData {
   daemonStartTime: number;
   /** Unix socket path. */
   socketPath: string;
-  /** Worker process ID (if session active). */
+  /** Session process ID, i.e. the daemon (if session active). */
   sessionPid?: number;
   /** Session metadata (if session active). */
   sessionMetadata?: {
@@ -71,7 +71,7 @@ export interface PeekRequest extends IPCMessage {
  * Peek response data.
  */
 export interface PeekResponseData {
-  /** Worker process ID. */
+  /** Session process ID (the daemon). */
   sessionPid: number;
   /** Preview of collected data. */
   preview: {
@@ -106,7 +106,7 @@ export interface HARDataRequest extends IPCMessage {
  * HAR data response data.
  */
 export interface HARDataResponseData {
-  /** Worker process ID. */
+  /** Session process ID (the daemon). */
   sessionPid: number;
   /** Network requests for HAR export. */
   requests: NetworkRequest[];

@@ -60,7 +60,7 @@ export class IPCConnectionError extends IPCError {
  *
  * @example
  * ```typescript
- * throw new IPCTimeoutError('worker_status', 5000);
+ * throw new IPCTimeoutError('session_status', 5000);
  * ```
  */
 export class IPCTimeoutError extends IPCError {
@@ -82,7 +82,7 @@ export class IPCTimeoutError extends IPCError {
  *
  * @example
  * ```typescript
- * throw new IPCParseError('worker_peek', 'Unexpected token in JSON');
+ * throw new IPCParseError('session_peek', 'Unexpected token in JSON');
  * ```
  */
 export class IPCParseError extends IPCError {
@@ -106,7 +106,7 @@ export class IPCParseError extends IPCError {
  *
  * @example
  * ```typescript
- * throw new IPCEarlyCloseError('worker_peek');
+ * throw new IPCEarlyCloseError('session_peek');
  * ```
  */
 export class IPCEarlyCloseError extends IPCError {

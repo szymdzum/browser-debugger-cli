@@ -1,7 +1,7 @@
 /**
- * Worker Command Schemas
+ * Session Command Schemas
  *
- * Defines the request/response schemas for commands sent to the worker process.
+ * Defines the request/response schemas for commands executed by the daemon's session.
  * Each command has a request schema (input) and response data schema (output).
  */
 
@@ -18,9 +18,9 @@ import type { PageState, SessionActivity } from '@/ipc/session/types.js';
 import type { NetworkRequest } from '@/types.js';
 
 /**
- * Worker peek command request schema.
+ * Session peek command request schema.
  */
-export interface WorkerPeekCommand {
+export interface SessionPeekCommand {
   /** Number of recent items to return. */
   lastN?: number;
   /** Offset from the end (for pagination). Default: 0 (most recent). */
@@ -28,9 +28,9 @@ export interface WorkerPeekCommand {
 }
 
 /**
- * Worker peek command response data.
+ * Session peek command response data.
  */
-export interface WorkerPeekData {
+export interface SessionPeekData {
   version: string;
   startTime: number;
   duration: number;
@@ -61,9 +61,9 @@ export interface WorkerPeekData {
 }
 
 /**
- * Worker details command request schema.
+ * Session details command request schema.
  */
-export interface WorkerDetailsCommand {
+export interface SessionDetailsCommand {
   /** Type of item to get details for. */
   itemType: 'network' | 'console';
   /** Unique identifier of the item. */
@@ -71,9 +71,9 @@ export interface WorkerDetailsCommand {
 }
 
 /**
- * Worker details command response data.
+ * Session details command response data.
  */
-export interface WorkerDetailsData {
+export interface SessionDetailsData {
   /** The requested item (network request or console message). */
   item: unknown;
 }
@@ -99,14 +99,14 @@ export interface CdpCallData {
 }
 
 /**
- * Worker status command request schema (no parameters required).
+ * Session status command request schema (no parameters required).
  */
-export type WorkerStatusCommand = Record<string, unknown>;
+export type SessionStatusCommand = Record<string, unknown>;
 
 /**
- * Worker status command response data.
+ * Session status command response data.
  */
-export interface WorkerStatusData {
+export interface SessionStatusData {
   startTime: number;
   duration: number;
   target: PageState;
@@ -119,22 +119,22 @@ export interface WorkerStatusData {
 }
 
 /**
- * Worker HAR data command request schema (no parameters required).
+ * Session HAR data command request schema (no parameters required).
  */
-export type WorkerHARDataCommand = Record<string, unknown>;
+export type SessionHARDataCommand = Record<string, unknown>;
 
 /**
- * Worker HAR data command response data.
+ * Session HAR data command response data.
  */
-export interface WorkerHARDataData {
+export interface SessionHARDataData {
   /** All collected network requests for HAR export. */
   requests: NetworkRequest[];
 }
 
 /**
- * Worker network headers command request schema.
+ * Session network headers command request schema.
  */
-export interface WorkerNetworkHeadersCommand {
+export interface SessionNetworkHeadersCommand {
   /** Optional request ID to get headers from. Defaults to main page navigation. */
   id?: string;
   /** Optional header name to filter results. Case-insensitive. */
@@ -142,9 +142,9 @@ export interface WorkerNetworkHeadersCommand {
 }
 
 /**
- * Worker network headers command response data.
+ * Session network headers command response data.
  */
-export interface WorkerNetworkHeadersData {
+export interface SessionNetworkHeadersData {
   /** URL of the request. */
   url: string;
   /** Request ID for correlation with peek output. */
@@ -250,11 +250,11 @@ type CommandDef<TReq, TRes> = { requestSchema: TReq; responseSchema: TRes };
  * Shape of the command registry.
  */
 export type RegistryShape = {
-  worker_peek: CommandDef<WorkerPeekCommand, WorkerPeekData>;
-  worker_details: CommandDef<WorkerDetailsCommand, WorkerDetailsData>;
-  worker_status: CommandDef<WorkerStatusCommand, WorkerStatusData>;
-  worker_har_data: CommandDef<WorkerHARDataCommand, WorkerHARDataData>;
-  worker_network_headers: CommandDef<WorkerNetworkHeadersCommand, WorkerNetworkHeadersData>;
+  session_peek: CommandDef<SessionPeekCommand, SessionPeekData>;
+  session_details: CommandDef<SessionDetailsCommand, SessionDetailsData>;
+  session_status: CommandDef<SessionStatusCommand, SessionStatusData>;
+  session_har_data: CommandDef<SessionHARDataCommand, SessionHARDataData>;
+  session_network_headers: CommandDef<SessionNetworkHeadersCommand, SessionNetworkHeadersData>;
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
   dom_eval: CommandDef<DomEvalCommand, DomEvalData>;
   dom_fill: CommandDef<DomFillCommand, DomFillData>;
@@ -275,15 +275,15 @@ function defineCommand<TReq, TRes>(): CommandDef<TReq, TRes> {
 }
 
 /**
- * Central registry of all worker commands.
+ * Central registry of all session commands.
  * Maps command names to their request/response schemas.
  */
 export const COMMANDS: RegistryShape = {
-  worker_peek: defineCommand(),
-  worker_details: defineCommand(),
-  worker_status: defineCommand(),
-  worker_har_data: defineCommand(),
-  worker_network_headers: defineCommand(),
+  session_peek: defineCommand(),
+  session_details: defineCommand(),
+  session_status: defineCommand(),
+  session_har_data: defineCommand(),
+  session_network_headers: defineCommand(),
   cdp_call: defineCommand(),
   dom_eval: defineCommand(),
   dom_fill: defineCommand(),

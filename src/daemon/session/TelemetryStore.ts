@@ -1,15 +1,12 @@
 import type { NavigationEvent } from '@/telemetry/navigation.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type {
-  BdgOutput,
   CDPTarget,
   ConsoleMessage,
-  DOMData,
   NetworkRequest,
   TelemetryType,
   WebSocketConnection,
 } from '@/types.js';
-import { VERSION } from '@/utils/version.js';
 
 export class TelemetryStore {
   readonly networkRequests: NetworkRequest[] = [];
@@ -19,7 +16,6 @@ export class TelemetryStore {
   readonly navigationEvents: NavigationEvent[] = [];
   readonly websocketConnections: WebSocketConnection[] = [];
 
-  domData: DOMData | null = null;
   activeTelemetry: TelemetryType[] = [];
   getCurrentNavigationId: (() => number) | null = null;
   getDomVersion: (() => number) | null = null;
@@ -40,40 +36,5 @@ export class TelemetryStore {
   ): void {
     this.getCurrentNavigationId = navigationId;
     this.getDomVersion = domVersion;
-  }
-
-  setDomData(data: DOMData | null): void {
-    this.domData = data;
-  }
-
-  buildOutput(partial = false): BdgOutput {
-    const duration = Date.now() - this.sessionStartTime;
-    const data: BdgOutput['data'] = {};
-
-    if (this.networkRequests.length > 0) {
-      data.network = this.networkRequests;
-    }
-    if (this.consoleMessages.length > 0) {
-      data.console = this.consoleMessages;
-    }
-    if (this.domData) {
-      data.dom = this.domData;
-    }
-    if (this.websocketConnections.length > 0) {
-      data.websockets = this.websocketConnections;
-    }
-
-    return {
-      version: VERSION,
-      success: true,
-      timestamp: new Date(this.sessionStartTime).toISOString(),
-      duration,
-      target: {
-        url: this.targetInfo?.url ?? '',
-        title: this.targetInfo?.title ?? '',
-      },
-      data,
-      ...(partial && { partial: true }),
-    };
   }
 }

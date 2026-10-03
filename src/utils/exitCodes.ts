@@ -52,7 +52,7 @@ export const EXIT_CODES = {
   SESSION_FILE_ERROR: 103,
   UNHANDLED_EXCEPTION: 104,
   SIGNAL_HANDLER_ERROR: 105,
-  WORKER_START_FAILURE: 106,
+  SESSION_START_FAILURE: 106,
   SOFTWARE_ERROR: 110,
 } as const;
 
@@ -161,9 +161,9 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     description: 'Signal handler error',
   },
   {
-    code: EXIT_CODES.WORKER_START_FAILURE,
-    name: 'WORKER_START_FAILURE',
-    description: 'Worker process failed to start (spawn, ready-signal, or crash)',
+    code: EXIT_CODES.SESSION_START_FAILURE,
+    name: 'SESSION_START_FAILURE',
+    description: 'Session failed to start (Chrome launch or CDP connection)',
   },
   {
     code: EXIT_CODES.SOFTWARE_ERROR,

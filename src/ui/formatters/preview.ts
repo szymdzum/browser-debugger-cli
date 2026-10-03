@@ -10,8 +10,6 @@ import {
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
 
-import { semantic } from './semantic.js';
-
 /**
  * Infer resource type from MIME type when CDP doesn't provide it.
  *
@@ -63,8 +61,6 @@ export interface PreviewOptions {
   network?: boolean | undefined;
   /** Limit output to console messages (ignores network data). */
   console?: boolean | undefined;
-  /** Show DOM/A11y tree data. */
-  dom?: boolean | undefined;
   /** Number of recent entries to include. */
   last: number;
   /** Use the expanded, human-friendly layout. */
@@ -100,7 +96,6 @@ export interface PreviewJsonData {
   partial?: boolean;
   network?: BdgOutput['data']['network'];
   console?: BdgOutput['data']['console'];
-  dom?: BdgOutput['data']['dom'];
 }
 
 /**
@@ -111,14 +106,8 @@ export interface PreviewJsonData {
  * @returns Payload for the response envelope's `data`
  */
 export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions): PreviewJsonData {
-  const only = options.network
-    ? 'network'
-    : options.console
-      ? 'console'
-      : options.dom
-        ? 'dom'
-        : null;
-  const pick = <K extends 'network' | 'console' | 'dom'>(key: K): boolean => !only || only === key;
+  const only = options.network ? 'network' : options.console ? 'console' : null;
+  const pick = (key: 'network' | 'console'): boolean => !only || only === key;
   const last = <T>(items: T[] | undefined): T[] | undefined =>
     items && options.last > 0 ? items.slice(-options.last) : items;
 
@@ -129,7 +118,6 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
     ...(output.partial !== undefined && { partial: output.partial }),
     ...(pick('network') && output.data.network && { network: last(output.data.network) }),
     ...(pick('console') && output.data.console && { console: last(output.data.console) }),
-    ...(pick('dom') && output.data.dom && { dom: output.data.dom }),
   };
 }
 
@@ -232,21 +220,6 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       }
       fmt.blank();
     }
-  }
-
-  if (options.dom && output.data.dom?.a11yTree) {
-    const tree = output.data.dom.a11yTree;
-    fmt.text(`DOM/A11Y TREE (${tree.count} nodes):`);
-    const treeWithMap = {
-      root: tree.root,
-      nodes: new Map(Object.entries(tree.nodes)),
-      count: tree.count,
-    };
-    fmt.text(semantic(treeWithMap));
-    fmt.blank();
-  } else if (options.dom) {
-    fmt.text(`DOM: ${PREVIEW_EMPTY_STATES.NO_DATA}`);
-    fmt.blank();
   }
 
   if (!options.follow) {

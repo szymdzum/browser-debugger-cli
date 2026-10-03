@@ -183,7 +183,7 @@ If any step fails, `teardownSession()` releases whatever was started and the err
 startSession()
   ├─ Store Session reference
   └─ Return {"type": "start_session_response", "status": "ok", data: {...}}
-      (workerPid is the daemon PID; chromePid, port, targetUrl, targetTitle)
+      (daemonPid is the daemon PID; chromePid, port, targetUrl, targetTitle)
 ```
 
 **19. `src/commands/shared/startHelpers.ts` - Display info**
@@ -296,12 +296,12 @@ When the session ends the daemon removes `daemon.sock`, `daemon.pid`, `session.m
 - `stop_session_request` - Stop session
 - `peek_request` - Preview collected data
 - `har_data_request` - Network requests for HAR export
-- `<command>_request` - Session commands (`worker_details`, `cdp_call`, `dom_*`, ...)
+- `<command>_request` - Session commands (`session_details`, `cdp_call`, `dom_*`, ...)
 
 **Response Types**:
 - `<type>_response` with `status: 'ok' | 'error'`
 
-Command keys such as `worker_peek` keep their historical names; they are now executed in-process by the daemon.
+Command keys such as `session_peek` keep their historical names; they are now executed in-process by the daemon.
 
 ### CDP Protocol (Daemon ↔ Chrome)
 
@@ -347,7 +347,7 @@ Command keys such as `worker_peek` keep their historical names; they are now exe
 ### Chrome Launch Failure
 - **Detection**: Chrome process exits or CDP endpoint unreachable
 - **Diagnostics**: Auto-detect Chrome installations, show troubleshooting
-- **Response**: `IPCErrorCode.WORKER_START_FAILED`; the daemon tears down and exits
+- **Response**: `IPCErrorCode.SESSION_START_FAILED`; the daemon tears down and exits
 
 ### Daemon Startup Failure
 - **Timeout**: 5s for the daemon socket to accept connections

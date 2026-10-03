@@ -1,8 +1,8 @@
 /**
  * `bdg dom eval` — evaluate a JavaScript expression in the page context.
  *
- * CLI-side handler. Actual evaluation happens in the worker via the
- * `dom_eval` IPC command so the worker's persistent CDP connection is reused.
+ * CLI-side handler. Actual evaluation happens in the daemon via the
+ * `dom_eval` IPC command so the session's persistent CDP connection is reused.
  */
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
