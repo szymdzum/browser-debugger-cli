@@ -1,7 +1,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
-import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult } from '@/types.js';
+import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -282,24 +282,24 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
 }
 
 /**
- * Resolve accessibility properties for a DOM node by CSS selector or nodeId via IPC.
+ * Resolve accessibility properties for a DOM node by CSS selector or node reference via IPC.
  *
  * Uses the session's persistent CDP connection through callCDP for consistency.
- * Supports direct nodeId lookup (bypassing selector) for index-based access patterns.
+ * Supports direct node lookup (bypassing selector) for index-based access patterns.
  *
- * @param selector - CSS selector (ignored if nodeId provided)
- * @param nodeId - Optional nodeId to use directly instead of querying by selector
+ * @param selector - CSS selector (ignored if ref provided)
+ * @param ref - Optional node reference to use directly instead of querying by selector
  * @returns A11y node or null if not found
  * @throws Error if selector is invalid or element not found
  */
-export async function resolveA11yNode(selector: string, nodeId?: number): Promise<A11yNode | null> {
+export async function resolveA11yNode(selector: string, ref?: NodeRef): Promise<A11yNode | null> {
   await callCDP('Accessibility.enable', {});
 
   try {
-    let targetNodeId: number;
+    let target: NodeRef;
 
-    if (nodeId !== undefined) {
-      targetNodeId = nodeId;
+    if (ref !== undefined) {
+      target = ref;
     } else {
       const docResponse = await callCDP('DOM.getDocument', {});
       const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
@@ -322,11 +322,11 @@ export async function resolveA11yNode(selector: string, nodeId?: number): Promis
         return null;
       }
 
-      targetNodeId = nodeResult.nodeId;
+      target = { nodeId: nodeResult.nodeId };
     }
 
     const a11yResponse = await callCDP('Accessibility.getPartialAXTree', {
-      nodeId: targetNodeId,
+      ...target,
       fetchRelatives: false,
     });
     const a11yResult = a11yResponse.data?.result as

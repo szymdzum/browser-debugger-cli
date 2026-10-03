@@ -176,7 +176,6 @@ export class SessionController {
         activity: live.activity,
         pageState: live.target,
         navigationId: live.navigationId,
-        domVersion: live.domVersion,
       });
       return { ...base, status: 'ok', data };
     } catch (error) {

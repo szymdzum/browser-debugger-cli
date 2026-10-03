@@ -9,6 +9,7 @@
 
 import type { Command } from 'commander';
 
+import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -179,7 +180,10 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('scroll')
     .description('Scroll page to element, by pixels, or to page boundaries')
-    .argument('[selector]', 'CSS selector to scroll into view (optional)')
+    .argument(
+      '[selector]',
+      'CSS selector or index from query results to scroll into view (optional)'
+    )
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--down <pixels>', 'Scroll down by pixels', integerOption(0))
     .option('--up <pixels>', 'Scroll up by pixels', integerOption(0))
@@ -238,9 +242,22 @@ export function registerFormInteractionCommands(program: Command): void {
             };
           }
 
+          const target = selector
+            ? await DomElementResolver.getInstance().resolve(selector, options.index)
+            : undefined;
+          if (target && !target.success) {
+            return {
+              success: false,
+              error: target.error,
+              exitCode: target.exitCode,
+              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
+            };
+          }
+
           const response = await domScroll({
-            ...(selector !== undefined && { selector }),
-            ...(options.index !== undefined && { index: options.index }),
+            ...(target && { selector: target.selector }),
+            ...(target?.index !== undefined && { index: target.index }),
+            ...(target?.backendNodeId !== undefined && { backendNodeId: target.backendNodeId }),
             ...(options.down !== undefined && { down: options.down }),
             ...(options.up !== undefined && { up: options.up }),
             ...(options.left !== undefined && { left: options.left }),

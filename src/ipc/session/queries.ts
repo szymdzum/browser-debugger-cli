@@ -44,8 +44,6 @@ export interface StatusResponseData {
   pageState?: PageState;
   /** Current navigation counter (increments on each page navigation). */
   navigationId?: number;
-  /** DOM version (also increments on DOM.documentUpdated); node ids from older versions are invalid. */
-  domVersion?: number;
 }
 
 /**

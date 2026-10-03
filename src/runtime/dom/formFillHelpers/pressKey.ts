@@ -16,6 +16,7 @@ import {
   parseModifiers,
   type KeyDefinition,
 } from '@/runtime/dom/keyMapping.js';
+import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -31,7 +32,7 @@ export type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 
 const FOCUS_ELEMENT_SCRIPT = `
 (function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
+  const allMatches = (${FIND_ELEMENTS_JS})(selector);
   if (allMatches.length === 0) {
     return { success: false, error: 'No nodes found matching selector: ' + selector };
   }

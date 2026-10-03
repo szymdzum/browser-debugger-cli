@@ -21,7 +21,11 @@ import {
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomGetCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
-import { elementAtIndexNotFoundError, noNodesFoundError } from '@/errors/messages.js';
+import {
+  elementAtIndexNotFoundError,
+  missingArgumentError,
+  noNodesFoundError,
+} from '@/errors/messages.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { formatDomGet } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -46,9 +50,10 @@ async function handleIndexGetSemantic(index: number, options: DomGetCommandOptio
   await runCommand(
     async () => {
       const targetNode = await resolver.getNodeIdForIndex(index);
+      const ref = { backendNodeId: targetNode.nodeId };
       const [a11yNode, domContext] = await Promise.all([
-        resolveA11yNode('', targetNode.nodeId),
-        getDomContext(targetNode.nodeId),
+        resolveA11yNode('', ref),
+        getDomContext(ref),
       ]);
 
       const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
@@ -87,7 +92,6 @@ async function handleSelectorGetRaw(
         selector,
         all: options.all,
         nth: options.nth,
-        nodeId: options.nodeId,
       }) as DomGetHelperOptions;
 
       const result = await getDOMElements(getOptions);
@@ -111,7 +115,7 @@ async function handleSelectorGetSemantic(
 
       if (a11yNode?.backendDOMNodeId) {
         nodeId = a11yNode.backendDOMNodeId;
-        domContext = await getDomContext(nodeId);
+        domContext = await getDomContext({ backendNodeId: nodeId });
       } else if (!a11yNode) {
         const queryResult = await queryDomContextBySelector(selector);
         nodeId = queryResult.nodeId;
@@ -145,15 +149,36 @@ async function handleSelectorGet(selector: string, options: DomGetCommandOptions
 }
 
 /**
- * Handle `bdg dom get <selectorOrIndex>`.
+ * Handle `bdg dom get [selectorOrIndex] [--node-id <id>]`.
  *
- * Dispatches to selector or index handler based on whether the argument
- * parses as a numeric index.
+ * `--node-id` reads that node directly (raw output); otherwise dispatches to
+ * the selector or index handler based on whether the argument parses as a
+ * numeric index.
+ *
+ * @param selectorOrIndex - CSS selector or cached index (optional with --node-id)
+ * @param options - Command options
  */
 export async function handleDomGet(
-  selectorOrIndex: string,
+  selectorOrIndex: string | undefined,
   options: DomGetCommandOptions
 ): Promise<void> {
+  const { nodeId } = options;
+  if (nodeId !== undefined) {
+    await runCommand(
+      async () => ({ success: true, data: await getDOMElements({ nodeId }) }),
+      options,
+      formatDomGet
+    );
+    return;
+  }
+  if (selectorOrIndex === undefined) {
+    const err = missingArgumentError('bdg dom get <selector|index> or bdg dom get --node-id <id>');
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
   const isNumericIndex = /^\d+$/.test(selectorOrIndex);
 
   if (isNumericIndex) {

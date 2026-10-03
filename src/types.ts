@@ -314,6 +314,12 @@ export interface DomContext {
 }
 
 /**
+ * Reference to a DOM node for CDP calls: a per-connection `nodeId` (valid only
+ * within one command) or a `backendNodeId` (valid while the node exists).
+ */
+export type NodeRef = { nodeId: number } | { backendNodeId: number };
+
+/**
  * Result of a DOM query operation.
  */
 export interface DomQueryResult {
@@ -321,6 +327,7 @@ export interface DomQueryResult {
   count: number;
   nodes: Array<{
     index: number;
+    /** Backend node id (stable while the element exists; 0 if unknown) */
     nodeId: number;
     tag?: string;
     classes?: string[];
@@ -329,8 +336,6 @@ export interface DomQueryResult {
     /** Unique selector for this node (set by form discovery) */
     selector?: string;
   }>;
-  /** DOM version when the query was performed (for staleness detection; field name kept for cache compatibility). */
-  navigationId?: number;
 }
 
 /**

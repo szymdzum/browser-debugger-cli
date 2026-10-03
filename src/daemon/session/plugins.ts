@@ -75,11 +75,11 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
       name: 'navigation',
       runAlways: true,
       async start({ cdp, store, logger }) {
-        const { cleanup, getCurrentNavigationId, getDomVersion } = await startNavigationTracking(
+        const { cleanup, getCurrentNavigationId } = await startNavigationTracking(
           cdp,
           store.navigationEvents
         );
-        store.setNavigationResolver(getCurrentNavigationId, getDomVersion);
+        store.setNavigationResolver(getCurrentNavigationId);
         const stopTracking = trackCurrentPage(cdp, store, logger);
         return () => {
           stopTracking();

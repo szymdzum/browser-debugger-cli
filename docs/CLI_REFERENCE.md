@@ -156,8 +156,8 @@ bdg dom get ".nav-link"                       # First matching element
 # Raw HTML output
 bdg dom get "h1" --raw                        # Get full HTML with attributes
 bdg dom get "button" --raw --all             # Get all matching elements
-bdg dom get "button" --raw --nth 2           # Get 2nd matching element
-bdg dom get --raw --node-id 123              # Get by DOM nodeId
+bdg dom get "button" --raw --nth 2           # Get 3rd matching element (0-based)
+bdg dom get --node-id 123                    # Get by node id (from query/get --raw or a11y describe)
 
 # JSON output
 bdg dom get "h1" --json                       # A11y node structure as JSON

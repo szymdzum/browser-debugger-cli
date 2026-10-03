@@ -17,6 +17,7 @@ import {
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
+import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
 import type { NetworkRequest } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -347,7 +348,6 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           lastConsoleMessageAt?: number;
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
-        domVersion: store.getDomVersion?.() ?? 0,
       };
 
       return Promise.resolve(result);
@@ -404,11 +404,15 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     },
 
     dom_fill: async (cdp, params) => {
+      const target = await resolveScriptTarget(cdp, params);
       const fillOptions = filterDefined({
-        index: params.index,
+        index: target.index,
         blur: params.blur,
       });
-      const result = await fillElement(cdp, params.selector, params.value, fillOptions);
+      const result = withUserSelector(
+        await fillElement(cdp, target.selector, params.value, fillOptions),
+        params.selector
+      );
       if (result.success && params.wait !== false) {
         await waitForActionStability(cdp);
       }
@@ -416,8 +420,12 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     },
 
     dom_click: async (cdp, params) => {
-      const clickOptions = filterDefined({ index: params.index });
-      const result = await clickElement(cdp, params.selector, clickOptions);
+      const target = await resolveScriptTarget(cdp, params);
+      const clickOptions = filterDefined({ index: target.index });
+      const result = withUserSelector(
+        await clickElement(cdp, target.selector, clickOptions),
+        params.selector
+      );
       if (result.success && params.wait !== false) {
         await waitForActionStability(cdp);
       }
@@ -425,22 +433,30 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     },
 
     dom_submit: async (cdp, params) => {
+      const target = await resolveScriptTarget(cdp, params);
       const submitOptions = filterDefined({
-        index: params.index,
+        index: target.index,
         waitNavigation: params.waitNavigation,
         waitNetwork: params.waitNetwork,
         timeout: params.timeout,
       });
-      return await submitForm(cdp, params.selector, submitOptions);
+      return withUserSelector(
+        await submitForm(cdp, target.selector, submitOptions),
+        params.selector
+      );
     },
 
     dom_press_key: async (cdp, params) => {
+      const target = await resolveScriptTarget(cdp, params);
       const pressKeyOptions = filterDefined({
-        index: params.index,
+        index: target.index,
         times: params.times,
         modifiers: params.modifiers,
       });
-      const result = await pressKeyElement(cdp, params.selector, params.key, pressKeyOptions);
+      const result = withUserSelector(
+        await pressKeyElement(cdp, target.selector, params.key, pressKeyOptions),
+        params.selector
+      );
       if (result.success && params.wait !== false) {
         await waitForActionStability(cdp);
       }
@@ -448,8 +464,9 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     },
 
     dom_scroll: async (cdp, params) => {
+      const target = await resolveScriptTarget(cdp, params);
       const scrollOptions = filterDefined({
-        index: params.index,
+        index: target.index,
         down: params.down,
         up: params.up,
         left: params.left,
@@ -457,7 +474,10 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         top: params.top,
         bottom: params.bottom,
       });
-      const result = await scrollPage(cdp, params.selector, scrollOptions);
+      const result = withUserSelector(
+        await scrollPage(cdp, target.selector || undefined, scrollOptions),
+        params.selector
+      );
       if (result.success && params.wait !== false) {
         await waitForActionStability(cdp);
       }

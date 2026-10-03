@@ -40,7 +40,7 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
   /** Optional --index flag value. */
   index: number | undefined;
   /** Build the IPC request params given the resolved selector + index. */
-  buildRequest: (target: { selector: string; index?: number }) => Req;
+  buildRequest: (target: { selector: string; index?: number; backendNodeId?: number }) => Req;
   /** Invoke the IPC client function. */
   call: (req: Req) => Promise<IpcResponse<Res>>;
   /** Operation label used in fallback error messages (e.g. "fill element"). */
@@ -75,6 +75,7 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
   const request = buildRequest({
     selector: target.selector,
     ...(target.index !== undefined && { index: target.index }),
+    ...(target.backendNodeId !== undefined && { backendNodeId: target.backendNodeId }),
   });
 
   const response = await call(request);

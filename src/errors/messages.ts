@@ -270,6 +270,31 @@ export function invalidSelectorError(selector: string, detail?: string): ErrorWi
 }
 
 /**
+ * No element has the given node id.
+ *
+ * @param nodeId - Backend node id given with --node-id
+ */
+export function nodeIdNotFoundError(nodeId: number): ErrorWithSuggestion {
+  return {
+    message: `No element with node id ${nodeId} in the page`,
+    suggestion:
+      'Get current node ids with "bdg dom query <selector>" or "bdg dom get <selector> --raw"',
+  };
+}
+
+/**
+ * A cached node is gone (page navigated or the element was removed).
+ *
+ * @param nodeId - Backend node id of the cached element
+ */
+export function staleNodeError(nodeId: number): ErrorWithSuggestion {
+  return {
+    message: `Element ${nodeId} is no longer in the page (it was removed or the page navigated)`,
+    suggestion: 'Re-run "bdg dom query <selector>" (or "bdg dom form") to get fresh indices',
+  };
+}
+
+/**
  * Element at index not found (stale cache).
  */
 export function elementAtIndexNotFoundError(index: number, selector: string): ErrorWithSuggestion {

@@ -11,6 +11,8 @@ export {
   getDomContext,
   getDOMElements,
   resolveSelector,
+  resolveBackendNodeIds,
+  assertNodeAttached,
 } from '@/commands/dom/helpers/query.js';
 
 export {

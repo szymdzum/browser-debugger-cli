@@ -60,13 +60,20 @@ export function registerDomCommands(program: Command): void {
   dom
     .command('get')
     .description('Get semantic accessibility structure (default) or raw HTML (--raw)')
-    .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
+    .argument(
+      '[selector]',
+      'CSS selector or index from query results (e.g., ".error", "#app", 0); optional with --node-id'
+    )
     .option('--raw', 'Output raw HTML with all filtering options')
     .option('--all', 'Get all matches (only with --raw)')
-    .option('--nth <n>', 'Get nth match (only with --raw)', integerOption(0))
-    .option('--node-id <id>', 'Use nodeId directly (only with --raw)', integerOption(1))
+    .option('--nth <n>', 'Get the nth match, 0-based (only with --raw)', integerOption(0))
+    .option(
+      '--node-id <id>',
+      'Get the element with this node id (from dom query/get --raw or a11y describe; implies --raw)',
+      integerOption(1)
+    )
     .option('-j, --json', 'Output as JSON')
-    .action(async (selector: string, options: DomGetCommandOptions) => {
+    .action(async (selector: string | undefined, options: DomGetCommandOptions) => {
       await handleDomGet(selector, options);
     });
 

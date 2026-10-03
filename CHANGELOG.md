@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`status --json`** - The internal `domVersion` counter is no longer reported (query caches no longer depend on it)
 - **Node versions** - CI runs unit/contract and smoke tests on Node 22, 24 and 26 (build and lint stay on 22, the minimum); Docker images use `node:24-alpine`; `@types/node` matches the minimum supported Node (22) so APIs missing there fail type-checking instead of at runtime. Dependabot no longer proposes major bumps of `@types/node` or TypeScript (typescript-eslint does not support TypeScript 7 yet)
 
 ### Removed
@@ -43,6 +44,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Indices could act on the wrong element** - An index from `dom query` / `dom form` was turned back into "the n-th match of the selector" when used, so after the page changed (an element inserted, an SPA view switch, a navigation) `dom click 0` silently clicked a different element, radio buttons and checkboxes from `dom form` sharing a `name` all resolved to the first one, and any selector-based `dom get` / `a11y describe` reset the cache. Indices now address the exact element (backend node id) for fill, click, submit, pressKey, scroll, get, a11y describe and screenshot; when it is gone (removed or the page navigated) commands fail with exit 87 instead of re-running the query. `dom form` generates unique selectors (same-name radios get their `value`), and `dom scroll <index>` is supported
+- **`dom get --node-id`** - Node ids printed by `dom query`, `dom get --raw` and `a11y describe` ("DOM Node ID") are now the same stable id and work with `--node-id` in later commands (they were per-connection ids that pointed at nothing, or at another element); `dom get --node-id <id>` no longer needs a selector, and an unknown id exits 83 instead of printing an empty result. Element details no longer describe a different element than the one requested
+- **Element screenshots** - `dom screenshot --selector/--index` captures the element's border box (padding and border were cut off)
 - **Cookies and full headers were never captured** - `Set-Cookie` response headers and `Cookie`/browser-added request headers only exist in CDP's `*ExtraInfo` events, which bdg ignored, so `network headers`, `details`, `network document` and HAR cookies were always missing them (including HttpOnly cookies). They are now recorded, whatever order Chrome delivers the events in; repeated headers print one per line, and `network headers` no longer prints `Name::value`
 - **`has-response-header:` and `is:from-cache` never matched in `network list`** - The list had no headers to filter on; it now fetches them when a header filter is used (without adding them to the output). `is:from-cache` / `--preset cached` now also match responses served from the browser's memory/disk/prefetch cache, not only CDN `x-cache: HIT` headers
 - **`network list` only saw the last 10 requests** - It (and `network list -f`) fetched the default 10-item preview, so filters, presets, `--type`, `--last 0` and `totalCount` worked on 10 requests. It now sees every captured request; `tail` honors its `--last`; `peek`/`tail` counts show the session total (`NETWORK (10/25)`) and `peek --json` includes `totals`; `peek --type` filters before applying `--last`; `peek`/`tail --last 0` shows everything

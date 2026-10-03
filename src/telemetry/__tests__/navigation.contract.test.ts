@@ -225,24 +225,6 @@ describe('startNavigationTracking contract', () => {
     assert.equal(getCurrentNavigationId(), 1);
   });
 
-  it('keeps navigationId on DOM.documentUpdated but bumps domVersion', async () => {
-    const mockCdp = new MockCDPConnection() as unknown as CDPConnection;
-    const { getCurrentNavigationId, getDomVersion } = await startNavigationTracking(mockCdp, []);
-    const emit = (event: string, params: unknown): void =>
-      (mockCdp as unknown as MockCDPConnection).emit(event, params);
-
-    emit('Page.frameNavigated', {
-      frame: createTestFrame({ id: 'main', url: 'http://localhost:3000/' }),
-      type: 'Navigation',
-    });
-    assert.equal(getCurrentNavigationId(), 1);
-    assert.equal(getDomVersion(), 1);
-
-    emit('DOM.documentUpdated', {});
-    assert.equal(getCurrentNavigationId(), 1, 'one page load must keep one navigation id');
-    assert.equal(getDomVersion(), 2, 'node ids are invalidated by documentUpdated');
-  });
-
   it('should clean up event handlers when cleanup is called', async () => {
     const mockCdp = new MockCDPConnection() as unknown as CDPConnection;
     const navigations: NavigationEvent[] = [];
