@@ -2,6 +2,7 @@ import os from 'node:os';
 
 import type { Command } from 'commander';
 
+import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
@@ -34,6 +35,8 @@ interface CollectorOptions {
   chromeWsUrl?: string;
   /** Quiet mode - suppress verbose landing page output for AI agents. */
   quiet?: boolean;
+  /** Print the result as a JSON envelope. */
+  json?: boolean;
   /** Custom Chrome flags (space-separated string). */
   chromeFlags?: string;
 }
@@ -118,6 +121,7 @@ function applyCollectorOptions(command: Command): Command {
       'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
     )
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
+    .addOption(jsonOption())
     .option(
       '--chrome-flags <flags>',
       'Custom Chrome flags (space-separated, e.g., --chrome-flags="--ignore-certificate-errors --disable-web-security")'
@@ -140,6 +144,7 @@ function buildSessionOptions(options: CollectorOptions): {
   headless: boolean;
   chromeWsUrl: string | undefined;
   quiet: boolean;
+  json: boolean;
   chromeFlags: string[] | undefined;
 } {
   const maxBodySizeRule = positiveIntRule({
@@ -178,6 +183,7 @@ function buildSessionOptions(options: CollectorOptions): {
     headless: options.headless ?? !hasDisplay(),
     chromeWsUrl: options.chromeWsUrl,
     quiet: options.quiet ?? false,
+    json: options.json ?? false,
     chromeFlags,
   };
 }
@@ -223,7 +229,7 @@ export function registerStartCommands(program: Command): void {
     try {
       sessionOptions = validateStartInput(url, options);
     } catch (error) {
-      handleValidationError(error, false);
+      handleValidationError(error, options.json ?? false);
     }
 
     await startSessionViaDaemon(url, sessionOptions, SESSION_TELEMETRY);

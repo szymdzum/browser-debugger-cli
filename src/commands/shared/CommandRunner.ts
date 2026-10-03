@@ -121,14 +121,14 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     const result = await handler(options);
 
     if (!result.success) {
+      const exitCode = result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION;
       if (options.json) {
-        const errorData: Record<string, unknown> = {
-          ...(result.exitCode !== undefined && { exitCode: result.exitCode }),
-          ...result.errorContext,
-        };
         console.log(
           JSON.stringify(
-            OutputBuilder.buildJsonError(result.error ?? 'Unknown error', errorData),
+            OutputBuilder.buildJsonError(result.error ?? 'Unknown error', {
+              ...result.errorContext,
+              exitCode,
+            }),
             null,
             2
           )
@@ -143,7 +143,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           }
         }
       }
-      process.exit(result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION);
+      process.exit(exitCode);
     }
 
     if (result.hint) {
@@ -164,7 +164,14 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     if (error instanceof CommandError) {
       if (options.json) {
         console.log(
-          JSON.stringify(OutputBuilder.buildJsonError(error.message, error.metadata), null, 2)
+          JSON.stringify(
+            OutputBuilder.buildJsonError(error.message, {
+              ...error.metadata,
+              exitCode: error.exitCode,
+            }),
+            null,
+            2
+          )
         );
       } else {
         console.error(genericError(error.message));
@@ -195,11 +202,14 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       process.exit(EXIT_CODES.RESOURCE_NOT_FOUND);
     }
 
+    const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
     if (options.json) {
-      console.log(JSON.stringify(OutputBuilder.buildJsonError(errorMessage), null, 2));
+      console.log(
+        JSON.stringify(OutputBuilder.buildJsonError(errorMessage, { exitCode }), null, 2)
+      );
     } else {
       console.error(genericError(errorMessage));
     }
-    process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
+    process.exit(exitCode);
   }
 }

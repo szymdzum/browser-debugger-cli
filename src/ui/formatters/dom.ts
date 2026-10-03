@@ -56,9 +56,9 @@ export function formatDomQuery(data: DomQueryResult): string {
     .list(nodeLines)
     .blank()
     .section('Next steps:', [
-      `Get HTML:        bdg dom get ${exampleIndex}`,
+      `Get HTML:        bdg dom get ${exampleIndex} --raw`,
+      `Accessibility:   bdg dom get ${exampleIndex}`,
       `Extract text:    bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector('${selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').textContent"}'`,
-      `Full details:    bdg details dom ${exampleIndex}`,
     ])
     .build();
 }

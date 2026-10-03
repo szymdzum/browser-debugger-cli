@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: one JSON envelope everywhere** - Every `--json` output is a single `{ version, success, data }` / `{ version, success: false, error, exitCode }` envelope
+  - `peek --json`: data is now `.data.network` / `.data.console` (was `.data.data.network`); `--network`/`--console`/`--last` filters now apply in JSON mode
+  - `network list --json`: `data.requests` is the filtered list honoring `--last`, plus `totalCount` and `filteredCount` (the unfiltered `requests` and duplicate `filtered` fields are gone)
+  - `console --json` and `status --json` no longer nest `success` / `version` inside `data`
+  - Follow modes (`-f --json`) print one envelope per refresh and no longer emit terminal clear codes; `console -f --json` now honors `--json`
+  - `dom fill/click/submit/pressKey/scroll --json`: the redundant `success` flag is no longer repeated inside `data`
+  - `--version --json` prints `{ data: { version } }`; `--json` may also be given before the subcommand (`bdg --json peek`)
+- **`bdg <url> --json`** - Session start reports its result (or "already running" / target mismatch with `existingSession`) as a JSON envelope
 - **BREAKING: Daemon is the session** - The separate worker process is gone; the daemon hosts the Chrome/CDP session in-process and exits when the session ends (#253)
   - Only `bdg <url>` starts a daemon; other commands without a session exit 83 ("No active session") instead of spawning an idle daemon (`bdg status` still reports `active: false`, exit 0)
   - `bdg stop --kill-chrome` is kept for compatibility but has no additional effect: Chrome launched by bdg is always closed on stop
@@ -22,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Exit codes in JSON** - Error envelopes always include `exitCode`, equal to the process exit code; errors forwarded by the daemon keep their semantic code and suggestion (e.g. unknown request id → 83 instead of 104)
+- **Usage errors** - Unknown options, missing arguments, invalid values and command groups without a subcommand (`bdg dom`) exit 81 (was 1) and are JSON envelopes with `--json`
+- **`dom query` with an invalid selector** - Fails with exit 81 instead of reporting 0 matches
+- **Global `--debug`** - Works before or after the subcommand
+- **`bdg help [command]`** - Shows help instead of starting a session on `http://help`
+- **Current page in status** - `status`, `peek` and "session already running" show the page the session is on now (URL and title), not the start URL
+- **`network list` columns** - SIZE now shows transferred bytes (was always `-`), failed requests keep their error text, and columns stay aligned with long request ids
+- **`details network`** - Field labels no longer run into their values (`Resource Type:Document`)
+- **`dom query` hints** - Suggest `bdg dom get <n> --raw` / `bdg dom get <n>` instead of the non-existent `bdg details dom <n>`
 - **DOM interaction by index after `dom query`** - `dom fill/click <index>` targeted the wrong element (text preview used as a selector; 1-based index sent to 0-based page scripts)
 - **Chrome leak on failed launch** - Chrome is owned by the session as soon as it starts, so a failure afterwards (e.g. no page target) or a stop/signal during startup tears it down
 - **CDP connect retries** - A failed first WebSocket attempt no longer tears down the session before `connect()` retries

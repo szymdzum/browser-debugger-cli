@@ -19,7 +19,12 @@ import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { BdgOutput } from '@/types.js';
-import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
+import {
+  buildPreviewJsonData,
+  formatPreview,
+  type PreviewJsonData,
+  type PreviewOptions,
+} from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 
 interface ProcessedPreview {
@@ -100,7 +105,7 @@ async function runFollowMode(
       return;
     }
 
-    console.clear();
+    if (!options.json) console.clear();
     const previewOptions = createPreviewOptions(
       baseOptions,
       resourceTypes,
@@ -164,16 +169,21 @@ export function registerPeekCommand(program: Command): void {
         return;
       }
 
-      await runCommand(
+      await runCommand<PeekCommandOptions, BdgOutput | PreviewJsonData>(
         async () => {
           const result = await fetchAndFilterPreview(lastN, resourceTypes);
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode);
           }
-          return { success: true, data: result.data.output };
+          const { output } = result.data;
+          return {
+            success: true,
+            data: options.json ? buildPreviewJsonData(output, baseOptions) : output,
+          };
         },
         options,
-        (output: BdgOutput) => {
+        (data) => {
+          const output = data as BdgOutput;
           const previewOptions = createPreviewOptions(
             baseOptions,
             resourceTypes,

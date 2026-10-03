@@ -281,6 +281,8 @@ export interface SessionStartOptions {
   chromeWsUrl: string | undefined;
   /** Quiet mode - minimal output for AI agents */
   quiet: boolean;
+  /** Print the result as a JSON envelope */
+  json?: boolean | undefined;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
   chromeFlags: string[] | undefined;
 }

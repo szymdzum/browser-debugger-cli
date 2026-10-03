@@ -43,6 +43,11 @@ export interface WorkerPeekData {
     url: string;
     status?: number;
     mimeType?: string;
+    resourceType?: string;
+    /** Bytes transferred (for the SIZE column) */
+    encodedDataLength?: number;
+    /** Failure reason for failed requests */
+    errorText?: string;
   }>;
   console: Array<{ timestamp: number; type: string; text: string }>;
   /** Total number of network requests (for pagination). */

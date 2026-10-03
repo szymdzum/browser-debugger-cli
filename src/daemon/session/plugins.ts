@@ -9,7 +9,44 @@ import { startNavigationTracking } from '@/telemetry/navigation.js';
 import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
 import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
+
+/**
+ * Keep the store's target URL and title in sync with the page.
+ *
+ * The target info is captured once at session start; without this, `status`,
+ * `peek` and "session already running" keep reporting the start URL after the
+ * page navigates.
+ *
+ * @param cdp - CDP connection
+ * @param store - Telemetry store whose target info is updated
+ * @param logger - Logger for title refresh failures
+ * @returns Cleanup function
+ */
+function trackCurrentPage(cdp: CDPConnection, store: TelemetryStore, logger: Logger): () => void {
+  const update = (fields: { url?: string; title?: string }): void => {
+    if (store.targetInfo) store.setTargetInfo({ ...store.targetInfo, ...fields });
+  };
+  const refreshTitle = (): void => {
+    cdp
+      .send('Runtime.evaluate', { expression: 'document.title', returnByValue: true })
+      .then((response) => {
+        const value = (response as { result?: { value?: unknown } }).result?.value;
+        if (typeof value === 'string') update({ title: value });
+      })
+      .catch((error: unknown) => {
+        logger.debug(`Could not refresh page title: ${getErrorMessage(error)}`);
+      });
+  };
+  const cleanups = [
+    cdp.on<{ frame: { parentId?: string; url: string } }>('Page.frameNavigated', (params) => {
+      if (params.frame.parentId === undefined) update({ url: params.frame.url, title: '' });
+    }),
+    cdp.on('Page.loadEventFired', refreshTitle),
+  ];
+  return () => cleanups.forEach((cleanup) => cleanup());
+}
 
 export interface TelemetryPlugin {
   name: string;
@@ -37,13 +74,17 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'navigation',
       runAlways: true,
-      async start({ cdp, store }) {
+      async start({ cdp, store, logger }) {
         const { cleanup, getCurrentNavigationId, getDomVersion } = await startNavigationTracking(
           cdp,
           store.navigationEvents
         );
         store.setNavigationResolver(getCurrentNavigationId, getDomVersion);
-        return cleanup;
+        const stopTracking = trackCurrentPage(cdp, store, logger);
+        return () => {
+          stopTracking();
+          void cleanup();
+        };
       },
     },
     {

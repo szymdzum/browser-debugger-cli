@@ -45,7 +45,6 @@ export function buildConsoleJsonOutput(
   const { grouped, summary } = analyzeMessages(messages);
 
   const output: ConsoleJsonOutput = {
-    success: true,
     summary,
     errors: grouped.errors.map((d) => toJsonError(d, true)),
     warnings: grouped.warnings.map((d) => toJsonError(d, false)),

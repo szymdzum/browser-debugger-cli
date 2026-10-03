@@ -256,6 +256,20 @@ export function indexOutOfRangeError(index: number, max: number): ErrorWithSugge
 }
 
 /**
+ * CSS selector rejected by the browser.
+ *
+ * @param selector - Selector as given
+ * @param detail - Browser error, if any
+ * @returns Message and suggestion
+ */
+export function invalidSelectorError(selector: string, detail?: string): ErrorWithSuggestion {
+  return {
+    message: `Invalid CSS selector: ${selector}${detail ? ` (${detail})` : ''}`,
+    suggestion: 'Check the selector syntax, e.g. bdg dom query "button.primary"',
+  };
+}
+
+/**
  * Element at index not found (stale cache).
  */
 export function elementAtIndexNotFoundError(index: number, selector: string): ErrorWithSuggestion {

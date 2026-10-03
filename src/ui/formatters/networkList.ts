@@ -10,24 +10,14 @@ import { getResourceTypeAbbr } from '@/ui/formatters/preview.js';
 import { OutputFormatter, truncateUrl } from '@/ui/formatting.js';
 
 export interface NetworkListOptions {
-  json?: boolean;
   verbose?: boolean;
   last?: number;
   totalCount?: number;
   follow?: boolean;
 }
 
-interface JsonOutput {
-  success: boolean;
-  data: NetworkRequest[];
-  count: number;
-  totalCount: number;
-  filtered: boolean;
-}
-
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB'] as const;
 const SEPARATOR_WIDTH = 80;
-const COLUMN_HEADER = '[ID]   STS METH TYP     SIZE  URL';
 
 function formatSize(bytes: number | undefined): string {
   if (bytes === undefined || bytes === 0) return '-';
@@ -49,16 +39,34 @@ function formatStatus(status: number | undefined): string {
   return `${status}`;
 }
 
-function formatRequestLine(request: NetworkRequest, verbose: boolean): string {
-  const id = request.requestId.padEnd(4);
+/**
+ * Column header aligned to the widest request id in the list.
+ *
+ * @param idWidth - Width of the bracketed id column
+ * @returns Header line
+ */
+function formatColumnHeader(idWidth: number): string {
+  return `${'[ID]'.padEnd(idWidth)} STS METH TYP ${'SIZE'.padStart(8)}  URL`;
+}
+
+/**
+ * Format one request as a table row.
+ *
+ * @param request - Network request
+ * @param verbose - Show full URLs
+ * @param idWidth - Width of the bracketed id column (ids vary in length)
+ * @returns Row text
+ */
+function formatRequestLine(request: NetworkRequest, verbose: boolean, idWidth: number): string {
+  const id = `[${request.requestId}]`.padEnd(idWidth);
   const status = formatStatus(request.status).padEnd(3);
   const method = request.method.padEnd(4);
-  const type = getResourceTypeAbbr(request.resourceType, request.mimeType);
+  const type = getResourceTypeAbbr(request.resourceType, request.mimeType).padEnd(3);
   const size = formatSize(request.encodedDataLength).padStart(8);
   const urlMaxLength = verbose ? 120 : 50;
   const url = verbose ? request.url : truncateUrl(request.url, urlMaxLength);
 
-  return `[${id}] ${status} ${method} ${type} ${size}  ${url}`;
+  return `${id} ${status} ${method} ${type} ${size}  ${url}`;
 }
 
 function buildHeader(
@@ -91,36 +99,21 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
     return fmt.build();
   }
 
-  fmt.text(COLUMN_HEADER);
+  const idWidth = Math.max('[ID]'.length, ...requests.map((r) => r.requestId.length + 2));
+  fmt.text(formatColumnHeader(idWidth));
   fmt.separator('─', SEPARATOR_WIDTH);
 
   const verbose = options.verbose ?? false;
   for (const request of requests) {
-    fmt.text(formatRequestLine(request, verbose));
+    fmt.text(formatRequestLine(request, verbose, idWidth));
   }
 
   return fmt.build();
-}
-
-function formatNetworkListJson(requests: NetworkRequest[], options: NetworkListOptions): string {
-  const totalCount = options.totalCount ?? requests.length;
-
-  const output: JsonOutput = {
-    success: true,
-    data: requests,
-    count: requests.length,
-    totalCount,
-    filtered: requests.length !== totalCount,
-  };
-
-  return JSON.stringify(output, null, 2);
 }
 
 /**
  * Format network requests for display.
  */
 export function formatNetworkList(requests: NetworkRequest[], options: NetworkListOptions): string {
-  return options.json
-    ? formatNetworkListJson(requests, options)
-    : formatNetworkListHuman(requests, options);
+  return formatNetworkListHuman(requests, options);
 }

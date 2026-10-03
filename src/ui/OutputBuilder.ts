@@ -146,11 +146,17 @@ export class OutputBuilder {
     error: string | Error,
     options?: { exitCode?: number; suggestion?: string; context?: Record<string, string> }
   ): Record<string, unknown> {
+    const {
+      version: _version,
+      success: _success,
+      error: _error,
+      ...rest
+    } = (options ?? {}) as Record<string, unknown>;
     return {
       version: VERSION,
       success: false,
       error: error instanceof Error ? error.message : error,
-      ...options,
+      ...rest,
     };
   }
 }

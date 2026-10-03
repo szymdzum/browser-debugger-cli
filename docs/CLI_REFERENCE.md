@@ -118,16 +118,16 @@ The `--json` output returns nodes as an array for natural jq filtering:
 
 ```bash
 # Get first node
-bdg dom a11y tree --json | jq '.nodes[0]'
+bdg dom a11y tree --json | jq '.data.nodes[0]'
 
 # Find all checkboxes
-bdg dom a11y tree --json | jq '[.nodes[] | select(.role == "checkbox")]'
+bdg dom a11y tree --json | jq '[.data.nodes[] | select(.role == "checkbox")]'
 
 # Find by name pattern
-bdg dom a11y tree --json | jq '[.nodes[] | select(.name | test("submit"; "i"))]'
+bdg dom a11y tree --json | jq '[.data.nodes[] | select(.name | test("submit"; "i"))]'
 
 # Get roles and names only
-bdg dom a11y tree --json | jq '.nodes[] | {role, name}'
+bdg dom a11y tree --json | jq '.data.nodes[] | {role, name}'
 ```
 
 **Shell Quote Handling:**
@@ -329,7 +329,7 @@ Remaining:
 **Workflow Example:**
 ```bash
 # 1. Discover form structure
-bdg dom form --json | jq '.forms[0].summary.readyToSubmit'
+bdg dom form --json | jq '.data.forms[0].summary.readyToSubmit'
 
 # 2. Fill required fields using provided indices
 bdg dom fill 0 "user@example.com"
@@ -597,7 +597,7 @@ Inspect HTTP request and response headers from captured network requests.
 bdg network headers
 
 # Show headers from specific request ID
-bdg peek --json | jq -r '.data.preview.data.network[0].requestId'
+bdg peek --json | jq -r '.data.network[0].requestId'
 bdg network headers <request-id>
 
 # Filter to specific header (case-insensitive)
@@ -643,7 +643,7 @@ bdg network headers --header content-security-policy
 bdg network headers --header strict-transport-security
 
 # Inspect specific request (XHR, fetch, etc.)
-bdg peek --json | jq -r '.data.preview.data.network[] | select(.url | contains("api")) | .requestId'
+bdg peek --json | jq -r '.data.network[] | select(.url | contains("api")) | .requestId'
 bdg network headers <api-request-id>
 
 # Export all headers for analysis
@@ -836,37 +836,40 @@ bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`):
 
 ## Output Format
 
-### Success Format
+Every command that accepts `--json` (`-j`) prints exactly one response envelope to stdout.
+Human-readable logs and hints go to stderr.
+
+### Success
 ```json
 {
-  "version": "0.5.1",
+  "version": "0.8.0",
   "success": true,
-  "timestamp": "2025-11-06T12:00:00.000Z",
-  "duration": 45230,
-  "target": {
-    "url": "http://localhost:3000/dashboard",
-    "title": "Dashboard"
-  },
-  "data": {
-    "network": [...],
-    "console": [...],
-    "dom": {...}
-  }
+  "data": { }
 }
 ```
 
-### Error Format
+`data` is the command's result, for example `data.network` for `peek`,
+`data.requests` / `data.totalCount` / `data.filteredCount` for `network list`, `data.nodes`
+for `dom a11y tree`, and `data.targetUrl` / `data.port` / `data.chromePid` for `bdg <url> --json`.
+
+### Error
 ```json
 {
-  "version": "0.5.1",
+  "version": "0.8.0",
   "success": false,
-  "timestamp": "2025-11-06T12:00:00.000Z",
-  "duration": 1234,
-  "target": { "url": "", "title": "" },
-  "data": {},
-  "error": "Error message here"
+  "error": "Invalid --port: \"abc\" is not an integer",
+  "exitCode": 81,
+  "suggestion": "Use a value between 1 and 65535"
 }
 ```
+
+`exitCode` always equals the process exit code (see `bdg --help --json` for the full list).
+Usage errors such as unknown options or missing arguments are reported the same way, with exit code 81.
+
+In follow mode (`-f --json`), every refresh prints one complete envelope. If the session goes
+away while following, an error envelope is printed on each retry until you stop the command.
+
+Put `--json` after the command (`bdg peek --json`); `bdg --json peek` also works.
 
 See [`src/types.ts`](../src/types.ts) for complete type definitions.
 
