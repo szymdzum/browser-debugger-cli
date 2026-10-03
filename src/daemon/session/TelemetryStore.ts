@@ -1,4 +1,5 @@
 import type { NavigationEvent } from '@/telemetry/navigation.js';
+import type { PendingRequest } from '@/telemetry/network.js';
 import type {
   BdgOutput,
   CDPTarget,
@@ -12,6 +13,8 @@ import { VERSION } from '@/utils/version.js';
 
 export class TelemetryStore {
   readonly networkRequests: NetworkRequest[] = [];
+  /** Requests still in flight, keyed by CDP requestId */
+  readonly pendingNetworkRequests = new Map<string, PendingRequest>();
   readonly consoleMessages: ConsoleMessage[] = [];
   readonly navigationEvents: NavigationEvent[] = [];
   readonly websocketConnections: WebSocketConnection[] = [];
@@ -19,6 +22,7 @@ export class TelemetryStore {
   domData: DOMData | null = null;
   activeTelemetry: TelemetryType[] = [];
   getCurrentNavigationId: (() => number) | null = null;
+  getDomVersion: (() => number) | null = null;
   sessionStartTime = Date.now();
   targetInfo: CDPTarget | null = null;
 
@@ -30,8 +34,12 @@ export class TelemetryStore {
     this.targetInfo = target;
   }
 
-  setNavigationResolver(resolver: (() => number) | null): void {
-    this.getCurrentNavigationId = resolver;
+  setNavigationResolver(
+    navigationId: (() => number) | null,
+    domVersion: (() => number) | null = null
+  ): void {
+    this.getCurrentNavigationId = navigationId;
+    this.getDomVersion = domVersion;
   }
 
   setDomData(data: DOMData | null): void {

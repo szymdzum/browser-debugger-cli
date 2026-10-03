@@ -232,12 +232,14 @@ export class QueryCacheManager {
   }
 
   /**
-   * Get current navigation ID from the daemon.
+   * Get the daemon's current DOM version, used to detect stale node ids.
    *
+   * The DOM version changes on navigation and on `DOM.documentUpdated`. Falls
+   * back to the navigation id when talking to a daemon without `domVersion`.
    * Caches the result for 500ms to avoid redundant IPC calls within a single
    * command execution while ensuring freshness for subsequent commands.
    *
-   * @returns Current navigation ID or null if unavailable
+   * @returns Current DOM version or null if unavailable
    */
   async getCurrentNavigationId(): Promise<number | null> {
     if (
@@ -251,12 +253,10 @@ export class QueryCacheManager {
       const { getStatus } = await import('@/ipc/client.js');
       const response = await getStatus();
 
-      if (response.status === 'ok' && response.data?.navigationId !== undefined) {
-        this.cachedNavigationId = {
-          value: response.data.navigationId,
-          timestamp: Date.now(),
-        };
-        return response.data.navigationId;
+      const version = response.data?.domVersion ?? response.data?.navigationId;
+      if (response.status === 'ok' && version !== undefined) {
+        this.cachedNavigationId = { value: version, timestamp: Date.now() };
+        return version;
       }
 
       return null;

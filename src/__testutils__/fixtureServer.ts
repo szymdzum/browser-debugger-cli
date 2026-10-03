@@ -3,7 +3,8 @@
  *
  * Serves `src/__tests__/fixtures/index.html` plus a small JSON endpoint so smoke
  * tests never depend on the public internet. `/slow` delays its response so a
- * session start can be interrupted while the page is loading.
+ * session start can be interrupted while the page is loading; `/redirect`
+ * answers 302 to `/`.
  */
 
 import * as fs from 'fs';
@@ -44,6 +45,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
         res.end(html);
       }, SLOW_RESPONSE_MS);
       req.on('close', () => clearTimeout(timer));
+      return;
+    }
+    if (req.url === '/redirect') {
+      res.writeHead(302, { Location: '/' });
+      res.end();
       return;
     }
     if (req.url === '/api/test') {

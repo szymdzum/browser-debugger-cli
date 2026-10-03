@@ -99,15 +99,101 @@ function createNetworkRequest(
   };
 }
 
+const SKIPPED_BODY_PATTERN = /^\[SKIPPED: (.*)\]$/s;
+
+/**
+ * Placeholder stored instead of a response body that was not fetched.
+ *
+ * @param reason - Why the body was skipped
+ * @returns Placeholder text shown by `bdg details`
+ */
+export function skippedBodyPlaceholder(reason: string): string {
+  return `[SKIPPED: ${reason}]`;
+}
+
+/**
+ * Extract the reason from a skipped-body placeholder.
+ *
+ * @param body - Stored response body
+ * @returns Reason if `body` is a placeholder, otherwise undefined
+ */
+export function skippedBodyReason(body: string | undefined): string | undefined {
+  return body === undefined ? undefined : SKIPPED_BODY_PATTERN.exec(body)?.[1];
+}
+
+/**
+ * Copy response fields (status, headers, timing, connection) onto a request.
+ *
+ * @param request - Request to update
+ * @param response - CDP response
+ * @param resourceType - Resource type reported with the response
+ */
+function applyResponse(
+  request: NetworkRequest,
+  response: Protocol.Network.Response,
+  resourceType?: Protocol.Network.ResourceType
+): void {
+  const { status, mimeType, headers, timing, remoteIPAddress, connectionId } = response;
+  request.status = status;
+  request.mimeType = mimeType;
+  request.responseHeaders = headers;
+  if (resourceType) request.resourceType = resourceType;
+  if (timing) {
+    request.timing = {
+      requestTime: timing.requestTime,
+      proxyStart: timing.proxyStart,
+      proxyEnd: timing.proxyEnd,
+      dnsStart: timing.dnsStart,
+      dnsEnd: timing.dnsEnd,
+      connectStart: timing.connectStart,
+      connectEnd: timing.connectEnd,
+      sslStart: timing.sslStart,
+      sslEnd: timing.sslEnd,
+      sendStart: timing.sendStart,
+      sendEnd: timing.sendEnd,
+      receiveHeadersEnd: timing.receiveHeadersEnd,
+    };
+  }
+  if (remoteIPAddress) request.serverIPAddress = remoteIPAddress;
+  if (connectionId !== undefined) request.connection = String(connectionId);
+}
+
+/**
+ * Turn the in-flight request into a completed redirect hop.
+ *
+ * Chrome reuses the requestId for every hop of a redirect chain and reports
+ * the previous hop's 3xx response on the next `requestWillBeSent`. Each hop
+ * gets its own id (`<requestId>:redirect:<n>`) so it can be looked up and
+ * exported to HAR; the final request keeps the original id.
+ *
+ * @param request - The request that was redirected
+ * @param params - The `requestWillBeSent` event for the next hop
+ * @param redirectHops - Per-requestId hop counter
+ * @returns The completed hop
+ */
+function completeRedirectHop(
+  request: NetworkRequest,
+  params: Protocol.Network.RequestWillBeSentEvent,
+  redirectHops: Map<string, number>
+): NetworkRequest {
+  const hop = (redirectHops.get(params.requestId) ?? 0) + 1;
+  redirectHops.set(params.requestId, hop);
+  if (params.redirectResponse) {
+    applyResponse(request, params.redirectResponse, request.resourceType);
+  }
+  request.requestId = `${params.requestId}:redirect:${hop}`;
+  request.redirectURL = params.request.url;
+  request.loadingFinishedTime = params.timestamp;
+  return request;
+}
+
 /**
  * Clean up stale requests from the request map.
  *
  * Leverages Map insertion order to iterate from oldest entries first,
  * exiting early once a non-stale request is found (O(k) where k = stale count).
  */
-function cleanupStaleRequests(
-  requestMap: Map<string, { request: NetworkRequest; timestamp: number }>
-): void {
+function cleanupStaleRequests(requestMap: Map<string, PendingRequest>): void {
   const now = Date.now();
   const staleRequests: string[] = [];
 
@@ -127,7 +213,21 @@ function cleanupStaleRequests(
   }
 }
 
+/**
+ * A request that has started but not finished or failed yet.
+ */
+export interface PendingRequest {
+  request: NetworkRequest;
+  /** When the entry was (re)inserted, for stale cleanup */
+  timestamp: number;
+}
+
 export interface NetworkCollectionOptions {
+  /**
+   * Map to keep in-flight requests in. Pass one to expose them to readers
+   * (e.g. `is:running`); otherwise the collector keeps a private map.
+   */
+  pendingRequests?: Map<string, PendingRequest> | undefined;
   includeAll?: boolean;
   fetchAllBodies?: boolean;
   fetchBodiesInclude?: string[];
@@ -173,8 +273,9 @@ export async function startNetworkCollection(
     maxBodySize = MAX_RESPONSE_SIZE,
     getCurrentNavigationId,
   } = options;
-  const requestMap = new Map<string, { request: NetworkRequest; timestamp: number }>();
+  const requestMap = options.pendingRequests ?? new Map<string, PendingRequest>();
   const pendingFetches = new Set<string>();
+  const redirectHops = new Map<string, number>();
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
 
@@ -205,7 +306,16 @@ export async function startNetworkCollection(
       return;
     }
 
+    const previous = requestMap.get(params.requestId);
+    if (previous && params.redirectResponse) {
+      const hop = completeRedirectHop(previous.request, params, redirectHops);
+      if (!shouldFilterRequest(hop.url, includeAll, networkInclude, networkExclude)) {
+        if (requests.length < MAX_NETWORK_REQUESTS) requests.push(hop);
+      }
+    }
+
     const request = createNetworkRequest(params, getCurrentNavigationId);
+    requestMap.delete(params.requestId);
     requestMap.set(params.requestId, {
       request,
       timestamp: Date.now(),
@@ -215,53 +325,7 @@ export async function startNetworkCollection(
   registry.registerTyped(typed, 'Network.responseReceived', (params) => {
     const entry = requestMap.get(params.requestId);
     if (!entry) return;
-
-    const { status, mimeType, headers, timing, remoteIPAddress, connectionId } = params.response;
-
-    entry.request.status = status;
-    entry.request.mimeType = mimeType;
-    entry.request.responseHeaders = headers;
-    entry.request.resourceType = params.type;
-
-    if (timing) {
-      const {
-        requestTime,
-        proxyStart,
-        proxyEnd,
-        dnsStart,
-        dnsEnd,
-        connectStart,
-        connectEnd,
-        sslStart,
-        sslEnd,
-        sendStart,
-        sendEnd,
-        receiveHeadersEnd,
-      } = timing;
-
-      entry.request.timing = {
-        requestTime,
-        proxyStart,
-        proxyEnd,
-        dnsStart,
-        dnsEnd,
-        connectStart,
-        connectEnd,
-        sslStart,
-        sslEnd,
-        sendStart,
-        sendEnd,
-        receiveHeadersEnd,
-      };
-    }
-
-    if (remoteIPAddress) {
-      entry.request.serverIPAddress = remoteIPAddress;
-    }
-
-    if (connectionId !== undefined) {
-      entry.request.connection = String(connectionId);
-    }
+    applyResponse(entry.request, params.response, params.type);
   });
 
   registry.registerTyped(typed, 'Network.loadingFinished', (params) => {
@@ -304,7 +368,7 @@ export async function startNetworkCollection(
       fetchResponseBody(cdp, params.requestId, request, pendingFetches);
     } else {
       bodiesSkipped++;
-      request.responseBody = `[SKIPPED: ${decision.reason}]`;
+      request.responseBody = skippedBodyPlaceholder(decision.reason ?? 'not captured');
     }
 
     requests.push(request);

@@ -388,9 +388,10 @@ describe('HAR Builder', () => {
       assert.equal(timings.blocked, -1);
       assert.equal(timings.dns, -1);
       assert.equal(timings.connect, -1);
-      assert.equal(timings.send, -1);
-      assert.equal(timings.wait, -1);
-      assert.equal(timings.receive, -1);
+      // HAR 1.2: send/wait/receive must be non-negative
+      assert.equal(timings.send, 0);
+      assert.equal(timings.wait, 0);
+      assert.equal(timings.receive, 0);
       assert.equal(time, 0); // No timing data = 0 total
     });
   });
@@ -563,10 +564,8 @@ describe('HAR Builder', () => {
       const har = buildHAR(requests, baseMetadata);
       const timings = getFirstEntry(har.log.entries).timings;
 
-      // Should produce negative receive time, which is valid per HAR spec for unknown/invalid
-      // receive = (999.9 - 1000.0) * 1000 - 200 = -100 - 200 = -300
-      // Use approximate comparison for floating point
-      assert.ok(Math.abs(timings.receive - -300) < 0.001, `Expected -300, got ${timings.receive}`);
+      // HAR 1.2 requires receive >= 0; inconsistent CDP data is clamped to 0
+      assert.equal(timings.receive, 0);
     });
 
     test('handles large file download (significant receive time)', () => {
@@ -625,7 +624,7 @@ describe('HAR Builder', () => {
       const har = buildHAR(requests, baseMetadata);
       const timings = getFirstEntry(har.log.entries).timings;
 
-      assert.equal(timings.receive, -1); // Unknown
+      assert.equal(timings.receive, 0); // Unknown -> 0 (HAR 1.2 requires receive >= 0)
     });
   });
 
@@ -806,5 +805,75 @@ describe('HAR Builder', () => {
       assert.ok(cookies.length >= 1);
       assert.ok(cookies.some((c) => c.name === 'token'));
     });
+  });
+});
+
+describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', () => {
+  const metadata: HARMetadata = { version: '0.0.0-test' };
+
+  /**
+   * Build a one-entry HAR and return its entry.
+   *
+   * @param req - Request fields
+   * @returns HAR entry
+   */
+  function entryFor(req: Partial<NetworkRequest>): Entry {
+    const har = buildHAR(
+      [{ requestId: 'r', url: 'https://example.com/a', method: 'GET', timestamp: 0, ...req }],
+      metadata
+    );
+    const entry = har.log.entries[0];
+    assert.ok(entry);
+    return entry;
+  }
+
+  test('reads HTTP/1.1 (capitalized) headers', () => {
+    const entry = entryFor({
+      method: 'POST',
+      requestBody: '{"a":1}',
+      requestHeaders: { 'Content-Type': 'application/json', Cookie: 'sid=1' },
+      status: 302,
+      responseHeaders: { Location: 'https://example.com/b' },
+    });
+    assert.equal(entry.request.postData?.mimeType, 'application/json');
+    assert.deepEqual(entry.request.cookies, [{ name: 'sid', value: '1' }]);
+    assert.equal(entry.response.redirectURL, 'https://example.com/b');
+  });
+
+  test('treats Set-Cookie attributes as attributes, one cookie per line', () => {
+    const entry = entryFor({
+      responseHeaders: {
+        'Set-Cookie':
+          'sid=abc; Path=/; HttpOnly; Secure; Expires=Wed, 21 Oct 2026 07:28:00 GMT\ntheme=dark; Domain=example.com',
+      },
+    });
+    assert.deepEqual(
+      entry.response.cookies.map((c) => c.name),
+      ['sid', 'theme']
+    );
+    const [sid, theme] = entry.response.cookies;
+    assert.equal(sid?.path, '/');
+    assert.equal(sid?.httpOnly, true);
+    assert.equal(sid?.secure, true);
+    assert.equal(sid?.expires, '2026-10-21T07:28:00.000Z');
+    assert.equal(theme?.domain, 'example.com');
+  });
+
+  test('uses the recorded redirect target of a redirect hop', () => {
+    const entry = entryFor({ status: 301, redirectURL: 'https://example.com/final' });
+    assert.equal(entry.response.redirectURL, 'https://example.com/final');
+  });
+
+  test('exports a skipped body as a comment, not as content text', () => {
+    const entry = entryFor({ mimeType: 'image/png', responseBody: '[SKIPPED: non-text]' });
+    assert.equal(entry.response.content.text, undefined);
+    assert.equal(entry.response.content.encoding, undefined);
+    assert.match(entry.response.content.comment ?? '', /non-text/);
+  });
+
+  test('postData carries text only (params and text are mutually exclusive)', () => {
+    const entry = entryFor({ method: 'POST', requestBody: 'a=1' });
+    assert.equal(entry.request.postData?.text, 'a=1');
+    assert.equal(entry.request.postData?.params, undefined);
   });
 });

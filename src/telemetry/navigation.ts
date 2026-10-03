@@ -19,76 +19,61 @@ export interface NavigationEvent {
 }
 
 /**
+ * Navigation counters exposed by the tracker.
+ */
+export interface NavigationTracker {
+  cleanup: CleanupFunction;
+  /** Increments on each main-frame navigation; groups console/network data per page. */
+  getCurrentNavigationId: () => number;
+  /**
+   * Increments on each main-frame navigation and each `DOM.documentUpdated`;
+   * when it changes, previously obtained DOM node ids are no longer valid.
+   */
+  getDomVersion: () => number;
+}
+
+/**
  * Start tracking page navigation events.
  *
- * Monitors main frame navigations (page loads, URL changes) and maintains
- * a navigation counter that increments with each navigation. This counter
- * can be used to detect stale references (e.g., network request indices
- * from a previous page load).
+ * Keeps two counters. `navigationId` counts main-frame navigations only, so all
+ * console messages and requests of one page load share an id (it used to also
+ * bump on `DOM.documentUpdated`, which split a single page load across ids and
+ * made `bdg console` drop early messages). `domVersion` additionally bumps on
+ * `DOM.documentUpdated` and is what DOM query caches compare against.
  *
  * @param cdp - CDP connection instance
  * @param navigations - Array to populate with navigation events
- * @returns Object with cleanup function and getCurrentNavigationId getter
- *
- * @remarks
- * - Only tracks main frame navigations (ignores iframe navigations)
- * - Navigation ID starts at 0 and increments with each navigation
- * - Initial page load counts as navigation 0
- *
- * @example
- * ```typescript
- * const navs: NavigationEvent[] = [];
- * const { cleanup, getCurrentNavigationId } = await startNavigationTracking(cdp, navs);
- *
- * // Later, validate if a reference is stale:
- * const currentNavId = getCurrentNavigationId();
- * if (referenceNavId !== currentNavId) {
- *   throw new Error('Stale reference - page has navigated');
- * }
- *
- * cleanup();
- * ```
+ * @returns Cleanup function and counter getters
  */
 export async function startNavigationTracking(
   cdp: CDPConnection,
   navigations: NavigationEvent[]
-): Promise<{ cleanup: CleanupFunction; getCurrentNavigationId: () => number }> {
+): Promise<NavigationTracker> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
   let navigationCounter = 0;
+  let domVersion = 0;
 
   await cdp.send('Page.enable');
 
-  const initialNavigation: NavigationEvent = {
-    url: '',
-    timestamp: Date.now(),
-    navigationId: navigationCounter,
-  };
-  navigations.push(initialNavigation);
+  navigations.push({ url: '', timestamp: Date.now(), navigationId: navigationCounter });
 
   registry.registerTyped(typed, 'Page.frameNavigated', (params) => {
-    if (params.frame.parentId === undefined) {
-      navigationCounter++;
-
-      const navigation: NavigationEvent = {
-        url: params.frame.url,
-        timestamp: Date.now(),
-        navigationId: navigationCounter,
-      };
-
-      navigations.push(navigation);
-
-      log.debug(`Main frame navigation detected [${navigationCounter}]: ${params.frame.url}`);
-    }
+    if (params.frame.parentId !== undefined) return;
+    navigationCounter++;
+    domVersion++;
+    navigations.push({
+      url: params.frame.url,
+      timestamp: Date.now(),
+      navigationId: navigationCounter,
+    });
+    log.debug(`Main frame navigation detected [${navigationCounter}]: ${params.frame.url}`);
   });
 
-  // Track DOM.documentUpdated for SPA re-renders and document replacements
-  // This fires when the document is completely replaced (React root re-renders, etc.)
   await cdp.send('DOM.enable');
-
   registry.registerTyped(typed, 'DOM.documentUpdated', () => {
-    navigationCounter++;
-    log.debug(`DOM document updated [${navigationCounter}]`);
+    domVersion++;
+    log.debug(`DOM document updated [dom version ${domVersion}]`);
   });
 
   return {
@@ -96,5 +81,6 @@ export async function startNavigationTracking(
       registry.cleanup();
     },
     getCurrentNavigationId: () => navigationCounter,
+    getDomVersion: () => domVersion,
   };
 }
