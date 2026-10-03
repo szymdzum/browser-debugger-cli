@@ -51,18 +51,39 @@ export function chromeSessionMarkerFlag(sessionDir: string): string {
   return `--bdg-session-dir=${sessionDir}`;
 }
 
+/** Environment variable that forces `--no-sandbox` (e.g. in restricted containers). */
+const NO_SANDBOX_ENV = 'BDG_NO_SANDBOX';
+
+/**
+ * Whether Chrome must run with `--no-sandbox`.
+ *
+ * Only where the sandbox cannot work, so it stays on everywhere else
+ * (including Podman-based dev containers such as toolbox/distrobox):
+ * - Docker: the default seccomp profile blocks the user namespaces the
+ *   sandbox needs, for root and non-root users alike
+ * - root on Linux: Chrome refuses to start sandboxed as root
+ * - `BDG_NO_SANDBOX=1`: explicit opt-in for other restricted environments
+ *
+ * @returns True if `--no-sandbox` should be added
+ */
+export function needsNoSandbox(): boolean {
+  if (process.env[NO_SANDBOX_ENV] === '1') return true;
+  if (process.platform === 'linux' && process.getuid?.() === 0) return true;
+  return fs.existsSync('/.dockerenv');
+}
+
 /**
  * Check if running inside a Docker container.
  *
- * Detects Docker environment by checking for:
- * 1. /.dockerenv file (standard Docker indicator)
- * 2. "docker" or "containerd" in /proc/self/cgroup
+ * Detects a container by checking for:
+ * 1. /.dockerenv (Docker) or /run/.containerenv (Podman)
+ * 2. "docker" or "containerd" in /proc/self/cgroup (cgroup v1 hosts)
  *
  * @returns True if running in Docker, false otherwise
  */
 export function isDocker(): boolean {
   try {
-    if (fs.existsSync('/.dockerenv')) {
+    if (fs.existsSync('/.dockerenv') || fs.existsSync('/run/.containerenv')) {
       return true;
     }
 
@@ -152,13 +173,21 @@ export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
   ];
 
   const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
+  const sandboxFlags = needsNoSandbox() ? ['--no-sandbox'] : [];
 
   // Custom flags from CLI option (env var BDG_CHROME_FLAGS is parsed by CLI and passed here)
   const customFlags = options.chromeFlags ?? [];
 
   if (options.headless) {
-    return [HEADLESS_FLAG, ...baseFlags, ...bdgFlags, ...dockerFlags, ...customFlags];
+    return [
+      HEADLESS_FLAG,
+      ...baseFlags,
+      ...bdgFlags,
+      ...dockerFlags,
+      ...sandboxFlags,
+      ...customFlags,
+    ];
   }
 
-  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...customFlags];
+  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...sandboxFlags, ...customFlags];
 }

@@ -38,11 +38,13 @@ while [[ $# -gt 0 ]]; do
     --benchmark)
       RUN_INTEGRATION=false
       RUN_ERRORS=false
+      RUN_EDGE_CASES=false
       shift
       ;;
     --integration)
       RUN_BENCHMARKS=false
       RUN_ERRORS=false
+      RUN_EDGE_CASES=false
       shift
       ;;
     --errors)

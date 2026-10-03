@@ -12,41 +12,54 @@
 #     export PATH="/path/to/browser-debugger-cli/bin:$PATH"
 #     alias bdg=bdg-wrapper
 #
-# Session directories are created at: /tmp/bdg-sessions/<repo-name>/
+# Session directories are created at: /tmp/bdg-sessions/<repo-name>-<path-hash>/
 
 set -euo pipefail
 
-# Find the actual bdg binary relative to this script (resolve symlinks)
-SCRIPT_PATH="${BASH_SOURCE[0]}"
-while [[ -L "$SCRIPT_PATH" ]]; do
-    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
-    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
-    [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH"
-done
-SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+# Resolve a path through any chain of symlinks to the real file
+resolve_path() {
+    local path="$1" dir
+    while [[ -L "$path" ]]; do
+        dir="$(cd "$(dirname "$path")" && pwd)"
+        path="$(readlink "$path")"
+        [[ "$path" != /* ]] && path="$dir/$path"
+    done
+    echo "$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
+}
+
+# Find the actual bdg binary relative to this script
+SCRIPT_PATH="$(resolve_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 BDG_BIN="${SCRIPT_DIR}/../dist/index.js"
 
-# Fallback: try to find bdg in common locations
+# Fallback: another bdg on PATH, skipping this wrapper itself (it may be
+# installed as "bdg"; exec-ing it would loop forever)
 if [[ ! -x "$BDG_BIN" ]]; then
-    # Try npm global install location
-    if command -v bdg &>/dev/null; then
-        BDG_BIN="$(command -v bdg)"
-    else
+    BDG_BIN=""
+    while IFS= read -r candidate; do
+        if [[ "$(resolve_path "$candidate")" != "$SCRIPT_PATH" ]]; then
+            BDG_BIN="$candidate"
+            break
+        fi
+    done < <(type -ap bdg)
+    if [[ -z "$BDG_BIN" ]]; then
         echo "Error: Cannot find bdg binary" >&2
-        echo "Expected at: ${SCRIPT_DIR}/../dist/index.js" >&2
+        echo "Expected at: ${SCRIPT_DIR}/../dist/index.js (run 'npm run build') or another bdg on PATH" >&2
         exit 1
     fi
 fi
 
-# Get repo name from current directory (or "default" if not in a repo)
-if git rev-parse --show-toplevel &>/dev/null; then
-    REPO_NAME=$(basename "$(git rev-parse --show-toplevel)")
+# Session key: repo name plus a hash of its full path, so two repos with the
+# same folder name never share a session ("default" outside a repo)
+if REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+    REPO_HASH="$(printf '%s' "$REPO_ROOT" | cksum | cut -d' ' -f1)"
+    SESSION_KEY="$(basename "$REPO_ROOT")-${REPO_HASH}"
 else
-    REPO_NAME="default"
+    SESSION_KEY="default"
 fi
 
 # Set session dir per-repo to isolate browser sessions
-export BDG_SESSION_DIR="/tmp/bdg-sessions/${REPO_NAME}"
+export BDG_SESSION_DIR="/tmp/bdg-sessions/${SESSION_KEY}"
 mkdir -p "$BDG_SESSION_DIR"
 
 # Run the actual bdg

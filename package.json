@@ -89,6 +89,10 @@
   },
   "files": [
     "dist",
+    "!dist/**/__tests__",
+    "!dist/__testutils__",
+    "!dist/__testfixtures__",
+    "!dist/**/*.map",
     "README.md"
   ],
   "lint-staged": {
