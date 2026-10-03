@@ -67,12 +67,7 @@ function calculateSliceBounds(
   };
 }
 
-/**
- * Map network request to preview format.
- *
- * @param req - Full network request
- * @returns Filtered request with only preview fields
- */
+/** Network request fields used by the peek preview. */
 interface NetworkPreview {
   requestId: string;
   timestamp: number;
@@ -83,9 +78,22 @@ interface NetworkPreview {
   resourceType?: string;
   encodedDataLength?: number;
   errorText?: string;
+  fromCache?: boolean;
+  requestHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, string>;
 }
 
-function mapNetworkRequestToPreview(req: NetworkPreview): Partial<NetworkPreview> {
+/**
+ * Map network request to preview format.
+ *
+ * @param req - Full network request
+ * @param withHeaders - Include request/response headers
+ * @returns Filtered request with only preview fields
+ */
+function mapNetworkRequestToPreview(
+  req: NetworkPreview,
+  withHeaders = false
+): Partial<NetworkPreview> {
   return filterDefined({
     requestId: req.requestId,
     timestamp: req.timestamp,
@@ -96,6 +104,11 @@ function mapNetworkRequestToPreview(req: NetworkPreview): Partial<NetworkPreview
     resourceType: req.resourceType,
     encodedDataLength: req.encodedDataLength,
     errorText: req.errorText,
+    fromCache: req.fromCache,
+    ...(withHeaders && {
+      requestHeaders: req.requestHeaders,
+      responseHeaders: req.responseHeaders,
+    }),
   });
 }
 
@@ -266,7 +279,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           ? []
           : allNetwork
               .slice(networkBounds.start, networkBounds.end)
-              .map(mapNetworkRequestToPreview);
+              .map((req) => mapNetworkRequestToPreview(req, params.withHeaders));
 
       const recentConsole =
         params.only === 'network'

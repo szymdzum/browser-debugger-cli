@@ -150,3 +150,87 @@ void describe('Network list window and failures', () => {
     assert.ok(!errors.requests.some((r) => r.url.includes('/refused')));
   });
 });
+
+void describe('Full headers and cookies', () => {
+  let fixture: FixtureServer;
+  let cookieRequestId = '';
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    const result = await runCommand(fixture.url, ['--port', String(port), '--headless'], {
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
+    await runJson('dom', [
+      'eval',
+      'fetch("/cookie").then(() => fetch("/?after-cookie")).then(() => 1)',
+    ]);
+    const list = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
+    cookieRequestId = list.requests.find((r) => r.url.endsWith('/cookie'))?.requestId ?? '';
+    assert.ok(cookieRequestId, 'cookie request captured');
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('captures Set-Cookie response headers', async () => {
+    const data = await runJson<{ responseHeaders: Record<string, string> }>('network', [
+      'headers',
+      cookieRequestId,
+    ]);
+    const setCookie = Object.entries(data.responseHeaders).find(
+      ([name]) => name.toLowerCase() === 'set-cookie'
+    )?.[1];
+    assert.match(setCookie ?? '', /fixture_session=abc/);
+    assert.match(setCookie ?? '', /fixture_theme=dark/);
+  });
+
+  void it('captures the Cookie request header of later requests', async () => {
+    const list = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
+    const after = list.requests.find((r) => r.url.includes('after-cookie'));
+    const data = await runJson<{ requestHeaders: Record<string, string> }>('network', [
+      'headers',
+      after?.requestId ?? '',
+    ]);
+    const cookie = Object.entries(data.requestHeaders).find(
+      ([name]) => name.toLowerCase() === 'cookie'
+    )?.[1];
+    assert.match(cookie ?? '', /fixture_session=abc/);
+  });
+
+  void it('filters by response header in network list', async () => {
+    const data = await runJson<{ requests: ListedRequest[] }>('network', [
+      'list',
+      '--filter',
+      'has-response-header:set-cookie',
+    ]);
+    assert.deepEqual(
+      data.requests.map((r) => r.requestId),
+      [cookieRequestId]
+    );
+    assert.ok(!('responseHeaders' in (data.requests[0] ?? {})), 'headers not in list output');
+  });
+
+  void it('exports cookies to HAR', async () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'cookies.har');
+    const result = await runCommand('network', ['har', file], { timeout: 30000 });
+    assert.equal(result.exitCode, 0, result.stderr);
+    const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+      log: {
+        entries: Array<{
+          request: { url: string };
+          response: { cookies: Array<{ name: string }> };
+        }>;
+      };
+    };
+    const entry = har.log.entries.find((e) => e.request.url.endsWith('/cookie'));
+    assert.deepEqual(entry?.response.cookies.map((c) => c.name).sort(), [
+      'fixture_session',
+      'fixture_theme',
+    ]);
+  });
+});

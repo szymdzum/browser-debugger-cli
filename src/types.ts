@@ -146,6 +146,8 @@ export interface NetworkRequest {
   decodedBodyLength?: number;
   serverIPAddress?: string;
   connection?: string;
+  /** Served from the browser's memory, disk or prefetch cache */
+  fromCache?: boolean;
   /**
    * Network error text from loadingFailed events.
    * Contains specific error codes like net::ERR_CERT_DATE_INVALID, net::ERR_CONNECTION_REFUSED.

@@ -23,18 +23,27 @@ interface PreviewData {
   console: ConsoleMessage[];
 }
 
+/** What to fetch from the daemon's preview. */
+export interface PreviewQuery {
+  /** Most recent items per section (0 = all; default: daemon default) */
+  lastN?: number;
+  /** Only network or only console items */
+  only?: PeekSection;
+  /** Include request/response headers in network items */
+  withHeaders?: boolean;
+}
+
 /**
  * Fetch raw preview output from daemon.
+ *
+ * @param query - Window, section and header options
+ * @returns Preview output or a fetch error
  */
 export async function fetchPreviewOutput(
-  lastN?: number,
-  only?: PeekSection
+  query: PreviewQuery = {}
 ): Promise<FetchResult<BdgOutput>> {
-  log.debug(`Fetching preview output${lastN !== undefined ? ` (lastN: ${lastN})` : ''}`);
-  const response = await getPeek({
-    ...(lastN !== undefined && { lastN }),
-    ...(only && { only }),
-  });
+  log.debug(`Fetching preview output ${JSON.stringify(query)}`);
+  const response = await getPeek(query);
 
   try {
     validateIPCResponse(response);
@@ -61,12 +70,14 @@ export async function fetchPreviewOutput(
 
 /**
  * Fetch preview data with parsed network and console arrays.
+ *
+ * @param query - Window, section and header options
+ * @returns Preview data or a fetch error
  */
 export async function fetchPreviewData(
-  lastN?: number,
-  only?: PeekSection
+  query: PreviewQuery = {}
 ): Promise<FetchResult<PreviewData>> {
-  const result = await fetchPreviewOutput(lastN, only);
+  const result = await fetchPreviewOutput(query);
   if (!result.success) return result;
 
   return {
@@ -80,10 +91,15 @@ export async function fetchPreviewData(
 }
 
 /**
- * Fetch network requests from daemon.
+ * Fetch all captured network requests from daemon.
+ *
+ * @param withHeaders - Include request/response headers (needed by header filters)
+ * @returns Requests or a fetch error
  */
-export async function fetchNetworkRequests(): Promise<FetchResult<NetworkRequest[]>> {
-  const result = await fetchPreviewData(0, 'network');
+export async function fetchNetworkRequests(
+  withHeaders = false
+): Promise<FetchResult<NetworkRequest[]>> {
+  const result = await fetchPreviewData({ lastN: 0, only: 'network', withHeaders });
   if (!result.success) return result;
   return { success: true, data: result.data.network };
 }
@@ -92,7 +108,7 @@ export async function fetchNetworkRequests(): Promise<FetchResult<NetworkRequest
  * Fetch console messages from daemon.
  */
 export async function fetchConsoleMessages(): Promise<FetchResult<ConsoleMessage[]>> {
-  const result = await fetchPreviewData(0, 'console');
+  const result = await fetchPreviewData({ lastN: 0, only: 'console' });
   if (!result.success) return result;
   return { success: true, data: result.data.console };
 }

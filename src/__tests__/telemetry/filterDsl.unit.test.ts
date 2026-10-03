@@ -360,6 +360,18 @@ describe('Filter application', () => {
       assert.equal(result[0]?.requestId, 'pending');
     });
 
+    it('matches browser cache hits with is:from-cache', () => {
+      const requests = [
+        createRequest({ requestId: 'cached', fromCache: true }),
+        createRequest({ requestId: 'cdn', responseHeaders: { 'x-cache': 'HIT' } }),
+        createRequest({ requestId: 'network' }),
+      ];
+      const ids = applyFilters(requests, parseFilterString('is:from-cache')).map(
+        (r) => r.requestId
+      );
+      assert.deepEqual(ids, ['cached', 'cdn']);
+    });
+
     it('separates failed requests from HTTP statuses and pending ones', () => {
       const requests = [
         createRequest({ requestId: 'ok', status: 200 }),

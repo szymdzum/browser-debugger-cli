@@ -200,6 +200,7 @@ export class SessionController {
         this.session.execute('session_peek', {
           lastN: request.lastN ?? 10,
           ...(request.only && { only: request.only }),
+          ...(request.withHeaders && { withHeaders: true }),
         }),
         QUERY_TIMEOUT_MS,
         'Peek'

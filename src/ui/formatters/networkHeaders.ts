@@ -47,14 +47,17 @@ export function formatNetworkHeaders(data: SessionNetworkHeadersData): string {
 /**
  * Format a section of headers with consistent formatting.
  *
+ * Repeated headers (CDP joins e.g. multiple `Set-Cookie` values with newlines)
+ * are printed one per line.
+ *
  * @param fmt - Output formatter instance
  * @param headers - Headers to format
  */
 function formatHeaderSection(fmt: OutputFormatter, headers: Record<string, string>): void {
   const entries = Object.entries(headers).sort(([a], [b]) => a.localeCompare(b));
-  const maxKeyLength = Math.max(...entries.map(([k]) => k.length));
+  const keyWidth = Math.max(...entries.map(([k]) => k.length)) + 4;
 
   entries.forEach(([key, value]) => {
-    fmt.keyValue(`  ${key}:`, value, maxKeyLength + 4);
+    value.split('\n').forEach((line) => fmt.keyValue(`  ${key}`, line, keyWidth));
   });
 }
