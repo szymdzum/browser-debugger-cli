@@ -1,4 +1,5 @@
 import { CommandError } from '@/errors/index.js';
+import { genericError } from '@/errors/messages.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -25,11 +26,11 @@ export function handleValidationError(error: unknown, json: boolean): never {
       }
       console.log(JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions)));
     } else {
-      console.error(error.message);
+      console.error(genericError(error.message));
       if (error.metadata.suggestion) console.error(error.metadata.suggestion);
     }
     process.exit(error.exitCode);
   }
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(genericError(error instanceof Error ? error.message : String(error)));
   process.exit(EXIT_CODES.INVALID_ARGUMENTS);
 }

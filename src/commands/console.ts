@@ -123,9 +123,12 @@ export function registerConsoleCommand(program: Command): void {
       let lastN: number;
 
       try {
-        lastN = positiveIntRule({ min: MIN_LAST, max: MAX_LAST, default: DEFAULT_LAST }).validate(
-          options.last
-        );
+        lastN = positiveIntRule({
+          name: '--last',
+          min: MIN_LAST,
+          max: MAX_LAST,
+          default: DEFAULT_LAST,
+        }).validate(options.last);
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }

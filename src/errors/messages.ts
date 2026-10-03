@@ -146,10 +146,8 @@ export function daemonNotRunningError(context?: DaemonErrorContext): string {
  * ```
  */
 export function genericError(message: string, context?: string): string {
-  if (context) {
-    return `Error: ${message}\n${context}`;
-  }
-  return `Error: ${message}`;
+  const text = message.startsWith('Error:') ? message : `Error: ${message}`;
+  return context ? `${text}\n${context}` : text;
 }
 
 /**

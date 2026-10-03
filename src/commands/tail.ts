@@ -15,8 +15,8 @@ import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 
 function parseOptions(options: TailCommandOptions): { lastN: number; interval: number } {
-  const lastRule = positiveIntRule({ min: 1, max: 1000, default: 10 });
-  const intervalRule = positiveIntRule({ min: 100, max: 60000, default: 1000 });
+  const lastRule = positiveIntRule({ name: '--last', min: 1, max: 1000, default: 10 });
+  const intervalRule = positiveIntRule({ name: '--interval', min: 100, max: 60000, default: 1000 });
   return {
     lastN: lastRule.validate(options.last),
     interval: intervalRule.validate(options.interval),

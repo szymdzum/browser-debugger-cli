@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getErrorMessage } from '@/utils/errors.js';
+import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 
 void describe('Error Utilities', () => {
   void describe('getErrorMessage()', () => {
@@ -338,5 +338,23 @@ void describe('Error Utilities', () => {
 
       assert.equal(result, '9007199254740991');
     });
+  });
+});
+
+void describe('getErrorExitCode', () => {
+  const withCode = (exitCode: unknown): Error => Object.assign(new Error('x'), { exitCode });
+
+  void it('uses a semantic exit code carried by the error', () => {
+    assert.equal(getErrorExitCode(withCode(83), 104), 83);
+  });
+
+  void it('ignores codes that are zero, out of range or not integers', () => {
+    for (const code of [0, 256, -1, 1.5, '83', undefined]) {
+      assert.equal(getErrorExitCode(withCode(code), 104), 104, `code ${String(code)}`);
+    }
+  });
+
+  void it('falls back for non-errors', () => {
+    assert.equal(getErrorExitCode('boom', 104), 104);
   });
 });

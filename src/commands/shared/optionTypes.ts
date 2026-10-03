@@ -263,8 +263,8 @@ export type NetworkHeadersCommandOptions = BaseOptions & { header?: string };
  * incompatible assignability-wise, and the CLI produces the latter.
  */
 export interface SessionStartOptions {
-  /** CDP port number */
-  port: number;
+  /** CDP port number (undefined = auto-select) */
+  port: number | undefined;
   /** Auto-stop timeout in seconds */
   timeout: number | undefined;
   /** Custom Chrome user data directory */

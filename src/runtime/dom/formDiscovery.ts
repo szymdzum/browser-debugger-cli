@@ -51,7 +51,6 @@ export const FORM_DISCOVERY_SCRIPT = `
       /\\bchevron\\b/gi,
       /←|→|↑|↓|▲|▼|◀|▶/g,
       /\\u25C0|\\u25B6|\\u25B2|\\u25BC/g,
-      /Previous|Next|Back|Forward/gi,
       /^\\s*[<>]\\s*/,
       /\\s*[<>]\\s*$/,
     ];

@@ -4,7 +4,7 @@
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { invalidIntegerError } from '@/ui/messages/validation.js';
+import { integerOutOfRangeError, invalidIntegerError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
 
@@ -14,6 +14,8 @@ export interface ValidationRule<T> {
 }
 
 export interface IntegerRuleOptions {
+  /** Option name shown in error messages (e.g. "--port") */
+  name?: string;
   min?: number;
   max?: number;
   default?: number;
@@ -62,7 +64,14 @@ function buildErrorOptions(min?: number, max?: number): { min?: number; max?: nu
 }
 
 function parseInteger(value: unknown, options: IntegerRuleOptions): number {
-  const { min, max, default: defaultValue, required = true, allowZeroForAll = false } = options;
+  const {
+    name,
+    min,
+    max,
+    default: defaultValue,
+    required = true,
+    allowZeroForAll = false,
+  } = options;
 
   if (value === undefined || value === null) {
     if (defaultValue !== undefined) return defaultValue;
@@ -74,31 +83,19 @@ function parseInteger(value: unknown, options: IntegerRuleOptions): number {
     throwValidationError(`Value must be a number, got ${typeof value}`, 'Provide a numeric value');
   }
 
-  const parsed = parseInt(String(value).trim(), 10);
-  const rangeSuggestion = buildRangeSuggestion(min, max);
+  const text = String(value).trim();
   const errorOptions = buildErrorOptions(min, max);
+  const rangeSuggestion = buildRangeSuggestion(min, max);
 
-  if (isNaN(parsed)) {
-    throwValidationError(
-      invalidIntegerError('value', String(value), errorOptions),
-      rangeSuggestion
-    );
+  if (!/^[+-]?\d+$/.test(text)) {
+    throwValidationError(invalidIntegerError(text, errorOptions, name), rangeSuggestion);
   }
 
+  const parsed = Number(text);
   if (parsed === 0 && allowZeroForAll) return 0;
 
-  if (min !== undefined && parsed < min) {
-    throwValidationError(
-      invalidIntegerError('value', String(value), errorOptions),
-      rangeSuggestion
-    );
-  }
-
-  if (max !== undefined && parsed > max) {
-    throwValidationError(
-      invalidIntegerError('value', String(value), errorOptions),
-      rangeSuggestion
-    );
+  if ((min !== undefined && parsed < min) || (max !== undefined && parsed > max)) {
+    throwValidationError(integerOutOfRangeError(text, errorOptions, name), rangeSuggestion);
   }
 
   return parsed;

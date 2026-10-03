@@ -131,7 +131,7 @@ function applyCollectorOptions(command: Command): Command {
  * @returns Session options object with parsed and normalized values
  */
 function buildSessionOptions(options: CollectorOptions): {
-  port: number;
+  port: number | undefined;
   timeout: number | undefined;
   userDataDir: string | undefined;
   includeAll: boolean;
@@ -142,13 +142,18 @@ function buildSessionOptions(options: CollectorOptions): {
   quiet: boolean;
   chromeFlags: string[] | undefined;
 } {
-  const maxBodySizeRule = positiveIntRule({ min: 1, max: 100, required: false });
-  const timeoutRule = positiveIntRule({ min: 1, max: 3600, required: false });
+  const maxBodySizeRule = positiveIntRule({
+    name: '--max-body-size',
+    min: 1,
+    max: 100,
+    required: false,
+  });
+  const timeoutRule = positiveIntRule({ name: '--timeout', min: 1, max: 3600, required: false });
+  const portRule = positiveIntRule({ name: '--port', min: 1, max: 65535, required: false });
 
-  const maxBodySizeMB = options.maxBodySize
-    ? maxBodySizeRule.validate(options.maxBodySize)
-    : undefined;
-  const timeout = options.timeout ? timeoutRule.validate(options.timeout) : undefined;
+  const maxBodySizeMB =
+    options.maxBodySize !== undefined ? maxBodySizeRule.validate(options.maxBodySize) : undefined;
+  const timeout = options.timeout !== undefined ? timeoutRule.validate(options.timeout) : undefined;
 
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
   const envFlags = process.env['BDG_CHROME_FLAGS']?.split(' ').filter(Boolean) ?? [];
@@ -164,7 +169,7 @@ function buildSessionOptions(options: CollectorOptions): {
   const chromeFlags = combinedFlags.length > 0 ? combinedFlags : undefined;
 
   return {
-    port: parseInt(options.port, 10),
+    port: options.port !== undefined ? portRule.validate(options.port) : undefined,
     timeout,
     userDataDir,
     includeAll: options.all ?? false,
@@ -177,19 +182,26 @@ function buildSessionOptions(options: CollectorOptions): {
   };
 }
 
+/** Telemetry collected by every session. */
+const SESSION_TELEMETRY: TelemetryType[] = ['dom', 'network', 'console'];
+
 /**
- * Common action handler for telemetry commands
+ * Validate the URL and all start options before anything is spawned.
  *
- * @param url - Target URL to collect telemetry from
+ * @param url - Target URL
  * @param options - Parsed command-line options from Commander
- * @returns Promise that resolves when session completes or is stopped
+ * @returns Normalized session options
+ * @throws CommandError on any invalid input
  */
-async function collectorAction(url: string, options: CollectorOptions): Promise<void> {
-  const sessionOptions = buildSessionOptions(options);
-
-  const telemetry: TelemetryType[] = ['dom', 'network', 'console'];
-
-  await startSessionViaDaemon(url, sessionOptions, telemetry);
+function validateStartInput(
+  url: string,
+  options: CollectorOptions
+): ReturnType<typeof buildSessionOptions> {
+  assertValidUrl(url);
+  if (options.chromeWsUrl !== undefined) {
+    assertValidChromeWsUrl(options.chromeWsUrl);
+  }
+  return buildSessionOptions(options);
 }
 
 /**
@@ -207,16 +219,14 @@ export function registerStartCommands(program: Command): void {
       process.exit(0);
     }
 
+    let sessionOptions: ReturnType<typeof buildSessionOptions>;
     try {
-      assertValidUrl(url);
-      if (options.chromeWsUrl !== undefined) {
-        assertValidChromeWsUrl(options.chromeWsUrl);
-      }
+      sessionOptions = validateStartInput(url, options);
     } catch (error) {
       handleValidationError(error, false);
     }
 
-    await collectorAction(url, options);
+    await startSessionViaDaemon(url, sessionOptions, SESSION_TELEMETRY);
   });
 }
 

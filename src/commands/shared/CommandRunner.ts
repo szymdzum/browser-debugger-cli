@@ -3,7 +3,7 @@ import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/errors/messages.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { STOP_MESSAGES } from '@/ui/messages/session.js';
-import { getErrorMessage } from '@/utils/errors.js';
+import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 export type { BaseOptions };
@@ -32,9 +32,21 @@ export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
     console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
     process.exit(EXIT_CODES.SUCCESS);
   } catch (error) {
-    const exitCode =
-      error instanceof CommandError ? error.exitCode : EXIT_CODES.UNHANDLED_EXCEPTION;
-    console.log(JSON.stringify(OutputBuilder.buildJsonError(getErrorMessage(error)), null, 2));
+    const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
+    const suggestion =
+      error instanceof CommandError && typeof error.metadata['suggestion'] === 'string'
+        ? error.metadata['suggestion']
+        : undefined;
+    console.log(
+      JSON.stringify(
+        OutputBuilder.buildJsonError(getErrorMessage(error), {
+          exitCode,
+          ...(suggestion && { suggestion }),
+        }),
+        null,
+        2
+      )
+    );
     process.exit(exitCode);
   }
 }
