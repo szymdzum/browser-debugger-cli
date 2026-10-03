@@ -36,16 +36,23 @@ function describeRange(options?: IntegerValidationOptions): string | undefined {
  *
  * @param value - The invalid value provided
  * @param options - Allowed range, shown when known
+ * @param name - Option name, e.g. "--port" (defaults to "value")
  * @returns Formatted error message
  *
  * @example
  * ```typescript
  * invalidIntegerError('abc', { min: 1, max: 3600 });
  * // 'Invalid value: "abc" is not an integer\nValid range: 1 to 3600'
+ * invalidIntegerError('abc', { min: 1, max: 65535 }, '--port');
+ * // 'Invalid --port: "abc" is not an integer\nValid range: 1 to 65535'
  * ```
  */
-export function invalidIntegerError(value: string, options?: IntegerValidationOptions): string {
-  return joinLines(`Invalid value: "${value}" is not an integer`, describeRange(options));
+export function invalidIntegerError(
+  value: string,
+  options?: IntegerValidationOptions,
+  name = 'value'
+): string {
+  return joinLines(`Invalid ${name}: "${value}" is not an integer`, describeRange(options));
 }
 
 /**
@@ -53,8 +60,13 @@ export function invalidIntegerError(value: string, options?: IntegerValidationOp
  *
  * @param value - The out-of-range value provided
  * @param options - Allowed range
+ * @param name - Option name, e.g. "--port" (defaults to "value")
  * @returns Formatted error message
  */
-export function integerOutOfRangeError(value: string, options: IntegerValidationOptions): string {
-  return joinLines(`Invalid value: ${value} is out of range`, describeRange(options));
+export function integerOutOfRangeError(
+  value: string,
+  options: IntegerValidationOptions,
+  name = 'value'
+): string {
+  return joinLines(`Invalid ${name}: ${value} is out of range`, describeRange(options));
 }

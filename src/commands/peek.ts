@@ -33,7 +33,9 @@ interface ParsedOptions {
 }
 
 function parseOptions(options: PeekCommandOptions): ParsedOptions {
-  const lastN = positiveIntRule({ min: 1, max: 1000, default: 10 }).validate(options.last);
+  const lastN = positiveIntRule({ name: '--last', min: 1, max: 1000, default: 10 }).validate(
+    options.last
+  );
   const resourceTypes = resourceTypeRule().validate(options.type);
   return { lastN, resourceTypes };
 }

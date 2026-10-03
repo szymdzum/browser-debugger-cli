@@ -36,15 +36,20 @@ export function getErrorMessage(error: unknown): string {
  * Read the semantic exit code carried by an error, if any.
  *
  * Error classes across bdg (CommandError, IPCError, DaemonError, ...) expose a
- * numeric `exitCode`; anything else gets the fallback.
+ * numeric `exitCode`. Only integers in 1..255 are trusted, so a foreign error
+ * carrying `exitCode: 0` (or garbage) can never turn a failure into success.
+ * Anything else gets the fallback.
  *
  * @param error - Caught error
  * @param fallback - Exit code when the error carries none
  * @returns Exit code
  */
 export function getErrorExitCode(error: unknown, fallback: number): number {
-  if (error instanceof Error && 'exitCode' in error && typeof error.exitCode === 'number') {
-    return error.exitCode;
+  if (error instanceof Error && 'exitCode' in error) {
+    const code = error.exitCode;
+    if (typeof code === 'number' && Number.isInteger(code) && code >= 1 && code <= 255) {
+      return code;
+    }
   }
   return fallback;
 }

@@ -34,6 +34,19 @@ void describe('formatExceptionText', () => {
     assert.equal(text, 'Uncaught TypeError: x is not a function');
   });
 
+  void it('keeps multi-line messages but drops stack frames', () => {
+    const text = formatExceptionText(
+      details({
+        exception: {
+          type: 'object',
+          description:
+            'Error: first line\nsecond line\n    at foo (app.js:1:2)\n    at bar (app.js:3:4)',
+        },
+      })
+    );
+    assert.equal(text, 'Uncaught Error: first line\nsecond line');
+  });
+
   void it('keeps the promise prefix for unhandled rejections', () => {
     const text = formatExceptionText(
       details({

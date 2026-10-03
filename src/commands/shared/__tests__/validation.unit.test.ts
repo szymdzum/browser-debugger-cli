@@ -209,6 +209,17 @@ void describe('positiveIntRule', () => {
     });
   }
 
+  void it('names the option in the message', () => {
+    assert.throws(
+      () => positiveIntRule({ name: '--port', min: 1, max: 65535 }).validate('abc'),
+      (error: unknown) => error instanceof CommandError && error.message.includes('Invalid --port')
+    );
+  });
+
+  void it('accepts an explicit plus sign', () => {
+    assert.equal(portRule.validate('+9222'), 9222);
+  });
+
   void it('reports out-of-range values as out of range, not as non-integers', () => {
     assert.throws(
       () => portRule.validate('70000'),

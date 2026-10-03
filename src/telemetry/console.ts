@@ -182,12 +182,25 @@ function handleExpandableMessage(
 }
 
 /**
+ * Remove V8 stack frame lines from an error description.
+ *
+ * @param description - Error description: message lines followed by stack frame lines
+ * @returns The message lines only
+ */
+function stripStackFrames(description: string): string {
+  const lines = description.split('\n');
+  const firstFrame = lines.findIndex((line) => /^\s+at\s/.test(line));
+  return (firstFrame === -1 ? lines : lines.slice(0, firstFrame)).join('\n').trim();
+}
+
+/**
  * Build the message text for an uncaught exception, as DevTools shows it.
  *
  * CDP's `text` is usually just "Uncaught" or "Uncaught (in promise)"; the
  * actual error lives in `exception.description` (Errors) or `exception.value`
- * (thrown primitives). Only the first line of the description is used; the
- * stack is kept separately on the message.
+ * (thrown primitives). The description's stack frames (`    at ...` lines)
+ * are dropped, since the stack is kept separately on the message; multi-line
+ * error messages are kept whole.
  *
  * @param details - CDP exception details
  * @returns e.g. "Uncaught TypeError: x is not a function"
@@ -196,7 +209,7 @@ export function formatExceptionText(details: Protocol.Runtime.ExceptionDetails):
   const exception = details.exception;
   const raw =
     exception?.description ?? (exception?.value !== undefined ? String(exception.value) : '');
-  const detail = raw.split('\n')[0] ?? '';
+  const detail = stripStackFrames(raw);
   const prefix = details.text;
   if (!detail) return prefix || 'Unknown error';
   if (!prefix || detail.startsWith(prefix)) return detail;

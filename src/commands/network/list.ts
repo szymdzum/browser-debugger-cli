@@ -201,9 +201,12 @@ export function registerListCommand(networkCmd: Command): void {
         validatePreset(options.preset);
         validateAndGetFilters(options);
         resourceTypes = parseResourceTypes(options.type);
-        lastN = positiveIntRule({ min: MIN_LAST, max: MAX_LAST, default: DEFAULT_LAST }).validate(
-          options.last
-        );
+        lastN = positiveIntRule({
+          name: '--last',
+          min: MIN_LAST,
+          max: MAX_LAST,
+          default: DEFAULT_LAST,
+        }).validate(options.last);
       } catch (error) {
         handleValidationError(error, options.json ?? false);
       }

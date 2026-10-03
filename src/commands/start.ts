@@ -142,14 +142,18 @@ function buildSessionOptions(options: CollectorOptions): {
   quiet: boolean;
   chromeFlags: string[] | undefined;
 } {
-  const maxBodySizeRule = positiveIntRule({ min: 1, max: 100, required: false });
-  const timeoutRule = positiveIntRule({ min: 1, max: 3600, required: false });
-  const portRule = positiveIntRule({ min: 1, max: 65535, required: false });
+  const maxBodySizeRule = positiveIntRule({
+    name: '--max-body-size',
+    min: 1,
+    max: 100,
+    required: false,
+  });
+  const timeoutRule = positiveIntRule({ name: '--timeout', min: 1, max: 3600, required: false });
+  const portRule = positiveIntRule({ name: '--port', min: 1, max: 65535, required: false });
 
-  const maxBodySizeMB = options.maxBodySize
-    ? maxBodySizeRule.validate(options.maxBodySize)
-    : undefined;
-  const timeout = options.timeout ? timeoutRule.validate(options.timeout) : undefined;
+  const maxBodySizeMB =
+    options.maxBodySize !== undefined ? maxBodySizeRule.validate(options.maxBodySize) : undefined;
+  const timeout = options.timeout !== undefined ? timeoutRule.validate(options.timeout) : undefined;
 
   // Merge env var flags with CLI flags (CLI flags come after, taking precedence)
   const envFlags = process.env['BDG_CHROME_FLAGS']?.split(' ').filter(Boolean) ?? [];
@@ -165,7 +169,7 @@ function buildSessionOptions(options: CollectorOptions): {
   const chromeFlags = combinedFlags.length > 0 ? combinedFlags : undefined;
 
   return {
-    port: options.port ? portRule.validate(options.port) : undefined,
+    port: options.port !== undefined ? portRule.validate(options.port) : undefined,
     timeout,
     userDataDir,
     includeAll: options.all ?? false,

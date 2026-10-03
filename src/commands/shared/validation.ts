@@ -14,6 +14,8 @@ export interface ValidationRule<T> {
 }
 
 export interface IntegerRuleOptions {
+  /** Option name shown in error messages (e.g. "--port") */
+  name?: string;
   min?: number;
   max?: number;
   default?: number;
@@ -62,7 +64,14 @@ function buildErrorOptions(min?: number, max?: number): { min?: number; max?: nu
 }
 
 function parseInteger(value: unknown, options: IntegerRuleOptions): number {
-  const { min, max, default: defaultValue, required = true, allowZeroForAll = false } = options;
+  const {
+    name,
+    min,
+    max,
+    default: defaultValue,
+    required = true,
+    allowZeroForAll = false,
+  } = options;
 
   if (value === undefined || value === null) {
     if (defaultValue !== undefined) return defaultValue;
@@ -78,15 +87,15 @@ function parseInteger(value: unknown, options: IntegerRuleOptions): number {
   const errorOptions = buildErrorOptions(min, max);
   const rangeSuggestion = buildRangeSuggestion(min, max);
 
-  if (!/^-?\d+$/.test(text)) {
-    throwValidationError(invalidIntegerError(text, errorOptions), rangeSuggestion);
+  if (!/^[+-]?\d+$/.test(text)) {
+    throwValidationError(invalidIntegerError(text, errorOptions, name), rangeSuggestion);
   }
 
   const parsed = Number(text);
   if (parsed === 0 && allowZeroForAll) return 0;
 
   if ((min !== undefined && parsed < min) || (max !== undefined && parsed > max)) {
-    throwValidationError(integerOutOfRangeError(text, errorOptions), rangeSuggestion);
+    throwValidationError(integerOutOfRangeError(text, errorOptions, name), rangeSuggestion);
   }
 
   return parsed;
