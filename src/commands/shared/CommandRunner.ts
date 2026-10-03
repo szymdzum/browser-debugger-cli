@@ -2,6 +2,7 @@ import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/errors/messages.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { STOP_MESSAGES } from '@/ui/messages/session.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -168,8 +169,9 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       if (options.json) {
         console.log(
           JSON.stringify(
-            OutputBuilder.buildJsonError('Daemon not running', {
-              suggestion: 'Start it with: bdg <url>',
+            OutputBuilder.buildJsonError(STOP_MESSAGES.DAEMON_NOT_RUNNING, {
+              suggestion: 'Start a session with: bdg <url>',
+              exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
             }),
             null,
             2

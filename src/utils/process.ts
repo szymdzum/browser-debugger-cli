@@ -94,3 +94,17 @@ export function killChromeProcess(pid: number, signal: NodeJS.Signals = 'SIGTERM
     }
   }
 }
+
+/**
+ * Read a process's full command line.
+ *
+ * @param pid - Process ID
+ * @returns Command line, or null if unavailable (process gone, or unsupported platform)
+ */
+export function getProcessCommand(pid: number): string | null {
+  if (process.platform === 'win32') return null;
+  const result = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf-8' });
+  if (result.error || result.status !== 0) return null;
+  const command = result.stdout.trim();
+  return command.length > 0 ? command : null;
+}

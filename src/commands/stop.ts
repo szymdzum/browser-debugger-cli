@@ -6,7 +6,6 @@ import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
-import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -18,6 +17,7 @@ import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/se
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
 const log = createLogger('cleanup');
 
@@ -42,6 +42,23 @@ function formatStop(data: StopResult): string {
 }
 
 /**
+ * Send SIGTERM to Chrome if it is still running after the session stopped.
+ *
+ * @param chromePid - Chrome PID reported by the daemon
+ * @returns True if a signal was sent
+ */
+function killChromeIfAlive(chromePid: number | undefined): boolean {
+  if (!chromePid || !isProcessAlive(chromePid)) return false;
+  try {
+    killChromeProcess(chromePid, 'SIGTERM');
+    return true;
+  } catch (error) {
+    log.debug(`Failed to kill Chrome ${chromePid}: ${getErrorMessage(error)}`);
+    return false;
+  }
+}
+
+/**
  * Register stop command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -59,26 +76,17 @@ export function registerStopCommand(program: Command): void {
             const response = await stopSession();
 
             if (response.status === 'ok') {
-              const cleanupResult = await performSessionCleanup({
-                killChrome: opts.killChrome,
-                chromePid: response.chromePid,
-              });
-
-              if (cleanupResult.cleaned.chrome && !opts.json) {
-                log.info(chromeKilledMessage(response.chromePid));
-              }
-
+              const chromeKilled = opts.killChrome ? killChromeIfAlive(response.chromePid) : false;
               return {
                 success: true,
                 data: {
                   stopped: {
                     bdg: true,
-                    chrome: cleanupResult.cleaned.chrome,
-                    daemons: cleanupResult.cleaned.daemons,
+                    chrome: chromeKilled || Boolean(response.chromePid),
+                    daemons: false,
                   },
-                  orphanedDaemonsCount: cleanupResult.orphanedDaemonsCount,
+                  orphanedDaemonsCount: 0,
                   message: response.message ?? STOP_MESSAGES.SUCCESS,
-                  ...(cleanupResult.warnings.length > 0 && { warnings: cleanupResult.warnings }),
                 },
               };
             } else {

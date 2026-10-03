@@ -8,8 +8,8 @@
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
 import { ConfigError } from '@/daemon/errors.js';
-import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
-import type { WorkerConfig } from '@/daemon/worker/types.js';
+import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
+import type { SessionConfig } from '@/daemon/session/types.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
 import type { LaunchedChrome } from '@/types.js';
@@ -23,7 +23,7 @@ import { filterDefined } from '@/utils/objects.js';
  * @returns Launched Chrome instance (null if connecting to external Chrome)
  */
 export async function setupChromeConnection(
-  config: WorkerConfig,
+  config: SessionConfig,
   telemetryStore: TelemetryStore,
   log: Logger,
   notify: NoticeSink<ChromeNoticeCode>
@@ -39,7 +39,7 @@ export async function setupChromeConnection(
  * Connect to existing external Chrome instance.
  */
 function setupExternalChrome(
-  config: WorkerConfig,
+  config: SessionConfig,
   telemetryStore: TelemetryStore,
   notify: NoticeSink<ChromeNoticeCode>
 ): null {
@@ -73,7 +73,7 @@ function setupExternalChrome(
  * Launch new Chrome instance and find page target.
  */
 async function setupLaunchedChrome(
-  config: WorkerConfig,
+  config: SessionConfig,
   telemetryStore: TelemetryStore,
   log: Logger
 ): Promise<LaunchedChrome> {
@@ -90,9 +90,9 @@ async function setupLaunchedChrome(
   log.info(`Chrome launched (PID ${chrome.pid})`);
 
   writeChromePid(chrome.pid);
-  log.debug(`[worker] Chrome PID ${chrome.pid} cached for emergency cleanup`);
+  log.debug(`Chrome PID ${chrome.pid} cached for emergency cleanup`);
 
-  console.error(`[worker] Connecting to Chrome via CDP...`);
+  log.info(`Connecting to Chrome via CDP...`);
   const targets = await fetchCDPTargets(config.port, log);
   const foundTarget = targets.find((t) => t.type === 'page');
 
@@ -115,7 +115,7 @@ async function setupLaunchedChrome(
   }
 
   telemetryStore.setTargetInfo(foundTarget);
-  console.error(`[worker] Found target: ${foundTarget.title} (${foundTarget.url})`);
+  log.info(`Found target: ${foundTarget.title} (${foundTarget.url})`);
 
   return chrome;
 }

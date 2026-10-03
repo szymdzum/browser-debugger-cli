@@ -1,9 +1,9 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 import type { TelemetryPlugin } from './plugins.js';
-import type { WorkerConfig } from './types.js';
+import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { workerActivatingCollector, workerCollectorsActivated } from '@/daemon/messages.js';
+import { sessionActivatingCollector, sessionCollectorsActivated } from '@/daemon/messages.js';
 import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 
@@ -13,7 +13,7 @@ const DEFAULT_TELEMETRY: TelemetryType[] = ['network', 'console', 'dom'];
 
 export async function startTelemetryCollectors(
   cdp: CDPConnection,
-  config: WorkerConfig,
+  config: SessionConfig,
   store: TelemetryStore,
   logger: Logger,
   plugins?: TelemetryPlugin[]
@@ -26,11 +26,11 @@ export async function startTelemetryCollectors(
     if (!shouldActivatePlugin(plugin, store)) {
       continue;
     }
-    logger.debug(workerActivatingCollector(plugin.name));
+    logger.debug(sessionActivatingCollector(plugin.name));
     const cleanup = await plugin.start({ cdp, config, store, logger });
     cleanupFunctions.push(cleanup);
   }
 
-  logger.debug(workerCollectorsActivated(store.activeTelemetry));
+  logger.debug(sessionCollectorsActivated(store.activeTelemetry));
   return cleanupFunctions;
 }

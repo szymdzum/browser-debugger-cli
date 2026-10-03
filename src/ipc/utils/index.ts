@@ -7,6 +7,5 @@
 
 export * from './session.js';
 export type * from './types.js';
-export * from './requestId.js';
 export * from './errors.js';
 export * from './responseValidator.js';

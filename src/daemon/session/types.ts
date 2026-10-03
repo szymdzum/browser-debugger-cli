@@ -1,6 +1,6 @@
 import type { TelemetryType } from '@/types.js';
 
-export interface WorkerConfig {
+export interface SessionConfig {
   url: string;
   port: number;
   timeout?: number;

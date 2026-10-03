@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
-  "entry": ["src/daemon.ts", "src/daemon/worker.ts"],
+  "entry": ["src/index.ts", "src/daemon.ts"],
   "project": ["src/**/*.ts"],
   "ignore": ["src/__tests__/**", "src/__testutils__/**", "src/__testfixtures__/**"],
   "ignoreExportsUsedInFile": true,
@@ -14,7 +14,6 @@
     "nsExports": "warn",
     "nsTypes": "warn",
     "enumMembers": "off",
-    "classMembers": "off",
     "duplicates": "error"
   }
 }

@@ -125,7 +125,6 @@ export async function cleanupAllSessions(): Promise<void> {
 
   const pids = [
     readPositivePid(getSessionFilePath('DAEMON_PID')),
-    readPositivePid(getSessionFilePath('PID')),
     readPositivePid(getSessionFilePath('CHROME_PID')),
     readTestChromePid(),
   ];
@@ -133,15 +132,7 @@ export async function cleanupAllSessions(): Promise<void> {
   livePids.forEach(killIfAlive);
   await Promise.all(livePids.map((pid) => waitForProcessExit(pid)));
 
-  const files = [
-    'DAEMON_PID',
-    'DAEMON_SOCKET',
-    'DAEMON_LOCK',
-    'PID',
-    'LOCK',
-    'METADATA',
-    'CHROME_PID',
-  ] as const;
+  const files = ['DAEMON_PID', 'DAEMON_SOCKET', 'METADATA', 'CHROME_PID'] as const;
   for (const file of files) {
     fs.rmSync(getSessionFilePath(file), { force: true });
   }

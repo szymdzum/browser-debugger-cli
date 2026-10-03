@@ -117,4 +117,12 @@ void describe('Core agent loop', () => {
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome should exit after stop');
     assert.equal(await isDaemonRunning(), false);
   });
+
+  void it('reports no session in status without starting a daemon', async () => {
+    const result = await runCommand('status', ['--json'], { timeout: 15000 });
+    assert.equal(result.exitCode, 0, `Status failed: ${result.stderr}`);
+    const status = JSON.parse(result.stdout) as { data: { active: boolean } };
+    assert.equal(status.data.active, false);
+    assert.equal(await isDaemonRunning(), false, 'status must not spawn a daemon');
+  });
 });

@@ -6,10 +6,9 @@ import type { Command, Option, Argument } from 'commander';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { getOptionBehavior } from '@/commands/optionBehaviors.js';
-import { readDaemonPid, readPid } from '@/session/pid.js';
+import { readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
 import { EXIT_CODE_REGISTRY } from '@/utils/exitCodes.js';
-import { isProcessAlive } from '@/utils/process.js';
 import { getAllTaskMappings, type TaskMapping } from '@/utils/taskMappings.js';
 
 /**
@@ -240,66 +239,23 @@ function convertCommand(command: Command): CommandMetadata {
 }
 
 /**
- * Checks if a session is currently active.
- *
- * @returns True if session is active, false otherwise
- */
-function isSessionActive(): boolean {
-  const sessionPid = readPid();
-  if (sessionPid === null) {
-    return false;
-  }
-  return isProcessAlive(sessionPid);
-}
-
-/**
- * Checks if the daemon is currently running by reading its PID file.
- *
- * @returns True if daemon process is alive, false otherwise
- */
-function isDaemonAlive(): boolean {
-  const daemonPid = readDaemonPid();
-  if (daemonPid === null) {
-    return false;
-  }
-  return isProcessAlive(daemonPid);
-}
-
-/**
  * Generates runtime state information.
  *
- * Checks current daemon and session status to provide state-aware
- * command availability information.
+ * The daemon hosts exactly one session, so a live daemon means an active
+ * session. Uses daemon.pid verified by command line to keep help generation
+ * synchronous; nothing is signalled based on this.
  *
  * @returns Runtime state object
  */
 function generateRuntimeState(): RuntimeState {
-  const daemonRunning = isDaemonAlive();
-  const sessionActive = isSessionActive();
-
-  const availableCommands: string[] = [];
-
-  if (!daemonRunning && !sessionActive) {
-    availableCommands.push('bdg <url>', 'cleanup', '--help', '--version');
-  } else if (daemonRunning && sessionActive) {
-    availableCommands.push(
-      'peek',
-      'tail',
-      'details',
-      'dom',
-      'network',
-      'console',
-      'cdp',
-      'status',
-      'stop'
-    );
-  } else if (daemonRunning && !sessionActive) {
-    availableCommands.push('bdg <url>', 'cleanup', 'status');
-  }
+  const sessionActive = readLiveDaemonPid() !== null;
+  const availableCommands = sessionActive
+    ? ['peek', 'tail', 'details', 'dom', 'network', 'console', 'cdp', 'status', 'stop']
+    : ['bdg <url>', 'cleanup', '--help', '--version'];
 
   return {
     sessionActive,
-    daemonRunning,
+    daemonRunning: sessionActive,
     availableCommands,
   };
 }

@@ -5,7 +5,8 @@ import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CleanupCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { CleanupResult } from '@/commands/types.js';
 import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
-import { readPid } from '@/session/pid.js';
+import { isDaemonAlive } from '@/session/daemonSocket.js';
+import { readDaemonPid } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   sessionFilesCleanedMessage,
@@ -16,7 +17,6 @@ import {
   warningMessage,
 } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { isProcessAlive } from '@/utils/process.js';
 
 /**
  * Format cleanup result for human-readable output.
@@ -44,33 +44,27 @@ export function registerCleanupCommand(program: Command): void {
   program
     .command('cleanup')
     .description('Clean up stale session files')
-    .option('-f, --force', 'Force cleanup even if session appears active', false)
+    .option('-f, --force', 'Kill a running (possibly hung) session, then clean up', false)
     .option('--remove-output', 'Also remove session.json output file', false)
-    .option('--aggressive', 'Kill orphaned daemon processes and all stale Chrome instances', false)
+    .option('--aggressive', 'Alias for --force (kept for compatibility)', false)
     .addOption(jsonOption())
     .action(async (options: CleanupCommandOptions) => {
       await runCommand<CleanupCommandOptions, CleanupResult>(
         async (opts) => {
-          const pid = readPid();
-          if (pid) {
-            const isAlive = isProcessAlive(pid);
-            if (isAlive && !opts.force) {
-              return {
-                success: false,
-                error: sessionStillActiveError(pid),
-                exitCode: EXIT_CODES.RESOURCE_BUSY,
-                errorContext: {
-                  suggestion: 'Stop gracefully: bdg stop\nForce cleanup: bdg cleanup --force',
-                  warning:
-                    'Force cleanup will remove session files but will NOT kill the running process',
-                },
-              };
-            }
+          if (!opts.force && (await isDaemonAlive())) {
+            return {
+              success: false,
+              error: sessionStillActiveError(readDaemonPid() ?? 0),
+              exitCode: EXIT_CODES.RESOURCE_BUSY,
+              errorContext: {
+                suggestion: 'Stop gracefully: bdg stop\nForce cleanup: bdg cleanup --force',
+                warning: 'Force cleanup kills the running daemon and its Chrome',
+              },
+            };
           }
 
           const cleanupResult = await performSessionCleanup({
-            force: opts.force,
-            aggressive: opts.aggressive,
+            force: Boolean(opts.force) || Boolean(opts.aggressive),
             removeOutput: opts.removeOutput,
           });
 

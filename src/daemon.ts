@@ -1,33 +1,37 @@
 #!/usr/bin/env node
 /**
- * Daemon Entry Point - Standalone IPC Server
+ * Daemon entry point.
  *
- * This is a minimal standalone daemon process that runs the IPC server.
- * For MVP: manually start with `node dist/daemon.js`
- * Future: integrate with proper daemon lifecycle management.
+ * Spawned by the CLI (`launchDaemon`). Hosts one in-process browser session
+ * and exits when that session ends.
  */
 
+import { DaemonError } from '@/daemon/errors.js';
 import { IPCServer } from '@/daemon/ipcServer.js';
+import { DAEMON_ALREADY_RUNNING_CODE } from '@/daemon/server/SocketServer.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
+const log = createLogger('daemon');
 const server = new IPCServer();
 
-process.on('SIGINT', () => {
-  console.error('\n[daemon] Received SIGINT, shutting down...');
-  void server.stop().then(() => process.exit(0));
-});
-
-process.on('SIGTERM', () => {
-  console.error('\n[daemon] Received SIGTERM, shutting down...');
-  void server.stop().then(() => process.exit(0));
-});
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    log.info(`Received ${signal}, shutting down...`);
+    void server.shutdown();
+  });
+}
 
 void (async () => {
   try {
     await server.start();
-    console.error('[daemon] IPC server started successfully');
-    console.error('[daemon] Press Ctrl+C to stop');
+    log.info('IPC server started successfully');
   } catch (error) {
-    console.error('[daemon] Failed to start:', error);
+    if (error instanceof DaemonError && error.code === DAEMON_ALREADY_RUNNING_CODE) {
+      log.info('Another daemon owns the socket, exiting');
+      process.exit(0);
+    }
+    log.info(`Failed to start: ${getErrorMessage(error)}`);
     process.exit(1);
   }
 })();

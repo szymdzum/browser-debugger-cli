@@ -215,7 +215,9 @@ export class CDPConnection implements CDPEventSource {
    * Configure WebSocket event handlers for connection lifecycle.
    *
    * We handle close events asynchronously to prevent blocking the WebSocket
-   * event loop during cleanup and reconnection attempts.
+   * event loop during cleanup and reconnection attempts. A socket that never
+   * opened is a failed attempt, not a disconnect: `connect()` retries it, so it
+   * must not trigger `onDisconnect` or auto-reconnect.
    *
    * @param resolve - Promise resolve function for successful connection
    * @param reject - Promise reject function for connection failure
@@ -229,8 +231,10 @@ export class CDPConnection implements CDPEventSource {
     options: ConnectionOptions
   ): void {
     if (!this.ws) return;
+    let opened = false;
 
     this.ws.on('open', () => {
+      opened = true;
       clearTimeout(connectTimeout);
       this.missedPongs = 0;
       this.startKeepalive(options.keepaliveInterval ?? this.config.keepaliveInterval);
@@ -246,7 +250,7 @@ export class CDPConnection implements CDPEventSource {
       void (async () => {
         this.stopKeepalive();
 
-        if (this.isIntentionallyClosed) {
+        if (this.isIntentionallyClosed || !opened) {
           return;
         }
 

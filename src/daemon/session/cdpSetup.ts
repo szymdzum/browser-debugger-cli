@@ -1,42 +1,35 @@
 /**
  * CDP Setup and Navigation
  *
- * Handles CDP connection, telemetry activation, and page navigation.
+ * Handles CDP connection and page navigation for a session.
  */
 
 import { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import { waitForPageReady } from '@/connection/pageReadiness.js';
 import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
-import { workerExitingConnectionLoss } from '@/daemon/messages.js';
-import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
-import { startTelemetryCollectors } from '@/daemon/worker/collectors.js';
-import type { WorkerConfig } from '@/daemon/worker/types.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types.js';
+import { sessionEndingConnectionLoss } from '@/daemon/messages.js';
+import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
+import type { SessionConfig } from '@/daemon/session/types.js';
+import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 
 /**
- * CDP setup result.
- */
-export interface CDPSetupResult {
-  cdp: CDPConnection;
-  cleanupFunctions: CleanupFunction[];
-}
-
-/**
- * Setup CDP connection, activate telemetry, and navigate to target URL.
+ * Connect to the session's target over CDP.
  *
- * @param onDisconnect - Callback for when CDP connection is lost
+ * @param telemetryStore - Store holding the resolved target
+ * @param log - Logger
+ * @param onDisconnect - Called if an established connection is later lost
+ * @returns Open CDP connection
+ * @throws CDPConnectionError if no target is known or connecting fails
  */
-export async function setupCDPAndNavigate(
-  config: WorkerConfig,
+export async function connectCDP(
   telemetryStore: TelemetryStore,
-  chrome: LaunchedChrome | null,
   log: Logger,
   onDisconnect: () => void
-): Promise<CDPSetupResult> {
+): Promise<CDPConnection> {
   if (!telemetryStore.targetInfo) {
     throw new CDPConnectionError('Failed to obtain target information');
   }
@@ -47,24 +40,38 @@ export async function setupCDPAndNavigate(
     maxRetries: 10,
     onDisconnect: (code, reason) => {
       log.info(`Chrome connection lost (code: ${code}, reason: ${reason})`);
-      log.debug(workerExitingConnectionLoss());
+      log.debug(sessionEndingConnectionLoss());
       onDisconnect();
     },
   });
   log.info('CDP connection established');
+  return cdp;
+}
 
-  console.error(`[worker] Activating collectors before navigation...`);
-  const cleanupFunctions = await startTelemetryCollectors(cdp, config, telemetryStore, log);
-  console.error(`[worker] Collectors active and ready to capture telemetry`);
-
+/**
+ * Navigate to the configured URL, wait for the page, and refresh target info.
+ *
+ * @param cdp - Open CDP connection
+ * @param config - Session configuration
+ * @param telemetryStore - Store whose target info is refreshed
+ * @param chrome - Launched Chrome, or null when attached to an external browser
+ * @param log - Logger
+ */
+export async function navigateToTarget(
+  cdp: CDPConnection,
+  config: SessionConfig,
+  telemetryStore: TelemetryStore,
+  chrome: LaunchedChrome | null,
+  log: Logger
+): Promise<void> {
   const normalizedUrl = normalizeUrl(config.url);
-  console.error(`[worker] Navigating to ${normalizedUrl}...`);
+  log.info(`Navigating to ${normalizedUrl}...`);
   await cdp.send('Page.navigate', { url: normalizedUrl });
 
   await waitForPageReady(cdp, {
     maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
   });
-  console.error(`[worker] Page ready`);
+  log.info(`Page ready`);
 
   if (chrome && telemetryStore.targetInfo) {
     const currentTargetId = telemetryStore.targetInfo.id;
@@ -72,9 +79,7 @@ export async function setupCDPAndNavigate(
     const updatedTarget = updatedTargets.find((t) => t.id === currentTargetId);
     if (updatedTarget) {
       telemetryStore.setTargetInfo(updatedTarget);
-      console.error(`[worker] Target updated: ${updatedTarget.title} (${updatedTarget.url})`);
+      log.info(`Target updated: ${updatedTarget.title} (${updatedTarget.url})`);
     }
   }
-
-  return { cdp, cleanupFunctions };
 }
