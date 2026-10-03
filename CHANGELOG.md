@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: Node.js 22.12+ required** - Node 20 reached end-of-life in April 2026; `commander` 15 and current tooling require Node 22. CI, release workflow and Docker images now use Node 22
+
 ### Security
 
 - **Remove `tsc-alias` build dependency** - Replaced with `scripts/rewrite-aliases.mjs`, eliminating the unpatched `braces` advisory (GHSA-vfj7-8cjw-p6xm) from the dev dependency tree; build output is byte-identical

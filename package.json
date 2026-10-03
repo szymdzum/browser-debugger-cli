@@ -45,18 +45,18 @@
   "license": "MIT",
   "dependencies": {
     "chrome-launcher": "^1.2.2",
-    "commander": "^14.0.2",
+    "commander": "^15.0.0",
     "devtools-protocol": "^0.0.1581282",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
-    "@types/node": "^25.9.9",
+    "@types/node": "^26.6.4",
     "@types/ws": "^8.18.2",
     "@typescript-eslint/eslint-plugin": "^8.71.0",
     "@typescript-eslint/parser": "^8.71.0",
-    "c8": "^11.0.0",
-    "concurrently": "^9.2.1",
+    "c8": "^12.0.0",
+    "concurrently": "^10.0.5",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.5",
@@ -67,13 +67,13 @@
     "globals": "^17.13.0",
     "husky": "^9.1.7",
     "knip": "^6.4.1",
-    "lint-staged": "^16.2.6",
+    "lint-staged": "^17.6.0",
     "prettier": "^3.9.9",
     "tsx": "^4.23.15",
     "typescript": "^5.6.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   },
   "author": {
     "name": "Kumak",

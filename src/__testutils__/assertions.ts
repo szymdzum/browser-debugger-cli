@@ -64,6 +64,6 @@ export async function assertThrowsAsync(
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
-    assert.match(errorMessage, regex, message);
+    assert.match(errorMessage, regex, message ?? `Expected "${errorMessage}" to match ${regex}`);
   }
 }

@@ -197,7 +197,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
-          node-version: '20'
+          node-version: '22'
       - run: npm install
       - run: npm run build
       - run: npm link
