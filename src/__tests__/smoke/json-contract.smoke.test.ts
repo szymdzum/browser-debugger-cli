@@ -8,7 +8,11 @@
  */
 
 import * as assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions, isDaemonRunning } from '@/__testutils__/daemonHelpers.js';
@@ -17,6 +21,11 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+
+const CLI_PATH = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../../dist/index.js'
+);
 
 interface Envelope {
   version: string;
@@ -113,6 +122,25 @@ void describe('JSON contract', () => {
     }
   });
 
+  void it('delivers output larger than a pipe buffer to a slow reader', async () => {
+    const result = await runCommand('--help', ['--json'], { readDelay: 500 });
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.ok(result.stdout.length > 65536, `help JSON is ${result.stdout.length} bytes`);
+    assert.doesNotThrow(() => JSON.parse(result.stdout), 'help JSON is complete');
+  });
+
+  void it('exits quietly when the reader closes the pipe early', async () => {
+    const child = spawn('node', [CLI_PATH, '--help', '--json'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stderr = '';
+    child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    child.stdout.once('data', () => child.stdout.destroy());
+    const [code] = (await once(child, 'close')) as [number | null];
+    assert.equal(code, 0, stderr);
+    assert.doesNotMatch(stderr, /EPIPE/);
+  });
+
   void it('starts a session with a JSON result', async () => {
     const port = await getFreePort();
     const started = await expectEnvelope(
@@ -142,6 +170,16 @@ void describe('JSON contract', () => {
     await expectEnvelope(['dom', 'query', 'button', '--json'], 0);
     await expectEnvelope(['dom', 'a11y', 'tree', '--json'], 0);
     await expectEnvelope(['dom', 'eval', '1+1', '--json'], 0);
+  });
+
+  void it('returns large results intact through a pipe', async () => {
+    const result = await runCommand('dom', ['eval', "'x'.repeat(200000)", '--json'], {
+      readDelay: 500,
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 0, result.stderr);
+    const envelope = JSON.parse(result.stdout) as Envelope;
+    assert.equal((envelope.data?.['result'] as string).length, 200000);
   });
 
   void it('maps failures to semantic exit codes', async () => {

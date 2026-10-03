@@ -79,7 +79,6 @@ export function registerTailCommand(program: Command): void {
         startMessage: followingPreviewMessage,
         stopMessage: stoppedFollowingPreviewMessage,
         intervalMs: interval,
-        handleEpipe: true,
       });
     });
 }
