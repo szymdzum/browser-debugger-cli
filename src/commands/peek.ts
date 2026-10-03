@@ -17,6 +17,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import type { PeekSection } from '@/ipc/protocol/commands.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { BdgOutput } from '@/types.js';
 import {
@@ -38,36 +39,60 @@ interface ParsedOptions {
 }
 
 function parseOptions(options: PeekCommandOptions): ParsedOptions {
-  const lastN = positiveIntRule({ name: '--last', min: 1, max: 1000, default: 10 }).validate(
-    options.last
-  );
+  const lastN = positiveIntRule({
+    name: '--last',
+    min: 1,
+    max: 1000,
+    default: 10,
+    allowZeroForAll: true,
+  }).validate(options.last);
   const resourceTypes = resourceTypeRule().validate(options.type);
   return { lastN, resourceTypes };
 }
 
+/**
+ * Data section selected by `--network` / `--console`, if any.
+ *
+ * @param options - Peek options
+ * @returns Section to fetch, or undefined for both
+ */
+function peekSection(options: PeekCommandOptions): PeekSection | undefined {
+  if (options.network) return 'network';
+  return options.console ? 'console' : undefined;
+}
+
+/**
+ * Fetch the preview, filtering network requests by resource type first.
+ *
+ * With a type filter all requests are fetched and filtered before the
+ * `--last` window is applied, so older matches are not hidden by newer
+ * requests of other types.
+ *
+ * @param lastN - Items to show (0 = all)
+ * @param resourceTypes - Resource types to keep (empty = all)
+ * @param only - Fetch only network or only console data
+ * @returns Preview with filtered network data and the unfiltered request count
+ */
 async function fetchAndFilterPreview(
   lastN: number,
-  resourceTypes: Protocol.Network.ResourceType[]
+  resourceTypes: Protocol.Network.ResourceType[],
+  only?: PeekSection
 ): Promise<FetchResult<ProcessedPreview>> {
-  const result = await fetchPreviewOutput(lastN);
+  const result = await fetchPreviewOutput(resourceTypes.length > 0 ? 0 : lastN, only);
   if (!result.success) return result;
 
   const output = result.data;
-  const unfilteredNetworkCount = output.data.network?.length ?? 0;
-
-  if (resourceTypes.length === 0) {
+  const unfilteredNetworkCount = output.totals?.network ?? output.data.network?.length ?? 0;
+  if (resourceTypes.length === 0 || !output.data.network) {
     return { success: true, data: { output, unfilteredNetworkCount } };
   }
 
-  const filteredNetwork = output.data.network
-    ? filterByResourceType(output.data.network, resourceTypes)
-    : undefined;
-
+  const network = filterByResourceType(output.data.network, resourceTypes);
   const filteredOutput: BdgOutput = {
     ...output,
-    data: { ...output.data, ...(filteredNetwork && { network: filteredNetwork }) },
+    data: { ...output.data, network },
+    ...(output.totals && { totals: { ...output.totals, network: network.length } }),
   };
-
   return { success: true, data: { output: filteredOutput, unfilteredNetworkCount } };
 }
 
@@ -92,7 +117,7 @@ async function runFollowMode(
   baseOptions: PreviewOptions
 ): Promise<void> {
   const showPreview = async (): Promise<void> => {
-    const result = await fetchAndFilterPreview(lastN, resourceTypes);
+    const result = await fetchAndFilterPreview(lastN, resourceTypes, peekSection(options));
 
     if (!result.success) {
       const errorResult = handleDaemonConnectionError(result.error, {
@@ -130,7 +155,7 @@ export function registerPeekCommand(program: Command): void {
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
-    .option('--last <count>', 'Show last N items (default: 10)', '10')
+    .option('--last <count>', 'Show last N items, 0 for all (default: 10)', '10')
     .option(
       '--type <types>',
       'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
@@ -169,7 +194,7 @@ export function registerPeekCommand(program: Command): void {
 
       await runCommand<PeekCommandOptions, BdgOutput | PreviewJsonData>(
         async () => {
-          const result = await fetchAndFilterPreview(lastN, resourceTypes);
+          const result = await fetchAndFilterPreview(lastN, resourceTypes, peekSection(options));
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode);
           }

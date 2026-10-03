@@ -15,7 +15,13 @@ import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 
 function parseOptions(options: TailCommandOptions): { lastN: number; interval: number } {
-  const lastRule = positiveIntRule({ name: '--last', min: 1, max: 1000, default: 10 });
+  const lastRule = positiveIntRule({
+    name: '--last',
+    min: 1,
+    max: 1000,
+    default: 10,
+    allowZeroForAll: true,
+  });
   const intervalRule = positiveIntRule({ name: '--interval', min: 100, max: 60000, default: 1000 });
   return {
     lastN: lastRule.validate(options.last),
@@ -43,7 +49,11 @@ export function registerTailCommand(program: Command): void {
     .option('-v, --verbose', 'Use verbose output with full URLs and formatting', false)
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)
-    .option('--last <count>', 'Show last N items (network requests + console messages)', '10')
+    .option(
+      '--last <count>',
+      'Show last N items (network requests + console messages), 0 for all',
+      '10'
+    )
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailCommandOptions) => {
       let lastN: number;
@@ -58,7 +68,7 @@ export function registerTailCommand(program: Command): void {
       }
 
       const showPreview = async (): Promise<void> => {
-        const result = await fetchPreviewOutput();
+        const result = await fetchPreviewOutput(lastN);
 
         if (!result.success) {
           const errorResult = handleDaemonConnectionError(result.error, {

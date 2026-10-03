@@ -538,6 +538,48 @@ void describe('Network telemetry contract', () => {
     });
   });
 
+  void describe('Edge case: Failure after a response', () => {
+    void it('keeps the received status when loading fails afterwards', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
+
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-503',
+          request: createTestRequest({ url: 'https://api.example.com/unavailable' }),
+          timestamp: 1000,
+          type: 'Fetch',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-503',
+          response: createTestResponse({ url: 'https://api.example.com/unavailable', status: 503 }),
+          timestamp: 1050,
+          type: 'Fetch',
+          frameId: 'frame-1',
+          loaderId: 'loader-1',
+        })
+      );
+      mockCDP.emit<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', {
+        requestId: 'req-503',
+        timestamp: 1100,
+        type: 'Fetch',
+        errorText: 'net::ERR_ABORTED',
+      });
+
+      const request = requests[0];
+      assert.ok(request, 'Request should exist');
+      assert.equal(request.status, 503, 'Received status is not overwritten');
+      assert.equal(request.errorText, 'net::ERR_ABORTED');
+
+      void cleanup();
+    });
+  });
+
   void describe('Edge case: Stale request cleanup', () => {
     void it('should clean up stale requests after timeout', async () => {
       const clockHelper = useFakeClock();

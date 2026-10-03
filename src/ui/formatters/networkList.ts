@@ -7,6 +7,7 @@
 
 import type { NetworkRequest } from '@/types.js';
 import { getResourceTypeAbbr } from '@/ui/formatters/preview.js';
+import { getRequestState } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl } from '@/ui/formatting.js';
 
 export interface NetworkListOptions {
@@ -34,9 +35,10 @@ function formatSize(bytes: number | undefined): string {
   return `${formatted} ${SIZE_UNITS[unitIndex]}`;
 }
 
-function formatStatus(status: number | undefined): string {
-  if (status === undefined || status === 0) return 'PND';
-  return `${status}`;
+function formatStatus(request: NetworkRequest): string {
+  const state = getRequestState(request);
+  if (state === 'pending') return 'PND';
+  return state === 'failed' ? 'ERR' : `${request.status}`;
 }
 
 /**
@@ -59,7 +61,7 @@ function formatColumnHeader(idWidth: number): string {
  */
 function formatRequestLine(request: NetworkRequest, verbose: boolean, idWidth: number): string {
   const id = `[${request.requestId}]`.padEnd(idWidth);
-  const status = formatStatus(request.status).padEnd(3);
+  const status = formatStatus(request).padEnd(3);
   const method = request.method.padEnd(4);
   const type = getResourceTypeAbbr(request.resourceType, request.mimeType).padEnd(3);
   const size = formatSize(request.encodedDataLength).padStart(8);

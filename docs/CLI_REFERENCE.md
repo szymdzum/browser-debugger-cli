@@ -466,6 +466,7 @@ bdg network list --filter "has-response-header:content-security-policy"
 # Filter by state
 bdg network list --filter "is:from-cache"          # Cached responses
 bdg network list --filter "is:running"             # In-progress requests
+bdg network list --filter "is:failed"              # No response (DNS, refused, aborted, blocked)
 
 # Filter by URL scheme
 bdg network list --filter "scheme:https"
@@ -484,6 +485,7 @@ bdg network list --preset documents                # resource-type:Document
 bdg network list --preset media                    # resource-type:Image,Media
 bdg network list --preset scripts                  # resource-type:Script
 bdg network list --preset pending                  # is:running
+bdg network list --preset failed                   # is:failed
 
 # Combine preset with additional filters
 bdg network list --preset api --filter "status-code:>=400"
@@ -516,6 +518,7 @@ bdg network list --json
 | `has-response-header:<name>` | Has specific header | `has-response-header:set-cookie` |
 | `is:from-cache` | Cached responses | |
 | `is:running` | In-progress requests | |
+| `is:failed` | Requests that got no response (DNS, refused, aborted, blocked) | |
 | `scheme:<scheme>` | URL scheme | `scheme:https`, `scheme:wss` |
 
 **Operators (for status-code and larger-than):**

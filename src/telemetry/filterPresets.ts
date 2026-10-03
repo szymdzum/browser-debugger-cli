@@ -26,7 +26,7 @@ export interface FilterPreset {
 export const FILTER_PRESETS: Record<string, FilterPreset> = {
   errors: {
     name: 'errors',
-    description: 'Failed requests (4xx and 5xx status codes)',
+    description: 'HTTP error responses (4xx and 5xx status codes)',
     filter: 'status-code:>=400',
   },
   api: {
@@ -58,6 +58,11 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
     name: 'scripts',
     description: 'JavaScript files',
     filter: 'resource-type:Script',
+  },
+  failed: {
+    name: 'failed',
+    description: 'Requests that got no response (DNS, refused, aborted, blocked)',
+    filter: 'is:failed',
   },
   pending: {
     name: 'pending',

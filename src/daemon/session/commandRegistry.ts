@@ -261,13 +261,19 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       const networkBounds = calculateSliceBounds(totalNetwork, lastN, offset);
       const consoleBounds = calculateSliceBounds(totalConsole, lastN, offset);
 
-      const recentNetwork = allNetwork
-        .slice(networkBounds.start, networkBounds.end)
-        .map(mapNetworkRequestToPreview);
+      const recentNetwork =
+        params.only === 'console'
+          ? []
+          : allNetwork
+              .slice(networkBounds.start, networkBounds.end)
+              .map(mapNetworkRequestToPreview);
 
-      const recentConsole = store.consoleMessages
-        .slice(consoleBounds.start, consoleBounds.end)
-        .map(mapConsoleMessageToPreview);
+      const recentConsole =
+        params.only === 'network'
+          ? []
+          : store.consoleMessages
+              .slice(consoleBounds.start, consoleBounds.end)
+              .map(mapConsoleMessageToPreview);
 
       return Promise.resolve({
         version: VERSION,

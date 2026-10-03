@@ -25,7 +25,12 @@ export interface SessionPeekCommand {
   lastN?: number;
   /** Offset from the end (for pagination). Default: 0 (most recent). */
   offset?: number;
+  /** Return items of one kind only (the other list is empty; totals are always set). */
+  only?: PeekSection;
 }
+
+/** Data kinds returned by peek. */
+export type PeekSection = 'network' | 'console';
 
 /**
  * Session peek command response data.
@@ -51,9 +56,9 @@ export interface SessionPeekData {
   }>;
   console: Array<{ timestamp: number; type: string; text: string }>;
   /** Total number of network requests (for pagination). */
-  totalNetwork?: number;
+  totalNetwork: number;
   /** Total number of console messages (for pagination). */
-  totalConsole?: number;
+  totalConsole: number;
   /** Whether there are more network items available. */
   hasMoreNetwork?: boolean;
   /** Whether there are more console items available. */

@@ -216,3 +216,34 @@ describe('MIME type to resource type inference', () => {
     });
   });
 });
+
+void describe('preview totals', () => {
+  const request = (id: number): Record<string, unknown> => ({
+    requestId: `r${id}`,
+    url: `https://example.com/${id}`,
+    method: 'GET',
+    timestamp: id,
+    status: 200,
+  });
+  const output = {
+    version: '0.0.0',
+    success: true,
+    timestamp: new Date().toISOString(),
+    duration: 0,
+    target: { url: 'test', title: 'test' },
+    data: { network: [request(1), request(2)], console: [] },
+    totals: { network: 25, console: 0 },
+  };
+
+  void test('reports the session total, not the size of the returned window', () => {
+    const text = formatPreview(output as never, { last: 2, network: true });
+    assert.match(text, /NETWORK \(2\/25\) \(showing last 2, use --last 0 to see all\)/);
+  });
+
+  void test('includes totals in JSON output', () => {
+    const json = JSON.parse(formatPreview(output as never, { last: 2, json: true })) as {
+      data: { totals: { network: number } };
+    };
+    assert.equal(json.data.totals.network, 25);
+  });
+});

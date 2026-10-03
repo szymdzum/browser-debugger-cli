@@ -95,10 +95,14 @@ export async function getStatus(): Promise<StatusResponse> {
  * const response = await getPeek({ lastN: 0 });
  * ```
  */
-export async function getPeek(options?: { lastN?: number }): Promise<PeekResponse> {
+export async function getPeek(options?: {
+  lastN?: number;
+  only?: 'network' | 'console';
+}): Promise<PeekResponse> {
   const request: PeekRequest = withSession({
     type: 'peek_request',
     ...(options?.lastN !== undefined && { lastN: options.lastN }),
+    ...(options?.only && { only: options.only }),
   });
   return sendRequest<PeekRequest, PeekResponse>(request, 'peek', 'peek_response');
 }

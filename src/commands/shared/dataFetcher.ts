@@ -4,6 +4,7 @@
 
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import type { PeekSection } from '@/ipc/protocol/commands.js';
 import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getExitCodeForConnectionError } from '@/utils/errorMapping.js';
@@ -25,9 +26,15 @@ interface PreviewData {
 /**
  * Fetch raw preview output from daemon.
  */
-export async function fetchPreviewOutput(lastN?: number): Promise<FetchResult<BdgOutput>> {
+export async function fetchPreviewOutput(
+  lastN?: number,
+  only?: PeekSection
+): Promise<FetchResult<BdgOutput>> {
   log.debug(`Fetching preview output${lastN !== undefined ? ` (lastN: ${lastN})` : ''}`);
-  const response = await getPeek(lastN !== undefined ? { lastN } : undefined);
+  const response = await getPeek({
+    ...(lastN !== undefined && { lastN }),
+    ...(only && { only }),
+  });
 
   try {
     validateIPCResponse(response);
@@ -55,8 +62,11 @@ export async function fetchPreviewOutput(lastN?: number): Promise<FetchResult<Bd
 /**
  * Fetch preview data with parsed network and console arrays.
  */
-export async function fetchPreviewData(lastN?: number): Promise<FetchResult<PreviewData>> {
-  const result = await fetchPreviewOutput(lastN);
+export async function fetchPreviewData(
+  lastN?: number,
+  only?: PeekSection
+): Promise<FetchResult<PreviewData>> {
+  const result = await fetchPreviewOutput(lastN, only);
   if (!result.success) return result;
 
   return {
@@ -73,7 +83,7 @@ export async function fetchPreviewData(lastN?: number): Promise<FetchResult<Prev
  * Fetch network requests from daemon.
  */
 export async function fetchNetworkRequests(): Promise<FetchResult<NetworkRequest[]>> {
-  const result = await fetchPreviewData();
+  const result = await fetchPreviewData(0, 'network');
   if (!result.success) return result;
   return { success: true, data: result.data.network };
 }
@@ -82,7 +92,7 @@ export async function fetchNetworkRequests(): Promise<FetchResult<NetworkRequest
  * Fetch console messages from daemon.
  */
 export async function fetchConsoleMessages(): Promise<FetchResult<ConsoleMessage[]>> {
-  const result = await fetchPreviewData(0);
+  const result = await fetchPreviewData(0, 'console');
   if (!result.success) return result;
   return { success: true, data: result.data.console };
 }
