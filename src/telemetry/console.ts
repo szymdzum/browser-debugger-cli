@@ -182,6 +182,28 @@ function handleExpandableMessage(
 }
 
 /**
+ * Build the message text for an uncaught exception, as DevTools shows it.
+ *
+ * CDP's `text` is usually just "Uncaught" or "Uncaught (in promise)"; the
+ * actual error lives in `exception.description` (Errors) or `exception.value`
+ * (thrown primitives). Only the first line of the description is used; the
+ * stack is kept separately on the message.
+ *
+ * @param details - CDP exception details
+ * @returns e.g. "Uncaught TypeError: x is not a function"
+ */
+export function formatExceptionText(details: Protocol.Runtime.ExceptionDetails): string {
+  const exception = details.exception;
+  const raw =
+    exception?.description ?? (exception?.value !== undefined ? String(exception.value) : '');
+  const detail = raw.split('\n')[0] ?? '';
+  const prefix = details.text;
+  if (!detail) return prefix || 'Unknown error';
+  if (!prefix || detail.startsWith(prefix)) return detail;
+  return `${prefix} ${detail}`;
+}
+
+/**
  * Handle an exception thrown event.
  */
 function handleExceptionThrown(
@@ -191,7 +213,7 @@ function handleExceptionThrown(
   includeAll: boolean
 ): void {
   const exception = params.exceptionDetails;
-  const text = exception.text ?? exception.exception?.description ?? 'Unknown error';
+  const text = formatExceptionText(exception);
 
   if (shouldExcludeConsoleMessage(text, 'error', includeAll)) {
     return;

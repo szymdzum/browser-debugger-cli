@@ -4,7 +4,11 @@ import { Command } from 'commander';
 
 import { generateMachineReadableHelp, generateSubcommandHelp } from '@/commands/helpJson.js';
 import { commandRegistry } from '@/commands.js';
+import { genericError } from '@/errors/messages.js';
+import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import { enableDebugLogging } from '@/ui/logging/index.js';
+import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 
 const CLI_NAME = 'bdg';
@@ -75,4 +79,23 @@ async function main(): Promise<void> {
   await program.parseAsync();
 }
 
-void main();
+/**
+ * Last-resort handler for errors that escaped command handlers.
+ *
+ * Prints one clean message (or a JSON envelope with `--json`) instead of a
+ * raw stack trace, and exits with the error's semantic code when it has one.
+ *
+ * @param error - Unhandled error
+ */
+function handleFatalError(error: unknown): never {
+  const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
+  const message = getErrorMessage(error);
+  if (process.argv.includes('--json')) {
+    console.log(JSON.stringify(OutputBuilder.buildJsonError(message, { exitCode }), null, 2));
+  } else {
+    console.error(genericError(message));
+  }
+  process.exit(exitCode);
+}
+
+main().catch(handleFatalError);

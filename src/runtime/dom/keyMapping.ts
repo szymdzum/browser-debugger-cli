@@ -17,13 +17,14 @@ export interface KeyDefinition {
 }
 
 /**
- * Modifier key bit flags for CDP Input.dispatchKeyEvent.
+ * Modifier key bit flags for CDP Input.dispatchKeyEvent
+ * (Alt=1, Ctrl=2, Meta/Command=4, Shift=8).
  */
 export const MODIFIER_FLAGS = {
-  shift: 1,
+  alt: 1,
   ctrl: 2,
-  alt: 4,
-  meta: 8,
+  meta: 4,
+  shift: 8,
 } as const;
 
 /**

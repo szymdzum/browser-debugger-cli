@@ -10,7 +10,12 @@ import { CommandError } from '@/errors/index.js';
 import { keyPressFailedError, operationFailedError } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
-import { getKeyDefinition, parseModifiers, type KeyDefinition } from '@/runtime/dom/keyMapping.js';
+import {
+  getKeyDefinition,
+  MODIFIER_FLAGS,
+  parseModifiers,
+  type KeyDefinition,
+} from '@/runtime/dom/keyMapping.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -174,10 +179,10 @@ async function dispatchSyntheticKeyEvents(
     keyCode: ${keyDef.keyCode},
     charCode: ${keyDef.keyCode},
     which: ${keyDef.keyCode},
-    shiftKey: ${Boolean(modifiers & 1)},
-    ctrlKey: ${Boolean(modifiers & 2)},
-    altKey: ${Boolean(modifiers & 4)},
-    metaKey: ${Boolean(modifiers & 8)},
+    shiftKey: ${Boolean(modifiers & MODIFIER_FLAGS.shift)},
+    ctrlKey: ${Boolean(modifiers & MODIFIER_FLAGS.ctrl)},
+    altKey: ${Boolean(modifiers & MODIFIER_FLAGS.alt)},
+    metaKey: ${Boolean(modifiers & MODIFIER_FLAGS.meta)},
     bubbles: true,
     cancelable: true
   }));

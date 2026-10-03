@@ -7,9 +7,10 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { resourceTypeRule } from '@/commands/shared/validation.js';
+import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
+import { genericError } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 void describe('validation - resourceTypeRule', () => {
@@ -186,5 +187,44 @@ void describe('validation - resourceTypeRule', () => {
     assert.ok(result.includes('Document'));
     assert.ok(result.includes('XHR'));
     assert.ok(result.includes('Fetch'));
+  });
+});
+
+void describe('positiveIntRule', () => {
+  const portRule = positiveIntRule({ min: 1, max: 65535 });
+
+  void it('accepts a plain integer in range', () => {
+    assert.equal(portRule.validate('9222'), 9222);
+  });
+
+  for (const input of ['abc', '10abc', '1.5', '']) {
+    void it(`rejects non-integer ${JSON.stringify(input)} with exit 81`, () => {
+      assert.throws(
+        () => portRule.validate(input),
+        (error: unknown) =>
+          error instanceof CommandError &&
+          error.exitCode === EXIT_CODES.INVALID_ARGUMENTS &&
+          error.message.includes('is not an integer')
+      );
+    });
+  }
+
+  void it('reports out-of-range values as out of range, not as non-integers', () => {
+    assert.throws(
+      () => portRule.validate('70000'),
+      (error: unknown) =>
+        error instanceof CommandError &&
+        error.message.includes('out of range') &&
+        error.message.includes('1 to 65535') &&
+        !error.message.includes('not an integer')
+    );
+  });
+});
+
+void describe('genericError', () => {
+  void it('adds the Error prefix exactly once', () => {
+    assert.equal(genericError('boom'), 'Error: boom');
+    assert.equal(genericError('Error: boom'), 'Error: boom');
+    assert.equal(genericError('Error: boom', 'hint'), 'Error: boom\nhint');
   });
 });
