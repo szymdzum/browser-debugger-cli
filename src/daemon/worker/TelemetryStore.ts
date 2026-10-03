@@ -7,7 +7,7 @@ import type {
   NetworkRequest,
   TelemetryType,
   WebSocketConnection,
-} from '@/types';
+} from '@/types.js';
 import { VERSION } from '@/utils/version.js';
 
 export class TelemetryStore {

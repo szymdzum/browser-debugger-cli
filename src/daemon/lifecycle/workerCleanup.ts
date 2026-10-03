@@ -17,7 +17,7 @@ import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
 import { collectDOM } from '@/telemetry/dom.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types';
+import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';

@@ -4,7 +4,7 @@ import type { WorkerConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { workerActivatingCollector, workerCollectorsActivated } from '@/daemon/messages.js';
-import type { CleanupFunction, TelemetryType } from '@/types';
+import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 
 import { getRegisteredTelemetryPlugins, shouldActivatePlugin } from './plugins.js';

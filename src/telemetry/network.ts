@@ -11,7 +11,12 @@ import {
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT,
 } from '@/constants.js';
-import type { NetworkRequest, WebSocketConnection, WebSocketFrame, CleanupFunction } from '@/types';
+import type {
+  NetworkRequest,
+  WebSocketConnection,
+  WebSocketFrame,
+  CleanupFunction,
+} from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 

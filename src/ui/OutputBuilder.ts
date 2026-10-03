@@ -10,7 +10,7 @@ import type {
   ConsoleMessage,
   DOMData,
   TelemetryType,
-} from '@/types';
+} from '@/types.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 

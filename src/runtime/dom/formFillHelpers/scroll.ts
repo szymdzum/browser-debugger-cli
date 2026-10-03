@@ -5,6 +5,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -21,7 +22,6 @@ export interface ScrollOptions {
   index?: number;
 }
 
-import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 export type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 
 const SCROLL_TO_ELEMENT_SCRIPT = `

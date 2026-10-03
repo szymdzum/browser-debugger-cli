@@ -1,4 +1,4 @@
-import type { NetworkRequest, ConsoleMessage } from '@/types';
+import type { NetworkRequest, ConsoleMessage } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**

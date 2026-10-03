@@ -7,7 +7,7 @@ import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
 import { startNavigationTracking } from '@/telemetry/navigation.js';
 import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
-import type { CleanupFunction, TelemetryType } from '@/types';
+import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { filterDefined } from '@/utils/objects.js';
 

@@ -12,7 +12,7 @@ import { workerExitingConnectionLoss } from '@/daemon/messages.js';
 import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { startTelemetryCollectors } from '@/daemon/worker/collectors.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types';
+import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';

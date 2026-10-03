@@ -22,7 +22,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import type { BdgOutput, NetworkRequest, ConsoleMessage } from '@/types';
+import type { BdgOutput, NetworkRequest, ConsoleMessage } from '@/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

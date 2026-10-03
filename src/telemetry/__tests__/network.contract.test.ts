@@ -12,7 +12,7 @@ import { useFakeClock } from '@/__testutils__/testClock.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { startNetworkCollection } from '@/telemetry/network.js';
-import type { NetworkRequest } from '@/types';
+import type { NetworkRequest } from '@/types.js';
 
 /**
  * Mock CDP connection for testing network telemetry.

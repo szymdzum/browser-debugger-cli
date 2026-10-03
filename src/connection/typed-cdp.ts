@@ -13,8 +13,8 @@
 
 import type { CDPConnection } from './cdp.js';
 import type { EventCleanup } from './events.js';
-import type Protocol from 'devtools-protocol/types/protocol';
-import type ProtocolMapping from 'devtools-protocol/types/protocol-mapping';
+import type { ProtocolMapping } from 'devtools-protocol/types/protocol-mapping.js';
+import type { Protocol } from 'devtools-protocol/types/protocol.js';
 
 /**
  * Extract parameter type from a CDP command.

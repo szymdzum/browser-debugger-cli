@@ -1,4 +1,4 @@
-import type ProtocolMapping from 'devtools-protocol/types/protocol-mapping';
+import type { ProtocolMapping } from 'devtools-protocol/types/protocol-mapping.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { EventParams, TypedCDPConnection } from '@/connection/typed-cdp.js';

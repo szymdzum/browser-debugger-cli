@@ -1,6 +1,6 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
-import type { BdgOutput } from '@/types';
+import type { BdgOutput } from '@/types.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
   PREVIEW_EMPTY_STATES,

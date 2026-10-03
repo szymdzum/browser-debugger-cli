@@ -10,7 +10,7 @@ import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
-import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types';
+import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';

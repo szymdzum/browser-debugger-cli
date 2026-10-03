@@ -12,7 +12,7 @@ import type { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import type { WorkerConfig } from '@/daemon/worker/types.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
-import type { LaunchedChrome } from '@/types';
+import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';

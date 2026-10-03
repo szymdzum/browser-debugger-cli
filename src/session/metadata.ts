@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 
-import type { TelemetryType } from '@/types';
+import type { TelemetryType } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';

@@ -7,7 +7,7 @@ import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
-import type { TelemetryType } from '@/types';
+import type { TelemetryType } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateChromeWsUrl, validateUrl } from '@/utils/url.js';

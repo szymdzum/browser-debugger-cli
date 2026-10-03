@@ -1,4 +1,4 @@
-import type { CDPTarget } from '@/types';
+import type { CDPTarget } from '@/types.js';
 
 /**
  * Create a mock CDPTarget with default values and optional overrides.

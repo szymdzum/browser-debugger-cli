@@ -1,7 +1,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
-import type { CleanupFunction } from '@/types';
+import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 const log = createLogger('dialogs');

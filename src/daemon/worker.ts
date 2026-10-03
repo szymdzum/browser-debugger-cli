@@ -22,7 +22,7 @@ import type { WorkerReadyMessage } from '@/daemon/workerIpc.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { writePid } from '@/session/pid.js';
-import type { CleanupFunction, LaunchedChrome } from '@/types';
+import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeIssue, formatChromeNotice } from '@/ui/messages/chrome.js';
 

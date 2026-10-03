@@ -12,7 +12,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/worker/TelemetryStore.js';
 import { createCommandRegistry } from '@/daemon/worker/commandRegistry.js';
 import type { CommandRegistry } from '@/daemon/worker/commandRegistry.js';
-import type { ConsoleMessage, NetworkRequest } from '@/types';
+import type { ConsoleMessage, NetworkRequest } from '@/types.js';
 import { VERSION } from '@/utils/version.js';
 
 void describe('CommandRegistry', () => {

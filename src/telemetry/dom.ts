@@ -1,6 +1,6 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import type { DOMData, CleanupFunction, A11yNode } from '@/types';
+import type { DOMData, CleanupFunction, A11yNode } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 

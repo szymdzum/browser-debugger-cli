@@ -6,6 +6,7 @@ import type { ClickResult } from './reactEventHelpers.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPTimeoutError } from '@/connection/errors.js';
+import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 
 import { clickElement } from './formFillHelpers/index.js';
 
@@ -23,7 +24,6 @@ export interface SubmitOptions {
   timeout?: number;
 }
 
-import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 export type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 
 /**

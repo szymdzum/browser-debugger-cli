@@ -1,4 +1,4 @@
-import type { TelemetryType } from '@/types';
+import type { TelemetryType } from '@/types.js';
 
 export interface WorkerConfig {
   url: string;
