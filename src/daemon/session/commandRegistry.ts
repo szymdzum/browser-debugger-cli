@@ -16,6 +16,7 @@ import {
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
+import type { NetworkRequest } from '@/types.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -122,18 +123,19 @@ function mapConsoleMessageToPreview(msg: ConsolePreview): ConsolePreview {
 }
 
 /**
- * Find network request by ID or throw.
+ * Find a network request by ID, finished or still in flight.
  *
- * @param requests - Array of network requests
+ * `peek` lists in-flight requests too, so ids it shows must resolve here.
+ *
+ * @param store - Telemetry store
  * @param id - Request ID to find
  * @returns Found request
  * @throws Error if not found
  */
-function findNetworkRequestOrThrow(
-  requests: { requestId: string }[],
-  id: string
-): { requestId: string } {
-  const request = requests.find((r) => r.requestId === id);
+function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRequest {
+  const request =
+    store.networkRequests.find((r) => r.requestId === id) ??
+    store.pendingNetworkRequests.get(id)?.request;
   if (!request) {
     throw new Error(`Network request not found: ${id}`);
   }
@@ -185,11 +187,7 @@ function findTargetRequestForHeaders(
   responseHeaders?: Record<string, string>;
 } {
   if (requestId) {
-    const request = store.networkRequests.find((r) => r.requestId === requestId);
-    if (!request) {
-      throw new Error(`Network request not found: ${requestId}`);
-    }
-    return request;
+    return findNetworkRequestOrThrow(store, requestId);
   }
 
   const currentUrl = store.navigationEvents.at(-1)?.url;
@@ -271,7 +269,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
 
     worker_details: async (_cdp, params) => {
       if (params.itemType === 'network') {
-        const request = findNetworkRequestOrThrow(store.networkRequests, params.id);
+        const request = findNetworkRequestOrThrow(store, params.id);
         return Promise.resolve({ item: request });
       }
 

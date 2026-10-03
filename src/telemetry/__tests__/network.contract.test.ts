@@ -895,6 +895,30 @@ void describe('Network telemetry contract', () => {
       void cleanup();
     });
 
+    void it('never tracks requests excluded by filters', async () => {
+      const pendingRequests = new Map();
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        networkExclude: ['*/ignored/*'],
+        pendingRequests,
+      });
+      mockCDP.emit(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'X',
+          request: createTestRequest({ url: 'http://example.com/ignored/pixel.gif' }),
+        })
+      );
+      assert.equal(pendingRequests.size, 0, 'excluded request must not show up while in flight');
+      mockCDP.emit('Network.loadingFinished', {
+        requestId: 'X',
+        timestamp: 1,
+        encodedDataLength: 0,
+      });
+      assert.equal(requests.length, 0);
+
+      void cleanup();
+    });
+
     void it('exposes in-flight requests through the provided map', async () => {
       const pendingRequests = new Map();
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {

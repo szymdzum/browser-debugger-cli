@@ -299,6 +299,16 @@ export async function startNetworkCollection(
   );
 
   registry.registerTyped(typed, 'Network.requestWillBeSent', (params) => {
+    const previous = requestMap.get(params.requestId);
+    if (previous && params.redirectResponse) {
+      requestMap.delete(params.requestId);
+      const hop = completeRedirectHop(previous.request, params, redirectHops);
+      if (requests.length < MAX_NETWORK_REQUESTS) requests.push(hop);
+    }
+
+    if (shouldFilterRequest(params.request.url, includeAll, networkInclude, networkExclude)) {
+      return;
+    }
     if (requestMap.size >= MAX_NETWORK_REQUESTS) {
       log.debug(
         `Warning: Network request limit reached (${MAX_NETWORK_REQUESTS}), dropping new requests`
@@ -306,16 +316,7 @@ export async function startNetworkCollection(
       return;
     }
 
-    const previous = requestMap.get(params.requestId);
-    if (previous && params.redirectResponse) {
-      const hop = completeRedirectHop(previous.request, params, redirectHops);
-      if (!shouldFilterRequest(hop.url, includeAll, networkInclude, networkExclude)) {
-        if (requests.length < MAX_NETWORK_REQUESTS) requests.push(hop);
-      }
-    }
-
     const request = createNetworkRequest(params, getCurrentNavigationId);
-    requestMap.delete(params.requestId);
     requestMap.set(params.requestId, {
       request,
       timestamp: Date.now(),
@@ -335,6 +336,7 @@ export async function startNetworkCollection(
     if (requests.length >= MAX_NETWORK_REQUESTS) {
       log.debug(`Warning: Network request limit reached (${MAX_NETWORK_REQUESTS})`);
       requestMap.delete(params.requestId);
+      redirectHops.delete(params.requestId);
       return;
     }
 
@@ -345,11 +347,6 @@ export async function startNetworkCollection(
     }
 
     request.loadingFinishedTime = params.timestamp;
-
-    if (shouldFilterRequest(request.url, includeAll, networkInclude, networkExclude)) {
-      requestMap.delete(params.requestId);
-      return;
-    }
 
     const decision = shouldFetchBodyWithReason(
       request.url,
@@ -373,6 +370,7 @@ export async function startNetworkCollection(
 
     requests.push(request);
     requestMap.delete(params.requestId);
+    redirectHops.delete(params.requestId);
   });
 
   registry.registerTyped(typed, 'Network.loadingFailed', (params) => {
@@ -381,11 +379,7 @@ export async function startNetworkCollection(
 
     if (requests.length >= MAX_NETWORK_REQUESTS) {
       requestMap.delete(params.requestId);
-      return;
-    }
-
-    if (shouldFilterRequest(entry.request.url, includeAll, networkInclude, networkExclude)) {
-      requestMap.delete(params.requestId);
+      redirectHops.delete(params.requestId);
       return;
     }
 
@@ -407,6 +401,7 @@ export async function startNetworkCollection(
 
     requests.push(entry.request);
     requestMap.delete(params.requestId);
+    redirectHops.delete(params.requestId);
   });
 
   return () => {
