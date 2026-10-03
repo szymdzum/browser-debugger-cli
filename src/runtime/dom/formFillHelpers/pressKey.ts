@@ -60,9 +60,14 @@ const FOCUS_ELEMENT_SCRIPT = `
 })`;
 
 /**
- * Press a key on an element. Focuses first, then dispatches a keyDown,
- * synthetic events (so frameworks react), and a keyUp. Repeats `times`
- * times with the given modifiers.
+ * Press a key on an element: focus it, then dispatch a real keyDown/keyUp
+ * pair through CDP. Repeats `times` times with the given modifiers.
+ *
+ * Keys that type text (letters, digits, Space, Enter) carry `text`, so the
+ * browser performs the key's default action exactly like a physical key:
+ * the character is inserted (with trusted keypress/input events), Enter adds
+ * a newline in a textarea or submits the form once from an input, and Tab
+ * moves focus. No synthetic events are fired.
  */
 export async function pressKeyElement(
   cdp: CDPConnection,
@@ -119,7 +124,6 @@ export async function pressKeyElement(
 
     for (let i = 0; i < times; i++) {
       await dispatchKeyEvent(cdp, 'keyDown', keyDef, modifierFlags);
-      await dispatchSyntheticKeyEvents(cdp, keyDef, modifierFlags);
       await dispatchKeyEvent(cdp, 'keyUp', keyDef, modifierFlags);
     }
 
@@ -141,74 +145,47 @@ export async function pressKeyElement(
   }
 }
 
+/**
+ * Text a key types with the given modifiers, or undefined for shortcuts and
+ * non-text keys.
+ *
+ * @param keyDef - Key definition
+ * @param modifiers - CDP modifier bit flags
+ * @returns Text to insert, if any
+ */
+function keyText(keyDef: KeyDefinition, modifiers: number): string | undefined {
+  if (!keyDef.text) return undefined;
+  const shortcut = MODIFIER_FLAGS.ctrl | MODIFIER_FLAGS.meta | MODIFIER_FLAGS.alt;
+  if (modifiers & shortcut) return undefined;
+  if (!(modifiers & MODIFIER_FLAGS.shift)) return keyDef.text;
+  return keyDef.shiftText ?? keyDef.text.toUpperCase();
+}
+
+/**
+ * Dispatch one key event through CDP.
+ *
+ * A keyDown with text is sent as `keyDown` (the browser generates the
+ * keypress/input and default action); without text as `rawKeyDown`.
+ *
+ * @param cdp - CDP connection
+ * @param type - Event phase
+ * @param keyDef - Key definition
+ * @param modifiers - CDP modifier bit flags
+ */
 async function dispatchKeyEvent(
   cdp: CDPConnection,
   type: 'keyDown' | 'keyUp',
   keyDef: KeyDefinition,
   modifiers: number
 ): Promise<void> {
+  const text = keyText(keyDef, modifiers);
+  const key = text && text !== '\r' ? text : keyDef.key;
   await cdp.send('Input.dispatchKeyEvent', {
-    type,
+    type: type === 'keyDown' && !text ? 'rawKeyDown' : type,
     code: keyDef.code,
-    key: keyDef.key,
+    key,
     windowsVirtualKeyCode: keyDef.keyCode,
-    nativeVirtualKeyCode: keyDef.keyCode,
     modifiers,
+    ...(type === 'keyDown' && text && { text, unmodifiedText: keyDef.text }),
   });
-}
-
-/**
- * Fire keypress/input/change/submit events at the element level. CDP's
- * Input.dispatchKeyEvent only fires browser-level keydown/keyup, which
- * misses the events many frameworks actually listen for.
- */
-async function dispatchSyntheticKeyEvents(
-  cdp: CDPConnection,
-  keyDef: KeyDefinition,
-  modifiers: number
-): Promise<void> {
-  const isEnterKey = keyDef.key === 'Enter';
-  const script = `
-(function() {
-  const el = document.activeElement;
-  if (!el) return;
-
-  el.dispatchEvent(new KeyboardEvent('keypress', {
-    key: '${keyDef.key}',
-    code: '${keyDef.code}',
-    keyCode: ${keyDef.keyCode},
-    charCode: ${keyDef.keyCode},
-    which: ${keyDef.keyCode},
-    shiftKey: ${Boolean(modifiers & MODIFIER_FLAGS.shift)},
-    ctrlKey: ${Boolean(modifiers & MODIFIER_FLAGS.ctrl)},
-    altKey: ${Boolean(modifiers & MODIFIER_FLAGS.alt)},
-    metaKey: ${Boolean(modifiers & MODIFIER_FLAGS.meta)},
-    bubbles: true,
-    cancelable: true
-  }));
-
-  const tagName = el.tagName;
-  if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  if (${isEnterKey} && (tagName === 'INPUT' || tagName === 'TEXTAREA')) {
-    const form = el.closest('form');
-    if (form) {
-      const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
-      const shouldSubmit = form.dispatchEvent(submitEvent);
-
-      if (shouldSubmit) {
-        if (typeof form.requestSubmit === 'function') {
-          form.requestSubmit();
-        } else {
-          form.submit();
-        }
-      }
-    }
-  }
-})()
-`;
-  await cdp.send('Runtime.evaluate', { expression: script });
 }

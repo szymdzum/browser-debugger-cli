@@ -19,6 +19,7 @@ import type {
   PressKeyCommandOptions,
   ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import { internalError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
@@ -52,7 +53,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .description('Fill a form field with a value (React-compatible, waits for stability)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .argument('<value>', 'Value to fill')
-    .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
     .option('--no-wait', 'Skip waiting for network stability after fill')
     .addOption(jsonOption())
@@ -82,7 +83,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .command('click')
     .description('Click an element and wait for stability (accepts selector or index)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
-    .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-wait', 'Skip waiting for network stability after click')
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
@@ -108,10 +109,15 @@ export function registerFormInteractionCommands(program: Command): void {
     .command('submit')
     .description('Submit a form by clicking submit button and waiting for completion')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
-    .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--wait-navigation', 'Wait for page navigation after submit')
-    .option('--wait-network <ms>', 'Wait for network idle after submit (milliseconds)', '1000')
-    .option('--timeout <ms>', 'Maximum time to wait (milliseconds)', '10000')
+    .option(
+      '--wait-network <ms>',
+      'Wait for network idle after submit (milliseconds)',
+      integerOption(0),
+      1000
+    )
+    .option('--timeout <ms>', 'Maximum time to wait (milliseconds)', integerOption(1), 10000)
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
@@ -124,8 +130,8 @@ export function registerFormInteractionCommands(program: Command): void {
               ...(options.waitNavigation !== undefined && {
                 waitNavigation: options.waitNavigation,
               }),
-              waitNetwork: parseInt(options.waitNetwork, 10),
-              timeout: parseInt(options.timeout, 10),
+              waitNetwork: options.waitNetwork,
+              timeout: options.timeout,
             }),
             call: domSubmit,
             action: 'submit form',
@@ -143,8 +149,8 @@ export function registerFormInteractionCommands(program: Command): void {
     .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .argument('<key>', 'Key to press (Enter, Tab, Escape, Space, ArrowUp, etc.)')
-    .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
-    .option('--times <n>', 'Press key multiple times (default: 1)', parseInt)
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .option('--times <n>', 'Press key multiple times (default: 1)', integerOption(1, 1000))
     .option('--modifiers <mods>', 'Modifier keys: shift,ctrl,alt,meta (comma-separated)')
     .option('--no-wait', 'Skip waiting for network stability after key press')
     .addOption(jsonOption())
@@ -174,11 +180,11 @@ export function registerFormInteractionCommands(program: Command): void {
     .command('scroll')
     .description('Scroll page to element, by pixels, or to page boundaries')
     .argument('[selector]', 'CSS selector to scroll into view (optional)')
-    .option('--index <n>', 'Element index if selector matches multiple (0-based)', parseInt)
-    .option('--down <pixels>', 'Scroll down by pixels', parseInt)
-    .option('--up <pixels>', 'Scroll up by pixels', parseInt)
-    .option('--left <pixels>', 'Scroll left by pixels', parseInt)
-    .option('--right <pixels>', 'Scroll right by pixels', parseInt)
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .option('--down <pixels>', 'Scroll down by pixels', integerOption(0))
+    .option('--up <pixels>', 'Scroll up by pixels', integerOption(0))
+    .option('--left <pixels>', 'Scroll left by pixels', integerOption(0))
+    .option('--right <pixels>', 'Scroll right by pixels', integerOption(0))
     .option('--top', 'Scroll to page top')
     .option('--bottom', 'Scroll to page bottom')
     .option('--no-wait', 'Skip waiting for lazy-loaded content after scroll')
@@ -312,13 +318,13 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
     [
       ['Selector', result.selector ?? 'unknown'],
       ['Element Type', result.elementType ?? 'unknown'],
-      ['Clickable', result.clickable ? 'yes' : 'no (warning)'],
+      ['Method', result.method === 'dom' ? 'DOM click()' : 'mouse events'],
     ],
     15
   );
-  if (!result.clickable) {
+  if (result.warning) {
     fmt.blank();
-    fmt.text('⚠ Warning: Element may not have a click handler');
+    fmt.text(`⚠ Warning: ${result.warning}`);
   }
   return fmt.build();
 }

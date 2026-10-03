@@ -67,16 +67,59 @@ export const REACT_FILL_SCRIPT = `
       suggestion: 'Only input, textarea, select, and contenteditable elements can be filled'
     };
   }
-  
+
+  if (el.disabled) {
+    return {
+      success: false,
+      error: 'Element is disabled',
+      elementType: tagName,
+      suggestion: 'Enable the field first (it may depend on another input)'
+    };
+  }
+  if (el.readOnly) {
+    return {
+      success: false,
+      error: 'Element is read-only',
+      elementType: tagName,
+      suggestion: 'Read-only fields cannot be filled'
+    };
+  }
+
   el.focus();
-  
+
   if (tagName === 'select') {
-    el.value = value;
+    // Match by option value first, then by visible label
+    const options = Array.from(el.options);
+    const option =
+      options.find((o) => o.value === value) ||
+      options.find((o) => o.text.trim() === value);
+    if (!option) {
+      return {
+        success: false,
+        error: 'Option not found: ' + value,
+        elementType: tagName,
+        suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
+      };
+    }
+    el.value = option.value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   } else if (inputType === 'checkbox' || inputType === 'radio') {
-    const shouldCheck = value === 'true' || value === true;
-    el.checked = shouldCheck;
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    // Toggle through a click, like a user: frameworks (React) track checkable
+    // state via click events and revert a programmatic \`checked\` assignment
+    const shouldCheck = value === 'true';
+    if (inputType === 'radio' && !shouldCheck) {
+      return {
+        success: false,
+        error: 'A radio button cannot be unchecked',
+        elementType: tagName,
+        inputType: inputType,
+        suggestion: 'Select another option in the same group instead'
+      };
+    }
+    if (el.checked !== shouldCheck) {
+      el.click();
+    }
   } else if (inputType === 'file') {
     return {
       success: false,
@@ -113,7 +156,6 @@ export const REACT_FILL_SCRIPT = `
   
   if (options.blur !== false) {
     el.blur();
-    el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
   }
   
   return {
@@ -128,7 +170,12 @@ export const REACT_FILL_SCRIPT = `
 `;
 
 /**
- * JavaScript function to click an element.
+ * JavaScript function to locate an element for clicking.
+ *
+ * Scrolls the element into view and reports its center point and whether it
+ * is the topmost element there (`hittable`). It does not click; see
+ * `clickElement`, which dispatches real mouse events or falls back to
+ * `el.click()`.
  *
  * @remarks
  * Handles both direct selector matching and indexed selection.
@@ -196,21 +243,27 @@ export const CLICK_ELEMENT_SCRIPT = `
     window.getComputedStyle(el).cursor === 'pointer'
   );
   
-  if (!isClickable) {
-    console.warn('Warning: Element may not be clickable:', el);
-  }
-  
   el.scrollIntoView({ behavior: 'auto', block: 'center' });
-  
-  el.click();
-  
+
+  // The caller clicks with real mouse events at (x, y) when the element is the
+  // topmost thing there; otherwise it falls back to el.click() via this handle.
+  window.__bdgClickTarget = el;
+  const rect = el.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const top = rect.width > 0 && rect.height > 0 ? document.elementFromPoint(x, y) : null;
+  const hittable = top !== null && (top === el || el.contains(top));
+
   return {
     success: true,
     selector: selector,
     elementType: tagName,
     clickable: isClickable,
     matchCount: allMatches.length,
-    selectedIndex: typeof index === 'number' ? index : undefined
+    selectedIndex: typeof index === 'number' ? index : undefined,
+    x: x,
+    y: y,
+    hittable: hittable
   };
 })
 `;

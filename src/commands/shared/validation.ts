@@ -2,6 +2,8 @@
  * Validation layer for command options.
  */
 
+import { InvalidArgumentError } from 'commander';
+
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { integerOutOfRangeError, invalidIntegerError } from '@/ui/messages/validation.js';
@@ -104,6 +106,29 @@ function parseInteger(value: unknown, options: IntegerRuleOptions): number {
 export function positiveIntRule(options: IntegerRuleOptions = {}): ValidationRule<number> {
   return {
     validate: (value: unknown): number => parseInteger(value, options),
+  };
+}
+
+/**
+ * Build a Commander option parser for strict integers.
+ *
+ * Replaces bare `parseInt` (which yields NaN for "abc", accepts "5px", and
+ * receives the previous value as radix). Invalid input becomes a Commander
+ * usage error, reported with exit code 81.
+ *
+ * @param min - Inclusive lower bound
+ * @param max - Inclusive upper bound
+ * @returns Parser for `.option(flags, description, parser)`
+ */
+export function integerOption(min?: number, max?: number): (value: string) => number {
+  return (value: string): number => {
+    const text = value.trim();
+    const parsed = Number(text);
+    const outOfRange = (min !== undefined && parsed < min) || (max !== undefined && parsed > max);
+    if (!/^[+-]?\d+$/.test(text) || outOfRange) {
+      throw new InvalidArgumentError(`Expected an integer. ${buildRangeSuggestion(min, max)}`);
+    }
+    return parsed;
   };
 }
 

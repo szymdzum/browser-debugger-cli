@@ -25,6 +25,7 @@ import type {
   DomScreenshotCommandOptions,
   DomEvalCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { integerOption } from '@/commands/shared/validation.js';
 
 /**
  * Register DOM telemetry commands on the root Commander program.
@@ -62,8 +63,8 @@ export function registerDomCommands(program: Command): void {
     .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option('--raw', 'Output raw HTML with all filtering options')
     .option('--all', 'Get all matches (only with --raw)')
-    .option('--nth <n>', 'Get nth match (only with --raw)', parseInt)
-    .option('--node-id <id>', 'Use nodeId directly (only with --raw)', parseInt)
+    .option('--nth <n>', 'Get nth match (only with --raw)', integerOption(0))
+    .option('--node-id <id>', 'Use nodeId directly (only with --raw)', integerOption(1))
     .option('-j, --json', 'Output as JSON')
     .action(async (selector: string, options: DomGetCommandOptions) => {
       await handleDomGet(selector, options);
@@ -74,9 +75,13 @@ export function registerDomCommands(program: Command): void {
     .description('Capture page or element screenshot')
     .argument('<path>', 'Output file path, or directory for --follow mode')
     .option('--selector <selector>', 'CSS selector for element capture')
-    .option('--index <number>', 'Cached element index (0-based) from previous query', parseInt)
+    .option(
+      '--index <number>',
+      'Cached element index (0-based) from previous query',
+      integerOption(0)
+    )
     .option('--format <format>', 'Image format: png or jpeg (default: png)')
-    .option('--quality <number>', 'JPEG quality 0-100 (default: 90)', parseInt)
+    .option('--quality <number>', 'JPEG quality 0-100 (default: 90)', integerOption(0, 100))
     .option('--no-full-page', 'Capture viewport only (default: full page)')
     .option('--no-resize', 'Disable auto-resize (full resolution)')
     .option('--scroll <selector>', 'Scroll element into view before capture')

@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`dom pressKey`** - Printable keys and Enter now go through Chrome's native input pipeline: characters are actually inserted (`a`, `Shift+b` → `B`, `Shift+1` → `!`), Enter adds a newline in textareas and contenteditable instead of submitting the form, and no fake `keypress`/`input`/`change`/`submit` events are dispatched on top (Tab no longer fires events on the next field)
+- **`dom click`** - Clicks with real mouse events at the element's center, so components that open on `pointerdown`/`mousedown` (menus, comboboxes) respond; falls back to `el.click()` with a `warning` when the element is covered or has no size. Output reports `method: "mouse" | "dom"` instead of the misleading "may not have a click handler" warning
+- **`dom fill`** - Read-only and disabled fields fail with exit 81 instead of being silently filled; checkboxes and radios are toggled by clicking, so controlled (React) inputs keep the new state; `<select>` matches options by value or label and lists the available options when none match; `focusout` fires once on blur (was twice)
+- **Integer options** - `--index`, `--nth`, `--node-id`, `--quality`, `--times`, scroll pixels and `dom submit --wait-network/--timeout` reject non-integers and out-of-range values with exit 81 (was `NaN` or silently truncated, e.g. `5px` → 5)
 - **Docker images** - Chrome failed to start in both images (`Running as root without --no-sandbox is not supported`). bdg now adds `--no-sandbox` only where the sandbox cannot work (Docker, root on Linux, or `BDG_NO_SANDBOX=1`) and drops the unstable `--single-process`, images run as the unprivileged `node` user, the duplicate apk Node.js is gone, and Podman containers are detected
 - **Crash recovery in Alpine/BusyBox** - Process command lines are read from `/proc/<pid>/cmdline` on Linux, so an orphaned Chrome is recognized and reaped where BusyBox `ps` lacks `-o`/`-p`
 - **npm package** - No longer ships compiled tests, test utilities or source maps (1088 → 403 files, 617 → 314 kB)

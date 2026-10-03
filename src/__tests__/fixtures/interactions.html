@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BDG Interactions Fixture</title>
+</head>
+<body>
+  <form id="form">
+    <input id="name" name="name" type="text">
+    <textarea id="notes" name="notes"></textarea>
+    <input id="agree" name="agree" type="checkbox">
+    <input id="locked" name="locked" type="text" value="locked" readonly>
+    <input id="off" name="off" type="text" value="off" disabled>
+    <button id="submit" type="submit">Send</button>
+  </form>
+  <div id="editor" contenteditable="true"></div>
+  <div id="menu-trigger" tabindex="0">Menu</div>
+  <div id="menu" hidden>Opened</div>
+
+  <script>
+    // Event log for assertions: "<id>:<type>[:<key>]"
+    window.events = [];
+    window.submits = 0;
+    const log = (e) => window.events.push(`${e.target.id}:${e.type}${e.key ? ':' + e.key : ''}`);
+    for (const id of ['name', 'notes', 'agree', 'editor']) {
+      const el = document.getElementById(id);
+      for (const type of ['keydown', 'keypress', 'input', 'change', 'click', 'blur', 'focusout']) {
+        el.addEventListener(type, log);
+      }
+    }
+
+    document.getElementById('form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      window.submits++;
+    });
+
+    // React-style controlled checkbox: state changes only on click, and the
+    // DOM is re-rendered from state after every change (like a React commit).
+    const agree = document.getElementById('agree');
+    window.agreeState = false;
+    agree.addEventListener('click', () => { window.agreeState = !window.agreeState; });
+    agree.addEventListener('change', () => {
+      setTimeout(() => { agree.checked = window.agreeState; }, 0);
+    });
+
+    // Radix/MUI-style menu: opens on pointerdown, not on click
+    document.getElementById('menu-trigger').addEventListener('pointerdown', () => {
+      document.getElementById('menu').hidden = false;
+    });
+  </script>
+</body>
+</html>

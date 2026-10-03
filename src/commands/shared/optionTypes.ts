@@ -188,15 +188,14 @@ export interface ClickCommandOptions extends BaseOptions, IndexOptions {
 
 /**
  * Options for submit command.
- * Note: waitNetwork and timeout come as strings from Commander.
  */
 export interface SubmitCommandOptions extends BaseOptions, IndexOptions {
   /** Wait for navigation to complete */
   waitNavigation?: boolean;
-  /** Wait for network idle (milliseconds as string) */
-  waitNetwork: string;
-  /** Timeout (milliseconds as string) */
-  timeout: string;
+  /** Wait for network idle (milliseconds) */
+  waitNetwork: number;
+  /** Timeout (milliseconds) */
+  timeout: number;
 }
 
 /**

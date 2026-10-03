@@ -106,6 +106,8 @@ void describe('JSON contract', () => {
       ['peek', '--last', 'abc', '--json'],
       ['network', 'list', '--preset', 'nope', '--json'],
       [fixture.url, '--port', 'abc', '--json'],
+      ['dom', 'click', 'button', '--index', 'abc', '--json'],
+      ['dom', 'screenshot', 'x.png', '--quality', '101', '--json'],
     ]) {
       await expectEnvelope(args, 81);
     }
