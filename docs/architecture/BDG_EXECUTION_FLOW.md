@@ -359,7 +359,7 @@ A healthy daemon cleans up after itself. After a crash or SIGKILL, `src/session/
 - `bdg status` removes a stale `daemon.sock` (file present, nothing listening)
 - `bdg cleanup` removes stale daemon files and kills the Chrome in `chrome.pid`; `--force` also kills a live daemon
 - The next session start kills the Chrome in `chrome.pid`
-- Chrome is only killed if its command line contains `--remote-debugging-port=`, so a reused PID never gets an unrelated process killed
+- Chrome is only killed if its command line contains the `--bdg-session-dir=<session dir>` marker bdg adds at launch, so a reused PID (or a user's own debugging Chrome) is never killed
 
 ## Development Notes
 

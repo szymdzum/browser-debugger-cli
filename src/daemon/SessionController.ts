@@ -110,7 +110,14 @@ export class SessionController {
   }
 
   /**
-   * Stop the session if one is running (used on daemon signals).
+   * Reject any further start requests (the daemon is shutting down).
+   */
+  refuseNewSessions(): void {
+    this.closing = true;
+  }
+
+  /**
+   * Stop the session if one is running or launching (used on daemon shutdown).
    *
    * @returns True if a session was stopped
    */
@@ -303,7 +310,7 @@ export class SessionController {
   ): Promise<Omit<StartSessionResponse, 'type' | 'sessionId'>> {
     const { type: _type, sessionId: _sessionId, url, ...options } = request;
     try {
-      const session = await Session.create(url, filterDefined(options), (reason) =>
+      const session = Session.create(url, filterDefined(options), (reason) =>
         this.handleSessionEnded(reason)
       );
       onCreated(session);

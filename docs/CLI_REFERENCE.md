@@ -21,7 +21,7 @@ bdg status --json               # JSON output
 ### Stop the session
 ```bash
 bdg stop                        # Stop session (closes Chrome launched by bdg)
-bdg stop --kill-chrome          # Also SIGTERM the reported Chrome PID if still alive
+bdg stop --kill-chrome          # Kept for compatibility (no additional effect)
 ```
 
 ## Live Monitoring
@@ -831,8 +831,8 @@ bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`):
 **Key Behaviors:**
 - **One daemon = one session**: only `bdg <url>` starts the daemon; it exits when the session ends (stop, Chrome disconnect, or `--timeout`)
 - **Only one session at a time**: the daemon claims its socket atomically; a second `bdg <url>` reports the running session
-- **Commands without a session**: exit 83 ("No active session") without starting anything
-- **Crash recovery**: files left by a killed daemon are cleaned up by `bdg status`, `bdg cleanup` or the next `bdg <url>`; an orphaned Chrome is killed only after its command line confirms it was launched by bdg
+- **Commands without a session**: exit 83 ("No active session") without starting anything; `bdg status` reports `active: false` (exit 0)
+- **Crash recovery**: files left by a killed daemon are cleaned up by `bdg status`, `bdg cleanup` or the next `bdg <url>`; an orphaned Chrome is killed only if its command line carries the `--bdg-session-dir=<dir>` marker bdg adds at launch
 
 ## Output Format
 

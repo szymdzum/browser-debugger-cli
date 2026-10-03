@@ -118,9 +118,11 @@ export class IPCServer {
   private scheduleShutdown(): void {
     if (this.shuttingDown) return;
     this.shuttingDown = true;
+    this.controller.refuseNewSessions();
     this.socketServer.unpublish();
     void (async () => {
       await this.waitForInFlightRequests();
+      await this.controller.stopActiveSession();
       await delay(SHUTDOWN_DELAY_MS);
       log.info('Session ended, shutting down daemon');
       await this.stop();

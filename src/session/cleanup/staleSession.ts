@@ -7,10 +7,14 @@
  * get an unrelated process killed.
  */
 
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { clearChromePid, readChromePid } from '@/session/chrome.js';
 import { probeDaemonSocket } from '@/session/daemonSocket.js';
-import { getSessionFilePath } from '@/session/paths.js';
+import { getSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readDaemonPid } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { safeRemoveFile } from '@/utils/file.js';
@@ -18,11 +22,20 @@ import { getProcessCommand, isProcessAlive, killChromeProcess } from '@/utils/pr
 
 const log = createLogger('cleanup');
 
-/** Marker present in the command line of every Chrome bdg launches. */
-const CHROME_COMMAND_MARKER = '--remote-debugging-port=';
+/** Absolute path of the daemon entry script (dist/session/cleanup → dist/daemon.js). */
+const DAEMON_SCRIPT_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'daemon.js');
 
-/** Marker present in the command line of the bdg daemon. */
-const DAEMON_COMMAND_MARKER = 'daemon.js';
+/**
+ * Check whether a process command line contains an exact argument.
+ *
+ * @param command - Full command line
+ * @param arg - Argument to look for
+ * @returns True if `arg` appears as a whole space-delimited argument
+ */
+function hasArgument(command: string | null, arg: string): boolean {
+  if (!command) return false;
+  return command.includes(`${arg} `) || command.endsWith(arg);
+}
 
 /**
  * Remove per-session files (metadata, query cache).
@@ -51,14 +64,15 @@ export async function removeStaleDaemonFiles(): Promise<boolean> {
 }
 
 /**
- * Kill the Chrome recorded in chrome.pid, if it is still a bdg-launched Chrome.
+ * Kill the Chrome recorded in chrome.pid, if it is still the Chrome bdg launched
+ * for this session directory (verified by its marker flag).
  *
  * @returns True if a Chrome process was killed
  */
 export function killOrphanedChrome(): boolean {
   const chromePid = readChromePid();
   if (!chromePid) return false;
-  if (!getProcessCommand(chromePid)?.includes(CHROME_COMMAND_MARKER)) {
+  if (!hasArgument(getProcessCommand(chromePid), chromeSessionMarkerFlag(getSessionDir()))) {
     log.debug(`PID ${chromePid} is no longer a bdg Chrome; dropping chrome.pid`);
     clearChromePid();
     return false;
@@ -81,5 +95,5 @@ export function killOrphanedChrome(): boolean {
 export function readLiveDaemonPid(): number | null {
   const pid = readDaemonPid();
   if (!pid || !isProcessAlive(pid)) return null;
-  return getProcessCommand(pid)?.includes(DAEMON_COMMAND_MARKER) ? pid : null;
+  return hasArgument(getProcessCommand(pid), DAEMON_SCRIPT_PATH) ? pid : null;
 }

@@ -7,7 +7,6 @@ import type { StopResult } from '@/commands/types.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { joinLines } from '@/ui/formatting.js';
-import { createLogger } from '@/ui/logging/index.js';
 import {
   chromeKilledMessage,
   orphanedDaemonsCleanedMessage,
@@ -17,9 +16,6 @@ import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/se
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
-
-const log = createLogger('cleanup');
 
 /**
  * Format stop result for human-readable output.
@@ -42,23 +38,6 @@ function formatStop(data: StopResult): string {
 }
 
 /**
- * Send SIGTERM to Chrome if it is still running after the session stopped.
- *
- * @param chromePid - Chrome PID reported by the daemon
- * @returns True if a signal was sent
- */
-function killChromeIfAlive(chromePid: number | undefined): boolean {
-  if (!chromePid || !isProcessAlive(chromePid)) return false;
-  try {
-    killChromeProcess(chromePid, 'SIGTERM');
-    return true;
-  } catch (error) {
-    log.debug(`Failed to kill Chrome ${chromePid}: ${getErrorMessage(error)}`);
-    return false;
-  }
-}
-
-/**
  * Register stop command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -67,22 +46,25 @@ export function registerStopCommand(program: Command): void {
   program
     .command('stop')
     .description('Stop daemon and close browser session')
-    .option('--kill-chrome', 'Also kill Chrome browser process', false)
+    .option(
+      '--kill-chrome',
+      'Kept for compatibility: Chrome launched by bdg is always closed on stop',
+      false
+    )
     .addOption(jsonOption())
     .action(async (options: StopCommandOptions) => {
       await runCommand<StopCommandOptions, StopResult>(
-        async (opts) => {
+        async () => {
           try {
             const response = await stopSession();
 
             if (response.status === 'ok') {
-              const chromeKilled = opts.killChrome ? killChromeIfAlive(response.chromePid) : false;
               return {
                 success: true,
                 data: {
                   stopped: {
                     bdg: true,
-                    chrome: chromeKilled || Boolean(response.chromePid),
+                    chrome: Boolean(response.chromePid),
                     daemons: false,
                   },
                   orphanedDaemonsCount: 0,

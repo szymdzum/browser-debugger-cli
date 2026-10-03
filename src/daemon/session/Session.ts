@@ -9,7 +9,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { connectCDP, navigateToTarget } from '@/daemon/session/cdpSetup.js';
-import { setupChromeConnection } from '@/daemon/session/chromeConnection.js';
+import { findPageTarget, setupChromeConnection } from '@/daemon/session/chromeConnection.js';
 import { startTelemetryCollectors } from '@/daemon/session/collectors.js';
 import { createCommandRegistry, type CommandRegistry } from '@/daemon/session/commandRegistry.js';
 import { teardownSession, type TeardownContext } from '@/daemon/session/teardown.js';
@@ -61,12 +61,15 @@ export class Session {
   private started = false;
 
   private constructor(
-    private readonly config: SessionConfig,
+    private config: SessionConfig,
     private readonly onEnded: (reason: SessionEndReason) => void
   ) {}
 
   /**
    * Validate the request and create a session that has not been launched yet.
+   *
+   * Synchronous so the caller can register the session (and stop it) before
+   * any asynchronous work starts; the CDP port is resolved in {@link launch}.
    *
    * @param url - Target URL
    * @param options - Session options from the start request
@@ -74,11 +77,11 @@ export class Session {
    * @returns Unlaunched session
    * @throws CommandError for an invalid URL
    */
-  static async create(
+  static create(
     url: string,
     options: SessionOptions,
     onEnded: (reason: SessionEndReason) => void
-  ): Promise<Session> {
+  ): Session {
     const validation = validateUrl(url);
     if (!validation.valid) {
       throw new CommandError(
@@ -87,8 +90,7 @@ export class Session {
         EXIT_CODES.INVALID_URL
       );
     }
-    const port = await getSessionPort(options.port);
-    return new Session(buildConfig(url, port, options), onEnded);
+    return new Session(buildConfig(url, options.port ?? 0, options), onEnded);
   }
 
   /**
@@ -194,11 +196,17 @@ export class Session {
    */
   private async acquireResources(): Promise<void> {
     this.store.resetSessionStart();
+    this.config = { ...this.config, port: await getSessionPort(this.config.port || undefined) };
+    this.throwIfStopping();
     if (!this.config.chromeWsUrl) {
       killOrphanedChrome();
     }
     this.chrome = await setupChromeConnection(this.config, this.store, log, this.notify);
     this.throwIfStopping();
+    if (this.chrome) {
+      await findPageTarget(this.config, this.store, log);
+      this.throwIfStopping();
+    }
     this.cdp = await connectCDP(this.store, log, () => void this.stop('crash'));
     this.throwIfStopping();
     this.cleanupFunctions = await startTelemetryCollectors(this.cdp, this.config, this.store, log);

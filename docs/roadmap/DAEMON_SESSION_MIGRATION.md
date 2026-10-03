@@ -27,9 +27,9 @@ daemon/worker split and from PID-file bookkeeping, not from isolated mistakes:
 
 ## Principles
 
-1. **The daemon is the session.** Only `bdg <url>` spawns it. It exits on `stop`, on Chrome disconnect, on `--timeout`, or if no `start_session` arrives shortly after spawn. Other commands never spawn anything: no socket means no session (exit 83).
+1. **The daemon is the session.** Only `bdg <url>` spawns it. It exits on `stop`, on Chrome disconnect, on `--timeout`, or if no `start_session` arrives shortly after spawn. Other commands never spawn anything: no socket means no session (exit 83; `bdg status` reports `active: false` with exit 0, as on main).
 2. **Liveness = socket.** If a connection succeeds, the daemon is alive. `ECONNREFUSED` means the socket is stale and can be removed.
-3. **Chrome cleanup is in-process.** Teardown runs in `try/finally` and in signal handlers. After a hard crash, the only trace is `chrome.pid`. It is killed only if `ps -o command= -p PID` shows our `--user-data-dir`.
+3. **Chrome cleanup is in-process.** Teardown runs in `try/finally` and in signal handlers. After a hard crash, the only trace is `chrome.pid`. It is killed only if `ps -o command= -p PID` shows the `--bdg-session-dir=<session dir>` marker flag bdg adds to every Chrome it launches.
 
 ## Stages
 
@@ -52,7 +52,7 @@ Each stage is a separate, green step. Smoke tests must pass before moving on.
 
 ### Stage 2: Daemon lifecycle = session
 
-- [x] In `src/index.ts`, spawn the daemon only for the start command. Use `parseAsync`, and emit a JSON envelope when daemon startup fails.
+- [x] In `src/index.ts`, spawn the daemon only for the start command, and use `parseAsync`. (A JSON envelope for daemon startup failure is out of scope: the start command has no `--json` mode yet.)
 - [x] Single instance via socket. Connect to the existing socket: success means "already running". Otherwise remove the stale socket and `listen`. Close the race window atomically: listen on a temporary path, then `link()` to the final path, where `EEXIST` means we lost. Verify `link()` on socket files on macOS and Linux; the fallback is a short `O_EXCL` lock with age-based expiry.
 - [x] Daemon SIGTERM/SIGINT handlers run full, idempotent teardown.
 - [x] Remove the lock dance in `daemon/launcher.ts`, `daemon.lock`, `session.lock`, `session.pid`, `preStart.ts`, `sessionProbe.ts`, and the reconcile/recover logic in `SessionHandlers`.
@@ -67,7 +67,7 @@ Each stage is a separate, green step. Smoke tests must pass before moving on.
 
 ## User-visible changes
 
-- `status`, `peek` and other commands with no session no longer spawn a daemon. They report "no active session" (exit 83). The JSON shape must stay compatible.
+- Commands with no session no longer spawn a daemon. They report "no active session" (exit 83). `bdg status` keeps main's behavior: `active: false`, exit 0.
 - `workerPid` in the start response now carries the daemon PID. The field name is kept for compatibility.
 - `session.pid`, `daemon.lock` and `session.lock` disappear from `~/.bdg`.
 - `--chrome-ws-url`, `--headless`, `--timeout` and the other start flags are unchanged.

@@ -207,7 +207,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'stop:--kill-chrome': {
     default:
       'Chrome launched by bdg is always closed on stop; an attached Chrome (--chrome-ws-url) is left running',
-    whenEnabled: 'Additionally sends SIGTERM to the reported Chrome PID if it is still alive',
+    whenEnabled: 'No additional effect; kept for compatibility',
   },
 
   'status:-v': {

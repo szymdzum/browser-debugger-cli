@@ -106,3 +106,15 @@ describe('buildChromeFlags with custom flags', () => {
     assert.ok(flags.includes('--remote-debugging-port=9222'));
   });
 });
+
+describe('buildChromeFlags session marker', () => {
+  test('adds the session marker flag when a session dir is given', () => {
+    const flags = buildChromeFlags({ port: 9222, sessionDir: '/tmp/bdg-x' });
+    assert.ok(flags.includes('--bdg-session-dir=/tmp/bdg-x'));
+  });
+
+  test('omits the marker without a session dir', () => {
+    const flags = buildChromeFlags({ port: 9222 });
+    assert.ok(!flags.some((f) => f.startsWith('--bdg-session-dir=')));
+  });
+});

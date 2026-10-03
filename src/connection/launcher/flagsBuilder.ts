@@ -31,9 +31,25 @@ export interface FlagsBuilderOptions {
   headless?: boolean | undefined;
   /** Additional Chrome command-line flags */
   chromeFlags?: string[] | undefined;
+  /** bdg session directory; adds a marker flag used to verify the process during crash cleanup */
+  sessionDir?: string | undefined;
 }
 
 const REMOTE_DEBUGGING_FLAG = (port: number): string => `--remote-debugging-port=${port}`;
+
+/**
+ * Marker flag identifying a Chrome launched by bdg for a given session directory.
+ *
+ * Chrome ignores unknown switches; crash cleanup matches this exact string in a
+ * process's command line before killing it, so a reused PID (or the user's own
+ * debugging Chrome) is never mistaken for a bdg Chrome.
+ *
+ * @param sessionDir - bdg session directory
+ * @returns Marker flag
+ */
+export function chromeSessionMarkerFlag(sessionDir: string): string {
+  return `--bdg-session-dir=${sessionDir}`;
+}
 
 /**
  * Check if running inside a Docker container.
@@ -129,7 +145,11 @@ export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
 
   const baseFlags = options.ignoreDefaultFlags ? [] : chromeLauncher.Launcher.defaultFlags();
 
-  const bdgFlags: string[] = [REMOTE_DEBUGGING_FLAG(port), ...BDG_CHROME_FLAGS];
+  const bdgFlags: string[] = [
+    REMOTE_DEBUGGING_FLAG(port),
+    ...(options.sessionDir ? [chromeSessionMarkerFlag(options.sessionDir)] : []),
+    ...BDG_CHROME_FLAGS,
+  ];
 
   const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
 

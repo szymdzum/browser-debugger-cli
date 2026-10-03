@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import * as os from 'os';
 import * as path from 'path';
 
+import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { DAEMON_ALREADY_RUNNING_CODE, SocketServer } from '@/daemon/server/SocketServer.js';
 import {
   killOrphanedChrome,
@@ -19,7 +20,7 @@ import {
 import { probeDaemonSocket } from '@/session/daemonSocket.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
-import { isProcessAlive } from '@/utils/process.js';
+import { getProcessCommand, isProcessAlive } from '@/utils/process.js';
 
 /**
  * Create a stale Unix socket file (bound, then abandoned without unlink).
@@ -36,6 +37,33 @@ async function createStaleSocket(socketPath: string): Promise<void> {
 }
 
 void describe('Session state contract', () => {
+  /**
+   * Spawn a long-running node process with extra argv entries (visible to ps).
+   *
+   * @param args - Extra arguments
+   * @returns Child process with a pid
+   */
+  function spawnWithArgs(args: string[]): ChildProcess & { pid: number } {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', '--', ...args]);
+    children.push(child);
+    assert.ok(child.pid);
+    return child as ChildProcess & { pid: number };
+  }
+
+  /**
+   * Wait until ps shows the given text in a process's command line.
+   *
+   * @param pid - Process ID
+   * @param text - Expected substring
+   */
+  async function waitForCommand(pid: number, text: string): Promise<void> {
+    for (let i = 0; i < 50; i++) {
+      if (getProcessCommand(pid)?.includes(text)) return;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error(`process ${pid} never showed ${text}`);
+  }
+
   let testDir: string;
   const servers: SocketServer[] = [];
   const children: ChildProcess[] = [];
@@ -146,6 +174,25 @@ void describe('Session state contract', () => {
       assert.equal(killOrphanedChrome(), false);
       assert.equal(isProcessAlive(child.pid), true, 'unrelated process must survive');
       assert.equal(fs.existsSync(getSessionFilePath('CHROME_PID')), false);
+    });
+
+    void it('kills a process carrying this session marker', async () => {
+      const child = spawnWithArgs([chromeSessionMarkerFlag(testDir)]);
+      fs.writeFileSync(getSessionFilePath('CHROME_PID'), String(child.pid));
+      await waitForCommand(child.pid, chromeSessionMarkerFlag(testDir));
+
+      assert.equal(killOrphanedChrome(), true);
+      await new Promise((resolve) => child.once('exit', resolve));
+      assert.equal(isProcessAlive(child.pid), false);
+    });
+
+    void it('does not kill a process whose marker is only a prefix match', async () => {
+      const child = spawnWithArgs([chromeSessionMarkerFlag(`${testDir}-other`)]);
+      fs.writeFileSync(getSessionFilePath('CHROME_PID'), String(child.pid));
+      await waitForCommand(child.pid, `${testDir}-other`);
+
+      assert.equal(killOrphanedChrome(), false);
+      assert.equal(isProcessAlive(child.pid), true, 'process for another session must survive');
     });
 
     void it('ignores a daemon.pid that does not belong to a bdg daemon', () => {
