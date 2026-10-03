@@ -17,8 +17,6 @@ export interface FollowModeOptions {
   stopMessage: () => string;
   /** Polling interval in milliseconds (default: 1000) */
   intervalMs?: number;
-  /** Handle EPIPE errors gracefully (for piped output) */
-  handleEpipe?: boolean;
 }
 
 /**
@@ -30,7 +28,6 @@ export interface FollowModeOptions {
  * - First refresh call (awaited)
  * - Periodic interval-based refresh
  * - SIGINT handler for graceful shutdown
- * - Optional EPIPE handling for piped output
  *
  * @param refreshFn - Async function to call on each refresh cycle
  * @param options - Configuration options for follow mode
@@ -54,7 +51,7 @@ export async function setupFollowMode(
   refreshFn: () => Promise<void>,
   options: FollowModeOptions
 ): Promise<void> {
-  const { startMessage, stopMessage, intervalMs = 1000, handleEpipe = false } = options;
+  const { startMessage, stopMessage, intervalMs = 1000 } = options;
 
   console.error(startMessage());
   await refreshFn();
@@ -68,13 +65,4 @@ export async function setupFollowMode(
     console.error(stopMessage());
     process.exit(EXIT_CODES.SUCCESS);
   });
-
-  if (handleEpipe) {
-    process.stdout.on('error', (err: NodeJS.ErrnoException) => {
-      if (err.code === 'EPIPE') {
-        clearInterval(intervalId);
-        process.exit(EXIT_CODES.SUCCESS);
-      }
-    });
-  }
 }

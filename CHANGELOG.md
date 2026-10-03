@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Piped output truncated at 64 KB** - `bdg … | jq` (and any slower pipe reader) received at most 64 KB of output, so large JSON (`--help --json`, `dom eval`, `dom a11y tree`, `details`, `peek --last 1000`) was cut off with exit 0. stdout/stderr writes are now synchronous, and a reader closing the pipe early (`bdg peek -f | head`) ends the command quietly instead of crashing on EPIPE
 - **Docs: HAR export after `bdg stop`** - The CLI reference claimed `bdg network har` reads `~/.bdg/session.json` after a session stops; telemetry only exists while the session runs, so export before `bdg stop`
 - **`dom pressKey`** - Printable keys and Enter now go through Chrome's native input pipeline: characters are actually inserted (`a`, `Shift+b` → `B`, `Shift+1` → `!`), Enter adds a newline in textareas and contenteditable instead of submitting the form, and no fake `keypress`/`input`/`change`/`submit` events are dispatched on top (Tab no longer fires events on the next field)
 - **`dom click`** - Clicks with real mouse events at the element's center, so components that open on `pointerdown`/`mousedown` (menus, comboboxes) respond; falls back to `el.click()` with a `warning` when the element is covered or has no size. Output reports `method: "mouse" | "dom"` instead of the misleading "may not have a click handler" warning

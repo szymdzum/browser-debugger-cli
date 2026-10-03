@@ -38,9 +38,11 @@ export async function runCommand(
   options: {
     timeout?: number;
     env?: Record<string, string>;
+    /** Delay before reading stdout (ms); lets the pipe fill up like a slow consumer */
+    readDelay?: number;
   } = {}
 ): Promise<CommandResult> {
-  const { timeout = 30000, env = {} } = options;
+  const { timeout = 30000, env = {}, readDelay = 0 } = options;
 
   // Path to compiled CLI entry point (ESM module compatibility)
   const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
@@ -71,6 +73,10 @@ export async function runCommand(
     child.stdout?.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
     });
+    if (readDelay > 0) {
+      child.stdout?.pause();
+      setTimeout(() => child.stdout?.resume(), readDelay);
+    }
 
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString();

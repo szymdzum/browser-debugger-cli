@@ -94,6 +94,28 @@ function rewriteHelpCommand(): void {
 }
 
 /**
+ * Configure stdout and stderr for piping.
+ *
+ * Pipes are asynchronous in Node on POSIX: `process.exit()` right after a
+ * large write drops whatever the reader has not consumed yet, so `bdg … | jq`
+ * received at most 64 KB. Blocking writes complete before any exit path runs.
+ * A reader that closes early (`bdg peek -f | head`) ends the command quietly
+ * instead of crashing on EPIPE.
+ */
+function configureStdio(): void {
+  for (const stream of [process.stdout, process.stderr]) {
+    const handle = (
+      stream as unknown as { _handle?: { setBlocking?: (blocking: boolean) => void } }
+    )._handle;
+    handle?.setBlocking?.(true);
+    stream.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'EPIPE') throw error;
+      process.exit(process.exitCode ?? EXIT_CODES.SUCCESS);
+    });
+  }
+}
+
+/**
  * Main entry point.
  *
  * Registers commands and dispatches. Only `bdg <url>` spawns the daemon (see
@@ -101,6 +123,7 @@ function rewriteHelpCommand(): void {
  * reports "no active session" when there is none.
  */
 async function main(): Promise<void> {
+  configureStdio();
   rewriteHelpCommand();
   const jsonMode = isJsonMode();
   const program = new Command()
