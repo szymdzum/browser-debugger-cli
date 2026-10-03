@@ -5,7 +5,7 @@ Two Dockerfiles are provided:
 - `Dockerfile` installs the published `browser-debugger-cli` package from npm
 - `Dockerfile.local` installs your local build (run `npm run build` first)
 
-Both use `node:22-alpine` with Alpine's Chromium and run as the unprivileged `node` user.
+Both use `node:24-alpine` with Alpine's Chromium and run as the unprivileged `node` user.
 
 ## Build and run
 

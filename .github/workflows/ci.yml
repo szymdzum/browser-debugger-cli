@@ -110,9 +110,13 @@ jobs:
         run: npm run lint
 
   test:
-    name: Contract Tests
+    name: Contract Tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24', '26']
 
     steps:
       - name: Checkout code
@@ -121,7 +125,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
 
       - name: Restore node_modules cache
         id: cache
@@ -139,9 +143,13 @@ jobs:
 
   # Smoke tests with Chrome - run on every PR; shell integration suite only on main
   smoke:
-    name: Smoke Tests (Chrome)
+    name: Smoke Tests (Chrome) (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24', '26']
 
     steps:
       - name: Checkout code
@@ -150,7 +158,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
 
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v2
@@ -190,7 +198,7 @@ jobs:
         run: npm run test:smoke
 
       - name: Run integration tests
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && matrix.node == '22'
         run: ./tests/run-all-tests.sh --integration
 
   security:

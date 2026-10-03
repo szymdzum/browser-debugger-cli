@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Node versions** - CI runs unit/contract and smoke tests on Node 22, 24 and 26 (build and lint stay on 22, the minimum); Docker images use `node:24-alpine`; `@types/node` matches the minimum supported Node (22) so APIs missing there fail type-checking instead of at runtime. Dependabot no longer proposes major bumps of `@types/node` or TypeScript (typescript-eslint does not support TypeScript 7 yet)
+
 ### Removed
 
 - **BREAKING: `bdg peek --dom` / `-d`** - It never showed data (DOM was only captured into `session.json`, which nothing writes since #253). Use `bdg dom a11y tree` or `bdg dom query` for page structure
