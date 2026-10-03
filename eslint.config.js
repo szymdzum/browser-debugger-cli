@@ -1,7 +1,8 @@
 import js from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
-import importPlugin from 'eslint-plugin-import';
+import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript';
+import importPlugin from 'eslint-plugin-import-x';
 import unusedImports from 'eslint-plugin-unused-imports';
 import noRelativeImportPaths from 'eslint-plugin-no-relative-import-paths';
 import tsdoc from 'eslint-plugin-tsdoc';
@@ -25,7 +26,7 @@ export default [
     },
     plugins: {
       '@typescript-eslint': tseslint,
-      import: importPlugin,
+      'import-x': importPlugin,
       'unused-imports': unusedImports,
       'no-relative-import-paths': noRelativeImportPaths,
       tsdoc: tsdoc,
@@ -117,8 +118,8 @@ export default [
         },
       ],
 
-      'import/no-unresolved': 'error',
-      'import/order': [
+      'import-x/no-unresolved': 'error',
+      'import-x/order': [
         'warn',
         {
           groups: ['builtin', 'external', 'type', 'internal', 'parent', 'sibling', 'index'],
@@ -136,7 +137,7 @@ export default [
       ],
 
       // Dependency layer enforcement - prevent architectural violations
-      'import/no-restricted-paths': [
+      'import-x/no-restricted-paths': [
         'error',
         {
           zones: [
@@ -194,11 +195,7 @@ export default [
       ],
     },
     settings: {
-      'import/resolver': {
-        typescript: {
-          project: './tsconfig.json',
-        },
-      },
+      'import-x/resolver-next': [createTypeScriptImportResolver({ project: './tsconfig.json' })],
     },
   },
   // Test files - disable no-floating-promises for Node.js test runner

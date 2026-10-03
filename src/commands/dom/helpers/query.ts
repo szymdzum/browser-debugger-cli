@@ -171,7 +171,7 @@ export async function getDomContext(nodeId: number): Promise<DomContext | null> 
  * Fetch full details (HTML, attributes, classes) for one or more elements.
  */
 export async function getDOMElements(options: DomGetOptions): Promise<DomGetResult> {
-  let nodeIds: number[] = [];
+  let nodeIds: number[];
 
   if (options.nodeId !== undefined) {
     await callCDP('DOM.enable', {});
