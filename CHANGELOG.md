@@ -9,7 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING: Daemon is the session** - The separate worker process is gone; the daemon hosts the Chrome/CDP session in-process and exits when the session ends (#253)
+  - Only `bdg <url>` starts a daemon; other commands without a session exit 83 ("No active session") instead of spawning an idle daemon
+  - Liveness is decided by the daemon socket, not PID files; `session.pid`, `session.lock` and `daemon.lock` are no longer used
+  - Single-instance is enforced atomically (socket claimed via `link()`), so concurrent `bdg <url>` runs can no longer spawn two daemons
+  - Daemon SIGTERM/SIGINT and a stop during startup now always tear down Chrome
+  - `bdg cleanup --aggressive` is an alias for `--force`; `--force` kills a stuck daemon and its Chrome
+  - `workerPid` in the start response now carries the daemon PID
+
 - **BREAKING: Node.js 22.12+ required** - Node 20 reached end-of-life in April 2026; `commander` 15 and current tooling require Node 22. CI, release workflow and Docker images now use Node 22
+
+### Fixed
+
+- **DOM interaction by index after `dom query`** - `dom fill/click <index>` targeted the wrong element (text preview used as a selector; 1-based index sent to 0-based page scripts)
+- **CDP connect retries** - A failed first WebSocket attempt no longer tears down the session before `connect()` retries
+- **Process safety** - Removed the `ps | grep dist/daemon.js` orphan scan that could SIGKILL unrelated processes on macOS; PIDs are validated (`> 0`) and verified by command line before signalling
+- **Test suite** - `npm test` now runs all unit/contract tests (≈11 files were silently skipped by the shell glob); smoke tests run on every PR against a local fixture server
+- **Pattern hints** - `cdp` hint detection counts per pattern, matches case-insensitively and prefers the most specific pattern
 
 ### Security
 

@@ -1,84 +1,86 @@
 # Bidirectional IPC Pattern
 
-This document describes the generic bidirectional IPC (Inter-Process Communication) pattern used for routing commands between the CLI, daemon, and worker processes.
+This document describes the generic bidirectional IPC (Inter-Process Communication) pattern used for routing commands between the CLI and the daemon, which hosts the browser session in-process.
 
 ## Architecture Overview
 
 ```
-┌─────────────┐         ┌──────────────────┐         ┌─────────────────┐
-│             │  Unix   │                  │  stdin  │                 │
-│ CLI Command │ Socket  │  Daemon (IPC     │ ───────>│  Worker Process │
-│             │ ──────> │   Server)        │         │  (CDP Handler)  │
-│             │         │                  │<─────── │                 │
-└─────────────┘         └──────────────────┘  stdout └─────────────────┘
-                                 │                            │
-                                 │                            │
-                                 └────────────────────────────┘
-                            Request/Response Matching
-                                (via requestId)
+┌─────────────┐         ┌──────────────────────────────────────────┐
+│             │  Unix   │  Daemon = Session                        │
+│ CLI Command │ Socket  │                                          │
+│             │ ──────> │  ipcServer → SessionController → Session │
+│             │<─────── │                        (CDP, telemetry)  │
+└─────────────┘         └──────────────────────────────────────────┘
+       │                                   │
+       └───────────────────────────────────┘
+             Request/Response Matching
+        (one connection per request, sessionId echoed)
 ```
 
 ### Components
 
-1. **CLI Command** (`src/cli/collectors/*.ts`)
+1. **CLI Command** (`src/commands/*.ts`)
    - User-facing command handlers
-   - Calls IPC client functions
+   - Calls IPC client functions inside `runCommand()`
    - Formats output for user
 
-2. **IPC Client** (`src/ipc/client.ts`)
+2. **IPC Client** (`src/ipc/client.ts`, `src/ipc/transport/`)
    - Connects to daemon via Unix socket
-   - Sends JSONL requests
-   - Waits for JSONL responses
-   - Handles timeouts and errors
+   - Sends one JSONL request per connection
+   - Waits for the JSONL response and validates `sessionId` and response `type`
+   - Handles timeouts (45s default, `BDG_IPC_TIMEOUT_MS`) and connection errors
 
 3. **Daemon IPC Server** (`src/daemon/ipcServer.ts`)
-   - Listens on Unix socket for client connections
-   - Tracks active worker process
-   - Routes requests to worker via stdin
-   - Routes responses back to clients via socket
-   - Matches requests/responses by `requestId`
+   - Listens on `~/.bdg/daemon.sock` for client connections
+   - Parses JSONL frames and validates message structure
+   - Routes lifecycle/query requests to named `SessionController` methods
+   - Routes every registered command (`isCommandRequest()`) to `SessionController.command()`
+   - Writes the response back on the same socket
 
-4. **Worker Process** (`src/daemon/worker.ts`)
-   - Maintains persistent CDP connection
-   - Listens on stdin for daemon commands
-   - Executes CDP operations
-   - Sends responses to stdout
+4. **Session Controller** (`src/daemon/SessionController.ts`)
+   - Owns the daemon's single `Session`
+   - Returns "No active session" errors when none is running
+   - Applies per-request timeouts (30s for commands, 5s for status/peek/HAR)
+   - Converts `CommandError` into `error`, `exitCode` and `suggestion` response fields
+
+5. **Session** (`src/daemon/session/Session.ts`, `src/daemon/session/commandRegistry.ts`)
+   - Maintains the persistent CDP connection and `TelemetryStore`
+   - `execute(name, params)` calls the registered handler directly, in-process
 
 ## Communication Flow
 
-### Request Flow (CLI → Worker)
+### Request Flow (CLI → Session)
 
 1. **CLI calls IPC client function**
    ```typescript
-   const response = await queryDOM("p");
+   const response = await callCDP('Network.getCookies');
    ```
 
 2. **IPC client sends request to daemon**
    ```json
-   {"type":"dom_query_request","sessionId":"uuid","selector":"p"}
+   {"type":"cdp_call_request","sessionId":"uuid","method":"Network.getCookies"}
    ```
 
-3. **Daemon forwards to worker via stdin**
-   ```json
-   {"type":"dom_query_request","requestId":"dom_query_123_abc","selector":"p"}
-   ```
-
-4. **Worker executes CDP command**
+3. **Daemon routes the request to the controller**
    ```typescript
-   const nodeIds = await cdp.send('DOM.querySelectorAll', {...});
+   if (isCommandRequest(message.type)) {
+     return this.controller.command(message);
+   }
    ```
 
-### Response Flow (Worker → CLI)
+4. **Session executes the handler against CDP**
+   ```typescript
+   const data = await session.execute('cdp_call', { method: 'Network.getCookies' });
+   ```
 
-1. **Worker sends response to stdout**
+### Response Flow (Session → CLI)
+
+1. **Controller wraps the handler result**
    ```json
-   {"type":"dom_query_response","requestId":"dom_query_123_abc","success":true,"data":{...}}
+   {"type":"cdp_call_response","sessionId":"uuid","status":"ok","data":{...}}
    ```
 
-2. **Daemon matches requestId and forwards to client**
-   ```json
-   {"type":"dom_query_response","sessionId":"uuid","status":"ok","data":{...}}
-   ```
+2. **Daemon writes the response to the client socket**
 
 3. **IPC client resolves promise with response**
    ```typescript
@@ -87,406 +89,146 @@ This document describes the generic bidirectional IPC (Inter-Process Communicati
 
 4. **CLI formats and displays output**
    ```
-   Found 3 elements matching "p":
-     [1] <p> Hello world
-     [2] <p> Another paragraph
-     [3] <p> Third element
+   {
+     "cookies": [...]
+   }
    ```
 
 ## Adding a New Command
 
-Follow this 5-step pattern to add any new command:
+Follow this 4-step pattern to add any new session command. No daemon routing changes are needed.
 
-### Step 1: Define Worker IPC Types
+### Step 1: Define Command Schemas
 
-Add message types to `src/daemon/workerIpc.ts`:
+Add request/response types and register them in `src/ipc/protocol/commands.ts`:
 
 ```typescript
 /**
- * Request from daemon to worker
+ * foo command request schema.
  */
-export interface WorkerFooRequest extends WorkerIPCMessage {
-  type: 'foo_request';
-  requestId: string;
+export interface FooCommand {
   param1: string;
   param2?: number;
 }
 
 /**
- * Response from worker to daemon
+ * foo command response data.
  */
-export interface WorkerFooResponse extends WorkerIPCMessage {
-  type: 'foo_response';
-  requestId: string;
-  success: boolean;
-  data?: {
-    result: string;
-  };
-  error?: string;
+export interface FooData {
+  result: string;
 }
 
-// Add to union types
-export type WorkerIPCRequest =
-  | WorkerDomQueryRequest
-  | WorkerDomHighlightRequest
-  | WorkerDomGetRequest
-  | WorkerFooRequest; // Add here
+export type RegistryShape = {
+  // ... existing commands ...
+  foo: CommandDef<FooCommand, FooData>; // Add here
+};
 
-export type WorkerIPCResponse =
-  | WorkerReadyMessage
-  | WorkerDomQueryResponse
-  | WorkerDomHighlightResponse
-  | WorkerDomGetResponse
-  | WorkerFooResponse; // Add here
+export const COMMANDS: RegistryShape = {
+  // ... existing commands ...
+  foo: defineCommand(), // Add here
+};
 ```
 
-### Step 2: Define Client IPC Types
+`ClientRequest<'foo'>` and `ClientResponse<'foo'>` (`src/ipc/protocol/messages.ts`) are derived from this registry, so the wire types `foo_request` / `foo_response` need no hand-written definitions. `isCommandRequest('foo_request')` now returns true, which makes the daemon route the request to `SessionController.command()`.
 
-Add message types to `src/ipc/types.ts`:
+### Step 2: Implement the Session Handler
+
+Add the handler in `src/daemon/session/commandRegistry.ts`. `CommandRegistry` is a mapped type over `CommandName`, so the compiler requires it:
 
 ```typescript
-/**
- * Request from CLI client to daemon
- */
-export interface FooRequest extends IPCMessage {
-  type: 'foo_request';
-  sessionId: string;
-  param1: string;
-  param2?: number;
-}
-
-/**
- * Response from daemon to CLI client
- */
-export interface FooResponse extends IPCMessage {
-  type: 'foo_response';
-  sessionId: string;
-  status: 'ok' | 'error';
-  data?: {
-    result: string;
+export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
+  return {
+    // ... existing handlers ...
+    foo: async (cdp, params) => {
+      const result = await cdp.send('SomeDomain.someCommand', {
+        param: params.param1,
+      });
+      return { result: result.someField };
+    },
   };
-  error?: string;
-}
-
-// Add to union types
-export type IPCMessageType =
-  | HandshakeRequest
-  | HandshakeResponse
-  | StatusRequest
-  | StatusResponse
-  | PeekRequest
-  | PeekResponse
-  | StartSessionRequest
-  | StartSessionResponse
-  | StopSessionRequest
-  | StopSessionResponse
-  | DomQueryRequest
-  | DomQueryResponse
-  | DomHighlightRequest
-  | DomHighlightResponse
-  | DomGetRequest
-  | DomGetResponse
-  | FooRequest      // Add here
-  | FooResponse;    // Add here
-
-export type IPCRequest =
-  | HandshakeRequest
-  | StatusRequest
-  | PeekRequest
-  | StartSessionRequest
-  | StopSessionRequest
-  | DomQueryRequest
-  | DomHighlightRequest
-  | DomGetRequest
-  | FooRequest;     // Add here
-
-export type IPCResponse =
-  | HandshakeResponse
-  | StatusResponse
-  | PeekResponse
-  | StartSessionResponse
-  | StopSessionResponse
-  | DomQueryResponse
-  | DomHighlightResponse
-  | DomGetResponse
-  | FooResponse;    // Add here
-```
-
-### Step 3: Implement Worker Handler
-
-Add handler in `src/daemon/worker.ts`:
-
-```typescript
-/**
- * Handle foo request from daemon.
- */
-async function handleFoo(request: WorkerFooRequest): Promise<void> {
-  console.error(`[worker] Handling foo_request (param1: ${request.param1})`);
-
-  try {
-    if (!cdp) {
-      throw new Error('CDP connection not initialized');
-    }
-
-    // Execute CDP command(s)
-    const result = await cdp.send('SomeDomain.someCommand', {
-      param: request.param1,
-    });
-
-    // Send response
-    const response: WorkerFooResponse = {
-      type: 'foo_response',
-      requestId: request.requestId,
-      success: true,
-      data: {
-        result: result.someField,
-      },
-    };
-
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent foo_response`);
-  } catch (error) {
-    const response: WorkerFooResponse = {
-      type: 'foo_response',
-      requestId: request.requestId,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-
-    console.log(JSON.stringify(response));
-    console.error(`[worker] Sent foo_response (error: ${response.error})`);
-  }
-}
-
-// Add to handleWorkerIPC switch
-function handleWorkerIPC(message: WorkerIPCMessageType): void {
-  console.error(`[worker] Received IPC message: ${message.type}`);
-
-  switch (message.type) {
-    case 'dom_query_request':
-      void handleDomQuery(message as WorkerDomQueryRequest);
-      break;
-    case 'dom_highlight_request':
-      void handleDomHighlight(message as WorkerDomHighlightRequest);
-      break;
-    case 'dom_get_request':
-      void handleDomGet(message as WorkerDomGetRequest);
-      break;
-    case 'foo_request':
-      void handleFoo(message as WorkerFooRequest); // Add here
-      break;
-    default:
-      console.error(`[worker] Unknown IPC message type: ${message.type}`);
-  }
 }
 ```
 
-### Step 4: Implement Daemon Forwarding
-
-Add handlers in `src/daemon/ipcServer.ts`:
+Handlers return data or throw. To give the CLI a semantic exit code and suggestion, throw a `CommandError`; the controller forwards `exitCode` and `suggestion` in the error response:
 
 ```typescript
-// Add to handleMessage switch
-switch (message.type) {
-  case 'handshake_request':
-    this.handleHandshake(socket, message);
-    break;
-  // ... existing cases ...
-  case 'foo_request':
-    this.handleFooRequest(socket, message); // Add here
-    break;
-  case 'foo_response':
-    console.error('[daemon] Unexpected foo response from client');
-    break;
-}
-
-// Add request handler
-private handleFooRequest(socket: Socket, request: FooRequest): void {
-  console.error(`[daemon] Foo request received (sessionId: ${request.sessionId})`);
-
-  // Check if worker is available
-  if (!this.workerProcess || !this.workerProcess.stdin) {
-    const response: FooResponse = {
-      type: 'foo_response',
-      sessionId: request.sessionId,
-      status: 'error',
-      error: 'No active worker process',
-    };
-
-    socket.write(JSON.stringify(response) + '\n');
-    console.error('[daemon] Foo error response sent (no worker)');
-    return;
-  }
-
-  // Generate unique requestId
-  const requestId = `foo_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-  // Set up timeout (10 seconds)
-  const timeout = setTimeout(() => {
-    this.pendingDomRequests.delete(requestId);
-
-    const response: FooResponse = {
-      type: 'foo_response',
-      sessionId: request.sessionId,
-      status: 'error',
-      error: 'Worker response timeout (10s)',
-    };
-
-    socket.write(JSON.stringify(response) + '\n');
-    console.error('[daemon] Foo timeout response sent');
-  }, 10000);
-
-  // Store pending request
-  this.pendingDomRequests.set(requestId, {
-    socket,
-    sessionId: request.sessionId,
-    timeout,
-  });
-
-  // Forward to worker
-  const workerRequest: WorkerFooRequest = {
-    type: 'foo_request',
-    requestId,
-    param1: request.param1,
-    ...(request.param2 !== undefined && { param2: request.param2 }),
-  };
-
-  this.workerProcess.stdin.write(JSON.stringify(workerRequest) + '\n');
-  console.error(`[daemon] Forwarded foo_request to worker (requestId: ${requestId})`);
-}
-
-// Add response forwarder
-private forwardFooResponse(
-  socket: Socket,
-  sessionId: string,
-  workerResponse: WorkerFooResponse
-): void {
-  const response: FooResponse = {
-    type: 'foo_response',
-    sessionId,
-    status: workerResponse.success ? 'ok' : 'error',
-    ...(workerResponse.data && { data: workerResponse.data }),
-    ...(workerResponse.error && { error: workerResponse.error }),
-  };
-
-  socket.write(JSON.stringify(response) + '\n');
-  console.error(`[daemon] Forwarded foo_response to client`);
-}
-
-// Add to handleWorkerResponse switch
-switch (message.type) {
-  case 'dom_query_response':
-    this.forwardDomQueryResponse(pending.socket, pending.sessionId, message as WorkerDomQueryResponse);
-    break;
-  case 'dom_highlight_response':
-    this.forwardDomHighlightResponse(pending.socket, pending.sessionId, message as WorkerDomHighlightResponse);
-    break;
-  case 'dom_get_response':
-    this.forwardDomGetResponse(pending.socket, pending.sessionId, message as WorkerDomGetResponse);
-    break;
-  case 'foo_response':
-    this.forwardFooResponse(pending.socket, pending.sessionId, message as WorkerFooResponse); // Add here
-    break;
-}
+throw new CommandError(
+  'Element not found',
+  { suggestion: 'Re-run query to refresh cache' },
+  EXIT_CODES.STALE_CACHE
+);
 ```
 
-### Step 5: Implement IPC Client Helper
+### Step 3: Implement IPC Client Helper
 
-Add client function in `src/ipc/client.ts`:
+Add a client function in `src/ipc/client.ts` using the internal `sendCommand` helper:
 
 ```typescript
-import type {
-  // ... existing imports ...
-  FooRequest,
-  FooResponse,
-} from '@/ipc/types.js';
-
 /**
- * Execute foo command via the daemon's worker.
+ * Execute foo command in the daemon's session.
  *
  * @param param1 - First parameter
  * @param param2 - Optional second parameter
  * @returns Foo response with result
  * @throws Error if connection fails, daemon is not running, or request times out
  */
-export async function executeFoo(param1: string, param2?: number): Promise<FooResponse> {
-  const request: FooRequest = {
-    type: 'foo_request',
-    sessionId: randomUUID(),
-    param1,
-    ...(param2 !== undefined && { param2 }),
-  };
-
-  return sendRequest<FooRequest, FooResponse>(request, 'foo');
+export async function executeFoo(
+  param1: string,
+  param2?: number
+): Promise<ClientResponse<'foo'>> {
+  return sendCommand('foo', { param1, ...(param2 !== undefined && { param2 }) });
 }
 ```
 
-### Step 6: Use in CLI Command
+### Step 4: Use in CLI Command
 
-Use the IPC client in your CLI handler:
+Use the IPC client in your CLI handler via `runCommand`, which handles JSON/human output and maps a missing daemon to exit code 83:
 
 ```typescript
+import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { executeFoo } from '@/ipc/client.js';
+import { validateIPCResponse } from '@/ipc/index.js';
 
-async function handleFooCommand(options: FooOptions): Promise<void> {
-  try {
-    // Send request via IPC
-    const response = await executeFoo(options.param1, options.param2);
-
-    if (response.status === 'error') {
-      throw new Error(response.error ?? 'Unknown error');
-    }
-
-    if (!response.data) {
-      throw new Error('No data in response');
-    }
-
-    // Display result
-    if (options.json) {
-      console.log(JSON.stringify(response.data, null, 2));
-    } else {
-      console.log(`Result: ${response.data.result}`);
-    }
-
-    process.exit(EXIT_CODES.SUCCESS);
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(`Error: ${errorMsg}`);
-    process.exit(EXIT_CODES.UNHANDLED_EXCEPTION);
-  }
-}
+await runCommand(
+  async (opts) => {
+    const response = await executeFoo(opts.param1, opts.param2);
+    validateIPCResponse(response);
+    return { success: true, data: response.data };
+  },
+  options,
+  formatFoo
+);
 ```
 
 ## Key Design Principles
 
 ### 1. Request/Response Matching
 
-- Each request gets a unique `requestId` (generated by daemon)
-- Worker echoes `requestId` in response
-- Daemon matches response to original client via `requestId`
-- Client uses `sessionId` for logging/debugging
+- Each request uses its own socket connection, so responses cannot be crossed
+- The daemon echoes `sessionId` and replies with `<type>_response`
+- The client validates both before resolving
+- `sessionId` also serves logging/debugging
 
 ### 2. Timeout Handling
 
-- All requests have 10-second timeout
-- Timeout cleanup removes pending request
-- Client receives timeout error response
-- Prevents resource leaks from hung requests
+- The controller bounds handler execution (30s for commands, 5s for status/peek/HAR data)
+- The client bounds the whole round trip (45s default, `BDG_IPC_TIMEOUT_MS`)
+- Timeouts become error responses, not hung connections
 
 ### 3. Error Propagation
 
-- Worker catches errors and sends error response
-- Daemon forwards errors to client
+- Handlers throw; the controller catches and builds an error response
+- `CommandError` exit codes and suggestions are forwarded end-to-end
 - Client converts to user-friendly message
 - All layers use structured error format
 
 ### 4. Persistent Connection
 
-- Worker maintains single CDP connection
-- All commands reuse same connection
+- The session maintains a single CDP connection for its lifetime
+- All commands reuse the same connection, in the same process
 - Enables features like:
   - Index-based DOM cache (stable nodeIds)
-  - Faster execution (no connection overhead)
+  - Faster execution (no connection overhead, no extra IPC hop)
   - Session state preservation
 
 ### 5. JSONL Protocol
@@ -505,89 +247,70 @@ async function handleFooCommand(options: FooOptions): Promise<void> {
 
 ### For Developers
 - ✅ Clear template pattern
-- ✅ Type-safe message contracts
-- ✅ Easy to add new commands
+- ✅ Type-safe message contracts derived from one registry
+- ✅ Easy to add new commands (no routing boilerplate)
 - ✅ Centralized error handling
 - ✅ Debuggable (JSONL logs)
 
 ### For Architecture
-- ✅ Separation of concerns
-- ✅ Scalable (daemon can manage multiple workers in future)
-- ✅ Testable (mock daemon/worker)
-- ✅ Unix philosophy (stdin/stdout pipes)
+- ✅ Separation of concerns (transport, routing, session logic)
+- ✅ One process per session: daemon lifetime = session lifetime
+- ✅ Testable (handlers are plain functions of `cdp` and params)
 
 ## Debugging Tips
 
 ### Enable Debug Logging
 
-Check stderr output from daemon and worker:
+Daemon stdout/stderr goes to the session directory:
 
 ```bash
 # Daemon logs
-tail -f /tmp/daemon-stderr.log
+tail -f ~/.bdg/daemon.log
 
-# Worker logs
-tail -f /tmp/worker-stderr.log
+# Client-side debug logs
+bdg cdp Network.getCookies --debug
 ```
 
 ### Trace Message Flow
 
-1. **CLI to Daemon**: Check socket connection
+1. **CLI to Daemon**: Check socket connection (client, `--debug`)
    ```
-   [client] Connected to daemon for foo request
-   [client] foo request sent
-   ```
-
-2. **Daemon to Worker**: Check stdin forwarding
-   ```
-   [daemon] Foo request received (sessionId: uuid)
-   [daemon] Forwarded foo_request to worker (requestId: foo_123_abc)
+   Connected to daemon for cdp_call request
+   cdp_call request sent
    ```
 
-3. **Worker Processing**: Check CDP execution
-   ```
-   [worker] Received IPC message: foo_request
-   [worker] Handling foo_request (param1: test)
-   [worker] Sent foo_response
-   ```
+2. **Daemon Processing**: Check `~/.bdg/daemon.log` for session and CDP errors
 
-4. **Worker to Daemon**: Check stdout parsing
+3. **Daemon to CLI**: Check socket response (client, `--debug`)
    ```
-   [daemon] Received worker response: foo_response (requestId: foo_123_abc)
-   [daemon] Forwarded foo_response to client
-   ```
-
-5. **Daemon to CLI**: Check socket response
-   ```
-   [client] foo response received
+   cdp_call response received
    ```
 
 ### Common Issues
 
-**"No active worker process"**
-- Worker crashed or never started
-- Check worker stderr for errors
-- Verify session is running: `bdg status`
+**"No active session"**
+- No daemon is listening on `~/.bdg/daemon.sock` (exit code 83), or the daemon has no running session
+- Start one with `bdg <url>`
+- Verify with `bdg status`
 
-**"Worker response timeout (10s)"**
-- Worker is hung or slow
-- Check worker stderr for stuck operations
+**"Command timeout (30s)"**
+- The handler is hung or slow
+- Check `~/.bdg/daemon.log` for stuck operations
 - Verify CDP connection is healthy
 
-**"No pending request found for requestId"**
-- Response arrived after timeout
-- Worker sent duplicate response
-- Check for race conditions in worker handlers
+**"<name> request timeout after 45s"**
+- The client gave up waiting for the daemon
+- Check whether the daemon is still alive: `bdg status`
 
 ## Examples
 
-See the DOM commands for complete working examples:
-- Query: `src/cli/collectors/dom.ts` (handleDomQuery)
-- Highlight: `src/cli/collectors/dom.ts` (handleDomHighlight)
-- Get: `src/cli/collectors/dom.ts` (handleDomGet)
+See these commands for complete working examples:
+- CDP passthrough: `src/commands/cdp.ts` (`callCDP`)
+- Eval: `src/commands/dom/eval.ts` (`domEval`)
+- Details: `src/commands/details.ts` (`getDetails`)
 
 ## Related Documentation
 
-- [Architecture Overview](./ARCHITECTURE.md)
-- [Session Management](./SESSION_MANAGEMENT.md)
-- [CDP Connection](./CDP_CONNECTION.md)
+- [Execution Flow](./BDG_EXECUTION_FLOW.md)
+- [Telemetry Plugins](./TELEMETRY-PLUGIN.md)
+- [Daemon = Session Migration](../roadmap/DAEMON_SESSION_MIGRATION.md)

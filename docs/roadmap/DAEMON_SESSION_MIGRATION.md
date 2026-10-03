@@ -1,6 +1,6 @@
 # Daemon = Session Migration
 
-**Status:** In progress
+**Status:** Implemented (pending review)
 **Started:** 2026-10-03
 **Target version:** 0.8.0
 
@@ -37,33 +37,33 @@ Each stage is a separate, green step. Smoke tests must pass before moving on.
 
 ### Stage 0: Safety net
 
-- [ ] Fix the `npm test` glob. Patterns must be quoted so Node expands `**`, not `sh`; around 11 test files currently never run.
-- [ ] Fix the 4 failing `PatternDetector` tests that this uncovers.
-- [ ] Run smoke tests on PRs, not only on `main`.
-- [ ] Isolate smoke tests via `BDG_SESSION_DIR`. No `pkill -9 -f "node.*dist/daemon"` and no `cleanup --aggressive` against the developer's real sessions.
-- [ ] Add an e2e test of the core agent loop on the fixture page: start → `dom query` → `dom fill/click <index>` → `network list` → `status` → `stop` → no processes or files left.
-- [ ] Fix the index resolver so the e2e test passes. Today `dom query` caches the text preview, which is then used as a CSS selector, and `index + 1` is sent to 0-based page scripts.
+- [x] Fix the `npm test` glob. Patterns must be quoted so Node expands `**`, not `sh`; around 11 test files currently never run.
+- [x] Fix the 4 failing `PatternDetector` tests that this uncovers.
+- [x] Run smoke tests on PRs, not only on `main`.
+- [x] Isolate smoke tests via `BDG_SESSION_DIR`. No `pkill -9 -f "node.*dist/daemon"` and no `cleanup --aggressive` against the developer's real sessions.
+- [x] Add an e2e test of the core agent loop on the fixture page: start → `dom query` → `dom fill/click <index>` → `network list` → `status` → `stop` → no processes or files left.
+- [x] Fix the index resolver so the e2e test passes. Today `dom query` caches the text preview, which is then used as a CSS selector, and `index + 1` is sent to 0-based page scripts.
 
 ### Stage 1: Worker in-process (CLI ↔ daemon protocol unchanged)
 
-- [ ] Introduce `Session`, which owns `chrome`, `cdp`, `TelemetryStore`, `cleanupFunctions` and `commandRegistry`. Built from `setupChromeConnection`, `setupCDPAndNavigate` and `cleanupWorker`.
-- [ ] Daemon handlers call registry handlers directly, wrapped in a timeout. Keep the mapping from `CommandError` to the response's exitCode and suggestion.
-- [ ] Remove `worker.ts`, `startSession.ts`, `WorkerManager`, `lifecycle/workerIpc.ts`, `daemon/workerIpc.ts`, `JsonlParser`, `PendingRequestManager`, `ResponseHandler`, and `BaseHandler.forwardToWorker`.
+- [x] Introduce `Session`, which owns `chrome`, `cdp`, `TelemetryStore`, `cleanupFunctions` and `commandRegistry`. Built from `setupChromeConnection`, `setupCDPAndNavigate` and `cleanupWorker`.
+- [x] Daemon handlers call registry handlers directly, wrapped in a timeout. Keep the mapping from `CommandError` to the response's exitCode and suggestion.
+- [x] Remove `worker.ts`, `startSession.ts`, `WorkerManager`, `lifecycle/workerIpc.ts`, `daemon/workerIpc.ts`, `JsonlParser`, `PendingRequestManager`, `ResponseHandler`, and `BaseHandler.forwardToWorker`.
 
 ### Stage 2: Daemon lifecycle = session
 
-- [ ] In `src/index.ts`, spawn the daemon only for the start command. Use `parseAsync`, and emit a JSON envelope when daemon startup fails.
-- [ ] Single instance via socket. Connect to the existing socket: success means "already running". Otherwise remove the stale socket and `listen`. Close the race window atomically: listen on a temporary path, then `link()` to the final path, where `EEXIST` means we lost. Verify `link()` on socket files on macOS and Linux; the fallback is a short `O_EXCL` lock with age-based expiry.
-- [ ] Daemon SIGTERM/SIGINT handlers run full, idempotent teardown.
-- [ ] Remove the lock dance in `daemon/launcher.ts`, `daemon.lock`, `session.lock`, `session.pid`, `preStart.ts`, `sessionProbe.ts`, and the reconcile/recover logic in `SessionHandlers`.
+- [x] In `src/index.ts`, spawn the daemon only for the start command. Use `parseAsync`, and emit a JSON envelope when daemon startup fails.
+- [x] Single instance via socket. Connect to the existing socket: success means "already running". Otherwise remove the stale socket and `listen`. Close the race window atomically: listen on a temporary path, then `link()` to the final path, where `EEXIST` means we lost. Verify `link()` on socket files on macOS and Linux; the fallback is a short `O_EXCL` lock with age-based expiry.
+- [x] Daemon SIGTERM/SIGINT handlers run full, idempotent teardown.
+- [x] Remove the lock dance in `daemon/launcher.ts`, `daemon.lock`, `session.lock`, `session.pid`, `preStart.ts`, `sessionProbe.ts`, and the reconcile/recover logic in `SessionHandlers`.
 
 ### Stage 3: Cleanup
 
-- [ ] Delete `orphanedDaemons.ts`.
-- [ ] Reduce `bdg cleanup` to three steps: remove a dead socket, kill the verified Chrome from `chrome.pid`, and clear metadata.
-- [ ] Validate `pid > 0` wherever PIDs are still read.
-- [ ] Single JSONL implementation for the client and the server.
-- [ ] Update `docs/CLI_REFERENCE.md`, `CLAUDE.md`, `.claude/skills/bdg/SKILL.md` and `CHANGELOG.md`.
+- [x] Delete `orphanedDaemons.ts`.
+- [x] Reduce `bdg cleanup` to three steps: remove a dead socket, kill the verified Chrome from `chrome.pid`, and clear metadata.
+- [x] Validate `pid > 0` wherever PIDs are still read.
+- [x] Single JSONL implementation for the client and the server.
+- [x] Update `docs/CLI_REFERENCE.md`, `CLAUDE.md`, `.claude/skills/bdg/SKILL.md` and `CHANGELOG.md`.
 
 ## User-visible changes
 
@@ -71,6 +71,13 @@ Each stage is a separate, green step. Smoke tests must pass before moving on.
 - `workerPid` in the start response now carries the daemon PID. The field name is kept for compatibility.
 - `session.pid`, `daemon.lock` and `session.lock` disappear from `~/.bdg`.
 - `--chrome-ws-url`, `--headless`, `--timeout` and the other start flags are unchanged.
+
+## Notes from implementation
+
+- `link()` on Unix socket files works on macOS and Linux, so the atomic claim is used. There is no lock-file fallback.
+- A stale socket plus two simultaneous starts leave a narrow window: both daemons may remove the stale file and claim the path in turn. Both CLIs then talk to the last claimant. The other daemon exits after its 10 s idle timeout and never removes a socket or PID file it no longer owns (inode/PID checked).
+- The final DOM snapshot taken on stop was removed. Its only consumer was `session.json`, which no code ever wrote. `TelemetryStore.domData`/`buildOutput` and `peek --dom` are now vestigial and can be removed in a follow-up.
+- Internal command keys keep their `worker_*` names (e.g. `worker_peek`) to leave the CLI ↔ daemon protocol untouched.
 
 ## Out of scope
 
