@@ -580,6 +580,58 @@ void describe('Network telemetry contract', () => {
     });
   });
 
+  void describe('Full headers and cache', () => {
+    void it('records Cookie, Set-Cookie and cache hits from the extra events', async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
+
+      mockCDP.emit('Network.requestWillBeSentExtraInfo', {
+        requestId: 'req-c',
+        associatedCookies: [],
+        headers: { cookie: 'session=abc' },
+        connectTiming: { requestTime: 0 },
+      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'req-c',
+          request: createTestRequest({ url: 'https://example.com/account' }),
+          timestamp: 1000,
+          type: 'Document',
+        })
+      );
+      mockCDP.emit<Protocol.Network.ResponseReceivedEvent>(
+        'Network.responseReceived',
+        createResponseEvent({
+          requestId: 'req-c',
+          response: createTestResponse({ url: 'https://example.com/account', headers: {} }),
+          timestamp: 1050,
+          type: 'Document',
+        })
+      );
+      mockCDP.emit('Network.responseReceivedExtraInfo', {
+        requestId: 'req-c',
+        blockedCookies: [],
+        headers: { 'set-cookie': 'a=1\nb=2' },
+        resourceIPAddressSpace: 'Public',
+        statusCode: 200,
+      });
+      mockCDP.emit('Network.requestServedFromCache', { requestId: 'req-c' });
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
+        requestId: 'req-c',
+        timestamp: 1100,
+        encodedDataLength: 10,
+      });
+
+      const request = requests[0];
+      assert.ok(request, 'Request should exist');
+      assert.equal(request.requestHeaders?.['cookie'], 'session=abc');
+      assert.equal(request.responseHeaders?.['set-cookie'], 'a=1\nb=2');
+      assert.equal(request.fromCache, true);
+
+      void cleanup();
+    });
+  });
+
   void describe('Edge case: Stale request cleanup', () => {
     void it('should clean up stale requests after timeout', async () => {
       const clockHelper = useFakeClock();

@@ -68,7 +68,7 @@ export function registerTailCommand(program: Command): void {
       }
 
       const showPreview = async (): Promise<void> => {
-        const result = await fetchPreviewOutput(lastN);
+        const result = await fetchPreviewOutput({ lastN });
 
         if (!result.success) {
           const errorResult = handleDaemonConnectionError(result.error, {

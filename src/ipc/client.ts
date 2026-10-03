@@ -98,11 +98,13 @@ export async function getStatus(): Promise<StatusResponse> {
 export async function getPeek(options?: {
   lastN?: number;
   only?: 'network' | 'console';
+  withHeaders?: boolean;
 }): Promise<PeekResponse> {
   const request: PeekRequest = withSession({
     type: 'peek_request',
     ...(options?.lastN !== undefined && { lastN: options.lastN }),
     ...(options?.only && { only: options.only }),
+    ...(options?.withHeaders && { withHeaders: true }),
   });
   return sendRequest<PeekRequest, PeekResponse>(request, 'peek', 'peek_response');
 }

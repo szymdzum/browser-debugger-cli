@@ -55,6 +55,14 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(interactionsHtml);
       return;
     }
+    if (req.url === '/cookie') {
+      res.writeHead(200, {
+        'Content-Type': 'text/plain',
+        'Set-Cookie': ['fixture_session=abc; Path=/; HttpOnly', 'fixture_theme=dark; Path=/'],
+      });
+      res.end('cookies set');
+      return;
+    }
     if (req.url === '/redirect') {
       res.writeHead(302, { Location: '/' });
       res.end();

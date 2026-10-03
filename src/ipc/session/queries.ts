@@ -67,6 +67,8 @@ export interface PeekRequest extends IPCMessage {
   lastN?: number;
   /** Return items of one kind only. */
   only?: 'network' | 'console';
+  /** Include request/response headers in network items. */
+  withHeaders?: boolean;
 }
 
 /**

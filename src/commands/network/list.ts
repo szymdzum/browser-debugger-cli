@@ -83,6 +83,27 @@ function parseResourceTypes(typeOption?: string): Protocol.Network.ResourceType[
 }
 
 /**
+ * Whether the active filters inspect headers, which the list only fetches on demand.
+ *
+ * @param options - Command options
+ * @returns True when headers must be fetched for filtering
+ */
+function filtersNeedHeaders(options: NetworkListCommandOptions): boolean {
+  return /has-response-header:|is:from-cache/.test(buildFilterString(options));
+}
+
+/**
+ * Drop headers fetched only for filtering, keeping the list output unchanged.
+ *
+ * @param request - Request with headers
+ * @returns Request without request/response headers
+ */
+function withoutHeaders(request: NetworkRequest): NetworkRequest {
+  const { requestHeaders: _requestHeaders, responseHeaders: _responseHeaders, ...rest } = request;
+  return rest;
+}
+
+/**
  * Filter requests using DSL filters and resource type filters.
  *
  * @param requests - Network requests to filter
@@ -109,7 +130,7 @@ function filterRequests(
     filtered = filterByResourceType(filtered, resourceTypes);
   }
 
-  return filtered;
+  return filtersNeedHeaders(options) ? filtered.map(withoutHeaders) : filtered;
 }
 
 function buildFormatOptions(
@@ -131,7 +152,7 @@ async function runFollowMode(
   resourceTypes: Protocol.Network.ResourceType[]
 ): Promise<void> {
   const showNetwork = async (): Promise<void> => {
-    const result = await fetchNetworkRequests();
+    const result = await fetchNetworkRequests(filtersNeedHeaders(options));
 
     if (!result.success) {
       const errorResult = handleDaemonConnectionError(result.error, {
@@ -237,7 +258,7 @@ export function registerListCommand(networkCmd: Command): void {
 
       await runCommand(
         async () => {
-          const result = await fetchNetworkRequests();
+          const result = await fetchNetworkRequests(filtersNeedHeaders(options));
 
           if (!result.success) {
             if (result.exitCode === EXIT_CODES.SUCCESS) {

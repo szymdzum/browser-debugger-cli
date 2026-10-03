@@ -78,7 +78,10 @@ async function fetchAndFilterPreview(
   resourceTypes: Protocol.Network.ResourceType[],
   only?: PeekSection
 ): Promise<FetchResult<ProcessedPreview>> {
-  const result = await fetchPreviewOutput(resourceTypes.length > 0 ? 0 : lastN, only);
+  const result = await fetchPreviewOutput({
+    lastN: resourceTypes.length > 0 ? 0 : lastN,
+    ...(only && { only }),
+  });
   if (!result.success) return result;
 
   const output = result.data;

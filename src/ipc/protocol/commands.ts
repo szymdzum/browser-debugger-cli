@@ -27,6 +27,8 @@ export interface SessionPeekCommand {
   offset?: number;
   /** Return items of one kind only (the other list is empty; totals are always set). */
   only?: PeekSection;
+  /** Include request/response headers in network items (for header filters). */
+  withHeaders?: boolean;
 }
 
 /** Data kinds returned by peek. */

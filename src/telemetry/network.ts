@@ -21,6 +21,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
+import { ExtraInfoTracker } from './networkExtraInfo.js';
 
 const log = createLogger('network');
 
@@ -137,6 +138,7 @@ function applyResponse(
   request.status = status;
   request.mimeType = mimeType;
   request.responseHeaders = headers;
+  if (response.fromDiskCache || response.fromPrefetchCache) request.fromCache = true;
   if (resourceType) request.resourceType = resourceType;
   if (timing) {
     request.timing = {
@@ -276,6 +278,7 @@ export async function startNetworkCollection(
   const requestMap = options.pendingRequests ?? new Map<string, PendingRequest>();
   const pendingFetches = new Set<string>();
   const redirectHops = new Map<string, number>();
+  const extraInfo = new ExtraInfoTracker((requestId) => requestMap.get(requestId)?.request);
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
 
@@ -303,6 +306,7 @@ export async function startNetworkCollection(
     if (previous && params.redirectResponse) {
       requestMap.delete(params.requestId);
       const hop = completeRedirectHop(previous.request, params, redirectHops);
+      extraInfo.applyResponse(params.requestId, hop);
       if (requests.length < MAX_NETWORK_REQUESTS) requests.push(hop);
     }
 
@@ -317,6 +321,7 @@ export async function startNetworkCollection(
     }
 
     const request = createNetworkRequest(params, getCurrentNavigationId);
+    extraInfo.applyRequest(params.requestId, request);
     requestMap.set(params.requestId, {
       request,
       timestamp: Date.now(),
@@ -327,6 +332,20 @@ export async function startNetworkCollection(
     const entry = requestMap.get(params.requestId);
     if (!entry) return;
     applyResponse(entry.request, params.response, params.type);
+    extraInfo.applyResponse(params.requestId, entry.request);
+  });
+
+  registry.registerTyped(typed, 'Network.requestWillBeSentExtraInfo', (params) => {
+    extraInfo.onRequestExtraInfo(params.requestId, params.headers);
+  });
+
+  registry.registerTyped(typed, 'Network.responseReceivedExtraInfo', (params) => {
+    extraInfo.onResponseExtraInfo(params.requestId, params.headers, params.statusCode);
+  });
+
+  registry.registerTyped(typed, 'Network.requestServedFromCache', (params) => {
+    const entry = requestMap.get(params.requestId);
+    if (entry) entry.request.fromCache = true;
   });
 
   registry.registerTyped(typed, 'Network.loadingFinished', (params) => {
@@ -369,6 +388,7 @@ export async function startNetworkCollection(
     }
 
     requests.push(request);
+    extraInfo.complete(params.requestId, request);
     requestMap.delete(params.requestId);
     redirectHops.delete(params.requestId);
   });
@@ -400,6 +420,7 @@ export async function startNetworkCollection(
     }
 
     requests.push(entry.request);
+    extraInfo.complete(params.requestId, entry.request);
     requestMap.delete(params.requestId);
     redirectHops.delete(params.requestId);
   });

@@ -323,7 +323,9 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
     }
 
     case 'is':
-      if (filter.value === 'from-cache') return matchesCacheHeaders(request.responseHeaders);
+      if (filter.value === 'from-cache') {
+        return request.fromCache === true || matchesCacheHeaders(request.responseHeaders);
+      }
       if (filter.value === 'running') return request.status === undefined;
       if (filter.value === 'failed') return request.status === 0;
       return false;
@@ -363,7 +365,7 @@ Filter syntax:
   resource-type:XHR,Fetch CDP resource types (comma-separated)
   larger-than:100KB       Size threshold (B, KB, MB, GB)
   has-response-header:set-cookie
-  is:from-cache           Cached responses
+  is:from-cache           Served from browser cache (or a CDN cache hit)
   is:running              In-progress requests
   is:failed               Requests that got no response (DNS, refused, aborted, blocked)
   scheme:https            URL scheme
