@@ -20,7 +20,7 @@ import {
   elementZeroDimensionsError,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
-import type { ScreenshotResult, ScreenshotOptions, ElementBounds } from '@/types.js';
+import type { ScreenshotResult, ScreenshotOptions, ElementBounds, NodeRef } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -178,13 +178,17 @@ async function restoreScrollPosition(position: ScrollPosition): Promise<void> {
 }
 
 /**
- * Get the bounding box of an element via CDP DOM.getBoxModel.
+ * Get the bounding box (border box, so padding and border are included) of an
+ * element via CDP DOM.getBoxModel.
+ *
+ * @param ref - Node reference
+ * @returns Element bounds in CSS pixels
  */
-export async function getElementBounds(nodeId: number): Promise<ElementBounds> {
-  const response = await callCDP('DOM.getBoxModel', { nodeId });
+export async function getElementBounds(ref: NodeRef): Promise<ElementBounds> {
+  const response = await callCDP('DOM.getBoxModel', ref);
   const boxModel = response.data?.result as Protocol.DOM.GetBoxModelResponse | undefined;
 
-  if (!boxModel?.model?.content) {
+  if (!boxModel?.model?.border) {
     const err = elementNotVisibleError();
     throw new CommandError(
       err.message,
@@ -193,11 +197,11 @@ export async function getElementBounds(nodeId: number): Promise<ElementBounds> {
     );
   }
 
-  const content = boxModel.model.content;
-  const x = content[0] ?? 0;
-  const y = content[1] ?? 0;
-  const width = (content[2] ?? 0) - x;
-  const height = (content[5] ?? 0) - y;
+  const border = boxModel.model.border;
+  const x = border[0] ?? 0;
+  const y = border[1] ?? 0;
+  const width = (border[2] ?? 0) - x;
+  const height = (border[5] ?? 0) - y;
 
   if (width <= 0 || height <= 0) {
     const err = elementZeroDimensionsError();
@@ -377,10 +381,10 @@ export async function capturePageScreenshot(
  */
 export async function captureElementScreenshot(
   outputPath: string,
-  nodeId: number,
+  ref: NodeRef,
   options: { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean } = {}
 ): Promise<ScreenshotResult> {
-  const bounds = await getElementBounds(nodeId);
+  const bounds = await getElementBounds(ref);
 
   const format = options.format ?? 'png';
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;

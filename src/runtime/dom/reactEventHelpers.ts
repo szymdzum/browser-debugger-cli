@@ -6,6 +6,9 @@
  * to properly trigger React's event system.
  */
 
+import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
+import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+
 /**
  * JavaScript function to fill an input element in a React-compatible way.
  *
@@ -19,7 +22,7 @@
  */
 export const REACT_FILL_SCRIPT = `
 (function(selector, value, options) {
-  const allMatches = document.querySelectorAll(selector);
+  const allMatches = (${FIND_ELEMENTS_JS})(selector);
   
   if (allMatches.length === 0) {
     return { 
@@ -184,7 +187,7 @@ export const REACT_FILL_SCRIPT = `
  */
 export const CLICK_ELEMENT_SCRIPT = `
 (function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
+  const allMatches = (${FIND_ELEMENTS_JS})(selector);
   
   if (allMatches.length === 0) {
     return {
@@ -278,7 +281,6 @@ export interface FillOptions {
   index?: number;
 }
 
-import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
 export type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
 
 /**

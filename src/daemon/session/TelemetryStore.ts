@@ -18,7 +18,6 @@ export class TelemetryStore {
 
   activeTelemetry: TelemetryType[] = [];
   getCurrentNavigationId: (() => number) | null = null;
-  getDomVersion: (() => number) | null = null;
   sessionStartTime = Date.now();
   targetInfo: CDPTarget | null = null;
 
@@ -30,11 +29,7 @@ export class TelemetryStore {
     this.targetInfo = target;
   }
 
-  setNavigationResolver(
-    navigationId: (() => number) | null,
-    domVersion: (() => number) | null = null
-  ): void {
+  setNavigationResolver(navigationId: (() => number) | null): void {
     this.getCurrentNavigationId = navigationId;
-    this.getDomVersion = domVersion;
   }
 }

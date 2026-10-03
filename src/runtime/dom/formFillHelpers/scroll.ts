@@ -7,6 +7,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
+import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -26,7 +27,7 @@ export type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 
 const SCROLL_TO_ELEMENT_SCRIPT = `
 (function(selector, index) {
-  const allMatches = document.querySelectorAll(selector);
+  const allMatches = (${FIND_ELEMENTS_JS})(selector);
   if (allMatches.length === 0) {
     return { success: false, error: 'No nodes found matching selector: ' + selector };
   }

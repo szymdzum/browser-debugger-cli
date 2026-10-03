@@ -21,13 +21,7 @@ export async function handleDomQuery(
   await runCommand(
     async () => {
       const result = await queryDOMElements(selector);
-      const cacheManager = QueryCacheManager.getInstance();
-      const navigationId = await cacheManager.getCurrentNavigationId();
-      const resultWithNavId = {
-        ...result,
-        ...(navigationId !== null && { navigationId }),
-      };
-      await cacheManager.set(resultWithNavId);
+      await QueryCacheManager.getInstance().set(result);
       return { success: true, data: result };
     },
     options,

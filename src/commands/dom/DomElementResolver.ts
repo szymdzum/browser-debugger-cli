@@ -1,42 +1,29 @@
 /**
  * DOM element resolver for index and selector-based access.
  *
- * Provides centralized resolution of DOM elements from:
- * - Numeric indices (referencing cached query results)
- * - CSS selectors (used directly)
- *
- * Handles cache validation, staleness detection, and automatic refresh.
- * When cache is stale due to navigation, automatically re-runs the original
- * query to provide seamless "just works" experience.
+ * A numeric argument is an index into the last `bdg dom query` / `bdg dom form`
+ * result and resolves to that exact element (its backend node id). Whether the
+ * element still exists is checked where it is used: if the page navigated or
+ * the element was removed, commands fail with exit 87 instead of acting on a
+ * different element that happens to match the selector now.
  *
  * @example
  * ```typescript
  * const resolver = DomElementResolver.getInstance();
  *
- * // Resolve index from cached query
  * const target = await resolver.resolve('0');
- * // { success: true, selector: '.cached-selector', index: 1 }
+ * // { success: true, selector: '.cached-selector', backendNodeId: 42 }
  *
- * // Resolve CSS selector directly
  * const target = await resolver.resolve('button.submit');
  * // { success: true, selector: 'button.submit' }
- *
- * // Get nodeId for cached index (throws if invalid)
- * const nodeId = await resolver.getNodeIdForIndex(0);
  * ```
  */
 
 import { CommandError } from '@/errors/index.js';
-import { elementAtIndexNotFoundError, indexOutOfRangeError } from '@/errors/messages.js';
-import {
-  FORM_DISCOVERY_CACHE_SELECTOR,
-  QueryCacheManager,
-  type QueryCacheValidation,
-} from '@/session/QueryCacheManager.js';
-import { createLogger } from '@/ui/logging/index.js';
+import { indexOutOfRangeError, staleNodeError } from '@/errors/messages.js';
+import { QueryCacheManager, type QueryCacheValidation } from '@/session/QueryCacheManager.js';
+import type { DomQueryResult } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-
-const log = createLogger('dom');
 
 /**
  * Successful result of resolving a selector or index argument.
@@ -44,10 +31,12 @@ const log = createLogger('dom');
 export interface ElementTargetSuccess {
   /** Resolution succeeded */
   success: true;
-  /** CSS selector to use */
+  /** CSS selector (for an index: the selector shown to the user) */
   selector: string;
-  /** 0-based index for selector (if resolved from cached query) */
+  /** 0-based index among the selector's matches (selector arguments only) */
   index?: number | undefined;
+  /** Exact element from the query cache (index arguments only) */
+  backendNodeId?: number | undefined;
 }
 
 /**
@@ -66,15 +55,13 @@ export interface ElementTargetFailure {
 
 /**
  * Result of resolving a selector or index argument to an element target.
- * Discriminated union that guarantees selector exists when success is true.
  */
 export type ElementTargetResult = ElementTargetSuccess | ElementTargetFailure;
 
+type CachedNode = DomQueryResult['nodes'][number];
+
 /**
  * Singleton resolver for DOM element access patterns.
- *
- * Centralizes element resolution with cache validation, automatic refresh,
- * and consistent error handling.
  */
 export class DomElementResolver {
   private static instance: DomElementResolver | null = null;
@@ -87,41 +74,6 @@ export class DomElementResolver {
    */
   constructor(cacheManager?: QueryCacheManager) {
     this.cacheManager = cacheManager ?? QueryCacheManager.getInstance();
-  }
-
-  /**
-   * Refresh stale cache by re-running the original query.
-   *
-   * Called automatically when cache validation fails due to navigation.
-   * Re-queries using the stored selector and updates the cache with fresh results.
-   *
-   * @param selector - Original CSS selector from stale cache
-   * @returns Fresh query result
-   */
-  private async refreshCache(selector: string): Promise<void> {
-    log.debug(`Cache stale, auto-refreshing query "${selector}"`);
-
-    const { queryDOMElements } = await import('@/commands/dom/helpers/index.js');
-    const result = await queryDOMElements(selector);
-
-    const navigationId = await this.cacheManager.getCurrentNavigationId();
-    const resultWithNavId = {
-      ...result,
-      ...(navigationId !== null && { navigationId }),
-    };
-
-    await this.cacheManager.set(resultWithNavId);
-    this.cacheManager.invalidateNavigationCache();
-
-    log.debug(`Cache refreshed: found ${result.count} elements`);
-  }
-
-  private async validateWithAutoRefresh(): Promise<QueryCacheValidation> {
-    const validation = await this.cacheManager.validate();
-    if (validation.valid || !validation.cache?.selector) return validation;
-    if (validation.cache.selector === FORM_DISCOVERY_CACHE_SELECTOR) return validation;
-    await this.refreshCache(validation.cache.selector);
-    return this.cacheManager.validate();
   }
 
   /**
@@ -144,140 +96,54 @@ export class DomElementResolver {
   /**
    * Resolve a selectorOrIndex argument to an element target.
    *
-   * Handles the common pattern of accepting either:
-   * - A CSS selector string (used directly)
-   * - A numeric index (resolved from cached query results)
-   *
-   * Automatically refreshes stale cache by re-running the original query.
-   * This provides a "just works" experience where navigation doesn't break
-   * index-based access.
-   *
    * @param selectorOrIndex - CSS selector or numeric index from query results
-   * @param explicitIndex - Optional explicit --index flag value (0-based)
-   * @returns Resolution result with selector and optional index
-   *
-   * @example
-   * ```typescript
-   * const target = await resolver.resolve('button');
-   * // { success: true, selector: 'button' }
-   *
-   * const target = await resolver.resolve('0');
-   * // { success: true, selector: '.cached-selector', index: 1 }
-   * ```
+   * @param explicitIndex - Optional explicit --index flag value (0-based, selectors only)
+   * @returns Resolution result
    */
   async resolve(selectorOrIndex: string, explicitIndex?: number): Promise<ElementTargetResult> {
-    const isNumericIndex = /^\d+$/.test(selectorOrIndex);
-
-    if (isNumericIndex) {
-      const validation = await this.validateWithAutoRefresh();
-
-      if (!validation.valid || !validation.cache) {
-        return {
-          success: false,
-          error: validation.error ?? 'No cached query results found',
-          exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-          suggestion: validation.suggestion,
-        };
-      }
-
-      const cachedQuery = validation.cache;
-      const index = parseInt(selectorOrIndex, 10);
-      const targetNode =
-        cachedQuery.nodes.find((n) => n.index === index) ?? cachedQuery.nodes[index];
-
-      if (!targetNode) {
-        const validIndices = cachedQuery.nodes.map((n) => n.index).sort((a, b) => a - b);
-        return {
-          success: false,
-          error: `Index ${index} not found in cached results (query "${cachedQuery.selector}")`,
-          exitCode: EXIT_CODES.STALE_CACHE,
-          suggestion:
-            validIndices.length === 0
-              ? `No elements found. The selector "${cachedQuery.selector}" may no longer match any elements.`
-              : `Valid indices: ${validIndices.join(', ')}`,
-        };
-      }
-
-      if (targetNode.selector) {
-        return { success: true, selector: targetNode.selector };
-      }
-      return { success: true, selector: cachedQuery.selector, index };
+    if (!this.isNumericIndex(selectorOrIndex)) {
+      return { success: true, selector: selectorOrIndex, index: explicitIndex };
     }
-
-    return {
-      success: true,
-      selector: selectorOrIndex,
-      index: explicitIndex,
-    };
+    try {
+      const { node, selector } = await this.lookup(parseInt(selectorOrIndex, 10));
+      if (node.nodeId <= 0) {
+        const err = staleNodeError(node.nodeId);
+        return {
+          success: false,
+          error: err.message,
+          exitCode: EXIT_CODES.STALE_CACHE,
+          suggestion: err.suggestion,
+        };
+      }
+      return { success: true, selector: node.selector ?? selector, backendNodeId: node.nodeId };
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      return {
+        success: false,
+        error: error.message,
+        exitCode: error.exitCode,
+        suggestion: error.metadata.suggestion,
+      };
+    }
   }
 
   /**
-   * Get nodeId for a cached index.
-   *
-   * Automatically refreshes stale cache by re-running the original query.
-   * Throws CommandError only if refresh fails or index is out of range after refresh.
+   * Get the backend node id for a cached index, checking the element still exists.
    *
    * @param index - Zero-based index from query results
-   * @returns Node with nodeId from cache
-   * @throws CommandError if cache missing, index out of range after refresh, or node not found
-   *
-   * @example
-   * ```typescript
-   * const node = await resolver.getNodeIdForIndex(0);
-   * console.log(node.nodeId); // CDP node ID
-   * ```
+   * @returns Cached node; `nodeId` is its backend node id
+   * @throws CommandError if there is no usable cache, the index is out of range,
+   *   or the element is no longer in the page (87)
    */
   async getNodeIdForIndex(index: number): Promise<{ nodeId: number }> {
-    const validation = await this.validateWithAutoRefresh();
-
-    if (!validation.valid || !validation.cache) {
-      throw new CommandError(
-        validation.error ?? 'No cached query results found',
-        validation.suggestion ? { suggestion: validation.suggestion } : {},
-        EXIT_CODES.INVALID_ARGUMENTS
-      );
-    }
-
-    const cachedQuery = validation.cache;
-
-    if (index < 0 || index >= cachedQuery.nodes.length) {
-      const err = indexOutOfRangeError(index, cachedQuery.nodes.length - 1);
+    const { node } = await this.lookup(index);
+    if (node.nodeId <= 0) {
+      const err = staleNodeError(node.nodeId);
       throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
     }
-
-    const targetNode = cachedQuery.nodes[index];
-    if (!targetNode) {
-      const err = elementAtIndexNotFoundError(index, cachedQuery.selector);
-      throw new CommandError(
-        err.message,
-        { suggestion: err.suggestion },
-        EXIT_CODES.RESOURCE_NOT_FOUND
-      );
-    }
-
-    return targetNode;
-  }
-
-  /**
-   * Get the count of cached elements.
-   *
-   * Automatically refreshes stale cache by re-running the original query.
-   *
-   * @returns Number of cached elements
-   * @throws CommandError if cache is missing or refresh fails
-   */
-  async getElementCount(): Promise<number> {
-    const validation = await this.validateWithAutoRefresh();
-
-    if (!validation.valid || !validation.cache) {
-      throw new CommandError(
-        validation.error ?? 'No cached query results found',
-        validation.suggestion ? { suggestion: validation.suggestion } : {},
-        EXIT_CODES.INVALID_ARGUMENTS
-      );
-    }
-
-    return validation.cache.nodes.length;
+    const { assertNodeAttached } = await import('@/commands/dom/helpers/index.js');
+    await assertNodeAttached(node.nodeId);
+    return node;
   }
 
   /**
@@ -288,5 +154,34 @@ export class DomElementResolver {
    */
   isNumericIndex(selectorOrIndex: string): boolean {
     return /^\d+$/.test(selectorOrIndex);
+  }
+
+  /**
+   * Find a cached node by index.
+   *
+   * @param index - Zero-based index
+   * @returns Cached node and the query's selector
+   * @throws CommandError (81) without a usable cache, (87) for an index outside the cached results
+   */
+  private async lookup(index: number): Promise<{ node: CachedNode; selector: string }> {
+    const validation: QueryCacheValidation = await this.cacheManager.validate();
+    if (!validation.valid || !validation.cache) {
+      throw new CommandError(
+        validation.error ?? 'No cached query results found',
+        validation.suggestion ? { suggestion: validation.suggestion } : {},
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
+    const { nodes, selector } = validation.cache;
+    const node = nodes.find((n) => n.index === index);
+    if (!node) {
+      const err = indexOutOfRangeError(index, nodes.length - 1);
+      throw new CommandError(
+        `${err.message} in the last query ("${selector}")`,
+        { suggestion: nodes.length > 0 ? err.suggestion : 'Re-run the query' },
+        EXIT_CODES.STALE_CACHE
+      );
+    }
+    return { node, selector };
   }
 }

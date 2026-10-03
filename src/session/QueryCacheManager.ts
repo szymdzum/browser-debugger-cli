@@ -1,22 +1,17 @@
 /**
  * Query cache manager for DOM element index-based access.
  *
- * Provides centralized management of DOM query result caching with:
- * - Singleton pattern for consistent cache access
- * - Navigation-aware staleness detection
- * - TTL-based navigation ID caching to reduce IPC calls
- *
- * The cache enables index-based element access patterns like
- * "bdg dom get 0" after running "bdg dom query .selector".
+ * Stores the last `bdg dom query` / `bdg dom form` result so later commands
+ * can address its elements by index ("bdg dom get 0"). Each cached node holds
+ * its backend node id, which identifies that exact element for as long as it
+ * stays in the page; whether it still does is checked when the index is used,
+ * not here.
  *
  * @example
  * ```typescript
  * const manager = QueryCacheManager.getInstance();
- *
- * // Store query results
  * await manager.set(queryResult);
  *
- * // Validate and retrieve (throws if stale)
  * const validation = await manager.validate();
  * if (validation.valid) {
  *   const cache = validation.cache;
@@ -35,40 +30,36 @@ import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
 
-/** TTL for cached navigation ID (500ms). */
-const NAVIGATION_ID_CACHE_TTL_MS = 500;
+/**
+ * Cache format version. Version 2 stores backend node ids; older caches held
+ * per-connection node ids that are meaningless to later commands.
+ */
+const CACHE_VERSION = 2;
 
 /**
- * Pseudo-selector stored for caches written by `bdg dom form`.
- * Such caches cannot be refreshed by re-running a query.
+ * Selector recorded for `dom form` results (fields carry their own selectors).
  */
 export const FORM_DISCOVERY_CACHE_SELECTOR = 'form:auto-discovered';
 
 /**
- * Result of validating query cache against current navigation state.
+ * Result of reading the cache.
  */
 export interface QueryCacheValidation {
-  /** Whether the cache is valid for use. */
+  /** Whether cached indices can be used */
   valid: boolean;
-  /** The cached query result (if exists). */
+  /** Cached result, if readable */
   cache: DomQueryResult | null;
-  /** Error message if cache is invalid. */
+  /** Why the cache can't be used */
   error?: string;
-  /** Suggestion for fixing the error. */
+  /** How to fix it */
   suggestion?: string;
 }
 
 /**
- * Singleton manager for DOM query result caching.
- *
- * Centralizes all cache operations with navigation-aware staleness detection.
- * Uses file-based persistence for cross-process access.
+ * Singleton manager for the on-disk query cache.
  */
 export class QueryCacheManager {
   private static instance: QueryCacheManager | null = null;
-
-  /** Cached navigation ID with timestamp for TTL-based invalidation. */
-  private cachedNavigationId: { value: number; timestamp: number } | null = null;
 
   /**
    * Get the singleton instance.
@@ -88,25 +79,23 @@ export class QueryCacheManager {
   }
 
   /**
-   * Get path to query cache file.
+   * Path of the cache file in the session directory.
    *
-   * @returns Absolute path to query-cache.json
+   * @returns Absolute cache file path
    */
   private getCachePath(): string {
     return join(getSessionDir(), 'query-cache.json');
   }
 
   /**
-   * Store query results for index-based access.
+   * Store a query result.
    *
-   * Writes results to ~/.bdg/query-cache.json for cross-process access.
-   *
-   * @param result - DOM query result to cache
+   * @param result - Query result whose nodes carry backend node ids
    */
   async set(result: DomQueryResult): Promise<void> {
     try {
       const cachePath = this.getCachePath();
-      await writeFile(cachePath, JSON.stringify(result), 'utf-8');
+      await writeFile(cachePath, JSON.stringify({ version: CACHE_VERSION, ...result }), 'utf-8');
       log.debug(`Cached ${result.nodes.length} query results to ${cachePath}`);
     } catch (error) {
       log.debug(`Failed to write query cache: ${getErrorMessage(error)}`);
@@ -114,64 +103,13 @@ export class QueryCacheManager {
   }
 
   /**
-   * Get validated cache results.
+   * Read the cache and check that it can be used.
    *
-   * Returns null if cache is stale or doesn't exist.
-   * Use getRaw() for unchecked access.
-   *
-   * @returns Cached query result or null if invalid/missing
-   */
-  async get(): Promise<DomQueryResult | null> {
-    const validation = await this.validate();
-    return validation.valid ? validation.cache : null;
-  }
-
-  /**
-   * Get raw cache without validation.
-   *
-   * Reads from ~/.bdg/query-cache.json if it exists.
-   * Does not check navigation staleness.
-   *
-   * @returns Cached query result or null if no cache exists
-   */
-  async getRaw(): Promise<DomQueryResult | null> {
-    try {
-      const cachePath = this.getCachePath();
-      if (!existsSync(cachePath)) {
-        return null;
-      }
-
-      const content = await readFile(cachePath, 'utf-8');
-      const result = JSON.parse(content) as DomQueryResult;
-      log.debug(`Retrieved ${result.nodes.length} cached query results`);
-      return result;
-    } catch (error) {
-      log.debug(`Failed to read query cache: ${getErrorMessage(error)}`);
-      return null;
-    }
-  }
-
-  /**
-   * Validate cache against current navigation state.
-   *
-   * Checks if the cached query results are still valid by comparing
-   * the stored navigationId with the current one from the daemon.
-   *
-   * @returns Validation result with cache and error info
-   *
-   * @example
-   * ```typescript
-   * const validation = await manager.validate();
-   * if (!validation.valid) {
-   *   throw new CommandError(validation.error, { suggestion: validation.suggestion });
-   * }
-   * const cache = validation.cache;
-   * ```
+   * @returns Validation result with the cached query when usable
    */
   async validate(): Promise<QueryCacheValidation> {
-    const cache = await this.getRaw();
-
-    if (!cache) {
+    const raw = await this.read();
+    if (!raw) {
       return {
         valid: false,
         cache: null,
@@ -179,36 +117,23 @@ export class QueryCacheManager {
         suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
       };
     }
-
-    if (cache.navigationId === undefined) {
-      log.debug('Query cache missing navigationId (legacy format), allowing access');
-      return { valid: true, cache };
-    }
-
-    const currentNavId = await this.getCurrentNavigationId();
-
-    if (currentNavId === null) {
-      log.debug('Could not get current navigationId, allowing cache access');
-      return { valid: true, cache };
-    }
-
-    if (cache.navigationId !== currentNavId) {
+    const { version, ...cache } = raw;
+    if (version !== CACHE_VERSION) {
       return {
         valid: false,
-        cache,
-        error: `Query cache is stale (page has navigated since query was run)`,
-        suggestion: `Re-run "bdg dom query ${cache.selector}" to refresh cached results`,
+        cache: null,
+        error: 'Cached query results are from an older bdg version',
+        suggestion:
+          cache.selector === FORM_DISCOVERY_CACHE_SELECTOR
+            ? 'Re-run "bdg dom form" to refresh cached results'
+            : `Re-run "bdg dom query ${cache.selector}" to refresh cached results`,
       };
     }
-
     return { valid: true, cache };
   }
 
   /**
-   * Clear the query cache.
-   *
-   * Removes ~/.bdg/query-cache.json.
-   * Called when starting a new query or when the session ends.
+   * Remove the cache file.
    */
   async clear(): Promise<void> {
     try {
@@ -223,56 +148,20 @@ export class QueryCacheManager {
   }
 
   /**
-   * Check if cache file exists.
+   * Read the raw cache file.
    *
-   * @returns True if cache file exists
+   * @returns Parsed cache content, or null if missing/unreadable
    */
-  exists(): boolean {
-    return existsSync(this.getCachePath());
-  }
-
-  /**
-   * Get the daemon's current DOM version, used to detect stale node ids.
-   *
-   * The DOM version changes on navigation and on `DOM.documentUpdated`. Falls
-   * back to the navigation id when talking to a daemon without `domVersion`.
-   * Caches the result for 500ms to avoid redundant IPC calls within a single
-   * command execution while ensuring freshness for subsequent commands.
-   *
-   * @returns Current DOM version or null if unavailable
-   */
-  async getCurrentNavigationId(): Promise<number | null> {
-    if (
-      this.cachedNavigationId &&
-      Date.now() - this.cachedNavigationId.timestamp < NAVIGATION_ID_CACHE_TTL_MS
-    ) {
-      return this.cachedNavigationId.value;
-    }
-
+  private async read(): Promise<(DomQueryResult & { version?: number }) | null> {
     try {
-      const { getStatus } = await import('@/ipc/client.js');
-      const response = await getStatus();
-
-      const version = response.data?.domVersion ?? response.data?.navigationId;
-      if (response.status === 'ok' && version !== undefined) {
-        this.cachedNavigationId = { value: version, timestamp: Date.now() };
-        return version;
-      }
-
-      return null;
+      const cachePath = this.getCachePath();
+      if (!existsSync(cachePath)) return null;
+      return JSON.parse(await readFile(cachePath, 'utf-8')) as DomQueryResult & {
+        version?: number;
+      };
     } catch (error) {
-      log.debug(`Failed to get current navigation ID: ${getErrorMessage(error)}`);
+      log.debug(`Failed to read query cache: ${getErrorMessage(error)}`);
       return null;
     }
-  }
-
-  /**
-   * Invalidate cached navigation ID.
-   *
-   * Forces fresh fetch on next getCurrentNavigationId() call.
-   * Useful after navigation events.
-   */
-  invalidateNavigationCache(): void {
-    this.cachedNavigationId = null;
   }
 }

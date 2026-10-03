@@ -121,8 +121,6 @@ export interface SessionStatusData {
   activity: SessionActivity;
   /** Current navigation counter (increments on each page navigation). */
   navigationId: number;
-  /** DOM version (also increments on DOM.documentUpdated); node ids from older versions are invalid. */
-  domVersion: number;
 }
 
 /**
@@ -180,6 +178,8 @@ export interface DomFillCommand {
   selector: string;
   value: string;
   index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
   blur?: boolean;
   wait?: boolean;
 }
@@ -192,6 +192,8 @@ export type DomFillData = FillResult;
 export interface DomClickCommand {
   selector: string;
   index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
   wait?: boolean;
 }
 
@@ -203,6 +205,8 @@ export type DomClickData = ClickResult;
 export interface DomSubmitCommand {
   selector: string;
   index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
   waitNavigation?: boolean;
   waitNetwork?: number;
   timeout?: number;
@@ -217,6 +221,8 @@ export interface DomPressKeyCommand {
   selector: string;
   key: string;
   index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
   times?: number;
   modifiers?: string;
   wait?: boolean;
@@ -230,6 +236,8 @@ export type DomPressKeyData = PressKeyResult;
 export interface DomScrollCommand {
   selector?: string;
   index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
   down?: number;
   up?: number;
   left?: number;

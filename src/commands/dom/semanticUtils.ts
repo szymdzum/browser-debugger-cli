@@ -6,8 +6,11 @@
  * of the two data sources is available.
  */
 
-import { getDomContext, type DomContext } from '@/commands/dom/helpers/index.js';
-import { callCDP } from '@/ipc/client.js';
+import {
+  getDomContext,
+  resolveBackendNodeIds,
+  type DomContext,
+} from '@/commands/dom/helpers/index.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
 
@@ -105,23 +108,10 @@ export function resolveNodeWithFallback(
 export async function queryDomContextBySelector(
   selector: string
 ): Promise<{ nodeId: number | undefined; domContext: DomContext | null }> {
-  const docResponse = await callCDP('DOM.getDocument', {});
-  const doc = docResponse.data?.result as { root?: { nodeId?: number } } | undefined;
-
-  if (!doc?.root?.nodeId) {
+  const [backendNodeId] = await resolveBackendNodeIds([selector]);
+  if (backendNodeId === undefined) {
     return { nodeId: undefined, domContext: null };
   }
-
-  const queryResponse = await callCDP('DOM.querySelector', {
-    nodeId: doc.root.nodeId,
-    selector,
-  });
-  const queryResult = queryResponse.data?.result as { nodeId?: number } | undefined;
-
-  if (!queryResult?.nodeId) {
-    return { nodeId: undefined, domContext: null };
-  }
-
-  const domContext = await getDomContext(queryResult.nodeId);
-  return { nodeId: queryResult.nodeId, domContext };
+  const domContext = await getDomContext({ backendNodeId });
+  return { nodeId: backendNodeId, domContext };
 }

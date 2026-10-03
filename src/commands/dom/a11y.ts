@@ -158,13 +158,12 @@ async function handleA11yDescribe(
    */
   async function fetchA11yNodeData(): Promise<A11yNodeWithContext> {
     let node: A11yNode | null;
-    let nodeId: number | undefined;
+    let backendNodeId: number | undefined;
 
     if (isNumericIndex) {
       const index = parseInt(selectorOrIndex, 10);
-      const targetNode = await resolver.getNodeIdForIndex(index);
-      nodeId = targetNode.nodeId;
-      node = await resolveA11yNode('', nodeId);
+      backendNodeId = (await resolver.getNodeIdForIndex(index)).nodeId;
+      node = await resolveA11yNode('', { backendNodeId });
     } else {
       node = await resolveA11yNode(selectorOrIndex);
     }
@@ -182,9 +181,9 @@ async function handleA11yDescribe(
     }
 
     let domContext: DomContext | null = null;
-    const domNodeId = node.backendDOMNodeId ?? nodeId;
+    const domNodeId = node.backendDOMNodeId ?? backendNodeId;
     if (domNodeId) {
-      domContext = await getDomContext(domNodeId);
+      domContext = await getDomContext({ backendNodeId: domNodeId });
     }
 
     return { node, domContext };

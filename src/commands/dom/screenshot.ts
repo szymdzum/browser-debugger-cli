@@ -16,7 +16,7 @@ import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import { missingArgumentError } from '@/errors/messages.js';
-import type { ScreenshotResult, ElementBounds } from '@/types.js';
+import type { ScreenshotResult, ElementBounds, NodeRef } from '@/types.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -60,11 +60,11 @@ function hasElementTarget(options: DomScreenshotCommandOptions): boolean {
   return options.selector !== undefined || options.index !== undefined;
 }
 
-async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<number> {
+async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<NodeRef> {
   if (options.index !== undefined) {
     const resolver = DomElementResolver.getInstance();
     const node = await resolver.getNodeIdForIndex(options.index);
-    return node.nodeId;
+    return { backendNodeId: node.nodeId };
   }
 
   if (options.selector !== undefined) {
@@ -127,9 +127,9 @@ async function handleElementScreenshot(
 ): Promise<void> {
   await runCommand(
     async () => {
-      const nodeId = await resolveElementNodeId(options);
+      const nodeRef = await resolveElementNodeId(options);
       const screenshotOptions = buildElementScreenshotOptions(options);
-      const result = await captureElementScreenshot(outputPath, nodeId, screenshotOptions);
+      const result = await captureElementScreenshot(outputPath, nodeRef, screenshotOptions);
       const elementResult = addElementInfo(result, options);
       return { success: true, data: elementResult };
     },
@@ -143,9 +143,9 @@ async function captureSequenceFrame(
   options: DomScreenshotCommandOptions
 ): Promise<void> {
   if (hasElementTarget(options)) {
-    const nodeId = await resolveElementNodeId(options);
+    const nodeRef = await resolveElementNodeId(options);
     const elementOptions = buildElementScreenshotOptions(options);
-    await captureElementScreenshot(outputPath, nodeId, elementOptions);
+    await captureElementScreenshot(outputPath, nodeRef, elementOptions);
   } else {
     const pageOptions = buildPageScreenshotOptions(options);
     await capturePageScreenshot(outputPath, pageOptions);

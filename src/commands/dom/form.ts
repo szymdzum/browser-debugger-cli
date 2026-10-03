@@ -7,6 +7,7 @@
 
 import type { Command } from 'commander';
 
+import { resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { FormCommandOptions } from '@/commands/shared/optionTypes.js';
@@ -358,43 +359,27 @@ function transformForm(raw: RawForm): DiscoveredForm {
 /**
  * Cache form elements for index-based access.
  *
+ * Each field and button is cached with its selector and backend node id, so
+ * an index keeps addressing the same element even if other elements match
+ * the selector later.
+ *
  * @param forms - Discovered forms
  */
 async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
-  const cacheManager = QueryCacheManager.getInstance();
-  const allElements: Array<{ index: number; nodeId: number; selector: string }> = [];
+  const elements = forms.flatMap((form) => [...form.fields, ...form.buttons]);
+  const backendNodeIds = await resolveBackendNodeIds(elements.map((el) => el.selector));
 
-  for (const form of forms) {
-    for (const field of form.fields) {
-      allElements.push({
-        index: field.index,
-        nodeId: 0,
-        selector: field.selector,
-      });
-    }
-    for (const button of form.buttons) {
-      allElements.push({
-        index: button.index,
-        nodeId: 0,
-        selector: button.selector,
-      });
-    }
-  }
-
-  const navigationId = await cacheManager.getCurrentNavigationId();
-
-  await cacheManager.set({
+  await QueryCacheManager.getInstance().set({
     selector: FORM_DISCOVERY_CACHE_SELECTOR,
-    count: allElements.length,
-    nodes: allElements.map((el) => ({
+    count: elements.length,
+    nodes: elements.map((el, i) => ({
       index: el.index,
-      nodeId: el.nodeId,
+      nodeId: backendNodeIds[i] ?? 0,
       selector: el.selector,
     })),
-    ...(navigationId !== null && { navigationId }),
   });
 
-  log.debug(`Cached ${allElements.length} form elements`);
+  log.debug(`Cached ${elements.length} form elements`);
 }
 
 /**

@@ -21,13 +21,23 @@ export const FORM_DISCOVERY_SCRIPT = `
 (function() {
   const result = { forms: [] };
 
+  function isUnique(selector) {
+    try {
+      return document.querySelectorAll(selector).length === 1;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function generateSelector(element) {
-    if (element.id) {
+    if (element.id && isUnique('#' + CSS.escape(element.id))) {
       return '#' + CSS.escape(element.id);
     }
     if (element.name) {
-      const tag = element.tagName.toLowerCase();
-      return tag + '[name="' + CSS.escape(element.name) + '"]';
+      const byName = element.tagName.toLowerCase() + '[name="' + CSS.escape(element.name) + '"]';
+      if (isUnique(byName)) return byName;
+      const byValue = byName + '[value="' + CSS.escape(element.getAttribute('value') || '') + '"]';
+      if (element.hasAttribute('value') && isUnique(byValue)) return byValue;
     }
     const tag = element.tagName.toLowerCase();
     const parent = element.parentElement;
