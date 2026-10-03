@@ -57,7 +57,7 @@ const VALID_FILTER_TYPES: FilterType[] = [
   'scheme',
 ];
 
-const VALID_IS_VALUES = ['from-cache', 'running'] as const;
+const VALID_IS_VALUES = ['from-cache', 'running', 'failed'] as const;
 
 const SIZE_PATTERN = /^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/i;
 const QUOTED_TOKEN_PATTERN = /(?:[^\s"]+|"[^"]*")+/g;
@@ -290,7 +290,7 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
       return matchesWildcard(extractHostname(request.url), filter.value);
 
     case 'status-code':
-      if (request.status === undefined) return false;
+      if (!request.status) return false;
       return compareNumeric(request.status, parseInt(filter.value, 10), filter.operator);
 
     case 'method':
@@ -325,6 +325,7 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
     case 'is':
       if (filter.value === 'from-cache') return matchesCacheHeaders(request.responseHeaders);
       if (filter.value === 'running') return request.status === undefined;
+      if (filter.value === 'failed') return request.status === 0;
       return false;
 
     case 'scheme':
@@ -364,6 +365,7 @@ Filter syntax:
   has-response-header:set-cookie
   is:from-cache           Cached responses
   is:running              In-progress requests
+  is:failed               Requests that got no response (DNS, refused, aborted, blocked)
   scheme:https            URL scheme
 
 Negation (use ! to avoid CLI conflicts with -):

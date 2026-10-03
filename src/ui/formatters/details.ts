@@ -1,4 +1,5 @@
 import type { NetworkRequest, ConsoleMessage } from '@/types.js';
+import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
@@ -12,7 +13,7 @@ export function formatNetworkDetails(request: NetworkRequest): string {
     ['Request ID', request.requestId],
     ['URL', request.url],
     ['Method', request.method],
-    ['Status', request.status?.toString() ?? 'pending'],
+    ['Status', formatRequestStatus(request)],
     ['Resource Type', request.resourceType ?? 'N/A'],
     ['MIME Type', request.mimeType ?? 'N/A'],
   ]);

@@ -65,6 +65,8 @@ export interface PeekRequest extends IPCMessage {
   type: 'peek_request';
   /** Number of recent items to return. 0 = all. */
   lastN?: number;
+  /** Return items of one kind only. */
+  only?: 'network' | 'console';
 }
 
 /**
@@ -80,7 +82,8 @@ export interface PeekResponseData {
     timestamp: string;
     duration: number;
     target: { url: string; title: string };
-    data: { dom?: unknown; network?: unknown[]; console?: unknown[] };
+    data: { network?: unknown[]; console?: unknown[] };
+    totals: { network: number; console: number };
     partial?: boolean;
   };
 }

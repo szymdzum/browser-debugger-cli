@@ -2,6 +2,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
 import type { BdgOutput } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { formatRequestStatus, getRequestState } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
   PREVIEW_EMPTY_STATES,
@@ -30,7 +31,7 @@ export function inferResourceTypeFromMime(mimeType: string | undefined): string 
  */
 function formatLimitHint(showing: number, total: number): string {
   if (showing >= total) return '';
-  return ` (showing last ${showing}, use --last ${total} to see all)`;
+  return ` (showing last ${showing}, use --last 0 to see all)`;
 }
 
 /**
@@ -94,6 +95,7 @@ export interface PreviewJsonData {
   duration: number;
   target: BdgOutput['target'];
   partial?: boolean;
+  totals?: BdgOutput['totals'];
   network?: BdgOutput['data']['network'];
   console?: BdgOutput['data']['console'];
 }
@@ -116,6 +118,7 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
     duration: output.duration,
     target: output.target,
     ...(output.partial !== undefined && { partial: output.partial }),
+    ...(output.totals && { totals: output.totals }),
     ...(pick('network') && output.data.network && { network: last(output.data.network) }),
     ...(pick('console') && output.data.console && { console: last(output.data.console) }),
   };
@@ -168,7 +171,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       const requests =
         lastCount === 0 ? output.data.network : output.data.network.slice(-lastCount);
       const showingCount = requests.length;
-      const totalCount = output.data.network.length;
+      const totalCount = output.totals?.network ?? output.data.network.length;
       const limitHint = formatLimitHint(showingCount, totalCount);
       fmt.text(`NETWORK (${showingCount}/${totalCount})${limitHint}:`);
       if (requests.length === 0) {
@@ -189,8 +192,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       } else {
         const networkLines = requests.map((req) => {
           const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
-          // Show error text for failed requests (SSL errors, connection failures, etc.)
-          const status = req.errorText ? `FAILED (${req.errorText})` : (req.status ?? 'pending');
+          const status = formatRequestStatus(req);
           const url = truncateUrl(req.url, 50);
           return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}`;
         });
@@ -205,7 +207,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       const messages =
         lastCount === 0 ? output.data.console : output.data.console.slice(-lastCount);
       const showingCount = messages.length;
-      const totalCount = output.data.console.length;
+      const totalCount = output.totals?.console ?? output.data.console.length;
       const limitHint = formatLimitHint(showingCount, totalCount);
       fmt.text(`CONSOLE (${showingCount}/${totalCount})${limitHint}:`);
       if (messages.length === 0) {
@@ -262,7 +264,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       const title =
         lastCount === 0
           ? `Network Requests (all ${requests.length})`
-          : `Network Requests (last ${requests.length} of ${output.data.network.length})`;
+          : `Network Requests (last ${requests.length} of ${output.totals?.network ?? output.data.network.length})`;
       fmt.text(title).separator('━', 50);
       if (requests.length === 0) {
         if (
@@ -281,10 +283,10 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
         }
       } else {
         requests.forEach((req) => {
-          const isFailed =
-            Boolean(req.errorText) || (req.status !== undefined && req.status >= 400);
+          const state = getRequestState(req);
+          const isFailed = state === 'failed' || (req.status ?? 0) >= 400;
           const statusColor = isFailed ? 'ERR' : 'OK';
-          const status = req.errorText ? `FAILED` : (req.status?.toString() ?? 'pending');
+          const status = state === 'failed' ? 'FAILED' : formatRequestStatus(req);
           fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
           if (req.errorText) {
             fmt.text(`  Error: ${req.errorText}`);
@@ -314,7 +316,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       const title =
         lastCount === 0
           ? `Console Messages (all ${messages.length})`
-          : `Console Messages (last ${messages.length} of ${output.data.console.length})`;
+          : `Console Messages (last ${messages.length} of ${output.totals?.console ?? output.data.console.length})`;
       fmt.text(title).separator('━', 50);
       if (messages.length === 0) {
         fmt.text(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);

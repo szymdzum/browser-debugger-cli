@@ -383,7 +383,7 @@ export async function startNetworkCollection(
       return;
     }
 
-    entry.request.status = 0;
+    entry.request.status ??= 0;
 
     if (params.errorText) {
       entry.request.errorText = params.errorText;

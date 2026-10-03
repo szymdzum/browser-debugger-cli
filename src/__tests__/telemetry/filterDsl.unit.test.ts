@@ -360,6 +360,26 @@ describe('Filter application', () => {
       assert.equal(result[0]?.requestId, 'pending');
     });
 
+    it('separates failed requests from HTTP statuses and pending ones', () => {
+      const requests = [
+        createRequest({ requestId: 'ok', status: 200 }),
+        createRequest({
+          requestId: 'refused',
+          status: 0,
+          errorText: 'net::ERR_CONNECTION_REFUSED',
+        }),
+        createRequest({ requestId: 'aborted-503', status: 503, errorText: 'net::ERR_ABORTED' }),
+        (({ status: _status, ...rest }) => rest)(createRequest({ requestId: 'pending' })),
+      ];
+      const ids = (filter: string): string[] =>
+        applyFilters(requests, parseFilterString(filter)).map((r) => r.requestId);
+
+      assert.deepEqual(ids('is:failed'), ['refused']);
+      assert.deepEqual(ids('is:running'), ['pending']);
+      assert.deepEqual(ids('status-code:<300'), ['ok']);
+      assert.deepEqual(ids('status-code:>=400'), ['aborted-503']);
+    });
+
     it('filters by scheme', () => {
       const requests = [
         createRequest({ url: 'https://example.com/secure' }),

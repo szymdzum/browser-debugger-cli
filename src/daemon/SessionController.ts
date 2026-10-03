@@ -197,7 +197,10 @@ export class SessionController {
     }
     try {
       const data = await withTimeout(
-        this.session.execute('session_peek', { lastN: request.lastN ?? 10 }),
+        this.session.execute('session_peek', {
+          lastN: request.lastN ?? 10,
+          ...(request.only && { only: request.only }),
+        }),
         QUERY_TIMEOUT_MS,
         'Peek'
       );
@@ -213,6 +216,7 @@ export class SessionController {
             duration: data.duration,
             target: data.target,
             data: { network: data.network, console: data.console },
+            totals: { network: data.totalNetwork, console: data.totalConsole },
             partial: true,
           },
         },

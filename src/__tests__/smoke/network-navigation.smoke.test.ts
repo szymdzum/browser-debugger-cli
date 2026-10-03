@@ -97,3 +97,56 @@ void describe('Network and navigation', () => {
     assert.equal(data.url, fixture.url);
   });
 });
+
+void describe('Network list window and failures', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    const result = await runCommand(fixture.url, ['--port', String(port), '--headless'], {
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
+    const burst =
+      'Promise.allSettled([...Array(15).keys()].map((i) => fetch("/?n=" + i))' +
+      '.concat(fetch("http://127.0.0.1:1/refused"))).then(() => "done")';
+    await runJson('dom', ['eval', burst]);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('lists every captured request, not only the last 10', async () => {
+    const data = await runJson<{ requests: ListedRequest[]; totalCount: number }>('network', [
+      'list',
+      '--last',
+      '0',
+    ]);
+    assert.ok(data.totalCount >= 17, `totalCount ${data.totalCount}`);
+    assert.equal(data.requests.length, data.totalCount);
+    const peek = await runJson<{ totals: { network: number } }>('peek', []);
+    assert.ok(peek.totals.network >= data.totalCount, `peek totals ${peek.totals.network}`);
+  });
+
+  void it('reports requests without a response as failed, not as HTTP errors', async () => {
+    const failed = await runJson<{ requests: ListedRequest[] }>('network', [
+      'list',
+      '--preset',
+      'failed',
+    ]);
+    assert.ok(
+      failed.requests.some((r) => r.url.includes('/refused')),
+      JSON.stringify(failed.requests)
+    );
+    const errors = await runJson<{ requests: ListedRequest[] }>('network', [
+      'list',
+      '--preset',
+      'errors',
+    ]);
+    assert.ok(!errors.requests.some((r) => r.url.includes('/refused')));
+  });
+});

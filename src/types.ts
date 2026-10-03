@@ -215,6 +215,8 @@ export interface BdgOutput {
     console?: ConsoleMessage[];
     websockets?: WebSocketConnection[];
   };
+  /** Counts of all captured items matching the request (e.g. `peek --type`), when `data` holds only the most recent ones */
+  totals?: { network: number; console: number };
   error?: string;
   partial?: boolean; // Flag to indicate this is partial/incomplete data (live preview)
 }
