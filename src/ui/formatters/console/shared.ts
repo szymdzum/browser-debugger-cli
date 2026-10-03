@@ -72,7 +72,6 @@ export interface JsonErrorEntry {
  * JSON output structure for console command.
  */
 export interface ConsoleJsonOutput {
-  success: boolean;
   summary: ConsoleSummary;
   errors: JsonErrorEntry[];
   warnings: Omit<JsonErrorEntry, 'stackTrace'>[];

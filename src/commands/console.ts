@@ -13,6 +13,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import type { ConsoleMessage } from '@/types.js';
+import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
   formatConsole,
@@ -82,9 +83,14 @@ async function runFollowMode(options: ConsoleCommandOptions): Promise<void> {
       return;
     }
 
-    const filtered = applyFilters(result.data, options);
+    const recent = applyFilters(result.data, options).slice(-FOLLOW_LIMIT);
+    if (options.json) {
+      const data = buildConsoleJsonOutput(recent, { list: true, last: FOLLOW_LIMIT });
+      console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
+      return;
+    }
     console.clear();
-    console.log(formatConsoleFollow(filtered.slice(-FOLLOW_LIMIT)));
+    console.log(formatConsoleFollow(recent));
   };
 
   await setupFollowMode(showConsole, {

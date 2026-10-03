@@ -71,7 +71,7 @@ export function registerTailCommand(program: Command): void {
           return;
         }
 
-        console.clear();
+        if (!options.json) console.clear();
         console.log(formatPreview(result.data, createPreviewOptions(options, lastN)));
       };
 

@@ -17,6 +17,7 @@ import { applyFilters, getFilterHelpText, validateFilterString } from '@/telemet
 import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
+import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { formatNetworkList, type NetworkListOptions } from '@/ui/formatters/networkList.js';
 import {
   followingNetworkMessage,
@@ -118,7 +119,6 @@ function buildFormatOptions(
   follow = false
 ): NetworkListOptions {
   return {
-    json: options.json ?? false,
     verbose: options.verbose ?? false,
     last: lastLimit,
     totalCount,
@@ -146,10 +146,23 @@ async function runFollowMode(
 
     const filtered = filterRequests(result.data, options, resourceTypes);
     const displayRequests = filtered.slice(-FOLLOW_LIMIT);
-    const formatOptions = buildFormatOptions(options, filtered.length, FOLLOW_LIMIT, true);
+    if (options.json) {
+      const data: NetworkListResult = {
+        requests: displayRequests,
+        totalCount: result.data.length,
+        filteredCount: filtered.length,
+      };
+      console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
+      return;
+    }
 
     console.clear();
-    console.log(formatNetworkList(displayRequests, formatOptions));
+    console.log(
+      formatNetworkList(
+        displayRequests,
+        buildFormatOptions(options, filtered.length, FOLLOW_LIMIT, true)
+      )
+    );
   };
 
   await setupFollowMode(showNetwork, {
@@ -165,10 +178,16 @@ function formatPresetHelp(): string {
     .join('\n');
 }
 
+/**
+ * `network list` result (the `data` of `--json`).
+ */
 interface NetworkListResult {
+  /** Requests after filters and `--last`, oldest first */
   requests: NetworkRequest[];
-  filtered: NetworkRequest[];
+  /** All captured requests, before filters */
   totalCount: number;
+  /** Requests matching the filters, before `--last` */
+  filteredCount: number;
 }
 
 export function registerListCommand(networkCmd: Command): void {
@@ -222,7 +241,7 @@ export function registerListCommand(networkCmd: Command): void {
 
           if (!result.success) {
             if (result.exitCode === EXIT_CODES.SUCCESS) {
-              return { success: true, data: { requests: [], filtered: [], totalCount: 0 } };
+              return { success: true, data: { requests: [], totalCount: 0, filteredCount: 0 } };
             }
             return createErrorResult(result.error, result.exitCode);
           }
@@ -230,17 +249,16 @@ export function registerListCommand(networkCmd: Command): void {
           const filtered = filterRequests(result.data, options, resourceTypes);
           return {
             success: true,
-            data: { requests: result.data, filtered, totalCount: result.data.length },
+            data: {
+              requests: lastN === 0 ? filtered : filtered.slice(-lastN),
+              totalCount: result.data.length,
+              filteredCount: filtered.length,
+            },
           };
         },
         options,
-        (data: NetworkListResult) => {
-          const displayRequests = lastN === 0 ? data.filtered : data.filtered.slice(-lastN);
-          return formatNetworkList(
-            displayRequests,
-            buildFormatOptions(options, data.totalCount, lastN)
-          );
-        }
+        (data: NetworkListResult) =>
+          formatNetworkList(data.requests, buildFormatOptions(options, data.totalCount, lastN))
       );
     });
 }

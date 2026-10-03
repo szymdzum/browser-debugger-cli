@@ -1,6 +1,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
 import type { BdgOutput } from '@/types.js';
+import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
   PREVIEW_EMPTY_STATES,
@@ -90,43 +91,57 @@ export function formatPreview(output: BdgOutput, options: PreviewOptions): strin
 }
 
 /**
- * Format preview as JSON
+ * Data payload of `peek --json` / `tail --json` (goes in the envelope's `data`).
+ */
+export interface PreviewJsonData {
+  timestamp: string;
+  duration: number;
+  target: BdgOutput['target'];
+  partial?: boolean;
+  network?: BdgOutput['data']['network'];
+  console?: BdgOutput['data']['console'];
+  dom?: BdgOutput['data']['dom'];
+}
+
+/**
+ * Build the JSON payload for a preview, honoring the section and `--last` filters.
  *
- * Returns the output in standard bdg JSON format (consistent with stop command).
- * BREAKING CHANGE: Previously wrapped in preview object, now returns at root level.
+ * @param output - Preview output from the daemon
+ * @param options - Preview options (section filters, last N)
+ * @returns Payload for the response envelope's `data`
+ */
+export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions): PreviewJsonData {
+  const only = options.network
+    ? 'network'
+    : options.console
+      ? 'console'
+      : options.dom
+        ? 'dom'
+        : null;
+  const pick = <K extends 'network' | 'console' | 'dom'>(key: K): boolean => !only || only === key;
+  const last = <T>(items: T[] | undefined): T[] | undefined =>
+    items && options.last > 0 ? items.slice(-options.last) : items;
+
+  return {
+    timestamp: output.timestamp,
+    duration: output.duration,
+    target: output.target,
+    ...(output.partial !== undefined && { partial: output.partial }),
+    ...(pick('network') && output.data.network && { network: last(output.data.network) }),
+    ...(pick('console') && output.data.console && { console: last(output.data.console) }),
+    ...(pick('dom') && output.data.dom && { dom: output.data.dom }),
+  };
+}
+
+/**
+ * Format preview as a JSON response envelope.
+ *
+ * @param output - Preview output
+ * @param options - Preview options
+ * @returns Pretty-printed `{ version, success, data }` envelope
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
-  const data = { ...output.data };
-
-  if (options.network) {
-    delete data.console;
-    delete data.dom;
-  }
-  if (options.console) {
-    delete data.network;
-    delete data.dom;
-  }
-  if (options.dom) {
-    delete data.network;
-    delete data.console;
-  }
-
-  const lastCount = options.last;
-  if (lastCount > 0) {
-    if (data.network && data.network.length > lastCount) {
-      data.network = data.network.slice(-lastCount);
-    }
-    if (data.console && data.console.length > lastCount) {
-      data.console = data.console.slice(-lastCount);
-    }
-  }
-
-  const jsonOutput: BdgOutput = {
-    ...output,
-    data,
-  };
-
-  return JSON.stringify(jsonOutput, null, 2);
+  return JSON.stringify(buildSuccessResponse(buildPreviewJsonData(output, options)), null, 2);
 }
 
 /**

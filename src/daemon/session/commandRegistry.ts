@@ -3,6 +3,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
+import { CommandError } from '@/errors/index.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, WorkerStatusData } from '@/ipc/index.js';
 import { executeScript } from '@/runtime/dom/evalHelpers.js';
@@ -17,6 +18,7 @@ import {
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import type { NetworkRequest } from '@/types.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -79,6 +81,8 @@ interface NetworkPreview {
   status?: number;
   mimeType?: string;
   resourceType?: string;
+  encodedDataLength?: number;
+  errorText?: string;
 }
 
 function mapNetworkRequestToPreview(req: NetworkPreview): Partial<NetworkPreview> {
@@ -90,6 +94,8 @@ function mapNetworkRequestToPreview(req: NetworkPreview): Partial<NetworkPreview
     status: req.status,
     mimeType: req.mimeType,
     resourceType: req.resourceType,
+    encodedDataLength: req.encodedDataLength,
+    errorText: req.errorText,
   });
 }
 
@@ -137,7 +143,11 @@ function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRe
     store.networkRequests.find((r) => r.requestId === id) ??
     store.pendingNetworkRequests.get(id)?.request;
   if (!request) {
-    throw new Error(`Network request not found: ${id}`);
+    throw new CommandError(
+      `Network request not found: ${id}`,
+      { suggestion: 'List request ids with: bdg network list' },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
   }
   return request;
 }
@@ -153,13 +163,19 @@ function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRe
 function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
   const index = parseInt(indexStr, 10);
   if (isNaN(index) || index < 0 || index >= messages.length) {
-    throw new Error(
-      `Console message not found at index: ${indexStr} (available: 0-${messages.length - 1})`
+    throw new CommandError(
+      `Console message not found at index: ${indexStr} (available: 0-${messages.length - 1})`,
+      { suggestion: 'List messages with: bdg console --list' },
+      EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
   const message = messages[index];
   if (!message) {
-    throw new Error(`Console message not found at index: ${indexStr}`);
+    throw new CommandError(
+      `Console message not found at index: ${indexStr}`,
+      {},
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
   }
   return message;
 }
@@ -204,7 +220,11 @@ function findTargetRequestForHeaders(
   );
   if (byHeaders) return byHeaders;
 
-  throw new Error('No network requests with headers found');
+  throw new CommandError(
+    'No network requests with headers found',
+    { suggestion: 'Wait for the page to load, then retry' },
+    EXIT_CODES.RESOURCE_NOT_FOUND
+  );
 }
 
 /**

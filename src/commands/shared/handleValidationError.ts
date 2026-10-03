@@ -24,7 +24,9 @@ export function handleValidationError(error: unknown, json: boolean): never {
       if (error.metadata.suggestion) {
         errorOptions.suggestion = error.metadata.suggestion;
       }
-      console.log(JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions)));
+      console.log(
+        JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions), null, 2)
+      );
     } else {
       console.error(genericError(error.message));
       if (error.metadata.suggestion) console.error(error.metadata.suggestion);

@@ -57,7 +57,7 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
  */
 export async function runElementCommand<Req, Res extends ResultPayload>(
   options: ElementCommandOptions<Req, Res>
-): Promise<CommandResult<Res>> {
+): Promise<CommandResult<Omit<Res, 'success'>>> {
   const { selectorOrIndex, index, buildRequest, call, action, failureSuggestion, mapExitCode } =
     options;
 
@@ -107,5 +107,6 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
     };
   }
 
-  return { success: true, data: result };
+  const { success: _success, ...data } = result;
+  return { success: true, data };
 }

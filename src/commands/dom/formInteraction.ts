@@ -265,7 +265,8 @@ export function registerFormInteractionCommands(program: Command): void {
             };
           }
 
-          return { success: true, data: result };
+          const { success: _success, ...data } = result;
+          return { success: true, data };
         },
         options,
         formatScrollOutput
@@ -273,10 +274,13 @@ export function registerFormInteractionCommands(program: Command): void {
     });
 }
 
+/** Action result as returned in `data` (the `success` flag is implied by the envelope). */
+type ActionOutput<T> = Omit<T, 'success'>;
+
 /**
  * Format fill command output for human-readable display.
  */
-function formatFillOutput(result: FillResult): string {
+function formatFillOutput(result: ActionOutput<FillResult>): string {
   const fmt = new OutputFormatter();
   fmt.text('✓ Element Filled');
   fmt.blank();
@@ -300,7 +304,7 @@ function formatFillOutput(result: FillResult): string {
 /**
  * Format click command output for human-readable display.
  */
-function formatClickOutput(result: ClickResult): string {
+function formatClickOutput(result: ActionOutput<ClickResult>): string {
   const fmt = new OutputFormatter();
   fmt.text('✓ Element Clicked');
   fmt.blank();
@@ -322,7 +326,7 @@ function formatClickOutput(result: ClickResult): string {
 /**
  * Format submit command output for human-readable display.
  */
-function formatSubmitOutput(result: SubmitResult): string {
+function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   const fmt = new OutputFormatter();
   fmt.text('✓ Form Submitted');
   fmt.blank();
@@ -352,7 +356,7 @@ function formatSubmitOutput(result: SubmitResult): string {
 /**
  * Format pressKey command output for human-readable display.
  */
-function formatPressKeyOutput(result: PressKeyResult): string {
+function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   const fmt = new OutputFormatter();
   fmt.text('✓ Key Pressed');
   fmt.blank();
@@ -380,7 +384,7 @@ function formatPressKeyOutput(result: PressKeyResult): string {
 /**
  * Format scroll command output for human-readable display.
  */
-function formatScrollOutput(result: ScrollResult): string {
+function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
   const fmt = new OutputFormatter();
   fmt.text('✓ Page Scrolled');
   fmt.blank();

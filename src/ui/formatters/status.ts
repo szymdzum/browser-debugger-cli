@@ -5,10 +5,8 @@ import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { formatDiagnosticsForStatus } from '@/ui/messages/chrome.js';
 import { isProcessAlive } from '@/utils/process.js';
-import { VERSION } from '@/utils/version.js';
 
 export interface StatusData {
-  version: string;
   active: boolean;
   bdgPid?: number;
   chromePid?: number | undefined;
@@ -130,18 +128,17 @@ export function formatStatusAsJson(
   pid: number | null
 ): StatusData {
   if (!pid) {
-    return { version: VERSION, active: false };
+    return { active: false };
   }
 
   const isAlive = isProcessAlive(pid);
 
   if (!isAlive) {
-    return { version: VERSION, active: false, stale: true, stalePid: pid };
+    return { active: false, stale: true, stalePid: pid };
   }
 
   if (!metadata) {
     return {
-      version: VERSION,
       active: true,
       bdgPid: pid,
       warning: 'Metadata not found (session may be from older version)',
@@ -153,7 +150,6 @@ export function formatStatusAsJson(
   const chromeAlive = metadata.chromePid ? isProcessAlive(metadata.chromePid) : false;
 
   return {
-    version: VERSION,
     active: true,
     bdgPid: pid,
     chromePid: metadata.chromePid,

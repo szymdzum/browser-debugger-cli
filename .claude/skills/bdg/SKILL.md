@@ -116,7 +116,7 @@ for i in {1..20}; do
   EXISTS=$(bdg cdp Runtime.evaluate --params '{
     "expression": "document.querySelector(\"#target\") !== null",
     "returnByValue": true
-  }' | jq -r '.result.value')
+  }' | jq -r '.data.result.result.value')
   [ "$EXISTS" = "true" ] && break
   sleep 0.5
 done
@@ -127,7 +127,7 @@ done
 bdg cdp Runtime.evaluate --params '{
   "expression": "Array.from(document.querySelectorAll(\"a\")).map(a => ({text: a.textContent, href: a.href}))",
   "returnByValue": true
-}' | jq '.result.value'
+}' | jq '.data.result.result.value'
 ```
 
 ## Exit Codes

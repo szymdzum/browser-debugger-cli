@@ -4,7 +4,8 @@
  * Provides standardized error handling for IPC/CDP calls with type narrowing.
  */
 
-import { IPCError } from '@/ipc/transport/IPCError.js';
+import { CommandError } from '@/errors/index.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Base response interface for validation.
@@ -14,6 +15,10 @@ interface BaseResponse {
   status: 'ok' | 'error';
   error?: string;
   data?: object;
+  /** Semantic exit code forwarded by the daemon */
+  exitCode?: number;
+  /** Recovery suggestion forwarded by the daemon */
+  suggestion?: string;
 }
 
 /**
@@ -34,7 +39,7 @@ type SuccessResponse<T extends BaseResponse> = T & { status: 'ok' };
  * Works with both IPCResponse (legacy) and ClientResponse (new) types.
  *
  * @param response - IPC or CDP response from daemon
- * @throws IPCError if response.status === 'error'
+ * @throws CommandError (carrying the daemon's exitCode and suggestion) if response.status === 'error'
  *
  * @example
  * ```typescript
@@ -48,6 +53,14 @@ export function validateIPCResponse<T extends BaseResponse>(
   response: T
 ): asserts response is SuccessResponse<T> {
   if (response.status === 'error') {
-    throw new IPCError(response.error ?? 'Unknown IPC error');
+    const message = response.error ?? 'Unknown IPC error';
+    const exitCode =
+      response.exitCode ??
+      (/no active session/i.test(message) ? EXIT_CODES.RESOURCE_NOT_FOUND : undefined);
+    throw new CommandError(
+      message,
+      response.suggestion ? { suggestion: response.suggestion } : {},
+      exitCode ?? EXIT_CODES.SOFTWARE_ERROR
+    );
   }
 }

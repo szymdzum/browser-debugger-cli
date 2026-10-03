@@ -8,17 +8,14 @@ export function formatNetworkDetails(request: NetworkRequest): string {
   const fmt = new OutputFormatter();
 
   fmt.text('Network Request Details').separator('━', 70);
-  fmt.keyValueList(
-    [
-      ['Request ID', request.requestId],
-      ['URL', request.url],
-      ['Method', request.method],
-      ['Status', request.status?.toString() ?? 'pending'],
-      ['Resource Type', request.resourceType ?? 'N/A'],
-      ['MIME Type', request.mimeType ?? 'N/A'],
-    ],
-    13
-  );
+  fmt.keyValueList([
+    ['Request ID', request.requestId],
+    ['URL', request.url],
+    ['Method', request.method],
+    ['Status', request.status?.toString() ?? 'pending'],
+    ['Resource Type', request.resourceType ?? 'N/A'],
+    ['MIME Type', request.mimeType ?? 'N/A'],
+  ]);
   fmt.blank();
 
   if (request.requestHeaders) {
@@ -58,14 +55,11 @@ export function formatConsoleDetails(message: ConsoleMessage): string {
   const fmt = new OutputFormatter();
 
   fmt.text('Console Message Details').separator('━', 70);
-  fmt.keyValueList(
-    [
-      ['Type', message.type],
-      ['Timestamp', new Date(message.timestamp).toISOString()],
-      ['Text', message.text],
-    ],
-    12
-  );
+  fmt.keyValueList([
+    ['Type', message.type],
+    ['Timestamp', new Date(message.timestamp).toISOString()],
+    ['Text', message.text],
+  ]);
   fmt.blank();
 
   if (message.args && message.args.length > 0) {

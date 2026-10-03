@@ -12,8 +12,10 @@ import {
   noNodesFoundError,
   indexOutOfRangeError,
   eitherArgumentRequiredError,
+  invalidSelectorError,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
+import { validateIPCResponse } from '@/ipc/utils/responseValidator.js';
 import type { DomQueryResult, DomGetResult, DomGetOptions, DomContext } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
@@ -33,6 +35,7 @@ async function getDocumentRootId(): Promise<number> {
   await callCDP('DOM.enable', {});
 
   const docResponse = await callCDP('DOM.getDocument', {});
+  validateIPCResponse(docResponse);
   const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
   if (!doc?.root?.nodeId) {
     throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
@@ -66,6 +69,14 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
     nodeId: rootNodeId,
     selector,
   });
+  if (queryResponse.status === 'error') {
+    const err = invalidSelectorError(selector, queryResponse.error);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
   const queryResult = queryResponse.data?.result as
     Protocol.DOM.QuerySelectorAllResponse | undefined;
   const nodeIds = queryResult?.nodeIds ?? [];
