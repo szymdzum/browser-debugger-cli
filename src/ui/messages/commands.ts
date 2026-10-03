@@ -34,6 +34,15 @@ export function orphanedDaemonsCleanedMessage(count: number): string {
 }
 
 /**
+ * Warning shown when a click falls back from mouse events to `el.click()`.
+ *
+ * @returns Warning text
+ */
+export function domClickFallbackWarning(): string {
+  return 'Element is covered or has no size; dispatched a DOM click instead of mouse events';
+}
+
+/**
  * Generate warning message.
  *
  * @param message - Warning text

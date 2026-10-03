@@ -7,7 +7,9 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
+import { InvalidArgumentError } from 'commander';
+
+import { integerOption, positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
@@ -237,5 +239,23 @@ void describe('genericError', () => {
     assert.equal(genericError('boom'), 'Error: boom');
     assert.equal(genericError('Error: boom'), 'Error: boom');
     assert.equal(genericError('Error: boom', 'hint'), 'Error: boom\nhint');
+  });
+});
+
+void describe('integerOption', () => {
+  void it('parses integers within range', () => {
+    assert.equal(integerOption(0)('0'), 0);
+    assert.equal(integerOption(0, 100)(' 42 '), 42);
+  });
+
+  void it('rejects values parseInt would have accepted or turned into NaN', () => {
+    for (const value of ['abc', '5px', '1.5', '', '0x10']) {
+      assert.throws(() => integerOption(0)(value), InvalidArgumentError, value);
+    }
+  });
+
+  void it('rejects out-of-range values with the allowed range', () => {
+    assert.throws(() => integerOption(0, 100)('101'), /between 0 and 100/);
+    assert.throws(() => integerOption(1)('0'), /Expected an integer\. Use a value >= 1/);
   });
 });

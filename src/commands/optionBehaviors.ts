@@ -107,7 +107,8 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'click:--no-wait': {
     default: 'Waits for network stability after click (200ms idle)',
     whenDisabled: 'Returns immediately without waiting for network',
-    automaticBehavior: 'Network wait helps ensure AJAX requests triggered by click complete',
+    automaticBehavior:
+      'Network wait helps ensure AJAX requests triggered by click complete. The click itself uses real mouse events at the element center (method "mouse"); if the element is covered or has no size it falls back to el.click() (method "dom", with a warning)',
   },
   'pressKey:--no-wait': {
     default: 'Waits for network stability after key press (200ms idle)',

@@ -384,6 +384,16 @@ export function clickableElementNotFoundError(selector: string): ErrorWithSugges
 }
 
 /**
+ * Click target disappeared between locating and clicking it.
+ */
+export function clickTargetDetachedError(selector: string): ErrorWithSuggestion {
+  return {
+    message: `Element was removed before it could be clicked: ${selector}`,
+    suggestion: 'The page changed during the click; wait for it to settle and retry',
+  };
+}
+
+/**
  * Key press failed.
  */
 export function keyPressFailedError(details: string): ErrorWithSuggestion {

@@ -36,6 +36,10 @@ export interface ClickResult {
   selectedIndex?: number;
   requestedIndex?: number;
   suggestion?: string;
+  /** How the click was performed: real mouse events, or el.click() fallback */
+  method?: 'mouse' | 'dom';
+  /** Why the DOM fallback was used (element covered or without size) */
+  warning?: string;
 }
 
 /**

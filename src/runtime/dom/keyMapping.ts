@@ -14,6 +14,10 @@ export interface KeyDefinition {
   key: string;
   /** Windows virtual key code */
   keyCode: number;
+  /** Text the key types (letters, digits, space, Enter); absent for non-text keys */
+  text?: string;
+  /** Text typed with Shift on a US layout, when it is not just the uppercased `text` */
+  shiftText?: string;
 }
 
 /**
@@ -33,10 +37,10 @@ export const MODIFIER_FLAGS = {
  * Keys are case-insensitive for user convenience.
  */
 const KEY_DEFINITIONS: Record<string, KeyDefinition> = {
-  enter: { code: 'Enter', key: 'Enter', keyCode: 13 },
+  enter: { code: 'Enter', key: 'Enter', keyCode: 13, text: '\r' },
   tab: { code: 'Tab', key: 'Tab', keyCode: 9 },
   escape: { code: 'Escape', key: 'Escape', keyCode: 27 },
-  space: { code: 'Space', key: ' ', keyCode: 32 },
+  space: { code: 'Space', key: ' ', keyCode: 32, text: ' ' },
   backspace: { code: 'Backspace', key: 'Backspace', keyCode: 8 },
   delete: { code: 'Delete', key: 'Delete', keyCode: 46 },
 
@@ -71,6 +75,7 @@ for (let i = 0; i < 26; i++) {
     code: `Key${upperLetter}`,
     key: letter,
     keyCode: 65 + i, // 'A' = 65
+    text: letter,
   };
 }
 
@@ -80,6 +85,8 @@ for (let i = 0; i < 10; i++) {
     code: `Digit${digit}`,
     key: digit,
     keyCode: 48 + i, // '0' = 48
+    text: digit,
+    shiftText: ')!@#$%^&*('.charAt(i),
   };
 }
 
