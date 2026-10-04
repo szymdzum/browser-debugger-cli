@@ -8,7 +8,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { parseModifiers } from '@/runtime/dom/keyMapping.js';
+import {
+  MODIFIER_FLAGS,
+  describeModifiers,
+  findUnknownModifiers,
+  parseModifiers,
+} from '@/runtime/dom/keyMapping.js';
 
 void describe('parseModifiers', () => {
   void it('maps each modifier to its CDP bit', () => {
@@ -25,5 +30,26 @@ void describe('parseModifiers', () => {
   void it('returns 0 for no or unknown modifiers', () => {
     assert.equal(parseModifiers(undefined), 0);
     assert.equal(parseModifiers('hyper'), 0);
+  });
+});
+
+void describe('modifier names', () => {
+  void it('accepts aliases and ignores case and spaces', () => {
+    assert.equal(parseModifiers('Cmd, shift'), MODIFIER_FLAGS.meta | MODIFIER_FLAGS.shift);
+    assert.equal(parseModifiers('control,option'), MODIFIER_FLAGS.ctrl | MODIFIER_FLAGS.alt);
+  });
+
+  void it('reports unknown modifier names', () => {
+    assert.deepEqual(findUnknownModifiers('ctrl,bogus,hyper'), ['bogus', 'hyper']);
+    assert.deepEqual(findUnknownModifiers('ctrl,shift'), []);
+  });
+
+  void it('names flags with the CDP bit meanings', () => {
+    assert.deepEqual(describeModifiers(MODIFIER_FLAGS.shift), ['Shift']);
+    assert.deepEqual(describeModifiers(MODIFIER_FLAGS.ctrl | MODIFIER_FLAGS.shift), [
+      'Ctrl',
+      'Shift',
+    ]);
+    assert.deepEqual(describeModifiers(MODIFIER_FLAGS.alt), ['Alt']);
   });
 });

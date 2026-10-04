@@ -109,33 +109,78 @@ export function getKeyDefinition(keyName: string): KeyDefinition | undefined {
   return KEY_DEFINITIONS[keyName.toLowerCase()];
 }
 
+/** Accepted modifier names (and common aliases) mapped to their flag. */
+const MODIFIER_NAMES: Record<string, keyof typeof MODIFIER_FLAGS> = {
+  alt: 'alt',
+  option: 'alt',
+  opt: 'alt',
+  ctrl: 'ctrl',
+  control: 'ctrl',
+  meta: 'meta',
+  cmd: 'meta',
+  command: 'meta',
+  shift: 'shift',
+};
+
+/**
+ * Split a comma-separated modifier list into lowercase names.
+ *
+ * @param modifiers - e.g. "Ctrl, shift"
+ * @returns Non-empty names
+ */
+function modifierNames(modifiers: string): string[] {
+  return modifiers
+    .toLowerCase()
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Names in a modifier list that are not recognized.
+ *
+ * @param modifiers - Comma-separated modifier names
+ * @returns Unknown names (empty when all are valid)
+ */
+export function findUnknownModifiers(modifiers: string): string[] {
+  return modifierNames(modifiers).filter((name) => !(name in MODIFIER_NAMES));
+}
+
 /**
  * Parse modifier string into CDP modifier flags.
  *
- * @param modifiers - Comma-separated modifier names (e.g., "ctrl,shift")
+ * @param modifiers - Comma-separated modifier names (e.g., "ctrl,shift"; aliases cmd, control, option)
  * @returns Combined modifier bit flags
  *
  * @example
  * ```typescript
- * parseModifiers('ctrl,shift'); // Returns 3 (1 + 2)
- * parseModifiers('alt');        // Returns 4
+ * parseModifiers('ctrl,shift'); // Returns 10 (2 + 8)
+ * parseModifiers('cmd');        // Returns 4
  * parseModifiers('');           // Returns 0
  * ```
  */
 export function parseModifiers(modifiers: string | undefined): number {
-  if (!modifiers) {
-    return 0;
-  }
+  if (!modifiers) return 0;
+  return modifierNames(modifiers).reduce((flags, name) => {
+    const flag = MODIFIER_NAMES[name];
+    return flag ? flags | MODIFIER_FLAGS[flag] : flags;
+  }, 0);
+}
 
-  let flags = 0;
-  const parts = modifiers.toLowerCase().split(',');
-
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (trimmed in MODIFIER_FLAGS) {
-      flags |= MODIFIER_FLAGS[trimmed as keyof typeof MODIFIER_FLAGS];
-    }
-  }
-
-  return flags;
+/**
+ * Human-readable names of set modifier flags.
+ *
+ * @param flags - CDP modifier bit flags
+ * @returns e.g. ["Ctrl", "Shift"]
+ */
+export function describeModifiers(flags: number): string[] {
+  const labels: Record<keyof typeof MODIFIER_FLAGS, string> = {
+    ctrl: 'Ctrl',
+    alt: 'Alt',
+    shift: 'Shift',
+    meta: 'Meta',
+  };
+  return (Object.keys(labels) as Array<keyof typeof MODIFIER_FLAGS>)
+    .filter((name) => flags & MODIFIER_FLAGS[name])
+    .map((name) => labels[name]);
 }

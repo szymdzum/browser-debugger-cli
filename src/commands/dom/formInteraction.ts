@@ -7,7 +7,7 @@
  * subscriptions for network-stability waits) on behalf of the CLI.
  */
 
-import type { Command } from 'commander';
+import { InvalidArgumentError, type Command } from 'commander';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
@@ -26,9 +26,25 @@ import { internalError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
+import { describeModifiers, findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/**
+ * Commander parser for `--modifiers`: rejects unknown names instead of
+ * silently pressing the bare key.
+ *
+ * @param value - Comma-separated modifier names
+ * @returns The value, unchanged
+ */
+function modifiersOption(value: string): string {
+  const [unknown] = findUnknownModifiers(value);
+  if (unknown !== undefined) {
+    throw new InvalidArgumentError(`Unknown modifier "${unknown}" (use shift, ctrl, alt, meta)`);
+  }
+  return value;
+}
 
 /**
  * Register form interaction commands.
@@ -137,8 +153,6 @@ export function registerFormInteractionCommands(program: Command): void {
             call: domSubmit,
             action: 'submit form',
             failureSuggestion: 'Verify the selector matches a form or submit button',
-            mapExitCode: (result) =>
-              result.error?.includes('Timeout') ? EXIT_CODES.CDP_TIMEOUT : undefined,
           }),
         options,
         formatSubmitOutput
@@ -152,7 +166,11 @@ export function registerFormInteractionCommands(program: Command): void {
     .argument('<key>', 'Key to press (Enter, Tab, Escape, Space, ArrowUp, etc.)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--times <n>', 'Press key multiple times (default: 1)', integerOption(1, 1000))
-    .option('--modifiers <mods>', 'Modifier keys: shift,ctrl,alt,meta (comma-separated)')
+    .option(
+      '--modifiers <mods>',
+      'Modifier keys: shift,ctrl,alt,meta (comma-separated; aliases cmd, control, option)',
+      modifiersOption
+    )
     .option('--no-wait', 'Skip waiting for network stability after key press')
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, key: string, options: PressKeyCommandOptions) => {
@@ -392,12 +410,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
 
   if (result.times && result.times > 1) details.push(['Times', result.times.toString()]);
   if (result.modifiers && result.modifiers > 0) {
-    const mods: string[] = [];
-    if (result.modifiers & 1) mods.push('Shift');
-    if (result.modifiers & 2) mods.push('Ctrl');
-    if (result.modifiers & 4) mods.push('Alt');
-    if (result.modifiers & 8) mods.push('Meta');
-    details.push(['Modifiers', mods.join('+')]);
+    details.push(['Modifiers', describeModifiers(result.modifiers).join('+')]);
   }
 
   fmt.keyValueList(details, 15);

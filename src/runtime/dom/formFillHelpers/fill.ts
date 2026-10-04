@@ -99,7 +99,12 @@ const DOM_CLICK_FALLBACK_SCRIPT = `(() => {
 })()`;
 
 /** Click target as located by CLICK_ELEMENT_SCRIPT. */
-type LocatedClick = ClickResult & { x?: number; y?: number; hittable?: boolean };
+type LocatedClick = ClickResult & {
+  x?: number;
+  y?: number;
+  hittable?: boolean;
+  obstruction?: string | null;
+};
 
 /**
  * Click a located element.
@@ -114,7 +119,7 @@ type LocatedClick = ClickResult & { x?: number; y?: number; hittable?: boolean }
  * @returns Click result
  */
 async function performClick(cdp: CDPConnection, located: LocatedClick): Promise<ClickResult> {
-  const { x, y, hittable, ...result } = located;
+  const { x, y, hittable, obstruction, ...result } = located;
   if (!result.success) return result;
 
   if (hittable && x !== undefined && y !== undefined) {
@@ -139,7 +144,7 @@ async function performClick(cdp: CDPConnection, located: LocatedClick): Promise<
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
-  return { ...result, method: 'dom', warning: domClickFallbackWarning() };
+  return { ...result, method: 'dom', warning: domClickFallbackWarning(obstruction) };
 }
 
 /**
