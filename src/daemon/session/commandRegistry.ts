@@ -6,7 +6,7 @@ import { PatternDetector } from '@/daemon/patternDetector.js';
 import { CommandError } from '@/errors/index.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
-import { executeScript } from '@/runtime/dom/evalHelpers.js';
+import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
 import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import {
   fillElement,
@@ -409,11 +409,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       return { result, ...(hint !== undefined && { hint }) };
     },
 
-    dom_eval: async (cdp, params) => {
-      const result = await executeScript(cdp, params.script);
-      const value = result.result?.value as unknown;
-      return { value };
-    },
+    dom_eval: async (cdp, params) => evaluateScript(cdp, params.script),
 
     dom_fill: async (cdp, params) => {
       const target = await resolveScriptTarget(cdp, params);

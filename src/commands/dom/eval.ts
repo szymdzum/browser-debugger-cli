@@ -26,7 +26,8 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
           ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
       }
-      return { success: true, data: { result: response.data.value } };
+      const { value, type, subtype } = response.data;
+      return { success: true, data: { result: value, type, ...(subtype && { subtype }) } };
     },
     options,
     formatDomEval
