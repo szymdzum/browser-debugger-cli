@@ -33,13 +33,23 @@ type WithTypeAndSession = { type: string; sessionId: string };
 /**
  * Send IPC request and wait for response.
  * Handles connection, JSONL protocol, validation, timeout, and cleanup.
+ *
+ * @param request - Request to send
+ * @param requestName - Name used in errors and logs
+ * @param expectedType - Response type to validate, if any
+ * @param timeoutMs - How long to wait for the response (default: IPC timeout)
+ * @returns The daemon's response
  */
 export async function sendRequest<
   TRequest extends WithTypeAndSession,
   TResponse extends WithTypeAndSession,
->(request: TRequest, requestName: string, expectedType?: string): Promise<TResponse> {
+>(
+  request: TRequest,
+  requestName: string,
+  expectedType?: string,
+  timeoutMs: number = getIPCRequestTimeout()
+): Promise<TResponse> {
   const socketPath = getDaemonSocketPath();
-  const timeoutMs = getIPCRequestTimeout();
 
   return new Promise((resolve, reject) => {
     const buffer = new JSONLBuffer();

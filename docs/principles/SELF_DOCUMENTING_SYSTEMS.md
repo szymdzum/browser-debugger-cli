@@ -135,7 +135,7 @@ $ bdg --help --json
 **Example**: bdg exposes the entire Chrome DevTools Protocol:
 
 ```bash
-# List all 53 CDP domains
+# List all CDP domains
 $ bdg cdp --list
 Accessibility, Animation, Audits, Browser, CSS, ...
 
@@ -243,7 +243,7 @@ const help = await exec(`${tool} --help --json`);
 
 // Level 1: Discover domain capabilities
 const domains = await exec(`${tool} cdp --list`);
-// Agent learns: 53 CDP domains available
+// Agent learns: which CDP domains are available
 
 // Level 2: Discover domain methods
 const methods = await exec(`${tool} cdp Network --list`);
@@ -541,8 +541,7 @@ tool command subcommand --describe
 ### Problem
 
 Chrome DevTools Protocol has:
-- 53 domains
-- 300+ methods
+- every domain and method of the bundled protocol (counts in `bdg cdp --help`)
 - Thousands of parameters
 - Complex type system
 

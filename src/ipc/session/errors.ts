@@ -18,6 +18,10 @@ export enum IPCErrorCode {
   SESSION_TARGET_MISMATCH = 'SESSION_TARGET_MISMATCH',
   /** Session (Chrome launch or CDP connection) failed to start. */
   SESSION_START_FAILED = 'SESSION_START_FAILED',
+  /** The start was cancelled: the session was stopped while starting. */
+  SESSION_START_CANCELLED = 'SESSION_START_CANCELLED',
+  /** The previous session is still shutting down. */
+  SESSION_SHUTTING_DOWN = 'SESSION_SHUTTING_DOWN',
   /** The start URL could not be loaded (DNS, refused, missing file). */
   NAVIGATION_FAILED = 'NAVIGATION_FAILED',
   /** Chrome browser failed to launch. */

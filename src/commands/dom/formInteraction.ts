@@ -388,7 +388,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   fmt.blank();
   fmt.text('Next steps:');
   fmt.section('', [
-    'bdg peek --network --last 10    Check network requests',
+    'bdg network list --last 10      Check network requests',
     'bdg console --last 5             Check console messages',
     'bdg status                       Check session state',
   ]);

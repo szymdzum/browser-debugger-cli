@@ -80,6 +80,19 @@ function wantsHelp(): boolean {
   return args.includes('--help') || args.includes('-h');
 }
 
+/** Flags that may accompany a bare `bdg --json` (anything else has its own meaning) */
+const BARE_JSON_FLAGS = new Set(['--json', '-j', '--debug']);
+
+/**
+ * Whether `bdg --json` was run on its own (no command, URL or other option),
+ * which answers with the machine-readable help.
+ *
+ * @returns True for a bare `bdg --json`
+ */
+function hasNoArguments(): boolean {
+  return process.argv.slice(2).every((arg) => BARE_JSON_FLAGS.has(arg));
+}
+
 /**
  * Turn `bdg help [command...]` into `bdg [command...] --help`.
  *
@@ -146,7 +159,7 @@ async function main(): Promise<void> {
   addGlobalDebugOption(program);
   program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));
 
-  if (jsonMode && wantsHelp()) {
+  if (jsonMode && (wantsHelp() || hasNoArguments())) {
     const commandPath = extractCommandPath(process.argv);
     const help =
       commandPath.length > 0

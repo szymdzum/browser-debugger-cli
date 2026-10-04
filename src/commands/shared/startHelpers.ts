@@ -28,6 +28,7 @@ import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { escapeControlChars } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { delay } from '@/utils/async.js';
 import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -65,8 +66,31 @@ export async function startSessionViaDaemon(
   options: SessionStartOptions,
   telemetry: TelemetryType[]
 ): Promise<never> {
-  const outcome = await requestSession(url, options, telemetry);
+  let outcome = await requestSession(url, options, telemetry);
+  const deadline = Date.now() + SHUTDOWN_WAIT_MS;
+  while (isShuttingDown(outcome) && Date.now() < deadline) {
+    await delay(SHUTDOWN_POLL_MS);
+    outcome = await requestSession(url, options, telemetry);
+  }
   reportStartOutcome(outcome, options);
+}
+
+/** How long a new start waits for the previous session to finish shutting down */
+const SHUTDOWN_WAIT_MS = 15000;
+
+/** Interval between start attempts while the previous session shuts down */
+const SHUTDOWN_POLL_MS = 200;
+
+/**
+ * Whether the start failed only because the previous session is still
+ * shutting down (e.g. `bdg stop` was just run): the start is retried until
+ * the old daemon is gone and a new one can be launched.
+ *
+ * @param outcome - Start outcome
+ * @returns True if waiting and retrying can succeed
+ */
+function isShuttingDown(outcome: StartOutcome): boolean {
+  return !outcome.ok && outcome.details?.['errorCode'] === IPCErrorCode.SESSION_SHUTTING_DOWN;
 }
 
 /**

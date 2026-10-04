@@ -93,7 +93,7 @@ $ node dist/index.js cdp --search cookie | jq '.count'
 - ✅ Semantic search finds relevant methods without exact names
 - ✅ Schema includes parameters, return types, examples
 
-**Agent Impact:** Agent can explore 644 CDP methods (53 domains) autonomously without external documentation.
+**Agent Impact:** Agent can explore every CDP method (`bdg cdp --list` shows the counts of the bundled protocol) autonomously without external documentation.
 
 ---
 
@@ -278,7 +278,7 @@ $ bdg --help --json
 ### Step 2: What can CDP do?
 ```bash
 $ bdg cdp --list
-# Agent learns: 53 domains available
+# Agent learns: which domains are available
 ```
 
 ### Step 3: What Network methods exist?

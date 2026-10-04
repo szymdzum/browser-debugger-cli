@@ -272,8 +272,6 @@ export interface SessionStartOptions {
   includeAll: boolean;
   /** Maximum response body size in MB */
   maxBodySize: number | undefined;
-  /** Use compact JSON output */
-  compact: boolean;
   /** Launch Chrome in headless mode */
   headless: boolean;
   /** Connect to existing Chrome instance via WebSocket URL */

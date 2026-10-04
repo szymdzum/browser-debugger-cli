@@ -208,6 +208,17 @@ export function getIPCRequestTimeout(): number {
     : 45000;
 }
 
+/**
+ * Timeout for requests the daemon answers from memory (status, peek,
+ * details, headers, HAR data): a daemon that does not answer these within
+ * seconds is not responding, so commands do not wait the full IPC timeout.
+ *
+ * @returns Timeout in milliseconds (10 s, or the IPC timeout if shorter)
+ */
+export function getQuickIPCRequestTimeout(): number {
+  return Math.min(10000, getIPCRequestTimeout());
+}
+
 // ============================================================================
 // CLI OPTION DESCRIPTIONS
 // ============================================================================

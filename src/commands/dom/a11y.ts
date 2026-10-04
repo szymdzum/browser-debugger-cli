@@ -173,9 +173,10 @@ async function handleA11yDescribe(
         const err = elementNotAccessibleError(parseInt(selectorOrIndex, 10));
         throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
       }
+      const err = elementNotFoundError(selectorOrIndex);
       throw new CommandError(
-        elementNotFoundError(selectorOrIndex),
-        {},
+        err.message,
+        { suggestion: err.suggestion },
         EXIT_CODES.RESOURCE_NOT_FOUND
       );
     }
@@ -217,10 +218,10 @@ export function registerA11yCommands(domCmd: Command): void {
       'Quick search: index (describe), CSS selector (#id, .class), pattern with ":" (query), or name search'
     )
     .enablePositionalOptions()
+    .addOption(jsonOption())
     .action(async (search: string | undefined, options: A11yDescribeCommandOptions) => {
       if (!search) {
-        a11y.help();
-        return;
+        return a11y.help({ error: true });
       }
 
       const isNumericIndex = /^\d+$/.test(search);

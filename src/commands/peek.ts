@@ -199,7 +199,7 @@ export function registerPeekCommand(program: Command): void {
         async () => {
           const result = await fetchAndFilterPreview(lastN, resourceTypes, peekSection(options));
           if (!result.success) {
-            return createErrorResult(result.error, result.exitCode);
+            return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
           const { output } = result.data;
           return {

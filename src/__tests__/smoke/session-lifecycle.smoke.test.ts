@@ -15,6 +15,8 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { getSessionFilePath } from '@/session/paths.js';
+import { readPidFromFile } from '@/session/pid.js';
 import type { BdgOutput } from '@/types.js';
 
 void describe('Session Lifecycle Smoke Tests', () => {
@@ -92,5 +94,34 @@ void describe('Session Lifecycle Smoke Tests', () => {
       `Expected error about existing session, got: ${secondResult.stderr}`
     );
     assert.equal(await isDaemonRunning(), true);
+  });
+
+  void it('starts a new session right after a stop, once the old one has ended', async () => {
+    assert.equal((await startSession()).exitCode, 0);
+
+    const stopping = runCommand('stop', [], { timeout: 60000 });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const restarted = await startSession();
+    await stopping;
+
+    assert.equal(restarted.exitCode, 0, `Restart failed: ${restarted.stdout}${restarted.stderr}`);
+    assert.equal(await isDaemonRunning(), true);
+  });
+
+  void it('reports a frozen session quickly instead of waiting 45 s', async () => {
+    assert.equal((await startSession()).exitCode, 0);
+    const daemonPid = readPidFromFile(getSessionFilePath('DAEMON_PID'));
+    assert.ok(daemonPid, 'daemon pid file');
+
+    process.kill(daemonPid, 'SIGSTOP');
+    try {
+      const started = Date.now();
+      const status = await runCommand('status', ['--json'], { timeout: 30000 });
+      assert.equal(status.exitCode, 102);
+      assert.match(status.stdout, /did not respond/);
+      assert.ok(Date.now() - started < 20000, 'answered within the quick timeout');
+    } finally {
+      process.kill(daemonPid, 'SIGCONT');
+    }
   });
 });

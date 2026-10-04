@@ -62,7 +62,8 @@ All user-facing strings must use centralized functions - no inline strings.
 Common error patterns with recovery suggestions. Use existing functions or add new ones:
 ```typescript
 // Existing: elementNotFoundError, sessionNotActiveError, daemonNotRunningError
-throw new CommandError(elementNotFoundError(selector), {}, EXIT_CODES.RESOURCE_NOT_FOUND);
+const err = elementNotFoundError(selector);
+throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.RESOURCE_NOT_FOUND);
 
 // Context-specific: pass suggestion inline
 throw new CommandError(
@@ -122,12 +123,9 @@ throw new CommandError(
   EXIT_CODES.STALE_CACHE  // 87, not RESOURCE_NOT_FOUND
 );
 
-// Selector-based failure
-throw new CommandError(
-  elementNotFoundError(selector),  // Uses selector-specific suggestions
-  {},
-  EXIT_CODES.RESOURCE_NOT_FOUND
-);
+// Selector-based failure (selector-specific suggestions)
+const err = elementNotFoundError(selector);
+throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.RESOURCE_NOT_FOUND);
 ```
 
 ### Typo Detection

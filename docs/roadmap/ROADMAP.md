@@ -11,7 +11,7 @@ This document consolidates planned features, enhancements, and strategic directi
 
 bdg provides comprehensive CDP access with these core capabilities:
 
-- **100% CDP Protocol Coverage** - 53 domains, 300+ methods with type-safe wrappers
+- **100% CDP Protocol Coverage** - every domain and method of the bundled protocol, with type-safe wrappers
 - **Daemon Architecture** - Persistent CDP connection via Unix sockets for fast CLI commands
 - **Telemetry Collection** - Network requests, console messages, DOM snapshots, accessibility tree
 - **Form Automation** - React/Vue/Angular compatible fills, clicks, key presses

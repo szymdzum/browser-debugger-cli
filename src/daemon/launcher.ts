@@ -17,6 +17,7 @@ import { isDaemonAlive } from '@/session/daemonSocket.js';
 import { ensureSessionDir, getSessionDir } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('launcher');
 
@@ -44,7 +45,9 @@ export async function launchDaemon(): Promise<void> {
   }
 
   ensureSessionDir();
-  const logFd = fs.openSync(join(getSessionDir(), 'daemon.log'), 'a');
+  const logPath = join(getSessionDir(), 'daemon.log');
+  rotateLog(logPath);
+  const logFd = fs.openSync(logPath, 'a');
   log.debug(`Starting daemon: ${daemonScriptPath}`);
   const daemon = spawn(process.execPath, [daemonScriptPath], {
     detached: true,
@@ -59,6 +62,25 @@ export async function launchDaemon(): Promise<void> {
   daemon.unref();
 
   await waitForDaemonReady(() => exited);
+}
+
+/** Size above which the daemon log is rotated when a daemon starts */
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Keep the daemon log from growing without bound: a log over
+ * {@link MAX_LOG_BYTES} becomes `daemon.log.1` (replacing an older one).
+ *
+ * @param logPath - Path of the daemon log
+ */
+function rotateLog(logPath: string): void {
+  try {
+    if (fs.statSync(logPath).size > MAX_LOG_BYTES) {
+      fs.renameSync(logPath, `${logPath}.1`);
+    }
+  } catch (error) {
+    log.debug(`Daemon log not rotated: ${getErrorMessage(error)}`);
+  }
 }
 
 /**
