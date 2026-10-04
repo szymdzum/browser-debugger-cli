@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Third deep test: high findings**
+  - Service workers run in a bdg session: they were paused by auto-attach and never resumed (the page's `register()` never settled); a child whose setup does not answer is now resumed after 1 s
+  - `network har` on large sessions: the IPC reader re-split the whole buffered response on every chunk (quadratic; 770 requests timed out after 45 s), now linear; single responses may be up to 256 MB
+  - A page kept busy by a script started from a timer is recovered by every command, not just `dom eval`: `dom get/query/screenshot/form/a11y` and raw `cdp` terminate the page's scripts when the page stops answering for 25 s and exit 102 (a page that answers but is slow, e.g. a huge screenshot, is waited for) ("the page is usable again") instead of hanging 30–90 s with 101/110
+  - `page back/forward` within a document (hash, pushState) and `page navigate` to a `#fragment` return at once (they waited 15 s for a load that never comes)
+
 - **Smaller fixes**
   - `cdp`: an unknown domain gets a did-you-mean (`Netwrk` → `Network`); `bdg cdp Network --search cookie` searches that domain only; blocked methods (`Page.captureScreenshot`, `Browser.close`) show their bdg alternative as the example in `--describe`/`--search`
   - `dom a11y tree` (human) is indented by depth and leaves out text boxes, blank text, text repeating its parent and nameless layout wrappers, so the 50 lines show the page's structure

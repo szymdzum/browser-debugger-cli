@@ -365,6 +365,61 @@ async function terminatePageScripts(cdp: CDPConnection): Promise<CommandError> {
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
+/** How long a page gets to answer a liveness check before it counts as busy */
+const LIVENESS_CHECK_MS = 2_000;
+
+/**
+ * Run a CDP command on the page, recovering a page kept busy by its own
+ * scripts. If the command has not answered when a script would have been
+ * terminated, the page is checked with a trivial evaluation: a page that
+ * answers is only slow (a huge screenshot or tree), so the command keeps
+ * waiting; a page that does not answer has its scripts terminated, and the
+ * command fails with 102 instead of hanging until the connection times out.
+ *
+ * @param cdp - CDP connection
+ * @param command - The pending command
+ * @param limits - When to check the page, and how long it gets to answer
+ * @returns The command's result
+ * @throws CommandError (102) when the page was busy
+ */
+export async function withBusyPageRecovery<T>(
+  cdp: CDPConnection,
+  command: Promise<T>,
+  limits = { busyAfterMs: EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS, livenessMs: LIVENESS_CHECK_MS }
+): Promise<T> {
+  command.catch(() => undefined);
+  const early = await settledWithin(command, limits.busyAfterMs);
+  if (early.settled) return early.value;
+  const probe = await settledWithin(
+    cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true }),
+    limits.livenessMs
+  );
+  if (probe.settled) return command;
+  throw await terminatePageScripts(cdp);
+}
+
+/**
+ * The work's value if it settles within `ms` (its rejection is passed on).
+ *
+ * @param work - Pending work
+ * @param ms - Time limit
+ * @returns `{ settled: true, value }`, or `{ settled: false }` when time ran out
+ */
+async function settledWithin<T>(
+  work: Promise<T>,
+  ms: number
+): Promise<{ settled: true; value: T } | { settled: false }> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<{ settled: false }>((resolve) => {
+    timer = setTimeout(() => resolve({ settled: false }), ms);
+  });
+  try {
+    return await Promise.race([work.then((value) => ({ settled: true as const, value })), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Evaluate a `bdg dom eval` script.
  *

@@ -25,6 +25,8 @@ import type {
 import type { NoType } from './utils/index.js';
 
 import { getQuickIPCRequestTimeout } from '@/constants.js';
+import { CommandError } from '@/errors/index.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import { sendRequest } from './transport/index.js';
 import { withSession } from './utils/index.js';
@@ -328,7 +330,7 @@ export async function getNetworkHeaders(options?: {
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
  * @returns Response with CDP method result
- * @throws Error if connection fails or CDP method fails
+ * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated
  *
  * @example
  * ```typescript
@@ -342,7 +344,15 @@ export async function callCDP(
   method: string,
   params?: Record<string, unknown>
 ): Promise<ClientResponse<'cdp_call'>> {
-  return sendCommand('cdp_call', { method, ...(params && { params }) });
+  const response = await sendCommand('cdp_call', { method, ...(params && { params }) });
+  if (response.status === 'error' && response.exitCode === EXIT_CODES.CDP_TIMEOUT) {
+    throw new CommandError(
+      response.error ?? `${method} timed out`,
+      response.suggestion ? { suggestion: response.suggestion } : {},
+      EXIT_CODES.CDP_TIMEOUT
+    );
+  }
+  return response;
 }
 
 /**

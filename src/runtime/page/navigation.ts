@@ -29,7 +29,10 @@ export async function navigatePage(
   action: PageAction,
   options: { url?: string; wait?: boolean } = {}
 ): Promise<PageNavigationResult> {
-  const navigated = nextNavigation(cdp);
+  const tree = (await cdp.send('Page.getFrameTree', {})) as {
+    frameTree: { frame: { id: string } };
+  };
+  const navigated = nextNavigation(cdp, tree.frameTree.frame.id);
   try {
     if (action === 'navigate') await navigateTo(cdp, normalizeUrl(options.url ?? ''));
     else if (action === 'reload') await cdp.send('Page.reload', {});
@@ -37,7 +40,7 @@ export async function navigatePage(
     if (options.wait !== false) {
       const deadline = Date.now() + PAGE_READY_TIMEOUT_MS;
       const how = await Promise.race([navigated.done, delay(PAGE_READY_TIMEOUT_MS)]);
-      if (how !== 'restored') {
+      if (how === 'loaded') {
         await waitForPageReady(cdp, { maxWaitMs: Math.max(0, deadline - Date.now()) });
       }
     }
@@ -58,20 +61,29 @@ export async function navigatePage(
 /**
  * Resolve once the page has loaded a new document, moved within its
  * document (hash or history changes), or was restored from the back/forward
- * cache (those fire no load event; a restored page is already settled). Without this, the
+ * cache (those fire no load event). Only a newly loaded document is then
+ * waited on to settle: a restored or same-document page already is. Without this, the
  * readiness check would see the old page, still complete, and return at once.
  *
  * @param cdp - CDP connection
+ * @param mainFrameId - The page's main frame (iframes moving within their document don't count)
  * @returns The wait, and a function to stop listening
  */
-function nextNavigation(cdp: CDPConnection): {
-  done: Promise<'loaded' | 'restored'>;
+function nextNavigation(
+  cdp: CDPConnection,
+  mainFrameId: string
+): {
+  done: Promise<'loaded' | 'restored' | 'same-document'>;
   stop: () => void;
 } {
   const unsubscribes: Array<() => void> = [];
-  const done = new Promise<'loaded' | 'restored'>((resolve) => {
+  const done = new Promise<'loaded' | 'restored' | 'same-document'>((resolve) => {
     unsubscribes.push(cdp.on('Page.loadEventFired', () => resolve('loaded')));
-    unsubscribes.push(cdp.on('Page.navigatedWithinDocument', () => resolve('loaded')));
+    unsubscribes.push(
+      cdp.on<{ frameId: string }>('Page.navigatedWithinDocument', (params) => {
+        if (params.frameId === mainFrameId) resolve('same-document');
+      })
+    );
     unsubscribes.push(
       cdp.on<{ frame: { parentId?: string }; type?: string }>('Page.frameNavigated', (params) => {
         if (!params.frame.parentId && params.type === 'BackForwardCacheRestore') {

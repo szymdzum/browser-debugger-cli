@@ -7,7 +7,7 @@ import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import { CommandError } from '@/errors/index.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
-import { evaluateScript } from '@/runtime/dom/evalHelpers.js';
+import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
 import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import {
   fillElement,
@@ -462,7 +462,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     },
 
     cdp_call: async (cdp, params) => {
-      const result = await cdp.send(params.method, params.params ?? {});
+      const result = await withBusyPageRecovery(cdp, cdp.send(params.method, params.params ?? {}));
 
       const detectionResult = patternDetector.trackCommand(params.method);
       let hint: HintDetails | undefined;
@@ -567,10 +567,13 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       ),
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {
-      const response = await cdp.send('Runtime.evaluate', {
-        expression: FORM_DISCOVERY_SCRIPT,
-        returnByValue: true,
-      });
+      const response = await withBusyPageRecovery(
+        cdp,
+        cdp.send('Runtime.evaluate', {
+          expression: FORM_DISCOVERY_SCRIPT,
+          returnByValue: true,
+        })
+      );
       const cdpResponse = response as {
         exceptionDetails?: Protocol.Runtime.ExceptionDetails;
         result?: { value?: unknown };

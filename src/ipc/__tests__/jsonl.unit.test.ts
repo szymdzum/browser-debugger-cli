@@ -60,19 +60,28 @@ void describe('JSONLBuffer', () => {
   });
 
   void it('throws on buffer overflow', () => {
-    const buffer = new JSONLBuffer();
+    const buffer = new JSONLBuffer(1024);
 
-    // Create a chunk larger than MAX_JSONL_BUFFER_SIZE (50MB) without newlines
-    const largeChunk = 'x'.repeat(51 * 1024 * 1024); // 51MB
-
+    buffer.process('x'.repeat(600));
     assert.throws(
-      () => {
-        buffer.process(largeChunk);
-      },
-      (error: unknown) => {
-        return error instanceof JSONLBufferOverflowError && error.message.includes('52428800');
-      }
+      () => buffer.process('x'.repeat(600)),
+      (error: unknown) =>
+        error instanceof JSONLBufferOverflowError && error.message.includes('1200')
     );
+  });
+
+  void it('handles a large message split into many chunks in linear time', () => {
+    const buffer = new JSONLBuffer();
+    const message = JSON.stringify({ data: 'y'.repeat(20 * 1024 * 1024) });
+    const started = Date.now();
+    const lines: string[] = [];
+    for (let i = 0; i < message.length; i += 64 * 1024) {
+      lines.push(...buffer.process(message.slice(i, i + 64 * 1024)));
+    }
+    lines.push(...buffer.process('\n{"next":1}\n'));
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0]?.length, message.length);
+    assert.ok(Date.now() - started < 2000, `took ${Date.now() - started} ms`);
   });
 
   void it('allows chunks under buffer limit', () => {
@@ -140,5 +149,19 @@ void describe('toJSONLFrame', () => {
   void it('handles arrays', () => {
     const result = toJSONLFrame([1, 2, 3]);
     assert.equal(result, '[1,2,3]\n');
+  });
+});
+
+void describe('JSONLBuffer chunk boundaries', () => {
+  void it('splits messages at newlines anywhere in the chunks', () => {
+    const buffer = new JSONLBuffer();
+    assert.deepEqual(buffer.process('{"a":1}\n{"b"'), ['{"a":1}']);
+    assert.deepEqual(buffer.process(':2}'), []);
+    assert.deepEqual(buffer.process('\n\n{"c":3}\n'), ['{"b":2}', '{"c":3}']);
+  });
+
+  void it('rejects a complete message longer than the limit', () => {
+    const buffer = new JSONLBuffer(10);
+    assert.throws(() => buffer.process(`${'x'.repeat(20)}\n`), JSONLBufferOverflowError);
   });
 });
