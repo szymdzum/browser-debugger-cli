@@ -185,6 +185,8 @@ export interface StackFrame {
 }
 
 export interface ConsoleMessage {
+  /** Position in the session's message list (set in previews; `details console <n>` takes it) */
+  index?: number;
   type: Protocol.Runtime.ConsoleAPICalledEvent['type'];
   text: string;
   timestamp: number;
@@ -217,6 +219,8 @@ export interface BdgOutput {
     console?: ConsoleMessage[];
     websockets?: WebSocketConnection[];
   };
+  /** Navigation id of the page currently loaded (live previews) */
+  currentNavigationId?: number;
   /** Counts of all captured items matching the request (e.g. `peek --type`), when `data` holds only the most recent ones */
   totals?: { network: number; console: number };
   error?: string;

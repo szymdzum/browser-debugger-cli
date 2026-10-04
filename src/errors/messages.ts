@@ -4,7 +4,7 @@
  * Centralized location for reusable error messages with consistent formatting.
  */
 
-import { formatDuration, joinLines } from '@/ui/formatting.js';
+import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import {
   detectSelectorQuoteDamage,
   detectScriptQuoteDamage,
@@ -147,7 +147,7 @@ export function daemonNotRunningError(context?: DaemonErrorContext): string {
  */
 export function genericError(message: string, context?: string): string {
   const text = message.startsWith('Error:') ? message : `Error: ${message}`;
-  return context ? `${text}\n${context}` : text;
+  return escapeControlChars(context ? `${text}\n${context}` : text);
 }
 
 /**

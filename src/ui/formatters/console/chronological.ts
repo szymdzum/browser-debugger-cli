@@ -46,7 +46,7 @@ export function formatConsoleChronological(
   let lastNavigationId: number | undefined;
 
   for (const [i, msg] of displayMessages.entries()) {
-    const index = baseIndex + i;
+    const index = msg.index ?? baseIndex + i;
     const time = formatTimestamp(msg.timestamp);
     const level = msg.type.padEnd(7);
 

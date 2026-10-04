@@ -119,9 +119,22 @@ describe('filterByCurrentNavigation contract', () => {
 
       const result = filterByCurrentNavigation(messages);
 
-      // All have navigationId=undefined, max of [0,0] = 0, filter where navId === 0
-      // Since undefined !== 0, returns empty
-      assert.strictEqual(result.length, 0);
+      assert.strictEqual(result.length, 2);
+    });
+  });
+
+  describe('uses the current navigation when known', () => {
+    test('returns nothing when the current page logged nothing', () => {
+      const messages = [createMessage('old page error', 1), createMessage('older', 0)];
+      assert.deepStrictEqual(filterByCurrentNavigation(messages, 2), []);
+    });
+
+    test('returns the current page even if a later page id is absent', () => {
+      const messages = [createMessage('current', 1), createMessage('stale', 0)];
+      assert.deepStrictEqual(
+        filterByCurrentNavigation(messages, 1).map((m) => m.text),
+        ['current']
+      );
     });
   });
 

@@ -2,6 +2,7 @@ import { type BaseOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
 import { daemonNotRunningError, unknownError, genericError } from '@/errors/messages.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { escapeControlChars } from '@/ui/formatting.js';
 import { STOP_MESSAGES } from '@/ui/messages/session.js';
 import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -138,7 +139,9 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
         if (result.errorContext && typeof result.errorContext === 'object') {
           for (const value of Object.values(result.errorContext)) {
             if (value !== undefined && value !== null) {
-              console.error(typeof value === 'string' ? value : JSON.stringify(value));
+              console.error(
+                escapeControlChars(typeof value === 'string' ? value : JSON.stringify(value))
+              );
             }
           }
         }
@@ -147,14 +150,14 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     }
 
     if (result.hint) {
-      console.error(result.hint);
+      console.error(escapeControlChars(result.hint));
     }
 
     if (options.json) {
       console.log(JSON.stringify(buildSuccessResponse(result.data), null, 2));
     } else if (formatter) {
       const formattedOutput = formatter(result.data as TResult);
-      console.log(formattedOutput);
+      console.log(escapeControlChars(formattedOutput));
     } else {
       console.log(JSON.stringify(buildSuccessResponse(result.data), null, 2));
     }
@@ -176,7 +179,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       } else {
         console.error(genericError(error.message));
         for (const value of Object.values(error.metadata)) {
-          console.error(value);
+          console.error(escapeControlChars(String(value)));
         }
       }
       process.exit(error.exitCode);

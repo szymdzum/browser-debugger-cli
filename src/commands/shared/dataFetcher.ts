@@ -129,12 +129,23 @@ export async function fetchNetworkRequests(
 }
 
 /**
- * Fetch console messages from daemon.
+ * Fetch all console messages from daemon.
+ *
+ * @returns Messages (with their session-wide index) and the navigation id of
+ *   the page currently loaded
  */
-export async function fetchConsoleMessages(): Promise<FetchResult<ConsoleMessage[]>> {
+export async function fetchConsoleMessages(): Promise<
+  FetchResult<{ messages: ConsoleMessage[]; currentNavigationId: number | undefined }>
+> {
   const result = await fetchPreviewData({ lastN: 0, only: 'console' });
   if (!result.success) return result;
-  return { success: true, data: result.data.console };
+  return {
+    success: true,
+    data: {
+      messages: result.data.console,
+      currentNavigationId: result.data.output.currentNavigationId,
+    },
+  };
 }
 
 interface ErrorResult {

@@ -212,15 +212,71 @@ export function formatRemoteObject(arg: RemoteObject): string {
   return getFallbackDescription(arg);
 }
 
+/** Console format specifiers (`%s`, `%d`, `%c`, ...; `%%` is a literal percent). */
+const FORMAT_SPECIFIER = /%([sdifoOc%])/g;
+
+/**
+ * Whether the first console argument is a format string with specifiers.
+ *
+ * @param args - Console arguments
+ * @returns True when `%s`-style substitution applies
+ */
+export function usesFormatSpecifiers(args: RemoteObject[]): boolean {
+  const [first] = args;
+  return (
+    args.length > 1 &&
+    first?.type === 'string' &&
+    typeof first.value === 'string' &&
+    /%[sdifoOc%]/.test(first.value)
+  );
+}
+
+/**
+ * Number value of an argument for `%d` / `%i` / `%f`.
+ *
+ * @param arg - Console argument
+ * @returns Numeric value (NaN when not a number)
+ */
+function numericValue(arg: RemoteObject): number {
+  if (typeof arg.value === 'number') return arg.value;
+  if (typeof arg.value === 'string') return Number(arg.value);
+  return arg.unserializableValue !== undefined ? Number(arg.unserializableValue) : NaN;
+}
+
+/**
+ * Apply console format specifiers in the first argument, like Chrome does.
+ *
+ * @param format - First argument's string value
+ * @param rest - Remaining arguments; consumed ones are removed
+ * @returns Formatted first argument
+ */
+function applyFormatSpecifiers(format: string, rest: RemoteObject[]): string {
+  return format.replace(FORMAT_SPECIFIER, (match, spec: string) => {
+    if (spec === '%') return '%';
+    const arg = rest.shift();
+    if (!arg) return match;
+    if (spec === 'c') return '';
+    if (spec === 'd' || spec === 'i') return String(Math.trunc(numericValue(arg)));
+    if (spec === 'f') return String(numericValue(arg));
+    return formatRemoteObject(arg);
+  });
+}
+
 /**
  * Format multiple RemoteObjects as console message text.
  *
- * Joins formatted arguments with spaces, similar to how console.log
- * displays multiple arguments.
+ * Applies format specifiers in a leading string argument (`%s`, `%d`, `%i`,
+ * `%f`, `%o`, `%O`, `%c` styles are dropped), then joins the remaining
+ * arguments with spaces, as Chrome's console does.
  *
  * @param args - Array of CDP RemoteObjects
  * @returns Joined formatted string
  */
 export function formatConsoleArgs(args: RemoteObject[]): string {
+  const [first, ...rest] = args;
+  if (usesFormatSpecifiers(args) && typeof first?.value === 'string') {
+    const head = applyFormatSpecifiers(first.value, rest);
+    return [head, ...rest.map(formatRemoteObject)].join(' ');
+  }
   return args.map(formatRemoteObject).join(' ');
 }

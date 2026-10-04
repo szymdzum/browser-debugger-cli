@@ -26,6 +26,7 @@ import {
 import { isConnectionError } from '@/ipc/utils/errors.js';
 import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { escapeControlChars } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -200,7 +201,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       });
       console.log(JSON.stringify(envelope, null, 2));
     } else {
-      console.error(outcome.human);
+      console.error(escapeControlChars(outcome.human));
     }
     process.exit(outcome.exitCode);
   }
@@ -217,13 +218,15 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
     };
     console.log(JSON.stringify(buildSuccessResponse(result), null, 2));
   } else if (options.quiet) {
-    console.error(`Session started: ${data.targetUrl}`);
+    console.error(escapeControlChars(`Session started: ${data.targetUrl}`));
   } else {
     console.error(
-      landingPage({
-        url: data.targetUrl,
-        ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
-      })
+      escapeControlChars(
+        landingPage({
+          url: data.targetUrl,
+          ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
+        })
+      )
     );
   }
   process.exit(EXIT_CODES.SUCCESS);

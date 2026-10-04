@@ -38,10 +38,21 @@ const consoleLastOption = new Option(
   `Show last N console messages (0 = all, default: ${DEFAULT_LAST})`
 ).default(String(DEFAULT_LAST));
 
-export function filterByCurrentNavigation(messages: ConsoleMessage[]): ConsoleMessage[] {
+/**
+ * Keep the messages of the page currently loaded.
+ *
+ * @param messages - All captured messages
+ * @param currentNavigationId - Navigation id of the current page; when unknown,
+ *   the newest navigation id among the messages is used
+ * @returns Messages of the current page (empty if it logged nothing)
+ */
+export function filterByCurrentNavigation(
+  messages: ConsoleMessage[],
+  currentNavigationId?: number
+): ConsoleMessage[] {
   if (messages.length === 0) return messages;
-  const maxNavId = Math.max(...messages.map((m) => m.navigationId ?? 0));
-  return messages.filter((m) => m.navigationId === maxNavId);
+  const navId = currentNavigationId ?? Math.max(...messages.map((m) => m.navigationId ?? 0));
+  return messages.filter((m) => (m.navigationId ?? 0) === navId);
 }
 
 export function filterByLevel(messages: ConsoleMessage[], level: ConsoleLevel): ConsoleMessage[] {
@@ -50,9 +61,12 @@ export function filterByLevel(messages: ConsoleMessage[], level: ConsoleLevel): 
 
 function applyFilters(
   messages: ConsoleMessage[],
-  options: Pick<ConsoleCommandOptions, 'history' | 'level'>
+  options: Pick<ConsoleCommandOptions, 'history' | 'level'>,
+  currentNavigationId?: number
 ): ConsoleMessage[] {
-  let filtered = options.history ? messages : filterByCurrentNavigation(messages);
+  let filtered = options.history
+    ? messages
+    : filterByCurrentNavigation(messages, currentNavigationId);
   if (options.level) filtered = filterByLevel(filtered, options.level);
   return filtered;
 }
@@ -83,7 +97,8 @@ async function runFollowMode(options: ConsoleCommandOptions): Promise<void> {
       return;
     }
 
-    const recent = applyFilters(result.data, options).slice(-FOLLOW_LIMIT);
+    const { messages, currentNavigationId } = result.data;
+    const recent = applyFilters(messages, options, currentNavigationId).slice(-FOLLOW_LIMIT);
     if (options.json) {
       const data = buildConsoleJsonOutput(recent, { list: true, last: FOLLOW_LIMIT });
       console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
@@ -150,14 +165,15 @@ export function registerConsoleCommand(program: Command): void {
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode);
           }
-          const filtered = applyFilters(result.data, options);
+          const { messages, currentNavigationId } = result.data;
+          const filtered = applyFilters(messages, options, currentNavigationId);
           if (options.json) {
             return {
               success: true,
               data: buildConsoleJsonOutput(filtered, buildFormatOptions(options, lastN)),
             };
           }
-          return { success: true, data: { messages: result.data, filtered } };
+          return { success: true, data: { messages, filtered } };
         },
         options,
         (data) => {
