@@ -121,6 +121,8 @@ export interface SubmitResult {
  */
 export interface RawFormData {
   forms: RawForm[];
+  /** Same-origin iframes holding form fields, when the main document has none */
+  frameForms?: Array<{ url: string }>;
 }
 
 export interface RawForm {

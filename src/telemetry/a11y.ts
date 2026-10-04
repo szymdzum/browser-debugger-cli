@@ -95,10 +95,90 @@ export async function collectA11yTree(): Promise<A11yTree> {
       );
     }
 
-    return buildTreeFromRawNodes(result.nodes);
+    return buildTreeFromRawNodes([...result.nodes, ...(await collectFrameNodes(result.nodes))]);
   } finally {
     await callCDP('Accessibility.disable', {});
   }
+}
+
+/**
+ * Accessibility nodes of the page's iframes, attached under their `Iframe`
+ * node (the page's own tree stops there). Frames in another process
+ * (cross-origin) cannot be read this way and are skipped. Node ids are
+ * prefixed per frame, as each frame numbers its nodes on its own.
+ *
+ * @param pageNodes - The page's nodes (their iframe nodes get the frame root as
+ *   child; nested frames attach to their parent frame's nodes)
+ * @returns Nodes of all readable frames
+ */
+async function collectFrameNodes(
+  pageNodes: Protocol.Accessibility.AXNode[]
+): Promise<Protocol.Accessibility.AXNode[]> {
+  const tree = (await callCDP('Page.getFrameTree', {})).data?.result as
+    Protocol.Page.GetFrameTreeResponse | undefined;
+  const known = [...pageNodes];
+  const collected: Protocol.Accessibility.AXNode[] = [];
+  for (const [index, frameId] of childFrames(tree?.frameTree).entries()) {
+    const nodes = await frameNodes(frameId, `f${index}:`, known);
+    known.push(...nodes);
+    collected.push(...nodes);
+  }
+  return collected;
+}
+
+/**
+ * Ids of all frames below a frame tree's root.
+ *
+ * @param tree - Frame tree
+ * @returns Frame ids, depth-first
+ */
+function childFrames(tree: Protocol.Page.FrameTree | undefined): string[] {
+  return (tree?.childFrames ?? []).flatMap((child) => [child.frame.id, ...childFrames(child)]);
+}
+
+/**
+ * One frame's nodes, with ids prefixed, its root attached to the node of its
+ * `<iframe>` element.
+ *
+ * @param frameId - Frame id
+ * @param prefix - Prefix for the frame's node ids
+ * @param ownerNodes - Nodes that may contain the frame's `<iframe>` node
+ * @returns The frame's nodes, or none when it cannot be read
+ */
+async function frameNodes(
+  frameId: string,
+  prefix: string,
+  ownerNodes: Protocol.Accessibility.AXNode[]
+): Promise<Protocol.Accessibility.AXNode[]> {
+  const response = await callCDP('Accessibility.getFullAXTree', { frameId });
+  const nodes = (response.data?.result as Protocol.Accessibility.GetFullAXTreeResponse | undefined)
+    ?.nodes;
+  const owner = (await callCDP('DOM.getFrameOwner', { frameId })).data?.result as
+    Protocol.DOM.GetFrameOwnerResponse | undefined;
+  if (!nodes?.length || !owner) return [];
+  const prefixed = nodes.map((node) => ({
+    ...node,
+    nodeId: prefix + node.nodeId,
+    ...(node.parentId && { parentId: prefix + node.parentId }),
+    ...(node.childIds && { childIds: node.childIds.map((id) => prefix + id) }),
+  }));
+  const root = prefixed.find((node) => !node.parentId);
+  const iframeNode = ownerNodes.find((node) => node.backendDOMNodeId === owner.backendNodeId);
+  if (root && iframeNode) iframeNode.childIds = [...(iframeNode.childIds ?? []), root.nodeId];
+  return prefixed;
+}
+
+/**
+ * Chrome reports some states (`checked`, `pressed`) as the strings "true" and
+ * "false" (they may also be "mixed"); make those booleans like the others.
+ *
+ * @param value - Property value
+ * @returns The value, with "true"/"false" as booleans
+ */
+function booleanIfFlag(value: unknown): unknown {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
 }
 
 /**
@@ -141,7 +221,7 @@ function parseA11yNode(rawNode: Protocol.Accessibility.AXNode): A11yNode {
       } else if (prop.name === 'required') {
         node.required = prop.value.value === true;
       } else {
-        props[prop.name] = prop.value.value;
+        props[prop.name] = booleanIfFlag(prop.value.value);
       }
     }
 
@@ -343,3 +423,44 @@ export async function resolveA11yNode(target: NodeRef): Promise<A11yNode | null>
     await callCDP('Accessibility.disable', {});
   }
 }
+
+/**
+ * Why an element has no node in the accessibility tree (e.g. it is not
+ * rendered, aria-hidden, or a decorative image with `alt=""`).
+ *
+ * @param target - Node reference
+ * @returns Chrome's reasons in plain words (empty if unknown)
+ */
+export async function a11yIgnoredReasons(target: NodeRef): Promise<string[]> {
+  await callCDP('Accessibility.enable', {});
+  try {
+    const response = await callCDP('Accessibility.getPartialAXTree', {
+      ...target,
+      fetchRelatives: false,
+    });
+    const nodes = (
+      response.data?.result as Protocol.Accessibility.GetPartialAXTreeResponse | undefined
+    )?.nodes;
+    return (nodes?.[0]?.ignoredReasons ?? []).map(
+      (reason) => IGNORED_REASONS[reason.name] ?? reason.name
+    );
+  } finally {
+    await callCDP('Accessibility.disable', {});
+  }
+}
+
+/** Chrome's ignored reasons in plain words */
+const IGNORED_REASONS: Record<string, string> = {
+  notRendered: 'not rendered (display: none or hidden)',
+  notVisible: 'not visible',
+  ariaHiddenElement: 'aria-hidden="true"',
+  ariaHiddenSubtree: 'inside an aria-hidden element',
+  presentationalRole: 'presentational (e.g. an image with alt="")',
+  emptyAlt: 'an image with alt=""',
+  inertElement: 'inert',
+  inertSubtree: 'inside an inert element',
+  activeModalDialog: 'outside the open modal dialog',
+  probablyPresentational: 'probably decorative',
+  uninteresting: 'has no role or name',
+  labelFor: 'a label (its text names another element)',
+};

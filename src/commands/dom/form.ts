@@ -139,16 +139,14 @@ function buildInteractionWarning(raw: RawField): string | undefined {
 
   const type = raw.type.toLowerCase();
 
-  if (type === 'contenteditable') {
-    return 'Custom contenteditable - use click + type instead of fill';
-  }
+  if (type === 'contenteditable') return undefined;
 
   if (type === 'combobox' || type === 'listbox') {
     return 'Custom dropdown - click to open, then select option';
   }
 
   if (type === 'textbox') {
-    return 'Custom textbox - fill may not trigger framework events';
+    return 'Custom textbox - if fill has no effect, click it and type with pressKey (one key per call)';
   }
 
   return 'Custom component - standard fill may not work';
@@ -209,27 +207,6 @@ function buildSelectorCommand(selector: string, type: string): string {
 }
 
 /**
- * Build alternative command for non-native fields.
- *
- * @param index - Global element index
- * @param raw - Raw field data
- * @returns Alternative command or undefined
- */
-function buildAlternativeCommand(index: number, raw: RawField): string | undefined {
-  if (raw.native) {
-    return undefined;
-  }
-
-  const type = raw.type.toLowerCase();
-
-  if (type === 'contenteditable' || type === 'textbox') {
-    return `bdg dom click ${index} && bdg dom pressKey ${index} "<value>"`;
-  }
-
-  return undefined;
-}
-
-/**
  * Transform raw field to structured FormField.
  *
  * @param raw - Raw field data
@@ -258,7 +235,6 @@ function transformField(raw: RawField): FormField {
     options: raw.options,
     command: editable(raw) ? buildFieldCommand(raw.index, raw.type) : '',
     selectorCommand: editable(raw) ? buildSelectorCommand(raw.selector, raw.type) : '',
-    alternativeCommand: buildAlternativeCommand(raw.index, raw),
   };
 }
 
@@ -418,6 +394,17 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
       }
       const rawData = response.data;
 
+      const frameForm = rawData.frameForms?.[0];
+      if (rawData.forms.length === 0 && frameForm) {
+        const err = formInIframeError(frameForm.url, false);
+        return {
+          success: false,
+          error: err.message,
+          exitCode: EXIT_CODES.FORM_IN_IFRAME,
+          errorContext: { suggestion: err.suggestion },
+        };
+      }
+
       if (rawData.forms.length === 0) {
         const err = noFormsFoundError();
         return {
@@ -452,6 +439,13 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
         formCount: rawData.forms.length,
         selectedForm: 0,
         forms,
+        ...(!options.all && {
+          otherForms: allForms.slice(1).map((form) => ({
+            index: form.index,
+            name: form.name,
+            fieldCount: form.fields.filter((field) => !field.hidden).length,
+          })),
+        }),
         brief: options.brief,
       };
 

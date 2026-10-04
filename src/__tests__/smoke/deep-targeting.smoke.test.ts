@@ -126,6 +126,19 @@ void describe('Shadow DOM and iframe targeting', () => {
     assert.ok(width < 120 && height < 60, `captured ${width}x${height}, not just the button`);
   });
 
+  void it('reads the accessibility tree of same-origin frames', async () => {
+    const result = await runCommand('dom', ['a11y', 'query', 'role:button name:Frame', '--json']);
+    assert.equal(result.exitCode, 0, result.stderr);
+    const found = JSON.parse(result.stdout) as { data: { count: number } };
+    assert.equal(found.data.count, 1);
+  });
+
+  void it('points to fields of a form inside a same-origin frame (89)', async () => {
+    const result = await runCommand('dom', ['form', '--json']);
+    assert.equal(result.exitCode, 89);
+    assert.match(result.stdout, /deep-frame/);
+  });
+
   void it('reports an invalid selector as a user error', async () => {
     const result = await runCommand('dom', ['query', 'input[', '--json']);
 

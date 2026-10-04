@@ -257,6 +257,8 @@ export type TelemetryType = 'dom' | 'network' | 'console';
  * optimized for agent consumption and semantic queries.
  */
 export interface A11yNode {
+  /** Position in the last `a11y query` result (usable as a DOM index, e.g. `bdg dom click 0`) */
+  index?: number;
   /** Unique node identifier from CDP */
   nodeId: string;
   /** ARIA role (button, textbox, heading, etc.) */
@@ -542,7 +544,6 @@ export interface FormField {
   options?: FieldOption[] | undefined;
   command: string;
   selectorCommand: string;
-  alternativeCommand?: string | undefined;
 }
 
 /**
@@ -615,5 +616,7 @@ export interface FormDiscoveryResult {
   formCount: number;
   selectedForm: number;
   forms: DiscoveredForm[];
+  /** The forms not shown (without `--all`): name and number of visible fields */
+  otherForms?: Array<{ index: number; name: string | null; fieldCount: number }>;
   brief?: boolean | undefined;
 }

@@ -18,6 +18,7 @@ import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
+import { conflictingOptionsMessage } from '@/errors/messages.js';
 import { missingArgumentError } from '@/errors/messages.js';
 import type { ScreenshotResult, ElementBounds, NodeRef } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
@@ -254,6 +255,28 @@ async function handleSequenceCapture(
 }
 
 /**
+ * Reject options that would be ignored: `--selector` with `--index` (the
+ * index already names an element), and `--quality` for a PNG.
+ *
+ * @param outputPath - File to write
+ * @param options - Command options
+ * @throws CommandError (81) for a conflict
+ */
+function assertScreenshotOptions(outputPath: string, options: DomScreenshotCommandOptions): void {
+  let message: string | undefined;
+  if (options.selector !== undefined && options.index !== undefined) {
+    message = conflictingOptionsMessage('--selector', '--index');
+  } else if (
+    options.quality !== undefined &&
+    !options.follow &&
+    resolveImageFormat(outputPath, options.format) === 'png'
+  ) {
+    message = '--quality applies to JPEG only; this screenshot is a PNG';
+  }
+  if (message) throw new CommandError(message, {}, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
  * Handle `bdg dom screenshot <path>`.
  *
  * Dispatches to page, element, or sequence capture based on flags.
@@ -262,6 +285,7 @@ export async function handleDomScreenshot(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
+  assertScreenshotOptions(outputPath, options);
   if (options.follow) {
     await handleSequenceCapture(outputPath, options);
     return;

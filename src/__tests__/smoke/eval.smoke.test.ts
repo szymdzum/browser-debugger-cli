@@ -76,7 +76,7 @@ void describe('dom eval', () => {
       assert.equal(data?.subtype, subtype, expression);
     }
     assert.equal((await evaluate('undefined')).data?.type, 'undefined');
-    assert.match(String((await evaluate('window')).data?.result), /window/);
+    assert.match(String((await evaluate('window')).data?.result), /window/i);
   });
 
   void it('runs like the DevTools console: declarations can be repeated', async () => {
@@ -89,6 +89,37 @@ void describe('dom eval', () => {
     const { exitCode, error } = await evaluate('throw new Error("boom")');
     assert.equal(exitCode, 91);
     assert.match(error ?? '', /boom/);
+  });
+
+  void it('keeps nested values JSON would lose', async () => {
+    const cases: Array<[string, unknown]> = [
+      ['[1, undefined, NaN]', [1, 'undefined', 'NaN']],
+      ['({ b: -0, c: Infinity })', { b: '-0', c: 'Infinity' }],
+      ['({ el: document.body })', { el: 'body' }],
+      ['new Uint8Array([1, 2])', [1, 2]],
+    ];
+    for (const [expression, value] of cases) {
+      assert.deepEqual((await evaluate(expression)).data?.result, value, expression);
+    }
+  });
+
+  void it('reports thrown objects and empty scripts clearly', async () => {
+    assert.match((await evaluate('throw { code: 42 }')).error ?? '', /code: 42/);
+    assert.equal((await evaluate('  ')).exitCode, 81);
+  });
+
+  void it('stops waiting for a promise that never settles', async () => {
+    const { exitCode, error } = await evaluate('new Promise(() => {})', 60000);
+    assert.equal(exitCode, 102);
+    assert.match(error ?? '', /did not settle/);
+  });
+
+  void it('recovers a page kept busy by a loop started from a timer', async () => {
+    assert.equal((await evaluate('setTimeout(() => { while (true) {} }, 0); 1')).exitCode, 0);
+    const { exitCode, error } = await evaluate('2', 60000);
+    assert.equal(exitCode, 102);
+    assert.match(error ?? '', /terminated/);
+    assert.equal((await evaluate('1 + 1')).data?.result, 2);
   });
 
   void it('terminates an endless loop and keeps the page usable', async () => {

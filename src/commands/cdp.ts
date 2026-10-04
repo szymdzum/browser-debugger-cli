@@ -407,13 +407,17 @@ function handleDescribeMethod(methodName: string): {
 }
 
 /**
- * CDP methods blocked from raw execution due to output issues.
- * These methods return large binary data that corrupts terminal/agent sessions.
+ * CDP methods blocked from raw execution: they return large binary data that
+ * corrupts terminal/agent sessions, or end the session behind bdg's back.
  */
 const BLOCKED_CDP_METHODS: Record<string, { alternative: string; reason: string }> = {
   'Page.captureScreenshot': {
     alternative: 'bdg dom screenshot [path]',
     reason: 'Returns large base64 data that corrupts terminal sessions',
+  },
+  'Browser.close': {
+    alternative: 'bdg stop',
+    reason: 'Closes Chrome under the session, which then ends without saving its state',
   },
 };
 
