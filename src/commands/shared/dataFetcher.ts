@@ -5,6 +5,12 @@
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { PeekSection } from '@/ipc/protocol/commands.js';
+import {
+  IPCConnectionError,
+  IPCEarlyCloseError,
+  IPCTimeoutError,
+} from '@/ipc/transport/IPCError.js';
+import { isConnectionError } from '@/ipc/utils/errors.js';
 import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getExitCodeForConnectionError } from '@/utils/errorMapping.js';
@@ -43,7 +49,25 @@ export async function fetchPreviewOutput(
   query: PreviewQuery = {}
 ): Promise<FetchResult<BdgOutput>> {
   log.debug(`Fetching preview output ${JSON.stringify(query)}`);
-  const response = await getPeek(query);
+  let response: Awaited<ReturnType<typeof getPeek>>;
+  try {
+    response = await getPeek(query);
+  } catch (error) {
+    if (error instanceof IPCTimeoutError) {
+      return { success: false, error: getErrorMessage(error), exitCode: EXIT_CODES.CDP_TIMEOUT };
+    }
+    const gone =
+      error instanceof IPCConnectionError ||
+      error instanceof IPCEarlyCloseError ||
+      isConnectionError(error);
+    if (!gone) throw error;
+    log.debug(`Daemon unreachable: ${getErrorMessage(error)}`);
+    return {
+      success: false,
+      error: 'No active session (it ended or was never started)',
+      exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+    };
+  }
 
   try {
     validateIPCResponse(response);

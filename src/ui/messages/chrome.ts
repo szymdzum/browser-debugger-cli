@@ -71,7 +71,7 @@ export function formatChromeIssue(issue: IssueDetails): string {
         '',
         'Try:',
         `  - bdg cleanup`,
-        `  - Kill conflicting process: kill $(lsof -ti:${port})`,
+        `  - See what uses the port: lsof -i :${port}`,
         `  - Use different port: bdg <url> --port ${port + 1}`,
         `  - In a container where Chrome's sandbox fails: BDG_NO_SANDBOX=1 bdg <url>`
       );
@@ -184,7 +184,10 @@ export function formatDiagnosticsForStatus(diagnostics: ChromeDiagnostics): stri
       lines.push(`  ${index + 1}. ${path}`);
     });
   } else if (diagnostics.installationCount > 3) {
-    lines.push(`  (Use 'bdg cleanup --aggressive' to see all)`);
+    diagnostics.installations.slice(0, 3).forEach((path, index) => {
+      lines.push(`  ${index + 1}. ${path}`);
+    });
+    lines.push(`  … and ${diagnostics.installationCount - 3} more`);
   }
 
   return lines;
@@ -359,11 +362,10 @@ export function chromeBinaryOverrideIsDirectory(path: string, source: string): s
 export function portInUseError(port: number): string {
   return joinLines(
     `Port ${port} is already in use.\n`,
-    'This usually means Chrome is still running from a previous session.\n',
+    'Another program (or a Chrome left from a previous session) is listening on it.\n',
     'Try:',
-    `  - bdg cleanup --aggressive  (kills all Chrome processes)`,
-    `  - bdg cleanup --force       (removes session files + kills Chrome on port ${port})`,
-    `  - lsof -ti:${port} | xargs kill -9  (force kill process on port)`,
-    `  - Use different port: bdg <url> --port ${port + 1}`
+    `  - Use a different port: bdg <url> --port ${port + 1}`,
+    `  - If a bdg session is stuck: bdg cleanup --force  (stops bdg's own daemon and Chrome only)`,
+    `  - See what uses the port: lsof -i :${port}`
   );
 }

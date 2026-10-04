@@ -156,7 +156,7 @@ function buildSessionOptions(options: CollectorOptions): {
     required: false,
   });
   const timeoutRule = positiveIntRule({ name: '--timeout', min: 1, max: 3600, required: false });
-  const portRule = positiveIntRule({ name: '--port', min: 1, max: 65535, required: false });
+  const portRule = positiveIntRule({ name: '--port', min: 1024, max: 65535, required: false });
 
   const maxBodySizeMB =
     options.maxBodySize !== undefined ? maxBodySizeRule.validate(options.maxBodySize) : undefined;

@@ -5,6 +5,8 @@
  * and display updates (like tail -f behavior).
  */
 
+import { genericError } from '@/errors/messages.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -57,7 +59,9 @@ export async function setupFollowMode(
   await refreshFn();
 
   const intervalId = setInterval(() => {
-    void refreshFn();
+    refreshFn().catch((error: unknown) => {
+      console.error(genericError(getErrorMessage(error)));
+    });
   }, intervalMs);
 
   process.on('SIGINT', () => {
