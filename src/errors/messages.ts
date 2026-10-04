@@ -413,6 +413,18 @@ export function invalidQueryPatternError(pattern: string): ErrorWithSuggestion {
 }
 
 /**
+ * Unknown field in an a11y query pattern.
+ *
+ * @param field - The unrecognized key
+ */
+export function unknownQueryFieldError(field: string): ErrorWithSuggestion {
+  return {
+    message: `Unknown query field: "${field}"`,
+    suggestion: 'Use role, name or description, e.g.: bdg dom a11y query "role:button name:Submit"',
+  };
+}
+
+/**
  * No a11y nodes matching pattern.
  */
 export function noA11yNodesFoundError(pattern: string): ErrorWithSuggestion {

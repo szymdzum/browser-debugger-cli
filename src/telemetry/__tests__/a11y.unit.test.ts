@@ -178,11 +178,22 @@ describe('parseQueryPattern', () => {
     assert.equal(pattern.description, 'Primary');
   });
 
-  test('handles values with spaces (takes first word)', () => {
+  test('keeps spaces in values up to the next field', () => {
     const pattern = parseQueryPattern('role:button name:Submit Form');
 
     assert.equal(pattern.role, 'button');
-    assert.equal(pattern.name, 'Submit');
+    assert.equal(pattern.name, 'Submit Form');
+  });
+
+  test('accepts commas, = separators and quoted values', () => {
+    assert.deepEqual(parseQueryPattern('role=link,name=Google Chrome'), {
+      role: 'link',
+      name: 'Google Chrome',
+    });
+    assert.deepEqual(parseQueryPattern('name:"Sign in, now" role:button'), {
+      name: 'Sign in, now',
+      role: 'button',
+    });
   });
 
   test('handles description shorthand (desc)', () => {
@@ -197,17 +208,17 @@ describe('parseQueryPattern', () => {
     assert.equal(pattern.name, 'Click:Me');
   });
 
-  test('ignores invalid fields', () => {
-    const pattern = parseQueryPattern('invalid:value role:button');
-
-    assert.equal(pattern.role, 'button');
-    assert.equal(Object.keys(pattern).length, 1, 'Should only include valid fields');
+  test('does not let an empty value swallow the next field', () => {
+    assert.deepEqual(parseQueryPattern('role: name:Submit'), { name: 'Submit' });
+    assert.deepEqual(parseQueryPattern('name: "Sign in"'), { name: 'Sign in' });
   });
 
-  test('returns empty object for invalid pattern', () => {
-    const pattern = parseQueryPattern('invalid:value');
+  test('rejects unknown fields', () => {
+    assert.throws(() => parseQueryPattern('rol:button'), /Unknown query field: "rol"/);
+  });
 
-    assert.deepEqual(pattern, {});
+  test('returns empty object when there are no fields', () => {
+    assert.deepEqual(parseQueryPattern('just words'), {});
   });
 
   test('is case-insensitive for field names', () => {
@@ -245,6 +256,16 @@ describe('queryA11yTree', () => {
       result.nodes.every((n) => n.role === 'button'),
       'All results should be buttons'
     );
+  });
+
+  test('supports * wildcards in names and roles', () => {
+    const names = (pattern: Parameters<typeof queryA11yTree>[1]): (string | undefined)[] =>
+      queryA11yTree(tree, pattern).nodes.map((n) => n.name);
+
+    assert.deepEqual(names({ name: '*ail*' }), ['Email Address']);
+    assert.deepEqual(names({ name: 'Sub*Form' }), ['Submit Form']);
+    assert.deepEqual(names({ role: 'text*' }), ['Email Address', 'Password']);
+    assert.deepEqual(names({ role: 'butt' }), [], 'role without * matches exactly');
   });
 
   test('queries by name only', () => {
