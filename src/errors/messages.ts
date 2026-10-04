@@ -540,6 +540,17 @@ export const UNREACHABLE_ELEMENTS_HINT =
   'elements in closed shadow roots and cross-origin iframes cannot be reached';
 
 /**
+ * Two options given together where one would be ignored.
+ *
+ * @param first - First option
+ * @param second - Option it conflicts with
+ * @returns Message
+ */
+export function conflictingOptionsMessage(first: string, second: string): string {
+  return `${first} cannot be combined with ${second}; use one of them`;
+}
+
+/**
  * A bare word given where a URL is expected, most likely a mistyped command.
  *
  * @param word - The argument
@@ -565,6 +576,18 @@ export function navigationFailedError(url: string, errorText: string): ErrorWith
   return {
     message: `Could not load ${url}: ${errorText}`,
     suggestion: 'Check the URL and that the server is running and reachable from this machine',
+  };
+}
+
+/**
+ * `bdg page back/forward` at the end of the page's history.
+ *
+ * @param direction - back or forward
+ */
+export function noHistoryEntryError(direction: 'back' | 'forward'): ErrorWithSuggestion {
+  return {
+    message: `There is no page to go ${direction} to`,
+    suggestion: 'Open a page with: bdg page navigate <url>',
   };
 }
 
@@ -761,17 +784,6 @@ export function notInAccessibilityTreeError(
     message: `${target} exists but is not in the accessibility tree${reasons.length ? ` (${reasons.join('; ')})` : ''}`,
     suggestion: `Screen readers skip it. Inspect its HTML instead: bdg dom get ${/^\d+$/.test(target) ? target : `'${target}'`}`,
   };
-}
-
-/**
- * Two options given together where one would be ignored.
- *
- * @param first - First option
- * @param second - Option it conflicts with
- * @returns Message
- */
-export function conflictingOptionsMessage(first: string, second: string): string {
-  return `${first} cannot be combined with ${second}; use one of them`;
 }
 
 /**

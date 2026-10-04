@@ -22,7 +22,7 @@ import type {
 } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
-import { internalError, scrollOptionsError } from '@/errors/messages.js';
+import { conflictingOptionsMessage, internalError, scrollOptionsError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
@@ -30,7 +30,7 @@ import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import { findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { dialogConsoleText } from '@/ui/messages/commands.js';
+import { POINTER_ACTION_DONE, dialogConsoleText } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -104,25 +104,24 @@ export function registerFormInteractionCommands(program: Command): void {
     .description('Click an element and wait for stability (accepts selector or index)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .option('--double', 'Double-click')
+    .option('--right', 'Right-click (opens the context menu)')
     .option('--no-wait', 'Skip waiting for network stability after click')
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
-      await runCommand(
-        () =>
-          runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
-            selectorOrIndex,
-            index: options.index,
-            buildRequest: (target) => ({
-              ...target,
-              wait: options.wait !== false,
-            }),
-            call: domClick,
-            action: 'click element',
-            failureSuggestion: 'Verify the selector matches a clickable element',
-          }),
-        options,
-        formatClickOutput
-      );
+      const action = options.double ? 'double' : options.right ? 'right' : 'click';
+      await runPointerCommand(selectorOrIndex, options, action);
+    });
+
+  domCommand
+    .command('hover')
+    .description('Move the mouse over an element (shows hover menus and tooltips)')
+    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .option('--no-wait', 'Skip waiting for network stability after hovering')
+    .addOption(jsonOption())
+    .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
+      await runPointerCommand(selectorOrIndex, options, 'hover');
     });
 
   domCommand
@@ -307,6 +306,43 @@ function scrollOptionsProblem(
   return null;
 }
 
+/**
+ * Click, double-click, right-click or hover an element.
+ *
+ * @param selectorOrIndex - Selector or cached index
+ * @param options - Command options
+ * @param action - Pointer action
+ */
+async function runPointerCommand(
+  selectorOrIndex: string,
+  options: ClickCommandOptions,
+  action: NonNullable<ClickResult['action']>
+): Promise<void> {
+  await runCommand(
+    () =>
+      options.double && options.right
+        ? Promise.resolve({
+            success: false,
+            error: conflictingOptionsMessage('--double', '--right'),
+            exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+          })
+        : runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
+            selectorOrIndex,
+            index: options.index,
+            buildRequest: (target) => ({
+              ...target,
+              wait: options.wait !== false,
+              ...(action !== 'click' && { action }),
+            }),
+            call: domClick,
+            action: action === 'hover' ? 'hover element' : 'click element',
+            failureSuggestion: 'Verify the selector matches a clickable element',
+          }),
+    options,
+    formatClickOutput
+  );
+}
+
 /** Action result as returned in `data` (the `success` flag is implied by the envelope). */
 type ActionOutput<T> = Omit<T, 'success'>;
 
@@ -360,13 +396,13 @@ function formatFillOutput(result: ActionOutput<FillResult>): string {
  */
 function formatClickOutput(result: ActionOutput<ClickResult>): string {
   const fmt = new OutputFormatter();
-  fmt.text('✓ Element Clicked');
+  fmt.text(`✓ Element ${POINTER_ACTION_DONE[result.action ?? 'click']}`);
   fmt.blank();
   fmt.keyValueList(
     [
       ['Selector', result.selector ?? 'unknown'],
       ['Element Type', result.elementType ?? 'unknown'],
-      ['Method', result.method === 'dom' ? 'DOM click()' : 'mouse events'],
+      ['Method', result.method === 'dom' ? 'DOM events' : 'mouse events'],
     ],
     15
   );

@@ -117,7 +117,29 @@ export const REACT_FILL_SCRIPT = `
 
   el.focus();
 
-  if (tagName === 'select') {
+  if (tagName === 'select' && el.multiple) {
+    // Several options, separated by commas (an option whose value contains a
+    // comma matches as a whole); "" selects none
+    const options = Array.from(el.options);
+    const whole = options.some((o) => o.value === value || o.text.trim() === value);
+    const wanted = whole ? [value] : value.split(',').map((part) => part.trim()).filter(Boolean);
+    const chosen = wanted.map((part) =>
+      options.find((o) => o.value === part) || options.find((o) => o.text.trim() === part)
+    );
+    const missing = wanted.find((part, i) => !chosen[i]);
+    if (missing !== undefined) {
+      return {
+        success: false,
+        error: 'Option not found: ' + missing,
+        exitCode: 81,
+        elementType: tagName,
+        suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
+      };
+    }
+    options.forEach((o) => { o.selected = chosen.includes(o); });
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } else if (tagName === 'select') {
     // Match by option value first, then by visible label
     const options = Array.from(el.options);
     const option =
@@ -127,6 +149,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: 'Option not found: ' + value,
+        exitCode: 81,
         elementType: tagName,
         suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
       };
@@ -228,7 +251,13 @@ export const REACT_FILL_SCRIPT = `
   return {
     success: true,
     selector: selector,
-    value: el.isContentEditable ? el.textContent : inputType === 'password' ? '********' : el.value,
+    value: el.isContentEditable
+      ? el.textContent
+      : inputType === 'password'
+        ? '********'
+        : tagName === 'select' && el.multiple
+          ? Array.from(el.selectedOptions).map((o) => o.value).join(', ')
+          : el.value,
     elementType: tagName,
     inputType: inputType || null,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,

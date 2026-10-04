@@ -186,6 +186,10 @@ export interface FillCommandOptions extends BaseOptions, IndexOptions {
 export interface ClickCommandOptions extends BaseOptions, IndexOptions {
   /** Wait for stability after click (--no-wait sets to false) */
   wait: boolean;
+  /** Double-click */
+  double?: boolean;
+  /** Right-click */
+  right?: boolean;
 }
 
 /**

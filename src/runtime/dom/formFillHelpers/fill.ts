@@ -228,14 +228,56 @@ async function setFileInput(
   };
 }
 
-/** Clicks the located target with `el.click()`; returns false if it is gone. */
-const DOM_CLICK_FALLBACK_SCRIPT = `(() => {
+/** How a located element is pointed at */
+export type PointerAction = 'click' | 'double' | 'right' | 'hover';
+
+/**
+ * Page script doing an action on the located target with DOM events (when
+ * the mouse cannot reach it); evaluates to false if the target is gone.
+ *
+ * @param action - What to do
+ * @returns Script
+ */
+function domFallbackScript(action: PointerAction): string {
+  const events: Record<PointerAction, string> = {
+    click: 'el.click();',
+    double: "el.click(); el.click(); el.dispatchEvent(new MouseEvent('dblclick', init));",
+    right: "el.dispatchEvent(new MouseEvent('contextmenu', { ...init, button: 2 }));",
+    hover:
+      "['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'mousemove'].forEach((type) => el.dispatchEvent(new MouseEvent(type, init)));",
+  };
+  return `(() => {
   const el = window.__bdgClickTarget;
   delete window.__bdgClickTarget;
   if (!el || !el.isConnected) return false;
-  el.click();
+  const init = { bubbles: true, cancelable: true, composed: true, view: el.ownerDocument.defaultView };
+  ${events[action]}
   return true;
 })()`;
+}
+
+/**
+ * Real mouse events for an action at a point.
+ *
+ * @param action - What to do
+ * @param x - Page x
+ * @param y - Page y
+ * @returns `Input.dispatchMouseEvent` parameters, in order
+ */
+export function mouseEvents(
+  action: PointerAction,
+  x: number,
+  y: number
+): Array<Record<string, unknown>> {
+  const moved = { type: 'mouseMoved', x, y };
+  if (action === 'hover') return [moved];
+  const button = action === 'right' ? 'right' : 'left';
+  const press = (clickCount: number): Array<Record<string, unknown>> => [
+    { type: 'mousePressed', x, y, button, clickCount },
+    { type: 'mouseReleased', x, y, button, clickCount },
+  ];
+  return action === 'double' ? [moved, ...press(1), ...press(2)] : [moved, ...press(1)];
+}
 
 /** Click target as located by CLICK_ELEMENT_SCRIPT. */
 type LocatedClick = ClickResult & {
@@ -265,26 +307,31 @@ function releaseClickTarget(cdp: CDPConnection): void {
  * trusted) at the element's center when it is the topmost element there, so
  * components that react to pointer or mouse events (menus, selects) respond.
  * Otherwise (covered or zero-size) falls back to `el.click()` and says so.
+ * Double and right clicks, and hovering, work the same way.
  *
  * @param cdp - CDP connection
  * @param located - Locate result with center point
+ * @param action - Click, double click, right click or hover
  * @returns Click result
  */
-async function performClick(cdp: CDPConnection, located: LocatedClick): Promise<ClickResult> {
+async function performClick(
+  cdp: CDPConnection,
+  located: LocatedClick,
+  action: PointerAction
+): Promise<ClickResult> {
   const { x, y, hittable, obstruction, ...result } = located;
   if (!result.success) return result;
 
   if (hittable && x !== undefined && y !== undefined) {
-    const mouse = { x, y, button: 'left' as const, clickCount: 1 };
-    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...mouse });
-    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...mouse });
+    for (const event of mouseEvents(action, x, y)) {
+      await cdp.send('Input.dispatchMouseEvent', event);
+    }
     releaseClickTarget(cdp);
-    return { ...result, method: 'mouse' };
+    return { ...result, action, method: 'mouse' };
   }
 
   const response = (await cdp.send('Runtime.evaluate', {
-    expression: DOM_CLICK_FALLBACK_SCRIPT,
+    expression: domFallbackScript(action),
     returnByValue: true,
     userGesture: true,
   })) as { result?: { value?: unknown } };
@@ -296,7 +343,7 @@ async function performClick(cdp: CDPConnection, located: LocatedClick): Promise<
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
-  return { ...result, method: 'dom', warning: domClickFallbackWarning(obstruction) };
+  return { ...result, action, method: 'dom', warning: domClickFallbackWarning(obstruction) };
 }
 
 /**
@@ -305,7 +352,7 @@ async function performClick(cdp: CDPConnection, located: LocatedClick): Promise<
 export async function clickElement(
   cdp: CDPConnection,
   selector: string,
-  options: { index?: number } = {}
+  options: { index?: number; action?: PointerAction } = {}
 ): Promise<ClickResult> {
   const indexArg = options.index ?? 'null';
   const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
@@ -339,7 +386,7 @@ export async function clickElement(
     }
 
     if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
-      return await performClick(cdp, cdpResponse.result.value);
+      return await performClick(cdp, cdpResponse.result.value, options.action ?? 'click');
     }
 
     const err = unexpectedResponseFormatError('ClickResult');

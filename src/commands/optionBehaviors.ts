@@ -110,7 +110,29 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Waits for network stability after click (200ms idle)',
     whenDisabled: 'Returns immediately without waiting for network',
     automaticBehavior:
-      'Network wait helps ensure AJAX requests triggered by click complete. The click itself uses real mouse events at the element center (method "mouse"); if the element is covered or has no size it falls back to el.click() (method "dom", with a warning)',
+      'Network wait helps ensure AJAX requests triggered by click complete. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning)',
+  },
+  'click:--double': {
+    default: 'Single click',
+    whenEnabled:
+      'Double-click: two presses with clickCount 1 and 2, so the page gets click, click and dblclick',
+  },
+  'click:--right': {
+    default: 'Left click',
+    whenEnabled:
+      'Right-click: the page gets contextmenu (custom context menus open); cannot be combined with --double',
+  },
+  'hover:--no-wait': {
+    default: 'Waits for network stability after moving the mouse (menus may load content)',
+    whenDisabled: 'Returns immediately without waiting for network',
+    automaticBehavior:
+      'The mouse stays over the element afterwards, so hover menus stay open until the next mouse action',
+  },
+  'navigate:--no-wait': {
+    default: 'Waits until the new page has loaded and the network and DOM are idle (up to 15 s)',
+    whenDisabled: 'Returns as soon as the navigation has started',
+    automaticBehavior:
+      'Also applies to page reload/back/forward; indices from earlier queries become stale (87)',
   },
   'pressKey:--no-wait': {
     default: 'Waits for network stability after key press (200ms idle)',

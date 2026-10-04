@@ -40,7 +40,7 @@ export function orphanedDaemonsCleanedMessage(count: number): string {
  * @returns Warning text
  */
 export function domClickFallbackWarning(reason: string | null | undefined): string {
-  return `Element is ${reason ?? 'not reachable by the mouse'}; dispatched a DOM click() instead of mouse events (a user could not click it like this)`;
+  return `Element is ${reason ?? 'not reachable by the mouse'}; dispatched DOM events instead of mouse events (a user could not reach it like this)`;
 }
 
 /**
@@ -53,6 +53,29 @@ export function dialogConsoleText(dialog: { type: string; message: string }): st
   const kind = dialog.type === 'beforeunload' ? 'beforeunload' : `${dialog.type}()`;
   return `${kind} dialog accepted${dialog.message ? `: "${dialog.message}"` : ''}`;
 }
+
+/** Headline of each pointer action, e.g. "Element Double-clicked" */
+export const POINTER_ACTION_DONE = {
+  click: 'Clicked',
+  double: 'Double-clicked',
+  right: 'Right-clicked',
+  hover: 'Hovered',
+} as const;
+
+/** Headline of each `bdg page` action */
+export const PAGE_ACTION_DONE = {
+  navigate: 'Navigated',
+  reload: 'Reloaded',
+  back: 'Went back',
+  forward: 'Went forward',
+} as const;
+
+/** Help text of the `bdg page` history commands */
+export const PAGE_ACTION_DESCRIPTIONS = {
+  reload: 'Reload the page',
+  back: 'Go back one page (like the browser button)',
+  forward: 'Go forward one page (like the browser button)',
+} as const;
 
 /**
  * Generate warning message.

@@ -390,6 +390,18 @@ export async function domScroll(
   return sendCommand('dom_scroll', params);
 }
 
+/**
+ * Navigate the page (navigate, reload, back, forward) and wait for it.
+ *
+ * @param params - Action, URL and wait flag
+ * @returns Where the page is now
+ */
+export async function pageNavigate(
+  params: NoType<(typeof COMMANDS)['page_navigate']['requestSchema']>
+): Promise<ClientResponse<'page_navigate'>> {
+  return sendCommand('page_navigate', params);
+}
+
 /** Run form discovery and return the raw structured form data. */
 export async function domFormDiscover(): Promise<ClientResponse<'dom_form_discover'>> {
   return sendCommand('dom_form_discover', {});
