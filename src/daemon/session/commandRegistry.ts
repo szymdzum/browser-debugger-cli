@@ -8,6 +8,7 @@ import { CommandError } from '@/errors/index.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
+import { inspectEventListeners } from '@/runtime/dom/eventListeners.js';
 import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
 import {
   fillElement,
@@ -562,6 +563,9 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         if (result.success && params.wait !== false) await waitForActionStability(cdp);
         return result;
       }),
+
+    dom_listeners: async (cdp, params) =>
+      withBusyPageRecovery(cdp, inspectEventListeners(cdp, params)),
 
     page_navigate: async (cdp, params) =>
       interact(cdp, () =>

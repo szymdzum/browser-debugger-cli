@@ -1055,6 +1055,20 @@ export function operationFailedError(operation: string, errorMessage: string): E
 }
 
 /**
+ * The browser does not offer `DOMDebugger.getEventListeners` (non-Chrome
+ * targets, or browsers that disable the DOMDebugger domain).
+ *
+ * @param detail - Chrome's error
+ * @returns Message and suggestion
+ */
+export function eventListenersUnavailableError(detail: string): ErrorWithSuggestion {
+  return {
+    message: `This browser cannot list event listeners (DOMDebugger.getEventListeners: ${detail})`,
+    suggestion: 'Use a Chromium-based browser (Chrome, Edge) that supports the DOMDebugger domain',
+  };
+}
+
+/**
  * Internal error (should not happen in normal usage).
  */
 export function internalError(context: string): ErrorWithSuggestion {

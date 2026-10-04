@@ -71,6 +71,13 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     cdpAlternative: 'Runtime.evaluate with property extraction',
   },
 
+  inspect_event_listeners: {
+    commands: ['dom listeners'],
+    description:
+      'List event listeners for an element, incl. delegated ones on ancestors/document/window',
+    cdpAlternative: 'DOMDebugger.getEventListeners on the element and each ancestor',
+  },
+
   accessibility_tree: {
     commands: ['dom a11y'],
     description: 'Get accessibility tree for page or element',

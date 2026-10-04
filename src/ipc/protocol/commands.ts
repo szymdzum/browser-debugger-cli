@@ -9,6 +9,7 @@ import type { HintDetails } from '@/errors/notices.js';
 import type {
   ClickResult,
   FillResult,
+  ListenersResult,
   PressKeyResult,
   RawFormData,
   ScrollResult,
@@ -270,6 +271,20 @@ export interface DomScrollCommand {
 export type DomScrollData = ScrollResult;
 
 /**
+ * dom_listeners: list the event listeners that run for an element.
+ */
+export interface DomListenersCommand {
+  selector: string;
+  index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
+  /** Only these event types (default: all) */
+  types?: string[];
+}
+
+export type DomListenersData = ListenersResult;
+
+/**
  * dom_form_discover: run the form discovery script and return raw form data.
  */
 export type DomFormDiscoverCommand = Record<string, never>;
@@ -298,6 +313,7 @@ export type RegistryShape = {
   dom_press_key: CommandDef<DomPressKeyCommand, DomPressKeyData>;
   dom_scroll: CommandDef<DomScrollCommand, DomScrollData>;
   dom_form_discover: CommandDef<DomFormDiscoverCommand, DomFormDiscoverData>;
+  dom_listeners: CommandDef<DomListenersCommand, DomListenersData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
 };
 
@@ -357,6 +373,7 @@ export const COMMANDS: RegistryShape = {
   dom_scroll: defineCommand(),
   page_navigate: defineCommand(),
   dom_form_discover: defineCommand(),
+  dom_listeners: defineCommand(),
 };
 
 /**

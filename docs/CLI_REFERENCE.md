@@ -239,6 +239,38 @@ bdg dom query --json                          # JSON output
 - No match exits 83, like `dom get` and `dom a11y`
 - Use results with `bdg dom get` for full details
 
+### Event Listeners
+
+List the event listeners that run for an element: on the element itself, its ancestors (through open shadow roots), its document and its window. Frameworks attach most handlers by delegation (React on its root container, jQuery on `document`), so ancestors matter.
+
+```bash
+bdg dom listeners "#save"                     # All listeners, grouped by event type
+bdg dom listeners "button" --index 2          # Third match (0-based)
+bdg dom listeners 0                           # Cached query index (stale index exits 87)
+bdg dom listeners "#save" --type click,keydown  # Only these event types
+bdg dom listeners "#save" --json
+```
+
+**Output:**
+```text
+Event listeners for button#save (3)
+
+click
+  target    button#save  onSave                 script 4:8:18   function onSave(e) { … }
+  ancestor  div#root     dispatchDiscreteEvent  script 4:14:33  [capture] function dispatchDiscreteEvent(…
+  document  document     delegated              script 4:16:56  function delegated(e) { … }
+```
+
+- Nearest first within each event type: `target`, then `ancestor`s outward, then `document`, `window`
+- Handler: name, a one-line source preview (80 characters) and its location (`script <id>:<line>:<column>`, 1-based like DevTools; JSON `lineNumber`/`columnNumber` are 0-based as in CDP)
+- Inline `on…` attributes and `on…` properties are included
+- When an interaction event (click, input, keydown, …) has listeners only above the element, a note explains the delegation
+- No listeners at all is not an error (exit 0); a selector without match exits 83, an `--index` out of range 81
+- Elements in open shadow roots and same-origin iframes are found like with the other DOM commands
+- Uses `DOMDebugger.getEventListeners`; the Debugger domain is not enabled, so `debugger;` statements do not pause the page
+
+**JSON (`data`):** `{ selector, index?, element, matchCount?, warning?, listeners: [{ type, on: "target"|"ancestor"|"document"|"window", node, useCapture, passive, once, handler: { name, preview, scriptId, lineNumber, columnNumber } }] }`
+
 ### JavaScript Evaluation
 
 Execute JavaScript in the page context.

@@ -115,7 +115,7 @@ bdg dom pseudo <selector> --clear
 
 ---
 
-### 1.5 Event Listener Inspection
+### 1.5 Event Listener Inspection ✅ COMPLETED (unreleased)
 
 **Problem:** No visibility into what events elements handle.
 

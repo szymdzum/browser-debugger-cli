@@ -129,6 +129,18 @@ void describe('Shadow DOM and iframe targeting', () => {
     assert.ok(width < 120 && height < 60, `captured ${width}x${height}, not just the button`);
   });
 
+  void it('lists event listeners of elements in shadow roots and frames', async () => {
+    type Listed = { listeners: Array<{ type: string; on: string }> };
+    for (const selector of ['#shadow-button', '#frame-button']) {
+      const listed = await runJson<Listed>('dom', ['listeners', selector, '--type', 'click']);
+      assert.deepEqual(
+        listed.listeners.map((l) => `${l.type}:${l.on}`),
+        ['click:target'],
+        selector
+      );
+    }
+  });
+
   void it('reads the accessibility tree of same-origin frames', async () => {
     const result = await runCommand('dom', ['a11y', 'query', 'role:button name:Frame', '--json']);
     assert.equal(result.exitCode, 0, result.stderr);
