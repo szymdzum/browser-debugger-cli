@@ -87,6 +87,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `dom screenshot --follow`: `--limit 1` captures one frame, and an element that disappears ends the sequence with its error; element screenshots report the element's bounds in JSON
   - `dom get --nth/--all` without `--raw` exits 81 (they were ignored); `cdp Page.close` is blocked (use `bdg stop`); a filtered `network list` header reads "21 matching, 240 in all"
 
+- **Third deep test: leftovers**
+  - `-q` hides tips and "Next steps"/"Suggestions" blocks in every command's human output (`dom query/form/submit`, `dom a11y`, `status`, `peek`), not just at start
+  - Element previews (`dom query`, `dom get`) show the text as rendered: hidden parts are left out and no spaces are added at tag boundaries ("Marylebone, London", not "Marylebone , London")
+  - `dom eval`: `undefined` inside arrays and objects is `null` (it was the string "undefined")
+  - `dom query` with no match exits 83, like `dom get` and `dom a11y`; human output lists the first 50 matches (`--json` has all)
+
 - **Smaller fixes**
   - `cdp`: an unknown domain gets a did-you-mean (`Netwrk` → `Network`); `bdg cdp Network --search cookie` searches that domain only; blocked methods (`Page.captureScreenshot`, `Browser.close`) show their bdg alternative as the example in `--describe`/`--search`
   - `dom a11y tree` (human) is indented by depth and leaves out text boxes, blank text, text repeating its parent and nameless layout wrappers, so the 50 lines show the page's structure

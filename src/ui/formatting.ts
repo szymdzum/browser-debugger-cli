@@ -8,6 +8,24 @@
 
 import { safeParseUrl } from '@/utils/url.js';
 
+let hintsHidden = false;
+
+/**
+ * Leave tips and next-step hints out of human output (`-q`).
+ */
+export function hideHints(): void {
+  hintsHidden = true;
+}
+
+/**
+ * Whether tips and hints are left out (`-q`).
+ *
+ * @returns True in quiet mode
+ */
+export function areHintsHidden(): boolean {
+  return hintsHidden;
+}
+
 /**
  * Fluent builder for constructing formatted console output.
  *
@@ -36,6 +54,27 @@ export class OutputFormatter {
   section(title: string, items: string[], indent: number = 2): this {
     this.lines.push(title);
     return this.list(items, indent);
+  }
+
+  /**
+   * A block of tips or next steps after a blank line; left out with `-q`.
+   *
+   * @param title - Block title, e.g. "Next steps:"
+   * @param items - Lines of the block
+   * @param indent - Indentation of the lines
+   */
+  hints(title: string, items: string[], indent: number = 2): this {
+    if (hintsHidden) return this;
+    return this.blank().section(title, items, indent);
+  }
+
+  /**
+   * A one-line tip; left out with `-q`.
+   *
+   * @param content - Tip text
+   */
+  tip(content: string): this {
+    return hintsHidden ? this : this.text(content);
   }
 
   separator(char: string = '━', width: number = 50): this {

@@ -12,7 +12,7 @@ import type {
   FormButton,
   FormSummary,
 } from '@/types.js';
-import { OutputFormatter } from '@/ui/formatting.js';
+import { OutputFormatter, areHintsHidden } from '@/ui/formatting.js';
 
 const COLUMN_WIDTHS = {
   index: 4,
@@ -338,13 +338,13 @@ export function formatFormDiscovery(result: FormDiscoveryResult): string {
 
   if (result.otherForms) formatOtherForms(result.otherForms, fmt);
 
-  fmt.blank();
-  fmt.text('Suggested commands:');
-  fmt.text('  bdg dom fill <index> "<value>"     Fill a field');
-  fmt.text('  bdg dom click <index>              Click/check a field or button');
-  fmt.text('  bdg dom form                       Refresh to see current state');
-  fmt.blank();
-  fmt.text('Tip: Re-run "bdg dom form" after clicks that may reveal hidden fields');
+  fmt.hints('Suggested commands:', [
+    'bdg dom fill <index> "<value>"     Fill a field',
+    'bdg dom click <index>              Click/check a field or button',
+    'bdg dom form                       Refresh to see current state',
+  ]);
+  if (!areHintsHidden()) fmt.blank();
+  fmt.tip('Tip: Re-run "bdg dom form" after clicks that may reveal hidden fields');
 
   return fmt.build();
 }

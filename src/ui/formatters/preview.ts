@@ -230,7 +230,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   }
 
   if (!options.follow) {
-    fmt.text(compactTipsMessage());
+    fmt.tip(compactTipsMessage());
   }
 
   return fmt.build();
@@ -334,7 +334,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   }
 
   if (!options.follow) {
-    fmt.text(verboseCommandsMessage());
+    fmt.tip(verboseCommandsMessage());
   }
 
   return fmt.build();

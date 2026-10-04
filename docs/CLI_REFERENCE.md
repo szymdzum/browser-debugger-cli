@@ -212,8 +212,9 @@ bdg dom query --json                          # JSON output
 ```
 
 **Output:**
-- Shows count and preview of matched elements
-- Lists nodeId, tag, classes, and text preview
+- Shows count and preview of matched elements (the first 50; `--json` has all)
+- Lists nodeId, tag, classes, and text preview (the text as rendered: hidden parts left out)
+- No match exits 83, like `dom get` and `dom a11y`
 - Use results with `bdg dom get` for full details
 
 ### JavaScript Evaluation

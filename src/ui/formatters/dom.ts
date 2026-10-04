@@ -1,24 +1,13 @@
-import { CROSS_ORIGIN_FRAMES_NOTE } from '@/errors/messages.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { moreMatchesNote } from '@/ui/messages/commands.js';
 
-/**
- * A selector as a JS single-quoted string inside a shell double-quoted
- * argument, for copy-pastable `bdg dom eval "..."` hints.
- *
- * @param selector - CSS selector
- * @returns Escaped selector
- */
-function safeQuerySelectorArgument(selector: string): string {
-  return selector
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/(["$`])/g, '\\$1');
-}
+/** Matches listed in human output (JSON has all of them) */
+const QUERY_DISPLAY_LIMIT = 50;
 
 /**
  * A shell-quoted `dom eval` script reading the text (or a field's value) of
- * the n-th match in the main document (null for matches inside iframes or
+ * the n-th match in the main document, as rendered (null for matches inside iframes or
  * shadow roots, which `document.querySelectorAll` does not reach).
  *
  * @param selector - CSS selector
@@ -26,15 +15,15 @@ function safeQuerySelectorArgument(selector: string): string {
  * @returns Single-quoted script, safe to paste into a shell
  */
 function textExtractionScript(selector: string, index: number): string {
-  const script = `(el => el && (el.value ?? el.textContent))(document.querySelectorAll(${JSON.stringify(selector)})[${index}])`;
+  const script = `(el => el && (el.value ?? el.innerText))(document.querySelectorAll(${JSON.stringify(selector)})[${index}])`;
   return `'${script.replace(/'/g, `'\\''`)}'`;
 }
 
 /**
  * Format DOM query results for human-readable output.
  *
- * Displays found nodes with their index, tag, classes, and preview text.
- * Shows helpful message when no nodes are found.
+ * Displays found nodes with their index, tag, classes, and preview text,
+ * up to {@link QUERY_DISPLAY_LIMIT} of them (no match is an error, exit 83).
  *
  * @param data - DOM query result containing selector, count, and matching nodes
  * @returns Formatted output string
@@ -59,19 +48,7 @@ export function formatDomQuery(data: DomQueryResult): string {
   const { count, nodes, selector } = data;
   const fmt = new OutputFormatter();
 
-  if (count === 0) {
-    return fmt
-      .text(`No nodes found matching "${selector}"`)
-      .blank()
-      .section('Suggestions:', [
-        `Verify selector: bdg dom eval "document.querySelector('${safeQuerySelectorArgument(selector)}')"`,
-        'List elements:   bdg dom query "*"',
-        CROSS_ORIGIN_FRAMES_NOTE,
-      ])
-      .build();
-  }
-
-  const nodeLines = nodes.map((node) => {
+  const nodeLines = nodes.slice(0, QUERY_DISPLAY_LIMIT).map((node) => {
     const attributes = [
       node.id && ` id="${node.id}"`,
       node.name && ` name="${node.name}"`,
@@ -91,8 +68,8 @@ export function formatDomQuery(data: DomQueryResult): string {
   return fmt
     .text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`)
     .list(nodeLines)
-    .blank()
-    .section('Next steps:', [
+    .list(count > QUERY_DISPLAY_LIMIT ? [moreMatchesNote(count - QUERY_DISPLAY_LIMIT)] : [])
+    .hints('Next steps:', [
       `Get HTML:        bdg dom get ${exampleIndex} --raw`,
       `Accessibility:   bdg dom get ${exampleIndex}`,
       `Extract text:    bdg dom eval ${textExtractionScript(selector, exampleIndex)}`,

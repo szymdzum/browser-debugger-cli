@@ -26,10 +26,10 @@ function copyOf(expression: string, globals: object = {}): unknown {
 }
 
 void describe('JSON-safe copy of eval results', () => {
-  void it('keeps values JSON would drop or change', () => {
+  void it('keeps values JSON would drop or change (undefined as null, like JSON in arrays)', () => {
     assert.deepEqual(copyOf('[1, undefined, NaN, -0, Infinity, 2n]'), [
       1,
-      'undefined',
+      null,
       'NaN',
       '-0',
       'Infinity',

@@ -234,7 +234,7 @@ export const JSON_SAFE_COPY_FUNCTION = `function () {
     return result;
   };
   const leaf = (value) => {
-    if (value === undefined) return 'undefined';
+    if (value === undefined) return null;
     if (typeof value === 'number') {
       if (Number.isNaN(value) || !Number.isFinite(value)) return String(value);
       return Object.is(value, -0) ? '-0' : value;

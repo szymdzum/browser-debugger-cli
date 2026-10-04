@@ -9,6 +9,7 @@ import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { enableDebugLogging } from '@/ui/logging/index.js';
+import { hideHints } from '@/ui/formatting.js';
 import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
@@ -203,7 +204,7 @@ function addGlobalDebugOption(command: Command): void {
 /**
  * Apply program-level options to the command about to run.
  *
- * Enables debug logging for `--debug` anywhere, and forwards `--json` given
+ * Enables debug logging for `--debug` anywhere, hides hints for `-q`, and forwards `--json` given
  * before the subcommand (`bdg --json peek`) to that subcommand.
  *
  * @param program - Root command
@@ -211,8 +212,9 @@ function addGlobalDebugOption(command: Command): void {
  */
 function applyGlobalOptions(program: Command, actionCommand: Command): void {
   const root = program.opts<{ debug?: boolean; json?: boolean }>();
-  const own = actionCommand.opts<{ debug?: boolean }>();
+  const own = actionCommand.opts<{ debug?: boolean; quiet?: boolean }>();
   if (root.debug || own.debug) enableDebugLogging();
+  if (own.quiet) hideHints();
   const acceptsJson = actionCommand.options.some((option) => option.long === '--json');
   if (root.json && actionCommand !== program && acceptsJson) {
     actionCommand.setOptionValue('json', true);

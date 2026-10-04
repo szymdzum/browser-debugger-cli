@@ -44,6 +44,16 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
 }
 
 /**
+ * Note under a shortened list of matches.
+ *
+ * @param hidden - Matches not listed
+ * @returns e.g. "... and 1174 more (use --json for all)"
+ */
+export function moreMatchesNote(hidden: number): string {
+  return `... and ${hidden} more (use --json for all)`;
+}
+
+/**
  * Warning when a selector matched several elements and no --index was given.
  *
  * @param count - Number of matching elements

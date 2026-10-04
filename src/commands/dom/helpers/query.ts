@@ -85,50 +85,33 @@ async function getOuterHTML(ref: NodeRef): Promise<string | undefined> {
   return (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)?.outerHTML;
 }
 
-/** Entities common in page text, decoded for previews */
-const HTML_ENTITIES: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: ' ',
-};
-
 /**
- * Decode named and numeric HTML entities (`&amp;`, `&#8217;`, `&#x1F680;`).
- *
- * @param text - Text with entities
- * @returns Decoded text (unknown entities are kept)
+ * Page-side text of an element as a user sees it: `innerText` for a rendered
+ * element (CSS-hidden parts left out, inline elements not split apart), none
+ * for an element that is not rendered, `textContent` for SVG and other
+ * elements without `innerText` and for `display: contents` wrappers (no box
+ * of their own, but their children are shown).
  */
-function decodeEntities(text: string): string {
-  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, body: string) => {
-    if (body[0] !== '#') return HTML_ENTITIES[body.toLowerCase()] ?? entity;
-    const code =
-      body[1]?.toLowerCase() === 'x' ? parseInt(body.slice(2), 16) : Number(body.slice(1));
-    const valid = Number.isInteger(code) && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
-    return valid ? String.fromCodePoint(code) : entity;
-  });
-}
+const ELEMENT_TEXT_JS = `(el) => {
+  if (typeof el.innerText !== 'string') return el.textContent || '';
+  if (!el.checkVisibility || el.checkVisibility()) return el.innerText;
+  const boxless = el.ownerDocument.defaultView.getComputedStyle(el).display === 'contents';
+  return boxless ? el.textContent || '' : '';
+}`;
 
 /**
- * Short text preview of an element's content: its visible text (not scripts
- * or styles), words of separate elements kept apart, cut on a whole
- * character (an emoji is never split, which would make JSON invalid).
+ * Short text preview of an element's text: whitespace collapsed, cut on a
+ * whole character (an emoji is never split, which would make JSON invalid).
  *
- * @param outerHTML - Element HTML
+ * @param text - Element text as the page renders it
  * @returns Collapsed text, truncated to {@link PREVIEW_LENGTH} characters
  */
-export function textPreview(outerHTML: string): string {
-  const text = decodeEntities(
-    outerHTML.replace(/<(script|style|template)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ')
-  )
-    .replace(/\s+/g, ' ')
-    .trim();
-  const characters = Array.from(text);
+export function textPreview(text: string): string {
+  const collapsed = text.replace(/\s+/g, ' ').trim();
+  const characters = Array.from(collapsed);
   return characters.length > PREVIEW_LENGTH
     ? characters.slice(0, PREVIEW_LENGTH).join('') + '...'
-    : text;
+    : collapsed;
 }
 
 /** Counter giving each query its own object group (queries may run concurrently) */
@@ -172,9 +155,10 @@ async function withSelection<T>(
   }
 }
 
-/** Where each element of a page-side array lives: an iframe and/or a shadow root */
-const ELEMENT_CONTEXTS_FUNCTION = `function () {
+/** Where each element of a page-side array lives (an iframe and/or a shadow root), and its text */
+const ELEMENT_DETAILS_FUNCTION = `function () {
   const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '');
+  const textOf = ${ELEMENT_TEXT_JS};
   return Array.from(this, (el) => {
     const parts = [];
     for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
@@ -184,31 +168,39 @@ const ELEMENT_CONTEXTS_FUNCTION = `function () {
     }
     const root = el.getRootNode();
     if (root.host) parts.push('shadow root of <' + describe(root.host) + '>');
-    return parts.join(' > ');
+    return { context: parts.join(' > '), text: textOf(el) };
   });
 }`;
 
 /**
  * Backend node ids of the elements in a page-side array, each with where it
- * lives (empty for the main document).
+ * lives (empty for the main document) and its text.
  *
  * @param arrayObjectId - Remote object id of the array
  * @returns Elements in array order (ones that cannot be described are left out)
  */
-async function elementsWithContexts(
+async function elementsWithDetails(
   arrayObjectId: string
-): Promise<Array<{ backendNodeId: number; context: string }>> {
+): Promise<Array<{ backendNodeId: number; context: string; text: string }>> {
   const response = await callCDP('Runtime.callFunctionOn', {
     objectId: arrayObjectId,
-    functionDeclaration: ELEMENT_CONTEXTS_FUNCTION,
+    functionDeclaration: ELEMENT_DETAILS_FUNCTION,
     returnByValue: true,
   });
   const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
     ?.value;
-  const contexts = Array.isArray(value) ? value.map(String) : [];
+  const details = (Array.isArray(value) ? value : []) as Array<{ context?: string; text?: string }>;
   const ids = await elementBackendNodeIds(arrayObjectId);
   return ids.flatMap((backendNodeId, index) =>
-    backendNodeId === undefined ? [] : [{ backendNodeId, context: contexts[index] ?? '' }]
+    backendNodeId === undefined
+      ? []
+      : [
+          {
+            backendNodeId,
+            context: details[index]?.context ?? '',
+            text: details[index]?.text ?? '',
+          },
+        ]
   );
 }
 
@@ -298,24 +290,17 @@ function mapConcurrently<T, R>(
  * @returns Matches with backend node ids, tags, classes and text previews
  */
 export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
-  const { backendNodeIds, contexts } = await withSelection(selector, async (arrayObjectId) => {
-    const elements = await elementsWithContexts(arrayObjectId);
-    return {
-      backendNodeIds: elements.map((element) => element.backendNodeId),
-      contexts: elements.map((element) => element.context),
-    };
-  });
-  if (backendNodeIds.length > 20) {
-    log.debug(`Querying ${backendNodeIds.length} elements with selector: ${selector}`);
+  const elements = await withSelection(selector, elementsWithDetails);
+  if (elements.length > 20) {
+    log.debug(`Querying ${elements.length} elements with selector: ${selector}`);
   }
 
-  const nodes = await mapConcurrently(backendNodeIds, async (backendNodeId, index) => {
+  const nodes = await mapConcurrently(elements, async ({ backendNodeId, context, text }, index) => {
     const desc = await describeNode({ backendNodeId });
     if (!desc) return { index, nodeId: 0 };
     const attributes = unpackAttributes(desc.attributes);
     const classes = attributes['class']?.split(/\s+/).filter(Boolean);
-    const preview = textPreview((await getOuterHTML({ backendNodeId })) ?? '');
-    const context = contexts[index];
+    const preview = textPreview(text);
     return {
       index,
       nodeId: desc.backendNodeId,
@@ -347,6 +332,32 @@ function identifyingAttributes(
 }
 
 /**
+ * The text of one element as the page renders it ({@link ELEMENT_TEXT_JS}).
+ *
+ * @param ref - Node reference
+ * @returns Element text, or empty when the node cannot be read
+ */
+async function elementText(ref: NodeRef): Promise<string> {
+  const objectGroup = `bdg-text-${process.pid}-${++queryCount}`;
+  const resolved = await callCDP('DOM.resolveNode', { ...ref, objectGroup });
+  const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
+    .objectId;
+  if (!objectId) return '';
+  try {
+    const response = await callCDP('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: `function () { return (${ELEMENT_TEXT_JS})(this); }`,
+      returnByValue: true,
+    });
+    const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
+      ?.value;
+    return typeof value === 'string' ? value : '';
+  } finally {
+    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+  }
+}
+
+/**
  * Get DOM context (tag, classes, text preview) for a node.
  *
  * @param ref - Node reference
@@ -360,7 +371,7 @@ export async function getDomContext(ref: NodeRef): Promise<DomContext | null> {
     return null;
   }
   const classes = unpackAttributes(desc.attributes)['class']?.split(/\s+/).filter(Boolean);
-  const preview = textPreview((await getOuterHTML(ref)) ?? '');
+  const preview = textPreview(await elementText(ref));
   return {
     tag: desc.nodeName.toLowerCase(),
     ...(classes && classes.length > 0 && { classes }),
