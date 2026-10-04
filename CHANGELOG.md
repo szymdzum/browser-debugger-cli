@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Release workflow** - npm releases are published by GitHub Actions with npm Trusted Publishing (OIDC, with provenance) when a GitHub release is published, instead of bumping the version in the workflow with an npm token; no token or one-time password is needed. See `docs/RELEASE_PROCESS.md`
+
 ## [0.8.0] - 2026-10-04
 
 Thanks to @sfc-gh-mochen, @sfc-gh-adsaxena and @StealthEyeLLC, whose pull requests (#169, #199, #200, #252) led to the text selectors, `bdg eval`, `dom eval --frame`, readable binary WebSocket messages and `bdg dom listeners` in this release.

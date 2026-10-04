@@ -1,611 +1,174 @@
 # Release Process
 
-Complete guide for creating and publishing releases for `browser-debugger-cli`.
+How to release `browser-debugger-cli`. The version bump and CHANGELOG go through a pull request; publishing the GitHub release for the new tag starts the [Release workflow](../.github/workflows/release.yml), which publishes to npm with **npm Trusted Publishing** (OIDC): no npm token and no one-time password.
 
 ## Table of Contents
 
-- [Prerequisites](#prerequisites)
+- [One-Time Setup](#one-time-setup)
 - [Release Types](#release-types)
-- [Release Checklist](#release-checklist)
 - [Step-by-Step Process](#step-by-step-process)
-- [Publishing to npm](#publishing-to-npm)
+- [Prereleases](#prereleases)
 - [Troubleshooting](#troubleshooting)
+- [Best Practices](#best-practices)
+- [Release Templates](#release-templates)
 
-## Prerequisites
+## One-Time Setup
 
-Before creating a release, ensure you have:
+1. **Trusted Publisher on npm** (package owner, on npmjs.com): package `browser-debugger-cli` → **Settings** → **Trusted Publisher** → **GitHub Actions**:
+   - Organization or user: `szymdzum`
+   - Repository: `browser-debugger-cli`
+   - Workflow filename: `release.yml`
+   - Environment: leave empty
+2. Optional, recommended once a release went through the workflow: in the same settings set **Publishing access** to "Require two-factor authentication and disallow tokens". Trusted Publishing keeps working; no token can publish.
+3. GitHub CLI authenticated locally (`gh auth status`).
 
-1. **GitHub CLI installed and authenticated**
-   ```bash
-   gh auth status
-   ```
-
-2. **npm credentials configured**
-   ```bash
-   npm whoami
-   ```
-
-3. **All changes merged to main branch**
-   ```bash
-   git checkout main
-   git pull origin main
-   ```
-
-4. **All tests passing**
-   ```bash
-   npm run check:enhanced
-   ./tests/run-all-tests.sh
-   ```
+No `NPM_TOKEN` secret is needed.
 
 ## Release Types
 
-Follow [Semantic Versioning](https://semver.org/):
-
-- **Patch (0.0.X)** - Bug fixes, documentation updates, refactoring
-- **Minor (0.X.0)** - New features, non-breaking changes
-- **Major (X.0.0)** - Breaking changes, major rewrites
-
-**Current Status**: Alpha releases (0.x.x) - API may change
-
-## Release Checklist
-
-### Pre-Release
-
-- [ ] All tests passing locally
-- [ ] Code quality checks passing (`npm run check:enhanced`)
-- [ ] CHANGELOG.md updated with new version section
-- [ ] package.json version bumped
-- [ ] No uncommitted changes
-- [ ] Main branch is up-to-date with remote
-
-### Release
-
-- [ ] Version commit created
-- [ ] Git tag created and pushed
-- [ ] GitHub Release created with notes
-- [ ] npm package published
-- [ ] CI checks passing on release
-
-### Post-Release
-
-- [ ] Release verified on GitHub
-- [ ] npm package verified (if published)
-- [ ] Documentation updated (if needed)
-- [ ] Announcement made (if significant)
+Follow [Semantic Versioning](https://semver.org/). While the version is `0.x`, a breaking change bumps the minor version (`0.8.0` → `0.9.0`); fixes bump the patch version.
 
 ## Step-by-Step Process
 
-### 1. Prepare the Release
+### 1. Release pull request
 
-Ensure you're on the main branch with latest changes:
+On a branch from an up-to-date `main`:
 
-```bash
-git checkout main
-git pull origin main
-```
+1. **CHANGELOG.md**: move everything under `## [Unreleased]` into a new `## [0.X.Y] - YYYY-MM-DD` section (Added, Changed, Performance, Removed, Fixed, Security; BREAKING entries first) and leave `## [Unreleased]` empty.
+2. **Version**: set `"version": "0.X.Y"` in `package.json` and in the two root entries of `package-lock.json` (or `npm version 0.X.Y --no-git-tag-version`).
+3. **README.md**: update if commands, requirements or install instructions changed.
+4. Check locally:
+   ```bash
+   npm run check:enhanced
+   npm run build && node dist/index.js --version   # prints 0.X.Y
+   npm test
+   npm run test:smoke
+   ./tests/run-all-tests.sh --integration
+   ```
+5. Commit `chore: release v0.X.Y`, open the PR, wait for green CI, merge.
 
-### 2. Update CHANGELOG.md
-
-Move all items from the `## [Unreleased]` section into a new version section:
-
-```markdown
-## [Unreleased]
-
-<!-- Empty for now - add here as you work -->
-
-## [0.X.Y] - YYYY-MM-DD
-
-### Added
-- New feature descriptions
-
-### Changed
-- Modified behavior descriptions
-
-### Fixed
-- Bug fix descriptions
-
-### Removed
-- Removed feature descriptions
-
-### Performance
-- Performance improvement descriptions
-```
-
-**Guidelines**:
-- Move ALL unreleased changes into the new version section
-- Leave `## [Unreleased]` empty with a comment
-- Use present tense ("Add feature" not "Added feature")
-- Be specific and user-focused
-- Include relevant PR/issue numbers
-- Group changes by category (Added, Changed, Fixed, etc.)
-- Update the date to current date (YYYY-MM-DD format)
-
-### 3. Bump Version in package.json
-
-Update the version number:
+### 2. Tag and GitHub release
 
 ```bash
-# Edit package.json manually or use npm version
-npm version patch  # For 0.0.X
-npm version minor  # For 0.X.0
-npm version major  # For X.0.0
-```
-
-**Manual edit**:
-```json
-{
-  "version": "0.X.Y"
-}
-```
-
-### 4. Build with New Version
-
-Compile the TypeScript to verify everything works:
-
-```bash
-npm run build
-```
-
-### 5. Commit Version Bump
-
-Create a commit for the version change:
-
-```bash
-git add CHANGELOG.md package.json
-git commit -m "chore: release vX.Y.Z"
-```
-
-**Note**: This follows [Conventional Commits](https://www.conventionalcommits.org/) format.
-
-### 6. Create and Push Git Tag
-
-Tag the release commit:
-
-```bash
-# Create tag
+git checkout main && git pull
 git tag v0.X.Y
-
-# Push commit and tag
-git push origin main --tags
+git push origin v0.X.Y
+gh release create v0.X.Y --title "v0.X.Y" --notes-file release-notes.md --latest
 ```
 
-**Important**: The tag must be pushed for the GitHub Release to work properly.
+Release notes: an overview, highlights, **breaking changes with what to do**, thanks to contributors, the install command (`npm install -g browser-debugger-cli`) and the compare link (`.../compare/v0.PREV...v0.X.Y`).
 
-### 7. Create GitHub Release
+### 3. npm publish (automatic)
 
-Use GitHub CLI to create the release:
-
-```bash
-gh release create v0.X.Y \
-  --title "v0.X.Y" \
-  --notes "$(cat <<'EOF'
-## Overview
-
-Brief overview of the release.
-
-## 🎯 Highlights
-
-- Key feature 1
-- Key feature 2
-- Important fix
-
-## 🔧 Changes
-
-### Added
-- New feature descriptions
-
-### Changed
-- Modified behavior descriptions
-
-### Fixed
-- Bug fix descriptions
-
-## Installation
+Publishing the release starts the **Release** workflow. It checks out the tag, verifies the tag matches `package.json`, runs the quality checks, contract tests and build, then runs `npm publish --provenance`. Follow it with:
 
 ```bash
-npm install -g browser-debugger-cli@alpha
+gh run list --workflow release.yml --limit 1
+gh run watch <run-id>
 ```
 
-**Full Changelog**: https://github.com/szymdzum/browser-debugger-cli/compare/v0.X.Y-1...v0.X.Y
-EOF
-)"
-```
-
-**Release Notes Tips**:
-- **Title format**: Use only version tag (e.g., `v0.X.Y`), not descriptive text
-- Start release notes with an overview
-- Use emojis sparingly for visual hierarchy
-- Include installation instructions
-- Link to full changelog
-- Highlight breaking changes prominently
-
-### 8. Publish to npm
-
-Publish the package to npm with the `alpha` tag, then update `latest` to ensure the npm website displays current documentation:
+To publish an existing tag again (e.g. the workflow failed before publishing), run it by hand:
 
 ```bash
-# Publish with alpha tag
-npm publish --tag alpha
-
-# Update latest tag to point to the new version (ensures npm website shows current README)
-npm dist-tag add browser-debugger-cli@0.X.Y latest
+gh workflow run release.yml -f tag=v0.X.Y
 ```
 
-**Note**: The `prepublishOnly` script will automatically run `npm run build` before publishing.
-
-**Why update both tags?**
-- The npm website (npmjs.com) displays the README from the `latest` tag
-- Publishing with `--tag alpha` only updates the `alpha` tag
-- Manually updating `latest` ensures the package page shows current documentation
-
-**Verify publication**:
+### 4. Verify
 
 ```bash
-# Check that both tags point to the new version
-npm view browser-debugger-cli dist-tags
-
-# Should show: { latest: '0.X.Y', alpha: '0.X.Y' }
-```
-
-### 9. Verify Release
-
-Check that the release appears correctly:
-
-```bash
-# View release details
+npm view browser-debugger-cli dist-tags        # latest: '0.X.Y'
+npm view browser-debugger-cli@0.X.Y dist.attestations   # provenance present
 gh release view v0.X.Y
-
-# Or visit GitHub
-open https://github.com/szymdzum/browser-debugger-cli/releases/tag/v0.X.Y
 ```
 
-**What to verify**:
-- ✅ Release shows up in sidebar with "Latest" badge
-- ✅ Release notes are formatted correctly
-- ✅ Tag is linked to correct commit
-- ✅ Date/time are correct
-- ✅ npm package published with correct version
+Then update the [wiki](https://github.com/szymdzum/browser-debugger-cli/wiki) if commands changed.
 
-### 10. Verify Local Repository
+## Prereleases
 
-Ensure your local repo is clean:
+Versions with a suffix (`0.9.0-beta.0`) are published to the `next` dist-tag, so `npm install browser-debugger-cli` keeps installing the latest stable version. Create their GitHub release with `--prerelease`. Users install them with `npm install -g browser-debugger-cli@next`.
+
+The old `alpha` dist-tag is no longer updated by the workflow (Trusted Publishing covers `npm publish` only). Moving or removing it needs the owner's login with 2FA:
 
 ```bash
-git status
-git log --oneline -5
-```
-
-Expected output:
-```
-On branch main
-Your branch is up to date with 'origin/main'.
-nothing to commit, working tree clean
-
-d0f3893 (HEAD -> main, tag: v0.X.Y, origin/main, origin/HEAD) chore: release v0.X.Y
-```
-
-## Publishing to npm
-
-**Note**: Currently configured to publish to npm with `alpha` tag.
-
-### Manual Publish
-
-```bash
-# Build the package
-npm run build
-
-# Publish to npm (alpha tag)
-npm publish --tag alpha
-
-# Or publish as latest (for stable releases)
-npm publish
-```
-
-### Verify npm Publication
-
-```bash
-# Check package info
-npm info browser-debugger-cli@alpha
-
-# View all versions
-npm view browser-debugger-cli versions
-```
-
-### Installation
-
-Users can install the alpha version:
-
-```bash
-npm install -g browser-debugger-cli@alpha
-```
-
-Or specific version:
-
-```bash
-npm install -g browser-debugger-cli@0.X.Y
-```
-
-## Release Workflow Diagram
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 1. Update CHANGELOG.md                                      │
-│    Add new version section with changes                     │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 2. Bump Version in package.json                             │
-│    Update "version": "0.X.Y"                                │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 3. Build Project                                            │
-│    npm run build                                            │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 4. Commit Changes                                           │
-│    git commit -m "chore: release v0.X.Y"                    │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 5. Create and Push Tag                                      │
-│    git tag v0.X.Y                                           │
-│    git push origin main --tags                              │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 6. Create GitHub Release                                    │
-│    gh release create v0.X.Y --title "..." --notes "..."     │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 7. Publish to npm                                           │
-│    npm publish --tag alpha                                  │
-│    npm dist-tag add browser-debugger-cli@0.X.Y latest       │
-└────────────────────────────┬────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────┐
-│ 8. Verify Release                                           │
-│    gh release view v0.X.Y                                   │
-│    npm view browser-debugger-cli dist-tags                  │
-└─────────────────────────────────────────────────────────────┘
+npm dist-tag add browser-debugger-cli@0.X.Y alpha   # or: npm dist-tag rm browser-debugger-cli alpha
 ```
 
 ## Troubleshooting
 
-### Release Not Showing in GitHub Sidebar
+### Workflow fails with "Tag vX does not match package.json version"
 
-**Problem**: Tag exists but release doesn't show up.
+The tag points at a commit whose `package.json` has another version (usually: tagged before the release PR was merged). Delete and recreate the tag on the release commit, then run the workflow by hand:
 
-**Solution**:
 ```bash
-# Ensure tag is pushed
-git push origin --tags
-
-# Create release from existing tag
-gh release create v0.X.Y --title "..." --notes "..."
+git push origin :refs/tags/v0.X.Y && git tag -d v0.X.Y
+git tag v0.X.Y <release-commit> && git push origin v0.X.Y
+gh workflow run release.yml -f tag=v0.X.Y
 ```
 
-### Tag Already Exists
+### npm publish fails with 403 or ENEEDAUTH in the workflow
 
-**Problem**: `fatal: tag 'v0.X.Y' already exists`
+Trusted Publishing is not set up or does not match: check the Trusted Publisher settings on npmjs.com (owner `szymdzum`, repository `browser-debugger-cli`, workflow `release.yml`), and that the workflow has `id-token: write` and runs npm 11.5.1+.
 
-**Solution**:
+### Publishing by hand (fallback)
+
+Only if the workflow cannot be used. The account has 2FA for writes, so npm asks for a one-time password:
+
 ```bash
-# Delete local tag
-git tag -d v0.X.Y
-
-# Delete remote tag
-git push origin :refs/tags/v0.X.Y
-
-# Recreate tag
-git tag v0.X.Y
-git push origin --tags
+npm whoami                 # the package owner
+npm publish                # enter the current 6-digit code when asked
 ```
 
-### Version Mismatch
+Use a fresh code from the authenticator entry for npm. Several wrong codes in a row get the account rate limited (`E429 rate limited otp`) for a while; wait before trying again.
 
-**Problem**: package.json version doesn't match tag.
+### Release notes need a fix
 
-**Solution**:
 ```bash
-# Fix version in package.json
-# Delete incorrect tag (see above)
-# Amend commit
-git add package.json
-git commit --amend --no-edit
-# Recreate tag
-git tag v0.X.Y
-git push origin main --tags --force-with-lease
+gh release edit v0.X.Y --notes-file release-notes.md
 ```
 
-### npm Publish Fails
-
-**Problem**: `npm ERR! code E401` (authentication error)
-
-**Solution**:
-```bash
-# Re-authenticate
-npm login
-
-# Verify credentials
-npm whoami
-
-# Try publishing again
-npm publish --tag alpha
-npm dist-tag add browser-debugger-cli@0.X.Y latest
-```
-
-### npm README Not Updating
-
-**Problem**: npm package page shows stale README from old version.
-
-**Cause**: The npm website displays the README from the `latest` tag. If you only publish with `--tag alpha`, the `latest` tag doesn't update.
-
-**Solution**:
-```bash
-# Update the latest dist-tag to point to the new version
-npm dist-tag add browser-debugger-cli@0.X.Y latest
-
-# Verify both tags point to current version
-npm view browser-debugger-cli dist-tags
-# Should show: { latest: '0.X.Y', alpha: '0.X.Y' }
-```
-
-**Prevention**: Always run `npm dist-tag add browser-debugger-cli@0.X.Y latest` after publishing (now included in standard release process).
-
-### Release Notes Not Formatted
-
-**Problem**: Release notes show as plain text, not Markdown.
-
-**Solution**: Ensure you're using `--notes` with a heredoc:
-```bash
-gh release create v0.X.Y \
-  --title "..." \
-  --notes "$(cat <<'EOF'
-# Markdown content here
-EOF
-)"
-```
-
-### CI Checks Failing After Release
-
-**Problem**: GitHub Actions fail on release tag.
-
-**Solution**:
-```bash
-# Check CI logs
-gh run list --limit 5
-
-# View specific run
-gh run view <run-id>
-
-# If needed, fix issues and re-tag
-git tag -d v0.X.Y
-git push origin :refs/tags/v0.X.Y
-# Make fixes, commit, then retag
-```
+Editing a published release does not start the workflow again.
 
 ## Best Practices
 
-### Do's ✅
-
-- **Always update CHANGELOG.md** before releasing
-- **Run all tests** before creating a release
-- **Use semantic versioning** consistently
-- **Write clear release notes** focused on user impact
-- **Include installation instructions** in release notes
-- **Link to full changelog** on GitHub
-- **Tag releases immediately** after version commit
-- **Verify release appears** on GitHub before announcing
-
-### Don'ts ❌
-
-- **Don't skip version bump** in package.json
-- **Don't create releases from feature branches** (use main)
-- **Don't include unrelated changes** in version commits
-- **Don't delete releases** unless absolutely necessary
-- **Don't reuse version numbers** (creates confusion)
-- **Don't forget to push tags** (`--tags` flag)
-- **Don't publish breaking changes** as patch versions
+- Release from `main` only, after the release PR's CI is green
+- Keep the CHANGELOG user-focused; mark breaking changes `BREAKING` and say what to do
+- Never reuse a version number; npm does not allow republishing a version
+- Thank contributors in the release notes, including those whose ideas shipped through other PRs
+- Don't publish breaking changes as a patch version
 
 ## Release Templates
 
-### Patch Release Template
+### Patch Release
 
 ```markdown
 ## [0.X.Y] - YYYY-MM-DD
 
 ### Fixed
 - Bug fix description
-- Another bug fix
 
 ### Performance
 - Performance improvement description
 ```
 
-### Minor Release Template
+### Minor Release
 
 ```markdown
 ## [0.X.0] - YYYY-MM-DD
 
 ### Added
 - New feature description
-- Another new feature
 
 ### Changed
+- **BREAKING: what changed** - what to do instead
 - Modified behavior description
 
 ### Fixed
 - Bug fix description
 ```
 
-### Major Release Template
-
-```markdown
-## [X.0.0] - YYYY-MM-DD
-
-### Breaking Changes ⚠️
-- **IMPORTANT**: Breaking change description
-- Migration instructions
-
-### Added
-- New feature description
-
-### Changed
-- Modified behavior description
-
-### Removed
-- Removed feature description
-```
-
-## Quick Reference
-
-```bash
-# Complete release workflow (one-liner)
-npm run check:enhanced && \
-npm run build && \
-git add CHANGELOG.md package.json package-lock.json && \
-git commit -m "chore: release v0.X.Y" && \
-git tag v0.X.Y && \
-git push origin main --tags && \
-gh release create v0.X.Y --title "v0.X.Y" --notes "Release notes here" && \
-npm publish --tag alpha && \
-npm dist-tag add browser-debugger-cli@0.X.Y latest
-
-# View recent releases
-gh release list
-
-# View specific release
-gh release view v0.X.Y
-
-# Edit release notes
-gh release edit v0.X.Y --notes "Updated notes"
-
-# Delete release (use with caution)
-gh release delete v0.X.Y
-git tag -d v0.X.Y
-git push origin :refs/tags/v0.X.Y
-```
-
 ## Related Documentation
 
 - [CHANGELOG.md](../CHANGELOG.md) - Version history
+- [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) - OIDC publishing from GitHub Actions
 - [Semantic Versioning](https://semver.org/) - Version numbering guide
 - [Keep a Changelog](https://keepachangelog.com/) - Changelog format guide
-- [Conventional Commits](https://www.conventionalcommits.org/) - Commit message format
-
-## Questions?
-
-If you encounter issues not covered in this guide:
-1. Check [GitHub Issues](https://github.com/szymdzum/browser-debugger-cli/issues)
-2. Review [GitHub CLI docs](https://cli.github.com/manual/gh_release)
-3. Review [npm publish docs](https://docs.npmjs.com/cli/v10/commands/npm-publish)
