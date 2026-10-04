@@ -83,6 +83,7 @@ export function registerFormInteractionCommands(program: Command): void {
             buildRequest: (target) => ({
               ...target,
               value,
+              cwd: process.cwd(),
               ...(options.blur !== undefined && { blur: options.blur }),
               wait: options.wait !== false,
             }),

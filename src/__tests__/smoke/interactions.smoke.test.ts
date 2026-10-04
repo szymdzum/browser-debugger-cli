@@ -8,6 +8,9 @@
  */
 
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
@@ -138,5 +141,30 @@ void describe('DOM interactions', () => {
     await bdg(['dom', 'fill', '#agree', 'yes']);
     assert.equal(await evaluate("document.getElementById('agree').checked"), true);
     assert.match(await bdg(['dom', 'click', '#off'], 81), /disabled/);
+  });
+
+  void it('reports field states in dom form and uploads files', async () => {
+    const output = await bdg(['dom', 'form', '--json']);
+    const fields = (
+      JSON.parse(output) as {
+        data: {
+          forms: Array<{
+            fields: Array<{ selector: string; index: number; command: string; readOnly: boolean }>;
+          }>;
+        };
+      }
+    ).data.forms[0]?.fields;
+    type Field = NonNullable<typeof fields>[number];
+    const byId = (id: string): Field | undefined => fields?.find((f) => f.selector === `#${id}`);
+    assert.equal(byId('locked')?.command, '', 'read-only field has no fill command');
+    assert.equal(byId('off')?.command, '', 'disabled field has no fill command');
+    const upload = byId('upload');
+    assert.match(upload?.command ?? '', /fill \d+ "<path>"/);
+
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-upload-')), 'note.txt');
+    fs.writeFileSync(file, 'hello');
+    await bdg(['dom', 'fill', String(upload?.index), file]);
+    assert.equal(await evaluate("document.getElementById('upload').files[0].name"), 'note.txt');
+    await bdg(['dom', 'fill', '#upload', path.join(path.dirname(file), 'missing.txt')], 83);
   });
 });

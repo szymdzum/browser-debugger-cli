@@ -183,6 +183,8 @@ export interface DomEvalData {
  */
 export interface DomFillCommand {
   selector: string;
+  /** CLI working directory (file inputs: relative paths) */
+  cwd?: string;
   value: string;
   index?: number;
   /** Exact element from the query cache (overrides selector/index) */

@@ -3,10 +3,15 @@
  * and unpack structured results.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  fileNotFoundError,
+  singleFileInputError,
   fillableElementNotFoundError,
   clickableElementNotFoundError,
   clickTargetDetachedError,
@@ -28,8 +33,13 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
+import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { domClickFallbackWarning } from '@/ui/messages/commands.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('dom');
 
 /**
  * Fill a form element with a value in a React-compatible way.
@@ -76,7 +86,8 @@ export async function fillElement(
     }
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
-      return cdpResponse.result.value;
+      const result = cdpResponse.result.value;
+      return result.fileInput ? await setFileInput(cdp, selector, value, options) : result;
     }
 
     const err = unexpectedResponseFormatError('FillResult');
@@ -89,6 +100,81 @@ export async function fillElement(
     const err = operationFailedError('fill element', errorMessage);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
+}
+
+/** Object group for remote objects created while selecting files. */
+const UPLOAD_OBJECT_GROUP = 'bdg-upload';
+
+/**
+ * Select files in a file input, as a user picking them in the file dialog.
+ *
+ * @param cdp - CDP connection
+ * @param selector - Selector (or bound-node placeholder) of the file input
+ * @param value - File path, or several separated by commas
+ * @param options - Fill options (index, cwd for relative paths)
+ * @returns Fill result
+ */
+async function setFileInput(
+  cdp: CDPConnection,
+  selector: string,
+  value: string,
+  options: FillOptions
+): Promise<FillResult> {
+  const files = value
+    .split(',')
+    .map((file) => file.trim())
+    .filter(Boolean)
+    .map((file) => path.resolve(options.cwd ?? process.cwd(), file));
+  const missing = files.find((file) => !fs.existsSync(file));
+  if (missing !== undefined || files.length === 0) {
+    const err = fileNotFoundError(missing ?? value);
+    return {
+      success: false,
+      error: err.message,
+      suggestion: err.suggestion,
+      exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+    };
+  }
+  try {
+    const located = (await cdp.send('Runtime.evaluate', {
+      expression: `(${FIND_ELEMENTS_JS})('${escapeSelectorForJS(selector)}')[${options.index ?? 0}]`,
+      objectGroup: UPLOAD_OBJECT_GROUP,
+    })) as { result?: { objectId?: string }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
+    if (located.exceptionDetails) throwIfInvalidSelector(located.exceptionDetails, selector);
+    const objectId = located.result?.objectId;
+    if (!objectId) {
+      const err = fillableElementNotFoundError(selector);
+      return { success: false, error: err.message, suggestion: err.suggestion };
+    }
+    const multiple = (await cdp.send('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: 'function () { return this.multiple; }',
+      returnByValue: true,
+    })) as { result?: { value?: unknown } };
+    if (files.length > 1 && multiple.result?.value !== true) {
+      const err = singleFileInputError(files.length);
+      return {
+        success: false,
+        error: err.message,
+        suggestion: err.suggestion,
+        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      };
+    }
+    await cdp.send('DOM.setFileInputFiles', { files, objectId });
+  } finally {
+    await cdp
+      .send('Runtime.releaseObjectGroup', { objectGroup: UPLOAD_OBJECT_GROUP })
+      .catch((error: unknown) =>
+        log.debug(`Could not release upload objects: ${getErrorMessage(error)}`)
+      );
+  }
+  return {
+    success: true,
+    selector,
+    value: files.map((file) => path.basename(file)).join(', '),
+    elementType: 'input',
+    inputType: 'file',
+  };
 }
 
 /** Clicks the located target with `el.click()`; returns false if it is gone. */
