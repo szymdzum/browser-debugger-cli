@@ -86,6 +86,23 @@ function fetchResponseBody(
 }
 
 /**
+ * How long a request took. Chrome's own timestamps are used when both ends
+ * have one: measuring when bdg received the events added the event delivery
+ * delay (about 50 ms) to fast requests.
+ *
+ * @param request - The request (its `sentTime` is Chrome's start time)
+ * @param endTime - Chrome's monotonic time of the end (seconds)
+ * @param endedAt - Wall-clock end (epoch ms) when Chrome reported none
+ * @returns Duration in milliseconds
+ */
+function elapsedMs(request: NetworkRequest, endTime?: number, endedAt = Date.now()): number {
+  if (request.sentTime !== undefined && endTime !== undefined) {
+    return Math.max(0, Math.round((endTime - request.sentTime) * 1000));
+  }
+  return Math.max(0, endedAt - request.timestamp);
+}
+
+/**
  * Create a network request from CDP event parameters.
  */
 function createNetworkRequest(
@@ -98,6 +115,7 @@ function createNetworkRequest(
     url: params.request.url,
     method: params.request.method,
     timestamp: Date.now(),
+    sentTime: params.timestamp,
     requestHeaders: params.request.headers,
     ...(params.request.postData !== undefined && { requestBody: params.request.postData }),
     ...(navigationId !== undefined && { navigationId }),
@@ -192,7 +210,7 @@ function completeRedirectHop(
   request.requestId = `${params.requestId}:redirect:${hop}`;
   request.redirectURL = params.request.url;
   request.loadingFinishedTime = params.timestamp;
-  request.duration = Date.now() - request.timestamp;
+  request.duration = elapsedMs(request, params.timestamp);
   return request;
 }
 
@@ -235,6 +253,10 @@ const ABANDONED_REQUEST_GRACE_MS = 5000;
 
 /** How a request failed (fields of `Network.loadingFailed`) */
 interface RequestFailure {
+  /** Chrome's monotonic time of the failure (seconds) */
+  timestamp?: number;
+  /** When bdg gave up on the request (epoch ms), for failures Chrome did not report */
+  endedAt?: number;
   errorText?: string;
   canceled?: boolean;
   blockedReason?: string;
@@ -264,12 +286,13 @@ function describeLoadingError(params: Protocol.Network.LoadingFailedEvent): stri
  */
 function applyFailure(request: NetworkRequest, failure: RequestFailure): void {
   request.status ??= 0;
-  request.duration = Date.now() - request.timestamp;
+  request.duration = elapsedMs(request, failure.timestamp, failure.endedAt);
   if (failure.errorText) request.errorText = failure.errorText;
   if (failure.canceled) request.canceled = true;
   if (failure.blockedReason) {
     request.blocked = true;
     request.blockedReason = failure.blockedReason;
+    request.errorText = `${request.errorText ?? 'net::ERR_BLOCKED'} (blocked:${failure.blockedReason})`;
   }
   if (failure.resourceType) request.resourceType = failure.resourceType;
 }
@@ -404,9 +427,12 @@ export async function startNetworkCollection(
   const abandonTimers = new Set<NodeJS.Timeout>();
   const failLater = (requestIds: string[], errorText: string): void => {
     if (requestIds.length === 0) return;
+    const endedAt = Date.now();
     const timer = setTimeout(() => {
       abandonTimers.delete(timer);
-      for (const requestId of requestIds) failRequest(requestId, { errorText, canceled: true });
+      for (const requestId of requestIds) {
+        failRequest(requestId, { errorText, canceled: true, endedAt });
+      }
     }, ABANDONED_REQUEST_GRACE_MS);
     abandonTimers.add(timer);
   };
@@ -504,7 +530,7 @@ export async function startNetworkCollection(
     }
 
     request.loadingFinishedTime = params.timestamp;
-    request.duration = Date.now() - request.timestamp;
+    request.duration = elapsedMs(request, params.timestamp);
 
     const decision = shouldFetchBodyWithReason(
       request.url,
@@ -536,6 +562,7 @@ export async function startNetworkCollection(
     failRequest(
       params.requestId,
       filterDefined({
+        timestamp: params.timestamp,
         errorText: describeLoadingError(params),
         canceled: params.canceled,
         blockedReason: params.blockedReason,

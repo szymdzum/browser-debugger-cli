@@ -127,7 +127,7 @@ export function registerHarCommand(networkCmd: Command): void {
           }
 
           const outputPath = outputFile ?? generateHARFilename();
-          if (outputPath !== STDOUT_PATH) assertFilePath(outputPath);
+          if (outputPath !== STDOUT_PATH) assertFilePath(outputPath, '.har');
 
           const chromeVersion = await getChromeVersion();
           const har = buildHAR(requests, {
@@ -136,7 +136,7 @@ export function registerHarCommand(networkCmd: Command): void {
           });
           if (outputPath === STDOUT_PATH) return { success: true, data: har };
 
-          const file = await writeOutputFile(outputPath, JSON.stringify(har, null, 2));
+          const file = await writeOutputFile(outputPath, JSON.stringify(har, null, 2), '.har');
 
           return {
             success: true,

@@ -68,6 +68,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `network har` on large sessions: the IPC reader re-split the whole buffered response on every chunk (quadratic; 770 requests timed out after 45 s), now linear; single responses may be up to 256 MB
   - A page kept busy by a script started from a timer is recovered by every command, not just `dom eval`: `dom get/query/screenshot/form/a11y` and raw `cdp` terminate the page's scripts when the page stops answering for 25 s and exit 102 (a page that answers but is slow, e.g. a huge screenshot, is waited for) ("the page is usable again") instead of hanging 30–90 s with 101/110
   - `page back/forward` within a document (hash, pushState) and `page navigate` to a `#fragment` return at once (they waited 15 s for a load that never comes)
+- **Third deep test: telemetry**
+  - `console -f` and `network list -f` stream: each new message (or finished request) is printed once, nothing is lost in bursts, the output is not redrawn (so pipes get no repeats), `--last` sets how many to show at start, and a separator marks a page change
+  - Request durations (TIME column, `details` Duration) come from Chrome's timestamps: fast requests showed about 50 ms too much; requests cancelled by a navigation end when the page navigated (the 5 s grace was added)
+  - Text with a lone UTF-16 surrogate (a page logging half an emoji) no longer makes `--json` output invalid for jq: it shows U+FFFD
+  - Requests blocked by CSP and similar show the reason (`(blocked:csp)`) in `details` and the HAR
+  - `--type WS`, `DOC`, `FET` and `resource-type:` accept the abbreviations `network list` shows; `mime-type:image/*` works
+  - `console.assert` failures count as errors
+  - 204/304 responses no longer show "Error: net::ERR_ABORTED" in `peek -v`
+  - `details network ""` exits 81; HAR path errors suggest a `.har` name; `--preset` help lists the presets; the `duration:` filter is in the reference
 
 - **Smaller fixes**
   - `cdp`: an unknown domain gets a did-you-mean (`Netwrk` → `Network`); `bdg cdp Network --search cookie` searches that domain only; blocked methods (`Page.captureScreenshot`, `Browser.close`) show their bdg alternative as the example in `--describe`/`--search`

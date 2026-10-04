@@ -23,6 +23,22 @@ export function getRequestState(request: Pick<NetworkRequest, 'status'>): Reques
 }
 
 /**
+ * Why a request failed, leaving out Chrome stopping an unneeded body after a
+ * complete response (204/304 report `net::ERR_ABORTED` that way).
+ *
+ * @param request - Captured request
+ * @returns Reason, or undefined when there is none worth showing
+ */
+export function failureReason(
+  request: Pick<NetworkRequest, 'status' | 'errorText'>
+): string | undefined {
+  if (!request.errorText) return undefined;
+  return getRequestState(request) === 'complete' && request.errorText === BODY_ABORTED
+    ? undefined
+    : request.errorText;
+}
+
+/**
  * Human-readable status: the HTTP status (with the failure reason if loading
  * failed after the response), `FAILED (<reason>)`, or `pending`.
  *

@@ -20,7 +20,7 @@ import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   buildConsoleJsonOutput,
   formatConsole,
-  formatConsoleFollow,
+  formatConsoleFollowLines,
   LEVEL_MAP,
   type ConsoleFormatOptions,
   type ConsoleLevel,
@@ -33,7 +33,6 @@ import {
 const MIN_LAST = 0;
 const MAX_LAST = 10000;
 const DEFAULT_LAST = 100;
-const FOLLOW_LIMIT = 20;
 
 const consoleLastOption = new Option(
   '--last <n>',
@@ -84,10 +83,19 @@ function buildFormatOptions(options: ConsoleCommandOptions, lastN: number): Cons
   };
 }
 
-async function runFollowMode(options: ConsoleCommandOptions): Promise<void> {
+/**
+ * Stream console messages: the last `lastN` at start, then each new message
+ * once (like `tail -f`), with a separator when the page navigates.
+ *
+ * @param options - Command options
+ * @param lastN - Messages to show at start (0 = all)
+ */
+async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Promise<void> {
+  const shown = new Set<string>();
+  let navigationId: number | undefined;
+  let started = false;
   const showConsole = async (): Promise<void> => {
     const result = await fetchConsoleMessages();
-
     if (!result.success) {
       const errorResult = handleDaemonConnectionError(result.error, {
         json: options.json,
@@ -101,20 +109,52 @@ async function runFollowMode(options: ConsoleCommandOptions): Promise<void> {
     noteFollowConnected();
 
     const { messages, currentNavigationId } = result.data;
-    const recent = applyFilters(messages, options, currentNavigationId).slice(-FOLLOW_LIMIT);
+    const matching = applyFilters(messages, options, currentNavigationId);
+    const keys = messageKeys(matching);
+    const fresh = matching.filter((_message, i) => !shown.has(keys[i] as string));
+    const backlog = started || lastN === 0 ? fresh : fresh.slice(-lastN);
+    shown.clear();
+    keys.forEach((key) => shown.add(key));
+    const navigated = started && navigationId !== currentNavigationId;
+    navigationId = currentNavigationId;
     if (options.json) {
-      const data = buildConsoleJsonOutput(recent, { list: true, last: FOLLOW_LIMIT });
-      console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
-      return;
+      if (!started || backlog.length > 0) {
+        const data = buildConsoleJsonOutput(backlog, { list: true, last: 0 });
+        console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
+      }
+    } else {
+      const text = formatConsoleFollowLines(backlog, {
+        header: !started,
+        ...(navigated &&
+          currentNavigationId !== undefined && { navigationId: currentNavigationId }),
+      });
+      if (text) console.log(text);
     }
-    console.clear();
-    console.log(formatConsoleFollow(recent));
+    started = true;
   };
 
   await setupFollowMode(showConsole, {
     startMessage: followingConsoleMessage,
     stopMessage: stoppedFollowingConsoleMessage,
     intervalMs: 1000,
+  });
+}
+
+/**
+ * Identity of each message across polls (its index can shift when an earlier
+ * message is inserted late). Identical messages logged in the same
+ * millisecond are told apart by their order.
+ *
+ * @param messages - Messages in order
+ * @returns One key per message
+ */
+export function messageKeys(messages: ConsoleMessage[]): string[] {
+  const seen = new Map<string, number>();
+  return messages.map((message) => {
+    const base = `${message.timestamp}|${message.type}|${message.navigationId ?? ''}|${message.text}`;
+    const occurrence = (seen.get(base) ?? 0) + 1;
+    seen.set(base, occurrence);
+    return `${base}#${occurrence}`;
   });
 }
 
@@ -158,7 +198,7 @@ export function registerConsoleCommand(program: Command): void {
       }
 
       if (options.follow) {
-        await runFollowMode(options);
+        await runFollowMode(options, lastN);
         return;
       }
 

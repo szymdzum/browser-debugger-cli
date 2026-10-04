@@ -237,6 +237,42 @@ void describe('Network telemetry contract', () => {
       void cleanup();
     });
 
+    void it("measures durations with Chrome's timestamps and keeps blocked reasons", async () => {
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'fast',
+          request: createTestRequest({ url: 'https://a.test/x' }),
+          timestamp: 100.0,
+        })
+      );
+      mockCDP.emit<Protocol.Network.LoadingFinishedEvent>('Network.loadingFinished', {
+        requestId: 'fast',
+        timestamp: 100.003,
+        encodedDataLength: 10,
+      });
+      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'csp',
+          request: createTestRequest({ url: 'https://b.test/y' }),
+          timestamp: 200,
+        })
+      );
+      mockCDP.emit<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', {
+        requestId: 'csp',
+        timestamp: 200.001,
+        type: 'Script',
+        errorText: '',
+        blockedReason: 'csp',
+      });
+
+      assert.equal(requests.find((r) => r.requestId === 'fast')?.duration, 3);
+      assert.match(requests.find((r) => r.requestId === 'csp')?.errorText ?? '', /blocked:csp/);
+      void cleanup();
+    });
+
     void it('should handle multiple concurrent requests', async () => {
       const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
 

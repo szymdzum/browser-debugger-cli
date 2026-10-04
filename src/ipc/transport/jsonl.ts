@@ -88,10 +88,26 @@ export class JSONLBuffer {
 
 /**
  * Parse JSONL frame into typed object.
+ *
+ * Strings with a lone UTF-16 surrogate (page text cut inside an emoji, or a
+ * page logging `"\\ud83d"`) get U+FFFD in its place: printed back as JSON
+ * they would be an escape sequence that strict parsers such as jq reject.
+ *
+ * @param line - One JSON document
+ * @returns Parsed value
  */
 export function parseJSONLFrame<T>(line: string): T {
-  return JSON.parse(line) as T;
+  if (!SURROGATE_ESCAPE.test(line)) return JSON.parse(line) as T;
+  return JSON.parse(line, (_key, value: unknown) =>
+    typeof value === 'string' ? value.replace(LONE_SURROGATE, '\uFFFD') : value
+  ) as T;
 }
+
+/** A surrogate escape in JSON text (only then can a string hold a lone surrogate) */
+const SURROGATE_ESCAPE = /\\u[dD][89a-fA-F]/;
+
+/** A high surrogate not followed by a low one, or a low one not preceded by a high one */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
 /**
  * Serialize object to JSONL frame (JSON + newline).
