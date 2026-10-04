@@ -140,4 +140,13 @@ void describe('attachChildTargets', () => {
     await stopNetwork();
     assert.deepEqual(pageAutoAttach(), [true, false]);
   });
+
+  void it('resumes a child whose setup never answers (a paused service worker)', async () => {
+    const cdp = new MockCDP();
+    await attachChildTargets(cdp as unknown as CDPConnection, () => new Promise(() => undefined));
+    cdp.attach('sw-1');
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    assert.ok(cdp.methodsFor('sw-1').includes('Runtime.runIfWaitingForDebugger'));
+  });
 });

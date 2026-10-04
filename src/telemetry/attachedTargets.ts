@@ -21,6 +21,14 @@ const log = createLogger('targets');
 /** Auto-attach settings: children wait until set up; one connection for all sessions */
 const AUTO_ATTACH = { autoAttach: true, waitForDebuggerOnStart: true, flatten: true };
 
+/**
+ * How long a paused child waits for the collectors' setup before it is
+ * resumed anyway. A paused service worker answers no command until it runs,
+ * so waiting for its setup kept it (and the page's `register()`) paused
+ * forever; its pending commands complete once it runs.
+ */
+const SETUP_WAIT_MS = 1000;
+
 /** Turns auto-attach off again (children attached afterwards would stay paused) */
 const NO_AUTO_ATTACH = { autoAttach: false, waitForDebuggerOnStart: false };
 
@@ -61,7 +69,7 @@ async function runSetups(
 /**
  * Prepare a newly attached child target: run every collector's setup on its
  * session, auto-attach to its own children (iframes nested in iframes), and
- * resume it.
+ * resume it (after at most {@link SETUP_WAIT_MS}).
  *
  * @param manager - Shared manager of the connection
  * @param sessionId - Session of the attached target
@@ -70,8 +78,14 @@ async function runSetups(
 async function prepareChild(manager: AttachManager, sessionId: string, url: string): Promise<void> {
   manager.sessions.set(sessionId, url);
   try {
-    await runSetups(sessionId, url, manager.setups);
-    await manager.typed.send('Target.setAutoAttach', AUTO_ATTACH, sessionId);
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.all([
+        runSetups(sessionId, url, manager.setups),
+        manager.typed.send('Target.setAutoAttach', AUTO_ATTACH, sessionId),
+      ]),
+      new Promise((resolve) => (timer = setTimeout(resolve, SETUP_WAIT_MS))),
+    ]).finally(() => clearTimeout(timer));
     log.debug(`Attached to ${url || 'a new target'}`);
   } catch (error) {
     log.debug(`Could not prepare attached target ${url}: ${getErrorMessage(error)}`);

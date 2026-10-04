@@ -114,6 +114,14 @@ void describe('dom eval', () => {
     assert.match(error ?? '', /did not settle/);
   });
 
+  void it('recovers a busy page from other DOM commands too', async () => {
+    assert.equal((await evaluate('setTimeout(() => { while (true) {} }, 0); 1')).exitCode, 0);
+    const query = await runCommand('dom', ['query', 'body', '--json'], { timeout: 60000 });
+    assert.equal(query.exitCode, 102, query.stdout);
+    assert.match(query.stdout, /usable again/);
+    assert.equal((await evaluate('1 + 1')).data?.result, 2);
+  });
+
   void it('recovers a page kept busy by a loop started from a timer', async () => {
     assert.equal((await evaluate('setTimeout(() => { while (true) {} }, 0); 1')).exitCode, 0);
     const { exitCode, error } = await evaluate('2', 60000);
