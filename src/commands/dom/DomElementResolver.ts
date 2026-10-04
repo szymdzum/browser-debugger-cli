@@ -19,9 +19,11 @@
  * ```
  */
 
+import { noActiveSessionError } from '@/commands/shared/CommandRunner.js';
 import { CommandError } from '@/errors/index.js';
 import { indexOutOfRangeError, staleNodeError } from '@/errors/messages.js';
 import { QueryCacheManager, type QueryCacheValidation } from '@/session/QueryCacheManager.js';
+import { isDaemonAlive } from '@/session/daemonSocket.js';
 import type { DomQueryResult } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -105,9 +107,10 @@ export class DomElementResolver {
       return { success: true, selector: selectorOrIndex, index: explicitIndex };
     }
     try {
-      const { node, selector } = await this.lookup(parseInt(selectorOrIndex, 10));
+      const index = parseInt(selectorOrIndex, 10);
+      const { node, selector } = await this.lookup(index);
       if (node.nodeId <= 0) {
-        const err = staleNodeError(node.nodeId);
+        const err = staleNodeError(index);
         return {
           success: false,
           error: err.message,
@@ -138,11 +141,11 @@ export class DomElementResolver {
   async getNodeIdForIndex(index: number): Promise<{ nodeId: number }> {
     const { node } = await this.lookup(index);
     if (node.nodeId <= 0) {
-      const err = staleNodeError(node.nodeId);
+      const err = staleNodeError(index);
       throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
     }
     const { assertNodeAttached } = await import('@/commands/dom/helpers/index.js');
-    await assertNodeAttached(node.nodeId);
+    await assertNodeAttached(node.nodeId, index);
     return node;
   }
 
@@ -161,11 +164,12 @@ export class DomElementResolver {
    *
    * @param index - Zero-based index
    * @returns Cached node and the query's selector
-   * @throws CommandError (81) without a usable cache, (87) for an index outside the cached results
+   * @throws CommandError (83) without a session, (81) without a usable cache, (87) for an index outside the cached results
    */
   private async lookup(index: number): Promise<{ node: CachedNode; selector: string }> {
     const validation: QueryCacheValidation = await this.cacheManager.validate();
     if (!validation.valid || !validation.cache) {
+      if (!(await isDaemonAlive())) throw noActiveSessionError();
       throw new CommandError(
         validation.error ?? 'No cached query results found',
         validation.suggestion ? { suggestion: validation.suggestion } : {},

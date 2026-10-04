@@ -44,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Errors, output paths and no-session messages**
+  - Screenshot and HAR paths: a missing directory is created; a directory, a file in the path, an empty path, a read-only or forbidden location give a clear "Cannot write <path>: <reason>" (81 for a bad path, 82 for permissions) instead of "No active session" or a raw error. `screenshot --follow` into an existing file gives 81
+  - Without a session, every command says "No active session" (83) with the same suggestion, including `dom get <selector>`, `dom get 0`, `a11y describe` and `a11y tree` (which printed raw IPC text or "No cached query results")
+  - Stale indices name the index you gave ("The element at index 0 is no longer in the page") instead of an internal node id
+  - Invalid selectors exit 81 in `dom get` and `a11y describe` too; `scroll --index` out of range exits 81 like the other commands; hidden (`display: none`) and zero-size screenshot targets both exit 81 with a message saying why
+  - `cdp`: Chrome rejecting a method or its parameters exits 81 with a `--describe` hint (was 110); `--params` parse errors read "Invalid --params JSON: …"
+  - `bdg help <unknown>` exits 81 with a did-you-mean instead of showing the general help; with `--json`, Commander's "Did you mean …?" goes into `suggestion` instead of a second line of `error`
 - **Network and console display**
   - `network list`: long query strings keep their start (`?id=1&tok…`) instead of collapsing to `?…`, `www.` is no longer dropped, the header always reads "last N of M", and the Ping type is `PIN` (it read like `PNG`)
   - Filters: `status-code:=500` works as documented, unknown `resource-type:` values are rejected with a did-you-mean, new `duration:` filter (`duration:>1s`, `500ms`) and `slow` preset; `console --level` takes any case and `log`/`warn`; `--last` accepts 0 (all) to 10000 everywhere, and its errors no longer repeat the range or the default

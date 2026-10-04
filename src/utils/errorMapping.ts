@@ -69,7 +69,7 @@ export function getExitCodeForIPCError(errorCode?: IPCErrorCode): number {
  * Check if error indicates socket connection failure (daemon not running).
  */
 function isSocketConnectionError(lowerMessage: string): boolean {
-  return lowerMessage.includes('enoent') || lowerMessage.includes('econnrefused');
+  return /ipc .+ connection error|\bconnect (enoent|econnrefused)\b/.test(lowerMessage);
 }
 
 /**

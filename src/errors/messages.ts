@@ -4,6 +4,8 @@
  * Centralized location for reusable error messages with consistent formatting.
  */
 
+import * as path from 'path';
+
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import {
   detectSelectorQuoteDamage,
@@ -134,12 +136,10 @@ export function sessionNotRespondingError(seconds: number): ErrorWithSuggestion 
  */
 export function daemonNotRunningError(context?: DaemonErrorContext): string {
   return joinLines(
-    'Error: No active session (daemon not running)',
+    'Error: No active session',
     context?.staleCleanedUp && '(Stale daemon files were cleaned up)',
     context?.lastError && `Last error: ${context.lastError}`,
-    '',
-    'Start a new session:',
-    '  bdg <url>',
+    'Start a session with: bdg <url>',
     context?.suggestStatus && '',
     context?.suggestStatus && 'Or check daemon status:',
     context?.suggestStatus && '  bdg status',
@@ -274,6 +274,58 @@ export function invalidSelectorError(selector: string, detail?: string): ErrorWi
 }
 
 /**
+ * `bdg help <topic>` for a command that does not exist.
+ *
+ * @param topic - Command path as typed, e.g. "dom quer"
+ * @param closest - Most similar existing command path, if any
+ */
+export function unknownHelpTopicError(topic: string, closest?: string): ErrorWithSuggestion {
+  const parent = topic.split(' ').slice(0, -1).join(' ');
+  return {
+    message: `Unknown command: "${topic}"`,
+    suggestion: closest
+      ? `Did you mean: bdg help ${closest}?`
+      : `Run "bdg ${parent ? `${parent} ` : ''}--help" for commands`,
+  };
+}
+
+/**
+ * Chrome rejected a CDP method or its parameters.
+ *
+ * @param detail - Chrome's error message
+ */
+export function cdpRequestRejectedError(detail: string): ErrorWithSuggestion {
+  return {
+    message: detail,
+    suggestion: 'Check the method and its parameters: bdg cdp <Method> --describe',
+  };
+}
+
+/**
+ * A file the user asked for (screenshot, HAR) cannot be written.
+ *
+ * @param filePath - Path as given
+ * @param reason - What is wrong with it
+ */
+export function outputFileError(filePath: string, reason: string): ErrorWithSuggestion {
+  const example = `output${path.extname(filePath) || '.png'}`;
+  return {
+    message: `Cannot write ${filePath}: ${reason}`,
+    suggestion: `Choose a writable file path, e.g. ./${example} or /tmp/${example}`,
+  };
+}
+
+/**
+ * An empty output path.
+ */
+export function emptyOutputPathError(): ErrorWithSuggestion {
+  return {
+    message: 'The output path is empty',
+    suggestion: 'Give a file name, e.g. output.png or capture.har',
+  };
+}
+
+/**
  * A bare word given where a URL is expected, most likely a mistyped command.
  *
  * @param word - The argument
@@ -333,11 +385,12 @@ export function nodeIdNotFoundError(nodeId: number): ErrorWithSuggestion {
 /**
  * A cached node is gone (page navigated or the element was removed).
  *
- * @param nodeId - Backend node id of the cached element
+ * @param index - Index the user gave (query or form results), if any
  */
-export function staleNodeError(nodeId: number): ErrorWithSuggestion {
+export function staleNodeError(index?: number): ErrorWithSuggestion {
+  const element = index === undefined ? 'The element' : `The element at index ${index}`;
   return {
-    message: `Element ${nodeId} is no longer in the page (it was removed or the page navigated)`,
+    message: `${element} is no longer in the page (it was removed or the page navigated)`,
     suggestion: 'Re-run "bdg dom query <selector>" (or "bdg dom form") to get fresh indices',
   };
 }
@@ -371,8 +424,8 @@ export function noNodesFoundError(selector: string): ErrorWithSuggestion {
  */
 export function elementNotVisibleError(): ErrorWithSuggestion {
   return {
-    message: 'Failed to get element bounds',
-    suggestion: 'Element may not be rendered or visible',
+    message: 'Element is not rendered (e.g. display: none), so it has no area to capture',
+    suggestion: 'Make it visible first, or capture a visible ancestor',
   };
 }
 
@@ -381,8 +434,8 @@ export function elementNotVisibleError(): ErrorWithSuggestion {
  */
 export function elementZeroDimensionsError(): ErrorWithSuggestion {
   return {
-    message: 'Element has zero dimensions (not visible)',
-    suggestion: 'Element may be hidden or collapsed',
+    message: 'Element has zero width or height, so there is nothing to capture',
+    suggestion: 'It may be collapsed or empty; capture a visible ancestor instead',
   };
 }
 

@@ -66,8 +66,11 @@ async function handleA11yTree(options: A11yTreeCommandOptions): Promise<void> {
     });
   }
 
-  const tree = await collectA11yTree();
-  await runCommand(() => Promise.resolve({ success: true, data: tree }), options, formatA11yTree);
+  await runCommand(
+    async () => ({ success: true, data: await collectA11yTree() }),
+    options,
+    formatA11yTree
+  );
 }
 
 /**

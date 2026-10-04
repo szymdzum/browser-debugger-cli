@@ -50,9 +50,15 @@ void describe('getExitCodeForIPCError', () => {
 });
 
 void describe('getExitCodeForConnectionError', () => {
-  void it('maps ENOENT / ECONNREFUSED to RESOURCE_NOT_FOUND', () => {
-    assert.equal(getExitCodeForConnectionError('ENOENT: socket'), EXIT_CODES.RESOURCE_NOT_FOUND);
-    assert.equal(getExitCodeForConnectionError('ECONNREFUSED'), EXIT_CODES.RESOURCE_NOT_FOUND);
+  void it('maps a socket that cannot be connected to RESOURCE_NOT_FOUND', () => {
+    assert.equal(
+      getExitCodeForConnectionError('connect ENOENT /tmp/daemon.sock'),
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+    assert.equal(
+      getExitCodeForConnectionError('connect ECONNREFUSED /tmp/daemon.sock'),
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
   });
 
   void it('maps "no active session" to RESOURCE_NOT_FOUND', () => {
@@ -72,9 +78,20 @@ void describe('getExitCodeForConnectionError', () => {
 });
 
 void describe('isDaemonNotRunningError', () => {
-  void it('detects ENOENT / ECONNREFUSED', () => {
-    assert.equal(isDaemonNotRunningError('ENOENT'), true);
-    assert.equal(isDaemonNotRunningError('econnrefused'), true);
+  void it('detects a socket that cannot be connected to', () => {
+    assert.equal(isDaemonNotRunningError('connect ENOENT /tmp/bdg/daemon.sock'), true);
+    assert.equal(isDaemonNotRunningError('connect ECONNREFUSED /tmp/bdg/daemon.sock'), true);
+    assert.equal(
+      isDaemonNotRunningError('IPC peek connection error | Code: ENOENT | Details: …'),
+      true
+    );
+  });
+
+  void it('returns false for file errors that mention ENOENT', () => {
+    assert.equal(
+      isDaemonNotRunningError("ENOENT: no such file or directory, open '/tmp/x/out.png'"),
+      false
+    );
   });
 
   void it('returns false for unrelated errors', () => {

@@ -85,3 +85,37 @@ export class CDPTimeoutError extends ConnectionError {
   readonly code = 'CDP_TIMEOUT_ERROR';
   readonly exitCode = EXIT_CODES.CDP_TIMEOUT;
 }
+
+/** JSON-RPC error codes that mean the request itself was wrong */
+const REQUEST_ERROR_CODES = new Set([-32600, -32601, -32602]);
+
+/**
+ * An error Chrome returned for a CDP command (e.g. invalid parameters, no
+ * node with the given id), with its JSON-RPC code and detail.
+ */
+export class CDPProtocolError extends Error {
+  override readonly name = 'CDPProtocolError';
+
+  /**
+   * @param message - Chrome's error message
+   * @param code - JSON-RPC error code
+   * @param data - Chrome's detail (e.g. which parameter is missing)
+   */
+  constructor(
+    message: string,
+    readonly code: number | undefined,
+    readonly data: string | undefined
+  ) {
+    super(data ? `${message}: ${data}` : message);
+  }
+
+  /**
+   * Whether the command itself was wrong (method or parameters), as opposed
+   * to failing on the page's state.
+   *
+   * @returns True for a user error
+   */
+  isRequestError(): boolean {
+    return this.code !== undefined && REQUEST_ERROR_CODES.has(this.code);
+  }
+}

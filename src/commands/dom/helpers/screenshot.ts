@@ -11,6 +11,7 @@ import {
   isTallPage,
   shouldResize,
 } from '@/commands/dom/screenshotResize.js';
+import { writeOutputFile } from '@/commands/shared/outputFile.js';
 import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
@@ -194,7 +195,7 @@ export async function getElementBounds(ref: NodeRef): Promise<ElementBounds> {
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
-      EXIT_CODES.RESOURCE_NOT_FOUND
+      EXIT_CODES.INVALID_ARGUMENTS
     );
   }
 
@@ -320,12 +321,8 @@ export async function capturePageScreenshot(
     throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
   }
 
-  const path = await import('path');
-  const { AtomicFileWriter } = await import('@/utils/atomicFile.js');
   const buffer = Buffer.from(screenshotResult.data, 'base64');
-
-  const absolutePath = path.resolve(outputPath);
-  await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
+  const absolutePath = await writeOutputFile(outputPath, buffer);
 
   const result: ScreenshotResult = {
     path: absolutePath,
@@ -446,12 +443,8 @@ export async function captureElementScreenshot(
     throw new CDPConnectionError('No screenshot data returned', new Error('Empty response'));
   }
 
-  const path = await import('path');
-  const { AtomicFileWriter } = await import('@/utils/atomicFile.js');
   const buffer = Buffer.from(screenshotResult.data, 'base64');
-
-  const absolutePath = path.resolve(outputPath);
-  await AtomicFileWriter.writeBufferAsync(absolutePath, buffer);
+  const absolutePath = await writeOutputFile(outputPath, buffer);
 
   const result: ScreenshotResult = {
     path: absolutePath,

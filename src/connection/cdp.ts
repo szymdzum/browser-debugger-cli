@@ -9,7 +9,7 @@ import { delay as asyncDelay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 import { DEFAULT_CDP_CONFIG, WEBSOCKET_CONFIG, UTF8_ENCODING } from './config.js';
-import { CDPConnectionError, CDPTimeoutError } from './errors.js';
+import { CDPConnectionError, CDPProtocolError, CDPTimeoutError } from './errors.js';
 
 const CONNECTION_TIMEOUT_ERROR = 'Connection timeout';
 const WEBSOCKET_CONNECTION_CLOSED_ERROR = 'WebSocket connection closed';
@@ -449,7 +449,8 @@ export class CDPConnection implements CDPEventSource {
       this.pendingMessages.delete(message.id);
       clearTimeout(pending.timeout);
       if (message.error) {
-        pending.reject(new Error(message.error.message));
+        const { message: text, code, data } = message.error;
+        pending.reject(new CDPProtocolError(text, code, data));
       } else {
         pending.resolve(message.result);
       }
