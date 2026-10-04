@@ -30,8 +30,24 @@ export interface DaemonErrorResult {
   exitCode?: number;
 }
 
+/** Follow-mode state: whether a session ever answered, and whether its loss was reported */
+const followState = { connected: false, lossReported: false };
+
+/**
+ * Record that a follow-mode refresh reached the session, so a later loss is
+ * reported (once) and retried, not treated as "no session to follow".
+ */
+export function noteFollowConnected(): void {
+  followState.connected = true;
+  followState.lossReported = false;
+}
+
 /**
  * Handle daemon connection errors with consistent formatting and behavior.
+ *
+ * Outside follow mode the command exits. In follow mode, a session that never
+ * answered exits too (there is nothing to follow, exit 83); a session that
+ * goes away is reported once and retried until a new one starts.
  *
  * @param error - Error message to display
  * @param options - Error handling options
@@ -47,23 +63,30 @@ export function handleDaemonConnectionError(
     retryIntervalMs = 1000,
     exitCode = EXIT_CODES.RESOURCE_NOT_FOUND,
   } = options;
+  const exits = !follow || !followState.connected;
 
-  const retryMessage =
-    retryIntervalMs >= 1000 ? `${retryIntervalMs / 1000}s` : `${retryIntervalMs}ms`;
-
-  const timestamp = new Date().toISOString();
-
-  if (json) {
-    console.log(JSON.stringify(OutputBuilder.buildJsonError(error, { exitCode }), null, 2));
-  } else {
-    console.error(genericError(error));
+  if (exits || !followState.lossReported) {
+    if (json) {
+      const suggestion = exits ? 'Start a session with: bdg <url>' : undefined;
+      console.log(
+        JSON.stringify(
+          OutputBuilder.buildJsonError(error, { exitCode, ...(suggestion && { suggestion }) }),
+          null,
+          2
+        )
+      );
+    } else {
+      console.error(genericError(error));
+    }
   }
+  if (exits) return { shouldExit: true, exitCode };
 
-  if (!follow) {
-    return { shouldExit: true, exitCode };
+  if (!followState.lossReported) {
+    const retryMessage =
+      retryIntervalMs >= 1000 ? `${retryIntervalMs / 1000}s` : `${retryIntervalMs}ms`;
+    console.error(connectionLostRetryMessage(new Date().toISOString(), retryMessage));
+    console.error(connectionLostStopHintMessage());
+    followState.lossReported = true;
   }
-
-  console.error(connectionLostRetryMessage(timestamp, retryMessage));
-  console.error(connectionLostStopHintMessage());
   return { shouldExit: false };
 }

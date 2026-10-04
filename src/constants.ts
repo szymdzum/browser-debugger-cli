@@ -236,7 +236,7 @@ export const RESOURCE_TYPE_ABBREVIATIONS: Record<string, string> = {
   WebSocket: 'WS',
   Manifest: 'MAN',
   SignedExchange: 'SGX',
-  Ping: 'PNG',
+  Ping: 'PIN',
   CSPViolationReport: 'CSP',
   Preflight: 'FLT',
   FedCM: 'FED',

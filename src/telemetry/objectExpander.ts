@@ -210,12 +210,18 @@ export async function expandRemoteObject(
 
 /**
  * Expand multiple RemoteObjects and format as console message text.
+ * Top-level strings are printed as they are (quotes only inside objects),
+ * as in Chrome's console.
  *
  * @param cdp - CDP connection for property fetching
  * @param args - Array of RemoteObjects to expand
  * @returns Formatted string with expanded objects
  */
 export async function expandConsoleArgs(cdp: CDPSender, args: RemoteObject[]): Promise<string> {
-  const expanded = await Promise.all(args.map((arg) => expandRemoteObject(cdp, arg)));
+  const expanded = await Promise.all(
+    args.map((arg) =>
+      typeof arg.value === 'string' ? Promise.resolve(arg.value) : expandRemoteObject(cdp, arg)
+    )
+  );
   return expanded.join(' ');
 }

@@ -43,28 +43,32 @@ export function formatConsoleChronological(
   }
 
   const baseIndex = messages.length - displayMessages.length;
+  const indexOf = (msg: ConsoleMessage, i: number): number => msg.index ?? baseIndex + i;
+  const indexWidth = Math.max(...displayMessages.map((m, i) => `[${indexOf(m, i)}]`.length));
+  const levelWidth = Math.max(7, ...displayMessages.map((m) => m.type.length));
+  const sourceIndent = ' '.repeat(indexWidth + 2 + levelWidth + 1);
   let lastNavigationId: number | undefined;
 
   for (const [i, msg] of displayMessages.entries()) {
-    const index = msg.index ?? baseIndex + i;
+    const index = `[${indexOf(msg, i)}]`.padEnd(indexWidth);
     const time = formatTimestamp(msg.timestamp);
-    const level = msg.type.padEnd(7);
+    const level = msg.type.padEnd(levelWidth);
 
     if (msg.navigationId !== undefined && msg.navigationId !== lastNavigationId) {
       if (lastNavigationId !== undefined) {
         fmt.blank();
-        fmt.text(`─── Page Reload (navigation #${msg.navigationId}) ───`);
+        fmt.text(`─── Next page (navigation #${msg.navigationId}) ───`);
         fmt.blank();
       }
       lastNavigationId = msg.navigationId;
     }
 
     const truncatedText = truncateByLength(msg.text, MAX_LIST_TEXT_LENGTH);
-    fmt.text(`[${index}]  ${level} ${time}  ${truncatedText}`);
+    fmt.text(`${index}  ${level} ${time}  ${truncatedText}`);
 
     const source = formatSourceLocation(msg.stackTrace);
     if (source) {
-      fmt.text(`                      → ${source}`);
+      fmt.text(`${sourceIndent}→ ${source}`);
     }
   }
 

@@ -2,6 +2,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
 import type { BdgOutput } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { formatRequestStatus, getRequestState } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
@@ -153,7 +154,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
   const fmt = new OutputFormatter();
 
   fmt.text(
-    `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${output.timestamp}`
+    `PREVIEW | Duration: ${Math.floor(output.duration / 1000)}s | Updated: ${formatTimestamp(Date.now())}`
   );
 
   if (options.follow && options.viewedAt) {
@@ -192,7 +193,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       } else {
         const networkLines = requests.map((req) => {
           const typeAbbr = getResourceTypeAbbr(req.resourceType, req.mimeType);
-          const status = formatRequestStatus(req);
+          const status = getRequestState(req) === 'pending' ? 'PND' : formatRequestStatus(req);
           const url = truncateUrl(req.url, 50);
           return `[${req.requestId}] [${typeAbbr}] ${status} ${req.method} ${url}`;
         });
@@ -242,7 +243,8 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
   fmt.keyValueList(
     [
       ['Duration', `${Math.floor(output.duration / 1000)}s`],
-      ['Last updated', output.timestamp],
+      ['Session started', formatTimestamp(Date.parse(output.timestamp))],
+      ['Last updated', formatTimestamp(Date.now())],
     ],
     18
   );
@@ -285,7 +287,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
         requests.forEach((req) => {
           const state = getRequestState(req);
           const isFailed = state === 'failed' || (req.status ?? 0) >= 400;
-          const statusColor = isFailed ? 'ERR' : 'OK';
+          const statusColor = state === 'pending' ? 'PND' : isFailed ? 'ERR' : 'OK';
           const status = state === 'failed' ? 'FAILED' : formatRequestStatus(req);
           fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
           if (req.errorText) {

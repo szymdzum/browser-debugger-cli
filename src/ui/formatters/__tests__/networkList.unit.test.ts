@@ -15,18 +15,18 @@ void describe('truncateUrl', () => {
       truncateUrl('http://127.0.0.1:47802/api/json?x=1', 50),
       '127.0.0.1:47802/api/json?x=1'
     );
-    assert.equal(truncateUrl('https://www.example.com/', 50), 'example.com');
+    assert.equal(truncateUrl('https://www.example.com/', 50), 'www.example.com');
   });
 
-  void it('elides a long query before the path', () => {
-    assert.equal(
-      truncateUrl(`https://example.com/search?q=${'x'.repeat(80)}`, 50),
-      'example.com/search?…'
-    );
+  void it('cuts a long query, keeping its start so requests stay distinguishable', () => {
+    const cut = truncateUrl(`https://example.com/search?q=1&token=${'x'.repeat(80)}`, 50);
+    assert.equal(cut.length, 50);
+    assert.match(cut, /^example\.com\/search\?q=1&token=x+…$/);
   });
 
-  void it('marks an elided query also when the path is shortened', () => {
-    assert.match(truncateUrl(`https://example.com/${'p'.repeat(80)}?q=1`, 50), /\?…$/);
+  void it('keeps a short query when the path is shortened', () => {
+    const cut = truncateUrl(`https://example.com/a/${'p'.repeat(80)}/x.js?q=1`, 50);
+    assert.match(cut, /\/x\.js\?q=1$/);
   });
 
   void it('shows non-web URLs as they are', () => {

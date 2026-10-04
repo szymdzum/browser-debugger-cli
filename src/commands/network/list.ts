@@ -6,7 +6,10 @@ import { Option, type Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
-import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import {
+  handleDaemonConnectionError,
+  noteFollowConnected,
+} from '@/commands/shared/daemonErrorHandler.js';
 import { fetchNetworkRequests, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
@@ -42,10 +45,9 @@ interface NetworkListCommandOptions extends BaseOptions {
   verbose?: boolean;
 }
 
-const networkLastOption = new Option(
-  '--last <n>',
-  `Show last N requests (0 = all, default: ${DEFAULT_LAST})`
-).default(String(DEFAULT_LAST));
+const networkLastOption = new Option('--last <n>', 'Show last N requests (0 = all)').default(
+  String(DEFAULT_LAST)
+);
 
 /**
  * Validate preset option early with typo detection.
@@ -164,6 +166,7 @@ async function runFollowMode(
       if (errorResult.shouldExit) process.exit(errorResult.exitCode);
       return;
     }
+    noteFollowConnected();
 
     const filtered = filterRequests(result.data, options, resourceTypes);
     const displayRequests = filtered.slice(-FOLLOW_LIMIT);

@@ -73,7 +73,7 @@ void describe('Console sources', () => {
         'Failed to load resource: the server responded with a status of 404 (Not Found)',
         'network',
       ],
-      ['log', '"from cross-origin frame" {nested: {deep: {value: 42}}}', undefined],
+      ['log', 'from cross-origin frame {nested: {deep: {value: 42}}}', undefined],
       ['warning', 'from worker', undefined],
     ]);
     const frame = messages.find((m) => m.type === 'log');

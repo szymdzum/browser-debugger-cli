@@ -6,9 +6,11 @@
  * header inspection, and various state filters.
  */
 
+import { RESOURCE_TYPE_ABBREVIATIONS } from '@/constants.js';
 import { matchesWildcard } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { findSimilar } from '@/utils/suggestions.js';
 import { extractHostname } from '@/utils/url.js';
 
 const log = createLogger('network');
@@ -20,6 +22,7 @@ export type FilterType =
   | 'mime-type'
   | 'resource-type'
   | 'larger-than'
+  | 'duration'
   | 'has-response-header'
   | 'is'
   | 'scheme';
@@ -52,10 +55,30 @@ const VALID_FILTER_TYPES: FilterType[] = [
   'mime-type',
   'resource-type',
   'larger-than',
+  'duration',
   'has-response-header',
   'is',
   'scheme',
 ];
+
+/** CDP resource types (the keys of the TYP abbreviations) */
+const RESOURCE_TYPES = Object.keys(RESOURCE_TYPE_ABBREVIATIONS);
+
+const DURATION_PATTERN = /^(\d+(?:\.\d+)?)\s*(ms|s)?$/i;
+
+/**
+ * Parse a duration into milliseconds.
+ *
+ * @param value - e.g. "500", "500ms", "1.5s"
+ * @returns Milliseconds
+ * @throws Error for another format
+ */
+export function parseDuration(value: string): number {
+  const match = DURATION_PATTERN.exec(value);
+  if (!match) throw new Error(`Invalid duration: "${value}". Use format like "500ms" or "1.5s"`);
+  const amount = parseFloat(match[1] ?? '0');
+  return match[2]?.toLowerCase() === 's' ? amount * 1000 : amount;
+}
 
 const VALID_IS_VALUES = ['from-cache', 'running', 'failed'] as const;
 
@@ -83,7 +106,68 @@ function extractOperator(value: string): [ComparisonOperator, string] {
   if (value.startsWith('<=')) return ['<=', value.slice(2)];
   if (value.startsWith('>')) return ['>', value.slice(1)];
   if (value.startsWith('<')) return ['<', value.slice(1)];
+  if (value.startsWith('=')) return ['=', value.slice(1)];
   return ['=', value];
+}
+
+/** Filter types whose value may start with a comparison operator */
+const COMPARABLE_TYPES = new Set(['status-code', 'larger-than', 'duration']);
+
+/**
+ * Check a filter value of a type with a fixed vocabulary or format.
+ *
+ * @param type - Filter type
+ * @param value - Value (after any operator)
+ * @returns An error, or null if the value is valid
+ */
+function validateFilterValue(type: string, value: string): FilterTokenResult | null {
+  switch (type) {
+    case 'is':
+      return validateIsValue(value);
+    case 'larger-than':
+      return validateSizeValue(value);
+    case 'status-code':
+      return validateStatusCode(value);
+    case 'duration':
+      return validateDuration(value);
+    case 'resource-type':
+      return validateResourceTypes(value);
+    default:
+      return null;
+  }
+}
+
+/**
+ * Check a duration value.
+ *
+ * @param value - Duration text
+ * @returns An error, or null if valid
+ */
+function validateDuration(value: string): FilterTokenResult | null {
+  return DURATION_PATTERN.test(value)
+    ? null
+    : createError(`Invalid duration: "${value}"`, 'Use format like "500ms", "1.5s" or "1000"');
+}
+
+/**
+ * Check that every comma-separated resource type exists.
+ *
+ * @param value - e.g. "XHR,Fetch"
+ * @returns An error with a did-you-mean, or null if all are known
+ */
+function validateResourceTypes(value: string): FilterTokenResult | null {
+  const unknown = value
+    .split(',')
+    .map((type) => type.trim())
+    .find((type) => !RESOURCE_TYPES.some((known) => known.toLowerCase() === type.toLowerCase()));
+  if (unknown === undefined) return null;
+  const similar = findSimilar(unknown, RESOURCE_TYPES);
+  return createError(
+    `Unknown resource type: "${unknown}"`,
+    similar.length > 0
+      ? `Did you mean: ${similar[0]}?`
+      : `Valid types: ${RESOURCE_TYPES.join(', ')}`
+  );
 }
 
 function findSimilarTypes(input: string): string[] {
@@ -177,28 +261,12 @@ function parseFilterToken(token: string): FilterTokenResult {
   const typeError = validateFilterType(type);
   if (typeError) return typeError;
 
-  let operator: ComparisonOperator = '=';
-  let value = rawValue;
-
-  if (type === 'status-code' || type === 'larger-than') {
-    [operator, value] = extractOperator(rawValue);
-  }
-
-  if (type === 'is') {
-    const isError = validateIsValue(value);
-    if (isError) return isError;
-    value = value.toLowerCase();
-  }
-
-  if (type === 'larger-than') {
-    const sizeError = validateSizeValue(value);
-    if (sizeError) return sizeError;
-  }
-
-  if (type === 'status-code') {
-    const statusError = validateStatusCode(value);
-    if (statusError) return statusError;
-  }
+  const [operator, operand] = COMPARABLE_TYPES.has(type)
+    ? extractOperator(rawValue)
+    : (['=', rawValue] as [ComparisonOperator, string]);
+  const valueError = validateFilterValue(type, operand);
+  if (valueError) return valueError;
+  const value = type === 'is' ? operand.toLowerCase() : operand;
 
   return { type: type as FilterType, value, negated, operator };
 }
@@ -316,6 +384,16 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
       return compareNumeric(size, threshold, effectiveOperator);
     }
 
+    case 'duration':
+      return (
+        request.duration !== undefined &&
+        compareNumeric(
+          request.duration,
+          parseDuration(filter.value),
+          filter.operator === '=' ? '>=' : filter.operator
+        )
+      );
+
     case 'has-response-header': {
       if (!request.responseHeaders) return false;
       const headerName = filter.value.toLowerCase();
@@ -358,12 +436,13 @@ export function applyFilters(
 export function getFilterHelpText(): string {
   return `
 Filter syntax:
-  status-code:>=400       HTTP status codes (supports =, >=, <=, >, <)
+  status-code:>=400       HTTP status codes (supports =, >=, <=, >, <; status-code:=500 or :500)
   domain:api.*            Domain with wildcards
   method:POST             HTTP method
   mime-type:application/json
   resource-type:XHR,Fetch CDP resource types (comma-separated)
   larger-than:100KB       Size threshold (B, KB, MB, GB)
+  duration:>1s            Request time (ms or s; supports =, >=, <=, >, <; a bare value means at least)
   has-response-header:set-cookie
   is:from-cache           Served from browser cache (or a CDN cache hit)
   is:running              In-progress requests

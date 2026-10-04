@@ -41,7 +41,7 @@ export function formatCookies(cookies: Cookie[]): string {
   fmt.text(`${pluralize(cookies.length, 'Cookie', 'Cookies')}:`).blank();
 
   cookies.forEach((cookie, index) => {
-    fmt.text(`[${index + 1}] ${cookie.name}`);
+    fmt.text(`[${index}] ${cookie.name}`);
 
     const expires =
       cookie.expires && cookie.expires !== -1
@@ -56,7 +56,7 @@ export function formatCookies(cookies: Cookie[]): string {
         `Expires: ${expires}`,
         `HttpOnly: ${cookie.httpOnly ? 'Yes' : 'No'}`,
         `Secure: ${cookie.secure ? 'Yes' : 'No'}`,
-        `SameSite: ${cookie.sameSite ?? 'None'}`,
+        `SameSite: ${cookie.sameSite ?? 'not set (Lax by default)'}`,
       ],
       2
     );

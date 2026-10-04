@@ -68,7 +68,7 @@ bdg cdp Network.getCookies                  # Execute
 
 # Search across all domains
 bdg cdp --search screenshot                 # Find relevant methods
-bdg cdp --search cookie                     # 14 results
+bdg cdp --search cookie                     # methods mentioning cookies
 ```
 
 ## Documentation

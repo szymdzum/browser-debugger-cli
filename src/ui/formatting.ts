@@ -68,13 +68,19 @@ export class OutputFormatter {
 
 /**
  * Whether a character code is a control character other than tab/newline
- * (C0, DEL, C1).
+ * (C0, DEL, C1), or a bidirectional override/isolate that can make output
+ * read differently than it is (e.g. U+202E right-to-left override).
  *
  * @param code - UTF-16 code unit
  * @returns True for characters that must not reach the terminal raw
  */
 function isControlChar(code: number): boolean {
-  return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+  return (
+    (code < 0x20 && code !== 0x09 && code !== 0x0a) ||
+    (code >= 0x7f && code <= 0x9f) ||
+    (code >= 0x202a && code <= 0x202e) ||
+    (code >= 0x2066 && code <= 0x2069)
+  );
 }
 
 /**
@@ -120,15 +126,30 @@ export function truncateUrl(url: string, maxLength: number = 60): string {
   if (!parsed || !WEB_PROTOCOLS.has(parsed.protocol)) {
     return truncateEnd(url, maxLength);
   }
-  const host = parsed.host.replace(/^www\./, '');
+  const host = parsed.host;
   const path = parsed.pathname.substring(1);
   const full = `${host}${path ? `/${path}` : ''}`;
   if (`${full}${parsed.search}`.length <= maxLength) return `${full}${parsed.search}`;
-  const queryMark = parsed.search ? '?…' : '';
-  const withoutQuery = `${full}${queryMark}`;
-  if (withoutQuery.length <= maxLength) return withoutQuery;
-  return `${shortenPath(host, path, maxLength - queryMark.length)}${queryMark}`;
+  if (!parsed.search) return shortenPath(host, path, maxLength);
+  const room = maxLength - full.length;
+  if (room >= MIN_QUERY_SHOWN) return `${full}${cutQuery(parsed.search, room)}`;
+  const query = cutQuery(parsed.search, MIN_QUERY_SHOWN);
+  return `${shortenPath(host, path, maxLength - query.length)}${query}`;
 }
+
+/**
+ * A query string cut to a length, marked with "…" when cut.
+ *
+ * @param search - Query string including "?"
+ * @param length - Maximum length
+ * @returns The query, or its start followed by "…"
+ */
+function cutQuery(search: string, length: number): string {
+  return search.length <= length ? search : `${search.substring(0, length - 1)}…`;
+}
+
+/** Characters of a long query string kept, so similar requests stay distinguishable */
+const MIN_QUERY_SHOWN = 12;
 
 /** Protocols whose URLs are shown as host/path (others, like data: or blob:, verbatim) */
 const WEB_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:']);

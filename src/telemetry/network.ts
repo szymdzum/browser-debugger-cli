@@ -242,6 +242,20 @@ interface RequestFailure {
 }
 
 /**
+ * Error text of a failed request, with the CORS reason when CORS blocked it
+ * (Chrome only says `net::ERR_FAILED` otherwise).
+ *
+ * @param params - `Network.loadingFailed` event
+ * @returns Error text
+ */
+function describeLoadingError(params: Protocol.Network.LoadingFailedEvent): string {
+  const cors = params.corsErrorStatus;
+  if (!cors) return params.errorText;
+  const detail = cors.failedParameter ? `: ${cors.failedParameter}` : '';
+  return `${params.errorText} (CORS ${cors.corsError}${detail})`;
+}
+
+/**
  * Record a failure on a request. A request that already got a response keeps
  * its HTTP status; one without becomes status 0.
  *
@@ -522,7 +536,7 @@ export async function startNetworkCollection(
     failRequest(
       params.requestId,
       filterDefined({
-        errorText: params.errorText,
+        errorText: describeLoadingError(params),
         canceled: params.canceled,
         blockedReason: params.blockedReason,
         resourceType: params.type,

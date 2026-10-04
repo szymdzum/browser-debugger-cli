@@ -88,6 +88,14 @@ export function registerGetCookiesCommand(networkCmd: Command): void {
         async (opts) => {
           const params: Record<string, unknown> = {};
           if (opts.url) {
+            if (!URL.canParse(opts.url)) {
+              return {
+                success: false,
+                error: `Invalid --url: ${opts.url}`,
+                exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+                errorContext: { suggestion: 'Give a full URL, e.g. --url https://example.com/' },
+              };
+            }
             params['urls'] = [opts.url];
           }
 

@@ -33,5 +33,13 @@ export function formatRequestStatus(request: Pick<NetworkRequest, 'status' | 'er
   const state = getRequestState(request);
   if (state === 'pending') return 'pending';
   if (state === 'failed') return `FAILED (${request.errorText ?? 'no response'})`;
-  return request.errorText ? `${request.status} (${request.errorText})` : String(request.status);
+  return request.errorText && request.errorText !== BODY_ABORTED
+    ? `${request.status} (${request.errorText})`
+    : String(request.status);
 }
+
+/**
+ * Error Chrome reports when it stops reading a response body nobody needs
+ * (the response itself arrived; not a failure of the request).
+ */
+const BODY_ABORTED = 'net::ERR_ABORTED';

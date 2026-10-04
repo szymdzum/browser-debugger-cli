@@ -83,27 +83,24 @@ function formatRequestLine(request: NetworkRequest, verbose: boolean, idWidth: n
   return `${id} ${status} ${method} ${type} ${size} ${time}  ${url}`;
 }
 
-function buildHeader(
-  options: NetworkListOptions,
-  showingCount: number,
-  totalCount: number
-): string {
-  if (options.follow) {
-    return `NETWORK REQUESTS (showing ${showingCount} of ${totalCount})`;
-  }
-
-  const lastLimit = options.last ?? 0;
-  if (lastLimit > 0 && totalCount > showingCount) {
+/**
+ * Header line with how many requests are shown.
+ *
+ * @param showingCount - Requests listed
+ * @param totalCount - Requests matching overall
+ * @returns e.g. "NETWORK REQUESTS (last 10 of 42)"
+ */
+function buildHeader(showingCount: number, totalCount: number): string {
+  if (totalCount > showingCount) {
     return `NETWORK REQUESTS (last ${showingCount} of ${totalCount})`;
   }
-
   return `NETWORK REQUESTS (${totalCount})`;
 }
 
 function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkListOptions): string {
   const fmt = new OutputFormatter();
   const totalCount = options.totalCount ?? requests.length;
-  const header = buildHeader(options, requests.length, totalCount);
+  const header = buildHeader(requests.length, totalCount);
 
   fmt.text(header);
   fmt.separator('─', SEPARATOR_WIDTH);

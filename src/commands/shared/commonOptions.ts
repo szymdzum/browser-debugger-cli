@@ -23,3 +23,19 @@ import { Option } from 'commander';
 export function jsonOption(): Option {
   return new Option('-j, --json', 'Output as JSON').default(false);
 }
+
+/**
+ * `--network` together with `--console` asks for both sections, which is what
+ * neither flag shows; clear both so the output is not empty.
+ *
+ * @param options - Parsed `peek`/`tail` options (changed in place)
+ */
+export function showBothSectionsWhenBothRequested(options: {
+  network?: boolean;
+  console?: boolean;
+}): void {
+  if (options.network && options.console) {
+    options.network = false;
+    options.console = false;
+  }
+}

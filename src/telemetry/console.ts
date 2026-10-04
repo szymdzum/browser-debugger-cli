@@ -269,7 +269,11 @@ function handleLogEntry(
   }
 
   const location = entry.url
-    ? [{ url: entry.url, lineNumber: entry.lineNumber ?? 0, columnNumber: 0 }]
+    ? [
+        entry.lineNumber === undefined
+          ? { url: entry.url, lineNumber: -1, columnNumber: -1 }
+          : { url: entry.url, lineNumber: entry.lineNumber, columnNumber: 0 },
+      ]
     : undefined;
   const context: MessageContext = {
     navigationId,

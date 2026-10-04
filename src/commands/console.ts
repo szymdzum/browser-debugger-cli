@@ -6,12 +6,15 @@ import { Option, type Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
-import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import {
+  handleDaemonConnectionError,
+  noteFollowConnected,
+} from '@/commands/shared/daemonErrorHandler.js';
 import { fetchConsoleMessages, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
-import { positiveIntRule } from '@/commands/shared/validation.js';
+import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validation.js';
 import type { ConsoleMessage } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
@@ -31,11 +34,10 @@ const MIN_LAST = 0;
 const MAX_LAST = 10000;
 const DEFAULT_LAST = 100;
 const FOLLOW_LIMIT = 20;
-const VALID_LEVELS: ConsoleLevel[] = ['error', 'warning', 'info', 'debug'];
 
 const consoleLastOption = new Option(
   '--last <n>',
-  `Show last N console messages (0 = all, default: ${DEFAULT_LAST})`
+  'Show last N console messages (0 = all)'
 ).default(String(DEFAULT_LAST));
 
 /**
@@ -96,6 +98,7 @@ async function runFollowMode(options: ConsoleCommandOptions): Promise<void> {
       if (errorResult.shouldExit) process.exit(errorResult.exitCode);
       return;
     }
+    noteFollowConnected();
 
     const { messages, currentNavigationId } = result.data;
     const recent = applyFilters(messages, options, currentNavigationId).slice(-FOLLOW_LIMIT);
@@ -135,8 +138,8 @@ export function registerConsoleCommand(program: Command): void {
     .addOption(
       new Option(
         '--level <level>',
-        'Filter by message level (error, warning, info, debug)'
-      ).choices(VALID_LEVELS)
+        'Filter by message level: error, warning, info (includes log), debug; any case'
+      ).argParser(consoleLevelOption)
     )
     .addOption(consoleLastOption)
     .addOption(jsonOption())

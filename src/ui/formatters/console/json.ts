@@ -20,11 +20,14 @@ function toJsonError(dedup: DeduplicatedMessage, includeStackTrace: boolean): Js
     count: dedup.count,
     level: dedup.message.type,
     text: dedup.message.text,
+    ...(dedup.message.index !== undefined && { index: dedup.message.index }),
     ...(source && {
       source: {
         url: source.url,
-        line: source.lineNumber + 1,
-        column: source.columnNumber + 1,
+        ...(source.lineNumber >= 0 && {
+          line: source.lineNumber + 1,
+          column: source.columnNumber + 1,
+        }),
       },
     }),
     ...(includeStackTrace && dedup.message.stackTrace && { stackTrace: dedup.message.stackTrace }),

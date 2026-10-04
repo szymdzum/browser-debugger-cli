@@ -5,8 +5,11 @@
 import type { Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
-import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { jsonOption, showBothSectionsWhenBothRequested } from '@/commands/shared/commonOptions.js';
+import {
+  handleDaemonConnectionError,
+  noteFollowConnected,
+} from '@/commands/shared/daemonErrorHandler.js';
 import {
   fetchPreviewOutput,
   createErrorResult,
@@ -15,7 +18,7 @@ import {
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
-import { positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
+import { MAX_LAST_ITEMS, positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { PeekSection } from '@/ipc/protocol/commands.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
@@ -42,7 +45,7 @@ function parseOptions(options: PeekCommandOptions): ParsedOptions {
   const lastN = positiveIntRule({
     name: '--last',
     min: 1,
-    max: 1000,
+    max: MAX_LAST_ITEMS,
     default: 10,
     allowZeroForAll: true,
   }).validate(options.last);
@@ -132,6 +135,7 @@ async function runFollowMode(
       if (errorResult.shouldExit) process.exit(errorResult.exitCode);
       return;
     }
+    noteFollowConnected();
 
     if (!options.json) console.clear();
     const previewOptions = createPreviewOptions(
@@ -158,12 +162,13 @@ export function registerPeekCommand(program: Command): void {
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
-    .option('--last <count>', 'Show last N items, 0 for all (default: 10)', '10')
+    .option('--last <count>', 'Show last N items, 0 for all', '10')
     .option(
       '--type <types>',
       'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
     )
     .action(async (options: PeekCommandOptions) => {
+      showBothSectionsWhenBothRequested(options);
       if (options.network && !options.json) {
         console.error(
           'Note: "bdg peek --network" is deprecated. Use "bdg network list" for enhanced filtering.'

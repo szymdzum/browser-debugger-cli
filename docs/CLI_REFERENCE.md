@@ -69,7 +69,7 @@ bdg tail --last 50              # Show last 50 items
 bdg tail --network              # Show only network requests
 bdg tail --console              # Show only console messages
 bdg tail --interval 2000        # Custom update interval (2 seconds)
-bdg tail --verbose              # Verbose output (full URLs, emojis)
+bdg tail --verbose              # Verbose output (full URLs, resource and MIME types)
 
 # Note: 'bdg peek --follow' also works, but 'tail' has better semantics
 ```
@@ -620,7 +620,7 @@ bdg network headers <request-id> --header content-type
 
 # JSON output for scripting
 bdg network headers --json
-bdg network headers --json | jq '.data.responseHeaders["content-security-policy"]'
+bdg network headers --header content-security-policy --json | jq '.data.responseHeaders | to_entries[0].value'
 ```
 
 **Smart Defaults:**

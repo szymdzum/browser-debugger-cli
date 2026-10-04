@@ -44,6 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Network and console display**
+  - `network list`: long query strings keep their start (`?id=1&tok…`) instead of collapsing to `?…`, `www.` is no longer dropped, the header always reads "last N of M", and the Ping type is `PIN` (it read like `PNG`)
+  - Filters: `status-code:=500` works as documented, unknown `resource-type:` values are rejected with a did-you-mean, new `duration:` filter (`duration:>1s`, `500ms`) and `slow` preset; `console --level` takes any case and `log`/`warn`; `--last` accepts 0 (all) to 10000 everywhere, and its errors no longer repeat the range or the default
+  - `peek`: `--network --console` shows both sections (it showed none), pending requests are `PND` (not "OK pending"), a response whose body Chrome merely stopped reading (`net::ERR_ABORTED`) shows its status, and "Updated" is the time of the refresh
+  - `details network` shows start time, duration, size and cache use; long bodies are cut in human output (the JSON has all of it); a body that was not captured is reported as `bodyNotCaptured` with the reason instead of a placeholder string; CORS failures name the CORS reason
+  - `details console` shows the stack; console lists align their columns, browser messages point at the resource URL instead of a fake `file:1:1`, `--history` separators no longer call every navigation a reload, warnings show their location, and `console --json` errors carry their `index`
+  - Console text: DOM nodes, WeakMap/WeakSet and typed arrays are described instead of `{}`, nested arrays are expanded, and top-level strings are never quoted
+  - Follow modes started without a session exit with 83 instead of retrying forever; a lost session is reported once, not every second
+  - `getCookies` numbers cookies from 0 and says when SameSite is not set; `--url` is validated; `network har --json` reports the absolute file path; HAR body sizes use Content-Length when the body was not captured
+  - Bidirectional override characters (e.g. U+202E) in page text are escaped like other control characters
 - **Network data correctness**
   - Requests in flight for more than 60 s were silently dropped (from `network list`, `peek` and HAR, even after they finished); long polls, SSE and slow APIs now stay listed until they finish
   - Requests of a page that navigated away are recorded as cancelled (`net::ERR_ABORTED (the page navigated away)`) instead of staying "pending"; its WebSocket connections are marked closed
