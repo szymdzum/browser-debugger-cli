@@ -40,6 +40,8 @@ export interface SessionInfo {
   port: number;
   targetUrl: string;
   targetTitle?: string;
+  /** HTTP status of the page's main document, when known */
+  documentStatus?: number;
 }
 
 /** Session metadata as reported in status responses. */
@@ -59,6 +61,7 @@ export class Session {
   private timeoutTimer: NodeJS.Timeout | null = null;
   private stopping: Promise<void> | null = null;
   private started = false;
+  private documentRequestId: string | undefined;
 
   private constructor(
     private config: SessionConfig,
@@ -142,11 +145,15 @@ export class Session {
    */
   info(): SessionInfo {
     const target = this.store.targetInfo;
+    const documentStatus = this.store.networkRequests.find(
+      (request) => request.requestId === this.documentRequestId && request.status
+    )?.status;
     return {
       chromePid: this.chrome?.pid ?? 0,
       port: this.config.port,
       targetUrl: target?.url ?? this.config.url,
       ...(target?.title && { targetTitle: target.title }),
+      ...(documentStatus !== undefined && { documentStatus }),
     };
   }
 
@@ -211,7 +218,13 @@ export class Session {
     this.throwIfStopping();
     this.cleanupFunctions = await startTelemetryCollectors(this.cdp, this.config, this.store, log);
     this.throwIfStopping();
-    await navigateToTarget(this.cdp, this.config, this.store, this.chrome, log);
+    this.documentRequestId = await navigateToTarget(
+      this.cdp,
+      this.config,
+      this.store,
+      this.chrome,
+      log
+    );
     this.throwIfStopping();
   }
 

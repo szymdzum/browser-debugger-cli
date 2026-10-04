@@ -26,6 +26,14 @@ void describe('URL utility contracts', () => {
     assert.equal(dataResult.valid, true);
   });
 
+  void it('rejects unsupported schemes and hostnames without letters or digits', () => {
+    assert.equal(validateUrl('ftp://example.com').valid, false);
+    assert.equal(validateUrl('ws://example.com').valid, false);
+    assert.equal(validateUrl('-').valid, false);
+    assert.equal(validateUrl('localhost:3000').valid, true);
+    assert.equal(validateUrl('HTTPS://example.com').valid, true);
+  });
+
   void it('rejects malformed protocols before normalization', () => {
     const result = validateUrl('ht!tp://example.com');
     assert.equal(result.valid, false);

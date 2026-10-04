@@ -132,6 +132,14 @@ export function validateUrl(url: string): ValidationResult {
     );
   }
 
+  const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(url)?.[1]?.toLowerCase();
+  if (scheme && !VALID_PROTOCOLS.includes(`${scheme}:` as (typeof VALID_PROTOCOLS)[number])) {
+    return invalid(
+      `Unsupported protocol: '${scheme}:'`,
+      'bdg opens http://, https://, file://, about:, chrome:, and data: URLs'
+    );
+  }
+
   const normalized = normalizeUrl(url);
 
   const urlLower = url.toLowerCase();
@@ -175,7 +183,8 @@ export function validateUrl(url: string): ValidationResult {
       );
     }
 
-    if ((parsed.protocol === 'http:' || parsed.protocol === 'https:') && !parsed.hostname) {
+    const isWeb = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    if (isWeb && !/[a-z0-9]/i.test(parsed.hostname)) {
       return invalid(
         `Invalid URL format: '${url}' (missing hostname)`,
         'URLs must include a valid hostname, e.g.: http://example.com'

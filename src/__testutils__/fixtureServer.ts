@@ -68,6 +68,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end();
       return;
     }
+    if (req.url === '/error-page') {
+      res.writeHead(500, { 'Content-Type': 'text/html' });
+      res.end('<h1>Internal error</h1>');
+      return;
+    }
     if (req.url === '/api/test') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok' }));

@@ -87,6 +87,8 @@ export interface StartSessionResponseData {
   targetUrl: string;
   /** Target page title. */
   targetTitle?: string;
+  /** HTTP status of the page's main document, when known. */
+  documentStatus?: number;
   /** True if a stale session was auto-recovered before this one started. */
   recovered?: boolean;
   /** Target URL or ws URL of the stale session that was recovered, if recorded. */

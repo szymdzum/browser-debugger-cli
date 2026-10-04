@@ -175,12 +175,13 @@ function describeStartFailure(
     };
   }
   const message = response.message ?? 'Unknown error';
+  const [error = message, ...hint] = message.split('\n');
   return {
     ok: false,
-    error: message,
-    human: genericError(`Daemon error: ${message}`),
+    error,
+    human: genericError(message),
     exitCode,
-    details,
+    details: { ...details, ...(hint.length > 0 && { suggestion: hint.join('\n') }) },
   };
 }
 
@@ -209,6 +210,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
     const result = {
       targetUrl: data.targetUrl,
       ...(data.targetTitle !== undefined && { targetTitle: data.targetTitle }),
+      ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
       port: data.port,
       chromePid: data.chromePid,
       daemonPid: data.daemonPid,
@@ -217,7 +219,12 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
   } else if (options.quiet) {
     console.error(`Session started: ${data.targetUrl}`);
   } else {
-    console.error(landingPage({ url: data.targetUrl }));
+    console.error(
+      landingPage({
+        url: data.targetUrl,
+        ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
+      })
+    );
   }
   process.exit(EXIT_CODES.SUCCESS);
 }
