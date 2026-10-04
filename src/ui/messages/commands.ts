@@ -36,10 +36,11 @@ export function orphanedDaemonsCleanedMessage(count: number): string {
 /**
  * Warning shown when a click falls back from mouse events to `el.click()`.
  *
+ * @param reason - Why the mouse could not reach the element (e.g. "covered by another element")
  * @returns Warning text
  */
-export function domClickFallbackWarning(): string {
-  return 'Element is covered or has no size; dispatched a DOM click instead of mouse events';
+export function domClickFallbackWarning(reason: string | null | undefined): string {
+  return `Element is ${reason ?? 'not reachable by the mouse'}; dispatched a DOM click() instead of mouse events (a user could not click it like this)`;
 }
 
 /**

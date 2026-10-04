@@ -116,4 +116,27 @@ void describe('DOM interactions', () => {
     await bdg(['dom', 'click', '#submit']);
     assert.equal(await evaluate('window.submits'), before + 1);
   });
+
+  void it('submits a form element and refuses invalid forms', async () => {
+    const before = (await evaluate('window.submits')) as number;
+    await evaluate(
+      "document.getElementById('name').required = true; document.getElementById('name').value = ''; 1"
+    );
+    assert.match(await bdg(['dom', 'submit', '#form'], 81), /invalid fields/);
+    assert.equal(await evaluate('window.submits'), before);
+
+    await evaluate("document.getElementById('name').required = false; 1");
+    await bdg(['dom', 'submit', '#form', '--wait-network', '0']);
+    assert.equal(await evaluate('window.submits'), before + 1);
+    await bdg(['dom', 'submit', '#editor'], 81);
+  });
+
+  void it('rejects inputs a user could not perform', async () => {
+    assert.match(await bdg(['dom', 'pressKey', '#menu', 'a'], 81), /cannot receive keyboard focus/);
+    await bdg(['dom', 'pressKey', '#name', 'a', '--modifiers', 'bogus'], 81);
+    assert.match(await bdg(['dom', 'fill', '#agree', 'maybe'], 81), /Expected true or false/);
+    await bdg(['dom', 'fill', '#agree', 'yes']);
+    assert.equal(await evaluate("document.getElementById('agree').checked"), true);
+    assert.match(await bdg(['dom', 'click', '#off'], 81), /disabled/);
+  });
 });

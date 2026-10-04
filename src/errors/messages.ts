@@ -270,6 +270,21 @@ export function invalidSelectorError(selector: string, detail?: string): ErrorWi
 }
 
 /**
+ * The form was submitted but the wait for its result timed out.
+ *
+ * @param timeout - Timeout in ms
+ * @param waitNavigation - Whether a navigation was awaited
+ */
+export function submitTimeoutError(timeout: number, waitNavigation: boolean): ErrorWithSuggestion {
+  return {
+    message: `Form submitted, but timed out after ${timeout}ms waiting for ${waitNavigation ? 'navigation' : 'network idle'}`,
+    suggestion: waitNavigation
+      ? 'The form may not navigate (e.g. it submits via fetch); retry without --wait-navigation or with a larger --timeout'
+      : 'Increase --timeout, or use --wait-network 0 to return right after submitting',
+  };
+}
+
+/**
  * No element has the given node id.
  *
  * @param nodeId - Backend node id given with --node-id

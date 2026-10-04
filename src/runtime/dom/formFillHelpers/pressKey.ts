@@ -34,7 +34,7 @@ const FOCUS_ELEMENT_SCRIPT = `
 (function(selector, index) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector);
   if (allMatches.length === 0) {
-    return { success: false, error: 'No nodes found matching selector: ' + selector };
+    return { success: false, reason: 'not-found', error: 'Element not found: ' + selector };
   }
 
   let el;
@@ -42,6 +42,7 @@ const FOCUS_ELEMENT_SCRIPT = `
     if (index >= allMatches.length) {
       return {
         success: false,
+        reason: 'range',
         error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')'
       };
     }
@@ -50,15 +51,37 @@ const FOCUS_ELEMENT_SCRIPT = `
     el = allMatches[0];
   }
 
-  el.focus();
+  const pageLevel = el === document.body || el === document.documentElement;
+  if (!pageLevel) {
+    el.focus();
+    if (document.activeElement !== el && !el.contains(document.activeElement)) {
+      return {
+        success: false,
+        reason: 'not-focusable',
+        error: 'Element <' + el.tagName.toLowerCase() + '> cannot receive keyboard focus' + (el.disabled ? ' (it is disabled)' : '')
+      };
+    }
+  }
 
-  return {
-    success: true,
-    selector: selector,
-    elementType: el.tagName.toLowerCase(),
-    focused: document.activeElement === el
-  };
+  return { success: true, selector: selector, elementType: el.tagName.toLowerCase() };
 })`;
+
+/** Exit codes and suggestions for focus failures, by reason. */
+const FOCUS_FAILURES: Record<string, { exitCode: number; suggestion: string }> = {
+  'not-found': {
+    exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+    suggestion: 'Verify the selector matches a focusable element',
+  },
+  range: {
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+    suggestion: 'Use an --index within the matches',
+  },
+  'not-focusable': {
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+    suggestion:
+      'Target an input, textarea, button, link or [tabindex] element; use "body" for page-level keys like Escape',
+  },
+};
 
 /**
  * Press a key on an element: focus it, then dispatch a real keyDown/keyUp
@@ -85,7 +108,8 @@ export async function pressKeyElement(
   }
 
   const times = options.times ?? 1;
-  const modifierFlags = parseModifiers(options.modifiers);
+  const implicitShift = /^[A-Z]$/.test(keyName) ? MODIFIER_FLAGS.shift : 0;
+  const modifierFlags = parseModifiers(options.modifiers) | implicitShift;
   const indexArg = options.index ?? 'null';
   const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
 
@@ -111,15 +135,18 @@ export async function pressKeyElement(
 
     const focusResult = focusCdpResponse.result?.value as {
       success: boolean;
+      reason?: string;
       error?: string;
       elementType?: string;
     };
 
     if (!focusResult?.success) {
+      const failure = FOCUS_FAILURES[focusResult?.reason ?? ''];
       return {
         success: false,
         error: focusResult?.error ?? 'Failed to focus element',
         selector,
+        ...(failure && { exitCode: failure.exitCode, suggestion: failure.suggestion }),
       };
     }
 

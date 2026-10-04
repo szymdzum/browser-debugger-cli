@@ -47,8 +47,6 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
   action: string;
   /** Fallback suggestion when the result reports failure without one. */
   failureSuggestion: string;
-  /** Optional per-command exit code mapping based on result.error text. */
-  mapExitCode?: (result: Res) => number | undefined;
 }
 
 /**
@@ -58,8 +56,7 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
 export async function runElementCommand<Req, Res extends ResultPayload>(
   options: ElementCommandOptions<Req, Res>
 ): Promise<CommandResult<Omit<Res, 'success'>>> {
-  const { selectorOrIndex, index, buildRequest, call, action, failureSuggestion, mapExitCode } =
-    options;
+  const { selectorOrIndex, index, buildRequest, call, action, failureSuggestion } = options;
 
   const target = await DomElementResolver.getInstance().resolve(selectorOrIndex, index);
 
@@ -92,9 +89,7 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
   const result = response.data;
 
   if (!result.success) {
-    const mapped = mapExitCode?.(result);
     const exitCode =
-      mapped ??
       result.exitCode ??
       (result.error?.includes('not found')
         ? EXIT_CODES.RESOURCE_NOT_FOUND

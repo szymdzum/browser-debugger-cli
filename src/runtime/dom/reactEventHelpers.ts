@@ -27,7 +27,7 @@ export const REACT_FILL_SCRIPT = `
   if (allMatches.length === 0) {
     return { 
       success: false, 
-      error: 'Element not found',
+      error: 'Element not found: ' + selector,
       selector: selector
     };
   }
@@ -110,7 +110,19 @@ export const REACT_FILL_SCRIPT = `
   } else if (inputType === 'checkbox' || inputType === 'radio') {
     // Toggle through a click, like a user: frameworks (React) track checkable
     // state via click events and revert a programmatic \`checked\` assignment
-    const shouldCheck = value === 'true';
+    const normalized = String(value).trim().toLowerCase();
+    const truthy = ['true', '1', 'yes', 'on', 'checked'];
+    const falsy = ['false', '0', 'no', 'off', 'unchecked'];
+    if (!truthy.includes(normalized) && !falsy.includes(normalized)) {
+      return {
+        success: false,
+        error: 'Expected true or false for a ' + inputType + ', got "' + value + '"',
+        elementType: tagName,
+        inputType: inputType,
+        suggestion: 'Use true/false (also yes/no, on/off, 1/0)'
+      };
+    }
+    const shouldCheck = truthy.includes(normalized);
     if (inputType === 'radio' && !shouldCheck) {
       return {
         success: false,
@@ -146,6 +158,16 @@ export const REACT_FILL_SCRIPT = `
     const setter = tagName === 'textarea' 
       ? nativeTextAreaValueSetter 
       : nativeInputValueSetter;
+
+    if (el.maxLength > 0 && value.length > el.maxLength) {
+      return {
+        success: false,
+        error: 'Value is ' + value.length + ' characters; the field accepts at most ' + el.maxLength,
+        elementType: tagName,
+        inputType: inputType || null,
+        suggestion: 'Shorten the value (a user could not type more than maxlength characters)'
+      };
+    }
     
     if (setter) {
       setter.call(el, value);
@@ -155,6 +177,24 @@ export const REACT_FILL_SCRIPT = `
     
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const formats = {
+      number: 'a number' + (el.min && el.max ? ' between ' + el.min + ' and ' + el.max : ''),
+      date: 'YYYY-MM-DD',
+      time: 'HH:MM',
+      'datetime-local': 'YYYY-MM-DDTHH:MM',
+      month: 'YYYY-MM',
+      week: 'YYYY-Www'
+    };
+    if (formats[inputType] && value.trim() !== '' && el.value === '') {
+      return {
+        success: false,
+        error: 'The browser rejected "' + value + '" for a ' + inputType + ' field (it is now empty)',
+        elementType: tagName,
+        inputType: inputType,
+        suggestion: 'Expected ' + formats[inputType]
+      };
+    }
   }
   
   if (options.blur !== false) {
@@ -164,10 +204,10 @@ export const REACT_FILL_SCRIPT = `
   return {
     success: true,
     selector: selector,
-    value: el.value || el.textContent,
+    value: el.isContentEditable ? el.textContent : inputType === 'password' ? '********' : el.value,
     elementType: tagName,
     inputType: inputType || null,
-    checked: el.checked || undefined
+    checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined
   };
 })
 `;
@@ -192,7 +232,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   if (allMatches.length === 0) {
     return {
       success: false,
-      error: 'Element not found',
+      error: 'Element not found: ' + selector,
       selector: selector
     };
   }
@@ -237,6 +277,15 @@ export const CLICK_ELEMENT_SCRIPT = `
   }
   
   const tagName = el.tagName.toLowerCase();
+  if (el.disabled) {
+    return {
+      success: false,
+      error: 'Element is disabled',
+      selector: selector,
+      elementType: tagName,
+      suggestion: 'A user cannot click a disabled element; enable it first (it may depend on other fields)'
+    };
+  }
   const isClickable = (
     tagName === 'button' ||
     tagName === 'a' ||
@@ -256,6 +305,13 @@ export const CLICK_ELEMENT_SCRIPT = `
   const y = rect.top + rect.height / 2;
   const top = rect.width > 0 && rect.height > 0 ? document.elementFromPoint(x, y) : null;
   const hittable = top !== null && (top === el || el.contains(top));
+  const style = window.getComputedStyle(el);
+  let obstruction = null;
+  if (style.display === 'none' || el.getClientRects().length === 0) obstruction = 'not rendered (display: none)';
+  else if (style.visibility === 'hidden') obstruction = 'hidden (visibility: hidden)';
+  else if (style.pointerEvents === 'none') obstruction = 'not clickable (pointer-events: none)';
+  else if (rect.width === 0 || rect.height === 0) obstruction = 'zero-size';
+  else if (!hittable) obstruction = 'covered by another element';
 
   return {
     success: true,
@@ -266,7 +322,8 @@ export const CLICK_ELEMENT_SCRIPT = `
     selectedIndex: typeof index === 'number' ? index : undefined,
     x: x,
     y: y,
-    hittable: hittable
+    hittable: hittable,
+    obstruction: obstruction
   };
 })
 `;

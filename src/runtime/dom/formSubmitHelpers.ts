@@ -2,13 +2,15 @@
  * Form submission helpers with smart network waiting.
  */
 
-import type { ClickResult } from './reactEventHelpers.js';
-
 import type { CDPConnection } from '@/connection/cdp.js';
-import { CDPConnectionError, CDPTimeoutError } from '@/connection/errors.js';
-import { trackInFlightRequests } from '@/connection/inFlightRequests.js';
+import { CDPTimeoutError } from '@/connection/errors.js';
+import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFlightRequests.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { submitTimeoutError } from '@/errors/messages.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
+import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
+import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import { clickElement } from './formFillHelpers/index.js';
 
@@ -29,31 +31,205 @@ export interface SubmitOptions {
 export type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 
 /**
- * Submit a form by clicking the submit button and waiting for completion.
+ * Page script deciding how to submit the target.
+ *
+ * A `<form>` is submitted with `requestSubmit()` (what pressing a submit
+ * button does); a submit button or other element inside a form is clicked
+ * with real mouse events by the caller. Fails, like a browser would refuse,
+ * when the form has invalid fields, and for elements that are neither a form
+ * nor a button.
+ */
+const PREPARE_SUBMIT_SCRIPT = `
+(function(selector, index) {
+  const matches = (${FIND_ELEMENTS_JS})(selector);
+  if (matches.length === 0) {
+    return { action: 'fail', reason: 'not-found', error: 'Element not found: ' + selector };
+  }
+  const el = typeof index === 'number' ? matches[index] : matches[0];
+  if (!el) {
+    return {
+      action: 'fail',
+      reason: 'range',
+      error: 'Index ' + index + ' out of range (found ' + matches.length + ' elements)'
+    };
+  }
+  const isForm = el.tagName === 'FORM';
+  const isButton = el.matches('button, input[type=submit], input[type=image], [role=button]');
+  const isSubmitter = el.matches('button:not([type]), button[type=submit], input[type=submit], input[type=image]');
+  const form = isForm ? el : el.form || el.closest('form');
+  if (!isForm && !isButton) {
+    return {
+      action: 'fail',
+      reason: 'not-submittable',
+      error: 'Element is neither a form nor a submit button: <' + el.tagName.toLowerCase() + '>'
+    };
+  }
+  if ((isForm || isSubmitter) && form && !form.noValidate && !el.formNoValidate && !form.checkValidity()) {
+    const invalid = Array.from(form.elements)
+      .filter((f) => f.willValidate && !f.checkValidity())
+      .map((f) => (f.name || f.id || f.tagName.toLowerCase()) + ': ' + f.validationMessage);
+    return { action: 'fail', reason: 'invalid', error: 'Form has invalid fields - ' + invalid.join('; ') };
+  }
+  if (isForm) {
+    el.requestSubmit();
+    return { action: 'submitted' };
+  }
+  return { action: 'click' };
+})`;
+
+interface PrepareResult {
+  action: 'submitted' | 'click' | 'fail';
+  reason?: 'not-found' | 'range' | 'not-submittable' | 'invalid';
+  error?: string;
+}
+
+const FAILURE_EXIT_CODES: Record<NonNullable<PrepareResult['reason']>, number> = {
+  'not-found': EXIT_CODES.RESOURCE_NOT_FOUND,
+  range: EXIT_CODES.INVALID_ARGUMENTS,
+  'not-submittable': EXIT_CODES.INVALID_ARGUMENTS,
+  invalid: EXIT_CODES.INVALID_ARGUMENTS,
+};
+
+const FAILURE_SUGGESTIONS: Record<NonNullable<PrepareResult['reason']>, string> = {
+  'not-found': 'Verify the selector matches a form or submit button',
+  range: 'Use an --index within the number of matches',
+  'not-submittable':
+    'Target the <form> or its submit button, or use "bdg dom click" for other elements',
+  invalid: 'Fill the listed fields first (see "bdg dom form" for their state)',
+};
+
+/**
+ * Watches navigation and network activity from before a submission is
+ * triggered, so fast navigations are not missed.
+ */
+class SubmissionWatcher {
+  private navigated = false;
+  private onChange: (() => void) | null = null;
+  private readonly requests: InFlightRequests;
+  private readonly disposers: Array<() => void> = [];
+
+  /**
+   * @param cdp - CDP connection
+   */
+  constructor(cdp: CDPConnection) {
+    this.requests = trackInFlightRequests(cdp, () => this.onChange?.());
+    this.disposers.push(this.requests.dispose);
+    this.disposers.push(
+      cdp.on<Protocol.Page.FrameNavigatedEvent>('Page.frameNavigated', (params) => {
+        if (params.frame.parentId !== undefined) return;
+        this.navigated = true;
+        this.onChange?.();
+      })
+    );
+  }
+
+  /** Whether the main frame navigated since watching began. */
+  get navigationOccurred(): boolean {
+    return this.navigated;
+  }
+
+  /** Requests started since watching began. */
+  get networkRequests(): number {
+    return this.requests.started;
+  }
+
+  /**
+   * Wait until the network is idle for `waitNetwork` ms and, if requested,
+   * the main frame navigated.
+   *
+   * @param options - Wait conditions
+   * @returns Resolves when done
+   * @throws CDPTimeoutError after `timeout` ms
+   */
+  wait(options: { waitNavigation: boolean; waitNetwork: number; timeout: number }): Promise<void> {
+    const { waitNavigation, waitNetwork, timeout } = options;
+    return new Promise((resolve, reject) => {
+      let idle: NodeJS.Timeout | null = null;
+      const finish = (): void => {
+        clearTimeout(deadline);
+        if (idle) clearTimeout(idle);
+        this.onChange = null;
+      };
+      const deadline = setTimeout(() => {
+        finish();
+        reject(new CDPTimeoutError('Wait for completion timed out', new Error(`${timeout}ms`)));
+      }, timeout);
+      const check = (): void => {
+        const networkIdle = waitNetwork === 0 || this.requests.count === 0;
+        if (networkIdle && (!waitNavigation || this.navigated)) {
+          finish();
+          resolve();
+        }
+      };
+      const schedule = (): void => {
+        if (idle) clearTimeout(idle);
+        idle = null;
+        if (waitNetwork === 0) check();
+        else if (this.requests.count === 0) idle = setTimeout(check, waitNetwork);
+      };
+      this.onChange = schedule;
+      schedule();
+    });
+  }
+
+  /** Stop watching. */
+  dispose(): void {
+    this.disposers.forEach((dispose) => dispose());
+  }
+}
+
+/**
+ * Submit the target: `requestSubmit()` for a form, a real click otherwise.
  *
  * @param cdp - CDP connection
- * @param selector - CSS selector for submit button
+ * @param selector - Selector (or bound-node placeholder)
+ * @param index - Optional 0-based index among matches
+ * @returns Failure result, or null when the submission was triggered
+ */
+async function triggerSubmit(
+  cdp: CDPConnection,
+  selector: string,
+  index: number | undefined
+): Promise<SubmitResult | null> {
+  const response = (await cdp.send('Runtime.evaluate', {
+    expression: `(${PREPARE_SUBMIT_SCRIPT})('${escapeSelectorForJS(selector)}', ${index ?? 'null'})`,
+    returnByValue: true,
+    userGesture: true,
+  })) as { result?: { value?: PrepareResult } };
+  const prepared = response.result?.value;
+
+  if (!prepared || prepared.action === 'fail') {
+    const reason = prepared?.reason ?? 'not-found';
+    return {
+      success: false,
+      error: prepared?.error ?? 'Could not submit',
+      selector,
+      clicked: false,
+      exitCode: FAILURE_EXIT_CODES[reason],
+      suggestion: FAILURE_SUGGESTIONS[reason],
+    };
+  }
+  if (prepared.action === 'submitted') return null;
+
+  const click = await clickElement(cdp, selector, index !== undefined ? { index } : {});
+  if (click.success) return null;
+  return {
+    success: false,
+    error: click.error ?? 'Click failed',
+    selector,
+    clicked: false,
+    ...(click.exitCode !== undefined && { exitCode: click.exitCode }),
+    ...(click.suggestion !== undefined && { suggestion: click.suggestion }),
+  };
+}
+
+/**
+ * Submit a form and wait for the result.
+ *
+ * @param cdp - CDP connection
+ * @param selector - Form or submit button selector (or bound-node placeholder)
  * @param options - Submit options
- * @returns Promise resolving to submit result
- *
- * @throws CDPTimeoutError When timeout is reached
- * @throws CDPConnectionError When CDP communication fails
- *
- * @example
- * ```typescript
- * // Submit and wait for network idle
- * const result = await submitForm(cdp, 'button[type="submit"]', {
- *   waitNetwork: 1000,
- *   timeout: 10000
- * });
- * ```
- *
- * @remarks
- * This function:
- * 1. Clicks the submit button
- * 2. Monitors network activity
- * 3. Waits for network idle (no requests for N ms)
- * 4. Optionally waits for page navigation
+ * @returns Submit result
  */
 export async function submitForm(
   cdp: CDPConnection,
@@ -61,153 +237,38 @@ export async function submitForm(
   options: SubmitOptions = {}
 ): Promise<SubmitResult> {
   const { index, waitNavigation = false, waitNetwork = 1000, timeout = 10000 } = options;
-
   const startTime = Date.now();
-
-  const clickOptions: { index?: number } = {};
-  if (index !== undefined) {
-    clickOptions.index = index;
-  }
-  const clickResult: ClickResult = await clickElement(cdp, selector, clickOptions);
-
-  if (!clickResult.success) {
-    return {
-      success: false,
-      error: clickResult.error ?? 'Click failed',
-      selector: clickResult.selector ?? selector,
-      clicked: false,
-    };
-  }
-
-  if (waitNetwork === 0 && !waitNavigation) {
-    return {
-      success: true,
-      selector: selector,
-      clicked: true,
-      networkRequests: 0,
-      navigationOccurred: false,
-      waitTimeMs: Date.now() - startTime,
-    };
-  }
+  const watcher = new SubmissionWatcher(cdp);
 
   try {
-    const waitResult = await waitForCompletion(cdp, {
-      waitNavigation,
-      waitNetwork,
-      timeout,
-    });
+    const failure = await triggerSubmit(cdp, selector, index);
+    if (failure) return failure;
 
+    if (waitNetwork > 0 || waitNavigation) {
+      await watcher.wait({ waitNavigation, waitNetwork, timeout });
+    }
     return {
       success: true,
-      selector: selector,
+      selector,
       clicked: true,
-      networkRequests: waitResult.networkRequests,
-      navigationOccurred: waitResult.navigationOccurred,
+      networkRequests: watcher.networkRequests,
+      navigationOccurred: watcher.navigationOccurred,
       waitTimeMs: Date.now() - startTime,
     };
   } catch (error) {
-    if (error instanceof CDPTimeoutError) {
-      return {
-        success: false,
-        error: `Timeout waiting for form submission to complete (${timeout}ms)`,
-        selector: selector,
-        clicked: true,
-        waitTimeMs: Date.now() - startTime,
-      };
-    }
-    throw error;
+    if (!(error instanceof CDPTimeoutError)) throw error;
+    const err = submitTimeoutError(timeout, waitNavigation);
+    return {
+      success: false,
+      error: err.message,
+      selector,
+      clicked: true,
+      navigationOccurred: watcher.navigationOccurred,
+      waitTimeMs: Date.now() - startTime,
+      exitCode: EXIT_CODES.CDP_TIMEOUT,
+      suggestion: err.suggestion,
+    };
+  } finally {
+    watcher.dispose();
   }
-}
-
-/**
- * Wait for form submission to complete (network idle and/or navigation).
- *
- * @param cdp - CDP connection
- * @param options - Wait options
- * @returns Promise resolving to wait result
- *
- * @throws CDPTimeoutError When timeout is reached
- *
- * @internal
- */
-async function waitForCompletion(
-  cdp: CDPConnection,
-  options: {
-    waitNavigation: boolean;
-    waitNetwork: number;
-    timeout: number;
-  }
-): Promise<{ networkRequests: number; navigationOccurred: boolean }> {
-  const { waitNavigation, waitNetwork, timeout } = options;
-
-  let navigationOccurred = false;
-  let idleTimeout: NodeJS.Timeout | null = null;
-  let timeoutHandle: NodeJS.Timeout | null = null;
-
-  return new Promise((resolve, reject) => {
-    const cleanupFunctions: Array<() => void> = [];
-
-    timeoutHandle = setTimeout(() => {
-      cleanup();
-      reject(
-        new CDPTimeoutError(
-          'Wait for completion timed out',
-          new Error(`Timeout after ${timeout}ms`)
-        )
-      );
-    }, timeout);
-
-    const checkCompletion = (): void => {
-      const networkIdle = waitNetwork === 0 || requests.count === 0;
-      const navigationComplete = !waitNavigation || navigationOccurred;
-
-      if (networkIdle && navigationComplete) {
-        cleanup();
-        resolve({ networkRequests: requests.started, navigationOccurred });
-      }
-    };
-
-    const onRequestsChanged = (): void => {
-      if (idleTimeout) {
-        clearTimeout(idleTimeout);
-        idleTimeout = null;
-      }
-      if (requests.count === 0 && waitNetwork > 0) {
-        idleTimeout = setTimeout(checkCompletion, waitNetwork);
-      }
-    };
-
-    const onNavigated = (params: Protocol.Page.FrameNavigatedEvent): void => {
-      if (params.frame.parentId !== undefined) return;
-      navigationOccurred = true;
-      checkCompletion();
-    };
-
-    const requests = trackInFlightRequests(cdp, onRequestsChanged);
-    cleanupFunctions.push(requests.dispose);
-
-    if (waitNavigation) {
-      cleanupFunctions.push(
-        cdp.on<Protocol.Page.FrameNavigatedEvent>('Page.frameNavigated', onNavigated)
-      );
-    }
-
-    cdp.send('Network.enable').catch((error: Error) => {
-      cleanup();
-      reject(new CDPConnectionError('Failed to enable network monitoring', error));
-    });
-
-    if (waitNetwork === 0 || requests.count === 0) {
-      idleTimeout = setTimeout(() => {
-        checkCompletion();
-      }, waitNetwork);
-    }
-
-    function cleanup(): void {
-      if (idleTimeout) clearTimeout(idleTimeout);
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-
-      cleanupFunctions.forEach((cleanup) => cleanup());
-    }
-  });
 }

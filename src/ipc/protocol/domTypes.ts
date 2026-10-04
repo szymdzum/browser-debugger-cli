@@ -38,6 +38,8 @@ export interface ClickResult {
   suggestion?: string;
   /** How the click was performed: real mouse events, or el.click() fallback */
   method?: 'mouse' | 'dom';
+  /** Exit code for a failure */
+  exitCode?: number;
   /** Why the DOM fallback was used (element covered or without size) */
   warning?: string;
 }
@@ -54,6 +56,7 @@ export interface PressKeyResult {
   modifiers?: number;
   elementType?: string | undefined;
   suggestion?: string;
+  exitCode?: number;
 }
 
 /**
@@ -84,6 +87,7 @@ export interface SubmitResult {
   navigationOccurred?: boolean;
   waitTimeMs?: number;
   suggestion?: string;
+  exitCode?: number;
 }
 
 /**
