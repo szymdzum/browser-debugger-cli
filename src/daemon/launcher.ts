@@ -28,7 +28,7 @@ import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
 const log = createLogger('launcher');
 
 const DAEMON_READY_TIMEOUT_MS = 5000;
-const DAEMON_READY_POLL_MS = 100;
+const DAEMON_READY_POLL_MS = 20;
 
 /**
  * Ensure a daemon is running, spawning one if needed.

@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Faster CLI start** - `dist/index.js` is bundled into one file (esbuild), so every `bdg` command starts about 40 ms sooner (about 100 ms → 60 ms on Node 22); the daemon stays as tsc output
+- **Faster CLI start** - `dist/index.js` and `dist/daemon.js` are bundled into one file each (esbuild); `node:http` and the CDP protocol schema are loaded only by the commands that need them. A `bdg` command starts in about 48 ms instead of 100 ms (Node 22)
+- **Faster sessions** - Page readiness waits for network and DOM quiet at the same time (not one after the other), and Chrome's start and exit are checked every 50 ms instead of every 500 ms: on a simple page `bdg <url>` takes about 1.0 s instead of 1.3 s, `page navigate` 0.43 s instead of 0.65 s, `bdg stop` 0.15 s instead of 0.62 s
 - **`status --json`** - The internal `domVersion` counter is no longer reported (query caches no longer depend on it)
 - **Node versions** - CI runs unit/contract and smoke tests on Node 22, 24 and 26 (build and lint stay on 22, the minimum); Docker images use `node:24-alpine`; `@types/node` matches the minimum supported Node (22) so APIs missing there fail type-checking instead of at runtime. Dependabot no longer proposes major bumps of `@types/node` or TypeScript (typescript-eslint does not support TypeScript 7 yet)
 

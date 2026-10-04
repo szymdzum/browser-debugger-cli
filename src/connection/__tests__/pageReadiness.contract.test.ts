@@ -455,19 +455,19 @@ function createMockCDP(options: MockCDPOptions = {}): MockCDPWithEmit {
           });
         }
 
-        // Mock MutationObserver injection
-        if (expression?.includes('MutationObserver')) {
-          return Promise.resolve({ result: {} });
-        }
-
-        // Mock DOM stability check
-        if (expression?.includes('__bdg_lastMutation')) {
+        // Mock DOM stability check (it re-installs the observer if the page navigated)
+        if (expression?.includes('Date.now() - window.__bdg_lastMutation')) {
           const timeSinceLastMutation = domStable ? 500 : 0; // 500ms > 300ms threshold
           return Promise.resolve({
             result: {
               value: timeSinceLastMutation,
             },
           });
+        }
+
+        // Mock MutationObserver injection
+        if (expression?.includes('MutationObserver')) {
+          return Promise.resolve({ result: {} });
         }
 
         return Promise.resolve({ result: {} });

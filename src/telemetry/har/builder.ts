@@ -2,7 +2,8 @@
  * HAR (HTTP Archive) builder for transforming network telemetry to HAR 1.2 format.
  */
 
-import { STATUS_CODES } from 'node:http';
+import type * as Http from 'node:http';
+import { createRequire } from 'node:module';
 
 import type {
   HAR,
@@ -21,6 +22,13 @@ import type {
 
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketFrame } from '@/types.js';
+
+/**
+ * Loads Node builtins on first use: importing `node:http` in an ES module
+ * reads all its exports, which loads undici and zlib (about 8 ms of every CLI
+ * start), though only `network har` needs the status texts.
+ */
+const requireBuiltin = createRequire(import.meta.url);
 
 /**
  * Metadata for HAR generation.
@@ -541,5 +549,5 @@ function estimateResponseHeadersSize(
  */
 function getStatusText(status: number | undefined): string {
   if (!status) return '';
-  return STATUS_CODES[status] ?? '';
+  return (requireBuiltin('node:http') as typeof Http).STATUS_CODES[status] ?? '';
 }

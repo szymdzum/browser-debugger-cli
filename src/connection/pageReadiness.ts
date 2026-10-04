@@ -2,10 +2,9 @@
  * Smart page readiness detection using fixed thresholds
  *
  * This module provides page load detection that works for most page types
- * without configuration. It uses a three-phase approach:
+ * without configuration. It uses a two-phase approach:
  * 1. Load event (baseline readiness)
- * 2. Network stability (200ms idle threshold)
- * 3. DOM stability (300ms idle threshold)
+ * 2. Network (200ms idle) and DOM (300ms without mutations) quiet at once
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -23,8 +22,8 @@ const NETWORK_IDLE_THRESHOLD_MS = 200;
 const DOM_STABLE_THRESHOLD_MS = 300;
 /** Interval for checking deadline expiration in milliseconds */
 const DEADLINE_CHECK_INTERVAL_MS = 100;
-/** Interval for checking network activity in milliseconds */
-const NETWORK_CHECK_INTERVAL_MS = 50;
+/** Interval for checking network and DOM activity in milliseconds */
+const QUIET_CHECK_INTERVAL_MS = 50;
 
 /**
  * Options for page readiness detection
@@ -42,8 +41,8 @@ export interface PageReadinessOptions {
  *
  * Strategy (always applied):
  * 1. Wait for load event (baseline readiness)
- * 2. Wait for network to stabilize (200ms idle threshold)
- * 3. Wait for DOM to stabilize (300ms idle threshold)
+ * 2. Wait for the network (200ms idle) and the DOM (300ms without
+ *    mutations) to be quiet at the same time
  *
  * Uses fixed thresholds that work well for most pages.
  * No framework detection, no configuration needed.
@@ -72,10 +71,8 @@ export async function waitForPageReady(
     await waitForLoadEvent(cdp, deadline);
     log.info('Load event fired');
 
-    const networkIdleMs = await waitForNetworkStable(cdp, deadline);
+    const { networkIdleMs, domIdleMs } = await waitForQuiet(cdp, deadline);
     log.info(`Network stable (${networkIdleMs}ms idle)`);
-
-    const domIdleMs = await waitForDOMStable(cdp, deadline);
     log.info(`DOM stable (${domIdleMs}ms idle)`);
 
     log.info('Page ready');
@@ -147,126 +144,83 @@ async function waitForLoadEvent(cdp: CDPConnection, deadline: number): Promise<v
 }
 
 /**
- * Wait for network to stabilize
+ * Page script tracking DOM mutations until {@link REMOVE_MUTATION_OBSERVER_JS}.
+ * Installs only once per document: a page that navigated itself (a redirect
+ * right after load) gets a new observer, its quiet time counted from then.
+ */
+const INSTALL_MUTATION_OBSERVER_JS = `
+  if (!window.__bdg_observer) {
+    window.__bdg_lastMutation = Date.now();
+    window.__bdg_observer = new MutationObserver(() => {
+      window.__bdg_lastMutation = Date.now();
+    });
+    window.__bdg_observer.observe(document.body ?? document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true
+    });
+  }
+`;
+
+const REMOVE_MUTATION_OBSERVER_JS = `
+  window.__bdg_observer?.disconnect();
+  delete window.__bdg_observer;
+  delete window.__bdg_lastMutation;
+`;
+
+/**
+ * Wait until the network and the DOM are both quiet: no request in flight
+ * for 200 ms and no DOM mutation for 300 ms (hydration, client rendering,
+ * lazy-loaded resources and API calls all show up in one or the other).
  *
- * Uses a fixed 200ms idle threshold which works well for most pages:
- * - Fast enough for quick sites (avoids unnecessary waiting)
- * - Patient enough for API-heavy apps (catches late requests)
- * - Simpler and more predictable than adaptive learning
- *
- * Network is considered stable when there are zero active requests
- * for at least 200ms continuously.
- *
- * Why this works:
- * - Catches initial request bursts (CSS, JS, images)
- * - Waits for lazy-loaded resources
- * - Detects API calls triggered by hydration
- * - Framework-agnostic - based on actual network activity
+ * Both are watched at once, so a page that is already quiet is ready after
+ * 300 ms, not after 200 ms and then another 300 ms.
  *
  * @param cdp - CDP connection
  * @param deadline - Timestamp when to timeout
- * @returns Actual idle duration detected
+ * @returns How long each has been quiet
  * @throws Error if deadline exceeded
  */
-async function waitForNetworkStable(cdp: CDPConnection, deadline: number): Promise<number> {
+async function waitForQuiet(
+  cdp: CDPConnection,
+  deadline: number
+): Promise<{ networkIdleMs: number; domIdleMs: number }> {
   await cdp.send('Network.enable');
-
   const requests = trackInFlightRequests(cdp);
 
   try {
+    await cdp.send('Runtime.evaluate', { expression: INSTALL_MUTATION_OBSERVER_JS });
     while (Date.now() < deadline) {
-      if (requests.count === 0) {
-        const idleTime = Date.now() - requests.lastActivity;
-        if (idleTime >= NETWORK_IDLE_THRESHOLD_MS) {
-          return idleTime; // Success!
-        }
+      const networkIdleMs = requests.count === 0 ? Date.now() - requests.lastActivity : 0;
+      if (networkIdleMs >= NETWORK_IDLE_THRESHOLD_MS) {
+        const domIdleMs = await msSinceLastMutation(cdp);
+        if (domIdleMs >= DOM_STABLE_THRESHOLD_MS) return { networkIdleMs, domIdleMs };
       }
-
-      await delay(NETWORK_CHECK_INTERVAL_MS);
+      await delay(QUIET_CHECK_INTERVAL_MS);
     }
-
-    throw new Error('Network stability timeout');
+    throw new Error('Page stability timeout');
   } finally {
     requests.dispose();
-  }
-}
-
-/**
- * Wait for DOM to stabilize
- *
- * Uses a MutationObserver to detect when the DOM stops changing.
- * DOM is considered stable when there are no mutations for 300ms continuously.
- *
- * HOW IT WORKS:
- * 1. Inject MutationObserver into page to track all DOM changes
- * 2. Monitor childList, attributes, subtree, and characterData changes
- * 3. Wait for 300ms of continuous no-change activity
- * 4. Clean up observer when complete
- *
- * Why this works:
- * - SSR hydration causes DOM mutations (React, Vue, Svelte)
- * - Client-side rendering creates DOM elements
- * - When mutations stop, framework initialization is complete
- * - 300ms is long enough to catch batched updates, short enough to be responsive
- *
- * Framework-agnostic - detects actual mutations regardless of framework.
- *
- * @param cdp - CDP connection
- * @param deadline - Timestamp when to timeout
- * @returns Actual stable duration detected
- * @throws Error if deadline exceeded
- */
-async function waitForDOMStable(cdp: CDPConnection, deadline: number): Promise<number> {
-  await cdp.send('Runtime.evaluate', {
-    expression: `
-      window.__bdg_mutations = 0;
-      window.__bdg_lastMutation = Date.now();
-
-      const observer = new MutationObserver(() => {
-        window.__bdg_mutations++;
-        window.__bdg_lastMutation = Date.now();
-      });
-
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        characterData: true
-      });
-
-      window.__bdg_observer = observer;
-    `,
-  });
-
-  try {
-    while (Date.now() < deadline) {
-      const checkResult = (await cdp.send('Runtime.evaluate', {
-        expression: 'Date.now() - window.__bdg_lastMutation',
-        returnByValue: true,
-      })) as Protocol.Runtime.EvaluateResponse;
-
-      const timeSinceLastMutation = (checkResult.result.value as number) ?? 0;
-
-      if (timeSinceLastMutation >= DOM_STABLE_THRESHOLD_MS) {
-        return timeSinceLastMutation; // Success!
-      }
-
-      await delay(DEADLINE_CHECK_INTERVAL_MS);
-    }
-
-    throw new Error('DOM stability timeout');
-  } finally {
     await cdp
-      .send('Runtime.evaluate', {
-        expression: `
-        window.__bdg_observer?.disconnect();
-        delete window.__bdg_observer;
-        delete window.__bdg_mutations;
-        delete window.__bdg_lastMutation;
-      `,
-      })
+      .send('Runtime.evaluate', { expression: REMOVE_MUTATION_OBSERVER_JS })
       .catch((error) => {
         log.debug(`Failed to clean up DOM observer: ${getErrorMessage(error)}`);
       });
   }
+}
+
+/**
+ * Time since the page's DOM last changed.
+ *
+ * @param cdp - CDP connection
+ * @returns Milliseconds since the last mutation (0 when unknown)
+ */
+async function msSinceLastMutation(cdp: CDPConnection): Promise<number> {
+  const check = (await cdp.send('Runtime.evaluate', {
+    expression: `${INSTALL_MUTATION_OBSERVER_JS}; Date.now() - window.__bdg_lastMutation`,
+    returnByValue: true,
+  })) as Protocol.Runtime.EvaluateResponse;
+  const value: unknown = check.result.value;
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
