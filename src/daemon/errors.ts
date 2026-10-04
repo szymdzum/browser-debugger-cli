@@ -68,3 +68,23 @@ export class DaemonStartupError extends DaemonError {
     super(message, code, EXIT_CODES.SOFTWARE_ERROR);
   }
 }
+
+/**
+ * The session directory cannot hold the daemon's files.
+ */
+export class SessionDirError extends DaemonError {
+  public override readonly name = 'SessionDirError';
+
+  /**
+   * @param message - What is wrong with the directory
+   * @param suggestion - How to fix it
+   * @param exitCode - 82 for permissions, 103 otherwise
+   */
+  constructor(
+    message: string,
+    public readonly suggestion: string,
+    exitCode: number = EXIT_CODES.SESSION_FILE_ERROR
+  ) {
+    super(message, 'SESSION_DIR_UNUSABLE', exitCode);
+  }
+}

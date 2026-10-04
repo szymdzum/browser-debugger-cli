@@ -47,6 +47,10 @@ export function sessionAlreadyRunningError(
   );
 }
 
+/** What to do when `bdg <url>` finds a session already running */
+export const ALREADY_RUNNING_SUGGESTION =
+  'Use the running session (bdg status), or stop it first: bdg stop && bdg <url>';
+
 /**
  * Human-readable description of a bdg-launched Chrome (as opposed to one
  * reached via `--chrome-ws-url`). Used in mismatch errors where the active
@@ -322,6 +326,128 @@ export function emptyOutputPathError(): ErrorWithSuggestion {
   return {
     message: 'The output path is empty',
     suggestion: 'Give a file name, e.g. output.png or capture.har',
+  };
+}
+
+/**
+ * Start options given without the URL to open.
+ */
+export function missingStartUrlError(): ErrorWithSuggestion {
+  return {
+    message: 'Missing URL to open',
+    suggestion: 'Put the URL first, e.g. bdg localhost:3000 --port 9333',
+  };
+}
+
+/**
+ * `-u` / `--user-data-dir` given something that is not a directory path.
+ *
+ * @param value - What was given
+ * @param reason - Why it cannot be used
+ */
+export function invalidUserDataDirError(value: string, reason: string): ErrorWithSuggestion {
+  return {
+    message: `Invalid --user-data-dir "${value}": ${reason}`,
+    suggestion:
+      'Give a directory for the Chrome profile, e.g. -u ./profile (it is created if missing)',
+  };
+}
+
+/** Fix for an unusable session directory */
+const SESSION_DIR_SUGGESTION =
+  'Set BDG_SESSION_DIR to a short, writable directory, e.g. BDG_SESSION_DIR=/tmp/bdg';
+
+/**
+ * The session directory exists but is not a directory.
+ *
+ * @param dir - Session directory
+ */
+export function sessionDirIsFileError(dir: string): ErrorWithSuggestion {
+  return { message: `Session directory ${dir} is a file`, suggestion: SESSION_DIR_SUGGESTION };
+}
+
+/**
+ * The session directory cannot be created or written.
+ *
+ * @param dir - Session directory
+ * @param reason - File-system error
+ */
+export function sessionDirNotWritableError(dir: string, reason: string): ErrorWithSuggestion {
+  return {
+    message: `Session directory ${dir} is not writable (${reason})`,
+    suggestion: SESSION_DIR_SUGGESTION,
+  };
+}
+
+/**
+ * The daemon socket path exceeds the OS limit for Unix sockets.
+ *
+ * @param socketPath - Socket path
+ * @param max - Longest path the OS accepts
+ */
+export function socketPathTooLongError(socketPath: string, max: number): ErrorWithSuggestion {
+  return {
+    message: `Session directory path is too long for the daemon socket (${socketPath.length} characters, at most ${max})`,
+    suggestion: SESSION_DIR_SUGGESTION,
+  };
+}
+
+/**
+ * The Chrome of `--chrome-ws-url` does not answer on its HTTP endpoint.
+ *
+ * @param endpoint - e.g. http://127.0.0.1:9222
+ * @param secure - Whether a wss: URL was given
+ */
+export function externalChromeUnreachableError(
+  endpoint: string,
+  secure: boolean
+): ErrorWithSuggestion {
+  return {
+    message: `Cannot reach the Chrome DevTools endpoint at ${endpoint}`,
+    suggestion: secure
+      ? 'Chrome itself serves ws:// only; use ws://host:port/... unless a TLS proxy is in front of it'
+      : 'Check that Chrome runs with --remote-debugging-port and is reachable from here',
+  };
+}
+
+/**
+ * The page id of a `--chrome-ws-url` page URL does not exist.
+ *
+ * @param id - Page id from the URL
+ * @param endpoint - e.g. http://127.0.0.1:9222
+ */
+export function externalPageNotFoundError(id: string, endpoint: string): ErrorWithSuggestion {
+  return {
+    message: `No page with id ${id} in the Chrome at ${endpoint}`,
+    suggestion: `List its pages: curl -s ${endpoint}/json/list`,
+  };
+}
+
+/**
+ * The browser id of a `--chrome-ws-url` browser URL is not this Chrome's.
+ *
+ * @param endpoint - e.g. http://127.0.0.1:9222
+ * @param actual - The Chrome's browser WebSocket URL
+ */
+export function externalBrowserIdMismatchError(
+  endpoint: string,
+  actual: string
+): ErrorWithSuggestion {
+  return {
+    message: `The Chrome at ${endpoint} has a different browser id (it was restarted, or the URL is from another Chrome)`,
+    suggestion: `Use its current URL: bdg <url> --chrome-ws-url ${actual}`,
+  };
+}
+
+/**
+ * Options that only apply when bdg launches Chrome, given with `--chrome-ws-url`.
+ *
+ * @param options - The conflicting options, e.g. ["--port", "-u"]
+ */
+export function chromeWsUrlConflictError(options: string[]): ErrorWithSuggestion {
+  return {
+    message: `${options.join(' and ')} cannot be used with --chrome-ws-url (the running Chrome already has its port and profile)`,
+    suggestion: 'Drop them, or let bdg launch Chrome without --chrome-ws-url',
   };
 }
 

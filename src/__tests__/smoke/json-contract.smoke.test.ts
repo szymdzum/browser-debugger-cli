@@ -126,9 +126,20 @@ void describe('JSON contract', () => {
       ['dom', 'click', 'button', '--index', 'abc', '--json'],
       ['tabs', '--json'],
       ['dom', 'screenshot', 'x.png', '--quality', '101', '--json'],
+      ['--port', '9333', '--json'],
+      [fixture.url, '-u', '/etc/hosts', '--json'],
+      [
+        fixture.url,
+        '--chrome-ws-url',
+        'ws://127.0.0.1:1/devtools/browser/x',
+        '--port',
+        '9333',
+        '--json',
+      ],
     ]) {
       await expectEnvelope(args, 81);
     }
+    for (const url of ['', 'javascript:alert(1)']) await expectEnvelope([url, '--json'], 80);
   });
 
   void it('delivers output larger than a pipe buffer to a slow reader', async () => {
@@ -233,10 +244,11 @@ void describe('JSON contract', () => {
     await expectEnvelope(['details', 'network', 'missing', '--json'], 83);
     const running = await expectEnvelope([fixture.url, '--headless', '--json'], 84);
     assert.ok(running.data === undefined);
-    assert.equal(
-      typeof (running as unknown as { existingSession?: unknown }).existingSession,
-      'object'
-    );
+    const existing = (running as unknown as { existingSession?: Record<string, unknown> })
+      .existingSession;
+    assert.equal(typeof existing?.['durationMs'], 'number');
+    assert.ok(!('errorCode' in running), 'internal error code is not printed');
+    assert.match(String((running as unknown as { suggestion?: string }).suggestion), /bdg stop/);
   });
 
   void it('passes option-like values after -- untouched', async () => {

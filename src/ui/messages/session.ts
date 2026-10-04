@@ -23,6 +23,25 @@ export interface LandingPageOptions {
   url: string;
   /** HTTP status of the main document (a warning is shown for 4xx/5xx) */
   documentStatus?: number;
+  /** When `--timeout` will stop the session */
+  autoStopAt?: Date;
+}
+
+/**
+ * Lines shown under the target in both the full and the quiet start output:
+ * an HTTP error of the page, and when the session stops by itself.
+ *
+ * @param options - Landing page options
+ * @returns Lines (empty when there is nothing to say)
+ */
+export function startNotices(options: LandingPageOptions): string[] {
+  const { documentStatus, autoStopAt } = options;
+  return [
+    ...(documentStatus !== undefined && documentStatus >= 400
+      ? [`⚠ The page responded with HTTP ${documentStatus}`]
+      : []),
+    ...(autoStopAt ? [`Auto-stop: at ${autoStopAt.toLocaleTimeString()} (--timeout)`] : []),
+  ];
 }
 
 /**
@@ -52,11 +71,8 @@ export interface LandingPageOptions {
  * ```
  */
 export function landingPage(options: LandingPageOptions): string {
-  const { url, documentStatus } = options;
-  const statusWarning =
-    documentStatus !== undefined && documentStatus >= 400
-      ? [`⚠ The page responded with HTTP ${documentStatus}`, '']
-      : [];
+  const { url } = options;
+  const notices = startNotices(options);
 
   return joinLines(
     '',
@@ -64,7 +80,7 @@ export function landingPage(options: LandingPageOptions): string {
     '',
     `Target: ${url}`,
     '',
-    ...statusWarning,
+    ...(notices.length > 0 ? [...notices, ''] : []),
     buildCommonTasksSection(),
     '',
     buildDomainCommandsSection(),

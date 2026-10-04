@@ -89,6 +89,31 @@ export async function fetchCDPTargets(
 }
 
 /**
+ * The browser-level DevTools WebSocket URL of a Chrome (`/json/version`).
+ *
+ * @param port - Chrome debugging port
+ * @param logger - Optional logger for debug output
+ * @param options - Host and HTTPS
+ * @returns The URL, or null if Chrome could not be reached
+ */
+export async function fetchBrowserWsUrl(
+  port: number,
+  logger?: Logger,
+  options?: Pick<FetchCDPTargetsOptions, 'host' | 'secure'>
+): Promise<string | null> {
+  const url = `${options?.secure ? 'https' : 'http'}://${options?.host ?? HTTP_LOCALHOST}:${port}/json/version`;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(CDP_HTTP_TIMEOUT_MS) });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { webSocketDebuggerUrl?: unknown };
+    return typeof data.webSocketDebuggerUrl === 'string' ? data.webSocketDebuggerUrl : null;
+  } catch (error) {
+    logger?.debug(`Chrome version request failed: ${getErrorMessage(error)} (${url})`);
+    return null;
+  }
+}
+
+/**
  * Fetch specific CDP target by ID from Chrome's HTTP API.
  *
  * Convenience wrapper around fetchCDPTargets that filters for a specific target ID.

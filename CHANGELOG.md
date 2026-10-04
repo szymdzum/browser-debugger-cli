@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Session start**
+  - Chrome exiting during startup is reported at once with what Chrome said (e.g. an unknown `--chrome-flags` value), exit 100, instead of after about 30 s as a refused connection with port advice; a profile already open in another Chrome says so
+  - Session directory problems are reported before the daemon starts: a file (103), not writable (82), or a path too long for the daemon socket (103), each with a fix
+  - `-u` without a path (`bdg <url> -u --json`) or pointing at a file exits 81 instead of creating a `--json` profile directory; `bdg ""` and `bdg --port 9333` without a URL give errors (also as JSON) instead of the help text
+  - `javascript:` URLs are refused as a start page (80); a URL with spaces suggests `%20` instead of quoting
+  - `--chrome-ws-url`: a URL without `/devtools/browser|page/<id>` is refused with a `curl …/json/version` hint for its own host; a stale browser id or unknown page id exits 83 naming the current one; an unreachable Chrome exits 101 (with a `wss:` hint); `--port`/`-u` with it exit 81
+  - `--timeout` is documented as counted from page load, and the start output shows when the session will stop (`autoStopAt` in JSON); `-q` keeps the HTTP error warning
+  - "Session already running" JSON: `existingSession.durationMs` (was `duration` in seconds), a `suggestion`, and no internal `errorCode`; an external Chrome reports `externalChrome: true` instead of `chromePid: 0`
+  - Chrome no longer receives `--remote-debugging-port` and the default flags twice
+  - `--headless` help says what the default depends on
+
 - **Interactions**
   - Clicks no longer take 5 s each once the page has opened another tab, and fills before the first click fire focus/blur events: the page is kept focused (focus emulation)
   - Interactions run one at a time per session: concurrent `pressKey` commands no longer type into each other's field

@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as chromeLauncher from 'chrome-launcher';
 
 import type { LaunchedChrome, Logger } from './types.js';
+import type { ChildProcess } from 'child_process';
 import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 
 import {
@@ -23,6 +24,7 @@ import { resolveChromeBinary } from './launcher/binaryResolver.js';
 import { buildChromeFlags } from './launcher/flagsBuilder.js';
 import { loadChromePrefs, ensureJSONCompatiblePrefs } from './launcher/preferencesLoader.js';
 import { reservePort } from './portReservation.js';
+import { markStartupLogs, watchStartupExit } from './startupExit.js';
 
 /**
  * Default logger instance for launcher (uses console).
@@ -126,12 +128,16 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   const chromeOptions = buildChromeOptions(options);
   const launcher = new chromeLauncher.Launcher(chromeOptions);
 
+  const startup = watchStartupExit(
+    () => (launcher as unknown as { chromeProcess?: ChildProcess }).chromeProcess,
+    markStartupLogs(userDataDir),
+    userDataDir
+  );
   try {
     const launchStart = Date.now();
-    await launcher.launch();
-
     logger.info('Waiting for Chrome to be ready...');
-    await launcher.waitUntilReady();
+    await Promise.race([launcher.launch(), startup.exited]);
+    startup.stop();
 
     const launchDurationMs = Date.now() - launchStart;
     logger.info(`✓ Chrome ready (${launchDurationMs}ms)`);
@@ -169,6 +175,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       },
     };
   } catch (error) {
+    startup.stop();
     launcher.kill();
     launcher.destroyTmp();
 
@@ -263,7 +270,7 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   return {
     logLevel: options.logLevel ?? DEFAULT_CHROME_LOG_LEVEL,
     handleSIGINT: options.handleSIGINT ?? DEFAULT_CHROME_HANDLE_SIGINT,
-    ignoreDefaultFlags: options.ignoreDefaultFlags ?? false,
+    ignoreDefaultFlags: true,
     chromeFlags: buildChromeFlags(options),
     userDataDir,
 

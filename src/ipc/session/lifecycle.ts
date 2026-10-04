@@ -104,6 +104,8 @@ export interface StartSessionResponse extends IPCMessage {
   data?: StartSessionResponseData;
   message?: string;
   errorCode?: IPCErrorCode;
+  /** Exit code when the failure has a more specific one than its error code */
+  exitCode?: number;
   existingSession?: {
     pid: number;
     targetUrl?: string;
