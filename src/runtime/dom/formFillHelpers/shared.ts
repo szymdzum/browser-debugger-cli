@@ -6,6 +6,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { invalidSelectorError } from '@/errors/messages.js';
+import { multipleMatchesWarning } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { detectSelectorQuoteDamage } from '@/utils/shellDetection.js';
 
@@ -14,6 +15,24 @@ import { detectSelectorQuoteDamage } from '@/utils/shellDetection.js';
  */
 export function escapeSelectorForJS(selector: string): string {
   return JSON.stringify(selector).slice(1, -1).replace(/'/g, "\\'");
+}
+
+/**
+ * Add a warning when the selector matched several elements and no index was
+ * given, so the caller knows which one was used. Keeps an existing warning.
+ *
+ * @param result - Action result with the number of matches
+ * @param index - The --index given, if any
+ * @param action - What was done, e.g. "scrolled to the first"
+ * @returns The result, with a warning when applicable
+ */
+export function withMultipleMatchesWarning<
+  T extends { matchCount?: number | undefined; warning?: string | undefined },
+>(result: T, index: number | undefined, action: string): T {
+  const count = result.matchCount ?? 0;
+  if (index !== undefined || count <= 1) return result;
+  const warning = multipleMatchesWarning(count, action);
+  return { ...result, warning: result.warning ? `${result.warning}; ${warning}` : warning };
 }
 
 /**

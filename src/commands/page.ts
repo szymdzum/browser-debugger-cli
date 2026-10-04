@@ -7,6 +7,7 @@ import type { Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
+import { javascriptNavigationError } from '@/errors/messages.js';
 import { pageNavigate } from '@/ipc/client.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
 import { OutputFormatter } from '@/ui/formatting.js';
@@ -27,16 +28,32 @@ interface PageCommandOptions extends BaseOptions {
  * @returns Text
  */
 function formatPageResult(result: PageNavigationResult): string {
-  return new OutputFormatter()
+  const fmt = new OutputFormatter()
     .text(`✓ ${PAGE_ACTION_DONE[result.action]}`)
     .keyValueList(
       [
         ['URL', result.url],
         ['Title', result.title],
+        ...(result.status !== undefined
+          ? [['Status', String(result.status)] as [string, string]]
+          : []),
       ],
       8
-    )
-    .build();
+    );
+  if (result.warning) fmt.text(`⚠ ${result.warning}`);
+  return fmt.build();
+}
+
+/**
+ * Whether a URL is a `javascript:` URL, which runs a script instead of
+ * loading a page (bdg points to `dom eval`; other schemes load normally).
+ *
+ * @param url - URL given
+ * @returns True for the javascript scheme
+ */
+function isScriptUrl(url: string): boolean {
+  const [scheme = ''] = url.trim().split(':', 1);
+  return url.includes(':') && scheme.toLowerCase() === 'javascript';
 }
 
 /**
@@ -53,6 +70,15 @@ async function runPageAction(
 ): Promise<void> {
   await runCommand(
     async () => {
+      if (url !== undefined && isScriptUrl(url)) {
+        const err = javascriptNavigationError();
+        return {
+          success: false,
+          error: err.message,
+          exitCode: EXIT_CODES.INVALID_URL,
+          errorContext: { suggestion: err.suggestion },
+        };
+      }
       if (url !== undefined) {
         const check = validateUrl(url);
         if (!check.valid) {

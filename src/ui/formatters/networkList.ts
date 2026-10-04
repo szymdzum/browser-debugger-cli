@@ -14,7 +14,8 @@ export interface NetworkListOptions {
   verbose?: boolean;
   last?: number;
   totalCount?: number;
-  follow?: boolean;
+  /** Requests matching the filters, before --last (defaults to totalCount) */
+  filteredCount?: number;
 }
 
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB'] as const;
@@ -87,20 +88,22 @@ function formatRequestLine(request: NetworkRequest, verbose: boolean, idWidth: n
  * Header line with how many requests are shown.
  *
  * @param showingCount - Requests listed
- * @param totalCount - Requests matching overall
- * @returns e.g. "NETWORK REQUESTS (last 10 of 42)"
+ * @param filteredCount - Requests matching the filters
+ * @param totalCount - Requests captured
+ * @returns e.g. "NETWORK REQUESTS (last 10 of 42)" or "NETWORK REQUESTS (21 matching, 240 in all)"
  */
-function buildHeader(showingCount: number, totalCount: number): string {
-  if (totalCount > showingCount) {
-    return `NETWORK REQUESTS (last ${showingCount} of ${totalCount})`;
+function buildHeader(showingCount: number, filteredCount: number, totalCount: number): string {
+  const shown = filteredCount > showingCount ? `last ${showingCount} of ` : '';
+  if (filteredCount < totalCount) {
+    return `NETWORK REQUESTS (${shown}${filteredCount} matching, ${totalCount} in all)`;
   }
-  return `NETWORK REQUESTS (${totalCount})`;
+  return `NETWORK REQUESTS (${shown}${totalCount})`;
 }
 
 function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkListOptions): string {
   const fmt = new OutputFormatter();
   const totalCount = options.totalCount ?? requests.length;
-  const header = buildHeader(requests.length, totalCount);
+  const header = buildHeader(requests.length, options.filteredCount ?? totalCount, totalCount);
 
   fmt.text(header);
   fmt.separator('─', SEPARATOR_WIDTH);

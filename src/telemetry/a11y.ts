@@ -257,6 +257,13 @@ function extractRole(rawNode: Protocol.Accessibility.AXNode): string {
 }
 
 /**
+ * Roles of text nodes: they repeat the name of the element they are in (a
+ * name search found every button three times) and are not elements that
+ * commands can act on. Left out unless the query asks for the role.
+ */
+const TEXT_ROLES = new Set(['statictext', 'inlinetextbox']);
+
+/**
  * Queries accessibility tree by pattern (role, name, description).
  *
  * Performs case-insensitive matching with AND logic for multiple fields.
@@ -280,7 +287,9 @@ function extractRole(rawNode: Protocol.Accessibility.AXNode): string {
 export function queryA11yTree(tree: A11yTree, pattern: A11yQueryPattern): A11yQueryResult {
   const matches: A11yNode[] = [];
 
+  const wantsText = pattern.role !== undefined && TEXT_ROLES.has(pattern.role.toLowerCase());
   for (const node of tree.nodes.values()) {
+    if (!wantsText && TEXT_ROLES.has(node.role.toLowerCase())) continue;
     if (matchesPattern(node, pattern)) {
       matches.push(node);
     }

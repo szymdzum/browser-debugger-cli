@@ -78,6 +78,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 204/304 responses no longer show "Error: net::ERR_ABORTED" in `peek -v`
   - `details network ""` exits 81; HAR path errors suggest a `.har` name; `--preset` help lists the presets; the `duration:` filter is in the reference
 
+- **Third deep test: DOM and page**
+  - `page navigate/reload/back/forward` report the document's HTTP status and warn on 4xx/5xx, on a URL that is a download, and on a server that has not answered within 15 s (instead of 110 after 30 s); `--no-wait` returns at once; `page back` from the first page exits 81 instead of landing on about:blank; `page navigate javascript:…` points to `dom eval`
+  - A command run while a navigation waits for the server says so (exit 102) instead of claiming a script kept the page busy and terminating its scripts
+  - `dom fill` warns when the field is hidden, inert or behind a modal dialog; `dom submit` refuses a form whose submit button is disabled (81); `dom hover` works on disabled elements (tooltips)
+  - `dom click/hover/pressKey/scroll` warn when the selector matched several elements, like `fill` did
+  - a11y queries leave out text nodes (each button was found three times, and acting on a text node failed); "Next steps" suggest fill or click by the first result's role
+  - `dom screenshot --follow`: `--limit 1` captures one frame, and an element that disappears ends the sequence with its error; element screenshots report the element's bounds in JSON
+  - `dom get --nth/--all` without `--raw` exits 81 (they were ignored); `cdp Page.close` is blocked (use `bdg stop`); a filtered `network list` header reads "21 matching, 240 in all"
+
 - **Smaller fixes**
   - `cdp`: an unknown domain gets a did-you-mean (`Netwrk` → `Network`); `bdg cdp Network --search cookie` searches that domain only; blocked methods (`Page.captureScreenshot`, `Browser.close`) show their bdg alternative as the example in `--describe`/`--search`
   - `dom a11y tree` (human) is indented by depth and leaves out text boxes, blank text, text repeating its parent and nameless layout wrappers, so the 50 lines show the page's structure

@@ -93,6 +93,16 @@ function treeLines(tree: A11yTree): { lines: string[]; truncated: boolean } {
   return { lines, truncated };
 }
 
+/** Roles whose elements take a value (the next step is fill, not click) */
+const FILLABLE_ROLES = new Set([
+  'textbox',
+  'searchbox',
+  'combobox',
+  'spinbutton',
+  'slider',
+  'listbox',
+]);
+
 /**
  * Format query result for human-readable output.
  *
@@ -126,11 +136,12 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
     fmt.text(index + formatA11yNodeOneLine(node)).blank();
   }
 
-  if (result.nodes[0]?.index !== undefined) {
+  const first = result.nodes[0];
+  if (first?.index !== undefined) {
+    const fillable = FILLABLE_ROLES.has(first.role.toLowerCase());
     fmt.section('Next steps:', [
       'Inspect:  bdg dom a11y describe 0',
-      'Click:    bdg dom click 0',
-      'Fill:     bdg dom fill 0 "<value>"',
+      fillable ? 'Fill:     bdg dom fill 0 "<value>"' : 'Click:    bdg dom click 0',
     ]);
   }
 

@@ -81,6 +81,10 @@ export interface PressKeyResult {
   elementType?: string | undefined;
   suggestion?: string;
   exitCode?: number;
+  /** Elements the selector matched */
+  matchCount?: number;
+  /** Set when the selector matched several elements */
+  warning?: string;
   /** Dialogs accepted while the command ran */
   dialogs?: DialogInfo[];
 }
@@ -99,6 +103,10 @@ export interface ScrollResult {
   scrolledBy?: { x: number; y: number };
   viewportSize?: { width: number; height: number };
   pageSize?: { width: number; height: number };
+  /** Elements the selector matched */
+  matchCount?: number;
+  /** Set when the selector matched several elements */
+  warning?: string;
 }
 
 /**

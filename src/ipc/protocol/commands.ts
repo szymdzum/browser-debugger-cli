@@ -308,10 +308,14 @@ export type PageAction = 'navigate' | 'reload' | 'back' | 'forward';
 export interface PageNavigationResult {
   /** What was done */
   action: PageAction;
-  /** URL of the page afterwards */
+  /** URL of the page afterwards (the requested URL with --no-wait) */
   url: string;
   /** Title of the page afterwards */
   title: string;
+  /** HTTP status of the new document, when one was loaded */
+  status?: number;
+  /** Something worth knowing: an HTTP error, a download, a page still loading */
+  warning?: string;
 }
 
 /**

@@ -24,6 +24,7 @@ import {
   escapeValueForJS,
   formatScriptExecutionError,
   throwIfInvalidSelector,
+  withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   REACT_FILL_SCRIPT,
@@ -36,7 +37,7 @@ import {
 } from '@/runtime/dom/reactEventHelpers.js';
 import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { domClickFallbackWarning } from '@/ui/messages/commands.js';
+import { POINTER_ACTION_DONE, domClickFallbackWarning } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -327,7 +328,11 @@ async function performClick(
       await cdp.send('Input.dispatchMouseEvent', event);
     }
     releaseClickTarget(cdp);
-    return { ...result, action, method: 'mouse' };
+    return withMultipleMatchesWarning<ClickResult>(
+      { ...result, action, method: 'mouse' },
+      result.selectedIndex,
+      `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`
+    );
   }
 
   const response = (await cdp.send('Runtime.evaluate', {
@@ -343,7 +348,11 @@ async function performClick(
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
-  return { ...result, action, method: 'dom', warning: domClickFallbackWarning(obstruction) };
+  return withMultipleMatchesWarning<ClickResult>(
+    { ...result, action, method: 'dom', warning: domClickFallbackWarning(obstruction) },
+    result.selectedIndex,
+    `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`
+  );
 }
 
 /**
@@ -355,7 +364,8 @@ export async function clickElement(
   options: { index?: number; action?: PointerAction } = {}
 ): Promise<ClickResult> {
   const indexArg = options.index ?? 'null';
-  const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+  const action = options.action ?? 'click';
+  const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg}, '${action}')`;
 
   try {
     const response = await cdp.send('Runtime.evaluate', {
@@ -386,7 +396,7 @@ export async function clickElement(
     }
 
     if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
-      return await performClick(cdp, cdpResponse.result.value, options.action ?? 'click');
+      return await performClick(cdp, cdpResponse.result.value, action);
     }
 
     const err = unexpectedResponseFormatError('ClickResult');

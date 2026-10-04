@@ -23,7 +23,16 @@ import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 export const REACT_FILL_SCRIPT = `
 (function(selector, value, options) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector);
-  let warning = null;
+  const warnings = [];
+  // Why a user could not reach the field (the value is still set, so scripted
+  // flows keep working, but the result may not be what a user would see)
+  const unreachableReason = (field) => {
+    if (field.closest('[inert]')) return 'inert';
+    const modal = field.ownerDocument.querySelector('dialog:modal');
+    if (modal && !modal.contains(field)) return 'behind an open modal dialog';
+    if (field.checkVisibility && !field.checkVisibility({ visibilityProperty: true, opacityProperty: true })) return 'hidden';
+    return null;
+  };
   // Why the browser did not take the value as given (it sanitizes instead of
   // throwing: bad dates become "", colors #000000, ranges are clamped)
   const rejectedValue = (field, type, text) => {
@@ -113,6 +122,11 @@ export const REACT_FILL_SCRIPT = `
       elementType: tagName,
       suggestion: 'Read-only fields cannot be filled'
     };
+  }
+
+  const unreachable = unreachableReason(el);
+  if (unreachable) {
+    warnings.push('The field is ' + unreachable + '; a user could not fill it (the value was set anyway)');
   }
 
   el.focus();
@@ -240,7 +254,7 @@ export const REACT_FILL_SCRIPT = `
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
     if (el.validity && (el.validity.rangeOverflow || el.validity.rangeUnderflow)) {
-      warning = 'The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed';
+      warnings.push('The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed');
     }
   }
   
@@ -262,9 +276,9 @@ export const REACT_FILL_SCRIPT = `
     inputType: inputType || null,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
     matchCount: allMatches.length,
-    warning: warning || (allMatches.length > 1 && typeof index !== 'number'
-      ? allMatches.length + ' elements match; filled the first (use --index or a more specific selector)'
-      : undefined)
+    warning: warnings.concat(allMatches.length > 1 && typeof index !== 'number'
+      ? [allMatches.length + ' elements match; filled the first (use --index or a more specific selector)']
+      : []).join('; ') || undefined
   };
 })
 `;
@@ -283,7 +297,7 @@ export const REACT_FILL_SCRIPT = `
  * When selector matches multiple elements without index, prioritizes visible ones.
  */
 export const CLICK_ELEMENT_SCRIPT = `
-(function(selector, index) {
+(function(selector, index, action) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector);
   
   if (allMatches.length === 0) {
@@ -347,7 +361,8 @@ export const CLICK_ELEMENT_SCRIPT = `
       suggestion: 'bdg dom fill ' + quote(target) + ' ' + quote(el.value || el.text.trim())
     };
   }
-  if (el.disabled || el.matches(':disabled')) {
+  // Disabled elements still get hover (tooltips often explain why)
+  if (action !== 'hover' && (el.disabled || el.matches(':disabled'))) {
     return {
       success: false,
       error: 'Element is disabled',

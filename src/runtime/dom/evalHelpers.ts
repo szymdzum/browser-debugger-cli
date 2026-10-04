@@ -2,11 +2,13 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  navigationPendingError,
   pageBusyError,
   promiseTimeoutError,
   scriptExecutionError,
   scriptTimeoutError,
 } from '@/errors/messages.js';
+import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
 import { formatRemoteObject } from '@/telemetry/remoteObject.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -352,12 +354,21 @@ async function withDeadline<T>(
 /**
  * Stop whatever JavaScript keeps the page busy (e.g. a loop started from a
  * timer, which `Runtime.evaluate`'s own timeout cannot reach: the script
- * waits behind it), so the page is usable again.
+ * waits behind it), so the page is usable again. A page that is not
+ * answering because a navigation still waits for the server is left alone.
  *
  * @param cdp - CDP connection
  * @returns The timeout error to report
  */
 async function terminatePageScripts(cdp: CDPConnection): Promise<CommandError> {
+  const pendingUrl = await pendingNavigationUrl(cdp).catch((error: unknown) => {
+    log.debug(`Could not check for a pending navigation: ${getErrorMessage(error)}`);
+    return undefined;
+  });
+  if (pendingUrl !== undefined) {
+    const err = navigationPendingError(pendingUrl);
+    return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+  }
   await cdp
     .send('Runtime.terminateExecution')
     .catch((error: unknown) => log.debug(`terminateExecution failed: ${getErrorMessage(error)}`));

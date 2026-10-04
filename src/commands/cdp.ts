@@ -464,6 +464,10 @@ const BLOCKED_CDP_METHODS: Record<string, { alternative: string; reason: string 
     alternative: 'bdg dom screenshot [path]',
     reason: 'Returns large base64 data that corrupts terminal sessions',
   },
+  'Page.close': {
+    alternative: 'bdg stop',
+    reason: 'Closes the page under the session, which then ends',
+  },
   'Browser.close': {
     alternative: 'bdg stop',
     reason: 'Closes Chrome under the session, which then ends without saving its state',

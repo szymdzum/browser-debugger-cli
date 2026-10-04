@@ -586,6 +586,27 @@ export function sessionEndedDuringCommandError(): ErrorWithSuggestion {
 }
 
 /**
+ * An option that only takes effect together with another one.
+ *
+ * @param option - Option given
+ * @param required - Option it needs
+ * @returns Message
+ */
+export function optionRequiresMessage(option: string, required: string): string {
+  return `${option} only works with ${required}; add ${required} or drop ${option}`;
+}
+
+/**
+ * `bdg page navigate javascript:…`: scripts run with dom eval.
+ */
+export function javascriptNavigationError(): ErrorWithSuggestion {
+  return {
+    message: 'page navigate opens pages; it does not run javascript: URLs',
+    suggestion: `Run the script in the page instead: bdg dom eval '...'`,
+  };
+}
+
+/**
  * A bare word given where a URL is expected, most likely a mistyped command.
  *
  * @param word - The argument
@@ -884,6 +905,19 @@ export function pageBusyError(timeoutMs: number): ErrorWithSuggestion {
   return {
     message: `The page was busy for ${Math.round(timeoutMs / 1000)}s (a script kept it running), so its scripts were terminated`,
     suggestion: 'The page is usable again; re-run the command',
+  };
+}
+
+/**
+ * The page did not answer because a navigation is still waiting for the
+ * server (Chrome holds commands for the page until the new document arrives).
+ *
+ * @param url - URL being loaded
+ */
+export function navigationPendingError(url: string): ErrorWithSuggestion {
+  return {
+    message: `The page is not answering: it is still waiting for the server to respond to ${url}`,
+    suggestion: 'Wait for the page to load, or load another one: bdg page navigate <url>',
   };
 }
 
