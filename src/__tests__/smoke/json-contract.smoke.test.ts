@@ -210,6 +210,15 @@ void describe('JSON contract', () => {
 
   void it('maps failures to semantic exit codes', async () => {
     await expectEnvelope(['dom', 'query', 'a[[', '--json'], 81);
+    for (const args of [
+      ['fill', 'a[[', 'x'],
+      ['click', 'a[['],
+      ['pressKey', 'a[[', 'Enter'],
+      ['scroll', 'a[['],
+      ['submit', 'a[['],
+    ]) {
+      await expectEnvelope(['dom', ...args, '--json'], 81);
+    }
     await expectEnvelope(['dom', 'click', '#missing', '--json'], 83);
     await expectEnvelope(['details', 'network', 'missing', '--json'], 83);
     const running = await expectEnvelope([fixture.url, '--headless', '--json'], 84);

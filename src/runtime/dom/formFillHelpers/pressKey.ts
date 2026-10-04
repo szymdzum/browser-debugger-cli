@@ -9,7 +9,10 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { keyPressFailedError, operationFailedError } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
-import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
+import {
+  escapeSelectorForJS,
+  throwIfInvalidSelector,
+} from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   getKeyDefinition,
   MODIFIER_FLAGS,
@@ -125,6 +128,7 @@ export async function pressKeyElement(
     };
 
     if (focusCdpResponse.exceptionDetails) {
+      throwIfInvalidSelector(focusCdpResponse.exceptionDetails, selector);
       const err = keyPressFailedError(`focus: ${focusCdpResponse.exceptionDetails.text}`);
       throw new CommandError(
         err.message,

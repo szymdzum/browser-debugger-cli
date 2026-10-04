@@ -38,9 +38,11 @@ export interface OptionMetadata {
   flags: string;
   /** Option description */
   description: string;
-  /** Whether option is required */
+  /** Whether the option must be given (rare; most options are optional) */
   required: boolean;
-  /** Whether option has an optional value */
+  /** Whether the option takes a value (`--port <number>`) */
+  takesValue: boolean;
+  /** Whether the option's value may be omitted (`--flag [value]`) */
   optional: boolean;
   /** Default value if any */
   defaultValue?: unknown;
@@ -168,7 +170,8 @@ function convertOption(option: Option, commandName: string): OptionMetadata {
   const metadata: OptionMetadata = {
     flags: option.flags,
     description: option.description,
-    required: option.required,
+    required: option.mandatory,
+    takesValue: option.required || option.optional,
     optional: option.optional,
   };
 

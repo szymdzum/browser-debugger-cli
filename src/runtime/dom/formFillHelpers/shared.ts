@@ -4,6 +4,9 @@
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
+import { invalidSelectorError } from '@/errors/messages.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { detectSelectorQuoteDamage } from '@/utils/shellDetection.js';
 
 /**
@@ -78,4 +81,23 @@ export function formatScriptExecutionError(
   lines.push(`  ${troubleshootingSteps.join('\n  ')}`);
 
   return lines.join('\n');
+}
+
+/**
+ * Throw a user error when a page script failed because the CSS selector is
+ * invalid (the browser's `querySelectorAll` rejected it), instead of reporting
+ * a script failure.
+ *
+ * @param details - Exception details from Runtime.evaluate
+ * @param selector - Selector the user gave
+ * @throws CommandError (81) for an invalid selector
+ */
+export function throwIfInvalidSelector(
+  details: Protocol.Runtime.ExceptionDetails,
+  selector: string
+): void {
+  const description = details.exception?.description ?? details.text;
+  if (!/Failed to execute '\w+' on '\w+': .* is not a valid selector/.test(description)) return;
+  const err = invalidSelectorError(selector);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }

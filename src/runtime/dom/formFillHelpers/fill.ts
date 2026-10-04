@@ -17,6 +17,7 @@ import {
   escapeSelectorForJS,
   escapeValueForJS,
   formatScriptExecutionError,
+  throwIfInvalidSelector,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   REACT_FILL_SCRIPT,
@@ -59,6 +60,7 @@ export async function fillElement(
     };
 
     if (cdpResponse.exceptionDetails) {
+      throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
       const errorMessage = formatScriptExecutionError(
         cdpResponse.exceptionDetails,
         selector,
@@ -171,6 +173,7 @@ export async function clickElement(
     };
 
     if (cdpResponse.exceptionDetails) {
+      throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
       const errorMessage = formatScriptExecutionError(
         cdpResponse.exceptionDetails,
         selector,

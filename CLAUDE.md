@@ -8,7 +8,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ```bash
 bdg --help --json                       # All commands, flags, exit codes
-bdg cdp --list                          # 53 CDP domains
+bdg cdp --list                          # All CDP domains
 bdg cdp Network --list                  # Methods in a domain
 bdg cdp Network.getCookies --describe   # Full method schema
 bdg cdp --search cookie                 # Search methods

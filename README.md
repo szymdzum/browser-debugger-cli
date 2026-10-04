@@ -9,7 +9,7 @@ Chrome DevTools Protocol in your terminal. Opens a persistent connection to Chro
 
 ## Why bdg?
 
-- **Raw CDP access** - All [644 protocol methods](https://chromedevtools.github.io/devtools-protocol/) available directly
+- **Raw CDP access** - Every [protocol method](https://chromedevtools.github.io/devtools-protocol/) available directly
 - **Token efficient** - No overhead from MCP tool definitions; progressive discovery loads only what's needed
 - **Self-correcting** - Errors clearly exposed with semantic exit codes and suggestions
 - **Composable** - Unix philosophy: pipes, jq, shell scripts work naturally
@@ -55,14 +55,14 @@ bdg stop                           # End session
 
 ## Current State
 
-**Raw CDP access is complete.** All 644 protocol methods (53 domains) work now. High-level wrappers (`bdg dom`, `bdg network`) are being added for common operations. See [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) for full reference.
+**Raw CDP access is complete.** Every protocol method works now. High-level wrappers (`bdg dom`, `bdg network`) are being added for common operations. See [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) for full reference.
 
 ## Agent Discovery Pattern
 
 ```bash
 # Agent explores what's possible (no docs needed)
-bdg cdp --list                              # 53 domains
-bdg cdp Network --list                      # 39 methods
+bdg cdp --list                              # All domains
+bdg cdp Network --list                      # Methods in one domain
 bdg cdp Network.getCookies --describe       # Full schema + examples
 bdg cdp Network.getCookies                  # Execute
 

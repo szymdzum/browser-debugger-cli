@@ -9,7 +9,12 @@ Complete command reference for **bdg** (Browser Debugger CLI).
 bdg localhost:3000
 # Launches daemon in background
 # Returns immediately after handshake
+
+bdg https://example.com --chrome-flags "--ignore-certificate-errors"
+BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost:5173   # Same, via environment
 ```
+
+A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
 ### Check session status
 ```bash
@@ -192,7 +197,6 @@ bdg dom get "h1" --raw --json                # HTML as JSON
 **Token Efficiency:**
 - Simple elements: 45-75% reduction
 - Complex elements: 82-99% reduction
-- See `docs/TOKEN_EFFICIENCY.md` for detailed analysis
 
 ### Element Query
 
@@ -344,13 +348,15 @@ bdg dom click 6                              # Primary submit button
 
 ### Form Interaction
 
-Interact with page elements using React-compatible events. All interaction commands automatically wait for network stability after the action (disable with `--no-wait`).
+Interact with page elements using real mouse and keyboard input. All interaction commands automatically wait for network stability after the action (disable with `--no-wait`).
+
+JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are accepted automatically so they never block a session; `prompt()` receives an empty string.
 
 ```bash
 # Fill inputs
 bdg dom fill "#username" "admin"
 bdg dom fill "input[type='password']" "secret" --no-blur
-bdg dom fill "#search" "query" --index 1          # Use 1-based index for multiple matches
+bdg dom fill "#search" "query" --index 1          # Second match (indices are 0-based)
 bdg dom fill 0 "value"                            # Use cached query index (0-based)
 
 # Click elements
@@ -384,7 +390,7 @@ bdg dom scroll "li.item" --index 5               # Scroll to nth match
 **Press Key Options:**
 | Option | Description |
 |--------|-------------|
-| `--index <n>` | Element index if selector matches multiple (1-based) |
+| `--index <n>` | Element index if selector matches multiple (0-based) |
 | `--times <n>` | Press key multiple times (default: 1) |
 | `--modifiers <mods>` | Modifier keys: shift,ctrl,alt,meta (comma-separated) |
 | `--no-wait` | Skip network stability check |
@@ -753,11 +759,10 @@ bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 Some CDP domains use event-based reporting rather than synchronous responses. When methods return empty results, bdg provides contextual hints:
 
 ```bash
-bdg cdp Audits.checkContrast
-# This method triggers contrast analysis but results are sent via Audits.issueAdded events.
-# Alternative: bdg dom eval with getComputedStyle() for direct contrast checking.
+bdg cdp Audits.enable
+# Issues are reported through Audits.issueAdded events, so the result is empty:
 # {
-#   "method": "Audits.checkContrast",
+#   "method": "Audits.enable",
 #   "result": {}
 # }
 ```
@@ -843,7 +848,7 @@ Human-readable logs and hints go to stderr.
 ### Success
 ```json
 {
-  "version": "0.8.0",
+  "version": "x.y.z",
   "success": true,
   "data": { }
 }
@@ -856,7 +861,7 @@ for `dom a11y tree`, and `data.targetUrl` / `data.port` / `data.chromePid` for `
 ### Error
 ```json
 {
-  "version": "0.8.0",
+  "version": "x.y.z",
   "success": false,
   "error": "Invalid --port: \"abc\" is not an integer",
   "exitCode": 81,

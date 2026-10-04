@@ -5,6 +5,7 @@
  * of the landing page, organized by priority (high-level commands first).
  */
 
+import { getProtocolCounts } from '@/cdp/schema.js';
 import { section } from '@/ui/formatting.js';
 
 /**
@@ -40,16 +41,16 @@ export function buildDomainCommandsSection(): string {
     '  bdg dom query <selector>          Query elements (returns JSON)',
     '  bdg dom get <selector|index>      Get element details',
     '  bdg dom eval <javascript>         Execute JavaScript in page context',
-    '  bdg dom screenshot [path]         Capture full page screenshot',
+    '  bdg dom screenshot <path>         Capture full page screenshot',
     '  bdg dom fill <selector> <value>   Fill form input',
     '  bdg dom click <selector>          Click element',
     '  bdg dom pressKey <selector> <key> Press key (Enter, Tab, Escape, etc.)',
-    '  bdg dom a11y [selector]           Accessibility tree',
+    '  bdg dom a11y [search]             Accessibility search (tree, query, describe)',
     '',
     'Network:',
     '  bdg network har [path]            Export HTTP Archive (HAR)',
     '  bdg network getCookies            List all cookies',
-    '  bdg network headers <id>          HTTP headers for request',
+    '  bdg network headers [id]          HTTP headers (default: main document)',
     '',
     'Console:',
     '  bdg console [options]             Query console logs',
@@ -99,14 +100,18 @@ export function buildSessionManagementSection(): string {
  * @returns Formatted CDP section
  */
 export function buildCdpSection(): string {
-  return section('Advanced: Raw CDP Access (53 domains, 300+ methods):', [
-    'bdg cdp --list                      List all domains',
-    'bdg cdp Network --list              List Network methods (39 methods)',
-    'bdg cdp --search cookie             Search methods by keyword',
-    'bdg cdp Runtime.evaluate --params \'{"expression":"document.title"}\'',
-    '',
-    'Use high-level commands above when possible for better efficiency.',
-  ]);
+  const counts = getProtocolCounts();
+  return section(
+    `Advanced: Raw CDP Access (${counts.domains} domains, ${counts.methods} methods):`,
+    [
+      'bdg cdp --list                      List all domains',
+      `bdg cdp Network --list              List Network methods (${counts.methodsIn('Network')} methods)`,
+      'bdg cdp --search cookie             Search methods by keyword',
+      'bdg cdp Runtime.evaluate --params \'{"expression":"document.title"}\'',
+      '',
+      'Use high-level commands above when possible for better efficiency.',
+    ]
+  );
 }
 
 /**
@@ -119,6 +124,6 @@ export function buildCdpSection(): string {
 export function buildDiscoverySection(): string {
   return section('Discovery (for AI agents):', [
     'bdg --help --json          Machine-readable schema (commands, options, exit codes)',
-    '.claude/skills/bdg/        Claude skill with 15+ recipes & patterns',
+    'bdg cdp --search <term>    Find CDP methods by keyword',
   ]);
 }
