@@ -55,6 +55,22 @@ const LIST_HTML =
   '<label>M<input type="radio" name="size" value="m"></label>' +
   '<label>L<input type="radio" name="size" value="l"></label></form>';
 
+const VISIBILITY_HTML =
+  '<ul id="shown"><li>shown</li><li style="display:none">gone</li>' +
+  '<li style="visibility:hidden">invisible</li></ul>';
+
+/**
+ * Text previews of the elements a selector matches.
+ *
+ * @param selector - Selector for `dom query`
+ * @returns Previews in match order
+ */
+async function queryPreviews(selector: string): Promise<string[]> {
+  const output = await bdg(['dom', 'query', selector, '--json']);
+  const data = JSON.parse(output) as { data: { nodes: Array<{ preview?: string }> } };
+  return data.data.nodes.map((node) => node.preview ?? '');
+}
+
 void describe('Element targeting', () => {
   let fixture: FixtureServer;
 
@@ -107,6 +123,32 @@ void describe('Element targeting', () => {
     assert.ok(medium, `radio fields: ${JSON.stringify(fields.map((f) => f.selector))}`);
     await bdg(['dom', 'fill', String(medium.index), 'true']);
     assert.equal(await evaluate("document.querySelector('[name=size]:checked')?.value"), 'm');
+  });
+
+  void it('clicks by text with :has-text()', async () => {
+    const before = Number(await evaluate('window.submits'));
+    await bdg(['dom', 'click', 'button:has-text("send")']);
+    assert.equal(await evaluate('window.submits'), before + 1);
+  });
+
+  void it('filters matches with :visible, :text-is() and selector lists', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(VISIBILITY_HTML)}); 1`
+    );
+    assert.deepEqual(await queryPreviews('#shown li:visible'), ['shown']);
+    assert.deepEqual(
+      await queryPreviews('#shown li:text-is("Shown"), #menu-trigger:has-text("MENU")'),
+      ['Menu']
+    );
+    assert.deepEqual(await queryPreviews('#shown li:text-is("shown"), #shown li:visible'), [
+      'shown',
+    ]);
+  });
+
+  void it('rejects text and visibility filters that are not at the end with 81', async () => {
+    const output = await bdg(['dom', 'click', 'form:has-text("Send") button'], 81);
+    assert.match(output, /must come last/);
+    await bdg(['dom', 'query', 'li:visible a'], 81);
   });
 
   void it('fails with 87 after the page navigated', async () => {

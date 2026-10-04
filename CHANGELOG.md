@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`bdg page navigate <url>` / `reload` / `back` / `forward`** - Move the session's page and wait for it to load (`--no-wait` to return at once); unreachable URLs exit 80, no history entry exits 81
 - **`bdg dom hover`, `dom click --double` / `--right`** - Hover (menus, tooltips), double-click and right-click with real mouse events, falling back to DOM events like `click`
 - **`dom fill` on `<select multiple>`** - Comma-separated values or labels select several options (`""` selects none)
+- **Text and visibility selectors** - `:has-text()`, `:text-is()` and `:visible` at the end of a selector in every DOM command (idea from #169 by @sfc-gh-mochen)
 
 ### Changed
 

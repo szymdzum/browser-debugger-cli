@@ -13,22 +13,43 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { staleNodeError } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { parseSelectorFilters, type SelectorFilter } from '@/utils/selectorFilters.js';
 
 /** Selector placeholder that makes page scripts use the bound node. */
 export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
 
 /**
- * Page-side CSS selector search that also reaches into open shadow roots and
+ * Page-side test of one text or visibility filter ({@link SelectorFilter}).
+ * Visible means a non-empty box and `visibility: visible`, as in Playwright
+ * (`opacity: 0` still counts as visible). Text is the rendered text (`innerText`, `textContent` for elements without
+ * it) with whitespace collapsed; filter texts arrive normalized (`has-text`
+ * lowercased).
+ */
+const FILTER_MATCHES_JS = `(el, filter) => {
+  if (filter.kind === 'visible') {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 && el.ownerDocument.defaultView.getComputedStyle(el).visibility === 'visible';
+  }
+  const text = (typeof el.innerText === 'string' ? el.innerText : el.textContent || '').replace(/\\s+/g, ' ').trim();
+  return filter.kind === 'text-is' ? text === filter.text : text.toLowerCase().includes(filter.text);
+}`;
+
+/**
+ * Page-side selector search that also reaches into open shadow roots and
  * same-origin iframes (recursively), like a user sees the page.
  *
+ * Takes the selector and, when it has text or visibility filters, its parts
+ * from {@link parseSelectorFilters}: their CSS runs as one selector list and
+ * a match is kept when it passes the filters of a part it matches.
  * Matches of the document come first, then those of each shadow root and
  * frame in document order. Cross-origin iframes are separate processes and
  * cannot be searched. Throws a `SyntaxError` for an invalid selector.
  */
-export const DEEP_QUERY_JS = `function (selector) {
+export const DEEP_QUERY_JS = `function (selector, parts) {
+  const css = parts ? parts.map((part) => part.css).join(', ') : selector;
   const found = [];
   const visit = (root) => {
-    for (const match of root.querySelectorAll(selector)) found.push(match);
+    for (const match of root.querySelectorAll(css)) found.push(match);
     for (const el of root.querySelectorAll('*')) {
       if (el.shadowRoot) visit(el.shadowRoot);
       if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
@@ -39,22 +60,37 @@ export const DEEP_QUERY_JS = `function (selector) {
     }
   };
   visit(document);
-  return found;
+  if (!parts) return found;
+  const passes = ${FILTER_MATCHES_JS};
+  return found.filter((el) => parts.some((part) => el.matches(part.css) && part.filters.every((filter) => passes(el, filter))));
 }`;
 
 /**
  * Page-side element lookup shared by the interaction scripts.
  *
  * Returns the bound node (if still in the page) for the placeholder selector,
- * otherwise all matches of the CSS selector ({@link DEEP_QUERY_JS}).
+ * otherwise all matches of the selector ({@link DEEP_QUERY_JS}).
  */
-export const FIND_ELEMENTS_JS = `function (selector) {
+export const FIND_ELEMENTS_JS = `function (selector, parts) {
   if (selector === '${BOUND_TARGET_SELECTOR}') {
     const el = window.__bdgTarget;
     return el && el.isConnected ? [el] : [];
   }
-  return (${DEEP_QUERY_JS})(selector);
+  return (${DEEP_QUERY_JS})(selector, parts);
 }`;
+
+/**
+ * Arguments for {@link DEEP_QUERY_JS} / {@link FIND_ELEMENTS_JS} and the page
+ * scripts built on them: the selector as a JS string literal and its parts
+ * (`null` for plain CSS, which runs unchanged).
+ *
+ * @param selector - Selector as the user gave it (or the bound-node placeholder)
+ * @returns JS source of the two arguments, e.g. `"li:visible", [{...}]`
+ * @throws CommandError (81) for a misplaced or malformed filter
+ */
+export function selectorArgsJS(selector: string): string {
+  return `${JSON.stringify(selector)}, ${JSON.stringify(parseSelectorFilters(selector))}`;
+}
 
 /**
  * Store the node for the page scripts. It runs in the node's own frame, while

@@ -1,6 +1,7 @@
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { moreMatchesNote } from '@/ui/messages/commands.js';
+import { parseSelectorFilters } from '@/utils/selectorFilters.js';
 
 /** Matches listed in human output (JSON has all of them) */
 const QUERY_DISPLAY_LIMIT = 50;
@@ -24,6 +25,8 @@ function textExtractionScript(selector: string, index: number): string {
  *
  * Displays found nodes with their index, tag, classes, and preview text,
  * up to {@link QUERY_DISPLAY_LIMIT} of them (no match is an error, exit 83).
+ * The text extraction hint is left out for selectors with text or visibility
+ * filters, which `document.querySelectorAll` does not understand.
  *
  * @param data - DOM query result containing selector, count, and matching nodes
  * @returns Formatted output string
@@ -72,7 +75,9 @@ export function formatDomQuery(data: DomQueryResult): string {
     .hints('Next steps:', [
       `Get HTML:        bdg dom get ${exampleIndex} --raw`,
       `Accessibility:   bdg dom get ${exampleIndex}`,
-      `Extract text:    bdg dom eval ${textExtractionScript(selector, exampleIndex)}`,
+      ...(parseSelectorFilters(selector)
+        ? []
+        : [`Extract text:    bdg dom eval ${textExtractionScript(selector, exampleIndex)}`]),
     ])
     .build();
 }

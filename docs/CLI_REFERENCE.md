@@ -84,6 +84,28 @@ Binary response bodies (images, fonts) are only captured in sessions started wit
 
 ## DOM Commands
 
+### Selectors
+
+DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes.
+
+Three Playwright-style filters can be added at the **end** of a selector (of each selector in a list), alone or combined:
+
+| Filter | Keeps elements whose... |
+|--------|-------------------------|
+| `:has-text("text")` | rendered text (whitespace collapsed) contains `text`, case-insensitive; also matches ancestors, so give an element selector |
+| `:text-is("text")` | rendered text (trimmed, whitespace collapsed) is exactly `text`, case-sensitive |
+| `:visible` | has a non-empty box and `visibility: visible` (not `display:none` or inside it, not zero-size); like Playwright, `opacity: 0` still counts as visible |
+
+```bash
+bdg dom click 'button:has-text("Save")'            # Button containing "Save"
+bdg dom click 'nav a:text-is("Home")'              # Link whose text is exactly "Home"
+bdg dom query 'li:visible'                         # Only rendered list items
+bdg dom fill 'input[name="q"]:visible' "shoes"     # The visible one of several inputs
+bdg dom query '.item:has-text("x"):visible, button:has-text("Load more")'
+```
+
+Text may be double- or single-quoted (escape a quote inside with `\`) or unquoted (`:has-text(Save)`). Elsewhere in a selector (`div:has-text("x") > button`, `:not(:visible)`) the filters are rejected with exit 81: match the containing element with CSS `:has()` (`div:has(> button)`), put the filter on the last element (`div > button:has-text("x")`), or find elements by accessible name with `bdg dom a11y query name="…"`. Other Playwright syntax (`:text()`, `text=…`, `>>`) is not supported.
+
 ### Accessibility Tree Inspection
 
 Inspect the accessibility tree exposed by Chrome DevTools Protocol.
