@@ -44,6 +44,17 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
 }
 
 /**
+ * Warning when a selector matched several elements and no --index was given.
+ *
+ * @param count - Number of matching elements
+ * @param action - What was done, e.g. "clicked the first visible one"
+ * @returns Warning text
+ */
+export function multipleMatchesWarning(count: number, action: string): string {
+  return `${count} elements match; ${action} (use --index or a more specific selector)`;
+}
+
+/**
  * A JavaScript dialog bdg accepted, as one line.
  *
  * @param dialog - Dialog type and text
@@ -76,6 +87,35 @@ export const PAGE_ACTION_DESCRIPTIONS = {
   back: 'Go back one page (like the browser button)',
   forward: 'Go forward one page (like the browser button)',
 } as const;
+
+/**
+ * `bdg page navigate` to a page that answered with an HTTP error.
+ *
+ * @param status - HTTP status
+ * @returns Warning
+ */
+export function httpErrorWarning(status: number): string {
+  return `The page responded with HTTP ${status}`;
+}
+
+/**
+ * `bdg page navigate` to a URL that loaded no page.
+ *
+ * @returns Warning
+ */
+export function notAPageWarning(): string {
+  return 'The URL did not load a page (it may be a file download); the page did not change';
+}
+
+/**
+ * `bdg page` when the server did not answer in time.
+ *
+ * @param ms - Time waited
+ * @returns Warning
+ */
+export function stillLoadingWarning(ms: number): string {
+  return `The new page has not answered within ${Math.round(ms / 1000)}s; it is still loading (check with bdg status)`;
+}
 
 /**
  * Generate warning message.

@@ -67,6 +67,15 @@ const PREPARE_SUBMIT_SCRIPT = `
       error: 'Element is neither a form nor a submit button: <' + el.tagName.toLowerCase() + '>'
     };
   }
+  const submitters = isForm
+    ? Array.from(el.elements).filter((f) =>
+        f.matches('button:not([type]), button[type=submit], input[type=submit], input[type=image]')
+      )
+    : [];
+  if (submitters.length > 0 && submitters.every((f) => f.matches(':disabled'))) {
+    // A user could not submit: Enter does nothing while the default button is disabled
+    return { action: 'fail', reason: 'disabled', error: 'The form\\'s submit button is disabled' };
+  }
   if ((isForm || isSubmitter) && form && !form.noValidate && !el.formNoValidate && !form.checkValidity()) {
     const invalid = Array.from(form.elements)
       .filter((f) => f.willValidate && !f.checkValidity())
@@ -76,9 +85,7 @@ const PREPARE_SUBMIT_SCRIPT = `
   if (isForm) {
     // Like pressing Enter: the form's default button is the submitter, so its
     // name=value is sent too
-    const submitter = Array.from(el.elements).find((f) =>
-      f.matches('button:not([type]), button[type=submit], input[type=submit], input[type=image]') && !f.matches(':disabled')
-    );
+    const submitter = submitters.find((f) => !f.matches(':disabled'));
     if (submitter) el.requestSubmit(submitter);
     else el.requestSubmit();
     return { action: 'submitted', clicked: Boolean(submitter) };
@@ -90,7 +97,7 @@ interface PrepareResult {
   action: 'submitted' | 'click' | 'fail';
   /** Whether a submit button took part (its value is sent) */
   clicked?: boolean;
-  reason?: 'not-found' | 'range' | 'not-submittable' | 'invalid';
+  reason?: 'not-found' | 'range' | 'not-submittable' | 'invalid' | 'disabled';
   error?: string;
 }
 
@@ -99,6 +106,7 @@ const FAILURE_EXIT_CODES: Record<NonNullable<PrepareResult['reason']>, number> =
   range: EXIT_CODES.INVALID_ARGUMENTS,
   'not-submittable': EXIT_CODES.INVALID_ARGUMENTS,
   invalid: EXIT_CODES.INVALID_ARGUMENTS,
+  disabled: EXIT_CODES.INVALID_ARGUMENTS,
 };
 
 const FAILURE_SUGGESTIONS: Record<NonNullable<PrepareResult['reason']>, string> = {
@@ -107,6 +115,7 @@ const FAILURE_SUGGESTIONS: Record<NonNullable<PrepareResult['reason']>, string> 
   'not-submittable':
     'Target the <form> or its submit button, or use "bdg dom click" for other elements',
   invalid: 'Fill the listed fields first (see "bdg dom form" for their state)',
+  disabled: 'Complete the steps that enable the button first (see "bdg dom form" for its state)',
 };
 
 /**

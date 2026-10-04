@@ -25,6 +25,7 @@ import { CommandError } from '@/errors/index.js';
 import {
   elementAtIndexNotFoundError,
   conflictingOptionsMessage,
+  optionRequiresMessage,
   missingArgumentError,
   noNodesFoundError,
 } from '@/errors/messages.js';
@@ -163,6 +164,9 @@ function getOptionsConflict(
   }
   if (options.all && options.nth !== undefined) {
     return conflictingOptionsMessage('--all', '--nth');
+  }
+  if (!options.raw && (options.all || options.nth !== undefined)) {
+    return optionRequiresMessage(options.all ? '--all' : '--nth', '--raw');
   }
   return null;
 }

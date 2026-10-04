@@ -454,6 +454,14 @@ export async function captureElementScreenshot(
     size: buffer.length,
     fullPage: false,
     finalTokens: calculateImageTokens(finalWidth, finalHeight),
+    element: {
+      bounds: {
+        x: Math.round(bounds.x),
+        y: Math.round(bounds.y),
+        width: Math.round(bounds.width),
+        height: Math.round(bounds.height),
+      },
+    },
   };
 
   if (quality !== undefined) {

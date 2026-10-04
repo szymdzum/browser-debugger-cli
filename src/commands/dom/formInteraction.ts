@@ -483,5 +483,6 @@ function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
     details.push(['Page Size', `${result.pageSize.width}x${result.pageSize.height}`]);
 
   fmt.keyValueList(details, 15);
+  appendNotices(fmt, result);
   return fmt.build();
 }

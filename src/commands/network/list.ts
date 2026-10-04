@@ -138,17 +138,24 @@ function filterRequests(
   return filtersNeedHeaders(options) ? filtered.map(withoutHeaders) : filtered;
 }
 
+/**
+ * Formatter options for a listing.
+ *
+ * @param options - Command options
+ * @param result - Requests listed, with their counts
+ * @param lastLimit - The --last limit
+ * @returns Formatter options
+ */
 function buildFormatOptions(
   options: NetworkListCommandOptions,
-  totalCount: number,
-  lastLimit: number,
-  follow = false
+  result: NetworkListResult,
+  lastLimit: number
 ): NetworkListOptions {
   return {
     verbose: options.verbose ?? false,
     last: lastLimit,
-    totalCount,
-    follow,
+    totalCount: result.totalCount,
+    filteredCount: result.filteredCount,
   };
 }
 
@@ -306,7 +313,7 @@ export function registerListCommand(networkCmd: Command): void {
         },
         options,
         (data: NetworkListResult) =>
-          formatNetworkList(data.requests, buildFormatOptions(options, data.totalCount, lastN))
+          formatNetworkList(data.requests, buildFormatOptions(options, data, lastN))
       );
     });
 }

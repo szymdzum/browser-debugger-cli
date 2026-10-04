@@ -8,15 +8,26 @@ import { UNREACHABLE_ERRORS } from '@/daemon/session/cdpSetup.js';
 import { CommandError } from '@/errors/index.js';
 import { navigationFailedError, noHistoryEntryError } from '@/errors/messages.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { httpErrorWarning, notAPageWarning, stillLoadingWarning } from '@/ui/messages/commands.js';
 import { delay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { normalizeUrl } from '@/utils/url.js';
+
+const log = createLogger('session');
 
 /** How long to wait in all for the page to load and settle after navigating */
 const PAGE_READY_TIMEOUT_MS = 15_000;
 
 /**
  * Navigate the session's page and wait until it has loaded.
+ *
+ * With `wait: false` the command is sent and the call returns at once (the
+ * navigation may still be waiting for the server). Otherwise the server gets
+ * {@link PAGE_READY_TIMEOUT_MS} to answer, then the new document is waited on
+ * to settle; its HTTP status is reported, with a warning for 4xx/5xx, for a
+ * URL that is a download, or a page still loading.
  *
  * @param cdp - CDP connection
  * @param action - Navigate to a URL, reload, or go back/forward in history
@@ -29,33 +40,184 @@ export async function navigatePage(
   action: PageAction,
   options: { url?: string; wait?: boolean } = {}
 ): Promise<PageNavigationResult> {
-  const tree = (await cdp.send('Page.getFrameTree', {})) as {
-    frameTree: { frame: { id: string } };
-  };
-  const navigated = nextNavigation(cdp, tree.frameTree.frame.id);
+  const url = action === 'navigate' ? normalizeUrl(options.url ?? '') : undefined;
+  if (options.wait === false) return startWithoutWaiting(cdp, action, url);
+  const mainFrameId = (await pageTarget(cdp)).targetId;
+  const navigated = nextNavigation(cdp, mainFrameId);
+  const document = documentResponse(cdp, mainFrameId);
+  const deadline = Date.now() + PAGE_READY_TIMEOUT_MS;
   try {
-    if (action === 'navigate') await navigateTo(cdp, normalizeUrl(options.url ?? ''));
-    else if (action === 'reload') await cdp.send('Page.reload', {});
-    else await goThroughHistory(cdp, action === 'back' ? -1 : 1);
-    if (options.wait !== false) {
-      const deadline = Date.now() + PAGE_READY_TIMEOUT_MS;
-      const how = await Promise.race([navigated.done, delay(PAGE_READY_TIMEOUT_MS)]);
-      if (how === 'loaded') {
-        await waitForPageReady(cdp, { maxWaitMs: Math.max(0, deadline - Date.now()) });
-      }
+    const sent = startAction(cdp, action, url);
+    sent.catch(() => undefined);
+    const started = await Promise.race([sent, delay(PAGE_READY_TIMEOUT_MS)]);
+    if (started === undefined) return await stillLoading(cdp, action);
+    if (started === 'not-a-page') {
+      return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
+    }
+    const how = await Promise.race([navigated.done, delay(Math.max(0, deadline - Date.now()))]);
+    if (how === 'loaded') {
+      await waitForPageReady(cdp, { maxWaitMs: Math.max(0, deadline - Date.now()) });
     }
   } finally {
     navigated.stop();
+    document.stop();
   }
+  return withStatus({ action, ...(await currentLocation(cdp)) }, document.response());
+}
+
+/** How long `--no-wait` waits for an action to be refused (no history entry, unreachable URL) */
+const NO_WAIT_GRACE_MS = 1_000;
+
+/**
+ * Start an action without waiting for the page: errors that come at once
+ * are still reported, a server that has not answered is not waited for.
+ *
+ * @param cdp - CDP connection
+ * @param action - What to do
+ * @param url - Normalized URL for navigate
+ * @returns The URL being loaded
+ * @throws CommandError (80) for an unreachable URL, (81) without a history entry
+ */
+async function startWithoutWaiting(
+  cdp: CDPConnection,
+  action: PageAction,
+  url: string | undefined
+): Promise<PageNavigationResult> {
+  const sent = startAction(cdp, action, url);
+  sent.catch((error: unknown) => log.debug(`Navigation not started: ${getErrorMessage(error)}`));
+  const started = await Promise.race([sent, delay(NO_WAIT_GRACE_MS)]);
+  const result = { action, url: url ?? (await pageTarget(cdp)).url, title: '' };
+  return started === 'not-a-page' ? { ...result, warning: notAPageWarning() } : result;
+}
+
+/**
+ * Send the command of an action.
+ *
+ * @param cdp - CDP connection
+ * @param action - What to do
+ * @param url - Normalized URL for navigate
+ * @returns 'not-a-page' when the URL loaded no document (a download), else 'started'
+ * @throws CommandError (80) when the URL cannot be reached, (81) without a history entry
+ */
+async function startAction(
+  cdp: CDPConnection,
+  action: PageAction,
+  url: string | undefined
+): Promise<'started' | 'not-a-page'> {
+  if (action === 'navigate') return navigateTo(cdp, url ?? '');
+  if (action === 'reload') await cdp.send('Page.reload', {});
+  else await goThroughHistory(cdp, action === 'back' ? -1 : 1);
+  return 'started';
+}
+
+/**
+ * The page target as the browser sees it. Unlike the page's own state, this
+ * answers while a navigation waits for the server (Chrome holds commands for
+ * the page until the new document commits). A page target's id is its main
+ * frame's id; its URL is the one being navigated to.
+ *
+ * @param cdp - CDP connection
+ * @returns Target id and URL
+ */
+async function pageTarget(cdp: CDPConnection): Promise<{ targetId: string; url: string }> {
+  const { targetInfo } = (await cdp.send('Target.getTargetInfo', {})) as {
+    targetInfo: { targetId: string; url: string };
+  };
+  return targetInfo;
+}
+
+/**
+ * The URL of a navigation still waiting for the server, if any: the page
+ * target already shows it while the history's current entry does not.
+ *
+ * @param cdp - CDP connection
+ * @returns The pending URL, or undefined when the page is not navigating
+ */
+export async function pendingNavigationUrl(cdp: CDPConnection): Promise<string | undefined> {
+  const [target, history] = await Promise.all([
+    pageTarget(cdp),
+    cdp.send('Page.getNavigationHistory', {}) as Promise<{
+      currentIndex: number;
+      entries: Array<{ url: string }>;
+    }>,
+  ]);
+  const committedUrl = history.entries[history.currentIndex]?.url;
+  return target.url !== committedUrl ? target.url : undefined;
+}
+
+/**
+ * The page's URL and title.
+ *
+ * @param cdp - CDP connection
+ * @returns URL and title
+ */
+async function currentLocation(cdp: CDPConnection): Promise<{ url: string; title: string }> {
   const location = (await cdp.send('Runtime.evaluate', {
     expression: '({ url: location.href, title: document.title })',
     returnByValue: true,
   })) as { result?: { value?: { url: string; title: string } } };
+  return { url: location.result?.value?.url ?? '', title: location.result?.value?.title ?? '' };
+}
+
+/**
+ * Result for a server that has not answered within the time limit.
+ *
+ * @param cdp - CDP connection
+ * @param action - What was done
+ * @returns The URL being loaded, with a warning
+ */
+async function stillLoading(cdp: CDPConnection, action: PageAction): Promise<PageNavigationResult> {
   return {
     action,
-    url: location.result?.value?.url ?? '',
-    title: location.result?.value?.title ?? '',
+    url: (await pageTarget(cdp)).url,
+    title: '',
+    warning: stillLoadingWarning(PAGE_READY_TIMEOUT_MS),
   };
+}
+
+/**
+ * Add the document's HTTP status (and a warning for an error status).
+ *
+ * @param result - Navigation result
+ * @param response - The main document's response, if one arrived
+ * @returns Result with status
+ */
+function withStatus(
+  result: PageNavigationResult,
+  response: { status: number; url: string } | undefined
+): PageNavigationResult {
+  if (!response) return result;
+  const url = result.url.startsWith('chrome-error://') ? response.url : result.url;
+  return {
+    ...result,
+    url,
+    status: response.status,
+    ...(response.status >= 400 && { warning: httpErrorWarning(response.status) }),
+  };
+}
+
+/**
+ * Watch for the response of the main frame's next document.
+ *
+ * @param cdp - CDP connection
+ * @param mainFrameId - Main frame id
+ * @returns The response seen so far, and a function to stop listening
+ */
+function documentResponse(
+  cdp: CDPConnection,
+  mainFrameId: string
+): { response: () => { status: number; url: string } | undefined; stop: () => void } {
+  let seen: { status: number; url: string } | undefined;
+  const stop = cdp.on<{
+    type?: string;
+    frameId?: string;
+    response: { status: number; url: string };
+  }>('Network.responseReceived', (params) => {
+    if (params.type === 'Document' && params.frameId === mainFrameId) {
+      seen = { status: params.response.status, url: params.response.url };
+    }
+  });
+  return { response: () => seen, stop };
 }
 
 /**
@@ -100,11 +262,16 @@ function nextNavigation(
  *
  * @param cdp - CDP connection
  * @param url - Normalized URL
+ * @returns 'not-a-page' when no document was loaded (a download), else 'started'
  * @throws CommandError (80) when the URL cannot be reached
  */
-async function navigateTo(cdp: CDPConnection, url: string): Promise<void> {
-  const navigation = (await cdp.send('Page.navigate', { url })) as { errorText?: string };
-  if (!navigation.errorText || !UNREACHABLE_ERRORS.test(navigation.errorText)) return;
+async function navigateTo(cdp: CDPConnection, url: string): Promise<'started' | 'not-a-page'> {
+  const navigation = (await cdp.send('Page.navigate', { url })) as {
+    errorText?: string;
+    loaderId?: string;
+  };
+  if (navigation.errorText === 'net::ERR_ABORTED' && !navigation.loaderId) return 'not-a-page';
+  if (!navigation.errorText || !UNREACHABLE_ERRORS.test(navigation.errorText)) return 'started';
   const err = navigationFailedError(url, navigation.errorText);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
 }
@@ -119,10 +286,12 @@ async function navigateTo(cdp: CDPConnection, url: string): Promise<void> {
 async function goThroughHistory(cdp: CDPConnection, step: -1 | 1): Promise<void> {
   const history = (await cdp.send('Page.getNavigationHistory', {})) as {
     currentIndex: number;
-    entries: Array<{ id: number }>;
+    entries: Array<{ id: number; url: string }>;
   };
-  const entry = history.entries[history.currentIndex + step];
-  if (!entry) {
+  const index = history.currentIndex + step;
+  const entry = history.entries[index];
+  const blankStart = index === 0 && entry?.url === 'about:blank';
+  if (!entry || blankStart) {
     const err = noHistoryEntryError(step < 0 ? 'back' : 'forward');
     throw new CommandError(
       err.message,

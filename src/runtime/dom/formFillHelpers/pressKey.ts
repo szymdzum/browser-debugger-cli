@@ -12,6 +12,7 @@ import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 import {
   escapeSelectorForJS,
   throwIfInvalidSelector,
+  withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   describeModifiers,
@@ -89,7 +90,7 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
-  return { success: true, selector: selector, elementType: el.tagName.toLowerCase() };
+  return { success: true, selector: selector, elementType: el.tagName.toLowerCase(), matchCount: allMatches.length };
 })`;
 
 /** Exit codes and suggestions for focus failures, by reason. */
@@ -168,6 +169,7 @@ export async function pressKeyElement(
       reason?: string;
       error?: string;
       elementType?: string;
+      matchCount?: number;
     };
 
     if (!focusResult?.success) {
@@ -185,14 +187,19 @@ export async function pressKeyElement(
       await dispatchKeyEvent(cdp, 'keyUp', keyDef, modifierFlags);
     }
 
-    return {
-      success: true,
-      selector,
-      key: keyName,
-      times,
-      ...(modifierFlags > 0 && { modifiers: describeModifiers(modifierFlags) }),
-      elementType: focusResult.elementType,
-    };
+    return withMultipleMatchesWarning(
+      {
+        success: true,
+        selector,
+        key: keyName,
+        times,
+        ...(modifierFlags > 0 && { modifiers: describeModifiers(modifierFlags) }),
+        elementType: focusResult.elementType,
+        ...(focusResult.matchCount !== undefined && { matchCount: focusResult.matchCount }),
+      },
+      options.index,
+      'pressed the key on the first'
+    );
   } catch (error) {
     if (error instanceof CommandError) {
       throw error;

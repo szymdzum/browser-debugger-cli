@@ -294,6 +294,26 @@ describe('queryA11yTree', () => {
     count: 5,
   };
 
+  test('leaves out text nodes unless their role is asked for', () => {
+    const withText: A11yTree = {
+      ...tree,
+      nodes: new Map([
+        ...tree.nodes,
+        ['6', { nodeId: '6', role: 'StaticText', name: 'Cancel' }],
+        ['7', { nodeId: '7', role: 'InlineTextBox', name: 'Cancel' }],
+      ]),
+    };
+
+    assert.deepEqual(
+      queryA11yTree(withText, { name: 'Cancel' }).nodes.map((n) => n.nodeId),
+      ['3']
+    );
+    assert.deepEqual(
+      queryA11yTree(withText, { role: 'statictext' }).nodes.map((n) => n.nodeId),
+      ['6']
+    );
+  });
+
   test('queries by role only', () => {
     const result = queryA11yTree(tree, { role: 'button' });
 

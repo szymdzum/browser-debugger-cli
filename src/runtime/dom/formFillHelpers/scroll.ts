@@ -10,6 +10,7 @@ import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 import {
   escapeSelectorForJS,
   throwIfInvalidSelector,
+  withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -60,6 +61,7 @@ const SCROLL_TO_ELEMENT_SCRIPT = `
     success: true,
     scrollType: 'element',
     selector: selector,
+    matchCount: allMatches.length,
     scrolledTo: {
       x: Math.round(window.scrollX),
       y: Math.round(window.scrollY)
@@ -156,7 +158,11 @@ export async function scrollPage(
       }
 
       if (cdpResponse.result?.value && isScrollResult(cdpResponse.result.value)) {
-        return cdpResponse.result.value;
+        return withMultipleMatchesWarning(
+          cdpResponse.result.value,
+          options.index,
+          'scrolled to the first'
+        );
       }
 
       const scriptResult = cdpResponse.result?.value as {

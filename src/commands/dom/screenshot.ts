@@ -13,17 +13,18 @@ import {
   resolveSelector,
 } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
-import { conflictingOptionsMessage } from '@/errors/messages.js';
+import { conflictingOptionsMessage, genericError } from '@/errors/messages.js';
 import { missingArgumentError } from '@/errors/messages.js';
 import type { ScreenshotResult, ElementBounds, NodeRef } from '@/types.js';
-import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { delay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -122,7 +123,7 @@ function addElementInfo(
   result: ScreenshotResult,
   options: DomScreenshotCommandOptions
 ): ScreenshotResult {
-  const bounds: ElementBounds = {
+  const bounds: ElementBounds = result.element?.bounds ?? {
     x: 0,
     y: 0,
     width: result.width,
@@ -229,29 +230,60 @@ async function handleSequenceCapture(
 
   const format = options.format ?? 'png';
   let frameCount = 0;
+  let stopping = false;
+  process.once('SIGINT', () => {
+    stopping = true;
+  });
 
-  const captureFrame = async (): Promise<void> => {
+  console.error(`Capturing to ${absoluteDir} every ${interval}ms...`);
+  while (!stopping) {
     frameCount++;
     const filename = formatFrameFilename(frameCount, format);
     const outputPath = path.join(absoluteDir, filename);
-
-    await captureSequenceFrame(outputPath, options);
+    try {
+      await captureSequenceFrame(outputPath, options);
+    } catch (error) {
+      reportSequenceError(error, frameCount - 1, options.json ?? false);
+    }
     if (options.json) {
       console.log(JSON.stringify(buildSuccessResponse({ frame: frameCount, path: outputPath })));
     } else {
       log.info(`Frame ${frameCount}: ${filename}`);
     }
+    if (limit > 0 && frameCount >= limit) break;
+    await delay(interval);
+  }
+  console.error(`Captured ${frameCount} frames`);
+  process.exit(EXIT_CODES.SUCCESS);
+}
 
-    if (limit > 0 && frameCount >= limit) {
-      process.emit('SIGINT');
-    }
-  };
-
-  await setupFollowMode(captureFrame, {
-    startMessage: () => `Capturing to ${absoluteDir} every ${interval}ms...`,
-    stopMessage: () => `Captured ${frameCount} frames`,
-    intervalMs: interval,
-  });
+/**
+ * End a capture sequence on an error (e.g. the element disappeared): print
+ * it (one JSON line with `--json`, like the frames) and exit with its code.
+ *
+ * @param error - Capture error
+ * @param captured - Frames captured before it
+ * @param json - JSON output
+ */
+function reportSequenceError(error: unknown, captured: number, json: boolean): never {
+  const exitCode = error instanceof CommandError ? error.exitCode : EXIT_CODES.SOFTWARE_ERROR;
+  const suggestion =
+    error instanceof CommandError && typeof error.metadata['suggestion'] === 'string'
+      ? error.metadata['suggestion']
+      : undefined;
+  const message = getErrorMessage(error);
+  if (json) {
+    console.log(
+      JSON.stringify(
+        OutputBuilder.buildJsonError(message, { exitCode, ...(suggestion && { suggestion }) })
+      )
+    );
+  } else {
+    console.error(genericError(message));
+    if (suggestion) console.error(suggestion);
+  }
+  console.error(`Captured ${captured} frames`);
+  process.exit(exitCode);
 }
 
 /**

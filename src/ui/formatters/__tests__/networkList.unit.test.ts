@@ -67,4 +67,20 @@ void describe('formatNetworkList', () => {
     assert.match(output, /\s1\.2s\s+a\.test\/slow/);
     assert.match(output, /\s-\s+a\.test\/open/);
   });
+
+  void it('says how many requests matched the filters', () => {
+    const request: NetworkRequest = {
+      requestId: '1',
+      url: 'https://a.test/',
+      method: 'GET',
+      timestamp: 0,
+    };
+    const header = (filteredCount: number, totalCount: number): string | undefined =>
+      formatNetworkList([request], { filteredCount, totalCount }).split('\n')[0];
+
+    assert.equal(header(1, 1), 'NETWORK REQUESTS (1)');
+    assert.equal(header(5, 5), 'NETWORK REQUESTS (last 1 of 5)');
+    assert.equal(header(1, 240), 'NETWORK REQUESTS (1 matching, 240 in all)');
+    assert.equal(header(21, 240), 'NETWORK REQUESTS (last 1 of 21 matching, 240 in all)');
+  });
 });

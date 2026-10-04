@@ -170,6 +170,24 @@ void describe('DOM interactions', () => {
     await bdg(['dom', 'submit', '#form', '--wait-network', '0']);
     assert.equal(await evaluate('window.submits'), before + 1);
     await bdg(['dom', 'submit', '#editor'], 81);
+
+    await evaluate("document.getElementById('submit').disabled = true; 1");
+    assert.match(await bdg(['dom', 'submit', '#form'], 81), /submit button is disabled/);
+    await evaluate("document.getElementById('submit').disabled = false; 1");
+    assert.equal(await evaluate('window.submits'), before + 1);
+  });
+
+  void it('warns when acting on a field a user could not reach or on one of many', async () => {
+    const warning = async (args: string[]): Promise<string | undefined> =>
+      (JSON.parse(await bdg([...args, '--json'])) as { data: { warning?: string } }).data.warning;
+
+    await evaluate("document.getElementById('name').hidden = true; 1");
+    assert.match((await warning(['dom', 'fill', '#name', 'x'])) ?? '', /hidden/);
+    await evaluate("document.getElementById('name').hidden = false; 1");
+    assert.equal(await warning(['dom', 'fill', '#name', 'x']), undefined);
+    assert.match((await warning(['dom', 'scroll', 'input'])) ?? '', /elements match/);
+    assert.equal(await warning(['dom', 'scroll', 'input', '--index', '1']), undefined);
+    await bdg(['dom', 'hover', '#off']);
   });
 
   void it('rejects inputs a user could not perform', async () => {
