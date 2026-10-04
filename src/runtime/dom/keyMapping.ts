@@ -184,3 +184,32 @@ export function describeModifiers(flags: number): string[] {
     .filter((name) => flags & MODIFIER_FLAGS[name])
     .map((name) => labels[name]);
 }
+
+/** Editor commands of the standard Ctrl/Cmd shortcuts, by key code */
+const SHORTCUT_COMMANDS: Record<string, string> = {
+  KeyA: 'selectAll',
+  KeyC: 'copy',
+  KeyX: 'cut',
+  KeyV: 'paste',
+  KeyZ: 'undo',
+};
+
+/**
+ * Editor commands a key press triggers, like a physical keyboard does.
+ *
+ * Chrome only runs shortcuts such as Ctrl+A (Cmd+A on macOS) for events it
+ * gets from the OS; for CDP key events the command has to be named. Either
+ * Ctrl or Meta works, so scripts behave the same on every platform; Shift+Z
+ * redoes.
+ *
+ * @param code - Key code, e.g. "KeyA"
+ * @param flags - CDP modifier bit flags
+ * @returns Editor commands for `Input.dispatchKeyEvent`, empty if none
+ */
+export function shortcutCommands(code: string, flags: number): string[] {
+  const command = SHORTCUT_COMMANDS[code];
+  const shortcutModifier = flags & (MODIFIER_FLAGS.ctrl | MODIFIER_FLAGS.meta);
+  if (!command || !shortcutModifier || flags & MODIFIER_FLAGS.alt) return [];
+  if (command === 'undo' && flags & MODIFIER_FLAGS.shift) return ['redo'];
+  return flags & MODIFIER_FLAGS.shift ? [] : [command];
+}

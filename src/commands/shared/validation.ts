@@ -132,6 +132,29 @@ export function integerOption(min?: number, max?: number): (value: string) => nu
   };
 }
 
+/** Image formats Chrome can capture, by the names users write */
+const SCREENSHOT_FORMATS: Record<string, 'png' | 'jpeg'> = {
+  png: 'png',
+  jpeg: 'jpeg',
+  jpg: 'jpeg',
+};
+
+/**
+ * Commander parser for `--format`: case-insensitive, `jpg` means `jpeg`.
+ *
+ * @param value - Raw option value
+ * @returns Normalized format
+ * @throws InvalidArgumentError (exit 81) for other formats
+ */
+export function screenshotFormatOption(value: string): 'png' | 'jpeg' {
+  const format = SCREENSHOT_FORMATS[value.trim().toLowerCase()];
+  if (format) return format;
+  const similar = findSimilar(value.toLowerCase(), Object.keys(SCREENSHOT_FORMATS));
+  throw new InvalidArgumentError(
+    `Use png or jpeg${similar.length ? ` (did you mean ${similar[0]}?)` : ''}.`
+  );
+}
+
 function parseCommaSeparated(value: string): string[] {
   return value
     .split(',')

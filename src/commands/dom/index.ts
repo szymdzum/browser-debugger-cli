@@ -25,7 +25,7 @@ import type {
   DomScreenshotCommandOptions,
   DomEvalCommandOptions,
 } from '@/commands/shared/optionTypes.js';
-import { integerOption } from '@/commands/shared/validation.js';
+import { integerOption, screenshotFormatOption } from '@/commands/shared/validation.js';
 
 /**
  * Register DOM telemetry commands on the root Commander program.
@@ -87,7 +87,11 @@ export function registerDomCommands(program: Command): void {
       'Cached element index (0-based) from previous query',
       integerOption(0)
     )
-    .option('--format <format>', 'Image format: png or jpeg (default: png)')
+    .option(
+      '--format <format>',
+      'Image format: png or jpeg/jpg (default: from the file extension, else png)',
+      screenshotFormatOption
+    )
     .option('--quality <number>', 'JPEG quality 0-100 (default: 90)', integerOption(0, 100))
     .option('--no-full-page', 'Capture viewport only (default: full page)')
     .option('--no-resize', 'Disable auto-resize (full resolution)')

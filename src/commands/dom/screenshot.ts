@@ -2,6 +2,8 @@
  * `bdg dom screenshot` — capture page, element, or frame-sequence screenshots.
  */
 
+import { extname } from 'path';
+
 import type * as FsModule from 'fs';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
@@ -17,12 +19,51 @@ import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import { missingArgumentError } from '@/errors/messages.js';
 import type { ScreenshotResult, ElementBounds, NodeRef } from '@/types.js';
+import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('dom');
+
+/** Image format of each file extension Chrome can write */
+const EXTENSION_FORMATS: Record<string, 'png' | 'jpeg'> = {
+  '.png': 'png',
+  '.jpg': 'jpeg',
+  '.jpeg': 'jpeg',
+};
+
+/** Image extensions Chrome cannot capture (writing PNG bytes to them would mislead) */
+const UNSUPPORTED_EXTENSIONS = new Set(['.gif', '.webp', '.bmp', '.tif', '.tiff', '.avif', '.svg']);
+
+/**
+ * Pick the image format for a file: `--format` if given, else the extension.
+ *
+ * @param outputPath - File to write
+ * @param requested - `--format` value
+ * @returns Format to capture in
+ * @throws CommandError (81) when the extension and `--format` disagree or the
+ *   extension names a format Chrome cannot capture
+ */
+export function resolveImageFormat(outputPath: string, requested?: 'png' | 'jpeg'): 'png' | 'jpeg' {
+  const extension = extname(outputPath).toLowerCase();
+  const fromExtension = EXTENSION_FORMATS[extension];
+  if (
+    UNSUPPORTED_EXTENSIONS.has(extension) ||
+    (requested && fromExtension && requested !== fromExtension)
+  ) {
+    throw new CommandError(
+      `Cannot write ${requested ?? 'a screenshot'} to a ${extension} file`,
+      {
+        suggestion:
+          'Screenshots are png or jpeg: use a .png or .jpg file name (or --format to match it)',
+      },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  return requested ?? fromExtension ?? 'png';
+}
 
 type FilteredScreenshotOptions = {
   format?: 'png' | 'jpeg';
@@ -177,7 +218,11 @@ async function handleSequenceCapture(
     const outputPath = path.join(absoluteDir, filename);
 
     await captureSequenceFrame(outputPath, options);
-    log.info(`Frame ${frameCount}: ${filename}`);
+    if (options.json) {
+      console.log(JSON.stringify(buildSuccessResponse({ frame: frameCount, path: outputPath })));
+    } else {
+      log.info(`Frame ${frameCount}: ${filename}`);
+    }
 
     if (limit > 0 && frameCount >= limit) {
       process.emit('SIGINT');
@@ -205,10 +250,11 @@ export async function handleDomScreenshot(
     return;
   }
 
-  if (hasElementTarget(options)) {
-    await handleElementScreenshot(outputPath, options);
+  const captureOptions = { ...options, format: resolveImageFormat(outputPath, options.format) };
+  if (hasElementTarget(captureOptions)) {
+    await handleElementScreenshot(outputPath, captureOptions);
     return;
   }
 
-  await handlePageScreenshot(outputPath, options);
+  await handlePageScreenshot(outputPath, captureOptions);
 }

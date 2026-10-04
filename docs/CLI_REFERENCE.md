@@ -373,7 +373,8 @@ bdg dom pressKey "#search" Enter                  # Search box submit
 bdg dom pressKey "input" Tab                      # Tab to next field
 bdg dom pressKey "input" ArrowDown --times 3     # Navigate autocomplete
 bdg dom pressKey "body" Escape                    # Close modal/dialog
-bdg dom pressKey "textarea" a --modifiers ctrl   # Select all (Ctrl+A)
+bdg dom pressKey "textarea" a --modifiers ctrl   # Select all (Ctrl+A; meta = Cmd+A works too)
+bdg dom pressKey "textarea" z --modifiers ctrl   # Undo (also C, X, V; ctrl+shift+z redoes)
 bdg dom pressKey 0 Enter                          # Use cached query index
 
 # Submit forms (smart wait for navigation/network)
@@ -413,8 +414,9 @@ Capture screenshots of the current page. By default, images are auto-resized to 
 # Capture full page (default, auto-resized for Claude Vision)
 bdg dom screenshot output.png
 
-# Capture viewport only
-bdg dom screenshot visible.jpg --format jpeg --no-full-page
+# Capture viewport only (.jpg/.jpeg files are JPEG, everything else PNG;
+# --format png|jpeg|jpg must match the extension)
+bdg dom screenshot visible.jpg --no-full-page
 
 # Full resolution (disable auto-resize)
 bdg dom screenshot full-res.png --no-resize
@@ -423,7 +425,7 @@ bdg dom screenshot full-res.png --no-resize
 bdg dom screenshot footer.png --scroll "footer"
 
 # Custom quality
-bdg dom screenshot high-res.jpg --format jpeg --quality 100
+bdg dom screenshot high-res.jpg --quality 100
 ```
 
 **Auto-resize behavior:**

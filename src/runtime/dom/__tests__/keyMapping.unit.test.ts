@@ -13,6 +13,7 @@ import {
   describeModifiers,
   findUnknownModifiers,
   parseModifiers,
+  shortcutCommands,
 } from '@/runtime/dom/keyMapping.js';
 
 void describe('parseModifiers', () => {
@@ -51,5 +52,23 @@ void describe('modifier names', () => {
       'Shift',
     ]);
     assert.deepEqual(describeModifiers(MODIFIER_FLAGS.alt), ['Alt']);
+  });
+});
+
+void describe('shortcut commands', () => {
+  void it('names the editor command of Ctrl and Cmd shortcuts', () => {
+    assert.deepEqual(shortcutCommands('KeyA', MODIFIER_FLAGS.ctrl), ['selectAll']);
+    assert.deepEqual(shortcutCommands('KeyA', MODIFIER_FLAGS.meta), ['selectAll']);
+    assert.deepEqual(shortcutCommands('KeyZ', MODIFIER_FLAGS.ctrl), ['undo']);
+    assert.deepEqual(shortcutCommands('KeyZ', MODIFIER_FLAGS.meta | MODIFIER_FLAGS.shift), [
+      'redo',
+    ]);
+  });
+
+  void it('leaves other keys and combinations alone', () => {
+    assert.deepEqual(shortcutCommands('KeyA', 0), []);
+    assert.deepEqual(shortcutCommands('KeyA', MODIFIER_FLAGS.shift), []);
+    assert.deepEqual(shortcutCommands('KeyA', MODIFIER_FLAGS.ctrl | MODIFIER_FLAGS.alt), []);
+    assert.deepEqual(shortcutCommands('KeyB', MODIFIER_FLAGS.ctrl), []);
   });
 });

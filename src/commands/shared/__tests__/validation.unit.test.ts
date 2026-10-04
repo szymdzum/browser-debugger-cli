@@ -9,7 +9,12 @@ import { describe, it } from 'node:test';
 
 import { InvalidArgumentError } from 'commander';
 
-import { integerOption, positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
+import {
+  integerOption,
+  positiveIntRule,
+  resourceTypeRule,
+  screenshotFormatOption,
+} from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
@@ -257,5 +262,18 @@ void describe('integerOption', () => {
   void it('rejects out-of-range values with the allowed range', () => {
     assert.throws(() => integerOption(0, 100)('101'), /between 0 and 100/);
     assert.throws(() => integerOption(1)('0'), /Expected an integer\. Use a value >= 1/);
+  });
+});
+
+void describe('screenshotFormatOption', () => {
+  void it('accepts png and jpeg in any case, and jpg for jpeg', () => {
+    assert.equal(screenshotFormatOption('PNG'), 'png');
+    assert.equal(screenshotFormatOption('JPEG'), 'jpeg');
+    assert.equal(screenshotFormatOption(' jpg '), 'jpeg');
+  });
+
+  void it('rejects formats Chrome cannot capture as invalid arguments', () => {
+    assert.throws(() => screenshotFormatOption('gif'), InvalidArgumentError);
+    assert.throws(() => screenshotFormatOption('webp'), /png or jpeg/);
   });
 });

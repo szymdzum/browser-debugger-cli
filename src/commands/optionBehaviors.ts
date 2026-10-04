@@ -43,8 +43,10 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'When used with tall pages, prevents the automatic viewport fallback message since scroll is an explicit user choice',
   },
   'screenshot:--format': {
-    default: 'PNG format (lossless, larger file size)',
-    whenEnabled: 'JPEG format available for smaller files with quality trade-off',
+    default: 'Taken from the file extension: .jpg/.jpeg is JPEG, anything else PNG',
+    whenEnabled: 'png or jpeg (jpg, any case); JPEG gives smaller files with a quality trade-off',
+    automaticBehavior:
+      'A --format that contradicts the extension, or an extension Chrome cannot write (.gif, .webp, ...), is refused with exit 81',
   },
   'screenshot:--quality': {
     default: 'JPEG quality 90 (good balance of quality and size)',
