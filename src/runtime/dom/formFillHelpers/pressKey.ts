@@ -17,6 +17,7 @@ import {
   getKeyDefinition,
   MODIFIER_FLAGS,
   parseModifiers,
+  shortcutCommands,
   type KeyDefinition,
 } from '@/runtime/dom/keyMapping.js';
 import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
@@ -198,7 +199,8 @@ function keyText(keyDef: KeyDefinition, modifiers: number): string | undefined {
  * Dispatch one key event through CDP.
  *
  * A keyDown with text is sent as `keyDown` (the browser generates the
- * keypress/input and default action); without text as `rawKeyDown`.
+ * keypress/input and default action); without text as `rawKeyDown`. Editing
+ * shortcuts (Ctrl/Cmd+A, C, X, V, Z) name their editor command.
  *
  * @param cdp - CDP connection
  * @param type - Event phase
@@ -213,6 +215,7 @@ async function dispatchKeyEvent(
 ): Promise<void> {
   const text = keyText(keyDef, modifiers);
   const key = text && text !== '\r' ? text : keyDef.key;
+  const commands = type === 'keyDown' ? shortcutCommands(keyDef.code, modifiers) : [];
   await cdp.send('Input.dispatchKeyEvent', {
     type: type === 'keyDown' && !text ? 'rawKeyDown' : type,
     code: keyDef.code,
@@ -220,5 +223,6 @@ async function dispatchKeyEvent(
     windowsVirtualKeyCode: keyDef.keyCode,
     modifiers,
     ...(type === 'keyDown' && text && { text, unmodifiedText: keyDef.text }),
+    ...(commands.length > 0 && { commands }),
   });
 }

@@ -91,6 +91,44 @@ void describe('DOM interactions', () => {
     assert.equal(await evaluate('window.submits'), 1);
   });
 
+  void it('runs editing shortcuts like Ctrl+A and Cmd+Z', async () => {
+    await evaluate("document.getElementById('notes').value = 'hello world'");
+    for (const modifier of ['ctrl', 'meta']) {
+      await evaluate("document.getElementById('notes').setSelectionRange(0, 0)");
+      await bdg(['dom', 'pressKey', '#notes', 'a', '--modifiers', modifier]);
+      assert.deepEqual(
+        await evaluate(
+          "[document.getElementById('notes').selectionStart, document.getElementById('notes').selectionEnd]"
+        ),
+        [0, 11],
+        `${modifier}+a selects all`
+      );
+    }
+    await bdg(['dom', 'pressKey', '#notes', 'x', '--modifiers', 'ctrl']);
+    assert.equal(await evaluate("document.getElementById('notes').value"), '');
+    await bdg(['dom', 'pressKey', '#notes', 'z', '--modifiers', 'meta']);
+    assert.equal(await evaluate("document.getElementById('notes').value"), 'hello world');
+    await bdg(['dom', 'pressKey', '#notes', 'z', '--modifiers', 'ctrl,shift']);
+    assert.equal(await evaluate("document.getElementById('notes').value"), '', 'redo');
+    await bdg(['dom', 'pressKey', '#notes', 'v', '--modifiers', 'ctrl']);
+    assert.equal(await evaluate("document.getElementById('notes').value"), 'hello world', 'paste');
+    await takeEvents();
+  });
+
+  void it('writes screenshots in the format their file name says', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-shot-'));
+    await bdg(['dom', 'screenshot', path.join(dir, 'page.jpg')]);
+    assert.equal(
+      fs.readFileSync(path.join(dir, 'page.jpg')).subarray(0, 2).toString('hex'),
+      'ffd8'
+    );
+    await bdg(['dom', 'screenshot', path.join(dir, 'upper.png'), '--format', 'PNG']);
+    await bdg(['dom', 'screenshot', path.join(dir, 'mismatch.png'), '--format', 'jpeg'], 81);
+    await bdg(['dom', 'screenshot', path.join(dir, 'anim.gif')], 81);
+    await bdg(['dom', 'screenshot', path.join(dir, 'x.png'), '--format', 'gif'], 81);
+    assert.equal(fs.existsSync(path.join(dir, 'mismatch.png')), false);
+  });
+
   void it('fill toggles a controlled checkbox through its click handler', async () => {
     await bdg(['dom', 'fill', '#agree', 'true']);
     assert.equal(await evaluate("document.getElementById('agree').checked"), true);
