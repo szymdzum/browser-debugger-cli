@@ -113,7 +113,7 @@ export function formatSessionStatus(
     .blank()
     .section('Commands:', [
       'Peek data:       bdg peek',
-      'Query browser:   bdg query <script>',
+      'Run JavaScript:  bdg dom eval <script>',
       'End session:     bdg stop',
     ]);
 
@@ -175,7 +175,7 @@ export function formatNoSessionMessage(): string {
     .blank()
     .section('Suggestions:', [
       'Start a new session:     bdg <url>',
-      'List Chrome tabs:        bdg tabs',
+      'Clean up after a crash:  bdg cleanup',
     ])
     .build();
 }
