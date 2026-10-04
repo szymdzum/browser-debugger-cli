@@ -45,6 +45,18 @@ function formatPageResult(result: PageNavigationResult): string {
 }
 
 /**
+ * Whether a URL is a `javascript:` URL, which runs a script instead of
+ * loading a page (bdg points to `dom eval`; other schemes load normally).
+ *
+ * @param url - URL given
+ * @returns True for the javascript scheme
+ */
+function isScriptUrl(url: string): boolean {
+  const [scheme = ''] = url.trim().split(':', 1);
+  return url.includes(':') && scheme.toLowerCase() === 'javascript';
+}
+
+/**
  * Run a page action through the daemon.
  *
  * @param action - What to do
@@ -58,7 +70,7 @@ async function runPageAction(
 ): Promise<void> {
   await runCommand(
     async () => {
-      if (url?.trim().toLowerCase().startsWith('javascript:')) {
+      if (url !== undefined && isScriptUrl(url)) {
         const err = javascriptNavigationError();
         return {
           success: false,
