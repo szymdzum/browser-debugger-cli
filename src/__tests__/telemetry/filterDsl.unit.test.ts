@@ -12,6 +12,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { resourceTypeFromName } from '@/constants.js';
 import {
   parseFilterString,
   validateFilterString,
@@ -516,5 +517,14 @@ describe('Help text', () => {
       assert.match(!result.valid ? (result.suggestion ?? '') : '', /Fetch/);
       assert.equal(validateFilterString('resource-type:xhr,FETCH').valid, true);
     });
+  });
+});
+
+void describe('resource type abbreviations', () => {
+  void it('accepts the abbreviations shown in network list', () => {
+    assert.equal(resourceTypeFromName('WS'), 'WebSocket');
+    assert.equal(resourceTypeFromName('doc'), 'Document');
+    assert.equal(resourceTypeFromName('FET'), 'Fetch');
+    assert.equal(resourceTypeFromName('Nope'), undefined);
   });
 });

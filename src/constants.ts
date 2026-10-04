@@ -241,6 +241,20 @@ export const RESOURCE_TYPE_ABBREVIATIONS: Record<string, string> = {
 };
 
 /**
+ * The CDP resource type a user means: its name or its abbreviation from
+ * `network list` (`WS`, `DOC`, `FET`), in any case.
+ *
+ * @param name - Type as typed
+ * @returns CDP resource type, or undefined if unknown
+ */
+export function resourceTypeFromName(name: string): string | undefined {
+  const wanted = name.trim().toLowerCase();
+  return Object.entries(RESOURCE_TYPE_ABBREVIATIONS).find(
+    ([type, abbreviation]) => type.toLowerCase() === wanted || abbreviation.toLowerCase() === wanted
+  )?.[0];
+}
+
+/**
  * Rules for inferring resource types from MIME patterns.
  * Ordered by precedence (first match wins).
  * Type uses string to avoid circular dependency with typed-cdp.

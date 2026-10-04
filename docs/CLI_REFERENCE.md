@@ -477,10 +477,15 @@ bdg network list --filter "method:DELETE"
 # Filter by MIME type
 bdg network list --filter "mime-type:application/json"
 bdg network list --filter "mime-type:text/html"
+bdg network list --filter "mime-type:image/*"         # Any image type
 
 # Filter by response size
 bdg network list --filter "larger-than:1MB"
 bdg network list --filter "larger-than:100KB"
+
+# Filter by duration (ms or s)
+bdg network list --filter "duration:>1s"
+bdg network list --filter "duration:<=200ms"
 
 # Filter by response headers
 bdg network list --filter "has-response-header:set-cookie"

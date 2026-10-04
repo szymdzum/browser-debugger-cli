@@ -6,7 +6,7 @@
  * header inspection, and various state filters.
  */
 
-import { RESOURCE_TYPE_ABBREVIATIONS } from '@/constants.js';
+import { RESOURCE_TYPE_ABBREVIATIONS, resourceTypeFromName } from '@/constants.js';
 import { matchesWildcard } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -159,7 +159,7 @@ function validateResourceTypes(value: string): FilterTokenResult | null {
   const unknown = value
     .split(',')
     .map((type) => type.trim())
-    .find((type) => !RESOURCE_TYPES.some((known) => known.toLowerCase() === type.toLowerCase()));
+    .find((type) => resourceTypeFromName(type) === undefined);
   if (unknown === undefined) return null;
   const similar = findSimilar(unknown, RESOURCE_TYPES);
   return createError(
@@ -367,14 +367,14 @@ function matchesFilter(request: NetworkRequest, filter: ParsedFilter): boolean {
     case 'mime-type': {
       if (!request.mimeType) return false;
       const normalizedMime = normalizeMimeType(request.mimeType);
-      const filterValue = filter.value.toLowerCase();
+      const filterValue = filter.value.toLowerCase().replace(/\*$/, '');
       return normalizedMime === filterValue || normalizedMime.startsWith(filterValue);
     }
 
     case 'resource-type': {
       if (!request.resourceType) return false;
-      const types = filter.value.split(',').map((t) => t.trim().toLowerCase());
-      return types.includes(request.resourceType.toLowerCase());
+      const types = filter.value.split(',').map((t) => resourceTypeFromName(t));
+      return types.includes(request.resourceType);
     }
 
     case 'larger-than': {

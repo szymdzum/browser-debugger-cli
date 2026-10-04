@@ -3,7 +3,11 @@ import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
 import type { BdgOutput } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { formatTimestamp } from '@/ui/formatters/console/shared.js';
-import { formatRequestStatus, getRequestState } from '@/ui/formatters/requestStatus.js';
+import {
+  failureReason,
+  formatRequestStatus,
+  getRequestState,
+} from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import {
   PREVIEW_EMPTY_STATES,
@@ -290,12 +294,9 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           const statusColor = state === 'pending' ? 'PND' : isFailed ? 'ERR' : 'OK';
           const status = state === 'failed' ? 'FAILED' : formatRequestStatus(req);
           fmt.text(`${statusColor} ${status} ${req.method} ${req.url}`);
-          if (req.errorText) {
-            fmt.text(`  Error: ${req.errorText}`);
-          }
-          if (req.blockedReason) {
-            fmt.text(`  Blocked: ${req.blockedReason}`);
-          }
+          const reason = failureReason(req);
+          if (reason) fmt.text(`  Error: ${reason}`);
+
           if (req.resourceType) {
             fmt.text(`  Resource: ${req.resourceType}`);
           }

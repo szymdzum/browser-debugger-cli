@@ -54,6 +54,17 @@ export function registerDetailsCommand(program: Command): void {
             };
           }
 
+          if (!opts.id.trim()) {
+            return {
+              success: false,
+              error: `The ${opts.type === 'network' ? 'request id' : 'message index'} is empty`,
+              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+              errorContext: {
+                suggestion: 'Usage: bdg details network <requestId> or bdg details console <index>',
+              },
+            };
+          }
+
           const response = await getDetails(opts.type, opts.id);
 
           validateIPCResponse(response);

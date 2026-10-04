@@ -165,3 +165,11 @@ void describe('JSONLBuffer chunk boundaries', () => {
     assert.throws(() => buffer.process(`${'x'.repeat(20)}\n`), JSONLBufferOverflowError);
   });
 });
+
+void describe('parseJSONLFrame', () => {
+  void it('replaces lone surrogates so the output stays valid for strict JSON parsers', () => {
+    const parsed = parseJSONLFrame<{ text: string; ok: string }>('{"text":"x\\ud83d","ok":"🚀"}');
+    assert.equal(parsed.text, 'x�');
+    assert.equal(parsed.ok, '🚀');
+  });
+});

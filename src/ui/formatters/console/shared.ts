@@ -116,7 +116,7 @@ export const LEVEL_MAP: Record<ConsoleMessage['type'], ConsoleInternalLevel> = {
   startGroup: 'other',
   startGroupCollapsed: 'other',
   endGroup: 'other',
-  assert: 'other',
+  assert: 'error',
   profile: 'other',
   profileEnd: 'other',
   count: 'other',

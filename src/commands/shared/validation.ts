@@ -5,6 +5,7 @@
 import { InvalidArgumentError } from 'commander';
 
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { resourceTypeFromName } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import type { ConsoleLevel } from '@/types.js';
 import { integerOutOfRangeError, invalidIntegerError } from '@/ui/messages/validation.js';
@@ -191,7 +192,8 @@ function parseCommaSeparated(value: string): string[] {
 }
 
 function normalizeResourceType(type: string): Protocol.Network.ResourceType | undefined {
-  return VALID_RESOURCE_TYPES.find((valid) => valid.toLowerCase() === type.toLowerCase());
+  const name = resourceTypeFromName(type) ?? type;
+  return VALID_RESOURCE_TYPES.find((valid) => valid.toLowerCase() === name.toLowerCase());
 }
 
 function validateResourceTypes(types: string[]): {

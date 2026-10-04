@@ -21,7 +21,11 @@ import { resolvePreset, FILTER_PRESETS } from '@/telemetry/filterPresets.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { NetworkRequest } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
-import { formatNetworkList, type NetworkListOptions } from '@/ui/formatters/networkList.js';
+import {
+  formatNetworkFollowRows,
+  formatNetworkList,
+  type NetworkListOptions,
+} from '@/ui/formatters/networkList.js';
 import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,
@@ -33,7 +37,6 @@ import { validateFilterOption } from './shared.js';
 const MIN_LAST = 0;
 const MAX_LAST = 10000;
 const DEFAULT_LAST = 100;
-const FOLLOW_LIMIT = 50;
 const FOLLOW_INTERVAL = 1000;
 
 interface NetworkListCommandOptions extends BaseOptions {
@@ -149,13 +152,24 @@ function buildFormatOptions(
   };
 }
 
+/**
+ * Stream network requests: the last `lastN` finished ones at start, then
+ * each request once, when it has finished loading or failed (a request whose
+ * headers arrived but whose body is still loading waits), like `tail -f`.
+ *
+ * @param options - Command options
+ * @param resourceTypes - Validated resource types
+ * @param lastN - Requests to show at start (0 = all)
+ */
 async function runFollowMode(
   options: NetworkListCommandOptions,
-  resourceTypes: Protocol.Network.ResourceType[]
+  resourceTypes: Protocol.Network.ResourceType[],
+  lastN: number
 ): Promise<void> {
+  const shown = new Set<string>();
+  let started = false;
   const showNetwork = async (): Promise<void> => {
     const result = await fetchNetworkRequests(filtersNeedHeaders(options));
-
     if (!result.success) {
       const errorResult = handleDaemonConnectionError(result.error, {
         json: options.json,
@@ -168,25 +182,30 @@ async function runFollowMode(
     }
     noteFollowConnected();
 
-    const filtered = filterRequests(result.data, options, resourceTypes);
-    const displayRequests = filtered.slice(-FOLLOW_LIMIT);
-    if (options.json) {
-      const data: NetworkListResult = {
-        requests: displayRequests,
-        totalCount: result.data.length,
-        filteredCount: filtered.length,
-      };
-      console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
-      return;
-    }
-
-    console.clear();
-    console.log(
-      formatNetworkList(
-        displayRequests,
-        buildFormatOptions(options, filtered.length, FOLLOW_LIMIT, true)
-      )
+    const finished = filterRequests(result.data, options, resourceTypes).filter(
+      (request) => request.duration !== undefined && !shown.has(request.requestId)
     );
+    const present = new Set(result.data.map((request) => request.requestId));
+    for (const id of shown) if (!present.has(id)) shown.delete(id);
+    finished.forEach((request) => shown.add(request.requestId));
+    const fresh = started || lastN === 0 ? finished : finished.slice(-lastN);
+    if (options.json) {
+      if (!started || fresh.length > 0) {
+        const data: NetworkListResult = {
+          requests: fresh,
+          totalCount: result.data.length,
+          filteredCount: fresh.length,
+        };
+        console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
+      }
+    } else {
+      const text = formatNetworkFollowRows(fresh, {
+        header: !started,
+        verbose: options.verbose ?? false,
+      });
+      if (text) console.log(text);
+    }
+    started = true;
   };
 
   await setupFollowMode(showNetwork, {
@@ -225,7 +244,12 @@ export function registerListCommand(networkCmd: Command): void {
         'Filter requests using DevTools DSL (e.g., "status-code:>=400 domain:api.*")'
       )
     )
-    .addOption(new Option('--preset <name>', 'Use predefined filter preset'))
+    .addOption(
+      new Option(
+        '--preset <name>',
+        `Use predefined filter preset: ${Object.keys(FILTER_PRESETS).join(', ')}`
+      )
+    )
     .addOption(
       new Option(
         '--type <types>',
@@ -255,7 +279,7 @@ export function registerListCommand(networkCmd: Command): void {
       }
 
       if (options.follow) {
-        await runFollowMode(options, resourceTypes);
+        await runFollowMode(options, resourceTypes, lastN);
         return;
       }
 

@@ -122,6 +122,33 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
   return fmt.build();
 }
 
+/** Narrowest id column of the stream (ids of later rows may be longer) */
+const FOLLOW_ID_WIDTH = 14;
+
+/**
+ * Rows of the network stream: requests that finished since the last poll,
+ * with the column header the first time.
+ *
+ * @param requests - Newly finished requests
+ * @param options - `header` the first time; `verbose` for full URLs
+ * @returns Text to print (empty when there is nothing new)
+ */
+export function formatNetworkFollowRows(
+  requests: NetworkRequest[],
+  options: { header?: boolean; verbose?: boolean } = {}
+): string {
+  const fmt = new OutputFormatter();
+  const idWidth = Math.max(FOLLOW_ID_WIDTH, ...requests.map((r) => r.requestId.length + 2));
+  if (options.header) {
+    fmt.text('Streaming network requests... (Ctrl+C to stop)');
+    fmt.text(formatColumnHeader(idWidth));
+    fmt.separator('─', SEPARATOR_WIDTH);
+  }
+  for (const request of requests)
+    fmt.text(formatRequestLine(request, options.verbose ?? false, idWidth));
+  return fmt.build();
+}
+
 /**
  * Format network requests for display.
  */

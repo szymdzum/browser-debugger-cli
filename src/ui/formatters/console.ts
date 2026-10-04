@@ -22,7 +22,7 @@ export type {
 } from './console/shared.js';
 export { LEVEL_MAP } from './console/shared.js';
 export { formatConsoleChronological } from './console/chronological.js';
-export { formatConsoleFollow } from './console/follow.js';
+export { formatConsoleFollowLines } from './console/follow.js';
 export { buildConsoleJsonOutput, formatConsoleJson } from './console/json.js';
 export { formatConsoleSummary } from './console/summarize.js';
 
