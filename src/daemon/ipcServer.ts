@@ -151,11 +151,13 @@ export class IPCServer {
   private handleConnection(socket: Socket): void {
     log.debug('Client connected');
     const buffer = new JSONLBuffer();
+    const disconnected = new AbortController();
+    socket.on('close', () => disconnected.abort());
 
     socket.on('data', (chunk: Buffer) => {
       try {
         for (const line of buffer.process(chunk.toString('utf-8'))) {
-          void this.handleMessage(socket, line);
+          void this.handleMessage(socket, line, disconnected.signal);
         }
       } catch (error) {
         log.info(`Dropping client connection: ${getErrorMessage(error)}`);
@@ -172,8 +174,13 @@ export class IPCServer {
    *
    * @param socket - Client socket
    * @param line - Raw JSONL frame
+   * @param disconnected - Aborted when the client disconnects
    */
-  private async handleMessage(socket: Socket, line: string): Promise<void> {
+  private async handleMessage(
+    socket: Socket,
+    line: string,
+    disconnected: AbortSignal
+  ): Promise<void> {
     let message: unknown;
     try {
       message = JSON.parse(line);
@@ -188,7 +195,7 @@ export class IPCServer {
 
     this.inFlightRequests++;
     try {
-      const response = await this.route(message);
+      const response = await this.route(message, disconnected);
       if (response !== null && !socket.destroyed) {
         socket.write(toJSONLFrame(response));
       }
@@ -201,9 +208,13 @@ export class IPCServer {
    * Dispatch a validated message to the controller.
    *
    * @param message - Client request
+   * @param disconnected - Aborted when the client disconnects
    * @returns Response to send, or null for messages that need no reply
    */
-  private async route(message: IPCMessageType | ClientRequestUnion): Promise<unknown> {
+  private async route(
+    message: IPCMessageType | ClientRequestUnion,
+    disconnected: AbortSignal
+  ): Promise<unknown> {
     if (isCommandRequest(message.type)) {
       return this.controller.command(message as ClientRequestUnion);
     }
@@ -217,7 +228,7 @@ export class IPCServer {
       case 'har_data_request':
         return this.controller.harData(message);
       case 'start_session_request':
-        return this.controller.startSession(message);
+        return this.controller.startSession(message, disconnected);
       case 'stop_session_request':
         return this.controller.stopSession(message);
       case 'handshake_response':

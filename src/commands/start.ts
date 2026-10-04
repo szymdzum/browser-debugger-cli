@@ -124,7 +124,7 @@ function applyCollectorOptions(command: Command): Command {
     .option('--no-headless', 'Show browser window')
     .option(
       '--chrome-ws-url <url>',
-      'Connect to existing Chrome via WebSocket URL (e.g., ws://localhost:9222/devtools/page/...)'
+      'Connect to existing Chrome via its DevTools WebSocket URL: browser (ws://host:port/devtools/browser/<id>, uses the first tab) or page (.../devtools/page/<id>)'
     )
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .addOption(jsonOption())

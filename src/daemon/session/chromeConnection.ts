@@ -10,12 +10,14 @@ import { launchChrome } from '@/connection/launcher.js';
 import { ConfigError } from '@/daemon/errors.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
+import { CommandError } from '@/errors/index.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
 import { getSessionDir } from '@/session/paths.js';
-import type { LaunchedChrome } from '@/types.js';
+import type { CDPTarget, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
-import { fetchCDPTargets } from '@/utils/http.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { createPageTarget, fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -30,20 +32,35 @@ export async function setupChromeConnection(
   notify: NoticeSink<ChromeNoticeCode>
 ): Promise<LaunchedChrome | null> {
   if (config.chromeWsUrl) {
-    return setupExternalChrome(config, telemetryStore, notify);
+    return setupExternalChrome(config, telemetryStore, log, notify);
   } else {
     return setupLaunchedChrome(config, log);
   }
 }
 
+/** Path of browser-level DevTools WebSocket URLs (`/devtools/browser/<uuid>`) */
+const BROWSER_WS_PATH = '/devtools/browser/';
+
+/**
+ * Debugging port of an external Chrome, taken from its WebSocket URL.
+ *
+ * @param wsUrl - `--chrome-ws-url` value
+ * @returns Port in the URL, or the protocol default
+ */
+export function externalChromePort(wsUrl: string): number {
+  const url = new URL(wsUrl);
+  return Number(url.port) || (url.protocol === 'wss:' ? 443 : 80);
+}
+
 /**
  * Connect to existing external Chrome instance.
  */
-function setupExternalChrome(
+async function setupExternalChrome(
   config: SessionConfig,
   telemetryStore: TelemetryStore,
+  log: Logger,
   notify: NoticeSink<ChromeNoticeCode>
-): null {
+): Promise<null> {
   const wsUrl = config.chromeWsUrl;
   if (!wsUrl) {
     throw new ConfigError(
@@ -54,20 +71,60 @@ function setupExternalChrome(
 
   notify({ code: 'EXTERNAL_CHROME_CONNECTING' });
   notify({ code: 'EXTERNAL_CHROME_WS_URL', context: { wsUrl } });
-
-  const targetId = wsUrl.split('/').pop() ?? 'external';
-
-  telemetryStore.setTargetInfo({
-    id: targetId,
-    type: 'page',
-    title: 'External Chrome',
-    url: config.url,
-    webSocketDebuggerUrl: wsUrl,
-  });
-
+  telemetryStore.setTargetInfo(await resolveExternalTarget(wsUrl, config, log));
   notify({ code: 'EXTERNAL_CHROME_NO_PID' });
 
   return null;
+}
+
+/**
+ * Find the page to attach to in an external Chrome.
+ *
+ * A page URL is used as given. A browser-level URL cannot run page commands,
+ * so the first open page is used (a blank one is opened if there is none),
+ * reached through the same scheme, host and port (HTTPS for a `wss:` URL).
+ *
+ * @param wsUrl - `--chrome-ws-url` value
+ * @param config - Session configuration (port is the URL's port)
+ * @param log - Logger
+ * @returns Page target
+ * @throws CommandError if no page can be found or opened
+ */
+async function resolveExternalTarget(
+  wsUrl: string,
+  config: SessionConfig,
+  log: Logger
+): Promise<CDPTarget> {
+  const { hostname, host, pathname, protocol, port } = new URL(wsUrl);
+  const http = { host: hostname, secure: protocol === 'wss:' };
+  const targets = await fetchCDPTargets(config.port, log, http);
+  const targetId = pathname.split('/').pop() ?? 'external';
+  if (!pathname.startsWith(BROWSER_WS_PATH)) {
+    const known = targets.find((t) => t.id === targetId);
+    return {
+      ...(known ?? { id: targetId, type: 'page', title: '', url: config.url }),
+      webSocketDebuggerUrl: wsUrl,
+    };
+  }
+
+  const page =
+    targets.find((t) => t.type === 'page') ??
+    (await createPageTarget(hostname, config.port, log, http));
+  if (!page) {
+    throw new CommandError(
+      `No page to attach to in the Chrome at ${host}`,
+      {
+        suggestion: `Check that Chrome is running with --remote-debugging-port=${config.port} and reachable`,
+      },
+      EXIT_CODES.CDP_CONNECTION_FAILURE
+    );
+  }
+  const pageWsUrl = new URL(page.webSocketDebuggerUrl);
+  pageWsUrl.protocol = protocol;
+  pageWsUrl.hostname = hostname;
+  pageWsUrl.port = port;
+  log.info(`Attaching to page ${page.url} of the external Chrome`);
+  return { ...page, webSocketDebuggerUrl: pageWsUrl.toString() };
 }
 
 /**

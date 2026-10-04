@@ -1,6 +1,7 @@
 import { DEFAULT_CDP_PORT, HTTP_LOCALHOST } from '@/constants.js';
 import type { CDPTarget } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 /**
  * Timeout for CDP HTTP requests in milliseconds.
@@ -18,6 +19,8 @@ export interface FetchCDPTargetsOptions {
   host?: string;
   /** Request timeout in milliseconds (defaults to CDP_HTTP_TIMEOUT_MS). */
   timeoutMs?: number;
+  /** Use HTTPS (Chrome behind a TLS proxy, reached via a `wss:` URL). */
+  secure?: boolean;
 }
 
 /**
@@ -45,7 +48,7 @@ export async function fetchCDPTargets(
 ): Promise<CDPTarget[]> {
   const host = options?.host ?? HTTP_LOCALHOST;
   const timeoutMs = options?.timeoutMs ?? CDP_HTTP_TIMEOUT_MS;
-  const url = `http://${host}:${port}/json/list`;
+  const url = `${options?.secure ? 'https' : 'http'}://${host}:${port}/json/list`;
 
   try {
     const controller = new AbortController();
@@ -109,4 +112,36 @@ export async function fetchCDPTargetById(
 ): Promise<CDPTarget | null> {
   const targets = await fetchCDPTargets(port, logger);
   return targets.find((t) => t.id === targetId) ?? null;
+}
+
+/**
+ * Open a new blank page in a Chrome reached over its DevTools HTTP endpoint.
+ *
+ * @param host - Chrome host
+ * @param port - Chrome debugging port
+ * @param logger - Optional logger for debug output
+ * @param options - `secure`: use HTTPS
+ * @returns The new page target, or null if Chrome could not be reached
+ */
+export async function createPageTarget(
+  host: string,
+  port: number,
+  logger?: Logger,
+  options?: Pick<FetchCDPTargetsOptions, 'secure'>
+): Promise<CDPTarget | null> {
+  const url = `${options?.secure ? 'https' : 'http'}://${host}:${port}/json/new?about:blank`;
+  try {
+    const response = await fetch(url, {
+      method: 'PUT',
+      signal: AbortSignal.timeout(CDP_HTTP_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      logger?.debug(`Opening a page failed: ${response.status} (${url})`);
+      return null;
+    }
+    return (await response.json()) as CDPTarget;
+  } catch (error) {
+    logger?.debug(`Opening a page failed: ${getErrorMessage(error)} (${url})`);
+    return null;
+  }
 }

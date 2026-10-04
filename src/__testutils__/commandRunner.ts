@@ -6,6 +6,7 @@
  */
 
 import { spawn } from 'child_process';
+import * as os from 'os';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -40,9 +41,11 @@ export async function runCommand(
     env?: Record<string, string>;
     /** Delay before reading stdout (ms); lets the pipe fill up like a slow consumer */
     readDelay?: number;
+    /** Sends SIGINT to the command when aborted, like Ctrl-C */
+    interrupt?: AbortSignal;
   } = {}
 ): Promise<CommandResult> {
-  const { timeout = 30000, env = {}, readDelay = 0 } = options;
+  const { timeout = 30000, env = {}, readDelay = 0, interrupt } = options;
 
   // Path to compiled CLI entry point (ESM module compatibility)
   const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +72,7 @@ export async function runCommand(
       timedOut = true;
       child.kill('SIGKILL');
     }, timeout);
+    interrupt?.addEventListener('abort', () => child.kill('SIGINT'), { once: true });
 
     child.stdout?.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -92,7 +96,7 @@ export async function runCommand(
       });
     });
 
-    child.on('close', (code: number | null) => {
+    child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
       clearTimeout(timeoutId);
 
       if (timedOut) {
@@ -103,7 +107,7 @@ export async function runCommand(
         });
       } else {
         resolve({
-          exitCode: code ?? 1,
+          exitCode: code ?? (signal ? 128 + os.constants.signals[signal] : 1),
           stdout,
           stderr,
         });

@@ -279,10 +279,18 @@ export class SessionController {
   /**
    * Start a session, or report the one already running.
    *
+   * A start whose client disconnects (Ctrl-C) is abandoned: the session is
+   * stopped, whether it is still launching or has just started, since nobody
+   * learns that it exists.
+   *
    * @param request - Start session request
+   * @param abandoned - Aborted when the requesting client disconnects
    * @returns Start session response
    */
-  async startSession(request: StartSessionRequest): Promise<StartSessionResponse> {
+  async startSession(
+    request: StartSessionRequest,
+    abandoned?: AbortSignal
+  ): Promise<StartSessionResponse> {
     const base = { type: 'start_session_response' as const, sessionId: request.sessionId };
     if (this.session || this.launching || this.closing) {
       return { ...base, status: 'error', ...this.describeExistingSession(request) };
@@ -297,9 +305,17 @@ export class SessionController {
     });
     launching.done = run;
     this.launching = launching;
+    const stopAbandoned = (): void => {
+      log.info('Client disconnected during start; stopping the session');
+      void launching.session?.stop('normal');
+    };
+    abandoned?.addEventListener('abort', stopAbandoned, { once: true });
     try {
-      return { ...base, ...(await run) };
+      const result = await run;
+      if (abandoned?.aborted) await launching.session?.stop('normal');
+      return { ...base, ...result };
     } finally {
+      abandoned?.removeEventListener('abort', stopAbandoned);
       this.launching = null;
     }
   }

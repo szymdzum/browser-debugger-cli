@@ -19,19 +19,28 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 
+/** Connection attempts for a Chrome bdg launched (it may still be starting) */
+const LAUNCHED_CONNECT_ATTEMPTS = 10;
+
+/** Connection attempts for an external Chrome (already running) */
+const EXTERNAL_CONNECT_ATTEMPTS = 2;
+
 /**
  * Connect to the session's target over CDP.
  *
  * @param telemetryStore - Store holding the resolved target
  * @param log - Logger
  * @param onDisconnect - Called if an established connection is later lost
+ * @param options - `external`: an already running Chrome, so a failed connect is
+ *   not retried for long (a launched Chrome may still be starting)
  * @returns Open CDP connection
  * @throws CDPConnectionError if no target is known or connecting fails
  */
 export async function connectCDP(
   telemetryStore: TelemetryStore,
   log: Logger,
-  onDisconnect: () => void
+  onDisconnect: () => void,
+  options: { external?: boolean } = {}
 ): Promise<CDPConnection> {
   if (!telemetryStore.targetInfo) {
     throw new CDPConnectionError('Failed to obtain target information');
@@ -40,7 +49,7 @@ export async function connectCDP(
   const cdp = new CDPConnection(log);
   await cdp.connect(telemetryStore.targetInfo.webSocketDebuggerUrl, {
     autoReconnect: false,
-    maxRetries: 10,
+    maxRetries: options.external ? EXTERNAL_CONNECT_ATTEMPTS : LAUNCHED_CONNECT_ATTEMPTS,
     onDisconnect: (code, reason) => {
       log.info(`Chrome connection lost (code: ${code}, reason: ${reason})`);
       log.debug(sessionEndingConnectionLoss());
