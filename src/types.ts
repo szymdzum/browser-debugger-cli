@@ -73,8 +73,10 @@ export interface WebSocketFrame {
   direction: 'sent' | 'received';
   /** WebSocket opcode (1 = text, 2 = binary) */
   opcode: number;
-  /** Frame payload data */
+  /** Frame payload data (base64 for binary frames) */
   payloadData: string;
+  /** Original payload length in characters, when `payloadData` was truncated */
+  truncatedFrom?: number;
 }
 
 /**
@@ -89,8 +91,12 @@ export interface WebSocketConnection {
   timestamp: number;
   /** Initiator URL (page that opened the WebSocket) */
   initiatorUrl?: string;
+  /** Request headers of the handshake */
+  requestHeaders?: Record<string, string>;
   /** Response status from handshake */
   status?: number;
+  /** Response status text from handshake */
+  statusText?: string;
   /** Response headers from handshake */
   responseHeaders?: Record<string, string>;
   /** Captured frames (sent and received) */
@@ -152,6 +158,11 @@ export interface NetworkRequest {
   responseBodyBase64?: boolean;
   /** Served from the browser's memory, disk or prefetch cache */
   fromCache?: boolean;
+  /** Messages and lifecycle of a WebSocket connection (`resourceType` is `WebSocket`) */
+  webSocket?: {
+    frames: WebSocketFrame[];
+    closedTime?: number;
+  };
   /**
    * Network error text from loadingFailed events.
    * Contains specific error codes like net::ERR_CERT_DATE_INVALID, net::ERR_CONNECTION_REFUSED.

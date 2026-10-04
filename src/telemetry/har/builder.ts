@@ -16,10 +16,11 @@ import type {
   Cache,
   QueryParam,
   PostData,
+  WebSocketMessage,
 } from './types.js';
 
 import { skippedBodyReason } from '@/telemetry/network.js';
-import type { NetworkRequest } from '@/types.js';
+import type { NetworkRequest, WebSocketFrame } from '@/types.js';
 
 /**
  * Metadata for HAR generation.
@@ -113,7 +114,26 @@ function buildEntry(req: NetworkRequest): Entry {
     entry._resourceType = req.resourceType;
   }
 
+  if (req.webSocket) {
+    entry._webSocketMessages = req.webSocket.frames.map(buildWebSocketMessage);
+  }
+
   return entry;
+}
+
+/**
+ * Build a HAR WebSocket message from a captured frame.
+ *
+ * @param frame - Captured WebSocket frame
+ * @returns HAR WebSocket message
+ */
+function buildWebSocketMessage(frame: WebSocketFrame): WebSocketMessage {
+  return {
+    type: frame.direction === 'sent' ? 'send' : 'receive',
+    time: frame.timestamp / 1000,
+    opcode: frame.opcode,
+    data: frame.payloadData,
+  };
 }
 
 /**

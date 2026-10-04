@@ -11,8 +11,9 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import { useFakeClock } from '@/__testutils__/testClock.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { startNetworkCollection } from '@/telemetry/network.js';
-import type { NetworkRequest } from '@/types.js';
+import type { CleanupFunction } from '@/connection/types.js';
+import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
+import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 
 /**
  * Mock CDP connection for testing network telemetry.
@@ -1039,5 +1040,92 @@ void describe('Network telemetry contract', () => {
 
       void cleanup();
     });
+  });
+});
+
+void describe('WebSocket collection', () => {
+  let mockCDP: MockCDPConnection;
+  let connections: WebSocketConnection[];
+  let cleanup: CleanupFunction;
+
+  beforeEach(() => {
+    mockCDP = new MockCDPConnection();
+    connections = [];
+    cleanup = startWebSocketCollection(mockCDP as unknown as CDPConnection, connections);
+  });
+
+  afterEach(async () => {
+    await cleanup();
+  });
+
+  /**
+   * Emit a frame event for connection `W`.
+   *
+   * @param event - Sent or received frame event
+   * @param payloadData - Frame payload
+   * @param opcode - 1 for text, 2 for binary
+   */
+  function emitFrame(event: string, payloadData: string, opcode = 1): void {
+    mockCDP.emit(event, {
+      requestId: 'W',
+      timestamp: 1,
+      response: { opcode, mask: false, payloadData },
+    });
+  }
+
+  void it('stores a connection when created and updates it while open', () => {
+    mockCDP.emit('Network.webSocketCreated', { requestId: 'W', url: 'ws://example.com/ws' });
+    assert.equal(connections.length, 1);
+
+    mockCDP.emit('Network.webSocketWillSendHandshakeRequest', {
+      requestId: 'W',
+      timestamp: 1,
+      wallTime: 1,
+      request: { headers: { Upgrade: 'websocket' } },
+    });
+    mockCDP.emit('Network.webSocketHandshakeResponseReceived', {
+      requestId: 'W',
+      timestamp: 1,
+      response: { status: 101, statusText: 'Switching Protocols', headers: {} },
+    });
+    emitFrame('Network.webSocketFrameSent', 'hello');
+    emitFrame('Network.webSocketFrameReceived', 'world');
+
+    const [connection] = connections;
+    assert.equal(connection?.status, 101);
+    assert.equal(connection?.statusText, 'Switching Protocols');
+    assert.deepEqual(connection?.requestHeaders, { Upgrade: 'websocket' });
+    assert.deepEqual(
+      connection?.frames.map((f) => [f.direction, f.payloadData]),
+      [
+        ['sent', 'hello'],
+        ['received', 'world'],
+      ]
+    );
+    assert.equal(connection?.closedTime, undefined);
+
+    mockCDP.emit('Network.webSocketClosed', { requestId: 'W', timestamp: 2 });
+    assert.equal(connections.length, 1, 'closing does not add the connection again');
+    assert.ok(connection?.closedTime);
+  });
+
+  void it('truncates oversized payloads, keeping binary ones valid base64', () => {
+    mockCDP.emit('Network.webSocketCreated', { requestId: 'W', url: 'ws://example.com/ws' });
+    emitFrame('Network.webSocketFrameReceived', 'a'.repeat(200 * 1024));
+    emitFrame('Network.webSocketFrameReceived', 'QUJD'.repeat(40 * 1024) + 'QQ==', 2);
+
+    const [text, binary] = connections[0]?.frames ?? [];
+    assert.equal(text?.payloadData.length, 100 * 1024);
+    assert.equal(text?.truncatedFrom, 200 * 1024);
+    assert.equal((binary?.payloadData.length ?? 0) % 4, 0);
+    assert.match(binary?.payloadData ?? '', /^[A-Za-z0-9+/]*={0,2}$/);
+    assert.equal(binary?.truncatedFrom, 160 * 1024 + 4);
+  });
+
+  void it('stops tracking new connections at the limit', () => {
+    for (let i = 0; i < 101; i++) {
+      mockCDP.emit('Network.webSocketCreated', { requestId: `W${i}`, url: 'ws://example.com/ws' });
+    }
+    assert.equal(connections.length, 100);
   });
 });

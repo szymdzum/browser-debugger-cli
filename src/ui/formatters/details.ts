@@ -1,6 +1,48 @@
-import type { NetworkRequest, ConsoleMessage } from '@/types.js';
+import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { truncateByLength } from '@/utils/strings.js';
+
+/** Characters of each WebSocket message shown in human output (`--json` has all) */
+const MESSAGE_PREVIEW_LENGTH = 200;
+
+/** WebSocket opcode of binary messages */
+const BINARY_OPCODE = 2;
+
+/**
+ * Format one WebSocket message as a single line: direction, time, payload.
+ *
+ * @param frame - Captured frame
+ * @returns Line like `↑ 12:00:00.123  hello` (`[truncated]` when the capture was cut)
+ */
+function formatWebSocketMessage(frame: WebSocketFrame): string {
+  const arrow = frame.direction === 'sent' ? '↑' : '↓';
+  const time = new Date(frame.timestamp).toISOString().slice(11, 23);
+  const truncated = frame.truncatedFrom === undefined ? '' : ' [truncated]';
+  const payload =
+    frame.opcode === BINARY_OPCODE
+      ? `(binary, ${Buffer.byteLength(frame.payloadData, 'base64')} bytes captured)`
+      : truncateByLength(frame.payloadData.replace(/\s+/g, ' '), MESSAGE_PREVIEW_LENGTH);
+  return `  ${arrow} ${time}  ${payload}${truncated}`;
+}
+
+/**
+ * Add the messages of a WebSocket connection.
+ *
+ * @param fmt - Formatter to add to
+ * @param webSocket - Connection messages and lifecycle
+ */
+function addWebSocketMessages(
+  fmt: OutputFormatter,
+  webSocket: NonNullable<NetworkRequest['webSocket']>
+): void {
+  const state = webSocket.closedTime
+    ? `closed at ${new Date(webSocket.closedTime).toISOString()}`
+    : 'open';
+  fmt.blank();
+  fmt.text(`WebSocket Messages (${webSocket.frames.length}, ${state}):`).separator('━', 70);
+  webSocket.frames.forEach((frame) => fmt.text(formatWebSocketMessage(frame)));
+}
 
 /**
  * Format network request details for human-readable output
@@ -48,6 +90,10 @@ export function formatNetworkDetails(request: NetworkRequest): string {
         ? `(binary, ${request.decodedBodyLength ?? 0} bytes; base64 in --json and HAR export)`
         : request.responseBody
     );
+  }
+
+  if (request.webSocket) {
+    addWebSocketMessages(fmt, request.webSocket);
   }
 
   return fmt.build();

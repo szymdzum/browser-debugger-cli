@@ -4,7 +4,8 @@
  * Serves `src/__tests__/fixtures/index.html` plus a small JSON endpoint so smoke
  * tests never depend on the public internet. `/slow` delays its response so a
  * session start can be interrupted while the page is loading; `/redirect`
- * answers 302 to `/`; `/interactions` serves a form for input/key/click tests.
+ * answers 302 to `/`; `/interactions` serves a form for input/key/click tests;
+ * `/ws` is a WebSocket echo server.
  */
 
 import * as fs from 'fs';
@@ -12,6 +13,8 @@ import * as http from 'http';
 import * as net from 'net';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+
+import { WebSocketServer } from 'ws';
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -93,6 +96,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     res.end(html);
   });
 
+  const echo = new WebSocketServer({ server, path: '/ws' });
+  echo.on('connection', (socket) => {
+    socket.on('message', (data, isBinary) => socket.send(data, { binary: isBinary }));
+  });
+
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as net.AddressInfo;
 
@@ -100,6 +108,8 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     url: `http://127.0.0.1:${port}/`,
     close: () =>
       new Promise<void>((resolve) => {
+        echo.clients.forEach((socket) => socket.terminate());
+        echo.close();
         server.closeAllConnections();
         server.close(() => resolve());
       }),
