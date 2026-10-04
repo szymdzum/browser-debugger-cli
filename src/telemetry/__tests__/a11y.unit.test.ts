@@ -154,6 +154,53 @@ describe('buildTreeFromRawNodes', () => {
   });
 });
 
+describe('buildTreeFromRawNodes with ignored nodes', () => {
+  /**
+   * Raw node helper.
+   *
+   * @param nodeId - Node id
+   * @param childIds - Child ids
+   * @param ignored - Ignored by the accessibility tree
+   * @returns Raw AX node
+   */
+  function raw(
+    nodeId: string,
+    childIds: string[] = [],
+    ignored = false
+  ): Protocol.Accessibility.AXNode {
+    return { nodeId, ignored, role: { type: 'role', value: 'generic' }, childIds };
+  }
+
+  test('survives cycles through ignored nodes', () => {
+    const tree = buildTreeFromRawNodes([
+      raw('1', ['2']),
+      raw('2', ['3'], true),
+      raw('3', ['2'], true),
+    ]);
+
+    assert.equal(tree.root.childIds, undefined);
+  });
+
+  test('promotes children of ignored nodes and lists nodes in document order', () => {
+    const tree = buildTreeFromRawNodes([
+      raw('1', ['2', '5']),
+      raw('5'),
+      raw('2', ['3', '4'], true),
+      raw('4'),
+      raw('3', ['9']),
+    ]);
+
+    assert.deepEqual(tree.root.childIds, ['3', '4', '5']);
+    assert.equal(tree.nodes.get('3')?.childIds, undefined, 'unknown child 9 is dropped');
+    assert.deepEqual([...tree.nodes.keys()], ['1', '3', '4', '5']);
+    for (const node of tree.nodes.values()) {
+      for (const childId of node.childIds ?? []) {
+        assert.ok(tree.nodes.has(childId), `${node.nodeId} -> ${childId} is in the tree`);
+      }
+    }
+  });
+});
+
 describe('parseQueryPattern', () => {
   test('parses single field pattern', () => {
     const pattern = parseQueryPattern('role:button');

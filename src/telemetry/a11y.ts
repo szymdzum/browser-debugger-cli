@@ -9,6 +9,9 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * Builds accessibility tree from raw CDP nodes.
  *
  * Pure function that filters out ignored nodes and builds the tree structure.
+ * Children that are ignored are replaced by their own non-ignored children
+ * (as DevTools shows the tree), so every `childIds` entry is in `nodes`, and
+ * nodes are listed depth-first from the root (document order).
  * Separated from collectA11yTree for easier unit testing.
  *
  * @param rawNodes - Raw AXNode array from CDP
@@ -16,21 +19,9 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * @throws Error if no root node found
  */
 export function buildTreeFromRawNodes(rawNodes: Protocol.Accessibility.AXNode[]): A11yTree {
-  const nodes = new Map<string, A11yNode>();
-  let root: A11yNode | null = null;
-
-  for (const rawNode of rawNodes) {
-    if (rawNode.ignored) {
-      continue;
-    }
-
-    const node = parseA11yNode(rawNode);
-    nodes.set(node.nodeId, node);
-
-    root ??= node;
-  }
-
-  if (!root) {
+  const rawById = new Map(rawNodes.map((rawNode) => [rawNode.nodeId, rawNode]));
+  const rootRaw = rawNodes.find((rawNode) => !rawNode.ignored);
+  if (!rootRaw) {
     throw new CommandError(
       'No root node found in accessibility tree',
       { suggestion: 'The page may not be fully loaded. Wait and retry.' },
@@ -38,11 +29,46 @@ export function buildTreeFromRawNodes(rawNodes: Protocol.Accessibility.AXNode[])
     );
   }
 
-  return {
-    root,
-    nodes,
-    count: nodes.size,
+  const nodes = new Map<string, A11yNode>();
+  const visit = (rawNode: Protocol.Accessibility.AXNode): void => {
+    if (nodes.has(rawNode.nodeId)) return;
+    const node = parseA11yNode(rawNode);
+    const childIds = visibleChildIds(rawNode, rawById);
+    if (childIds.length > 0) node.childIds = childIds;
+    else delete node.childIds;
+    nodes.set(node.nodeId, node);
+    for (const childId of childIds) {
+      const child = rawById.get(childId);
+      if (child) visit(child);
+    }
   };
+  visit(rootRaw);
+  rawNodes.filter((rawNode) => !rawNode.ignored).forEach(visit);
+
+  const root = nodes.get(rootRaw.nodeId) as A11yNode;
+  return { root, nodes, count: nodes.size };
+}
+
+/**
+ * Ids of a node's children as shown: ignored children are replaced by their
+ * own non-ignored descendants; ids missing from the tree are dropped.
+ *
+ * @param rawNode - Node whose children to list
+ * @param rawById - All raw nodes by id
+ * @param seen - Ids already listed (guards against cycles)
+ * @returns Child ids, all of non-ignored nodes in the tree
+ */
+function visibleChildIds(
+  rawNode: Protocol.Accessibility.AXNode,
+  rawById: Map<string, Protocol.Accessibility.AXNode>,
+  seen: Set<string> = new Set()
+): string[] {
+  return (rawNode.childIds ?? []).flatMap((childId) => {
+    const child = rawById.get(childId);
+    if (!child || seen.has(childId)) return [];
+    seen.add(childId);
+    return child.ignored ? visibleChildIds(child, rawById, seen) : [childId];
+  });
 }
 
 /**

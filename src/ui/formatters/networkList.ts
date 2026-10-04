@@ -42,13 +42,24 @@ function formatStatus(request: NetworkRequest): string {
 }
 
 /**
+ * Format a request duration for the TIME column.
+ *
+ * @param ms - Duration in milliseconds (undefined while pending)
+ * @returns e.g. "85ms", "1.2s", or "-"
+ */
+function formatDuration(ms: number | undefined): string {
+  if (ms === undefined) return '-';
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+/**
  * Column header aligned to the widest request id in the list.
  *
  * @param idWidth - Width of the bracketed id column
  * @returns Header line
  */
 function formatColumnHeader(idWidth: number): string {
-  return `${'[ID]'.padEnd(idWidth)} STS METH TYP ${'SIZE'.padStart(8)}  URL`;
+  return `${'[ID]'.padEnd(idWidth)} STS METH TYP ${'SIZE'.padStart(8)} ${'TIME'.padStart(6)}  URL`;
 }
 
 /**
@@ -65,10 +76,11 @@ function formatRequestLine(request: NetworkRequest, verbose: boolean, idWidth: n
   const method = request.method.padEnd(4);
   const type = getResourceTypeAbbr(request.resourceType, request.mimeType).padEnd(3);
   const size = formatSize(request.encodedDataLength).padStart(8);
+  const time = formatDuration(request.duration).padStart(6);
   const urlMaxLength = verbose ? 120 : 50;
   const url = verbose ? request.url : truncateUrl(request.url, urlMaxLength);
 
-  return `${id} ${status} ${method} ${type} ${size}  ${url}`;
+  return `${id} ${status} ${method} ${type} ${size} ${time}  ${url}`;
 }
 
 function buildHeader(

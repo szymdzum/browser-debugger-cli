@@ -117,29 +117,48 @@ export function truncateText(text: string, maxLines: number = 3): string {
 
 export function truncateUrl(url: string, maxLength: number = 60): string {
   const parsed = safeParseUrl(url);
-  if (!parsed) {
-    return url.length > maxLength ? url.substring(0, maxLength - 3) + '...' : url;
+  if (!parsed || !WEB_PROTOCOLS.has(parsed.protocol)) {
+    return truncateEnd(url, maxLength);
   }
-  const domain = parsed.hostname.replace(/^www\./, '');
+  const host = parsed.host.replace(/^www\./, '');
   const path = parsed.pathname.substring(1);
-  let result = domain + (path ? `/${path}` : '');
-  if (result.length > maxLength) {
-    const pathParts = path.split('/');
-    if (pathParts.length > 2) {
-      const first = pathParts[0];
-      const last = pathParts[pathParts.length - 1];
-      if (first && last) {
-        result = `${domain}/${first}/.../${last}`;
-        if (result.length > maxLength) {
-          const truncatedLast = last.substring(0, 8);
-          result = `${domain}/${first}/.../${truncatedLast}`;
-        }
-      }
-    } else {
-      result = result.substring(0, maxLength - 3) + '...';
-    }
-  }
-  return result;
+  const full = `${host}${path ? `/${path}` : ''}`;
+  if (`${full}${parsed.search}`.length <= maxLength) return `${full}${parsed.search}`;
+  const queryMark = parsed.search ? '?…' : '';
+  const withoutQuery = `${full}${queryMark}`;
+  if (withoutQuery.length <= maxLength) return withoutQuery;
+  return `${shortenPath(host, path, maxLength - queryMark.length)}${queryMark}`;
+}
+
+/** Protocols whose URLs are shown as host/path (others, like data: or blob:, verbatim) */
+const WEB_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:']);
+
+/**
+ * Cut text to a length, marking the cut.
+ *
+ * @param text - Text to cut
+ * @param maxLength - Maximum length
+ * @returns Text, or its start followed by "..."
+ */
+function truncateEnd(text: string, maxLength: number): string {
+  return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text;
+}
+
+/**
+ * Shorten a long host/path by eliding its middle segments.
+ *
+ * @param host - Host (with port)
+ * @param path - Path without the leading slash
+ * @param maxLength - Maximum length
+ * @returns e.g. "example.com/docs/.../page"
+ */
+function shortenPath(host: string, path: string, maxLength: number): string {
+  const parts = path.split('/');
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (parts.length <= 2 || !first || !last) return truncateEnd(`${host}/${path}`, maxLength);
+  const elided = `${host}/${first}/.../${last}`;
+  return elided.length <= maxLength ? elided : `${host}/${first}/.../${last.substring(0, 8)}`;
 }
 
 export function pluralize(count: number, singular: string, plural?: string): string {
