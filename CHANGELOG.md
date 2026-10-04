@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Smaller fixes**
+  - `cdp`: an unknown domain gets a did-you-mean (`Netwrk` → `Network`); `bdg cdp Network --search cookie` searches that domain only; blocked methods (`Page.captureScreenshot`, `Browser.close`) show their bdg alternative as the example in `--describe`/`--search`
+  - `dom a11y tree` (human) is indented by depth and leaves out text boxes, blank text, text repeating its parent and nameless layout wrappers, so the 50 lines show the page's structure
+  - `dom get` and `a11y` one-line output show a field's value and checked/expanded state
+  - A Chrome that opens no page at start says so plainly (the message suggested `pkill`)
+  - `dom form`: a long label keeps its required `*`; an `aria-invalid` field shows its `aria-describedby`/`aria-errormessage` text instead of "Field is invalid"
+
 - **Interaction commands**
   - A numeric index together with `--index` (`dom click 1 --index 3`) exits 81 instead of ignoring `--index`
   - `dom scroll` refuses conflicting options with 81: `--top` with `--bottom`, two vertical directions, or a selector with an offset/edge (they were silently resolved)

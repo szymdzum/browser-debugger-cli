@@ -197,11 +197,16 @@ export const FORM_DISCOVERY_SCRIPT = `
                       next.getAttribute('role') === 'alert';
       if (isError) return next.textContent.trim();
     }
-    const describedBy = (element.getAttribute('aria-errormessage') || '') + ' ' +
-      (element.getAttribute('aria-describedby') || '');
-    for (const id of describedBy.split(/\\s+/).filter(Boolean)) {
+    // aria-errormessage always names the error; aria-describedby does when the
+    // field is marked invalid or the description looks like an error
+    const invalid = element.getAttribute('aria-invalid') === 'true';
+    const errorIds = (element.getAttribute('aria-errormessage') || '').split(/\\s+/).filter(Boolean);
+    const describedIds = (element.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
+    for (const id of [...errorIds, ...describedIds]) {
       const target = document.getElementById(id);
-      if (target && /error|invalid|alert/i.test(target.className + ' ' + (target.getAttribute('role') || ''))) {
+      const looksLikeError = errorIds.includes(id) || invalid ||
+        /error|invalid|alert/i.test(target ? target.className + ' ' + (target.getAttribute('role') || '') : '');
+      if (target && looksLikeError && target.textContent.trim()) {
         return target.textContent.trim();
       }
     }

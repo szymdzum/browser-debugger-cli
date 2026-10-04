@@ -57,6 +57,13 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
 
 function buildPropertiesText(node: A11yNode): string {
   const props: string[] = [];
+  if (node.value !== undefined && node.value !== '') props.push(`value: "${node.value}"`);
+  const checked = node.properties?.['checked'];
+  if (checked !== undefined) {
+    props.push(checked === 'mixed' ? 'partly checked' : checked ? 'checked' : 'unchecked');
+  }
+  const expanded = node.properties?.['expanded'];
+  if (expanded !== undefined) props.push(expanded ? 'expanded' : 'collapsed');
   if (node.focusable) props.push('focusable');
   if (node.focused) props.push('focused');
   if (node.disabled) props.push('disabled');

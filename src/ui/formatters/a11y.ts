@@ -35,20 +35,62 @@ export function formatA11yTree(tree: A11yTree): string {
 
   fmt.text(`Accessibility Tree (${tree.count} nodes)`).separator('─', SEPARATOR_WIDTH).blank();
 
-  const nodes = Array.from(tree.nodes.values()).slice(0, MAX_TREE_NODES_DISPLAY);
+  const { lines, truncated } = treeLines(tree);
+  lines.forEach((line) => fmt.text(line));
 
-  for (const node of nodes) {
-    fmt.text(formatA11yNodeOneLine(node));
-  }
-
-  if (tree.count > MAX_TREE_NODES_DISPLAY) {
+  if (truncated) {
     fmt
       .blank()
-      .text(`... and ${tree.count - MAX_TREE_NODES_DISPLAY} more nodes`)
-      .text('Use --json flag for complete output');
+      .text(
+        `Showing the first ${MAX_TREE_NODES_DISPLAY} nodes (text boxes and repeated text left out)`
+      )
+      .text('Use --json flag for complete output, or bdg dom a11y query "role:<role>" to search');
   }
 
   return fmt.build();
+}
+
+/** Roles that only lay out their children and say nothing themselves */
+const LAYOUT_ROLES = new Set([
+  'generic',
+  'none',
+  'presentation',
+  'LayoutTable',
+  'LayoutTableRow',
+  'LayoutTableCell',
+]);
+
+/**
+ * The tree as indented lines, depth-first from the root. Text boxes, blank
+ * text, text that repeats its parent's name, and nameless layout wrappers are left out
+ * (their children move up a level), so the budget goes to meaningful nodes.
+ *
+ * @param tree - Accessibility tree
+ * @returns Up to {@link MAX_TREE_NODES_DISPLAY} lines, and whether nodes were left
+ */
+function treeLines(tree: A11yTree): { lines: string[]; truncated: boolean } {
+  const lines: string[] = [];
+  const visited = new Set<string>();
+  let truncated = false;
+  const visit = (node: A11yNode, depth: number, parentName: string | undefined): void => {
+    if (visited.has(node.nodeId)) return;
+    visited.add(node.nodeId);
+    if (lines.length >= MAX_TREE_NODES_DISPLAY) {
+      truncated = true;
+      return;
+    }
+    const skip =
+      node.role === 'InlineTextBox' ||
+      (node.role === 'StaticText' && (node.name === parentName || !node.name?.trim())) ||
+      (LAYOUT_ROLES.has(node.role) && !node.name);
+    if (!skip) lines.push('  '.repeat(depth) + formatA11yNodeOneLine(node));
+    for (const childId of node.childIds ?? []) {
+      const child = tree.nodes.get(childId);
+      if (child) visit(child, skip ? depth : depth + 1, node.name ?? parentName);
+    }
+  };
+  visit(tree.root, 0, undefined);
+  return { lines, truncated };
 }
 
 /**
@@ -198,6 +240,10 @@ function formatA11yNodeOneLine(node: A11yNode): string {
   const states: string[] = [];
   if (node.value !== undefined && node.value !== '') {
     states.push(`value: ${truncate(node.value, 30)}`);
+  }
+  const checked = node.properties?.['checked'];
+  if (checked !== undefined) {
+    states.push(checked === 'mixed' ? 'partly checked' : checked ? 'checked' : 'unchecked');
   }
   if (node.focused) {
     states.push('focused');
