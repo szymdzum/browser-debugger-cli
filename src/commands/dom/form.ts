@@ -30,6 +30,7 @@ import type {
 import { FORM_DISCOVERY_CACHE_SELECTOR, QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { formatFormDiscovery } from '@/ui/formatters/form.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
@@ -378,7 +379,12 @@ function transformForm(raw: RawForm): DiscoveredForm {
  */
 async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
   const elements = forms.flatMap((form) => [...form.fields, ...form.buttons]);
-  const backendNodeIds = await resolveBackendNodeIds(elements.map((el) => el.selector));
+  const backendNodeIds = await resolveBackendNodeIds(elements.map((el) => el.selector)).catch(
+    (error: unknown) => {
+      log.debug(`Form fields not cached by node: ${getErrorMessage(error)}`);
+      return [];
+    }
+  );
 
   await QueryCacheManager.getInstance().set({
     selector: FORM_DISCOVERY_CACHE_SELECTOR,

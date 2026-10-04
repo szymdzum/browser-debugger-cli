@@ -13,12 +13,12 @@ import { Option, type Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { NetworkHarCommandOptions } from '@/commands/shared/optionTypes.js';
+import { assertFilePath, writeOutputFile } from '@/commands/shared/outputFile.js';
 import { callCDP } from '@/ipc/client.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -118,12 +118,8 @@ export function registerHarCommand(networkCmd: Command): void {
             filtered = requests.length !== originalCount;
           }
 
-          const outputPath = path.resolve(outputFile ?? generateHARFilename());
-
-          const dir = path.dirname(outputPath);
-          if (dir !== '.' && !fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-          }
+          const outputPath = outputFile ?? generateHARFilename();
+          assertFilePath(outputPath);
 
           const chromeVersion = await getChromeVersion();
           const har = buildHAR(requests, {
@@ -131,12 +127,12 @@ export function registerHarCommand(networkCmd: Command): void {
             ...(chromeVersion && { chromeVersion }),
           });
 
-          await AtomicFileWriter.writeAsync(outputPath, JSON.stringify(har, null, 2));
+          const file = await writeOutputFile(outputPath, JSON.stringify(har, null, 2));
 
           return {
             success: true,
             data: {
-              file: outputPath,
+              file,
               entries: har.log.entries.length,
               filtered,
             },

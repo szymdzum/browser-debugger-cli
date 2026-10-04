@@ -41,6 +41,7 @@ const SCROLL_TO_ELEMENT_SCRIPT = `
     if (index >= allMatches.length) {
       return {
         success: false,
+        reason: 'range',
         error: 'Index ' + index + ' out of range (found ' + allMatches.length + ' nodes, use 0-' + (allMatches.length - 1) + ')'
       };
     }
@@ -161,14 +162,16 @@ export async function scrollPage(
       const scriptResult = cdpResponse.result?.value as {
         success?: boolean;
         error?: string;
+        reason?: 'range';
       };
       if (scriptResult?.success === false && scriptResult.error) {
+        const outOfRange = scriptResult.reason === 'range';
         return {
           success: false,
-          exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+          exitCode: outOfRange ? EXIT_CODES.INVALID_ARGUMENTS : EXIT_CODES.RESOURCE_NOT_FOUND,
           scrollType: 'element',
           error: scriptResult.error,
-          suggestion: `Verify element exists: bdg dom query "${selector}"`,
+          suggestion: `${outOfRange ? 'Check the matches' : 'Verify element exists'}: bdg dom query "${selector}"`,
         };
       }
 

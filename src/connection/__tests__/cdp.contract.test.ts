@@ -26,6 +26,7 @@ import {
 import { FakeWebSocket } from '@/__testutils__/FakeWebSocket.js';
 import { useFakeClock, type ClockHelper } from '@/__testutils__/testClock.js';
 import { CDPConnection } from '@/connection/cdp.js';
+import { CDPProtocolError } from '@/connection/errors.js';
 import type { CDPMessage, ConnectionOptions } from '@/types.js';
 
 // Mock the 'ws' module to return our FakeWebSocket
@@ -104,6 +105,25 @@ describe('CDPConnection contract', () => {
 
       // Assert: Promise rejects with error message
       await assert.rejects(resultPromise, /Method not found/);
+    });
+
+    it('should reject invalid requests with a protocol error carrying the code', async () => {
+      await connectAndOpen();
+      const resultPromise = cdp.send('Runtime.evaluate', { bogus: 1 });
+      const [firstMessage] = mockWebSocket.getSentMessages();
+      assert.ok(firstMessage, 'Expected a sent message');
+      const requestId = parseMessage(firstMessage).id as number;
+
+      mockWebSocket.simulateMessage(
+        JSON.stringify(createErrorResponse(requestId, 'Invalid parameters', -32602))
+      );
+
+      await assert.rejects(resultPromise, (error: unknown) => {
+        assert.ok(error instanceof CDPProtocolError);
+        assert.equal(error.code, -32602);
+        assert.equal(error.isRequestError(), true);
+        return true;
+      });
     });
 
     it('should handle multiple concurrent requests', async () => {

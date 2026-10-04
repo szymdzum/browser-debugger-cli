@@ -81,7 +81,7 @@ export interface ScriptTarget {
  * @throws CommandError (exit 87) when the node no longer exists in the page
  */
 export async function bindTargetNode(cdp: CDPConnection, backendNodeId: number): Promise<void> {
-  const err = staleNodeError(backendNodeId);
+  const err = staleNodeError();
   const stale = new CommandError(
     err.message,
     { suggestion: err.suggestion },

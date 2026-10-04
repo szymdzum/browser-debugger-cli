@@ -21,7 +21,7 @@ export interface CDPMessage {
   /** Method result (present in responses) */
   result?: unknown;
   /** Error information (present in error responses) */
-  error?: { code?: number; message: string };
+  error?: { code?: number; message: string; data?: string };
   /** Session ID for commands sent to specific targets */
   sessionId?: string;
 }

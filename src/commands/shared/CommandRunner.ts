@@ -17,6 +17,19 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 export type { BaseOptions };
 
 /**
+ * The error every command gives when there is no session to talk to.
+ *
+ * @returns Command error (exit 83) with how to start one
+ */
+export function noActiveSessionError(): CommandError {
+  return new CommandError(
+    STOP_MESSAGES.DAEMON_NOT_RUNNING,
+    { suggestion: 'Start a session with: bdg <url>' },
+    EXIT_CODES.RESOURCE_NOT_FOUND
+  );
+}
+
+/**
  * Execute an async function and output JSON result with proper error handling.
  *
  * Use this for early JSON exits when runCommand's formatter isn't needed.
@@ -39,7 +52,8 @@ export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
     const data = await fn();
     console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
     process.exit(EXIT_CODES.SUCCESS);
-  } catch (error) {
+  } catch (caught) {
+    const error = isDaemonConnectionError(caught) ? noActiveSessionError() : caught;
     const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
     const suggestion =
       error instanceof CommandError && typeof error.metadata['suggestion'] === 'string'

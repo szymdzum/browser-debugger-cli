@@ -15,6 +15,7 @@ import {
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
+import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import { missingArgumentError } from '@/errors/messages.js';
@@ -137,9 +138,25 @@ function addElementInfo(
   };
 }
 
+/**
+ * Make sure `--follow` has a directory to write frames to.
+ *
+ * @param dirPath - Directory the user gave
+ * @param fs - File system module
+ * @throws CommandError (81) when the path is a file, or naming the problem when it cannot be created
+ */
 function ensureDirectory(dirPath: string, fs: typeof FsModule): void {
-  if (!fs.existsSync(dirPath)) {
+  if (fs.existsSync(dirPath) && !fs.statSync(dirPath).isDirectory()) {
+    throw new CommandError(
+      `--follow needs a directory, but ${dirPath} is a file`,
+      { suggestion: 'Give a directory for the frames, e.g. bdg dom screenshot ./frames --follow' },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  try {
     fs.mkdirSync(dirPath, { recursive: true });
+  } catch (error) {
+    throw outputPathError(dirPath, error);
   }
 }
 
@@ -250,6 +267,7 @@ export async function handleDomScreenshot(
     return;
   }
 
+  assertFilePath(outputPath);
   const captureOptions = { ...options, format: resolveImageFormat(outputPath, options.format) };
   if (hasElementTarget(captureOptions)) {
     await handleElementScreenshot(outputPath, captureOptions);

@@ -14,6 +14,7 @@ import {
 import { isConnectionError } from '@/ipc/utils/errors.js';
 import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { STOP_MESSAGES } from '@/ui/messages/session.js';
 import { getExitCodeForConnectionError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -77,7 +78,7 @@ export async function fetchPreviewOutput(
     log.debug(`Daemon unreachable: ${getErrorMessage(error)}`);
     return {
       success: false,
-      error: 'No active session (it ended or was never started)',
+      error: STOP_MESSAGES.DAEMON_NOT_RUNNING,
       exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
     };
   }

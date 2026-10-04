@@ -6,6 +6,7 @@
  */
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
+import { staleNodeError } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 interface IpcResponse<T> {
@@ -78,9 +79,13 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
   const response = await call(request);
 
   if (response.status === 'error' || !response.data) {
+    const staleIndex =
+      response.exitCode === EXIT_CODES.STALE_CACHE && /^\d+$/.test(selectorOrIndex)
+        ? staleNodeError(Number(selectorOrIndex)).message
+        : undefined;
     return {
       success: false,
-      error: response.error ?? `Failed to ${action}`,
+      error: staleIndex ?? response.error ?? `Failed to ${action}`,
       exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
       ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
     };

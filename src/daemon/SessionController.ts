@@ -6,11 +6,11 @@
  * since the daemon's lifetime is the session's lifetime.
  */
 
-import { ConnectionError } from '@/connection/errors.js';
+import { CDPProtocolError, ConnectionError } from '@/connection/errors.js';
 import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
 import { detectTargetMismatch } from '@/daemon/session/targetMismatch.js';
 import { CommandError } from '@/errors/index.js';
-import { LAUNCHED_CHROME_DESCRIPTION } from '@/errors/messages.js';
+import { LAUNCHED_CHROME_DESCRIPTION, cdpRequestRejectedError } from '@/errors/messages.js';
 import {
   type ClientRequestUnion,
   type CommandName,
@@ -478,6 +478,14 @@ function describeCommandError(error: unknown): {
   exitCode?: number;
   suggestion?: string;
 } {
+  if (error instanceof CDPProtocolError && error.isRequestError()) {
+    const err = cdpRequestRejectedError(error.message);
+    return {
+      error: err.message,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      suggestion: err.suggestion,
+    };
+  }
   if (!(error instanceof CommandError)) {
     return { error: getErrorMessage(error) };
   }

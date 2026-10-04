@@ -472,7 +472,7 @@ async function handleExecuteMethod(
     } catch (error) {
       return {
         success: false,
-        error: `Error parsing --params: ${getErrorMessage(error)}. Parameters must be valid JSON.`,
+        error: `Invalid --params JSON: ${getErrorMessage(error)}`,
         exitCode: EXIT_CODES.INVALID_ARGUMENTS,
         errorContext: {
           suggestion: `Use: bdg cdp ${normalized} --describe (to see parameter schema)`,

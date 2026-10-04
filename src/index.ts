@@ -3,7 +3,9 @@
 import { Command, CommanderError, Option } from 'commander';
 
 import { generateMachineReadableHelp, generateSubcommandHelp } from '@/commands/helpJson.js';
+import { assertKnownHelpTopic, helpTopicPath, splitCommanderHint } from '@/commands/helpTopic.js';
 import { commandRegistry } from '@/commands.js';
+import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { enableDebugLogging } from '@/ui/logging/index.js';
@@ -98,12 +100,14 @@ function hasNoArguments(): boolean {
  *
  * The root command takes a URL argument, so without this `help` would be
  * treated as a URL and start a session on `http://help`.
+ *
+ * @returns The command path asked about (empty without `help`)
  */
-function rewriteHelpCommand(): void {
+function rewriteHelpCommand(): string[] {
   const [node = '', script = '', first, ...rest] = process.argv;
-  if (first === 'help') {
-    process.argv = [node, script, ...rest, '--help'];
-  }
+  if (first !== 'help') return [];
+  process.argv = [node, script, ...rest, '--help'];
+  return helpTopicPath(rest);
 }
 
 /**
@@ -137,7 +141,7 @@ function configureStdio(): void {
  */
 async function main(): Promise<void> {
   configureStdio();
-  rewriteHelpCommand();
+  const helpTopic = rewriteHelpCommand();
   const jsonMode = isJsonMode();
   const program = new Command()
     .name(CLI_NAME)
@@ -158,6 +162,7 @@ async function main(): Promise<void> {
   commandRegistry.forEach((register) => register(program));
   addGlobalDebugOption(program);
   program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));
+  assertKnownHelpTopic(program, helpTopic);
 
   if (jsonMode && (wantsHelp() || hasNoArguments())) {
     const commandPath = extractCommandPath(process.argv);
@@ -231,11 +236,17 @@ function handleUsageError(error: CommanderError, jsonMode: boolean): never {
   }
   const exitCode = EXIT_CODES.INVALID_ARGUMENTS;
   if (jsonMode) {
-    const message =
+    const { message, suggestion } =
       error.code === 'commander.help'
-        ? 'Missing subcommand (run the command with --help to list subcommands)'
-        : error.message.replace(/^error:\s*/i, '');
-    console.log(JSON.stringify(OutputBuilder.buildJsonError(message, { exitCode }), null, 2));
+        ? { message: 'Missing subcommand (run the command with --help to list subcommands)' }
+        : splitCommanderHint(error.message);
+    console.log(
+      JSON.stringify(
+        OutputBuilder.buildJsonError(message, { exitCode, ...(suggestion && { suggestion }) }),
+        null,
+        2
+      )
+    );
   }
   process.exit(exitCode);
 }
@@ -251,10 +262,14 @@ function handleUsageError(error: CommanderError, jsonMode: boolean): never {
 function handleFatalError(error: unknown): never {
   const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
   const message = getErrorMessage(error);
+  const metadata = error instanceof CommandError ? error.metadata : {};
   if (isJsonMode()) {
-    console.log(JSON.stringify(OutputBuilder.buildJsonError(message, { exitCode }), null, 2));
+    console.log(
+      JSON.stringify(OutputBuilder.buildJsonError(message, { ...metadata, exitCode }), null, 2)
+    );
   } else {
     console.error(genericError(message));
+    if (typeof metadata.suggestion === 'string') console.error(metadata.suggestion);
   }
   process.exit(exitCode);
 }

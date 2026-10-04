@@ -43,8 +43,7 @@ void describe('Error Handling Smoke Tests', () => {
     // Should fail
     assert.notEqual(result.exitCode, 0);
 
-    // Should provide helpful error message
-    assert.ok(result.stderr.includes('daemon'));
+    assert.match(result.stderr, /No active session/);
   });
 
   // REMOVED: Flaky test "should handle daemon crash during session"

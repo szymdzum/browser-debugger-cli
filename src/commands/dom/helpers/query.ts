@@ -33,7 +33,6 @@ import type {
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
-import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
@@ -372,14 +371,7 @@ export async function resolveSelector(selector: string): Promise<NodeRef> {
  * @returns Backend node id per selector, or undefined when it matches nothing
  */
 export async function resolveBackendNodeIds(selectors: string[]): Promise<(number | undefined)[]> {
-  return mapConcurrently(selectors, async (selector) => {
-    try {
-      return (await selectAll(selector))[0];
-    } catch (error) {
-      log.debug(`Could not resolve ${selector}: ${getErrorMessage(error)}`);
-      return undefined;
-    }
-  });
+  return mapConcurrently(selectors, async (selector) => (await selectAll(selector))[0]);
 }
 
 /**
@@ -402,9 +394,10 @@ export async function resolveA11yNodeForSelector(selector: string): Promise<A11y
  * false for removed elements.
  *
  * @param backendNodeId - Backend node id from the query cache
+ * @param index - Index the user gave, for the error message
  * @throws CommandError (87) when the element is gone
  */
-export async function assertNodeAttached(backendNodeId: number): Promise<void> {
+export async function assertNodeAttached(backendNodeId: number, index?: number): Promise<void> {
   const resolved = await callCDP('DOM.resolveNode', { backendNodeId, objectGroup: 'bdg-check' });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     .objectId;
@@ -420,7 +413,7 @@ export async function assertNodeAttached(backendNodeId: number): Promise<void> {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup: 'bdg-check' });
   }
   if (!attached) {
-    const err = staleNodeError(backendNodeId);
+    const err = staleNodeError(index);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
   }
 }
