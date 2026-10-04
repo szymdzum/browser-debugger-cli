@@ -197,8 +197,17 @@ export const FORM_DISCOVERY_SCRIPT = `
                       next.getAttribute('role') === 'alert';
       if (isError) return next.textContent.trim();
     }
+    const describedBy = (element.getAttribute('aria-errormessage') || '') + ' ' +
+      (element.getAttribute('aria-describedby') || '');
+    for (const id of describedBy.split(/\\s+/).filter(Boolean)) {
+      const target = document.getElementById(id);
+      if (target && /error|invalid|alert/i.test(target.className + ' ' + (target.getAttribute('role') || ''))) {
+        return target.textContent.trim();
+      }
+    }
     const parent = element.parentElement;
-    if (parent) {
+    const controls = parent ? parent.querySelectorAll('input, select, textarea, [contenteditable="true"]') : [];
+    if (parent && controls.length === 1) {
       const errorEl = parent.querySelector('.error-message, .field-error, [role="alert"]');
       if (errorEl && errorEl !== element) return errorEl.textContent.trim();
     }
@@ -220,7 +229,12 @@ export const FORM_DISCOVERY_SCRIPT = `
     if (isInHeader) score -= 10;
     const isInAside = formEl.closest('aside, [role="complementary"], footer, [role="contentinfo"]');
     if (isInAside) score -= 5;
-    score += Math.min(fields.length * 3, 30);
+    const distinctFields = new Set(
+      fields.map((f) => (f.type === 'radio' || f.type === 'checkbox') && f.name ? f.type + ':' + f.name : f.index)
+    ).size;
+    score += Math.min(distinctFields * 3, 30);
+    const textTypes = ['text', 'search', 'email', 'password', 'textarea', 'tel', 'url', 'number', 'textbox'];
+    if (fields.some((f) => textTypes.includes(f.type))) score += 10;
     const hasSubmit = buttons.some(b => b.type === 'submit' || b.isPrimary);
     if (hasSubmit) score += 10;
     const style = window.getComputedStyle(formEl);
@@ -326,8 +340,6 @@ export const FORM_DISCOVERY_SCRIPT = `
         return h.textContent.trim();
       }
     }
-    const legend = formEl.querySelector('legend');
-    if (legend) return legend.textContent.trim();
     const title = formEl.getAttribute('title');
     if (title) return title;
     const name = formEl.getAttribute('name');
@@ -383,7 +395,8 @@ export const FORM_DISCOVERY_SCRIPT = `
         value: value,
         checked: el.checked,
         validationMessage: el.validationMessage || undefined,
-        isValid: el.checkValidity ? el.checkValidity() : true,
+        isValid: el.validity ? el.validity.valid : true,
+        valueMissing: el.validity ? el.validity.valueMissing : false,
         ariaInvalid: el.getAttribute('aria-invalid') === 'true',
         hasErrorClass: el.classList.contains('error') || el.classList.contains('invalid'),
         siblingErrorText: findSiblingError(el),

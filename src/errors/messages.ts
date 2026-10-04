@@ -413,6 +413,32 @@ export function invalidQueryPatternError(pattern: string): ErrorWithSuggestion {
 }
 
 /**
+ * A file to upload does not exist.
+ *
+ * @param file - Path that was not found
+ */
+export function fileNotFoundError(file: string): ErrorWithSuggestion {
+  return {
+    message: `File not found: ${file}`,
+    suggestion:
+      'Relative paths are resolved against the directory you run bdg in; separate several files with commas',
+  };
+}
+
+/**
+ * Several files given for a file input that accepts one.
+ *
+ * @param count - Number of files given
+ */
+export function singleFileInputError(count: number): ErrorWithSuggestion {
+  return {
+    message: `This file input accepts a single file (${count} given)`,
+    suggestion:
+      'Pass one path; only inputs with the "multiple" attribute take a comma-separated list',
+  };
+}
+
+/**
  * Unknown field in an a11y query pattern.
  *
  * @param field - The unrecognized key

@@ -41,7 +41,7 @@ const log = createLogger('dom');
  * @returns Structured validation state
  */
 function buildValidation(raw: RawField): FieldValidation {
-  const hasNativeError = !raw.isValid && raw.validationMessage;
+  const hasNativeError = !raw.isValid && !raw.valueMissing && raw.validationMessage;
   const hasAriaError = raw.ariaInvalid;
   const hasSiblingError = !!raw.siblingErrorText;
   const hasClassError = raw.hasErrorClass;
@@ -154,6 +154,16 @@ function buildInteractionWarning(raw: RawField): string | undefined {
 }
 
 /**
+ * Whether a user could change the field.
+ *
+ * @param raw - Raw field data
+ * @returns False for disabled and read-only fields
+ */
+function editable(raw: RawField): boolean {
+  return !raw.disabled && !raw.readOnly;
+}
+
+/**
  * Build fill command for a field.
  *
  * @param index - Global element index
@@ -168,7 +178,7 @@ function buildFieldCommand(index: number, type: string): string {
   }
 
   if (lowerType === 'file') {
-    return `bdg dom click ${index}`;
+    return `bdg dom fill ${index} "<path>"`;
   }
 
   return `bdg dom fill ${index} "<value>"`;
@@ -191,7 +201,7 @@ function buildSelectorCommand(selector: string, type: string): string {
   }
 
   if (lowerType === 'file') {
-    return `bdg dom click "${escaped}"`;
+    return `bdg dom fill "${escaped}" "<path>"`;
   }
 
   return `bdg dom fill "${escaped}" "<value>"`;
@@ -245,8 +255,8 @@ function transformField(raw: RawField): FormField {
     maskedValue: buildMaskedValue(raw),
     validation: buildValidation(raw),
     options: raw.options,
-    command: buildFieldCommand(raw.index, raw.type),
-    selectorCommand: buildSelectorCommand(raw.selector, raw.type),
+    command: editable(raw) ? buildFieldCommand(raw.index, raw.type) : '',
+    selectorCommand: editable(raw) ? buildSelectorCommand(raw.selector, raw.type) : '',
     alternativeCommand: buildAlternativeCommand(raw.index, raw),
   };
 }
@@ -279,10 +289,11 @@ function transformButton(raw: RawButton): FormButton {
  */
 function calculateSummary(fields: FormField[], buttons: FormButton[]): FormSummary {
   const visibleFields = fields.filter((f) => !f.hidden);
-  const requiredFields = visibleFields.filter((f) => f.required);
-  const filledFields = visibleFields.filter((f) => f.state === 'filled' || f.state === 'checked');
-  const validFields = visibleFields.filter((f) => f.validation.valid);
-  const invalidFields = visibleFields.filter((f) => !f.validation.valid);
+  const editableFields = visibleFields.filter((f) => !f.disabled && !f.readOnly);
+  const requiredFields = editableFields.filter((f) => f.required);
+  const filledFields = editableFields.filter((f) => f.state === 'filled' || f.state === 'checked');
+  const validFields = editableFields.filter((f) => f.validation.valid);
+  const invalidFields = editableFields.filter((f) => !f.validation.valid);
   const emptyRequired = requiredFields.filter(
     (f) => f.state === 'empty' || f.state === 'unchecked'
   );
@@ -320,9 +331,9 @@ function calculateSummary(fields: FormField[], buttons: FormButton[]): FormSumma
   }
 
   return {
-    totalFields: visibleFields.length,
+    totalFields: editableFields.length,
     filledFields: filledFields.length,
-    emptyFields: visibleFields.length - filledFields.length,
+    emptyFields: editableFields.length - filledFields.length,
     validFields: validFields.length,
     invalidFields: invalidFields.length,
     requiredTotal: requiredFields.length,

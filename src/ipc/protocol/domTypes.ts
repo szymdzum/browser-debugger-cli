@@ -21,6 +21,9 @@ export interface FillResult {
   inputType?: string | null;
   checked?: boolean;
   suggestion?: string;
+  /** Set when the target is a file input (filled through CDP instead) */
+  fileInput?: boolean;
+  exitCode?: number;
 }
 
 /**
@@ -129,6 +132,8 @@ export interface RawField {
   checked?: boolean;
   validationMessage?: string;
   isValid: boolean;
+  /** Only the "required but empty" constraint fails */
+  valueMissing?: boolean;
   ariaInvalid?: boolean;
   hasErrorClass?: boolean;
   siblingErrorText?: string;

@@ -75,6 +75,10 @@ function formatFieldStatus(field: FormField): string {
     return 'disabled';
   }
 
+  if (field.readOnly) {
+    return 'read-only';
+  }
+
   if (!field.validation.valid) {
     return 'invalid';
   }

@@ -416,6 +416,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       const fillOptions = filterDefined({
         index: target.index,
         blur: params.blur,
+        cwd: params.cwd,
       });
       const result = withUserSelector(
         await fillElement(cdp, target.selector, params.value, fillOptions),

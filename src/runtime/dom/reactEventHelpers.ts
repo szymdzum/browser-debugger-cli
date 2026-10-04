@@ -138,8 +138,10 @@ export const REACT_FILL_SCRIPT = `
   } else if (inputType === 'file') {
     return {
       success: false,
-      error: 'File inputs require CDP DOM.setFileInputFiles method',
-      suggestion: 'Use: bdg cdp DOM.setFileInputFiles --params {\\"files\\":[\\"path\\"]}'
+      fileInput: true,
+      elementType: tagName,
+      inputType: inputType,
+      error: 'File input'
     };
   } else if (el.isContentEditable) {
     el.textContent = value;
@@ -336,6 +338,8 @@ export interface FillOptions {
   blur?: boolean;
   /** Index to use if selector matches multiple elements (0-based) */
   index?: number;
+  /** Directory relative file paths are resolved against (file inputs) */
+  cwd?: string;
 }
 
 export type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
