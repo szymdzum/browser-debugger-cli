@@ -118,7 +118,7 @@ export function registerHarCommand(networkCmd: Command): void {
             filtered = requests.length !== originalCount;
           }
 
-          const outputPath = outputFile ?? generateHARFilename();
+          const outputPath = path.resolve(outputFile ?? generateHARFilename());
 
           const dir = path.dirname(outputPath);
           if (dir !== '.' && !fs.existsSync(dir)) {

@@ -47,6 +47,8 @@ function renderWarningSection(
 
   for (const { message, count } of warnings) {
     fmt.text(`• ${formatCountPrefix(count)}${message.text}`);
+    const source = formatSourceLocation(message.stackTrace);
+    if (source) fmt.text(`     → ${source}`);
   }
   fmt.blank();
 }

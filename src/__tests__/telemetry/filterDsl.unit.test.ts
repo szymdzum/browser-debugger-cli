@@ -489,4 +489,32 @@ describe('Help text', () => {
     assert.ok(help.includes('domain'));
     assert.ok(help.includes('Negation'));
   });
+
+  describe('status-code with =, duration, and resource types', () => {
+    it('accepts an explicit = in status-code', () => {
+      const requests = [createRequest({ status: 500 }), createRequest({ status: 200 })];
+      assert.equal(applyFilters(requests, parseFilterString('status-code:=500')).length, 1);
+    });
+
+    it('filters by duration in ms or s; a bare value means at least', () => {
+      const requests = [
+        createRequest({ requestId: 'fast', duration: 50 }),
+        createRequest({ requestId: 'slow', duration: 1500 }),
+        createRequest({ requestId: 'pending' }),
+      ];
+      const ids = (dsl: string): string[] =>
+        applyFilters(requests, parseFilterString(dsl)).map((r) => r.requestId);
+      assert.deepEqual(ids('duration:>1s'), ['slow']);
+      assert.deepEqual(ids('duration:<100ms'), ['fast']);
+      assert.deepEqual(ids('duration:1500'), ['slow']);
+      assert.equal(validateFilterString('duration:soon').valid, false);
+    });
+
+    it('rejects unknown resource types with a suggestion', () => {
+      const result = validateFilterString('resource-type:Fetchh');
+      assert.equal(result.valid, false);
+      assert.match(!result.valid ? (result.suggestion ?? '') : '', /Fetch/);
+      assert.equal(validateFilterString('resource-type:xhr,FETCH').valid, true);
+    });
+  });
 });

@@ -19,4 +19,9 @@ void describe('escapeControlChars', () => {
     const output = new OutputFormatter().text('page says \u001b[2J').build();
     assert.equal(output, 'page says \\u001b[2J');
   });
+
+  void it('escapes bidirectional overrides that disguise text', () => {
+    assert.equal(escapeControlChars('file\u202Etxt.exe'), 'file\\u202etxt.exe');
+    assert.equal(escapeControlChars('a\u2066b'), 'a\\u2066b');
+  });
 });

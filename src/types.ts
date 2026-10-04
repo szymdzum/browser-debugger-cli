@@ -160,6 +160,8 @@ export interface NetworkRequest {
   responseBodyBase64?: boolean;
   /** Served from the browser's memory, disk or prefetch cache */
   fromCache?: boolean;
+  /** Why the response body was not captured (`details`; `responseBody` is then absent) */
+  bodyNotCaptured?: string;
   /** Messages and lifecycle of a WebSocket connection (`resourceType` is `WebSocket`) */
   webSocket?: {
     frames: WebSocketFrame[];

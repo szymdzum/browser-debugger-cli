@@ -12,7 +12,22 @@ type RemoteObject = Protocol.Runtime.RemoteObject;
 /**
  * Subtypes that have meaningful description strings from CDP.
  */
-export const SPECIAL_DESCRIPTION_SUBTYPES = new Set(['date', 'regexp', 'error', 'promise']);
+export const SPECIAL_DESCRIPTION_SUBTYPES = new Set([
+  'date',
+  'regexp',
+  'error',
+  'promise',
+  'node',
+  'weakmap',
+  'weakset',
+  'weakref',
+  'typedarray',
+  'arraybuffer',
+  'dataview',
+  'proxy',
+  'generator',
+  'iterator',
+]);
 
 /**
  * Check if a RemoteObject is a primitive that can be formatted directly.
@@ -54,11 +69,18 @@ export function formatPrimitiveValue(value: unknown): string {
 
 /**
  * Check if a preview property has unexpanded nested objects.
- * CDP shows nested objects as just "Object" without valuePreview.
+ * CDP shows nested objects as just "Object" (and arrays as "Array(n)")
+ * without valuePreview.
  */
 function hasUnexpandedNestedObjects(preview: Protocol.Runtime.ObjectPreview): boolean {
   const props = preview.properties ?? [];
-  return props.some((p) => p.type === 'object' && !p.valuePreview && p.value === 'Object');
+  return props.some(
+    (p) =>
+      p.type === 'object' &&
+      !p.valuePreview &&
+      p.subtype !== 'null' &&
+      (p.value === 'Object' || (p.subtype === 'array' && p.value !== 'Array(0)'))
+  );
 }
 
 /**

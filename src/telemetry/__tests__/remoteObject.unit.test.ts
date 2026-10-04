@@ -302,4 +302,39 @@ void describe('remoteObject formatting', () => {
       assert.equal(formatConsoleArgs([str('100%')]), '100%');
     });
   });
+
+  describe('values Chrome describes', () => {
+    it('shows DOM nodes and weak collections by their description', () => {
+      assert.equal(
+        formatRemoteObject({
+          type: 'object',
+          subtype: 'node',
+          description: 'div#app',
+          preview: {
+            type: 'object',
+            subtype: 'node',
+            description: 'div#app',
+            overflow: false,
+            properties: [],
+          },
+        }),
+        'div#app'
+      );
+      assert.equal(
+        formatRemoteObject({
+          type: 'object',
+          subtype: 'weakmap',
+          description: 'WeakMap',
+          preview: {
+            type: 'object',
+            subtype: 'weakmap',
+            description: 'WeakMap',
+            overflow: false,
+            properties: [],
+          },
+        }),
+        'WeakMap'
+      );
+    });
+  });
 });

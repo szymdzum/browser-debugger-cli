@@ -1,4 +1,6 @@
+import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js';
+import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { truncateByLength } from '@/utils/strings.js';
@@ -17,7 +19,7 @@ const BINARY_OPCODE = 2;
  */
 function formatWebSocketMessage(frame: WebSocketFrame): string {
   const arrow = frame.direction === 'sent' ? '↑' : '↓';
-  const time = new Date(frame.timestamp).toISOString().slice(11, 23);
+  const time = formatTimestamp(frame.timestamp);
   const truncated = frame.truncatedFrom === undefined ? '' : ' [truncated]';
   const payload =
     frame.opcode === BINARY_OPCODE
@@ -44,57 +46,110 @@ function addWebSocketMessages(
   webSocket.frames.forEach((frame) => fmt.text(formatWebSocketMessage(frame)));
 }
 
-/**
- * Format network request details for human-readable output
- */
-export function formatNetworkDetails(request: NetworkRequest): string {
-  const fmt = new OutputFormatter();
+/** Characters of a text body shown in human output (`--json` has all of it) */
+const BODY_PREVIEW_LENGTH = 20000;
 
-  fmt.text('Network Request Details').separator('━', 70);
-  fmt.keyValueList([
+/**
+ * Format a byte count for humans.
+ *
+ * @param bytes - Byte count
+ * @returns e.g. "512 B", "12.3 KB"
+ */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  return bytes < 1024 * 1024
+    ? `${(bytes / 1024).toFixed(1)} KB`
+    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * Summary rows of a request: identity, outcome, timing and size.
+ *
+ * @param request - Captured request
+ * @returns Label/value rows
+ */
+function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
+  const rows: Array<[string, string]> = [
     ['Request ID', request.requestId],
     ['URL', request.url],
     ['Method', request.method],
     ['Status', formatRequestStatus(request)],
     ['Resource Type', request.resourceType ?? 'N/A'],
     ['MIME Type', request.mimeType ?? 'N/A'],
-  ]);
+    ['Started', formatTimestamp(request.timestamp)],
+    ['Duration', request.duration === undefined ? 'pending' : `${Math.round(request.duration)} ms`],
+  ];
+  if (request.encodedDataLength !== undefined) {
+    const decoded = request.decodedBodyLength;
+    const sizes = [`${formatBytes(request.encodedDataLength)} transferred`];
+    if (decoded !== undefined) sizes.push(`${formatBytes(decoded)} body`);
+    rows.push(['Size', sizes.join(', ')]);
+  }
+  if (request.fromCache) rows.push(['From Cache', 'yes']);
+  if (request.serverIPAddress) rows.push(['Remote Address', request.serverIPAddress]);
+  if (request.blockedReason) rows.push(['Blocked', request.blockedReason]);
+  return rows;
+}
+
+/**
+ * Add a header block.
+ *
+ * @param fmt - Formatter
+ * @param title - Block title
+ * @param headers - Headers to list
+ */
+function addHeaders(fmt: OutputFormatter, title: string, headers: Record<string, string>): void {
+  fmt.text(title).separator('━', 70);
+  Object.entries(headers).forEach(([key, value]) => fmt.text(`  ${key}: ${value}`));
+  fmt.blank();
+}
+
+/**
+ * Describe a response body for humans: binary and skipped bodies are
+ * summarized, long text is cut (the JSON output has everything).
+ *
+ * @param request - Captured request with a body
+ * @returns Body text
+ */
+function describeResponseBody(request: NetworkRequest & { responseBody: string }): string {
+  const skipped = skippedBodyReason(request.responseBody);
+  if (skipped !== undefined) return `(not captured: ${skipped})`;
+  if (request.responseBodyBase64) {
+    return `(binary, ${request.decodedBodyLength ?? 0} bytes; base64 in --json and HAR export)`;
+  }
+  const body = request.responseBody;
+  if (body.length <= BODY_PREVIEW_LENGTH) return body;
+  return `${body.slice(0, BODY_PREVIEW_LENGTH)}\n… ${body.length - BODY_PREVIEW_LENGTH} more characters (full body: bdg details network ${request.requestId} --json)`;
+}
+
+/**
+ * Format network request details for human-readable output.
+ *
+ * @param request - Captured request
+ * @returns Formatted details
+ */
+export function formatNetworkDetails(request: NetworkRequest): string {
+  const fmt = new OutputFormatter();
+
+  fmt.text('Network Request Details').separator('━', 70);
+  fmt.keyValueList(requestSummaryRows(request));
   fmt.blank();
 
-  if (request.requestHeaders) {
-    fmt.text('Request Headers:').separator('━', 70);
-    Object.entries(request.requestHeaders).forEach(([key, value]) => {
-      fmt.text(`  ${key}: ${value}`);
-    });
-    fmt.blank();
-  }
-
+  if (request.requestHeaders) addHeaders(fmt, 'Request Headers:', request.requestHeaders);
   if (request.requestBody) {
     fmt.text('Request Body:').separator('━', 70);
     fmt.text(request.requestBody);
     fmt.blank();
   }
-
-  if (request.responseHeaders) {
-    fmt.text('Response Headers:').separator('━', 70);
-    Object.entries(request.responseHeaders).forEach(([key, value]) => {
-      fmt.text(`  ${key}: ${value}`);
-    });
-    fmt.blank();
-  }
-
-  if (request.responseBody) {
+  if (request.responseHeaders) addHeaders(fmt, 'Response Headers:', request.responseHeaders);
+  if (request.bodyNotCaptured) {
     fmt.text('Response Body:').separator('━', 70);
-    fmt.text(
-      request.responseBodyBase64
-        ? `(binary, ${request.decodedBodyLength ?? 0} bytes; base64 in --json and HAR export)`
-        : request.responseBody
-    );
+    fmt.text(`(not captured: ${request.bodyNotCaptured})`);
+  } else if (request.responseBody) {
+    fmt.text('Response Body:').separator('━', 70);
+    fmt.text(describeResponseBody({ ...request, responseBody: request.responseBody }));
   }
-
-  if (request.webSocket) {
-    addWebSocketMessages(fmt, request.webSocket);
-  }
+  if (request.webSocket) addWebSocketMessages(fmt, request.webSocket);
 
   return fmt.build();
 }
@@ -108,10 +163,20 @@ export function formatConsoleDetails(message: ConsoleMessage): string {
   fmt.text('Console Message Details').separator('━', 70);
   fmt.keyValueList([
     ['Type', message.type],
-    ['Timestamp', new Date(message.timestamp).toISOString()],
+    ['Time', formatTimestamp(message.timestamp)],
+    ...(message.source ? ([['Source', message.source]] as Array<[string, string]>) : []),
     ['Text', message.text],
   ]);
   fmt.blank();
+
+  if (message.stackTrace && message.stackTrace.length > 0) {
+    fmt.text('Stack Trace:').separator('━', 70);
+    message.stackTrace.forEach((frame) => {
+      const name = frame.functionName?.length ? frame.functionName : '(anonymous)';
+      fmt.text(`  at ${name} (${formatFramePosition(frame)})`);
+    });
+    fmt.blank();
+  }
 
   if (message.args && message.args.length > 0) {
     fmt.text('Arguments:').separator('━', 70);

@@ -69,6 +69,11 @@ export const FILTER_PRESETS: Record<string, FilterPreset> = {
     description: 'In-progress requests (no response yet)',
     filter: 'is:running',
   },
+  slow: {
+    name: 'slow',
+    description: 'Requests that took at least 1 second',
+    filter: 'duration:>=1s',
+  },
 };
 
 /**

@@ -200,14 +200,14 @@ function buildContent(req: NetworkRequest): Content {
   const skipped = skippedBodyReason(req.responseBody);
   if (skipped !== undefined) {
     return {
-      size: req.decodedBodyLength ?? req.encodedDataLength ?? 0,
+      size: req.decodedBodyLength ?? contentLength(req) ?? req.encodedDataLength ?? 0,
       mimeType,
       comment: `Body not captured: ${skipped}`,
     };
   }
   const size =
     req.decodedBodyLength ?? (req.responseBody ? Buffer.byteLength(req.responseBody, 'utf-8') : 0);
-  const text = req.responseBody;
+  const text = typeof req.responseBody === 'string' ? req.responseBody : undefined;
   const encoding = req.responseBodyBase64 ? 'base64' : undefined;
   return {
     size,
@@ -215,6 +215,18 @@ function buildContent(req: NetworkRequest): Content {
     ...(text !== undefined && { text }),
     ...(encoding !== undefined && { encoding }),
   };
+}
+
+/**
+ * Body size announced by the server (`encodedDataLength` also counts headers).
+ *
+ * @param req - Network request
+ * @returns Content-Length in bytes, if given
+ */
+function contentLength(req: NetworkRequest): number | undefined {
+  const value = getHeader(req.responseHeaders, 'content-length');
+  const bytes = value === undefined ? NaN : Number(value);
+  return Number.isInteger(bytes) && bytes >= 0 ? bytes : undefined;
 }
 
 /**

@@ -64,7 +64,10 @@ export interface JsonErrorEntry {
   count: number;
   level: string;
   text: string;
-  source?: { url: string; line: number; column: number };
+  /** Position in the session's message list (what `details console <n>` takes) */
+  index?: number;
+  /** Where it came from; no line/column for a resource URL (e.g. a failed load) */
+  source?: { url: string; line?: number; column?: number };
   stackTrace?: StackFrame[];
 }
 
@@ -225,11 +228,15 @@ function getFilenameFromUrl(url: string | undefined, functionName?: string): str
 
 /**
  * Format source location as "file:line:col".
+ *
+ * A frame without a position (lineNumber -1, e.g. the URL of a failed load)
+ * is shown as its full URL.
  */
 export function formatSourceLocation(stackTrace?: StackFrame[]): string | undefined {
   const frame = stackTrace?.[0];
   if (!frame) return undefined;
 
+  if (frame.lineNumber < 0) return frame.url;
   const filename = getFilenameFromUrl(frame.url, frame.functionName);
   const line = frame.lineNumber + 1;
   const col = frame.columnNumber + 1;
@@ -249,4 +256,17 @@ export function formatCountPrefix(count: number): string {
  */
 export function formatSectionHeader(label: string, unique: number, total: number): string {
   return unique === total ? `${label} (${total})` : `${label} (${unique} unique, ${total} total)`;
+}
+
+/**
+ * A stack frame as "url:line:column" (1-based), or just the URL for a frame
+ * without a position (lineNumber -1, e.g. a failed resource load).
+ *
+ * @param frame - Stack frame
+ * @returns Location text
+ */
+export function formatFramePosition(frame: StackFrame): string {
+  return frame.lineNumber < 0
+    ? frame.url
+    : `${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1}`;
 }

@@ -25,6 +25,7 @@ describe('Filter presets', () => {
         'media',
         'scripts',
         'pending',
+        'slow',
       ];
 
       for (const name of expectedPresets) {

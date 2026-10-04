@@ -6,6 +6,7 @@ import { InvalidArgumentError } from 'commander';
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
+import type { ConsoleLevel } from '@/types.js';
 import { integerOutOfRangeError, invalidIntegerError } from '@/ui/messages/validation.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -58,13 +59,6 @@ function throwValidationError(message: string, suggestion: string): never {
   throw new CommandError(message, { suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
-function buildErrorOptions(min?: number, max?: number): { min?: number; max?: number } {
-  const opts: { min?: number; max?: number } = {};
-  if (min !== undefined) opts.min = min;
-  if (max !== undefined) opts.max = max;
-  return opts;
-}
-
 function parseInteger(value: unknown, options: IntegerRuleOptions): number {
   const {
     name,
@@ -86,18 +80,19 @@ function parseInteger(value: unknown, options: IntegerRuleOptions): number {
   }
 
   const text = String(value).trim();
-  const errorOptions = buildErrorOptions(min, max);
-  const rangeSuggestion = buildRangeSuggestion(min, max);
+  const rangeSuggestion = allowZeroForAll
+    ? `Use 0 for all, or a value between ${min ?? 1} and ${max ?? 'any'}`
+    : buildRangeSuggestion(min, max);
 
   if (!/^[+-]?\d+$/.test(text)) {
-    throwValidationError(invalidIntegerError(text, errorOptions, name), rangeSuggestion);
+    throwValidationError(invalidIntegerError(text, {}, name), rangeSuggestion);
   }
 
   const parsed = Number(text);
   if (parsed === 0 && allowZeroForAll) return 0;
 
   if ((min !== undefined && parsed < min) || (max !== undefined && parsed > max)) {
-    throwValidationError(integerOutOfRangeError(text, errorOptions, name), rangeSuggestion);
+    throwValidationError(integerOutOfRangeError(text, {}, name), rangeSuggestion);
   }
 
   return parsed;
@@ -132,6 +127,9 @@ export function integerOption(min?: number, max?: number): (value: string) => nu
   };
 }
 
+/** Largest `--last` window (the daemon returns at most this many items) */
+export const MAX_LAST_ITEMS = 10000;
+
 /** Image formats Chrome can capture, by the names users write */
 const SCREENSHOT_FORMATS: Record<string, 'png' | 'jpeg'> = {
   png: 'png',
@@ -152,6 +150,33 @@ export function screenshotFormatOption(value: string): 'png' | 'jpeg' {
   const similar = findSimilar(value.toLowerCase(), Object.keys(SCREENSHOT_FORMATS));
   throw new InvalidArgumentError(
     `Use png or jpeg${similar.length ? ` (did you mean ${similar[0]}?)` : ''}.`
+  );
+}
+
+/** Console levels by the names users write (`log` is shown under info) */
+const CONSOLE_LEVELS: Record<string, ConsoleLevel> = {
+  error: 'error',
+  warning: 'warning',
+  warn: 'warning',
+  info: 'info',
+  log: 'info',
+  debug: 'debug',
+  verbose: 'debug',
+};
+
+/**
+ * Commander parser for `console --level`: case-insensitive, with aliases.
+ *
+ * @param value - Raw option value
+ * @returns Console level
+ * @throws InvalidArgumentError (exit 81) with a did-you-mean
+ */
+export function consoleLevelOption(value: string): ConsoleLevel {
+  const level = CONSOLE_LEVELS[value.trim().toLowerCase()];
+  if (level) return level;
+  const similar = findSimilar(value.toLowerCase(), Object.keys(CONSOLE_LEVELS));
+  throw new InvalidArgumentError(
+    `Use error, warning, info (or log) or debug${similar.length ? ` (did you mean ${similar[0]}?)` : ''}.`
   );
 }
 

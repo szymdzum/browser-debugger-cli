@@ -583,6 +583,24 @@ void describe('CommandRegistry', () => {
     });
   });
 
+  void describe('session_details for a body that was not captured', () => {
+    void it('reports the reason instead of a placeholder body', async () => {
+      store.networkRequests.push({
+        requestId: 'img',
+        timestamp: 1,
+        method: 'GET',
+        url: 'https://example.com/a.png',
+        responseBody: '[SKIPPED: images are skipped]',
+      });
+
+      const { item } = await registry.session_details(mockCdp, { itemType: 'network', id: 'img' });
+
+      const request = item as NetworkRequest;
+      assert.equal(request.responseBody, undefined);
+      assert.equal(request.bodyNotCaptured, 'images are skipped');
+    });
+  });
+
   void describe('cdp_call', () => {
     void it('forwards CDP method call and returns result', async () => {
       const mockResult = { cookies: [{ name: 'session', value: 'abc123' }] };

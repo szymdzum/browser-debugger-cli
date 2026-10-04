@@ -16,8 +16,13 @@ void describe('request status', () => {
 
   void it('shows the HTTP status even when loading failed after the response', () => {
     assert.equal(
+      formatRequestStatus({ status: 503, errorText: 'net::ERR_CONNECTION_RESET' }),
+      '503 (net::ERR_CONNECTION_RESET)'
+    );
+    assert.equal(
       formatRequestStatus({ status: 503, errorText: 'net::ERR_ABORTED' }),
-      '503 (net::ERR_ABORTED)'
+      '503',
+      'Chrome not reading an unneeded body is not a failure'
     );
     assert.equal(formatRequestStatus({ status: 200 }), '200');
   });

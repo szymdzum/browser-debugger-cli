@@ -4,13 +4,16 @@
 
 import type { Command } from 'commander';
 
-import { jsonOption } from '@/commands/shared/commonOptions.js';
-import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
+import { jsonOption, showBothSectionsWhenBothRequested } from '@/commands/shared/commonOptions.js';
+import {
+  handleDaemonConnectionError,
+  noteFollowConnected,
+} from '@/commands/shared/daemonErrorHandler.js';
 import { fetchPreviewOutput } from '@/commands/shared/dataFetcher.js';
 import { setupFollowMode } from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { TailCommandOptions } from '@/commands/shared/optionTypes.js';
-import { positiveIntRule } from '@/commands/shared/validation.js';
+import { MAX_LAST_ITEMS, positiveIntRule } from '@/commands/shared/validation.js';
 import { formatPreview, type PreviewOptions } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
 
@@ -18,7 +21,7 @@ function parseOptions(options: TailCommandOptions): { lastN: number; interval: n
   const lastRule = positiveIntRule({
     name: '--last',
     min: 1,
-    max: 1000,
+    max: MAX_LAST_ITEMS,
     default: 10,
     allowZeroForAll: true,
   });
@@ -56,6 +59,7 @@ export function registerTailCommand(program: Command): void {
     )
     .option('--interval <ms>', 'Update interval in milliseconds', '1000')
     .action(async (options: TailCommandOptions) => {
+      showBothSectionsWhenBothRequested(options);
       let lastN: number;
       let interval: number;
 
@@ -80,6 +84,7 @@ export function registerTailCommand(program: Command): void {
           if (errorResult.shouldExit) process.exit(errorResult.exitCode);
           return;
         }
+        noteFollowConnected();
 
         if (!options.json) console.clear();
         console.log(formatPreview(result.data, createPreviewOptions(options, lastN)));

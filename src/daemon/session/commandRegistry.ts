@@ -18,6 +18,7 @@ import {
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
+import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -201,6 +202,20 @@ function allNetworkRequests(store: TelemetryStore): NetworkRequest[] {
 }
 
 /**
+ * Present a body bdg chose not to fetch as `bodyNotCaptured` (the reason)
+ * instead of a placeholder string in `responseBody`.
+ *
+ * @param request - Captured request
+ * @returns The request as `details` reports it
+ */
+function withBodyNotCaptured(request: NetworkRequest): NetworkRequest {
+  const reason = skippedBodyReason(request.responseBody);
+  if (reason === undefined) return request;
+  const { responseBody: _placeholder, ...rest } = request;
+  return { ...rest, bodyNotCaptured: reason };
+}
+
+/**
  * Find a network request by ID: finished, in flight, or a WebSocket.
  *
  * `peek` lists all of these, so ids it shows must resolve here.
@@ -375,7 +390,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     session_details: async (_cdp, params) => {
       if (params.itemType === 'network') {
         const request = findNetworkRequestOrThrow(store, params.id);
-        return Promise.resolve({ item: request });
+        return Promise.resolve({ item: withBodyNotCaptured(request) });
       }
 
       if (params.itemType === 'console') {

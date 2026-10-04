@@ -13,6 +13,7 @@ import {
   integerOption,
   positiveIntRule,
   resourceTypeRule,
+  consoleLevelOption,
   screenshotFormatOption,
 } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -233,8 +234,9 @@ void describe('positiveIntRule', () => {
       (error: unknown) =>
         error instanceof CommandError &&
         error.message.includes('out of range') &&
-        error.message.includes('1 to 65535') &&
-        !error.message.includes('not an integer')
+        !error.message.includes('not an integer') &&
+        !error.message.includes('Valid range') &&
+        String(error.metadata['suggestion']).includes('between 1 and 65535')
     );
   });
 });
@@ -275,5 +277,17 @@ void describe('screenshotFormatOption', () => {
   void it('rejects formats Chrome cannot capture as invalid arguments', () => {
     assert.throws(() => screenshotFormatOption('gif'), InvalidArgumentError);
     assert.throws(() => screenshotFormatOption('webp'), /png or jpeg/);
+  });
+});
+
+void describe('consoleLevelOption', () => {
+  void it('accepts levels in any case, with log and warn aliases', () => {
+    assert.equal(consoleLevelOption('ERROR'), 'error');
+    assert.equal(consoleLevelOption('log'), 'info');
+    assert.equal(consoleLevelOption('Warn'), 'warning');
+  });
+
+  void it('rejects other levels as invalid arguments', () => {
+    assert.throws(() => consoleLevelOption('loud'), InvalidArgumentError);
   });
 });
