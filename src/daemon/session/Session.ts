@@ -9,7 +9,11 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { connectCDP, navigateToTarget } from '@/daemon/session/cdpSetup.js';
-import { findPageTarget, setupChromeConnection } from '@/daemon/session/chromeConnection.js';
+import {
+  externalChromePort,
+  findPageTarget,
+  setupChromeConnection,
+} from '@/daemon/session/chromeConnection.js';
 import { startTelemetryCollectors } from '@/daemon/session/collectors.js';
 import { createCommandRegistry, type CommandRegistry } from '@/daemon/session/commandRegistry.js';
 import { teardownSession, type TeardownContext } from '@/daemon/session/teardown.js';
@@ -203,7 +207,11 @@ export class Session {
    */
   private async acquireResources(): Promise<void> {
     this.store.resetSessionStart();
-    this.config = { ...this.config, port: await getSessionPort(this.config.port || undefined) };
+    const { chromeWsUrl } = this.config;
+    const port = chromeWsUrl
+      ? externalChromePort(chromeWsUrl)
+      : await getSessionPort(this.config.port || undefined);
+    this.config = { ...this.config, port };
     this.throwIfStopping();
     if (!this.config.chromeWsUrl) {
       killOrphanedChrome();
@@ -214,7 +222,9 @@ export class Session {
       await findPageTarget(this.config, this.store, log);
       this.throwIfStopping();
     }
-    this.cdp = await connectCDP(this.store, log, () => void this.stop('crash'));
+    this.cdp = await connectCDP(this.store, log, () => void this.stop('crash'), {
+      external: Boolean(chromeWsUrl),
+    });
     this.throwIfStopping();
     this.cleanupFunctions = await startTelemetryCollectors(this.cdp, this.config, this.store, log);
     this.throwIfStopping();

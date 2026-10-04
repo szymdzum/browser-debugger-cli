@@ -1,8 +1,9 @@
 /**
  * Startup interruption smoke tests.
  *
- * A session that is stopped (by `bdg stop` or a signal to the daemon) while it
- * is still launching must not leave Chrome or the daemon running.
+ * A session that is stopped (by `bdg stop`, a signal to the daemon, or Ctrl-C
+ * on the starting command) while it is still launching must not leave Chrome
+ * or the daemon running.
  */
 
 import * as fs from 'fs';
@@ -58,12 +59,16 @@ void describe('Startup interruption', () => {
   /**
    * Start a session against the slow page without waiting for it.
    *
+   * @param interrupt - Sends SIGINT to the start command when aborted
    * @returns Holder for the pending start command (not awaited)
    */
-  async function startSlowSession(): Promise<{ result: Promise<CommandResult> }> {
+  async function startSlowSession(
+    interrupt?: AbortSignal
+  ): Promise<{ result: Promise<CommandResult> }> {
     const port = await getFreePort();
     const result = runCommand(`${fixture.url}slow`, ['--port', String(port), '--headless'], {
       timeout: 60000,
+      ...(interrupt && { interrupt }),
     });
     return { result };
   }
@@ -92,5 +97,19 @@ void describe('Startup interruption', () => {
     await start.result;
     assert.equal(await waitForProcessExit(daemonPid), true, 'daemon must exit');
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
+  });
+
+  void it('Ctrl-C on the start command during startup leaves no session', async () => {
+    const ctrlC = new AbortController();
+    const start = await startSlowSession(ctrlC.signal);
+    const daemonPid = await waitForPid('DAEMON_PID');
+    const chromePid = await waitForPid('CHROME_PID');
+
+    ctrlC.abort();
+
+    assert.equal((await start.result).exitCode, 130);
+    assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
+    assert.equal(await waitForProcessExit(daemonPid), true, 'daemon must exit');
+    assert.equal(await isDaemonRunning(), false);
   });
 });

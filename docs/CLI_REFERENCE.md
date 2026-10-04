@@ -820,6 +820,11 @@ bdg localhost:3000 --user-data-dir ~/custom # Custom Chrome profile directory
 bdg localhost:3000 --headless                   # Launch Chrome in headless mode
 bdg localhost:3000 --chrome-ws-url <url>        # Connect to existing Chrome instance
 
+# --chrome-ws-url takes the browser URL from http://host:port/json/version
+# (ws://host:port/devtools/browser/<id>; bdg uses the first open tab, or opens one)
+# or a page URL from /json/list (ws://host:port/devtools/page/<id>).
+# The Chrome keeps running after bdg stop.
+
 # Output Optimization
 bdg localhost:3000 --compact                    # Compact JSON (no indentation, 30% size reduction)
 bdg localhost:3000 --max-body-size 10           # Set max response body size (MB, default: 5)

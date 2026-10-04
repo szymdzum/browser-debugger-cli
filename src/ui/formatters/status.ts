@@ -11,6 +11,8 @@ export interface StatusData {
   bdgPid?: number;
   chromePid?: number | undefined;
   chromeAlive?: boolean;
+  /** Attached to a Chrome bdg did not launch (`--chrome-ws-url`); it has no known PID */
+  externalChrome?: boolean;
   startTime?: number;
   duration?: number;
   durationFormatted?: string;
@@ -64,6 +66,8 @@ export function formatSessionStatus(
       `${metadata.chromePid} ${chromeAlive ? '(running)' : '(not running)'}`,
       18
     );
+  } else {
+    fmt.keyValue('Chrome', 'external (not launched by bdg)', 18);
   }
 
   fmt.keyValue('Port', metadata.port.toString(), 18);
@@ -153,7 +157,7 @@ export function formatStatusAsJson(
     active: true,
     bdgPid: pid,
     chromePid: metadata.chromePid,
-    chromeAlive,
+    ...(metadata.chromePid ? { chromeAlive } : { externalChrome: true }),
     startTime: metadata.startTime,
     duration: duration.durationMs,
     durationFormatted: duration.formatted,

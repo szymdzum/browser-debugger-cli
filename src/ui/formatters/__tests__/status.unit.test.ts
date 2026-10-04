@@ -1,0 +1,40 @@
+/**
+ * Session status for an external Chrome (`--chrome-ws-url`), which has no PID.
+ */
+
+import * as assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import type { SessionMetadata } from '@/session/metadata.js';
+import { formatSessionStatus, formatStatusAsJson } from '@/ui/formatters/status.js';
+
+const external: SessionMetadata = {
+  bdgPid: process.pid,
+  chromePid: 0,
+  startTime: Date.now(),
+  port: 9333,
+};
+
+void describe('status of an external Chrome', () => {
+  void it('marks the Chrome as external instead of not running', () => {
+    const json = formatStatusAsJson(external, process.pid);
+
+    assert.equal(json.externalChrome, true);
+    assert.equal(json.chromeAlive, undefined);
+    assert.equal(json.port, 9333);
+  });
+
+  void it('says so in the human output', () => {
+    const output = formatSessionStatus(external, process.pid);
+
+    assert.match(output, /Chrome:\s+external \(not launched by bdg\)/);
+    assert.doesNotMatch(output, /not running/);
+  });
+
+  void it('still reports a launched Chrome by PID', () => {
+    const json = formatStatusAsJson({ ...external, chromePid: process.pid }, process.pid);
+
+    assert.equal(json.chromeAlive, true);
+    assert.equal(json.externalChrome, undefined);
+  });
+});
