@@ -31,6 +31,14 @@ import { markStartupLogs, watchStartupExit } from './startupExit.js';
  *
  * Can be overridden in tests or when launcher is used as a library.
  */
+/**
+ * How often to check whether Chrome's debugging port answers (chrome-launcher
+ * defaults to 500 ms; Chrome is usually listening within 100–300 ms)
+ */
+const CHROME_READY_POLL_MS = 50;
+/** Checks before giving up: 25 s in all, as with chrome-launcher's defaults */
+const CHROME_READY_POLL_ATTEMPTS = 500;
+
 const defaultLogger: Logger = {
   info: (msg) => console.error(msg),
   debug: () => {}, // No-op by default
@@ -277,8 +285,8 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
     ...filterDefined({
       port: options.port,
       startingUrl: options.url,
-      connectionPollInterval: options.connectionPollInterval,
-      maxConnectionRetries: options.maxConnectionRetries,
+      connectionPollInterval: options.connectionPollInterval ?? CHROME_READY_POLL_MS,
+      maxConnectionRetries: options.maxConnectionRetries ?? CHROME_READY_POLL_ATTEMPTS,
       portStrictMode: options.portStrictMode,
       prefs: ensureJSONCompatiblePrefs(mergedPrefs),
       envVars: options.envVars,

@@ -110,7 +110,7 @@ export function registerCdpCommand(program: Command): void {
   program
     .command('cdp')
     .description(
-      `CDP protocol introspection and execution (${cdpCountsText()})\n` +
+      'CDP protocol introspection and execution\n' +
         '  Discovery: --list, --search, --describe\n' +
         '  Execution: case-insensitive (network.getcookies works)'
     )
@@ -120,6 +120,7 @@ export function registerCdpCommand(program: Command): void {
     .option('--describe', 'Show method signature and parameters')
     .option('--search <query>', 'Search methods by keyword')
     .addOption(jsonOption().hideHelp())
+    .addHelpText('after', () => `\nBundled protocol: ${cdpCountsText()}`)
     .action(async (method: string | undefined, options: CdpCommandOptions) => {
       await runCommand(
         async (opts) => {

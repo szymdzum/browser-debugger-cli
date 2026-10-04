@@ -11,10 +11,13 @@ import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
-const CHROME_EXIT_POLL_MS = 500;
-const CHROME_EXIT_POLL_ATTEMPTS = 10;
+/** How often to check whether Chrome has exited (it usually takes 100–300 ms) */
+const CHROME_EXIT_POLL_MS = 50;
+const CHROME_EXIT_POLL_ATTEMPTS = 100;
 /** Up to 5 s for Chrome to shut down cleanly after SIGTERM. */
-const GRACEFUL_EXIT_POLL_ATTEMPTS = 10;
+const GRACEFUL_EXIT_POLL_ATTEMPTS = 100;
+/** How long to wait for Browser.close to answer (Chrome may exit without answering) */
+const BROWSER_CLOSE_REPLY_MS = 500;
 
 /**
  * Resources to release during teardown. Any of them may be missing if the
@@ -78,7 +81,7 @@ export async function teardownSession(context: TeardownContext): Promise<void> {
  */
 async function requestBrowserClose(cdp: CDPConnection, pid: number, log: Logger): Promise<void> {
   try {
-    await Promise.race([cdp.send('Browser.close'), delay(CHROME_EXIT_POLL_MS)]);
+    await Promise.race([cdp.send('Browser.close'), delay(BROWSER_CLOSE_REPLY_MS)]);
   } catch (error) {
     log.debug(`Browser.close failed: ${getErrorMessage(error)}`);
   }
@@ -134,7 +137,7 @@ async function terminateChrome(chrome: LaunchedChrome, log: Logger): Promise<voi
     log.info(`Chrome (PID ${pid}) did not exit gracefully, force killing`);
     try {
       killChromeProcess(pid, 'SIGKILL');
-      await delay(CHROME_EXIT_POLL_MS);
+      await waitForExit(pid, CHROME_EXIT_POLL_ATTEMPTS);
     } catch (error) {
       log.info(`Failed to force kill Chrome: ${getErrorMessage(error)}`);
     }
