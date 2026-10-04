@@ -213,6 +213,8 @@ export interface DomClickCommand {
   /** Exact element from the query cache (overrides selector/index) */
   backendNodeId?: number;
   wait?: boolean;
+  /** Double or right click, or only hover (default: click) */
+  action?: 'click' | 'double' | 'right' | 'hover';
 }
 
 export type DomClickData = ClickResult;
@@ -296,7 +298,32 @@ export type RegistryShape = {
   dom_press_key: CommandDef<DomPressKeyCommand, DomPressKeyData>;
   dom_scroll: CommandDef<DomScrollCommand, DomScrollData>;
   dom_form_discover: CommandDef<DomFormDiscoverCommand, DomFormDiscoverData>;
+  page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
 };
+
+/** What `bdg page` does */
+export type PageAction = 'navigate' | 'reload' | 'back' | 'forward';
+
+/** Result of a page navigation */
+export interface PageNavigationResult {
+  /** What was done */
+  action: PageAction;
+  /** URL of the page afterwards */
+  url: string;
+  /** Title of the page afterwards */
+  title: string;
+}
+
+/**
+ * page_navigate: navigate, reload, or go back/forward, then wait for the page.
+ */
+export interface PageNavigateCommand {
+  action: PageAction;
+  /** URL to load (navigate) */
+  url?: string;
+  /** Wait for the page to load (default: true) */
+  wait?: boolean;
+}
 
 /**
  * Creates a phantom command definition that carries request/response types only.
@@ -324,6 +351,7 @@ export const COMMANDS: RegistryShape = {
   dom_submit: defineCommand(),
   dom_press_key: defineCommand(),
   dom_scroll: defineCommand(),
+  page_navigate: defineCommand(),
   dom_form_discover: defineCommand(),
 };
 

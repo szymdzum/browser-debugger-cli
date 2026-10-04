@@ -240,4 +240,35 @@ void describe('DOM interactions', () => {
       /covered by another element \(div#shield\)/
     );
   });
+
+  void it('double-clicks, right-clicks and hovers with real mouse events', async () => {
+    await evaluate(
+      "document.body.insertAdjacentHTML('beforeend', '<button id=\"pointer\">P</button><select id=\"many\" multiple><option>a</option><option>b</option><option>c</option></select>'); window.pointer = []; ['dblclick', 'contextmenu', 'mouseover'].forEach((type) => document.getElementById('pointer').addEventListener(type, (e) => window.pointer.push(type + (e.isTrusted ? '' : ':synthetic')))); 1"
+    );
+    await bdg(['dom', 'click', '#pointer', '--double']);
+    await bdg(['dom', 'click', '#pointer', '--right']);
+    await bdg(['dom', 'hover', '#pointer']);
+    const seen = (await evaluate('window.pointer')) as string[];
+    for (const type of ['dblclick', 'contextmenu', 'mouseover'])
+      assert.ok(seen.includes(type), type);
+    await bdg(['dom', 'click', '#pointer', '--double', '--right'], 81);
+
+    await bdg(['dom', 'fill', '#many', 'a,c']);
+    assert.deepEqual(
+      await evaluate("Array.from(document.getElementById('many').selectedOptions, (o) => o.value)"),
+      ['a', 'c']
+    );
+  });
+
+  void it('navigates the page and its history', async () => {
+    const url = String(await evaluate('location.href'));
+    const other = new URL('/', url).href;
+    assert.match(await bdg(['page', 'navigate', other]), /Navigated/);
+    assert.equal(await evaluate('location.href'), other);
+    assert.match(await bdg(['page', 'back']), /Went back/);
+    assert.equal(await evaluate('location.href'), url);
+    await bdg(['page', 'forward']);
+    await bdg(['page', 'forward'], 81);
+    await bdg(['page', 'back']);
+  });
 });

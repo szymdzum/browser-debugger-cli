@@ -370,6 +370,15 @@ bdg dom click "#login-btn"
 bdg dom click "button.submit" --index 2
 bdg dom click 0                                   # Use cached query index (0-based)
 bdg dom click "#fast-btn" --no-wait               # Skip network stability wait
+bdg dom click ".row" --double                     # Double-click
+bdg dom click ".row" --right                      # Right-click (context menu)
+bdg dom hover "nav .menu"                         # Hover (opens hover menus)
+bdg dom fill "#tags" "a,c"                        # <select multiple>: several options
+
+# Navigate the session page
+bdg page navigate https://example.com/next        # Load a URL and wait for it
+bdg page back                                     # History back / forward
+bdg page reload
 
 # Press keys (for Enter-to-submit, keyboard navigation)
 bdg dom pressKey ".new-todo" Enter                # TodoMVC pattern: submit with Enter

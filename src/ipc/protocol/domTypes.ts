@@ -57,6 +57,8 @@ export interface ClickResult {
   suggestion?: string;
   /** How the click was performed: real mouse events, or el.click() fallback */
   method?: 'mouse' | 'dom';
+  /** What was done: click, double (click), right (click) or hover */
+  action?: 'click' | 'double' | 'right' | 'hover';
   /** Exit code for a failure */
   exitCode?: number;
   /** Why the DOM fallback was used (element covered or without size) */

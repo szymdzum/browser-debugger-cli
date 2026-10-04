@@ -19,6 +19,7 @@ import {
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
+import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -500,7 +501,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     dom_click: async (cdp, params) =>
       interact(cdp, async () => {
         const target = await resolveScriptTarget(cdp, params);
-        const clickOptions = filterDefined({ index: target.index });
+        const clickOptions = filterDefined({ index: target.index, action: params.action });
         const result = withUserSelector(
           await clickElement(cdp, target.selector, clickOptions),
           params.selector
@@ -559,6 +560,11 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         if (result.success && params.wait !== false) await waitForActionStability(cdp);
         return result;
       }),
+
+    page_navigate: async (cdp, params) =>
+      interact(cdp, () =>
+        navigatePage(cdp, params.action, filterDefined({ url: params.url, wait: params.wait }))
+      ),
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {
       const response = await cdp.send('Runtime.evaluate', {
