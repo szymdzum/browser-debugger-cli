@@ -36,6 +36,8 @@ export interface FillResult {
   fileInput?: boolean;
   /** Something the page will likely object to (e.g. a value above max) */
   warning?: string;
+  /** Elements the selector matched */
+  matchCount?: number;
   exitCode?: number;
   /** Dialogs accepted while the command ran */
   dialogs?: DialogInfo[];
@@ -49,7 +51,6 @@ export interface ClickResult {
   error?: string;
   selector?: string;
   elementType?: string;
-  clickable?: boolean;
   matchCount?: number;
   selectedIndex?: number;
   requestedIndex?: number;
@@ -73,7 +74,8 @@ export interface PressKeyResult {
   selector?: string;
   key?: string;
   times?: number;
-  modifiers?: number;
+  /** Modifier keys held, e.g. ["Ctrl", "Shift"] */
+  modifiers?: string[];
   elementType?: string | undefined;
   suggestion?: string;
   exitCode?: number;

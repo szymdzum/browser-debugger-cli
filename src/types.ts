@@ -355,9 +355,15 @@ export interface DomQueryResult {
     /** Backend node id (stable while the element exists; 0 if unknown) */
     nodeId: number;
     tag?: string;
+    /** `id`, `name` and `type` attributes, when present */
+    id?: string;
+    name?: string;
+    type?: string;
     classes?: string[];
     /** Text content preview (display only, never used for targeting) */
     preview?: string;
+    /** Enclosing iframe(s) and shadow root, e.g. "iframe#pay > shadow root of <x-card>" */
+    context?: string;
     /** Unique selector for this node (set by form discovery) */
     selector?: string;
   }>;

@@ -30,3 +30,27 @@ void describe('formatDomQuery', () => {
     assert.match(output, /cross-origin iframes/);
   });
 });
+
+void describe('formatDomQuery identifying details', () => {
+  void it('shows id, name, type and the enclosing frame or shadow root', () => {
+    const output = formatDomQuery({
+      selector: 'input',
+      count: 1,
+      nodes: [
+        {
+          index: 0,
+          nodeId: 7,
+          tag: 'input',
+          id: 'email',
+          name: 'email',
+          type: 'email',
+          context: 'iframe#login > shadow root of <x-field>',
+        },
+      ],
+    });
+    assert.match(
+      output,
+      /\[0\] <input id="email" name="email" type="email"> \(in iframe#login > shadow root of <x-field>\)/
+    );
+  });
+});

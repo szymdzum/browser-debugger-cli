@@ -120,8 +120,11 @@ export function integerOption(min?: number, max?: number): (value: string) => nu
     const text = value.trim();
     const parsed = Number(text);
     const outOfRange = (min !== undefined && parsed < min) || (max !== undefined && parsed > max);
-    if (!/^[+-]?\d+$/.test(text) || outOfRange) {
+    if (!/^[+-]?\d+$/.test(text)) {
       throw new InvalidArgumentError(`Expected an integer. ${buildRangeSuggestion(min, max)}`);
+    }
+    if (outOfRange) {
+      throw new InvalidArgumentError(`${text} is out of range. ${buildRangeSuggestion(min, max)}`);
     }
     return parsed;
   };

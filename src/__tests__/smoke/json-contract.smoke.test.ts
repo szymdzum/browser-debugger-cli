@@ -127,6 +127,9 @@ void describe('JSON contract', () => {
       ['tabs', '--json'],
       ['dom', 'screenshot', 'x.png', '--quality', '101', '--json'],
       ['--port', '9333', '--json'],
+      ['dom', 'scroll', '--top', '--bottom', '--json'],
+      ['dom', 'scroll', 'footer', '--down', '100', '--json'],
+      ['dom', 'click', '0', '--index', '1', '--json'],
       [fixture.url, '-u', '/etc/hosts', '--json'],
       [
         fixture.url,

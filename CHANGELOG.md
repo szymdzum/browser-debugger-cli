@@ -44,6 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Interaction commands**
+  - A numeric index together with `--index` (`dom click 1 --index 3`) exits 81 instead of ignoring `--index`
+  - `dom scroll` refuses conflicting options with 81: `--top` with `--bottom`, two vertical directions, or a selector with an offset/edge (they were silently resolved)
+  - `fill` on a selector matching several elements warns and reports `matchCount`
+  - `pressKey` accepts Esc, Return, Del, Up/Down/Left/Right, PgUp/PgDn and shifted digit symbols (`!`, `@`, …); an unknown key exits 81 with a did-you-mean instead of a selector hint
+  - Clicking an `<option>` exits 81 with the `dom fill` command that selects it (it reported "display: none" and changed nothing)
+  - Out-of-range integers say so (`--times 0`: "0 is out of range") instead of "Expected an integer"
+  - "Not found" errors of `fill`/`click`/`pressKey`/`submit` say that closed shadow roots and cross-origin iframes cannot be reached
+  - `dom query` shows `id`, `name` and `type` of each match, and the iframe or shadow root it is in (also in JSON as `context`)
+  - `pressKey --json` reports `modifiers` as names (`["Ctrl"]`) instead of a bit mask; click results no longer carry the misleading `clickable` flag
 - **Session lifecycle**
   - A frozen daemon is detected in 10 s by every command, including `stop`, `bdg <url>`, `dom *` and `cdp` (they waited 45 s and some exited 110): a quick handshake runs before requests that may take long, and all IPC timeouts exit 102 with a message that names no internal request
   - `status` while `bdg <url>` is still starting says so (`starting` in JSON) instead of "no session"; other commands meanwhile exit 85 "The session is still starting"

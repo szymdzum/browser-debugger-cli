@@ -22,12 +22,12 @@ import type {
 } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
-import { internalError } from '@/errors/messages.js';
+import { internalError, scrollOptionsError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
-import { describeModifiers, findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
+import { findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { dialogConsoleText } from '@/ui/messages/commands.js';
@@ -217,49 +217,14 @@ export function registerFormInteractionCommands(program: Command): void {
     .action(async (selector: string | undefined, options: ScrollCommandOptions) => {
       await runCommand(
         async () => {
-          if (options.index !== undefined && !selector) {
+          const problem = scrollOptionsProblem(selector, options);
+          if (problem) {
+            const err = scrollOptionsError(problem);
             return {
               success: false,
-              error: '--index requires a selector',
+              error: err.message,
               exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: { suggestion: 'Use: bdg dom scroll "selector" --index 2' },
-            };
-          }
-
-          const hasConflictingVertical = options.down !== undefined && options.up !== undefined;
-          const hasConflictingHorizontal =
-            options.left !== undefined && options.right !== undefined;
-
-          if (hasConflictingVertical || hasConflictingHorizontal) {
-            return {
-              success: false,
-              error: 'Conflicting scroll directions specified',
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion: hasConflictingVertical
-                  ? 'Use either --down or --up, not both'
-                  : 'Use either --left or --right, not both',
-              },
-            };
-          }
-
-          const hasOffsetOrPosition =
-            options.down !== undefined ||
-            options.up !== undefined ||
-            options.left !== undefined ||
-            options.right !== undefined ||
-            options.top === true ||
-            options.bottom === true;
-
-          if (!selector && !hasOffsetOrPosition) {
-            return {
-              success: false,
-              error: 'No scroll target specified',
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion:
-                  'Provide a selector (bdg dom scroll "footer") or offset (--down 500, --bottom)',
-              },
+              errorContext: { suggestion: err.suggestion },
             };
           }
 
@@ -316,6 +281,30 @@ export function registerFormInteractionCommands(program: Command): void {
         formatScrollOutput
       );
     });
+}
+
+/**
+ * The first rule `bdg dom scroll` options break, if any: one target (an
+ * element, or offsets/edges), and no opposite directions.
+ *
+ * @param selector - Selector or index argument
+ * @param options - Scroll options
+ * @returns Problem, or null when the options are valid
+ */
+function scrollOptionsProblem(
+  selector: string | undefined,
+  options: ScrollCommandOptions
+): Parameters<typeof scrollOptionsError>[0] | null {
+  const vertical = [options.down, options.up, options.top, options.bottom].filter(
+    (value) => value !== undefined && value !== false
+  ).length;
+  const horizontal = [options.left, options.right].filter((value) => value !== undefined).length;
+  if (options.index !== undefined && !selector) return 'index-without-selector';
+  if (selector && vertical + horizontal > 0) return 'selector-with-offset';
+  if (vertical > 1) return 'vertical';
+  if (horizontal > 1) return 'horizontal';
+  if (!selector && vertical + horizontal === 0) return 'no-target';
+  return null;
 }
 
 /** Action result as returned in `data` (the `success` flag is implied by the envelope). */
@@ -431,9 +420,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   ];
 
   if (result.times && result.times > 1) details.push(['Times', result.times.toString()]);
-  if (result.modifiers && result.modifiers > 0) {
-    details.push(['Modifiers', describeModifiers(result.modifiers).join('+')]);
-  }
+  if (result.modifiers?.length) details.push(['Modifiers', result.modifiers.join('+')]);
 
   fmt.keyValueList(details, 15);
   appendNotices(fmt, result);

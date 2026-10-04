@@ -478,6 +478,68 @@ export function chromeWsUrlConflictError(options: string[]): ErrorWithSuggestion
 }
 
 /**
+ * A numeric index given together with `--index`.
+ *
+ * @param index - The index argument
+ */
+export function indexWithIndexOptionError(index: string): ErrorWithSuggestion {
+  return {
+    message: `--index applies to a selector, but "${index}" is already an index from the last query`,
+    suggestion: `Use one: bdg dom click ${index}, or bdg dom click "<selector>" --index <n>`,
+  };
+}
+
+/** Problems with `bdg dom scroll` options, and how to fix each */
+const SCROLL_PROBLEMS = {
+  'index-without-selector': [
+    '--index requires a selector',
+    'Use: bdg dom scroll "selector" --index 2',
+  ],
+  vertical: [
+    'Conflicting scroll directions: --up/--down/--top/--bottom',
+    'Use one vertical direction',
+  ],
+  horizontal: ['Conflicting scroll directions: --left and --right', 'Use either --left or --right'],
+  'selector-with-offset': [
+    'A selector cannot be combined with --up/--down/--left/--right/--top/--bottom',
+    'Scroll to the element (bdg dom scroll "footer"), or by an offset (bdg dom scroll --down 500)',
+  ],
+  'no-target': [
+    'No scroll target specified',
+    'Provide a selector (bdg dom scroll "footer") or offset (--down 500, --bottom)',
+  ],
+} as const;
+
+/**
+ * Invalid `bdg dom scroll` options.
+ *
+ * @param problem - Which rule was broken
+ */
+export function scrollOptionsError(problem: keyof typeof SCROLL_PROBLEMS): ErrorWithSuggestion {
+  const [message, suggestion] = SCROLL_PROBLEMS[problem];
+  return { message, suggestion };
+}
+
+/**
+ * A key name `dom pressKey` does not know.
+ *
+ * @param keyName - Key as given
+ * @param similar - Similar key names
+ */
+export function unknownKeyError(keyName: string, similar: string[]): ErrorWithSuggestion {
+  return {
+    message: `Unknown key: "${keyName}"`,
+    suggestion: similar.length
+      ? `Did you mean: ${similar.join(', ')}?`
+      : 'Keys: Enter, Tab, Escape, Space, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp, PageDown, F1-F12, a-z, A-Z, 0-9, !@#$%^&*()',
+  };
+}
+
+/** Where selectors cannot look, for "not found" errors */
+export const UNREACHABLE_ELEMENTS_HINT =
+  'elements in closed shadow roots and cross-origin iframes cannot be reached';
+
+/**
  * A bare word given where a URL is expected, most likely a mistyped command.
  *
  * @param word - The argument

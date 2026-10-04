@@ -111,6 +111,22 @@ let queryCount = 0;
  * @throws CommandError (81) for an invalid selector
  */
 async function selectAll(selector: string): Promise<number[]> {
+  const ids = await withSelection(selector, elementBackendNodeIds);
+  return ids.filter((id): id is number => id !== undefined);
+}
+
+/**
+ * Run the selector in the page and use the array of matches.
+ *
+ * @param selector - CSS selector
+ * @param use - Reads what it needs from the page-side array
+ * @returns What `use` returns
+ * @throws CommandError (81) for an invalid selector
+ */
+async function withSelection<T>(
+  selector: string,
+  use: (arrayObjectId: string) => Promise<T>
+): Promise<T> {
   await callCDP('DOM.enable', {});
   const objectGroup = `bdg-query-${process.pid}-${++queryCount}`;
   const evaluated = await callCDP('Runtime.evaluate', {
@@ -118,10 +134,50 @@ async function selectAll(selector: string): Promise<number[]> {
     objectGroup,
   });
   try {
-    return await elementBackendNodeIds(selectionObjectId(selector, evaluated));
+    return await use(selectionObjectId(selector, evaluated));
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup });
   }
+}
+
+/** Where each element of a page-side array lives: an iframe and/or a shadow root */
+const ELEMENT_CONTEXTS_FUNCTION = `function () {
+  const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '');
+  return Array.from(this, (el) => {
+    const parts = [];
+    for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
+      const frame = doc.defaultView.frameElement;
+      parts.unshift(describe(frame));
+      doc = frame.ownerDocument;
+    }
+    const root = el.getRootNode();
+    if (root.host) parts.push('shadow root of <' + describe(root.host) + '>');
+    return parts.join(' > ');
+  });
+}`;
+
+/**
+ * Backend node ids of the elements in a page-side array, each with where it
+ * lives (empty for the main document).
+ *
+ * @param arrayObjectId - Remote object id of the array
+ * @returns Elements in array order (ones that cannot be described are left out)
+ */
+async function elementsWithContexts(
+  arrayObjectId: string
+): Promise<Array<{ backendNodeId: number; context: string }>> {
+  const response = await callCDP('Runtime.callFunctionOn', {
+    objectId: arrayObjectId,
+    functionDeclaration: ELEMENT_CONTEXTS_FUNCTION,
+    returnByValue: true,
+  });
+  const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
+    ?.value;
+  const contexts = Array.isArray(value) ? value.map(String) : [];
+  const ids = await elementBackendNodeIds(arrayObjectId);
+  return ids.flatMap((backendNodeId, index) =>
+    backendNodeId === undefined ? [] : [{ backendNodeId, context: contexts[index] ?? '' }]
+  );
 }
 
 /**
@@ -165,9 +221,10 @@ function selectionObjectId(
  * Backend node ids of the elements in a page-side array.
  *
  * @param arrayObjectId - Remote object id of the array
- * @returns Backend node ids, in array order
+ * @returns Backend node ids in array order (`undefined` where an element
+ *   cannot be described, so positions match the array)
  */
-async function elementBackendNodeIds(arrayObjectId: string): Promise<number[]> {
+async function elementBackendNodeIds(arrayObjectId: string): Promise<Array<number | undefined>> {
   const response = await callCDP('Runtime.getProperties', {
     objectId: arrayObjectId,
     ownProperties: true,
@@ -177,13 +234,14 @@ async function elementBackendNodeIds(arrayObjectId: string): Promise<number[]> {
   const elementIds = properties
     .filter((property) => /^\d+$/.test(property.name))
     .sort((a, b) => Number(a.name) - Number(b.name))
-    .flatMap((property) => (property.value?.objectId ? [property.value.objectId] : []));
+    .map((property) => property.value?.objectId);
   const ids = await mapConcurrently(elementIds, async (objectId) => {
+    if (!objectId) return undefined;
     const described = await callCDP('DOM.describeNode', { objectId });
     return (described.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node
       .backendNodeId;
   });
-  return ids.filter((id): id is number => id !== undefined);
+  return ids;
 }
 
 /**
@@ -208,7 +266,13 @@ function mapConcurrently<T, R>(
  * @returns Matches with backend node ids, tags, classes and text previews
  */
 export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
-  const backendNodeIds = await selectAll(selector);
+  const { backendNodeIds, contexts } = await withSelection(selector, async (arrayObjectId) => {
+    const elements = await elementsWithContexts(arrayObjectId);
+    return {
+      backendNodeIds: elements.map((element) => element.backendNodeId),
+      contexts: elements.map((element) => element.context),
+    };
+  });
   if (backendNodeIds.length > 20) {
     log.debug(`Querying ${backendNodeIds.length} elements with selector: ${selector}`);
   }
@@ -216,18 +280,38 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
   const nodes = await mapConcurrently(backendNodeIds, async (backendNodeId, index) => {
     const desc = await describeNode({ backendNodeId });
     if (!desc) return { index, nodeId: 0 };
-    const classes = unpackAttributes(desc.attributes)['class']?.split(/\s+/).filter(Boolean);
+    const attributes = unpackAttributes(desc.attributes);
+    const classes = attributes['class']?.split(/\s+/).filter(Boolean);
     const preview = textPreview((await getOuterHTML({ backendNodeId })) ?? '');
+    const context = contexts[index];
     return {
       index,
       nodeId: desc.backendNodeId,
       tag: desc.nodeName.toLowerCase(),
+      ...identifyingAttributes(attributes),
       ...(classes && { classes }),
       ...(preview && { preview }),
+      ...(context && { context }),
     };
   });
 
   return { selector, count: nodes.length, nodes };
+}
+
+/**
+ * The attributes that tell similar elements apart (form fields especially).
+ *
+ * @param attributes - Element attributes
+ * @returns id, name and type when present
+ */
+function identifyingAttributes(
+  attributes: Record<string, string>
+): Pick<DomQueryResult['nodes'][number], 'id' | 'name' | 'type'> {
+  return {
+    ...(attributes['id'] && { id: attributes['id'] }),
+    ...(attributes['name'] && { name: attributes['name'] }),
+    ...(attributes['type'] && { type: attributes['type'] }),
+  };
 }
 
 /**

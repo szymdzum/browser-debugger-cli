@@ -81,3 +81,13 @@ void describe('runElementCommand', () => {
     assert.match(result.error ?? '', /element at index 0 is no longer in the page/);
   });
 });
+
+void describe('DomElementResolver with --index', () => {
+  void it('refuses --index together with a numeric index (81)', async () => {
+    const resolver = new DomElementResolver(cacheReturning({ valid: false, cache: null }));
+    const result = await resolver.resolve('1', 3);
+    assert.equal(result.success, false);
+    assert.equal(!result.success && result.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(!result.success ? result.error : '', /already an index/);
+  });
+});

@@ -58,9 +58,17 @@ export function formatDomQuery(data: DomQueryResult): string {
   }
 
   const nodeLines = nodes.map((node) => {
-    const classInfo = node.classes?.length ? ` class="${node.classes.join(' ')}"` : '';
+    const attributes = [
+      node.id && ` id="${node.id}"`,
+      node.name && ` name="${node.name}"`,
+      node.type && ` type="${node.type}"`,
+      node.classes?.length && ` class="${node.classes.join(' ')}"`,
+    ]
+      .filter(Boolean)
+      .join('');
+    const context = node.context ? ` (in ${node.context})` : '';
     const preview = node.preview ? ` ${node.preview}` : '';
-    return `[${node.index}] <${node.tag}${classInfo}>${preview}`;
+    return `[${node.index}] <${node.tag}${attributes}>${context}${preview}`;
   });
 
   const hasMultipleResults = count > 1;
