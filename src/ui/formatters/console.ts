@@ -27,14 +27,16 @@ export { buildConsoleJsonOutput, formatConsoleJson } from './console/json.js';
 export { formatConsoleSummary } from './console/summarize.js';
 
 /**
- * Format console output based on options. Routes to the per-mode formatter.
+ * Format console output based on options. Routes to the per-mode formatter:
+ * a `--level` filter lists the matching messages (the summary only shows
+ * errors and warnings, so it would hide e.g. `--level info`).
  */
 export function formatConsole(messages: ConsoleMessage[], options: ConsoleFormatOptions): string {
   if (options.json) {
     return formatConsoleJson(messages, options);
   }
 
-  if (options.list) {
+  if (options.list || options.level) {
     return formatConsoleChronological(messages, options);
   }
 

@@ -89,6 +89,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `dom screenshot --follow`: `--limit 1` captures one frame, and an element that disappears ends the sequence with its error; element screenshots report the element's bounds in JSON
   - `dom get --nth/--all` without `--raw` exits 81 (they were ignored); `cdp Page.close` is blocked (use `bdg stop`); a filtered `network list` header reads "21 matching, 240 in all"
 
+- **Ideas from earlier pull requests**
+  - `bdg eval <script>` is a shortcut for `bdg dom eval` (idea from #200 by @sfc-gh-mochen); `bdg query x`, `bdg click …` and other group commands typed without their group suggest the full command (`bdg dom query`) instead of failing as a start URL
+  - `details network <id>` shows the text of binary WebSocket messages that are UTF-8 (`(binary, 13 bytes) {"op":"ping"}`) (idea from #199 by @sfc-gh-adsaxena)
+  - Playwright-only selectors (`:has-text()`, `:text()`, `:visible`) get a bdg way to do the same in the error (idea from #169 by @sfc-gh-mochen)
+  - Leftovers of the 0.7.2 test reports (#227, #228): `peek` shows an empty CONSOLE section again; `console --level <level>` lists the matching messages (it showed the error/warning summary, hiding e.g. `--level info`); `dom form --brief` shows each field's value; `details console <n>` with no messages says so (it said "available: 0--1")
+
 - **Third deep test: leftovers**
   - `-q` hides tips and "Next steps"/"Suggestions" blocks in every command's human output (`dom query/form/submit`, `dom a11y`, `status`, `peek`), not just at start
   - Element previews (`dom query`, `dom get`) show the text as rendered: hidden parts are left out and no spaces are added at tag boundaries ("Marylebone, London", not "Marylebone , London")

@@ -57,6 +57,15 @@ export function registerDomCommands(program: Command): void {
       await handleDomEval(script, options);
     });
 
+  program
+    .command('eval', { hidden: true })
+    .description('Shortcut for: bdg dom eval')
+    .argument('<script>', 'JavaScript to execute')
+    .option('-j, --json', 'Output as JSON')
+    .action(async (script: string, options: DomEvalCommandOptions) => {
+      await handleDomEval(script, options);
+    });
+
   dom
     .command('get')
     .description('Get semantic accessibility structure (default) or raw HTML (--raw)')

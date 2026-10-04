@@ -290,16 +290,23 @@ export function indexOutOfRangeError(index: number, max: number): ErrorWithSugge
 }
 
 /**
- * CSS selector rejected by the browser.
+ * CSS selector rejected by the browser. Playwright-only syntax (`:has-text`,
+ * `:text`, `:visible`) gets a bdg way to do the same.
  *
  * @param selector - Selector as given
  * @param detail - Browser error, if any
  * @returns Message and suggestion
  */
 export function invalidSelectorError(selector: string, detail?: string): ErrorWithSuggestion {
+  const textMatch = /:(?:has-text|text-is|text)\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))/.exec(selector);
+  const text = textMatch ? (textMatch[1] ?? textMatch[2] ?? textMatch[3] ?? '').trim() : '';
   return {
     message: `Invalid CSS selector: ${selector}${detail ? ` (${detail})` : ''}`,
-    suggestion: 'Check the selector syntax, e.g. bdg dom query "button.primary"',
+    suggestion: textMatch
+      ? `Playwright text selectors are not CSS; find the element by its text with: bdg dom a11y query name="${text}" (then bdg dom click 0)`
+      : /:visible\b/.test(selector)
+        ? 'Playwright :visible is not CSS; drop it (bdg dom click prefers visible matches)'
+        : 'Check the selector syntax, e.g. bdg dom query "button.primary"',
   };
 }
 
