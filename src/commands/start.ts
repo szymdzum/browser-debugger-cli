@@ -11,6 +11,7 @@ import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
   chromeWsUrlConflictError,
+  invalidChromeFlagError,
   invalidUserDataDirError,
   missingStartUrlError,
   unknownCommandError,
@@ -253,6 +254,11 @@ function validateStartInput(
     assertNoLaunchOptions(options);
   }
   if (options.userDataDir !== undefined) assertUserDataDir(options.userDataDir);
+  if (options.chromeWsUrl === undefined)
+    assertChromeFlags([
+      ...(process.env['BDG_CHROME_FLAGS']?.split(' ') ?? []),
+      ...(options.chromeFlags?.split(' ') ?? []),
+    ]);
   return { url, sessionOptions: buildSessionOptions(options) };
 }
 
@@ -330,6 +336,33 @@ function assertNoLaunchOptions(options: CollectorOptions): void {
   ];
   if (conflicts.length === 0) return;
   const err = chromeWsUrlConflictError(conflicts);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/** bdg's own options, which a `--chrome-flags` value must not be */
+const BDG_OPTION_WORDS = new Set([
+  '--json',
+  '-j',
+  '--port',
+  '-p',
+  '--no-headless',
+  '-q',
+  '--quiet',
+]);
+
+/**
+ * Reject Chrome flags bdg sets itself, and a `--chrome-flags` value that is
+ * one of bdg's options (`--chrome-flags --json` swallowed `--json`).
+ *
+ * @param flags - Flags from BDG_CHROME_FLAGS and --chrome-flags
+ * @throws CommandError (81) for a conflicting or swallowed flag
+ */
+function assertChromeFlags(flags: string[]): void {
+  const flag = flags.find(
+    (value) => /^--remote-debugging-(port|pipe)\b/.test(value) || BDG_OPTION_WORDS.has(value)
+  );
+  if (flag === undefined) return;
+  const err = invalidChromeFlagError(flag);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 

@@ -20,6 +20,7 @@ const SESSION_FILES = {
   DAEMON_PID: 'daemon.pid',
   DAEMON_SOCKET: 'daemon.sock',
   PORT: 'port.txt',
+  LAST_SESSION: 'last-session.json',
 } as const;
 
 const SESSION_DIR_OVERRIDE_ENV = 'BDG_SESSION_DIR';

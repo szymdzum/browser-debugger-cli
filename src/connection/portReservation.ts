@@ -17,6 +17,43 @@ export interface PortReservation {
   release: () => void;
 }
 
+/** How long a connection attempt may take when checking a port */
+const CONNECT_CHECK_MS = 500;
+
+/**
+ * Whether something already accepts connections on 127.0.0.1:port. A
+ * listener on all interfaces (`0.0.0.0`/`::`) does not stop bdg from binding
+ * 127.0.0.1 on macOS, but Chrome would then fail to listen, so it is checked
+ * by connecting.
+ *
+ * @param port - Port to check
+ * @returns True if a connection was accepted
+ */
+export function isPortAnswering(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ port, host: '127.0.0.1' });
+    const finish = (answering: boolean): void => {
+      socket.destroy();
+      resolve(answering);
+    };
+    socket.setTimeout(CONNECT_CHECK_MS, () => finish(false));
+    socket.once('connect', () => finish(true));
+    socket.once('error', () => finish(false));
+  });
+}
+
+/**
+ * The error for a port another process uses.
+ *
+ * @param port - Port
+ * @returns Launch error with the PORT_IN_USE issue
+ */
+function portInUseError(port: number): ChromeLaunchError {
+  return new ChromeLaunchError(`Port ${port} is already in use`, {
+    issue: { code: 'PORT_IN_USE', context: { port } },
+  });
+}
+
 /**
  * Atomically reserve a port to prevent race conditions during Chrome launch.
  *
@@ -43,16 +80,13 @@ export interface PortReservation {
  * ```
  */
 export async function reservePort(port: number): Promise<PortReservation> {
+  if (await isPortAnswering(port)) throw portInUseError(port);
   return new Promise((resolve, reject) => {
     const server = net.createServer();
 
     server.once('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        reject(
-          new ChromeLaunchError(`Port ${port} is already in use`, {
-            issue: { code: 'PORT_IN_USE', context: { port } },
-          })
-        );
+        reject(portInUseError(port));
       } else {
         reject(err);
       }

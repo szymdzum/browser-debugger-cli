@@ -77,6 +77,17 @@ describe('Port Reservation - Success Cases', () => {
 });
 
 describe('Port Reservation - Failure Cases', () => {
+  test('detects a listener on all interfaces', async () => {
+    const port = await findAvailablePort();
+    const server = net.createServer();
+    await new Promise<void>((resolve) => server.listen(port, '0.0.0.0', resolve));
+    try {
+      await assert.rejects(reservePort(port), /already in use/);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   test('throws ChromeLaunchError when port is already in use', async () => {
     const port = await findAvailablePort();
 

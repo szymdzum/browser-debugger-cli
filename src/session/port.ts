@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as net from 'net';
 
+import { isPortAnswering } from '@/connection/portReservation.js';
 import { DEFAULT_CDP_PORT } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
@@ -22,12 +23,14 @@ const PORT_RANGE_START = DEFAULT_CDP_PORT;
 const PORT_RANGE_END = 9322; // Allow 100 ports for concurrent sessions
 
 /**
- * Check if a port is available (not in use by any process).
+ * Check if a port is available (not in use by any process, including one
+ * listening on all interfaces).
  *
  * @param port - Port number to check
  * @returns Promise resolving to true if port is available
  */
 async function isPortAvailable(port: number): Promise<boolean> {
+  if (await isPortAnswering(port)) return false;
   return new Promise((resolve) => {
     const server = net.createServer();
 

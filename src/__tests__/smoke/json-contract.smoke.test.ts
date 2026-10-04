@@ -127,6 +127,7 @@ void describe('JSON contract', () => {
       ['tabs', '--json'],
       ['dom', 'screenshot', 'x.png', '--quality', '101', '--json'],
       ['--port', '9333', '--json'],
+      [fixture.url, '--chrome-flags', '--remote-debugging-port=9999', '--json'],
       ['dom', 'scroll', '--top', '--bottom', '--json'],
       ['dom', 'scroll', 'footer', '--down', '100', '--json'],
       ['dom', 'click', '0', '--index', '1', '--json'],

@@ -28,6 +28,7 @@ import {
   noA11yNodesFoundError,
   notInAccessibilityTreeError,
 } from '@/errors/messages.js';
+import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import {
   a11yIgnoredReasons,
   collectA11yTree,
@@ -35,7 +36,6 @@ import {
   parseQueryPattern,
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
-import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import type { A11yNode } from '@/types.js';
 import {
   formatA11yTree,

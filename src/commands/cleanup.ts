@@ -1,11 +1,15 @@
+import * as fs from 'fs';
+
 import type { Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CleanupCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { CleanupResult } from '@/commands/types.js';
+import { sessionDirIsFileError } from '@/errors/messages.js';
 import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
+import { getSessionDir } from '@/session/paths.js';
 import { readDaemonPid } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
@@ -51,6 +55,16 @@ export function registerCleanupCommand(program: Command): void {
     .action(async (options: CleanupCommandOptions) => {
       await runCommand<CleanupCommandOptions, CleanupResult>(
         async (opts) => {
+          const dir = getSessionDir();
+          if (fs.existsSync(dir) && !fs.statSync(dir).isDirectory()) {
+            const err = sessionDirIsFileError(dir);
+            return {
+              success: false,
+              error: err.message,
+              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
+              errorContext: { suggestion: err.suggestion },
+            };
+          }
           if (!opts.force && !opts.aggressive && (await isDaemonAlive())) {
             return {
               success: false,

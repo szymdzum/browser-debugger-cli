@@ -17,6 +17,7 @@ import { probeDaemonSocket } from '@/session/daemonSocket.js';
 import { getSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readDaemonPid } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
+import { delay } from '@/utils/async.js';
 import { safeRemoveFile } from '@/utils/file.js';
 import { getProcessCommand, isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
@@ -97,6 +98,23 @@ export function killOrphanedChrome(): boolean {
     logDebugError(log, `kill Chrome ${chromePid}`, error);
   }
   clearChromePid();
+  return true;
+}
+
+/** How long to wait for a killed orphaned Chrome to exit (and free its port) */
+const ORPHAN_EXIT_WAIT_MS = 5000;
+
+/**
+ * Kill an orphaned Chrome (see {@link killOrphanedChrome}) and wait until it
+ * has exited, so its debugging port is free for the next launch.
+ *
+ * @returns True if a Chrome process was killed
+ */
+export async function reapOrphanedChrome(): Promise<boolean> {
+  const chromePid = findOrphanedChrome();
+  if (!killOrphanedChrome() || chromePid === null) return false;
+  const deadline = Date.now() + ORPHAN_EXIT_WAIT_MS;
+  while (isProcessAlive(chromePid) && Date.now() < deadline) await delay(50);
   return true;
 }
 

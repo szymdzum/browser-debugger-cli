@@ -124,3 +124,19 @@ export const STOP_MESSAGES = {
 export function stopFailedError(reason: string): string {
   return `Stop session failed: ${reason}`;
 }
+
+/**
+ * Why the last session is gone, for `bdg status`.
+ *
+ * @param end - How and when it ended
+ * @returns One line
+ */
+export function lastSessionEndText(end: { reason: string; endedAt: number }): string {
+  const why: Record<string, string> = {
+    crash: 'Chrome crashed or was closed',
+    closed: 'its page was closed',
+    timeout: 'the --timeout was reached',
+  };
+  const at = new Date(end.endedAt).toLocaleTimeString();
+  return `The last session ended at ${at}: ${why[end.reason] ?? end.reason}`;
+}
