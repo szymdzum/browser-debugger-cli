@@ -23,22 +23,22 @@ import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
-import { killOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
+import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionPort } from '@/session/port.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeNotice } from '@/ui/messages/chrome.js';
+import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
-import { delay } from '@/utils/async.js';
 import { isProcessAlive } from '@/utils/process.js';
 import { validateUrl } from '@/utils/url.js';
 
 const log = createLogger('session');
 
 /** Why a session ended. */
-export type SessionEndReason = 'normal' | 'crash' | 'timeout';
+export type SessionEndReason = 'normal' | 'crash' | 'timeout' | 'closed';
 
 /** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
 const CRASH_SETTLE_MS = 500;
@@ -79,6 +79,8 @@ export class Session {
   private cdp: CDPConnection | null = null;
   private cleanupFunctions: CleanupFunction[] = [];
   private timeoutTimer: NodeJS.Timeout | null = null;
+  /** When `--timeout` stops the session (epoch ms) */
+  private autoStopAt: number | undefined;
   private stopping: Promise<void> | null = null;
   /** Why the session was first asked to stop ('normal' = user, signal or abandoned start) */
   private stopReason: SessionEndReason | null = null;
@@ -139,6 +141,7 @@ export class Session {
       throw cancelled ? new StartCancelledError() : error;
     }
     this.started = true;
+    if (this.config.timeout) this.autoStopAt = Date.now() + this.config.timeout * 1000;
     writeSessionMetadata(this.metadata());
     if (this.config.timeout) {
       log.info(`Auto-stop after ${this.config.timeout}s`);
@@ -196,6 +199,7 @@ export class Session {
       port: this.config.port,
       activeTelemetry: this.store.activeTelemetry,
       ...filterDefined({
+        autoStopAt: this.autoStopAt,
         targetId: target?.id,
         webSocketDebuggerUrl: target?.webSocketDebuggerUrl,
       }),
@@ -246,7 +250,7 @@ export class Session {
     this.config = { ...this.config, port };
     this.throwIfStopping();
     if (!this.config.chromeWsUrl) {
-      killOrphanedChrome();
+      await reapOrphanedChrome();
     }
     this.chrome = await setupChromeConnection(this.config, this.store, log, this.notify);
     this.throwIfStopping();
@@ -281,7 +285,7 @@ export class Session {
     if (this.chrome) await delay(CRASH_SETTLE_MS);
     const tabClosed = this.chrome !== null && isProcessAlive(this.chrome.pid);
     if (tabClosed) log.info('The page was closed; ending the session');
-    await this.stop(tabClosed ? 'normal' : 'crash');
+    await this.stop(tabClosed ? 'closed' : 'crash');
   }
 
   /**

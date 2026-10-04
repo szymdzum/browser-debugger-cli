@@ -27,6 +27,8 @@ export interface SessionMetadata {
   targetId?: string | undefined;
   webSocketDebuggerUrl?: string | undefined;
   activeTelemetry?: TelemetryType[] | undefined;
+  /** When `--timeout` stops the session (epoch ms) */
+  autoStopAt?: number | undefined;
 }
 
 /**

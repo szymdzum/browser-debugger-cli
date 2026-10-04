@@ -37,6 +37,8 @@ export interface StatusResponseData {
     targetId?: string;
     webSocketDebuggerUrl?: string;
     activeTelemetry?: TelemetryType[];
+    /** When `--timeout` stops the session (epoch ms) */
+    autoStopAt?: number;
   };
   /** Session activity metrics. */
   activity?: SessionActivity;
@@ -44,6 +46,8 @@ export interface StatusResponseData {
   pageState?: PageState;
   /** Current navigation counter (increments on each page navigation). */
   navigationId?: number;
+  /** Set while the session is shutting down */
+  ending?: boolean;
   /** Set while `bdg <url>` is starting the session */
   starting?: { url: string; since: number };
 }

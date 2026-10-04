@@ -30,8 +30,12 @@ const SHUTDOWN_DELAY_MS = 100;
 const IN_FLIGHT_WAIT_MS = 30000;
 const IN_FLIGHT_POLL_MS = 50;
 
-/** How long a freshly started daemon waits for a session before exiting. */
-const IDLE_SHUTDOWN_MS = 10000;
+/**
+ * How long a freshly started daemon waits for a session before exiting. The
+ * client that spawned it sends its start request within milliseconds; the
+ * wait only matters when that client was interrupted before sending it.
+ */
+const IDLE_SHUTDOWN_MS = 3000;
 
 /**
  * Type guard to validate parsed JSON has expected message structure.

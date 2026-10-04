@@ -6,11 +6,20 @@
  * since the daemon's lifetime is the session's lifetime.
  */
 
-import { CDPProtocolError, ChromeLaunchError, ConnectionError } from '@/connection/errors.js';
+import {
+  CDPConnectionError,
+  CDPProtocolError,
+  ChromeLaunchError,
+  ConnectionError,
+} from '@/connection/errors.js';
 import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
 import { detectTargetMismatch } from '@/daemon/session/targetMismatch.js';
 import { CommandError } from '@/errors/index.js';
-import { LAUNCHED_CHROME_DESCRIPTION, cdpRequestRejectedError } from '@/errors/messages.js';
+import {
+  LAUNCHED_CHROME_DESCRIPTION,
+  cdpRequestRejectedError,
+  sessionEndedDuringCommandError,
+} from '@/errors/messages.js';
 import {
   type ClientRequestUnion,
   type CommandName,
@@ -29,6 +38,7 @@ import {
   type StopSessionResponse,
   IPCErrorCode,
 } from '@/ipc/index.js';
+import { clearLastSessionEnd, writeLastSessionEnd } from '@/session/lastSession.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -213,6 +223,7 @@ export class SessionController {
       if (this.launching) {
         data.starting = { url: this.launching.url, since: this.launching.since };
       }
+      if (this.session || this.closing) data.ending = true;
       return { ...base, status: 'ok', data };
     }
 
@@ -353,6 +364,7 @@ export class SessionController {
       url: request.url,
       since: Date.now(),
     };
+    clearLastSessionEnd();
     const run = this.launchSession(request, (session) => {
       launching.session = session;
     });
@@ -446,6 +458,7 @@ export class SessionController {
    */
   private handleSessionEnded(reason: SessionEndReason): void {
     log.info(`Session ended (reason: ${reason})`);
+    if (reason !== 'normal') writeLastSessionEnd(reason);
     this.session = null;
     this.closing = true;
     this.onSessionEnded(reason);
@@ -513,6 +526,14 @@ function describeCommandError(error: unknown): {
     return {
       error: err.message,
       exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      suggestion: err.suggestion,
+    };
+  }
+  if (error instanceof CDPConnectionError) {
+    const err = sessionEndedDuringCommandError();
+    return {
+      error: err.message,
+      exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
       suggestion: err.suggestion,
     };
   }

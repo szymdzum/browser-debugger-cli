@@ -7,8 +7,9 @@ import {
   genericError,
   commandTimedOutError,
   sessionNotRespondingError,
+  sessionEndedDuringCommandError,
 } from '@/errors/messages.js';
-import { IPCTimeoutError } from '@/ipc/transport/IPCError.js';
+import { IPCEarlyCloseError, IPCTimeoutError } from '@/ipc/transport/IPCError.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { escapeControlChars } from '@/ui/formatting.js';
 import { STOP_MESSAGES } from '@/ui/messages/session.js';
@@ -54,7 +55,11 @@ export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
     console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
     process.exit(EXIT_CODES.SUCCESS);
   } catch (caught) {
-    const error = isDaemonConnectionError(caught) ? noActiveSessionError() : caught;
+    const error = isDaemonConnectionError(caught)
+      ? noActiveSessionError()
+      : caught instanceof IPCTimeoutError
+        ? timeoutError(caught)
+        : caught;
     const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
     const suggestion =
       error instanceof CommandError && typeof error.metadata['suggestion'] === 'string'
@@ -124,6 +129,20 @@ export function timeoutError(error: IPCTimeoutError): CommandError {
       ? sessionNotRespondingError(seconds)
       : commandTimedOutError(seconds);
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+}
+
+/**
+ * The daemon closed the connection before answering: the session ended.
+ *
+ * @returns Command error (83)
+ */
+function sessionEndedError(): CommandError {
+  const err = sessionEndedDuringCommandError();
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.RESOURCE_NOT_FOUND
+  );
 }
 
 /**
@@ -203,7 +222,12 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (caught) {
-    const error = caught instanceof IPCTimeoutError ? timeoutError(caught) : caught;
+    const error =
+      caught instanceof IPCTimeoutError
+        ? timeoutError(caught)
+        : caught instanceof IPCEarlyCloseError
+          ? sessionEndedError()
+          : caught;
     if (error instanceof CommandError) {
       if (options.json) {
         console.log(

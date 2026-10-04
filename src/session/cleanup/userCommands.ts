@@ -10,6 +10,7 @@ import {
   removeStaleDaemonFiles,
 } from '@/session/cleanup/staleSession.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
+import { clearLastSessionEnd } from '@/session/lastSession.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -61,6 +62,7 @@ export async function performSessionCleanup(
   const chrome = killOrphanedChrome();
   const output = options.removeOutput ? removeOutputFile(warnings) : false;
   const filesRemoved = countSessionFiles() < filesBefore;
+  clearLastSessionEnd();
 
   return {
     cleaned: {

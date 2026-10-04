@@ -18,6 +18,7 @@ import { callCDP } from '@/ipc/client.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
+import type { HAR } from '@/telemetry/har/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
@@ -77,13 +78,19 @@ async function getChromeVersion(): Promise<string | undefined> {
 /**
  * Format HAR export success message for human output.
  *
- * @param data - HAR export result data
- * @returns Formatted success message
+ * @param data - HAR export result data, or the HAR itself for `-` (stdout)
+ * @returns Formatted success message, or the HAR as JSON
  */
-function formatHARExport(data: { file: string; entries: number; filtered?: boolean }): string {
+function formatHARExport(
+  data: { file: string; entries: number; filtered?: boolean } | HAR
+): string {
+  if ('log' in data) return JSON.stringify(data, null, 2);
   const filterNote = data.filtered ? ' (filtered)' : '';
   return `✓ Exported ${data.entries} requests${filterNote} to ${data.file}`;
 }
+
+/** Output path meaning "write the HAR to stdout" */
+const STDOUT_PATH = '-';
 
 /**
  * Option for filter DSL.
@@ -101,6 +108,7 @@ const filterDslOption = new Option(
 export function registerHarCommand(networkCmd: Command): void {
   networkCmd
     .command('har [output-file]')
+    .addHelpText('after', '\nUse - as the output file to write the HAR to stdout.')
     .description('Export network data as HAR 1.2 format')
     .addOption(jsonOption())
     .addOption(filterDslOption)
@@ -119,13 +127,14 @@ export function registerHarCommand(networkCmd: Command): void {
           }
 
           const outputPath = outputFile ?? generateHARFilename();
-          assertFilePath(outputPath);
+          if (outputPath !== STDOUT_PATH) assertFilePath(outputPath);
 
           const chromeVersion = await getChromeVersion();
           const har = buildHAR(requests, {
             version: VERSION,
             ...(chromeVersion && { chromeVersion }),
           });
+          if (outputPath === STDOUT_PATH) return { success: true, data: har };
 
           const file = await writeOutputFile(outputPath, JSON.stringify(har, null, 2));
 

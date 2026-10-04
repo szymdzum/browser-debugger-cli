@@ -75,7 +75,8 @@ export async function startSessionViaDaemon(
   options: SessionStartOptions,
   telemetry: TelemetryType[]
 ): Promise<never> {
-  process.once('SIGINT', () => reportStartOutcome(interruptedOutcome(), options));
+  process.once('SIGINT', () => reportStartOutcome(interruptedOutcome('SIGINT'), options));
+  process.once('SIGTERM', () => reportStartOutcome(interruptedOutcome('SIGTERM'), options));
   let outcome = await requestSession(url, options, telemetry);
   const deadline = Date.now() + SHUTDOWN_WAIT_MS;
   while (isShuttingDown(outcome) && Date.now() < deadline) {
@@ -89,11 +90,13 @@ export async function startSessionViaDaemon(
  * The outcome of a start interrupted with Ctrl-C (the daemon notices the
  * closed connection and cancels the start).
  *
+ * @param signal - The signal that stopped the start
  * @returns Failed start outcome (exit 130)
  */
-function interruptedOutcome(): StartOutcome {
-  const message = 'Start cancelled (interrupted)';
-  return { ok: false, error: message, human: message, exitCode: EXIT_CODES.INTERRUPTED };
+function interruptedOutcome(signal: 'SIGINT' | 'SIGTERM'): StartOutcome {
+  const message = `Start cancelled (${signal === 'SIGINT' ? 'interrupted' : 'terminated'})`;
+  const exitCode = signal === 'SIGINT' ? EXIT_CODES.INTERRUPTED : EXIT_CODES.TERMINATED;
+  return { ok: false, error: message, human: message, exitCode };
 }
 
 /** How long a new start waits for the previous session to finish shutting down */
@@ -271,7 +274,10 @@ function describeStartFailure(
     human: genericError(message),
     exitCode,
     errorCode: response.errorCode,
-    details: { ...details, ...(hint.length > 0 && { suggestion: hint.join('\n') }) },
+    details: {
+      ...details,
+      ...(hint.join('\n').trim() && { suggestion: hint.join('\n').trim() }),
+    },
   };
 }
 

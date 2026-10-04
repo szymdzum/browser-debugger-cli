@@ -551,6 +551,34 @@ export function conflictingOptionsMessage(first: string, second: string): string
 }
 
 /**
+ * A Chrome flag bdg cannot pass on.
+ *
+ * @param flag - The flag
+ */
+export function invalidChromeFlagError(flag: string): ErrorWithSuggestion {
+  return flag.startsWith('--remote-debugging')
+    ? {
+        message: `${flag} cannot be passed in --chrome-flags: bdg sets the debugging port`,
+        suggestion: 'Use --port <number> instead',
+      }
+    : {
+        message: `--chrome-flags got "${flag}", which is a bdg option`,
+        suggestion:
+          'Give Chrome flags as one quoted value: --chrome-flags="--lang=pl --disable-gpu"',
+      };
+}
+
+/**
+ * The session (its browser or daemon) went away while a command was running.
+ */
+export function sessionEndedDuringCommandError(): ErrorWithSuggestion {
+  return {
+    message: 'The session ended while the command was running',
+    suggestion: 'Start a new session with: bdg <url>',
+  };
+}
+
+/**
  * A bare word given where a URL is expected, most likely a mistyped command.
  *
  * @param word - The argument

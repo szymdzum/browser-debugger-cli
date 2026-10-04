@@ -110,7 +110,7 @@ Use semantic codes from `src/utils/exitCodes.ts`:
 - **0**: Success
 - **80-99**: User errors (invalid input, resources)
 - **100-119**: Software errors (bugs, timeouts)
-- **130**: Interrupted (Ctrl-C), shell convention
+- **130 / 143**: Interrupted by Ctrl-C / SIGTERM, shell convention
 
 Common: `INVALID_ARGUMENTS` (81), `RESOURCE_NOT_FOUND` (83), `STALE_CACHE` (87), `CDP_TIMEOUT` (102)
 

@@ -56,6 +56,7 @@ export const EXIT_CODES = {
   SESSION_START_FAILURE: 106,
   SOFTWARE_ERROR: 110,
   INTERRUPTED: 130,
+  TERMINATED: 143,
 } as const;
 
 /**
@@ -185,5 +186,10 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.INTERRUPTED,
     name: 'INTERRUPTED',
     description: 'Interrupted by Ctrl-C (128 + SIGINT); a start in progress is cancelled',
+  },
+  {
+    code: EXIT_CODES.TERMINATED,
+    name: 'TERMINATED',
+    description: 'Stopped by SIGTERM (128 + 15); a start in progress is cancelled',
   },
 ];

@@ -1,8 +1,10 @@
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { describeRunningChrome, type RunningChromeInfo } from '@/session/chrome.js';
+import type { LastSessionEnd } from '@/session/lastSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { lastSessionEndText } from '@/ui/messages/session.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 export interface StatusData {
@@ -19,6 +21,8 @@ export interface StatusData {
   targetId?: string | undefined;
   webSocketDebuggerUrl?: string | undefined;
   telemetry?: string[];
+  /** When `--timeout` stops the session (ISO time) */
+  autoStopAt?: string;
   stale?: boolean;
   stalePid?: number;
   warning?: string;
@@ -28,6 +32,10 @@ export interface StatusData {
   starting?: { url: string; since: number };
   /** The session's Chrome (`--verbose`) */
   chrome?: RunningChromeInfo;
+  /** The session is shutting down */
+  ending?: boolean;
+  /** How the last session ended, when not by `bdg stop` */
+  lastSession?: LastSessionEnd;
   /** Chrome of an earlier session that is still running (no session owns it) */
   orphanedChromePid?: number;
 }
@@ -58,6 +66,9 @@ export function formatSessionStatus(
     [
       ['Status', 'ACTIVE'],
       ['Duration', duration.formatted],
+      ...(metadata.autoStopAt
+        ? [['Auto-stop', new Date(metadata.autoStopAt).toLocaleTimeString()] as [string, string]]
+        : []),
     ],
     18
   );
@@ -172,6 +183,7 @@ export function formatStatusAsJson(
     duration: duration.durationMs,
     durationFormatted: duration.formatted,
     port: metadata.port,
+    ...(metadata.autoStopAt && { autoStopAt: new Date(metadata.autoStopAt).toISOString() }),
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
     telemetry: metadata.activeTelemetry ?? ['network', 'console', 'dom'],
@@ -191,7 +203,11 @@ export function formatNoSessionMessage(data: StatusData = { active: false }): st
       .text('Commands work once "bdg <url>" returns.')
       .build();
   }
+  if (data.ending) {
+    return fmt.text('The session is ending (its Chrome is being closed)').build();
+  }
   fmt.text('No active session found');
+  if (data.lastSession) fmt.text(lastSessionEndText(data.lastSession));
   if (data.orphanedChromePid) {
     fmt.text(`Chrome of an earlier session is still running (PID ${data.orphanedChromePid})`);
   }

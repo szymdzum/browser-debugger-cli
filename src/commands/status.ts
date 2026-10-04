@@ -10,6 +10,7 @@ import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { IPCTimeoutError } from '@/ipc/transport/IPCError.js';
 import { describeRunningChrome } from '@/session/chrome.js';
 import { findOrphanedChrome, removeStaleDaemonFiles } from '@/session/cleanup/staleSession.js';
+import { readLastSessionEnd } from '@/session/lastSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import {
   formatSessionStatus,
@@ -25,12 +26,19 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  * running by an earlier session.
  *
  * @param starting - Start in progress, as reported by the daemon
+ * @param ending - Whether the daemon is shutting the session down
  * @returns Status data (inactive)
  */
-function inactiveStatus(starting?: StatusData['starting']): StatusData {
+function inactiveStatus(starting?: StatusData['starting'], ending?: boolean): StatusData {
   if (starting) return { active: false, starting };
+  if (ending) return { active: false, ending: true };
   const orphanedChromePid = findOrphanedChrome();
-  return { active: false, ...(orphanedChromePid !== null && { orphanedChromePid }) };
+  const lastSession = readLastSessionEnd();
+  return {
+    active: false,
+    ...(orphanedChromePid !== null && { orphanedChromePid }),
+    ...(lastSession && { lastSession }),
+  };
 }
 
 /**
@@ -84,7 +92,7 @@ export function registerStatusCommand(program: Command): void {
             if (!data.sessionPid || !data.sessionMetadata) {
               latestMetadata = undefined;
               latestSessionPid = undefined;
-              const jsonOutput = inactiveStatus(data.starting);
+              const jsonOutput = inactiveStatus(data.starting, data.ending);
               if (data.activity) {
                 jsonOutput.activity = data.activity;
               }
@@ -102,6 +110,7 @@ export function registerStatusCommand(program: Command): void {
               targetId: data.sessionMetadata.targetId,
               webSocketDebuggerUrl: data.sessionMetadata.webSocketDebuggerUrl,
               activeTelemetry: data.sessionMetadata.activeTelemetry,
+              autoStopAt: data.sessionMetadata.autoStopAt,
             };
 
             latestMetadata = metadata;

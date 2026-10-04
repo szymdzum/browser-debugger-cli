@@ -50,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Third deep test: session lifecycle**
+  - A Chrome left by a killed daemon no longer makes the next start fail with "port in use": it is killed and waited for before the port is checked
+  - A port held by a listener on all interfaces (`nc -l`, `0.0.0.0`) is reported as in use at once (it ended after 5.5 s as "Chrome failed to launch")
+  - `--remote-debugging-port`/`-pipe` in `--chrome-flags` or `BDG_CHROME_FLAGS` is refused with 81 (it waited 30 s); `--chrome-flags --json` (a bdg option swallowed as the value) is refused too
+  - `status` explains why there is no session: "The last session ended at …: Chrome crashed / its page was closed / the --timeout was reached" (`lastSession` in JSON); while a session shuts down it says so instead of reporting its Chrome as orphaned
+  - `status` shows when `--timeout` stops the session (`autoStopAt`)
+  - A command interrupted by the session ending says so (83) instead of "WebSocket connection closed" (101) or "Connection closed before … response" (110)
+  - Frozen daemon: `network har` answers in 10 s (it waited 45 s) and `--json` errors never show internal request names
+  - SIGTERM during `bdg <url>` prints "Start cancelled (terminated)" (also as JSON) and exits 143, now listed as `TERMINATED`
+  - A daemon whose start request never came (Ctrl-C right after launching it) exits after 3 s instead of 10
+  - `network har -` writes the HAR to stdout (it created a file named `-`)
+  - `cleanup` with a session directory that is a file reports that (103) instead of "now clean"
+  - Start error suggestions no longer begin with an empty line
 - **Third deep test: high findings**
   - Service workers run in a bdg session: they were paused by auto-attach and never resumed (the page's `register()` never settled); a child whose setup does not answer is now resumed after 1 s
   - `network har` on large sessions: the IPC reader re-split the whole buffered response on every chunk (quadratic; 770 requests timed out after 45 s), now linear; single responses may be up to 256 MB
