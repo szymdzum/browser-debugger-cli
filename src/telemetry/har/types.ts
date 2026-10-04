@@ -107,6 +107,22 @@ export interface Entry {
   comment?: string;
   /** CDP resource type (custom field per HAR spec) */
   _resourceType?: string;
+  /** Messages of a WebSocket connection (Chrome DevTools convention) */
+  _webSocketMessages?: WebSocketMessage[];
+}
+
+/**
+ * A WebSocket message (Chrome DevTools HAR convention).
+ */
+export interface WebSocketMessage {
+  /** Whether the page sent or received the message */
+  type: 'send' | 'receive';
+  /** Time the message was sent or received (seconds since the epoch) */
+  time: number;
+  /** WebSocket opcode (1 = text, 2 = binary) */
+  opcode: number;
+  /** Message payload (base64 for binary messages) */
+  data: string;
 }
 
 /**

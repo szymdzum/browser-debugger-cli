@@ -18,7 +18,7 @@ import {
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
-import type { NetworkRequest } from '@/types.js';
+import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
@@ -146,10 +146,58 @@ function mapConsoleMessageToPreview(msg: ConsolePreview, index: number): Console
   return result;
 }
 
+/** Error of a WebSocket that closed without completing its handshake */
+const WEBSOCKET_HANDSHAKE_FAILED = 'WebSocket closed before the handshake completed';
+
 /**
- * Find a network request by ID, finished or still in flight.
+ * Present a WebSocket connection as a network request, so it lists, filters
+ * (`--type WebSocket`) and exports like any other request.
  *
- * `peek` lists in-flight requests too, so ids it shows must resolve here.
+ * A connection that closed without a handshake response is a failed request
+ * (status 0 with an error), not a pending one.
+ *
+ * @param connection - Captured WebSocket connection
+ * @returns Request for the handshake, carrying the frames
+ */
+function webSocketAsRequest(connection: WebSocketConnection): NetworkRequest {
+  const { closedTime, statusText, requestHeaders, responseHeaders } = connection;
+  const failed = connection.status === undefined && closedTime !== undefined;
+  const status = failed ? 0 : connection.status;
+  const errorMessage = connection.errorMessage ?? (failed ? WEBSOCKET_HANDSHAKE_FAILED : undefined);
+  return {
+    requestId: connection.requestId,
+    url: connection.url,
+    method: 'GET',
+    timestamp: connection.timestamp,
+    resourceType: 'WebSocket',
+    ...(status !== undefined && { status }),
+    ...(statusText !== undefined && { statusText }),
+    ...(requestHeaders && { requestHeaders }),
+    ...(responseHeaders && { responseHeaders }),
+    ...(errorMessage !== undefined && { errorText: errorMessage }),
+    webSocket: { frames: connection.frames, ...(closedTime !== undefined && { closedTime }) },
+  };
+}
+
+/**
+ * All captured network activity: finished and in-flight requests and
+ * WebSocket connections, in start order.
+ *
+ * @param store - Telemetry store
+ * @returns Requests sorted by start time
+ */
+function allNetworkRequests(store: TelemetryStore): NetworkRequest[] {
+  return [
+    ...store.networkRequests,
+    ...[...store.pendingNetworkRequests.values()].map((pending) => pending.request),
+    ...store.websocketConnections.map(webSocketAsRequest),
+  ].sort((a, b) => a.timestamp - b.timestamp);
+}
+
+/**
+ * Find a network request by ID: finished, in flight, or a WebSocket.
+ *
+ * `peek` lists all of these, so ids it shows must resolve here.
  *
  * @param store - Telemetry store
  * @param id - Request ID to find
@@ -157,9 +205,11 @@ function mapConsoleMessageToPreview(msg: ConsolePreview, index: number): Console
  * @throws Error if not found
  */
 function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRequest {
+  const webSocket = store.websocketConnections.find((c) => c.requestId === id);
   const request =
     store.networkRequests.find((r) => r.requestId === id) ??
-    store.pendingNetworkRequests.get(id)?.request;
+    store.pendingNetworkRequests.get(id)?.request ??
+    (webSocket && webSocketAsRequest(webSocket));
   if (!request) {
     throw new CommandError(
       `Network request not found: ${id}`,
@@ -276,10 +326,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       const offset = params.offset ?? 0;
       const duration = Date.now() - store.sessionStartTime;
 
-      const allNetwork = [
-        ...store.networkRequests,
-        ...[...store.pendingNetworkRequests.values()].map((pending) => pending.request),
-      ];
+      const allNetwork = allNetworkRequests(store);
       const totalNetwork = allNetwork.length;
       const totalConsole = store.consoleMessages.length;
 
@@ -367,7 +414,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
 
     session_har_data: async (_cdp, _params) => {
       return Promise.resolve({
-        requests: store.networkRequests,
+        requests: [...store.networkRequests, ...store.websocketConnections.map(webSocketAsRequest)],
       });
     },
 

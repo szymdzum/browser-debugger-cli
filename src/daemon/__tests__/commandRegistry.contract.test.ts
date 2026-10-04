@@ -497,6 +497,78 @@ void describe('CommandRegistry', () => {
     });
   });
 
+  void describe('WebSocket connections', () => {
+    beforeEach(() => {
+      store.networkRequests.push({
+        requestId: 'doc',
+        timestamp: 100,
+        method: 'GET',
+        url: 'http://example.com',
+        status: 200,
+      });
+      store.websocketConnections.push(
+        {
+          requestId: 'ws-open',
+          url: 'ws://example.com/live',
+          timestamp: 50,
+          status: 101,
+          frames: [{ timestamp: 60, direction: 'sent', opcode: 1, payloadData: 'hi' }],
+        },
+        {
+          requestId: 'ws-failed',
+          url: 'ws://example.com/down',
+          timestamp: 150,
+          frames: [],
+          closedTime: 160,
+        }
+      );
+    });
+
+    void it('lists connections with requests in start order', async () => {
+      const result = await registry.session_peek(mockCdp, { lastN: 0 });
+
+      assert.deepEqual(
+        result.network.map((r) => [r.requestId, r.resourceType]),
+        [
+          ['ws-open', 'WebSocket'],
+          ['doc', undefined],
+          ['ws-failed', 'WebSocket'],
+        ]
+      );
+    });
+
+    void it('resolves connection details with their messages', async () => {
+      const { item } = await registry.session_details(mockCdp, {
+        itemType: 'network',
+        id: 'ws-open',
+      });
+
+      const request = item as NetworkRequest;
+      assert.equal(request.status, 101);
+      assert.equal(request.webSocket?.frames[0]?.payloadData, 'hi');
+    });
+
+    void it('reports a connection closed before its handshake as failed', async () => {
+      const { item } = await registry.session_details(mockCdp, {
+        itemType: 'network',
+        id: 'ws-failed',
+      });
+
+      const request = item as NetworkRequest;
+      assert.equal(request.status, 0);
+      assert.match(request.errorText ?? '', /handshake/);
+    });
+
+    void it('includes connections in HAR data', async () => {
+      const result = await registry.session_har_data(mockCdp, {});
+
+      assert.deepEqual(
+        result.requests.map((r) => r.requestId),
+        ['doc', 'ws-open', 'ws-failed']
+      );
+    });
+  });
+
   void describe('cdp_call', () => {
     void it('forwards CDP method call and returns result', async () => {
       const mockResult = { cookies: [{ name: 'session', value: 'abc123' }] };

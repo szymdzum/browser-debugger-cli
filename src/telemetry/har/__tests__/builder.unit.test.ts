@@ -881,4 +881,36 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
     assert.equal(entry.request.postData?.text, 'a=1');
     assert.equal(entry.request.postData?.params, undefined);
   });
+
+  describe('WebSocket connections', () => {
+    test('exports messages in the Chrome DevTools convention', () => {
+      const har = buildHAR(
+        [
+          {
+            requestId: 'W',
+            url: 'ws://example.com/ws',
+            method: 'GET',
+            timestamp: 1000,
+            status: 101,
+            resourceType: 'WebSocket',
+            webSocket: {
+              frames: [
+                { timestamp: 2000, direction: 'sent', opcode: 1, payloadData: 'hi' },
+                { timestamp: 2500, direction: 'received', opcode: 2, payloadData: 'AQID' },
+              ],
+            },
+          },
+        ],
+        metadata
+      );
+
+      const [entry] = har.log.entries;
+      assert.equal(entry?._resourceType, 'WebSocket');
+      assert.equal(entry?.response.status, 101);
+      assert.deepEqual(entry?._webSocketMessages, [
+        { type: 'send', time: 2, opcode: 1, data: 'hi' },
+        { type: 'receive', time: 2.5, opcode: 2, data: 'AQID' },
+      ]);
+    });
+  });
 });

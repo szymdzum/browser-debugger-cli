@@ -459,10 +459,45 @@ const MAX_FRAMES_PER_CONNECTION = 1000;
 /** Maximum payload size to capture per frame (100KB) */
 const MAX_FRAME_PAYLOAD_SIZE = 100 * 1024;
 
+/** WebSocket opcode of binary frames (payload is base64) */
+const BINARY_OPCODE = 2;
+
+/**
+ * Append a frame to a tracked connection, truncating oversized payloads.
+ *
+ * Binary payloads are cut at a multiple of 4 characters so they stay valid base64.
+ *
+ * @param connection - Connection the frame belongs to (untracked frames are ignored)
+ * @param direction - Whether the page sent or received the frame
+ * @param frame - CDP frame data
+ */
+function recordFrame(
+  connection: WebSocketConnection | undefined,
+  direction: WebSocketFrame['direction'],
+  frame: Protocol.Network.WebSocketFrame
+): void {
+  if (!connection || connection.frames.length >= MAX_FRAMES_PER_CONNECTION) return;
+
+  const { payloadData, opcode } = frame;
+  const limit =
+    opcode === BINARY_OPCODE
+      ? MAX_FRAME_PAYLOAD_SIZE - (MAX_FRAME_PAYLOAD_SIZE % 4)
+      : MAX_FRAME_PAYLOAD_SIZE;
+  connection.frames.push({
+    timestamp: Date.now(),
+    direction,
+    opcode,
+    payloadData: payloadData.substring(0, limit),
+    ...(payloadData.length > limit && { truncatedFrom: payloadData.length }),
+  });
+}
+
 /**
  * Start collecting WebSocket connections and frames via CDP Network domain.
  *
  * Tracks WebSocket lifecycle (creation, handshake, frames, close) separately from HTTP requests.
+ * Connections are added when created and updated in place, so open connections
+ * are visible while they run.
  * Network.enable must be called before this (typically by startNetworkCollection).
  *
  * @param cdp - CDP connection instance
@@ -478,7 +513,7 @@ export function startWebSocketCollection(
   const typed = new TypedCDPConnection(cdp);
 
   registry.registerTyped(typed, 'Network.webSocketCreated', (params) => {
-    if (connectionMap.size >= MAX_WEBSOCKET_CONNECTIONS) {
+    if (connections.length >= MAX_WEBSOCKET_CONNECTIONS) {
       log.debug(
         `WebSocket connection limit reached (${MAX_WEBSOCKET_CONNECTIONS}), skipping new connection`
       );
@@ -497,7 +532,15 @@ export function startWebSocketCollection(
     }
 
     connectionMap.set(params.requestId, connection);
+    connections.push(connection);
     log.debug(`WebSocket created: ${params.url}`);
+  });
+
+  registry.registerTyped(typed, 'Network.webSocketWillSendHandshakeRequest', (params) => {
+    const connection = connectionMap.get(params.requestId);
+    if (!connection) return;
+
+    connection.requestHeaders = params.request.headers;
   });
 
   registry.registerTyped(typed, 'Network.webSocketHandshakeResponseReceived', (params) => {
@@ -505,59 +548,20 @@ export function startWebSocketCollection(
     if (!connection) return;
 
     connection.status = params.response.status;
+    if (params.response.statusText) {
+      connection.statusText = params.response.statusText;
+    }
     if (params.response.headers) {
       connection.responseHeaders = params.response.headers;
     }
   });
 
   registry.registerTyped(typed, 'Network.webSocketFrameSent', (params) => {
-    const connection = connectionMap.get(params.requestId);
-    if (!connection) return;
-
-    if (connection.frames.length >= MAX_FRAMES_PER_CONNECTION) {
-      return;
-    }
-
-    let payloadData = params.response.payloadData;
-    if (payloadData.length > MAX_FRAME_PAYLOAD_SIZE) {
-      payloadData =
-        payloadData.substring(0, MAX_FRAME_PAYLOAD_SIZE) +
-        `... [truncated, ${payloadData.length} bytes total]`;
-    }
-
-    const frame: WebSocketFrame = {
-      timestamp: Date.now(),
-      direction: 'sent',
-      opcode: params.response.opcode,
-      payloadData,
-    };
-
-    connection.frames.push(frame);
+    recordFrame(connectionMap.get(params.requestId), 'sent', params.response);
   });
 
   registry.registerTyped(typed, 'Network.webSocketFrameReceived', (params) => {
-    const connection = connectionMap.get(params.requestId);
-    if (!connection) return;
-
-    if (connection.frames.length >= MAX_FRAMES_PER_CONNECTION) {
-      return;
-    }
-
-    let payloadData = params.response.payloadData;
-    if (payloadData.length > MAX_FRAME_PAYLOAD_SIZE) {
-      payloadData =
-        payloadData.substring(0, MAX_FRAME_PAYLOAD_SIZE) +
-        `... [truncated, ${payloadData.length} bytes total]`;
-    }
-
-    const frame: WebSocketFrame = {
-      timestamp: Date.now(),
-      direction: 'received',
-      opcode: params.response.opcode,
-      payloadData,
-    };
-
-    connection.frames.push(frame);
+    recordFrame(connectionMap.get(params.requestId), 'received', params.response);
   });
 
   registry.registerTyped(typed, 'Network.webSocketFrameError', (params) => {
@@ -573,18 +577,12 @@ export function startWebSocketCollection(
     if (!connection) return;
 
     connection.closedTime = Date.now();
-
-    connections.push(connection);
     connectionMap.delete(params.requestId);
 
     log.debug(`WebSocket closed: ${connection.url} (${connection.frames.length} frames captured)`);
   });
 
   return () => {
-    for (const connection of connectionMap.values()) {
-      connections.push(connection);
-    }
-
     const totalFrames = connections.reduce((sum, c) => sum + c.frames.length, 0);
     if (connections.length > 0) {
       log.debug(

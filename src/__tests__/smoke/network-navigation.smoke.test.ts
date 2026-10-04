@@ -293,3 +293,87 @@ void describe('HAR export with --all', () => {
     assert.deepEqual(starts, [...starts].sort());
   });
 });
+
+interface WebSocketItem {
+  status?: number;
+  resourceType?: string;
+  webSocket?: { frames: Array<{ direction: string; payloadData: string }>; closedTime?: number };
+}
+
+void describe('WebSocket connections', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    const result = await runCommand(fixture.url, ['--port', String(port), '--headless'], {
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
+    await runJson('dom', [
+      'eval',
+      'new Promise((resolve) => { const ws = new WebSocket(location.origin.replace("http", "ws") + "/ws"); window.socket = ws; ws.onopen = () => ws.send("hello"); ws.onmessage = (e) => resolve(e.data); })',
+    ]);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('lists an open connection and shows its messages', async () => {
+    const list = await runJson<{ requests: ListedRequest[] }>('network', [
+      'list',
+      '--type',
+      'WebSocket',
+      '--last',
+      '0',
+    ]);
+    assert.equal(list.requests.length, 1);
+    const [socket] = list.requests;
+    assert.equal(socket?.status, 101);
+
+    const { item } = await runJson<{ item: WebSocketItem }>('details', [
+      'network',
+      socket?.requestId ?? '',
+    ]);
+    assert.equal(item.resourceType, 'WebSocket');
+    assert.deepEqual(
+      item.webSocket?.frames.map((f) => [f.direction, f.payloadData]),
+      [
+        ['sent', 'hello'],
+        ['received', 'hello'],
+      ]
+    );
+    assert.equal(item.webSocket?.closedTime, undefined);
+
+    const human = await runCommand('details', ['network', socket?.requestId ?? '']);
+    assert.match(human.stdout, /WebSocket Messages \(2, open\)/);
+  });
+
+  void it('exports the messages to HAR', async () => {
+    await runJson('dom', ['eval', 'window.socket.close()']);
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'ws.har');
+    const result = await runCommand('network', ['har', file], { timeout: 30000 });
+    assert.equal(result.exitCode, 0, result.stderr);
+    const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+      log: {
+        entries: Array<{
+          _resourceType?: string;
+          response: { status: number };
+          _webSocketMessages?: Array<{ type: string; data: string; time: number }>;
+        }>;
+      };
+    };
+    const socket = har.log.entries.find((e) => e._resourceType === 'WebSocket');
+    assert.equal(socket?.response.status, 101);
+    assert.deepEqual(
+      socket?._webSocketMessages?.map((m) => [m.type, m.data]),
+      [
+        ['send', 'hello'],
+        ['receive', 'hello'],
+      ]
+    );
+  });
+});
