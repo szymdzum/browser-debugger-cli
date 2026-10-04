@@ -146,6 +146,8 @@ export interface NetworkRequest {
     receiveHeadersEnd?: number;
   };
   loadingFinishedTime?: number;
+  /** Milliseconds from the request start to its last byte or failure (a redirect hop: to the redirect) */
+  duration?: number;
   /** For a redirect hop: the URL it redirected to */
   redirectURL?: string;
   encodedDataLength?: number;

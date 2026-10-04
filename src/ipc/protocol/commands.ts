@@ -55,6 +55,8 @@ export interface SessionPeekData {
     encodedDataLength?: number;
     /** Failure reason for failed requests */
     errorText?: string;
+    /** Milliseconds from start to last byte, failure or redirect (absent while pending) */
+    duration?: number;
   }>;
   console: Array<{
     index?: number;

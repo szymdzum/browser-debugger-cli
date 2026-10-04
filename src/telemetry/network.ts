@@ -191,6 +191,7 @@ function completeRedirectHop(
   request.requestId = `${params.requestId}:redirect:${hop}`;
   request.redirectURL = params.request.url;
   request.loadingFinishedTime = params.timestamp;
+  request.duration = Date.now() - request.timestamp;
   return request;
 }
 
@@ -371,6 +372,7 @@ export async function startNetworkCollection(
     }
 
     request.loadingFinishedTime = params.timestamp;
+    request.duration = Date.now() - request.timestamp;
 
     const decision = shouldFetchBodyWithReason(
       request.url,
@@ -409,6 +411,7 @@ export async function startNetworkCollection(
     }
 
     entry.request.status ??= 0;
+    entry.request.duration = Date.now() - entry.request.timestamp;
 
     if (params.errorText) {
       entry.request.errorText = params.errorText;

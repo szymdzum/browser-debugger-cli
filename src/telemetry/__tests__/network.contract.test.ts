@@ -229,6 +229,7 @@ void describe('Network telemetry contract', () => {
       assert.equal(request.mimeType, 'application/json');
       assert.ok(request.requestHeaders, 'Should have request headers');
       assert.ok(request.responseHeaders, 'Should have response headers');
+      assert.ok((request.duration ?? -1) >= 0, 'Should record how long the request took');
 
       void cleanup();
     });
@@ -534,6 +535,7 @@ void describe('Network telemetry contract', () => {
       assert.ok(request, 'Request should exist');
       assert.equal(request.status, 0, 'Failed requests should have status 0');
       assert.equal(request.url, 'https://api.example.com/fail');
+      assert.ok((request.duration ?? -1) >= 0, 'Failed requests record their duration');
 
       void cleanup();
     });

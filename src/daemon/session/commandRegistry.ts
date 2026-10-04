@@ -80,6 +80,7 @@ interface NetworkPreview {
   encodedDataLength?: number;
   errorText?: string;
   fromCache?: boolean;
+  duration?: number;
   requestHeaders?: Record<string, string>;
   responseHeaders?: Record<string, string>;
 }
@@ -106,6 +107,7 @@ function mapNetworkRequestToPreview(
     encodedDataLength: req.encodedDataLength,
     errorText: req.errorText,
     fromCache: req.fromCache,
+    duration: req.duration,
     ...(withHeaders && {
       requestHeaders: req.requestHeaders,
       responseHeaders: req.responseHeaders,
