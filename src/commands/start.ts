@@ -8,9 +8,11 @@ import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
+import { unknownCommandError } from '@/errors/messages.js';
 import type { TelemetryType } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { findSimilar } from '@/utils/suggestions.js';
 import { validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
@@ -191,18 +193,42 @@ function buildSessionOptions(options: CollectorOptions): {
 /** Telemetry collected by every session. */
 const SESSION_TELEMETRY: TelemetryType[] = ['dom', 'network', 'console'];
 
+/** Flags users type as commands (`bdg version`). */
+const FLAG_WORDS: Record<string, string> = { version: '--version', help: '--help' };
+
+/**
+ * Reject a bare word that is most likely a mistyped command.
+ *
+ * Without a dot, colon or slash an argument cannot be a public URL; treating
+ * it as one would start Chrome on `http://<word>/`. A dotless host still
+ * works as a full URL (`bdg http://intranet/`).
+ *
+ * @param arg - The URL argument
+ * @param commandNames - Registered top-level command names
+ * @throws CommandError (81) for a bare word other than `localhost`
+ */
+function assertNotCommandTypo(arg: string, commandNames: string[]): void {
+  if (!/^[a-z][a-z0-9_-]*$/i.test(arg) || arg.toLowerCase() === 'localhost') return;
+  const flag = FLAG_WORDS[arg.toLowerCase()];
+  const err = unknownCommandError(arg, flag ? [flag] : findSimilar(arg, commandNames));
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
 /**
  * Validate the URL and all start options before anything is spawned.
  *
  * @param url - Target URL
  * @param options - Parsed command-line options from Commander
+ * @param commandNames - Registered top-level command names (for typo detection)
  * @returns Normalized session options
  * @throws CommandError on any invalid input
  */
 function validateStartInput(
   url: string,
-  options: CollectorOptions
+  options: CollectorOptions,
+  commandNames: string[]
 ): ReturnType<typeof buildSessionOptions> {
+  assertNotCommandTypo(url, commandNames);
   assertValidUrl(url);
   if (options.chromeWsUrl !== undefined) {
     assertValidChromeWsUrl(options.chromeWsUrl);
@@ -227,7 +253,11 @@ export function registerStartCommands(program: Command): void {
 
     let sessionOptions: ReturnType<typeof buildSessionOptions>;
     try {
-      sessionOptions = validateStartInput(url, options);
+      sessionOptions = validateStartInput(
+        url,
+        options,
+        program.commands.map((command) => command.name())
+      );
     } catch (error) {
       handleValidationError(error, options.json ?? false);
     }

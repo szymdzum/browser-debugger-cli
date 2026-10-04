@@ -32,6 +32,7 @@ import {
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('daemon');
@@ -335,10 +336,14 @@ export class SessionController {
       log.info(`Session start failed: ${getErrorMessage(error)}`);
       this.closing = true;
       setImmediate(() => this.onSessionEnded('crash'));
+      const navigationFailed =
+        error instanceof CommandError && error.exitCode === EXIT_CODES.INVALID_URL;
       return {
         status: 'error',
         message: describeStartError(error),
-        errorCode: IPCErrorCode.SESSION_START_FAILED,
+        errorCode: navigationFailed
+          ? IPCErrorCode.NAVIGATION_FAILED
+          : IPCErrorCode.SESSION_START_FAILED,
       };
     }
   }

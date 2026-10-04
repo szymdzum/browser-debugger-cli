@@ -270,6 +270,35 @@ export function invalidSelectorError(selector: string, detail?: string): ErrorWi
 }
 
 /**
+ * A bare word given where a URL is expected, most likely a mistyped command.
+ *
+ * @param word - The argument
+ * @param similar - Similar command names
+ */
+export function unknownCommandError(word: string, similar: string[]): ErrorWithSuggestion {
+  const [closest] = similar;
+  return {
+    message: `Unknown command: "${word}"`,
+    suggestion: closest
+      ? `Did you mean: bdg ${closest}?`
+      : `Run "bdg --help" for commands. To open a host named "${word}", use a full URL: bdg http://${word}/`,
+  };
+}
+
+/**
+ * The browser could not load the start URL at all.
+ *
+ * @param url - URL that failed
+ * @param errorText - Chrome network error (e.g. net::ERR_NAME_NOT_RESOLVED)
+ */
+export function navigationFailedError(url: string, errorText: string): ErrorWithSuggestion {
+  return {
+    message: `Could not load ${url}: ${errorText}`,
+    suggestion: 'Check the URL and that the server is running and reachable from this machine',
+  };
+}
+
+/**
  * The form was submitted but the wait for its result timed out.
  *
  * @param timeout - Timeout in ms

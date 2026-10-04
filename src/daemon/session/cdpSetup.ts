@@ -11,8 +11,11 @@ import { DEFAULT_PAGE_READINESS_TIMEOUT_MS } from '@/constants.js';
 import { sessionEndingConnectionLoss } from '@/daemon/messages.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
+import { CommandError } from '@/errors/index.js';
+import { navigationFailedError } from '@/errors/messages.js';
 import type { LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { fetchCDPTargets } from '@/utils/http.js';
 import { normalizeUrl } from '@/utils/url.js';
 
@@ -49,6 +52,16 @@ export async function connectCDP(
 }
 
 /**
+ * Network errors that mean the start URL could not be reached at all.
+ *
+ * Other `Page.navigate` errors still leave a page worth inspecting: HTTP error
+ * pages with an empty body (`ERR_HTTP_RESPONSE_CODE_FAILURE`), downloads and
+ * 204 responses (`ERR_ABORTED`), certificate interstitials (`ERR_CERT_*`).
+ */
+const UNREACHABLE_ERRORS =
+  /ERR_NAME_NOT_RESOLVED|ERR_NAME_RESOLUTION_FAILED|ERR_CONNECTION_(REFUSED|RESET|CLOSED|FAILED|TIMED_OUT)|ERR_ADDRESS_UNREACHABLE|ERR_INTERNET_DISCONNECTED|ERR_TIMED_OUT|ERR_EMPTY_RESPONSE|ERR_FILE_NOT_FOUND|ERR_UNSAFE_PORT|ERR_INVALID_URL/;
+
+/**
  * Navigate to the configured URL, wait for the page, and refresh target info.
  *
  * @param cdp - Open CDP connection
@@ -56,6 +69,8 @@ export async function connectCDP(
  * @param telemetryStore - Store whose target info is refreshed
  * @param chrome - Launched Chrome, or null when attached to an external browser
  * @param log - Logger
+ * @returns Loader id of the navigation (the main document's request id)
+ * @throws CommandError (80) when the URL cannot be reached at all
  */
 export async function navigateToTarget(
   cdp: CDPConnection,
@@ -63,10 +78,18 @@ export async function navigateToTarget(
   telemetryStore: TelemetryStore,
   chrome: LaunchedChrome | null,
   log: Logger
-): Promise<void> {
+): Promise<string | undefined> {
   const normalizedUrl = normalizeUrl(config.url);
   log.info(`Navigating to ${normalizedUrl}...`);
-  await cdp.send('Page.navigate', { url: normalizedUrl });
+  const navigation = (await cdp.send('Page.navigate', { url: normalizedUrl })) as {
+    loaderId?: string;
+    errorText?: string;
+  };
+  if (navigation.errorText && UNREACHABLE_ERRORS.test(navigation.errorText)) {
+    const err = navigationFailedError(normalizedUrl, navigation.errorText);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
+  }
+  if (navigation.errorText) log.info(`Navigation reported ${navigation.errorText}`);
 
   await waitForPageReady(cdp, {
     maxWaitMs: DEFAULT_PAGE_READINESS_TIMEOUT_MS,
@@ -82,4 +105,5 @@ export async function navigateToTarget(
       log.info(`Target updated: ${updatedTarget.title} (${updatedTarget.url})`);
     }
   }
+  return navigation.loaderId;
 }

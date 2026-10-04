@@ -45,6 +45,9 @@ export function getExitCodeForIPCError(errorCode?: IPCErrorCode): number {
     case IPCErrorCode.SESSION_KILL_FAILED:
       return EXIT_CODES.SESSION_FILE_ERROR;
 
+    case IPCErrorCode.NAVIGATION_FAILED:
+      return EXIT_CODES.INVALID_URL;
+
     case IPCErrorCode.SESSION_START_FAILED:
       return EXIT_CODES.SESSION_START_FAILURE;
 

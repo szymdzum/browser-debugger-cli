@@ -116,6 +116,7 @@ void describe('JSON contract', () => {
       ['network', 'list', '--preset', 'nope', '--json'],
       [fixture.url, '--port', 'abc', '--json'],
       ['dom', 'click', 'button', '--index', 'abc', '--json'],
+      ['tabs', '--json'],
       ['dom', 'screenshot', 'x.png', '--quality', '101', '--json'],
     ]) {
       await expectEnvelope(args, 81);
@@ -139,6 +140,31 @@ void describe('JSON contract', () => {
     const [code] = (await once(child, 'close')) as [number | null];
     assert.equal(code, 0, stderr);
     assert.doesNotMatch(stderr, /EPIPE/);
+  });
+
+  void it('refuses start URLs that cannot be loaded, without leaving a session', async () => {
+    const port = await getFreePort();
+    await expectEnvelope(['ftp://example.com', '--json'], 80);
+    const failed = await expectEnvelope(
+      ['http://127.0.0.1:1/', '--port', String(port), '--headless', '--json'],
+      80
+    );
+    assert.match(failed.error ?? '', /Could not load/);
+    const deadline = Date.now() + 5000;
+    while ((await isDaemonRunning()) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.equal(await isDaemonRunning(), false, 'no session after a failed load');
+  });
+
+  void it('reports the HTTP status of an error page at start', async () => {
+    const port = await getFreePort();
+    const started = await expectEnvelope(
+      [`${fixture.url}error-page`, '--port', String(port), '--headless', '--json'],
+      0
+    );
+    assert.equal(started.data?.['documentStatus'], 500);
+    await expectEnvelope(['stop', '--json'], 0);
   });
 
   void it('starts a session with a JSON result', async () => {

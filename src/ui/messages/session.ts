@@ -21,6 +21,8 @@ import { joinLines } from '@/ui/formatting.js';
 export interface LandingPageOptions {
   /** Target URL being monitored */
   url: string;
+  /** HTTP status of the main document (a warning is shown for 4xx/5xx) */
+  documentStatus?: number;
 }
 
 /**
@@ -50,7 +52,11 @@ export interface LandingPageOptions {
  * ```
  */
 export function landingPage(options: LandingPageOptions): string {
-  const { url } = options;
+  const { url, documentStatus } = options;
+  const statusWarning =
+    documentStatus !== undefined && documentStatus >= 400
+      ? [`⚠ The page responded with HTTP ${documentStatus}`, '']
+      : [];
 
   return joinLines(
     '',
@@ -58,6 +64,7 @@ export function landingPage(options: LandingPageOptions): string {
     '',
     `Target: ${url}`,
     '',
+    ...statusWarning,
     buildCommonTasksSection(),
     '',
     buildDomainCommandsSection(),
