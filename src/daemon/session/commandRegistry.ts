@@ -1,6 +1,7 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
@@ -19,6 +20,7 @@ import {
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
+import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
 import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
@@ -343,6 +345,20 @@ function filterHeadersByName(
   return Object.fromEntries(Object.entries(headers).filter(([k]) => k.toLowerCase() === name));
 }
 
+/**
+ * WebSocket URL of the session's page target (frame commands open a second
+ * connection to it).
+ *
+ * @param store - Store holding the target
+ * @returns The URL
+ * @throws CDPConnectionError when no target is known
+ */
+function pageWebSocketUrl(store: TelemetryStore): string {
+  const url = store.targetInfo?.webSocketDebuggerUrl;
+  if (!url) throw new CDPConnectionError('No page target');
+  return url;
+}
+
 export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
   const patternDetector = new PatternDetector();
   const interact = createInteractionRunner(store);
@@ -483,7 +499,12 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       return { result, ...(hint !== undefined && { hint }) };
     },
 
-    dom_eval: async (cdp, params) => evaluateScript(cdp, params.script),
+    dom_eval: async (cdp, params) =>
+      params.frame === undefined
+        ? evaluateScript(cdp, params.script)
+        : evaluateInFrame(cdp, pageWebSocketUrl(store), params.script, params.frame),
+
+    dom_frames: async (cdp) => ({ frames: await listFrames(cdp, pageWebSocketUrl(store)) }),
 
     dom_fill: async (cdp, params) =>
       interact(cdp, async () => {

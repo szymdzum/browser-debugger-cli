@@ -5,6 +5,7 @@
  * cleaning up stale files, and validating command arguments.
  */
 
+import type { DomFrame } from '@/ipc/protocol/commands.js';
 import {
   buildAgentDiscoveryHelp,
   buildCommonTaskExamples,
@@ -162,6 +163,40 @@ export function notAPageWarning(): string {
  */
 export function stillLoadingWarning(ms: number): string {
   return `The new page has not answered within ${Math.round(ms / 1000)}s; it is still loading (check with bdg status)`;
+}
+
+/**
+ * One line describing an iframe: index, URL, name/id, and how it is isolated.
+ *
+ * @param frame - Frame from `bdg dom frames`
+ * @returns e.g. `[1] https://pay.example/  #checkout  cross-origin, out-of-process`
+ */
+export function frameLabel(frame: DomFrame): string {
+  const names = [frame.name && `name=${frame.name}`, frame.id && `#${frame.id}`].filter(Boolean);
+  const isolation = [
+    frame.crossOrigin ? 'cross-origin' : 'same-origin',
+    frame.outOfProcess && 'out-of-process',
+  ].filter(Boolean);
+  return [`[${frame.index}] ${frame.url}`, ...names, isolation.join(', ')].join('  ');
+}
+
+/**
+ * `bdg dom frames` on a page without iframes.
+ *
+ * @returns Message
+ */
+export function noFramesMessage(): string {
+  return 'The page has no iframes';
+}
+
+/**
+ * Header of `bdg dom eval --frame` output naming the frame the script ran in.
+ *
+ * @param url - Frame URL
+ * @returns e.g. `Frame: https://pay.example/`
+ */
+export function evalFrameLine(url: string): string {
+  return `Frame: ${url}`;
 }
 
 /**

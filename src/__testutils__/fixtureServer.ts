@@ -7,7 +7,8 @@
  * answers 302 to `/`; `/interactions` serves a form for input/key/click tests;
  * `/ws` is a WebSocket echo server; `/frames` embeds a cross-origin iframe
  * (`localhost` vs `127.0.0.1`), starts a worker and requests a missing image;
- * `/deep` has controls inside an open shadow root and a same-origin iframe.
+ * `/deep` has controls inside an open shadow root and a same-origin iframe;
+ * `/eval-frames` embeds a same-origin and a cross-origin iframe.
  */
 
 import * as fs from 'fs';
@@ -65,6 +66,16 @@ const DEEP_HTML = `<!doctype html><title>deep</title>
       root.getElementById('shadow-input').onkeydown = (e) => window.events.push('shadow-key:' + e.key);
     }
   });
+</script>`;
+
+/** Page with a same-origin iframe (`/deep-frame`) and a cross-origin one (`/frame-child`). */
+const EVAL_FRAMES_HTML = `<!doctype html><title>eval frames</title>
+<iframe name="same" src="/deep-frame"></iframe>
+<script>
+  const frame = document.createElement('iframe');
+  frame.id = 'cross';
+  frame.src = 'http://localhost:' + location.port + '/frame-child';
+  document.body.append(frame);
 </script>`;
 
 /** Same-origin iframe content of `/deep`. */
@@ -134,6 +145,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/deep' || req.url === '/deep-frame') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(req.url === '/deep' ? DEEP_HTML : DEEP_FRAME_HTML);
+      return;
+    }
+    if (req.url === '/eval-frames') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(EVAL_FRAMES_HTML);
       return;
     }
     if (req.url === '/frames' || req.url === '/frame-child') {

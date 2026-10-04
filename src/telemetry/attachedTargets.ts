@@ -35,12 +35,18 @@ const NO_AUTO_ATTACH = { autoAttach: false, waitForDebuggerOnStart: false };
 /** Enables what a collector needs on a child session (e.g. `Runtime.enable`) */
 type ChildSetup = (sessionId: string) => Promise<void>;
 
+/** An attached child target */
+interface AttachedChild {
+  url: string;
+  targetId: string;
+}
+
 /** Child-target handling shared by all collectors of one connection */
 interface AttachManager {
   typed: TypedCDPConnection;
   setups: Set<ChildSetup>;
-  /** Sessions of attached children, with their URL (for logs) */
-  sessions: Map<string, string>;
+  /** Sessions of attached children, with their URL (for logs) and target id */
+  sessions: Map<string, AttachedChild>;
   registry: CDPHandlerRegistry;
 }
 
@@ -73,10 +79,15 @@ async function runSetups(
  *
  * @param manager - Shared manager of the connection
  * @param sessionId - Session of the attached target
- * @param url - Target URL (for logs)
+ * @param child - Target URL (for logs) and id
  */
-async function prepareChild(manager: AttachManager, sessionId: string, url: string): Promise<void> {
-  manager.sessions.set(sessionId, url);
+async function prepareChild(
+  manager: AttachManager,
+  sessionId: string,
+  child: AttachedChild
+): Promise<void> {
+  const { url } = child;
+  manager.sessions.set(sessionId, child);
   try {
     let timer: NodeJS.Timeout | undefined;
     await Promise.race([
@@ -112,7 +123,8 @@ function createManager(cdp: CDPConnection): AttachManager {
     registry: new CDPHandlerRegistry(),
   };
   manager.registry.registerTyped(typed, 'Target.attachedToTarget', (params) => {
-    void prepareChild(manager, params.sessionId, params.targetInfo.url);
+    const { url, targetId } = params.targetInfo;
+    void prepareChild(manager, params.sessionId, { url, targetId });
   });
   manager.registry.registerTyped(typed, 'Target.detachedFromTarget', (params) => {
     manager.sessions.delete(params.sessionId);
@@ -156,7 +168,7 @@ export async function attachChildTargets(
     if (manager.setups.size === 0 && managers.get(cdp) === manager) retireManager(cdp, manager);
   };
   if (existing) {
-    for (const [sessionId, url] of manager.sessions) void runSetups(sessionId, url, [setup]);
+    for (const [sessionId, { url }] of manager.sessions) void runSetups(sessionId, url, [setup]);
     return cleanup;
   }
   try {
@@ -168,4 +180,20 @@ export async function attachChildTargets(
     throw error;
   }
   return cleanup;
+}
+
+/**
+ * Session of an attached child target (e.g. an out-of-process iframe) on the
+ * connection. Its commands are answered even while the target's scripts keep
+ * it busy, unlike those of a session attached afterwards.
+ *
+ * @param cdp - CDP connection to the page
+ * @param targetId - Target id (an iframe target's id is its frame id)
+ * @returns The session, undefined when the target is not attached
+ */
+export function attachedSessionOf(cdp: CDPConnection, targetId: string): string | undefined {
+  for (const [sessionId, child] of managers.get(cdp)?.sessions ?? []) {
+    if (child.targetId === targetId) return sessionId;
+  }
+  return undefined;
 }

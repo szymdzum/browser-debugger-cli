@@ -5,7 +5,8 @@
  * - `query.ts` — find elements by selector
  * - `get.ts` — read element details (semantic or raw)
  * - `screenshot.ts` — capture page/element/sequence screenshots
- * - `eval.ts` — evaluate JavaScript in the page
+ * - `eval.ts` — evaluate JavaScript in the page (or an iframe)
+ * - `frames.ts` — list the page's iframes
  * - `listeners.ts` — list event listeners that run for an element
  *
  * Form-related commands register via `form.ts` and `formInteraction.ts`.
@@ -17,6 +18,7 @@ import type { Command } from 'commander';
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
 import { handleDomEval } from '@/commands/dom/eval.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
+import { handleDomFrames } from '@/commands/dom/frames.js';
 import { handleDomGet } from '@/commands/dom/get.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
@@ -26,6 +28,7 @@ import type {
   DomGetCommandOptions,
   DomScreenshotCommandOptions,
   DomEvalCommandOptions,
+  DomFramesCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { integerOption, screenshotFormatOption } from '@/commands/shared/validation.js';
 
@@ -55,6 +58,10 @@ export function registerDomCommands(program: Command): void {
     .command('eval')
     .description('Evaluate JavaScript expression in the page context')
     .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
+    .option(
+      '--frame <frame>',
+      'Evaluate in an iframe, cross-origin ones included: index, name/id attribute, or part of the URL (see dom frames)'
+    )
     .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);
@@ -64,9 +71,18 @@ export function registerDomCommands(program: Command): void {
     .command('eval', { hidden: true })
     .description('Shortcut for: bdg dom eval')
     .argument('<script>', 'JavaScript to execute')
+    .option('--frame <frame>', 'Evaluate in an iframe (see dom frames)')
     .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);
+    });
+
+  dom
+    .command('frames')
+    .description("List the page's iframes (nested and cross-origin ones included) for eval --frame")
+    .option('-j, --json', 'Output as JSON')
+    .action(async (options: DomFramesCommandOptions) => {
+      await handleDomFrames(options);
     });
 
   dom
