@@ -1,6 +1,6 @@
 import type { DomContext } from '@/types.js';
 import type { A11yTree, A11yQueryResult, A11yNode } from '@/types.js';
-import { OutputFormatter } from '@/ui/formatting.js';
+import { OutputFormatter, areHintsHidden } from '@/ui/formatting.js';
 
 /**
  * Data structure for a11y node with DOM context.
@@ -137,7 +137,7 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
   }
 
   const first = result.nodes[0];
-  if (first?.index !== undefined) {
+  if (first?.index !== undefined && !areHintsHidden()) {
     const fillable = FILLABLE_ROLES.has(first.role.toLowerCase());
     fmt.section('Next steps:', [
       'Inspect:  bdg dom a11y describe 0',

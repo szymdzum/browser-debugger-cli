@@ -93,7 +93,7 @@ void describe('dom eval', () => {
 
   void it('keeps nested values JSON would lose', async () => {
     const cases: Array<[string, unknown]> = [
-      ['[1, undefined, NaN]', [1, 'undefined', 'NaN']],
+      ['[1, undefined, NaN]', [1, null, 'NaN']],
       ['({ b: -0, c: Infinity })', { b: '-0', c: 'Infinity' }],
       ['({ el: document.body })', { el: 'body' }],
       ['new Uint8Array([1, 2])', [1, 2]],

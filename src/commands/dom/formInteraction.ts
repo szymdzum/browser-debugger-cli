@@ -431,9 +431,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
 
   fmt.keyValueList(details, 20);
   appendNotices(fmt, result);
-  fmt.blank();
-  fmt.text('Next steps:');
-  fmt.section('', [
+  fmt.hints('Next steps:', [
     'bdg network list --last 10      Check network requests',
     'bdg console --last 5             Check console messages',
     'bdg status                       Check session state',

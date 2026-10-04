@@ -51,7 +51,7 @@ const FRAME_CHILD_HTML = `<!doctype html><script>
 
 /** Page with controls in an open shadow root and in a same-origin iframe. */
 const DEEP_HTML = `<!doctype html><title>deep</title>
-<p class="note">light</p>
+<p class="note">li<b>ght</b><span hidden> secret</span></p>
 <shadow-form></shadow-form>
 <iframe src="/deep-frame" style="margin-top: 40px; width: 400px; height: 200px; padding: 25px; border: 6px solid"></iframe>
 <script>

@@ -105,7 +105,10 @@ void describe('Shadow DOM and iframe targeting', () => {
     assert.equal(node.node.name, 'Frame field');
 
     const emptyQuery = await runCommand('dom', ['query', '#missing']);
-    assert.match(emptyQuery.stdout, /cross-origin iframes/);
+    assert.equal(emptyQuery.exitCode, 83);
+    assert.match(emptyQuery.stderr, /cross-origin iframes/);
+    const staleIndex = await runCommand('dom', ['get', '0']);
+    assert.notEqual(staleIndex.exitCode, 0, 'an empty query must not leave older indices usable');
     const missing = await runCommand('dom', ['get', '#missing', '--raw', '--json']);
     const envelope = JSON.parse(missing.stdout) as { suggestion?: string };
     assert.match(envelope.suggestion ?? '', /cross-origin iframes/);

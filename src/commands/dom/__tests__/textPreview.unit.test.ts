@@ -9,24 +9,12 @@ import { textPreview } from '@/commands/dom/helpers/query.js';
 
 void describe('textPreview', () => {
   void it('never splits a character made of two UTF-16 units', () => {
-    const preview = textPreview(`<p>${'🚀'.repeat(100)}</p>`);
+    const preview = textPreview('🚀'.repeat(100));
     assert.equal(preview, `${'🚀'.repeat(80)}...`);
     assert.doesNotThrow(() => JSON.parse(JSON.stringify(preview)));
   });
 
-  void it('keeps words of separate elements apart and skips styles and scripts', () => {
-    assert.equal(
-      textPreview(
-        '<div><span>Top</span><span>Row 0</span><style>.x{}</style><script>x()</script></div>'
-      ),
-      'Top Row 0'
-    );
-  });
-
-  void it('decodes entities but not lone surrogates', () => {
-    assert.equal(
-      textPreview('<p>Tom &amp; Jerry&nbsp;&#8217;s &#x1F680; &#xD800;</p>'),
-      'Tom & Jerry ’s 🚀 &#xD800;'
-    );
+  void it('collapses the whitespace of rendered text', () => {
+    assert.equal(textPreview('  Top\n\n\tRow 0  '), 'Top Row 0');
   });
 });

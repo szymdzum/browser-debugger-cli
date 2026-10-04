@@ -212,8 +212,7 @@ export function formatNoSessionMessage(data: StatusData = { active: false }): st
     fmt.text(`Chrome of an earlier session is still running (PID ${data.orphanedChromePid})`);
   }
   return fmt
-    .blank()
-    .section('Suggestions:', [
+    .hints('Suggestions:', [
       'Start a new session:     bdg <url>',
       data.orphanedChromePid
         ? 'Close that Chrome:       bdg cleanup'

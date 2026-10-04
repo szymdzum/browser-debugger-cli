@@ -23,11 +23,13 @@ void describe('formatDomQuery', () => {
     assert.doesNotMatch(output, /undefined/);
   });
 
-  void it('says where selectors do not reach when nothing matches', () => {
-    const output = formatDomQuery({ selector: '#missing', count: 0, nodes: [] });
+  void it('lists at most 50 matches and says how many more there are', () => {
+    const nodes = Array.from({ length: 60 }, (_, index) => ({ index, nodeId: index, tag: 'li' }));
+    const output = formatDomQuery({ selector: 'li', count: 60, nodes });
 
-    assert.match(output, /No nodes found matching "#missing"/);
-    assert.match(output, /cross-origin iframes/);
+    assert.match(output, /\[49\] <li>$/m);
+    assert.doesNotMatch(output, /\[50\]/);
+    assert.match(output, /\.\.\. and 10 more \(use --json for all\)/);
   });
 });
 
@@ -63,7 +65,7 @@ void describe('formatDomQuery text hint', () => {
     });
     assert.ok(
       output.includes(
-        `bdg dom eval '(el => el && (el.value ?? el.textContent))(document.querySelectorAll("a[title='\\''x'\\'']")[0])'`
+        `bdg dom eval '(el => el && (el.value ?? el.innerText))(document.querySelectorAll("a[title='\\''x'\\'']")[0])'`
       )
     );
   });
