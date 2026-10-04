@@ -65,6 +65,43 @@ export function multipleMatchesWarning(count: number, action: string): string {
 }
 
 /**
+ * Headline of `bdg dom listeners`.
+ *
+ * @param element - Inspected element, e.g. "button#save"
+ * @param count - Listeners found
+ * @returns e.g. "Event listeners for button#save (3)"
+ */
+export function listenersHeadline(element: string, count: number): string {
+  return `Event listeners for ${element} (${count})`;
+}
+
+/**
+ * `bdg dom listeners` found nothing.
+ *
+ * @param element - Inspected element
+ * @param types - Event types asked for with --type, if any
+ * @returns e.g. "No click listeners on button#save, its ancestors, document or window"
+ */
+export function noListenersMessage(element: string, types?: string[]): string {
+  const kind = types?.length ? `${types.join('/')} listeners` : 'event listeners';
+  return `No ${kind} on ${element}, its ancestors, document or window`;
+}
+
+/** What `bdg dom listeners` covers, shown when it found nothing */
+export const NO_LISTENERS_HINT =
+  'Inline on… attributes and on… properties are included, and so are handlers frameworks delegate to ancestors (React, jQuery)';
+
+/**
+ * Note for event types handled only by ancestors, document or window.
+ *
+ * @param types - Event types without a listener on the element itself
+ * @returns One-line note
+ */
+export function delegatedListenersNote(types: string[]): string {
+  return `Note: ${types.join(', ')} ${types.length === 1 ? 'has' : 'have'} no listener on the element itself; frameworks like React and jQuery delegate events to a root container, document or window, so these still run for it`;
+}
+
+/**
  * A JavaScript dialog bdg accepted, as one line.
  *
  * @param dialog - Dialog type and text

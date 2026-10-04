@@ -234,6 +234,14 @@ export interface ScrollCommandOptions extends BaseOptions, IndexOptions {
   wait: boolean;
 }
 
+/**
+ * Options for `dom listeners`.
+ */
+export interface ListenersCommandOptions extends BaseOptions, IndexOptions {
+  /** Only these event types (from --type, comma-separated) */
+  type?: string[];
+}
+
 /** Options for A11y tree command */
 export type A11yTreeCommandOptions = BaseOptions;
 

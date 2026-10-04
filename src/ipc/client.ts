@@ -417,3 +417,10 @@ export async function pageNavigate(
 export async function domFormDiscover(): Promise<ClientResponse<'dom_form_discover'>> {
   return sendCommand('dom_form_discover', {});
 }
+
+/** List the event listeners that run for an element. */
+export async function domListeners(
+  params: NoType<(typeof COMMANDS)['dom_listeners']['requestSchema']>
+): Promise<ClientResponse<'dom_listeners'>> {
+  return sendCommand('dom_listeners', params);
+}

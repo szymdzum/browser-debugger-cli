@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`bdg page navigate <url>` / `reload` / `back` / `forward`** - Move the session's page and wait for it to load (`--no-wait` to return at once); unreachable URLs exit 80, no history entry exits 81
 - **`bdg dom hover`, `dom click --double` / `--right`** - Hover (menus, tooltips), double-click and right-click with real mouse events, falling back to DOM events like `click`
+- **`bdg dom listeners <selector|index>`** - Lists the event listeners that run for an element: on the element, its ancestors (through open shadow roots), its document and window, grouped by event type and nearest first, with each handler's name, source preview and script location. Delegated handlers (React, jQuery) show up on the ancestor they are attached to, with a note when an interaction event is handled only there; `--type click,keydown` filters, `--index` and cached query indices work like `dom click` (idea from #252 by @StealthEyeLLC)
 - **`dom fill` on `<select multiple>`** - Comma-separated values or labels select several options (`""` selects none)
 - **Text and visibility selectors** - `:has-text()`, `:text-is()` and `:visible` at the end of a selector in every DOM command (idea from #169 by @sfc-gh-mochen)
 

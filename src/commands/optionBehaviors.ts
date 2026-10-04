@@ -155,6 +155,17 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'Custom network idle timeout in ms (use for slow APIs)',
   },
 
+  'listeners:--type': {
+    default:
+      'Lists listeners of every event type on the element, its ancestors (through open shadow roots), its document and window',
+    whenEnabled:
+      'Lists only these event types (comma-separated, case-sensitive like addEventListener)',
+    automaticBehavior:
+      'Listeners are grouped by type, nearest first; JSON line/column numbers are 0-based (human output shows them 1-based like DevTools). The Debugger domain is not enabled',
+    tokenImpact:
+      'Pages with many window/document listeners produce long lists; --type keeps the output short',
+  },
+
   'scroll:--down': {
     whenEnabled: 'Scrolls page down by specified pixel amount',
   },

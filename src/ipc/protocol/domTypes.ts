@@ -126,6 +126,57 @@ export interface SubmitResult {
   dialogs?: DialogInfo[];
 }
 
+/** Where an event listener is attached, seen from the inspected element. */
+export type ListenerPlacement = 'target' | 'ancestor' | 'document' | 'window';
+
+/** The function an event listener calls. */
+export interface ListenerHandler {
+  /** Function name (`Function.name`; empty when anonymous) */
+  name: string;
+  /** Start of the function source, on one line */
+  preview: string;
+  /** Script that defines the handler (CDP script id) */
+  scriptId: string;
+  /** 0-based line in the script */
+  lineNumber: number;
+  /** 0-based column in the script */
+  columnNumber: number;
+}
+
+/** An event listener that runs for events on the inspected element. */
+export interface ElementListener {
+  /** Event type, e.g. `click` */
+  type: string;
+  /** Where the listener is attached */
+  on: ListenerPlacement;
+  /** The node or object it is attached to, e.g. `div#root.app` */
+  node: string;
+  useCapture: boolean;
+  passive: boolean;
+  once: boolean;
+  handler: ListenerHandler;
+}
+
+/**
+ * Event listeners of an element, its ancestors, its document and window,
+ * grouped by event type, nearest first.
+ */
+export interface ListenersResult {
+  /** Always true: failures are reported as errors */
+  success: true;
+  /** Selector the element was found with */
+  selector?: string;
+  /** Index among the selector's matches (or in the cached query) */
+  index?: number;
+  /** The inspected element, e.g. `button#save` */
+  element: string;
+  listeners: ElementListener[];
+  /** Elements the selector matched */
+  matchCount?: number;
+  /** Set when several elements matched and no --index was given */
+  warning?: string;
+}
+
 /**
  * Raw form data returned from the page-context form-discovery script.
  */

@@ -278,6 +278,43 @@ void describe('DOM interactions', () => {
     );
   });
 
+  void it('lists the event listeners of an element and its ancestors', async () => {
+    type Listed = {
+      data: {
+        index?: number;
+        element: string;
+        listeners: Array<{ type: string; on: string; node: string; handler: { name: string } }>;
+      };
+    };
+    const listed = async (args: string[]): Promise<Listed['data']> =>
+      (JSON.parse(await bdg(['dom', 'listeners', ...args, '--json'])) as Listed).data;
+
+    const own = await listed(['#agree', '--type', 'click,change']);
+    assert.equal(own.element, 'input#agree');
+    assert.ok(own.listeners.every((l) => l.on === 'target' && l.node === 'input#agree'));
+    assert.ok(own.listeners.some((l) => l.type === 'click' && l.handler.name === 'log'));
+    assert.deepEqual([...new Set(own.listeners.map((l) => l.type))], ['change', 'click']);
+
+    const submit = await listed(['#submit', '--type', 'submit']);
+    assert.deepEqual(
+      submit.listeners.map((l) => `${l.on}:${l.node}`),
+      ['ancestor:form#form']
+    );
+    assert.match(
+      await bdg(['dom', 'listeners', '#submit', '--type', 'submit']),
+      /Note: submit has no listener on the element itself/
+    );
+
+    await bdg(['dom', 'query', '#menu-trigger']);
+    const cached = await listed(['0', '--type', 'pointerdown']);
+    assert.equal(cached.index, 0);
+    assert.deepEqual(
+      cached.listeners.map((l) => `${l.type}:${l.on}`),
+      ['pointerdown:target']
+    );
+    await bdg(['dom', 'listeners', '#missing'], 83);
+  });
+
   void it('navigates the page and its history', async () => {
     const url = String(await evaluate('location.href'));
     const other = new URL('/', url).href;

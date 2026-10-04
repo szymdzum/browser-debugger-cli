@@ -6,6 +6,7 @@
  * - `get.ts` — read element details (semantic or raw)
  * - `screenshot.ts` — capture page/element/sequence screenshots
  * - `eval.ts` — evaluate JavaScript in the page
+ * - `listeners.ts` — list event listeners that run for an element
  *
  * Form-related commands register via `form.ts` and `formInteraction.ts`.
  * Accessibility commands register via `a11y.ts`.
@@ -17,6 +18,7 @@ import { registerA11yCommands } from '@/commands/dom/a11y.js';
 import { handleDomEval } from '@/commands/dom/eval.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import { handleDomGet } from '@/commands/dom/get.js';
+import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
 import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import type {
@@ -38,6 +40,7 @@ export function registerDomCommands(program: Command): void {
 
   registerA11yCommands(dom);
   registerFormCommand(dom);
+  registerListenersCommand(dom);
 
   dom
     .command('query')
