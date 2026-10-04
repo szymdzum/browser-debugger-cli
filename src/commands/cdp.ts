@@ -124,7 +124,7 @@ export function registerCdpCommand(program: Command): void {
       await runCommand(
         async (opts) => {
           if (opts.search) {
-            return await handleSearch(opts.search);
+            return await handleSearch(opts.search, method);
           }
 
           if (opts.list && !method) {
@@ -190,14 +190,61 @@ function findSimilarMethods(methodName: string, domain?: string): string[] {
 }
 
 /**
+ * Did-you-mean for an unknown domain, or how to list them.
+ *
+ * @param domainName - Domain as typed
+ * @returns Suggestion
+ */
+function domainSuggestion(domainName: string): string {
+  const [closest] = findSimilar(
+    domainName,
+    getAllDomainSummaries().map((summary) => summary.name)
+  );
+  return closest
+    ? `Did you mean: bdg cdp ${closest} --list?`
+    : 'Use: bdg cdp --list (to see all domains)';
+}
+
+/**
+ * For a method bdg refuses to run, what to use instead (shown as its example).
+ *
+ * @param methodName - Full method name, e.g. Page.captureScreenshot
+ * @returns Alternative command, or undefined for methods that run
+ */
+function blockedAlternative(methodName: string): string | undefined {
+  const blocked = BLOCKED_CDP_METHODS[methodName];
+  return blocked && `${blocked.alternative} (raw ${methodName} is blocked)`;
+}
+
+/**
  * Handle search mode: Find methods by keyword.
  *
  * @param query - Search query
+ * @param domain - Domain to search in (`bdg cdp Network --search cookie`)
  * @returns Success result with matching methods
  */
-async function handleSearch(query: string): Promise<{ success: true; data: unknown }> {
+async function handleSearch(
+  query: string,
+  domain?: string
+): Promise<{
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  exitCode?: number;
+  errorContext?: Record<string, unknown>;
+}> {
+  if (domain !== undefined && !getDomainSummary(domain)) {
+    return {
+      success: false,
+      error: `Domain '${domain}' not found`,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: { suggestion: domainSuggestion(domain) },
+    };
+  }
   const { searchMethods } = await import('@/cdp/schema.js');
-  const results = searchMethods(query);
+  const results = searchMethods(query).filter(
+    (m) => domain === undefined || m.domain.toLowerCase() === domain.toLowerCase()
+  );
 
   return {
     success: true,
@@ -212,7 +259,7 @@ async function handleSearch(query: string): Promise<{ success: true; data: unkno
         experimental: m.experimental,
         deprecated: m.deprecated,
         parameterCount: m.parameters.length,
-        example: m.example?.command,
+        example: blockedAlternative(m.name) ?? m.example?.command,
       })),
     },
   };
@@ -263,7 +310,7 @@ function handleListDomainMethods(domainName: string): {
       error: `Domain '${domainName}' not found`,
       exitCode: EXIT_CODES.INVALID_ARGUMENTS,
       errorContext: {
-        suggestion: 'Use: bdg cdp --list (to see all domains)',
+        suggestion: domainSuggestion(domainName),
       },
     };
   }
@@ -292,7 +339,7 @@ function handleListDomainMethods(domainName: string): {
           name: r.name,
           type: r.type,
         })),
-        example: m.example?.command,
+        example: blockedAlternative(m.name) ?? m.example?.command,
       })),
     },
   };
@@ -401,7 +448,9 @@ function handleDescribeMethod(methodName: string): {
         description: r.description,
         items: r.items,
       })),
-      example: schema.example,
+      example: blockedAlternative(schema.name)
+        ? { command: blockedAlternative(schema.name) }
+        : schema.example,
     },
   };
 }

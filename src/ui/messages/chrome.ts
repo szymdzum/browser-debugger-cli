@@ -258,18 +258,10 @@ export function chromeExternalSkipTerminationMessage(): string {
  */
 export function noPageTargetFoundError(port: number, availableTargets: string | null): string {
   return joinLines(
-    'No page target found after Chrome launch\n',
-    'Possible causes:',
-    `  1. Port conflict (${port})`,
-    `     → Check: lsof -ti:${port}`,
-    `     → Kill: pkill -f "chrome.*${port}"`,
-    '  2. Chrome failed to create default target',
-    '  3. Stale session',
-    '     → Fix: bdg cleanup && bdg <url>\n',
-    `Available Chrome targets:\n${availableTargets ?? '  (none)'}\n`,
-    'Try:',
-    '  - Clean up and retry: bdg cleanup && bdg <url>',
-    `  - Use different port: bdg <url> --port ${port + 1}`
+    `Chrome started but opened no page to attach to (port ${port})`,
+    'Retry: bdg <url>. If it keeps failing, another program may use the port (lsof -i :' +
+      `${port}) or a crashed session may be left over: bdg cleanup && bdg <url>`,
+    ...(availableTargets ? ['', `Chrome targets:\n${availableTargets}`] : [])
   );
 }
 

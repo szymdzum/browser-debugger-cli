@@ -23,6 +23,17 @@ const COLUMN_WIDTHS = {
 };
 
 /**
+ * Cut text to a column width, marking the cut with "…".
+ *
+ * @param text - Text
+ * @param width - Column width
+ * @returns Text of at most `width` characters
+ */
+function fitText(text: string, width: number): string {
+  return text.length > width ? `${text.slice(0, width - 1)}…` : text;
+}
+
+/**
  * Format field type for display.
  *
  * @param field - Form field
@@ -109,9 +120,10 @@ function formatRequiredMarker(field: FormField): string {
 function formatFieldRow(field: FormField): string {
   const idx = String(field.index).padStart(COLUMN_WIDTHS.index);
   const type = formatFieldType(field).padEnd(COLUMN_WIDTHS.type);
-  const label = (field.label + formatRequiredMarker(field))
-    .slice(0, COLUMN_WIDTHS.label)
-    .padEnd(COLUMN_WIDTHS.label);
+  const marker = formatRequiredMarker(field);
+  const label = (fitText(field.label, COLUMN_WIDTHS.label - marker.length) + marker).padEnd(
+    COLUMN_WIDTHS.label
+  );
   const value = formatFieldValue(field).padEnd(COLUMN_WIDTHS.value);
   const status = formatFieldStatus(field);
 
