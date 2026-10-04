@@ -79,6 +79,12 @@ void describe('dom eval', () => {
     assert.match(String((await evaluate('window')).data?.result), /window/);
   });
 
+  void it('runs like the DevTools console: declarations can be repeated', async () => {
+    assert.equal((await evaluate('const answer = 41; answer')).data?.result, 41);
+    assert.equal((await evaluate('const answer = 42; answer')).data?.result, 42);
+    assert.equal((await evaluate('await Promise.resolve(7)')).data?.result, 7);
+  });
+
   void it('reports script exceptions as user errors', async () => {
     const { exitCode, error } = await evaluate('throw new Error("boom")');
     assert.equal(exitCode, 91);

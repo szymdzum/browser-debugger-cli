@@ -3,6 +3,20 @@ import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js'
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
+ * A selector as a JS single-quoted string inside a shell double-quoted
+ * argument, for copy-pastable `bdg dom eval "..."` hints.
+ *
+ * @param selector - CSS selector
+ * @returns Escaped selector
+ */
+function safeQuerySelectorArgument(selector: string): string {
+  return selector
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/(["$`])/g, '\\$1');
+}
+
+/**
  * Format DOM query results for human-readable output.
  *
  * Displays found nodes with their index, tag, classes, and preview text.
@@ -32,13 +46,11 @@ export function formatDomQuery(data: DomQueryResult): string {
   const fmt = new OutputFormatter();
 
   if (count === 0) {
-    const safeSelector = selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-
     return fmt
       .text(`No nodes found matching "${selector}"`)
       .blank()
       .section('Suggestions:', [
-        `Verify selector: bdg dom eval "document.querySelector('${safeSelector}')"`,
+        `Verify selector: bdg dom eval "document.querySelector('${safeQuerySelectorArgument(selector)}')"`,
         'List elements:   bdg dom query "*"',
         CROSS_ORIGIN_FRAMES_NOTE,
       ])
@@ -61,7 +73,7 @@ export function formatDomQuery(data: DomQueryResult): string {
     .section('Next steps:', [
       `Get HTML:        bdg dom get ${exampleIndex} --raw`,
       `Accessibility:   bdg dom get ${exampleIndex}`,
-      `Extract text:    bdg cdp Runtime.evaluate --params '{"expression": "document.querySelector('${selector.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}').textContent"}'`,
+      `Extract text:    bdg dom eval "document.querySelector('${safeQuerySelectorArgument(selector)}').textContent"`,
     ])
     .build();
 }

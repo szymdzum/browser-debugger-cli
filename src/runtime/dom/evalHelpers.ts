@@ -114,6 +114,34 @@ export async function executeScript(
 }
 
 /**
+ * Wait for a returned promise and use its value, as `dom eval` always has
+ * (REPL mode awaits top-level `await` but returns a promise value as is).
+ *
+ * @param cdp - CDP connection
+ * @param result - Evaluation result
+ * @param script - The script (for error messages)
+ * @returns The promise's value, or `result` if it is not a promise
+ * @throws CommandError (91) when the promise rejects
+ */
+async function settlePromise(
+  cdp: CDPConnection,
+  result: Protocol.Runtime.RemoteObject,
+  script: string
+): Promise<Protocol.Runtime.RemoteObject> {
+  if (result.subtype !== 'promise' || !result.objectId) return result;
+  const settled = (await cdp.send('Runtime.awaitPromise', {
+    promiseObjectId: result.objectId,
+    returnByValue: false,
+    generatePreview: true,
+  })) as Protocol.Runtime.AwaitPromiseResponse;
+  if (settled.exceptionDetails) {
+    const err = scriptExecutionError(describeException(settled.exceptionDetails), script);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
+  }
+  return settled.result;
+}
+
+/**
  * Message of an exception, including thrown non-Error values (`throw "x"`).
  *
  * @param details - Exception details
@@ -219,8 +247,10 @@ async function toEvalResult(
 /**
  * Evaluate a `bdg dom eval` script.
  *
- * Awaits promises, terminates scripts running longer than 20 s (so the page
- * is not left frozen by e.g. an endless loop), and returns a JSON-safe value.
+ * Runs like the DevTools console (REPL mode: top-level `const`/`let` may be
+ * declared again in a later call, top-level `await` works), awaits promises,
+ * terminates scripts running longer than 20 s (so the page is not left
+ * frozen by e.g. an endless loop), and returns a JSON-safe value.
  *
  * @param cdp - CDP connection
  * @param script - JavaScript expression
@@ -232,10 +262,11 @@ export async function evaluateScript(cdp: CDPConnection, script: string): Promis
     const response = await executeScript(cdp, script, {
       returnByValue: false,
       generatePreview: true,
+      replMode: true,
       objectGroup: EVAL_OBJECT_GROUP,
       timeout: EVAL_TIMEOUT_MS,
     });
-    return await toEvalResult(cdp, response.result);
+    return await toEvalResult(cdp, await settlePromise(cdp, response.result, script));
   } finally {
     await cdp
       .send('Runtime.releaseObjectGroup', { objectGroup: EVAL_OBJECT_GROUP })

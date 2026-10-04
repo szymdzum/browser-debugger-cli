@@ -1,6 +1,13 @@
 import { type BaseOptions } from '@/commands/shared/optionTypes.js';
+import { getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
-import { daemonNotRunningError, unknownError, genericError } from '@/errors/messages.js';
+import {
+  daemonNotRunningError,
+  unknownError,
+  genericError,
+  sessionNotRespondingError,
+} from '@/errors/messages.js';
+import { IPCTimeoutError } from '@/ipc/transport/IPCError.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { escapeControlChars } from '@/ui/formatting.js';
 import { STOP_MESSAGES } from '@/ui/messages/session.js';
@@ -88,6 +95,29 @@ export type CommandHandler<TOptions extends BaseOptions, TResult = unknown> = (
 export type CommandFormatter<TResult = unknown> = (data: TResult) => string;
 
 /**
+ * Whether a request the daemon answers from memory timed out, i.e. the
+ * session itself is not responding (slow page work uses the longer timeout
+ * and keeps its own message).
+ *
+ * @param error - Caught error
+ * @returns True for a timed-out quick request
+ */
+function isUnresponsiveSession(error: unknown): error is IPCTimeoutError {
+  return error instanceof IPCTimeoutError && error.timeoutMs === getQuickIPCRequestTimeout();
+}
+
+/**
+ * A daemon that does not answer in time, as a user-facing error (exit 102).
+ *
+ * @param error - IPC timeout
+ * @returns Command error with a way out
+ */
+function notRespondingError(error: IPCTimeoutError): CommandError {
+  const err = sessionNotRespondingError(error.timeoutMs / 1000);
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+}
+
+/**
  * Run a command with consistent error handling, output formatting, and exit codes.
  * Eliminates boilerplate try-catch and JSON output logic from command handlers.
  *
@@ -163,7 +193,8 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     }
 
     process.exit(EXIT_CODES.SUCCESS);
-  } catch (error) {
+  } catch (caught) {
+    const error = isUnresponsiveSession(caught) ? notRespondingError(caught) : caught;
     if (error instanceof CommandError) {
       if (options.json) {
         console.log(

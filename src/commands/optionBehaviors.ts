@@ -66,7 +66,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'get:--nth': {
     default: 'Returns first matching element',
-    whenEnabled: 'Returns the nth matching element (1-based index, only works with --raw)',
+    whenEnabled: 'Returns the nth matching element (0-based index, only works with --raw)',
   },
 
   'console:-H': {

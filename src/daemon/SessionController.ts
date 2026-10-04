@@ -7,10 +7,10 @@
  */
 
 import { ConnectionError } from '@/connection/errors.js';
-import { Session, type SessionEndReason } from '@/daemon/session/Session.js';
+import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
 import { detectTargetMismatch } from '@/daemon/session/targetMismatch.js';
 import { CommandError } from '@/errors/index.js';
-import { LAUNCHED_CHROME_DESCRIPTION, sessionTargetMismatchError } from '@/errors/messages.js';
+import { LAUNCHED_CHROME_DESCRIPTION } from '@/errors/messages.js';
 import {
   type ClientRequestUnion,
   type CommandName,
@@ -80,6 +80,29 @@ function describeStartError(error: unknown): string {
     return typeof suggestion === 'string' ? `${error.message}\n${suggestion}` : error.message;
   }
   return getErrorMessage(error);
+}
+
+/**
+ * Error fields of a failed launch: cancelled by a stop, a start URL that could
+ * not be loaded, or a launch failure.
+ *
+ * @param error - Error the launch failed with
+ * @returns Message and IPC error code
+ */
+function describeLaunchFailure(
+  error: unknown
+): Pick<StartSessionResponse, 'message' | 'errorCode'> {
+  if (error instanceof StartCancelledError) {
+    return { message: error.message, errorCode: IPCErrorCode.SESSION_START_CANCELLED };
+  }
+  const navigationFailed =
+    error instanceof CommandError && error.exitCode === EXIT_CODES.INVALID_URL;
+  return {
+    message: describeStartError(error),
+    errorCode: navigationFailed
+      ? IPCErrorCode.NAVIGATION_FAILED
+      : IPCErrorCode.SESSION_START_FAILED,
+  };
 }
 
 /**
@@ -353,15 +376,7 @@ export class SessionController {
       log.info(`Session start failed: ${getErrorMessage(error)}`);
       this.closing = true;
       setImmediate(() => this.onSessionEnded('crash'));
-      const navigationFailed =
-        error instanceof CommandError && error.exitCode === EXIT_CODES.INVALID_URL;
-      return {
-        status: 'error',
-        message: describeStartError(error),
-        errorCode: navigationFailed
-          ? IPCErrorCode.NAVIGATION_FAILED
-          : IPCErrorCode.SESSION_START_FAILED,
-      };
+      return { status: 'error', ...describeLaunchFailure(error) };
     }
   }
 
@@ -415,13 +430,17 @@ export class SessionController {
   private describeExistingSession(
     request: StartSessionRequest
   ): Pick<StartSessionResponse, 'message' | 'errorCode' | 'existingSession'> {
-    if (!this.session) {
-      return {
-        message: this.closing
-          ? 'Session is shutting down. Wait a moment and try again.'
-          : 'Session startup already in progress. Wait a moment and try again.',
-        errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
-      };
+    const shuttingDown = this.closing || Boolean(this.session?.stopRequested());
+    if (!this.session || shuttingDown) {
+      return shuttingDown
+        ? {
+            message: 'The previous session is still shutting down. Try again in a moment.',
+            errorCode: IPCErrorCode.SESSION_SHUTTING_DOWN,
+          }
+        : {
+            message: 'Session startup already in progress. Wait a moment and try again.',
+            errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
+          };
     }
     const metadata = this.session.metadata();
     const { targetUrl } = this.session.info();
@@ -435,13 +454,13 @@ export class SessionController {
       const current =
         mismatch.current === LAUNCHED_CHROME_DESCRIPTION ? undefined : mismatch.current;
       return {
-        message: sessionTargetMismatchError(mismatch.current, mismatch.requested),
+        message: `Active session is attached to ${mismatch.current}, not ${mismatch.requested}`,
         errorCode: IPCErrorCode.SESSION_TARGET_MISMATCH,
         existingSession: { ...existingSession, ...(current && { targetUrl: current }) },
       };
     }
     return {
-      message: `Session already running (PID ${process.pid}). Stop it first with stop_session_request.`,
+      message: `Session already running (PID ${process.pid}). Stop it first with: bdg stop`,
       errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
       existingSession: { ...existingSession, targetUrl },
     };

@@ -1,6 +1,6 @@
 import os from 'node:os';
 
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
@@ -29,8 +29,6 @@ interface CollectorOptions {
   all?: boolean;
   /** Maximum response body size in megabytes (default: 5MB). */
   maxBodySize?: string;
-  /** Use compact JSON format (no indentation) for output files. */
-  compact?: boolean;
   /** Launch Chrome in headless mode. Default: true if no display, false if display available. */
   headless?: boolean;
   /** WebSocket URL for connecting to existing Chrome instance (skips Chrome launch). */
@@ -119,7 +117,7 @@ function applyCollectorOptions(command: Command): Command {
       false
     )
     .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
-    .option('--compact', 'Use compact JSON format (no indentation) for output files', false)
+    .addOption(new Option('--compact', 'No effect; kept for compatibility').hideHelp())
     .option('--headless', 'Run in headless mode (auto if no display)', defaultHeadless)
     .option('--no-headless', 'Show browser window')
     .option(
@@ -146,7 +144,6 @@ function buildSessionOptions(options: CollectorOptions): {
   userDataDir: string | undefined;
   includeAll: boolean;
   maxBodySize: number | undefined;
-  compact: boolean;
   headless: boolean;
   chromeWsUrl: string | undefined;
   quiet: boolean;
@@ -185,7 +182,6 @@ function buildSessionOptions(options: CollectorOptions): {
     userDataDir,
     includeAll: options.all ?? false,
     maxBodySize: maxBodySizeMB !== undefined ? maxBodySizeMB * 1024 * 1024 : undefined,
-    compact: options.compact ?? false,
     headless: options.headless ?? !hasDisplay(),
     chromeWsUrl: options.chromeWsUrl,
     quiet: options.quiet ?? false,

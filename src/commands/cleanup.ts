@@ -51,7 +51,7 @@ export function registerCleanupCommand(program: Command): void {
     .action(async (options: CleanupCommandOptions) => {
       await runCommand<CleanupCommandOptions, CleanupResult>(
         async (opts) => {
-          if (!opts.force && (await isDaemonAlive())) {
+          if (!opts.force && !opts.aggressive && (await isDaemonAlive())) {
             return {
               success: false,
               error: sessionStillActiveError(readDaemonPid() ?? 0),

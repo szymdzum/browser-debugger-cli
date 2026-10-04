@@ -52,6 +52,17 @@ export interface SessionInfo {
 export type SessionStatusMetadata = NonNullable<StatusResponseData['sessionMetadata']>;
 
 /**
+ * A launch that failed because the session was stopped while starting.
+ */
+export class StartCancelledError extends Error {
+  override readonly name = 'StartCancelledError';
+
+  constructor() {
+    super('The start was cancelled: the session was stopped while it was starting');
+  }
+}
+
+/**
  * A running browser session.
  */
 export class Session {
@@ -64,6 +75,8 @@ export class Session {
   private cleanupFunctions: CleanupFunction[] = [];
   private timeoutTimer: NodeJS.Timeout | null = null;
   private stopping: Promise<void> | null = null;
+  /** Why the session was first asked to stop ('normal' = user, signal or abandoned start) */
+  private stopReason: SessionEndReason | null = null;
   /** Aborted by stop(), so launch steps that wait or retry end at once */
   private readonly launchAbort = new AbortController();
   private started = false;
@@ -116,8 +129,9 @@ export class Session {
     try {
       await this.acquireResources();
     } catch (error) {
+      const cancelled = this.stopReason === 'normal';
       await this.releaseResources();
-      throw error;
+      throw cancelled ? new StartCancelledError() : error;
     }
     this.started = true;
     writeSessionMetadata(this.metadata());
@@ -184,6 +198,15 @@ export class Session {
   }
 
   /**
+   * Whether stop() has been called.
+   *
+   * @returns True once the session is stopping
+   */
+  stopRequested(): boolean {
+    return this.stopping !== null;
+  }
+
+  /**
    * Stop the session: stop collectors, close CDP, terminate Chrome.
    *
    * Idempotent: concurrent and repeated calls share one stop. Safe to call
@@ -193,6 +216,7 @@ export class Session {
    * @returns Promise resolved when teardown is complete
    */
   stop(reason: SessionEndReason): Promise<void> {
+    this.stopReason ??= reason;
     this.launchAbort.abort();
     this.stopping ??= (async () => {
       if (this.timeoutTimer) clearTimeout(this.timeoutTimer);

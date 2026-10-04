@@ -30,7 +30,7 @@ let cachedProtocol: ProtocolSchema | null = null;
  * ```typescript
  * const protocol = loadProtocol();
  * console.log(`Protocol version: ${protocol.version.major}.${protocol.version.minor}`);
- * console.log(`Domains: ${protocol.domains.length}`); // ~53 domains (47 browser + 6 JS)
+ * console.log(`Domains: ${protocol.domains.length}`); // browser + JS domains
  * ```
  */
 export function loadProtocol(): ProtocolSchema {

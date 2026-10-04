@@ -4,10 +4,12 @@ import { normalizeMethod } from '@/cdp/protocol.js';
 import {
   getAllDomainSummaries,
   getDomainMethods,
+  getProtocolCounts,
   getDomainSummary,
   getMethodSchema,
 } from '@/cdp/schema.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
@@ -40,12 +42,19 @@ const DOMAIN_NOTES: Record<string, string> = {
 };
 
 /**
+ * Domain and method counts of the bundled protocol, for the help text.
+ *
+ * @returns e.g. "59 domains, 675 methods"
+ */
+function cdpCountsText(): string {
+  const counts = getProtocolCounts();
+  return `${counts.domains} domains, ${counts.methods} methods`;
+}
+
+/**
  * Method-specific notes for methods with non-obvious behavior.
  */
 const METHOD_NOTES: Record<string, string> = {
-  'Audits.checkContrast':
-    'This method triggers contrast analysis but results are sent via Audits.issueAdded events. ' +
-    'Alternative: bdg dom eval with getComputedStyle() for direct contrast checking.',
   'Audits.enable': 'Enables the Audits domain. Issues will arrive via Audits.issueAdded events.',
   'Overlay.highlightNode':
     'Highlights a node visually. Returns empty on success. Use Overlay.hideHighlight to clear.',
@@ -101,7 +110,7 @@ export function registerCdpCommand(program: Command): void {
   program
     .command('cdp')
     .description(
-      'CDP protocol introspection and execution (53 domains, 300+ methods)\n' +
+      `CDP protocol introspection and execution (${cdpCountsText()})\n` +
         '  Discovery: --list, --search, --describe\n' +
         '  Execution: case-insensitive (network.getcookies works)'
     )
@@ -110,6 +119,7 @@ export function registerCdpCommand(program: Command): void {
     .option('--list', 'List all domains or methods in a domain')
     .option('--describe', 'Show method signature and parameters')
     .option('--search <query>', 'Search methods by keyword')
+    .addOption(jsonOption().hideHelp())
     .action(async (method: string | undefined, options: CdpCommandOptions) => {
       await runCommand(
         async (opts) => {

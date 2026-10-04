@@ -1,6 +1,6 @@
 ---
 name: bdg
-description: Use bdg CLI for browser automation via Chrome DevTools Protocol. Provides direct CDP access (60+ domains, 300+ methods) for DOM queries, navigation, screenshots, network control, and JavaScript execution. Use this skill when you need to automate browsers, scrape dynamic content, or interact with web pages programmatically.
+description: Use bdg CLI for browser automation via Chrome DevTools Protocol. Provides direct access to every CDP domain and method for DOM queries, navigation, screenshots, network control, and JavaScript execution. Use this skill when you need to automate browsers, scrape dynamic content, or interact with web pages programmatically.
 ---
 
 # bdg - Browser Automation CLI
@@ -89,7 +89,7 @@ bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 bdg cdp Page.reload --params '{"ignoreCache": true}'
 
 # Discovery
-bdg cdp --list                    # List all 53 domains
+bdg cdp --list                    # List all domains
 bdg cdp Network --list            # List methods in domain
 bdg cdp Network.getCookies --describe  # Show method schema
 bdg cdp --search cookie           # Search methods

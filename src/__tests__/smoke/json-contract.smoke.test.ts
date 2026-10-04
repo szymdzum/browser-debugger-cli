@@ -99,6 +99,14 @@ void describe('JSON contract', () => {
     const version = await expectEnvelope(['--version', '--json'], 0);
     assert.equal(typeof version.data?.['version'], 'string');
     await expectEnvelope(['dom', '--json'], 81);
+    await expectEnvelope(['dom', 'a11y', '--json'], 81);
+
+    const bare = await runCommand('--json', [], { timeout: 15000 });
+    assert.equal(bare.exitCode, 0);
+    assert.ok(
+      'command' in (JSON.parse(bare.stdout) as object),
+      'bare --json prints the help schema'
+    );
     const status = await expectEnvelope(['--json', 'status'], 0);
     assert.equal(status.data?.['active'], false, '--json before the subcommand is honored');
 
@@ -196,6 +204,8 @@ void describe('JSON contract', () => {
     await expectEnvelope(['dom', 'query', 'button', '--json'], 0);
     await expectEnvelope(['dom', 'a11y', 'tree', '--json'], 0);
     await expectEnvelope(['dom', 'eval', '1+1', '--json'], 0);
+    const cdp = await expectEnvelope(['cdp', 'Browser.getVersion', '--json'], 0);
+    assert.equal(typeof cdp.data?.['result'], 'object', 'cdp accepts --json');
   });
 
   void it('returns large results intact through a pipe', async () => {

@@ -24,6 +24,8 @@ import type {
 } from './session/index.js';
 import type { NoType } from './utils/index.js';
 
+import { getQuickIPCRequestTimeout } from '@/constants.js';
+
 import { sendRequest } from './transport/index.js';
 import { withSession } from './utils/index.js';
 
@@ -47,7 +49,8 @@ export async function connectToDaemon(): Promise<HandshakeResponse> {
   return sendRequest<HandshakeRequest, HandshakeResponse>(
     request,
     'handshake',
-    'handshake_response'
+    'handshake_response',
+    getQuickIPCRequestTimeout()
   );
 }
 
@@ -69,7 +72,12 @@ export async function connectToDaemon(): Promise<HandshakeResponse> {
  */
 export async function getStatus(): Promise<StatusResponse> {
   const request: StatusRequest = withSession({ type: 'status_request' });
-  return sendRequest<StatusRequest, StatusResponse>(request, 'status', 'status_response');
+  return sendRequest<StatusRequest, StatusResponse>(
+    request,
+    'status',
+    'status_response',
+    getQuickIPCRequestTimeout()
+  );
 }
 
 /**
@@ -106,7 +114,12 @@ export async function getPeek(options?: {
     ...(options?.only && { only: options.only }),
     ...(options?.withHeaders && { withHeaders: true }),
   });
-  return sendRequest<PeekRequest, PeekResponse>(request, 'peek', 'peek_response');
+  return sendRequest<PeekRequest, PeekResponse>(
+    request,
+    'peek',
+    'peek_response',
+    getQuickIPCRequestTimeout()
+  );
 }
 
 /**
@@ -126,7 +139,12 @@ export async function getPeek(options?: {
  */
 export async function getHARData(): Promise<HARDataResponse> {
   const request: HARDataRequest = withSession({ type: 'har_data_request' });
-  return sendRequest<HARDataRequest, HARDataResponse>(request, 'HAR data', 'har_data_response');
+  return sendRequest<HARDataRequest, HARDataResponse>(
+    request,
+    'HAR data',
+    'har_data_response',
+    getQuickIPCRequestTimeout()
+  );
 }
 
 /**
@@ -207,12 +225,14 @@ export async function stopSession(): Promise<StopSessionResponse> {
  *
  * @param commandName - Name of the command to send
  * @param params - Command parameters (without type field)
+ * @param timeoutMs - How long to wait (default: IPC timeout; page work can take long)
  * @returns Command response from the session
  * @throws Error if connection fails or command execution fails
  */
 async function sendCommand<T extends CommandName>(
   commandName: T,
-  params: NoType<(typeof COMMANDS)[T]['requestSchema']>
+  params: NoType<(typeof COMMANDS)[T]['requestSchema']>,
+  timeoutMs?: number
 ): Promise<ClientResponse<T>> {
   const request: ClientRequest<T> = {
     ...params,
@@ -223,7 +243,8 @@ async function sendCommand<T extends CommandName>(
   return sendRequest<ClientRequest<T>, ClientResponse<T>>(
     request,
     commandName,
-    `${commandName}_response`
+    `${commandName}_response`,
+    timeoutMs
   );
 }
 
@@ -248,7 +269,7 @@ export async function getDetails(
   type: 'network' | 'console',
   id: string
 ): Promise<ClientResponse<'session_details'>> {
-  return sendCommand('session_details', { itemType: type, id });
+  return sendCommand('session_details', { itemType: type, id }, getQuickIPCRequestTimeout());
 }
 
 /**
@@ -281,10 +302,14 @@ export async function getNetworkHeaders(options?: {
   id?: string;
   headerName?: string;
 }): Promise<ClientResponse<'session_network_headers'>> {
-  return sendCommand('session_network_headers', {
-    ...(options?.id && { id: options.id }),
-    ...(options?.headerName && { headerName: options.headerName }),
-  });
+  return sendCommand(
+    'session_network_headers',
+    {
+      ...(options?.id && { id: options.id }),
+      ...(options?.headerName && { headerName: options.headerName }),
+    },
+    getQuickIPCRequestTimeout()
+  );
 }
 
 /**

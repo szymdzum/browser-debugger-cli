@@ -4,9 +4,10 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
 import { isDaemonConnectionError } from '@/errors/index.js';
-import { invalidResponseError } from '@/errors/messages.js';
+import { invalidResponseError, sessionNotRespondingError } from '@/errors/messages.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
+import { IPCTimeoutError } from '@/ipc/transport/IPCError.js';
 import { removeStaleDaemonFiles } from '@/session/cleanup/staleSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import {
@@ -103,6 +104,15 @@ export function registerStatusCommand(program: Command): void {
             return { success: true, data: jsonOutput };
           } catch (error) {
             const errorMessage = getErrorMessage(error);
+            if (error instanceof IPCTimeoutError) {
+              const err = sessionNotRespondingError(error.timeoutMs / 1000);
+              return {
+                success: false,
+                error: err.message,
+                exitCode: EXIT_CODES.CDP_TIMEOUT,
+                errorContext: { suggestion: err.suggestion },
+              };
+            }
             if (isDaemonConnectionError(error)) {
               await removeStaleDaemonFiles();
               latestMetadata = undefined;

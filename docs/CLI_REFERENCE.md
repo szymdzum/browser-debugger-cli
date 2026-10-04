@@ -594,9 +594,9 @@ bdg network har snapshot1.har
 # ... wait for more activity ...
 bdg network har snapshot2.har
 
-# Stop and export final
-bdg stop
+# Export final, then stop (the data goes away with the session)
 bdg network har final.har
+bdg stop
 ```
 
 ### HTTP Headers Inspection
@@ -828,9 +828,20 @@ bdg localhost:3000 --chrome-ws-url <url>        # Connect to existing Chrome ins
 # The Chrome keeps running after bdg stop.
 
 # Output Optimization
-bdg localhost:3000 --compact                    # Compact JSON (no indentation, 30% size reduction)
 bdg localhost:3000 --max-body-size 10           # Set max response body size (MB, default: 5)
 ```
+
+## Default Behaviors
+
+Things bdg does without being asked, and how to change them:
+
+- **Tracking and ad domains are not recorded**: requests to analytics, tag-manager, ad and social widget domains (Google Analytics/Tag Manager/Ads, DoubleClick, Clarity, Bing, Facebook, TikTok, LinkedIn, Twitter and similar) are dropped. Use `--all` to record them
+- **Large or binary response bodies are not fetched**: images, fonts, media and stylesheets get a placeholder body, as do bodies over `--max-body-size` (5 MB by default). `--all` fetches them (within the size limit); HAR exports mark skipped bodies with a comment
+- **`console.group` headers are hidden**: the messages inside a group are kept; `--all` keeps the group start/end entries too
+- **Dialogs are accepted automatically**: `alert`/`confirm` are accepted and `prompt` is answered with an empty string, so a dialog never blocks the page
+- **One page is followed**: the session stays on its tab; links opening a new tab (`target="_blank"`, `window.open`) are not followed
+- **`--timeout <seconds>`** is the total session time (1-3600 s), after which the session stops as with `bdg stop`
+- **The CDP port is remembered**: without `--port`, the port is saved in `port.txt` and reused while it is free, so each session directory keeps its port
 
 ## Session Files
 
@@ -840,7 +851,8 @@ bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`):
 - **daemon.pid** - Daemon process ID (informational)
 - **session.meta.json** - Session metadata (Chrome PID, CDP port, target info)
 - **chrome.pid** - Chrome launched by bdg, kept until Chrome is confirmed dead
-- **daemon.log** - Daemon output
+- **daemon.log** - Daemon output, appended across sessions (moved to `daemon.log.1` once it exceeds 5 MB)
+- **port.txt** - CDP port reused by the next session in this directory
 - **chrome-profile/** - Chrome user data directory
 
 **Key Behaviors:**

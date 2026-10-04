@@ -6,8 +6,8 @@ import * as assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
 import { SessionController } from '@/daemon/SessionController.js';
-import { Session } from '@/daemon/session/Session.js';
-import type { StartSessionRequest } from '@/ipc/index.js';
+import { Session, StartCancelledError } from '@/daemon/session/Session.js';
+import { IPCErrorCode, type StartSessionRequest } from '@/ipc/index.js';
 
 const request: StartSessionRequest = {
   type: 'start_session_request',
@@ -26,14 +26,23 @@ function fakeSession(outcome: 'ok' | 'fail' = 'ok'): {
   release: () => void;
 } {
   let release = (): void => undefined;
+  let stopped = false;
   const launched = new Promise<void>((resolve, reject) => {
-    release = () => (outcome === 'ok' ? resolve() : reject(new Error('stopped during startup')));
+    release = () =>
+      outcome === 'ok'
+        ? resolve()
+        : reject(stopped ? new StartCancelledError() : new Error('Chrome failed'));
   });
-  const stop = mock.fn(() => Promise.resolve());
+  const stop = mock.fn(() => {
+    stopped = true;
+    return Promise.resolve();
+  });
   const session = {
     launch: () => launched,
     stop,
+    stopRequested: () => stopped,
     info: () => ({ chromePid: 1234, port: 9222, targetUrl: request.url }),
+    metadata: () => ({ startTime: Date.now(), bdgPid: process.pid, port: 9222 }),
   };
   mock.method(Session, 'create', () => session as unknown as Session);
   return { stop, release };
@@ -80,5 +89,32 @@ void describe('SessionController.startSession', () => {
     assert.equal((await response).status, 'error');
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(ended.mock.callCount(), 1);
+  });
+
+  void it('reports a start cancelled by a stop as cancelled, not as a failure', async () => {
+    const { release } = fakeSession('fail');
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+
+    const response = controller.startSession(request);
+    const stopping = controller.stopSession({ type: 'stop_session_request', sessionId: 's' });
+    release();
+    await stopping;
+
+    const result = await response;
+    assert.equal(result.errorCode, IPCErrorCode.SESSION_START_CANCELLED);
+  });
+
+  void it('tells a new start that a stopping session is shutting down', async () => {
+    const { release } = fakeSession('ok');
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    const first = controller.startSession(request);
+    release();
+    await first;
+
+    const stopping = controller.stopSession({ type: 'stop_session_request', sessionId: 's' });
+    const second = await controller.startSession({ ...request, sessionId: 'request-2' });
+    await stopping;
+
+    assert.equal(second.errorCode, IPCErrorCode.SESSION_SHUTTING_DOWN);
   });
 });

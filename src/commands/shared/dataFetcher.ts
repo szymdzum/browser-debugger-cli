@@ -2,6 +2,7 @@
  * Shared data fetching utilities for commands that query daemon state.
  */
 
+import { sessionNotRespondingError } from '@/errors/messages.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { PeekSection } from '@/ipc/protocol/commands.js';
@@ -20,7 +21,13 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 const log = createLogger('fetcher');
 
 export type FetchSuccess<T> = { success: true; data: T };
-export type FetchError = { success: false; error: string; exitCode: number };
+export type FetchError = {
+  success: false;
+  error: string;
+  exitCode: number;
+  /** What the user can do about it (default: start a session) */
+  suggestion?: string;
+};
 export type FetchResult<T> = FetchSuccess<T> | FetchError;
 
 interface PreviewData {
@@ -54,7 +61,13 @@ export async function fetchPreviewOutput(
     response = await getPeek(query);
   } catch (error) {
     if (error instanceof IPCTimeoutError) {
-      return { success: false, error: getErrorMessage(error), exitCode: EXIT_CODES.CDP_TIMEOUT };
+      const err = sessionNotRespondingError(error.timeoutMs / 1000);
+      return {
+        success: false,
+        error: err.message,
+        exitCode: EXIT_CODES.CDP_TIMEOUT,
+        suggestion: err.suggestion,
+      };
     }
     const gone =
       error instanceof IPCConnectionError ||

@@ -264,7 +264,7 @@ export function registerListCommand(networkCmd: Command): void {
             if (result.exitCode === EXIT_CODES.SUCCESS) {
               return { success: true, data: { requests: [], totalCount: 0, filteredCount: 0 } };
             }
-            return createErrorResult(result.error, result.exitCode);
+            return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
 
           const filtered = filterRequests(result.data, options, resourceTypes);

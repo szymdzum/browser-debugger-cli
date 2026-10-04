@@ -163,7 +163,7 @@ export function registerConsoleCommand(program: Command): void {
         async () => {
           const result = await fetchConsoleMessages();
           if (!result.success) {
-            return createErrorResult(result.error, result.exitCode);
+            return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
           const { messages, currentNavigationId } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);

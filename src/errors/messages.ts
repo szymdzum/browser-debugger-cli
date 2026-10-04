@@ -95,6 +95,21 @@ export interface DaemonErrorContext {
 }
 
 /**
+ * The daemon accepted the connection but did not answer in time (frozen or
+ * overloaded).
+ *
+ * @param seconds - How long the command waited
+ * @returns Message and suggestion
+ */
+export function sessionNotRespondingError(seconds: number): ErrorWithSuggestion {
+  return {
+    message: `The session did not respond within ${seconds}s`,
+    suggestion:
+      'Retry in a moment; if it stays unresponsive, end it with: bdg cleanup --force (stops the daemon and its Chrome)',
+  };
+}
+
+/**
  * Generate unified "daemon not running" error message with context.
  *
  * This replaces the three previous variants:
@@ -177,7 +192,7 @@ export function invalidResponseError(reason: string): string {
  * recovery suggestions including the two-step query-then-inspect pattern.
  *
  * @param selector - CSS selector that failed (as received by the command)
- * @returns Formatted error message with context-aware suggestions
+ * @returns Message and context-aware suggestion
  *
  * @example
  * ```typescript
@@ -186,56 +201,44 @@ export function invalidResponseError(reason: string): string {
  *
  * // Attribute selector with shell damage detected
  * elementNotFoundError('[data-test-id=value]')
- * // Shows: "Shell quote handling detected. Selector received without quotes."
+ * // Suggestion: "Shell quote handling detected: ..."
  * ```
  */
-export function elementNotFoundError(selector: string): string {
+export function elementNotFoundError(selector: string): ErrorWithSuggestion {
+  const message = `Element not found: ${selector}`;
+  const discovery = [
+    'Discovery path:',
+    `  1. Query first:  bdg dom query '${selector}'`,
+    '  2. Then inspect: bdg dom a11y describe 0',
+  ];
   const quoteCheck = detectSelectorQuoteDamage(selector);
-
   if (quoteCheck.damaged) {
-    return joinLines(
-      `Error: Element not found: ${selector}`,
-      '',
-      'Shell quote handling detected. Selector received without quotes.',
-      quoteCheck.details && `  ${quoteCheck.details}`,
-      '',
-      'Discovery path (recommended):',
-      `  1. Query first:  bdg dom query '${selector}'`,
-      '  2. Then inspect: bdg dom a11y describe 0',
-      '',
-      'Or escape quotes for direct use:',
-      `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\\"${selector.replace(/=/g, '=\\\\\\"')}\\\\\\"\\")"}'`
-    );
+    return {
+      message,
+      suggestion: joinLines(
+        'Shell quote handling detected: the selector arrived without its quotes.',
+        quoteCheck.details && `  ${quoteCheck.details}`,
+        ...discovery
+      ),
+    };
   }
-
   if (hasAttributeSelector(selector)) {
-    return joinLines(
-      `Error: Element not found: ${selector}`,
-      '',
-      'Attribute selector detected. If quotes were stripped by shell:',
-      '',
-      'Discovery path (recommended):',
-      `  1. Query first:  bdg dom query '${selector}'`,
-      '  2. Then inspect: bdg dom a11y describe 0',
-      '',
-      'Or verify element exists:',
-      '  - Use bdg dom a11y tree to see page structure',
-      '  - Check if element loads asynchronously'
-    );
+    return {
+      message,
+      suggestion: joinLines(
+        'Attribute selector: check that the shell kept its quotes.',
+        ...discovery,
+        'Or see the page structure: bdg dom a11y tree'
+      ),
+    };
   }
-
-  return joinLines(
-    `Error: Element not found: ${selector}`,
-    '',
-    'Suggestions:',
-    '  - Check the selector syntax',
-    '  - Wait for the element to load (page might still be loading)',
-    '  - Use bdg peek to see if page loaded correctly',
-    `  - ${CROSS_ORIGIN_FRAMES_NOTE}`,
-    '',
-    'Advanced: Use CDP for complex queries:',
-    `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\\"${selector}\\")"}'`
-  );
+  return {
+    message,
+    suggestion: joinLines(
+      'Check the selector syntax, or wait for the element to load (bdg peek shows the page state)',
+      CROSS_ORIGIN_FRAMES_NOTE
+    ),
+  };
 }
 
 /**

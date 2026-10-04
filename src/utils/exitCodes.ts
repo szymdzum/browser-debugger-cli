@@ -107,7 +107,7 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
   {
     code: EXIT_CODES.RESOURCE_BUSY,
     name: 'RESOURCE_BUSY',
-    description: 'Resource is locked or busy',
+    description: 'Resource is locked or busy (e.g., a session still shutting down)',
   },
   {
     code: EXIT_CODES.DAEMON_ALREADY_RUNNING,
@@ -133,7 +133,7 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.RESOURCE_CONFLICT,
     name: 'RESOURCE_CONFLICT',
     description:
-      'Request conflicts with current state (e.g., session attached to different target)',
+      'Request conflicts with current state (e.g., session attached to different target, start cancelled by bdg stop)',
   },
   {
     code: EXIT_CODES.SCRIPT_ERROR,
@@ -150,7 +150,11 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     name: 'CDP_CONNECTION_FAILURE',
     description: 'Failed to connect to Chrome DevTools Protocol',
   },
-  { code: EXIT_CODES.CDP_TIMEOUT, name: 'CDP_TIMEOUT', description: 'CDP operation timed out' },
+  {
+    code: EXIT_CODES.CDP_TIMEOUT,
+    name: 'CDP_TIMEOUT',
+    description: 'CDP operation timed out, or the session did not respond',
+  },
   {
     code: EXIT_CODES.SESSION_FILE_ERROR,
     name: 'SESSION_FILE_ERROR',

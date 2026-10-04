@@ -185,7 +185,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
           fmt.text(
             `  No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
           );
-          fmt.text(`  Try: bdg peek --network (to see all types)`);
+          fmt.text(`  Try: bdg network list (to see all types)`);
         } else {
           fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
         }
@@ -277,7 +277,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           fmt.text(
             `No ${typesStr} requests found (filtered from ${options.unfilteredNetworkCount} total requests)`
           );
-          fmt.text(`Try: bdg peek --network (to see all resource types)`);
+          fmt.text(`Try: bdg network list (to see all resource types)`);
         } else {
           fmt.text(PREVIEW_EMPTY_STATES.NO_NETWORK_REQUESTS);
         }

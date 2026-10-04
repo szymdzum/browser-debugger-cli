@@ -66,7 +66,7 @@ export function registerDetailsCommand(program: Command): void {
               errorContext: {
                 suggestion:
                   opts.type === 'network'
-                    ? 'Use bdg peek --network to see available request IDs'
+                    ? 'Use bdg network list to see available request IDs'
                     : 'Use bdg peek --console to see available console message indices',
               },
             };
