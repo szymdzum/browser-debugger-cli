@@ -13,13 +13,18 @@ import { Option, type Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { NetworkHarCommandOptions } from '@/commands/shared/optionTypes.js';
+import { callCDP } from '@/ipc/client.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
+import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
 import { getNetworkRequests, validateFilterOption } from './shared.js';
+
+const log = createLogger('network');
 
 /**
  * HAR command options with filter support.
@@ -31,7 +36,9 @@ interface HarFilterOptions extends NetworkHarCommandOptions {
 /**
  * Generate timestamped filename for HAR export in ~/.bdg/ directory.
  *
- * @returns Full path to HAR file in ~/.bdg/capture-YYYY-MM-DD-HHMMSS.har
+ * A numeric suffix is added when an export from the same second exists.
+ *
+ * @returns Full path to HAR file in ~/.bdg/capture-YYYY-MM-DD-HHMMSS[-n].har
  */
 function generateHARFilename(): string {
   const now = new Date();
@@ -42,9 +49,29 @@ function generateHARFilename(): string {
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
 
-  const filename = `capture-${year}-${month}-${day}-${hours}${minutes}${seconds}.har`;
+  const base = `capture-${year}-${month}-${day}-${hours}${minutes}${seconds}`;
   const sessionDir = path.dirname(getSessionFilePath('OUTPUT'));
-  return path.join(sessionDir, filename);
+  let candidate = path.join(sessionDir, `${base}.har`);
+  for (let n = 2; fs.existsSync(candidate); n++) {
+    candidate = path.join(sessionDir, `${base}-${n}.har`);
+  }
+  return candidate;
+}
+
+/**
+ * Chrome version of the session's browser, for the HAR `log.browser` field.
+ *
+ * @returns Version like "131.0.6778.86", or undefined if unavailable
+ */
+async function getChromeVersion(): Promise<string | undefined> {
+  try {
+    const response = await callCDP('Browser.getVersion', {});
+    const product = (response.data?.result as { product?: string } | undefined)?.product;
+    return product?.split('/')[1];
+  } catch (error) {
+    log.debug(`Could not read Chrome version: ${getErrorMessage(error)}`);
+    return undefined;
+  }
 }
 
 /**
@@ -98,8 +125,10 @@ export function registerHarCommand(networkCmd: Command): void {
             fs.mkdirSync(dir, { recursive: true });
           }
 
+          const chromeVersion = await getChromeVersion();
           const har = buildHAR(requests, {
             version: VERSION,
+            ...(chromeVersion && { chromeVersion }),
           });
 
           await AtomicFileWriter.writeAsync(outputPath, JSON.stringify(har, null, 2));

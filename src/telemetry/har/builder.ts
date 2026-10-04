@@ -2,6 +2,8 @@
  * HAR (HTTP Archive) builder for transforming network telemetry to HAR 1.2 format.
  */
 
+import { STATUS_CODES } from 'node:http';
+
 import type {
   HAR,
   Entry,
@@ -60,7 +62,7 @@ const DEFAULT_HTTP_VERSION = 'HTTP/1.1';
  * ```
  */
 export function buildHAR(requests: NetworkRequest[], metadata: HARMetadata): HAR {
-  const entries = requests.map((req) => buildEntry(req));
+  const entries = [...requests].sort((a, b) => a.timestamp - b.timestamp).map(buildEntry);
 
   const log: HAR['log'] = {
     version: '1.2',
@@ -148,12 +150,12 @@ function buildRequest(req: NetworkRequest): Request {
  * @returns HAR response object
  */
 function buildResponse(req: NetworkRequest): Response {
-  const bodySize =
-    req.encodedDataLength ?? (req.responseBody ? Buffer.byteLength(req.responseBody, 'utf-8') : 0);
+  const bodySize = req.encodedDataLength ?? req.decodedBodyLength ?? 0;
 
   return {
     status: req.status ?? 0,
-    statusText: getStatusText(req.status),
+    statusText: req.statusText ?? getStatusText(req.status),
+    ...(req.status === 0 && req.errorText && { _error: req.errorText }),
     httpVersion: DEFAULT_HTTP_VERSION,
     cookies: extractResponseCookies(req.responseHeaders),
     headers: convertHeaders(req.responseHeaders),
@@ -177,58 +179,22 @@ function buildContent(req: NetworkRequest): Content {
   const mimeType = req.mimeType ?? 'application/octet-stream';
   const skipped = skippedBodyReason(req.responseBody);
   if (skipped !== undefined) {
-    return { size: req.decodedBodyLength ?? 0, mimeType, comment: `Body not captured: ${skipped}` };
+    return {
+      size: req.decodedBodyLength ?? req.encodedDataLength ?? 0,
+      mimeType,
+      comment: `Body not captured: ${skipped}`,
+    };
   }
-  const { text, encoding } = encodeBody(req.responseBody, req.mimeType);
   const size =
     req.decodedBodyLength ?? (req.responseBody ? Buffer.byteLength(req.responseBody, 'utf-8') : 0);
+  const text = req.responseBody;
+  const encoding = req.responseBodyBase64 ? 'base64' : undefined;
   return {
     size,
     mimeType,
     ...(text !== undefined && { text }),
     ...(encoding !== undefined && { encoding }),
   };
-}
-
-/**
- * Encode response body with appropriate encoding.
- *
- * Auto-detects binary content and applies base64 encoding.
- *
- * @param body - Response body string
- * @param mimeType - Response MIME type
- * @returns Encoded text and encoding type
- */
-function encodeBody(
-  body: string | undefined,
-  mimeType: string | undefined
-): { text?: string; encoding?: string } {
-  if (!body) {
-    return {};
-  }
-
-  if (isBinaryMimeType(mimeType)) {
-    return {
-      text: Buffer.from(body).toString('base64'),
-      encoding: 'base64',
-    };
-  }
-
-  return { text: body };
-}
-
-/**
- * Check if MIME type represents binary content.
- *
- * @param mimeType - MIME type to check
- * @returns True if binary content
- */
-function isBinaryMimeType(mimeType: string | undefined): boolean {
-  if (!mimeType) return false;
-
-  const binaryTypes = ['image/', 'video/', 'audio/', 'application/pdf', 'application/zip'];
-
-  return binaryTypes.some((type) => mimeType.startsWith(type));
 }
 
 /**
@@ -540,23 +506,6 @@ function estimateResponseHeadersSize(
  * @returns Status text
  */
 function getStatusText(status: number | undefined): string {
-  if (!status) return 'Unknown';
-
-  const statusTexts: Record<number, string> = {
-    200: 'OK',
-    201: 'Created',
-    204: 'No Content',
-    301: 'Moved Permanently',
-    302: 'Found',
-    304: 'Not Modified',
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-    500: 'Internal Server Error',
-    502: 'Bad Gateway',
-    503: 'Service Unavailable',
-  };
-
-  return statusTexts[status] ?? 'Unknown';
+  if (!status) return '';
+  return STATUS_CODES[status] ?? '';
 }

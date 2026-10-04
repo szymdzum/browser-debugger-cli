@@ -234,3 +234,62 @@ void describe('Full headers and cookies', () => {
     ]);
   });
 });
+
+void describe('HAR export with --all', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    const result = await runCommand(fixture.url, ['--port', String(port), '--headless', '--all'], {
+      timeout: 60000,
+    });
+    assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
+    await runJson('dom', [
+      'eval',
+      'new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(1); img.src = "/pixel.png"; document.body.append(img); })',
+    ]);
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const list = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
+      const pixel = list.requests.find((r) => r.url.endsWith('/pixel.png'));
+      const details = pixel
+        ? await runJson<{ item: { responseBody?: string } }>('details', [
+            'network',
+            pixel.requestId,
+          ])
+        : undefined;
+      if (details?.item.responseBody) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('exports binary bodies once base64-encoded, in start order, with the browser', async () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'all.har');
+    const result = await runCommand('network', ['har', file], { timeout: 30000 });
+    assert.equal(result.exitCode, 0, result.stderr);
+    const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+      log: {
+        browser?: { name: string; version: string };
+        entries: Array<{
+          startedDateTime: string;
+          request: { url: string };
+          response: { content: { text?: string; encoding?: string } };
+        }>;
+      };
+    };
+    const pixel = har.log.entries.find((e) => e.request.url.endsWith('/pixel.png'));
+    assert.equal(pixel?.response.content.encoding, 'base64');
+    const bytes = Buffer.from(pixel?.response.content.text ?? '', 'base64');
+    assert.equal(bytes.subarray(1, 4).toString('latin1'), 'PNG', 'decodes to the original PNG');
+    assert.equal(har.log.browser?.name, 'Chrome');
+    const starts = har.log.entries.map((e) => e.startedDateTime);
+    assert.deepEqual(starts, [...starts].sort());
+  });
+});

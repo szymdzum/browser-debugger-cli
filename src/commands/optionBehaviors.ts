@@ -188,6 +188,14 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Compact output (truncated URLs, no resource types)',
     whenEnabled: 'Verbose output with full URLs and resource types',
   },
+  'start:--all': {
+    default:
+      'Tracking/analytics requests and console noise are filtered; bodies of binary responses (images, fonts) are not captured',
+    whenEnabled:
+      'Everything is captured, including binary response bodies (base64, flagged by responseBodyBase64, within --max-body-size)',
+    tokenImpact:
+      'details network --json and HAR exports can grow considerably on media-heavy pages',
+  },
   'peek:--verbose': {
     default: 'Compact output (truncated URLs, no resource types)',
     whenEnabled: 'Verbose output with full URLs and resource types',

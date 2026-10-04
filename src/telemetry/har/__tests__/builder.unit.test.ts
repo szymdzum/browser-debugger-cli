@@ -224,7 +224,8 @@ describe('HAR Builder', () => {
           timestamp: Date.now(),
           status: 200,
           mimeType: 'image/png',
-          responseBody: 'binary-data',
+          responseBody: Buffer.from('binary-data').toString('base64'),
+          responseBodyBase64: true,
         },
       ];
 
@@ -233,7 +234,7 @@ describe('HAR Builder', () => {
 
       assert.equal(content.mimeType, 'image/png');
       assert.equal(content.encoding, 'base64');
-      assert.ok(content.text); // Should be base64 encoded
+      assert.equal(content.text, Buffer.from('binary-data').toString('base64'));
     });
 
     test('uses encodedDataLength for response bodySize', () => {
@@ -473,7 +474,7 @@ describe('HAR Builder', () => {
       const response = getFirstEntry(har.log.entries).response;
 
       assert.equal(response.status, 0);
-      assert.equal(response.statusText, 'Unknown');
+      assert.equal(response.statusText, '');
     });
 
     test('handles URL with special characters', () => {
@@ -629,10 +630,8 @@ describe('HAR Builder', () => {
   });
 
   describe('Binary content encoding validation', () => {
-    test('base64 encodes binary content correctly', () => {
-      const binaryData = 'test-binary-data';
-      const expectedBase64 = Buffer.from(binaryData).toString('base64');
-
+    test('keeps base64 bodies from Chrome as they are (no double encoding)', () => {
+      const base64 = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString('base64');
       const requests: NetworkRequest[] = [
         {
           requestId: 'req-1',
@@ -641,46 +640,52 @@ describe('HAR Builder', () => {
           timestamp: Date.now(),
           status: 200,
           mimeType: 'image/png',
-          responseBody: binaryData,
+          responseBody: base64,
+          responseBodyBase64: true,
         },
       ];
 
-      const har = buildHAR(requests, baseMetadata);
-      const content = getFirstEntry(har.log.entries).response.content;
+      const content = getFirstEntry(buildHAR(requests, baseMetadata).log.entries).response.content;
 
       assert.equal(content.encoding, 'base64');
-      assert.equal(content.text, expectedBase64);
+      assert.equal(content.text, base64);
     });
 
-    test('detects various binary MIME types', () => {
-      const binaryTypes = [
-        'image/jpeg',
-        'image/gif',
-        'video/mp4',
-        'audio/mpeg',
-        'application/pdf',
-        'application/zip',
+    test('uses the full status text table, the server text first, and _error for failures', () => {
+      const entry = (
+        overrides: Partial<NetworkRequest>
+      ): ReturnType<typeof getFirstEntry>['response'] =>
+        getFirstEntry(
+          buildHAR(
+            [
+              {
+                requestId: 'r',
+                url: 'https://example.com',
+                method: 'GET',
+                timestamp: 1,
+                ...overrides,
+              },
+            ],
+            baseMetadata
+          ).log.entries
+        ).response;
+
+      assert.equal(entry({ status: 307 }).statusText, 'Temporary Redirect');
+      assert.equal(entry({ status: 418 }).statusText, "I'm a Teapot");
+      assert.equal(entry({ status: 200, statusText: 'Fine' }).statusText, 'Fine');
+      assert.equal(
+        entry({ status: 0, errorText: 'net::ERR_NAME_NOT_RESOLVED' })._error,
+        'net::ERR_NAME_NOT_RESOLVED'
+      );
+    });
+
+    test('orders entries by start time', () => {
+      const requests: NetworkRequest[] = [
+        { requestId: 'late', url: 'https://example.com/b', method: 'GET', timestamp: 2000 },
+        { requestId: 'early', url: 'https://example.com/a', method: 'GET', timestamp: 1000 },
       ];
-
-      for (const mimeType of binaryTypes) {
-        const requests: NetworkRequest[] = [
-          {
-            requestId: 'req-1',
-            url: 'https://example.com/file',
-            method: 'GET',
-            timestamp: Date.now(),
-            status: 200,
-            mimeType,
-            responseBody: 'data',
-          },
-        ];
-
-        const har = buildHAR(requests, baseMetadata);
-        const content = getFirstEntry(har.log.entries).response.content;
-
-        assert.equal(content.encoding, 'base64', `Should base64 encode ${mimeType}`);
-        assert.equal(content.text, Buffer.from('data').toString('base64'));
-      }
+      const urls = buildHAR(requests, baseMetadata).log.entries.map((e) => e.request.url);
+      assert.deepEqual(urls, ['https://example.com/a', 'https://example.com/b']);
     });
 
     test('does not encode text content', () => {

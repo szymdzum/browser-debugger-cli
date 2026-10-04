@@ -401,8 +401,11 @@ export function shouldFetchBodyWithReason(
     (mimeType?.includes('text') ?? false) ||
     (mimeType?.includes('html') ?? false);
 
-  if (!isTextResponse) {
-    return { should: false, reason: 'Non-text response type' };
+  if (!isTextResponse && !options.fetchAllBodies) {
+    return {
+      should: false,
+      reason: 'Binary response (start the session with --all to capture it)',
+    };
   }
 
   if (encodedDataLength > maxBodySize) {
@@ -419,7 +422,8 @@ export function shouldFetchBodyWithReason(
   if (!shouldFetch) {
     return {
       should: false,
-      reason: 'Auto-optimization (see DEFAULT_SKIP_BODY_PATTERNS)',
+      reason:
+        'Skipped by default for this kind of resource (start the session with --all to capture it)',
     };
   }
 

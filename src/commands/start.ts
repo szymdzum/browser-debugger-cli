@@ -113,7 +113,11 @@ function applyCollectorOptions(command: Command): Command {
       'Auto-stop after timeout in seconds (unlimited if not specified)'
     )
     .option('-u, --user-data-dir <path>', 'Chrome user data directory (defaults to session dir)')
-    .option('-a, --all', 'Include all data (disable filtering of tracking/analytics)', false)
+    .option(
+      '-a, --all',
+      'Include all data: no tracking/analytics filtering, and capture every response body (incl. binary)',
+      false
+    )
     .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
     .option('--compact', 'Use compact JSON format (no indentation) for output files', false)
     .option('--headless', 'Run in headless mode (auto if no display)', defaultHeadless)

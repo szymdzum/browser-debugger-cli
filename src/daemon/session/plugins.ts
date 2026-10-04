@@ -93,6 +93,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
       async start({ cdp, config, store }) {
         const networkOptions = {
           includeAll: config.includeAll ?? false,
+          fetchAllBodies: config.includeAll ?? false,
           getCurrentNavigationId: store.getCurrentNavigationId ?? undefined,
           pendingRequests: store.pendingNetworkRequests,
           ...filterDefined({
