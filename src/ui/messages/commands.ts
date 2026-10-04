@@ -44,6 +44,17 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
 }
 
 /**
+ * A JavaScript dialog bdg accepted, as one line.
+ *
+ * @param dialog - Dialog type and text
+ * @returns e.g. 'alert() dialog accepted: "Saved"'
+ */
+export function dialogConsoleText(dialog: { type: string; message: string }): string {
+  const kind = dialog.type === 'beforeunload' ? 'beforeunload' : `${dialog.type}()`;
+  return `${kind} dialog accepted${dialog.message ? `: "${dialog.message}"` : ''}`;
+}
+
+/**
  * Generate warning message.
  *
  * @param message - Warning text

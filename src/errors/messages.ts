@@ -487,6 +487,18 @@ export function fileNotFoundError(file: string): ErrorWithSuggestion {
 }
 
 /**
+ * A directory given for a file input.
+ *
+ * @param file - Resolved path
+ */
+export function uploadDirectoryError(file: string): ErrorWithSuggestion {
+  return {
+    message: `Not a file: ${file} is a directory`,
+    suggestion: 'Give the path of a file inside it',
+  };
+}
+
+/**
  * Several files given for a file input that accepts one.
  *
  * @param count - Number of files given

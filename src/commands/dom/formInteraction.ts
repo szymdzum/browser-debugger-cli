@@ -24,11 +24,13 @@ import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import { internalError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
+import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import { describeModifiers, findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { dialogConsoleText } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -69,7 +71,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .command('fill')
     .description('Fill a form field with a value (React-compatible, waits for stability)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
-    .argument('<value>', 'Value to fill')
+    .argument('<value>', 'Value to fill (file inputs: paths separated by commas, "" clears)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
     .option('--no-wait', 'Skip waiting for network stability after fill')
@@ -320,6 +322,26 @@ export function registerFormInteractionCommands(program: Command): void {
 type ActionOutput<T> = Omit<T, 'success'>;
 
 /**
+ * Add an action's warning and the dialogs it caused to the output.
+ *
+ * @param fmt - Output being built
+ * @param result - Action result
+ */
+function appendNotices(
+  fmt: OutputFormatter,
+  result: { warning?: string | undefined; dialogs?: DialogInfo[] | undefined }
+): void {
+  if (result.warning) {
+    fmt.blank();
+    fmt.text(`⚠ Warning: ${result.warning}`);
+  }
+  for (const dialog of result.dialogs ?? []) {
+    fmt.blank();
+    fmt.text(`Dialog: ${dialogConsoleText(dialog)}`);
+  }
+}
+
+/**
  * Format fill command output for human-readable display.
  */
 function formatFillOutput(result: ActionOutput<FillResult>): string {
@@ -340,6 +362,7 @@ function formatFillOutput(result: ActionOutput<FillResult>): string {
   }
 
   fmt.keyValueList(details, 15);
+  appendNotices(fmt, result);
   return fmt.build();
 }
 
@@ -358,10 +381,7 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
     ],
     15
   );
-  if (result.warning) {
-    fmt.blank();
-    fmt.text(`⚠ Warning: ${result.warning}`);
-  }
+  appendNotices(fmt, result);
   return fmt.build();
 }
 
@@ -375,7 +395,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
 
   const details: [string, string][] = [
     ['Selector', result.selector ?? 'unknown'],
-    ['Clicked', result.clicked ? 'yes' : 'no'],
+    ['Submit Button', result.clicked ? 'used' : 'none'],
   ];
 
   if (result.networkRequests !== undefined)
@@ -385,6 +405,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
 
   fmt.keyValueList(details, 20);
+  appendNotices(fmt, result);
   fmt.blank();
   fmt.text('Next steps:');
   fmt.section('', [
@@ -415,6 +436,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   }
 
   fmt.keyValueList(details, 15);
+  appendNotices(fmt, result);
   return fmt.build();
 }
 

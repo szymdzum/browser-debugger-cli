@@ -23,6 +23,33 @@ import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 export const REACT_FILL_SCRIPT = `
 (function(selector, value, options) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector);
+  let warning = null;
+  // Why the browser did not take the value as given (it sanitizes instead of
+  // throwing: bad dates become "", colors #000000, ranges are clamped)
+  const rejectedValue = (field, type, text) => {
+    const formats = {
+      number: 'a number',
+      date: 'YYYY-MM-DD',
+      time: 'HH:MM',
+      'datetime-local': 'YYYY-MM-DDTHH:MM',
+      month: 'YYYY-MM',
+      week: 'YYYY-Www'
+    };
+    const rejected = 'The browser rejected "' + text + '" for a ' + type + ' field (it keeps its previous value)';
+    if (formats[type] && text.trim() !== '' && field.value === '') {
+      return { error: rejected, suggestion: 'Expected ' + formats[type] };
+    }
+    if (type === 'color' && field.value.toLowerCase() !== text.trim().toLowerCase()) {
+      return { error: rejected, suggestion: 'Expected a hex color like #1a2b3c' };
+    }
+    if (type === 'range' && Number(field.value) !== Number(text)) {
+      return {
+        error: 'The browser would set ' + field.value + ' instead of "' + text + '" (range ' + (field.min || 0) + ' to ' + (field.max || 100) + ', step ' + (field.step || 1) + ')',
+        suggestion: 'Use a value within the range that matches the step'
+      };
+    }
+    return null;
+  };
   
   if (allMatches.length === 0) {
     return { 
@@ -71,7 +98,7 @@ export const REACT_FILL_SCRIPT = `
     };
   }
 
-  if (el.disabled) {
+  if (el.disabled || el.matches(':disabled')) {
     return {
       success: false,
       error: 'Element is disabled',
@@ -171,31 +198,26 @@ export const REACT_FILL_SCRIPT = `
       };
     }
     
-    if (setter) {
-      setter.call(el, value);
-    } else {
-      el.value = value;
-    }
-    
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-
-    const formats = {
-      number: 'a number' + (el.min && el.max ? ' between ' + el.min + ' and ' + el.max : ''),
-      date: 'YYYY-MM-DD',
-      time: 'HH:MM',
-      'datetime-local': 'YYYY-MM-DDTHH:MM',
-      month: 'YYYY-MM',
-      week: 'YYYY-Www'
-    };
-    if (formats[inputType] && value.trim() !== '' && el.value === '') {
+    const setValue = (text) => (setter ? setter.call(el, text) : (el.value = text));
+    const previous = el.value;
+    setValue(value);
+    const rejection = rejectedValue(el, inputType, value);
+    if (rejection) {
+      setValue(previous);
+      if (options.blur !== false) el.blur();
       return {
         success: false,
-        error: 'The browser rejected "' + value + '" for a ' + inputType + ' field (it is now empty)',
+        error: rejection.error,
         elementType: tagName,
         inputType: inputType,
-        suggestion: 'Expected ' + formats[inputType]
+        suggestion: rejection.suggestion
       };
+    }
+
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    if (el.validity && (el.validity.rangeOverflow || el.validity.rangeUnderflow)) {
+      warning = 'The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed';
     }
   }
   
@@ -209,7 +231,8 @@ export const REACT_FILL_SCRIPT = `
     value: el.isContentEditable ? el.textContent : inputType === 'password' ? '********' : el.value,
     elementType: tagName,
     inputType: inputType || null,
-    checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined
+    checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
+    warning: warning || undefined
   };
 })
 `;
@@ -279,7 +302,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   }
   
   const tagName = el.tagName.toLowerCase();
-  if (el.disabled) {
+  if (el.disabled || el.matches(':disabled')) {
     return {
       success: false,
       error: 'Element is disabled',
@@ -307,29 +330,58 @@ export const CLICK_ELEMENT_SCRIPT = `
   // top-page coordinates: frame offsets (border and padding) are added.
   window.__bdgClickTarget = el;
   const rect = el.getBoundingClientRect();
+  const view = el.ownerDocument.defaultView;
   const hitTest = (node, px, py) => {
     const root = node.getRootNode();
     const hit = (typeof root.elementFromPoint === 'function' ? root : node.ownerDocument).elementFromPoint(px, py);
     return hit !== null && (hit === node || node.contains(hit));
   };
-  let x = rect.left + rect.width / 2;
-  let y = rect.top + rect.height / 2;
-  let hittable = rect.width > 0 && rect.height > 0 && hitTest(el, x, y);
-  for (let frameWindow = el.ownerDocument.defaultView; frameWindow && frameWindow.frameElement; frameWindow = frameWindow.parent) {
-    const frame = frameWindow.frameElement;
-    const frameRect = frame.getBoundingClientRect();
-    const frameStyle = frame.ownerDocument.defaultView.getComputedStyle(frame);
-    x += frameRect.left + frame.clientLeft + parseFloat(frameStyle.paddingLeft);
-    y += frameRect.top + frame.clientTop + parseFloat(frameStyle.paddingTop);
-    hittable = hittable && hitTest(frame, x, y);
+  const toTopPage = (px, py) => {
+    let hittable = hitTest(el, px, py);
+    for (let frameWindow = view; frameWindow && frameWindow.frameElement; frameWindow = frameWindow.parent) {
+      const frame = frameWindow.frameElement;
+      const frameRect = frame.getBoundingClientRect();
+      const frameStyle = frame.ownerDocument.defaultView.getComputedStyle(frame);
+      px += frameRect.left + frame.clientLeft + parseFloat(frameStyle.paddingLeft);
+      py += frameRect.top + frame.clientTop + parseFloat(frameStyle.paddingTop);
+      hittable = hittable && hitTest(frame, px, py);
+    }
+    return { x: px, y: py, hittable: hittable };
+  };
+  const left = Math.max(rect.left, 0);
+  const right = Math.min(rect.right, view.innerWidth);
+  const top = Math.max(rect.top, 0);
+  const bottom = Math.min(rect.bottom, view.innerHeight);
+  const area = right > left && bottom > top
+    ? { left: left, top: top, width: right - left, height: bottom - top }
+    : { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  const fractions = [[0.5, 0.5], [0.5, 0.25], [0.5, 0.75], [0.25, 0.5], [0.75, 0.5], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
+  const hasSize = rect.width > 0 && rect.height > 0;
+  let point = null;
+  for (const [fx, fy] of hasSize ? fractions : [[0.5, 0.5]]) {
+    const candidate = toTopPage(area.left + area.width * fx, area.top + area.height * fy);
+    point = point || candidate;
+    if (hasSize && candidate.hittable) { point = candidate; break; }
   }
-  const style = el.ownerDocument.defaultView.getComputedStyle(el);
+  const x = point.x;
+  const y = point.y;
+  const hittable = hasSize && point.hittable;
+  const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') +
+    (node.classList && node.classList.length ? '.' + Array.from(node.classList).slice(0, 2).join('.') : '');
+  const coveredBy = () => {
+    const root = el.getRootNode();
+    const hit = (typeof root.elementFromPoint === 'function' ? root : el.ownerDocument)
+      .elementFromPoint(area.left + area.width / 2, area.top + area.height / 2);
+    return hit && !el.contains(hit) ? ' (' + describe(hit) + ')' : '';
+  };
+  const style = view.getComputedStyle(el);
   let obstruction = null;
   if (style.display === 'none' || el.getClientRects().length === 0) obstruction = 'not rendered (display: none)';
   else if (style.visibility === 'hidden') obstruction = 'hidden (visibility: hidden)';
+  else if (el.closest('[inert]')) obstruction = 'inert (the page made it non-interactive)';
   else if (style.pointerEvents === 'none') obstruction = 'not clickable (pointer-events: none)';
-  else if (rect.width === 0 || rect.height === 0) obstruction = 'zero-size';
-  else if (!hittable) obstruction = 'covered by another element';
+  else if (!hasSize) obstruction = 'zero-size';
+  else if (!hittable) obstruction = 'covered by another element' + coveredBy();
 
   return {
     success: true,

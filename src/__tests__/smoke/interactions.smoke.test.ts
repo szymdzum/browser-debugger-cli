@@ -204,5 +204,37 @@ void describe('DOM interactions', () => {
     await bdg(['dom', 'fill', String(upload?.index), file]);
     assert.equal(await evaluate("document.getElementById('upload').files[0].name"), 'note.txt');
     await bdg(['dom', 'fill', '#upload', path.join(path.dirname(file), 'missing.txt')], 83);
+    await bdg(['dom', 'fill', '#upload', path.dirname(file)], 81);
+    await bdg(['dom', 'fill', '#upload', '']);
+    assert.equal(await evaluate("document.getElementById('upload').files.length"), 0);
+  });
+
+  void it('keeps the previous value when the browser would change the given one', async () => {
+    await evaluate(
+      "document.body.insertAdjacentHTML('beforeend', '<input id=\"hue\" type=\"color\" value=\"#112233\"><input id=\"level\" type=\"range\" min=\"0\" max=\"10\" value=\"3\"><input id=\"qty\" type=\"number\" max=\"10\"><fieldset disabled><input id=\"inset\"></fieldset>'); 1"
+    );
+    assert.match(await bdg(['dom', 'fill', '#hue', 'notacolor'], 81), /rejected/);
+    assert.equal(await evaluate("document.getElementById('hue').value"), '#112233');
+    assert.match(await bdg(['dom', 'fill', '#level', '70'], 81), /would set 10/);
+    assert.equal(await evaluate("document.getElementById('level').value"), '3');
+    assert.match(await bdg(['dom', 'fill', '#qty', '50']), /outside the allowed range/);
+    assert.match(await bdg(['dom', 'fill', '#inset', 'x'], 81), /disabled/);
+  });
+
+  void it('types at the end of a prefilled field', async () => {
+    await bdg(['dom', 'fill', '#name', 'hello']);
+    await bdg(['dom', 'pressKey', '#name', 'x']);
+    assert.equal(await evaluate("document.getElementById('name').value"), 'hellox');
+  });
+
+  void it('reports dialogs and what covers a click target', async () => {
+    await evaluate(
+      "document.body.insertAdjacentHTML('beforeend', '<button id=\"alerting\" onclick=\"alert(&quot;Saved&quot;)\">A</button><div style=\"position:relative\"><button id=\"hidden-behind\">B</button><div id=\"shield\" style=\"position:absolute;inset:0\"></div></div>'); 1"
+    );
+    const clicked = JSON.parse(await bdg(['dom', 'click', '#alerting', '--json'])) as {
+      data: { dialogs?: Array<{ type: string; message: string }> };
+    };
+    assert.deepEqual(clicked.data.dialogs, [{ type: 'alert', message: 'Saved' }]);
+    assert.match(await bdg(['dom', 'click', '#hidden-behind']), /covered by another element \(div#shield\)/);
   });
 });
