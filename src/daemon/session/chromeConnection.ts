@@ -12,13 +12,18 @@ import { ConfigError } from '@/daemon/errors.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
+import {
+  externalBrowserIdMismatchError,
+  externalChromeUnreachableError,
+  externalPageNotFoundError,
+} from '@/errors/messages.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
 import { getSessionDir } from '@/session/paths.js';
 import type { CDPTarget, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { createPageTarget, fetchCDPTargets } from '@/utils/http.js';
+import { createPageTarget, fetchBrowserWsUrl, fetchCDPTargets } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -96,36 +101,63 @@ async function resolveExternalTarget(
   config: SessionConfig,
   log: Logger
 ): Promise<CDPTarget> {
-  const { hostname, host, pathname, protocol, port } = new URL(wsUrl);
+  const { hostname, pathname, protocol, port } = new URL(wsUrl);
   const http = { host: hostname, secure: protocol === 'wss:' };
+  const endpoint = `${http.secure ? 'https' : 'http'}://${hostname}:${config.port}`;
+  const browserWsUrl = await fetchBrowserWsUrl(config.port, log, http);
+  if (!browserWsUrl)
+    fail(externalChromeUnreachableError(endpoint, http.secure), EXIT_CODES.CDP_CONNECTION_FAILURE);
   const targets = await fetchCDPTargets(config.port, log, http);
-  const targetId = pathname.split('/').pop() ?? 'external';
+  const targetId = pathname.split('/').pop() ?? '';
   if (!pathname.startsWith(BROWSER_WS_PATH)) {
     const known = targets.find((t) => t.id === targetId);
-    return {
-      ...(known ?? { id: targetId, type: 'page', title: '', url: config.url }),
-      webSocketDebuggerUrl: wsUrl,
-    };
+    if (!known) fail(externalPageNotFoundError(targetId, endpoint), EXIT_CODES.RESOURCE_NOT_FOUND);
+    return { ...known, webSocketDebuggerUrl: wsUrl };
+  }
+  if (new URL(browserWsUrl).pathname !== pathname) {
+    const actual = withEndpoint(browserWsUrl, protocol, hostname, port);
+    fail(externalBrowserIdMismatchError(endpoint, actual), EXIT_CODES.RESOURCE_NOT_FOUND);
   }
 
   const page =
     targets.find((t) => t.type === 'page') ??
     (await createPageTarget(hostname, config.port, log, http));
-  if (!page) {
-    throw new CommandError(
-      `No page to attach to in the Chrome at ${host}`,
-      {
-        suggestion: `Check that Chrome is running with --remote-debugging-port=${config.port} and reachable`,
-      },
-      EXIT_CODES.CDP_CONNECTION_FAILURE
-    );
-  }
-  const pageWsUrl = new URL(page.webSocketDebuggerUrl);
-  pageWsUrl.protocol = protocol;
-  pageWsUrl.hostname = hostname;
-  pageWsUrl.port = port;
+  if (!page)
+    fail(externalChromeUnreachableError(endpoint, http.secure), EXIT_CODES.CDP_CONNECTION_FAILURE);
   log.info(`Attaching to page ${page.url} of the external Chrome`);
-  return { ...page, webSocketDebuggerUrl: pageWsUrl.toString() };
+  return {
+    ...page,
+    webSocketDebuggerUrl: withEndpoint(page.webSocketDebuggerUrl, protocol, hostname, port),
+  };
+}
+
+/**
+ * A DevTools WebSocket URL from Chrome, reached the way the user's URL is
+ * (Chrome reports its own host, e.g. 127.0.0.1, even behind a proxy).
+ *
+ * @param url - URL reported by Chrome
+ * @param protocol - Protocol of the user's URL
+ * @param hostname - Host of the user's URL
+ * @param port - Port of the user's URL
+ * @returns The URL with the user's protocol, host and port
+ */
+function withEndpoint(url: string, protocol: string, hostname: string, port: string): string {
+  const result = new URL(url);
+  result.protocol = protocol;
+  result.hostname = hostname;
+  result.port = port;
+  return result.toString();
+}
+
+/**
+ * Throw a user-facing error.
+ *
+ * @param err - Message and suggestion
+ * @param exitCode - Exit code
+ * @throws CommandError always
+ */
+function fail(err: { message: string; suggestion: string }, exitCode: number): never {
+  throw new CommandError(err.message, { suggestion: err.suggestion }, exitCode);
 }
 
 /**

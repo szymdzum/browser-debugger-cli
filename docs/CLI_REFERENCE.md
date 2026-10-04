@@ -829,7 +829,8 @@ bdg localhost:3000 --chrome-ws-url <url>        # Connect to existing Chrome ins
 # --chrome-ws-url takes the browser URL from http://host:port/json/version
 # (ws://host:port/devtools/browser/<id>; bdg uses the first open tab, or opens one)
 # or a page URL from /json/list (ws://host:port/devtools/page/<id>).
-# The Chrome keeps running after bdg stop.
+# The Chrome keeps running after bdg stop. --port and -u cannot be combined with it
+# (the running Chrome has its own); a stale browser id or a missing page id is refused (83).
 
 # Output Optimization
 bdg localhost:3000 --max-body-size 10           # Set max response body size (MB, default: 5)
@@ -844,7 +845,7 @@ Things bdg does without being asked, and how to change them:
 - **`console.group` headers are hidden**: the messages inside a group are kept; `--all` keeps the group start/end entries too
 - **Dialogs are accepted automatically**: `alert`/`confirm` are accepted and `prompt` is answered with an empty string, so a dialog never blocks the page
 - **One page is followed**: the session stays on its tab; links opening a new tab (`target="_blank"`, `window.open`) are not followed
-- **`--timeout <seconds>`** is the total session time (1-3600 s), after which the session stops as with `bdg stop`
+- **`--timeout <seconds>`** (1-3600) stops the session that many seconds after the page has loaded, as with `bdg stop`; the start output shows the time (`autoStopAt` with `--json`)
 - **The CDP port is remembered**: without `--port`, the port is saved in `port.txt` and reused while it is free, so each session directory keeps its port
 
 ## Session Files

@@ -18,9 +18,8 @@ void describe('URL utility contracts', () => {
     assert.equal(fileUrl, 'file:///Users/Test/index.html');
   });
 
-  void it('accepts javascript and data URLs when validating', () => {
-    const jsResult = validateUrl('javascript:alert(1)');
-    assert.equal(jsResult.valid, true);
+  void it('accepts data URLs but not javascript: URLs as a start page', () => {
+    assert.equal(validateUrl('javascript:alert(1)').valid, false);
 
     const dataResult = validateUrl('data:text/plain,hello');
     assert.equal(dataResult.valid, true);
@@ -93,12 +92,17 @@ void describe('validateChromeWsUrl', () => {
     }
   });
 
-  void it('rejects http:// scheme with a helpful suggestion', () => {
-    const result = validateChromeWsUrl('http://127.0.0.1:9222/json');
+  void it('rejects http:// scheme with a hint for the same host', () => {
+    const result = validateChromeWsUrl('http://127.0.0.1:9333/json');
     assert.equal(result.valid, false);
     if (!result.valid) {
       assert.match(result.error, /ws:\/\/ or wss:\/\//);
-      assert.ok(result.suggestion && result.suggestion.length > 0);
+      assert.match(result.suggestion ?? '', /127\.0\.0\.1:9333\/json\/version/);
     }
+  });
+
+  void it('requires a browser or page path', () => {
+    assert.equal(validateChromeWsUrl('ws://127.0.0.1:9222').valid, false);
+    assert.equal(validateChromeWsUrl('ws://127.0.0.1:9222/devtools/page/ABC').valid, true);
   });
 });

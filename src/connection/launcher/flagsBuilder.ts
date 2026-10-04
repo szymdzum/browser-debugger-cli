@@ -12,12 +12,7 @@ import * as fs from 'fs';
 
 import * as chromeLauncher from 'chrome-launcher';
 
-import {
-  BDG_CHROME_FLAGS,
-  DEFAULT_CDP_PORT,
-  HEADLESS_FLAG,
-  DOCKER_CHROME_FLAGS,
-} from '@/constants.js';
+import { BDG_CHROME_FLAGS, HEADLESS_FLAG, DOCKER_CHROME_FLAGS } from '@/constants.js';
 
 /**
  * Options that affect Chrome flags construction.
@@ -34,8 +29,6 @@ export interface FlagsBuilderOptions {
   /** bdg session directory; adds a marker flag used to verify the process during crash cleanup */
   sessionDir?: string | undefined;
 }
-
-const REMOTE_DEBUGGING_FLAG = (port: number): string => `--remote-debugging-port=${port}`;
 
 /**
  * Marker flag identifying a Chrome launched by bdg for a given session directory.
@@ -131,13 +124,22 @@ export function isDocker(): boolean {
  * // Includes --disable-gpu, --no-sandbox if in Docker
  * ```
  */
-export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
-  const port = options.port ?? DEFAULT_CDP_PORT;
+/**
+ * chrome-launcher's default flags (plus its Linux sandbox flag). bdg passes
+ * them itself and tells chrome-launcher to skip its own copy, so each flag
+ * appears once; chrome-launcher adds `--remote-debugging-port`.
+ *
+ * @returns Default flags
+ */
+function defaultFlags(): string[] {
+  const flags = chromeLauncher.Launcher.defaultFlags();
+  return process.platform === 'linux' ? [...flags, '--disable-setuid-sandbox'] : flags;
+}
 
-  const baseFlags = options.ignoreDefaultFlags ? [] : chromeLauncher.Launcher.defaultFlags();
+export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
+  const baseFlags = options.ignoreDefaultFlags ? [] : defaultFlags();
 
   const bdgFlags: string[] = [
-    REMOTE_DEBUGGING_FLAG(port),
     ...(options.sessionDir ? [chromeSessionMarkerFlag(options.sessionDir)] : []),
     ...BDG_CHROME_FLAGS,
   ];

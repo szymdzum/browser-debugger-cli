@@ -6,7 +6,7 @@
  * since the daemon's lifetime is the session's lifetime.
  */
 
-import { CDPProtocolError, ConnectionError } from '@/connection/errors.js';
+import { CDPProtocolError, ChromeLaunchError, ConnectionError } from '@/connection/errors.js';
 import { Session, StartCancelledError, type SessionEndReason } from '@/daemon/session/Session.js';
 import { detectTargetMismatch } from '@/daemon/session/targetMismatch.js';
 import { CommandError } from '@/errors/index.js';
@@ -87,11 +87,11 @@ function describeStartError(error: unknown): string {
  * not be loaded, or a launch failure.
  *
  * @param error - Error the launch failed with
- * @returns Message and IPC error code
+ * @returns Message, IPC error code, and the exit code of a user-facing error
  */
 function describeLaunchFailure(
   error: unknown
-): Pick<StartSessionResponse, 'message' | 'errorCode'> {
+): Pick<StartSessionResponse, 'message' | 'errorCode' | 'exitCode'> {
   if (error instanceof StartCancelledError) {
     return { message: error.message, errorCode: IPCErrorCode.SESSION_START_CANCELLED };
   }
@@ -102,6 +102,8 @@ function describeLaunchFailure(
     errorCode: navigationFailed
       ? IPCErrorCode.NAVIGATION_FAILED
       : IPCErrorCode.SESSION_START_FAILED,
+    ...(error instanceof CommandError && !navigationFailed && { exitCode: error.exitCode }),
+    ...(error instanceof ChromeLaunchError && { exitCode: EXIT_CODES.CHROME_LAUNCH_FAILURE }),
   };
 }
 

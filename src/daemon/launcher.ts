@@ -12,12 +12,18 @@ import fs from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
-import { DaemonStartupError } from '@/daemon/errors.js';
+import { DaemonStartupError, SessionDirError } from '@/daemon/errors.js';
+import {
+  sessionDirIsFileError,
+  sessionDirNotWritableError,
+  socketPathTooLongError,
+} from '@/errors/messages.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
-import { ensureSessionDir, getSessionDir } from '@/session/paths.js';
+import { ensureSessionDir, getSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('launcher');
 
@@ -44,7 +50,7 @@ export async function launchDaemon(): Promise<void> {
     );
   }
 
-  ensureSessionDir();
+  assertUsableSessionDir();
   const logPath = join(getSessionDir(), 'daemon.log');
   rotateLog(logPath);
   const logFd = fs.openSync(logPath, 'a');
@@ -62,6 +68,38 @@ export async function launchDaemon(): Promise<void> {
   daemon.unref();
 
   await waitForDaemonReady(() => exited);
+}
+
+/** Longest Unix socket path (sun_path is 104 bytes on macOS, 108 on Linux, NUL included) */
+const MAX_SOCKET_PATH = process.platform === 'darwin' ? 103 : 107;
+
+/**
+ * Check that the session directory can hold the daemon's files before
+ * spawning it (otherwise the daemon dies and only its log says why).
+ *
+ * @throws SessionDirError (103) for a file or a too-long path, (82) when not writable
+ */
+export function assertUsableSessionDir(): void {
+  const dir = getSessionDir();
+  const fail = (err: { message: string; suggestion: string }, exitCode?: number): never => {
+    throw new SessionDirError(err.message, err.suggestion, exitCode);
+  };
+  if (fs.existsSync(dir) && !fs.statSync(dir).isDirectory()) fail(sessionDirIsFileError(dir));
+  const socketPath = getSessionFilePath('DAEMON_SOCKET');
+  if (Buffer.byteLength(socketPath) > MAX_SOCKET_PATH) {
+    fail(socketPathTooLongError(socketPath, MAX_SOCKET_PATH));
+  }
+  try {
+    ensureSessionDir();
+    fs.accessSync(dir, fs.constants.W_OK);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    const denied = code === 'EACCES' || code === 'EPERM' || code === 'EROFS';
+    fail(
+      sessionDirNotWritableError(dir, code ?? getErrorMessage(error)),
+      denied ? EXIT_CODES.PERMISSION_DENIED : EXIT_CODES.SESSION_FILE_ERROR
+    );
+  }
 }
 
 /** Size above which the daemon log is rotated when a daemon starts */

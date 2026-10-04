@@ -7,11 +7,12 @@
 
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
-import { DaemonError } from '@/daemon/errors.js';
+import { DaemonError, SessionDirError } from '@/daemon/errors.js';
 import { launchDaemon } from '@/daemon/launcher.js';
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   sessionAlreadyRunningError,
+  ALREADY_RUNNING_SUGGESTION,
   sessionTargetMismatchError,
   daemonNotRunningError,
   invalidResponseError,
@@ -26,8 +27,9 @@ import {
 import { isConnectionError } from '@/ipc/utils/errors.js';
 import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
-import { escapeControlChars } from '@/ui/formatting.js';
+import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { startNotices } from '@/ui/messages/session.js';
 import { delay } from '@/utils/async.js';
 import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -48,6 +50,9 @@ type StartOutcome =
       /** Full human-readable message */
       human: string;
       exitCode: number;
+      /** Daemon's error code (internal: not printed) */
+      errorCode?: IPCErrorCode | undefined;
+      /** Extra fields of the JSON error envelope */
       details?: Record<string, unknown>;
       /** The daemon went away mid-request (e.g. the previous session was ending) */
       retryable?: boolean;
@@ -95,8 +100,7 @@ const SHUTDOWN_POLL_MS = 200;
 function isShuttingDown(outcome: StartOutcome): boolean {
   return (
     !outcome.ok &&
-    (outcome.retryable === true ||
-      outcome.details?.['errorCode'] === IPCErrorCode.SESSION_SHUTTING_DOWN)
+    (outcome.retryable === true || outcome.errorCode === IPCErrorCode.SESSION_SHUTTING_DOWN)
   );
 }
 
@@ -116,6 +120,15 @@ async function requestSession(
   try {
     await launchDaemon();
   } catch (error) {
+    if (error instanceof SessionDirError) {
+      return {
+        ok: false,
+        error: error.message,
+        human: joinLines(genericError(error.message), error.suggestion),
+        exitCode: error.exitCode,
+        details: { suggestion: error.suggestion },
+      };
+    }
     const message = `Failed to start daemon: ${getErrorMessage(error)}`;
     const exitCode = error instanceof DaemonError ? error.exitCode : EXIT_CODES.SOFTWARE_ERROR;
     return { ok: false, error: message, human: genericError(message), exitCode };
@@ -169,6 +182,20 @@ async function requestSession(
 }
 
 /**
+ * The existing session without its `duration` (seconds), which is reported
+ * as `durationMs` like every other duration.
+ *
+ * @param existing - Existing session from the daemon
+ * @returns The other fields
+ */
+function omitDuration(
+  existing: NonNullable<StartSessionResponse['existingSession']>
+): Omit<NonNullable<StartSessionResponse['existingSession']>, 'duration'> {
+  const { duration: _duration, ...rest } = existing;
+  return rest;
+}
+
+/**
  * Describe an error response to `start_session_request`.
  *
  * @param response - Error response from the daemon
@@ -179,19 +206,23 @@ function describeStartFailure(
   response: StartSessionResponse,
   options: SessionStartOptions
 ): StartOutcome {
-  const exitCode = getExitCodeForIPCError(response.errorCode);
+  const exitCode = response.exitCode ?? getExitCodeForIPCError(response.errorCode);
+  const existing = response.existingSession;
   const details = filterDefined({
-    errorCode: response.errorCode,
-    existingSession: response.existingSession,
+    existingSession: existing && {
+      ...omitDuration(existing),
+      ...(existing.duration !== undefined && { durationMs: existing.duration * 1000 }),
+    },
   });
-  if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && response.existingSession) {
-    const { pid, targetUrl, duration } = response.existingSession;
+  if (response.errorCode === IPCErrorCode.SESSION_ALREADY_RUNNING && existing) {
+    const { pid, targetUrl, duration } = existing;
     return {
       ok: false,
       error: response.message ?? 'Session already running',
       human: sessionAlreadyRunningError(pid, duration ? duration * 1000 : 0, targetUrl),
       exitCode,
-      details,
+      errorCode: response.errorCode,
+      details: { ...details, suggestion: ALREADY_RUNNING_SUGGESTION },
     };
   }
   if (response.errorCode === IPCErrorCode.SESSION_TARGET_MISMATCH) {
@@ -204,6 +235,7 @@ function describeStartFailure(
       error: response.message ?? 'Session target mismatch',
       human: sessionTargetMismatchError(current, requested),
       exitCode,
+      errorCode: response.errorCode,
       details,
     };
   }
@@ -214,6 +246,7 @@ function describeStartFailure(
     error,
     human: genericError(message),
     exitCode,
+    errorCode: response.errorCode,
     details: { ...details, ...(hint.length > 0 && { suggestion: hint.join('\n') }) },
   };
 }
@@ -239,27 +272,29 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
   }
 
   const { data } = outcome;
+  const autoStopAt =
+    options.timeout !== undefined ? new Date(Date.now() + options.timeout * 1000) : undefined;
   if (options.json) {
     const result = {
       targetUrl: data.targetUrl,
       ...(data.targetTitle !== undefined && { targetTitle: data.targetTitle }),
       ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
       port: data.port,
-      chromePid: data.chromePid,
+      ...(data.chromePid > 0 ? { chromePid: data.chromePid } : { externalChrome: true }),
       daemonPid: data.daemonPid,
+      ...(autoStopAt && { autoStopAt: autoStopAt.toISOString() }),
     };
     console.log(JSON.stringify(buildSuccessResponse(result), null, 2));
-  } else if (options.quiet) {
-    console.error(escapeControlChars(`Session started: ${data.targetUrl}`));
   } else {
-    console.error(
-      escapeControlChars(
-        landingPage({
-          url: data.targetUrl,
-          ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
-        })
-      )
-    );
+    const page = {
+      url: data.targetUrl,
+      ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
+      ...(autoStopAt && { autoStopAt }),
+    };
+    const text = options.quiet
+      ? [`Session started: ${data.targetUrl}`, ...startNotices(page)].join('\n')
+      : landingPage(page);
+    console.error(escapeControlChars(text));
   }
   process.exit(EXIT_CODES.SUCCESS);
 }

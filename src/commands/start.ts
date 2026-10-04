@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 
 import { Option, type Command } from 'commander';
@@ -8,7 +9,12 @@ import { startSessionViaDaemon } from '@/commands/shared/startHelpers.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
-import { unknownCommandError } from '@/errors/messages.js';
+import {
+  chromeWsUrlConflictError,
+  invalidUserDataDirError,
+  missingStartUrlError,
+  unknownCommandError,
+} from '@/errors/messages.js';
 import type { TelemetryType } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -108,7 +114,7 @@ function applyCollectorOptions(command: Command): Command {
     .option('-p, --port <number>', PORT_OPTION_DESCRIPTION)
     .option(
       '-t, --timeout <seconds>',
-      'Auto-stop after timeout in seconds (unlimited if not specified)'
+      'Stop the session this many seconds after the page has loaded (unlimited if not specified)'
     )
     .option('-u, --user-data-dir <path>', 'Chrome user data directory (defaults to session dir)')
     .option(
@@ -118,7 +124,11 @@ function applyCollectorOptions(command: Command): Command {
     )
     .option('-m, --max-body-size <megabytes>', 'Maximum response body size in MB', '5')
     .addOption(new Option('--compact', 'No effect; kept for compatibility').hideHelp())
-    .option('--headless', 'Run in headless mode (auto if no display)', defaultHeadless)
+    .option(
+      '--headless',
+      'Run Chrome without a window (default unless DISPLAY or WAYLAND_DISPLAY is set)',
+      defaultHeadless
+    )
     .option('--no-headless', 'Show browser window')
     .option(
       '--chrome-ws-url <url>',
@@ -220,20 +230,30 @@ function assertNotCommandTypo(arg: string, commandNames: string[]): void {
  * @param url - Target URL
  * @param options - Parsed command-line options from Commander
  * @param commandNames - Registered top-level command names (for typo detection)
- * @returns Normalized session options
+ * @returns The URL and normalized session options
  * @throws CommandError on any invalid input
  */
 function validateStartInput(
-  url: string,
+  url: string | undefined,
   options: CollectorOptions,
   commandNames: string[]
-): ReturnType<typeof buildSessionOptions> {
+): { url: string; sessionOptions: ReturnType<typeof buildSessionOptions> } {
+  if (url === undefined) {
+    const err = missingStartUrlError();
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
   assertNotCommandTypo(url, commandNames);
   assertValidUrl(url);
   if (options.chromeWsUrl !== undefined) {
     assertValidChromeWsUrl(options.chromeWsUrl);
+    assertNoLaunchOptions(options);
   }
-  return buildSessionOptions(options);
+  if (options.userDataDir !== undefined) assertUserDataDir(options.userDataDir);
+  return { url, sessionOptions: buildSessionOptions(options) };
 }
 
 /**
@@ -246,14 +266,14 @@ export function registerStartCommands(program: Command): void {
   applyCollectorOptions(
     program.argument('[url]', 'Target URL (example.com or localhost:3000)')
   ).action(async (url: string | undefined, options: CollectorOptions) => {
-    if (!url) {
+    if (url === undefined && !hasUserOptions(program)) {
       console.error(startCommandHelpMessage());
       process.exit(0);
     }
 
-    let sessionOptions: ReturnType<typeof buildSessionOptions>;
+    let validated: ReturnType<typeof validateStartInput>;
     try {
-      sessionOptions = validateStartInput(
+      validated = validateStartInput(
         url,
         options,
         program.commands.map((command) => command.name())
@@ -262,8 +282,55 @@ export function registerStartCommands(program: Command): void {
       handleValidationError(error, options.json ?? false);
     }
 
-    await startSessionViaDaemon(url, sessionOptions, SESSION_TELEMETRY);
+    await startSessionViaDaemon(validated.url, validated.sessionOptions, SESSION_TELEMETRY);
   });
+}
+
+/**
+ * Whether any start option was given on the command line (`bdg --port 9333`
+ * without a URL is an error, a bare `bdg` shows help).
+ *
+ * @param program - Root command
+ * @returns True if an option came from the command line
+ */
+function hasUserOptions(program: Command): boolean {
+  return program.options.some(
+    (option) => program.getOptionValueSource(option.attributeName()) === 'cli'
+  );
+}
+
+/**
+ * Reject a `-u` value that is an option (`-u --json` swallowed the next flag)
+ * or an existing file.
+ *
+ * @param value - Value of `--user-data-dir`
+ * @throws CommandError (81) when it cannot be a profile directory
+ */
+function assertUserDataDir(value: string): void {
+  const resolved = expandHome(value);
+  let reason: string | undefined;
+  if (!value.trim()) reason = 'the path is empty';
+  else if (value.startsWith('-')) reason = 'it looks like an option; -u needs a directory path';
+  else if (fs.existsSync(resolved) && !fs.statSync(resolved).isDirectory()) reason = 'it is a file';
+  if (reason === undefined) return;
+  const err = invalidUserDataDirError(value, reason);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * Reject options that only apply to a Chrome bdg launches.
+ *
+ * @param options - Parsed options (with `--chrome-ws-url`)
+ * @throws CommandError (81) for `--port` or `-u`
+ */
+function assertNoLaunchOptions(options: CollectorOptions): void {
+  const conflicts = [
+    ...(options.port !== undefined ? ['--port'] : []),
+    ...(options.userDataDir !== undefined ? ['--user-data-dir'] : []),
+  ];
+  if (conflicts.length === 0) return;
+  const err = chromeWsUrlConflictError(conflicts);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 function assertValidUrl(url: string): void {

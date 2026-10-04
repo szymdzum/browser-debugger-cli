@@ -32,6 +32,7 @@ const PAGE: CDPTarget = {
  * Serve Chrome's HTTP endpoint from canned answers.
  *
  * @param list - `/json/list` answer, or null when Chrome is unreachable
+ *   (`/json/version` names browser id b-1)
  * @param created - `/json/new` answer
  * @returns Requested URLs and methods
  */
@@ -40,7 +41,12 @@ function mockChromeHttp(list: CDPTarget[] | null, created?: CDPTarget): string[]
   mock.method(globalThis, 'fetch', (url: string, init?: RequestInit) => {
     requests.push(`${init?.method ?? 'GET'} ${url}`);
     if (list === null) return Promise.reject(new Error('ECONNREFUSED'));
-    const body = url.includes('/json/new') ? created : list;
+    const version = { webSocketDebuggerUrl: 'ws://localhost:9333/devtools/browser/b-1' };
+    const body = url.includes('/json/version')
+      ? version
+      : url.includes('/json/new')
+        ? created
+        : list;
     return Promise.resolve(new Response(JSON.stringify(body), { status: body ? 200 : 500 }));
   });
   return requests;
@@ -104,7 +110,7 @@ void describe('external Chrome', () => {
   void it('fails when the browser has no page and cannot open one', async () => {
     mockChromeHttp([]);
 
-    await assert.rejects(attach(BROWSER_URL), /No page to attach to/);
+    await assert.rejects(attach(BROWSER_URL), /Cannot reach the Chrome DevTools endpoint/);
   });
 
   void it('fails fast with a suggestion when the browser cannot be reached', async () => {
@@ -113,7 +119,8 @@ void describe('external Chrome', () => {
     await assert.rejects(attach(BROWSER_URL), (error: unknown) => {
       assert.ok(error instanceof CommandError);
       assert.equal(error.exitCode, EXIT_CODES.CDP_CONNECTION_FAILURE);
-      assert.match(String(error.metadata['suggestion']), /--remote-debugging-port=9333/);
+      assert.match(error.message, /http:\/\/127\.0\.0\.1:9333/);
+      assert.match(String(error.metadata['suggestion']), /--remote-debugging-port/);
       return true;
     });
   });
@@ -126,6 +133,22 @@ void describe('external Chrome', () => {
 
     assert.equal(target?.webSocketDebuggerUrl, pageUrl);
     assert.equal(target?.title, 'Open tab');
+  });
+
+  void it('refuses an unknown page id or a stale browser id (83)', async () => {
+    mockChromeHttp([PAGE]);
+
+    for (const [url, message] of [
+      ['ws://127.0.0.1:9333/devtools/page/gone', /No page with id gone/],
+      ['ws://127.0.0.1:9333/devtools/browser/old', /different browser id/],
+    ] as const) {
+      await assert.rejects(attach(url), (error: unknown) => {
+        assert.ok(error instanceof CommandError);
+        assert.equal(error.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
+        assert.match(error.message, message);
+        return true;
+      });
+    }
   });
 });
 

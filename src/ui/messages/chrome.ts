@@ -76,6 +76,13 @@ export function formatChromeIssue(issue: IssueDetails): string {
         `  - In a container where Chrome's sandbox fails: BDG_NO_SANDBOX=1 bdg <url>`
       );
     }
+    case 'CHROME_EXITED_DURING_STARTUP':
+      return chromeExitedDuringStartupError(
+        ctx['exitCode'] as number | null,
+        (ctx['output'] as string[] | undefined) ?? [],
+        ctx['userDataDir'] as string,
+        ctx['profileInUse'] === true
+      );
     case 'NO_PAGE_TARGET_FOUND':
       return noPageTargetFoundError(
         ctx['port'] as number,
@@ -108,6 +115,34 @@ export function formatChromeIssue(issue: IssueDetails): string {
     case 'PREFS_NOT_JSON_SERIALIZABLE':
       return `Chrome preferences must be JSON-serializable: ${(ctx['reason'] as string) ?? 'unknown error'}`;
   }
+}
+
+/**
+ * Chrome exited before its debugging port opened.
+ *
+ * @param exitCode - Chrome's exit code
+ * @param output - Chrome's last output lines
+ * @param userDataDir - Chrome profile directory
+ * @param profileInUse - Whether another Chrome has the profile open
+ * @returns Message; its first line is the error, the rest the suggestion
+ */
+export function chromeExitedDuringStartupError(
+  exitCode: number | null,
+  output: string[],
+  userDataDir: string,
+  profileInUse: boolean
+): string {
+  if (profileInUse) {
+    return joinLines(
+      `The Chrome profile ${userDataDir} is in use by another Chrome`,
+      'Close that Chrome, or use another profile directory: bdg <url> -u ./other-profile'
+    );
+  }
+  return joinLines(
+    `Chrome exited during startup (exit code ${exitCode ?? 'none'})`,
+    ...(output.length > 0 ? ['Chrome said:', ...output.map((line) => `  ${line}`)] : []),
+    'Check --chrome-flags and BDG_CHROME_FLAGS (an unknown flag or value can stop Chrome)'
+  );
 }
 
 /**

@@ -120,7 +120,7 @@ export function validateUrl(url: string): ValidationResult {
   if (url.includes(' ')) {
     return invalid(
       `Invalid URL format: '${url}' (contains spaces)`,
-      'URLs cannot contain spaces. If your URL has query parameters, wrap it in quotes: bdg "https://example.com/search?q=test"'
+      'Encode spaces as %20, e.g. bdg "https://example.com/search?q=a%20b"'
     );
   }
 
@@ -143,6 +143,12 @@ export function validateUrl(url: string): ValidationResult {
   const normalized = normalizeUrl(url);
 
   const urlLower = url.toLowerCase();
+  if (urlLower.startsWith('javascript:')) {
+    return invalid(
+      `Cannot start a session on a javascript: URL`,
+      `Open a page first, then run the script: bdg about:blank && bdg dom eval '...'`
+    );
+  }
   if (urlLower.startsWith('vbscript:')) {
     return invalid(
       `Dangerous protocol: 'vbscript:' is not allowed`,
@@ -260,7 +266,7 @@ export function validateChromeWsUrl(url: string): ValidationResult {
   if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
     return invalid(
       `--chrome-ws-url must use ws:// or wss://, got '${parsed.protocol}'`,
-      "Discover the URL with: curl -s http://127.0.0.1:9222/json | jq -r '.[0].webSocketDebuggerUrl'"
+      `Find it with: curl -s http://${parsed.host || '127.0.0.1:9222'}/json/version | jq -r .webSocketDebuggerUrl`
     );
   }
 
@@ -268,6 +274,13 @@ export function validateChromeWsUrl(url: string): ValidationResult {
     return invalid(
       `--chrome-ws-url is missing a hostname: '${url}'`,
       'Expected: ws://host:port/devtools/browser/<uuid>'
+    );
+  }
+
+  if (!/^\/devtools\/(browser|page)\/[^/]+$/.test(parsed.pathname)) {
+    return invalid(
+      `--chrome-ws-url must point to /devtools/browser/<id> or /devtools/page/<id>, got '${parsed.pathname}'`,
+      `Find it with: curl -s http://${parsed.host}/json/version | jq -r .webSocketDebuggerUrl`
     );
   }
 

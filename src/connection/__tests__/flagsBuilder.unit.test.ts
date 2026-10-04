@@ -54,7 +54,11 @@ describe('buildChromeFlags with custom flags', () => {
 
   test('works without chromeFlags option', () => {
     const flags = buildChromeFlags({ port: 9222 });
-    assert.ok(flags.includes('--remote-debugging-port=9222'));
+    assert.ok(flags.includes('--disable-extensions'));
+    assert.ok(
+      !flags.some((flag) => flag.startsWith('--remote-debugging-port')),
+      'chrome-launcher adds the port flag itself'
+    );
   });
 });
 
