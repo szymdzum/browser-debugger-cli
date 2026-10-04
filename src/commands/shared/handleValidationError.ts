@@ -1,6 +1,7 @@
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
+import { escapeControlChars } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -29,7 +30,7 @@ export function handleValidationError(error: unknown, json: boolean): never {
       );
     } else {
       console.error(genericError(error.message));
-      if (error.metadata.suggestion) console.error(error.metadata.suggestion);
+      if (error.metadata.suggestion) console.error(escapeControlChars(error.metadata.suggestion));
     }
     process.exit(error.exitCode);
   }

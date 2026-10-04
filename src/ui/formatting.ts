@@ -62,8 +62,38 @@ export class OutputFormatter {
   }
 
   build(): string {
-    return this.lines.join('\n');
+    return escapeControlChars(this.lines.join('\n'));
   }
+}
+
+/**
+ * Whether a character code is a control character other than tab/newline
+ * (C0, DEL, C1).
+ *
+ * @param code - UTF-16 code unit
+ * @returns True for characters that must not reach the terminal raw
+ */
+function isControlChar(code: number): boolean {
+  return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+}
+
+/**
+ * Make page-provided text safe to print to a terminal.
+ *
+ * Console messages, titles and URLs come from the page; escape sequences in
+ * them could otherwise retitle, clear or recolor the user's terminal. Control
+ * characters are shown as `\uXXXX`; newlines and tabs are kept.
+ *
+ * @param text - Text to print
+ * @returns Text with control characters escaped
+ */
+export function escapeControlChars(text: string): string {
+  let result = '';
+  for (const char of text.replace(/\r\n/g, '\n')) {
+    const code = char.charCodeAt(0);
+    result += isControlChar(code) ? `\\u${code.toString(16).padStart(4, '0')}` : char;
+  }
+  return result;
 }
 
 export function joinLines(...lines: Array<string | null | undefined | false>): string {

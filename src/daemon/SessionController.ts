@@ -218,6 +218,7 @@ export class SessionController {
             target: data.target,
             data: { network: data.network, console: data.console },
             totals: { network: data.totalNetwork, console: data.totalConsole },
+            currentNavigationId: data.currentNavigationId,
             partial: true,
           },
         },

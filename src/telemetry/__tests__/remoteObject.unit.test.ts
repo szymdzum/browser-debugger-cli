@@ -4,6 +4,8 @@ import { describe, it } from 'node:test';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { formatConsoleArgs, formatRemoteObject } from '@/telemetry/remoteObject.js';
 
+type RemoteObject = Protocol.Runtime.RemoteObject;
+
 void describe('remoteObject formatting', () => {
   void describe('formatRemoteObject', () => {
     void describe('primitives', () => {
@@ -279,6 +281,25 @@ void describe('remoteObject formatting', () => {
 
     void it('handles empty args array', () => {
       assert.equal(formatConsoleArgs([]), '');
+    });
+  });
+
+  void describe('format specifiers', () => {
+    const str = (value: string): RemoteObject => ({ type: 'string', value });
+    const num = (value: number): RemoteObject => ({ type: 'number', value });
+
+    void it('substitutes %s, %d, %i and %f and drops %c styles', () => {
+      assert.equal(
+        formatConsoleArgs([str('%s has %d items (%f%%)'), str('cart'), num(3.7), num(1.5)]),
+        'cart has 3 items (1.5%)'
+      );
+      assert.equal(formatConsoleArgs([str('%cStyled'), str('color: red')]), 'Styled');
+    });
+
+    void it('appends unused arguments and keeps unmatched specifiers', () => {
+      assert.equal(formatConsoleArgs([str('%s'), str('a'), str('b')]), 'a b');
+      assert.equal(formatConsoleArgs([str('%s and %s'), str('a')]), 'a and %s');
+      assert.equal(formatConsoleArgs([str('100%')]), '100%');
     });
   });
 });

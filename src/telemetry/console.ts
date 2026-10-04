@@ -15,7 +15,7 @@ import { createLogger } from '@/ui/logging/index.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
 import { expandConsoleArgs } from './objectExpander.js';
-import { formatConsoleArgs } from './remoteObject.js';
+import { formatConsoleArgs, usesFormatSpecifiers } from './remoteObject.js';
 import { needsAsyncExpansion } from './remoteObjectUtils.js';
 
 type RemoteObject = Protocol.Runtime.RemoteObject;
@@ -139,7 +139,7 @@ function handleConsoleAPICall(
     return;
   }
 
-  if (hasArgsNeedingExpansion(params.args)) {
+  if (hasArgsNeedingExpansion(params.args) && !usesFormatSpecifiers(params.args)) {
     handleExpandableMessage(cdp, messages, params, context, basicText);
   } else {
     const message = createMessage(params.type, basicText, params.timestamp, params.args, context);

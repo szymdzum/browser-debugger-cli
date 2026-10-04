@@ -310,7 +310,8 @@ void describe('CommandRegistry', () => {
           });
         },
         {
-          message: /Console message not found at index/,
+          message: /Invalid console message index/,
+          exitCode: 81,
         }
       );
     });
@@ -331,7 +332,8 @@ void describe('CommandRegistry', () => {
           });
         },
         {
-          message: /Console message not found at index/,
+          message: /Invalid console message index/,
+          exitCode: 81,
         }
       );
     });

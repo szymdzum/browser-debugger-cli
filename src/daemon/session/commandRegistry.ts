@@ -114,6 +114,8 @@ function mapNetworkRequestToPreview(
 }
 
 interface ConsolePreview {
+  /** Position in the session's message list (what `details console <n>` takes) */
+  index?: number;
   timestamp: number;
   type: string;
   text: string;
@@ -125,10 +127,12 @@ interface ConsolePreview {
  * Map console message to preview format.
  *
  * @param msg - Full console message
+ * @param index - The message's position in the session's message list
  * @returns Filtered message with only preview fields
  */
-function mapConsoleMessageToPreview(msg: ConsolePreview): ConsolePreview {
+function mapConsoleMessageToPreview(msg: ConsolePreview, index: number): ConsolePreview {
   const result: ConsolePreview = {
+    index,
     timestamp: msg.timestamp,
     type: msg.type,
     text: msg.text,
@@ -175,8 +179,15 @@ function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRe
  * @throws Error if invalid index or not found
  */
 function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
+  if (!/^\d+$/.test(indexStr)) {
+    throw new CommandError(
+      `Invalid console message index: ${indexStr}`,
+      { suggestion: 'Use a 0-based index from: bdg console --list' },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
   const index = parseInt(indexStr, 10);
-  if (isNaN(index) || index < 0 || index >= messages.length) {
+  if (index >= messages.length) {
     throw new CommandError(
       `Console message not found at index: ${indexStr} (available: 0-${messages.length - 1})`,
       { suggestion: 'List messages with: bdg console --list' },
@@ -287,7 +298,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           ? []
           : store.consoleMessages
               .slice(consoleBounds.start, consoleBounds.end)
-              .map(mapConsoleMessageToPreview);
+              .map((msg, i) => mapConsoleMessageToPreview(msg, consoleBounds.start + i));
 
       return Promise.resolve({
         version: VERSION,
@@ -298,6 +309,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           title: store.targetInfo?.title ?? '',
         },
         activeTelemetry: store.activeTelemetry,
+        currentNavigationId: store.getCurrentNavigationId?.() ?? 0,
         network: recentNetwork,
         console: recentConsole,
         totalNetwork,

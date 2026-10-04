@@ -84,6 +84,7 @@ export interface PeekResponseData {
     target: { url: string; title: string };
     data: { network?: unknown[]; console?: unknown[] };
     totals: { network: number; console: number };
+    currentNavigationId?: number;
     partial?: boolean;
   };
 }
