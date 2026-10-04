@@ -209,9 +209,10 @@ export function getIPCRequestTimeout(): number {
 }
 
 /**
- * Timeout for requests the daemon answers from memory (status, peek,
- * details, headers, HAR data): a daemon that does not answer these within
- * seconds is not responding, so commands do not wait the full IPC timeout.
+ * Timeout for small requests the daemon answers from memory (status, peek,
+ * details, headers): a daemon that does not answer these within seconds is
+ * not responding, so commands do not wait the full IPC timeout. HAR data is
+ * excluded: a large session's requests and bodies take longer to transfer.
  *
  * @returns Timeout in milliseconds (10 s, or the IPC timeout if shorter)
  */
