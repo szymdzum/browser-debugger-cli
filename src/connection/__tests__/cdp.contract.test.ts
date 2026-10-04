@@ -187,6 +187,37 @@ describe('CDPConnection contract', () => {
       }
     });
 
+    it('stops waiting to retry as soon as the connection is aborted', async () => {
+      const abort = new AbortController();
+      const started = Date.now();
+      const connectPromise = cdp.connect(TEST_URL, { maxRetries: 10, signal: abort.signal });
+      mockWebSocket.simulateError(new Error('Connection refused'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      abort.abort();
+
+      await assert.rejects(connectPromise, /aborted/);
+      assert.ok(Date.now() - started < 500, 'the 1 s backoff wait ends at the abort');
+    });
+
+    it('ends a pending connection attempt when aborted', async () => {
+      const abort = new AbortController();
+      const connectPromise = cdp.connect(TEST_URL, { maxRetries: 10, signal: abort.signal });
+
+      abort.abort();
+
+      await assert.rejects(connectPromise, /aborted/);
+    });
+
+    it('keeps an established connection when the signal aborts later', async () => {
+      const abort = new AbortController();
+      await connectAndOpen({ maxRetries: 1, signal: abort.signal });
+
+      abort.abort();
+
+      assert.equal(cdp.isConnected(), true);
+    });
+
     it('should cleanup on close and reject pending messages', async () => {
       // Arrange
       const connectPromise = cdp.connect(TEST_URL, {

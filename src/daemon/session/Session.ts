@@ -64,6 +64,8 @@ export class Session {
   private cleanupFunctions: CleanupFunction[] = [];
   private timeoutTimer: NodeJS.Timeout | null = null;
   private stopping: Promise<void> | null = null;
+  /** Aborted by stop(), so launch steps that wait or retry end at once */
+  private readonly launchAbort = new AbortController();
   private started = false;
   private documentRequestId: string | undefined;
 
@@ -191,6 +193,7 @@ export class Session {
    * @returns Promise resolved when teardown is complete
    */
   stop(reason: SessionEndReason): Promise<void> {
+    this.launchAbort.abort();
     this.stopping ??= (async () => {
       if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
       log.info(`Stopping session (reason: ${reason})`);
@@ -224,6 +227,7 @@ export class Session {
     }
     this.cdp = await connectCDP(this.store, log, () => void this.stop('crash'), {
       external: Boolean(chromeWsUrl),
+      signal: this.launchAbort.signal,
     });
     this.throwIfStopping();
     this.cleanupFunctions = await startTelemetryCollectors(this.cdp, this.config, this.store, log);
