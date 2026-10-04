@@ -79,4 +79,30 @@ void describe('Console sources', () => {
     const frame = messages.find((m) => m.type === 'log');
     assert.match(frame?.stackTrace?.[0]?.url ?? '', /^http:\/\/localhost:\d+\/frame-child$/);
   });
+
+  void it('records the network traffic of cross-origin iframes to completion', async () => {
+    const result = await runCommand('network', ['list', '--last', '0', '--json'], {
+      timeout: 30000,
+    });
+    const { requests } = (
+      JSON.parse(result.stdout) as {
+        data: { requests: Array<{ url: string; status?: number; duration?: number }> };
+      }
+    ).data;
+    const frameDocument = requests.find((r) => /^http:\/\/localhost:\d+\/frame-child$/.test(r.url));
+
+    assert.equal(frameDocument?.status, 200);
+    assert.equal(typeof frameDocument?.duration, 'number', 'finished, not left pending');
+  });
+
+  void it('follows same-document navigations in status', async () => {
+    await runCommand('dom', ['eval', 'history.pushState({}, "", "/pushed"); 1'], {
+      timeout: 30000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const status = await runCommand('status', ['--json'], { timeout: 30000 });
+    const data = (JSON.parse(status.stdout) as { data: { pageState?: { url: string } } }).data;
+
+    assert.match(data.pageState?.url ?? '', /\/pushed$/);
+  });
 });

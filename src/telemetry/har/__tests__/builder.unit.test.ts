@@ -882,6 +882,31 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
     assert.equal(entry.request.postData?.params, undefined);
   });
 
+  describe('Responses from the browser cache', () => {
+    test('use the measured duration, not the original request timing', () => {
+      const har = buildHAR(
+        [
+          {
+            requestId: 'c',
+            url: 'https://example.com/logo.svg',
+            method: 'GET',
+            timestamp: 1000,
+            status: 200,
+            fromCache: true,
+            duration: 3,
+            loadingFinishedTime: 500,
+            timing: { requestTime: 10, receiveHeadersEnd: 5 },
+          },
+        ],
+        metadata
+      );
+
+      const [entry] = har.log.entries;
+      assert.equal(entry?.time, 3);
+      assert.equal(entry?.timings.receive, 3);
+    });
+  });
+
   describe('WebSocket connections', () => {
     test('exports messages in the Chrome DevTools convention', () => {
       const har = buildHAR(

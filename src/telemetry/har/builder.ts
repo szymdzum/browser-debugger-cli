@@ -252,21 +252,23 @@ function span(start: number | undefined, end: number | undefined): number {
  * Build HAR timings from CDP resource timing.
  *
  * HAR 1.2: blocked/dns/connect/ssl may be -1 (not applicable); send, wait
- * and receive are required to be non-negative.
+ * and receive are required to be non-negative. A response served from the
+ * browser cache carries the timing of the request that originally fetched
+ * it, so only its measured duration is used.
  *
  * @param req - Network request
  * @returns HAR timings
  */
 function buildTimings(req: NetworkRequest): Timings {
   const t = req.timing;
-  if (!t) {
+  if (!t || req.fromCache) {
     return {
       blocked: UNKNOWN_TIMING,
       dns: UNKNOWN_TIMING,
       connect: UNKNOWN_TIMING,
       send: 0,
       wait: 0,
-      receive: 0,
+      receive: req.fromCache ? (req.duration ?? 0) : 0,
       ssl: UNKNOWN_TIMING,
     };
   }

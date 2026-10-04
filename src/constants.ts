@@ -159,18 +159,6 @@ export const CHROME_POST_DATA_LIMIT = 1 * 1024 * 1024; // 1MB
 // ============================================================================
 
 /**
- * Stale network request timeout (60 seconds)
- * Network requests incomplete after this duration are cleaned up
- */
-export const STALE_REQUEST_TIMEOUT = 60000;
-
-/**
- * Stale request cleanup interval (30 seconds)
- * How often to check for and remove stale network requests
- */
-export const STALE_REQUEST_CLEANUP_INTERVAL = 30000;
-
-/**
  * Default page readiness timeout (2 seconds)
  * Maximum time to wait for page to be ready before proceeding
  * Uses adaptive detection for load, network stability, and DOM stability

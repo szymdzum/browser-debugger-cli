@@ -44,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Network data correctness**
+  - Requests in flight for more than 60 s were silently dropped (from `network list`, `peek` and HAR, even after they finished); long polls, SSE and slow APIs now stay listed until they finish
+  - Requests of a page that navigated away are recorded as cancelled (`net::ERR_ABORTED (the page navigated away)`) instead of staying "pending"; its WebSocket connections are marked closed
+  - Network traffic of workers and cross-origin iframes is captured (their documents and fetches used to be missing or stuck as pending); attached iframes and workers are paused until bdg has set them up, so nothing they load is missed
+  - `Set-Cookie` of a redirect hop is kept when Chrome reports it late (it was lost in about a third of redirects)
+  - HAR timings of responses served from the browser cache use their real duration (the original request's timing made them look tens of seconds long)
+  - The main document request belongs to the page it loads (it carried the previous page's navigation id)
+  - `status` and `peek` follow same-document navigations (`history.pushState`, hash changes) and the title that comes with them
+  - `bdg <url>` right after `bdg stop` no longer fails with "No active session" when it reaches the old daemon just as it exits; it waits and starts
 - **`network har` on large sessions** - HAR data was fetched with the 10 s timeout meant for quick status queries, so exporting a session with hundreds of requests and bodies failed with "The session did not respond within 10s"; it uses the normal request timeout again
 - **CLI consistency and session robustness**
   - `bdg --json` on its own prints the machine-readable help; `cdp … --json` and `dom a11y <search> --json` are accepted (the a11y quick search could not output JSON at all); `dom a11y` without arguments is a usage error (81) like other command groups
