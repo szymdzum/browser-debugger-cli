@@ -146,6 +146,10 @@ export interface NetworkRequest {
   decodedBodyLength?: number;
   serverIPAddress?: string;
   connection?: string;
+  /** Status text sent by the server (empty for HTTP/2) */
+  statusText?: string;
+  /** `responseBody` is base64 (binary content) */
+  responseBodyBase64?: boolean;
   /** Served from the browser's memory, disk or prefetch cache */
   fromCache?: boolean;
   /**

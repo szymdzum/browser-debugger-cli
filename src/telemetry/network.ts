@@ -66,8 +66,12 @@ function fetchResponseBody(
 
       const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
       request.responseBody = typedResponse.body;
+      if (typedResponse.base64Encoded) request.responseBodyBase64 = true;
       if (typedResponse.body) {
-        request.decodedBodyLength = typedResponse.body.length;
+        request.decodedBodyLength = Buffer.byteLength(
+          typedResponse.body,
+          typedResponse.base64Encoded ? 'base64' : 'utf-8'
+        );
       }
     })
     .catch((error) => {
@@ -136,6 +140,7 @@ function applyResponse(
 ): void {
   const { status, mimeType, headers, timing, remoteIPAddress, connectionId } = response;
   request.status = status;
+  if (response.statusText) request.statusText = response.statusText;
   request.mimeType = mimeType;
   request.responseHeaders = headers;
   if (response.fromDiskCache || response.fromPrefetchCache) request.fromCache = true;

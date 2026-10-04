@@ -43,7 +43,11 @@ export function formatNetworkDetails(request: NetworkRequest): string {
 
   if (request.responseBody) {
     fmt.text('Response Body:').separator('━', 70);
-    fmt.text(request.responseBody);
+    fmt.text(
+      request.responseBodyBase64
+        ? `(binary, ${request.decodedBodyLength ?? 0} bytes; base64 in --json and HAR export)`
+        : request.responseBody
+    );
   }
 
   return fmt.build();

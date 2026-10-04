@@ -157,6 +157,8 @@ export interface Response {
   headersSize: number;
   /** Size of the received response body in bytes (-1 if not available) */
   bodySize: number;
+  /** Network error for requests that got no response (Chrome DevTools convention) */
+  _error?: string;
   /** Comment (optional) */
   comment?: string;
 }

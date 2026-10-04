@@ -23,6 +23,12 @@ const INTERACTIONS_HTML = path.join(FIXTURES_DIR, 'interactions.html');
 /** Delay for the `/slow` route, long enough to stop a session mid-startup. */
 const SLOW_RESPONSE_MS = 8000;
 
+/** 1x1 PNG served at /pixel.png (binary response bodies). */
+const PIXEL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
 /**
  * Running fixture server handle.
  */
@@ -53,6 +59,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/interactions') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(interactionsHtml);
+      return;
+    }
+    if (req.url === '/pixel.png') {
+      res.writeHead(200, { 'Content-Type': 'image/png' });
+      res.end(PIXEL_PNG);
       return;
     }
     if (req.url === '/cookie') {

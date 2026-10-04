@@ -80,6 +80,8 @@ bdg details network <requestId>     # Full request/response with bodies
 bdg details console <index>         # Full console message with args
 ```
 
+Binary response bodies (images, fonts) are only captured in sessions started with `--all`; in `--json` output they are base64 with `responseBodyBase64: true`.
+
 ## DOM Commands
 
 ### Accessibility Tree Inspection
