@@ -1,42 +1,37 @@
 name: Release
 
+# Publishes a tagged version to npm with npm Trusted Publishing (OIDC):
+# no npm token and no one-time password. The version bump and CHANGELOG are
+# done in a pull request first (see docs/RELEASE_PROCESS.md); publishing the
+# GitHub release for its tag starts this workflow. It can also be run by hand
+# for an existing tag.
+
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
-      version_type:
-        description: 'Version increment type'
+      tag:
+        description: 'Existing tag to publish, e.g. v0.8.0'
         required: true
-        default: 'prerelease'
-        type: choice
-        options:
-          - prerelease     # 0.0.1-alpha.0 -> 0.0.1-alpha.1
-          - prepatch       # 0.0.1-alpha.0 -> 0.0.2-alpha.0
-          - preminor       # 0.0.1-alpha.0 -> 0.1.0-alpha.0
-          - premajor       # 0.0.1-alpha.0 -> 1.0.0-alpha.0
-          - patch          # 0.0.1-alpha.0 -> 0.0.1 (stable)
-          - minor          # 0.0.1-alpha.0 -> 0.1.0 (stable)
-          - major          # 0.0.1-alpha.0 -> 1.0.0 (stable)
-      prerelease_id:
-        description: 'Prerelease identifier (alpha, beta, rc)'
-        required: false
-        default: 'alpha'
         type: string
 
 permissions:
-  contents: write # push the version commit and tag, create the GitHub release
+  contents: read
+  id-token: write # OIDC token for npm Trusted Publishing (and provenance)
 
 jobs:
-  release:
-    name: Create Release
+  publish:
+    name: Publish to npm
     runs-on: ubuntu-latest
-    # Releases are cut from main only (the job pushes the version bump to main)
-    if: github.ref == 'refs/heads/main'
+    env:
+      TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
 
     steps:
-      - name: Checkout code
+      - name: Checkout tag
         uses: actions/checkout@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ env.TAG }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -44,6 +39,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
+
+      # Trusted Publishing needs npm 11.5.1 or newer (Node 22 ships npm 10)
+      - name: Update npm
+        run: npm install -g npm@11
+
+      - name: Check tag matches package.json
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$TAG" != "v$VERSION" ]]; then
+            echo "::error::Tag $TAG does not match package.json version $VERSION"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: npm ci
@@ -57,47 +65,12 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Configure git
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-
-      - name: Bump version
-        id: version
-        run: |
-          if [[ "${{ inputs.version_type }}" == pre* ]]; then
-            npm version ${{ inputs.version_type }} --preid=${{ inputs.prerelease_id }}
-          else
-            npm version ${{ inputs.version_type }}
-          fi
-          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
-
-      - name: Push version bump
-        run: |
-          git push origin main
-          git push origin v${{ steps.version.outputs.version }}
-
       # Prereleases go to the "next" dist-tag so `npm install browser-debugger-cli`
       # keeps resolving to the latest stable version.
       - name: Publish to npm
         run: |
-          if [[ "${{ steps.version.outputs.version }}" == *-* ]]; then
-            npm publish --tag next
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --provenance --access public --tag next
           else
-            npm publish
+            npm publish --provenance --access public
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          PRERELEASE_FLAG=""
-          if [[ "$VERSION" == *-* ]]; then PRERELEASE_FLAG="--prerelease"; fi
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --generate-notes \
-            $PRERELEASE_FLAG \
-            --notes "$(printf '## Installation\n\n```bash\nnpm install -g browser-debugger-cli@%s\n```\n' "$VERSION")"
