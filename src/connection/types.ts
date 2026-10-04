@@ -58,6 +58,8 @@ export interface ConnectionOptions {
   onReconnect?: (() => Promise<void>) | undefined;
   /** Async hook invoked when WebSocket closes unexpectedly */
   onDisconnect?: ((code: number, reason: string) => void | Promise<void>) | undefined;
+  /** Stops connection attempts (e.g. the session was stopped while starting) */
+  signal?: AbortSignal | undefined;
 }
 
 /**

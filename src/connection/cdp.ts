@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+
 import WebSocket from 'ws';
 
 import type { CDPEventSource, EventCleanup } from './events.js';
@@ -22,6 +24,21 @@ const NORMAL_CLOSURE_REASON = 'Normal closure';
 
 const CONNECTION_ATTEMPT_FAILED_MESSAGE = (attempt: number, delay: number): string =>
   `Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`;
+const CONNECTION_ABORTED_ERROR = 'Connection attempts aborted';
+
+/**
+ * Wait between connection attempts, ending early when `signal` aborts.
+ *
+ * @param ms - Delay in milliseconds
+ * @param signal - Optional abort signal
+ */
+async function abortableDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (!signal) return asyncDelay(ms);
+  await sleep(ms, undefined, { signal }).catch((error: unknown) => {
+    if (!signal.aborted) throw error;
+  });
+}
+
 const FAILED_CONNECT_ATTEMPTS_ERROR = (maxRetries: number, lastErrorMessage?: string): string =>
   `Failed to connect after ${maxRetries} attempts: ${lastErrorMessage}`;
 const WEBSOCKET_CLOSED_MESSAGE = (code: number, reason: string): string =>
@@ -146,8 +163,8 @@ export class CDPConnection implements CDPEventSource {
    * continue indefinitely.
    *
    * @param wsUrl - WebSocket debugger URL from CDP target
-   * @param options - Connection configuration options
-   * @throws Error if connection fails after all retries
+   * @param options - Connection configuration options (`signal` stops retrying)
+   * @throws Error if connection fails after all retries or is aborted
    */
   async connect(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
     const maxRetries = options.maxRetries ?? this.config.maxConnectionRetries;
@@ -162,7 +179,7 @@ export class CDPConnection implements CDPEventSource {
     this.connectionOptions = options;
 
     let lastError: Error | undefined;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
+    for (let attempt = 0; attempt < maxRetries && !options.signal?.aborted; attempt++) {
       try {
         await this.attemptConnection(wsUrl, options);
         this.reconnectAttempts = 0;
@@ -172,9 +189,13 @@ export class CDPConnection implements CDPEventSource {
         if (attempt < maxRetries - 1) {
           const delay = this.calculateBackoffDelay(attempt, this.config.maxRetryDelay);
           this.logger.info(CONNECTION_ATTEMPT_FAILED_MESSAGE(attempt, delay));
-          await asyncDelay(delay);
+          await abortableDelay(delay, options.signal);
         }
       }
+    }
+
+    if (options.signal?.aborted) {
+      throw new CDPConnectionError(CONNECTION_ABORTED_ERROR, lastError);
     }
 
     throw new CDPConnectionError(
@@ -190,9 +211,10 @@ export class CDPConnection implements CDPEventSource {
    * indefinitely without it, especially in network failure scenarios.
    *
    * @param wsUrl - WebSocket URL to connect to
-   * @param options - Connection configuration options
+   * @param options - Connection configuration options (`signal` ends a pending attempt)
    * @returns Promise that resolves when connection is established
    * @throws CDPTimeoutError if connection times out
+   * @throws CDPConnectionError if the attempt is aborted
    * @throws Error if WebSocket connection fails
    */
   private attemptConnection(wsUrl: string, options: ConnectionOptions = {}): Promise<void> {
@@ -205,12 +227,32 @@ export class CDPConnection implements CDPEventSource {
         maxPayload: WEBSOCKET_CONFIG.maxPayload,
       });
 
+      const { signal } = options;
+      const onAbort = (): void => {
+        clearTimeout(connectTimeout);
+        reject(new CDPConnectionError(CONNECTION_ABORTED_ERROR));
+        this.ws?.close();
+      };
+      const settled = (): void => signal?.removeEventListener('abort', onAbort);
       const connectTimeout = setTimeout(() => {
+        settled();
         reject(new CDPTimeoutError(CONNECTION_TIMEOUT_ERROR));
         this.ws?.close();
       }, timeout);
+      signal?.addEventListener('abort', onAbort, { once: true });
 
-      this.setupWebSocketHandlers(resolve, reject, connectTimeout, options);
+      this.setupWebSocketHandlers(
+        () => {
+          settled();
+          resolve();
+        },
+        (error) => {
+          settled();
+          reject(error);
+        },
+        connectTimeout,
+        options
+      );
     });
   }
 
