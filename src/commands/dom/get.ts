@@ -10,6 +10,7 @@ import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import {
   getDOMElements,
   getDomContext,
+  resolveA11yNodeForSelector,
   type DomGetOptions as DomGetHelperOptions,
   type DomContext,
 } from '@/commands/dom/helpers/index.js';
@@ -51,10 +52,7 @@ async function handleIndexGetSemantic(index: number, options: DomGetCommandOptio
     async () => {
       const targetNode = await resolver.getNodeIdForIndex(index);
       const ref = { backendNodeId: targetNode.nodeId };
-      const [a11yNode, domContext] = await Promise.all([
-        resolveA11yNode('', ref),
-        getDomContext(ref),
-      ]);
+      const [a11yNode, domContext] = await Promise.all([resolveA11yNode(ref), getDomContext(ref)]);
 
       const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
 
@@ -108,7 +106,7 @@ async function handleSelectorGetSemantic(
 ): Promise<void> {
   await runCommand(
     async () => {
-      const a11yNode = await resolveA11yNode(selector);
+      const a11yNode = await resolveA11yNodeForSelector(selector);
 
       let domContext: DomContext | null = null;
       let nodeId: number | undefined;

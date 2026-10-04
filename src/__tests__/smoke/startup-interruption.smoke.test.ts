@@ -24,6 +24,9 @@ import {
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
 
+/** The daemon exits after Chrome's teardown (up to 5 s for Chrome alone) */
+const DAEMON_EXIT_TIMEOUT_MS = 15000;
+
 /**
  * Wait until a PID file exists and holds a PID.
  *
@@ -109,7 +112,11 @@ void describe('Startup interruption', () => {
 
     assert.equal((await start.result).exitCode, 130);
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
-    assert.equal(await waitForProcessExit(daemonPid), true, 'daemon must exit');
-    assert.equal(await isDaemonRunning(), false);
+    assert.equal(await isDaemonRunning(), false, 'no session may answer');
+    assert.equal(
+      await waitForProcessExit(daemonPid, DAEMON_EXIT_TIMEOUT_MS),
+      true,
+      'daemon must exit after its teardown'
+    );
   });
 });

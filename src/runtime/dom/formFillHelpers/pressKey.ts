@@ -57,7 +57,8 @@ const FOCUS_ELEMENT_SCRIPT = `
   const pageLevel = el === document.body || el === document.documentElement;
   if (!pageLevel) {
     el.focus();
-    if (document.activeElement !== el && !el.contains(document.activeElement)) {
+    const focused = el.getRootNode().activeElement;
+    if (focused !== el && !el.contains(focused)) {
       return {
         success: false,
         reason: 'not-focusable',

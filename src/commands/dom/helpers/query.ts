@@ -6,11 +6,10 @@
  *
  * Node ids reported to users and stored in the query cache are backend node
  * ids: they identify an element for as long as it stays in the page, across
- * bdg invocations. Per-connection node ids from `DOM.querySelector*` are only
- * used immediately, within one command.
+ * bdg invocations. Selectors are matched in the page, including open shadow
+ * roots and same-origin iframes, like a user sees the page.
  */
 
-import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -22,10 +21,19 @@ import {
   staleNodeError,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
-import { validateIPCResponse } from '@/ipc/utils/responseValidator.js';
-import type { DomQueryResult, DomGetResult, DomGetOptions, DomContext, NodeRef } from '@/types.js';
+import { DEEP_QUERY_JS } from '@/runtime/dom/targetNode.js';
+import { resolveA11yNode } from '@/telemetry/a11y.js';
+import type {
+  A11yNode,
+  DomQueryResult,
+  DomGetResult,
+  DomGetOptions,
+  DomContext,
+  NodeRef,
+} from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
@@ -35,24 +43,6 @@ const CDP_CONCURRENCY_LIMIT = 10;
 
 /** Length of the text preview shown for queried elements. */
 const PREVIEW_LENGTH = 80;
-
-/**
- * Enable the DOM domain and fetch the document root nodeId.
- * Every selector-based operation needs this first.
- *
- * @returns Root node id
- */
-async function getDocumentRootId(): Promise<number> {
-  await callCDP('DOM.enable', {});
-
-  const docResponse = await callCDP('DOM.getDocument', {});
-  validateIPCResponse(docResponse);
-  const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-  if (!doc?.root?.nodeId) {
-    throw new CDPConnectionError('Failed to get document root', new Error('No root node'));
-  }
-  return doc.root.nodeId;
-}
 
 /**
  * Convert CDP's flat attribute list to a record.
@@ -110,27 +100,91 @@ function textPreview(outerHTML: string): string {
   return text.slice(0, PREVIEW_LENGTH) + (text.length > PREVIEW_LENGTH ? '...' : '');
 }
 
+/** Counter giving each query its own object group (queries may run concurrently) */
+let queryCount = 0;
+
 /**
- * Run `DOM.querySelectorAll` on the document.
+ * Find the elements matching a selector, including those in open shadow roots
+ * and same-origin iframes ({@link DEEP_QUERY_JS}).
  *
  * @param selector - CSS selector
- * @returns Per-connection node ids of all matches
+ * @returns Backend node ids of all matches
  * @throws CommandError (81) for an invalid selector
  */
 async function selectAll(selector: string): Promise<number[]> {
-  const rootNodeId = await getDocumentRootId();
-  const response = await callCDP('DOM.querySelectorAll', { nodeId: rootNodeId, selector });
-  if (response.status === 'error') {
-    const err = invalidSelectorError(selector, response.error);
+  await callCDP('DOM.enable', {});
+  const objectGroup = `bdg-query-${process.pid}-${++queryCount}`;
+  const evaluated = await callCDP('Runtime.evaluate', {
+    expression: `(${DEEP_QUERY_JS})(${JSON.stringify(selector)})`,
+    objectGroup,
+  });
+  try {
+    return await elementBackendNodeIds(selectionObjectId(selector, evaluated));
+  } finally {
+    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+  }
+}
+
+/**
+ * The page-side array of a selector query, or the error explaining why there
+ * is none: a selector the browser rejects (a `SyntaxError` DOMException) is the
+ * user's (81); anything else (no session, a page navigating away) is not.
+ *
+ * @param selector - CSS selector
+ * @param evaluated - `Runtime.evaluate` response
+ * @returns Remote object id of the array of matches
+ * @throws CommandError (81) for an invalid selector, (101) otherwise
+ */
+function selectionObjectId(
+  selector: string,
+  evaluated: Awaited<ReturnType<typeof callCDP>>
+): string {
+  const { result, exceptionDetails } = (evaluated.data?.result ??
+    {}) as Partial<Protocol.Runtime.EvaluateResponse>;
+  const description = exceptionDetails?.exception?.description;
+  if (description?.startsWith('SyntaxError')) {
+    const detail = description.split('\n')[0];
+    const err = invalidSelectorError(selector, detail);
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  return (
-    (response.data?.result as Protocol.DOM.QuerySelectorAllResponse | undefined)?.nodeIds ?? []
-  );
+  if (evaluated.status === 'error' || exceptionDetails || !result?.objectId) {
+    const detail = exceptionDetails?.exception?.description ?? evaluated.error ?? 'no result';
+    throw new CommandError(
+      `Could not search the page for "${selector}": ${detail.split('\n')[0]}`,
+      { suggestion: 'Check that the page has finished loading, then retry' },
+      EXIT_CODES.CDP_CONNECTION_FAILURE
+    );
+  }
+  return result.objectId;
+}
+
+/**
+ * Backend node ids of the elements in a page-side array.
+ *
+ * @param arrayObjectId - Remote object id of the array
+ * @returns Backend node ids, in array order
+ */
+async function elementBackendNodeIds(arrayObjectId: string): Promise<number[]> {
+  const response = await callCDP('Runtime.getProperties', {
+    objectId: arrayObjectId,
+    ownProperties: true,
+  });
+  const properties =
+    (response.data?.result as Protocol.Runtime.GetPropertiesResponse | undefined)?.result ?? [];
+  const elementIds = properties
+    .filter((property) => /^\d+$/.test(property.name))
+    .sort((a, b) => Number(a.name) - Number(b.name))
+    .flatMap((property) => (property.value?.objectId ? [property.value.objectId] : []));
+  const ids = await mapConcurrently(elementIds, async (objectId) => {
+    const described = await callCDP('DOM.describeNode', { objectId });
+    return (described.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node
+      .backendNodeId;
+  });
+  return ids.filter((id): id is number => id !== undefined);
 }
 
 /**
@@ -155,16 +209,16 @@ function mapConcurrently<T, R>(
  * @returns Matches with backend node ids, tags, classes and text previews
  */
 export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
-  const nodeIds = await selectAll(selector);
-  if (nodeIds.length > 20) {
-    log.debug(`Querying ${nodeIds.length} elements with selector: ${selector}`);
+  const backendNodeIds = await selectAll(selector);
+  if (backendNodeIds.length > 20) {
+    log.debug(`Querying ${backendNodeIds.length} elements with selector: ${selector}`);
   }
 
-  const nodes = await mapConcurrently(nodeIds, async (nodeId, index) => {
-    const desc = await describeNode({ nodeId });
+  const nodes = await mapConcurrently(backendNodeIds, async (backendNodeId, index) => {
+    const desc = await describeNode({ backendNodeId });
     if (!desc) return { index, nodeId: 0 };
     const classes = unpackAttributes(desc.attributes)['class']?.split(/\s+/).filter(Boolean);
-    const preview = textPreview((await getOuterHTML({ nodeId })) ?? '');
+    const preview = textPreview((await getOuterHTML({ backendNodeId })) ?? '');
     return {
       index,
       nodeId: desc.backendNodeId,
@@ -207,8 +261,8 @@ export async function getDomContext(ref: NodeRef): Promise<DomContext | null> {
  * @returns Node references to describe
  */
 async function selectForGet(selector: string, options: DomGetOptions): Promise<NodeRef[]> {
-  const nodeIds = await selectAll(selector);
-  if (nodeIds.length === 0) {
+  const backendNodeIds = await selectAll(selector);
+  if (backendNodeIds.length === 0) {
     const err = noNodesFoundError(selector);
     throw new CommandError(
       err.message,
@@ -216,19 +270,19 @@ async function selectForGet(selector: string, options: DomGetOptions): Promise<N
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
-  if (options.all) return nodeIds.map((nodeId) => ({ nodeId }));
+  if (options.all) return backendNodeIds.map((backendNodeId) => ({ backendNodeId }));
 
   const position = options.nth ?? 0;
-  const nodeId = nodeIds[position];
-  if (nodeId === undefined) {
-    const err = indexOutOfRangeError(position, nodeIds.length - 1);
+  const backendNodeId = backendNodeIds[position];
+  if (backendNodeId === undefined) {
+    const err = indexOutOfRangeError(position, backendNodeIds.length - 1);
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  return [{ nodeId }];
+  return [{ backendNodeId }];
 }
 
 /**
@@ -299,8 +353,8 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
  * @throws CommandError (83) when nothing matches
  */
 export async function resolveSelector(selector: string): Promise<NodeRef> {
-  const nodeId = (await selectAll(selector))[0];
-  if (nodeId === undefined) {
+  const backendNodeId = (await selectAll(selector))[0];
+  if (backendNodeId === undefined) {
     const err = noNodesFoundError(selector);
     throw new CommandError(
       err.message,
@@ -308,7 +362,7 @@ export async function resolveSelector(selector: string): Promise<NodeRef> {
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
-  return { nodeId };
+  return { backendNodeId };
 }
 
 /**
@@ -318,14 +372,25 @@ export async function resolveSelector(selector: string): Promise<NodeRef> {
  * @returns Backend node id per selector, or undefined when it matches nothing
  */
 export async function resolveBackendNodeIds(selectors: string[]): Promise<(number | undefined)[]> {
-  const rootNodeId = await getDocumentRootId();
   return mapConcurrently(selectors, async (selector) => {
-    const response = await callCDP('DOM.querySelector', { nodeId: rootNodeId, selector });
-    const nodeId = (response.data?.result as Protocol.DOM.QuerySelectorResponse | undefined)
-      ?.nodeId;
-    if (!nodeId) return undefined;
-    return (await describeNode({ nodeId }))?.backendNodeId;
+    try {
+      return (await selectAll(selector))[0];
+    } catch (error) {
+      log.debug(`Could not resolve ${selector}: ${getErrorMessage(error)}`);
+      return undefined;
+    }
   });
+}
+
+/**
+ * Accessibility node of the first element matching a selector.
+ *
+ * @param selector - CSS selector
+ * @returns A11y node, or null when nothing matches or the node is not exposed
+ */
+export async function resolveA11yNodeForSelector(selector: string): Promise<A11yNode | null> {
+  const [backendNodeId] = await resolveBackendNodeIds([selector]);
+  return backendNodeId === undefined ? null : resolveA11yNode({ backendNodeId });
 }
 
 /**

@@ -1,3 +1,4 @@
+import { CROSS_ORIGIN_FRAMES_NOTE } from '@/errors/messages.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
@@ -39,6 +40,7 @@ export function formatDomQuery(data: DomQueryResult): string {
       .section('Suggestions:', [
         `Verify selector: bdg dom eval "document.querySelector('${safeSelector}')"`,
         'List elements:   bdg dom query "*"',
+        CROSS_ORIGIN_FRAMES_NOTE,
       ])
       .build();
   }
