@@ -289,29 +289,19 @@ function formatBriefFields(form: DiscoveredForm, fmt: OutputFormatter): void {
 /**
  * Format other forms summary.
  *
- * @param forms - All forms
- * @param selectedIndex - Index of selected form
+ * @param others - Forms not shown, with their visible field counts
  * @param fmt - Output formatter
  */
 function formatOtherForms(
-  forms: DiscoveredForm[],
-  selectedIndex: number,
+  others: NonNullable<FormDiscoveryResult['otherForms']>,
   fmt: OutputFormatter
 ): void {
-  const others = forms.filter((_, i) => i !== selectedIndex);
-
-  if (others.length === 0) {
-    return;
-  }
-
+  if (others.length === 0) return;
   fmt.blank();
   fmt.text('Other forms on page:');
-
   for (const form of others) {
-    const fieldCount = form.fields.filter((f) => !f.hidden).length;
-    fmt.text(`  Form ${form.index}: "${form.name ?? 'Unnamed'}" - ${fieldCount} field(s)`);
+    fmt.text(`  Form ${form.index}: "${form.name ?? 'Unnamed'}" - ${form.fieldCount} field(s)`);
   }
-
   fmt.blank();
   fmt.text('Use --all to see all forms');
 }
@@ -334,37 +324,7 @@ export function formatFormDiscovery(result: FormDiscoveryResult): string {
     fmt.blank();
   }
 
-  if (result.forms.length === 1 && result.formCount > 1) {
-    const allForms: DiscoveredForm[] = [];
-    for (let i = 0; i < result.formCount; i++) {
-      if (i === result.selectedForm) {
-        allForms.push(result.forms[0] as DiscoveredForm);
-      } else {
-        allForms.push({
-          index: i,
-          name: `Form ${i}`,
-          action: null,
-          method: 'GET',
-          relevanceScore: 0,
-          fields: [],
-          buttons: [],
-          summary: {
-            totalFields: 0,
-            filledFields: 0,
-            emptyFields: 0,
-            validFields: 0,
-            invalidFields: 0,
-            requiredTotal: 0,
-            requiredFilled: 0,
-            requiredRemaining: 0,
-            readyToSubmit: true,
-            blockers: [],
-          },
-        });
-      }
-    }
-    formatOtherForms(allForms, result.selectedForm, fmt);
-  }
+  if (result.otherForms) formatOtherForms(result.otherForms, fmt);
 
   fmt.blank();
   fmt.text('Suggested commands:');

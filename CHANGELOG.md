@@ -67,6 +67,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `stop` says "Closed Chrome" (it closes Chrome gracefully); `cleanup` reports removing stale PID files
   - Headless Chrome sends the regular Chrome user agent (sites served "HeadlessChrome" a different page)
   - More ad, measurement and A/B-testing domains are left out of network capture by default (ad exchanges, comScore, Nielsen, Chartbeat, Permutive, Optimizely, Adobe, AT Internet); `--all` records them
+- **Reading the page: a11y, forms, query, get, screenshot, cdp**
+  - `dom a11y tree/query` and quick search include same-origin iframes (the tree stopped at the iframe); `a11y query` results are numbered and usable as indices (`bdg dom click 0`); "true"/"false" states are booleans
+  - `a11y describe` on an element missing from the accessibility tree says why (not rendered, aria-hidden, `alt=""`, …) instead of "not found"/"re-run query"; the quick search keeps quotes (`bdg dom a11y 'Say "hi"'`)
+  - `dom form` with the form inside a same-origin iframe exits 89 with how to reach its fields (it said "No forms discovered", and the old hint named commands that do not exist); "Other forms on page" shows their real names and field counts; contenteditable fields no longer get a wrong "use click + type" hint
+  - Text previews never split an emoji (JSON stayed invalid for jq), keep words of separate elements apart, decode entities and skip `<style>`/`<script>`
+  - The `dom query` "Extract text" hint is copy-pastable (shell-quoted, field values, the shown match)
+  - `dom get --raw --all` numbers results from 0; conflicting options exit 81: `dom get <selector> --node-id`, `--all --nth`, `dom screenshot --selector … --index`, `--quality` for a PNG
+  - `cdp Browser.close` is refused with `bdg stop` as the alternative (it ended the session behind bdg's back)
+- **`dom eval`**
+  - A page kept busy by a loop started from a timer is recovered: the next eval terminates the page's scripts after 20 s and exits 102 ("the page is usable again") instead of every eval failing with 101 after 30 s; the eval that started it returns at once
+  - A returned promise that never settles exits 102 after 20 s ("did not settle") instead of a generic timeout
+  - Nested values keep what JSON would lose: `undefined`, NaN, ±Infinity and -0 as strings, DOM nodes as `tag#id.class`, node lists, typed arrays, maps and sets as arrays, dates as ISO strings, cycles as `[Circular]` (`[1,undefined,NaN]` gave `[1,null,null]`, `{el: document.body}` gave `{"el":{}}`)
+  - `throw {code: 42}` shows the object; quoting tips are only given for syntax errors; an empty script exits 81
 
 - **Session start**
   - Chrome exiting during startup is reported at once with what Chrome said (e.g. an unknown `--chrome-flags` value), exit 100, instead of after about 30 s as a refused connection with port advice; a profile already open in another Chrome says so

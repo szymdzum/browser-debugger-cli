@@ -24,6 +24,7 @@ import type { DomGetCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
 import {
   elementAtIndexNotFoundError,
+  conflictingOptionsMessage,
   missingArgumentError,
   noNodesFoundError,
 } from '@/errors/messages.js';
@@ -147,6 +148,26 @@ async function handleSelectorGet(selector: string, options: DomGetCommandOptions
 }
 
 /**
+ * Options of `dom get` that cannot be combined (one would be ignored).
+ *
+ * @param selectorOrIndex - Selector or index argument
+ * @param options - Command options
+ * @returns What conflicts, or null
+ */
+function getOptionsConflict(
+  selectorOrIndex: string | undefined,
+  options: DomGetCommandOptions
+): string | null {
+  if (options.nodeId !== undefined && selectorOrIndex !== undefined) {
+    return conflictingOptionsMessage('--node-id', 'a selector or index');
+  }
+  if (options.all && options.nth !== undefined) {
+    return conflictingOptionsMessage('--all', '--nth');
+  }
+  return null;
+}
+
+/**
  * Handle `bdg dom get [selectorOrIndex] [--node-id <id>]`.
  *
  * `--node-id` reads that node directly (raw output); otherwise dispatches to
@@ -160,6 +181,10 @@ export async function handleDomGet(
   selectorOrIndex: string | undefined,
   options: DomGetCommandOptions
 ): Promise<void> {
+  const conflict = getOptionsConflict(selectorOrIndex, options);
+  if (conflict) {
+    throw new CommandError(conflict, {}, EXIT_CODES.INVALID_ARGUMENTS);
+  }
   const { nodeId } = options;
   if (nodeId !== undefined) {
     await runCommand(

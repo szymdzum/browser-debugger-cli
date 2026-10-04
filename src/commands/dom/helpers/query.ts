@@ -85,18 +85,50 @@ async function getOuterHTML(ref: NodeRef): Promise<string | undefined> {
   return (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)?.outerHTML;
 }
 
+/** Entities common in page text, decoded for previews */
+const HTML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+};
+
 /**
- * Short text preview of an element's content.
+ * Decode named and numeric HTML entities (`&amp;`, `&#8217;`, `&#x1F680;`).
+ *
+ * @param text - Text with entities
+ * @returns Decoded text (unknown entities are kept)
+ */
+function decodeEntities(text: string): string {
+  return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, body: string) => {
+    if (body[0] !== '#') return HTML_ENTITIES[body.toLowerCase()] ?? entity;
+    const code =
+      body[1]?.toLowerCase() === 'x' ? parseInt(body.slice(2), 16) : Number(body.slice(1));
+    const valid = Number.isInteger(code) && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff);
+    return valid ? String.fromCodePoint(code) : entity;
+  });
+}
+
+/**
+ * Short text preview of an element's content: its visible text (not scripts
+ * or styles), words of separate elements kept apart, cut on a whole
+ * character (an emoji is never split, which would make JSON invalid).
  *
  * @param outerHTML - Element HTML
- * @returns Collapsed text, truncated to {@link PREVIEW_LENGTH}
+ * @returns Collapsed text, truncated to {@link PREVIEW_LENGTH} characters
  */
-function textPreview(outerHTML: string): string {
-  const text = outerHTML
-    .replace(/<[^>]*>/g, '')
+export function textPreview(outerHTML: string): string {
+  const text = decodeEntities(
+    outerHTML.replace(/<(script|style|template)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ')
+  )
     .replace(/\s+/g, ' ')
     .trim();
-  return text.slice(0, PREVIEW_LENGTH) + (text.length > PREVIEW_LENGTH ? '...' : '');
+  const characters = Array.from(text);
+  return characters.length > PREVIEW_LENGTH
+    ? characters.slice(0, PREVIEW_LENGTH).join('') + '...'
+    : text;
 }
 
 /** Counter giving each query its own object group (queries may run concurrently) */

@@ -80,7 +80,16 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
     .blank();
 
   for (const node of result.nodes) {
-    fmt.text(formatA11yNodeOneLine(node)).blank();
+    const index = node.index !== undefined ? `[${node.index}] ` : '';
+    fmt.text(index + formatA11yNodeOneLine(node)).blank();
+  }
+
+  if (result.nodes[0]?.index !== undefined) {
+    fmt.section('Next steps:', [
+      'Inspect:  bdg dom a11y describe 0',
+      'Click:    bdg dom click 0',
+      'Fill:     bdg dom fill 0 "<value>"',
+    ]);
   }
 
   return fmt.build();

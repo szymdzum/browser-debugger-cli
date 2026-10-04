@@ -7,6 +7,7 @@
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomEvalCommandOptions } from '@/commands/shared/optionTypes.js';
+import { emptyScriptError } from '@/errors/messages.js';
 import { domEval } from '@/ipc/client.js';
 import { formatDomEval } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -17,6 +18,15 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 export async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
     async () => {
+      if (!script.trim()) {
+        const err = emptyScriptError();
+        return {
+          success: false,
+          error: err.message,
+          exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+          errorContext: { suggestion: err.suggestion },
+        };
+      }
       const response = await domEval(script);
       if (response.status === 'error' || !response.data) {
         return {

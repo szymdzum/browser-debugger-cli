@@ -12,7 +12,7 @@
 import type { Command } from 'commander';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { getDomContext, resolveA11yNodeForSelector } from '@/commands/dom/helpers/index.js';
+import { getDomContext, resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
 import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { runCommand, runJsonCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -26,14 +26,16 @@ import {
   elementNotFoundError,
   invalidQueryPatternError,
   noA11yNodesFoundError,
-  elementNotAccessibleError,
+  notInAccessibilityTreeError,
 } from '@/errors/messages.js';
 import {
+  a11yIgnoredReasons,
   collectA11yTree,
   queryA11yTree,
   parseQueryPattern,
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
+import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import type { A11yNode } from '@/types.js';
 import {
   formatA11yTree,
@@ -71,6 +73,19 @@ async function handleA11yTree(options: A11yTreeCommandOptions): Promise<void> {
     options,
     formatA11yTree
   );
+}
+
+/**
+ * Quote a search text for a query pattern, keeping the quotes it contains
+ * (`Say "hi"` is searched as is).
+ *
+ * @param text - Accessible name to search for
+ * @returns Quoted value (unquoted only if it contains both kinds of quotes)
+ */
+function quoteQueryValue(text: string): string {
+  if (!text.includes('"')) return `"${text}"`;
+  if (!text.includes("'")) return `'${text}'`;
+  return text;
 }
 
 /**
@@ -115,7 +130,17 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
         );
       }
 
-      return { success: true, data: result };
+      const indexed = { ...result, nodes: result.nodes.map((node, index) => ({ ...node, index })) };
+      await QueryCacheManager.getInstance().set({
+        selector: `a11y ${pattern}`,
+        count: indexed.count,
+        nodes: indexed.nodes.map((node) => ({
+          index: node.index,
+          nodeId: node.backendDOMNodeId ?? 0,
+          tag: node.role,
+        })),
+      });
+      return { success: true, data: indexed };
     },
     options,
     formatA11yQueryResult
@@ -160,23 +185,21 @@ async function handleA11yDescribe(
    * Fetch a11y node data for a given selector or index.
    */
   async function fetchA11yNodeData(): Promise<A11yNodeWithContext> {
-    let node: A11yNode | null;
-    let backendNodeId: number | undefined;
-
-    if (isNumericIndex) {
-      const index = parseInt(selectorOrIndex, 10);
-      backendNodeId = (await resolver.getNodeIdForIndex(index)).nodeId;
-      node = await resolveA11yNode({ backendNodeId });
-    } else {
-      node = await resolveA11yNodeForSelector(selectorOrIndex);
-    }
-
-    if (!node) {
-      if (isNumericIndex) {
-        const err = elementNotAccessibleError(parseInt(selectorOrIndex, 10));
-        throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
-      }
+    const backendNodeId = isNumericIndex
+      ? (await resolver.getNodeIdForIndex(parseInt(selectorOrIndex, 10))).nodeId
+      : (await resolveBackendNodeIds([selectorOrIndex]))[0];
+    if (backendNodeId === undefined) {
       const err = elementNotFoundError(selectorOrIndex);
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.RESOURCE_NOT_FOUND
+      );
+    }
+    const node = await resolveA11yNode({ backendNodeId });
+    if (!node) {
+      const reasons = await a11yIgnoredReasons({ backendNodeId });
+      const err = notInAccessibilityTreeError(selectorOrIndex, reasons);
       throw new CommandError(
         err.message,
         { suggestion: err.suggestion },
@@ -236,7 +259,7 @@ export function registerA11yCommands(domCmd: Command): void {
       } else if (isPatternQuery) {
         await handleA11yQuery(search, options);
       } else {
-        await handleA11yQuery(`name:"${search.replace(/"/g, '')}"`, options);
+        await handleA11yQuery(`name:${quoteQueryValue(search)}`, options);
       }
     });
 

@@ -122,7 +122,7 @@ describe('buildTreeFromRawNodes', () => {
 
     assert.ok(node);
     assert.ok(node.properties);
-    assert.equal(node.properties['invalid'], 'false');
+    assert.equal(node.properties['invalid'], false);
     assert.equal(node.properties['editable'], 'plaintext');
   });
 

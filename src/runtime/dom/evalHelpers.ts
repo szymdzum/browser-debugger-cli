@@ -1,7 +1,12 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { scriptExecutionError, scriptTimeoutError } from '@/errors/messages.js';
+import {
+  pageBusyError,
+  promiseTimeoutError,
+  scriptExecutionError,
+  scriptTimeoutError,
+} from '@/errors/messages.js';
 import { formatRemoteObject } from '@/telemetry/remoteObject.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -149,6 +154,9 @@ async function settlePromise(
  */
 function describeException(details: Protocol.Runtime.ExceptionDetails): string {
   const exception = details.exception;
+  if (exception?.type === 'object' && exception.subtype !== 'error' && exception.preview) {
+    return `Uncaught ${formatRemoteObject(exception)}`;
+  }
   if (exception?.description) return exception.description;
   if (exception?.value !== undefined) {
     return `Uncaught ${typeof exception.value === 'string' ? exception.value : JSON.stringify(exception.value)}`;
@@ -191,8 +199,79 @@ const DESCRIBED_SUBTYPES = new Set([
   'generator',
 ]);
 
-/** Object subtypes shown by their short description (`button#submit`, `Uint8Array(3)`). */
-const BRIEF_SUBTYPES = new Set(['node', 'typedarray', 'arraybuffer', 'dataview']);
+/** Object subtypes shown by their short description (`button#submit`, `ArrayBuffer(8)`). */
+const BRIEF_SUBTYPES = new Set(['node', 'arraybuffer', 'dataview']);
+
+/**
+ * Page-side copy of an object as JSON, keeping what JSON would lose inside
+ * it: `undefined`, NaN, ±Infinity and -0 become strings, DOM nodes their
+ * short description (`button#submit`), node lists and typed arrays arrays,
+ * dates ISO strings, maps and sets entries, errors their message, BigInts
+ * `12n`, functions `function name()`, and cycles `[Circular]` (an object
+ * shared by two properties is copied twice). Works for objects of iframes
+ * (other realms); lists and objects are cut after 1000 entries, and a
+ * throwing getter becomes `[Error: …]`.
+ */
+export const JSON_SAFE_COPY_FUNCTION = `function () {
+  const MAX_ITEMS = 1000;
+  const ancestors = new Set();
+  const kind = (value) => Object.prototype.toString.call(value).slice(8, -1);
+  const isNode = (value) => typeof value.nodeType === 'number' && typeof value.nodeName === 'string';
+  const describeNode = (node) => {
+    if (node.nodeType !== 1) return node.nodeName.toLowerCase();
+    return node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') +
+      (node.classList && node.classList.length ? '.' + Array.from(node.classList).join('.') : '');
+  };
+  const items = (list, next) => {
+    const result = [];
+    let count = 0;
+    for (const item of list) {
+      if (count++ === MAX_ITEMS) { result.push('…'); break; }
+      result.push(next(item));
+    }
+    return result;
+  };
+  const leaf = (value) => {
+    if (value === undefined) return 'undefined';
+    if (typeof value === 'number') {
+      if (Number.isNaN(value) || !Number.isFinite(value)) return String(value);
+      return Object.is(value, -0) ? '-0' : value;
+    }
+    if (typeof value === 'bigint') return value + 'n';
+    if (typeof value === 'symbol') return value.toString();
+    if (typeof value === 'function') return 'function ' + (value.name || '(anonymous)') + '()';
+    return value;
+  };
+  const copy = (value, depth) => {
+    if (value === null || typeof value !== 'object') return leaf(value);
+    if (ancestors.has(value)) return '[Circular]';
+    if (depth > 20) return '[…]';
+    const next = (item) => copy(item, depth + 1);
+    const type = kind(value);
+    if (isNode(value)) return describeNode(value);
+    if (value.window === value) return 'Window';
+    if (type === 'Date') return isNaN(value) ? 'Invalid Date' : value.toISOString();
+    if (type === 'RegExp') return String(value);
+    if (type === 'Error' || value instanceof Error) return value.name + ': ' + value.message;
+    ancestors.add(value);
+    try {
+      if (type === 'Map') return items(value, ([k, v]) => [next(k), next(v)]);
+      if (type === 'Set' || type === 'NodeList' || type === 'HTMLCollection') return items(value, next);
+      if (ArrayBuffer.isView(value) && type !== 'DataView') return items(value, next);
+      if (Array.isArray(value)) return items(value, next);
+      const result = {};
+      const keys = Object.keys(value);
+      for (const key of keys.slice(0, MAX_ITEMS)) {
+        try { result[key] = next(value[key]); } catch (e) { result[key] = '[Error: ' + (e && e.message) + ']'; }
+      }
+      if (keys.length > MAX_ITEMS) result['…'] = (keys.length - MAX_ITEMS) + ' more keys';
+      return result;
+    } finally {
+      ancestors.delete(value);
+    }
+  };
+  return copy(this, 0);
+}`;
 
 /**
  * Whether an exception is V8 terminating a script that ran too long.
@@ -234,7 +313,7 @@ async function toEvalResult(
   try {
     const copy = (await cdp.send('Runtime.callFunctionOn', {
       objectId: remote.objectId,
-      functionDeclaration: 'function () { return this; }',
+      functionDeclaration: JSON_SAFE_COPY_FUNCTION,
       returnByValue: true,
     })) as { result?: { value?: unknown }; exceptionDetails?: unknown };
     if (!copy.exceptionDetails) return { value: copy.result?.value, ...kind };
@@ -245,12 +324,56 @@ async function toEvalResult(
 }
 
 /**
+ * Wait for `work`, or fail when it takes longer than `ms`.
+ *
+ * @param work - Pending work (its later failure is ignored once timed out)
+ * @param ms - Time limit
+ * @param onTimeout - Builds the error (and may clean up) when the limit passes
+ * @returns The work's result
+ * @throws What `onTimeout` returns, when the limit passes first
+ */
+async function withDeadline<T>(
+  work: Promise<T>,
+  ms: number,
+  onTimeout: () => CommandError | Promise<CommandError>
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => void Promise.resolve(onTimeout()).then(reject, reject), ms);
+  });
+  work.catch(() => undefined);
+  try {
+    return await Promise.race([work, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Stop whatever JavaScript keeps the page busy (e.g. a loop started from a
+ * timer, which `Runtime.evaluate`'s own timeout cannot reach: the script
+ * waits behind it), so the page is usable again.
+ *
+ * @param cdp - CDP connection
+ * @returns The timeout error to report
+ */
+async function terminatePageScripts(cdp: CDPConnection): Promise<CommandError> {
+  await cdp
+    .send('Runtime.terminateExecution')
+    .catch((error: unknown) => log.debug(`terminateExecution failed: ${getErrorMessage(error)}`));
+  const err = pageBusyError(EVAL_TIMEOUT_MS);
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+}
+
+/**
  * Evaluate a `bdg dom eval` script.
  *
  * Runs like the DevTools console (REPL mode: top-level `const`/`let` may be
  * declared again in a later call, top-level `await` works), awaits promises,
  * terminates scripts running longer than 20 s (so the page is not left
- * frozen by e.g. an endless loop), and returns a JSON-safe value.
+ * frozen by e.g. an endless loop), and returns a JSON-safe value. The eval's
+ * objects are released without waiting: a script that started a busy loop
+ * from a timer has already returned, and the next command recovers the page.
  *
  * @param cdp - CDP connection
  * @param script - JavaScript expression
@@ -259,16 +382,32 @@ async function toEvalResult(
  */
 export async function evaluateScript(cdp: CDPConnection, script: string): Promise<EvalResult> {
   try {
-    const response = await executeScript(cdp, script, {
-      returnByValue: false,
-      generatePreview: true,
-      replMode: true,
-      objectGroup: EVAL_OBJECT_GROUP,
-      timeout: EVAL_TIMEOUT_MS,
-    });
-    return await toEvalResult(cdp, await settlePromise(cdp, response.result, script));
+    const response = await withDeadline(
+      executeScript(cdp, script, {
+        returnByValue: false,
+        generatePreview: true,
+        replMode: true,
+        objectGroup: EVAL_OBJECT_GROUP,
+        timeout: EVAL_TIMEOUT_MS,
+      }),
+      EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
+      () => terminatePageScripts(cdp)
+    );
+    const settled = await withDeadline(
+      settlePromise(cdp, response.result, script),
+      EVAL_TIMEOUT_MS,
+      () => {
+        const err = promiseTimeoutError(EVAL_TIMEOUT_MS);
+        return new CommandError(
+          err.message,
+          { suggestion: err.suggestion },
+          EXIT_CODES.CDP_TIMEOUT
+        );
+      }
+    );
+    return await toEvalResult(cdp, settled);
   } finally {
-    await cdp
+    void cdp
       .send('Runtime.releaseObjectGroup', { objectGroup: EVAL_OBJECT_GROUP })
       .catch((error: unknown) =>
         log.debug(`Could not release eval objects: ${getErrorMessage(error)}`)

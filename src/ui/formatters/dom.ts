@@ -17,6 +17,20 @@ function safeQuerySelectorArgument(selector: string): string {
 }
 
 /**
+ * A shell-quoted `dom eval` script reading the text (or a field's value) of
+ * the n-th match in the main document (null for matches inside iframes or
+ * shadow roots, which `document.querySelectorAll` does not reach).
+ *
+ * @param selector - CSS selector
+ * @param index - Match to read
+ * @returns Single-quoted script, safe to paste into a shell
+ */
+function textExtractionScript(selector: string, index: number): string {
+  const script = `(el => el && (el.value ?? el.textContent))(document.querySelectorAll(${JSON.stringify(selector)})[${index}])`;
+  return `'${script.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * Format DOM query results for human-readable output.
  *
  * Displays found nodes with their index, tag, classes, and preview text.
@@ -81,7 +95,7 @@ export function formatDomQuery(data: DomQueryResult): string {
     .section('Next steps:', [
       `Get HTML:        bdg dom get ${exampleIndex} --raw`,
       `Accessibility:   bdg dom get ${exampleIndex}`,
-      `Extract text:    bdg dom eval "document.querySelector('${safeQuerySelectorArgument(selector)}').textContent"`,
+      `Extract text:    bdg dom eval ${textExtractionScript(selector, exampleIndex)}`,
     ])
     .build();
 }
@@ -111,8 +125,8 @@ export function formatDomQuery(data: DomQueryResult): string {
  *   ]
  * });
  * // Output:
- * // [1] <div class="error">Error 1</div>
- * // [2] <span class="error">Error 2</span>
+ * // [0] <div class="error">Error 1</div>
+ * // [1] <span class="error">Error 2</span>
  * ```
  */
 export function formatDomGet(data: DomGetResult): string {
@@ -125,7 +139,7 @@ export function formatDomGet(data: DomGetResult): string {
 
   const fmt = new OutputFormatter();
   nodes.forEach((node, i) => {
-    fmt.text(`[${i + 1}] ${node.outerHTML}`);
+    fmt.text(`[${i}] ${node.outerHTML}`);
   });
 
   return fmt.build();

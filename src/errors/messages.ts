@@ -748,13 +748,30 @@ export function noA11yNodesFoundError(pattern: string): ErrorWithSuggestion {
 }
 
 /**
- * Element not accessible (a11y).
+ * An element that exists but has no node in the accessibility tree.
+ *
+ * @param target - Selector or index the user gave
+ * @param reasons - Why Chrome leaves it out
  */
-export function elementNotAccessibleError(index: number): ErrorWithSuggestion {
+export function notInAccessibilityTreeError(
+  target: string,
+  reasons: string[]
+): ErrorWithSuggestion {
   return {
-    message: `Element at index ${index} not accessible`,
-    suggestion: 'Re-run query to refresh cache',
+    message: `${target} exists but is not in the accessibility tree${reasons.length ? ` (${reasons.join('; ')})` : ''}`,
+    suggestion: `Screen readers skip it. Inspect its HTML instead: bdg dom get ${/^\d+$/.test(target) ? target : `'${target}'`}`,
   };
+}
+
+/**
+ * Two options given together where one would be ignored.
+ *
+ * @param first - First option
+ * @param second - Option it conflicts with
+ * @returns Message
+ */
+export function conflictingOptionsMessage(first: string, second: string): string {
+  return `${first} cannot be combined with ${second}; use one of them`;
 }
 
 /**
@@ -811,6 +828,41 @@ export function scriptTimeoutError(timeoutMs: number): ErrorWithSuggestion {
 }
 
 /**
+ * The page was kept busy by a script (e.g. a loop started from a timer) and
+ * bdg terminated it.
+ *
+ * @param timeoutMs - Time waited
+ */
+export function pageBusyError(timeoutMs: number): ErrorWithSuggestion {
+  return {
+    message: `The page was busy for ${Math.round(timeoutMs / 1000)}s (a script kept it running), so its scripts were terminated`,
+    suggestion: 'The page is usable again; re-run the command',
+  };
+}
+
+/**
+ * `dom eval` given an empty script (often a shell variable that was not set).
+ */
+export function emptyScriptError(): ErrorWithSuggestion {
+  return {
+    message: 'The script is empty',
+    suggestion: `Pass an expression, e.g. bdg dom eval 'document.title'`,
+  };
+}
+
+/**
+ * A promise returned by `dom eval` that did not settle in time.
+ *
+ * @param timeoutMs - Time waited
+ */
+export function promiseTimeoutError(timeoutMs: number): ErrorWithSuggestion {
+  return {
+    message: `The returned promise did not settle within ${Math.round(timeoutMs / 1000)}s`,
+    suggestion: 'Check that it resolves or rejects, or race it with a timeout in the script',
+  };
+}
+
+/**
  * Script execution error with shell quote detection.
  *
  * Shows the script as received to help diagnose shell quote stripping issues.
@@ -848,7 +900,7 @@ export function scriptExecutionError(
       lines.push('');
       lines.push(quoteCheck.suggestion);
     }
-  } else {
+  } else if (/^SyntaxError\b/.test(errorMessage)) {
     lines.push('');
     lines.push('Tips:');
     lines.push("  - Use single quotes around script: bdg dom eval '...'");
@@ -907,13 +959,10 @@ export function noFormsFoundError(): ErrorWithSuggestion {
  * Form in iframe (cross-origin or same-origin).
  */
 export function formInIframeError(iframeUrl: string, crossOrigin: boolean): ErrorWithSuggestion {
-  const originNote = crossOrigin
-    ? 'Cross-origin iframe - cannot inspect directly'
-    : 'Same-origin iframe - use frame commands to access';
   return {
-    message: `Form is inside an iframe: ${iframeUrl}`,
+    message: `${crossOrigin ? 'The form may be' : 'The form is'} inside an iframe: ${iframeUrl}`,
     suggestion: crossOrigin
-      ? `${originNote}. Manual interaction required for cross-origin frames.`
-      : `${originNote}. Try: bdg dom frame list, then bdg dom frame attach <id>`,
+      ? 'Cross-origin iframes cannot be read or controlled; open the iframe URL directly: bdg <iframe url>'
+      : 'dom form lists forms of the main document only; its fields are reachable directly: bdg dom query "input, select, textarea", then bdg dom fill <index> <value>',
   };
 }
