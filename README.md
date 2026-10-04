@@ -33,8 +33,10 @@ We benchmarked bdg against Chrome DevTools MCP Server on real developer debuggin
 ## Install
 
 ```bash
-npm install -g browser-debugger-cli@alpha
+npm install -g browser-debugger-cli
 ```
+
+**Requirements:** Node.js 22.12+ and Chrome (or Chromium).
 
 **Platform Support:**
 - ✅ macOS and Linux
@@ -50,12 +52,18 @@ bdg https://localhost:5173 --chrome-flags="--disable-web-security"       # Disab
 bdg cdp --search cookie            # Discover commands
 bdg cdp Network.getCookies         # Run any CDP method
 bdg dom query "button"             # High-level helpers
+bdg dom fill 'input[name="q"]' "shoes"
+bdg dom click 'button:has-text("Search")'
+bdg page navigate example.com/about
+bdg eval "document.title"          # Run JavaScript in the page (--frame for iframes)
+bdg network list --preset errors   # Network requests, console: bdg console
+bdg dom listeners "#save"          # Which event listeners run for an element
 bdg stop                           # End session
 ```
 
 ## Current State
 
-**Raw CDP access is complete.** Every protocol method works now. High-level wrappers (`bdg dom`, `bdg network`) are being added for common operations. See [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) for full reference.
+**Raw CDP access is complete.** Every protocol method works now. High-level commands cover the common work: page navigation, DOM queries and interaction (click, fill, hover, keys, forms, shadow DOM and iframes), accessibility tree, screenshots, network requests and HAR export, console messages and event listeners. See the [CLI reference](docs/CLI_REFERENCE.md) for every command, and `bdg --help --json` for the machine-readable version.
 
 ## Agent Discovery Pattern
 

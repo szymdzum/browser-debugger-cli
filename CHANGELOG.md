@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-04
+
+Thanks to @sfc-gh-mochen, @sfc-gh-adsaxena and @StealthEyeLLC, whose pull requests (#169, #199, #200, #252) led to the text selectors, `bdg eval`, `dom eval --frame`, readable binary WebSocket messages and `bdg dom listeners` in this release.
+
 ### Added
 
 - **`bdg page navigate <url>` / `reload` / `back` / `forward`** - Move the session's page and wait for it to load (`--no-wait` to return at once); unreachable URLs exit 80, no history entry exits 81
@@ -19,22 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Faster CLI start** - `dist/index.js` and `dist/daemon.js` are bundled into one file each (esbuild); `node:http` and the CDP protocol schema are loaded only by the commands that need them. A `bdg` command starts in about 48 ms instead of 100 ms (Node 22)
-- **Faster sessions** - Page readiness waits for network and DOM quiet at the same time (not one after the other), and Chrome's start and exit are checked every 50 ms instead of every 500 ms: on a simple page `bdg <url>` takes about 1.0 s instead of 1.3 s, `page navigate` 0.43 s instead of 0.65 s, `bdg stop` 0.15 s instead of 0.62 s
-- **`status --json`** - The internal `domVersion` counter is no longer reported (query caches no longer depend on it)
-- **Node versions** - CI runs unit/contract and smoke tests on Node 22, 24 and 26 (build and lint stay on 22, the minimum); Docker images use `node:24-alpine`; `@types/node` matches the minimum supported Node (22) so APIs missing there fail type-checking instead of at runtime. Dependabot no longer proposes major bumps of `@types/node` or TypeScript (typescript-eslint does not support TypeScript 7 yet)
-
-### Removed
-
-- **BREAKING: `bdg peek --dom` / `-d`** - It never showed data (DOM was only captured into `session.json`, which nothing writes since #253). Use `bdg dom a11y tree` or `bdg dom query` for page structure
-- **Vestigial session-output code** - `TelemetryStore.domData`/`buildOutput`, `OutputBuilder.build`/`buildError`, the `DOMData` type and the deprecated `getEnvChromeFlags` (unused; `BDG_CHROME_FLAGS` is parsed by the start command)
-
-### Changed
-
-- **Session IPC commands renamed** - `worker_peek`/`worker_details`/`worker_status`/`worker_har_data`/`worker_network_headers` are now `session_*`, and the start response field `workerPid` is `daemonPid` (there is no worker process since #253). Stop a running session before upgrading: an older daemon does not understand the new names
-- **Exit code 106 renamed** - `WORKER_START_FAILURE` is now `SESSION_START_FAILURE` in `bdg --help --json` (same code, Chrome launch or CDP connection failed)
-- **Release workflow** - Prereleases are published to the `next` npm dist-tag instead of `latest`; GitHub releases are created with `gh release create` (auto-generated notes) instead of the archived `actions/create-release`; explicit `contents: write` permission; releases only from `main`
-- **CI** - GitHub Actions bumped to their Node 24 majors (checkout, setup-node, cache, artifacts, paths-filter, setup-chrome, CodeQL); Dependabot now also updates GitHub Actions
 - **BREAKING: one JSON envelope everywhere** - Every `--json` output is a single `{ version, success, data }` / `{ version, success: false, error, exitCode }` envelope
   - `peek --json`: data is now `.data.network` / `.data.console` (was `.data.data.network`); `--network`/`--console`/`--last` filters now apply in JSON mode
   - `network list --json`: `data.requests` is the filtered list honoring `--last`, plus `totalCount` and `filteredCount` (the unfiltered `requests` and duplicate `filtered` fields are gone)
@@ -42,7 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Follow modes (`-f --json`) print one envelope per refresh and no longer emit terminal clear codes; `console -f --json` now honors `--json`
   - `dom fill/click/submit/pressKey/scroll --json`: the redundant `success` flag is no longer repeated inside `data`
   - `--version --json` prints `{ data: { version } }`; `--json` may also be given before the subcommand (`bdg --json peek`)
-- **`bdg <url> --json`** - Session start reports its result (or "already running" / target mismatch with `existingSession`) as a JSON envelope
 - **BREAKING: Daemon is the session** - The separate worker process is gone; the daemon hosts the Chrome/CDP session in-process and exits when the session ends (#253)
   - Only `bdg <url>` starts a daemon; other commands without a session exit 83 ("No active session") instead of spawning an idle daemon (`bdg status` still reports `active: false`, exit 0)
   - `bdg stop --kill-chrome` is kept for compatibility but has no additional effect: Chrome launched by bdg is always closed on stop
@@ -50,9 +37,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Single-instance is enforced atomically (socket claimed via `link()`), so concurrent `bdg <url>` runs can no longer spawn two daemons
   - Daemon SIGTERM/SIGINT and a stop during startup now always tear down Chrome
   - `bdg cleanup --aggressive` is an alias for `--force`; `--force` kills a stuck daemon and its Chrome
-  - `workerPid` in the start response now carries the daemon PID
-
 - **BREAKING: Node.js 22.12+ required** - Node 20 reached end-of-life in April 2026; `commander` 15 and current tooling require Node 22. CI, release workflow and Docker images now use Node 22
+- **`status --json`** - The internal `domVersion` counter is no longer reported (query caches no longer depend on it)
+- **Node versions** - CI runs unit/contract and smoke tests on Node 22, 24 and 26 (build and lint stay on 22, the minimum); Docker images use `node:24-alpine`; `@types/node` matches the minimum supported Node (22) so APIs missing there fail type-checking instead of at runtime. Dependabot no longer proposes major bumps of `@types/node` or TypeScript (typescript-eslint does not support TypeScript 7 yet)
+- **Session IPC commands renamed** - `worker_peek`/`worker_details`/`worker_status`/`worker_har_data`/`worker_network_headers` are now `session_*`, and the start response field `workerPid` is `daemonPid` (there is no worker process since #253). Stop a running session before upgrading: an older daemon does not understand the new names
+- **Exit code 106 renamed** - `WORKER_START_FAILURE` is now `SESSION_START_FAILURE` in `bdg --help --json` (same code, Chrome launch or CDP connection failed)
+- **Release workflow** - Prereleases are published to the `next` npm dist-tag instead of `latest`; GitHub releases are created with `gh release create` (auto-generated notes) instead of the archived `actions/create-release`; explicit `contents: write` permission; releases only from `main`
+- **CI** - GitHub Actions bumped to their Node 24 majors (checkout, setup-node, cache, artifacts, paths-filter, setup-chrome, CodeQL); Dependabot now also updates GitHub Actions
+- **`bdg <url> --json`** - Session start reports its result (or "already running" / target mismatch with `existingSession`) as a JSON envelope
+
+### Performance
+
+- **Faster CLI start** - `dist/index.js` and `dist/daemon.js` are bundled into one file each (esbuild); `node:http` and the CDP protocol schema are loaded only by the commands that need them. A `bdg` command starts in about 48 ms instead of 100 ms (Node 22)
+- **Faster sessions** - Page readiness waits for network and DOM quiet at the same time (not one after the other), and Chrome's start and exit are checked every 50 ms instead of every 500 ms: on a simple page `bdg <url>` takes about 1.0 s instead of 1.3 s, `page navigate` 0.43 s instead of 0.65 s, `bdg stop` 0.15 s instead of 0.62 s
+
+### Removed
+
+- **BREAKING: `bdg peek --dom` / `-d`** - It never showed data (DOM was only captured into `session.json`, which nothing writes since #253). Use `bdg dom a11y tree` or `bdg dom query` for page structure
+- **Vestigial session-output code** - `TelemetryStore.domData`/`buildOutput`, `OutputBuilder.build`/`buildError`, the `DOMData` type and the deprecated `getEnvChromeFlags` (unused; `BDG_CHROME_FLAGS` is parsed by the start command)
 
 ### Fixed
 
@@ -83,7 +85,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `console.assert` failures count as errors
   - 204/304 responses no longer show "Error: net::ERR_ABORTED" in `peek -v`
   - `details network ""` exits 81; HAR path errors suggest a `.har` name; `--preset` help lists the presets; the `duration:` filter is in the reference
-
 - **Third deep test: DOM and page**
   - `page navigate/reload/back/forward` report the document's HTTP status and warn on 4xx/5xx, on a URL that is a download, and on a server that has not answered within 15 s (instead of 110 after 30 s); `--no-wait` returns at once; `page back` from the first page exits 81 instead of landing on about:blank; `page navigate javascript:…` points to `dom eval`
   - A command run while a navigation waits for the server says so (exit 102) instead of claiming a script kept the page busy and terminating its scripts
@@ -92,26 +93,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - a11y queries leave out text nodes (each button was found three times, and acting on a text node failed); "Next steps" suggest fill or click by the first result's role
   - `dom screenshot --follow`: `--limit 1` captures one frame, and an element that disappears ends the sequence with its error; element screenshots report the element's bounds in JSON
   - `dom get --nth/--all` without `--raw` exits 81 (they were ignored); `cdp Page.close` is blocked (use `bdg stop`); a filtered `network list` header reads "21 matching, 240 in all"
-
 - **Ideas from earlier pull requests**
   - `bdg eval <script>` is a shortcut for `bdg dom eval` (idea from #200 by @sfc-gh-mochen); `bdg query x`, `bdg click …` and other group commands typed without their group suggest the full command (`bdg dom query`) instead of failing as a start URL
   - `details network <id>` shows the text of binary WebSocket messages that are UTF-8 (`(binary, 13 bytes) {"op":"ping"}`) (idea from #199 by @sfc-gh-adsaxena)
   - Playwright-only selectors (`:has-text()`, `:text()`, `:visible`) get a bdg way to do the same in the error (idea from #169 by @sfc-gh-mochen)
   - Leftovers of the 0.7.2 test reports (#227, #228): `peek` shows an empty CONSOLE section again; `console --level <level>` lists the matching messages (it showed the error/warning summary, hiding e.g. `--level info`); `dom form --brief` shows each field's value; `details console <n>` with no messages says so (it said "available: 0--1")
-
 - **Third deep test: leftovers**
   - `-q` hides tips and "Next steps"/"Suggestions" blocks in every command's human output (`dom query/form/submit`, `dom a11y`, `status`, `peek`), not just at start
   - Element previews (`dom query`, `dom get`) show the text as rendered: hidden parts are left out and no spaces are added at tag boundaries ("Marylebone, London", not "Marylebone , London")
   - `dom eval`: `undefined` inside arrays and objects is `null` (it was the string "undefined")
   - `dom query` with no match exits 83, like `dom get` and `dom a11y`; human output lists the first 50 matches (`--json` has all)
-
 - **Smaller fixes**
   - `cdp`: an unknown domain gets a did-you-mean (`Netwrk` → `Network`); `bdg cdp Network --search cookie` searches that domain only; blocked methods (`Page.captureScreenshot`, `Browser.close`) show their bdg alternative as the example in `--describe`/`--search`
   - `dom a11y tree` (human) is indented by depth and leaves out text boxes, blank text, text repeating its parent and nameless layout wrappers, so the 50 lines show the page's structure
   - `dom get` and `a11y` one-line output show a field's value and checked/expanded state
   - A Chrome that opens no page at start says so plainly (the message suggested `pkill`)
   - `dom form`: a long label keeps its required `*`; an `aria-invalid` field shows its `aria-describedby`/`aria-errormessage` text instead of "Field is invalid"
-
 - **Interaction commands**
   - A numeric index together with `--index` (`dom click 1 --index 3`) exits 81 instead of ignoring `--index`
   - `dom scroll` refuses conflicting options with 81: `--top` with `--bottom`, two vertical directions, or a selector with an offset/edge (they were silently resolved)
@@ -148,7 +145,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A returned promise that never settles exits 102 after 20 s ("did not settle") instead of a generic timeout
   - Nested values keep what JSON would lose: `undefined`, NaN, ±Infinity and -0 as strings, DOM nodes as `tag#id.class`, node lists, typed arrays, maps and sets as arrays, dates as ISO strings, cycles as `[Circular]` (`[1,undefined,NaN]` gave `[1,null,null]`, `{el: document.body}` gave `{"el":{}}`)
   - `throw {code: 42}` shows the object; quoting tips are only given for syntax errors; an empty script exits 81
-
 - **Session start**
   - Chrome exiting during startup is reported at once with what Chrome said (e.g. an unknown `--chrome-flags` value), exit 100, instead of after about 30 s as a refused connection with port advice; a profile already open in another Chrome says so
   - Session directory problems are reported before the daemon starts: a file (103), not writable (82), or a path too long for the daemon socket (103), each with a fix
@@ -159,7 +155,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - "Session already running" JSON: `existingSession.durationMs` (was `duration` in seconds), a `suggestion`, and no internal `errorCode`; an external Chrome reports `externalChrome: true` instead of `chromePid: 0`
   - Chrome no longer receives `--remote-debugging-port` and the default flags twice
   - `--headless` help says what the default depends on
-
 - **Interactions**
   - Clicks no longer take 5 s each once the page has opened another tab, and fills before the first click fire focus/blur events: the page is kept focused (focus emulation)
   - Interactions run one at a time per session: concurrent `pressKey` commands no longer type into each other's field
