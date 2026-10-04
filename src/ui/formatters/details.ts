@@ -23,9 +23,54 @@ function formatWebSocketMessage(frame: WebSocketFrame): string {
   const truncated = frame.truncatedFrom === undefined ? '' : ' [truncated]';
   const payload =
     frame.opcode === BINARY_OPCODE
-      ? `(binary, ${Buffer.byteLength(frame.payloadData, 'base64')} bytes captured)`
-      : truncateByLength(frame.payloadData.replace(/\s+/g, ' '), MESSAGE_PREVIEW_LENGTH);
+      ? binaryMessagePreview(frame.payloadData)
+      : textPreview(frame.payloadData);
   return `  ${arrow} ${time}  ${payload}${truncated}`;
+}
+
+/**
+ * A message payload on one line, shortened to {@link MESSAGE_PREVIEW_LENGTH}.
+ *
+ * @param text - Payload text
+ * @returns Preview
+ */
+function textPreview(text: string): string {
+  return truncateByLength(text.replace(/\s+/g, ' '), MESSAGE_PREVIEW_LENGTH);
+}
+
+/**
+ * Describe a binary message, with its text when it is valid UTF-8 without
+ * control characters (many protocols send JSON or text in binary frames).
+ *
+ * @param base64 - Payload as captured (base64)
+ * @returns e.g. `(binary, 42 bytes) {"op":"ping"}` or `(binary, 42 bytes captured)`
+ */
+function binaryMessagePreview(base64: string): string {
+  const bytes = Buffer.from(base64, 'base64');
+  const text = readableText(bytes);
+  return text === undefined
+    ? `(binary, ${bytes.length} bytes captured)`
+    : `(binary, ${bytes.length} bytes) ${textPreview(text)}`;
+}
+
+/**
+ * The bytes as text, if they are valid UTF-8 and printable.
+ *
+ * @param bytes - Raw bytes
+ * @returns Text, or undefined for binary data
+ */
+function readableText(bytes: Buffer): string | undefined {
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return undefined;
+  }
+  const printable = (char: string): boolean => {
+    const code = char.charCodeAt(0);
+    return (code >= 0x20 && code !== 0x7f) || char === '\t' || char === '\n' || char === '\r';
+  };
+  return text.length > 0 && Array.from(text).every(printable) ? text : undefined;
 }
 
 /**

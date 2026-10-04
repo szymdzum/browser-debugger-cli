@@ -23,6 +23,12 @@ void describe('formatNetworkDetails', () => {
           {
             timestamp: 0,
             direction: 'received',
+            opcode: 2,
+            payloadData: Buffer.from('{"op":"ping"}').toString('base64'),
+          },
+          {
+            timestamp: 0,
+            direction: 'received',
             opcode: 1,
             payloadData: 'x'.repeat(10),
             truncatedFrom: 500,
@@ -31,9 +37,10 @@ void describe('formatNetworkDetails', () => {
       },
     });
 
-    assert.match(output, /WebSocket Messages \(3, open\)/);
+    assert.match(output, /WebSocket Messages \(4, open\)/);
     assert.match(output, /↑ \d{2}:\d{2}:\d{2}\.\d{3} {2}hello world/);
     assert.match(output, /↓ \d{2}:\d{2}:\d{2}\.\d{3} {2}\(binary, 3 bytes captured\)/);
+    assert.match(output, /\(binary, 13 bytes\) \{"op":"ping"\}/);
     assert.match(output, /x{10} \[truncated\]/);
   });
 

@@ -5,6 +5,7 @@ import { Command, CommanderError, Option } from 'commander';
 import { generateMachineReadableHelp, generateSubcommandHelp } from '@/commands/helpJson.js';
 import { assertKnownHelpTopic, helpTopicPath, splitCommanderHint } from '@/commands/helpTopic.js';
 import { commandRegistry } from '@/commands.js';
+import { assertNotGroupSubcommand } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
@@ -164,6 +165,7 @@ async function main(): Promise<void> {
   addGlobalDebugOption(program);
   program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));
   assertKnownHelpTopic(program, helpTopic);
+  assertNotGroupSubcommand(program, process.argv);
 
   if (jsonMode && (wantsHelp() || hasNoArguments())) {
     const commandPath = extractCommandPath(process.argv);

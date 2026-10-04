@@ -275,20 +275,20 @@ function formatSingleForm(form: DiscoveredForm, fmt: OutputFormatter, brief = fa
  * @param fmt - Output formatter
  */
 function formatBriefFields(form: DiscoveredForm, fmt: OutputFormatter): void {
-  fmt.text('IDX  TYPE         LABEL                    REQ');
-  fmt.text('─'.repeat(50));
+  fmt.text('IDX  TYPE         LABEL                    REQ VALUE');
+  fmt.text('─'.repeat(70));
 
   for (const field of form.fields) {
     if (field.hidden) continue;
     const idx = `[${field.index}]`.padEnd(4);
     const type = (field.inputType ?? field.type).slice(0, 11).padEnd(12);
     const label = (field.label ?? field.name ?? '(no label)').slice(0, 23).padEnd(24);
-    const req = field.required ? '*' : '';
-    fmt.text(`${idx} ${type} ${label} ${req}`);
+    const req = (field.required ? '*' : '').padEnd(3);
+    fmt.text(`${idx} ${type} ${label} ${req} ${formatFieldValue(field)}`);
   }
 
   if (form.buttons.length > 0) {
-    fmt.text('─'.repeat(50));
+    fmt.text('─'.repeat(70));
     for (const button of form.buttons) {
       const idx = `[${button.index}]`.padEnd(4);
       const type = 'button'.padEnd(12);

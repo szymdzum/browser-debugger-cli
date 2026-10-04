@@ -262,7 +262,9 @@ function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
   const index = parseInt(indexStr, 10);
   if (index >= messages.length) {
     throw new CommandError(
-      `Console message not found at index: ${indexStr} (available: 0-${messages.length - 1})`,
+      messages.length === 0
+        ? `Console message not found at index: ${indexStr} (no messages captured yet)`
+        : `Console message not found at index: ${indexStr} (available: 0-${messages.length - 1})`,
       { suggestion: 'List messages with: bdg console --list' },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );

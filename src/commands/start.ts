@@ -226,6 +226,26 @@ function assertNotCommandTypo(arg: string, commandNames: string[]): void {
 }
 
 /**
+ * Reject a subcommand typed without its group (`bdg query x` for
+ * `bdg dom query x`) before Commander reads it as a start URL with extra
+ * arguments.
+ *
+ * @param program - Root command with all commands registered
+ * @param argv - Process arguments
+ * @throws CommandError (81) naming the full command
+ */
+export function assertNotGroupSubcommand(program: Command, argv: string[]): void {
+  const [first] = argv.slice(2).filter((arg) => !arg.startsWith('-'));
+  if (first === undefined || program.commands.some((command) => command.name() === first)) return;
+  const group = program.commands.find((command) =>
+    command.commands.some((sub) => sub.name() === first)
+  );
+  if (!group) return;
+  const err = unknownCommandError(first, [`${group.name()} ${first}`]);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
  * Validate the URL and all start options before anything is spawned.
  *
  * @param url - Target URL
