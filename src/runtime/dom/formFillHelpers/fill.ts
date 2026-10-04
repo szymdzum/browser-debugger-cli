@@ -142,11 +142,21 @@ function uploadProblem(files: string[]): FillResult | null {
   for (const file of files) {
     if (!fs.existsSync(file)) {
       const err = fileNotFoundError(file);
-      return { success: false, error: err.message, suggestion: err.suggestion, exitCode: EXIT_CODES.RESOURCE_NOT_FOUND };
+      return {
+        success: false,
+        error: err.message,
+        suggestion: err.suggestion,
+        exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+      };
     }
     if (fs.statSync(file).isDirectory()) {
       const err = uploadDirectoryError(file);
-      return { success: false, error: err.message, suggestion: err.suggestion, exitCode: EXIT_CODES.INVALID_ARGUMENTS };
+      return {
+        success: false,
+        error: err.message,
+        suggestion: err.suggestion,
+        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      };
     }
   }
   return null;
