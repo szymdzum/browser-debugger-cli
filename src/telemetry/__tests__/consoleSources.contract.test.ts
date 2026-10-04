@@ -133,6 +133,10 @@ void describe('Console sources', () => {
     assert.deepEqual(cdp.sessionsOf('Runtime.enable'), [undefined, 'frame-1']);
     assert.deepEqual(cdp.sessionsOf('Log.enable'), [undefined, 'frame-1']);
     assert.deepEqual(cdp.sessionsOf('Target.setAutoAttach'), [undefined, 'frame-1']);
+    const order = cdp.sent
+      .filter((call) => call.sessionId === 'frame-1')
+      .map((call) => call.method);
+    assert.equal(order.at(-1), 'Runtime.runIfWaitingForDebugger', 'resumed after its setup');
   });
 
   void it('attaches to targets nested in attached targets', async () => {

@@ -20,7 +20,10 @@ import type { NetworkRequest, WebSocketConnection } from '@/types.js';
  * Only mocks the CDP boundary - all telemetry logic is real.
  */
 class MockCDPConnection {
-  private eventHandlers = new Map<string, Map<number, (params: unknown) => void>>();
+  private eventHandlers = new Map<
+    string,
+    Map<number, (params: unknown, sessionId?: string) => void>
+  >();
   private nextHandlerId = 0;
   private sendCalls: Array<{ method: string; params?: unknown }> = [];
 
@@ -35,14 +38,14 @@ class MockCDPConnection {
   /**
    * Mock CDP event subscription
    */
-  on<T>(event: string, handler: (params: T) => void): () => void {
+  on<T>(event: string, handler: (params: T, sessionId?: string) => void): () => void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, new Map());
     }
     const id = this.nextHandlerId++;
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
-      handlers.set(id, handler as (params: unknown) => void);
+      handlers.set(id, handler as (params: unknown, sessionId?: string) => void);
     }
     return () => this.off(event, id);
   }
@@ -57,10 +60,10 @@ class MockCDPConnection {
   /**
    * Test helper: Emit CDP event to registered handlers
    */
-  emit<T>(event: string, params: T): void {
+  emit<T>(event: string, params: T, sessionId?: string): void {
     const handlers = this.eventHandlers.get(event);
     if (handlers) {
-      handlers.forEach((handler) => handler(params));
+      handlers.forEach((handler) => handler(params, sessionId));
     }
   }
 
@@ -635,32 +638,89 @@ void describe('Network telemetry contract', () => {
     });
   });
 
-  void describe('Edge case: Stale request cleanup', () => {
-    void it('should clean up stale requests after timeout', async () => {
+  void describe('Long-running and abandoned requests', () => {
+    void it('keeps a request that takes minutes until it finishes', async () => {
       const clockHelper = useFakeClock();
-      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
-
-      mockCDP.emit<Protocol.Network.RequestWillBeSentEvent>(
+      const pendingRequests = new Map();
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests, {
+        pendingRequests,
+      });
+      mockCDP.emit(
         'Network.requestWillBeSent',
         createRequestEvent({
-          requestId: 'stale-req',
-          request: createTestRequest({
-            url: 'https://api.example.com/hanging',
-          }),
-          timestamp: 1000,
+          requestId: 'long-poll',
+          request: createTestRequest({ url: 'https://api.example.com/poll' }),
           type: 'XHR',
           frameId: 'frame-1',
           loaderId: 'loader-1',
         })
       );
 
-      await clockHelper.tickAndFlush(91_000);
+      await clockHelper.tickAndFlush(5 * 60_000);
+      assert.equal(pendingRequests.size, 1, 'still in flight, not dropped');
+      mockCDP.emit('Network.loadingFinished', {
+        requestId: 'long-poll',
+        timestamp: 2,
+        encodedDataLength: 10,
+      });
+      assert.equal(requests[0]?.requestId, 'long-poll');
 
-      assert.equal(
-        requests.length,
-        0,
-        'Stale requests should not appear in output (removed from tracking)'
+      void cleanup();
+      clockHelper.restore();
+    });
+
+    void it('records requests of a replaced document as cancelled', async () => {
+      const clockHelper = useFakeClock();
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
+      for (const [requestId, frameId, loaderId] of [
+        ['old', 'main', 'loader-1'],
+        ['frame', 'child', 'loader-9'],
+        ['new', 'main', 'loader-2'],
+      ] as const) {
+        mockCDP.emit(
+          'Network.requestWillBeSent',
+          createRequestEvent({
+            requestId,
+            request: createTestRequest({ url: `https://example.com/${requestId}` }),
+            type: 'XHR',
+            frameId,
+            loaderId,
+          })
+        );
+      }
+
+      mockCDP.emit('Page.frameNavigated', { frame: { id: 'main', loaderId: 'loader-2' } });
+      assert.equal(requests.length, 0, 'Chrome gets a moment to report it first');
+      await clockHelper.tickAndFlush(6000);
+
+      assert.deepEqual(
+        requests.map((r) => [r.requestId, r.status, r.canceled]),
+        [['old', 0, true]]
       );
+      assert.match(requests[0]?.errorText ?? '', /navigated away/);
+
+      void cleanup();
+      clockHelper.restore();
+    });
+
+    void it('records requests of a closed iframe or worker as cancelled', async () => {
+      const clockHelper = useFakeClock();
+      const cleanup = await startNetworkCollection(mockCDP as unknown as CDPConnection, requests);
+      mockCDP.emit(
+        'Network.requestWillBeSent',
+        createRequestEvent({
+          requestId: 'w1',
+          request: createTestRequest({ url: 'https://example.com/from-worker' }),
+          type: 'Fetch',
+        }),
+        'worker-session'
+      );
+
+      mockCDP.emit('Target.detachedFromTarget', { sessionId: 'worker-session' });
+      await clockHelper.tickAndFlush(6000);
+
+      assert.equal(requests[0]?.requestId, 'w1');
+      assert.match(requests[0]?.errorText ?? '', /went away/);
 
       void cleanup();
       clockHelper.restore();
@@ -1129,5 +1189,24 @@ void describe('WebSocket collection', () => {
       mockCDP.emit('Network.webSocketCreated', { requestId: `W${i}`, url: 'ws://example.com/ws' });
     }
     assert.equal(connections.length, 100);
+  });
+});
+
+void describe('WebSocket connections across navigations', () => {
+  void it('closes connections of a page that navigated away', () => {
+    const mockCDP = new MockCDPConnection();
+    const connections: WebSocketConnection[] = [];
+    const cleanup = startWebSocketCollection(mockCDP as unknown as CDPConnection, connections);
+    mockCDP.emit('Network.webSocketCreated', { requestId: 'W', url: 'ws://example.com/ws' });
+
+    mockCDP.emit('Page.frameNavigated', {
+      frame: { id: 'child', parentId: 'main', loaderId: 'l2' },
+    });
+    assert.equal(connections[0]?.closedTime, undefined, 'an iframe navigation keeps it');
+
+    mockCDP.emit('Page.frameNavigated', { frame: { id: 'main', loaderId: 'l3' } });
+    assert.ok(connections[0]?.closedTime, 'a main-frame navigation ends it');
+
+    void cleanup();
   });
 });

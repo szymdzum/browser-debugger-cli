@@ -84,4 +84,40 @@ void describe('ExtraInfoTracker', () => {
     tracker.onResponseExtraInfo('r1', { location: '/late' }, 301);
     assert.deepEqual(request.responseHeaders, { 'content-type': 'text/html' }, 'late 3xx ignored');
   });
+
+  void it('gives late redirect headers to their hop, in a chain of redirects', () => {
+    const hop1 = {
+      ...makeRequest('r1:redirect:1'),
+      url: 'https://example.com/a',
+      redirectURL: 'https://example.com/b',
+      status: 302,
+    };
+    tracker.applyResponse('r1', hop1);
+    tracker.recordRedirectHop('r1', hop1);
+    active.set('r1', { ...makeRequest('r1'), url: 'https://example.com/b' });
+
+    tracker.onResponseExtraInfo('r1', { Location: '/b', 'set-cookie': 'first=1' }, 302);
+    tracker.onResponseExtraInfo('r1', { location: '/c', 'set-cookie': 'second=2' }, 302);
+    const hop2 = { ...makeRequest('r1:redirect:2'), status: 302 };
+    tracker.applyResponse('r1', hop2);
+
+    assert.equal(hop1.responseHeaders?.['set-cookie'], 'first=1', 'late headers reach hop 1');
+    assert.equal(hop2.responseHeaders?.['set-cookie'], 'second=2', 'hop 2 keeps its own');
+  });
+
+  void it('does not move headers without a matching Location to an earlier hop', () => {
+    const hop1 = {
+      ...makeRequest('r1:redirect:1'),
+      url: 'https://example.com/a',
+      redirectURL: 'https://example.com/b',
+      status: 302,
+      responseHeaders: { location: '/b' },
+    };
+    tracker.recordRedirectHop('r1', hop1);
+    active.set('r1', makeRequest('r1'));
+
+    tracker.onResponseExtraInfo('r1', { 'set-cookie': 'x=1' }, 302);
+
+    assert.deepEqual(hop1.responseHeaders, { location: '/b' });
+  });
 });

@@ -4,13 +4,12 @@ import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import {
   MAX_NETWORK_REQUESTS,
-  STALE_REQUEST_TIMEOUT,
-  STALE_REQUEST_CLEANUP_INTERVAL,
   MAX_RESPONSE_SIZE,
   CHROME_NETWORK_BUFFER_TOTAL,
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT,
 } from '@/constants.js';
+import { attachChildTargets } from '@/telemetry/attachedTargets.js';
 import type {
   NetworkRequest,
   WebSocketConnection,
@@ -19,6 +18,7 @@ import type {
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { filterDefined } from '@/utils/objects.js';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 import { ExtraInfoTracker } from './networkExtraInfo.js';
@@ -55,12 +55,13 @@ function fetchResponseBody(
   cdp: CDPConnection,
   requestId: string,
   request: NetworkRequest,
-  pendingFetches: Set<string>
+  pendingFetches: Set<string>,
+  sessionId?: string
 ): void {
   pendingFetches.add(requestId);
 
   void cdp
-    .send('Network.getResponseBody', { requestId })
+    .send('Network.getResponseBody', { requestId }, sessionId)
     .then((response) => {
       if (!pendingFetches.has(requestId)) return;
 
@@ -196,38 +197,109 @@ function completeRedirectHop(
 }
 
 /**
- * Clean up stale requests from the request map.
- *
- * Leverages Map insertion order to iterate from oldest entries first,
- * exiting early once a non-stale request is found (O(k) where k = stale count).
- */
-function cleanupStaleRequests(requestMap: Map<string, PendingRequest>): void {
-  const now = Date.now();
-  const staleRequests: string[] = [];
-
-  for (const [requestId, value] of requestMap) {
-    if (now - value.timestamp > STALE_REQUEST_TIMEOUT) {
-      staleRequests.push(requestId);
-    } else {
-      break;
-    }
-  }
-
-  if (staleRequests.length > 0) {
-    log.debug(`Cleaning up ${staleRequests.length} stale network requests`);
-    for (const requestId of staleRequests) {
-      requestMap.delete(requestId);
-    }
-  }
-}
-
-/**
  * A request that has started but not finished or failed yet.
  */
 export interface PendingRequest {
   request: NetworkRequest;
-  /** When the entry was (re)inserted, for stale cleanup */
+  /** When the entry was (re)inserted */
   timestamp: number;
+  /** Frame that made the request */
+  frameId?: string;
+  /** Document load the request belongs to (a new one cancels the old one's requests) */
+  loaderId?: string;
+  /** Session of the attached target (iframe, worker) that made it; undefined for the page */
+  sessionId?: string;
+}
+
+/**
+ * In-flight requests kept at most; beyond it the oldest is recorded as not
+ * finished. Requests are never dropped for taking long (long polls, SSE).
+ */
+const MAX_PENDING_REQUESTS = 2000;
+
+/** Error of a request whose document was replaced before it finished */
+const NAVIGATED_AWAY_ERROR = 'net::ERR_ABORTED (the page navigated away)';
+
+/** Error of a request evicted from tracking by {@link MAX_PENDING_REQUESTS} */
+const TOO_MANY_PENDING_ERROR = 'not finished (too many requests in flight to track)';
+
+/** Error of a request whose iframe or worker went away before it finished */
+const TARGET_GONE_ERROR = 'net::ERR_ABORTED (its frame or worker went away)';
+
+/**
+ * How long a request of a page that navigated away (or of a closed frame or
+ * worker) may still finish before it is recorded as cancelled: Chrome usually
+ * reports the cancellation itself, and keepalive requests may still complete.
+ */
+const ABANDONED_REQUEST_GRACE_MS = 5000;
+
+/** How a request failed (fields of `Network.loadingFailed`) */
+interface RequestFailure {
+  errorText?: string;
+  canceled?: boolean;
+  blockedReason?: string;
+  resourceType?: Protocol.Network.ResourceType;
+}
+
+/**
+ * Record a failure on a request. A request that already got a response keeps
+ * its HTTP status; one without becomes status 0.
+ *
+ * @param request - Request to update
+ * @param failure - How it failed
+ */
+function applyFailure(request: NetworkRequest, failure: RequestFailure): void {
+  request.status ??= 0;
+  request.duration = Date.now() - request.timestamp;
+  if (failure.errorText) request.errorText = failure.errorText;
+  if (failure.canceled) request.canceled = true;
+  if (failure.blockedReason) {
+    request.blocked = true;
+    request.blockedReason = failure.blockedReason;
+  }
+  if (failure.resourceType) request.resourceType = failure.resourceType;
+}
+
+/**
+ * Give the main document request the navigation id of the page it loads.
+ *
+ * The request is sent before the navigation commits, so it was tagged with
+ * the previous page's id; the id is assigned once the navigation tracker has
+ * counted the new page (after the current event).
+ *
+ * @param documentsByLoader - Document requests by loader id
+ * @param loaderId - Loader of the committed main-frame navigation
+ * @param getCurrentNavigationId - Navigation counter
+ */
+function assignDocumentNavigation(
+  documentsByLoader: Map<string, NetworkRequest>,
+  loaderId: string,
+  getCurrentNavigationId: (() => number) | undefined
+): void {
+  const document = documentsByLoader.get(loaderId);
+  documentsByLoader.clear();
+  if (!document || !getCurrentNavigationId) return;
+  setImmediate(() => {
+    document.navigationId = getCurrentNavigationId();
+  });
+}
+
+/**
+ * Collect network events of the page's out-of-process iframes and workers
+ * too: their requests are reported on their own sessions.
+ *
+ * @param cdp - CDP connection
+ * @returns Cleanup that stops attaching to new targets
+ */
+async function collectChildTargetNetwork(cdp: CDPConnection): Promise<CleanupFunction> {
+  try {
+    return await attachChildTargets(cdp, async (sessionId) => {
+      await cdp.send('Network.enable', {}, sessionId);
+    });
+  } catch (error) {
+    log.debug(`Iframe/worker network unavailable: ${getErrorMessage(error)}`);
+    return () => undefined;
+  }
 }
 
 export interface NetworkCollectionOptions {
@@ -301,18 +373,54 @@ export async function startNetworkCollection(
     log.debug('Network buffer limits not supported, using default settings');
     await cdp.send('Network.enable');
   }
+  const detachChildren = await collectChildTargetNetwork(cdp);
 
-  const cleanupInterval = setInterval(
-    () => cleanupStaleRequests(requestMap),
-    STALE_REQUEST_CLEANUP_INTERVAL
-  );
+  const failRequest = (requestId: string, failure: RequestFailure): void => {
+    const entry = requestMap.get(requestId);
+    if (!entry) return;
+    if (requests.length < MAX_NETWORK_REQUESTS) {
+      applyFailure(entry.request, failure);
+      requests.push(entry.request);
+      extraInfo.complete(requestId, entry.request);
+    }
+    requestMap.delete(requestId);
+    redirectHops.delete(requestId);
+  };
+  const documentsByLoader = new Map<string, NetworkRequest>();
+  const abandonTimers = new Set<NodeJS.Timeout>();
+  const failLater = (requestIds: string[], errorText: string): void => {
+    if (requestIds.length === 0) return;
+    const timer = setTimeout(() => {
+      abandonTimers.delete(timer);
+      for (const requestId of requestIds) failRequest(requestId, { errorText, canceled: true });
+    }, ABANDONED_REQUEST_GRACE_MS);
+    abandonTimers.add(timer);
+  };
 
-  registry.registerTyped(typed, 'Network.requestWillBeSent', (params) => {
+  registry.registerTyped(typed, 'Page.frameNavigated', ({ frame }) => {
+    const superseded = [...requestMap]
+      .filter(([, e]) => e.frameId === frame.id && e.loaderId && e.loaderId !== frame.loaderId)
+      .map(([requestId]) => requestId);
+    failLater(superseded, NAVIGATED_AWAY_ERROR);
+    if (frame.parentId === undefined) {
+      assignDocumentNavigation(documentsByLoader, frame.loaderId, getCurrentNavigationId);
+    }
+  });
+
+  registry.registerTyped(typed, 'Target.detachedFromTarget', ({ sessionId }) => {
+    const orphaned = [...requestMap]
+      .filter(([, entry]) => entry.sessionId === sessionId)
+      .map(([requestId]) => requestId);
+    failLater(orphaned, TARGET_GONE_ERROR);
+  });
+
+  registry.registerTyped(typed, 'Network.requestWillBeSent', (params, sessionId) => {
     const previous = requestMap.get(params.requestId);
     if (previous && params.redirectResponse) {
       requestMap.delete(params.requestId);
       const hop = completeRedirectHop(previous.request, params, redirectHops);
       extraInfo.applyResponse(params.requestId, hop);
+      extraInfo.recordRedirectHop(params.requestId, hop);
       if (requests.length < MAX_NETWORK_REQUESTS) requests.push(hop);
     }
 
@@ -328,10 +436,20 @@ export async function startNetworkCollection(
 
     const request = createNetworkRequest(params, getCurrentNavigationId);
     extraInfo.applyRequest(params.requestId, request);
+    if (params.type === 'Document' && params.loaderId) {
+      documentsByLoader.set(params.loaderId, request);
+    }
     requestMap.set(params.requestId, {
       request,
       timestamp: Date.now(),
+      loaderId: params.loaderId,
+      ...(params.frameId && { frameId: params.frameId }),
+      ...(sessionId && { sessionId }),
     });
+    if (requestMap.size > MAX_PENDING_REQUESTS) {
+      const oldest = requestMap.keys().next().value;
+      if (oldest !== undefined) failRequest(oldest, { errorText: TOO_MANY_PENDING_ERROR });
+    }
   });
 
   registry.registerTyped(typed, 'Network.responseReceived', (params) => {
@@ -388,7 +506,7 @@ export async function startNetworkCollection(
 
     if (decision.should) {
       bodiesFetched++;
-      fetchResponseBody(cdp, params.requestId, request, pendingFetches);
+      fetchResponseBody(cdp, params.requestId, request, pendingFetches, entry.sessionId);
     } else {
       bodiesSkipped++;
       request.responseBody = skippedBodyPlaceholder(decision.reason ?? 'not captured');
@@ -401,36 +519,15 @@ export async function startNetworkCollection(
   });
 
   registry.registerTyped(typed, 'Network.loadingFailed', (params) => {
-    const entry = requestMap.get(params.requestId);
-    if (!entry) return;
-
-    if (requests.length >= MAX_NETWORK_REQUESTS) {
-      requestMap.delete(params.requestId);
-      redirectHops.delete(params.requestId);
-      return;
-    }
-
-    entry.request.status ??= 0;
-    entry.request.duration = Date.now() - entry.request.timestamp;
-
-    if (params.errorText) {
-      entry.request.errorText = params.errorText;
-    }
-    if (params.canceled) {
-      entry.request.canceled = true;
-    }
-    if (params.blockedReason) {
-      entry.request.blocked = true;
-      entry.request.blockedReason = params.blockedReason;
-    }
-    if (params.type) {
-      entry.request.resourceType = params.type;
-    }
-
-    requests.push(entry.request);
-    extraInfo.complete(params.requestId, entry.request);
-    requestMap.delete(params.requestId);
-    redirectHops.delete(params.requestId);
+    failRequest(
+      params.requestId,
+      filterDefined({
+        errorText: params.errorText,
+        canceled: params.canceled,
+        blockedReason: params.blockedReason,
+        resourceType: params.type,
+      })
+    );
   });
 
   return () => {
@@ -446,8 +543,9 @@ export async function startNetworkCollection(
       log.debug(`[PERF] Cancelling ${pendingFetches.size} pending body fetches`);
     }
 
-    clearInterval(cleanupInterval);
     registry.cleanup();
+    void detachChildren();
+    abandonTimers.forEach((timer) => clearTimeout(timer));
     requestMap.clear();
     pendingFetches.clear();
   };
@@ -500,7 +598,8 @@ function recordFrame(
  *
  * Tracks WebSocket lifecycle (creation, handshake, frames, close) separately from HTTP requests.
  * Connections are added when created and updated in place, so open connections
- * are visible while they run.
+ * are visible while they run. A main-frame navigation ends the page and so
+ * every connection it held (Chrome sends no close event for them).
  * Network.enable must be called before this (typically by startNetworkCollection).
  *
  * @param cdp - CDP connection instance
@@ -573,6 +672,15 @@ export function startWebSocketCollection(
 
     connection.errorMessage = params.errorMessage;
     log.debug(`WebSocket frame error for ${connection.url}: ${params.errorMessage}`);
+  });
+
+  registry.registerTyped(typed, 'Page.frameNavigated', ({ frame }) => {
+    if (frame.parentId !== undefined) return;
+    const now = Date.now();
+    for (const connection of connectionMap.values()) {
+      connection.closedTime ??= now;
+    }
+    connectionMap.clear();
   });
 
   registry.registerTyped(typed, 'Network.webSocketClosed', (params) => {

@@ -12,12 +12,17 @@ import type { Logger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
+/** Delay before reading the title after a same-document navigation */
+const TITLE_REFRESH_DELAY_MS = 300;
+
 /**
  * Keep the store's target URL and title in sync with the page.
  *
  * The target info is captured once at session start; without this, `status`,
  * `peek` and "session already running" keep reporting the start URL after the
- * page navigates.
+ * page navigates. Same-document navigations (`history.pushState`, hash
+ * changes in single-page apps) update the URL too, and the title shortly
+ * after (apps set it once the new view renders).
  *
  * @param cdp - CDP connection
  * @param store - Telemetry store whose target info is updated
@@ -39,13 +44,35 @@ function trackCurrentPage(cdp: CDPConnection, store: TelemetryStore, logger: Log
         logger.debug(`Could not refresh page title: ${getErrorMessage(error)}`);
       });
   };
+  let mainFrameId: string | undefined;
+  let titleTimer: NodeJS.Timeout | undefined;
+  cdp
+    .send('Page.getFrameTree')
+    .then((tree) => {
+      mainFrameId ??= (tree as { frameTree?: { frame?: { id?: string } } }).frameTree?.frame?.id;
+    })
+    .catch((error: unknown) => logger.debug(`No frame tree: ${getErrorMessage(error)}`));
   const cleanups = [
-    cdp.on<{ frame: { parentId?: string; url: string } }>('Page.frameNavigated', (params) => {
-      if (params.frame.parentId === undefined) update({ url: params.frame.url, title: '' });
+    cdp.on<{ frame: { id: string; parentId?: string; url: string } }>(
+      'Page.frameNavigated',
+      ({ frame }) => {
+        if (frame.parentId !== undefined) return;
+        mainFrameId = frame.id;
+        update({ url: frame.url, title: '' });
+      }
+    ),
+    cdp.on<{ frameId: string; url: string }>('Page.navigatedWithinDocument', (params) => {
+      if (params.frameId !== mainFrameId) return;
+      update({ url: params.url });
+      clearTimeout(titleTimer);
+      titleTimer = setTimeout(refreshTitle, TITLE_REFRESH_DELAY_MS);
     }),
     cdp.on('Page.loadEventFired', refreshTitle),
   ];
-  return () => cleanups.forEach((cleanup) => cleanup());
+  return () => {
+    clearTimeout(titleTimer);
+    cleanups.forEach((cleanup) => cleanup());
+  };
 }
 
 export interface TelemetryPlugin {

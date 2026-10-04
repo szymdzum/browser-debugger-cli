@@ -49,6 +49,8 @@ type StartOutcome =
       human: string;
       exitCode: number;
       details?: Record<string, unknown>;
+      /** The daemon went away mid-request (e.g. the previous session was ending) */
+      retryable?: boolean;
     };
 
 /**
@@ -83,14 +85,19 @@ const SHUTDOWN_POLL_MS = 200;
 
 /**
  * Whether the start failed only because the previous session is still
- * shutting down (e.g. `bdg stop` was just run): the start is retried until
- * the old daemon is gone and a new one can be launched.
+ * shutting down (e.g. `bdg stop` was just run), or its daemon exited while
+ * answering: the start is retried until the old daemon is gone and a new one
+ * can be launched.
  *
  * @param outcome - Start outcome
  * @returns True if waiting and retrying can succeed
  */
 function isShuttingDown(outcome: StartOutcome): boolean {
-  return !outcome.ok && outcome.details?.['errorCode'] === IPCErrorCode.SESSION_SHUTTING_DOWN;
+  return (
+    !outcome.ok &&
+    (outcome.retryable === true ||
+      outcome.details?.['errorCode'] === IPCErrorCode.SESSION_SHUTTING_DOWN)
+  );
 }
 
 /**
@@ -148,6 +155,7 @@ async function requestSession(
         error: 'No active session (daemon not running)',
         human: daemonNotRunningError({ suggestStatus: true, suggestRetry: true }),
         exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+        retryable: true,
       };
     }
     const message = getErrorMessage(error);
