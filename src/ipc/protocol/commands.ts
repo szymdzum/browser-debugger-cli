@@ -177,6 +177,8 @@ export interface SessionNetworkHeadersData {
  */
 export interface DomEvalCommand {
   script: string;
+  /** Iframe to evaluate in: index, name/id attribute, or URL substring */
+  frame?: string;
 }
 
 export interface DomEvalData {
@@ -186,6 +188,35 @@ export interface DomEvalData {
   type: string;
   /** Object subtype (node, date, array, ...) */
   subtype?: string;
+  /** URL of the iframe the script ran in (with `frame`) */
+  frame?: string;
+}
+
+/** An iframe of the page, as listed by `bdg dom frames` */
+export interface DomFrame {
+  /** 0-based position: depth-first, out-of-process frames after in-process siblings */
+  index: number;
+  /** Frame URL */
+  url: string;
+  /** Frame name (`name` attribute or `window.name`) */
+  name?: string;
+  /** `id` attribute of the iframe element */
+  id?: string;
+  /** Security origin */
+  origin: string;
+  /** Origin differs from the page's */
+  crossOrigin: boolean;
+  /** Runs in its own renderer process (site isolation) */
+  outOfProcess: boolean;
+}
+
+/**
+ * dom_frames: list the page's iframes (including nested and out-of-process ones).
+ */
+export type DomFramesCommand = Record<string, never>;
+
+export interface DomFramesData {
+  frames: DomFrame[];
 }
 
 /**
@@ -307,6 +338,7 @@ export type RegistryShape = {
   session_network_headers: CommandDef<SessionNetworkHeadersCommand, SessionNetworkHeadersData>;
   cdp_call: CommandDef<CdpCallCommand, CdpCallData>;
   dom_eval: CommandDef<DomEvalCommand, DomEvalData>;
+  dom_frames: CommandDef<DomFramesCommand, DomFramesData>;
   dom_fill: CommandDef<DomFillCommand, DomFillData>;
   dom_click: CommandDef<DomClickCommand, DomClickData>;
   dom_submit: CommandDef<DomSubmitCommand, DomSubmitData>;
@@ -366,6 +398,7 @@ export const COMMANDS: RegistryShape = {
   session_network_headers: defineCommand(),
   cdp_call: defineCommand(),
   dom_eval: defineCommand(),
+  dom_frames: defineCommand(),
   dom_fill: defineCommand(),
   dom_click: defineCommand(),
   dom_submit: defineCommand(),

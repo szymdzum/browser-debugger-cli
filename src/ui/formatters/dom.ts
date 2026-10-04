@@ -1,6 +1,12 @@
+import type { DomFrame } from '@/ipc/protocol/commands.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { moreMatchesNote } from '@/ui/messages/commands.js';
+import {
+  evalFrameLine,
+  frameLabel,
+  moreMatchesNote,
+  noFramesMessage,
+} from '@/ui/messages/commands.js';
 import { parseSelectorFilters } from '@/utils/selectorFilters.js';
 
 /** Matches listed in human output (JSON has all of them) */
@@ -130,9 +136,10 @@ export function formatDomGet(data: DomGetResult): string {
 /**
  * Format DOM eval results for human-readable output.
  *
- * Outputs the evaluated JavaScript result as formatted JSON.
+ * Outputs the evaluated JavaScript result as formatted JSON, preceded by a
+ * `Frame: <url>` line when it ran in an iframe (`--frame`).
  *
- * @param data - DOM eval result containing the evaluated value
+ * @param data - DOM eval result containing the evaluated value (and its frame)
  * @returns Formatted JSON string
  *
  * @example
@@ -148,11 +155,39 @@ export function formatDomGet(data: DomGetResult): string {
  * // }
  * ```
  */
-export function formatDomEval(data: { result: unknown; type?: string }): string {
+export function formatDomEval(data: { result: unknown; type?: string; frame?: string }): string {
+  const value = formatEvalValue(data);
+  return data.frame === undefined ? value : `${evalFrameLine(data.frame)}\n${value}`;
+}
+
+/**
+ * Format an eval result value: descriptions as is, JSON values pretty-printed.
+ *
+ * @param data - Result value and its JavaScript type
+ * @returns Formatted value
+ */
+function formatEvalValue(data: { result: unknown; type?: string }): string {
   if (data.type === 'undefined') return 'undefined';
   const isDescription = typeof data.result === 'string' && data.type !== 'string';
   if (isDescription) return data.result as string;
   return JSON.stringify(data.result ?? null, null, 2);
+}
+
+/**
+ * Format the page's iframes, one per line.
+ *
+ * @param data - Frames from `bdg dom frames`
+ * @returns Formatted list
+ *
+ * @example
+ * ```
+ * [0] http://localhost:3000/widget  name=widget  same-origin
+ * [1] https://pay.example/  #checkout  cross-origin, out-of-process
+ * ```
+ */
+export function formatDomFrames(data: { frames: DomFrame[] }): string {
+  if (data.frames.length === 0) return noFramesMessage();
+  return data.frames.map(frameLabel).join('\n');
 }
 
 /**

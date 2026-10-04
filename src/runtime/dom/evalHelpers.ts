@@ -9,6 +9,7 @@ import {
   scriptTimeoutError,
 } from '@/errors/messages.js';
 import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
+import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
 import { formatRemoteObject } from '@/telemetry/remoteObject.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -73,7 +74,7 @@ function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.Eval
  * @throws Error When script execution throws exception or returns invalid response
  */
 export async function executeScript(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   script: string,
   options: Omit<Protocol.Runtime.EvaluateRequest, 'expression'> = { returnByValue: true }
 ): Promise<Protocol.Runtime.EvaluateResponse> {
@@ -131,7 +132,7 @@ export async function executeScript(
  * @throws CommandError (91) when the promise rejects
  */
 async function settlePromise(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   result: Protocol.Runtime.RemoteObject,
   script: string
 ): Promise<Protocol.Runtime.RemoteObject> {
@@ -297,7 +298,7 @@ function isTerminated(details: Protocol.Runtime.ExceptionDetails): boolean {
  * @returns Value and type
  */
 async function toEvalResult(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   remote: Protocol.Runtime.RemoteObject
 ): Promise<EvalResult> {
   const kind = { type: remote.type, ...(remote.subtype && { subtype: remote.subtype }) };
@@ -360,7 +361,7 @@ async function withDeadline<T>(
  * @param cdp - CDP connection
  * @returns The timeout error to report
  */
-async function terminatePageScripts(cdp: CDPConnection): Promise<CommandError> {
+async function terminatePageScripts(cdp: CDPSender): Promise<CommandError> {
   const pendingUrl = await pendingNavigationUrl(cdp).catch((error: unknown) => {
     log.debug(`Could not check for a pending navigation: ${getErrorMessage(error)}`);
     return undefined;
@@ -394,7 +395,7 @@ const LIVENESS_CHECK_MS = 2_000;
  * @throws CommandError (102) when the page was busy
  */
 export async function withBusyPageRecovery<T>(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   command: Promise<T>,
   limits = { busyAfterMs: EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS, livenessMs: LIVENESS_CHECK_MS }
 ): Promise<T> {
@@ -431,6 +432,14 @@ async function settledWithin<T>(
   }
 }
 
+/** Where a `bdg dom eval` script runs (default: the page's main frame) */
+export interface EvalTarget {
+  /** Session of an attached target (out-of-process iframe) */
+  sessionId?: string;
+  /** Execution context of a frame (`ExecutionContextDescription.uniqueId`) */
+  uniqueContextId?: string;
+}
+
 /**
  * Evaluate a `bdg dom eval` script.
  *
@@ -443,24 +452,31 @@ async function settledWithin<T>(
  *
  * @param cdp - CDP connection
  * @param script - JavaScript expression
+ * @param target - Session and execution context to run in (default: the page)
  * @returns Value and type
- * @throws CommandError (102) when the script was terminated, (110) when it threw
+ * @throws CommandError (102) when the script was terminated, (91) when it threw
  */
-export async function evaluateScript(cdp: CDPConnection, script: string): Promise<EvalResult> {
+export async function evaluateScript(
+  cdp: CDPConnection,
+  script: string,
+  target: EvalTarget = {}
+): Promise<EvalResult> {
+  const session = senderFor(cdp, target.sessionId);
   try {
     const response = await withDeadline(
-      executeScript(cdp, script, {
+      executeScript(session, script, {
         returnByValue: false,
         generatePreview: true,
         replMode: true,
         objectGroup: EVAL_OBJECT_GROUP,
         timeout: EVAL_TIMEOUT_MS,
+        ...(target.uniqueContextId && { uniqueContextId: target.uniqueContextId }),
       }),
       EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
-      () => terminatePageScripts(cdp)
+      () => terminatePageScripts(session)
     );
     const settled = await withDeadline(
-      settlePromise(cdp, response.result, script),
+      settlePromise(session, response.result, script),
       EVAL_TIMEOUT_MS,
       () => {
         const err = promiseTimeoutError(EVAL_TIMEOUT_MS);
@@ -471,9 +487,9 @@ export async function evaluateScript(cdp: CDPConnection, script: string): Promis
         );
       }
     );
-    return await toEvalResult(cdp, settled);
+    return await toEvalResult(session, settled);
   } finally {
-    void cdp
+    void session
       .send('Runtime.releaseObjectGroup', { objectGroup: EVAL_OBJECT_GROUP })
       .catch((error: unknown) =>
         log.debug(`Could not release eval objects: ${getErrorMessage(error)}`)

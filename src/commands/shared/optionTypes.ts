@@ -160,7 +160,13 @@ export type DomGetCommandOptions = BaseOptions & RawOptions & SelectionOptions;
 export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;
 
 /** Options for DOM eval command */
-export type DomEvalCommandOptions = BaseOptions;
+export interface DomEvalCommandOptions extends BaseOptions {
+  /** Iframe to evaluate in: index, name/id attribute, or part of the URL */
+  frame?: string;
+}
+
+/** Options for DOM frames command */
+export type DomFramesCommandOptions = BaseOptions;
 
 /** Options for DOM form command */
 export interface FormCommandOptions extends BaseOptions {

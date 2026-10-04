@@ -313,6 +313,27 @@ Shell quote damage detected:
 Try: bdg dom eval 'document.querySelector("input")'
 ```
 
+**Iframes (`--frame`):**
+
+`--frame <frame>` runs the script in one iframe's main world (its own `window`,
+`document` and page globals), including cross-origin iframes that Chrome runs in
+a separate process. List the frames first:
+
+```bash
+bdg dom frames                                    # [0] http://localhost:3000/widget  name=widget  same-origin
+                                                  # [1] https://pay.example/  #checkout  cross-origin, out-of-process
+bdg dom frames --json                             # { frames: [{ index, url, name?, id?, origin, crossOrigin, outOfProcess }] }
+
+bdg dom eval --frame 1 'document.title'           # By index (0-based; the main page is not listed)
+bdg dom eval --frame checkout 'location.href'     # By name or id attribute of the <iframe> (exact)
+bdg dom eval --frame pay.example 'window.config'  # By part of the URL (case-insensitive)
+```
+
+- Human output starts with `Frame: <url>`; `--json` adds `"frame": "<url>"` to `data`
+- Everything else works as in the page: top-level `await`, awaited promises, JSON-safe values, 20 s limit, exit 91 when the script throws
+- Several matching frames exit 81 and list them; no match exits 83 and lists all frames
+- Nested iframes are listed depth-first; out-of-process frames come after in-process siblings
+
 ### Form Discovery
 
 Discover forms on the page with semantic labels, current values, validation state, and suggested commands.

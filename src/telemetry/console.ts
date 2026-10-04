@@ -17,7 +17,7 @@ import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
-import { expandConsoleArgs, type CDPSender } from './objectExpander.js';
+import { expandConsoleArgs, senderFor, type CDPSender } from './objectExpander.js';
 import { formatConsoleArgs, usesFormatSpecifiers } from './remoteObject.js';
 import { needsAsyncExpansion } from './remoteObjectUtils.js';
 
@@ -284,18 +284,6 @@ function handleLogEntry(
     messages,
     createMessage(type, entry.text, entry.timestamp, undefined, context)
   );
-}
-
-/**
- * Bind CDP commands to the session an event came from, so its objects can be
- * expanded (attached iframes and workers own their objects).
- *
- * @param cdp - CDP connection
- * @param sessionId - Session of the attached target, undefined for the page
- * @returns Sender for that session
- */
-function senderFor(cdp: CDPConnection, sessionId: string | undefined): CDPSender {
-  return sessionId ? { send: (method, params) => cdp.send(method, params, sessionId) } : cdp;
 }
 
 /**

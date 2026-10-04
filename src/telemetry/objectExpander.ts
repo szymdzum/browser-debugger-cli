@@ -24,6 +24,18 @@ import {
 /** Sends CDP commands to the session that owns the objects being expanded */
 export type CDPSender = Pick<CDPConnection, 'send'>;
 
+/**
+ * Bind CDP commands to one session: an attached target (iframe, worker) owns
+ * its objects and execution contexts.
+ *
+ * @param cdp - CDP connection
+ * @param sessionId - Session of the attached target, undefined for the page
+ * @returns Sender for that session
+ */
+export function senderFor(cdp: CDPConnection, sessionId: string | undefined): CDPSender {
+  return sessionId ? { send: (method, params) => cdp.send(method, params, sessionId) } : cdp;
+}
+
 type RemoteObject = Protocol.Runtime.RemoteObject;
 type PropertyDescriptor = Protocol.Runtime.PropertyDescriptor;
 

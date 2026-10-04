@@ -1,5 +1,6 @@
 /**
- * `bdg dom eval` — evaluate a JavaScript expression in the page context.
+ * `bdg dom eval` — evaluate a JavaScript expression in the page context, or
+ * in one of its iframes with `--frame`.
  *
  * CLI-side handler. Actual evaluation happens in the daemon via the
  * `dom_eval` IPC command so the session's persistent CDP connection is reused.
@@ -13,7 +14,7 @@ import { formatDomEval } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Handle `bdg dom eval <script>`.
+ * Handle `bdg dom eval <script> [--frame <frame>]`.
  */
 export async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
@@ -27,7 +28,7 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
           errorContext: { suggestion: err.suggestion },
         };
       }
-      const response = await domEval(script);
+      const response = await domEval(script, options.frame);
       if (response.status === 'error' || !response.data) {
         return {
           success: false,
@@ -36,8 +37,11 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
           ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
       }
-      const { value, type, subtype } = response.data;
-      return { success: true, data: { result: value, type, ...(subtype && { subtype }) } };
+      const { value, type, subtype, frame } = response.data;
+      return {
+        success: true,
+        data: { result: value, type, ...(subtype && { subtype }), ...(frame && { frame }) },
+      };
     },
     options,
     formatDomEval

@@ -8,6 +8,7 @@ import { UNREACHABLE_ERRORS } from '@/daemon/session/cdpSetup.js';
 import { CommandError } from '@/errors/index.js';
 import { navigationFailedError, noHistoryEntryError } from '@/errors/messages.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
+import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { httpErrorWarning, notAPageWarning, stillLoadingWarning } from '@/ui/messages/commands.js';
 import { delay } from '@/utils/async.js';
@@ -119,7 +120,7 @@ async function startAction(
  * @param cdp - CDP connection
  * @returns Target id and URL
  */
-async function pageTarget(cdp: CDPConnection): Promise<{ targetId: string; url: string }> {
+async function pageTarget(cdp: CDPSender): Promise<{ targetId: string; url: string }> {
   const { targetInfo } = (await cdp.send('Target.getTargetInfo', {})) as {
     targetInfo: { targetId: string; url: string };
   };
@@ -133,7 +134,7 @@ async function pageTarget(cdp: CDPConnection): Promise<{ targetId: string; url: 
  * @param cdp - CDP connection
  * @returns The pending URL, or undefined when the page is not navigating
  */
-export async function pendingNavigationUrl(cdp: CDPConnection): Promise<string | undefined> {
+export async function pendingNavigationUrl(cdp: CDPSender): Promise<string | undefined> {
   const [target, history] = await Promise.all([
     pageTarget(cdp),
     cdp.send('Page.getNavigationHistory', {}) as Promise<{

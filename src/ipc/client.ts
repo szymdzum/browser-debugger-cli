@@ -357,10 +357,17 @@ export async function callCDP(
 }
 
 /**
- * Evaluate a JavaScript expression in the active page context via the daemon.
+ * Evaluate a JavaScript expression in the active page (or one of its iframes) via the daemon.
  */
-export async function domEval(script: string): Promise<ClientResponse<'dom_eval'>> {
-  return sendCommand('dom_eval', { script });
+export async function domEval(script: string, frame?: string): Promise<ClientResponse<'dom_eval'>> {
+  return sendCommand('dom_eval', { script, ...(frame !== undefined && { frame }) });
+}
+
+/**
+ * List the page's iframes via the daemon.
+ */
+export async function domFrames(): Promise<ClientResponse<'dom_frames'>> {
+  return sendCommand('dom_frames', {});
 }
 
 /**

@@ -68,6 +68,13 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Returns first matching element',
     whenEnabled: 'Returns the nth matching element (0-based index, only works with --raw)',
   },
+  'eval:--frame': {
+    default: "Evaluates in the page's main frame",
+    whenEnabled:
+      "Evaluates in one iframe's main world (its own globals), including cross-origin (out-of-process) iframes; output gains a frame field (its URL)",
+    automaticBehavior:
+      'The value is matched as: a 0-based index (bdg dom frames order, main page not counted), else an exact name/id attribute, else a case-insensitive part of the URL. Several matches fail with 81 listing them; none fails with 83 listing all frames. Frames are looked up on every call (a reloaded iframe is found again).',
+  },
 
   'console:-H': {
     default: 'Shows messages from current page load only (most recent navigation)',

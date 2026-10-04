@@ -6,7 +6,9 @@
 
 import * as path from 'path';
 
+import type { DomFrame } from '@/ipc/protocol/commands.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
+import { frameLabel } from '@/ui/messages/commands.js';
 import {
   detectSelectorQuoteDamage,
   detectScriptQuoteDamage,
@@ -979,6 +981,63 @@ export function promiseTimeoutError(timeoutMs: number): ErrorWithSuggestion {
   return {
     message: `The returned promise did not settle within ${Math.round(timeoutMs / 1000)}s`,
     suggestion: 'Check that it resolves or rejects, or race it with a timeout in the script',
+  };
+}
+
+/** How to see the frames `--frame` accepts */
+const LIST_FRAMES_HINT = 'List frames: bdg dom frames';
+
+/**
+ * `dom eval --frame` given an empty frame.
+ */
+export function emptyFrameError(): ErrorWithSuggestion {
+  return {
+    message: 'The frame is empty',
+    suggestion: `Pass an index, a name/id attribute, or part of the URL. ${LIST_FRAMES_HINT}`,
+  };
+}
+
+/**
+ * `dom eval --frame` matching no iframe.
+ *
+ * @param query - Requested frame
+ * @param frames - Frames of the page
+ */
+export function frameNotFoundError(query: string, frames: DomFrame[]): ErrorWithSuggestion {
+  if (frames.length === 0) {
+    return { message: `Frame not found: ${query}`, suggestion: 'The page has no iframes' };
+  }
+  return {
+    message: `Frame not found: ${query}`,
+    suggestion: joinLines('Available frames:', ...frames.map((frame) => `  ${frameLabel(frame)}`)),
+  };
+}
+
+/**
+ * `dom eval --frame` matching more than one iframe.
+ *
+ * @param query - Requested frame
+ * @param candidates - Matching frames
+ */
+export function ambiguousFrameError(query: string, candidates: DomFrame[]): ErrorWithSuggestion {
+  return {
+    message: `Frame "${query}" matches ${candidates.length} frames`,
+    suggestion: joinLines(
+      'Pick one by index or a longer part of the URL:',
+      ...candidates.map((frame) => `  ${frameLabel(frame)}`)
+    ),
+  };
+}
+
+/**
+ * An iframe without a JavaScript context (still loading, or sandboxed without scripts).
+ *
+ * @param url - Frame URL
+ */
+export function frameNotReadyError(url: string): ErrorWithSuggestion {
+  return {
+    message: `The frame has no JavaScript context: ${url}`,
+    suggestion: `Wait for it to load and retry (sandboxed frames without allow-scripts never get one). ${LIST_FRAMES_HINT}`,
   };
 }
 
