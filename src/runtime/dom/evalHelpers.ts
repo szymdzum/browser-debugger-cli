@@ -1,8 +1,13 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { scriptExecutionError } from '@/errors/messages.js';
+import { scriptExecutionError, scriptTimeoutError } from '@/errors/messages.js';
+import { formatRemoteObject } from '@/telemetry/remoteObject.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+const log = createLogger('dom');
 
 /**
  * Type guard to validate CDP Runtime.evaluate response structure
@@ -56,18 +61,32 @@ function isRuntimeEvaluateResult(value: unknown): value is Protocol.Runtime.Eval
  *
  * @param cdp - CDP connection instance
  * @param script - JavaScript expression to execute
+ * @param options - Runtime.evaluate options (default: return the value as JSON)
  * @returns Execution result
  * @throws Error When script execution throws exception or returns invalid response
  */
 export async function executeScript(
   cdp: CDPConnection,
-  script: string
+  script: string,
+  options: Omit<Protocol.Runtime.EvaluateRequest, 'expression'> = { returnByValue: true }
 ): Promise<Protocol.Runtime.EvaluateResponse> {
-  const response = await cdp.send('Runtime.evaluate', {
-    expression: script,
-    returnByValue: true,
-    awaitPromise: true,
-  });
+  const startedAt = Date.now();
+  let response: unknown;
+  try {
+    response = await cdp.send('Runtime.evaluate', {
+      expression: script,
+      awaitPromise: true,
+      ...options,
+    });
+  } catch (error) {
+    const elapsed = Date.now() - startedAt;
+    const timeout = options.timeout;
+    if (timeout !== undefined && elapsed >= timeout && elapsed < timeout + TERMINATION_GRACE_MS) {
+      const err = scriptTimeoutError(timeout);
+      throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+    }
+    throw error;
+  }
 
   if (!isRuntimeEvaluateResult(response)) {
     throw new CommandError(
@@ -80,12 +99,148 @@ export async function executeScript(
     );
   }
 
+  if (response.exceptionDetails && isTerminated(response.exceptionDetails)) {
+    const err = scriptTimeoutError(options.timeout ?? 0);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+  }
+
   if (response.exceptionDetails) {
-    const errorMsg =
-      response.exceptionDetails.exception?.description ?? 'Unknown error executing script';
+    const errorMsg = describeException(response.exceptionDetails);
     const err = scriptExecutionError(errorMsg, script);
-    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
   }
 
   return response;
+}
+
+/**
+ * Message of an exception, including thrown non-Error values (`throw "x"`).
+ *
+ * @param details - Exception details
+ * @returns Readable message
+ */
+function describeException(details: Protocol.Runtime.ExceptionDetails): string {
+  const exception = details.exception;
+  if (exception?.description) return exception.description;
+  if (exception?.value !== undefined) {
+    return `Uncaught ${typeof exception.value === 'string' ? exception.value : JSON.stringify(exception.value)}`;
+  }
+  return details.text || 'Unknown error executing script';
+}
+
+/** Time after the limit within which a failed evaluate counts as V8 terminating it. */
+const TERMINATION_GRACE_MS = 5_000;
+
+/** How long a `bdg dom eval` script may run before V8 terminates it. */
+const EVAL_TIMEOUT_MS = 20_000;
+
+/** Object group for remote objects created by `bdg dom eval`. */
+const EVAL_OBJECT_GROUP = 'bdg-eval';
+
+/** Result of `bdg dom eval`: a JSON-safe value plus its JavaScript type. */
+export interface EvalResult {
+  /** JSON value, or a readable description for values JSON cannot represent */
+  value: unknown;
+  /** JavaScript type (`number`, `bigint`, `object`, `function`, ...) */
+  type: string;
+  /** Object subtype (`node`, `date`, `map`, `array`, ...) */
+  subtype?: string;
+}
+
+/** Object subtypes shown as a description rather than as JSON. */
+const DESCRIBED_SUBTYPES = new Set([
+  'node',
+  'date',
+  'regexp',
+  'error',
+  'map',
+  'set',
+  'weakmap',
+  'weakset',
+  'promise',
+  'proxy',
+  'iterator',
+  'generator',
+]);
+
+/** Object subtypes shown by their short description (`button#submit`, `Uint8Array(3)`). */
+const BRIEF_SUBTYPES = new Set(['node', 'typedarray', 'arraybuffer', 'dataview']);
+
+/**
+ * Whether an exception is V8 terminating a script that ran too long.
+ *
+ * @param details - Exception details
+ * @returns True for a terminated execution
+ */
+function isTerminated(details: Protocol.Runtime.ExceptionDetails): boolean {
+  return /Execution was terminated/i.test(details.exception?.description ?? details.text);
+}
+
+/**
+ * Convert an evaluation result to a JSON-safe value.
+ *
+ * Plain objects and arrays are copied by value; values JSON cannot represent
+ * (NaN, -0, BigInt, functions, symbols, DOM nodes, dates, maps, errors, the
+ * window, cyclic objects) are given as their readable description.
+ *
+ * @param cdp - CDP connection
+ * @param remote - Remote object returned by Runtime.evaluate
+ * @returns Value and type
+ */
+async function toEvalResult(
+  cdp: CDPConnection,
+  remote: Protocol.Runtime.RemoteObject
+): Promise<EvalResult> {
+  const kind = { type: remote.type, ...(remote.subtype && { subtype: remote.subtype }) };
+  if (remote.unserializableValue !== undefined)
+    return { value: remote.unserializableValue, ...kind };
+  if (remote.type === 'undefined') return { value: undefined, ...kind };
+  if (!remote.objectId || remote.subtype === 'null')
+    return { value: remote.value ?? null, ...kind };
+  if (BRIEF_SUBTYPES.has(remote.subtype ?? '')) {
+    return { value: remote.description ?? remote.subtype, ...kind };
+  }
+  if (remote.type !== 'object' || DESCRIBED_SUBTYPES.has(remote.subtype ?? '')) {
+    return { value: formatRemoteObject(remote), ...kind };
+  }
+  try {
+    const copy = (await cdp.send('Runtime.callFunctionOn', {
+      objectId: remote.objectId,
+      functionDeclaration: 'function () { return this; }',
+      returnByValue: true,
+    })) as { result?: { value?: unknown }; exceptionDetails?: unknown };
+    if (!copy.exceptionDetails) return { value: copy.result?.value, ...kind };
+  } catch (error) {
+    log.debug(`Could not copy eval result by value: ${getErrorMessage(error)}`);
+  }
+  return { value: formatRemoteObject(remote), ...kind };
+}
+
+/**
+ * Evaluate a `bdg dom eval` script.
+ *
+ * Awaits promises, terminates scripts running longer than 20 s (so the page
+ * is not left frozen by e.g. an endless loop), and returns a JSON-safe value.
+ *
+ * @param cdp - CDP connection
+ * @param script - JavaScript expression
+ * @returns Value and type
+ * @throws CommandError (102) when the script was terminated, (110) when it threw
+ */
+export async function evaluateScript(cdp: CDPConnection, script: string): Promise<EvalResult> {
+  try {
+    const response = await executeScript(cdp, script, {
+      returnByValue: false,
+      generatePreview: true,
+      objectGroup: EVAL_OBJECT_GROUP,
+      timeout: EVAL_TIMEOUT_MS,
+    });
+    return await toEvalResult(cdp, response.result);
+  } finally {
+    await cdp
+      .send('Runtime.releaseObjectGroup', { objectGroup: EVAL_OBJECT_GROUP })
+      .catch((error: unknown) =>
+        log.debug(`Could not release eval objects: ${getErrorMessage(error)}`)
+      );
+  }
 }

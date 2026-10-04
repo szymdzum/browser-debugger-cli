@@ -170,7 +170,12 @@ export interface DomEvalCommand {
 }
 
 export interface DomEvalData {
+  /** JSON value, or a readable description for values JSON cannot represent */
   value: unknown;
+  /** JavaScript type of the result */
+  type: string;
+  /** Object subtype (node, date, array, ...) */
+  subtype?: string;
 }
 
 /**

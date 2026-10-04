@@ -485,6 +485,19 @@ export function keyPressFailedError(details: string): ErrorWithSuggestion {
 }
 
 /**
+ * A `bdg dom eval` script ran too long and was terminated.
+ *
+ * @param timeoutMs - Time limit in ms
+ * @returns Error with suggestion
+ */
+export function scriptTimeoutError(timeoutMs: number): ErrorWithSuggestion {
+  return {
+    message: `Script did not finish within ${Math.round(timeoutMs / 1000)}s and was terminated`,
+    suggestion: 'Check for endless loops or long-running work; the page is usable again',
+  };
+}
+
+/**
  * Script execution error with shell quote detection.
  *
  * Shows the script as received to help diagnose shell quote stripping issues.
@@ -526,7 +539,7 @@ export function scriptExecutionError(
     lines.push('');
     lines.push('Tips:');
     lines.push("  - Use single quotes around script: bdg dom eval '...'");
-    lines.push('  - For complex scripts, use heredoc or --file option');
+    lines.push('  - For complex scripts, read them from a file: bdg dom eval "$(cat script.js)"');
     lines.push('  - Escape inner quotes: \\" or use opposite quote style');
   }
 

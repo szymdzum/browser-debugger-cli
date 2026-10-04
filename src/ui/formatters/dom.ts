@@ -129,8 +129,11 @@ export function formatDomGet(data: DomGetResult): string {
  * // }
  * ```
  */
-export function formatDomEval(data: { result: unknown }): string {
-  return JSON.stringify(data.result, null, 2);
+export function formatDomEval(data: { result: unknown; type?: string }): string {
+  if (data.type === 'undefined') return 'undefined';
+  const isDescription = typeof data.result === 'string' && data.type !== 'string';
+  if (isDescription) return data.result as string;
+  return JSON.stringify(data.result ?? null, null, 2);
 }
 
 /**
