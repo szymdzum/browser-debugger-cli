@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
+
+import { PACKAGE_ROOT } from '@/utils/packageRoot.js';
 
 /**
  * Get the package version.
@@ -14,9 +15,7 @@ export function getVersion(): string {
   }
 
   try {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
-    const pkgPath = join(__dirname, '../../package.json');
+    const pkgPath = join(PACKAGE_ROOT, 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
     cachedVersion = pkg.version ?? '0.0.0';
   } catch {

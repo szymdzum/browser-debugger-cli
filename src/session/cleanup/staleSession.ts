@@ -7,9 +7,6 @@
  * get an unrelated process killed.
  */
 
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-
 import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { clearChromePid, readChromePid } from '@/session/chrome.js';
@@ -19,12 +16,10 @@ import { readDaemonPid } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { safeRemoveFile } from '@/utils/file.js';
+import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
 import { getProcessCommand, isProcessAlive, killChromeProcess } from '@/utils/process.js';
 
 const log = createLogger('cleanup');
-
-/** Absolute path of the daemon entry script (dist/session/cleanup → dist/daemon.js). */
-const DAEMON_SCRIPT_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'daemon.js');
 
 /**
  * Check whether a process command line contains an exact argument.

@@ -9,8 +9,7 @@
 
 import { spawn } from 'child_process';
 import fs from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 
 import { DaemonStartupError, SessionDirError } from '@/daemon/errors.js';
 import {
@@ -24,6 +23,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
 
 const log = createLogger('launcher');
 
@@ -42,10 +42,9 @@ export async function launchDaemon(): Promise<void> {
     return;
   }
 
-  const daemonScriptPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'daemon.js');
-  if (!fs.existsSync(daemonScriptPath)) {
+  if (!fs.existsSync(DAEMON_SCRIPT_PATH)) {
     throw new DaemonStartupError(
-      `Daemon script not found at ${daemonScriptPath}. Did you run 'npm run build'?`,
+      `Daemon script not found at ${DAEMON_SCRIPT_PATH}. Did you run 'npm run build'?`,
       'DAEMON_SCRIPT_NOT_FOUND'
     );
   }
@@ -54,8 +53,8 @@ export async function launchDaemon(): Promise<void> {
   const logPath = join(getSessionDir(), 'daemon.log');
   rotateLog(logPath);
   const logFd = fs.openSync(logPath, 'a');
-  log.debug(`Starting daemon: ${daemonScriptPath}`);
-  const daemon = spawn(process.execPath, [daemonScriptPath], {
+  log.debug(`Starting daemon: ${DAEMON_SCRIPT_PATH}`);
+  const daemon = spawn(process.execPath, [DAEMON_SCRIPT_PATH], {
     detached: true,
     stdio: ['ignore', logFd, logFd],
   });
