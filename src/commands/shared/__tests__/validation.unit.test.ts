@@ -263,7 +263,7 @@ void describe('integerOption', () => {
 
   void it('rejects out-of-range values with the allowed range', () => {
     assert.throws(() => integerOption(0, 100)('101'), /between 0 and 100/);
-    assert.throws(() => integerOption(1)('0'), /Expected an integer\. Use a value >= 1/);
+    assert.throws(() => integerOption(1)('0'), /0 is out of range\. Use a value >= 1/);
   });
 });
 

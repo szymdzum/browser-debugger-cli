@@ -21,7 +21,11 @@
 
 import { noActiveSessionError } from '@/commands/shared/CommandRunner.js';
 import { CommandError } from '@/errors/index.js';
-import { indexOutOfRangeError, staleNodeError } from '@/errors/messages.js';
+import {
+  indexOutOfRangeError,
+  indexWithIndexOptionError,
+  staleNodeError,
+} from '@/errors/messages.js';
 import { QueryCacheManager, type QueryCacheValidation } from '@/session/QueryCacheManager.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
 import type { DomQueryResult } from '@/types.js';
@@ -105,6 +109,15 @@ export class DomElementResolver {
   async resolve(selectorOrIndex: string, explicitIndex?: number): Promise<ElementTargetResult> {
     if (!this.isNumericIndex(selectorOrIndex)) {
       return { success: true, selector: selectorOrIndex, index: explicitIndex };
+    }
+    if (explicitIndex !== undefined) {
+      const err = indexWithIndexOptionError(selectorOrIndex);
+      return {
+        success: false,
+        error: err.message,
+        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+        suggestion: err.suggestion,
+      };
     }
     try {
       const index = parseInt(selectorOrIndex, 10);

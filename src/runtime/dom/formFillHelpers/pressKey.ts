@@ -7,16 +7,19 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { keyPressFailedError, operationFailedError } from '@/errors/messages.js';
+import { keyPressFailedError, operationFailedError, unknownKeyError } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 import {
   escapeSelectorForJS,
   throwIfInvalidSelector,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
+  describeModifiers,
   getKeyDefinition,
+  impliesShift,
   MODIFIER_FLAGS,
   parseModifiers,
+  similarKeyNames,
   shortcutCommands,
   type KeyDefinition,
 } from '@/runtime/dom/keyMapping.js';
@@ -124,14 +127,17 @@ export async function pressKeyElement(
 ): Promise<PressKeyResult> {
   const keyDef = getKeyDefinition(keyName);
   if (!keyDef) {
+    const err = unknownKeyError(keyName, similarKeyNames(keyName));
     return {
       success: false,
-      error: `Unknown key: "${keyName}". Supported keys: Enter, Tab, Escape, Space, Backspace, Delete, ArrowUp/Down/Left/Right, Home, End, PageUp, PageDown, F1-F12, a-z, 0-9`,
+      error: err.message,
+      suggestion: err.suggestion,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
     };
   }
 
   const times = options.times ?? 1;
-  const implicitShift = /^[A-Z]$/.test(keyName) ? MODIFIER_FLAGS.shift : 0;
+  const implicitShift = impliesShift(keyName) ? MODIFIER_FLAGS.shift : 0;
   const modifierFlags = parseModifiers(options.modifiers) | implicitShift;
   const indexArg = options.index ?? 'null';
   const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
@@ -184,7 +190,7 @@ export async function pressKeyElement(
       selector,
       key: keyName,
       times,
-      modifiers: modifierFlags,
+      ...(modifierFlags > 0 && { modifiers: describeModifiers(modifierFlags) }),
       elementType: focusResult.elementType,
     };
   } catch (error) {

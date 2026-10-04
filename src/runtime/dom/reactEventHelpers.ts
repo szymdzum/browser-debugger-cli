@@ -232,7 +232,10 @@ export const REACT_FILL_SCRIPT = `
     elementType: tagName,
     inputType: inputType || null,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
-    warning: warning || undefined
+    matchCount: allMatches.length,
+    warning: warning || (allMatches.length > 1 && typeof index !== 'number'
+      ? allMatches.length + ' elements match; filled the first (use --index or a more specific selector)'
+      : undefined)
   };
 })
 `;
@@ -302,6 +305,19 @@ export const CLICK_ELEMENT_SCRIPT = `
   }
   
   const tagName = el.tagName.toLowerCase();
+  if (tagName === 'option') {
+    const quote = (text) => "'" + String(text).split("'").join("'\\\\''") + "'";
+    const select = el.closest('select');
+    const target = select && select.id ? '#' + select.id : select && select.name ? 'select[name="' + select.name + '"]' : 'select';
+    return {
+      success: false,
+      error: 'An <option> is chosen through its <select>, not clicked',
+      selector: selector,
+      elementType: tagName,
+      exitCode: 81,
+      suggestion: 'bdg dom fill ' + quote(target) + ' ' + quote(el.value || el.text.trim())
+    };
+  }
   if (el.disabled || el.matches(':disabled')) {
     return {
       success: false,
@@ -311,15 +327,6 @@ export const CLICK_ELEMENT_SCRIPT = `
       suggestion: 'A user cannot click a disabled element; enable it first (it may depend on other fields)'
     };
   }
-  const isClickable = (
-    tagName === 'button' ||
-    tagName === 'a' ||
-    tagName === 'input' ||
-    el.onclick !== null ||
-    el.getAttribute('role') === 'button' ||
-    el.ownerDocument.defaultView.getComputedStyle(el).cursor === 'pointer'
-  );
-  
   el.scrollIntoView({ behavior: 'auto', block: 'center' });
 
   // The caller clicks with real mouse events at (x, y) when the element is the
@@ -387,7 +394,6 @@ export const CLICK_ELEMENT_SCRIPT = `
     success: true,
     selector: selector,
     elementType: tagName,
-    clickable: isClickable,
     matchCount: allMatches.length,
     selectedIndex: typeof index === 'number' ? index : undefined,
     x: x,

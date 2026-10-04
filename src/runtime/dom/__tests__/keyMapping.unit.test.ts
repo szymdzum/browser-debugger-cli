@@ -12,8 +12,11 @@ import {
   MODIFIER_FLAGS,
   describeModifiers,
   findUnknownModifiers,
+  getKeyDefinition,
+  impliesShift,
   parseModifiers,
   shortcutCommands,
+  similarKeyNames,
 } from '@/runtime/dom/keyMapping.js';
 
 void describe('parseModifiers', () => {
@@ -70,5 +73,28 @@ void describe('shortcut commands', () => {
     assert.deepEqual(shortcutCommands('KeyA', MODIFIER_FLAGS.shift), []);
     assert.deepEqual(shortcutCommands('KeyA', MODIFIER_FLAGS.ctrl | MODIFIER_FLAGS.alt), []);
     assert.deepEqual(shortcutCommands('KeyB', MODIFIER_FLAGS.ctrl), []);
+  });
+});
+
+void describe('key names', () => {
+  void it('accepts common aliases', () => {
+    assert.equal(getKeyDefinition('Esc')?.key, 'Escape');
+    assert.equal(getKeyDefinition('Return')?.key, 'Enter');
+    assert.equal(getKeyDefinition('Del')?.key, 'Delete');
+    assert.equal(getKeyDefinition('up')?.key, 'ArrowUp');
+  });
+
+  void it('types shifted digit symbols with Shift', () => {
+    assert.equal(getKeyDefinition('!')?.code, 'Digit1');
+    assert.equal(impliesShift('!'), true);
+    assert.equal(impliesShift('B'), true);
+    assert.equal(impliesShift('b'), false);
+    assert.equal(getKeyDefinition('!@'), undefined);
+    assert.equal(getKeyDefinition(''), undefined);
+  });
+
+  void it('suggests the closest key names', () => {
+    assert.deepEqual(similarKeyNames('Escpe').slice(0, 1), ['Escape']);
+    assert.equal(getKeyDefinition('Escpe'), undefined);
   });
 });

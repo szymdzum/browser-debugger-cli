@@ -4,6 +4,8 @@
  * Maps human-readable key names to Chrome DevTools Protocol Input.dispatchKeyEvent parameters.
  */
 
+import { findSimilar } from '@/utils/suggestions.js';
+
 /**
  * CDP key event parameters for a specific key.
  */
@@ -106,7 +108,53 @@ for (let i = 0; i < 10; i++) {
  * ```
  */
 export function getKeyDefinition(keyName: string): KeyDefinition | undefined {
-  return KEY_DEFINITIONS[keyName.toLowerCase()];
+  const name = keyName.toLowerCase();
+  const digit = keyName.length === 1 ? SHIFTED_DIGITS.indexOf(keyName) : -1;
+  if (digit !== -1) return KEY_DEFINITIONS[String(digit)];
+  return KEY_DEFINITIONS[KEY_ALIASES[name] ?? name];
+}
+
+/** Other names users write for keys */
+const KEY_ALIASES: Record<string, string> = {
+  esc: 'escape',
+  return: 'enter',
+  del: 'delete',
+  spacebar: 'space',
+  ' ': 'space',
+  up: 'arrowup',
+  down: 'arrowdown',
+  left: 'arrowleft',
+  right: 'arrowright',
+  pgup: 'pageup',
+  pgdn: 'pagedown',
+  pagedn: 'pagedown',
+};
+
+/** Characters typed with Shift on the digit keys 0-9 (US layout) */
+const SHIFTED_DIGITS = ')!@#$%^&*(';
+
+/**
+ * Whether a key name needs Shift to produce it (an uppercase letter, or a
+ * symbol on a digit key such as "!").
+ *
+ * @param keyName - Key name as given
+ * @returns True if Shift is implied
+ */
+export function impliesShift(keyName: string): boolean {
+  return /^[A-Z]$/.test(keyName) || (keyName.length === 1 && SHIFTED_DIGITS.includes(keyName));
+}
+
+/**
+ * Key names closest to an unknown one.
+ *
+ * @param keyName - Unknown key name
+ * @returns Up to three key names, in their usual spelling
+ */
+export function similarKeyNames(keyName: string): string[] {
+  const names = Object.values(KEY_DEFINITIONS)
+    .map((definition) => definition.key)
+    .filter((key) => key.length > 1);
+  return findSimilar(keyName, names);
 }
 
 /** Accepted modifier names (and common aliases) mapped to their flag. */

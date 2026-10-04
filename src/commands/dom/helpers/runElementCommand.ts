@@ -6,7 +6,7 @@
  */
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { staleNodeError } from '@/errors/messages.js';
+import { UNREACHABLE_ELEMENTS_HINT, staleNodeError } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 interface IpcResponse<T> {
@@ -100,11 +100,17 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
         ? EXIT_CODES.RESOURCE_NOT_FOUND
         : EXIT_CODES.INVALID_ARGUMENTS);
 
+    const suggestion = result.suggestion ?? failureSuggestion;
     return {
       success: false,
       error: result.error ?? `Failed to ${action}`,
       exitCode,
-      errorContext: { suggestion: result.suggestion ?? failureSuggestion },
+      errorContext: {
+        suggestion:
+          exitCode === EXIT_CODES.RESOURCE_NOT_FOUND
+            ? `${suggestion} (${UNREACHABLE_ELEMENTS_HINT})`
+            : suggestion,
+      },
     };
   }
 
