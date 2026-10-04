@@ -45,7 +45,8 @@ export function formatDomQuery(data: DomQueryResult): string {
 
   const nodeLines = nodes.map((node) => {
     const classInfo = node.classes?.length ? ` class="${node.classes.join(' ')}"` : '';
-    return `[${node.index}] <${node.tag}${classInfo}> ${node.preview}`;
+    const preview = node.preview ? ` ${node.preview}` : '';
+    return `[${node.index}] <${node.tag}${classInfo}>${preview}`;
   });
 
   const hasMultipleResults = count > 1;

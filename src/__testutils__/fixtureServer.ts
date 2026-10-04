@@ -5,7 +5,8 @@
  * tests never depend on the public internet. `/slow` delays its response so a
  * session start can be interrupted while the page is loading; `/redirect`
  * answers 302 to `/`; `/interactions` serves a form for input/key/click tests;
- * `/ws` is a WebSocket echo server.
+ * `/ws` is a WebSocket echo server; `/frames` embeds a cross-origin iframe
+ * (`localhost` vs `127.0.0.1`), starts a worker and requests a missing image.
  */
 
 import * as fs from 'fs';
@@ -31,6 +32,21 @@ const PIXEL_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64'
 );
+
+/** Page whose console output comes from other targets and from the browser. */
+const FRAMES_HTML = `<!doctype html><title>frames</title>
+<img src="/not-found.png">
+<script>
+  const frame = document.createElement('iframe');
+  frame.src = 'http://localhost:' + location.port + '/frame-child';
+  document.body.append(frame);
+  new Worker(URL.createObjectURL(new Blob(['console.warn("from worker")'])));
+</script>`;
+
+/** Cross-origin iframe content: logs an object that needs expansion. */
+const FRAME_CHILD_HTML = `<!doctype html><script>
+  console.log('from cross-origin frame', { nested: { deep: { value: 42 } } });
+</script>`;
 
 /**
  * Running fixture server handle.
@@ -85,6 +101,16 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/error-page') {
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h1>Internal error</h1>');
+      return;
+    }
+    if (req.url === '/frames' || req.url === '/frame-child') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(req.url === '/frames' ? FRAMES_HTML : FRAME_CHILD_HTML);
+      return;
+    }
+    if (req.url === '/not-found.png') {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('missing');
       return;
     }
     if (req.url === '/api/test') {

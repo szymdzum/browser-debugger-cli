@@ -21,6 +21,9 @@ import {
   formatPrimitiveValue,
 } from './remoteObjectUtils.js';
 
+/** Sends CDP commands to the session that owns the objects being expanded */
+export type CDPSender = Pick<CDPConnection, 'send'>;
+
 type RemoteObject = Protocol.Runtime.RemoteObject;
 type PropertyDescriptor = Protocol.Runtime.PropertyDescriptor;
 
@@ -67,10 +70,7 @@ function formatExpandedPrimitive(arg: RemoteObject): string {
 /**
  * Fetch object properties from CDP.
  */
-async function fetchProperties(
-  cdp: CDPConnection,
-  objectId: string
-): Promise<PropertyDescriptor[]> {
+async function fetchProperties(cdp: CDPSender, objectId: string): Promise<PropertyDescriptor[]> {
   const response = await cdp.send('Runtime.getProperties', {
     objectId,
     ownProperties: true,
@@ -103,7 +103,7 @@ function hasOverflow(
  * Format array items from properties.
  */
 async function formatArrayItems(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   properties: PropertyDescriptor[],
   depth: number
 ): Promise<string[]> {
@@ -123,7 +123,7 @@ async function formatArrayItems(
  * Format object pairs from properties.
  */
 async function formatObjectPairs(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   properties: PropertyDescriptor[],
   depth: number
 ): Promise<string[]> {
@@ -143,7 +143,7 @@ async function formatObjectPairs(
  * Format an array RemoteObject.
  */
 async function formatArray(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   properties: PropertyDescriptor[],
   depth: number
 ): Promise<string> {
@@ -156,7 +156,7 @@ async function formatArray(
  * Format a regular object RemoteObject.
  */
 async function formatObject(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   properties: PropertyDescriptor[],
   depth: number
 ): Promise<string> {
@@ -177,7 +177,7 @@ async function formatObject(
  * @returns Formatted string representation with expanded properties
  */
 export async function expandRemoteObject(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   arg: RemoteObject,
   depth: number = 0
 ): Promise<string> {
@@ -215,7 +215,7 @@ export async function expandRemoteObject(
  * @param args - Array of RemoteObjects to expand
  * @returns Formatted string with expanded objects
  */
-export async function expandConsoleArgs(cdp: CDPConnection, args: RemoteObject[]): Promise<string> {
+export async function expandConsoleArgs(cdp: CDPSender, args: RemoteObject[]): Promise<string> {
   const expanded = await Promise.all(args.map((arg) => expandRemoteObject(cdp, arg)));
   return expanded.join(' ');
 }

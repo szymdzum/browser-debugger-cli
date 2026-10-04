@@ -78,6 +78,7 @@ export class TypedCDPConnection {
    *
    * @param method - CDP method name (autocomplete available for 300+ methods)
    * @param params - Command parameters (type-checked)
+   * @param sessionId - Session of an attached target (iframe, worker); the page when omitted
    * @returns Promise resolving to command response (type-safe)
    *
    * @example
@@ -97,9 +98,10 @@ export class TypedCDPConnection {
    */
   async send<T extends keyof ProtocolMapping.Commands>(
     method: T,
-    params: CommandParams<T>
+    params: CommandParams<T>,
+    sessionId?: string
   ): Promise<CommandReturn<T>> {
-    const result = await this.cdp.send(method, params as Record<string, unknown>);
+    const result = await this.cdp.send(method, params as Record<string, unknown>, sessionId);
     return result as CommandReturn<T>;
   }
 
@@ -107,7 +109,8 @@ export class TypedCDPConnection {
    * Register a type-safe event handler.
    *
    * @param event - CDP event name (autocomplete available)
-   * @param handler - Event handler with type-safe parameters
+   * @param handler - Event handler with type-safe parameters, and the session of
+   *   the attached target that sent the event (undefined for the page itself)
    * @returns Handler ID for later removal
    *
    * @example
@@ -130,9 +133,9 @@ export class TypedCDPConnection {
    */
   on<T extends keyof ProtocolMapping.Events>(
     event: T,
-    handler: (params: EventParams<T>) => void
+    handler: (params: EventParams<T>, sessionId?: string) => void
   ): EventCleanup {
-    return this.cdp.on(event, handler as (params: unknown) => void);
+    return this.cdp.on(event, handler as (params: unknown, sessionId?: string) => void);
   }
 
   /**

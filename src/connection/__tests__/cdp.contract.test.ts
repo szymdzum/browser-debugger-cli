@@ -353,6 +353,20 @@ describe('CDPConnection contract', () => {
       assert.deepEqual(receivedEvents[0], { targetInfo: { targetId: 't1', type: 'page' } });
     });
 
+    it('passes the session id of events from attached targets', async () => {
+      await connectAndOpen();
+
+      const sessions: Array<string | undefined> = [];
+      cdp.on('Runtime.consoleAPICalled', (_params, sessionId) => sessions.push(sessionId));
+
+      mockWebSocket.simulateMessage(JSON.stringify(createEvent('Runtime.consoleAPICalled', {})));
+      mockWebSocket.simulateMessage(
+        JSON.stringify(createEvent('Runtime.consoleAPICalled', {}, 'frame-1'))
+      );
+
+      assert.deepEqual(sessions, [undefined, 'frame-1']);
+    });
+
     it('should allow multiple handlers for same event', async () => {
       // Arrange
       await connectAndOpen();

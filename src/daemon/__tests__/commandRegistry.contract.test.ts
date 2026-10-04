@@ -31,6 +31,20 @@ void describe('CommandRegistry', () => {
   });
 
   void describe('session_peek', () => {
+    void it('keeps the source of browser messages in console previews', async () => {
+      store.consoleMessages.push(
+        { timestamp: 100, type: 'log', text: 'page' },
+        { timestamp: 200, type: 'error', text: 'Failed to load resource', source: 'network' }
+      );
+
+      const result = await registry.session_peek(mockCdp, { lastN: 0 });
+
+      assert.deepEqual(
+        result.console.map((m) => m.source),
+        [undefined, 'network']
+      );
+    });
+
     void it('returns recent network and console data', async () => {
       store.networkRequests.push(
         {
