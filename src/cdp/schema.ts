@@ -320,6 +320,24 @@ export function getAllDomainSummaries(): DomainSummary[] {
 }
 
 /**
+ * Domain and method counts of the bundled protocol (for help text).
+ *
+ * @returns Number of domains, of methods overall, and of methods per domain
+ */
+export function getProtocolCounts(): {
+  domains: number;
+  methods: number;
+  methodsIn: (domain: string) => number;
+} {
+  const summaries = getAllDomainSummaries();
+  return {
+    domains: summaries.length,
+    methods: summaries.reduce((total, domain) => total + domain.commandCount, 0),
+    methodsIn: (domain) => summaries.find((d) => d.name === domain)?.commandCount ?? 0,
+  };
+}
+
+/**
  * Search methods by keyword (case-insensitive).
  *
  * Searches in method names and descriptions.

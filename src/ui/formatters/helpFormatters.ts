@@ -5,6 +5,7 @@
  * and URL format guidance.
  */
 
+import { getProtocolCounts } from '@/cdp/schema.js';
 import { section } from '@/ui/formatting.js';
 
 /**
@@ -16,11 +17,11 @@ import { section } from '@/ui/formatting.js';
  * @returns Formatted agent discovery section
  */
 export function buildAgentDiscoveryHelp(): string {
+  const counts = getProtocolCounts();
   return section('For AI Agents:', [
     'bdg --help --json          Machine-readable command schema',
-    'bdg cdp --list             List all 53 CDP domains',
-    'bdg cdp --search <term>    Search 300+ CDP methods',
-    '.claude/skills/bdg/        15+ recipes & workflow patterns',
+    `bdg cdp --list             List all ${counts.domains} CDP domains`,
+    `bdg cdp --search <term>    Search ${counts.methods} CDP methods`,
   ]);
 }
 

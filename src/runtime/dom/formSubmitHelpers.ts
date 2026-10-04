@@ -8,7 +8,10 @@ import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFli
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { submitTimeoutError } from '@/errors/messages.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
-import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
+import {
+  escapeSelectorForJS,
+  throwIfInvalidSelector,
+} from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -195,7 +198,11 @@ async function triggerSubmit(
     expression: `(${PREPARE_SUBMIT_SCRIPT})('${escapeSelectorForJS(selector)}', ${index ?? 'null'})`,
     returnByValue: true,
     userGesture: true,
-  })) as { result?: { value?: PrepareResult } };
+  })) as {
+    result?: { value?: PrepareResult };
+    exceptionDetails?: Protocol.Runtime.ExceptionDetails;
+  };
+  if (response.exceptionDetails) throwIfInvalidSelector(response.exceptionDetails, selector);
   const prepared = response.result?.value;
 
   if (!prepared || prepared.action === 'fail') {

@@ -5,8 +5,12 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
-import { escapeSelectorForJS } from '@/runtime/dom/formFillHelpers/shared.js';
+import {
+  escapeSelectorForJS,
+  throwIfInvalidSelector,
+} from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -140,6 +144,7 @@ export async function scrollPage(
       };
 
       if (cdpResponse.exceptionDetails) {
+        throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
         return {
           success: false,
           exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
@@ -216,6 +221,7 @@ export async function scrollPage(
       error: 'Unexpected response format',
     };
   } catch (error) {
+    if (error instanceof CommandError) throw error;
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       success: false,
