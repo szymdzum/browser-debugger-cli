@@ -1,5 +1,6 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
+import { unknownQueryFieldError } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -187,97 +188,97 @@ export function queryA11yTree(tree: A11yTree, pattern: A11yQueryPattern): A11yQu
 }
 
 /**
+ * Match a value against a query term.
+ *
+ * Without `*` the term matches as a case-insensitive substring (or exactly,
+ * for `exact`); `*` matches any run of characters.
+ *
+ * @param value - Node value (role, name, description)
+ * @param term - Query term
+ * @param exact - Whole-value match instead of substring
+ * @returns True on match
+ */
+function matchesTerm(value: string | undefined, term: string, exact = false): boolean {
+  if (value === undefined) return false;
+  if (!term.includes('*')) {
+    const [v, t] = [value.toLowerCase(), term.toLowerCase()];
+    return exact ? v === t : v.includes(t);
+  }
+  const source = term
+    .split('*')
+    .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[\\s\\S]*');
+  return new RegExp(exact ? `^${source}$` : source, 'i').test(value);
+}
+
+/**
  * Checks if a node matches the query pattern.
  *
- * All specified fields must match (AND logic).
- * String matching is case-insensitive.
+ * All specified fields must match (AND logic), case-insensitively: role
+ * exactly, name and description as substrings; `*` is a wildcard.
  *
  * @param node - A11y node to test
  * @param pattern - Query pattern
  * @returns True if node matches all pattern criteria
  */
 function matchesPattern(node: A11yNode, pattern: A11yQueryPattern): boolean {
-  if (pattern.role) {
-    if (node.role.toLowerCase() !== pattern.role.toLowerCase()) {
-      return false;
-    }
-  }
-
-  if (pattern.name) {
-    if (!node.name) {
-      return false;
-    }
-    if (!node.name.toLowerCase().includes(pattern.name.toLowerCase())) {
-      return false;
-    }
-  }
-
-  if (pattern.description) {
-    if (!node.description) {
-      return false;
-    }
-    if (!node.description.toLowerCase().includes(pattern.description.toLowerCase())) {
-      return false;
-    }
-  }
-
+  if (pattern.role && !matchesTerm(node.role, pattern.role, true)) return false;
+  if (pattern.name && !matchesTerm(node.name, pattern.name)) return false;
+  if (pattern.description && !matchesTerm(node.description, pattern.description)) return false;
   return true;
 }
+
+/** Query fields and their aliases. */
+const QUERY_FIELDS: Record<string, keyof A11yQueryPattern> = {
+  role: 'role',
+  name: 'name',
+  description: 'description',
+  desc: 'description',
+};
+
+/**
+ * One `key:value` (or `key=value`) field: the value is quoted, or runs until
+ * the next `key:`/`key=` after a space or comma.
+ */
+const QUERY_FIELD = /([a-z]+)\s*[:=](?:\s*("[^"]*"|'[^']*')|((?:(?![\s,]+[a-z]+\s*[:=]).)*))/gis;
 
 /**
  * Parses query pattern string into A11yQueryPattern object.
  *
- * Supports format: "role:button name:Submit description:Main"
- * Also accepts = as separator: "role=button name=Submit"
- * Fields are separated by spaces, case-insensitive.
+ * Fields are `key:value` or `key=value`, separated by spaces or commas.
+ * Values may contain spaces (quote them if they contain `key:`-like text).
+ * Keys: role, name, description (desc). Case-insensitive.
  *
  * @param patternString - Query pattern string
  * @returns Parsed query pattern
+ * @throws CommandError (81) for unknown keys
  *
  * @example
  * ```typescript
- * parseQueryPattern('role:button name:Submit')
- * // => { role: 'button', name: 'Submit' }
- *
- * parseQueryPattern('role=heading')
- * // => { role: 'heading' }
- *
- * parseQueryPattern('name:Email')
- * // => { name: 'Email' }
+ * parseQueryPattern('role:button name:Submit')     // { role: 'button', name: 'Submit' }
+ * parseQueryPattern('role=link,name=Google Chrome') // { role: 'link', name: 'Google Chrome' }
+ * parseQueryPattern('name:"Sign in" role:button')  // { name: 'Sign in', role: 'button' }
  * ```
  */
 export function parseQueryPattern(patternString: string): A11yQueryPattern {
   const pattern: A11yQueryPattern = {};
-  const parts = patternString.trim().split(/\s+/);
-
-  for (const part of parts) {
-    const separatorMatch = part.match(/[:=]/);
-    if (!separatorMatch) {
-      continue;
+  for (const [, rawKey = '', quoted, plain = ''] of patternString.matchAll(QUERY_FIELD)) {
+    const rawValue = quoted ?? plain;
+    const field = QUERY_FIELDS[rawKey.toLowerCase()];
+    if (!field) {
+      const err = unknownQueryFieldError(rawKey);
+      throw new CommandError(
+        err.message,
+        { suggestion: err.suggestion },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
     }
-
-    const separator = separatorMatch[0];
-    const [key, ...valueParts] = part.split(separator);
-    const value = valueParts.join(separator);
-
-    if (!value) {
-      continue;
-    }
-
-    if (!key) {
-      continue;
-    }
-
-    const normalizedKey = key.toLowerCase();
-    if (normalizedKey === 'role') {
-      pattern.role = value;
-    } else if (normalizedKey === 'name') {
-      pattern.name = value;
-    } else if (normalizedKey === 'description' || normalizedKey === 'desc') {
-      pattern.description = value;
-    }
+    const value = rawValue
+      .trim()
+      .replace(/,+$/, '')
+      .replace(/^(["'])(.*)\1$/s, '$2');
+    if (value) pattern[field] = value;
   }
-
   return pattern;
 }
 

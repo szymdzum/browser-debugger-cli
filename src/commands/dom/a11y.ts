@@ -224,15 +224,15 @@ export function registerA11yCommands(domCmd: Command): void {
       }
 
       const isNumericIndex = /^\d+$/.test(search);
-      const isCssSelector = /^[#.[]/u.test(search) || search.includes(' ');
-      const isPatternQuery = search.includes(':') || search.includes('=');
+      const isCssSelector = /^[#.[]/u.test(search);
+      const isPatternQuery = /^(role|name|description|desc)\s*[:=]/i.test(search);
 
       if (isNumericIndex || isCssSelector) {
         await handleA11yDescribe(search, options);
       } else if (isPatternQuery) {
         await handleA11yQuery(search, options);
       } else {
-        await handleA11yQuery(`name:*${search}*`, options);
+        await handleA11yQuery(`name:"${search.replace(/"/g, '')}"`, options);
       }
     });
 
@@ -249,7 +249,7 @@ export function registerA11yCommands(domCmd: Command): void {
     .description('Query elements by accessibility properties (e.g., "role:button", "name:Submit")')
     .argument(
       '<pattern>',
-      'Pattern with field prefix - role:button, name:Submit, name:*search* (supports wildcards)'
+      'Fields role, name, description as key:value or key=value, separated by spaces or commas; * is a wildcard (e.g. "role:button name:Submit", "role=link,name=Google Chrome")'
     )
     .addOption(jsonOption())
     .action(async (pattern: string, options: A11yQueryCommandOptions) => {
