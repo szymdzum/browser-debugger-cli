@@ -6,7 +6,11 @@ import * as assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
-import { externalChromePort, setupChromeConnection } from '@/daemon/session/chromeConnection.js';
+import {
+  externalChromePort,
+  findPageTarget,
+  setupChromeConnection,
+} from '@/daemon/session/chromeConnection.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
 import type { CDPTarget } from '@/types.js';
@@ -122,5 +126,26 @@ void describe('external Chrome', () => {
 
     assert.equal(target?.webSocketDebuggerUrl, pageUrl);
     assert.equal(target?.title, 'Open tab');
+  });
+});
+
+void describe('launched Chrome', () => {
+  afterEach(() => mock.restoreAll());
+
+  void it('opens a page when Chrome has not opened its first tab yet', async () => {
+    const requests = mockChromeHttp([], PAGE);
+    const store = new TelemetryStore();
+    const config: SessionConfig = {
+      url: 'http://127.0.0.1:47802/',
+      port: 9444,
+      telemetry: [],
+      includeAll: false,
+      headless: true,
+    };
+
+    await findPageTarget(config, store, createLogger('session'));
+
+    assert.equal(store.targetInfo?.id, 'p-1');
+    assert.ok(requests.includes('PUT http://127.0.0.1:9444/json/new?about:blank'));
   });
 });

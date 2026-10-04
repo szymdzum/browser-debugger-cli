@@ -7,6 +7,7 @@
 
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { launchChrome } from '@/connection/launcher.js';
+import { HTTP_LOCALHOST } from '@/constants.js';
 import { ConfigError } from '@/daemon/errors.js';
 import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
@@ -154,7 +155,8 @@ async function setupLaunchedChrome(config: SessionConfig, log: Logger): Promise<
  * Find the page target of a Chrome that bdg launched.
  *
  * Kept separate from the launch so the session owns Chrome before this can
- * fail, and tears it down if it does.
+ * fail, and tears it down if it does. A Chrome that has not opened its first
+ * tab yet gets a blank one.
  *
  * @param config - Session configuration
  * @param telemetryStore - Store receiving the target info
@@ -168,7 +170,9 @@ export async function findPageTarget(
 ): Promise<void> {
   log.info(`Connecting to Chrome via CDP...`);
   const targets = await fetchCDPTargets(config.port, log);
-  const foundTarget = targets.find((t) => t.type === 'page');
+  const foundTarget =
+    targets.find((t) => t.type === 'page') ??
+    (await createPageTarget(HTTP_LOCALHOST, config.port, log));
 
   if (!foundTarget) {
     const availableTargets = targets.length
