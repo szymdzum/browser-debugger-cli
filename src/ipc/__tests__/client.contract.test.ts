@@ -689,6 +689,15 @@ void describe('IPC Client Contract Tests', () => {
           for (const line of lines) {
             if (line.trim()) {
               const request = JSON.parse(line) as { type: string; sessionId: string };
+              if (request.type === 'handshake_request') {
+                const handshake = {
+                  type: 'handshake_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                };
+                socket.write(JSON.stringify(handshake) + '\n');
+                continue;
+              }
               if (request.type === 'cdp_call_request') {
                 const response = {
                   type: 'cdp_call_response',
@@ -749,6 +758,15 @@ void describe('IPC Client Contract Tests', () => {
                 method: string;
                 params: Record<string, unknown>;
               };
+              if (request.type === 'handshake_request') {
+                const handshake = {
+                  type: 'handshake_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                };
+                socket.write(JSON.stringify(handshake) + '\n');
+                continue;
+              }
               if (request.type === 'cdp_call_request') {
                 // Capture the request for verification
                 receivedRequest = { method: request.method, params: request.params };
@@ -806,6 +824,15 @@ void describe('IPC Client Contract Tests', () => {
           for (const line of lines) {
             if (line.trim()) {
               const request = JSON.parse(line) as { type: string; sessionId: string };
+              if (request.type === 'handshake_request') {
+                const handshake = {
+                  type: 'handshake_response',
+                  sessionId: request.sessionId,
+                  status: 'ok',
+                };
+                socket.write(JSON.stringify(handshake) + '\n');
+                continue;
+              }
               if (request.type === 'cdp_call_request') {
                 const response = {
                   type: 'cdp_call_response',
@@ -848,7 +875,7 @@ void describe('IPC Client Contract Tests', () => {
         },
         {
           name: 'IPCConnectionError',
-          message: /IPC cdp_call connection error/,
+          message: /IPC handshake connection error/,
         }
       );
     });

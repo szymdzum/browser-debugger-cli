@@ -24,6 +24,8 @@
 export interface BaseOptions {
   /** Output as JSON instead of human-readable format */
   json?: boolean;
+  /** Hide tips and hints (`-q`, accepted by every command) */
+  quiet?: boolean;
 }
 
 /**

@@ -8,7 +8,8 @@ import { invalidResponseError, sessionNotRespondingError } from '@/errors/messag
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
 import { IPCTimeoutError } from '@/ipc/transport/IPCError.js';
-import { removeStaleDaemonFiles } from '@/session/cleanup/staleSession.js';
+import { describeRunningChrome } from '@/session/chrome.js';
+import { findOrphanedChrome, removeStaleDaemonFiles } from '@/session/cleanup/staleSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import {
   formatSessionStatus,
@@ -18,6 +19,19 @@ import {
 } from '@/ui/formatters/status.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/**
+ * Status without a running session: a start in progress, or a Chrome left
+ * running by an earlier session.
+ *
+ * @param starting - Start in progress, as reported by the daemon
+ * @returns Status data (inactive)
+ */
+function inactiveStatus(starting?: StatusData['starting']): StatusData {
+  if (starting) return { active: false, starting };
+  const orphanedChromePid = findOrphanedChrome();
+  return { active: false, ...(orphanedChromePid !== null && { orphanedChromePid }) };
+}
 
 /**
  * Register status command
@@ -30,7 +44,7 @@ export function registerStatusCommand(program: Command): void {
     .command('status')
     .description('Show active session status and collection statistics')
     .option('-j, --json', 'Output as JSON', false)
-    .option('-v, --verbose', 'Show detailed Chrome diagnostics', false)
+    .option('-v, --verbose', "Also show the session's Chrome executable, mode and profile", false)
     .action(async (options: StatusCommandOptions) => {
       let latestMetadata: SessionMetadata | undefined;
       let latestSessionPid: number | undefined;
@@ -70,7 +84,7 @@ export function registerStatusCommand(program: Command): void {
             if (!data.sessionPid || !data.sessionMetadata) {
               latestMetadata = undefined;
               latestSessionPid = undefined;
-              const jsonOutput = formatStatusAsJson(null, null);
+              const jsonOutput = inactiveStatus(data.starting);
               if (data.activity) {
                 jsonOutput.activity = data.activity;
               }
@@ -94,6 +108,11 @@ export function registerStatusCommand(program: Command): void {
             latestSessionPid = data.sessionPid;
 
             const jsonOutput = formatStatusAsJson(metadata, data.sessionPid);
+            const chrome =
+              options.verbose && metadata.chromePid
+                ? describeRunningChrome(metadata.chromePid)
+                : null;
+            if (chrome) jsonOutput.chrome = chrome;
             if (data.activity) {
               jsonOutput.activity = data.activity;
             }
@@ -117,7 +136,7 @@ export function registerStatusCommand(program: Command): void {
               await removeStaleDaemonFiles();
               latestMetadata = undefined;
               latestSessionPid = undefined;
-              return { success: true, data: formatStatusAsJson(null, null) };
+              return { success: true, data: inactiveStatus() };
             }
 
             return {
@@ -133,7 +152,7 @@ export function registerStatusCommand(program: Command): void {
         options,
         (data: StatusData) => {
           if (!data.active) {
-            return formatNoSessionMessage();
+            return formatNoSessionMessage(data);
           }
 
           if (!latestMetadata || latestSessionPid === undefined) {

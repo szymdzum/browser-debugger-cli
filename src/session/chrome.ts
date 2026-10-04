@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
-import { isProcessAlive } from '@/utils/process.js';
+import { getProcessCommand, isProcessAlive } from '@/utils/process.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
 
@@ -120,4 +120,43 @@ export function clearChromePid(): void {
   } catch (error) {
     log.debug(`Failed to clear Chrome PID cache: ${getErrorMessage(error)}`);
   }
+}
+
+/** What `status --verbose` shows about the session's Chrome */
+export interface RunningChromeInfo {
+  /** Executable the process was started from */
+  executable: string;
+  /** Whether it runs without a window */
+  headless: boolean;
+  /** Profile directory, when given on its command line */
+  userDataDir?: string;
+}
+
+/**
+ * Describe a running Chrome from its command line (fast, unlike scanning the
+ * system for installations).
+ *
+ * @param pid - Chrome process ID
+ * @returns Executable, mode and profile, or null if the process is gone
+ */
+export function describeRunningChrome(pid: number): RunningChromeInfo | null {
+  const command = getProcessCommand(pid);
+  return command ? parseChromeCommand(command) : null;
+}
+
+/**
+ * Executable, mode and profile from a Chrome command line. Paths may contain
+ * spaces: a value runs until the next ` --`.
+ *
+ * @param command - Full command line
+ * @returns Chrome info
+ */
+export function parseChromeCommand(command: string): RunningChromeInfo {
+  const flagsStart = command.indexOf(' --');
+  const userDataDir = /--user-data-dir=(.+?)(?= --|$)/.exec(command)?.[1];
+  return {
+    executable: flagsStart === -1 ? command : command.slice(0, flagsStart),
+    headless: /(^| )--headless\b/.test(command),
+    ...(userDataDir !== undefined && { userDataDir }),
+  };
 }

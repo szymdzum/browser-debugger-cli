@@ -44,6 +44,8 @@ export interface StatusResponseData {
   pageState?: PageState;
   /** Current navigation counter (increments on each page navigation). */
   navigationId?: number;
+  /** Set while `bdg <url>` is starting the session */
+  starting?: { url: string; since: number };
 }
 
 /**

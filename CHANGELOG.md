@@ -44,6 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Session lifecycle**
+  - A frozen daemon is detected in 10 s by every command, including `stop`, `bdg <url>`, `dom *` and `cdp` (they waited 45 s and some exited 110): a quick handshake runs before requests that may take long, and all IPC timeouts exit 102 with a message that names no internal request
+  - `status` while `bdg <url>` is still starting says so (`starting` in JSON) instead of "no session"; other commands meanwhile exit 85 "The session is still starting"
+  - `status` without a session mentions a Chrome left running by an earlier session (`orphanedChromePid`), and `bdg cleanup` closes it
+  - `status --verbose` shows the session's Chrome executable, mode and profile (also in `--json`) in about 0.1 s, instead of scanning installations for 5-7 s
+  - Closing the page's tab (e.g. `cdp Target.closeTarget`) ends the session normally instead of as a crash, and `status` no longer exits 110 while the session is ending
+  - Ctrl-C during `bdg <url>` prints "Start cancelled (interrupted)" (a JSON envelope with `--json`) and exits 130, now listed as `INTERRUPTED`
+  - The daemon shuts down cleanly on SIGHUP (it died and left Chrome running)
+  - `bdg dom help query` exits 0
+  - `-q` is accepted by every command and hides tips and hints
+  - `stop` says "Closed Chrome" (it closes Chrome gracefully); `cleanup` reports removing stale PID files
+  - Headless Chrome sends the regular Chrome user agent (sites served "HeadlessChrome" a different page)
+  - More ad, measurement and A/B-testing domains are left out of network capture by default (ad exchanges, comScore, Nielsen, Chartbeat, Permutive, Optimizely, Adobe, AT Internet); `--all` records them
+
 - **Session start**
   - Chrome exiting during startup is reported at once with what Chrome said (e.g. an unknown `--chrome-flags` value), exit 100, instead of after about 30 s as a refused connection with port advice; a profile already open in another Chrome says so
   - Session directory problems are reported before the daemon starts: a file (103), not writable (82), or a path too long for the daemon socket (103), each with a fix

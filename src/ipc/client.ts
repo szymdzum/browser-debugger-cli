@@ -55,6 +55,17 @@ export async function connectToDaemon(): Promise<HandshakeResponse> {
 }
 
 /**
+ * Make sure the daemon answers before sending a request that may take long
+ * (page work, start, stop): a frozen daemon fails after the quick timeout
+ * instead of the full one.
+ *
+ * @throws IPCTimeoutError (quick timeout) when the daemon does not answer
+ */
+async function assertResponsive(): Promise<void> {
+  await connectToDaemon();
+}
+
+/**
  * Request status information from the daemon.
  * Returns daemon state, session metadata, and activity metrics.
  *
@@ -183,6 +194,7 @@ export async function startSession(
     }),
   });
 
+  await assertResponsive();
   return sendRequest<StartSessionRequest, StartSessionResponse>(
     request,
     'start session',
@@ -207,6 +219,7 @@ export async function startSession(
  */
 export async function stopSession(): Promise<StopSessionResponse> {
   const request: StopSessionRequest = withSession({ type: 'stop_session_request' });
+  await assertResponsive();
   return sendRequest<StopSessionRequest, StopSessionResponse>(
     request,
     'stop session',
@@ -235,6 +248,7 @@ async function sendCommand<T extends CommandName>(
     sessionId: withSession({ type: '' }).sessionId,
   } as ClientRequest<T>;
 
+  if (timeoutMs === undefined || timeoutMs > getQuickIPCRequestTimeout()) await assertResponsive();
   return sendRequest<ClientRequest<T>, ClientResponse<T>>(
     request,
     commandName,

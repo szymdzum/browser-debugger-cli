@@ -5,6 +5,7 @@ import {
   daemonNotRunningError,
   unknownError,
   genericError,
+  commandTimedOutError,
   sessionNotRespondingError,
 } from '@/errors/messages.js';
 import { IPCTimeoutError } from '@/ipc/transport/IPCError.js';
@@ -109,25 +110,19 @@ export type CommandHandler<TOptions extends BaseOptions, TResult = unknown> = (
 export type CommandFormatter<TResult = unknown> = (data: TResult) => string;
 
 /**
- * Whether a request the daemon answers from memory timed out, i.e. the
- * session itself is not responding (slow page work uses the longer timeout
- * and keeps its own message).
- *
- * @param error - Caught error
- * @returns True for a timed-out quick request
- */
-function isUnresponsiveSession(error: unknown): error is IPCTimeoutError {
-  return error instanceof IPCTimeoutError && error.timeoutMs === getQuickIPCRequestTimeout();
-}
-
-/**
- * A daemon that does not answer in time, as a user-facing error (exit 102).
+ * An IPC timeout as a user-facing error (exit 102): a quick request (status,
+ * peek, the handshake before page work) means the session is not responding;
+ * a long one means the command itself did not finish.
  *
  * @param error - IPC timeout
  * @returns Command error with a way out
  */
-function notRespondingError(error: IPCTimeoutError): CommandError {
-  const err = sessionNotRespondingError(error.timeoutMs / 1000);
+export function timeoutError(error: IPCTimeoutError): CommandError {
+  const seconds = error.timeoutMs / 1000;
+  const err =
+    error.timeoutMs <= getQuickIPCRequestTimeout()
+      ? sessionNotRespondingError(seconds)
+      : commandTimedOutError(seconds);
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
 }
 
@@ -193,7 +188,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       process.exit(exitCode);
     }
 
-    if (result.hint) {
+    if (result.hint && !options.quiet) {
       console.error(escapeControlChars(result.hint));
     }
 
@@ -208,7 +203,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
 
     process.exit(EXIT_CODES.SUCCESS);
   } catch (caught) {
-    const error = isUnresponsiveSession(caught) ? notRespondingError(caught) : caught;
+    const error = caught instanceof IPCTimeoutError ? timeoutError(caught) : caught;
     if (error instanceof CommandError) {
       if (options.json) {
         console.log(

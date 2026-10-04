@@ -15,7 +15,7 @@ import { getErrorMessage } from '@/utils/errors.js';
 const log = createLogger('daemon');
 const server = new IPCServer();
 
-for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
   process.on(signal, () => {
     log.info(`Received ${signal}, shutting down...`);
     void server.shutdown();

@@ -55,15 +55,34 @@ export async function performSessionCleanup(
   options: SessionCleanupOptions
 ): Promise<SessionCleanupResult> {
   const warnings: string[] = [];
+  const filesBefore = countSessionFiles();
   const daemonKilled = options.force ? await killLiveDaemon(warnings) : false;
   const session = await removeStaleDaemonFiles();
   const chrome = killOrphanedChrome();
   const output = options.removeOutput ? removeOutputFile(warnings) : false;
+  const filesRemoved = countSessionFiles() < filesBefore;
 
   return {
-    cleaned: { session: session || daemonKilled, chrome, daemons: daemonKilled, output },
+    cleaned: {
+      session: session || daemonKilled || filesRemoved,
+      chrome,
+      daemons: daemonKilled,
+      output,
+    },
     warnings,
   };
+}
+
+/** Files a session leaves behind (stale ones are what cleanup removes) */
+const SESSION_FILE_TYPES = ['DAEMON_PID', 'DAEMON_SOCKET', 'CHROME_PID', 'METADATA'] as const;
+
+/**
+ * How many session files exist.
+ *
+ * @returns Number of existing session files
+ */
+function countSessionFiles(): number {
+  return SESSION_FILE_TYPES.filter((type) => fs.existsSync(getSessionFilePath(type))).length;
 }
 
 /**

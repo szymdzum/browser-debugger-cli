@@ -183,7 +183,8 @@ async function main(): Promise<void> {
 }
 
 /**
- * Make `--debug` accepted after any subcommand (program options are positional).
+ * Make `--debug` and `-q` accepted after any subcommand (program options are
+ * positional).
  *
  * @param command - Command whose subcommands get a hidden `--debug` option
  */
@@ -191,6 +192,9 @@ function addGlobalDebugOption(command: Command): void {
   for (const sub of command.commands) {
     if (!sub.options.some((option) => option.long === '--debug')) {
       sub.addOption(new Option('--debug', 'Enable debug logging').hideHelp());
+    }
+    if (!sub.options.some((option) => option.long === '--quiet')) {
+      sub.addOption(new Option('-q, --quiet', 'Hide tips and hints').hideHelp());
     }
     addGlobalDebugOption(sub);
   }
@@ -231,7 +235,10 @@ function handleUsageError(error: CommanderError, jsonMode: boolean): never {
     if (jsonMode) console.log(JSON.stringify(buildSuccessResponse({ version: VERSION }), null, 2));
     process.exit(EXIT_CODES.SUCCESS);
   }
-  if (error.code === 'commander.helpDisplayed') {
+  if (
+    error.code === 'commander.helpDisplayed' ||
+    (error.code === 'commander.help' && error.exitCode === 0)
+  ) {
     process.exit(EXIT_CODES.SUCCESS);
   }
   const exitCode = EXIT_CODES.INVALID_ARGUMENTS;

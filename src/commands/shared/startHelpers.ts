@@ -5,6 +5,7 @@
  * Handles IPC communication with daemon to start browser sessions.
  */
 
+import { timeoutError } from '@/commands/shared/CommandRunner.js';
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
 import { DaemonError, SessionDirError } from '@/daemon/errors.js';
@@ -24,6 +25,7 @@ import {
   type StartSessionResponse,
   type StartSessionResponseData,
 } from '@/ipc/index.js';
+import { IPCTimeoutError } from '@/ipc/transport/index.js';
 import { isConnectionError } from '@/ipc/utils/errors.js';
 import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
@@ -73,6 +75,7 @@ export async function startSessionViaDaemon(
   options: SessionStartOptions,
   telemetry: TelemetryType[]
 ): Promise<never> {
+  process.once('SIGINT', () => reportStartOutcome(interruptedOutcome(), options));
   let outcome = await requestSession(url, options, telemetry);
   const deadline = Date.now() + SHUTDOWN_WAIT_MS;
   while (isShuttingDown(outcome) && Date.now() < deadline) {
@@ -80,6 +83,17 @@ export async function startSessionViaDaemon(
     outcome = await requestSession(url, options, telemetry);
   }
   reportStartOutcome(outcome, options);
+}
+
+/**
+ * The outcome of a start interrupted with Ctrl-C (the daemon notices the
+ * closed connection and cancels the start).
+ *
+ * @returns Failed start outcome (exit 130)
+ */
+function interruptedOutcome(): StartOutcome {
+  const message = 'Start cancelled (interrupted)';
+  return { ok: false, error: message, human: message, exitCode: EXIT_CODES.INTERRUPTED };
 }
 
 /** How long a new start waits for the previous session to finish shutting down */
@@ -162,6 +176,16 @@ async function requestSession(
     }
     return { ok: true, data: response.data };
   } catch (error) {
+    if (error instanceof IPCTimeoutError) {
+      const timeout = timeoutError(error);
+      return {
+        ok: false,
+        error: timeout.message,
+        human: joinLines(genericError(timeout.message), String(timeout.metadata.suggestion)),
+        exitCode: timeout.exitCode,
+        details: { suggestion: timeout.metadata.suggestion },
+      };
+    }
     if (isConnectionError(error)) {
       return {
         ok: false,

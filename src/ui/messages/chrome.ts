@@ -192,43 +192,6 @@ export function formatDiagnosticsForError(diagnostics: ChromeDiagnostics): strin
 }
 
 /**
- * Format Chrome diagnostics for verbose status output (bdg status --verbose).
- *
- * @param diagnostics - Chrome diagnostics information
- * @returns Array of formatted status lines
- *
- * @example
- * ```typescript
- * const diagnostics = getChromeDiagnostics();
- * const statusLines = formatDiagnosticsForStatus(diagnostics);
- * console.log(statusLines.join('\n'));
- * ```
- */
-export function formatDiagnosticsForStatus(diagnostics: ChromeDiagnostics): string[] {
-  const lines: string[] = [];
-
-  if (diagnostics.defaultPath) {
-    lines.push(`Binary:           ${diagnostics.defaultPath}`);
-  } else {
-    lines.push('Binary:           Could not determine');
-  }
-
-  lines.push(`Installations:    ${diagnostics.installationCount} found`);
-  if (diagnostics.installationCount > 0 && diagnostics.installationCount <= 3) {
-    diagnostics.installations.forEach((path, index) => {
-      lines.push(`  ${index + 1}. ${path}`);
-    });
-  } else if (diagnostics.installationCount > 3) {
-    diagnostics.installations.slice(0, 3).forEach((path, index) => {
-      lines.push(`  ${index + 1}. ${path}`);
-    });
-    lines.push(`  … and ${diagnostics.installationCount - 3} more`);
-  }
-
-  return lines;
-}
-
-/**
  * Generate invalid port error message.
  *
  * @param port - Invalid port number

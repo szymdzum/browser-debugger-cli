@@ -64,19 +64,32 @@ export async function removeStaleDaemonFiles(): Promise<boolean> {
 }
 
 /**
+ * The Chrome recorded in chrome.pid, if it is still running and still the
+ * Chrome bdg launched for this session directory (verified by its marker
+ * flag). A PID that now belongs to another process is dropped.
+ *
+ * @returns Chrome PID, or null
+ */
+export function findOrphanedChrome(): number | null {
+  const chromePid = readChromePid();
+  if (!chromePid) return null;
+  if (hasArgument(getProcessCommand(chromePid), chromeSessionMarkerFlag(getSessionDir()))) {
+    return chromePid;
+  }
+  log.debug(`PID ${chromePid} is no longer a bdg Chrome; dropping chrome.pid`);
+  clearChromePid();
+  return null;
+}
+
+/**
  * Kill the Chrome recorded in chrome.pid, if it is still the Chrome bdg launched
  * for this session directory (verified by its marker flag).
  *
  * @returns True if a Chrome process was killed
  */
 export function killOrphanedChrome(): boolean {
-  const chromePid = readChromePid();
+  const chromePid = findOrphanedChrome();
   if (!chromePid) return false;
-  if (!hasArgument(getProcessCommand(chromePid), chromeSessionMarkerFlag(getSessionDir()))) {
-    log.debug(`PID ${chromePid} is no longer a bdg Chrome; dropping chrome.pid`);
-    clearChromePid();
-    return false;
-  }
   log.info(`Killing orphaned Chrome (PID ${chromePid})`);
   try {
     killChromeProcess(chromePid, 'SIGKILL');
