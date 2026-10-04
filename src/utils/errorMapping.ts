@@ -102,6 +102,10 @@ export function getExitCodeForConnectionError(errorMessage: string): number {
     return EXIT_CODES.RESOURCE_NOT_FOUND;
   }
 
+  if (lowerMessage.includes('still starting')) {
+    return EXIT_CODES.RESOURCE_BUSY;
+  }
+
   if (lowerMessage.includes('timeout')) {
     return EXIT_CODES.CDP_TIMEOUT;
   }

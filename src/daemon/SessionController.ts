@@ -38,6 +38,9 @@ import { filterDefined } from '@/utils/objects.js';
 const log = createLogger('daemon');
 
 const NO_SESSION_ERROR = 'No active session';
+
+/** Error for requests that need the session while `bdg <url>` is still starting it */
+const STARTING_ERROR = 'The session is still starting';
 const COMMAND_TIMEOUT_MS = 30000;
 const QUERY_TIMEOUT_MS = 5000;
 
@@ -112,7 +115,12 @@ function describeLaunchFailure(
  */
 export class SessionController {
   private session: Session | null = null;
-  private launching: { session: Session | null; done: Promise<unknown> } | null = null;
+  private launching: {
+    session: Session | null;
+    done: Promise<unknown>;
+    url: string;
+    since: number;
+  } | null = null;
   private closing = false;
 
   /**
@@ -159,6 +167,21 @@ export class SessionController {
   }
 
   /**
+   * Error fields for a request that needs the session when there is none:
+   * still starting (85), or none at all.
+   *
+   * @returns Error message, plus exit code and suggestion while starting
+   */
+  private noSessionError(): { error: string; exitCode?: number; suggestion?: string } {
+    if (!this.launching) return { error: NO_SESSION_ERROR };
+    return {
+      error: STARTING_ERROR,
+      exitCode: EXIT_CODES.RESOURCE_BUSY,
+      suggestion: 'Wait until "bdg <url>" returns, then retry',
+    };
+  }
+
+  /**
    * Respond to a handshake.
    *
    * @param request - Handshake request
@@ -186,7 +209,10 @@ export class SessionController {
       socketPath: this.socketPath,
     };
     const base = { type: 'status_response' as const, sessionId: request.sessionId };
-    if (!this.session) {
+    if (!this.session || this.session.stopRequested()) {
+      if (this.launching) {
+        data.starting = { url: this.launching.url, since: this.launching.since };
+      }
       return { ...base, status: 'ok', data };
     }
 
@@ -218,7 +244,7 @@ export class SessionController {
   async peek(request: PeekRequest): Promise<PeekResponse> {
     const base = { type: 'peek_response' as const, sessionId: request.sessionId };
     if (!this.session) {
-      return { ...base, status: 'error', error: NO_SESSION_ERROR };
+      return { ...base, status: 'error', ...this.noSessionError() };
     }
     try {
       const data = await withTimeout(
@@ -262,7 +288,7 @@ export class SessionController {
   async harData(request: HARDataRequest): Promise<HARDataResponse> {
     const base = { type: 'har_data_response' as const, sessionId: request.sessionId };
     if (!this.session) {
-      return { ...base, status: 'error', error: NO_SESSION_ERROR };
+      return { ...base, status: 'error', ...this.noSessionError() };
     }
     try {
       const data = await withTimeout(
@@ -286,7 +312,7 @@ export class SessionController {
     const name = request.type.slice(0, -'_request'.length) as CommandName;
     const base = { type: `${name}_response`, sessionId: request.sessionId };
     if (!this.session) {
-      return { ...base, status: 'error', error: NO_SESSION_ERROR };
+      return { ...base, status: 'error', ...this.noSessionError() };
     }
     const { sessionId: _sessionId, type: _type, ...params } = request;
     try {
@@ -321,9 +347,11 @@ export class SessionController {
       return { ...base, status: 'error', ...this.describeExistingSession(request) };
     }
 
-    const launching: { session: Session | null; done: Promise<unknown> } = {
+    const launching: NonNullable<SessionController['launching']> = {
       session: null,
       done: Promise.resolve(),
+      url: request.url,
+      since: Date.now(),
     };
     const run = this.launchSession(request, (session) => {
       launching.session = session;

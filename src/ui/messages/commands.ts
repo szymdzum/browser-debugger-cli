@@ -14,13 +14,13 @@ import {
 import { joinLines } from '@/ui/formatting.js';
 
 /**
- * Generate Chrome killed message.
+ * Chrome closed by `bdg stop` (gracefully, so the profile is saved).
  *
- * @param pid - Chrome process ID that was killed
+ * @param pid - Chrome process ID
  * @returns Formatted success message
  */
-export function chromeKilledMessage(pid?: number): string {
-  return pid ? `Killed Chrome (PID ${pid})` : 'Killed Chrome';
+export function chromeClosedMessage(pid?: number): string {
+  return pid ? `Closed Chrome (PID ${pid})` : 'Closed Chrome';
 }
 
 /**

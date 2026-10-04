@@ -6,9 +6,10 @@ import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
+import { IPCTimeoutError } from '@/ipc/transport/index.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
-  chromeKilledMessage,
+  chromeClosedMessage,
   orphanedDaemonsCleanedMessage,
   warningMessage,
 } from '@/ui/messages/commands.js';
@@ -31,7 +32,7 @@ function formatStop(data: StopResult): string {
 
   return joinLines(
     outputLine,
-    data.stopped.chrome && chromeKilledMessage(),
+    data.stopped.chrome && chromeClosedMessage(),
     daemonsLine,
     ...(data.warnings ?? []).map((warning) => warningMessage(warning))
   );
@@ -78,7 +79,7 @@ export function registerStopCommand(program: Command): void {
                   error: response.message ?? STOP_MESSAGES.NO_SESSION,
                   exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
                   errorContext: {
-                    suggestion: 'Start a session first with: bdg <url>',
+                    suggestion: 'Start a session with: bdg <url>',
                   },
                 };
               }
@@ -94,6 +95,7 @@ export function registerStopCommand(program: Command): void {
               };
             }
           } catch (error: unknown) {
+            if (error instanceof IPCTimeoutError) throw error;
             const errorMessage = getErrorMessage(error);
 
             if (isDaemonNotRunningError(errorMessage)) {
@@ -102,7 +104,7 @@ export function registerStopCommand(program: Command): void {
                 error: STOP_MESSAGES.DAEMON_NOT_RUNNING,
                 exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
                 errorContext: {
-                  suggestion: 'Start a session first with: bdg <url>',
+                  suggestion: 'Start a session with: bdg <url>',
                 },
               };
             }

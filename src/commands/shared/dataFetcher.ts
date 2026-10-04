@@ -2,7 +2,7 @@
  * Shared data fetching utilities for commands that query daemon state.
  */
 
-import { sessionNotRespondingError } from '@/errors/messages.js';
+import { sessionNotRespondingError, sessionUnavailableSuggestion } from '@/errors/messages.js';
 import { getPeek } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import type { PeekSection } from '@/ipc/protocol/commands.js';
@@ -180,7 +180,7 @@ interface ErrorResult {
 export function createErrorResult(
   error: string,
   exitCode: number,
-  suggestion = 'Start a session with: bdg <url>'
+  suggestion = sessionUnavailableSuggestion(exitCode)
 ): ErrorResult {
   return {
     success: false,

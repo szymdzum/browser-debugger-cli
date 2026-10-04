@@ -2,6 +2,7 @@
  * Shared utilities for handling daemon connection errors in commands.
  */
 
+import { sessionUnavailableSuggestion } from '@/errors/messages.js';
 import { genericError } from '@/errors/messages.js';
 import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import {
@@ -67,7 +68,7 @@ export function handleDaemonConnectionError(
 
   if (exits || !followState.lossReported) {
     if (json) {
-      const suggestion = exits ? 'Start a session with: bdg <url>' : undefined;
+      const suggestion = exits ? sessionUnavailableSuggestion(exitCode) : undefined;
       console.log(
         JSON.stringify(
           OutputBuilder.buildJsonError(error, { exitCode, ...(suggestion && { suggestion }) }),

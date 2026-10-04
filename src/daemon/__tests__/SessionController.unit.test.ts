@@ -8,6 +8,7 @@ import { afterEach, describe, it, mock } from 'node:test';
 import { SessionController } from '@/daemon/SessionController.js';
 import { Session, StartCancelledError } from '@/daemon/session/Session.js';
 import { IPCErrorCode, type StartSessionRequest } from '@/ipc/index.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const request: StartSessionRequest = {
   type: 'start_session_request',
@@ -116,5 +117,29 @@ void describe('SessionController.startSession', () => {
     await stopping;
 
     assert.equal(second.errorCode, IPCErrorCode.SESSION_SHUTTING_DOWN);
+  });
+});
+
+void describe('SessionController while a start is in progress', () => {
+  afterEach(() => mock.restoreAll());
+
+  void it('reports the start in status and refuses commands with 85', async () => {
+    const { release } = fakeSession();
+    const controller = new SessionController(Date.now(), '/tmp/test.sock', () => undefined);
+    const start = controller.startSession(request);
+
+    const status = await controller.status({ type: 'status_request', sessionId: 's' });
+    assert.equal(status.data?.starting?.url, request.url);
+
+    const command = (await controller.command({
+      type: 'dom_eval_request',
+      sessionId: 's',
+      script: '1',
+    } as never)) as { error?: string; exitCode?: number };
+    assert.equal(command.exitCode, EXIT_CODES.RESOURCE_BUSY);
+    assert.match(command.error ?? '', /still starting/);
+
+    release();
+    await start;
   });
 });

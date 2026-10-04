@@ -6,7 +6,11 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { SessionMetadata } from '@/session/metadata.js';
-import { formatSessionStatus, formatStatusAsJson } from '@/ui/formatters/status.js';
+import {
+  formatNoSessionMessage,
+  formatSessionStatus,
+  formatStatusAsJson,
+} from '@/ui/formatters/status.js';
 
 const external: SessionMetadata = {
   bdgPid: process.pid,
@@ -36,5 +40,22 @@ void describe('status of an external Chrome', () => {
 
     assert.equal(json.chromeAlive, true);
     assert.equal(json.externalChrome, undefined);
+  });
+});
+
+void describe('formatNoSessionMessage', () => {
+  void it('shows a start in progress instead of "no session"', () => {
+    const text = formatNoSessionMessage({
+      active: false,
+      starting: { url: 'http://example.com/', since: Date.now() - 3000 },
+    });
+    assert.match(text, /Session starting: http:\/\/example\.com\/ \(3s so far\)/);
+    assert.doesNotMatch(text, /No active session/);
+  });
+
+  void it('mentions a Chrome left running by an earlier session', () => {
+    const text = formatNoSessionMessage({ active: false, orphanedChromePid: 4321 });
+    assert.match(text, /still running \(PID 4321\)/);
+    assert.match(text, /bdg cleanup/);
   });
 });

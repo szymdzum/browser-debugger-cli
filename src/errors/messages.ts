@@ -116,6 +116,32 @@ export function sessionNotRespondingError(seconds: number): ErrorWithSuggestion 
 }
 
 /**
+ * The daemon answered, but the command did not finish in time (slow or
+ * frozen page work).
+ *
+ * @param seconds - Timeout in seconds
+ */
+export function commandTimedOutError(seconds: number): ErrorWithSuggestion {
+  return {
+    message: `The command did not finish within ${seconds}s (the page may be busy or frozen)`,
+    suggestion:
+      'Check the session with: bdg status; if the page stays frozen, end it with: bdg cleanup --force',
+  };
+}
+
+/**
+ * What to do when a command finds no session to work with.
+ *
+ * @param exitCode - 85 while a start is in progress, otherwise 83
+ * @returns Suggestion
+ */
+export function sessionUnavailableSuggestion(exitCode: number): string {
+  return exitCode === 85
+    ? 'Wait until "bdg <url>" returns, then retry'
+    : 'Start a session with: bdg <url>';
+}
+
+/**
  * Generate unified "daemon not running" error message with context.
  *
  * This replaces the three previous variants:

@@ -31,12 +31,17 @@ import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeNotice } from '@/ui/messages/chrome.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
+import { delay } from '@/utils/async.js';
+import { isProcessAlive } from '@/utils/process.js';
 import { validateUrl } from '@/utils/url.js';
 
 const log = createLogger('session');
 
 /** Why a session ended. */
 export type SessionEndReason = 'normal' | 'crash' | 'timeout';
+
+/** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
+const CRASH_SETTLE_MS = 500;
 
 /** Summary of a running session, as reported to the CLI on start. */
 export interface SessionInfo {
@@ -249,7 +254,7 @@ export class Session {
       await findPageTarget(this.config, this.store, log);
       this.throwIfStopping();
     }
-    this.cdp = await connectCDP(this.store, log, () => void this.stop('crash'), {
+    this.cdp = await connectCDP(this.store, log, () => void this.endAfterDisconnect(), {
       external: Boolean(chromeWsUrl),
       signal: this.launchAbort.signal,
     });
@@ -264,6 +269,19 @@ export class Session {
       log
     );
     this.throwIfStopping();
+  }
+
+  /**
+   * End the session after its page connection was lost. A launched Chrome
+   * still running a moment later means the tab was closed (e.g.
+   * `Target.closeTarget`), a normal end; otherwise Chrome went away (a
+   * crashing Chrome can drop the connection just before it exits).
+   */
+  private async endAfterDisconnect(): Promise<void> {
+    if (this.chrome) await delay(CRASH_SETTLE_MS);
+    const tabClosed = this.chrome !== null && isProcessAlive(this.chrome.pid);
+    if (tabClosed) log.info('The page was closed; ending the session');
+    await this.stop(tabClosed ? 'normal' : 'crash');
   }
 
   /**

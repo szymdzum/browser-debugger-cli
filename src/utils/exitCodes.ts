@@ -55,6 +55,7 @@ export const EXIT_CODES = {
   SIGNAL_HANDLER_ERROR: 105,
   SESSION_START_FAILURE: 106,
   SOFTWARE_ERROR: 110,
+  INTERRUPTED: 130,
 } as const;
 
 /**
@@ -179,5 +180,10 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.SOFTWARE_ERROR,
     name: 'SOFTWARE_ERROR',
     description: 'Generic software error (use specific codes when possible)',
+  },
+  {
+    code: EXIT_CODES.INTERRUPTED,
+    name: 'INTERRUPTED',
+    description: 'Interrupted by Ctrl-C (128 + SIGINT); a start in progress is cancelled',
   },
 ];

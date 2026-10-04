@@ -1,9 +1,8 @@
-import { getChromeDiagnostics } from '@/connection/diagnostics.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
+import { describeRunningChrome, type RunningChromeInfo } from '@/session/chrome.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { formatDiagnosticsForStatus } from '@/ui/messages/chrome.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 export interface StatusData {
@@ -25,6 +24,12 @@ export interface StatusData {
   warning?: string;
   activity?: SessionActivity;
   pageState?: PageState;
+  /** Set while `bdg <url>` is starting a session */
+  starting?: { url: string; since: number };
+  /** The session's Chrome (`--verbose`) */
+  chrome?: RunningChromeInfo;
+  /** Chrome of an earlier session that is still running (no session owns it) */
+  orphanedChromePid?: number;
 }
 
 /**
@@ -33,7 +38,7 @@ export interface StatusData {
  * @param pid - BDG process ID
  * @param activity - Live activity metrics from the session
  * @param pageState - Current page state from the session
- * @param verbose - Show detailed Chrome diagnostics
+ * @param verbose - Also show the session's Chrome executable, mode and profile
  */
 export function formatSessionStatus(
   metadata: SessionMetadata,
@@ -105,12 +110,17 @@ export function formatSessionStatus(
     18
   );
 
-  if (verbose) {
-    fmt.blank().text('Chrome Diagnostics').separator('━', 50);
-
-    const diagnostics = getChromeDiagnostics();
-    const diagnosticLines = formatDiagnosticsForStatus(diagnostics);
-    diagnosticLines.forEach((line) => fmt.text(line));
+  const chrome = verbose && metadata.chromePid ? describeRunningChrome(metadata.chromePid) : null;
+  if (chrome) {
+    fmt.blank().text('Chrome').separator('━', 50);
+    fmt.keyValueList(
+      [
+        ['Executable', chrome.executable],
+        ['Mode', chrome.headless ? 'headless' : 'with window'],
+        ...(chrome.userDataDir ? [['Profile', chrome.userDataDir] as [string, string]] : []),
+      ],
+      18
+    );
   }
 
   fmt
@@ -171,15 +181,27 @@ export function formatStatusAsJson(
 /**
  * Format "no session" message
  */
-export function formatNoSessionMessage(): string {
+export function formatNoSessionMessage(data: StatusData = { active: false }): string {
   const fmt = new OutputFormatter();
-
+  if (data.starting) {
+    const seconds = Math.round((Date.now() - data.starting.since) / 1000);
+    return fmt
+      .text(`Session starting: ${data.starting.url} (${seconds}s so far)`)
+      .blank()
+      .text('Commands work once "bdg <url>" returns.')
+      .build();
+  }
+  fmt.text('No active session found');
+  if (data.orphanedChromePid) {
+    fmt.text(`Chrome of an earlier session is still running (PID ${data.orphanedChromePid})`);
+  }
   return fmt
-    .text('No active session found')
     .blank()
     .section('Suggestions:', [
       'Start a new session:     bdg <url>',
-      'Clean up after a crash:  bdg cleanup',
+      data.orphanedChromePid
+        ? 'Close that Chrome:       bdg cleanup'
+        : 'Clean up after a crash:  bdg cleanup',
     ])
     .build();
 }

@@ -19,7 +19,7 @@ A URL that cannot be loaded at all (DNS failure, connection refused, missing fil
 ### Check session status
 ```bash
 bdg status                      # Basic status information
-bdg status --verbose            # Include Chrome diagnostics
+bdg status --verbose            # Include the Chrome executable, mode and profile
 bdg status --json               # JSON output
 ```
 
@@ -840,7 +840,7 @@ bdg localhost:3000 --max-body-size 10           # Set max response body size (MB
 
 Things bdg does without being asked, and how to change them:
 
-- **Tracking and ad domains are not recorded**: requests to analytics, tag-manager, ad and social widget domains (Google Analytics/Tag Manager/Ads, DoubleClick, Clarity, Bing, Facebook, TikTok, LinkedIn, Twitter and similar) are dropped. Use `--all` to record them
+- **Tracking and ad domains are not recorded**: requests to analytics, tag-manager, ad and social widget domains (Google Analytics/Tag Manager/Ads, DoubleClick, ad exchanges, Clarity, Bing, Facebook, TikTok, LinkedIn, Twitter, comScore, Nielsen, Chartbeat, Permutive, Optimizely, Adobe Analytics and similar) are dropped. Use `--all` to record them
 - **Large or binary response bodies are not fetched**: images, fonts, media and stylesheets get a placeholder body, as do bodies over `--max-body-size` (5 MB by default). `--all` fetches them (within the size limit); HAR exports mark skipped bodies with a comment
 - **`console.group` headers are hidden**: the messages inside a group are kept; `--all` keeps the group start/end entries too
 - **Dialogs are accepted automatically**: `alert`/`confirm` are accepted and `prompt` is answered with an empty string, so a dialog never blocks the page
