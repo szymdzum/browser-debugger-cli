@@ -139,12 +139,7 @@ export async function getPeek(options?: {
  */
 export async function getHARData(): Promise<HARDataResponse> {
   const request: HARDataRequest = withSession({ type: 'har_data_request' });
-  return sendRequest<HARDataRequest, HARDataResponse>(
-    request,
-    'HAR data',
-    'har_data_response',
-    getQuickIPCRequestTimeout()
-  );
+  return sendRequest<HARDataRequest, HARDataResponse>(request, 'HAR data', 'har_data_response');
 }
 
 /**

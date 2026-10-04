@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`network har` on large sessions** - HAR data was fetched with the 10 s timeout meant for quick status queries, so exporting a session with hundreds of requests and bodies failed with "The session did not respond within 10s"; it uses the normal request timeout again
 - **CLI consistency and session robustness**
   - `bdg --json` on its own prints the machine-readable help; `cdp … --json` and `dom a11y <search> --json` are accepted (the a11y quick search could not output JSON at all); `dom a11y` without arguments is a usage error (81) like other command groups
   - `dom eval` runs like the DevTools console: top-level `const`/`let` can be declared again in a later call and top-level `await` works (returned promises are still awaited)
