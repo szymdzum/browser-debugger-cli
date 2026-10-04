@@ -131,7 +131,7 @@ log_success "Test 8 passed: Peek with multiple flags works"
 log_step "Test 9: Peek --last 0 (all) and invalid values"
 bdg peek --last 0 >/dev/null 2>&1 || die "Peek --last 0 (all items) failed"
 bdg peek --last -5 2>&1 && die "Peek --last -5 should have failed" || true
-bdg peek --last 1001 2>&1 && die "Peek --last 1001 should have failed" || true
+bdg peek --last 10001 2>&1 && die "Peek --last 10001 should have failed" || true
 bdg peek --last abc 2>&1 && die "Peek --last abc should have failed" || true
 
 log_success "Test 9 passed: Peek validates --last argument"
