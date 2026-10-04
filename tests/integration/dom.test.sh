@@ -67,14 +67,14 @@ bdg "https://example.com" --headless || die "Failed to start session"
 sleep 3  # Let page load
 
 # Test 2: Valid CSS selector - single element
-log_step "Test 2: Query single element (h1)"
-DOM_OUTPUT=$(bdg dom query "h1" 2>&1) || die "Failed to query h1"
+log_step "Test 2: Query single element (body)"
+DOM_OUTPUT=$(bdg dom query "body" 2>&1) || die "Failed to query body"
 
 # Should contain text content
 if echo "$DOM_OUTPUT" | grep -qi "example"; then
-  log_success "h1 element found with expected content"
+  log_success "body element found with expected content"
 else
-  log_warn "h1 content may not match expected"
+  log_warn "body content may not match expected"
 fi
 
 log_success "Test 2 passed: Single element query works"
@@ -95,8 +95,8 @@ DOM_NONE=$(bdg dom query ".nonexistent-class-12345" 2>&1)
 NO_MATCH_EXIT=$?
 set -e
 
-# Should handle gracefully (either empty result or error)
-log_success "Test 4 passed: No-match query handled gracefully"
+[ $NO_MATCH_EXIT -eq 83 ] || die "No-match query should exit 83 (got $NO_MATCH_EXIT)"
+log_success "Test 4 passed: No-match query exits 83"
 
 # Test 5: Invalid CSS selector
 log_step "Test 5: Invalid CSS selector"
@@ -134,7 +134,7 @@ log_success "Test 7 passed: Complex selector handled"
 # Test 8: DOM query with JSON output (if supported)
 log_step "Test 8: DOM with --json flag (if supported)"
 set +e
-JSON_DOM=$(bdg dom query "h1" --json 2>&1)
+JSON_DOM=$(bdg dom query "body" --json 2>&1)
 JSON_EXIT=$?
 set -e
 
