@@ -73,7 +73,10 @@ export class CDPConnection implements CDPEventSource {
     }
   >();
   private nextHandlerId = 0;
-  private eventHandlers = new Map<string, Map<number, (params: unknown) => void>>();
+  private eventHandlers = new Map<
+    string,
+    Map<number, (params: unknown, sessionId?: string) => void>
+  >();
 
   private pingInterval: NodeJS.Timeout | null = null;
   private pongTimeout: NodeJS.Timeout | null = null;
@@ -414,6 +417,9 @@ export class CDPConnection implements CDPEventSource {
   /**
    * Handle CDP events by notifying registered handlers.
    *
+   * Handlers also receive the event's session id, set for events of attached
+   * targets (iframes, workers) and absent for the page itself.
+   *
    * @param message - CDP message containing event data
    */
   private handleCDPEvent(message: CDPMessage): void {
@@ -421,7 +427,7 @@ export class CDPConnection implements CDPEventSource {
 
     const handlers = this.eventHandlers.get(message.method);
     if (handlers) {
-      handlers.forEach((handler) => handler(message.params));
+      handlers.forEach((handler) => handler(message.params, message.sessionId));
     }
   }
 
@@ -635,7 +641,7 @@ export class CDPConnection implements CDPEventSource {
    * instead of handler ID for easier resource management.
    *
    * @param event - CDP event name (e.g., 'Network.requestWillBeSent')
-   * @param handler - Callback function to handle the event
+   * @param handler - Callback receiving the event params and, for attached targets, their session id
    * @returns Cleanup function to unregister the handler
    * @typeParam T - Type of event parameters for type safety at call site
    *
@@ -649,14 +655,14 @@ export class CDPConnection implements CDPEventSource {
    * cleanup();
    * ```
    */
-  on<T = unknown>(event: string, handler: (params: T) => void): EventCleanup {
+  on<T = unknown>(event: string, handler: (params: T, sessionId?: string) => void): EventCleanup {
     let handlersForEvent = this.eventHandlers.get(event);
     if (!handlersForEvent) {
       handlersForEvent = new Map();
       this.eventHandlers.set(event, handlersForEvent);
     }
     const handlerId = ++this.nextHandlerId;
-    handlersForEvent.set(handlerId, handler as (params: unknown) => void);
+    handlersForEvent.set(handlerId, handler as (params: unknown, sessionId?: string) => void);
 
     return () => this.off(event, handlerId);
   }

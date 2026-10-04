@@ -33,7 +33,7 @@ export class CDPHandlerRegistry {
    *
    * @param typed - Typed CDP connection instance
    * @param event - CDP event name (autocomplete available)
-   * @param handler - Event handler with type-safe parameters
+   * @param handler - Event handler with type-safe parameters and the session id of attached targets
    *
    * @example
    * ```typescript
@@ -49,7 +49,7 @@ export class CDPHandlerRegistry {
   registerTyped<T extends keyof ProtocolMapping.Events>(
     typed: TypedCDPConnection,
     event: T,
-    handler: (params: EventParams<T>) => void
+    handler: (params: EventParams<T>, sessionId?: string) => void
   ): void {
     const cleanup = typed.on(event, handler);
     this.cleanupFunctions.push(cleanup);

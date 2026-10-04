@@ -56,7 +56,14 @@ export interface SessionPeekData {
     /** Failure reason for failed requests */
     errorText?: string;
   }>;
-  console: Array<{ index?: number; timestamp: number; type: string; text: string }>;
+  console: Array<{
+    index?: number;
+    timestamp: number;
+    type: string;
+    text: string;
+    /** Browser subsystem of a browser message (`network`, `security`, ...) */
+    source?: string;
+  }>;
   /** Navigation id of the page currently loaded. */
   currentNavigationId: number;
   /** Total number of network requests (for pagination). */

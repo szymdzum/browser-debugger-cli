@@ -212,6 +212,8 @@ export interface ConsoleMessage {
    * First frame indicates the source location of the console call.
    */
   stackTrace?: StackFrame[];
+  /** Browser subsystem of a browser message (`network`, `security`, ...); absent for page console calls */
+  source?: Protocol.Log.LogEntry['source'];
 }
 
 /**

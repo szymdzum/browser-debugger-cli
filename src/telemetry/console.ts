@@ -1,8 +1,10 @@
 /**
- * Console message collection via CDP Runtime domain.
+ * Console message collection via CDP Runtime and Log domains.
  *
  * Captures console.log, console.error, etc. and JavaScript exceptions
- * with automatic nested object expansion.
+ * with automatic nested object expansion, browser messages (failed loads,
+ * CORS, security, deprecations), and the same from cross-origin iframes and
+ * workers.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -10,23 +12,34 @@ import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
+import { attachChildTargets } from '@/telemetry/attachedTargets.js';
 import type { ConsoleMessage, CleanupFunction, StackFrame } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 
 import { shouldExcludeConsoleMessage } from './filters.js';
-import { expandConsoleArgs } from './objectExpander.js';
+import { expandConsoleArgs, type CDPSender } from './objectExpander.js';
 import { formatConsoleArgs, usesFormatSpecifiers } from './remoteObject.js';
 import { needsAsyncExpansion } from './remoteObjectUtils.js';
 
 type RemoteObject = Protocol.Runtime.RemoteObject;
 type ConsoleAPICalledEvent = Protocol.Runtime.ConsoleAPICalledEvent;
 type ExceptionThrownEvent = Protocol.Runtime.ExceptionThrownEvent;
+type LogEntry = Protocol.Log.LogEntry;
+
+/** Console message type of each browser log level */
+const LOG_LEVEL_TYPES: Record<LogEntry['level'], ConsoleMessage['type']> = {
+  verbose: 'debug',
+  info: 'info',
+  warning: 'warning',
+  error: 'error',
+};
 
 const log = createLogger('console');
 
 interface MessageContext {
   navigationId: number | undefined;
   stackTrace: StackFrame[] | undefined;
+  source?: LogEntry['source'];
 }
 
 /**
@@ -85,6 +98,7 @@ function createMessage(
     ...(args && { args }),
     ...(context.navigationId !== undefined && { navigationId: context.navigationId }),
     ...(context.stackTrace && { stackTrace: context.stackTrace }),
+    ...(context.source && { source: context.source }),
   };
 }
 
@@ -127,7 +141,7 @@ function findInsertIndex(messages: ConsoleMessage[], timestamp: number): number 
  * Handle a console API call event with object expansion.
  */
 function handleConsoleAPICall(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   messages: ConsoleMessage[],
   params: ConsoleAPICalledEvent,
   context: MessageContext,
@@ -151,7 +165,7 @@ function handleConsoleAPICall(
  * Handle a message with expandable objects.
  */
 function handleExpandableMessage(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   messages: ConsoleMessage[],
   params: ConsoleAPICalledEvent,
   context: MessageContext,
@@ -237,7 +251,84 @@ function handleExceptionThrown(
 }
 
 /**
- * Start collecting console messages and exceptions via CDP Runtime domain.
+ * Handle a browser log entry (failed resource loads, CORS, security,
+ * deprecations). Entries without a stack point at their resource URL.
+ *
+ * Worker entries are skipped: workers are attached directly, so their console
+ * calls already arrive (with arguments) from the worker's own session.
+ */
+function handleLogEntry(
+  messages: ConsoleMessage[],
+  entry: LogEntry,
+  navigationId: number | undefined,
+  includeAll: boolean
+): void {
+  const type = LOG_LEVEL_TYPES[entry.level];
+  if (entry.source === 'worker' || shouldExcludeConsoleMessage(entry.text, type, includeAll)) {
+    return;
+  }
+
+  const location = entry.url
+    ? [{ url: entry.url, lineNumber: entry.lineNumber ?? 0, columnNumber: 0 }]
+    : undefined;
+  const context: MessageContext = {
+    navigationId,
+    stackTrace: convertStackTrace(entry.stackTrace) ?? location,
+    source: entry.source,
+  };
+  insertMessageByTimestamp(
+    messages,
+    createMessage(type, entry.text, entry.timestamp, undefined, context)
+  );
+}
+
+/**
+ * Bind CDP commands to the session an event came from, so its objects can be
+ * expanded (attached iframes and workers own their objects).
+ *
+ * @param cdp - CDP connection
+ * @param sessionId - Session of the attached target, undefined for the page
+ * @returns Sender for that session
+ */
+function senderFor(cdp: CDPConnection, sessionId: string | undefined): CDPSender {
+  return sessionId ? { send: (method, params) => cdp.send(method, params, sessionId) } : cdp;
+}
+
+/**
+ * Enable console and log events on an attached target's session.
+ *
+ * @param typed - Typed CDP connection
+ * @param sessionId - Session of the attached target
+ */
+async function enableConsoleEvents(typed: TypedCDPConnection, sessionId: string): Promise<void> {
+  await typed.send('Runtime.enable', {}, sessionId);
+  await typed.send('Log.enable', {}, sessionId);
+}
+
+/**
+ * Enable browser log entries and attach to iframes and workers. Both only add
+ * messages, so a failure is logged and the session keeps the page's console.
+ *
+ * @param cdp - CDP connection
+ * @param typed - Typed CDP connection
+ * @returns Cleanup that stops attaching to new targets
+ */
+async function startOptionalSources(
+  cdp: CDPConnection,
+  typed: TypedCDPConnection
+): Promise<CleanupFunction> {
+  try {
+    await typed.send('Log.enable', {});
+    return await attachChildTargets(cdp, (sessionId) => enableConsoleEvents(typed, sessionId));
+  } catch (error) {
+    log.debug(`Browser messages or iframe/worker consoles unavailable: ${String(error)}`);
+    return () => undefined;
+  }
+}
+
+/**
+ * Start collecting console messages, exceptions and browser log entries from
+ * the page and its cross-origin iframes and workers.
  *
  * @param cdp - CDP connection instance
  * @param messages - Array to populate with console messages
@@ -254,14 +345,12 @@ export async function startConsoleCollection(
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
 
-  await cdp.send('Runtime.enable');
-
-  registry.registerTyped(typed, 'Runtime.consoleAPICalled', (params) => {
+  registry.registerTyped(typed, 'Runtime.consoleAPICalled', (params, sessionId) => {
     const context: MessageContext = {
       navigationId: getCurrentNavigationId?.(),
       stackTrace: convertStackTrace(params.stackTrace),
     };
-    handleConsoleAPICall(cdp, messages, params, context, includeAll);
+    handleConsoleAPICall(senderFor(cdp, sessionId), messages, params, context, includeAll);
   });
 
   registry.registerTyped(typed, 'Runtime.exceptionThrown', (params) => {
@@ -272,7 +361,20 @@ export async function startConsoleCollection(
     handleExceptionThrown(messages, params, context, includeAll);
   });
 
-  return () => {
+  registry.registerTyped(typed, 'Log.entryAdded', ({ entry }) => {
+    handleLogEntry(messages, entry, getCurrentNavigationId?.(), includeAll);
+  });
+
+  try {
+    await typed.send('Runtime.enable', {});
+  } catch (error) {
     registry.cleanup();
+    throw error;
+  }
+  const detachChildren = await startOptionalSources(cdp, typed);
+
+  return async () => {
+    registry.cleanup();
+    await detachChildren();
   };
 }

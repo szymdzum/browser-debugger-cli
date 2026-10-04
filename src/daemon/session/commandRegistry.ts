@@ -121,6 +121,7 @@ interface ConsolePreview {
   text: string;
   stackTrace?: unknown[];
   navigationId?: number;
+  source?: string;
 }
 
 /**
@@ -142,6 +143,9 @@ function mapConsoleMessageToPreview(msg: ConsolePreview, index: number): Console
   }
   if (msg.navigationId !== undefined) {
     result.navigationId = msg.navigationId;
+  }
+  if (msg.source) {
+    result.source = msg.source;
   }
   return result;
 }
