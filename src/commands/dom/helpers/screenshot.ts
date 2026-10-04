@@ -20,6 +20,7 @@ import {
   elementZeroDimensionsError,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
+import { DEEP_QUERY_JS } from '@/runtime/dom/targetNode.js';
 import type { ScreenshotResult, ScreenshotOptions, ElementBounds, NodeRef } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -140,7 +141,7 @@ async function scrollToElement(selector: string): Promise<ScrollPosition> {
   const result = await callCDP('Runtime.evaluate', {
     expression: `
       (() => {
-        const el = document.querySelector(${JSON.stringify(selector)});
+        const el = (${DEEP_QUERY_JS})(${JSON.stringify(selector)})[0];
         if (!el) return { found: false };
         const originalX = window.scrollX;
         const originalY = window.scrollY;
@@ -272,7 +273,7 @@ export async function capturePageScreenshot(
 
     if (options.scroll) {
       await callCDP('Runtime.evaluate', {
-        expression: `document.querySelector(${JSON.stringify(options.scroll)})?.scrollIntoView({ block: 'center', behavior: 'instant' })`,
+        expression: `(${DEEP_QUERY_JS})(${JSON.stringify(options.scroll)})[0]?.scrollIntoView({ block: 'center', behavior: 'instant' })`,
         returnByValue: true,
       });
     }

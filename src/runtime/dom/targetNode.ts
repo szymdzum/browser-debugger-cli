@@ -18,20 +18,54 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
 
 /**
+ * Page-side CSS selector search that also reaches into open shadow roots and
+ * same-origin iframes (recursively), like a user sees the page.
+ *
+ * Matches of the document come first, then those of each shadow root and
+ * frame in document order. Cross-origin iframes are separate processes and
+ * cannot be searched. Throws a `SyntaxError` for an invalid selector.
+ */
+export const DEEP_QUERY_JS = `function (selector) {
+  const found = [];
+  const visit = (root) => {
+    for (const match of root.querySelectorAll(selector)) found.push(match);
+    for (const el of root.querySelectorAll('*')) {
+      if (el.shadowRoot) visit(el.shadowRoot);
+      if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+        let frameDocument = null;
+        try { frameDocument = el.contentDocument; } catch (e) { frameDocument = null; }
+        if (frameDocument) visit(frameDocument);
+      }
+    }
+  };
+  visit(document);
+  return found;
+}`;
+
+/**
  * Page-side element lookup shared by the interaction scripts.
  *
- * Returns the bound node (if still in the document) for the placeholder
- * selector, otherwise all matches of the CSS selector.
+ * Returns the bound node (if still in the page) for the placeholder selector,
+ * otherwise all matches of the CSS selector ({@link DEEP_QUERY_JS}).
  */
 export const FIND_ELEMENTS_JS = `function (selector) {
   if (selector === '${BOUND_TARGET_SELECTOR}') {
     const el = window.__bdgTarget;
     return el && el.isConnected ? [el] : [];
   }
-  return Array.from(document.querySelectorAll(selector));
+  return (${DEEP_QUERY_JS})(selector);
 }`;
 
-const BIND_FUNCTION = 'function () { window.__bdgTarget = this; return this.isConnected; }';
+/**
+ * Store the node for the page scripts. It runs in the node's own frame, while
+ * the scripts run in the top page, so the node goes on the top window (always
+ * reachable for the same-origin frames bdg can target).
+ */
+const BIND_FUNCTION = `function () {
+  let host = window;
+  try { host = window.top; host.__bdgTarget = this; } catch (e) { host = window; host.__bdgTarget = this; }
+  return this.isConnected;
+}`;
 
 /** Selector and index the page scripts should use. */
 export interface ScriptTarget {

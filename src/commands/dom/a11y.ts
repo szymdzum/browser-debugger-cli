@@ -12,7 +12,7 @@
 import type { Command } from 'commander';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { getDomContext } from '@/commands/dom/helpers/index.js';
+import { getDomContext, resolveA11yNodeForSelector } from '@/commands/dom/helpers/index.js';
 import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { runCommand, runJsonCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -163,9 +163,9 @@ async function handleA11yDescribe(
     if (isNumericIndex) {
       const index = parseInt(selectorOrIndex, 10);
       backendNodeId = (await resolver.getNodeIdForIndex(index)).nodeId;
-      node = await resolveA11yNode('', { backendNodeId });
+      node = await resolveA11yNode({ backendNodeId });
     } else {
-      node = await resolveA11yNode(selectorOrIndex);
+      node = await resolveA11yNodeForSelector(selectorOrIndex);
     }
 
     if (!node) {

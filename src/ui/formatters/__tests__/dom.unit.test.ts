@@ -22,4 +22,11 @@ void describe('formatDomQuery', () => {
     assert.match(output, /\[1\] <p class="note"> Hello$/m);
     assert.doesNotMatch(output, /undefined/);
   });
+
+  void it('says where selectors do not reach when nothing matches', () => {
+    const output = formatDomQuery({ selector: '#missing', count: 0, nodes: [] });
+
+    assert.match(output, /No nodes found matching "#missing"/);
+    assert.match(output, /cross-origin iframes/);
+  });
 });

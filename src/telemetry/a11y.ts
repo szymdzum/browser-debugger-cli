@@ -283,49 +283,19 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
 }
 
 /**
- * Resolve accessibility properties for a DOM node by CSS selector or node reference via IPC.
+ * Resolve accessibility properties for a DOM node via IPC.
  *
  * Uses the session's persistent CDP connection through callCDP for consistency.
- * Supports direct node lookup (bypassing selector) for index-based access patterns.
+ * Selectors are resolved by the caller (see `resolveBackendNodeIds`), so they
+ * reach shadow roots and same-origin iframes like every other DOM command.
  *
- * @param selector - CSS selector (ignored if ref provided)
- * @param ref - Optional node reference to use directly instead of querying by selector
+ * @param target - Node reference
  * @returns A11y node or null if not found
- * @throws Error if selector is invalid or element not found
  */
-export async function resolveA11yNode(selector: string, ref?: NodeRef): Promise<A11yNode | null> {
+export async function resolveA11yNode(target: NodeRef): Promise<A11yNode | null> {
   await callCDP('Accessibility.enable', {});
 
   try {
-    let target: NodeRef;
-
-    if (ref !== undefined) {
-      target = ref;
-    } else {
-      const docResponse = await callCDP('DOM.getDocument', {});
-      const doc = docResponse.data?.result as Protocol.DOM.GetDocumentResponse | undefined;
-      if (!doc?.root?.nodeId) {
-        throw new CommandError(
-          'Failed to get document root',
-          { suggestion: 'CDP DOM.getDocument returned no root. The page may not be fully loaded.' },
-          EXIT_CODES.SOFTWARE_ERROR
-        );
-      }
-
-      const nodeResponse = await callCDP('DOM.querySelector', {
-        nodeId: doc.root.nodeId,
-        selector,
-      });
-      const nodeResult = nodeResponse.data?.result as
-        Protocol.DOM.QuerySelectorResponse | undefined;
-
-      if (!nodeResult?.nodeId) {
-        return null;
-      }
-
-      target = { nodeId: nodeResult.nodeId };
-    }
-
     const a11yResponse = await callCDP('Accessibility.getPartialAXTree', {
       ...target,
       fetchRelatives: false,

@@ -6,7 +6,8 @@
  * session start can be interrupted while the page is loading; `/redirect`
  * answers 302 to `/`; `/interactions` serves a form for input/key/click tests;
  * `/ws` is a WebSocket echo server; `/frames` embeds a cross-origin iframe
- * (`localhost` vs `127.0.0.1`), starts a worker and requests a missing image.
+ * (`localhost` vs `127.0.0.1`), starts a worker and requests a missing image;
+ * `/deep` has controls inside an open shadow root and a same-origin iframe.
  */
 
 import * as fs from 'fs';
@@ -46,6 +47,33 @@ const FRAMES_HTML = `<!doctype html><title>frames</title>
 /** Cross-origin iframe content: logs an object that needs expansion. */
 const FRAME_CHILD_HTML = `<!doctype html><script>
   console.log('from cross-origin frame', { nested: { deep: { value: 42 } } });
+</script>`;
+
+/** Page with controls in an open shadow root and in a same-origin iframe. */
+const DEEP_HTML = `<!doctype html><title>deep</title>
+<p class="note">light</p>
+<shadow-form></shadow-form>
+<iframe src="/deep-frame" style="margin-top: 40px; width: 400px; height: 200px; padding: 25px; border: 6px solid"></iframe>
+<script>
+  window.events = [];
+  customElements.define('shadow-form', class extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: 'open' });
+      root.innerHTML = '<p class="note">shadow</p><input id="shadow-input">' +
+        '<button id="shadow-button">Shadow</button>';
+      root.getElementById('shadow-button').onclick = () => window.events.push('shadow-click');
+      root.getElementById('shadow-input').onkeydown = (e) => window.events.push('shadow-key:' + e.key);
+    }
+  });
+</script>`;
+
+/** Same-origin iframe content of `/deep`. */
+const DEEP_FRAME_HTML = `<!doctype html><p class="note">frame</p>
+<input id="frame-input" aria-label="Frame field">
+<button id="frame-button" style="margin-left: 120px">Frame</button>
+<script>
+  document.getElementById('frame-button').onclick = () => parent.events.push('frame-click');
+  document.getElementById('frame-input').onkeydown = (e) => parent.events.push('frame-key:' + e.key);
 </script>`;
 
 /**
@@ -101,6 +129,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/error-page') {
       res.writeHead(500, { 'Content-Type': 'text/html' });
       res.end('<h1>Internal error</h1>');
+      return;
+    }
+    if (req.url === '/deep' || req.url === '/deep-frame') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(req.url === '/deep' ? DEEP_HTML : DEEP_FRAME_HTML);
       return;
     }
     if (req.url === '/frames' || req.url === '/frame-child') {

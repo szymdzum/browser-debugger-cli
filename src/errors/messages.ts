@@ -231,6 +231,7 @@ export function elementNotFoundError(selector: string): string {
     '  - Check the selector syntax',
     '  - Wait for the element to load (page might still be loading)',
     '  - Use bdg peek to see if page loaded correctly',
+    `  - ${CROSS_ORIGIN_FRAMES_NOTE}`,
     '',
     'Advanced: Use CDP for complex queries:',
     `  bdg cdp Runtime.evaluate --params '{"expression":"document.querySelector(\\"${selector}\\")"}'`
@@ -348,13 +349,17 @@ export function elementAtIndexNotFoundError(index: number, selector: string): Er
   };
 }
 
+/** Where selectors do not reach (open shadow roots and same-origin iframes are searched) */
+export const CROSS_ORIGIN_FRAMES_NOTE =
+  'Elements inside cross-origin iframes and closed shadow roots are not searched';
+
 /**
  * No nodes found for selector.
  */
 export function noNodesFoundError(selector: string): ErrorWithSuggestion {
   return {
     message: `No nodes found matching "${selector}"`,
-    suggestion: 'Verify the CSS selector is correct',
+    suggestion: `Verify the CSS selector is correct. ${CROSS_ORIGIN_FRAMES_NOTE}`,
   };
 }
 

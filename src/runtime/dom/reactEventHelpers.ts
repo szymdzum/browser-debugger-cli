@@ -148,12 +148,12 @@ export const REACT_FILL_SCRIPT = `
     el.dispatchEvent(new Event('input', { bubbles: true }));
   } else {
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
+      el.ownerDocument.defaultView.HTMLInputElement.prototype,
       'value'
     )?.set;
     
     const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
-      window.HTMLTextAreaElement.prototype,
+      el.ownerDocument.defaultView.HTMLTextAreaElement.prototype,
       'value'
     )?.set;
     
@@ -261,7 +261,7 @@ export const CLICK_ELEMENT_SCRIPT = `
     // Multiple matches without index - find first visible one
     el = allMatches[0];
     for (const candidate of allMatches) {
-      const style = window.getComputedStyle(candidate);
+      const style = candidate.ownerDocument.defaultView.getComputedStyle(candidate);
       const rect = candidate.getBoundingClientRect();
       
       const hasSize = rect.width > 0 && rect.height > 0;
@@ -294,20 +294,36 @@ export const CLICK_ELEMENT_SCRIPT = `
     tagName === 'input' ||
     el.onclick !== null ||
     el.getAttribute('role') === 'button' ||
-    window.getComputedStyle(el).cursor === 'pointer'
+    el.ownerDocument.defaultView.getComputedStyle(el).cursor === 'pointer'
   );
   
   el.scrollIntoView({ behavior: 'auto', block: 'center' });
 
   // The caller clicks with real mouse events at (x, y) when the element is the
   // topmost thing there; otherwise it falls back to el.click() via this handle.
+  // Hit-testing happens in the element's own root (shadow root or frame
+  // document), then in each enclosing document at the frame's position, so an
+  // overlay over the iframe counts as covering it. The mouse events need
+  // top-page coordinates: frame offsets (border and padding) are added.
   window.__bdgClickTarget = el;
   const rect = el.getBoundingClientRect();
-  const x = rect.left + rect.width / 2;
-  const y = rect.top + rect.height / 2;
-  const top = rect.width > 0 && rect.height > 0 ? document.elementFromPoint(x, y) : null;
-  const hittable = top !== null && (top === el || el.contains(top));
-  const style = window.getComputedStyle(el);
+  const hitTest = (node, px, py) => {
+    const root = node.getRootNode();
+    const hit = (typeof root.elementFromPoint === 'function' ? root : node.ownerDocument).elementFromPoint(px, py);
+    return hit !== null && (hit === node || node.contains(hit));
+  };
+  let x = rect.left + rect.width / 2;
+  let y = rect.top + rect.height / 2;
+  let hittable = rect.width > 0 && rect.height > 0 && hitTest(el, x, y);
+  for (let frameWindow = el.ownerDocument.defaultView; frameWindow && frameWindow.frameElement; frameWindow = frameWindow.parent) {
+    const frame = frameWindow.frameElement;
+    const frameRect = frame.getBoundingClientRect();
+    const frameStyle = frame.ownerDocument.defaultView.getComputedStyle(frame);
+    x += frameRect.left + frame.clientLeft + parseFloat(frameStyle.paddingLeft);
+    y += frameRect.top + frame.clientTop + parseFloat(frameStyle.paddingTop);
+    hittable = hittable && hitTest(frame, x, y);
+  }
+  const style = el.ownerDocument.defaultView.getComputedStyle(el);
   let obstruction = null;
   if (style.display === 'none' || el.getClientRects().length === 0) obstruction = 'not rendered (display: none)';
   else if (style.visibility === 'hidden') obstruction = 'hidden (visibility: hidden)';
