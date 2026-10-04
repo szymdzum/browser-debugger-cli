@@ -69,6 +69,16 @@ void describe('formatDomQuery text hint', () => {
       )
     );
   });
+
+  void it('leaves the script out for selectors with text or visibility filters', () => {
+    const output = formatDomQuery({
+      selector: 'button:has-text("Save")',
+      count: 1,
+      nodes: [{ index: 0, nodeId: 1, tag: 'button' }],
+    });
+    assert.ok(!output.includes('Extract text'));
+    assert.ok(output.includes('bdg dom get 0'));
+  });
 });
 
 void describe('formatDomGet', () => {

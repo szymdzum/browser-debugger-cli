@@ -21,7 +21,7 @@ import {
   staleNodeError,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
-import { DEEP_QUERY_JS } from '@/runtime/dom/targetNode.js';
+import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import type {
   A11yNode,
@@ -145,7 +145,7 @@ async function withSelection<T>(
   await callCDP('DOM.enable', {});
   const objectGroup = `bdg-query-${process.pid}-${++queryCount}`;
   const evaluated = await callCDP('Runtime.evaluate', {
-    expression: `(${DEEP_QUERY_JS})(${JSON.stringify(selector)})`,
+    expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)})`,
     objectGroup,
   });
   try {

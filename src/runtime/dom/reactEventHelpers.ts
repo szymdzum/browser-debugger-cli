@@ -21,8 +21,8 @@ import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
  * Works with React, Vue, Angular, and vanilla JS applications.
  */
 export const REACT_FILL_SCRIPT = `
-(function(selector, value, options) {
-  const allMatches = (${FIND_ELEMENTS_JS})(selector);
+(function(selector, parts, value, options) {
+  const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   const warnings = [];
   // Why a user could not reach the field (the value is still set, so scripted
   // flows keep working, but the result may not be what a user would see)
@@ -297,8 +297,8 @@ export const REACT_FILL_SCRIPT = `
  * When selector matches multiple elements without index, prioritizes visible ones.
  */
 export const CLICK_ELEMENT_SCRIPT = `
-(function(selector, index, action) {
-  const allMatches = (${FIND_ELEMENTS_JS})(selector);
+(function(selector, parts, index, action) {
+  const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   
   if (allMatches.length === 0) {
     return {

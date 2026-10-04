@@ -289,24 +289,56 @@ export function indexOutOfRangeError(index: number, max: number): ErrorWithSugge
   };
 }
 
+/** Playwright selector syntax bdg does not support (`:text()`, `>>` chains, `text=` engines, layout pseudo-classes). */
+const PLAYWRIGHT_ONLY_SYNTAX =
+  /:(?:text|text-matches|nth-match|left-of|right-of|above|below|near)\(|>>|^\s*(?:text|css|xpath|role|id|data-testid|internal:\w+)=/i;
+
 /**
- * CSS selector rejected by the browser. Playwright-only syntax (`:has-text`,
- * `:text`, `:visible`) gets a bdg way to do the same.
+ * CSS selector rejected by the browser. Playwright-only syntax (`:text()`,
+ * `>>`, `text=`) gets the filters bdg supports instead.
  *
  * @param selector - Selector as given
  * @param detail - Browser error, if any
  * @returns Message and suggestion
  */
 export function invalidSelectorError(selector: string, detail?: string): ErrorWithSuggestion {
-  const textMatch = /:(?:has-text|text-is|text)\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))/.exec(selector);
-  const text = textMatch ? (textMatch[1] ?? textMatch[2] ?? textMatch[3] ?? '').trim() : '';
   return {
     message: `Invalid CSS selector: ${selector}${detail ? ` (${detail})` : ''}`,
-    suggestion: textMatch
-      ? `Playwright text selectors are not CSS; find the element by its text with: bdg dom a11y query name="${text}" (then bdg dom click 0)`
-      : /:visible\b/.test(selector)
-        ? 'Playwright :visible is not CSS; drop it (bdg dom click prefers visible matches)'
-        : 'Check the selector syntax, e.g. bdg dom query "button.primary"',
+    suggestion: PLAYWRIGHT_ONLY_SYNTAX.test(selector)
+      ? 'Playwright-only syntax is not CSS. bdg supports :has-text("…"), :text-is("…") and :visible at the end of a selector, e.g. button:has-text("Save"), or find elements by accessible name: bdg dom a11y query name="…"'
+      : 'Check the selector syntax, e.g. bdg dom query "button.primary"',
+  };
+}
+
+/**
+ * A text or visibility filter (`:has-text()`, `:text-is()`, `:visible`) that
+ * is not at the end of a selector.
+ *
+ * @param selector - Selector as given
+ * @param filter - The misplaced filter as written
+ * @returns Message and suggestion
+ */
+export function misplacedSelectorFilterError(
+  selector: string,
+  filter: string
+): ErrorWithSuggestion {
+  return {
+    message: `${filter} must come last in a selector (after the CSS of the element to match): ${selector}`,
+    suggestion: `Move it to the end, e.g. form button:has-text("Save"); to match an element by what it contains use CSS :has(), e.g. div:has(> button), or find elements by accessible name: bdg dom a11y query name="…"`,
+  };
+}
+
+/**
+ * A text filter without its text, e.g. `:has-text` or `:text-is("x"`.
+ *
+ * @param selector - Selector as given
+ * @param filter - Filter name, e.g. ":has-text"
+ * @returns Message and suggestion
+ */
+export function invalidSelectorFilterError(selector: string, filter: string): ErrorWithSuggestion {
+  return {
+    message: `${filter} needs its text in closed parentheses: ${selector}`,
+    suggestion: `Quote the text, e.g. button${filter}("Save"); escape quotes inside it with a backslash`,
   };
 }
 

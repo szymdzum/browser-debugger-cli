@@ -20,7 +20,6 @@ import {
   operationFailedError,
 } from '@/errors/messages.js';
 import {
-  escapeSelectorForJS,
   escapeValueForJS,
   formatScriptExecutionError,
   throwIfInvalidSelector,
@@ -35,7 +34,7 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
-import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { POINTER_ACTION_DONE, domClickFallbackWarning } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -57,7 +56,7 @@ export async function fillElement(
     index: options.index,
   };
 
-  const expression = `(${REACT_FILL_SCRIPT})('${escapeSelectorForJS(selector)}', '${escapeValueForJS(value)}', ${JSON.stringify(scriptOptions)})`;
+  const expression = `(${REACT_FILL_SCRIPT})(${selectorArgsJS(selector)}, '${escapeValueForJS(value)}', ${JSON.stringify(scriptOptions)})`;
 
   try {
     const response = await cdp.send('Runtime.evaluate', {
@@ -183,7 +182,7 @@ async function setFileInput(
   if (problem) return problem;
   try {
     const located = (await cdp.send('Runtime.evaluate', {
-      expression: `(${FIND_ELEMENTS_JS})('${escapeSelectorForJS(selector)}')[${options.index ?? 0}]`,
+      expression: `(${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}]`,
       objectGroup: UPLOAD_OBJECT_GROUP,
     })) as { result?: { objectId?: string }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
     if (located.exceptionDetails) throwIfInvalidSelector(located.exceptionDetails, selector);
@@ -365,7 +364,7 @@ export async function clickElement(
 ): Promise<ClickResult> {
   const indexArg = options.index ?? 'null';
   const action = options.action ?? 'click';
-  const expression = `(${CLICK_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg}, '${action}')`;
+  const expression = `(${CLICK_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg}, '${action}')`;
 
   try {
     const response = await cdp.send('Runtime.evaluate', {

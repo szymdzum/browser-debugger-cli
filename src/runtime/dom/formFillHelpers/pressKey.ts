@@ -10,7 +10,6 @@ import { CommandError } from '@/errors/index.js';
 import { keyPressFailedError, operationFailedError, unknownKeyError } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 import {
-  escapeSelectorForJS,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
@@ -24,7 +23,7 @@ import {
   shortcutCommands,
   type KeyDefinition,
 } from '@/runtime/dom/keyMapping.js';
-import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -39,8 +38,8 @@ export interface PressKeyOptions {
 export type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 
 const FOCUS_ELEMENT_SCRIPT = `
-(function(selector, index) {
-  const allMatches = (${FIND_ELEMENTS_JS})(selector);
+(function(selector, parts, index) {
+  const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (allMatches.length === 0) {
     return { success: false, reason: 'not-found', error: 'Element not found: ' + selector };
   }
@@ -141,7 +140,7 @@ export async function pressKeyElement(
   const implicitShift = impliesShift(keyName) ? MODIFIER_FLAGS.shift : 0;
   const modifierFlags = parseModifiers(options.modifiers) | implicitShift;
   const indexArg = options.index ?? 'null';
-  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+  const focusExpression = `(${FOCUS_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg})`;
 
   try {
     const focusResponse = await cdp.send('Runtime.evaluate', {

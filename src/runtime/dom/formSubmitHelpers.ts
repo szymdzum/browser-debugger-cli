@@ -8,11 +8,8 @@ import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFli
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { submitTimeoutError } from '@/errors/messages.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
-import {
-  escapeSelectorForJS,
-  throwIfInvalidSelector,
-} from '@/runtime/dom/formFillHelpers/shared.js';
-import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
+import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import { clickElement } from './formFillHelpers/index.js';
@@ -43,8 +40,8 @@ export type { SubmitResult } from '@/ipc/protocol/domTypes.js';
  * nor a button.
  */
 const PREPARE_SUBMIT_SCRIPT = `
-(function(selector, index) {
-  const matches = (${FIND_ELEMENTS_JS})(selector);
+(function(selector, parts, index) {
+  const matches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (matches.length === 0) {
     return { action: 'fail', reason: 'not-found', error: 'Element not found: ' + selector };
   }
@@ -212,7 +209,7 @@ async function triggerSubmit(
   index: number | undefined
 ): Promise<{ failure: SubmitResult } | { clicked: boolean }> {
   const response = (await cdp.send('Runtime.evaluate', {
-    expression: `(${PREPARE_SUBMIT_SCRIPT})('${escapeSelectorForJS(selector)}', ${index ?? 'null'})`,
+    expression: `(${PREPARE_SUBMIT_SCRIPT})(${selectorArgsJS(selector)}, ${index ?? 'null'})`,
     returnByValue: true,
     userGesture: true,
   })) as {

@@ -41,12 +41,9 @@ void describe('assertNotGroupSubcommand', () => {
 });
 
 void describe('invalidSelectorError', () => {
-  void it('points Playwright text selectors to an a11y name query', () => {
-    assert.match(
-      invalidSelectorError('button:has-text("Save")').suggestion,
-      /bdg dom a11y query name="Save"/
-    );
-    assert.match(invalidSelectorError(`a:has-text("it's here")`).suggestion, /name="it's here"/);
-    assert.match(invalidSelectorError('li:visible').suggestion, /:visible is not CSS/);
+  void it('names the supported filters for other Playwright syntax', () => {
+    assert.match(invalidSelectorError('button:text("Save")').suggestion, /:has-text\("…"\)/);
+    assert.match(invalidSelectorError('form >> button').suggestion, /a11y query/);
+    assert.match(invalidSelectorError('button[').suggestion, /Check the selector syntax/);
   });
 });

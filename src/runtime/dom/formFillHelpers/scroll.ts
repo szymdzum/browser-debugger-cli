@@ -8,11 +8,10 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 import {
-  escapeSelectorForJS,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
-import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -31,8 +30,8 @@ export interface ScrollOptions {
 export type { ScrollResult } from '@/ipc/protocol/domTypes.js';
 
 const SCROLL_TO_ELEMENT_SCRIPT = `
-(function(selector, index) {
-  const allMatches = (${FIND_ELEMENTS_JS})(selector);
+(function(selector, parts, index) {
+  const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   if (allMatches.length === 0) {
     return { success: false, error: 'No nodes found matching selector: ' + selector };
   }
@@ -134,7 +133,7 @@ export async function scrollPage(
   try {
     if (selector) {
       const indexArg = options.index ?? 'null';
-      const expression = `(${SCROLL_TO_ELEMENT_SCRIPT})('${escapeSelectorForJS(selector)}', ${indexArg})`;
+      const expression = `(${SCROLL_TO_ELEMENT_SCRIPT})(${selectorArgsJS(selector)}, ${indexArg})`;
 
       const response = await cdp.send('Runtime.evaluate', {
         expression,
