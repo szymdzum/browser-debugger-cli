@@ -10,6 +10,17 @@
 import type { FormStep, FieldOption } from '@/types.js';
 
 /**
+ * A JavaScript dialog (alert, confirm, prompt, beforeunload) that bdg accepted
+ * while a command ran.
+ */
+export interface DialogInfo {
+  /** Dialog type: alert, confirm, prompt or beforeunload */
+  type: string;
+  /** Text the page showed */
+  message: string;
+}
+
+/**
  * Result of filling an element.
  */
 export interface FillResult {
@@ -23,7 +34,11 @@ export interface FillResult {
   suggestion?: string;
   /** Set when the target is a file input (filled through CDP instead) */
   fileInput?: boolean;
+  /** Something the page will likely object to (e.g. a value above max) */
+  warning?: string;
   exitCode?: number;
+  /** Dialogs accepted while the command ran */
+  dialogs?: DialogInfo[];
 }
 
 /**
@@ -45,6 +60,8 @@ export interface ClickResult {
   exitCode?: number;
   /** Why the DOM fallback was used (element covered or without size) */
   warning?: string;
+  /** Dialogs accepted while the command ran */
+  dialogs?: DialogInfo[];
 }
 
 /**
@@ -60,6 +77,8 @@ export interface PressKeyResult {
   elementType?: string | undefined;
   suggestion?: string;
   exitCode?: number;
+  /** Dialogs accepted while the command ran */
+  dialogs?: DialogInfo[];
 }
 
 /**
@@ -91,6 +110,8 @@ export interface SubmitResult {
   waitTimeMs?: number;
   suggestion?: string;
   exitCode?: number;
+  /** Dialogs accepted while the command ran */
+  dialogs?: DialogInfo[];
 }
 
 /**

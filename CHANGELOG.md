@@ -44,6 +44,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Interactions**
+  - Clicks no longer take 5 s each once the page has opened another tab, and fills before the first click fire focus/blur events: the page is kept focused (focus emulation)
+  - Interactions run one at a time per session: concurrent `pressKey` commands no longer type into each other's field
+  - `click --no-wait` on a link to a slow page returns right away (it waited for the next page to commit)
+  - Fields inside a `<fieldset disabled>` are refused as disabled (81) by `fill`, `click` and `pressKey`
+  - `fill` refuses values the browser would change (an invalid color, an out-of-range or off-step range value) with 81, and a refused value keeps the field's previous value instead of emptying it; a number outside min/max is filled with a warning
+  - File inputs: a directory is refused (81), a file whose name contains commas can be uploaded, and `""` clears the input
+  - `pressKey` into a field it focuses types at the end of the existing text (was the start)
+  - `dom submit <form>` submits with the form's default button, so its `name=value` is sent like a real click; the output says whether a submit button was used (was always "Clicked: yes")
+  - Click point: elements wider than the viewport are clicked in their visible part; if the centre is covered, other points of the element are tried; a covered element names what covers it, and `inert` elements are reported as inert instead of covered
+  - Dialogs accepted during `fill`/`click`/`submit`/`pressKey` are listed in the result and in `bdg console`
+  - The bound element of index-based commands (`window.__bdgTarget`) is removed from the page afterwards
 - **Errors, output paths and no-session messages**
   - Screenshot and HAR paths: a missing directory is created; a directory, a file in the path, an empty path, a read-only or forbidden location give a clear "Cannot write <path>: <reason>" (81 for a bad path, 82 for permissions) instead of "No active session" or a raw error. `screenshot --follow` into an existing file gives 81
   - Without a session, every command says "No active session" (83) with the same suggestion, including `dom get <selector>`, `dom get 0`, `a11y describe` and `a11y tree` (which printed raw IPC text or "No cached query results")

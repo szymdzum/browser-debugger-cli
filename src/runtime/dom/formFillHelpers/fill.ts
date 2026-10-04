@@ -11,6 +11,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   fileNotFoundError,
+  uploadDirectoryError,
   singleFileInputError,
   fillableElementNotFoundError,
   clickableElementNotFoundError,
@@ -102,15 +103,71 @@ export async function fillElement(
   }
 }
 
+/** Empties a file input as a user removing the selection would (with events). */
+const CLEAR_FILE_INPUT_FUNCTION = `function () {
+  this.value = '';
+  this.dispatchEvent(new Event('input', { bubbles: true }));
+  this.dispatchEvent(new Event('change', { bubbles: true }));
+}`;
+
 /** Object group for remote objects created while selecting files. */
 const UPLOAD_OBJECT_GROUP = 'bdg-upload';
+
+/**
+ * Resolve the files of a file-input value: one path (even with commas in its
+ * name, when that file exists), several separated by commas, or none for "".
+ *
+ * @param value - Value given to `dom fill`
+ * @param cwd - Directory relative paths are resolved against
+ * @returns Absolute paths (empty clears the input)
+ */
+function uploadPaths(value: string, cwd: string): string[] {
+  if (!value.trim()) return [];
+  const whole = path.resolve(cwd, value.trim());
+  if (fs.existsSync(whole)) return [whole];
+  return value
+    .split(',')
+    .map((file) => file.trim())
+    .filter(Boolean)
+    .map((file) => path.resolve(cwd, file));
+}
+
+/**
+ * The first file that cannot be uploaded, as a failed fill result.
+ *
+ * @param files - Absolute paths
+ * @returns Failure, or null when all are readable files
+ */
+function uploadProblem(files: string[]): FillResult | null {
+  for (const file of files) {
+    if (!fs.existsSync(file)) {
+      const err = fileNotFoundError(file);
+      return {
+        success: false,
+        error: err.message,
+        suggestion: err.suggestion,
+        exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
+      };
+    }
+    if (fs.statSync(file).isDirectory()) {
+      const err = uploadDirectoryError(file);
+      return {
+        success: false,
+        error: err.message,
+        suggestion: err.suggestion,
+        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      };
+    }
+  }
+  return null;
+}
 
 /**
  * Select files in a file input, as a user picking them in the file dialog.
  *
  * @param cdp - CDP connection
  * @param selector - Selector (or bound-node placeholder) of the file input
- * @param value - File path, or several separated by commas
+ * @param value - File path, several separated by commas, or "" to clear the input
  * @param options - Fill options (index, cwd for relative paths)
  * @returns Fill result
  */
@@ -120,21 +177,9 @@ async function setFileInput(
   value: string,
   options: FillOptions
 ): Promise<FillResult> {
-  const files = value
-    .split(',')
-    .map((file) => file.trim())
-    .filter(Boolean)
-    .map((file) => path.resolve(options.cwd ?? process.cwd(), file));
-  const missing = files.find((file) => !fs.existsSync(file));
-  if (missing !== undefined || files.length === 0) {
-    const err = fileNotFoundError(missing ?? value);
-    return {
-      success: false,
-      error: err.message,
-      suggestion: err.suggestion,
-      exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
-    };
-  }
+  const files = uploadPaths(value, options.cwd ?? process.cwd());
+  const problem = uploadProblem(files);
+  if (problem) return problem;
   try {
     const located = (await cdp.send('Runtime.evaluate', {
       expression: `(${FIND_ELEMENTS_JS})('${escapeSelectorForJS(selector)}')[${options.index ?? 0}]`,
@@ -160,7 +205,13 @@ async function setFileInput(
         exitCode: EXIT_CODES.INVALID_ARGUMENTS,
       };
     }
-    await cdp.send('DOM.setFileInputFiles', { files, objectId });
+    if (files.length > 0) await cdp.send('DOM.setFileInputFiles', { files, objectId });
+    else {
+      await cdp.send('Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: CLEAR_FILE_INPUT_FUNCTION,
+      });
+    }
   } finally {
     await cdp
       .send('Runtime.releaseObjectGroup', { objectGroup: UPLOAD_OBJECT_GROUP })
@@ -171,7 +222,7 @@ async function setFileInput(
   return {
     success: true,
     selector,
-    value: files.map((file) => path.basename(file)).join(', '),
+    value: files.length > 0 ? files.map((file) => path.basename(file)).join(', ') : '(cleared)',
     elementType: 'input',
     inputType: 'file',
   };
@@ -195,6 +246,19 @@ type LocatedClick = ClickResult & {
 };
 
 /**
+ * Drop the located element from the page without waiting: right after a
+ * click on a link, evaluation waits until the new page commits (seconds for a
+ * slow server), which `--no-wait` must not.
+ *
+ * @param cdp - CDP connection
+ */
+function releaseClickTarget(cdp: CDPConnection): void {
+  void cdp
+    .send('Runtime.evaluate', { expression: 'delete window.__bdgClickTarget' })
+    .catch((error: unknown) => log.debug(`Click target not released: ${getErrorMessage(error)}`));
+}
+
+/**
  * Click a located element.
  *
  * Uses real mouse events (pointerdown/mousedown/pointerup/mouseup/click, all
@@ -215,7 +279,7 @@ async function performClick(cdp: CDPConnection, located: LocatedClick): Promise<
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...mouse });
     await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...mouse });
-    await cdp.send('Runtime.evaluate', { expression: 'delete window.__bdgClickTarget' });
+    releaseClickTarget(cdp);
     return { ...result, method: 'mouse' };
   }
 

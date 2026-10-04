@@ -75,6 +75,23 @@ function trackCurrentPage(cdp: CDPConnection, store: TelemetryStore, logger: Log
   };
 }
 
+/**
+ * Make the page behave as focused even when its tab is in the background.
+ *
+ * Without this, once the page opens another tab (`window.open`, a
+ * `target=_blank` link), every `Input.dispatchMouseEvent` waits about 5 s, and
+ * fills before the first click fire no focus/blur events (the document never
+ * had focus).
+ *
+ * @param cdp - CDP connection
+ * @param logger - Logger for failures (the session works without it)
+ */
+async function emulatePageFocus(cdp: CDPConnection, logger: Logger): Promise<void> {
+  await cdp
+    .send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    .catch((error: unknown) => logger.debug(`No focus emulation: ${getErrorMessage(error)}`));
+}
+
 export interface TelemetryPlugin {
   name: string;
   runAlways?: boolean;
@@ -94,8 +111,16 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'dialogs',
       runAlways: true,
-      async start({ cdp }) {
-        return startDialogHandling(cdp);
+      async start({ cdp, store }) {
+        return startDialogHandling(cdp, (dialog) => store.recordDialog(dialog));
+      },
+    },
+    {
+      name: 'focus',
+      runAlways: true,
+      async start({ cdp, logger }) {
+        await emulatePageFocus(cdp, logger);
+        return () => undefined;
       },
     },
     {

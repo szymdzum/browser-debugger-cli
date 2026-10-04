@@ -3,6 +3,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
+import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import { CommandError } from '@/errors/index.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
@@ -340,6 +341,7 @@ function filterHeadersByName(
 
 export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
   const patternDetector = new PatternDetector();
+  const interact = createInteractionRunner(store);
 
   return {
     session_peek: async (_cdp, params) => {
@@ -479,87 +481,84 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
 
     dom_eval: async (cdp, params) => evaluateScript(cdp, params.script),
 
-    dom_fill: async (cdp, params) => {
-      const target = await resolveScriptTarget(cdp, params);
-      const fillOptions = filterDefined({
-        index: target.index,
-        blur: params.blur,
-        cwd: params.cwd,
-      });
-      const result = withUserSelector(
-        await fillElement(cdp, target.selector, params.value, fillOptions),
-        params.selector
-      );
-      if (result.success && params.wait !== false) {
-        await waitForActionStability(cdp);
-      }
-      return result;
-    },
+    dom_fill: async (cdp, params) =>
+      interact(cdp, async () => {
+        const target = await resolveScriptTarget(cdp, params);
+        const fillOptions = filterDefined({
+          index: target.index,
+          blur: params.blur,
+          cwd: params.cwd,
+        });
+        const result = withUserSelector(
+          await fillElement(cdp, target.selector, params.value, fillOptions),
+          params.selector
+        );
+        if (result.success && params.wait !== false) await waitForActionStability(cdp);
+        return result;
+      }),
 
-    dom_click: async (cdp, params) => {
-      const target = await resolveScriptTarget(cdp, params);
-      const clickOptions = filterDefined({ index: target.index });
-      const result = withUserSelector(
-        await clickElement(cdp, target.selector, clickOptions),
-        params.selector
-      );
-      if (result.success && params.wait !== false) {
-        await waitForActionStability(cdp);
-      }
-      return result;
-    },
+    dom_click: async (cdp, params) =>
+      interact(cdp, async () => {
+        const target = await resolveScriptTarget(cdp, params);
+        const clickOptions = filterDefined({ index: target.index });
+        const result = withUserSelector(
+          await clickElement(cdp, target.selector, clickOptions),
+          params.selector
+        );
+        if (result.success && params.wait !== false) await waitForActionStability(cdp);
+        return result;
+      }),
 
-    dom_submit: async (cdp, params) => {
-      const target = await resolveScriptTarget(cdp, params);
-      const submitOptions = filterDefined({
-        index: target.index,
-        waitNavigation: params.waitNavigation,
-        waitNetwork: params.waitNetwork,
-        timeout: params.timeout,
-      });
-      return withUserSelector(
-        await submitForm(cdp, target.selector, submitOptions),
-        params.selector
-      );
-    },
+    dom_submit: async (cdp, params) =>
+      interact(cdp, async () => {
+        const target = await resolveScriptTarget(cdp, params);
+        const submitOptions = filterDefined({
+          index: target.index,
+          waitNavigation: params.waitNavigation,
+          waitNetwork: params.waitNetwork,
+          timeout: params.timeout,
+        });
+        return withUserSelector(
+          await submitForm(cdp, target.selector, submitOptions),
+          params.selector
+        );
+      }),
 
-    dom_press_key: async (cdp, params) => {
-      const target = await resolveScriptTarget(cdp, params);
-      const pressKeyOptions = filterDefined({
-        index: target.index,
-        times: params.times,
-        modifiers: params.modifiers,
-      });
-      const result = withUserSelector(
-        await pressKeyElement(cdp, target.selector, params.key, pressKeyOptions),
-        params.selector
-      );
-      if (result.success && params.wait !== false) {
-        await waitForActionStability(cdp);
-      }
-      return result;
-    },
+    dom_press_key: async (cdp, params) =>
+      interact(cdp, async () => {
+        const target = await resolveScriptTarget(cdp, params);
+        const pressKeyOptions = filterDefined({
+          index: target.index,
+          times: params.times,
+          modifiers: params.modifiers,
+        });
+        const result = withUserSelector(
+          await pressKeyElement(cdp, target.selector, params.key, pressKeyOptions),
+          params.selector
+        );
+        if (result.success && params.wait !== false) await waitForActionStability(cdp);
+        return result;
+      }),
 
-    dom_scroll: async (cdp, params) => {
-      const target = await resolveScriptTarget(cdp, params);
-      const scrollOptions = filterDefined({
-        index: target.index,
-        down: params.down,
-        up: params.up,
-        left: params.left,
-        right: params.right,
-        top: params.top,
-        bottom: params.bottom,
-      });
-      const result = withUserSelector(
-        await scrollPage(cdp, target.selector || undefined, scrollOptions),
-        params.selector
-      );
-      if (result.success && params.wait !== false) {
-        await waitForActionStability(cdp);
-      }
-      return result;
-    },
+    dom_scroll: async (cdp, params) =>
+      interact(cdp, async () => {
+        const target = await resolveScriptTarget(cdp, params);
+        const scrollOptions = filterDefined({
+          index: target.index,
+          down: params.down,
+          up: params.up,
+          left: params.left,
+          right: params.right,
+          top: params.top,
+          bottom: params.bottom,
+        });
+        const result = withUserSelector(
+          await scrollPage(cdp, target.selector || undefined, scrollOptions),
+          params.selector
+        );
+        if (result.success && params.wait !== false) await waitForActionStability(cdp);
+        return result;
+      }),
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {
       const response = await cdp.send('Runtime.evaluate', {

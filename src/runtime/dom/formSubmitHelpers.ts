@@ -74,14 +74,22 @@ const PREPARE_SUBMIT_SCRIPT = `
     return { action: 'fail', reason: 'invalid', error: 'Form has invalid fields - ' + invalid.join('; ') };
   }
   if (isForm) {
-    el.requestSubmit();
-    return { action: 'submitted' };
+    // Like pressing Enter: the form's default button is the submitter, so its
+    // name=value is sent too
+    const submitter = Array.from(el.elements).find((f) =>
+      f.matches('button:not([type]), button[type=submit], input[type=submit], input[type=image]') && !f.matches(':disabled')
+    );
+    if (submitter) el.requestSubmit(submitter);
+    else el.requestSubmit();
+    return { action: 'submitted', clicked: Boolean(submitter) };
   }
   return { action: 'click' };
 })`;
 
 interface PrepareResult {
   action: 'submitted' | 'click' | 'fail';
+  /** Whether a submit button took part (its value is sent) */
+  clicked?: boolean;
   reason?: 'not-found' | 'range' | 'not-submittable' | 'invalid';
   error?: string;
 }
@@ -187,13 +195,13 @@ class SubmissionWatcher {
  * @param cdp - CDP connection
  * @param selector - Selector (or bound-node placeholder)
  * @param index - Optional 0-based index among matches
- * @returns Failure result, or null when the submission was triggered
+ * @returns Failure result, or whether a submit button was used
  */
 async function triggerSubmit(
   cdp: CDPConnection,
   selector: string,
   index: number | undefined
-): Promise<SubmitResult | null> {
+): Promise<{ failure: SubmitResult } | { clicked: boolean }> {
   const response = (await cdp.send('Runtime.evaluate', {
     expression: `(${PREPARE_SUBMIT_SCRIPT})('${escapeSelectorForJS(selector)}', ${index ?? 'null'})`,
     returnByValue: true,
@@ -207,7 +215,7 @@ async function triggerSubmit(
 
   if (!prepared || prepared.action === 'fail') {
     const reason = prepared?.reason ?? 'not-found';
-    return {
+    const failure: SubmitResult = {
       success: false,
       error: prepared?.error ?? 'Could not submit',
       selector,
@@ -215,12 +223,13 @@ async function triggerSubmit(
       exitCode: FAILURE_EXIT_CODES[reason],
       suggestion: FAILURE_SUGGESTIONS[reason],
     };
+    return { failure };
   }
-  if (prepared.action === 'submitted') return null;
+  if (prepared.action === 'submitted') return { clicked: prepared.clicked === true };
 
   const click = await clickElement(cdp, selector, index !== undefined ? { index } : {});
-  if (click.success) return null;
-  return {
+  if (click.success) return { clicked: true };
+  const failure: SubmitResult = {
     success: false,
     error: click.error ?? 'Click failed',
     selector,
@@ -228,6 +237,7 @@ async function triggerSubmit(
     ...(click.exitCode !== undefined && { exitCode: click.exitCode }),
     ...(click.suggestion !== undefined && { suggestion: click.suggestion }),
   };
+  return { failure };
 }
 
 /**
@@ -248,8 +258,8 @@ export async function submitForm(
   const watcher = new SubmissionWatcher(cdp);
 
   try {
-    const failure = await triggerSubmit(cdp, selector, index);
-    if (failure) return failure;
+    const triggered = await triggerSubmit(cdp, selector, index);
+    if ('failure' in triggered) return triggered.failure;
 
     if (waitNetwork > 0 || waitNavigation) {
       await watcher.wait({ waitNavigation, waitNetwork, timeout });
@@ -257,7 +267,7 @@ export async function submitForm(
     return {
       success: true,
       selector,
-      clicked: true,
+      clicked: triggered.clicked,
       networkRequests: watcher.networkRequests,
       navigationOccurred: watcher.navigationOccurred,
       waitTimeMs: Date.now() - startTime,

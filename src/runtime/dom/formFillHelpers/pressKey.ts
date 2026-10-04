@@ -57,13 +57,31 @@ const FOCUS_ELEMENT_SCRIPT = `
 
   const pageLevel = el === document.body || el === document.documentElement;
   if (!pageLevel) {
+    const wasFocused = el.getRootNode().activeElement === el;
     el.focus();
+    // A user clicking into a field before typing lands at the end of its text
+    if (!wasFocused) {
+      try {
+        if (typeof el.setSelectionRange === 'function' && typeof el.value === 'string') {
+          el.setSelectionRange(el.value.length, el.value.length);
+        } else if (el.isContentEditable) {
+          const range = el.ownerDocument.createRange();
+          range.selectNodeContents(el);
+          range.collapse(false);
+          const selection = el.ownerDocument.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      } catch (e) {
+        // Inputs without a caret (number, email, checkbox) keep theirs
+      }
+    }
     const focused = el.getRootNode().activeElement;
     if (focused !== el && !el.contains(focused)) {
       return {
         success: false,
         reason: 'not-focusable',
-        error: 'Element <' + el.tagName.toLowerCase() + '> cannot receive keyboard focus' + (el.disabled ? ' (it is disabled)' : '')
+        error: 'Element <' + el.tagName.toLowerCase() + '> cannot receive keyboard focus' + (el.matches(':disabled') ? ' (it is disabled)' : '')
       };
     }
   }

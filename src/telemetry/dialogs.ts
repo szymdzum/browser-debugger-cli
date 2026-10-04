@@ -1,6 +1,7 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPHandlerRegistry } from '@/connection/handlers.js';
 import { TypedCDPConnection } from '@/connection/typed-cdp.js';
+import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 
@@ -14,6 +15,7 @@ const log = createLogger('dialogs');
  * further telemetry collection.
  *
  * @param cdp - CDP connection instance
+ * @param onDialog - Called for each accepted dialog
  * @returns Cleanup function to remove event handlers
  *
  * @remarks
@@ -29,7 +31,10 @@ const log = createLogger('dialogs');
  * cleanup(); // Stop handling dialogs
  * ```
  */
-export async function startDialogHandling(cdp: CDPConnection): Promise<CleanupFunction> {
+export async function startDialogHandling(
+  cdp: CDPConnection,
+  onDialog?: (dialog: DialogInfo) => void
+): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
 
@@ -37,6 +42,7 @@ export async function startDialogHandling(cdp: CDPConnection): Promise<CleanupFu
 
   registry.registerTyped(typed, 'Page.javascriptDialogOpening', (params) => {
     log.debug(`Auto-dismissing ${params.type} dialog: "${params.message}" from ${params.url}`);
+    onDialog?.({ type: params.type, message: params.message });
 
     void cdp
       .send('Page.handleJavaScriptDialog', {

@@ -352,7 +352,9 @@ bdg dom click 6                              # Primary submit button
 
 Interact with page elements using real mouse and keyboard input. All interaction commands automatically wait for network stability after the action (disable with `--no-wait`).
 
-JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are accepted automatically so they never block a session; `prompt()` receives an empty string.
+JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are accepted automatically so they never block a session; `prompt()` receives an empty string. Dialogs opened by `fill`/`click`/`submit`/`pressKey` are listed in their result (`data.dialogs` in JSON), and every accepted dialog also appears in `bdg console`.
+
+Interactions run one at a time per session (concurrent `pressKey` calls no longer interleave). Values the browser would not take as given (a color that is not `#rrggbb`, a range value outside min/max or off-step, an unparseable number or date) fail with exit 81 and leave the field's previous value; a number outside min/max is filled with a warning.
 
 ```bash
 # Fill inputs
@@ -360,6 +362,8 @@ bdg dom fill "#username" "admin"
 bdg dom fill "input[type='password']" "secret" --no-blur
 bdg dom fill "#search" "query" --index 1          # Second match (indices are 0-based)
 bdg dom fill 0 "value"                            # Use cached query index (0-based)
+bdg dom fill "#upload" "./a.png,./b.png"          # File input: one path, or several separated by commas
+bdg dom fill "#upload" ""                         # Clear a file input
 
 # Click elements
 bdg dom click "#login-btn"
