@@ -15,6 +15,7 @@ import {
   buildSessionManagementReminder,
 } from '@/ui/formatters/helpFormatters.js';
 import { joinLines } from '@/ui/formatting.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
  * Chrome closed by `bdg stop` (gracefully, so the profile is saved).
@@ -71,7 +72,7 @@ export function moreMatchesNote(hidden: number): string {
  * @returns e.g. "... and 50 more (see bdg network list)"
  */
 export function moreRequestsNote(hidden: number): string {
-  return `... and ${hidden} more (see bdg network list)`;
+  return `... and ${hidden} more (see ${sessionCommand('bdg network list')})`;
 }
 
 /** Short location hints for elements a user cannot see without scrolling */
@@ -292,7 +293,7 @@ export function notAPageWarning(): string {
  * @returns Warning
  */
 export function stillLoadingWarning(ms: number): string {
-  return `The new page has not answered within ${Math.round(ms / 1000)}s; it is still loading (check with bdg status)`;
+  return `The new page has not answered within ${Math.round(ms / 1000)}s; it is still loading (check with ${sessionCommand('bdg status')})`;
 }
 
 /**
@@ -367,6 +368,16 @@ export function sessionDirectoryCleanMessage(): string {
 }
 
 /**
+ * `bdg cleanup --purge` deleted a named session's directory.
+ *
+ * @param dir - Deleted directory
+ * @returns Message
+ */
+export function sessionDirectoryPurgedMessage(dir: string): string {
+  return `Session directory removed: ${dir}`;
+}
+
+/**
  * Generate no session files found message.
  *
  * @returns Formatted success message
@@ -392,8 +403,7 @@ export function sessionStillActiveError(pid: number): string {
  * @returns Suggestion lines
  */
 export function sessionStillActiveSuggestion(session: string | null): string {
-  const flag = session ? ` --session ${session}` : '';
-  return `Stop gracefully: bdg stop${flag}\nForce cleanup: bdg cleanup --force${flag}`;
+  return `Stop gracefully: ${sessionCommand('bdg stop', session)}\nForce cleanup: ${sessionCommand('bdg cleanup --force', session)}`;
 }
 
 /**

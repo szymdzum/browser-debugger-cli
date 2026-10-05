@@ -55,14 +55,14 @@ void describe('assertUsableSessionDir', () => {
     fs.rmSync(base, { recursive: true, force: true });
   });
 
-  void it('rejects a file (103) and a path too long for the socket (103)', () => {
+  void it('rejects a file (103) and a path too long for the socket (81, like named sessions)', () => {
     const base = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-dir-'));
     const file = path.join(base, 'file');
     fs.writeFileSync(file, '');
     assert.equal(checkDir(file)?.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
     const long = checkDir(path.join(base, 'x'.repeat(120)));
-    assert.equal(long?.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
-    assert.match(long?.message ?? '', /too long/);
+    assert.equal(long?.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(long?.message ?? '', /Session directory path is too long/);
     fs.rmSync(base, { recursive: true, force: true });
   });
 });

@@ -9,6 +9,7 @@ import * as fs from 'fs';
 
 import type { TelemetryType } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -55,7 +56,7 @@ function handleCorruptedMetadata(
 ): void {
   if (options?.warnOnCorruption) {
     log.info(`Session metadata corrupted (cannot read details): ${getErrorMessage(error)}`);
-    log.info('Troubleshooting: Run "bdg cleanup" to remove corrupted files');
+    log.info(`Troubleshooting: Run "${sessionCommand('bdg cleanup')}" to remove corrupted files`);
   }
 
   if (options?.selfHealOnCorruption) {

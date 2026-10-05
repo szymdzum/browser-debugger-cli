@@ -2,26 +2,35 @@ import * as fs from 'fs';
 
 import type { Command } from 'commander';
 
-import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CleanupCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { CleanupResult } from '@/commands/types.js';
-import { sessionDirIsFileError } from '@/errors/messages.js';
+import {
+  purgeNeedsNamedSessionError,
+  purgeRefusedError,
+  sessionDirIsFileError,
+  type ErrorWithSuggestion,
+} from '@/errors/messages.js';
+import { isSessionChrome } from '@/session/cleanup/staleSession.js';
 import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
-import { getSessionDir, getSessionName } from '@/session/paths.js';
-import { readDaemonPid } from '@/session/pid.js';
+import { getSessionDir, getSessionFilePath, getSessionName } from '@/session/paths.js';
+import { readDaemonPid, readPidFromFile } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   sessionFilesCleanedMessage,
   sessionOutputRemovedMessage,
   sessionDirectoryCleanMessage,
+  sessionDirectoryPurgedMessage,
   noSessionFilesMessage,
   sessionStillActiveError,
   sessionStillActiveSuggestion,
   warningMessage,
 } from '@/ui/messages/commands.js';
+import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 /**
  * Format cleanup result for human-readable output.
@@ -41,6 +50,168 @@ function formatCleanup(data: CleanupResult): string {
 }
 
 /**
+ * Delete the selected named session's directory (Chrome profile, logs, port).
+ *
+ * @returns The deleted directory, or undefined if there was none
+ */
+function purgeSessionDir(): string | undefined {
+  const dir = getSessionDir();
+  if (!fs.existsSync(dir)) return undefined;
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
+  return dir;
+}
+
+/** How long `--purge` waits for a killed Chrome to exit */
+const PURGE_CHROME_EXIT_WAIT_MS = 5000;
+
+/**
+ * The running Chrome bdg launched for the selected session (from chrome.pid,
+ * verified by its marker flag).
+ *
+ * @returns Chrome PID, or null
+ */
+function liveSessionChromePid(): number | null {
+  const pid = readPidFromFile(getSessionFilePath('CHROME_PID'));
+  if (pid === null || !isProcessAlive(pid)) return null;
+  return isSessionChrome(pid, getSessionDir()) ? pid : null;
+}
+
+/**
+ * Wait until a process has exited.
+ *
+ * @param pid - Process ID
+ * @param timeoutMs - Longest wait
+ * @returns True if it exited
+ */
+async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessAlive(pid) && Date.now() < deadline) await delay(50);
+  return !isProcessAlive(pid);
+}
+
+/**
+ * Why the session directory must not be deleted after cleanup: its daemon
+ * still runs, cleanup reported problems, or its Chrome has not exited.
+ *
+ * @param chromePid - The session's Chrome as found before cleanup, or null
+ * @param warnings - Warnings from cleanup
+ * @param exitWaitMs - How long to wait for that Chrome to exit
+ * @returns Error and suggestion, or null when the directory may be deleted
+ */
+export async function purgeBlocker(
+  chromePid: number | null,
+  warnings: string[],
+  exitWaitMs = PURGE_CHROME_EXIT_WAIT_MS
+): Promise<ErrorWithSuggestion | null> {
+  const dir = getSessionDir();
+  if (await isDaemonAlive()) return purgeRefusedError(dir, 'its daemon is still running');
+  if (warnings.length > 0) return purgeRefusedError(dir, warnings.join('; '));
+  if (chromePid !== null && !(await waitForExit(chromePid, exitWaitMs))) {
+    return purgeRefusedError(dir, `its Chrome (PID ${chromePid}) is still running`);
+  }
+  return null;
+}
+
+/**
+ * Delete the session directory unless {@link purgeBlocker} objects.
+ *
+ * @param chromePid - The session's Chrome as found before cleanup, or null
+ * @param warnings - Warnings from cleanup
+ * @returns The deleted directory (undefined if there was none), or the refusal
+ */
+async function purge(
+  chromePid: number | null,
+  warnings: string[]
+): Promise<{ purged?: string; refusal?: ErrorWithSuggestion }> {
+  const refusal = await purgeBlocker(chromePid, warnings);
+  if (refusal) return { refusal };
+  const purged = purgeSessionDir();
+  return purged === undefined ? {} : { purged };
+}
+
+/**
+ * Why cleanup cannot run: the session directory is a file, `--purge` lacks a
+ * named session, or the session is still running (without `--force`).
+ *
+ * @param opts - Cleanup options
+ * @returns Error result, or null when cleanup may run
+ */
+async function cleanupBlocker(
+  opts: CleanupCommandOptions
+): Promise<CommandResult<CleanupResult> | null> {
+  const dir = getSessionDir();
+  if (fs.existsSync(dir) && !fs.statSync(dir).isDirectory()) {
+    const err = sessionDirIsFileError(dir);
+    return {
+      success: false,
+      error: err.message,
+      exitCode: EXIT_CODES.SESSION_FILE_ERROR,
+      errorContext: { suggestion: err.suggestion },
+    };
+  }
+  if (opts.purge && getSessionName() === null) {
+    const err = purgeNeedsNamedSessionError();
+    return {
+      success: false,
+      error: err.message,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: { suggestion: err.suggestion },
+    };
+  }
+  if (!opts.force && !opts.aggressive && (await isDaemonAlive())) {
+    return {
+      success: false,
+      error: sessionStillActiveError(readDaemonPid() ?? 0),
+      exitCode: EXIT_CODES.RESOURCE_BUSY,
+      errorContext: {
+        suggestion: sessionStillActiveSuggestion(getSessionName()),
+        warning: 'Force cleanup kills the running daemon and its Chrome',
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * Clean up the selected session (and delete its directory with `--purge`).
+ *
+ * @param opts - Cleanup options
+ * @returns Command result
+ */
+async function cleanupSession(opts: CleanupCommandOptions): Promise<CommandResult<CleanupResult>> {
+  const blocker = await cleanupBlocker(opts);
+  if (blocker) return blocker;
+  const chromePid = opts.purge ? liveSessionChromePid() : null;
+  const { cleaned, warnings } = await performSessionCleanup({
+    force: Boolean(opts.force) || Boolean(opts.aggressive),
+    removeOutput: opts.removeOutput,
+  });
+  const { purged, refusal } = opts.purge ? await purge(chromePid, warnings) : {};
+  if (refusal) {
+    return {
+      success: false,
+      error: refusal.message,
+      exitCode: EXIT_CODES.RESOURCE_CONFLICT,
+      errorContext: { suggestion: refusal.suggestion },
+    };
+  }
+  const didCleanup = Object.values(cleaned).some(Boolean) || purged !== undefined;
+  return {
+    success: true,
+    data: {
+      cleaned,
+      ...(purged !== undefined && { purged }),
+      message: !didCleanup
+        ? noSessionFilesMessage()
+        : purged !== undefined
+          ? sessionDirectoryPurgedMessage(purged)
+          : sessionDirectoryCleanMessage(),
+      ...(warnings.length > 0 && { warnings }),
+    },
+  };
+}
+
+/**
  * Register cleanup command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -52,67 +223,15 @@ export function registerCleanupCommand(program: Command): void {
     .option('-f, --force', 'Kill a running (possibly hung) session, then clean up', false)
     .option('--remove-output', 'Also remove session.json output file', false)
     .option('--aggressive', 'Alias for --force (kept for compatibility)', false)
+    .option(
+      '--purge',
+      "Also delete a named session's directory (Chrome profile, logs, port); needs --session",
+      false
+    )
     .addOption(jsonOption())
     .action(async (options: CleanupCommandOptions) => {
       await runCommand<CleanupCommandOptions, CleanupResult>(
-        async (opts) => {
-          const dir = getSessionDir();
-          if (fs.existsSync(dir) && !fs.statSync(dir).isDirectory()) {
-            const err = sessionDirIsFileError(dir);
-            return {
-              success: false,
-              error: err.message,
-              exitCode: EXIT_CODES.SESSION_FILE_ERROR,
-              errorContext: { suggestion: err.suggestion },
-            };
-          }
-          if (!opts.force && !opts.aggressive && (await isDaemonAlive())) {
-            return {
-              success: false,
-              error: sessionStillActiveError(readDaemonPid() ?? 0),
-              exitCode: EXIT_CODES.RESOURCE_BUSY,
-              errorContext: {
-                suggestion: sessionStillActiveSuggestion(getSessionName()),
-                warning: 'Force cleanup kills the running daemon and its Chrome',
-              },
-            };
-          }
-
-          const cleanupResult = await performSessionCleanup({
-            force: Boolean(opts.force) || Boolean(opts.aggressive),
-            removeOutput: opts.removeOutput,
-          });
-
-          const didCleanup =
-            cleanupResult.cleaned.session ||
-            cleanupResult.cleaned.chrome ||
-            cleanupResult.cleaned.daemons ||
-            cleanupResult.cleaned.output;
-
-          if (!didCleanup) {
-            return {
-              success: true,
-              data: {
-                cleaned: { session: false, output: false, chrome: false, daemons: false },
-                message: noSessionFilesMessage(),
-              },
-            };
-          }
-
-          return {
-            success: true,
-            data: {
-              cleaned: {
-                session: cleanupResult.cleaned.session,
-                output: cleanupResult.cleaned.output,
-                chrome: cleanupResult.cleaned.chrome,
-                daemons: cleanupResult.cleaned.daemons,
-              },
-              message: sessionDirectoryCleanMessage(),
-              ...(cleanupResult.warnings.length > 0 && { warnings: cleanupResult.warnings }),
-            },
-          };
-        },
+        cleanupSession,
         options,
         formatCleanup
       );

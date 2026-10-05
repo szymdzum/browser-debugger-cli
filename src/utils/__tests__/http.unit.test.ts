@@ -12,7 +12,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 
-import { fetchCDPTargetById, fetchCDPTargets } from '@/utils/http.js';
+import { fetchCDPTargetById, fetchCDPTargets, probeDevToolsEndpoint } from '@/utils/http.js';
 
 void describe('HTTP Utilities', () => {
   let originalFetch: typeof global.fetch;
@@ -166,6 +166,31 @@ void describe('HTTP Utilities', () => {
       assert.ok(requestedUrl.startsWith('http://'), 'Should use HTTP protocol');
       assert.ok(requestedUrl.includes('/json/list'), 'Should use /json/list endpoint');
       assert.ok(requestedUrl.includes('127.0.0.1'), 'Should use localhost');
+    });
+  });
+
+  void describe('probeDevToolsEndpoint()', () => {
+    void it('returns the browser WebSocket URL of a Chrome', async () => {
+      fetchMock.mock.mockImplementation(() =>
+        Promise.resolve(
+          Response.json({ webSocketDebuggerUrl: 'ws://127.0.0.1:9222/devtools/browser/x' })
+        )
+      );
+      assert.deepEqual(await probeDevToolsEndpoint(9222), {
+        kind: 'devtools',
+        wsUrl: 'ws://127.0.0.1:9222/devtools/browser/x',
+      });
+    });
+
+    void it('tells a web server that is not DevTools from an unreachable endpoint', async () => {
+      fetchMock.mock.mockImplementation(() =>
+        Promise.resolve(new Response('<html>not found</html>', { status: 404 }))
+      );
+      assert.deepEqual(await probeDevToolsEndpoint(3000), { kind: 'not-devtools' });
+      fetchMock.mock.mockImplementation(() => Promise.resolve(Response.json({ ok: true })));
+      assert.deepEqual(await probeDevToolsEndpoint(3000), { kind: 'not-devtools' });
+      fetchMock.mock.mockImplementation(() => Promise.reject(new TypeError('fetch failed')));
+      assert.deepEqual(await probeDevToolsEndpoint(3000), { kind: 'unreachable' });
     });
   });
 

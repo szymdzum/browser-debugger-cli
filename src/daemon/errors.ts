@@ -78,7 +78,7 @@ export class SessionDirError extends DaemonError {
   /**
    * @param message - What is wrong with the directory
    * @param suggestion - How to fix it
-   * @param exitCode - 82 for permissions, 103 otherwise
+   * @param exitCode - 82 for permissions, 81 for a too-long path, 103 otherwise
    */
   constructor(
     message: string,

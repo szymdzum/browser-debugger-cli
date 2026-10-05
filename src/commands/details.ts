@@ -7,6 +7,7 @@ import type { DetailsResult } from '@/commands/types.js';
 import { getDetails } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { formatNetworkDetails, formatConsoleDetails } from '@/ui/formatters/details.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateDetailsItem } from '@/utils/typeGuards.js';
 
@@ -77,8 +78,8 @@ export function registerDetailsCommand(program: Command): void {
               errorContext: {
                 suggestion:
                   opts.type === 'network'
-                    ? 'Use bdg network list to see available request IDs'
-                    : 'Use bdg peek --console to see available console message indices',
+                    ? `Use ${sessionCommand('bdg network list')} to see available request IDs`
+                    : `Use ${sessionCommand('bdg peek --console')} to see available console message indices`,
               },
             };
           }

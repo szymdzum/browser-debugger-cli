@@ -117,9 +117,7 @@ export function sessionStopped(): string {
  */
 export const STOP_MESSAGES = {
   SUCCESS: 'Session stopped successfully',
-  NO_SESSION: 'No active session found',
   FAILED: 'Failed to stop session',
-  DAEMON_NOT_RUNNING: 'No active session',
 } as const;
 
 /**

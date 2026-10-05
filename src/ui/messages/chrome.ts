@@ -8,6 +8,7 @@ import { getChromeDiagnostics, type ChromeDiagnostics } from '@/connection/diagn
 import type { IssueDetails } from '@/errors/issues.js';
 import type { ChromeNoticeCode, NoticeDetails } from '@/errors/notices.js';
 import { pluralize, joinLines } from '@/ui/formatting.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
  * Format a structured Chrome-related notice into a user-facing log line.
@@ -70,10 +71,10 @@ export function formatChromeIssue(issue: IssueDetails): string {
         ...diagnostics,
         '',
         'Try:',
-        `  - bdg cleanup`,
+        `  - ${sessionCommand('bdg cleanup')}`,
         `  - See what uses the port: lsof -i :${port}`,
-        `  - Use different port: bdg <url> --port ${port + 1}`,
-        `  - In a container where Chrome's sandbox fails: BDG_NO_SANDBOX=1 bdg <url>`
+        `  - Use different port: ${sessionCommand(`bdg <url> --port ${port + 1}`)}`,
+        `  - In a container where Chrome's sandbox fails: BDG_NO_SANDBOX=1 ${sessionCommand('bdg <url>')}`
       );
     }
     case 'CHROME_EXITED_DURING_STARTUP':
@@ -135,7 +136,7 @@ export function chromeExitedDuringStartupError(
   if (profileInUse) {
     return joinLines(
       `The Chrome profile ${userDataDir} is in use by another Chrome`,
-      'Close that Chrome, or use another profile directory: bdg <url> -u ./other-profile'
+      `Close that Chrome, or use another profile directory: ${sessionCommand('bdg <url> -u ./other-profile')}`
     );
   }
   return joinLines(
@@ -259,8 +260,8 @@ export function chromeExternalSkipTerminationMessage(): string {
 export function noPageTargetFoundError(port: number, availableTargets: string | null): string {
   return joinLines(
     `Chrome started but opened no page to attach to (port ${port})`,
-    'Retry: bdg <url>. If it keeps failing, another program may use the port (lsof -i :' +
-      `${port}) or a crashed session may be left over: bdg cleanup && bdg <url>`,
+    `Retry: ${sessionCommand('bdg <url>')}. If it keeps failing, another program may use the port (lsof -i :` +
+      `${port}) or a crashed session may be left over: ${sessionCommand('bdg cleanup')} && ${sessionCommand('bdg <url>')}`,
     ...(availableTargets ? ['', `Chrome targets:\n${availableTargets}`] : [])
   );
 }
@@ -354,8 +355,8 @@ export function portInUseError(port: number): string {
     `Port ${port} is already in use.\n`,
     'Another program (or a Chrome left from a previous session) is listening on it.\n',
     'Try:',
-    `  - Use a different port: bdg <url> --port ${port + 1}`,
-    `  - If a bdg session is stuck: bdg cleanup --force  (stops bdg's own daemon and Chrome only)`,
+    `  - Use a different port: ${sessionCommand(`bdg <url> --port ${port + 1}`)}`,
+    `  - If a bdg session holds it: find it with bdg sessions, then end that one: bdg stop --session <name> (bdg cleanup --force --session <name> if it is stuck)`,
     `  - See what uses the port: lsof -i :${port}`
   );
 }

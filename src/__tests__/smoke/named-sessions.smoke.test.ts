@@ -29,7 +29,20 @@ interface StatusData {
 }
 
 interface SessionsData {
-  sessions: { name: string | null; state: string; url?: string; port?: number }[];
+  sessions: {
+    name: string | null;
+    state: string;
+    url?: string;
+    port?: number;
+    chromePid?: number;
+    cleanup?: string;
+  }[];
+}
+
+interface ErrorEnvelope {
+  error: string;
+  exitCode: number;
+  suggestion?: string;
 }
 
 /**
@@ -61,8 +74,26 @@ async function runJson<T>(
   return { exitCode: result.exitCode, data: envelope.data, raw: result.stdout + result.stderr };
 }
 
+/**
+ * Run a command that should fail and parse its JSON error envelope.
+ *
+ * @param command - Command (or URL)
+ * @param args - Arguments
+ * @returns Error envelope
+ */
+async function runJsonError(command: string, args: string[]): Promise<ErrorEnvelope> {
+  const result = await runCommand(command, [...args, '--json'], {
+    timeout: 60000,
+    env: sessionEnv,
+  });
+  const envelope = JSON.parse(result.stdout || '{}') as ErrorEnvelope;
+  assert.equal(envelope.exitCode, result.exitCode, result.stdout + result.stderr);
+  return envelope;
+}
+
 void describe('named sessions', () => {
   const names = ['smoke-a', 'smoke-b'];
+  const otherNames = ['spy', 'smoke-c'];
   const pids: number[] = [];
   let fixture: FixtureServer;
   let started: StartData[];
@@ -73,7 +104,7 @@ void describe('named sessions', () => {
   });
 
   after(async () => {
-    for (const name of names) {
+    for (const name of [...names, ...otherNames]) {
       await runCommand('cleanup', ['--force', '--session', name], {
         timeout: 15000,
         env: sessionEnv,
@@ -129,6 +160,57 @@ void describe('named sessions', () => {
     assert.equal(defaultStatus.data.session, undefined);
   });
 
+  void it('treats session names case-insensitively', async () => {
+    const status = await runJson<StatusData>('status', ['--session', 'SMOKE-A']);
+    assert.equal(status.data.session, 'smoke-a');
+    assert.equal(status.data.active, true);
+    assert.equal(status.data.port, started[0]?.port);
+    const again = await runJsonError(`${fixture.url}deep`, ['--session', 'Smoke-A', '--headless']);
+    assert.equal(again.exitCode, 84);
+  });
+
+  void it('puts --session into hints and errors of a named session', async () => {
+    const again = await runJsonError(`${fixture.url}deep`, ['--session', 'smoke-a', '--headless']);
+    assert.match(again.error, /Session "smoke-a" already running/);
+    assert.match(
+      again.suggestion ?? '',
+      /bdg stop --session smoke-a && bdg <url> --session smoke-a/
+    );
+
+    const status = await runCommand('status', ['--session', 'smoke-b'], {
+      timeout: 30000,
+      env: sessionEnv,
+    });
+    const output = status.stdout + status.stderr;
+    assert.match(output, /bdg peek --session smoke-b/);
+    assert.match(output, /bdg stop --session smoke-b/);
+
+    const missing = await runJsonError('peek', ['--session', 'nonexist']);
+    assert.equal(missing.exitCode, 83);
+    assert.equal(missing.error, 'No active session "nonexist"');
+    assert.match(missing.suggestion ?? '', /bdg <url> --session nonexist/);
+  });
+
+  void it("refuses to attach to another session's Chrome", async () => {
+    const port = String(started[0]?.port);
+    const spy = await runJsonError(`${fixture.url}eval-frames`, [
+      '--session',
+      'spy',
+      '--chrome-ws-url',
+      port,
+    ]);
+    assert.equal(spy.exitCode, 90);
+    assert.match(spy.error, /launched by bdg session "smoke-a"/);
+    assert.match(spy.suggestion ?? '', /bdg stop --session smoke-a/);
+    const title = await runJson<{ result: string }>('dom', [
+      'eval',
+      'document.title',
+      '--session',
+      'smoke-a',
+    ]);
+    assert.equal(title.data.result, 'deep', 'smoke-a keeps its page');
+  });
+
   void it('lists both sessions', async () => {
     const list = await runJson<SessionsData>('sessions', []);
     assert.deepEqual(
@@ -167,6 +249,41 @@ void describe('named sessions', () => {
     assert.equal(stopB.exitCode, 0, stopB.stderr);
     assert.equal(await waitForProcessExit(b.chromePid), true);
     assert.equal(await waitForProcessExit(b.daemonPid), true);
+    assert.deepEqual((await runJson<SessionsData>('sessions', [])).data.sessions, []);
+  });
+
+  void it('lists a crashed session with its cleanup command, and purges it', async () => {
+    const start = await runJson<StartData>(`${fixture.url}deep`, [
+      '--session',
+      'smoke-c',
+      '--headless',
+    ]);
+    assert.equal(start.exitCode, 0, start.raw);
+    pids.push(start.data.daemonPid, start.data.chromePid);
+    process.kill(start.data.daemonPid, 'SIGKILL');
+    assert.equal(await waitForProcessExit(start.data.daemonPid), true);
+
+    const list = await runJson<SessionsData>('sessions', []);
+    assert.deepEqual(list.data.sessions, [
+      {
+        name: 'smoke-c',
+        state: 'crashed',
+        port: start.data.port,
+        chromePid: start.data.chromePid,
+        cleanup: 'bdg cleanup --session smoke-c',
+      },
+    ]);
+    const human = await runCommand('sessions', [], { timeout: 30000, env: sessionEnv });
+    assert.match(human.stdout + human.stderr, /smoke-c\s+crashed/);
+    assert.match(human.stdout + human.stderr, /bdg cleanup --session smoke-c/);
+
+    const purge = await runCommand('cleanup', ['--session', 'smoke-c', '--purge'], {
+      timeout: 30000,
+      env: sessionEnv,
+    });
+    assert.equal(purge.exitCode, 0, purge.stdout + purge.stderr);
+    assert.equal(await waitForProcessExit(start.data.chromePid), true);
+    assert.equal(fs.existsSync(`${sessionBaseDir}/sessions/smoke-c`), false);
     assert.deepEqual((await runJson<SessionsData>('sessions', [])).data.sessions, []);
   });
 });

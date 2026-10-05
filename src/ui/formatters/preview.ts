@@ -15,6 +15,7 @@ import {
   compactTipsMessage,
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
  * Infer resource type from MIME type when CDP doesn't provide it.
@@ -304,7 +305,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
             fmt.text(`  MIME: ${req.mimeType}`);
           }
           fmt.text(
-            `  ID: ${req.requestId} (use 'bdg details network ${req.requestId}' for full details)`
+            `  ID: ${req.requestId} (use '${sessionCommand(`bdg details network ${req.requestId}`)}' for full details)`
           );
         });
       }

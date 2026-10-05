@@ -26,6 +26,7 @@ import { join } from 'path';
 import { getSessionDir } from '@/session/paths.js';
 import type { DomQueryResult } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
@@ -114,7 +115,7 @@ export class QueryCacheManager {
         valid: false,
         cache: null,
         error: 'No cached query results found',
-        suggestion: 'Run "bdg dom query <selector>" first to generate indexed results',
+        suggestion: `Run "${sessionCommand('bdg dom query <selector>')}" first to generate indexed results`,
       };
     }
     const { version, ...cache } = raw;
@@ -125,8 +126,8 @@ export class QueryCacheManager {
         error: 'Cached query results are from an older bdg version',
         suggestion:
           cache.selector === FORM_DISCOVERY_CACHE_SELECTOR
-            ? 'Re-run "bdg dom form" to refresh cached results'
-            : `Re-run "bdg dom query ${cache.selector}" to refresh cached results`,
+            ? `Re-run "${sessionCommand('bdg dom form')}" to refresh cached results`
+            : `Re-run "${sessionCommand(`bdg dom query ${cache.selector}`)}" to refresh cached results`,
       };
     }
     return { valid: true, cache };

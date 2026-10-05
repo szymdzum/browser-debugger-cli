@@ -11,8 +11,8 @@ import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { clearChromePid, readChromePid } from '@/session/chrome.js';
 import { probeDaemonSocket } from '@/session/daemonSocket.js';
-import { getSessionDir, getSessionFilePath } from '@/session/paths.js';
-import { readDaemonPid } from '@/session/pid.js';
+import { getSessionDir, getSessionFilePath, sessionFilePathIn } from '@/session/paths.js';
+import { readPidFromFile } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { safeRemoveFile } from '@/utils/file.js';
@@ -69,12 +69,22 @@ export async function removeStaleDaemonFiles(): Promise<boolean> {
 export function findOrphanedChrome(): number | null {
   const chromePid = readChromePid();
   if (!chromePid) return null;
-  if (hasArgument(getProcessCommand(chromePid), chromeSessionMarkerFlag(getSessionDir()))) {
-    return chromePid;
-  }
+  if (isSessionChrome(chromePid, getSessionDir())) return chromePid;
   log.debug(`PID ${chromePid} is no longer a bdg Chrome; dropping chrome.pid`);
   clearChromePid();
   return null;
+}
+
+/**
+ * Whether a process is the Chrome bdg launched for a session directory: its
+ * command line carries the directory's marker flag.
+ *
+ * @param pid - Process ID
+ * @param sessionDir - Session directory
+ * @returns True for that session's Chrome
+ */
+export function isSessionChrome(pid: number, sessionDir: string): boolean {
+  return hasArgument(getProcessCommand(pid), chromeSessionMarkerFlag(sessionDir));
 }
 
 /**
@@ -116,10 +126,11 @@ export async function reapOrphanedChrome(): Promise<boolean> {
 /**
  * Read the PID of a live bdg daemon from daemon.pid.
  *
+ * @param dir - Session directory (defaults to the selected session's)
  * @returns Daemon PID if the process is alive and is a bdg daemon, else null
  */
-export function readLiveDaemonPid(): number | null {
-  const pid = readDaemonPid();
+export function readLiveDaemonPid(dir: string = getSessionDir()): number | null {
+  const pid = readPidFromFile(sessionFilePathIn(dir, 'DAEMON_PID'));
   if (!pid || !isProcessAlive(pid)) return null;
   return hasArgument(getProcessCommand(pid), DAEMON_SCRIPT_PATH) ? pid : null;
 }

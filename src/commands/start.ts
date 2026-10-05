@@ -13,6 +13,7 @@ import {
   chromeWsUrlConflictError,
   externalChromeUnreachableError,
   invalidChromeFlagError,
+  notDevToolsEndpointError,
   invalidUserDataDirError,
   missingStartUrlError,
   unknownCommandError,
@@ -20,14 +21,14 @@ import {
 import type { TelemetryType } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { probeDevToolsEndpoint } from '@/utils/http.js';
 import { findSimilar } from '@/utils/suggestions.js';
-import { fetchBrowserWsUrl } from '@/utils/http.js';
 import { devToolsHttpEndpoint, validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
  */
-interface CollectorOptions {
+export interface CollectorOptions {
   /** Chrome debugging port as provided by the user. */
   port: string;
   /** Optional auto-stop timeout (seconds, string form). */
@@ -109,7 +110,7 @@ export function extractUserDataDirFromFlags(flags: string[]): {
  * @param command - Commander.js Command instance to apply options to
  * @returns The modified Command instance with all telemetry options applied
  */
-function applyCollectorOptions(command: Command): Command {
+export function applyCollectorOptions(command: Command): Command {
   // Default to headless if no display available
   const defaultHeadless = !hasDisplay();
 
@@ -252,14 +253,15 @@ export function assertNotGroupSubcommand(program: Command, argv: string[]): void
  *
  * @param url - Target URL
  * @param options - Parsed command-line options from Commander
- * @param commandNames - Registered top-level command names (for typo detection)
+ * @param program - Root command (registered command names for typo detection,
+ *   and which options came from the command line)
  * @returns The URL and normalized session options
  * @throws CommandError on any invalid input
  */
 function validateStartInput(
   url: string | undefined,
   options: CollectorOptions,
-  commandNames: string[]
+  program: Command
 ): { url: string; sessionOptions: ReturnType<typeof buildSessionOptions> } {
   if (url === undefined) {
     const err = missingStartUrlError();
@@ -269,11 +271,14 @@ function validateStartInput(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  assertNotCommandTypo(url, commandNames);
+  assertNotCommandTypo(
+    url,
+    program.commands.map((command) => command.name())
+  );
   assertValidUrl(url);
   if (options.chromeWsUrl !== undefined) {
     assertValidChromeWsUrl(options.chromeWsUrl);
-    assertNoLaunchOptions(options);
+    assertNoLaunchOptions(options, program);
   }
   if (options.userDataDir !== undefined) assertUserDataDir(options.userDataDir);
   if (options.chromeWsUrl === undefined)
@@ -301,11 +306,7 @@ export function registerStartCommands(program: Command): void {
 
     let validated: ReturnType<typeof validateStartInput>;
     try {
-      validated = validateStartInput(
-        url,
-        options,
-        program.commands.map((command) => command.name())
-      );
+      validated = validateStartInput(url, options, program);
       validated.sessionOptions.chromeWsUrl = await resolveChromeWsUrl(
         validated.sessionOptions.chromeWsUrl
       );
@@ -324,18 +325,23 @@ export function registerStartCommands(program: Command): void {
  *
  * @param value - Option value (WebSocket URLs are returned unchanged)
  * @returns WebSocket URL, or undefined without the option
- * @throws CommandError (101) when the endpoint does not answer
+ * @throws CommandError (101) when the endpoint does not answer or is not DevTools
  */
 async function resolveChromeWsUrl(value: string | undefined): Promise<string | undefined> {
   const endpoint = value === undefined ? null : devToolsHttpEndpoint(value);
   if (endpoint === null) return value;
   const { hostname, port, protocol } = new URL(endpoint);
-  const wsUrl = await fetchBrowserWsUrl(Number(port), undefined, {
+  const secure = protocol === 'https:';
+  const defaultPort = secure ? 443 : 80;
+  const probe = await probeDevToolsEndpoint(Number(port) || defaultPort, undefined, {
     host: hostname,
-    secure: protocol === 'https:',
+    secure,
   });
-  if (wsUrl !== null) return atEndpoint(wsUrl, endpoint);
-  const err = externalChromeUnreachableError(endpoint, false);
+  if (probe.kind === 'devtools') return atEndpoint(probe.wsUrl, endpoint);
+  const err =
+    probe.kind === 'not-devtools'
+      ? notDevToolsEndpointError(endpoint)
+      : externalChromeUnreachableError(endpoint, false);
   throw new CommandError(
     err.message,
     { suggestion: err.suggestion },
@@ -392,16 +398,31 @@ function assertUserDataDir(value: string): void {
 }
 
 /**
+ * Options given that only apply to a Chrome bdg launches. `--headless` has a
+ * default, so it counts only when given on the command line.
+ *
+ * @param options - Parsed options
+ * @param program - Command the options were parsed by
+ * @returns The conflicting flags, e.g. ["--port", "--headless"]
+ */
+export function launchOptionConflicts(options: CollectorOptions, program: Command): string[] {
+  const headlessGiven = program.getOptionValueSource('headless') === 'cli';
+  return [
+    ...(options.port !== undefined ? ['--port'] : []),
+    ...(options.userDataDir !== undefined ? ['--user-data-dir'] : []),
+    ...(headlessGiven ? [options.headless ? '--headless' : '--no-headless'] : []),
+  ];
+}
+
+/**
  * Reject options that only apply to a Chrome bdg launches.
  *
  * @param options - Parsed options (with `--chrome-ws-url`)
- * @throws CommandError (81) for `--port` or `-u`
+ * @param program - Command the options were parsed by
+ * @throws CommandError (81) for `--port`, `-u` or `--[no-]headless`
  */
-function assertNoLaunchOptions(options: CollectorOptions): void {
-  const conflicts = [
-    ...(options.port !== undefined ? ['--port'] : []),
-    ...(options.userDataDir !== undefined ? ['--user-data-dir'] : []),
-  ];
+function assertNoLaunchOptions(options: CollectorOptions, program: Command): void {
+  const conflicts = launchOptionConflicts(options, program);
   if (conflicts.length === 0) return;
   const err = chromeWsUrlConflictError(conflicts);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);

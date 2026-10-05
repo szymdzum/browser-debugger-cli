@@ -3,6 +3,7 @@ import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js'
 import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
 
 /** Characters of each WebSocket message shown in human output (`--json` has all) */
@@ -164,7 +165,7 @@ function describeResponseBody(request: NetworkRequest & { responseBody: string }
   }
   const body = request.responseBody;
   if (body.length <= BODY_PREVIEW_LENGTH) return body;
-  return `${body.slice(0, BODY_PREVIEW_LENGTH)}\n… ${body.length - BODY_PREVIEW_LENGTH} more characters (full body: bdg details network ${request.requestId} --json)`;
+  return `${body.slice(0, BODY_PREVIEW_LENGTH)}\n… ${body.length - BODY_PREVIEW_LENGTH} more characters (full body: ${sessionCommand(`bdg details network ${request.requestId} --json`)})`;
 }
 
 /**

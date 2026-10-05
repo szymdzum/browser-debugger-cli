@@ -2,6 +2,7 @@
  * URL normalization, validation, and parsing utilities.
  */
 
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { invalid, valid, type ValidationResult } from '@/utils/validation.js';
 
 /**
@@ -146,7 +147,7 @@ export function validateUrl(url: string): ValidationResult {
   if (urlLower.startsWith('javascript:')) {
     return invalid(
       `Cannot start a session on a javascript: URL`,
-      `Open a page first, then run the script: bdg about:blank && bdg dom eval '...'`
+      `Open a page first, then run the script: ${sessionCommand('bdg about:blank')} && ${sessionCommand("bdg dom eval '...'")}`
     );
   }
   if (urlLower.startsWith('vbscript:')) {
@@ -244,7 +245,9 @@ export function safeParseUrl(input: string): URL | null {
  */
 export function devToolsHttpEndpoint(value: string): string | null {
   const trimmed = value.trim();
-  if (/^\d{1,5}$/.test(trimmed)) return `http://127.0.0.1:${trimmed}`;
+  if (/^\d{1,5}$/.test(trimmed)) {
+    return isValidPort(Number(trimmed)) ? `http://127.0.0.1:${trimmed}` : null;
+  }
   const candidate = /^https?:\/\//i.test(trimmed)
     ? trimmed
     : /^[^/\s]+:\d{1,5}\/?$/.test(trimmed)
@@ -252,10 +255,43 @@ export function devToolsHttpEndpoint(value: string): string | null {
       : null;
   if (candidate === null) return null;
   try {
-    return new URL(candidate).origin;
+    const url = new URL(candidate);
+    return url.port === '' || isValidPort(Number(url.port)) ? url.origin : null;
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether a number is a usable TCP port (1-65535).
+ *
+ * @param port - Port number
+ * @returns True if in range
+ */
+function isValidPort(port: number): boolean {
+  return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
+/** A `--chrome-ws-url` value shaped like a port or `host:port` (port possibly missing) */
+const PORT_SHAPED_VALUE = /^(?:[^/\s]+:)?(\d*)\/?$/;
+
+/**
+ * Why a port-shaped `--chrome-ws-url` value (`99999`, `0`, `localhost:`) has
+ * no usable port.
+ *
+ * @param value - Trimmed option value that is not a valid endpoint
+ * @returns Error and suggestion, or null when the value is not port-shaped
+ */
+function portShapedValueError(value: string): ValidationResult | null {
+  const match = PORT_SHAPED_VALUE.exec(value);
+  if (!match || /^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return null;
+  const digits = match[1] ?? '';
+  return invalid(
+    digits === ''
+      ? `--chrome-ws-url is missing the port: '${value}'`
+      : `--chrome-ws-url port ${digits} is out of range (1-65535)`,
+    'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
+  );
 }
 
 /**
@@ -279,6 +315,8 @@ export function validateChromeWsUrl(url: string): ValidationResult {
   }
 
   if (devToolsHttpEndpoint(trimmed) !== null) return valid();
+  const portError = portShapedValueError(trimmed);
+  if (portError) return portError;
 
   let parsed: URL;
   try {

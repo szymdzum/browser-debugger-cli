@@ -35,6 +35,7 @@ import {
 } from '@/ui/formatters/triggeredRequests.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { POINTER_ACTION_DONE, dialogConsoleText } from '@/ui/messages/commands.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -448,9 +449,9 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   fmt.keyValueList(details, 20);
   appendNotices(fmt, result);
   fmt.hints('Next steps:', [
-    'bdg network list --last 10      Check network requests',
-    'bdg console --last 5             Check console messages',
-    'bdg status                       Check session state',
+    `${sessionCommand('bdg network list --last 10').padEnd(32)} Check network requests`,
+    `${sessionCommand('bdg console --last 5').padEnd(32)} Check console messages`,
+    `${sessionCommand('bdg status').padEnd(32)} Check session state`,
   ]);
   return fmt.build();
 }

@@ -14,7 +14,9 @@ import { formatSessionList } from '@/ui/formatters/sessions.js';
 export function registerSessionsCommand(program: Command): void {
   program
     .command('sessions')
-    .description('List running sessions (default and named) with their URL, port and PID')
+    .description(
+      'List sessions (default and named) with their state, URL, port and PID, including crashed ones to clean up'
+    )
     .addOption(jsonOption())
     .action(async (options: BaseOptions) => {
       await runCommand<BaseOptions, { sessions: RunningSessionInfo[] }>(

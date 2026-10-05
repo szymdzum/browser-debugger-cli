@@ -38,6 +38,8 @@ export interface CleanupResult {
     chrome: boolean;
     daemons: boolean;
   };
+  /** Directory deleted by `--purge` */
+  purged?: string;
   message: string;
   warnings?: string[];
 }
