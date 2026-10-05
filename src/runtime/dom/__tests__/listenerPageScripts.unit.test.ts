@@ -83,6 +83,7 @@ void describe('ELEMENT_INFO_JS', () => {
     const [info, ...fns] = elementInfo.call(
       element,
       [{ position: 1, type: 'click' }],
+      null,
       element,
       document,
       dispatcher,
@@ -104,6 +105,7 @@ void describe('ELEMENT_INFO_JS', () => {
     const [info] = elementInfo.call(
       element,
       [{ position: 1, type: 'click' }],
+      null,
       element,
       document,
       dispatcher,
@@ -125,6 +127,7 @@ void describe('ELEMENT_INFO_JS', () => {
     const [info] = elementInfo.call(
       element,
       [{ position: 1, type: 'click' }],
+      null,
       element,
       document,
       dispatcher,
@@ -144,6 +147,7 @@ void describe('ELEMENT_INFO_JS', () => {
     const [info] = elementInfo.call(
       element,
       listeners,
+      null,
       element,
       document,
       ...bound,
@@ -172,9 +176,10 @@ void describe('ELEMENT_INFO_JS', () => {
  */
 function reactChain(buttonKeys: object, divKeys: object): [object, object, object] {
   const document = { nodeType: 9, parentNode: null };
-  const div = { nodeType: 1, parentNode: document, ...divKeys };
+  const div = { nodeType: 1, localName: 'div', parentNode: document, ...divKeys };
   const button = {
     nodeType: 1,
+    localName: 'button',
     parentNode: div,
     ownerDocument: { defaultView: { frameElement: null } },
     ...buttonKeys,
@@ -186,11 +191,26 @@ function reactChain(buttonKeys: object, divKeys: object): [object, object, objec
  * Run the page function on a chain without listeners.
  *
  * @param chain - Element first
+ * @param types - Requested event types
  * @returns Page report and the React handler functions
  */
-function reactInfo(chain: object[]): { info: ElementInfo; fns: unknown[] } {
-  const [info, ...fns] = elementInfo.call(chain[0] ?? {}, [], ...chain);
+function reactInfo(
+  chain: object[],
+  types: string[] | null = null
+): { info: ElementInfo; fns: unknown[] } {
+  const [info, ...fns] = elementInfo.call(chain[0] ?? {}, [], types, ...chain);
   return { info, fns };
+}
+
+/**
+ * Types and phases of the React props of a button.
+ *
+ * @param props - The button's props
+ * @returns `prop:type:capture` per resolved prop
+ */
+function resolvedTypes(props: object): string[] {
+  const { info } = reactInfo(reactChain({ __reactProps$a: props }, {}));
+  return info.react.map((r) => `${r.prop}:${r.type}:${r.capture}`);
 }
 
 void describe('ELEMENT_INFO_JS React props', () => {
@@ -199,7 +219,7 @@ void describe('ELEMENT_INFO_JS React props', () => {
     const keys = (): void => undefined;
     const chain = reactChain(
       { __reactProps$abc: { onClick: handleBuy, className: 'cta', children: 'Buy' } },
-      { __reactFiber$xyz: { memoizedProps: { onKeyDownCapture: keys, onDoubleClick: keys } } }
+      { __reactProps$abc: { onKeyDownCapture: keys, onDoubleClick: keys } }
     );
     const { info, fns } = reactInfo(chain);
     assert.deepEqual(info.react, [
@@ -211,21 +231,96 @@ void describe('ELEMENT_INFO_JS React props', () => {
     assert.equal(info.reactSkipped, 0);
   });
 
-  void it("reads React 16's event handler props", () => {
+  void it("reads React 16's event handler props and a fiber's memoizedProps", () => {
     const submit = function save(): void {};
     const { info } = reactInfo(reactChain({ __reactEventHandlers$q1: { onSubmit: submit } }, {}));
     assert.deepEqual(
       info.react.map((r) => [r.prop, r.type, r.name]),
       [['onSubmit', 'submit', 'save']]
     );
+    const fiber = { type: 'button', memoizedProps: { onInput: submit }, return: null };
+    const chain = reactChain({ __reactFiber$q1: fiber }, {});
+    Object.assign(fiber, { stateNode: chain[0] });
+    assert.deepEqual(
+      reactInfo(chain).info.react.map((r) => r.prop),
+      ['onInput']
+    );
   });
 
-  void it('skips props that throw or are no functions, and pages without React', () => {
+  void it('maps pointer capture, focus and double-click props to their DOM types', () => {
+    const fn = (): void => undefined;
+    assert.deepEqual(
+      resolvedTypes({
+        onGotPointerCapture: fn,
+        onLostPointerCaptureCapture: fn,
+        onFocus: fn,
+        onBlurCapture: fn,
+        onDoubleClick: fn,
+      }),
+      [
+        'onGotPointerCapture:gotpointercapture:false',
+        'onLostPointerCaptureCapture:lostpointercapture:true',
+        'onFocus:focusin:false',
+        'onBlurCapture:focusout:true',
+        'onDoubleClick:dblclick:false',
+      ]
+    );
+  });
+
+  void it("leaves out ancestors' props for events React does not bubble", () => {
+    const fn = (): void => undefined;
+    const chain = reactChain(
+      { __reactProps$a: { onMouseEnter: fn, onScroll: fn } },
+      {
+        __reactProps$a: {
+          onMouseEnter: fn,
+          onScroll: fn,
+          onScrollCapture: fn,
+          onLoad: fn,
+          onClick: fn,
+        },
+      }
+    );
+    assert.deepEqual(
+      reactInfo(chain).info.react.map((r) => `${r.position}:${r.prop}`),
+      ['0:onMouseEnter', '0:onScroll', '1:onScrollCapture', '1:onClick']
+    );
+  });
+
+  void it("follows the fiber's React parents through a portal", () => {
+    const fn = (): void => undefined;
+    const [button, portalHost, document] = reactChain({}, {});
+    const modal = { nodeType: 1, localName: 'div', id: 'modal', classList: ['card'] };
+    const rootFiber = { tag: 3, type: null, stateNode: {}, return: null };
+    const modalFiber = { type: 'div', stateNode: modal, return: rootFiber };
+    const componentFiber = {
+      type: function Dialog(): void {},
+      stateNode: null,
+      return: modalFiber,
+    };
+    const buttonFiber = { type: 'button', stateNode: button, return: componentFiber };
+    Object.assign(button, { __reactFiber$p: buttonFiber, __reactProps$p: { onClick: fn } });
+    Object.assign(modal, { __reactProps$p: { onClick: fn, onKeyDown: fn } });
+    Object.assign(portalHost, { __reactProps$p: { onClick: fn } });
+    const { info } = reactInfo([button, portalHost, document]);
+    assert.deepEqual(
+      info.react.map((r) => [r.position, r.node, r.prop]),
+      [
+        [0, undefined, 'onClick'],
+        [null, 'div#modal.card', 'onClick'],
+        [null, 'div#modal.card', 'onKeyDown'],
+      ]
+    );
+  });
+
+  void it('runs no getters of the page and skips props that are no functions', () => {
+    let getterRan = false;
     const props = { onFocus: 'not a function', onBlur: null, onclick: (): void => undefined };
     Object.defineProperty(props, 'onChange', {
       enumerable: true,
       get: () => {
-        throw new Error('blocked');
+        getterRan = true;
+        return () => undefined;
       },
     });
     const throwingKeys = new Proxy(
@@ -238,10 +333,11 @@ void describe('ELEMENT_INFO_JS React props', () => {
     );
     const { info } = reactInfo(reactChain({ __reactProps$a: props }, {}));
     assert.deepEqual(info.react, []);
+    assert.equal(getterRan, false);
     assert.deepEqual(reactInfo([throwingKeys, ...reactChain({}, {}).slice(1)]).info.react, []);
   });
 
-  void it('stops after the limit and counts the rest', () => {
+  void it('stops after the limit, counting only the requested types', () => {
     const many = Object.fromEntries(
       Array.from({ length: MAX_REACT_HANDLERS + 3 }, (_, i) => [
         `onEvent${i}`,
@@ -252,5 +348,12 @@ void describe('ELEMENT_INFO_JS React props', () => {
     assert.equal(info.react.length, MAX_REACT_HANDLERS);
     assert.equal(fns.length, MAX_REACT_HANDLERS);
     assert.equal(info.reactSkipped, 3);
+    const withClick = { ...many, onClick: (): void => undefined };
+    const clicks = reactInfo(reactChain({ __reactProps$a: withClick }, {}), ['click']).info;
+    assert.deepEqual(
+      clicks.react.map((r) => r.prop),
+      ['onClick']
+    );
+    assert.equal(clicks.reactSkipped, 0);
   });
 });

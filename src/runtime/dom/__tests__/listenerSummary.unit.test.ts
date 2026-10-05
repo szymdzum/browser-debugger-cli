@@ -465,6 +465,22 @@ void describe('React prop handlers', () => {
     assert.ok(!notes[1]?.types.includes('click'));
   });
 
+  void it("places a portal's React parent outside the chain after the nearer parents", () => {
+    const portalParent = {
+      ...reactProp(0, 'onClick', 'closeModal'),
+      position: null,
+      node: 'div#modal',
+    };
+    const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS, { types: ['click'] }, [
+      reactProp(0, 'onClick', 'handleBuy'),
+      portalParent,
+    ]);
+    assert.deepEqual(
+      report.listeners.slice(0, 2).map((l) => `${l.on}:${l.node}:${l.handler.name}`),
+      ['target:button.cta:handleBuy', 'ancestor:div#modal:closeModal']
+    );
+  });
+
   void it('notes jQuery delegation separately from plain delegation', () => {
     const chain: ChainListeners[] = [
       { position: 0, entry: BUTTON, listeners: [] },

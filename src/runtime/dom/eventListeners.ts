@@ -107,7 +107,7 @@ export async function inspectEventListeners(
   try {
     const { matchCount, chain } = await findEventTargetChain(cdp, params, objectGroup);
     const collected = await collectListeners(cdp, chain);
-    const page = await pageDetails(cdp, chain, collected, objectGroup);
+    const page = await pageDetails(cdp, chain, collected, objectGroup, params.types);
     const found = collected.map((item) => {
       const framework = page.roots[item.position];
       return framework ? { ...item, entry: { ...item.entry, framework } } : item;
@@ -304,21 +304,23 @@ function typeSuggestions(
  * Ask the page about the element and its listeners' handlers: their names
  * (`Function.name` also knows names of arrow functions assigned to
  * variables, and `bound f` for bound functions), which function object each
- * calls, the jQuery handlers behind jQuery's dispatcher, React's `on…`
- * props of the element and its ancestors, React root containers and the
+ * calls, the jQuery handlers behind jQuery's dispatcher, the React `on…`
+ * props that run for the element's events, React root containers and the
  * element's iframe.
  *
  * @param cdp - CDP connection
  * @param chain - Event targets, element first
  * @param found - Listeners per chain entry
  * @param objectGroup - Object group for the handles
+ * @param types - Requested event types (React props of others are not read)
  * @returns Details; empty when the page could not tell
  */
 async function pageDetails(
   cdp: CDPConnection,
   chain: ChainObject[],
   found: ChainListeners[],
-  objectGroup: string
+  objectGroup: string,
+  types: string[] | undefined
 ): Promise<PageDetails> {
   const listeners = found.flatMap((entry) =>
     entry.listeners.map((listener) => ({ position: entry.position, listener }))
@@ -331,6 +333,7 @@ async function pageDetails(
       functionDeclaration: ELEMENT_INFO_JS,
       arguments: [
         { value: listeners.map(({ position, listener }) => ({ position, type: listener.type })) },
+        { value: types ?? null },
         ...chain.map((entry) => ({ objectId: entry.objectId })),
         ...handlers.map(objectArgument),
         ...targets.map(objectArgument),

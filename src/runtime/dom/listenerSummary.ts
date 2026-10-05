@@ -161,10 +161,15 @@ export interface ResolvedHandler {
   columnNumber: number;
 }
 
-/** A React `on…` prop handler of the element or one of its ancestors */
+/** A React `on…` prop handler of the element or one of its React parents */
 export interface ReactPropHandler extends ResolvedHandler {
-  /** Position in the chain of the element the prop is on (0 = the element) */
-  position: number;
+  /**
+   * Position in the chain of the element the prop is on (0 = the element);
+   * null for a React parent outside the chain (the parent of a portal)
+   */
+  position: number | null;
+  /** Description of that element when it is outside the chain */
+  node?: string | undefined;
   /** Prop name, e.g. `onClickCapture` */
   prop: string;
   /** Runs in the capture phase (`on…Capture`) */
@@ -266,18 +271,46 @@ function jqueryListeners(
   }));
 }
 
+/** Chain position given to React parents outside the chain: after the last one inside */
+const OUTSIDE_CHAIN_OFFSET = 0.5;
+
+/**
+ * Where a React prop handler's element sits: its chain entry, or for a
+ * React parent outside the chain (a portal's), an ancestor entry placed
+ * just after the nearest parent inside it.
+ *
+ * @param found - Listeners per chain entry (every entry of the chain)
+ * @param resolved - The prop handler
+ * @param previous - Chain position of the previous (nearer) prop handler's element
+ * @returns Position and chain entry, undefined when the position is unknown
+ */
+function reactOwner(
+  found: ChainListeners[],
+  resolved: ReactPropHandler,
+  previous: number
+): { position: number; entry: ChainEntry } | undefined {
+  if (resolved.position === null) {
+    const entry = { className: 'HTMLElement', description: resolved.node ?? '?' };
+    return { position: Math.floor(previous) + OUTSIDE_CHAIN_OFFSET, entry };
+  }
+  const owner = found.find((item) => item.position === resolved.position);
+  return owner && { position: owner.position, entry: owner.entry };
+}
+
 /**
  * Report entries for React's `on…` props: React runs them from its root
  * container's dispatchers, for the element the prop is on.
  *
  * @param found - Listeners per chain entry (every entry of the chain)
- * @param react - React prop handlers, in chain order
+ * @param react - React prop handlers, nearest first
  * @returns Entries, one per prop
  */
 function placeReactProps(found: ChainListeners[], react: ReactPropHandler[]): PlacedListener[] {
+  let previous = 0;
   return react.flatMap((resolved, i) => {
-    const owner = found.find((item) => item.position === resolved.position);
+    const owner = reactOwner(found, resolved, previous);
     if (!owner) return [];
+    previous = owner.position;
     const listener: ElementListener = {
       type: resolved.type,
       on: listenerPlacement(owner.entry, owner.position),
@@ -295,7 +328,7 @@ function placeReactProps(found: ChainListeners[], react: ReactPropHandler[]): Pl
       framework: 'React',
       reactProp: resolved.prop,
     };
-    return [{ position: owner.position, entry: owner.entry, listener, identity: `react-${i}` }];
+    return [{ ...owner, listener, identity: `react-${i}` }];
   });
 }
 
