@@ -5,6 +5,7 @@
  */
 
 import type { SessionNetworkHeadersData } from '@/ipc/protocol/commands.js';
+import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 
 /**
@@ -19,6 +20,7 @@ export function formatNetworkHeaders(data: SessionNetworkHeadersData): string {
   fmt.text('Network Request Headers').separator('━', 60).blank();
 
   fmt.text('URL:').text(`  ${data.url}`).blank();
+  fmt.text(`Status: ${requestStatusLine(data)}`).blank();
 
   if (Object.keys(data.responseHeaders).length > 0) {
     fmt.text('Response Headers:');
@@ -60,4 +62,16 @@ function formatHeaderSection(fmt: OutputFormatter, headers: Record<string, strin
   entries.forEach(([key, value]) => {
     value.split('\n').forEach((line) => fmt.keyValue(`  ${key}`, line, keyWidth));
   });
+}
+
+/**
+ * Status line of a request: method, HTTP status and status text, or how it failed.
+ *
+ * @param data - Network headers data
+ * @returns e.g. `GET 404 Not Found`, `GET FAILED (net::ERR_NAME_NOT_RESOLVED)`, `GET pending`
+ */
+function requestStatusLine(data: SessionNetworkHeadersData): string {
+  const status = formatRequestStatus(data);
+  const text = data.statusText && /^\d+$/.test(status) ? ` ${data.statusText}` : '';
+  return [data.method, `${status}${text}`].filter(Boolean).join(' ');
 }

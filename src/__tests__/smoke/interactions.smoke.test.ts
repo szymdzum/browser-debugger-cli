@@ -56,6 +56,24 @@ const LABELS_HTML =
   '<label id="fancy">Fancy <input type="checkbox" id="fancybox" style="opacity:0;position:absolute"><span>box</span></label>' +
   '<label>Avatar <input type="file" id="avatar"></label></form>';
 
+/** Elements `dom fill` refuses: read-only editor content, inert content, a field in a disabled fieldset */
+const REFUSALS_HTML =
+  '<div id="ro-editor" contenteditable="false"><p>Locked</p></div>' +
+  '<div inert><div id="inert-box">Inert</div></div>' +
+  '<fieldset disabled><input id="fs-field"></fieldset>';
+
+/** Three figures without text, like the-internet's hovers page */
+const FIGURES_HTML =
+  '<div id="figures">' +
+  '<div class="figure" style="width: 20px; height: 20px"></div>'.repeat(3) +
+  '</div>';
+
+/** A visible search form, a hidden one and one in a dialog */
+const SEARCH_FORMS_HTML =
+  '<form id="page-search" role="search"><input type="search" name="q" id="page-q"></form>' +
+  '<form id="hidden-search" role="search" style="display: none"><input type="search" name="q" id="hidden-q"></form>' +
+  '<dialog id="search-dialog"><form method="dialog" role="search"><input type="search" name="q" id="dialog-q"></form></dialog>';
+
 /** JSON output of a DOM action */
 type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
 
@@ -437,10 +455,9 @@ void describe('DOM interactions', () => {
       submit.listeners.map((l) => `${l.on}:${l.node}`),
       ['ancestor:form#form']
     );
-    assert.match(
-      await bdg(['dom', 'listeners', '#submit', '--type', 'submit']),
-      /Note: submit has no listener on the element itself/
-    );
+    const submitOutput = await bdg(['dom', 'listeners', '#submit', '--type', 'submit']);
+    assert.match(submitOutput, /Note: submit has no listener on the element itself/);
+    assert.match(submitOutput, /^Event listeners for button#submit \(1: 1 on ancestors\)$/m);
 
     await bdg(['dom', 'query', '#menu-trigger']);
     const cached = await listed(['0', '--type', 'pointerdown']);
@@ -798,5 +815,74 @@ void describe('DOM interactions', () => {
     assert.deepEqual(json.data.messages, [
       { text: 'You logged into a secure area!', element: 'div#flash.flash.success' },
     ]);
+  void it('names why an element cannot be filled', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}interactions`]);
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(REFUSALS_HTML)}); 1`
+    );
+    assert.match(
+      await bdg(['dom', 'fill', '#ro-editor p', 'x'], 81),
+      /The element is read-only \(contenteditable="false" on div#ro-editor\)/
+    );
+    assert.match(await bdg(['dom', 'fill', '#inert-box', 'x'], 81), /The element is inert/);
+    assert.match(
+      await bdg(['dom', 'fill', '#fs-field', 'x'], 81),
+      /The element is disabled \(inside a disabled <fieldset>\)/
+    );
+  });
+
+  void it('describes an element without text by its position among its siblings', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(FIGURES_HTML)}); 1`
+    );
+    assert.match(
+      await bdg(['dom', 'hover', '.figure', '--index', '1']),
+      /Element: +div\.figure \(2nd of 3\)/
+    );
+  });
+
+  void it('lists forms in an open dialog first, marks hidden ones and warns when filling them', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(SEARCH_FORMS_HTML)}); document.getElementById('search-dialog').showModal(); 1`
+    );
+    type Listed = {
+      data: {
+        forms: Array<{
+          name: string;
+          hidden: boolean;
+          inDialog: boolean;
+          fields: Array<{ index: number; selector: string; hidden: boolean }>;
+        }>;
+      };
+    };
+    const { forms } = (JSON.parse(await bdg(['dom', 'form', '--all', '--json'])) as Listed).data;
+    const formOf = (selector: string): Listed['data']['forms'][number] | undefined =>
+      forms.find((form) => form.fields.some((field) => field.selector === selector));
+    assert.equal(forms[0]?.inDialog, true, JSON.stringify(forms));
+    assert.deepEqual(
+      forms[0]?.fields.map((f) => [f.index, f.selector]),
+      [[0, '#dialog-q']]
+    );
+    const hidden = formOf('#hidden-q');
+    assert.equal(hidden, forms.at(-1), 'hidden forms come last');
+    assert.equal(hidden?.hidden, true);
+    assert.equal(hidden?.fields[0]?.hidden, true);
+    assert.equal(formOf('#page-q')?.hidden, false);
+    const human = await bdg(['dom', 'form', '--all']);
+    assert.match(human, /Form: "Search" \(in dialog\)/);
+    assert.match(human, /Form: "Search" \(hidden\)/);
+    assert.match(human, /^ +\d+ +search +\S+ +empty +hidden$/m);
+
+    assert.match(await bdg(['dom', 'fill', '0', 'hooks']), /^✓ Element Filled/);
+    assert.equal(await evaluate("document.getElementById('dialog-q').value"), 'hooks');
+    assert.match(
+      await bdg(['dom', 'fill', String(formOf('#page-q')?.fields[0]?.index), 'x']),
+      /behind an open modal dialog/
+    );
+    await evaluate("document.getElementById('search-dialog').close(); 1");
+    assert.match(
+      await bdg(['dom', 'fill', String(hidden?.fields[0]?.index), 'x']),
+      /The field is hidden; a user could not fill it/
+    );
   });
 });

@@ -6,6 +6,7 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { SessionMetadata } from '@/session/metadata.js';
+import { formatNetworkHeaders } from '@/ui/formatters/networkHeaders.js';
 import {
   formatNoSessionMessage,
   formatSessionStatus,
@@ -57,5 +58,46 @@ void describe('formatNoSessionMessage', () => {
     const text = formatNoSessionMessage({ active: false, orphanedChromePid: 4321 });
     assert.match(text, /still running \(PID 4321\)/);
     assert.match(text, /bdg cleanup/);
+  });
+});
+
+void describe('status first line', () => {
+  void it('starts with the session and its page on one line', () => {
+    const page = { url: 'https://example.com/', title: 'Example Domain' };
+    const output = formatSessionStatus(external, process.pid, undefined, page);
+    assert.equal(output.split('\n')[0], 'Session active: https://example.com/ — Example Domain');
+    assert.match(output, /Session Status/);
+    assert.equal(
+      formatSessionStatus(external, process.pid, undefined, { ...page, title: '' }).split('\n')[0],
+      'Session active: https://example.com/'
+    );
+    assert.equal(formatSessionStatus(external, process.pid).split('\n')[0], 'Session active');
+  });
+});
+
+void describe('network headers', () => {
+  const data = {
+    url: 'https://example.com/missing',
+    requestId: '42.1',
+    requestHeaders: {},
+    responseHeaders: { 'content-type': 'text/html' },
+  };
+
+  void it('shows the method and status line', () => {
+    const output = formatNetworkHeaders({
+      ...data,
+      method: 'GET',
+      status: 404,
+      statusText: 'Not Found',
+    });
+    assert.match(output, /^Status: GET 404 Not Found$/m);
+  });
+
+  void it('says how a request failed, or that it is pending', () => {
+    assert.match(
+      formatNetworkHeaders({ ...data, method: 'GET', status: 0, errorText: 'net::ERR_FAILED' }),
+      /^Status: GET FAILED \(net::ERR_FAILED\)$/m
+    );
+    assert.match(formatNetworkHeaders({ ...data, method: 'POST' }), /^Status: POST pending$/m);
   });
 });

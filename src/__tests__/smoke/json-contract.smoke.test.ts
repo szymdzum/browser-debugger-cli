@@ -213,6 +213,11 @@ void describe('JSON contract', () => {
 
     const status = await expectEnvelope(['status', '--json'], 0);
     assert.equal(status.data?.['active'], true);
+    const page = await expectEnvelope(['page', 'info', '--json'], 0);
+    assert.equal(page.data?.['url'], fixture.url);
+    assert.equal(typeof page.data?.['title'], 'string');
+    const human = await runCommand('status', []);
+    assert.match(human.stdout, /^Session active: http:\/\/127\.0\.0\.1:\d+\/ — /);
     assert.ok(!('version' in (status.data ?? {})), 'status: version only in the envelope');
 
     await expectEnvelope(['console', '--list', '--json'], 0);

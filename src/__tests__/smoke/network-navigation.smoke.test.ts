@@ -187,6 +187,8 @@ void describe('Full headers and cookies', () => {
     )?.[1];
     assert.match(setCookie ?? '', /fixture_session=abc/);
     assert.match(setCookie ?? '', /fixture_theme=dark/);
+    const human = await runCommand('network', ['headers', cookieRequestId]);
+    assert.match(human.stdout, /^Status: GET 200 OK$/m);
   });
 
   void it('captures the Cookie request header of later requests', async () => {

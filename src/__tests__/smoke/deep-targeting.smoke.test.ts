@@ -106,12 +106,16 @@ void describe('Shadow DOM and iframe targeting', () => {
 
     const emptyQuery = await runCommand('dom', ['query', '#missing']);
     assert.equal(emptyQuery.exitCode, 83);
-    assert.match(emptyQuery.stderr, /cross-origin iframes/);
+    assert.doesNotMatch(emptyQuery.stderr, /cross-origin/, 'the page has no cross-origin iframe');
+    const typo = await runCommand('dom', ['query', '.notes']);
+    assert.equal(typo.exitCode, 83);
+    assert.match(typo.stderr, /Did you mean \.note\? \(similar class on the page\)/);
     const staleIndex = await runCommand('dom', ['get', '0']);
     assert.notEqual(staleIndex.exitCode, 0, 'an empty query must not leave older indices usable');
     const missing = await runCommand('dom', ['get', '#missing', '--raw', '--json']);
     const envelope = JSON.parse(missing.stdout) as { suggestion?: string };
-    assert.match(envelope.suggestion ?? '', /cross-origin iframes/);
+    assert.match(envelope.suggestion ?? '', /Verify the CSS selector is correct/);
+    assert.doesNotMatch(envelope.suggestion ?? '', /cross-origin/);
   });
 
   void it('describes and captures elements in shadow roots and frames', async () => {

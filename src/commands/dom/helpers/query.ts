@@ -19,8 +19,10 @@ import {
   invalidSelectorError,
   nodeIdNotFoundError,
   operationFailedError,
+  similarSelectorsLine,
   staleNodeError,
   type ErrorWithSuggestion,
+  type NoMatchContext,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import type { LayoutSize } from '@/ipc/protocol/domTypes.js';
@@ -36,7 +38,12 @@ import {
   ELEMENT_TEXT_LENGTH,
   textPreview,
 } from '@/runtime/dom/elementInfo.js';
-import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import {
+  DEEP_QUERY_JS,
+  UNSEARCHED_CONTENT_JS,
+  pageNamesJS,
+  selectorArgsJS,
+} from '@/runtime/dom/targetNode.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import type {
   A11yNode,
@@ -53,6 +60,7 @@ import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { parseSelectorFilters, withoutVisibleFilters } from '@/utils/selectorFilters.js';
+import { findSimilarNames, parseSingleNameSelector } from '@/utils/suggestions.js';
 
 const log = createLogger('dom');
 
@@ -144,45 +152,73 @@ async function withSelection<T>(
 
 /**
  * The "no nodes" error for a selector that matched nothing. One more page
- * evaluation, on this failure path only, tells whether the page is still
- * loading (the error then suggests `dom wait`) and, when the selector uses
- * `:visible`, how many elements match without it.
+ * evaluation, on this failure path only, tells what the page says about it
+ * ({@link noMatchContext}).
  *
  * @param selector - Selector as given
  * @returns Message and suggestion
  */
 export async function noMatchesError(selector: string): Promise<ErrorWithSuggestion> {
-  const { hidden, readyState } = await noMatchContext(selector);
-  return noNodesFoundError(selector, hidden, readyState);
+  return noNodesFoundError(selector, await noMatchContext(selector));
+}
+
+/** What {@link noMatchContext} reads from the page */
+interface NoMatchPageValue {
+  hidden?: unknown;
+  readyState?: unknown;
+  unsearched?: { crossOriginFrames?: unknown; embeds?: unknown };
+  names?: unknown;
 }
 
 /**
- * The page's readyState and the number of elements the selector matches
- * with its `:visible` filters removed, in one evaluation.
+ * What the page says about a selector that matched nothing, in one
+ * evaluation: whether it is still loading, how many elements match with the
+ * selector's `:visible` filters removed, whether it has cross-origin iframes
+ * or embeds (which selectors do not search), and for a selector that is a
+ * single id or class, the similar ids or classes on the page.
  *
  * @param selector - Selector as given
- * @returns Hidden matches (0 without a `:visible` filter) and readyState (undefined when the page did not answer)
+ * @returns Context for {@link noNodesFoundError} (empty when the page did not answer)
  */
-async function noMatchContext(selector: string): Promise<{ hidden: number; readyState?: string }> {
+export async function noMatchContext(selector: string): Promise<NoMatchContext> {
   const parts = parseSelectorFilters(selector);
   const unfiltered = parts && withoutVisibleFilters(parts);
+  const single = parseSingleNameSelector(selector);
   const hidden = unfiltered
     ? `(() => { try { return (${DEEP_QUERY_JS})(${JSON.stringify(selector)}, ${JSON.stringify(unfiltered)}).length; } catch (e) { return 0; } })()`
     : '0';
+  const names = single ? pageNamesJS(single.kind) : '[]';
   try {
     const evaluated = await callCDP('Runtime.evaluate', {
-      expression: `({ hidden: ${hidden}, readyState: document.readyState })`,
+      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names} })`,
       returnByValue: true,
     });
     const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
-    const value = (result?.value ?? {}) as { hidden?: unknown; readyState?: unknown };
+    const value = (result?.value ?? {}) as NoMatchPageValue;
+    const similar =
+      single && Array.isArray(value.names)
+        ? similarSelectorsLine(
+            single.kind,
+            findSimilarNames(
+              single.name,
+              value.names.filter((n) => typeof n === 'string')
+            )
+          )
+        : '';
     return {
       hidden: typeof value.hidden === 'number' ? value.hidden : 0,
       ...(typeof value.readyState === 'string' && { readyState: value.readyState }),
+      ...(value.unsearched && {
+        unsearched: {
+          crossOriginFrames: value.unsearched.crossOriginFrames === true,
+          embeds: value.unsearched.embeds === true,
+        },
+      }),
+      ...(similar && { similar }),
     };
   } catch (error) {
     log.debug(`Could not read the page after no match: ${getErrorMessage(error)}`);
-    return { hidden: 0 };
+    return {};
   }
 }
 
@@ -456,9 +492,10 @@ function identifyingAttributes(
  * The text of one element as the page renders it ({@link ELEMENT_TEXT_JS}).
  *
  * @param ref - Node reference
+ * @param full - Read all of a large container's text, not just its start
  * @returns Element text, or empty when the node cannot be read
  */
-async function elementText(ref: NodeRef): Promise<string> {
+async function elementText(ref: NodeRef, full: boolean): Promise<string> {
   const objectGroup = `bdg-text-${process.pid}-${++queryCount}`;
   const resolved = await callCDP('DOM.resolveNode', { ...ref, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
@@ -467,7 +504,8 @@ async function elementText(ref: NodeRef): Promise<string> {
   try {
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: `function () { return (${ELEMENT_TEXT_JS})(this); }`,
+      functionDeclaration: `function (full) { return (${ELEMENT_TEXT_JS})(this, full); }`,
+      arguments: [{ value: full }],
       returnByValue: true,
     });
     const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
@@ -479,22 +517,29 @@ async function elementText(ref: NodeRef): Promise<string> {
 }
 
 /**
- * Get DOM context (tag, classes, text preview) for a node.
+ * Get DOM context (tag, classes, text preview) for a node: a one-line
+ * preview, and up to {@link ELEMENT_TEXT_LENGTH} characters of text when it
+ * is longer (all of it with `full`).
  *
  * @param ref - Node reference
+ * @param options - `full`: the whole text instead of its first 500 characters
  * @returns DOM context, or null if the node does not exist
  */
-export async function getDomContext(ref: NodeRef): Promise<DomContext | null> {
+export async function getDomContext(
+  ref: NodeRef,
+  options: { full?: boolean } = {}
+): Promise<DomContext | null> {
   await callCDP('DOM.enable', {});
   const desc = await describeNode(ref);
   if (!desc) {
     log.debug(`No DOM context for ${JSON.stringify(ref)}`);
     return null;
   }
+  const full = options.full === true;
   const classes = unpackAttributes(desc.attributes)['class']?.split(/\s+/).filter(Boolean);
-  const text = await elementText(ref);
+  const text = await elementText(ref, full);
   const preview = textPreview(text);
-  const longer = textPreview(text, ELEMENT_TEXT_LENGTH);
+  const longer = textPreview(text, full ? Number.POSITIVE_INFINITY : ELEMENT_TEXT_LENGTH);
   return {
     tag: desc.nodeName.toLowerCase(),
     ...(classes && classes.length > 0 && { classes }),

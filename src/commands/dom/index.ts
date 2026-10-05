@@ -99,6 +99,7 @@ export function registerDomCommands(program: Command): void {
       'CSS selector or index from query results (e.g., ".error", "#app", 0); optional with --node-id'
     )
     .option('--raw', 'Output raw HTML with all filtering options')
+    .option('--full', 'Show all of the element text (default: the first 500 characters)')
     .option('--all', 'Get all matches (only with --raw)')
     .option('--nth <n>', 'Get the nth match, 0-based (only with --raw)', integerOption(0))
     .option(

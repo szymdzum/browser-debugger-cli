@@ -434,6 +434,10 @@ export interface RawForm {
   method: string;
   step: FormStep | null;
   relevanceScore: number;
+  /** Not rendered (or visibility-hidden), or all its fields are */
+  hidden?: boolean;
+  /** Shown inside an open dialog (`dialog[open]`, `aria-modal`, a dialog role) */
+  inDialog?: boolean;
   inIframe: boolean;
   iframeUrl?: string;
   crossOrigin?: boolean;

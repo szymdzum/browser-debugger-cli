@@ -160,35 +160,45 @@ export function truncateText(text: string, maxLines: number = 3): string {
   return `${truncated}\n  ... (${hiddenCount} more lines)`;
 }
 
+/**
+ * A URL for one line: host and path without the scheme (`www.example.com`
+ * for the root), cut in the middle when too long, keeping the host, the
+ * start of the path and the end of the path and query, where requests to
+ * one API differ (`api.example.com/v1/users/…/orders?page=2`).
+ *
+ * @param url - URL
+ * @param maxLength - Maximum length
+ * @returns Shortened URL; non-web URLs (data:, blob:) cut at the end
+ */
 export function truncateUrl(url: string, maxLength: number = 60): string {
   const parsed = safeParseUrl(url);
   if (!parsed || !WEB_PROTOCOLS.has(parsed.protocol)) {
     return truncateEnd(url, maxLength);
   }
   const host = parsed.host;
-  const path = parsed.pathname.substring(1);
-  const full = `${host}${path ? `/${path}` : ''}`;
-  if (`${full}${parsed.search}`.length <= maxLength) return `${full}${parsed.search}`;
-  if (!parsed.search) return shortenPath(host, path, maxLength);
-  const room = maxLength - full.length;
-  if (room >= MIN_QUERY_SHOWN) return `${full}${cutQuery(parsed.search, room)}`;
-  const query = cutQuery(parsed.search, MIN_QUERY_SHOWN);
-  return `${shortenPath(host, path, maxLength - query.length)}${query}`;
+  const rest = `${parsed.pathname.substring(1)}${parsed.search}`;
+  const shown = parsed.pathname.length > 1 ? `${host}/${rest}` : `${host}${parsed.search}`;
+  if (shown.length <= maxLength) return shown;
+  const room = maxLength - host.length - 2;
+  if (room < MIN_URL_END_SHOWN) return cutMiddle(shown, maxLength);
+  const start = Math.floor(room / 3);
+  return `${host}/${rest.substring(0, start)}…${rest.substring(rest.length - (room - start))}`;
 }
+
+/** Characters of path and query a shortened URL keeps at least besides its host */
+const MIN_URL_END_SHOWN = 12;
 
 /**
- * A query string cut to a length, marked with "…" when cut.
+ * Cut text in the middle, marking the cut with "…".
  *
- * @param search - Query string including "?"
- * @param length - Maximum length
- * @returns The query, or its start followed by "…"
+ * @param text - Text
+ * @param maxLength - Maximum length
+ * @returns Start and end of the text around "…"
  */
-function cutQuery(search: string, length: number): string {
-  return search.length <= length ? search : `${search.substring(0, length - 1)}…`;
+function cutMiddle(text: string, maxLength: number): string {
+  const head = Math.ceil((maxLength - 1) / 2);
+  return `${text.substring(0, head)}…${text.substring(text.length - (maxLength - 1 - head))}`;
 }
-
-/** Characters of a long query string kept, so similar requests stay distinguishable */
-const MIN_QUERY_SHOWN = 12;
 
 /** Protocols whose URLs are shown as host/path (others, like data: or blob:, verbatim) */
 const WEB_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:']);
@@ -202,23 +212,6 @@ const WEB_PROTOCOLS = new Set(['http:', 'https:', 'ws:', 'wss:']);
  */
 function truncateEnd(text: string, maxLength: number): string {
   return text.length > maxLength ? text.substring(0, maxLength - 3) + '...' : text;
-}
-
-/**
- * Shorten a long host/path by eliding its middle segments.
- *
- * @param host - Host (with port)
- * @param path - Path without the leading slash
- * @param maxLength - Maximum length
- * @returns e.g. "example.com/docs/.../page"
- */
-function shortenPath(host: string, path: string, maxLength: number): string {
-  const parts = path.split('/');
-  const first = parts[0];
-  const last = parts[parts.length - 1];
-  if (parts.length <= 2 || !first || !last) return truncateEnd(`${host}/${path}`, maxLength);
-  const elided = `${host}/${first}/.../${last}`;
-  return elided.length <= maxLength ? elided : `${host}/${first}/.../${last.substring(0, 8)}`;
 }
 
 export function pluralize(count: number, singular: string, plural?: string): string {

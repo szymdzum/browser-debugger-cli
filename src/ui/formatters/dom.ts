@@ -4,6 +4,7 @@ import { OutputFormatter } from '@/ui/formatting.js';
 import {
   frameLabel,
   moreMatchesNote,
+  framesStillLoadingNote,
   noFramesMessage,
   queryNextSteps,
   screenshotGrownNote,
@@ -172,9 +173,10 @@ function looksLikeOtherValue(text: string): boolean {
 
 /**
  * Format the page's iframes, one per line, nested frames indented below
- * their parent.
+ * their parent. While the page is still loading (`readyState` set), the list
+ * may be incomplete, and says so.
  *
- * @param data - Frames from `bdg dom frames`
+ * @param data - Frames from `bdg dom frames`, with the readyState of a page still loading
  * @returns Formatted list
  *
  * @example
@@ -184,16 +186,16 @@ function looksLikeOtherValue(text: string): boolean {
  *   [2] about:blank  same-origin
  * ```
  */
-export function formatDomFrames(data: { frames: DomFrame[] }): string {
-  if (data.frames.length === 0) return noFramesMessage();
+export function formatDomFrames(data: { frames: DomFrame[]; readyState?: string }): string {
+  const loading = data.readyState !== undefined && data.readyState !== 'complete';
+  if (data.frames.length === 0) return loading ? framesStillLoadingNote(true) : noFramesMessage();
   const depthOf = new Map<number, number>();
-  return data.frames
-    .map((frame) => {
-      const depth = frame.parentIndex === undefined ? 0 : (depthOf.get(frame.parentIndex) ?? 0) + 1;
-      depthOf.set(frame.index, depth);
-      return '  '.repeat(depth) + frameLabel(frame);
-    })
-    .join('\n');
+  const lines = data.frames.map((frame) => {
+    const depth = frame.parentIndex === undefined ? 0 : (depthOf.get(frame.parentIndex) ?? 0) + 1;
+    depthOf.set(frame.index, depth);
+    return '  '.repeat(depth) + frameLabel(frame);
+  });
+  return [...lines, ...(loading ? [framesStillLoadingNote(false)] : [])].join('\n');
 }
 
 /**

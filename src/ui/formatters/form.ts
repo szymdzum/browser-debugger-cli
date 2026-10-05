@@ -87,6 +87,10 @@ function formatFieldValue(field: FormField): string {
  * @returns Status string with icon
  */
 function formatFieldStatus(field: FormField): string {
+  if (field.hidden) {
+    return 'hidden';
+  }
+
   if (field.disabled) {
     return 'disabled';
   }
@@ -163,13 +167,24 @@ function formatButtonRow(button: FormButton): string {
  * @returns Header string
  */
 function formatFormHeader(form: DiscoveredForm): string {
-  let header = `Form: "${form.name ?? 'Unnamed'}"`;
+  let header = `Form: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)}`;
 
   if (form.step) {
     header += ` (step ${form.step.current} of ${form.step.total})`;
   }
 
   return header;
+}
+
+/**
+ * Marker of a form shown in an open dialog or not shown at all.
+ *
+ * @param form - Form (or its listing in "Other forms")
+ * @returns ` (in dialog)`, ` (hidden)`, or empty
+ */
+function formVisibilityMarker(form: Pick<DiscoveredForm, 'hidden' | 'inDialog'>): string {
+  if (form.hidden) return ' (hidden)';
+  return form.inDialog ? ' (in dialog)' : '';
 }
 
 /**
@@ -247,9 +262,7 @@ function formatSingleForm(form: DiscoveredForm, fmt: OutputFormatter, brief = fa
   fmt.text('─'.repeat(70));
 
   for (const field of form.fields) {
-    if (!field.hidden) {
-      fmt.text(formatFieldRow(field));
-    }
+    fmt.text(formatFieldRow(field));
   }
 
   if (form.buttons.length > 0) {
@@ -283,12 +296,12 @@ function formatBriefFields(form: DiscoveredForm, fmt: OutputFormatter): void {
   fmt.text('─'.repeat(70));
 
   for (const field of form.fields) {
-    if (field.hidden) continue;
     const idx = `[${field.index}]`.padEnd(4);
     const type = (field.inputType ?? field.type).slice(0, 11).padEnd(12);
     const label = (field.label ?? field.name ?? '(no label)').slice(0, 23).padEnd(24);
     const req = (field.required ? '*' : '').padEnd(3);
-    fmt.text(`${idx} ${type} ${label} ${req} ${formatFieldValue(field)}`);
+    const hidden = field.hidden ? ' (hidden)' : '';
+    fmt.text(`${idx} ${type} ${label} ${req} ${formatFieldValue(field)}${hidden}`);
   }
 
   if (form.buttons.length > 0) {
@@ -316,7 +329,9 @@ function formatOtherForms(
   fmt.blank();
   fmt.text('Other forms on page:');
   for (const form of others) {
-    fmt.text(`  Form ${form.index}: "${form.name ?? 'Unnamed'}" - ${form.fieldCount} field(s)`);
+    fmt.text(
+      `  Form ${form.index}: "${form.name ?? 'Unnamed'}"${formVisibilityMarker(form)} - ${form.fieldCount} field(s)`
+    );
   }
   fmt.blank();
   fmt.text('Use --all to see all forms');

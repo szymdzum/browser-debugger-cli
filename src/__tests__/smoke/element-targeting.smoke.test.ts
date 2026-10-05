@@ -69,6 +69,23 @@ const SCOPES_HTML =
   '<div id="hidden-script" style="display:none">Hidden words<script>var secretWord = 1;</script>' +
   '<style>.secretWord{}</style></div>';
 
+const TEXT_HTML =
+  '<div id="flash" class="flash">Saved your changes!<a href="#" class="close">×</a></div>' +
+  `<div id="long-text">${'Lorem ipsum dolor sit amet. '.repeat(40)}The end.</div>`;
+
+/** Same click target: an overlay span in the link, a news card's overlay link, a button under it */
+const CLICK_TARGETS_HTML =
+  '<div id="click-targets">' +
+  '<a href="#pic" style="position: absolute; left: 450px; top: 10px; width: 60px; height: 40px">' +
+  '<img id="pic" style="display: block; width: 60px; height: 40px" alt="">' +
+  '<span style="position: absolute; inset: 0"></span></a>' +
+  '<div style="position: absolute; left: 520px; top: 10px; width: 160px; height: 80px">' +
+  '<h3 id="faux-headline" style="margin: 0; font-size: 14px">Headline</h3>' +
+  '<button id="under-card-link" style="left: 0; top: 40px">Save</button>' +
+  '<a href="#story" style="position: absolute; inset: 0"></a></div>' +
+  '<div style="position: absolute; top: 2500px; left: 0; height: 300px">' +
+  '<div id="sticky-note" style="position: sticky; top: 0">Note</div></div></div>';
+
 const VISIBILITY_HTML =
   '<ul id="shown"><li>shown</li><li style="display:none">gone</li>' +
   '<li style="visibility:hidden">invisible</li></ul>';
@@ -203,6 +220,23 @@ void describe('Element targeting', () => {
     assert.equal((await queryPreviews('#shown li:text-is("gone")')).length, 1);
     const output = await bdg(['dom', 'query', '#shown li:has-text("invisible"):visible'], 83);
     assert.match(output, /1 element match(es)? without :visible but is hidden/);
+  });
+
+  void it('shows all of the text with --full, without close buttons', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(TEXT_HTML)}); 1`
+    );
+    assert.match(
+      await bdg(['dom', 'get', '#flash']),
+      /"Saved your changes!"$/m,
+      'no × at the end of the flash text'
+    );
+    const cut = await bdg(['dom', 'get', '#long-text']);
+    assert.match(cut, /\(cut at 500 characters; --full shows all of it\)$/m);
+    const full = await bdg(['dom', 'get', '#long-text', '--full']);
+    assert.match(full, /The end\.$/m);
+    assert.doesNotMatch(full, /cut at 500/);
+    await bdg(['dom', 'get', '#long-text', '--full', '--raw'], 81);
   });
 
   void it('fails with 87 after the page navigated', async () => {
@@ -476,6 +510,37 @@ void describe('Element layout', () => {
     assert.equal(button?.inViewport, 'visible');
     assert.ok((button?.bounds.x ?? 0) >= 300 + 5 + 10 + 120, JSON.stringify(button));
     assert.ok((button?.bounds.y ?? 0) >= 100 + 5 + 10, JSON.stringify(button));
+  });
+
+  void it('ignores covers that are part of the same click target, and explains sticky and partly visible elements', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(CLICK_TARGETS_HTML)}); 1`
+    );
+    try {
+      const data = await layout('#pic, #faux-headline, #under-card-link');
+      assert.deepEqual(
+        data.elements.map((element) => [element.inViewport, element.coveredBy]),
+        [
+          ['visible', undefined],
+          ['visible', undefined],
+          ['visible', 'a'],
+        ],
+        JSON.stringify(data.elements)
+      );
+      assert.match(
+        await bdg(['dom', 'layout', '#sticky-note']),
+        /below fold \(off-screen: sticky position, page scroll moves it only until it sticks\)$/m
+      );
+      await evaluate(
+        "document.getElementById('click-targets').insertAdjacentHTML('beforeend', '<p id=\"straddle\" style=\"position: absolute; left: 10px; margin: 0; width: 100px; height: 60px; top: ' + (document.documentElement.clientHeight + scrollY - 20) + 'px\">Straddle</p>'); 1"
+      );
+      assert.match(
+        await bdg(['dom', 'layout', '#straddle']),
+        /partly visible \(33%\); scroll down \d+px to see all of it$/m
+      );
+    } finally {
+      await evaluate("document.getElementById('click-targets').remove(); 1");
+    }
   });
 
   void it('marks query matches outside the viewport and measures cached indices', async () => {

@@ -21,6 +21,32 @@ export const FORM_DISCOVERY_SCRIPT = `
 (function() {
   const result = { forms: [] };
 
+  // Rendered and not visibility-hidden, ancestors included (opacity is left
+  // out: styled checkboxes and radios are often transparent)
+  function isShown(element) {
+    if (typeof element.checkVisibility === 'function') {
+      return element.checkVisibility({ visibilityProperty: true });
+    }
+    const style = window.getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  }
+
+  // Inside an open dialog: <dialog open>, aria-modal or a dialog role, or a
+  // modal without them (DocSearch): a container below <body> whose class
+  // names a modal or dialog, or a fixed overlay over half the viewport or more
+  function inDialog(element) {
+    if (element.closest('dialog[open], [aria-modal="true"], [role="dialog"], [role="alertdialog"]')) return true;
+    const viewportArea = window.innerWidth * window.innerHeight;
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+      const className = typeof node.className === 'string' ? node.className : '';
+      if (/(^|[\\s_-])(modal|dialog)($|[\\s_-])/i.test(className)) return true;
+      if (window.getComputedStyle(node).position !== 'fixed') continue;
+      const box = node.getBoundingClientRect();
+      if (box.width * box.height >= viewportArea / 2) return true;
+    }
+    return false;
+  }
+
   function isUnique(selector) {
     try {
       return document.querySelectorAll(selector).length === 1;
@@ -421,8 +447,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     const allInputs = new Set([...nativeInputs, ...customInputs]);
     let idx = startIndex;
     for (const el of allInputs) {
-      const style = window.getComputedStyle(el);
-      const isHidden = style.display === 'none' || style.visibility === 'hidden' || el.type === 'hidden';
+      const isHidden = el.type === 'hidden' || !isShown(el);
       const value = getFieldValue(el);
       fields.push({
         index: idx,
@@ -465,8 +490,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     );
     let idx = startIndex;
     for (const el of buttonEls) {
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      if (!isShown(el)) continue;
       const type = el.type?.toLowerCase() || 'button';
       const btnType = type === 'submit' ? 'submit' : type === 'reset' ? 'reset' : 'button';
       const explicitSubmit = btnType === 'submit' &&
@@ -502,6 +526,8 @@ export const FORM_DISCOVERY_SCRIPT = `
         method: 'GET',
         step: null,
         relevanceScore: bodyFields.length * 3,
+        hidden: false,
+        inDialog: false,
         inIframe: false,
         fields: bodyFields,
         buttons: bodyButtons
@@ -515,6 +541,7 @@ export const FORM_DISCOVERY_SCRIPT = `
       const buttons = discoverButtons(formEl, globalIndex);
       globalIndex += buttons.length;
       const inIframe = formEl.ownerDocument !== document;
+      const shown = isShown(formEl) && (fields.length === 0 || fields.some((f) => !f.hidden));
       result.forms.push({
         index: i,
         name: extractFormName(formEl),
@@ -522,14 +549,14 @@ export const FORM_DISCOVERY_SCRIPT = `
         method: (formEl.method || 'GET').toUpperCase(),
         step: detectFormStep(formEl),
         relevanceScore: calculateRelevance(formEl, fields, buttons),
+        hidden: !shown,
+        inDialog: shown && inDialog(formEl),
         inIframe: inIframe,
         fields: fields,
         buttons: buttons
       });
     }
   }
-
-  result.forms.sort((a, b) => b.relevanceScore - a.relevanceScore);
 
   // Forms the main document does not contain may be in its same-origin iframes
   if (result.forms.length === 0) {

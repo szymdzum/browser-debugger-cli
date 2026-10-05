@@ -11,6 +11,36 @@ const PREVIEW_LENGTH = 80;
 export const ELEMENT_TEXT_LENGTH = 500;
 
 /**
+ * Page-side removal of decorations from an element's text: close buttons
+ * (`.close`, `aria-label="Close"` or `"Dismiss"`, a button or link showing
+ * just `×`) and `aria-hidden` icons (text without letters or digits), so a
+ * flash message does not end in "×". `aria-hidden` text with words is kept:
+ * it is often the visible twin of a screen-reader text. Each decoration's
+ * text is removed once, from the end.
+ */
+export const WITHOUT_DECORATIONS_JS = `(el, text) => {
+  if (!text || typeof el.querySelectorAll !== 'function') return text;
+  const glyph = /^\\s*[×✕✖✗⨯]\\s*$/;
+  const textOf = (node) => (typeof node.innerText === 'string' ? node.innerText : node.textContent || '').trim();
+  const closer = '.close, [aria-label="close" i], [aria-label="dismiss" i]';
+  const rendered = (node) => !node.checkVisibility || node.checkVisibility();
+  const found = Array.from(el.querySelectorAll(closer + ', [aria-hidden="true"]'))
+    .filter((node) => rendered(node) && (node.matches(closer) || !/[\\p{L}\\p{N}]/u.test(textOf(node))));
+  if (/[×✕✖✗⨯]/.test(text)) {
+    found.push(...Array.from(el.querySelectorAll('button, a, [role="button"]')).filter((node) => glyph.test(node.textContent || '')));
+  }
+  const unique = Array.from(new Set(found));
+  const outermost = unique.filter((node) => !unique.some((other) => other !== node && other.contains(node)));
+  let result = text;
+  for (const node of outermost) {
+    const part = textOf(node);
+    const at = part ? result.lastIndexOf(part) : -1;
+    if (at >= 0) result = result.slice(0, at) + result.slice(at + part.length);
+  }
+  return result;
+}`;
+
+/**
  * Page-side text of an element as a user sees it: `innerText` for a rendered
  * element (CSS-hidden parts left out, inline elements not split apart), none
  * for an element that is not rendered, `textContent` for SVG and other
@@ -18,25 +48,27 @@ export const ELEMENT_TEXT_LENGTH = 500;
  * of their own, but their children are shown), and the label of an
  * `<option>` (which its `<select>` renders). For large containers (more
  * than 2000 characters of text) only the start is read, from the text nodes
- * whose parent is rendered, so a preview never lays out a whole page's text.
+ * whose parent is rendered, so a preview never lays out a whole page's text,
+ * unless `full` is set. Decorations are left out ({@link WITHOUT_DECORATIONS_JS}).
  */
-export const ELEMENT_TEXT_JS = `(el) => {
+export const ELEMENT_TEXT_JS = `(el, full) => {
+  const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
   const all = el.textContent || '';
   if (el.tagName === 'OPTION') return el.label;
-  if (typeof el.innerText !== 'string') return all.slice(0, 2000);
+  if (typeof el.innerText !== 'string') return full ? all : all.slice(0, 2000);
   const rendered = (node) => !node.checkVisibility || node.checkVisibility();
   if (!rendered(el)) {
     const boxless = el.ownerDocument.defaultView.getComputedStyle(el).display === 'contents';
-    return boxless ? all.slice(0, 2000) : '';
+    return boxless ? withoutDecorations(el, full ? all : all.slice(0, 2000)) : '';
   }
-  if (all.length <= 2000) return el.innerText;
+  if (full || all.length <= 2000) return withoutDecorations(el, el.innerText);
   const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let start = '';
   while (start.length < 1000 && walker.nextNode()) {
     const parent = walker.currentNode.parentElement;
     if (!parent || rendered(parent)) start += walker.currentNode.data;
   }
-  return start;
+  return withoutDecorations(el, start);
 }`;
 
 /**
@@ -48,31 +80,55 @@ export const ELEMENT_DESCRIPTION_JS = `(node) => node.tagName.toLowerCase() +
   (node.classList && node.classList.length ? '.' + Array.from(node.classList).slice(0, 2).join('.') : '')`;
 
 /**
+ * Page-side position of an element among its parent's children with the
+ * same short description ({@link ELEMENT_DESCRIPTION_JS}), e.g. `(2nd of 3)`;
+ * empty when it is the only one.
+ */
+export const SIBLING_POSITION_JS = `(el) => {
+  const describe = ${ELEMENT_DESCRIPTION_JS};
+  const parent = el.parentElement;
+  if (!parent) return '';
+  const own = describe(el);
+  const same = Array.from(parent.children).filter((child) => describe(child) === own);
+  if (same.length < 2) return '';
+  const n = same.indexOf(el) + 1;
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  const suffix = teen ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] || 'th';
+  return '(' + n + suffix + ' of ' + same.length + ')';
+}`;
+
+/**
  * Page-side identity of an element an action hit, so the output says which
- * one it was: its short description ({@link ELEMENT_DESCRIPTION_JS}) and
- * visible text (button value for button inputs), e.g.
- * `button#add.btn "Add to cart"`. An element without visible text and
- * without an id is named by the nearest of three ancestors that has text,
- * e.g. `input.toggle in div.view "Write report"` (rows of a list share their
- * aria-label), leaving out the options of `<select>`s in it (read like
- * `innerText`: CSS-hidden text is left out of a rendered ancestor; at most
- * 500 text nodes; selects in shadow roots are not looked into), and never
- * past an editable ancestor, whose text may be typed input; otherwise its
- * aria-label, placeholder or title is used. A `<select>` is named by its
- * label, aria-label or name, else by its selected option, e.g.
- * `select.sort "Sort products"`. Texts are cut at 40 characters.
- * Contenteditable elements count as controls: what was typed into them is
- * never echoed (nor their ancestors' text).
+ * one it was, as one string: its short description
+ * ({@link ELEMENT_DESCRIPTION_JS}) and visible text (button value for button
+ * inputs, decorations left out), e.g. `button#add.btn "Add to cart"`. A
+ * `<select>` is named by its label, aria-label or name, else by its selected
+ * option, e.g. `select.sort "Sort products"`. An element without visible
+ * text is described by itself first: by its position among same-looking
+ * siblings ({@link SIBLING_POSITION_JS}), e.g. `div.figure (2nd of 3)`, with
+ * its aria-label, placeholder or title when it has one. Only an element
+ * without an id that is the only one of its kind is named by the nearest of
+ * three ancestors that has text, e.g. `input.toggle in div.view "Write
+ * report"` (rows of a list share their aria-label), leaving out the options
+ * of `<select>`s in it (read like `innerText`: CSS-hidden text is left out of
+ * a rendered ancestor; at most 500 text nodes; selects in shadow roots are
+ * not looked into), and never past an editable ancestor, whose text may be
+ * typed input; otherwise its aria-label, placeholder or title is used. Texts
+ * are cut at 40 characters. Contenteditable elements count as controls: what
+ * was typed into them is never echoed (nor their ancestors' text).
  */
 export const ELEMENT_IDENTITY_JS = `(el) => {
   const describe = ${ELEMENT_DESCRIPTION_JS};
+  const siblingPosition = ${SIBLING_POSITION_JS};
+  const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
   const clean = (text) => (text || '').replace(/\\s+/g, ' ').trim();
   const cut = (text) => {
     const characters = Array.from(text);
     return characters.length > 40 ? characters.slice(0, 40).join('') + '…' : text;
   };
   const isControl = (node) => /^(input|select|textarea)$/.test(node.localName) || node.isContentEditable;
-  const shownText = (node) => (isControl(node) ? '' : clean(typeof node.innerText === 'string' ? node.innerText : node.textContent));
+  const shownText = (node) =>
+    isControl(node) ? '' : clean(withoutDecorations(node, typeof node.innerText === 'string' ? node.innerText : node.textContent));
   const buttonValue = (node) => (node.localName === 'input' && /^(submit|button|reset)$/i.test(node.type) ? clean(node.value) : '');
   const attributeText = (node) =>
     clean(node.getAttribute('aria-label')) || clean(node.getAttribute('placeholder')) || clean(node.getAttribute('title'));
@@ -94,16 +150,19 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
     }
     return clean(text);
   };
+  const quoted = (text) => (text ? ' "' + cut(text) + '"' : '');
   const visible = shownText(el) || buttonValue(el) || (el.localName === 'select' ? selectName(el) : '');
-  if (visible) return describe(el) + ' "' + cut(visible) + '"';
+  if (visible) return describe(el) + quoted(visible);
+  const attribute = attributeText(el);
+  const position = siblingPosition(el);
+  if (position) return describe(el) + ' ' + position + quoted(attribute);
   let ancestor = el.id || el.isContentEditable ? null : el.parentElement;
   for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
     if (isControl(ancestor)) break;
     const text = textOutsideSelects(ancestor);
-    if (text) return describe(el) + ' in ' + describe(ancestor) + ' "' + cut(text) + '"';
+    if (text) return describe(el) + ' in ' + describe(ancestor) + quoted(text);
   }
-  const attribute = attributeText(el);
-  return attribute ? describe(el) + ' "' + cut(attribute) + '"' : describe(el);
+  return describe(el) + quoted(attribute);
 }`;
 
 /**

@@ -171,6 +171,40 @@ export const FIND_ELEMENTS_JS = `function (selector, parts) {
 }`;
 
 /**
+ * Page-side check of what selectors cannot search in the top document:
+ * iframes whose document cannot be read (cross-origin) and `<object>`/`<embed>`
+ * elements. Cheap: no frame is entered.
+ */
+export const UNSEARCHED_CONTENT_JS = `(() => {
+  const frames = Array.from(document.querySelectorAll('iframe, frame'));
+  const unreadable = (frame) => {
+    try { return !frame.contentDocument; } catch (e) { return true; }
+  };
+  return { crossOriginFrames: frames.some(unreadable), embeds: !!document.querySelector('object, embed') };
+})()`;
+
+/** Elements whose ids or classes are read for "did you mean" (bounds the work on huge pages) */
+const NAME_SCAN_LIMIT = 5000;
+
+/**
+ * Page-side ids (`kind` "id") or classes (`kind` "class") in the top
+ * document, from the first {@link NAME_SCAN_LIMIT} elements that have one.
+ *
+ * @param kind - Which names to read
+ * @returns Expression evaluating to the distinct names
+ */
+export function pageNamesJS(kind: 'id' | 'class'): string {
+  return `(() => {
+  const names = new Set();
+  const elements = Array.from(document.querySelectorAll('[${kind}]')).slice(0, ${NAME_SCAN_LIMIT});
+  for (const el of elements) {
+    ${kind === 'id' ? 'if (el.id) names.add(el.id);' : 'for (const name of el.classList) names.add(name);'}
+  }
+  return Array.from(names);
+})()`;
+}
+
+/**
  * Page-side: the form control a `<label>` stands for (`label.control`: its
  * `for` target or the control inside it), or null for other elements and
  * labels without one. Fill, click and key presses act on that control, like

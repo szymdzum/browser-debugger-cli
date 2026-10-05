@@ -5,6 +5,7 @@ import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { colorSchemeLabel, sessionActiveLine } from '@/ui/messages/commands.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -72,6 +73,7 @@ export function formatSessionStatus(
 
   const fmt = new OutputFormatter();
 
+  fmt.text(sessionActiveLine(pageState)).blank();
   fmt.text('Session Status').separator('━', 50);
   fmt.keyValueList(
     [
@@ -161,6 +163,7 @@ export function formatSessionStatus(
 /**
  * Viewport and color scheme lines of the target: what the page renders with,
  * and whether `--viewport` / `--color-scheme` set it or it is the system's.
+ * The color scheme is the `prefers-color-scheme` the page sees, not its theme.
  *
  * @param metadata - Session metadata (the start options)
  * @param pageState - Page state (what the page reported)
@@ -183,10 +186,10 @@ export function appearanceLines(
       : []),
     ...(scheme
       ? [
-          [
-            'Color scheme',
-            `${scheme} (${metadata.colorScheme ? '--color-scheme' : 'system setting'})`,
-          ] as [string, string],
+          ['Color scheme', colorSchemeLabel(scheme, metadata.colorScheme !== undefined)] as [
+            string,
+            string,
+          ],
         ]
       : []),
   ];

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
+import { OFF_SCREEN_REASONS } from '@/runtime/dom/elementGeometry.js';
 import { formatLayout, layoutLine } from '@/ui/formatters/layout.js';
 import { scrollLockedReason } from '@/ui/messages/commands.js';
 
@@ -86,7 +87,7 @@ void describe('layoutLine', () => {
     );
     assert.equal(
       line,
-      '[0] button#save "Save"  420,1180 120×40  partly visible (40%) (scroll left 20px to centre it)  covered by div#overlay.backdrop  in iframe#pay'
+      '[0] button#save "Save"  420,1180 120×40  partly visible (40%); scroll left 20px to see all of it  covered by div#overlay.backdrop  in iframe#pay'
     );
   });
 
@@ -132,6 +133,34 @@ void describe('layoutLine', () => {
     );
   });
 
+  void it('tells how to see all of a partly visible element, or why scrolling does not', () => {
+    const partly = layout({ inViewport: 'partly', percentVisible: 24, scrollBy: { x: 0, y: 302 } });
+    assert.match(layoutLine(partly), /partly visible \(24%\); scroll down 302px to see all of it$/);
+    const tall = layout({
+      inViewport: 'partly',
+      percentVisible: 60,
+      bounds: { x: 0, y: 0, width: 100, height: 2000 },
+    });
+    assert.match(
+      layoutLine(tall, PAGE.viewport),
+      /partly visible \(60%\); scroll down 500px to show it from its start$/
+    );
+    const { scrollBy: _scrollBy, ...rest } = layout();
+    for (const reason of Object.values({
+      fixed: OFF_SCREEN_REASONS.fixed,
+      sticky: OFF_SCREEN_REASONS.sticky,
+    })) {
+      assert.match(
+        layoutLine({ ...rest, inViewport: 'partly', percentVisible: 40, offScreenReason: reason }),
+        new RegExp(`partly visible \\(40%\\); ${reason}$`)
+      );
+    }
+    assert.match(
+      layoutLine({ ...rest, inViewport: 'above', offScreenReason: OFF_SCREEN_REASONS.sticky }),
+      /above viewport \(off-screen: sticky position, page scroll moves it only until it sticks\)$/
+    );
+  });
+
   void it('says why a rendered element is invisible (opacity on it or an ancestor, clip-path)', () => {
     assert.match(
       layoutLine(layout({ inViewport: 'visible', invisible: 'opacity: 0 on div#menu' })),
@@ -162,7 +191,7 @@ void describe('formatLayout', () => {
       page: { ...PAGE, colorScheme: 'dark' },
       elements: [layout()],
     });
-    assert.match(output, /document 1280×2400, dark color scheme$/m);
+    assert.match(output, /document 1280×2400, prefers-color-scheme: dark$/m);
   });
 
   void it('points to --json for the rest when JSON lists every match', () => {

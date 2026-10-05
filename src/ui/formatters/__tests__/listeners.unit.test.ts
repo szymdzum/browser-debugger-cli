@@ -44,7 +44,10 @@ void describe('formatListeners', () => {
       ],
     });
     const lines = output.split('\n');
-    assert.equal(lines[0], 'Event listeners for button#save (3)');
+    assert.equal(
+      lines[0],
+      'Event listeners for button#save (3: 2 on the element, 1 on document and window)'
+    );
     assert.equal(lines[2], 'click');
     assert.match(
       lines[3] ?? '',
@@ -104,7 +107,10 @@ void describe('handlerLocation', () => {
       ],
     });
     const lines = output.split('\n');
-    assert.equal(lines[0], 'Event listeners for button.cta [2] in iframe#app (7)');
+    assert.equal(
+      lines[0],
+      'Event listeners for button.cta [2] in iframe#app (7: 1 on the element, 6 on ancestors)'
+    );
     assert.match(lines[3] ?? '', /\[no-op\] function/);
     assert.match(output, /Framework roots \(one line per node; --all lists each listener\):/);
     assert.match(

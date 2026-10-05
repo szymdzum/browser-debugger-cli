@@ -7,7 +7,7 @@
 
 import type { Command } from 'commander';
 
-import { calculateSummary, primaryButtonIndex } from '@/commands/dom/formSummary.js';
+import { calculateSummary, orderForms, primaryButtonIndex } from '@/commands/dom/formSummary.js';
 import { resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -276,6 +276,8 @@ function transformForm(raw: RawForm): DiscoveredForm {
     method: raw.method,
     step: raw.step ?? undefined,
     relevanceScore: raw.relevanceScore,
+    hidden: raw.hidden === true,
+    inDialog: raw.inDialog === true,
     fields,
     buttons,
     summary: calculateSummary(fields, buttons),
@@ -367,7 +369,7 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
         };
       }
 
-      const allForms = rawData.forms.map(transformForm);
+      const allForms = orderForms(rawData.forms).map(transformForm);
       const forms = options.all ? allForms : [allForms[0] as DiscoveredForm];
 
       // Cache ALL forms so global indices work with bdg dom fill/click
@@ -381,7 +383,11 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
           otherForms: allForms.slice(1).map((form) => ({
             index: form.index,
             name: form.name,
-            fieldCount: form.fields.filter((field) => !field.hidden).length,
+            fieldCount: form.hidden
+              ? form.fields.length
+              : form.fields.filter((field) => !field.hidden).length,
+            hidden: form.hidden,
+            inDialog: form.inDialog,
           })),
         }),
         brief: options.brief,

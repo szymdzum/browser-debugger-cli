@@ -158,7 +158,12 @@ export type DetailsCommandOptions = BaseOptions & {
 export type DomQueryCommandOptions = BaseOptions;
 
 /** Options for DOM get command */
-export type DomGetCommandOptions = BaseOptions & RawOptions & SelectionOptions;
+export type DomGetCommandOptions = BaseOptions &
+  RawOptions &
+  SelectionOptions & {
+    /** All of the element's text instead of its first 500 characters (semantic output) */
+    full?: boolean;
+  };
 
 /** Options for DOM screenshot command */
 export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;

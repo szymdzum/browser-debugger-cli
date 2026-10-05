@@ -77,7 +77,7 @@ function buildPropertiesText(node: A11yNode): string {
  * Format a semantic node together with DOM context for human-readable output.
  *
  * The role line is followed by up to 500 characters of the element's text
- * when it is longer than the one-line preview.
+ * (all of it with `dom get --full`) when it is longer than the one-line preview.
  *
  * @param data - Accessibility node and optional DOM context
  * @returns Role line, plus a text line for elements with longer text
@@ -118,12 +118,13 @@ export function resolveNodeWithFallback(
  * one.
  */
 export async function queryDomContextBySelector(
-  selector: string
+  selector: string,
+  options: { full?: boolean } = {}
 ): Promise<{ nodeId: number | undefined; domContext: DomContext | null }> {
   const [backendNodeId] = await resolveBackendNodeIds([selector]);
   if (backendNodeId === undefined) {
     return { nodeId: undefined, domContext: null };
   }
-  const domContext = await getDomContext({ backendNodeId });
+  const domContext = await getDomContext({ backendNodeId }, options);
   return { nodeId: backendNodeId, domContext };
 }

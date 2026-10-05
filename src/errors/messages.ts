@@ -1048,44 +1048,99 @@ export function elementAtIndexNotFoundError(index: number, selector: string): Er
   };
 }
 
+/** What a page holds that selectors cannot search (a cheap page check) */
+export interface UnsearchedContent {
+  /** Iframes whose document the page cannot read (cross-origin) */
+  crossOriginFrames: boolean;
+  /** `<object>`/`<embed>` elements */
+  embeds: boolean;
+}
+
 /**
  * Where selectors do not reach (open shadow roots and same-origin iframes are
  * searched), and how to reach an element in a cross-origin iframe instead.
+ * When the page was checked, only what it has is named (nothing when it has
+ * neither cross-origin iframes nor embeds; closed shadow roots cannot be
+ * detected).
  *
  * @param selector - Selector that matched nothing
- * @returns Note for "not found" suggestions
+ * @param unsearched - What the page holds, when it was checked
+ * @returns Note for "not found" suggestions (empty when nothing applies)
  */
-export function unreachableElementsNote(selector: string): string {
+export function unreachableElementsNote(selector: string, unsearched?: UnsearchedContent): string {
   const script = `document.querySelector(${JSON.stringify(selector)})`.replaceAll("'", `'\\''`);
+  const framesHelp = `For an element in a cross-origin iframe: ${sessionCommand('bdg dom frames')}, then ${sessionCommand(`bdg dom eval --frame <n> '${script}'`)}`;
+  if (!unsearched) {
+    return joinLines(
+      'Closed shadow roots, cross-origin iframes and <object>/<embed> documents are not searched.',
+      framesHelp
+    );
+  }
+  const places = [
+    unsearched.crossOriginFrames && 'cross-origin iframes',
+    unsearched.embeds && '<object>/<embed> documents',
+  ].filter(Boolean);
+  if (places.length === 0) return '';
   return joinLines(
-    'Closed shadow roots, cross-origin iframes and <object>/<embed> documents are not searched.',
-    `For an element in a cross-origin iframe: ${sessionCommand('bdg dom frames')}, then ${sessionCommand(`bdg dom eval --frame <n> '${script}'`)}`
+    `The page has ${places.join(' and ')}, which are not searched.`,
+    unsearched.crossOriginFrames ? framesHelp : undefined
   );
+}
+
+/**
+ * "Did you mean" for a selector that is a single id or class.
+ *
+ * @param kind - Id or class
+ * @param names - Similar names on the page
+ * @returns e.g. `Did you mean #remove-backpack? (similar id on the page)`; empty without names
+ */
+export function similarSelectorsLine(kind: 'id' | 'class', names: string[]): string {
+  if (names.length === 0) return '';
+  const sigil = kind === 'id' ? '#' : '.';
+  const what = kind === 'id' ? 'id' : 'class';
+  const plural = names.length === 1 ? what : kind === 'id' ? 'ids' : 'classes';
+  return `Did you mean ${names.map((name) => sigil + name).join(', ')}? (similar ${plural} on the page)`;
+}
+
+/** What the page says about a selector that matched nothing */
+export interface NoMatchContext {
+  /** Elements only its `:visible` filters excluded */
+  hidden?: number;
+  /** The page's `document.readyState`, when known (a hint is added while it loads) */
+  readyState?: string;
+  /** What the page holds that selectors cannot search, when checked */
+  unsearched?: UnsearchedContent;
+  /** "Did you mean" line for a single id or class ({@link similarSelectorsLine}) */
+  similar?: string;
 }
 
 /**
  * No nodes found for selector.
  *
  * @param selector - Selector as given
- * @param hiddenMatches - Elements only its `:visible` filters excluded
- * @param readyState - The page's `document.readyState`, when known (a hint is added while it loads)
+ * @param context - What the page says about it (hidden matches, readyState, unsearched content, similar names)
  */
 export function noNodesFoundError(
   selector: string,
-  hiddenMatches = 0,
-  readyState?: string
+  context: NoMatchContext = {}
 ): ErrorWithSuggestion {
+  const hiddenMatches = context.hidden ?? 0;
   const hidden =
     hiddenMatches > 0
       ? hiddenMatches === 1
         ? '1 element matches without :visible but is hidden (check with bdg dom layout). '
         : `${hiddenMatches} elements match without :visible but are hidden (check with bdg dom layout). `
       : '';
+  const note = unreachableElementsNote(selector, context.unsearched);
   return {
     message: `No nodes found matching "${selector}"`,
     suggestion: withLoadingHint(
-      `${hidden}Verify the CSS selector is correct. ${unreachableElementsNote(selector)}`,
-      readyState,
+      joinLines(
+        context.similar,
+        `${hidden}Verify the CSS selector is correct.`,
+        note ? note : undefined
+      ),
+      context.readyState,
       selector
     ),
   };
@@ -1385,6 +1440,31 @@ export const LABEL_WITHOUT_CONTROL: ErrorWithSuggestion = {
   message: 'Element is not fillable (a <label> not associated with a form control)',
   suggestion: `Find the field by its accessible name: bdg dom a11y query ${NAME_QUERY_PLACEHOLDER}, or list the form fields: bdg dom form`,
 };
+
+/**
+ * Why `dom fill` refused an element (used by the page script, which adds the
+ * cause in parentheses, e.g. `The element is read-only (contenteditable="false")`).
+ * All are invalid targets (exit 81), like any element that is not fillable.
+ */
+export const FILL_REFUSALS = {
+  disabled: {
+    message: 'The element is disabled',
+    suggestion: 'Enable the field first (it may depend on another input)',
+  },
+  readOnly: {
+    message: 'The element is read-only',
+    suggestion: 'A user cannot change it either; the page has to make it editable first',
+  },
+  inert: {
+    message: 'The element is inert',
+    suggestion:
+      'The page made it non-interactive (often behind a dialog); close what covers it first',
+  },
+  notFillable: {
+    message: 'Element is not fillable',
+    suggestion: 'Only input, textarea, select, and contenteditable elements can be filled',
+  },
+} as const satisfies Record<string, ErrorWithSuggestion>;
 
 /**
  * Clickable element not found.

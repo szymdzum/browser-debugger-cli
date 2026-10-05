@@ -647,6 +647,10 @@ export interface DiscoveredForm {
   method: string;
   step?: FormStep | undefined;
   relevanceScore: number;
+  /** Not visible (not rendered, visibility-hidden, or all its fields are) */
+  hidden: boolean;
+  /** Shown inside an open dialog: listed first, like visible forms before hidden ones */
+  inDialog: boolean;
   fields: FormField[];
   buttons: FormButton[];
   summary: FormSummary;
@@ -659,7 +663,13 @@ export interface FormDiscoveryResult {
   formCount: number;
   selectedForm: number;
   forms: DiscoveredForm[];
-  /** The forms not shown (without `--all`): name and number of visible fields */
-  otherForms?: Array<{ index: number; name: string | null; fieldCount: number }>;
+  /** The forms not shown (without `--all`): name and number of visible fields (all fields of a hidden form) */
+  otherForms?: Array<{
+    index: number;
+    name: string | null;
+    fieldCount: number;
+    hidden: boolean;
+    inDialog: boolean;
+  }>;
   brief?: boolean | undefined;
 }

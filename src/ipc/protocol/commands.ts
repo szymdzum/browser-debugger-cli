@@ -167,6 +167,14 @@ export interface SessionNetworkHeadersData {
   url: string;
   /** Request ID for correlation with peek output. */
   requestId: string;
+  /** HTTP method. */
+  method?: string;
+  /** HTTP status (0: failed without a response; missing while pending). */
+  status?: number;
+  /** Status text sent by the server (empty for HTTP/2). */
+  statusText?: string;
+  /** Why loading failed, when it did. */
+  errorText?: string;
   /** Request headers. */
   requestHeaders: Record<string, string>;
   /** Response headers. */

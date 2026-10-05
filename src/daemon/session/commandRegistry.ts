@@ -304,12 +304,7 @@ function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
 function findTargetRequestForHeaders(
   store: TelemetryStore,
   requestId: string | undefined
-): {
-  url: string;
-  requestId: string;
-  requestHeaders?: Record<string, string>;
-  responseHeaders?: Record<string, string>;
-} {
+): NetworkRequest {
   if (requestId) {
     return findNetworkRequestOrThrow(store, requestId);
   }
@@ -481,6 +476,10 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       return Promise.resolve({
         url: targetRequest.url,
         requestId: targetRequest.requestId,
+        method: targetRequest.method,
+        ...(targetRequest.status !== undefined && { status: targetRequest.status }),
+        ...(targetRequest.statusText && { statusText: targetRequest.statusText }),
+        ...(targetRequest.errorText && { errorText: targetRequest.errorText }),
         requestHeaders,
         responseHeaders,
       });

@@ -35,6 +35,8 @@ export interface ElementGeometry {
   inert: boolean;
   /** Fixed to the top-level viewport (it or a container is `position: fixed`): page scroll does not move it */
   fixed: boolean;
+  /** It or an ancestor is `position: sticky`: page scroll moves it only until it sticks */
+  sticky?: boolean;
   /** How far the top-level page can scroll from where it is now */
   pageScroll: ScrollRange;
   /**
@@ -86,6 +88,7 @@ export interface ViewportPlacement {
 /** Why page scroll cannot bring an element that is not fully in view into view. */
 export const OFF_SCREEN_REASONS = {
   fixed: 'fixed position, page scroll does not move it',
+  sticky: 'sticky position, page scroll moves it only until it sticks',
   outOfRange: "beyond the page's scroll range",
 } as const;
 
@@ -418,6 +421,12 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     if (box.width === 0 || box.height === 0) return 'zero size';
     return null;
   };
+  const isSticky = () => {
+    for (let n = el; n; n = parentOf(n)) {
+      if (styleOf(n).position === 'sticky') return true;
+    }
+    return false;
+  };
   const isInert = () => {
     for (let n = el; n; n = n.parentElement || (n.getRootNode() && n.getRootNode().host) || null) {
       if (n.hasAttribute('inert')) return true;
@@ -462,7 +471,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const invisible = hidden ? null : invisibleReason(el, describe);
   const lock = scrollLock(top, describe);
   if (lock && fixedBy === top.document.body) fixed = false;
-  return { rect: toBox(rect), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
+  return { rect: toBox(rect), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, sticky: !fixed && isSticky(), pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
 }`;
 
 /**
@@ -600,7 +609,7 @@ export function classifyViewportPosition(
  * What brings a not fully visible element into view: the ancestor or iframe
  * cutting it off when there is one (page scroll alone would not help),
  * otherwise the page scroll, unless the page scroll does not move it (fixed)
- * or cannot go far enough (it is beyond the scrollable area, or the page does
+ * or not all the way (sticky: the scroll needed cannot be told), or cannot go far enough (it is beyond the scrollable area, or the page does
  * not scroll at all, e.g. locked by a dialog).
  *
  * @param geometry - Page-side measurements
@@ -614,6 +623,7 @@ function outOfViewAdvice(
 ): Pick<ViewportPlacement, 'clippedBy' | 'scrollBy' | 'offScreenReason'> {
   if (geometry.clipper) return { clippedBy: geometry.clipper };
   if (geometry.fixed) return { offScreenReason: OFF_SCREEN_REASONS.fixed };
+  if (geometry.sticky) return { offScreenReason: OFF_SCREEN_REASONS.sticky };
   const { rect, pageScroll } = geometry;
   const x = axisScroll(rect.x, rect.width, viewport.width, pageScroll.left, pageScroll.right);
   const y = axisScroll(rect.y, rect.height, viewport.height, pageScroll.up, pageScroll.down);

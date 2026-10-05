@@ -1,19 +1,22 @@
 /**
- * `bdg page navigate|reload|back|forward` — move the session's page.
+ * `bdg page navigate|reload|back|forward` — move the session's page;
+ * `bdg page info` — where it is.
  */
 
 import type { Command } from 'commander';
 
-import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { noActiveSessionError, runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
 import { javascriptNavigationError } from '@/errors/messages.js';
-import { pageNavigate } from '@/ipc/client.js';
+import { getStatus, pageNavigate } from '@/ipc/client.js';
+import type { PageState } from '@/ipc/index.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   PAGE_ACTION_DESCRIPTIONS,
   PAGE_ACTION_DONE,
+  PAGE_INFO_DESCRIPTION,
   pageLoadingWarning,
 } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -116,6 +119,40 @@ async function runPageAction(
 }
 
 /**
+ * `bdg page info`: URL and title of the session page.
+ *
+ * @param options - Command options
+ */
+async function showPageInfo(options: BaseOptions): Promise<void> {
+  await runCommand(
+    async () => {
+      const response = await getStatus();
+      if (response.status === 'error') {
+        return {
+          success: false,
+          error: response.error ?? 'Failed to read the page',
+          exitCode: EXIT_CODES.SOFTWARE_ERROR,
+        };
+      }
+      const page = response.data?.sessionPid ? response.data.pageState : undefined;
+      if (!page) throw noActiveSessionError();
+      return { success: true, data: { url: page.url, title: page.title } };
+    },
+    options,
+    (page: Pick<PageState, 'url' | 'title'>) =>
+      new OutputFormatter()
+        .keyValueList(
+          [
+            ['URL', page.url],
+            ['Title', page.title],
+          ],
+          8
+        )
+        .build()
+  );
+}
+
+/**
  * Register the `page` command group.
  *
  * @param program - Root command
@@ -123,7 +160,15 @@ async function runPageAction(
 export function registerPageCommands(program: Command): void {
   const page = program
     .command('page')
-    .description('Navigate the session page: navigate <url>, reload, back, forward');
+    .description('The session page: info (URL and title), navigate <url>, reload, back, forward');
+
+  page
+    .command('info')
+    .description(PAGE_INFO_DESCRIPTION)
+    .addOption(jsonOption())
+    .action(async (options: BaseOptions) => {
+      await showPageInfo(options);
+    });
 
   const withCommon = (command: Command): Command =>
     command

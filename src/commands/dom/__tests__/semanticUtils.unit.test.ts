@@ -30,7 +30,7 @@ void describe('formatSemanticNodeWithContext', () => {
     assert.equal(first, '[Generic] <div>');
     assert.ok(second?.startsWith('Text: word word'));
     assert.ok((second?.length ?? 0) > 500);
-    assert.match(second ?? '', /\.\.\. \(cut at 500 characters; --raw shows the HTML\)$/);
+    assert.match(second ?? '', /\.\.\. \(cut at 500 characters; --full shows all of it\)$/);
   });
 
   void it('does not claim a cut for text that fits', () => {
