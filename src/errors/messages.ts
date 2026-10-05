@@ -1206,10 +1206,18 @@ export function scriptTimeoutError(timeoutMs: number): ErrorWithSuggestion {
  */
 export function pageBusyError(
   timeoutMs: number,
-  scope: 'page' | 'frame' = 'page'
+  scope: 'page' | 'frame' = 'page',
+  recovered = true
 ): ErrorWithSuggestion {
+  const busy = `The ${scope} was busy for ${Math.round(timeoutMs / 1000)}s (a script kept it running)`;
+  if (!recovered) {
+    return {
+      message: `${busy} and its scripts could not be stopped`,
+      suggestion: 'Retry in a moment; if it stays busy, reload the page: bdg page reload',
+    };
+  }
   return {
-    message: `The ${scope} was busy for ${Math.round(timeoutMs / 1000)}s (a script kept it running), so its scripts were terminated`,
+    message: `${busy}, so its scripts were terminated`,
     suggestion: `The ${scope} is usable again; re-run the command`,
   };
 }
@@ -1330,6 +1338,29 @@ export function frameRemovedDuringEvalError(url: string): ErrorWithSuggestion {
   return {
     message: `The frame was removed before the script finished: ${frameUrlLabel(url)}`,
     suggestion: 'The frame no longer exists; re-run bdg dom frames to see the current ones',
+  };
+}
+
+/**
+ * The page (its tab) was closed while a `dom eval` script ran.
+ */
+export function pageClosedDuringEvalError(): ErrorWithSuggestion {
+  return {
+    message: 'The page was closed while the script ran',
+    suggestion: 'Its tab is gone; start a new session with: bdg <url>',
+  };
+}
+
+/**
+ * The iframe a `dom eval --frame` script ran in went away, and bdg could not
+ * tell whether it navigated or was removed.
+ *
+ * @param url - Frame URL when the script started
+ */
+export function frameLostDuringEvalError(url: string): ErrorWithSuggestion {
+  return {
+    message: `The frame navigated or was removed while the script ran: ${frameUrlLabel(url)}`,
+    suggestion: 'Re-run bdg dom frames to see the current frames, then the script',
   };
 }
 

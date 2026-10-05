@@ -121,10 +121,27 @@ const DISPATCHER_MIN_TYPES = 3;
 /** Distinct event types a node's dispatchers must handle together to be collapsed */
 const COLLAPSE_MIN_TYPES = 8;
 
+/** Names of React's event dispatchers (development builds keep them) */
+const REACT_DISPATCHER_NAMES = new Set([
+  'dispatchDiscreteEvent',
+  'dispatchContinuousEvent',
+  'dispatchEvent',
+]);
+
+/** Label of a recognised React root container */
+const REACT_ROOT = 'React root';
+
 /** What the page reported about one listener's handler */
 export interface HandlerDetails {
   /** `Function.name` of the handler */
   name?: string | undefined;
+  /**
+   * Identity of the function the handler calls (bound functions unwrapped to
+   * their target): equal ids are the same function object
+   */
+  identity?: number | undefined;
+  /** `Function.name` of that function */
+  targetName?: string | undefined;
   /** Handlers jQuery runs from this listener (set when it is jQuery's dispatcher) */
   jquery?: ResolvedHandler[] | undefined;
 }
@@ -163,6 +180,10 @@ export interface PlacedListener {
   position: number;
   entry: ChainEntry;
   listener: ElementListener;
+  /** Identity of the handler's function (unique when unknown) */
+  identity: string;
+  /** Name of the handler's function, bound functions unwrapped */
+  targetName?: string | undefined;
 }
 
 /**
@@ -236,28 +257,45 @@ function jqueryListeners(
 }
 
 /**
- * Identity of a dispatcher function: name and source location.
+ * Identity of a dispatcher: the node and the function object it calls.
  *
  * @param placed - Report entry
  * @returns Key, unique per node and function
  */
-function dispatcherKey({ position, listener: { handler } }: PlacedListener): string {
-  return `${position}|${handler.name}|${handler.scriptId}:${handler.lineNumber}:${handler.columnNumber}`;
+function dispatcherKey({ position, identity }: PlacedListener): string {
+  return `${position}|${identity}`;
+}
+
+/**
+ * The framework a node's listeners belong to: a React root container
+ * (recognised by React's keys on the node, or by its dispatchers' names).
+ *
+ * @param nodeListeners - Listeners of one node
+ * @returns Framework label, undefined when none is recognised
+ */
+function nodeFramework(nodeListeners: PlacedListener[]): string | undefined {
+  const [first] = nodeListeners;
+  if (first?.entry.framework) return first.entry.framework;
+  const hasDispatcher = nodeListeners.some((item) =>
+    REACT_DISPATCHER_NAMES.has(item.targetName ?? '')
+  );
+  return hasDispatcher ? REACT_ROOT : undefined;
 }
 
 /**
  * Summarise one node's dispatcher listeners.
  *
  * @param group - Listeners of one node (not empty)
+ * @param framework - Framework recognised on the node
  * @returns Collapsed entry
  */
-function summarizeNode(group: PlacedListener[]): CollapsedListeners {
+function summarizeNode(group: PlacedListener[], framework: string): CollapsedListeners {
   const first = group[0] as PlacedListener;
   const handlers = new Map(group.map((placed) => [dispatcherKey(placed), placed.listener.handler]));
   return {
     on: first.listener.on,
     node: first.listener.node,
-    ...(first.entry.framework && { framework: first.entry.framework }),
+    framework,
     types: [...new Set(group.map(({ listener }) => listener.type))].sort(),
     count: group.length,
     capture: group.some(({ listener }) => listener.useCapture),
@@ -290,41 +328,46 @@ function typeCount(items: PlacedListener[]): number {
 }
 
 /**
- * A node's dispatcher listeners: those of functions that each listen for
- * several event types, when together they cover many types.
+ * A framework root's dispatcher listeners: those of function objects that
+ * each listen for several event types, when together they cover many types.
  *
  * @param nodeListeners - Listeners of one node
- * @returns Its dispatcher listeners (none when it is no framework root)
+ * @returns The dispatchers and the framework, or undefined when the node is no framework root
  */
-function dispatcherListeners(nodeListeners: PlacedListener[]): PlacedListener[] {
+function frameworkDispatchers(
+  nodeListeners: PlacedListener[]
+): { framework: string; dispatchers: PlacedListener[] } | undefined {
+  const framework = nodeFramework(nodeListeners);
+  if (!framework) return undefined;
   const candidates = nodeListeners.filter((item) => !item.listener.framework);
   const dispatchers = [...groupBy(candidates, dispatcherKey).values()]
     .filter((group) => typeCount(group) >= DISPATCHER_MIN_TYPES)
     .flat();
-  return typeCount(dispatchers) >= COLLAPSE_MIN_TYPES ? dispatchers : [];
+  return typeCount(dispatchers) >= COLLAPSE_MIN_TYPES ? { framework, dispatchers } : undefined;
 }
 
 /**
- * Collapse framework roots: on a node other than the element, functions
- * that each listen for several event types, and together for many (React's
- * dispatchers on its root container), are framework dispatchers. Each
- * node's dispatchers become one summary entry.
+ * Collapse framework roots: on a recognised React root container (not the
+ * element itself), function objects that each listen for several event
+ * types, and together for many, are React's dispatchers. Each root's
+ * dispatchers become one summary entry; other multi-type handlers (an
+ * analytics listener on `document`) are kept as they are.
  *
  * @param placed - Report entries
- * @returns Entries kept as they are, and one summary per node with dispatchers
+ * @returns Entries kept as they are, and one summary per framework root
  */
 export function collapseFrameworkRoots(placed: PlacedListener[]): {
   kept: PlacedListener[];
   collapsed: CollapsedListeners[];
 } {
   const ancestors = placed.filter((item) => item.position > 0);
-  const groups = [...groupBy(ancestors, (item) => item.position).values()]
-    .map(dispatcherListeners)
-    .filter((group) => group.length > 0);
-  const collapsedItems = new Set(groups.flat());
+  const roots = [...groupBy(ancestors, (item) => item.position).values()].flatMap(
+    (nodeListeners) => frameworkDispatchers(nodeListeners) ?? []
+  );
+  const collapsedItems = new Set(roots.flatMap((root) => root.dispatchers));
   return {
     kept: placed.filter((item) => !collapsedItems.has(item)),
-    collapsed: groups.map(summarizeNode),
+    collapsed: roots.map((root) => summarizeNode(root.dispatchers, root.framework)),
   };
 }
 
@@ -346,6 +389,8 @@ function placeListeners(found: ChainListeners[], details: HandlerDetails[]): Pla
       position: entry.position,
       entry: entry.entry,
       listener: item,
+      identity: detail.identity === undefined ? `listener-${i}` : `fn-${detail.identity}`,
+      targetName: detail.targetName,
     }));
   });
 }

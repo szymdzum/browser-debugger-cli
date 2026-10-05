@@ -19,14 +19,18 @@ import { CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { CommandError } from '@/errors/index.js';
 import {
+  frameLostDuringEvalError,
   frameNavigatedDuringEvalError,
   frameNotReadyError,
   frameRemovedDuringEvalError,
+  pageClosedDuringEvalError,
 } from '@/errors/messages.js';
 import type { DomEvalData, DomFrame } from '@/ipc/protocol/commands.js';
 import {
   evaluateScript,
   isContextLostError,
+  pageStillOpen,
+  settledWithin,
   withBusyPageRecovery,
 } from '@/runtime/dom/evalHelpers.js';
 import { effectiveFrameOrigin, isCrossOrigin } from '@/runtime/dom/frameOrigin.js';
@@ -361,9 +365,40 @@ interface ListingState {
 }
 
 /**
+ * Where a frame sits in the listing: its origin, and the index of its parent.
+ * Parents are placed before their children, so a child can inherit its
+ * parent's origin.
+ *
+ * @param node - The frame
+ * @param index - Its position
+ * @param owner - Attributes of its iframe element
+ * @param state - Frames placed so far (updated)
+ * @returns Origin and parent index
+ */
+function placeFrame(
+  node: FrameNode,
+  index: number,
+  owner: OwnerAttributes,
+  state: ListingState
+): { origin: string; parentIndex?: number } {
+  const { frame, context } = node;
+  const parentId = frame.parentId ?? '';
+  const origin = effectiveFrameOrigin({
+    url: frame.url,
+    securityOrigin: frame.securityOrigin,
+    contextOrigin: context?.origin,
+    parentOrigin: state.originOf.get(parentId),
+    sandbox: owner.sandbox,
+  });
+  const parentIndex = state.indexOf.get(parentId);
+  state.originOf.set(frame.id, origin);
+  state.indexOf.set(frame.id, index);
+  return { origin, ...(parentIndex !== undefined && { parentIndex }) };
+}
+
+/**
  * Describe an iframe for listing. Chrome names a frame after its element's
- * `id` when it has no `name`, so such a name is not repeated. Parents are
- * described before their children, so a child can inherit its parent's origin.
+ * `id` when it has no `name`, so such a name is not repeated.
  *
  * @param node - The frame
  * @param index - Its position
@@ -378,18 +413,8 @@ function describeFrame(
   state: ListingState
 ): LocatedFrame {
   const { frame, sessionId, context } = node;
-  const parentId = frame.parentId ?? '';
   const name = owner.name ?? (frame.name === owner.id ? undefined : frame.name);
-  const origin = effectiveFrameOrigin({
-    url: frame.url,
-    securityOrigin: frame.securityOrigin,
-    contextOrigin: context?.origin,
-    parentOrigin: state.originOf.get(parentId),
-    sandbox: owner.sandbox,
-  });
-  const parentIndex = state.indexOf.get(parentId);
-  state.originOf.set(frame.id, origin);
-  state.indexOf.set(frame.id, index);
+  const { origin, parentIndex } = placeFrame(node, index, owner, state);
   const info: DomFrame = {
     index,
     url: frame.url + (frame.urlFragment ?? ''),
@@ -400,7 +425,7 @@ function describeFrame(
     outOfProcess: sessionId !== undefined,
     ...(parentIndex !== undefined && { parentIndex }),
   };
-  const ownerSession = state.sessionOf.get(parentId);
+  const ownerSession = state.sessionOf.get(frame.parentId ?? '');
   return {
     info,
     frameId: frame.id,
@@ -408,6 +433,26 @@ function describeFrame(
     ...(ownerSession && { ownerSession }),
     ...(context && { context }),
   };
+}
+
+/**
+ * The listing state before the first iframe: the page's own origin.
+ *
+ * @param page - The page's session tree
+ * @param sessionOf - Session of each frame
+ * @returns Initial state
+ */
+function initialListingState(
+  page: SessionTree,
+  sessionOf: Map<string, string | undefined>
+): ListingState {
+  const top = page.tree.frame;
+  const topOrigin = effectiveFrameOrigin({
+    url: top.url,
+    securityOrigin: top.securityOrigin,
+    contextOrigin: page.contexts.get(top.id)?.origin,
+  });
+  return { topOrigin, originOf: new Map([[top.id, topOrigin]]), indexOf: new Map(), sessionOf };
 }
 
 /**
@@ -427,18 +472,7 @@ async function discoverFrames(fc: FrameConnection): Promise<LocatedFrame[]> {
       ownerAttributes(fc, node.frame.id, sessionOf.get(node.frame.parentId ?? ''))
     )
   );
-  const top = page.tree.frame;
-  const topOrigin = effectiveFrameOrigin({
-    url: top.url,
-    securityOrigin: top.securityOrigin,
-    contextOrigin: page.contexts.get(top.id)?.origin,
-  });
-  const state: ListingState = {
-    topOrigin,
-    originOf: new Map([[top.id, topOrigin]]),
-    indexOf: new Map(),
-    sessionOf,
-  };
+  const state = initialListingState(page, sessionOf);
   return iframes.map((node, index) => describeFrame(node, index, owners[index] ?? {}, state));
 }
 
@@ -478,38 +512,69 @@ async function resolveFrame(
   return { frame, uniqueContextId: frame.context.uniqueId };
 }
 
+/** Chrome's messages when a frame (or the session of its parent) no longer exists */
+const FRAME_GONE_PATTERN = /not found|no frame|no node/i;
+
+/** How long the frame's parent gets to say whether the frame is still there */
+const OWNER_CHECK_MS = 2_000;
+
+/** A frame whose script lost its context */
+export interface LostFrame {
+  frameId: string;
+  /** Session of the parent frame, which owns the iframe element */
+  ownerSession?: string;
+  /** Frame URL when the script started */
+  url: string;
+}
+
 /**
  * Whether the frame's iframe element is still in its parent.
  *
- * @param fc - Frame connection
+ * @param conn - Connection the frame was found on
  * @param frame - The frame
- * @returns False once the frame was removed
+ * @returns `attached`, `removed`, or `unknown` when the parent did not answer in time
+ * @throws Errors other than Chrome saying the frame is gone (e.g. a lost connection)
  */
-async function frameStillAttached(fc: FrameConnection, frame: LocatedFrame): Promise<boolean> {
+async function frameOwnerState(
+  conn: Pick<CDPConnection, 'send'>,
+  frame: LostFrame
+): Promise<'attached' | 'removed' | 'unknown'> {
   try {
-    await fc.conn.send('DOM.getFrameOwner', { frameId: frame.frameId }, frame.ownerSession);
-    return true;
+    const owner = conn.send('DOM.getFrameOwner', { frameId: frame.frameId }, frame.ownerSession);
+    return (await settledWithin(owner, OWNER_CHECK_MS)).settled ? 'attached' : 'unknown';
   } catch (error) {
-    log.debug(`Frame ${frame.frameId} is gone: ${getErrorMessage(error)}`);
-    return false;
+    if (!(error instanceof CDPProtocolError) || !FRAME_GONE_PATTERN.test(error.message))
+      throw error;
+    log.debug(`Frame ${frame.frameId} is gone: ${error.message}`);
+    return 'removed';
   }
 }
 
 /**
- * The error for a script whose frame context went away: the frame navigated
- * (its iframe element is still there) or was removed.
+ * The error for a script whose frame context went away: the page was
+ * closed, the frame navigated (its iframe element is still there) or was
+ * removed.
  *
- * @param fc - Frame connection
+ * @param conn - Connection the frame was found on
+ * @param page - The session's connection to the page
  * @param frame - The frame
  * @returns Command error (83)
+ * @throws Errors of the checks other than Chrome saying the frame is gone
  */
-async function frameContextLostError(
-  fc: FrameConnection,
-  frame: LocatedFrame
+export async function frameContextLostError(
+  conn: Pick<CDPConnection, 'send'>,
+  page: CDPSender,
+  frame: LostFrame
 ): Promise<CommandError> {
-  const err = (await frameStillAttached(fc, frame))
-    ? frameNavigatedDuringEvalError(frame.info.url)
-    : frameRemovedDuringEvalError(frame.info.url);
+  if (!(await pageStillOpen(page))) {
+    return frameError(pageClosedDuringEvalError(), EXIT_CODES.RESOURCE_NOT_FOUND);
+  }
+  const messages = {
+    attached: frameNavigatedDuringEvalError,
+    removed: frameRemovedDuringEvalError,
+    unknown: frameLostDuringEvalError,
+  };
+  const err = messages[await frameOwnerState(conn, frame)](frame.url);
   return frameError(err, EXIT_CODES.RESOURCE_NOT_FOUND);
 }
 
@@ -537,11 +602,16 @@ export async function evaluateInFrame(
       const result = await evaluateScript(fc.conn, script, {
         ...(frame.sessionId && { sessionId: frame.sessionId }),
         uniqueContextId,
+        recovery: recoverySender(fc, frame.sessionId),
       });
       return { ...result, frame: frame.info.url };
     } catch (error) {
       if (!isContextLostError(error)) throw error;
-      throw await frameContextLostError(fc, frame);
+      throw await frameContextLostError(fc.conn, fc.page, {
+        frameId: frame.frameId,
+        url: frame.info.url,
+        ...(frame.ownerSession && { ownerSession: frame.ownerSession }),
+      });
     }
   });
 }

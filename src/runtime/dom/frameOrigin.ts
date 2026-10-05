@@ -7,7 +7,8 @@
  * document. The frame's default execution context knows: it reports the
  * inherited origin for srcdoc and about:blank, and `"://"` for opaque ones
  * (data: URLs, sandboxes without `allow-same-origin`). A frame that has no
- * context yet falls back to the rules below.
+ * context yet falls back to the rules below; a frame inside an opaque one
+ * counts as opaque too (sandbox flags are inherited).
  */
 
 /** Origin of documents that share no origin with anything */
@@ -58,7 +59,7 @@ export function effectiveFrameOrigin(facts: FrameOriginFacts): string {
   if (facts.contextOrigin !== undefined) {
     return isTupleOrigin(facts.contextOrigin) ? facts.contextOrigin : OPAQUE_ORIGIN;
   }
-  if (isOpaqueSandbox(facts.sandbox)) return OPAQUE_ORIGIN;
+  if (isOpaqueSandbox(facts.sandbox) || facts.parentOrigin === OPAQUE_ORIGIN) return OPAQUE_ORIGIN;
   if (isTupleOrigin(facts.securityOrigin)) return facts.securityOrigin;
   const inherits = facts.url === '' || facts.url.startsWith('about:');
   return inherits && isTupleOrigin(facts.parentOrigin) ? facts.parentOrigin : OPAQUE_ORIGIN;

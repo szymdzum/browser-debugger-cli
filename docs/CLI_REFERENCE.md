@@ -313,15 +313,15 @@ Framework roots (one line per node; --all lists each listener):
 - Nearest first within each event type: `target`, then `ancestor`s outward, then `document`, `window`
 - Handler: name, a one-line source preview (80 characters) and its location (`script <id>:<line>:<column>`, 1-based like DevTools; JSON `lineNumber`/`columnNumber` are 0-based as in CDP)
 - Inline `on…` attributes and `on…` properties are included; empty handlers (React puts `onclick = function noop(){}` on clickable elements) are marked `[no-op]` and do not count as the element's own handler
-- Framework roots are collapsed: on an ancestor, functions that each listen for several event types and together for many (React's dispatchers on its root container, marked `React root` when recognised) become one line per node under `Framework roots`; `--all` lists them one by one. With `--type`, only the requested types count, so `--type click` shows React's click dispatchers individually
-- jQuery: when the page has jQuery (`jQuery._data`), its dispatcher is replaced by the jQuery handlers it runs for the element, with their real name, source and location, marked `[jQuery]`; delegated ones (`$(document).on('click', '.row', fn)`) show `delegate .row` and only when the element matches the selector
+- React roots are collapsed: on an ancestor recognised as a React root container (React's `__reactContainer$…`/`_reactRootContainer` keys, or dispatchers named `dispatchDiscreteEvent`/`dispatchContinuousEvent`/`dispatchEvent`), the function objects that each listen for several event types and together for many (bound functions count as the function they call) become one line under `Framework roots`; `--all` lists them one by one. Other handlers that listen for many types (an analytics listener on `document`) are never collapsed. With `--type`, only the requested types count, so `--type click` shows React's click dispatchers individually
+- jQuery: when the page has jQuery (`jQuery._data`), its dispatcher is replaced by the jQuery handlers it runs for the element, with their real name, source and location, marked `[jQuery]`; delegated ones (`$(document).on('click', '.row', fn)`) show `delegate .row` and only when the element matches the selector. A jQuery dispatcher none of whose handlers run for the element (its delegates match other elements) is left out. At most 50 jQuery handlers are resolved per call; beyond that the dispatcher is listed as is and a note (`jqueryHandlersSkipped` in JSON) says how many were not resolved. A page whose `jQuery`/`$` globals throw only loses the jQuery details
 - When an interaction event (click, input, keydown, …) has listeners only above the element, a note explains the delegation
 - The heading names the cached index and the iframe holding the element (`Event listeners for p [2] in iframe#sd (3)`)
 - No listeners at all is not an error (exit 0); a selector without match exits 83, an `--index` out of range 81. A `--type` that matches nothing but is close to a listened type (`Click`, `onclick`) suggests it (`typeSuggestions` in JSON)
 - Elements in open shadow roots and same-origin iframes are found like with the other DOM commands
 - Uses `DOMDebugger.getEventListeners`; the Debugger domain is not enabled, so `debugger;` statements do not pause the page
 
-**JSON (`data`):** `{ selector, index?, element, frame?, matchCount?, warning?, typeSuggestions?, listeners: [{ type, on: "target"|"ancestor"|"document"|"window", node, useCapture, passive, once, noop?, framework?: "jQuery", delegateSelector?, handler: { name, preview, scriptId, lineNumber, columnNumber } }], collapsed?: [{ on, node, framework?, types, count, capture, bubble, handlers: [{ name, preview, scriptId, lineNumber, columnNumber }] }] }`
+**JSON (`data`):** `{ selector, index?, element, frame?, matchCount?, warning?, typeSuggestions?, jqueryHandlersSkipped?, listeners: [{ type, on: "target"|"ancestor"|"document"|"window", node, useCapture, passive, once, noop?, framework?: "jQuery", delegateSelector?, handler: { name, preview, scriptId, lineNumber, columnNumber } }], collapsed?: [{ on, node, framework?, types, count, capture, bubble, handlers: [{ name, preview, scriptId, lineNumber, columnNumber }] }] }`
 
 ### Element Layout
 
@@ -402,7 +402,7 @@ Try: bdg dom eval 'document.querySelector("input")'
 
 - A script still running after 20 s is terminated (exit 102)
 - An awaited or returned promise that does not settle within 20 s exits 102 with "The awaited promise did not settle within 20s" (nothing was busy)
-- A page that navigates while the script runs (`location.href = …; await …`) exits 83 with "The page navigated while the script ran": the result is lost with the old document
+- A page that navigates while the script runs (`location.href = …; await …`) exits 83 with "The page navigated while the script ran": the result is lost with the old document. A tab closed while the script runs exits 83 with "The page was closed while the script ran"
 
 **Iframes (`--frame`):**
 
@@ -421,12 +421,12 @@ bdg dom eval --frame checkout 'location.href'     # By name or id attribute of t
 bdg dom eval --frame pay.example 'window.config'  # By part of the URL (case-insensitive)
 ```
 
-- Human output prints `Frame: <url>` on stderr (hidden with `-q`), so stdout is only the value and pipes into `jq`; `--json` adds `"frame": "<url>"` to `data` (`""` for a frame without URL)
+- Human output prints `Frame: <url>` on stderr (hidden with `-q`), so stdout is only the value and pipes into `jq`; `--json` adds `"frame": "<url>"` to `data` (`"frame": ""` for a frame without URL; human output shows `Frame: (no URL)`)
 - Everything else works as in the page: top-level `await`, awaited promises, JSON-safe values, 20 s limit, exit 91 when the script throws; a busy frame is reported as "The frame was busy…" (102)
 - Several matching frames exit 81 and list them; no match exits 83 and lists all frames
 - Nested iframes are listed depth-first (indented below their parent; `parentIndex` in JSON); out-of-process frames come after in-process siblings. Human output shortens URLs over 100 characters and shows `(no URL)` for frames without one; JSON has the full URL
 - `origin` is the origin the frame's scripts run with (from its execution context): srcdoc and about:blank frames inherit their parent's, data: URLs and `sandbox` frames without `allow-same-origin` are opaque (`"null"`). `crossOrigin` is true when the page cannot reach the frame's document (`contentDocument` is null): a different or opaque origin
-- Frames added or removed while the page is listed are skipped. A frame that navigates or is removed while the script runs (or between the lookup and the run) exits 83 ("The frame navigated while the script ran" / "The frame was removed before the script finished"); re-run `bdg dom frames`
+- Frames added or removed while the page is listed are skipped. A frame that navigates or is removed while the script runs (or between the lookup and the run) exits 83 ("The frame navigated while the script ran" / "The frame was removed before the script finished", or "The frame navigated or was removed…" when its parent does not answer within 2 s); re-run `bdg dom frames`. A busy out-of-process frame is checked and stopped through the session's own connection; if its scripts cannot be stopped, the 102 error says so instead of calling the frame usable
 
 ### Form Discovery
 

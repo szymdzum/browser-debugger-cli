@@ -17,6 +17,7 @@ import {
   listenerPlacement,
   suggestEventTypes,
   type ChainListeners,
+  type HandlerDetails,
   type ResolvedHandler,
 } from '@/runtime/dom/listenerSummary.js';
 
@@ -200,9 +201,68 @@ const REACT_CHAIN: ChainListeners[] = [
   },
 ];
 
+/** Page details of REACT_CHAIN: React binds two dispatcher functions per event type */
+const REACT_DETAILS: HandlerDetails[] = [
+  {},
+  ...REACT_TYPES.flatMap((_type, i) =>
+    [0, 1].map(() => ({ name: 'bound zj', identity: i % 2, targetName: i % 2 ? 'Be' : 'zj' }))
+  ),
+  {},
+];
+
+/**
+ * A chain of a button below a node whose listeners each cover one of
+ * REACT_TYPES, with the given page details.
+ *
+ * @param entry - The node
+ * @param source - Handler source of every listener
+ * @returns Chain
+ */
+function chainBelow(entry: ChainListeners['entry'], source: string): ChainListeners[] {
+  return [
+    {
+      position: 0,
+      entry: { className: 'HTMLButtonElement', description: 'button' },
+      listeners: [],
+    },
+    { position: 1, entry, listeners: REACT_TYPES.map((type) => cdpListener(type, source)) },
+  ];
+}
+
 void describe('framework listeners', () => {
+  void it('keeps a multi-type handler on a node that is no framework root', () => {
+    const chain = chainBelow(
+      { className: 'HTMLDocument', description: '#document' },
+      'function track(e) {}'
+    );
+    const sameFunction = REACT_TYPES.map(() => ({
+      name: 'track',
+      identity: 7,
+      targetName: 'track',
+    }));
+    const report = buildListenerReport(chain, sameFunction);
+    assert.equal(report.collapsed.length, 0);
+    assert.equal(report.listeners.length, REACT_TYPES.length);
+  });
+
+  void it('does not merge distinct functions that share a source location', () => {
+    const root = { className: 'HTMLDivElement', description: 'div#root', framework: 'React root' };
+    const chain = chainBelow(root, '() => go()');
+    const distinct = REACT_TYPES.map((_type, i) => ({ identity: i }));
+    assert.equal(buildListenerReport(chain, distinct).collapsed.length, 0);
+    assert.equal(buildListenerReport(chain, []).collapsed.length, 0, 'unknown identities');
+  });
+
+  void it("recognises React's dispatchers by name on a node without React's keys", () => {
+    const chain = chainBelow({ className: 'HTMLDivElement', description: 'div#app' }, 'x');
+    const details = REACT_TYPES.map(() => ({ identity: 3, targetName: 'dispatchDiscreteEvent' }));
+    const [root] = buildListenerReport(chain, details).collapsed;
+    assert.equal(root?.framework, 'React root');
+    assert.equal(root?.count, REACT_TYPES.length);
+  });
+
   void it('collapses a framework root into one entry per node', () => {
-    const report = buildListenerReport(REACT_CHAIN, []);
+    const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS);
     assert.deepEqual(
       report.listeners.map((l) => `${l.type}:${l.on}`),
       ['click:target', 'click:document']
@@ -218,8 +278,11 @@ void describe('framework listeners', () => {
   });
 
   void it('lists every listener with all, and does not collapse a few types', () => {
-    assert.equal(buildListenerReport(REACT_CHAIN, [], { all: true }).listeners.length, 22);
-    const clicks = buildListenerReport(REACT_CHAIN, [], { types: ['click'] });
+    assert.equal(
+      buildListenerReport(REACT_CHAIN, REACT_DETAILS, { all: true }).listeners.length,
+      22
+    );
+    const clicks = buildListenerReport(REACT_CHAIN, REACT_DETAILS, { types: ['click'] });
     assert.equal(clicks.collapsed.length, 0);
     assert.equal(clicks.listeners.length, 4);
   });
@@ -229,7 +292,7 @@ void describe('framework listeners', () => {
     assert.ok(isNoopSource('() => { }'));
     assert.ok(!isNoopSource('function onSave(e) {}'));
     assert.ok(!isNoopSource('() => go()'));
-    const report = buildListenerReport(REACT_CHAIN, []);
+    const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS);
     assert.equal(report.listeners[0]?.noop, true);
     assert.ok(delegatedOnlyTypes(report.listeners, report.collapsed).includes('click'));
   });

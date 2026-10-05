@@ -250,6 +250,8 @@ export interface ListenersResult {
   collapsed?: CollapsedListeners[];
   /** The iframe element whose document holds the element, e.g. `iframe#checkout` */
   frame?: string;
+  /** jQuery handlers not resolved (over 50 per call): their dispatcher is listed instead */
+  jqueryHandlersSkipped?: number;
   /** Event types with listeners close to the requested ones, when none matched (`Click` → `click`) */
   typeSuggestions?: string[];
   /** Elements the selector matched */

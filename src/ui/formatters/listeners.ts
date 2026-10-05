@@ -15,6 +15,7 @@ import {
   collapsedListenersSummary,
   delegatedListenersNote,
   eventTypeSuggestion,
+  jqueryHandlersSkippedNote,
   listenersHeadline,
   noListenersMessage,
 } from '@/ui/messages/commands.js';
@@ -109,6 +110,9 @@ export function formatListeners(result: ListenersOutput, types?: string[]): stri
     appendCollapsed(fmt, collapsed);
     const delegated = delegatedOnlyTypes(result.listeners, collapsed);
     if (delegated.length > 0) fmt.blank().text(delegatedListenersNote(delegated));
+  }
+  if (result.jqueryHandlersSkipped) {
+    fmt.blank().text(jqueryHandlersSkippedNote(result.jqueryHandlersSkipped));
   }
   if (result.warning) fmt.blank().text(`⚠ Warning: ${result.warning}`);
   return fmt.build();

@@ -176,13 +176,13 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'Lists only these event types (comma-separated or repeated, case-sensitive like addEventListener); when none match, typeSuggestions names close types (Click, onclick → click)',
     automaticBehavior:
-      "Listeners are grouped by type, nearest first; JSON line/column numbers are 0-based (human output shows them 1-based like DevTools). jQuery handlers are shown instead of jQuery's dispatcher (framework: \"jQuery\", delegateSelector for delegates the element matches). Empty handlers (React's onclick placeholder) are marked noop and do not count as the element's own handler. The Debugger domain is not enabled",
+      "Listeners are grouped by type, nearest first; JSON line/column numbers are 0-based (human output shows them 1-based like DevTools). jQuery handlers are shown instead of jQuery's dispatcher (framework: \"jQuery\", delegateSelector for delegates the element matches; a dispatcher with no handler for the element is omitted; at most 50 are resolved, jqueryHandlersSkipped counts the rest). Empty handlers (React's onclick placeholder) are marked noop and do not count as the element's own handler. The Debugger domain is not enabled",
     tokenImpact:
       'Framework roots are already collapsed; --type keeps the output short on pages with many listeners',
   },
   'listeners:--all': {
     default:
-      'Collapses framework roots: a node whose dispatcher functions listen for many event types (React\'s root container) becomes one line / one "collapsed" entry with its types, phases and dispatchers',
+      'Collapses React roots: on an ancestor recognised as a React root container (React\'s keys on the node, or dispatchers named dispatchDiscreteEvent/dispatchContinuousEvent/dispatchEvent), the function objects that each listen for several event types become one line / one "collapsed" entry with its types, phases and dispatchers. Other multi-type handlers are never collapsed',
     whenEnabled: 'Lists every listener of framework roots individually',
     tokenImpact:
       'On React pages --all adds a row per event type and phase (about 140 rows, 60 KB of JSON)',

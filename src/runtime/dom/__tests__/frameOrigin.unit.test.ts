@@ -40,6 +40,12 @@ void describe('effectiveFrameOrigin', () => {
     assert.equal(effectiveFrameOrigin(allowed), TOP);
   });
 
+  void it('treats any frame without a context inside an opaque frame as opaque', () => {
+    const child = { url: `${TOP}/a`, securityOrigin: TOP, parentOrigin: OPAQUE_ORIGIN };
+    assert.equal(effectiveFrameOrigin(child), OPAQUE_ORIGIN);
+    assert.equal(effectiveFrameOrigin({ ...child, contextOrigin: TOP }), TOP, 'context wins');
+  });
+
   void it('falls back to the reported security origin', () => {
     const cross = { url: 'https://pay.example/', securityOrigin: 'https://pay.example' };
     assert.equal(effectiveFrameOrigin(cross), 'https://pay.example');

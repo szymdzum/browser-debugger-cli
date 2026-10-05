@@ -237,6 +237,16 @@ export function collapsedListenersSummary(root: {
 }
 
 /**
+ * jQuery handlers left unresolved because there were too many.
+ *
+ * @param count - Handlers not resolved
+ * @returns One-line note
+ */
+export function jqueryHandlersSkippedNote(count: number): string {
+  return `Note: ${count} more jQuery handler${count === 1 ? '' : 's'} not resolved; their jQuery dispatcher is listed instead (narrow down with --type)`;
+}
+
+/**
  * Event types a mistyped `--type` probably meant.
  *
  * @param types - Suggested types

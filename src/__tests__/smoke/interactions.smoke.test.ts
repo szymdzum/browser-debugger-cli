@@ -469,7 +469,7 @@ void describe('DOM interactions', () => {
     const human = await bdg(['dom', 'listeners', '#go']);
     assert.match(
       human,
-      /Framework roots.*\n {2}ancestor {2}div#root {2}Dispatcher: 12 event types, capture and bubble/
+      /Framework roots.*\n {2}ancestor {2}div#root {2}React root: 12 event types, capture and bubble/
     );
     assert.match(human, /Note: (?:\w+, )*click, .* have no listener on the element itself/);
     assert.equal((await listed(['#go', '--all'])).listeners.length, 25);

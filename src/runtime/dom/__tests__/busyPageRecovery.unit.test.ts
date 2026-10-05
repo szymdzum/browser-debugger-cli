@@ -94,20 +94,67 @@ void describe('lost execution contexts', () => {
     assert.ok(!isContextLostError(new Error('Execution context was destroyed.')));
   });
 
-  void it('reports a page that navigated during an eval as 83, not a connection failure', async () => {
-    const cdp = {
-      send: (method: string) =>
-        method === 'Runtime.evaluate'
-          ? Promise.reject(
-              new CDPProtocolError('Inspected target navigated or closed', -32000, undefined)
-            )
-          : Promise.resolve({}),
-    } as unknown as CDPConnection;
-    await assert.rejects(evaluateScript(cdp, 'location.href = "/next"; await sleep()'), (error) => {
+  /**
+   * A page whose eval fails with `message`, and which answers the liveness
+   * check unless `closed`.
+   *
+   * @param message - Chrome's error for the eval
+   * @param closed - Whether the page is gone
+   * @returns CDP stub
+   */
+  const lostPage = (message: string, closed = false): CDPConnection =>
+    ({
+      send: (method: string, params?: { expression?: string }) => {
+        const isProbe = method === 'Runtime.evaluate' && params?.expression === '1';
+        if (method !== 'Runtime.evaluate' || (isProbe && !closed)) return Promise.resolve({});
+        return Promise.reject(new CDPProtocolError(message, -32000, undefined));
+      },
+    }) as unknown as CDPConnection;
+
+  /**
+   * The 83 error message of an eval on a lost page.
+   *
+   * @param cdp - CDP stub
+   * @returns Message
+   */
+  const lostEvalMessage = async (cdp: CDPConnection): Promise<string> => {
+    try {
+      await evaluateScript(cdp, 'location.href = "/next"; await sleep()');
+    } catch (error) {
       assert.ok(error instanceof CommandError);
       assert.equal(error.exitCode, 83);
-      assert.match(error.message, /page navigated while the script ran/);
-      return true;
-    });
+      return error.message;
+    }
+    assert.fail('the eval did not fail');
+  };
+
+  void it('reports a page that navigated during an eval as 83, not a connection failure', async () => {
+    const message = await lostEvalMessage(lostPage('Inspected target navigated or closed'));
+    assert.match(message, /page navigated while the script ran/);
+  });
+
+  void it('reports a closed tab as closed, not navigated', async () => {
+    const closed = lostPage('Inspected target navigated or closed', true);
+    assert.match(await lostEvalMessage(closed), /page was closed while the script ran/);
+    const gone = lostPage('Session with given id not found.');
+    assert.match(await lostEvalMessage(gone), /page was closed while the script ran/);
+  });
+});
+
+void describe('unrecoverable busy targets', () => {
+  void it('does not claim the target is usable when its scripts could not be stopped', async () => {
+    const cdp = {
+      send: (method: string) =>
+        method.startsWith('Runtime.') ? new Promise(() => undefined) : Promise.resolve({}),
+    } as unknown as CDPConnection;
+    await assert.rejects(
+      withBusyPageRecovery(cdp, new Promise(() => undefined), { ...LIMITS, scope: 'frame' }),
+      (error) => {
+        assert.ok(error instanceof CommandError);
+        assert.match(error.message, /frame was busy .* could not be stopped/);
+        assert.doesNotMatch(String(error.metadata['suggestion']), /usable again/);
+        return true;
+      }
+    );
   });
 });
