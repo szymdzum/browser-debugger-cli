@@ -6,11 +6,17 @@ import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CleanupCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { CleanupResult } from '@/commands/types.js';
-import { purgeNeedsNamedSessionError, sessionDirIsFileError } from '@/errors/messages.js';
+import {
+  purgeNeedsNamedSessionError,
+  purgeRefusedError,
+  sessionDirIsFileError,
+  type ErrorWithSuggestion,
+} from '@/errors/messages.js';
+import { isSessionChrome } from '@/session/cleanup/staleSession.js';
 import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
-import { getSessionDir, getSessionName } from '@/session/paths.js';
-import { readDaemonPid } from '@/session/pid.js';
+import { getSessionDir, getSessionFilePath, getSessionName } from '@/session/paths.js';
+import { readDaemonPid, readPidFromFile } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   sessionFilesCleanedMessage,
@@ -22,7 +28,9 @@ import {
   sessionStillActiveSuggestion,
   warningMessage,
 } from '@/ui/messages/commands.js';
+import { delay } from '@/utils/async.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 /**
  * Format cleanup result for human-readable output.
@@ -51,6 +59,74 @@ function purgeSessionDir(): string | undefined {
   if (!fs.existsSync(dir)) return undefined;
   fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3 });
   return dir;
+}
+
+/** How long `--purge` waits for a killed Chrome to exit */
+const PURGE_CHROME_EXIT_WAIT_MS = 5000;
+
+/**
+ * The running Chrome bdg launched for the selected session (from chrome.pid,
+ * verified by its marker flag).
+ *
+ * @returns Chrome PID, or null
+ */
+function liveSessionChromePid(): number | null {
+  const pid = readPidFromFile(getSessionFilePath('CHROME_PID'));
+  if (pid === null || !isProcessAlive(pid)) return null;
+  return isSessionChrome(pid, getSessionDir()) ? pid : null;
+}
+
+/**
+ * Wait until a process has exited.
+ *
+ * @param pid - Process ID
+ * @param timeoutMs - Longest wait
+ * @returns True if it exited
+ */
+async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessAlive(pid) && Date.now() < deadline) await delay(50);
+  return !isProcessAlive(pid);
+}
+
+/**
+ * Why the session directory must not be deleted after cleanup: its daemon
+ * still runs, cleanup reported problems, or its Chrome has not exited.
+ *
+ * @param chromePid - The session's Chrome as found before cleanup, or null
+ * @param warnings - Warnings from cleanup
+ * @param exitWaitMs - How long to wait for that Chrome to exit
+ * @returns Error and suggestion, or null when the directory may be deleted
+ */
+export async function purgeBlocker(
+  chromePid: number | null,
+  warnings: string[],
+  exitWaitMs = PURGE_CHROME_EXIT_WAIT_MS
+): Promise<ErrorWithSuggestion | null> {
+  const dir = getSessionDir();
+  if (await isDaemonAlive()) return purgeRefusedError(dir, 'its daemon is still running');
+  if (warnings.length > 0) return purgeRefusedError(dir, warnings.join('; '));
+  if (chromePid !== null && !(await waitForExit(chromePid, exitWaitMs))) {
+    return purgeRefusedError(dir, `its Chrome (PID ${chromePid}) is still running`);
+  }
+  return null;
+}
+
+/**
+ * Delete the session directory unless {@link purgeBlocker} objects.
+ *
+ * @param chromePid - The session's Chrome as found before cleanup, or null
+ * @param warnings - Warnings from cleanup
+ * @returns The deleted directory (undefined if there was none), or the refusal
+ */
+async function purge(
+  chromePid: number | null,
+  warnings: string[]
+): Promise<{ purged?: string; refusal?: ErrorWithSuggestion }> {
+  const refusal = await purgeBlocker(chromePid, warnings);
+  if (refusal) return { refusal };
+  const purged = purgeSessionDir();
+  return purged === undefined ? {} : { purged };
 }
 
 /**
@@ -105,11 +181,20 @@ async function cleanupBlocker(
 async function cleanupSession(opts: CleanupCommandOptions): Promise<CommandResult<CleanupResult>> {
   const blocker = await cleanupBlocker(opts);
   if (blocker) return blocker;
+  const chromePid = opts.purge ? liveSessionChromePid() : null;
   const { cleaned, warnings } = await performSessionCleanup({
     force: Boolean(opts.force) || Boolean(opts.aggressive),
     removeOutput: opts.removeOutput,
   });
-  const purged = opts.purge ? purgeSessionDir() : undefined;
+  const { purged, refusal } = opts.purge ? await purge(chromePid, warnings) : {};
+  if (refusal) {
+    return {
+      success: false,
+      error: refusal.message,
+      exitCode: EXIT_CODES.RESOURCE_CONFLICT,
+      errorContext: { suggestion: refusal.suggestion },
+    };
+  }
   const didCleanup = Object.values(cleaned).some(Boolean) || purged !== undefined;
   return {
     success: true,

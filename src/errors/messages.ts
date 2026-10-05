@@ -279,8 +279,8 @@ export function elementNotFoundError(selector: string): ErrorWithSuggestion {
   const message = `Element not found: ${selector}`;
   const discovery = [
     'Discovery path:',
-    `  1. Query first:  bdg dom query '${selector}'`,
-    '  2. Then inspect: bdg dom a11y describe 0',
+    `  1. Query first:  ${sessionCommand(`bdg dom query '${selector}'`)}`,
+    `  2. Then inspect: ${sessionCommand('bdg dom a11y describe 0')}`,
   ];
   const quoteCheck = detectSelectorQuoteDamage(selector);
   if (quoteCheck.damaged) {
@@ -599,6 +599,20 @@ export function purgeNeedsNamedSessionError(): ErrorWithSuggestion {
   return {
     message: "--purge deletes a named session's directory and needs --session <name>",
     suggestion: 'Name the session: bdg cleanup --session <name> --purge (see bdg sessions)',
+  };
+}
+
+/**
+ * `bdg cleanup --purge` found the session still holding its directory after
+ * cleaning up, so the directory is kept.
+ *
+ * @param dir - Session directory
+ * @param reason - What still holds it
+ */
+export function purgeRefusedError(dir: string, reason: string): ErrorWithSuggestion {
+  return {
+    message: `Not deleting ${dir}: ${reason}`,
+    suggestion: `End the session first (${sessionCommand('bdg cleanup --force')}), then retry: ${sessionCommand('bdg cleanup --purge')}`,
   };
 }
 

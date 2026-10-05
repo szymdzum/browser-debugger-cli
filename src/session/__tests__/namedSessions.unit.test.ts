@@ -34,6 +34,7 @@ import { selectSession, validateSessionName } from '@/session/sessionName.js';
 import { formatSessionList } from '@/ui/formatters/sessions.js';
 import { formatNoSessionMessage } from '@/ui/formatters/status.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 const savedEnv = {
@@ -423,7 +424,7 @@ void describe('session list', () => {
     assert.match(text, /bdg cleanup --session agent-1/);
   });
 
-  void it('lists stale sessions with their cleanup command, and skips unusable names', async () => {
+  void it('lists stale sessions, and directories --session cannot select', async () => {
     const stale = path.join(base, 'sessions', 'p3');
     fs.mkdirSync(stale, { recursive: true });
     fs.writeFileSync(path.join(stale, 'daemon.pid'), '999999');
@@ -432,8 +433,56 @@ void describe('session list', () => {
     fs.mkdirSync(path.join(base, 'sessions', '--json'), { recursive: true });
     fs.writeFileSync(path.join(base, 'sessions', '--json', 'daemon.pid'), '1');
     assert.deepEqual(await listRunningSessions(), [
+      {
+        name: '--json',
+        state: 'stale',
+        cleanup: `rm -rf '${path.join(base, 'sessions', '--json')}'`,
+      },
       { name: 'p3', state: 'stale', port: 9226, cleanup: 'bdg cleanup --session p3' },
     ]);
+  });
+
+  void it('lists a directory differing only in case as the session --session reaches', async () => {
+    const upper = path.join(base, 'sessions', 'ALPHA');
+    fs.mkdirSync(upper, { recursive: true });
+    fs.writeFileSync(path.join(upper, 'daemon.pid'), '999999');
+    const lower = path.join(base, 'sessions', 'alpha');
+    if (isCaseInsensitive(upper)) {
+      assert.deepEqual(await listRunningSessions(), [
+        { name: 'alpha', state: 'stale', cleanup: 'bdg cleanup --session alpha' },
+      ]);
+      return;
+    }
+    assert.deepEqual(await listRunningSessions(), [
+      { name: 'ALPHA', state: 'stale', cleanup: `rm -rf '${upper}'` },
+    ]);
+    fs.mkdirSync(lower);
+    fs.writeFileSync(path.join(lower, 'daemon.pid'), '999998');
+    assert.deepEqual(await listRunningSessions(), [
+      { name: 'ALPHA', state: 'stale', cleanup: `rm -rf '${upper}'` },
+      { name: 'alpha', state: 'stale', cleanup: 'bdg cleanup --session alpha' },
+    ]);
+  });
+
+  void it('lists a session whose daemon runs but has no socket yet as starting', async () => {
+    const dir = path.join(base, 'sessions', 'p5');
+    fs.mkdirSync(dir, { recursive: true });
+    const fakeDaemon = spawn(
+      process.execPath,
+      ['-e', 'setTimeout(() => {}, 30000)', '--', DAEMON_SCRIPT_PATH],
+      { stdio: 'ignore' }
+    );
+    try {
+      const pid = fakeDaemon.pid ?? 0;
+      fs.writeFileSync(path.join(dir, 'daemon.pid'), String(pid));
+      fs.writeFileSync(path.join(dir, 'port.txt'), '9228');
+      await waitUntil(() => isProcessAlive(pid));
+      assert.deepEqual(await listRunningSessions(), [
+        { name: 'p5', state: 'starting', daemonPid: pid },
+      ]);
+    } finally {
+      fakeDaemon.kill('SIGKILL');
+    }
   });
 
   void it('lists a session whose daemon died while its Chrome runs as crashed', async () => {
@@ -467,6 +516,17 @@ void describe('session list', () => {
     }
   });
 });
+
+/**
+ * Whether the file system of a directory ignores case in names.
+ *
+ * @param dir - Existing directory whose name has upper-case letters
+ * @returns True if the lower-cased path names the same directory
+ */
+function isCaseInsensitive(dir: string): boolean {
+  const lower = path.join(path.dirname(dir), path.basename(dir).toLowerCase());
+  return fs.existsSync(lower) && fs.statSync(lower).ino === fs.statSync(dir).ino;
+}
 
 /**
  * Poll until a condition holds (up to 2 s).
@@ -514,6 +574,27 @@ void describe('Chrome owners (attach)', () => {
     } finally {
       launched.close();
       attached.close();
+    }
+  });
+
+  void it('ignores sessions whose socket is stale or whose metadata has no targetId', async () => {
+    const stale = path.join(base, 'sessions', 'gone');
+    fs.mkdirSync(stale, { recursive: true });
+    fs.writeFileSync(path.join(stale, 'daemon.sock'), '');
+    fs.writeFileSync(
+      path.join(stale, 'session.meta.json'),
+      JSON.stringify({ targetId: 'T1', chromePid: 4242 })
+    );
+    const noTarget = await fakeLiveSession('blank', { targetId: 'T1', chromePid: 4242 });
+    fs.writeFileSync(
+      path.join(base, 'sessions', 'blank', 'session.meta.json'),
+      JSON.stringify({ port: 9930, chromePid: 4242 })
+    );
+    try {
+      process.env['BDG_SESSION'] = 'spy';
+      assert.equal(await findConflictingOwner(['T1'], 'T1'), null);
+    } finally {
+      noTarget.close();
     }
   });
 });

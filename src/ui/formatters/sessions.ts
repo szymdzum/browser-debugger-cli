@@ -40,7 +40,7 @@ export function formatSessionList(data: { sessions: RunningSessionInfo[] }): str
   }
   const cleanups = data.sessions.flatMap((session) => (session.cleanup ? [session.cleanup] : []));
   if (cleanups.length > 0) {
-    fmt.hints('Crashed or stale sessions (daemon gone); clean up with:', cleanups);
+    fmt.hints('Crashed or stale sessions; clean up with:', cleanups);
   }
   return fmt.build();
 }

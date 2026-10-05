@@ -5,6 +5,8 @@
  * providing actionable suggestions for recovery.
  */
 
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+
 export interface ShellDamageResult {
   damaged: boolean;
   type?: 'attribute-selector' | 'unquoted-argument';
@@ -23,7 +25,7 @@ function noDamage(): ShellDamageResult {
 }
 
 function buildSelectorSuggestion(selector: string): string {
-  return `Use the two-step pattern:\n  1. bdg dom query '${selector}'\n  2. bdg dom a11y describe 0`;
+  return `Use the two-step pattern:\n  1. ${sessionCommand(`bdg dom query '${selector}'`)}\n  2. ${sessionCommand('bdg dom a11y describe 0')}`;
 }
 
 function checkUnquotedAttribute(selector: string): ShellDamageResult {
@@ -59,7 +61,7 @@ function checkBareArgument(script: string): ShellDamageResult {
     damaged: true,
     type: 'unquoted-argument',
     details: `${funcName}(${bareArg}) - quotes stripped by shell`,
-    suggestion: `Try: bdg dom eval '${fixedScript}'`,
+    suggestion: `Try: ${sessionCommand(`bdg dom eval '${fixedScript}'`)}`,
   };
 }
 
@@ -72,7 +74,7 @@ function checkUnexpectedIdentifier(script: string): ShellDamageResult {
     damaged: true,
     type: 'unquoted-argument',
     details: 'Unexpected identifier suggests quotes were stripped',
-    suggestion: "Use single quotes around the script: bdg dom eval '...'",
+    suggestion: `Use single quotes around the script: ${sessionCommand("bdg dom eval '...'")}`,
   };
 }
 

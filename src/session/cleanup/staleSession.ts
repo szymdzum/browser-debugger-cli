@@ -11,8 +11,8 @@ import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { clearChromePid, readChromePid } from '@/session/chrome.js';
 import { probeDaemonSocket } from '@/session/daemonSocket.js';
-import { getSessionDir, getSessionFilePath } from '@/session/paths.js';
-import { readDaemonPid } from '@/session/pid.js';
+import { getSessionDir, getSessionFilePath, sessionFilePathIn } from '@/session/paths.js';
+import { readPidFromFile } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { safeRemoveFile } from '@/utils/file.js';
@@ -126,10 +126,11 @@ export async function reapOrphanedChrome(): Promise<boolean> {
 /**
  * Read the PID of a live bdg daemon from daemon.pid.
  *
+ * @param dir - Session directory (defaults to the selected session's)
  * @returns Daemon PID if the process is alive and is a bdg daemon, else null
  */
-export function readLiveDaemonPid(): number | null {
-  const pid = readDaemonPid();
+export function readLiveDaemonPid(dir: string = getSessionDir()): number | null {
+  const pid = readPidFromFile(sessionFilePathIn(dir, 'DAEMON_PID'));
   if (!pid || !isProcessAlive(pid)) return null;
   return hasArgument(getProcessCommand(pid), DAEMON_SCRIPT_PATH) ? pid : null;
 }

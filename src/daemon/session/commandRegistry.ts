@@ -26,6 +26,7 @@ import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { VERSION } from '@/utils/version.js';
@@ -240,7 +241,7 @@ function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRe
   if (!request) {
     throw new CommandError(
       `Network request not found: ${id}`,
-      { suggestion: 'List request ids with: bdg network list' },
+      { suggestion: `List request ids with: ${sessionCommand('bdg network list')}` },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
@@ -259,7 +260,7 @@ function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
   if (!/^\d+$/.test(indexStr)) {
     throw new CommandError(
       `Invalid console message index: ${indexStr}`,
-      { suggestion: 'Use a 0-based index from: bdg console --list' },
+      { suggestion: `Use a 0-based index from: ${sessionCommand('bdg console --list')}` },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
@@ -269,7 +270,7 @@ function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
       messages.length === 0
         ? `Console message not found at index: ${indexStr} (no messages captured yet)`
         : `Console message not found at index: ${indexStr} (available: 0-${messages.length - 1})`,
-      { suggestion: 'List messages with: bdg console --list' },
+      { suggestion: `List messages with: ${sessionCommand('bdg console --list')}` },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }

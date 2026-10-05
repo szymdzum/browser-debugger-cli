@@ -37,6 +37,16 @@ export function noActiveSessionMessage(session: string | null = getSessionName()
 }
 
 /**
+ * Shell command that deletes a directory by hand (single-quoted).
+ *
+ * @param dir - Directory
+ * @returns Command line
+ */
+export function removeDirCommand(dir: string): string {
+  return `rm -rf '${dir.replaceAll("'", "'\\''")}'`;
+}
+
+/**
  * How to start the selected session.
  *
  * @returns Suggestion

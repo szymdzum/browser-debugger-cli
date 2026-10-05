@@ -21,14 +21,14 @@ import {
 import type { TelemetryType } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { findSimilar } from '@/utils/suggestions.js';
 import { probeDevToolsEndpoint } from '@/utils/http.js';
+import { findSimilar } from '@/utils/suggestions.js';
 import { devToolsHttpEndpoint, validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
  */
-interface CollectorOptions {
+export interface CollectorOptions {
   /** Chrome debugging port as provided by the user. */
   port: string;
   /** Optional auto-stop timeout (seconds, string form). */
@@ -110,7 +110,7 @@ export function extractUserDataDirFromFlags(flags: string[]): {
  * @param command - Commander.js Command instance to apply options to
  * @returns The modified Command instance with all telemetry options applied
  */
-function applyCollectorOptions(command: Command): Command {
+export function applyCollectorOptions(command: Command): Command {
   // Default to headless if no display available
   const defaultHeadless = !hasDisplay();
 
@@ -278,7 +278,7 @@ function validateStartInput(
   assertValidUrl(url);
   if (options.chromeWsUrl !== undefined) {
     assertValidChromeWsUrl(options.chromeWsUrl);
-    assertNoLaunchOptions(options, program.getOptionValueSource('headless') === 'cli');
+    assertNoLaunchOptions(options, program);
   }
   if (options.userDataDir !== undefined) assertUserDataDir(options.userDataDir);
   if (options.chromeWsUrl === undefined)
@@ -398,18 +398,31 @@ function assertUserDataDir(value: string): void {
 }
 
 /**
- * Reject options that only apply to a Chrome bdg launches.
+ * Options given that only apply to a Chrome bdg launches. `--headless` has a
+ * default, so it counts only when given on the command line.
  *
- * @param options - Parsed options (with `--chrome-ws-url`)
- * @param headlessGiven - Whether `--headless` / `--no-headless` was given
- * @throws CommandError (81) for `--port`, `-u` or `--[no-]headless`
+ * @param options - Parsed options
+ * @param program - Command the options were parsed by
+ * @returns The conflicting flags, e.g. ["--port", "--headless"]
  */
-function assertNoLaunchOptions(options: CollectorOptions, headlessGiven: boolean): void {
-  const conflicts = [
+export function launchOptionConflicts(options: CollectorOptions, program: Command): string[] {
+  const headlessGiven = program.getOptionValueSource('headless') === 'cli';
+  return [
     ...(options.port !== undefined ? ['--port'] : []),
     ...(options.userDataDir !== undefined ? ['--user-data-dir'] : []),
     ...(headlessGiven ? [options.headless ? '--headless' : '--no-headless'] : []),
   ];
+}
+
+/**
+ * Reject options that only apply to a Chrome bdg launches.
+ *
+ * @param options - Parsed options (with `--chrome-ws-url`)
+ * @param program - Command the options were parsed by
+ * @throws CommandError (81) for `--port`, `-u` or `--[no-]headless`
+ */
+function assertNoLaunchOptions(options: CollectorOptions, program: Command): void {
+  const conflicts = launchOptionConflicts(options, program);
   if (conflicts.length === 0) return;
   const err = chromeWsUrlConflictError(conflicts);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);

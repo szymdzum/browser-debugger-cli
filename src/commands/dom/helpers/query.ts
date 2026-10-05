@@ -43,6 +43,7 @@ import type {
   ViewportPosition,
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -517,7 +518,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
     const err = eitherArgumentRequiredError(
       'selector',
       'nodeId',
-      'bdg dom get <selector> or bdg dom get --node-id <id>'
+      `${sessionCommand('bdg dom get <selector>')} or ${sessionCommand('bdg dom get --node-id <id>')}`
     );
     throw new CommandError(
       err.message,

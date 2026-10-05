@@ -8,6 +8,7 @@
 
 import type { HintDetails } from '@/errors/notices.js';
 import { joinLines } from '@/ui/formatting.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
  * Format a structured hint into a user-facing string.
@@ -24,7 +25,7 @@ export function formatHint(hint: HintDetails): string {
       const cdpMethods = (ctx['cdpMethods'] as string[] | undefined) ?? [];
       return joinLines(
         '',
-        `Hint: Consider using '${alternative}' instead of ${cdpMethods.join(' or ')}`,
+        `Hint: Consider using '${sessionCommand(alternative)}' instead of ${cdpMethods.join(' or ')}`,
         ''
       );
     }

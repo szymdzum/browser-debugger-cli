@@ -7,10 +7,11 @@ import * as fs from 'fs';
 
 import { getStatus } from '@/ipc/client.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
-import { isSessionChrome } from '@/session/cleanup/staleSession.js';
+import { isSessionChrome, readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
 import { probeDaemonSocket, type SocketProbeResult } from '@/session/daemonSocket.js';
 import {
   SESSION_STATE_FILES,
+  getNamedSessionDir,
   listSessionDirs,
   sessionFilePathIn,
   type SessionDirEntry,
@@ -19,7 +20,7 @@ import { readPidFromFile } from '@/session/pid.js';
 import { readPortFile } from '@/session/portClaims.js';
 import { isValidSessionName, normalizeSessionName } from '@/session/sessionName.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
-import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { removeDirCommand, sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 const log = createLogger('session');
@@ -85,7 +86,7 @@ async function describeSession(entry: SessionDirEntry): Promise<RunningSessionIn
   const { name, dir } = entry;
   const socketPath = sessionFilePathIn(dir, 'DAEMON_SOCKET');
   const probe = await probeDaemonSocket(socketPath);
-  if (probe !== 'alive') return describeLeftovers(entry, probe);
+  if (probe !== 'alive') return describeWithoutSocket(entry, probe);
   try {
     const response = await getStatus(socketPath);
     if (response.status === 'ok' && response.data) return toRunningSession(name, response.data);
@@ -93,6 +94,24 @@ async function describeSession(entry: SessionDirEntry): Promise<RunningSessionIn
     logDebugError(log, `get status of ${dir}`, error);
   }
   return { name, state: 'unresponsive' };
+}
+
+/**
+ * A session whose daemon socket does not answer: `starting` while its daemon
+ * (from daemon.pid, verified by command line) runs but has not bound the
+ * socket yet, otherwise see {@link describeLeftovers}.
+ *
+ * @param entry - Session directory
+ * @param probe - Result of probing its daemon socket
+ * @returns Session info, or null when the directory holds no session state
+ */
+function describeWithoutSocket(
+  entry: SessionDirEntry,
+  probe: SocketProbeResult
+): RunningSessionInfo | null {
+  const daemonPid = readLiveDaemonPid(entry.dir);
+  if (daemonPid !== null) return { name: entry.name, state: 'starting', daemonPid };
+  return describeLeftovers(entry, probe);
 }
 
 /**
@@ -144,8 +163,7 @@ function leftoverPort(dir: string): number | null {
 
 /**
  * Whether a directory entry is a session `--session` can select: the
- * default session, or a valid lower-case name (directories such as `ALPHA`
- * or `--json` left by older versions are skipped).
+ * default session, or a valid lower-case name.
  *
  * @param entry - Session directory
  * @returns True if selectable
@@ -155,12 +173,73 @@ function isSelectable({ name }: SessionDirEntry): boolean {
 }
 
 /**
+ * Whether two paths are the same directory (same inode and device), e.g.
+ * `sessions/ALPHA` and `sessions/alpha` on a case-insensitive file system.
+ *
+ * @param a - First path
+ * @param b - Second path
+ * @returns True if both exist and are the same directory
+ */
+function isSameDir(a: string, b: string): boolean {
+  try {
+    const first = fs.statSync(a);
+    const second = fs.statSync(b);
+    return first.ino === second.ino && first.dev === second.dev;
+  } catch (error) {
+    logDebugError(log, `compare ${a} with ${b}`, error);
+    return false;
+  }
+}
+
+/**
+ * The session `--session` reaches in a directory: the entry itself when its
+ * name is selectable, the lower-cased session when the name differs only in
+ * case and `--session <lower-case>` resolves to this very directory (a
+ * case-insensitive file system), else null.
+ *
+ * @param entry - Session directory
+ * @returns Selectable entry, or null
+ */
+function selectableEntry(entry: SessionDirEntry): SessionDirEntry | null {
+  if (isSelectable(entry) || entry.name === null) return entry;
+  const lower = normalizeSessionName(entry.name);
+  if (!isValidSessionName(lower)) return null;
+  return isSameDir(entry.dir, getNamedSessionDir(lower)) ? { name: lower, dir: entry.dir } : null;
+}
+
+/**
+ * A directory `--session` cannot reach (e.g. `--json`, or `ALPHA` on a
+ * case-sensitive file system, made by an earlier build): described like any
+ * session while its daemon answers, otherwise `stale` with the command that
+ * removes it by hand.
+ *
+ * @param entry - Session directory
+ * @returns Session info
+ */
+async function describeUnselectable(entry: SessionDirEntry): Promise<RunningSessionInfo | null> {
+  const socketPath = sessionFilePathIn(entry.dir, 'DAEMON_SOCKET');
+  if ((await probeDaemonSocket(socketPath)) === 'alive') return describeSession(entry);
+  return { name: entry.name, state: 'stale', cleanup: removeDirCommand(entry.dir) };
+}
+
+/**
  * Every session: the default one first, then named sessions by name. Includes
- * crashed and stale sessions so their leftovers can be cleaned up.
+ * crashed and stale sessions, and directories `--session` cannot reach, so
+ * their leftovers can be cleaned up. A directory differing only in case
+ * (`ALPHA`) that `--session alpha` reaches is listed once, as `alpha`.
  *
  * @returns Sessions
  */
 export async function listRunningSessions(): Promise<RunningSessionInfo[]> {
-  const sessions = await Promise.all(listSessionDirs().filter(isSelectable).map(describeSession));
+  const listed = new Set<string | null>();
+  const sessions = await Promise.all(
+    listSessionDirs().map((entry) => {
+      const selectable = selectableEntry(entry);
+      if (selectable === null) return describeUnselectable(entry);
+      if (listed.has(selectable.name)) return Promise.resolve(null);
+      listed.add(selectable.name);
+      return describeSession(selectable);
+    })
+  );
   return sessions.filter((session): session is RunningSessionInfo => session !== null);
 }

@@ -281,7 +281,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default:
       "A named session's directory (Chrome profile, ~60 MB; logs; port.txt) is kept for its next start",
     whenEnabled:
-      'After cleaning up, deletes the directory of the session named by --session (exit 81 without --session); a running session is refused unless --force is given',
+      'After cleaning up, deletes the directory of the session named by --session (exit 81 without --session); a running session is refused unless --force is given, and the directory is kept (exit 90) if the daemon still answers, cleanup reported a problem, or its Chrome has not exited',
   },
 
   'bdg:--chrome-ws-url': {
