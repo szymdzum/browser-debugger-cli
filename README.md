@@ -59,12 +59,14 @@ bdg eval "document.title"          # Run JavaScript in the page (--frame for ifr
 bdg network list --preset errors   # Network requests, console: bdg console
 bdg dom listeners "#save"          # Which event listeners run for an element
 bdg dom layout "#save"             # Where it is, whether it is visible or covered
+bdg dom wait "#result" --visible   # Wait for an element instead of sleeping
+bdg example.com --session agent2 --viewport 1280x800   # A second, independent session
 bdg stop                           # End session
 ```
 
 ## Current State
 
-**Raw CDP access is complete.** Every protocol method works now. High-level commands cover the common work: page navigation, DOM queries and interaction (click, fill, hover, keys, forms, shadow DOM and iframes), accessibility tree, screenshots, network requests and HAR export, console messages and event listeners. See the [CLI reference](docs/CLI_REFERENCE.md) for every command, and `bdg --help --json` for the machine-readable version.
+**Raw CDP access is complete.** Every protocol method works now. High-level commands cover the common work: page navigation, DOM queries and interaction (click, fill, hover, keys, forms, shadow DOM and iframes), accessibility tree, screenshots, network requests and HAR export, console messages and event listeners. Actions report what they changed (navigation, new messages, requests, or no visible effect), and several named sessions can run side by side. See the [CLI reference](docs/CLI_REFERENCE.md) for every command, and `bdg --help --json` for the machine-readable version.
 
 ## Agent Discovery Pattern
 
