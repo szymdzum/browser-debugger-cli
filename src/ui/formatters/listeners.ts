@@ -2,12 +2,20 @@
  * Human-readable output of `bdg dom listeners`.
  */
 
-import type { ElementListener, ListenersResult } from '@/ipc/protocol/domTypes.js';
+import type {
+  CollapsedListeners,
+  ElementListener,
+  ListenersResult,
+} from '@/ipc/protocol/domTypes.js';
 import { delegatedOnlyTypes } from '@/runtime/dom/listenerSummary.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
+  COLLAPSED_LISTENERS_HEADING,
   NO_LISTENERS_HINT,
+  collapsedListenersSummary,
   delegatedListenersNote,
+  eventTypeSuggestion,
+  jqueryHandlersSkippedNote,
   listenersHeadline,
   noListenersMessage,
 } from '@/ui/messages/commands.js';
@@ -42,6 +50,9 @@ export function handlerLocation(handler: ElementListener['handler']): string {
  */
 function listenerCells(listener: ElementListener): string[] {
   const flags = [
+    listener.framework,
+    listener.delegateSelector && `delegate ${listener.delegateSelector}`,
+    listener.noop && 'no-op',
     listener.useCapture && 'capture',
     listener.passive && 'passive',
     listener.once && 'once',
@@ -73,9 +84,13 @@ function alignColumns(rows: string[][]): string[] {
   );
 }
 
+/** Dispatcher names listed per collapsed framework root */
+const COLLAPSED_HANDLERS_SHOWN = 3;
+
 /**
  * Format `bdg dom listeners` output: listeners grouped by event type,
- * nearest first, with a note for events handled only by delegation.
+ * nearest first, then one line per framework root, with a note for events
+ * handled only by delegation.
  *
  * @param result - Listener report
  * @param types - Event types asked for with --type, if any
@@ -83,17 +98,43 @@ function alignColumns(rows: string[][]): string[] {
  */
 export function formatListeners(result: ListenersOutput, types?: string[]): string {
   const fmt = new OutputFormatter();
-  if (result.listeners.length === 0) {
+  const collapsed = result.collapsed ?? [];
+  if (result.listeners.length === 0 && collapsed.length === 0) {
     fmt.text(noListenersMessage(result.element, types));
+    if (result.typeSuggestions?.length) fmt.text(eventTypeSuggestion(result.typeSuggestions));
     fmt.tip(NO_LISTENERS_HINT);
   } else {
-    fmt.text(listenersHeadline(result.element, result.listeners.length));
+    const count = collapsed.reduce((sum, root) => sum + root.count, result.listeners.length);
+    fmt.text(listenersHeadline(result.element, count, result));
     appendListenerGroups(fmt, result.listeners);
-    const delegated = delegatedOnlyTypes(result.listeners);
+    appendCollapsed(fmt, collapsed);
+    const delegated = delegatedOnlyTypes(result.listeners, collapsed);
     if (delegated.length > 0) fmt.blank().text(delegatedListenersNote(delegated));
+  }
+  if (result.jqueryHandlersSkipped) {
+    fmt.blank().text(jqueryHandlersSkippedNote(result.jqueryHandlersSkipped));
   }
   if (result.warning) fmt.blank().text(`⚠ Warning: ${result.warning}`);
   return fmt.build();
+}
+
+/**
+ * Add the collapsed framework roots, one line per node.
+ *
+ * @param fmt - Output being built
+ * @param collapsed - Collapsed roots
+ */
+function appendCollapsed(fmt: OutputFormatter, collapsed: CollapsedListeners[]): void {
+  if (collapsed.length === 0) return;
+  fmt.blank().text(COLLAPSED_LISTENERS_HEADING);
+  const rows = collapsed.map((root) => {
+    const names = root.handlers.map((handler) =>
+      truncateByLength(handler.name || ANONYMOUS, NAME_MAX_LENGTH)
+    );
+    const shown = [...new Set(names)].slice(0, COLLAPSED_HANDLERS_SHOWN);
+    return [root.on, root.node, collapsedListenersSummary({ ...root, handlers: shown })];
+  });
+  alignColumns(rows).forEach((line) => fmt.text(`  ${line}`));
 }
 
 /**

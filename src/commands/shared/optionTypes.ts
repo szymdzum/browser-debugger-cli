@@ -248,8 +248,10 @@ export interface ScrollCommandOptions extends BaseOptions, IndexOptions {
  * Options for `dom listeners`.
  */
 export interface ListenersCommandOptions extends BaseOptions, IndexOptions {
-  /** Only these event types (from --type, comma-separated) */
+  /** Only these event types (from --type, comma-separated, repeatable) */
   type?: string[];
+  /** List every listener of framework roots */
+  all?: boolean;
 }
 
 /**

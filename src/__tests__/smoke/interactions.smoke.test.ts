@@ -437,4 +437,50 @@ void describe('DOM interactions', () => {
     await bdg(['page', 'forward'], 81);
     await bdg(['page', 'back']);
   });
+
+  void it('collapses framework roots and names jQuery handlers in listener lists', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}framework-listeners`]);
+    type Listed = {
+      data: {
+        listeners: Array<{
+          type: string;
+          on: string;
+          noop?: boolean;
+          framework?: string;
+          delegateSelector?: string;
+          handler: { name: string };
+        }>;
+        collapsed?: Array<{ node: string; types: string[]; count: number; capture: boolean }>;
+        typeSuggestions?: string[];
+      };
+    };
+    const listed = async (args: string[]): Promise<Listed['data']> =>
+      (JSON.parse(await bdg(['dom', 'listeners', ...args, '--json'])) as Listed).data;
+
+    const button = await listed(['#go']);
+    assert.deepEqual(
+      button.listeners.map((l) => `${l.type}:${l.on}:${l.noop === true}`),
+      ['click:target:true']
+    );
+    assert.equal(button.collapsed?.length, 1);
+    assert.equal(button.collapsed?.[0]?.node, 'div#root');
+    assert.equal(button.collapsed?.[0]?.count, 24);
+    assert.equal(button.collapsed?.[0]?.types.length, 12);
+    const human = await bdg(['dom', 'listeners', '#go']);
+    assert.match(
+      human,
+      /Framework roots.*\n {2}ancestor {2}div#root {2}React root: 12 event types, capture and bubble/
+    );
+    assert.match(human, /Note: (?:\w+, )*click, .* have no listener on the element itself/);
+    assert.equal((await listed(['#go', '--all'])).listeners.length, 25);
+
+    const row = await listed(['#row', '--type', 'click']);
+    const jquery = row.listeners.filter((l) => l.framework === 'jQuery');
+    assert.deepEqual(
+      jquery.map((l) => `${l.on}:${l.handler.name}:${l.delegateSelector}`),
+      ['document:rowClicked:.row']
+    );
+
+    assert.deepEqual((await listed(['#row', '--type', 'Click'])).typeSuggestions, ['click']);
+  });
 });

@@ -10,6 +10,7 @@ import { CommandError } from '@/errors/index.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import { selectFrame } from '@/runtime/dom/frameSelection.js';
 import { formatDomEval, formatDomFrames } from '@/ui/formatters/dom.js';
+import { evalFrameLine } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const FRAMES: DomFrame[] = [
@@ -111,11 +112,30 @@ void describe('frame output', () => {
     assert.equal(formatDomFrames({ frames: [] }), 'The page has no iframes');
   });
 
-  void it('names the frame an eval ran in', () => {
-    assert.equal(
-      formatDomEval({ result: 'Pay', type: 'string', frame: 'https://pay.example/' }),
-      'Frame: https://pay.example/\n"Pay"'
-    );
+  void it('indents nested frames, shortens long URLs and names empty ones', () => {
+    const longUrl = `https://embed.example/?q=${'x'.repeat(200)}`;
+    const nested: DomFrame[] = [
+      { ...(FRAMES[1] as DomFrame), index: 0 },
+      { index: 1, url: '', origin: 'null', crossOrigin: true, outOfProcess: true, parentIndex: 0 },
+      {
+        index: 2,
+        url: longUrl,
+        origin: 'x',
+        crossOrigin: true,
+        outOfProcess: true,
+        parentIndex: 1,
+      },
+    ];
+    const [first, second, third] = formatDomFrames({ frames: nested }).split('\n');
+    assert.match(first ?? '', /^\[0\] https:\/\/pay/);
+    assert.equal(second, '  [1] (no URL)  cross-origin, out-of-process');
+    assert.match(third ?? '', /^ {4}\[2\] https:\/\/embed\.example\/\?q=x+… {2}cross-origin/);
+    assert.ok((third ?? '').length < 150);
+  });
+
+  void it('prints the eval value alone (the frame goes to stderr)', () => {
     assert.equal(formatDomEval({ result: 'Pay', type: 'string' }), '"Pay"');
+    assert.equal(evalFrameLine('https://pay.example/'), 'Frame: https://pay.example/');
+    assert.equal(evalFrameLine(''), 'Frame: (no URL)');
   });
 });

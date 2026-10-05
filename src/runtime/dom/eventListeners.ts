@@ -19,11 +19,16 @@ import {
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
+import { ELEMENT_INFO_JS, type ElementInfo } from '@/runtime/dom/listenerPageScripts.js';
 import {
   buildListenerReport,
   describeChainEntry,
+  suggestEventTypes,
   type ChainEntry,
   type ChainListeners,
+  type HandlerDetails,
+  type ListenerReport,
+  type ResolvedHandler,
 } from '@/runtime/dom/listenerSummary.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -59,10 +64,17 @@ const CHAIN_JS = `function () {
   return chain;
 }`;
 
-/** Page function: names of the given functions (null for non-functions) */
-const NAMES_JS = `function (...fns) {
-  return fns.map((fn) => (typeof fn === 'function' ? fn.name : null));
-}`;
+/** What the page tells about the element and its listeners */
+interface PageDetails {
+  /** Per flattened listener: handler name, jQuery handlers */
+  details: HandlerDetails[];
+  /** Framework label per chain entry */
+  roots: Array<string | null>;
+  /** Iframe element holding the element's document */
+  frame?: string;
+  /** jQuery handlers left unresolved (over the limit) */
+  jquerySkipped?: number;
+}
 
 /** Distinguishes the object groups of concurrent calls */
 let groupCounter = 0;
@@ -88,15 +100,23 @@ export async function inspectEventListeners(
   const objectGroup = `bdg-listeners-${++groupCounter}`;
   try {
     const { matchCount, chain } = await findEventTargetChain(cdp, params, objectGroup);
-    const found = await collectListeners(cdp, chain);
-    const handlers = found.flatMap((entry) => entry.listeners.map((l) => l.handler));
-    const names = await handlerNames(cdp, chain[0]?.objectId ?? '', handlers);
+    const collected = await collectListeners(cdp, chain);
+    const page = await pageDetails(cdp, chain, collected, objectGroup);
+    const found = collected.map((item) => {
+      const framework = page.roots[item.position];
+      return framework ? { ...item, entry: { ...item.entry, framework } } : item;
+    });
+    const report = buildListenerReport(found, page.details, params);
     const result: ListenersResult = {
       success: true,
       selector: params.selector,
       ...(params.index !== undefined && { index: params.index }),
       element: describeChainEntry(chain[0] ?? {}),
-      listeners: buildListenerReport(found, names, params.types),
+      ...(page.frame && { frame: page.frame }),
+      listeners: report.listeners,
+      ...(report.collapsed.length > 0 && { collapsed: report.collapsed }),
+      ...typeSuggestions(found, report, params.types),
+      ...(page.jquerySkipped && { jqueryHandlersSkipped: page.jquerySkipped }),
       ...(params.backendNodeId === undefined && { matchCount }),
     };
     return withMultipleMatchesWarning(result, params.index, 'listing the first');
@@ -255,33 +275,185 @@ async function collectListeners(
 }
 
 /**
- * Ask the page for the handlers' names (`Function.name` also knows names of
- * arrow functions assigned to variables, and `bound f` for bound functions).
+ * `--type` values the user probably meant, when none matched.
+ *
+ * @param found - All listeners found
+ * @param report - The filtered report
+ * @param types - Requested types
+ * @returns `{ typeSuggestions }` when there are any
+ */
+function typeSuggestions(
+  found: ChainListeners[],
+  report: ListenerReport,
+  types: string[] | undefined
+): Pick<ListenersResult, 'typeSuggestions'> {
+  if (!types?.length || report.listeners.length > 0 || report.collapsed.length > 0) return {};
+  const available = [...new Set(found.flatMap((entry) => entry.listeners.map((l) => l.type)))];
+  const suggestions = suggestEventTypes(types, available);
+  return suggestions.length > 0 ? { typeSuggestions: suggestions } : {};
+}
+
+/**
+ * Ask the page about the element and its listeners' handlers: their names
+ * (`Function.name` also knows names of arrow functions assigned to
+ * variables, and `bound f` for bound functions), which function object each
+ * calls, the jQuery handlers behind jQuery's dispatcher, React root
+ * containers and the element's iframe.
  *
  * @param cdp - CDP connection
- * @param elementId - Object id of the element (the page context to run in)
- * @param handlers - Handler objects, in report order
- * @returns Names in the same order; empty when the page could not tell
+ * @param chain - Event targets, element first
+ * @param found - Listeners per chain entry
+ * @param objectGroup - Object group for the handles
+ * @returns Details; empty when the page could not tell
  */
-async function handlerNames(
+async function pageDetails(
   cdp: CDPConnection,
-  elementId: string,
-  handlers: Array<Protocol.Runtime.RemoteObject | undefined>
-): Promise<Array<string | undefined>> {
-  if (handlers.length === 0) return [];
+  chain: ChainObject[],
+  found: ChainListeners[],
+  objectGroup: string
+): Promise<PageDetails> {
+  const listeners = found.flatMap((entry) =>
+    entry.listeners.map((listener) => ({ position: entry.position, listener }))
+  );
+  const handlers = listeners.map(({ listener }) => listener.handler);
   try {
+    const targets = await Promise.all(handlers.map((handler) => boundTarget(cdp, handler)));
     const response = (await cdp.send('Runtime.callFunctionOn', {
-      objectId: elementId,
-      functionDeclaration: NAMES_JS,
-      arguments: handlers.map((handler) =>
-        handler?.objectId ? { objectId: handler.objectId } : { value: null }
-      ),
-      returnByValue: true,
+      objectId: chain[0]?.objectId,
+      functionDeclaration: ELEMENT_INFO_JS,
+      arguments: [
+        { value: listeners.map(({ position, listener }) => ({ position, type: listener.type })) },
+        ...chain.map((entry) => ({ objectId: entry.objectId })),
+        ...handlers.map(objectArgument),
+        ...targets.map(objectArgument),
+      ],
+      objectGroup,
     })) as Protocol.Runtime.CallFunctionOnResponse;
-    const names = response.result.value as Array<string | null> | undefined;
-    return (names ?? []).map((name) => name ?? undefined);
+    const [infoObject, ...fns] = await arrayItems(cdp, response.result.objectId ?? '');
+    const info = await valueOf<ElementInfo>(cdp, infoObject?.objectId ?? '');
+    return toPageDetails(info, await Promise.all(fns.map((fn) => handlerSource(cdp, fn))));
   } catch (error) {
-    log.debug(`Handler names not read: ${getErrorMessage(error)}`);
-    return [];
+    log.debug(`Handler details not read: ${getErrorMessage(error)}`);
+    return { details: [], roots: [] };
   }
+}
+
+/**
+ * A `Runtime.callFunctionOn` argument for a remote object.
+ *
+ * @param object - The object, if any
+ * @returns Its handle, or null
+ */
+function objectArgument(
+  object: Protocol.Runtime.RemoteObject | undefined
+): Protocol.Runtime.CallArgument {
+  return object?.objectId ? { objectId: object.objectId } : { value: null };
+}
+
+/**
+ * An internal property (`[[TargetFunction]]`, `[[FunctionLocation]]`) of a
+ * page object.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The object
+ * @param name - Property name
+ * @returns Its value, undefined when missing or unreadable
+ */
+async function internalProperty(
+  cdp: CDPConnection,
+  objectId: string,
+  name: string
+): Promise<Protocol.Runtime.RemoteObject | undefined> {
+  try {
+    const { internalProperties = [] } = (await cdp.send('Runtime.getProperties', {
+      objectId,
+      ownProperties: true,
+    })) as Protocol.Runtime.GetPropertiesResponse;
+    return internalProperties.find((property) => property.name === name)?.value;
+  } catch (error) {
+    log.debug(`${name} not read: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}
+
+/**
+ * The function a bound handler calls (React binds one dispatcher per event
+ * type), so dispatchers are recognised by function identity.
+ *
+ * @param cdp - CDP connection
+ * @param handler - Listener handler
+ * @returns The target function, undefined for handlers that are not bound
+ */
+async function boundTarget(
+  cdp: CDPConnection,
+  handler: Protocol.Runtime.RemoteObject | undefined
+): Promise<Protocol.Runtime.RemoteObject | undefined> {
+  if (!handler?.objectId || !handler.description?.includes('[native code]')) return undefined;
+  return internalProperty(cdp, handler.objectId, '[[TargetFunction]]');
+}
+
+/**
+ * Copy a page object by value.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The object
+ * @returns Its JSON value
+ */
+async function valueOf<T>(cdp: CDPConnection, objectId: string): Promise<T> {
+  const response = (await cdp.send('Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: 'function () { return this; }',
+    returnByValue: true,
+  })) as Protocol.Runtime.CallFunctionOnResponse;
+  return response.result.value as T;
+}
+
+/** Source and location of a handler function */
+type HandlerSource = Pick<ResolvedHandler, 'source' | 'scriptId' | 'lineNumber' | 'columnNumber'>;
+
+/**
+ * Source and location of a framework handler function (no location when
+ * it cannot be read).
+ *
+ * @param cdp - CDP connection
+ * @param fn - The function
+ * @returns Its source and location
+ */
+async function handlerSource(
+  cdp: CDPConnection,
+  fn: Protocol.Runtime.RemoteObject | undefined
+): Promise<HandlerSource> {
+  const source = { source: fn?.description, scriptId: '0', lineNumber: 0, columnNumber: 0 };
+  if (!fn?.objectId) return source;
+  const location = (await internalProperty(cdp, fn.objectId, '[[FunctionLocation]]'))?.value as
+    Partial<Protocol.Debugger.Location> | undefined;
+  return { ...source, ...location };
+}
+
+/**
+ * Combine the page's report with the framework handlers' sources.
+ *
+ * @param info - Page report
+ * @param sources - Source and location of each jQuery handler, in report order
+ * @returns Details per listener
+ */
+function toPageDetails(info: ElementInfo, sources: HandlerSource[]): PageDetails {
+  let next = 0;
+  const details = info.listeners.map(({ name, identity, targetName, jquery }) => ({
+    name: name ?? undefined,
+    identity: identity ?? undefined,
+    targetName: targetName ?? undefined,
+    jquery: jquery?.map((handler) => ({
+      type: handler.type,
+      selector: handler.selector ?? undefined,
+      name: handler.name,
+      ...(sources[next++] ?? { scriptId: '0', lineNumber: 0, columnNumber: 0 }),
+    })),
+  }));
+  return {
+    details,
+    roots: info.roots,
+    ...(info.frame && { frame: info.frame }),
+    ...(info.jquerySkipped > 0 && { jquerySkipped: info.jquerySkipped }),
+  };
 }

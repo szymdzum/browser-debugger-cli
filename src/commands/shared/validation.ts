@@ -186,15 +186,16 @@ export function consoleLevelOption(value: string): ConsoleLevel {
 
 /**
  * Commander parser for `dom listeners --type`: comma-separated event types
- * (case-sensitive, like `addEventListener`).
+ * (case-sensitive, like `addEventListener`); repeated options add up.
  *
  * @param value - Raw option value, e.g. "click,keydown"
+ * @param previous - Types from earlier `--type` options
  * @returns Event types
  * @throws InvalidArgumentError (exit 81) when no type is given
  */
-export function eventTypesOption(value: string): string[] {
+export function eventTypesOption(value: string, previous: string[] = []): string[] {
   const types = parseCommaSeparated(value);
-  if (types.length > 0) return types;
+  if (types.length > 0) return [...new Set([...previous, ...types])];
   throw new InvalidArgumentError('Give at least one event type, e.g. click or click,keydown.');
 }
 

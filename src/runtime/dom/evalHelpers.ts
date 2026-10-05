@@ -1,9 +1,12 @@
 import type { CDPConnection } from '@/connection/cdp.js';
+import { CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   navigationPendingError,
   pageBusyError,
+  pageClosedDuringEvalError,
+  pageNavigatedDuringEvalError,
   promiseTimeoutError,
   scriptExecutionError,
   scriptTimeoutError,
@@ -352,6 +355,9 @@ async function withDeadline<T>(
   }
 }
 
+/** What a busy target is called in messages: the page, or an iframe (`--frame`) */
+export type BusyScope = 'page' | 'frame';
+
 /**
  * Stop whatever JavaScript keeps the page busy (e.g. a loop started from a
  * timer, which `Runtime.evaluate`'s own timeout cannot reach: the script
@@ -359,9 +365,10 @@ async function withDeadline<T>(
  * answering because a navigation still waits for the server is left alone.
  *
  * @param cdp - CDP connection
+ * @param scope - Whether the target is the page or an iframe
  * @returns The timeout error to report
  */
-async function terminatePageScripts(cdp: CDPSender): Promise<CommandError> {
+async function terminatePageScripts(cdp: CDPSender, scope: BusyScope): Promise<CommandError> {
   const pendingUrl = await pendingNavigationUrl(cdp).catch((error: unknown) => {
     log.debug(`Could not check for a pending navigation: ${getErrorMessage(error)}`);
     return undefined;
@@ -370,15 +377,68 @@ async function terminatePageScripts(cdp: CDPSender): Promise<CommandError> {
     const err = navigationPendingError(pendingUrl);
     return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
   }
-  await cdp
-    .send('Runtime.terminateExecution')
-    .catch((error: unknown) => log.debug(`terminateExecution failed: ${getErrorMessage(error)}`));
-  const err = pageBusyError(EVAL_TIMEOUT_MS);
+  const err = pageBusyError(EVAL_TIMEOUT_MS, scope, await terminateExecution(cdp));
   return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+}
+
+/**
+ * Ask V8 to terminate the target's running script.
+ *
+ * @param cdp - CDP connection of the target
+ * @returns Whether the target acknowledged it in time
+ */
+async function terminateExecution(cdp: CDPSender): Promise<boolean> {
+  try {
+    const stopped = await settledWithin(cdp.send('Runtime.terminateExecution'), LIVENESS_CHECK_MS);
+    return stopped.settled;
+  } catch (error) {
+    log.debug(`terminateExecution failed: ${getErrorMessage(error)}`);
+    return false;
+  }
 }
 
 /** How long a page gets to answer a liveness check before it counts as busy */
 const LIVENESS_CHECK_MS = 2_000;
+
+/** When {@link withBusyPageRecovery} checks the target, and what it calls it */
+export interface BusyRecoveryOptions {
+  /** Time after which a command that has not answered gets the target checked */
+  busyAfterMs?: number;
+  /** How long the target gets to answer the check */
+  livenessMs?: number;
+  /** The page (default) or an iframe, for messages */
+  scope?: BusyScope;
+}
+
+/**
+ * Whether the target answers a trivial evaluation in time.
+ *
+ * @param cdp - CDP connection
+ * @param ms - Time limit
+ * @returns False when its scripts keep it busy
+ */
+async function isAnswering(cdp: CDPSender, ms: number): Promise<boolean> {
+  const probe = await settledWithin(
+    cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true }),
+    ms
+  );
+  return probe.settled;
+}
+
+/** Chrome's messages for a command whose execution context or target went away */
+const CONTEXT_LOST_PATTERN =
+  /Execution context was destroyed|Inspected target navigated or closed|Cannot find context with specified id|uniqueContextId not found|Session with given id not found/i;
+
+/**
+ * Whether Chrome failed a command because the document it ran in went away
+ * (navigation, a removed iframe).
+ *
+ * @param error - Error thrown by a CDP command
+ * @returns True for a lost context
+ */
+export function isContextLostError(error: unknown): boolean {
+  return error instanceof CDPProtocolError && CONTEXT_LOST_PATTERN.test(error.message);
+}
 
 /**
  * Run a CDP command on the page, recovering a page kept busy by its own
@@ -390,24 +450,25 @@ const LIVENESS_CHECK_MS = 2_000;
  *
  * @param cdp - CDP connection
  * @param command - The pending command
- * @param limits - When to check the page, and how long it gets to answer
+ * @param options - When to check the page, how long it gets to answer, what to call it
  * @returns The command's result
  * @throws CommandError (102) when the page was busy
  */
 export async function withBusyPageRecovery<T>(
   cdp: CDPSender,
   command: Promise<T>,
-  limits = { busyAfterMs: EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS, livenessMs: LIVENESS_CHECK_MS }
+  options: BusyRecoveryOptions = {}
 ): Promise<T> {
+  const {
+    busyAfterMs = EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
+    livenessMs = LIVENESS_CHECK_MS,
+    scope = 'page',
+  } = options;
   command.catch(() => undefined);
-  const early = await settledWithin(command, limits.busyAfterMs);
+  const early = await settledWithin(command, busyAfterMs);
   if (early.settled) return early.value;
-  const probe = await settledWithin(
-    cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true }),
-    limits.livenessMs
-  );
-  if (probe.settled) return command;
-  throw await terminatePageScripts(cdp);
+  if (await isAnswering(cdp, livenessMs)) return command;
+  throw await terminatePageScripts(cdp, scope);
 }
 
 /**
@@ -417,7 +478,7 @@ export async function withBusyPageRecovery<T>(
  * @param ms - Time limit
  * @returns `{ settled: true, value }`, or `{ settled: false }` when time ran out
  */
-async function settledWithin<T>(
+export async function settledWithin<T>(
   work: Promise<T>,
   ms: number
 ): Promise<{ settled: true; value: T } | { settled: false }> {
@@ -436,8 +497,100 @@ async function settledWithin<T>(
 export interface EvalTarget {
   /** Session of an attached target (out-of-process iframe) */
   sessionId?: string;
+  /**
+   * Where to check and recover the target when it does not answer (default:
+   * the session itself); a session attached while the target was busy gets
+   * no answer at all
+   */
+  recovery?: CDPSender;
   /** Execution context of a frame (`ExecutionContextDescription.uniqueId`) */
   uniqueContextId?: string;
+}
+
+/**
+ * The error for an evaluation that did not answer in time: a target that
+ * still answers was only waiting for a promise that never settled
+ * (`await new Promise(() => {})`); one that does not answer is busy, and its
+ * scripts are terminated.
+ *
+ * @param cdp - CDP connection of the target
+ * @param scope - Whether the script ran in the page or an iframe
+ * @returns The error to report (102)
+ */
+async function evaluationTimeoutError(cdp: CDPSender, scope: BusyScope): Promise<CommandError> {
+  if (await isAnswering(cdp, LIVENESS_CHECK_MS)) return promiseTimeout();
+  return terminatePageScripts(cdp, scope);
+}
+
+/**
+ * A promise the script awaited or returned did not settle in time.
+ *
+ * @returns Command error (102)
+ */
+function promiseTimeout(): CommandError {
+  const err = promiseTimeoutError(EVAL_TIMEOUT_MS);
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
+}
+
+/** Chrome's message for a command sent to a session (target) that is gone */
+const SESSION_GONE_PATTERN = /Session with given id not found/i;
+
+/**
+ * Whether the page still answers. A page that does not answer in time is
+ * taken as open: commands wait while a navigation is pending.
+ *
+ * @param cdp - CDP connection of the page
+ * @returns False when the page (tab) was closed
+ */
+export async function pageStillOpen(cdp: CDPSender): Promise<boolean> {
+  try {
+    await settledWithin(
+      cdp.send('Runtime.evaluate', { expression: '1', returnByValue: true }),
+      LIVENESS_CHECK_MS
+    );
+    return true;
+  } catch (error) {
+    log.debug(`Page did not answer: ${getErrorMessage(error)}`);
+    return false;
+  }
+}
+
+/**
+ * The error for a page script whose context went away: the page navigated,
+ * or the tab was closed.
+ *
+ * @param error - Chrome's context-lost error
+ * @param cdp - CDP connection of the page
+ * @returns Command error (83)
+ */
+async function pageContextLostError(error: unknown, cdp: CDPSender): Promise<CommandError> {
+  const sessionGone = SESSION_GONE_PATTERN.test(getErrorMessage(error));
+  const err =
+    sessionGone || !(await pageStillOpen(cdp))
+      ? pageClosedDuringEvalError()
+      : pageNavigatedDuringEvalError();
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.RESOURCE_NOT_FOUND
+  );
+}
+
+/**
+ * `Runtime.evaluate` options of a `bdg dom eval` script.
+ *
+ * @param target - Execution context to run in
+ * @returns Options (REPL mode, previews, 20 s limit)
+ */
+function evaluateOptions(target: EvalTarget): Omit<Protocol.Runtime.EvaluateRequest, 'expression'> {
+  return {
+    returnByValue: false,
+    generatePreview: true,
+    replMode: true,
+    objectGroup: EVAL_OBJECT_GROUP,
+    timeout: EVAL_TIMEOUT_MS,
+    ...(target.uniqueContextId && { uniqueContextId: target.uniqueContextId }),
+  };
 }
 
 /**
@@ -454,7 +607,9 @@ export interface EvalTarget {
  * @param script - JavaScript expression
  * @param target - Session and execution context to run in (default: the page)
  * @returns Value and type
- * @throws CommandError (102) when the script was terminated, (91) when it threw
+ * @throws CommandError (102) when the script was terminated or a promise did
+ *   not settle, (91) when it threw, (83) when the page navigated while it ran
+ *   (in a frame, Chrome's context-lost error is passed on for the caller to explain)
  */
 export async function evaluateScript(
   cdp: CDPConnection,
@@ -462,32 +617,23 @@ export async function evaluateScript(
   target: EvalTarget = {}
 ): Promise<EvalResult> {
   const session = senderFor(cdp, target.sessionId);
+  const scope: BusyScope = target.uniqueContextId ? 'frame' : 'page';
   try {
     const response = await withDeadline(
-      executeScript(session, script, {
-        returnByValue: false,
-        generatePreview: true,
-        replMode: true,
-        objectGroup: EVAL_OBJECT_GROUP,
-        timeout: EVAL_TIMEOUT_MS,
-        ...(target.uniqueContextId && { uniqueContextId: target.uniqueContextId }),
-      }),
+      executeScript(session, script, evaluateOptions(target)),
       EVAL_TIMEOUT_MS + TERMINATION_GRACE_MS,
-      () => terminatePageScripts(session)
+      () => evaluationTimeoutError(target.recovery ?? session, scope)
     );
     const settled = await withDeadline(
       settlePromise(session, response.result, script),
       EVAL_TIMEOUT_MS,
-      () => {
-        const err = promiseTimeoutError(EVAL_TIMEOUT_MS);
-        return new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.CDP_TIMEOUT
-        );
-      }
+      promiseTimeout
     );
     return await toEvalResult(session, settled);
+  } catch (error) {
+    throw scope === 'page' && isContextLostError(error)
+      ? await pageContextLostError(error, session)
+      : error;
   } finally {
     void session
       .send('Runtime.releaseObjectGroup', { objectGroup: EVAL_OBJECT_GROUP })
