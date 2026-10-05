@@ -9,7 +9,7 @@ import * as path from 'path';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import { getSessionBaseDir, getSessionName } from '@/session/paths.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
-import { frameLabel } from '@/ui/messages/commands.js';
+import { frameLabel, frameUrlLabel } from '@/ui/messages/commands.js';
 import {
   noActiveSessionMessage,
   sessionCommand,
@@ -811,7 +811,7 @@ export function unknownKeyError(keyName: string, similar: string[]): ErrorWithSu
 
 /** Where selectors cannot look, for "not found" errors */
 export const UNREACHABLE_ELEMENTS_HINT =
-  'elements in closed shadow roots and cross-origin iframes cannot be reached';
+  'elements in closed shadow roots, cross-origin iframes and <object>/<embed> documents cannot be reached';
 
 /**
  * Two options given together where one would be ignored.
@@ -967,7 +967,7 @@ export function elementAtIndexNotFoundError(index: number, selector: string): Er
 
 /** Where selectors do not reach (open shadow roots and same-origin iframes are searched) */
 export const CROSS_ORIGIN_FRAMES_NOTE =
-  'Elements inside cross-origin iframes and closed shadow roots are not searched';
+  'Elements inside cross-origin iframes, <object>/<embed> documents and closed shadow roots are not searched';
 
 /**
  * No nodes found for selector.
@@ -1198,15 +1198,19 @@ export function scriptTimeoutError(timeoutMs: number): ErrorWithSuggestion {
 }
 
 /**
- * The page was kept busy by a script (e.g. a loop started from a timer) and
- * bdg terminated it.
+ * The page (or an iframe) was kept busy by a script (e.g. a loop started
+ * from a timer) and bdg terminated it.
  *
  * @param timeoutMs - Time waited
+ * @param scope - What was busy: the page, or the iframe a command ran in
  */
-export function pageBusyError(timeoutMs: number): ErrorWithSuggestion {
+export function pageBusyError(
+  timeoutMs: number,
+  scope: 'page' | 'frame' = 'page'
+): ErrorWithSuggestion {
   return {
-    message: `The page was busy for ${Math.round(timeoutMs / 1000)}s (a script kept it running), so its scripts were terminated`,
-    suggestion: 'The page is usable again; re-run the command',
+    message: `The ${scope} was busy for ${Math.round(timeoutMs / 1000)}s (a script kept it running), so its scripts were terminated`,
+    suggestion: `The ${scope} is usable again; re-run the command`,
   };
 }
 
@@ -1240,8 +1244,9 @@ export function emptyScriptError(): ErrorWithSuggestion {
  */
 export function promiseTimeoutError(timeoutMs: number): ErrorWithSuggestion {
   return {
-    message: `The returned promise did not settle within ${Math.round(timeoutMs / 1000)}s`,
-    suggestion: 'Check that it resolves or rejects, or race it with a timeout in the script',
+    message: `The awaited promise did not settle within ${Math.round(timeoutMs / 1000)}s`,
+    suggestion:
+      'Nothing was busy; check that the promise resolves or rejects, or race it with a timeout in the script',
   };
 }
 
@@ -1291,14 +1296,52 @@ export function ambiguousFrameError(query: string, candidates: DomFrame[]): Erro
 }
 
 /**
- * An iframe without a JavaScript context (still loading, or sandboxed without scripts).
+ * An iframe without a JavaScript context (still loading, or gone).
  *
  * @param url - Frame URL
  */
 export function frameNotReadyError(url: string): ErrorWithSuggestion {
   return {
-    message: `The frame has no JavaScript context: ${url}`,
-    suggestion: `Wait for it to load and retry (sandboxed frames without allow-scripts never get one). ${LIST_FRAMES_HINT}`,
+    message: `The frame has no JavaScript context: ${frameUrlLabel(url)}`,
+    suggestion: `Wait for it to load and retry, or re-run bdg dom frames: the frame may no longer exist`,
+  };
+}
+
+/**
+ * The iframe a `dom eval --frame` script ran in navigated before it finished.
+ *
+ * @param url - Frame URL when the script started
+ */
+export function frameNavigatedDuringEvalError(url: string): ErrorWithSuggestion {
+  return {
+    message: `The frame navigated while the script ran: ${frameUrlLabel(url)}`,
+    suggestion:
+      'The result was lost with the old document; re-run the script once the frame has loaded. List frames: bdg dom frames',
+  };
+}
+
+/**
+ * The iframe a `dom eval --frame` script ran in was removed (or vanished
+ * before it started).
+ *
+ * @param url - Frame URL when the script started
+ */
+export function frameRemovedDuringEvalError(url: string): ErrorWithSuggestion {
+  return {
+    message: `The frame was removed before the script finished: ${frameUrlLabel(url)}`,
+    suggestion: 'The frame no longer exists; re-run bdg dom frames to see the current ones',
+  };
+}
+
+/**
+ * The page navigated while a `dom eval` script ran (e.g. it set
+ * `location.href` and then awaited).
+ */
+export function pageNavigatedDuringEvalError(): ErrorWithSuggestion {
+  return {
+    message: 'The page navigated while the script ran',
+    suggestion:
+      'The result was lost with the old document; re-run the script on the new page (navigate with: bdg page navigate <url>)',
   };
 }
 

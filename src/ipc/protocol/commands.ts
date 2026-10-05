@@ -189,7 +189,7 @@ export interface DomEvalData {
   type: string;
   /** Object subtype (node, date, array, ...) */
   subtype?: string;
-  /** URL of the iframe the script ran in (with `frame`) */
+  /** URL of the iframe the script ran in (with `frame`; empty when it has none) */
   frame?: string;
 }
 
@@ -203,12 +203,18 @@ export interface DomFrame {
   name?: string;
   /** `id` attribute of the iframe element */
   id?: string;
-  /** Security origin */
+  /**
+   * Origin the frame's scripts run with: inherited from the parent for
+   * srcdoc and about:blank, `"null"` (opaque) for data: URLs and sandboxes
+   * without allow-same-origin
+   */
   origin: string;
-  /** Origin differs from the page's */
+  /** The page cannot reach its document: the origin differs from the page's, or is opaque */
   crossOrigin: boolean;
   /** Runs in its own renderer process (site isolation) */
   outOfProcess: boolean;
+  /** Index of the frame it is nested in (missing for frames of the page itself) */
+  parentIndex?: number;
 }
 
 /**
@@ -312,6 +318,8 @@ export interface DomListenersCommand {
   backendNodeId?: number;
   /** Only these event types (default: all) */
   types?: string[];
+  /** List every listener of framework roots instead of one summary per node */
+  all?: boolean;
 }
 
 export type DomListenersData = ListenersResult;

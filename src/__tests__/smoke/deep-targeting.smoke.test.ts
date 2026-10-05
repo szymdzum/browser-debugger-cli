@@ -130,14 +130,15 @@ void describe('Shadow DOM and iframe targeting', () => {
   });
 
   void it('lists event listeners of elements in shadow roots and frames', async () => {
-    type Listed = { listeners: Array<{ type: string; on: string }> };
-    for (const selector of ['#shadow-button', '#frame-button']) {
-      const listed = await runJson<Listed>('dom', ['listeners', selector, '--type', 'click']);
+    type Listed = { frame?: string; listeners: Array<{ type: string; on: string }> };
+    for (const [selector, frame] of [['#shadow-button'], ['#frame-button', 'iframe']]) {
+      const listed = await runJson<Listed>('dom', ['listeners', selector ?? '', '--type', 'click']);
       assert.deepEqual(
         listed.listeners.map((l) => `${l.type}:${l.on}`),
         ['click:target'],
         selector
       );
+      assert.equal(listed.frame, frame, selector);
     }
   });
 

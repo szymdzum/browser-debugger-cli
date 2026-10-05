@@ -11,10 +11,13 @@ import type { DomEvalCommandOptions } from '@/commands/shared/optionTypes.js';
 import { emptyScriptError } from '@/errors/messages.js';
 import { domEval } from '@/ipc/client.js';
 import { formatDomEval } from '@/ui/formatters/dom.js';
+import { evalFrameLine } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Handle `bdg dom eval <script> [--frame <frame>]`.
+ * Handle `bdg dom eval <script> [--frame <frame>]`. With `--frame`, the
+ * frame the script ran in is a `Frame:` line on stderr (JSON: `frame`), so
+ * stdout stays the bare value for pipes.
  */
 export async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
@@ -40,7 +43,13 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
       const { value, type, subtype, frame } = response.data;
       return {
         success: true,
-        data: { result: value, type, ...(subtype && { subtype }), ...(frame && { frame }) },
+        data: {
+          result: value,
+          type,
+          ...(subtype && { subtype }),
+          ...(frame !== undefined && { frame }),
+        },
+        ...(frame !== undefined && !options.json && { hint: evalFrameLine(frame) }),
       };
     },
     options,

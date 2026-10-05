@@ -4,7 +4,10 @@
  *
  * The daemon collects them with `DOMDebugger.getEventListeners`; listeners on
  * ancestors matter because frameworks (React, jQuery) attach their handlers
- * to a root container or the document and dispatch from there.
+ * to a root container or the document and dispatch from there. jQuery's
+ * dispatcher is replaced by the jQuery handlers it runs for the element, and
+ * framework roots (React's root container) are summarised per node unless
+ * `--all` is given.
  */
 
 import type { Command } from 'commander';
@@ -32,9 +35,10 @@ export function registerListenersCommand(dom: Command): void {
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option(
       '--type <types>',
-      'Only these event types (comma-separated, e.g. click,keydown)',
+      'Only these event types (comma-separated, e.g. click,keydown; repeatable)',
       eventTypesOption
     )
+    .option('--all', 'List every listener of framework roots (React) instead of one line per node')
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: ListenersCommandOptions) => {
       await runCommand(
@@ -59,7 +63,11 @@ async function listElementListeners(
   const result = await runElementCommand<Parameters<typeof domListeners>[0], ListenersResult>({
     selectorOrIndex,
     index: options.index,
-    buildRequest: (target) => ({ ...target, ...(options.type && { types: options.type }) }),
+    buildRequest: (target) => ({
+      ...target,
+      ...(options.type && { types: options.type }),
+      ...(options.all && { all: true }),
+    }),
     call: domListeners,
     action: 'list event listeners',
     failureSuggestion: 'Verify the selector matches an element: bdg dom query "<selector>"',

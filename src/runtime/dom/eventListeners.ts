@@ -22,8 +22,12 @@ import {
 import {
   buildListenerReport,
   describeChainEntry,
+  suggestEventTypes,
   type ChainEntry,
   type ChainListeners,
+  type HandlerDetails,
+  type ListenerReport,
+  type ResolvedHandler,
 } from '@/runtime/dom/listenerSummary.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -59,10 +63,86 @@ const CHAIN_JS = `function () {
   return chain;
 }`;
 
-/** Page function: names of the given functions (null for non-functions) */
-const NAMES_JS = `function (...fns) {
-  return fns.map((fn) => (typeof fn === 'function' ? fn.name : null));
+/**
+ * Page function, called on the element with the listeners (position in
+ * the chain and event type of each), then the chain's objects, then each
+ * listener's handler.
+ * Returns `[info, ...jQueryHandlers]`: `info` has the iframe element holding
+ * the element's document (`frame`), a framework label per chain entry
+ * (`roots`: React's root container), and per listener the handler's name
+ * and, for jQuery's dispatcher, the jQuery handlers that run for the element
+ * (delegates only when the element matches their selector); their functions
+ * follow `info` in the same order. Pages without jQuery are left alone.
+ */
+const ELEMENT_INFO_JS = `function (listeners, ...rest) {
+  const nodes = rest.slice(0, rest.length - listeners.length);
+  const handlers = rest.slice(rest.length - listeners.length);
+  const view = this.ownerDocument && this.ownerDocument.defaultView;
+  const describe = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '');
+  let frame = null;
+  try { frame = view && view.frameElement ? describe(view.frameElement) : null; } catch (e) { frame = null; }
+  const isReactRoot = (node) => {
+    try {
+      return !!node && node.nodeType === 1 &&
+        ('_reactRootContainer' in node || Object.keys(node).some((key) => key.startsWith('__reactContainer$')));
+    } catch (e) { return false; }
+  };
+  const roots = nodes.map((node) => (isReactRoot(node) ? 'React root' : null));
+  const jq = view ? [view.jQuery, view.$].find((c) => c && typeof c._data === 'function') : undefined;
+  const matches = (el, selector) => {
+    try {
+      const find = jq.find;
+      return find && typeof find.matchesSelector === 'function' ? find.matchesSelector(el, selector) : el.matches(selector);
+    } catch (e) { return false; }
+  };
+  const delegatedTo = (node, selector) => {
+    for (let el = this; el && el !== node; el = el.parentNode) {
+      if (el.nodeType === 1 && matches(el, selector)) return true;
+    }
+    return false;
+  };
+  const jqueryHandlers = (listener, handler) => {
+    if (!jq || typeof handler !== 'function') return null;
+    const node = nodes[listener.position];
+    let data = null;
+    try { data = jq._data(node); } catch (e) { return null; }
+    if (!data || data.handle !== handler || !data.events) return null;
+    return (data.events[listener.type] || []).filter((h) => !h.selector || delegatedTo(node, h.selector));
+  };
+  const fns = [];
+  const info = listeners.map((listener, i) => {
+    const handler = handlers[i];
+    const name = typeof handler === 'function' ? handler.name : null;
+    const resolved = jqueryHandlers(listener, handler);
+    if (!resolved) return { name };
+    return { name, jquery: resolved.map((h) => {
+      fns.push(h.handler);
+      return { type: h.origType || h.type, selector: h.selector || null,
+        name: typeof h.handler === 'function' ? h.handler.name : '' };
+    }) };
+  });
+  return [{ frame, roots, listeners: info }, ...fns];
 }`;
+
+/** What {@link ELEMENT_INFO_JS} reports, by value */
+interface ElementInfo {
+  frame: string | null;
+  roots: Array<string | null>;
+  listeners: Array<{
+    name: string | null;
+    jquery?: Array<{ type: string; selector: string | null; name: string }>;
+  }>;
+}
+
+/** What the page tells about the element and its listeners */
+interface PageDetails {
+  /** Per flattened listener: handler name, jQuery handlers */
+  details: HandlerDetails[];
+  /** Framework label per chain entry */
+  roots: Array<string | null>;
+  /** Iframe element holding the element's document */
+  frame?: string;
+}
 
 /** Distinguishes the object groups of concurrent calls */
 let groupCounter = 0;
@@ -88,15 +168,22 @@ export async function inspectEventListeners(
   const objectGroup = `bdg-listeners-${++groupCounter}`;
   try {
     const { matchCount, chain } = await findEventTargetChain(cdp, params, objectGroup);
-    const found = await collectListeners(cdp, chain);
-    const handlers = found.flatMap((entry) => entry.listeners.map((l) => l.handler));
-    const names = await handlerNames(cdp, chain[0]?.objectId ?? '', handlers);
+    const collected = await collectListeners(cdp, chain);
+    const page = await pageDetails(cdp, chain, collected, objectGroup);
+    const found = collected.map((item) => {
+      const framework = page.roots[item.position];
+      return framework ? { ...item, entry: { ...item.entry, framework } } : item;
+    });
+    const report = buildListenerReport(found, page.details, params);
     const result: ListenersResult = {
       success: true,
       selector: params.selector,
       ...(params.index !== undefined && { index: params.index }),
       element: describeChainEntry(chain[0] ?? {}),
-      listeners: buildListenerReport(found, names, params.types),
+      ...(page.frame && { frame: page.frame }),
+      listeners: report.listeners,
+      ...(report.collapsed.length > 0 && { collapsed: report.collapsed }),
+      ...typeSuggestions(found, report, params.types),
       ...(params.backendNodeId === undefined && { matchCount }),
     };
     return withMultipleMatchesWarning(result, params.index, 'listing the first');
@@ -255,33 +342,129 @@ async function collectListeners(
 }
 
 /**
- * Ask the page for the handlers' names (`Function.name` also knows names of
- * arrow functions assigned to variables, and `bound f` for bound functions).
+ * `--type` values the user probably meant, when none matched.
+ *
+ * @param found - All listeners found
+ * @param report - The filtered report
+ * @param types - Requested types
+ * @returns `{ typeSuggestions }` when there are any
+ */
+function typeSuggestions(
+  found: ChainListeners[],
+  report: ListenerReport,
+  types: string[] | undefined
+): Pick<ListenersResult, 'typeSuggestions'> {
+  if (!types?.length || report.listeners.length > 0 || report.collapsed.length > 0) return {};
+  const available = [...new Set(found.flatMap((entry) => entry.listeners.map((l) => l.type)))];
+  const suggestions = suggestEventTypes(types, available);
+  return suggestions.length > 0 ? { typeSuggestions: suggestions } : {};
+}
+
+/**
+ * Ask the page about the element and its listeners' handlers: their names
+ * (`Function.name` also knows names of arrow functions assigned to
+ * variables, and `bound f` for bound functions), the jQuery handlers behind
+ * jQuery's dispatcher, React root containers and the element's iframe.
  *
  * @param cdp - CDP connection
- * @param elementId - Object id of the element (the page context to run in)
- * @param handlers - Handler objects, in report order
- * @returns Names in the same order; empty when the page could not tell
+ * @param chain - Event targets, element first
+ * @param found - Listeners per chain entry
+ * @param objectGroup - Object group for the handles
+ * @returns Details; empty when the page could not tell
  */
-async function handlerNames(
+async function pageDetails(
   cdp: CDPConnection,
-  elementId: string,
-  handlers: Array<Protocol.Runtime.RemoteObject | undefined>
-): Promise<Array<string | undefined>> {
-  if (handlers.length === 0) return [];
+  chain: ChainObject[],
+  found: ChainListeners[],
+  objectGroup: string
+): Promise<PageDetails> {
+  const listeners = found.flatMap((entry) =>
+    entry.listeners.map((listener) => ({ position: entry.position, listener }))
+  );
   try {
     const response = (await cdp.send('Runtime.callFunctionOn', {
-      objectId: elementId,
-      functionDeclaration: NAMES_JS,
-      arguments: handlers.map((handler) =>
-        handler?.objectId ? { objectId: handler.objectId } : { value: null }
-      ),
-      returnByValue: true,
+      objectId: chain[0]?.objectId,
+      functionDeclaration: ELEMENT_INFO_JS,
+      arguments: [
+        { value: listeners.map(({ position, listener }) => ({ position, type: listener.type })) },
+        ...chain.map((entry) => ({ objectId: entry.objectId })),
+        ...listeners.map(({ listener: { handler } }) =>
+          handler?.objectId ? { objectId: handler.objectId } : { value: null }
+        ),
+      ],
+      objectGroup,
     })) as Protocol.Runtime.CallFunctionOnResponse;
-    const names = response.result.value as Array<string | null> | undefined;
-    return (names ?? []).map((name) => name ?? undefined);
+    const [infoObject, ...fns] = await arrayItems(cdp, response.result.objectId ?? '');
+    const info = await valueOf<ElementInfo>(cdp, infoObject?.objectId ?? '');
+    return toPageDetails(info, await resolvedHandlers(cdp, fns));
   } catch (error) {
-    log.debug(`Handler names not read: ${getErrorMessage(error)}`);
-    return [];
+    log.debug(`Handler details not read: ${getErrorMessage(error)}`);
+    return { details: [], roots: [] };
   }
+}
+
+/**
+ * Copy a page object by value.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The object
+ * @returns Its JSON value
+ */
+async function valueOf<T>(cdp: CDPConnection, objectId: string): Promise<T> {
+  const response = (await cdp.send('Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: 'function () { return this; }',
+    returnByValue: true,
+  })) as Protocol.Runtime.CallFunctionOnResponse;
+  return response.result.value as T;
+}
+
+/** Source and location of a handler function */
+type HandlerSource = Pick<ResolvedHandler, 'source' | 'scriptId' | 'lineNumber' | 'columnNumber'>;
+
+/**
+ * Source and location of framework handler functions.
+ *
+ * @param cdp - CDP connection
+ * @param fns - The functions
+ * @returns Source and location of each, in order
+ */
+async function resolvedHandlers(
+  cdp: CDPConnection,
+  fns: Array<Protocol.Runtime.RemoteObject | undefined>
+): Promise<HandlerSource[]> {
+  return Promise.all(
+    fns.map(async (fn) => {
+      const source = { source: fn?.description, scriptId: '0', lineNumber: 0, columnNumber: 0 };
+      if (!fn?.objectId) return source;
+      const { internalProperties = [] } = (await cdp.send('Runtime.getProperties', {
+        objectId: fn.objectId,
+        ownProperties: true,
+      })) as Protocol.Runtime.GetPropertiesResponse;
+      const location = internalProperties.find((p) => p.name === '[[FunctionLocation]]')?.value
+        ?.value as Partial<Protocol.Debugger.Location> | undefined;
+      return { ...source, ...location };
+    })
+  );
+}
+
+/**
+ * Combine the page's report with the framework handlers' sources.
+ *
+ * @param info - Page report
+ * @param sources - Source and location of each jQuery handler, in report order
+ * @returns Details per listener
+ */
+function toPageDetails(info: ElementInfo, sources: HandlerSource[]): PageDetails {
+  let next = 0;
+  const details = info.listeners.map(({ name, jquery }) => ({
+    name: name ?? undefined,
+    jquery: jquery?.map((handler) => ({
+      type: handler.type,
+      selector: handler.selector ?? undefined,
+      name: handler.name,
+      ...(sources[next++] ?? { scriptId: '0', lineNumber: 0, columnNumber: 0 }),
+    })),
+  }));
+  return { details, roots: info.roots, ...(info.frame && { frame: info.frame }) };
 }

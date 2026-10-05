@@ -109,9 +109,11 @@ void describe('dom eval', () => {
   });
 
   void it('stops waiting for a promise that never settles', async () => {
-    const { exitCode, error } = await evaluate('new Promise(() => {})', 60000);
-    assert.equal(exitCode, 102);
-    assert.match(error ?? '', /did not settle/);
+    for (const script of ['new Promise(() => {})', 'await new Promise(() => {})']) {
+      const { exitCode, error } = await evaluate(script, 60000);
+      assert.equal(exitCode, 102, script);
+      assert.match(error ?? '', /The awaited promise did not settle within 20s/, script);
+    }
   });
 
   void it('recovers a busy page from other DOM commands too', async () => {
@@ -139,5 +141,13 @@ void describe('dom eval', () => {
     assert.equal(exitCode, 102);
     assert.match(error ?? '', /terminated/);
     assert.equal((await evaluate('1 + 1')).data?.result, 2);
+  });
+
+  void it('reports a page that navigates while the script runs as 83', async () => {
+    const { exitCode, error } = await evaluate(
+      'location.href = "/?next"; await new Promise((r) => setTimeout(r, 3000)); 1'
+    );
+    assert.equal(exitCode, 83);
+    assert.match(error ?? '', /The page navigated while the script ran/);
   });
 });

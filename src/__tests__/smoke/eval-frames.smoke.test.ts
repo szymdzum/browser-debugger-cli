@@ -110,4 +110,59 @@ void describe('dom eval --frame', () => {
     assert.equal(result.exitCode, EXIT_CODES.SCRIPT_ERROR);
     assert.match(result.error ?? '', /missingName is not defined/);
   });
+
+  void it('prints the Frame: line on stderr so stdout pipes cleanly', async () => {
+    const result = await runCommand('dom', [
+      'eval',
+      '({ title: document.title })',
+      '--frame',
+      'same',
+    ]);
+    assert.equal(result.exitCode, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), { title: '' });
+    assert.match(result.stderr, /^Frame: http:\/\/127\.0\.0\.1:\d+\/deep-frame$/m);
+    const quiet = await runCommand('dom', ['eval', '1', '--frame', 'same', '-q']);
+    assert.equal(quiet.stderr, '');
+  });
+
+  void it('reports a frame that navigates while the script runs as 83', async () => {
+    const result = await runJson([
+      'dom',
+      'eval',
+      'location.href = "/deep-frame?next"; await new Promise((r) => setTimeout(r, 3000)); 1',
+      '--frame',
+      'same',
+    ]);
+    assert.equal(result.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
+    assert.match(result.error ?? '', /The frame navigated while the script ran/);
+  });
+
+  void it('reports the origin scripts run with for srcdoc, data: and sandboxed frames', async () => {
+    const navigated = await runCommand('page', ['navigate', `${fixture.url}frame-origins`]);
+    assert.equal(navigated.exitCode, 0, navigated.stderr);
+    const { data } = await runJson<{ frames: DomFrame[] }>(['dom', 'frames']);
+    const top = new URL(fixture.url).origin;
+    const byId = new Map(data?.frames.map((frame) => [frame.id, frame]));
+    const summary = (id: string): string => {
+      const frame = byId.get(id);
+      return `${frame?.origin === top ? 'top' : frame?.origin}:${frame?.crossOrigin}`;
+    };
+    assert.deepEqual(['sd', 'inner', 'blank', 'dataf', 'sb', 'sbso'].map(summary), [
+      'top:false',
+      'top:false',
+      'top:false',
+      'null:true',
+      'null:true',
+      'top:false',
+    ]);
+    assert.equal(byId.get('inner')?.parentIndex, byId.get('sd')?.index);
+    const sandboxed = await runJson<{ result: unknown }>([
+      'dom',
+      'eval',
+      'origin',
+      '--frame',
+      'sb',
+    ]);
+    assert.equal(sandboxed.data?.result, 'null');
+  });
 });

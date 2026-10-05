@@ -16,6 +16,7 @@ import {
 } from '@/ui/formatters/helpFormatters.js';
 import { joinLines } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { truncateByLength } from '@/utils/strings.js';
 
 /**
  * Chrome closed by `bdg stop` (gracefully, so the profile is saved).
@@ -203,8 +204,46 @@ export function multipleMatchesWarning(count: number, action: string): string {
  * @param count - Listeners found
  * @returns e.g. "Event listeners for button#save (3)"
  */
-export function listenersHeadline(element: string, count: number): string {
-  return `Event listeners for ${element} (${count})`;
+export function listenersHeadline(
+  element: string,
+  count: number,
+  context: { index?: number | undefined; frame?: string | undefined } = {}
+): string {
+  const index = context.index === undefined ? '' : ` [${context.index}]`;
+  const frame = context.frame ? ` in ${context.frame}` : '';
+  return `Event listeners for ${element}${index}${frame} (${count})`;
+}
+
+/** Heading of the collapsed framework root listeners */
+export const COLLAPSED_LISTENERS_HEADING =
+  'Framework roots (one line per node; --all lists each listener):';
+
+/**
+ * One collapsed framework root.
+ *
+ * @param root - Framework label, event types, phases and dispatcher names
+ * @returns e.g. "React root: 90 event types, capture and bubble (dispatchEvent, …)"
+ */
+export function collapsedListenersSummary(root: {
+  framework?: string | undefined;
+  types: string[];
+  capture: boolean;
+  bubble: boolean;
+  handlers: string[];
+}): string {
+  const phases = [root.capture && 'capture', root.bubble && 'bubble'].filter(Boolean).join(' and ');
+  const label = root.framework ?? 'Dispatcher';
+  return `${label}: ${root.types.length} event types, ${phases} (${root.handlers.join(', ')})`;
+}
+
+/**
+ * Event types a mistyped `--type` probably meant.
+ *
+ * @param types - Suggested types
+ * @returns e.g. "Did you mean: --type click?"
+ */
+export function eventTypeSuggestion(types: string[]): string {
+  return `Did you mean: --type ${types.join(',')}? (event types are case-sensitive, without "on")`;
 }
 
 /**
@@ -308,7 +347,21 @@ export function frameLabel(frame: DomFrame): string {
     frame.crossOrigin ? 'cross-origin' : 'same-origin',
     frame.outOfProcess && 'out-of-process',
   ].filter(Boolean);
-  return [`[${frame.index}] ${frame.url}`, ...names, isolation.join(', ')].join('  ');
+  const label = `[${frame.index}] ${frameUrlLabel(frame.url)}`;
+  return [label, ...names, isolation.join(', ')].join('  ');
+}
+
+/** Longest frame URL shown in human output (JSON has the full URL) */
+const FRAME_URL_MAX_LENGTH = 100;
+
+/**
+ * A frame URL for human output: shortened, and named when empty.
+ *
+ * @param url - Frame URL
+ * @returns e.g. `https://pay.example/checkout?…`, or `(no URL)`
+ */
+export function frameUrlLabel(url: string): string {
+  return url ? truncateByLength(url, FRAME_URL_MAX_LENGTH) : '(no URL)';
 }
 
 /**
@@ -327,7 +380,7 @@ export function noFramesMessage(): string {
  * @returns e.g. `Frame: https://pay.example/`
  */
 export function evalFrameLine(url: string): string {
-  return `Frame: ${url}`;
+  return `Frame: ${frameUrlLabel(url)}`;
 }
 
 /**

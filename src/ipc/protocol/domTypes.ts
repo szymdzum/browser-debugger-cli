@@ -201,6 +201,35 @@ export interface ElementListener {
   passive: boolean;
   once: boolean;
   handler: ListenerHandler;
+  /** The handler does nothing (an empty function, like React's `onclick` placeholder) */
+  noop?: true;
+  /** Registered through this framework; `handler` is the real handler, not the framework's dispatcher */
+  framework?: 'jQuery';
+  /** jQuery delegate selector (`.on(type, selector, fn)`) the element matched */
+  delegateSelector?: string;
+}
+
+/**
+ * Listeners of one node collapsed into a summary: a framework root (React's
+ * root container) registers the same few dispatchers for dozens of event types.
+ */
+export interface CollapsedListeners {
+  /** Where the listeners are attached */
+  on: ListenerPlacement;
+  /** The node or object they are attached to, e.g. `div#__next` */
+  node: string;
+  /** Framework recognised on the node, e.g. `React root` */
+  framework?: string;
+  /** Event types, alphabetically */
+  types: string[];
+  /** Number of listeners collapsed */
+  count: number;
+  /** Some listen in the capture phase */
+  capture: boolean;
+  /** Some listen in the bubble phase */
+  bubble: boolean;
+  /** The distinct dispatcher functions */
+  handlers: ListenerHandler[];
 }
 
 /**
@@ -217,6 +246,12 @@ export interface ListenersResult {
   /** The inspected element, e.g. `button#save` */
   element: string;
   listeners: ElementListener[];
+  /** Framework root listeners, one entry per node (missing with `all`) */
+  collapsed?: CollapsedListeners[];
+  /** The iframe element whose document holds the element, e.g. `iframe#checkout` */
+  frame?: string;
+  /** Event types with listeners close to the requested ones, when none matched (`Click` → `click`) */
+  typeSuggestions?: string[];
   /** Elements the selector matched */
   matchCount?: number;
   /** Set when several elements matched and no --index was given */

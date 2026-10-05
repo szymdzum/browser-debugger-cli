@@ -9,7 +9,9 @@
  * `/ws` is a WebSocket echo server; `/frames` embeds a cross-origin iframe
  * (`localhost` vs `127.0.0.1`), starts a worker and requests a missing image;
  * `/deep` has controls inside an open shadow root and a same-origin iframe;
- * `/eval-frames` embeds a same-origin and a cross-origin iframe; `/layout`
+ * `/eval-frames` embeds a same-origin and a cross-origin iframe;
+ * `/frame-origins` has srcdoc, about:blank, data: and sandboxed iframes;
+ * `/framework-listeners` has React- and jQuery-style listeners; `/layout`
  * places elements in view, under an overlay, below the fold, hidden and in
  * an iframe.
  */
@@ -82,6 +84,45 @@ const EVAL_FRAMES_HTML = `<!doctype html><title>eval frames</title>
   frame.id = 'cross';
   frame.src = 'http://localhost:' + location.port + '/frame-child';
   document.body.append(frame);
+</script>`;
+
+/**
+ * Frames whose origin is not their URL's: srcdoc and about:blank (inherit
+ * the page's), data: and sandboxed without allow-same-origin (opaque), and a
+ * sandbox that allows same-origin.
+ */
+const FRAME_ORIGINS_HTML = `<!doctype html><title>frame origins</title>
+<iframe id="sd" srcdoc="<p>srcdoc</p><iframe id=inner srcdoc='<p>inner</p>'></iframe>"></iframe>
+<iframe id="blank"></iframe>
+<iframe id="dataf" src="data:text/html,<p>data</p>"></iframe>
+<iframe id="sb" sandbox="allow-scripts" src="/deep-frame"></iframe>
+<iframe id="sbso" sandbox="allow-scripts allow-same-origin" src="/deep-frame"></iframe>`;
+
+/**
+ * Framework-style listeners: a React-like root container (two bound
+ * dispatchers for 12 event types, capture and bubble) with a no-op
+ * `onclick` on its button, and a minimal jQuery stand-in (`jQuery._data`)
+ * whose dispatcher on `document` holds a delegate for `.row` and one for
+ * `.nomatch`.
+ */
+const FRAMEWORK_LISTENERS_HTML = `<!doctype html><title>framework listeners</title>
+<div id="root"><button id="go">Go</button><div class="row" id="row">Row</div></div>
+<script>
+  const root = document.getElementById('root');
+  function dispatchDiscreteEvent() {}
+  function dispatchEvent() {}
+  ['click', 'keydown', 'keyup', 'input', 'change', 'pointerdown', 'pointerup', 'focusin', 'focusout']
+    .forEach((type) => [true, false].forEach((capture) => root.addEventListener(type, dispatchDiscreteEvent.bind(null, type), capture)));
+  ['scroll', 'wheel', 'mousemove']
+    .forEach((type) => [true, false].forEach((capture) => root.addEventListener(type, dispatchEvent.bind(null, type), capture)));
+  document.getElementById('go').onclick = function noop() {};
+  const handle = function (e) { return jQuery.event.dispatch(e); };
+  const events = { click: [
+    { type: 'click', origType: 'click', selector: '.row', handler: function rowClicked() { return 'row'; } },
+    { type: 'click', origType: 'click', selector: '.nomatch', handler: function neverRuns() {} },
+  ] };
+  window.jQuery = { fn: { jquery: 'stub' }, event: {}, _data: (node) => (node === document ? { handle, events } : undefined) };
+  document.addEventListener('click', handle);
 </script>`;
 
 /** Same-origin iframe content of `/deep`. */
@@ -193,6 +234,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/eval-frames') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(EVAL_FRAMES_HTML);
+      return;
+    }
+    if (req.url === '/frame-origins' || req.url === '/framework-listeners') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(req.url === '/frame-origins' ? FRAME_ORIGINS_HTML : FRAMEWORK_LISTENERS_HTML);
       return;
     }
     if (req.url === '/frames' || req.url === '/frame-child') {

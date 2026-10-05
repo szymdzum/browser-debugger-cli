@@ -83,4 +83,57 @@ void describe('handlerLocation', () => {
     assert.equal(handlerLocation(listener().handler), 'script 42:18:5');
     assert.equal(handlerLocation({ ...listener().handler, scriptId: '0' }), 'native');
   });
+
+  void it('summarises framework roots on one line and names the frame and index', () => {
+    const output = formatListeners({
+      element: 'button.cta',
+      index: 2,
+      frame: 'iframe#app',
+      listeners: [listener({ noop: true, handler: { ...listener().handler, name: 'u0' } })],
+      collapsed: [
+        {
+          on: 'ancestor',
+          node: 'div#__next',
+          framework: 'React root',
+          types: ['click', 'keydown', 'scroll'],
+          count: 6,
+          capture: true,
+          bubble: true,
+          handlers: [listener().handler, { ...listener().handler, name: 'dispatchEvent' }],
+        },
+      ],
+    });
+    const lines = output.split('\n');
+    assert.equal(lines[0], 'Event listeners for button.cta [2] in iframe#app (7)');
+    assert.match(lines[3] ?? '', /\[no-op\] function/);
+    assert.match(output, /Framework roots \(one line per node; --all lists each listener\):/);
+    assert.match(
+      output,
+      / {2}ancestor {2}div#__next {2}React root: 3 event types, capture and bubble \(onSave, dispatchEvent\)/
+    );
+    assert.match(output, /Note: click, keydown have no listener on the element itself/);
+  });
+
+  void it('marks jQuery handlers and their delegate selector', () => {
+    const output = formatListeners({
+      element: 'div.row',
+      listeners: [
+        listener({
+          on: 'document',
+          node: 'document',
+          framework: 'jQuery',
+          delegateSelector: '.row',
+        }),
+      ],
+    });
+    assert.match(output, /onSave .*\[jQuery, delegate \.row\] function/);
+  });
+
+  void it('suggests the event type a mistyped --type meant', () => {
+    const output = formatListeners(
+      { element: 'button', listeners: [], typeSuggestions: ['click'] },
+      ['Click']
+    );
+    assert.match(output, /Did you mean: --type click\?/);
+  });
 });
