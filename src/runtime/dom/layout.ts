@@ -34,7 +34,7 @@ import {
 } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { findFrameOwner, placeInOwnerFrame } from '@/runtime/dom/frameLayout.js';
-import { measureFrameOffset } from '@/runtime/dom/frameScopedConnection.js';
+import { measureFrameMapping } from '@/runtime/dom/frameScopedConnection.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -322,7 +322,7 @@ async function measureNode(
   const owner = await findFrameOwner(cdp, objectId);
   if (owner === undefined) return raw;
   const ownerLayout = await measureNode(cdp, owner, objectGroup);
-  return placeInOwnerFrame(raw, ownerLayout, await measureFrameOffset(cdp, objectId));
+  return placeInOwnerFrame(raw, ownerLayout, await measureFrameMapping(cdp, objectId));
 }
 
 /**

@@ -21,7 +21,8 @@
  * posts to `/authenticate`, which redirects to `/secure` for the password
  * `secret` and otherwise back to `/login` with an error flash (like
  * the-internet's login); `/cross-frame` (loaded from `a.b.localhost`) embeds a
- * cross-origin iframe of the same site with a button and a field.
+ * bordered and a scaled cross-origin iframe of the same site, each with a
+ * button and a field.
  */
 
 import * as fs from 'fs';
@@ -248,28 +249,37 @@ const LAYOUT_HTML = `<!doctype html><title>layout</title>
 <div style="position: absolute; left: 750px; top: 510px; width: 100px; height: 0.4px; overflow: hidden"><a id="in-sliver" href="#">Sliver</a></div>`;
 
 /**
- * Page embedding a cross-origin iframe of the same site (load it from
- * `a.b.localhost`; the frame comes from `c.b.localhost`), which Chrome keeps
- * in the page's process, like a consent dialog served from a subdomain.
+ * Page embedding two cross-origin iframes of the same site (load it from
+ * `a.b.localhost`; the frames come from `c.b.localhost`), which Chrome keeps
+ * in the page's process, like a consent dialog served from a subdomain:
+ * `#plain` with a margin, border and padding, `#scaled` also scaled to half
+ * its size with `transform: scale(0.5)`.
  */
 const CROSS_FRAME_HTML = `<!doctype html><title>cross frame</title>
+<style>body { margin: 8px } iframe { display: block; width: 400px; height: 200px; margin-left: 150px }</style>
 <p>Outside</p>
 <script>
   window.events = [];
   window.addEventListener('message', (e) => window.events.push(e.data));
-  const frame = document.createElement('iframe');
-  frame.src = 'http://c.b.localhost:' + location.port + '/cross-frame-child';
-  frame.style.cssText = 'margin: 80px 0 0 150px; width: 400px; height: 200px; border: 4px solid';
-  document.body.append(frame);
+  const child = 'http://c.b.localhost:' + location.port + '/cross-frame-child#';
+  document.body.insertAdjacentHTML('beforeend',
+    '<iframe id="plain" src="' + child + 'plain" style="margin-top: 80px; border: 4px solid; padding: 10px"></iframe>' +
+    '<iframe id="scaled" src="' + child + 'scaled" style="margin-top: 20px; border: 6px solid; padding: 8px; transform: scale(0.5); transform-origin: 0 0"></iframe>');
 </script>`;
 
-/** Content of the `/cross-frame` iframe: a button and a field that report to the page. */
+/**
+ * Content of the `/cross-frame` iframes: a button and a field named after the
+ * frame (its URL's hash) that report to the page.
+ */
 const CROSS_FRAME_CHILD_HTML = `<!doctype html><body style="margin: 0">
-<label>Code <input id="code" style="margin-left: 60px"></label>
-<button id="accept" style="margin: 30px 0 0 90px">Accept all</button>
+<label><span id="code-label">Code</span> <input id="code" style="margin-left: 60px"></label>
+<button id="accept" style="margin: 30px 0 0 90px">Accept</button>
 <script>
-  document.getElementById('accept').onclick = () => parent.postMessage('accepted', '*');
-  document.getElementById('code').oninput = (e) => parent.postMessage('code:' + e.target.value, '*');
+  const name = location.hash.slice(1);
+  document.getElementById('code-label').textContent = 'Code ' + name;
+  document.getElementById('accept').textContent = 'Accept ' + name;
+  document.getElementById('accept').onclick = () => parent.postMessage('accepted:' + name, '*');
+  document.getElementById('code').oninput = (e) => parent.postMessage('code:' + name + ':' + e.target.value, '*');
 </script>`;
 
 /** Page stuck in readyState "loading": its script request is never answered. */
@@ -442,7 +452,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(HANGING_HEAD_HTML);
       return;
     }
-    if (req.url === '/cross-frame' || req.url === '/cross-frame-child') {
+    if (req.url === '/cross-frame' || req.url?.startsWith('/cross-frame-child')) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(req.url === '/cross-frame' ? CROSS_FRAME_HTML : CROSS_FRAME_CHILD_HTML);
       return;

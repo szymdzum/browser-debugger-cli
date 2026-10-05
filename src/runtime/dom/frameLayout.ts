@@ -5,14 +5,15 @@
  * The element is measured in its own frame, whose scripts cannot see the top
  * page, so its measurements are relative to the frame's viewport. The
  * iframe element holding the frame is measured in its own document, and the
- * element is placed in the top-level viewport through it: moved by the
- * frame's offset, clipped to the frame's viewport and to what clips the
+ * element is placed in the top-level viewport through it: mapped by the
+ * frame's position and scale, clipped to the frame's viewport and to what clips the
  * iframe, and fixed, scrolled or hidden as the iframe is.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import type { LayoutBox, LayoutPoint } from '@/ipc/protocol/domTypes.js';
+import type { LayoutBox } from '@/ipc/protocol/domTypes.js';
+import { mapBox, type FrameMapping } from '@/runtime/dom/frameScopedConnection.js';
 import type { RawLayout } from '@/runtime/dom/layout.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -80,23 +81,12 @@ export async function findFrameOwner(
 }
 
 /**
- * A box moved by an offset.
- *
- * @param box - Box
- * @param offset - Offset
- * @returns Moved box
- */
-function shifted(box: LayoutBox, offset: LayoutPoint): LayoutBox {
-  return { ...box, x: box.x + offset.x, y: box.y + offset.y };
-}
-
-/**
  * Overlap of boxes.
  *
  * @param boxes - Boxes (null ones are left out)
  * @returns Overlap (zero size when they do not overlap)
  */
-function intersection(...boxes: Array<LayoutBox | null>): LayoutBox {
+export function intersection(...boxes: Array<LayoutBox | null>): LayoutBox {
   const present = boxes.filter((box): box is LayoutBox => box !== null);
   const left = Math.max(...present.map((box) => box.x));
   const top = Math.max(...present.map((box) => box.y));
@@ -112,7 +102,7 @@ function intersection(...boxes: Array<LayoutBox | null>): LayoutBox {
  * @param outer - Outer box
  * @returns True when it does
  */
-function inside(inner: LayoutBox, outer: LayoutBox): boolean {
+export function inside(inner: LayoutBox, outer: LayoutBox): boolean {
   return (
     inner.x >= outer.x &&
     inner.y >= outer.y &&
@@ -123,27 +113,29 @@ function inside(inner: LayoutBox, outer: LayoutBox): boolean {
 
 /**
  * Place an element measured inside a cross-origin frame in the top-level
- * viewport, through the measurements of the frame's iframe element.
+ * viewport, through the measurements of the frame's iframe element: mapped by
+ * the frame's position and scale (border, padding, `transform`, `zoom`),
+ * clipped to the frame's viewport and to what clips the iframe.
  *
  * @param raw - The element, measured in its frame
  * @param owner - The iframe element, measured in its document
- * @param offset - Offset of the frame's viewport in the top-level viewport
+ * @param mapping - How the frame's viewport maps into the top-level viewport
  * @returns The element's layout in the top-level page (unchanged when the
  *   iframe could not be measured)
  */
 export function placeInOwnerFrame(
   raw: RawLayout,
   owner: RawLayout,
-  offset: LayoutPoint
+  mapping: FrameMapping
 ): RawLayout {
   const frame = owner.elements[0];
   if (!raw.page || !owner.page || !frame) return raw;
-  const frameView = { ...offset, ...raw.page.viewport };
+  const frameView = mapBox(mapping, { x: 0, y: 0, ...raw.page.viewport });
   const elements = raw.elements.map((element) => {
     const inner = element.geometry;
     const outer = frame.geometry;
-    const rect = shifted(inner.rect, offset);
-    const ownClip = inner.clip ? shifted(inner.clip, offset) : null;
+    const rect = mapBox(mapping, inner.rect);
+    const ownClip = inner.clip ? mapBox(mapping, inner.clip) : null;
     return {
       ...element,
       context: [frame.element, element.context].filter(Boolean).join(' > '),
@@ -158,7 +150,7 @@ export function placeInOwnerFrame(
         sticky: outer.sticky ?? false,
         pageScroll: outer.pageScroll,
         scrollLock: outer.scrollLock ?? null,
-        offset,
+        offset: mapping.origin,
       },
     };
   });

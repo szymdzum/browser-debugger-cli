@@ -1106,6 +1106,33 @@ function refreshCommand(source: IndexSource): string {
   return sessionCommand(`bdg ${source.command} ${shellQuote(source.query)}`);
 }
 
+/** Why an element's cross-origin iframe could not be placed in the page */
+export type FrameMappingProblem = 'no-box' | 'rotated' | 'unreadable';
+
+/**
+ * An element of a cross-origin iframe (from an a11y query) whose iframe
+ * could not be placed in the top-level viewport, so a mouse event or layout
+ * would land in the wrong place.
+ *
+ * @param problem - The iframe or element has no box, is rotated or skewed, or could not be read
+ * @param detail - Underlying error, if any
+ * @returns Message and suggestion
+ */
+export function frameMappingError(
+  problem: FrameMappingProblem,
+  detail?: string
+): ErrorWithSuggestion {
+  const reasons = {
+    'no-box': 'neither the element nor its iframe document has a box (hidden or removed)',
+    rotated: 'the iframe is rotated or skewed, which bdg cannot map',
+    unreadable: `it could not be measured${detail ? ` (${detail})` : ''}`,
+  };
+  return {
+    message: `Cannot place the element's cross-origin iframe in the page: ${reasons[problem]}`,
+    suggestion: `Act inside the frame instead: ${sessionCommand('bdg dom frames')}, then ${sessionCommand('bdg dom eval --frame <n> \'document.querySelector("…").click()\'')}`,
+  };
+}
+
 /**
  * A cached node is gone (page navigated or the element was removed).
  *

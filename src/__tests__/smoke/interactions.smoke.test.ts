@@ -963,15 +963,21 @@ void describe('DOM interactions', () => {
     assert.doesNotMatch(stale, /__bdg_bound_target__|querySelector/);
   });
 
-  void it('lists a11y matches once each, up to --limit', async () => {
+  void it('lists a11y matches once each, up to --limit (all in JSON by default)', async () => {
     const links = await bdg(['dom', 'a11y', 'query', 'role:link']);
     assert.match(links, /^\[49\] \[Link\] "Link 49"/m);
     assert.doesNotMatch(links, /^\[50\]/m);
     assert.match(links, /\.\.\. and 10 more \(--limit 0 lists all; their indices work too\)/);
-    const all = await bdg(['dom', 'a11y', 'query', 'role:link', '--limit', '0', '--json']);
-    const { data } = JSON.parse(all) as { data: { count: number; nodes: unknown[] } };
-    assert.equal(data.count, 60);
-    assert.equal(data.nodes.length, 60);
+    type Listed = { data: { count: number; nodes: unknown[]; omitted?: number } };
+    const json = async (args: string[]): Promise<Listed['data']> =>
+      (JSON.parse(await bdg(['dom', 'a11y', 'query', 'role:link', '--json', ...args])) as Listed)
+        .data;
+    const all = await json([]);
+    assert.equal(all.count, 60);
+    assert.equal(all.nodes.length, 60, 'JSON lists all matches without --limit');
+    const limited = await json(['--limit', '5']);
+    assert.equal(limited.nodes.length, 5);
+    assert.equal(limited.omitted, 55);
     assert.match(await bdg(['dom', 'get', '55']), /\[Link\] "Link 55"/);
   });
 
@@ -995,19 +1001,41 @@ void describe('DOM interactions', () => {
     assert.doesNotMatch(output, /still loading/);
   });
 
-  void it('clicks, fills and measures a11y matches in a cross-origin iframe of the same site', async () => {
+  void it('clicks, fills and measures a11y matches in bordered and scaled cross-origin iframes', async () => {
+    type Layout = {
+      data: {
+        elements: Array<{ bounds: { x: number; y: number; width: number; height: number } }>;
+      };
+    };
     const port = new URL(fixture.url).port;
     await bdg(['page', 'navigate', `http://a.b.localhost:${port}/cross-frame`]);
-    await bdg(['dom', 'wait', 'iframe', '--load']);
-    await bdg(['dom', 'a11y', 'query', 'role:button name:Accept all']);
+    await bdg(['dom', 'wait', '#scaled', '--load']);
+    const bounds = async (): Promise<{ x: number; y: number; width: number; height: number }> => {
+      const output = await bdg(['dom', 'layout', '0', '--json']);
+      const [element] = (JSON.parse(output) as Layout).data.elements;
+      assert.ok(element, output);
+      return element.bounds;
+    };
+
+    await bdg(['dom', 'a11y', 'query', 'role:button name:Accept plain']);
+    const plain = await bounds();
+    assert.equal(plain.x, 8 + 150 + 4 + 10 + 90, 'margin, border and padding are included');
     assert.match(await bdg(['dom', 'click', '0']), /Method: +mouse events/);
-    const layout = await bdg(['dom', 'layout', '0', '--json']);
-    const [button] = (
-      JSON.parse(layout) as { data: { elements: Array<{ bounds: { x: number } }> } }
-    ).data.elements;
-    assert.ok((button?.bounds.x ?? 0) > 150 + 4 + 90, layout);
-    await bdg(['dom', 'a11y', 'query', 'role:textbox name:Code']);
+
+    await bdg(['dom', 'a11y', 'query', 'role:button name:Accept scaled']);
+    const scaled = await bounds();
+    assert.ok(Math.abs(scaled.x - (8 + 150 + (6 + 8 + 90) / 2)) <= 1, JSON.stringify(scaled));
+    assert.ok(Math.abs(scaled.height - plain.height / 2) <= 1, JSON.stringify({ plain, scaled }));
+    const click = await bdg(['dom', 'click', '0']);
+    assert.match(click, /Method: +mouse events/);
+    assert.doesNotMatch(click, /may not have reached/);
+
+    await bdg(['dom', 'a11y', 'query', 'role:textbox name:Code scaled']);
     await bdg(['dom', 'fill', '0', 'xyz']);
-    assert.deepEqual(await evaluate('window.events'), ['accepted', 'code:xyz']);
+    assert.deepEqual(await evaluate('window.events'), [
+      'accepted:plain',
+      'accepted:scaled',
+      'code:scaled:xyz',
+    ]);
   });
 });

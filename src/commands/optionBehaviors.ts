@@ -97,8 +97,10 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Out of range exits 81; with a numeric index argument (a cached query index) it exits 81',
   },
   'query:--limit': {
-    default: 'dom a11y query lists the first 50 matches and says how many more there are',
-    whenEnabled: 'Lists that many matches (0 = all); count is always the total',
+    default:
+      'dom a11y query lists the first 50 matches and says how many more there are; --json returns all of them',
+    whenEnabled:
+      'Lists that many matches (0 = all), in human and JSON output; count is always the total, JSON omitted the rest',
     automaticBehavior:
       'All matches are cached for index-based access (bdg dom click 55 works even when 50 are listed); an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame',
     tokenImpact: 'About one line per match; a page can have hundreds of links',

@@ -18,6 +18,8 @@ import {
   staleNodeError,
 } from '@/errors/messages.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import {
   parseSelectorFilters,
@@ -27,6 +29,11 @@ import {
 
 /** Selector placeholder that makes page scripts use the bound node. */
 export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
+
+/** Removes the node bound for index-based commands from the window it was stored on */
+export const UNBIND_TARGET_SCRIPT = 'delete window.__bdgTarget';
+
+const log = createLogger('dom');
 
 /**
  * Page-side matching of filters ({@link SelectorFilter}) and scoped steps
@@ -344,11 +351,10 @@ export async function onScriptTarget<
   work: (target: ScriptTarget) => Promise<T>
 ): Promise<T> {
   const err = staleNodeError();
+  let target: ScriptTarget | undefined;
   try {
-    const result = withUserSelector(
-      await work(await resolveScriptTarget(cdp, params)),
-      params.selector
-    );
+    target = await resolveScriptTarget(cdp, params);
+    const result = withUserSelector(await work(target), params.selector);
     if (!boundNodeMissing(result.error)) return result;
     return {
       ...result,
@@ -359,7 +365,23 @@ export async function onScriptTarget<
   } catch (error) {
     if (!(error instanceof CommandError) || !boundNodeMissing(error.message)) throw error;
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+  } finally {
+    if (target && target.cdp !== cdp) unbindInFrame(target.cdp);
   }
+}
+
+/**
+ * Remove a node bound in a cross-origin frame from that frame's window
+ * (through the scoped connection, so the script runs where the bind ran; the
+ * session removes the one bound on the top window after every interaction).
+ * Not waited for.
+ *
+ * @param frameConnection - Connection scoped to the node's frame
+ */
+function unbindInFrame(frameConnection: CDPConnection): void {
+  void frameConnection
+    .send('Runtime.evaluate', { expression: UNBIND_TARGET_SCRIPT })
+    .catch((error: unknown) => log.debug(`Frame target not unbound: ${getErrorMessage(error)}`));
 }
 
 /**

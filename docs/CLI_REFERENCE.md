@@ -187,7 +187,7 @@ bdg dom a11y query 'name=E-mail address:'         # A name with spaces or colons
 bdg dom a11y query 'role=textbox name=E-mail address:'  # Combine criteria (AND logic)
 bdg dom a11y query 'description=Click to submit'  # Find by description
 bdg dom a11y query role=button --json             # JSON output
-bdg dom a11y query role=link --limit 0            # List all matches (default: the first 50)
+bdg dom a11y query role=link --limit 0            # List all matches (default: the first 50; --json: all)
 bdg dom click 0                                   # Act on a match by its index
 
 # Describe specific element by CSS selector
@@ -208,7 +208,7 @@ bdg dom a11y describe --json                      # JSON output
 - Tree view shows role, name, description, and key properties
 - Ignored nodes are automatically filtered out
 - Human-readable format limited to 50 nodes (use `--json` for complete output)
-- `a11y query` lists each element once (an element the page and its frame's tree both report is not repeated) and the first 50 matches (`--limit <n>`, `0` for all; `... and 213 more` says how many it left out, JSON has `count` and `omitted`). All matches are indexed: `bdg dom click 55`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `get` and `listeners` take them, also for an element of a cross-origin iframe of the same site, such as a consent dialog served from a subdomain (its scripts then run in that iframe, mouse events land on it through the iframe's position, and `layout` places it in the top-level page)
+- `a11y query` lists each element once (an element the page and its frame's tree both report is not repeated) and the first 50 matches in human output (`--limit <n>`, `0` for all; `... and 213 more` says how many it left out); `--json` returns all of them unless `--limit` is given (then `count` is the total and `omitted` the rest). All matches are indexed: `bdg dom click 55`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `get` and `listeners` take them, also for an element of a cross-origin iframe of the same site, such as a consent dialog served from a subdomain (its scripts then run in that iframe, mouse events land on it through the iframe's position and scale, including its border, padding, `transform: scale()` and `zoom`, and `layout` places it in the top-level page; a rotated or skewed iframe, or one that cannot be measured, exits 83 rather than clicking somewhere else)
 
 **JSON Output (jq-friendly):**
 

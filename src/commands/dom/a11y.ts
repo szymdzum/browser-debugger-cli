@@ -45,7 +45,7 @@ import {
 } from '@/ui/formatters/a11y.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-/** Matches `dom a11y query` lists by default (a page can have hundreds of links) */
+/** Matches `dom a11y query` lists by default in human output (a page can have hundreds of links; JSON lists all) */
 const A11Y_QUERY_LIMIT = 50;
 
 /**
@@ -146,7 +146,10 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
           ...(node.name && { preview: node.name }),
         })),
       });
-      return { success: true, data: limitMatches(indexed, options.limit ?? A11Y_QUERY_LIMIT) };
+      return {
+        success: true,
+        data: limitMatches(indexed, options.limit ?? (options.json ? 0 : A11Y_QUERY_LIMIT)),
+      };
     },
     options,
     formatA11yQueryResult
@@ -161,7 +164,7 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
  * @param limit - Matches to list (0 = all)
  * @returns The result with the listed matches
  */
-function limitMatches(result: A11yQueryResult, limit: number): A11yQueryResult {
+export function limitMatches(result: A11yQueryResult, limit: number): A11yQueryResult {
   if (limit === 0 || result.nodes.length <= limit) return result;
   return { ...result, nodes: result.nodes.slice(0, limit), omitted: result.nodes.length - limit };
 }
@@ -299,7 +302,7 @@ export function registerA11yCommands(domCmd: Command): void {
     )
     .option(
       '--limit <n>',
-      `Matches to list (default: ${A11Y_QUERY_LIMIT}; 0 = all); all are indexed`,
+      `Matches to list (default: ${A11Y_QUERY_LIMIT}, all with --json; 0 = all); all are indexed`,
       integerOption(0)
     )
     .addOption(jsonOption())
