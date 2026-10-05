@@ -9,7 +9,7 @@ import { timeoutError } from '@/commands/shared/CommandRunner.js';
 import { landingPage } from '@/commands/shared/landingPage.js';
 import type { SessionStartOptions } from '@/commands/shared/optionTypes.js';
 import { DaemonError, SessionDirError } from '@/daemon/errors.js';
-import { launchDaemon } from '@/daemon/launcher.js';
+import { launchDaemon, type SpawnedDaemon } from '@/daemon/launcher.js';
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   sessionAlreadyRunningError,
@@ -32,9 +32,9 @@ import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { startNotices } from '@/ui/messages/session.js';
+import { daemonStillExitingHint, startNotices } from '@/ui/messages/session.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
-import { delay } from '@/utils/async.js';
+import { delay, waitUntil } from '@/utils/async.js';
 import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -45,7 +45,7 @@ const log = createLogger('bdg');
 /**
  * Outcome of a start attempt, printed by {@link reportStartOutcome}.
  */
-type StartOutcome =
+export type StartOutcome =
   | { ok: true; data: StartSessionResponseData }
   | {
       ok: false;
@@ -60,6 +60,8 @@ type StartOutcome =
       details?: Record<string, unknown>;
       /** The daemon went away mid-request (e.g. the previous session was ending) */
       retryable?: boolean;
+      /** The daemon this start spawned (it exits after a failed start) */
+      spawned?: SpawnedDaemon;
     };
 
 /**
@@ -85,7 +87,36 @@ export async function startSessionViaDaemon(
     await delay(SHUTDOWN_POLL_MS);
     outcome = await requestSession(url, options, telemetry);
   }
-  reportStartOutcome(outcome, options);
+  reportStartOutcome(await afterSpawnedDaemonExit(outcome), options);
+}
+
+/** How long a failed start waits for the daemon it spawned to exit */
+export const SPAWNED_DAEMON_EXIT_WAIT_MS = 3000;
+
+/**
+ * Let the daemon a failed start spawned finish exiting before the error is
+ * reported: it removes its session files on the way out, and a command run
+ * right after (`bdg sessions`, another start) would otherwise still see the
+ * session as starting. The wait is bounded; a daemon still running after it
+ * is named in a hint.
+ *
+ * @param outcome - Start outcome
+ * @param waitMs - Milliseconds to wait at most
+ * @returns The outcome, with a hint when the daemon did not exit in time
+ */
+export async function afterSpawnedDaemonExit(
+  outcome: StartOutcome,
+  waitMs = SPAWNED_DAEMON_EXIT_WAIT_MS
+): Promise<StartOutcome> {
+  if (outcome.ok || !outcome.spawned) return outcome;
+  const { spawned, ...failure } = outcome;
+  if (await waitUntil(spawned.hasExited, waitMs)) return failure;
+  const hint = daemonStillExitingHint(spawned.pid, waitMs);
+  return {
+    ...failure,
+    human: joinLines(failure.human, hint),
+    details: { ...failure.details, daemonStillRunning: hint },
+  };
 }
 
 /**
@@ -136,8 +167,9 @@ async function requestSession(
   options: SessionStartOptions,
   telemetry: TelemetryType[]
 ): Promise<StartOutcome> {
+  let spawned: SpawnedDaemon | undefined;
   try {
-    await launchDaemon();
+    spawned = await launchDaemon();
   } catch (error) {
     if (error instanceof SessionDirError) {
       return {
@@ -153,6 +185,23 @@ async function requestSession(
     return { ok: false, error: message, human: genericError(message), exitCode };
   }
 
+  const outcome = await sendStart(url, options, telemetry);
+  return !outcome.ok && spawned ? { ...outcome, spawned } : outcome;
+}
+
+/**
+ * Ask the running daemon to start a session.
+ *
+ * @param url - Target URL
+ * @param options - Session options
+ * @param telemetry - Telemetry types
+ * @returns Start outcome
+ */
+async function sendStart(
+  url: string,
+  options: SessionStartOptions,
+  telemetry: TelemetryType[]
+): Promise<StartOutcome> {
   try {
     log.debug('Connecting to daemon...');
     const response = await sendStartSessionRequest(

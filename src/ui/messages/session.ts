@@ -8,6 +8,7 @@
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import { joinLines } from '@/ui/formatting.js';
 import { pageLoadingWarning } from '@/ui/messages/commands.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
  * Options for the landing page display.
@@ -126,4 +127,16 @@ export function lastSessionEndText(end: { reason: string; endedAt: number }): st
   };
   const at = new Date(end.endedAt).toLocaleTimeString();
   return `The last session ended at ${at}: ${why[end.reason] ?? end.reason}`;
+}
+
+/**
+ * Hint after a failed start whose daemon had not exited when bdg stopped waiting.
+ *
+ * @param pid - Daemon PID, when known
+ * @param waitedMs - How long bdg waited
+ * @returns Hint line
+ */
+export function daemonStillExitingHint(pid: number | undefined, waitedMs: number): string {
+  const daemon = pid === undefined ? 'The daemon' : `The daemon (PID ${pid})`;
+  return `${daemon} was still shutting down after ${waitedMs / 1000}s; check with bdg sessions, or end it with ${sessionCommand('bdg cleanup --force')}`;
 }
