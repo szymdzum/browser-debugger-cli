@@ -1663,6 +1663,46 @@ export function clickTargetDetachedError(selector: string): ErrorWithSuggestion 
 }
 
 /**
+ * A pointer action refused under `--strict` because a real mouse could not
+ * reach the element (covered, hidden, zero-size, pointer-events: none).
+ *
+ * @param target - Selector and element description, as the click located it
+ * @param reason - Why the mouse could not reach it, e.g. "covered by another element (div#shield)"
+ * @param verb - What was refused, e.g. "click", "hover"
+ * @returns Message naming the obstruction, and how to inspect it
+ */
+export function unreachableElementError(
+  target: { selector: string; element?: string | undefined },
+  reason: string | null | undefined,
+  verb: string
+): ErrorWithSuggestion {
+  const element = target.element ?? target.selector;
+  return {
+    message: `Did not ${verb} ${element}: it is ${reason ?? 'not reachable by the mouse'}, so a user could not ${verb} it (--strict)`,
+    suggestion: `See what is in the way with ${sessionCommand(`bdg dom layout ${shellQuote(target.selector)}`)}, then close the overlay or scroll; without --strict bdg uses DOM events instead`,
+  };
+}
+
+/**
+ * A mouse press refused under `--strict` because the page never saw it on
+ * the element (a browser dialog or bubble captured the input).
+ *
+ * @param target - Selector and element description, as the click located it
+ * @param verb - What was refused, e.g. "click"
+ * @returns Message, and how to inspect the page
+ */
+export function pressNotReceivedError(
+  target: { selector: string; element?: string | undefined },
+  verb: string
+): ErrorWithSuggestion {
+  const element = target.element ?? target.selector;
+  return {
+    message: `Did not ${verb} ${element}: the mouse press never reached it (the browser may be showing a dialog or bubble that captures input) (--strict)`,
+    suggestion: `Check the page with ${sessionCommand('bdg dom screenshot page.png')} and ${sessionCommand(`bdg dom layout ${shellQuote(target.selector)}`)}`,
+  };
+}
+
+/**
  * Key press failed.
  */
 export function keyPressFailedError(details: string): ErrorWithSuggestion {

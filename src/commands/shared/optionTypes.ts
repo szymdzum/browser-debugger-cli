@@ -207,6 +207,8 @@ export interface ClickCommandOptions extends BaseOptions, IndexOptions {
   double?: boolean;
   /** Right-click */
   right?: boolean;
+  /** Refuse instead of falling back to DOM events when the mouse can't reach the element */
+  strict?: boolean;
 }
 
 /**

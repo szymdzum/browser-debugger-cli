@@ -14,6 +14,8 @@ import type {
   NewMessage,
   PageLayout,
   PageNavigation,
+  PendingChanges,
+  ShownElement,
 } from '@/ipc/protocol/domTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
@@ -115,14 +117,52 @@ export const NO_VISIBLE_EFFECT =
  * Status line of a DOM action: a check mark only for a clean success.
  *
  * @param done - What was done, e.g. "Element Clicked"
- * @param warned - Whether the action has warnings (shown right below)
- * @param noEffect - Whether the action had no visible effect
- * @returns e.g. "✓ Element Clicked", "⚠ Element Clicked (with warnings)" or
+ * @param state - Whether the action has warnings (shown right below), had no
+ *   visible effect, or returned while the page was still changing
+ * @returns e.g. "✓ Element Clicked", "⚠ Element Clicked (with warnings)",
+ *   "⚠ Element Clicked (page still changing)" or
  *   "⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)"
  */
-export function actionStatusLine(done: string, warned: boolean, noEffect = false): string {
-  if (noEffect) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
-  return warned ? `⚠ ${done} (with warnings)` : `✓ ${done}`;
+export function actionStatusLine(
+  done: string,
+  state: { warned: boolean; noEffect?: boolean; stillChanging?: boolean }
+): string {
+  if (state.noEffect) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
+  const notes = [state.warned && 'with warnings', state.stillChanging && 'page still changing'];
+  const shown = notes.filter((note): note is string => typeof note === 'string');
+  return shown.length > 0 ? `⚠ ${done} (${shown.join('; ')})` : `✓ ${done}`;
+}
+
+/**
+ * Note under the status line of an action that returned while the page was
+ * still changing.
+ *
+ * @param action - What returned, e.g. "click", "key press"
+ * @param pending - What the page was still working on
+ * @returns e.g. "The page was still changing when the click returned (2 requests pending); wait for the result with bdg dom wait <selector>"
+ */
+export function stillChangingNote(action: string, pending: PendingChanges): string {
+  const parts = [
+    pending.requests !== undefined && `${pluralize(pending.requests, 'request')} pending`,
+    pending.navigation && 'a new page still loading',
+    pending.loading !== undefined && `loading indicator ${pending.loading} shown`,
+    pending.domChanging && 'DOM still changing',
+    pending.timers !== undefined &&
+      `${pluralize(pending.timers, 'timer')} set by the ${action} not fired yet`,
+    pending.busy && 'page busy running a script',
+  ].filter((part): part is string => typeof part === 'string');
+  const wait = sessionCommand('bdg dom wait <selector>');
+  return `The page was still changing when the ${action} returned (${parts.join(', ')}); wait for the result with ${wait}`;
+}
+
+/**
+ * An element an action showed, for its `Shown:` rows.
+ *
+ * @param element - Shown element
+ * @returns e.g. `div.figcaption "name: user2 View profile"`
+ */
+export function shownElementText(element: ShownElement): string {
+  return `${element.element} "${element.text}"`;
 }
 
 /**
@@ -639,6 +679,14 @@ export const POINTER_ACTION_DONE = {
   hover: 'Hovered',
 } as const;
 
+/** What each pointer action is called in notes ("when the click returned") */
+export const POINTER_ACTION_NOUN = {
+  click: 'click',
+  double: 'double-click',
+  right: 'right-click',
+  hover: 'hover',
+} as const;
+
 /** Headline of each `bdg page` action */
 export const PAGE_ACTION_DONE = {
   navigate: 'Navigated',
@@ -757,7 +805,8 @@ export function pageLoadingWarning(state: PageLoadingState): string {
 export const CLICK_RESULT_WAIT_HELP = joinLines(
   '',
   'Waits only for the requests the action starts (150 ms idle, up to 2 s), not for',
-  'results the page shows later (timers, spinners, animations). Wait for those with:',
+  'results the page shows later (timers, spinners, animations); the result says',
+  '"page still changing" when it saw such work pending. Wait for those with:',
   "  bdg dom wait '#result' --visible          # or --text 'Saved', or '.spinner' --gone"
 );
 

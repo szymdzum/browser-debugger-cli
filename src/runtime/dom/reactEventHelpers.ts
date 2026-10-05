@@ -13,6 +13,7 @@ import {
   VIA_LABEL_SUFFIX,
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
+import { REVEAL_SNAPSHOT_JS } from '@/runtime/dom/actionEffectsScripts.js';
 import { ELEMENT_DESCRIPTION_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 
@@ -601,6 +602,10 @@ export const CLICK_ELEMENT_SCRIPT = `
   else if (style.pointerEvents === 'none') obstruction = 'not clickable (pointer-events: none)';
   else if (!hasSize) obstruction = 'zero-size';
   else if (!hittable) obstruction = 'covered by another element' + coveredBy();
+
+  // A hover remembers what is shown around the element, so its result can
+  // say what the hover revealed (also through CSS :hover rules).
+  if (action === 'hover') (${REVEAL_SNAPSHOT_JS})(el);
 
   // Records whether the coming mouse press reaches the element at all; a
   // browser dialog or bubble can swallow input while the page looks normal.

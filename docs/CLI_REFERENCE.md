@@ -399,7 +399,7 @@ Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
 
 ### Waiting for Elements
 
-`dom click` and the other actions wait for the requests they start, not for results a page shows later (timers, spinners, animations). `bdg dom wait` waits for those instead of `sleep` loops:
+`dom click` and the other actions wait for the requests they start, not for results a page shows later (timers, spinners, animations); `click` and `pressKey` say when the page was still changing as they returned (`⚠ Element Clicked (page still changing)`, see below). `bdg dom wait` waits for those instead of `sleep` loops:
 
 ```bash
 bdg dom wait "#finish" --visible              # A match becomes visible (timer-based loading)
@@ -629,7 +629,7 @@ Requests during the action (5):
 
 `Element` (`data.element` in JSON) names the element the action hit, by its tag, id, classes and text, or the text of a nearby ancestor (`input.toggle in div.view "Write report"`), so a click by index or on one of several matches says which one it was. A numeric index refers to the last `dom query`, `dom form` or `dom a11y query` results (one cache holds the last of them), and the output says which: `Element: h3 "Welcome" (index 0 of the last dom query "h3")` (`data.indexSource: { index, command, query? }`; for an a11y query the `Selector` row is left out, as its pattern is not a selector). Errors name it too: a stale index says `The element at index 0 of the last dom a11y query "name:Accept all" is no longer in the page` and how to refresh it (87), and `fill`/`submit` on an element of a query or a11y query they cannot act on add `index 0 refers to the last dom query results ("h3": h3 "Welcome"); run bdg dom form to target form fields by index`. The status line has a check mark only for a clean success: an action with warnings (covered element clicked with DOM events, click not received, value mismatch, several matches) prints `⚠ Element Clicked (with warnings)` with the warning right below it, before the details and requests.
 
-Actions also say what changed on the page, after the details and before the requests. A navigation is shown as `Page: navigated to https://…/secure (200)` (a new document, also at the same URL, as after a form POST that redirects back) or `Page: URL changed to …/#/active (same document)` (history API, hash), `navigation: { url, sameDocument, status }` in JSON; it comes from CDP events, so it is reported even when the page could not be read. Messages that appeared or changed in alert/status/`aria-live` elements, `<output>` or elements whose class or id has a word like flash, alert, error, toast, notice, message, invalid or feedback are listed as `New text: "Your password is invalid!" (div#flash.flash.error)` (`messages: [{ text, element }]`, at most 3, 120 characters each, without close controls such as the "×" or aria-hidden parts; after a navigation every message of the new page counts). Texts of only digits and time units (clocks, counters) are left out; other text that changes on its own (a rotating banner) can show up. Both are left out when nothing changed. A `click` or `submit` that changed nothing at all (no DOM change, request, navigation, dialog or new window, checked again 300 ms later) prints `⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)` and has `effect: "none"`, still exiting 0. It is not claimed with `--no-wait`, for `hover` and `--right`, after a copy or cut, when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, or when focus moved to an element that is not a button or link; focus/hover class changes on the clicked element don't count as changes, shadow roots attached meanwhile do. Effects outside the DOM (CSS `:hover`/`:focus-within` styles, canvas) are not seen. This costs one page script sent before the action (without waiting for it) and one read after it (about 1 ms on small pages, under 10 ms on large ones); when the page does not answer (a pending navigation), bdg waits at most 200 ms for the snapshot and 250 ms per read.
+Actions also say what changed on the page, after the details and before the requests. A navigation is shown as `Page: navigated to https://…/secure (200)` (a new document, also at the same URL, as after a form POST that redirects back) or `Page: URL changed to …/#/active (same document)` (history API, hash), `navigation: { url, sameDocument, status }` in JSON; it comes from CDP events, so it is reported even when the page could not be read. Messages that appeared or changed in alert/status/`aria-live` elements, `<output>` or elements whose class or id has a word like flash, alert, error, toast, notice, message, invalid or feedback are listed as `New text: "Your password is invalid!" (div#flash.flash.error)` (`messages: [{ text, element }]`, at most 3, 120 characters each, without close controls such as the "×" or aria-hidden parts; after a navigation every message of the new page counts). Texts of only digits and time units (clocks, counters) are left out; other text that changes on its own (a rotating banner) can show up. Both are left out when nothing changed. A `click` or `submit` that changed nothing at all (no DOM change, request, navigation, dialog or new window, checked again 300 ms later) prints `⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)` and has `effect: "none"`, still exiting 0. It is not claimed with `--no-wait`, for `hover` and `--right`, after a copy or cut, when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, when focus moved to an element that is not a button or link, or when a timer the click's handlers started had not fired yet; focus/hover class changes on the clicked element don't count as changes, shadow roots attached meanwhile do. Effects outside the DOM (CSS `:hover`/`:focus-within` styles, canvas) are not seen. This costs one page script sent before the action (without waiting for it) and one read after it (about 1 ms on small pages, under 10 ms on large ones); when the page does not answer (a pending navigation), bdg waits at most 200 ms for the snapshot and 250 ms per read.
 
 ```text
 ✓ Form Submitted
@@ -642,6 +642,47 @@ Wait Time:          1390ms
 Page:               navigated to https://the-internet.herokuapp.com/login (200)
 New text:           "Your password is invalid!" (div#flash.flash.error)
 ```
+
+`hover` and `pressKey` also list the elements they showed, after `New text`: `Shown: div.figcaption "name: user2 View profile"` (`shown: [{ text, element }]` in JSON, at most 3, outermost first, 120 characters each; texts already listed as new messages are left out). These are elements added to the page with visible text, such as the item Enter added to a to-do list (`Shown: li "Buy milk"`) or a tooltip appended to the body; an element re-rendered with the text it had before does not count. For a hover, bdg also notes which elements around the target (its parent and everything in it, up to 1500 elements) and which tooltips, menus, listboxes, dialogs and popovers anywhere were shown right before the mouse moved, so a caption that only a CSS `:hover` rule shows counts too. Neither claims "no visible effect" (a key press often only changes a field's value, and a hover only styles).
+
+```text
+✓ Element Hovered
+
+Selector:      .figure
+Element:       div.figure (2nd of 3)
+Method:        mouse events
+Shown:         div.figcaption "name: user2 View profile"
+```
+
+`click` (also `--double`/`--right`) and `pressKey` say when the page was still changing as they returned, so an agent waits for the result instead of reading a half-rendered page: the status line ends `(page still changing)` and a note below it says what was pending, e.g. `⚠ The page was still changing when the click returned (page busy running a script); wait for the result with bdg dom wait <selector>`. JSON has `settled: false` and `pending` with what was seen (absent when the page looked settled; the exit code stays 0):
+
+- `requests`: document, fetch/XHR and script requests the action started that were still running (images, stylesheets, fonts and streams do not count)
+- `navigation`: a new page was still loading
+- `loading`: a loading indicator that appeared during the action and was still shown (`aria-busy="true"`, `role="progressbar"`, or a class or id word `loading`, `loader` or `spinner`), e.g. `"div#loading"`
+- `domChanging`: elements kept being added, removed or changed in bursts: at least 2 within 500 ms with the last one under 150 ms ago, and 2 more during a second look 250 ms later (a render that ends in two commits, text-only changes such as clocks, and style animations do not count)
+- `timers`: timers of 50 ms to 10 s that the action's event handlers started and that had not fired, counted only when the DOM had not changed yet (a click that shows a toast and starts its hide timer is settled)
+- `busy`: the page did not answer within 250 ms, as when a long script runs right after the action (saucedemo's `performance_glitch_user` login)
+
+```text
+⚠ Element Clicked (page still changing)
+⚠ The page was still changing when the click returned (page busy running a script); wait for the result with bdg dom wait <selector>
+
+Selector:      #login-button
+Element:       input#login-button.submit-button.btn_action "Login"
+Method:        mouse events
+Page:          URL changed to https://www.saucedemo.com/inventory.html (same document)
+```
+
+This adds nothing to an action's time except when the DOM looked busy (250 ms plus one read). Not checked with `--no-wait` or for `hover`, `fill`, `scroll` and `submit` (`submit` has its own waits). Work the page starts later on its own (a poller, an animation) is not attributed to the action; a request a poller started during it can be counted.
+
+`click` and `hover` fall back to DOM events when a real mouse cannot reach the element (covered, hidden, zero-size, `pointer-events: none`) and warn. With `--strict` they refuse instead and exit 90 (`RESOURCE_CONFLICT`: the element exists, but the page's state blocks the request), dispatching nothing, so the page is unchanged; the message names what covers the element and suggests `bdg dom layout`:
+
+```text
+Error: Did not click button#covered "Covered": it is covered by another element (div#cover), so a user could not click it (--strict)
+See what is in the way with bdg dom layout '#covered', then close the overlay or scroll; without --strict bdg uses DOM events instead
+```
+
+`--strict` also fails a click whose mouse press never reached the element (the "click may not have reached the element" warning otherwise): the press is released, and `--double` presses no more.
 
 After `dom fill` the field's value is read back. When it is not the value given (the page rejected, reformatted or moved the input, e.g. a handler that writes it into another field) the command still succeeds (exit 0) but warns first, `The field's value is "" after filling (expected "Lovelace"); the page may have rejected or moved the input`, and JSON has `valueMismatch: { "expected": "Lovelace", "actual": "" }`. When another text field of the form changed to the value given during the fill (values of at least 2 characters), the warning ends `the value appeared in input#first-name instead` (`movedTo`). Values are compared as the browser normalises them (colors case-insensitively, numbers and ranges as numbers, email trimmed, textarea line endings, times without zero seconds); a value the page cut to the field's maxlength is reported as `The value was cut to 10 characters by maxlength` (`truncatedTo`), and a password mismatch only by length (`The password field's value differs from the one filled (length 8, expected 12)`, masked values plus `expectedLength`/`actualLength`). The value is read back separately, a moment after the fill returned and for at most 1 s; when the change navigated the page (a `<select onchange="form.submit()">`) the fill reports success without it. A warning rather than an error, because pages legitimately reformat values (phone masks, trimming, upper-casing).
 
@@ -666,7 +707,8 @@ bdg dom click "#fast-btn" --no-wait               # Skip network stability wait
 bdg dom click "#start" && bdg dom wait "#finish" --visible   # Results shown later by a timer
 bdg dom click ".row" --double                     # Double-click
 bdg dom click ".row" --right                      # Right-click (context menu)
-bdg dom hover "nav .menu"                         # Hover (opens hover menus)
+bdg dom hover "nav .menu"                         # Hover (opens hover menus; lists what it showed)
+bdg dom click "#save" --strict                    # Exit 90 instead of DOM events when covered or unreachable
 bdg dom fill "#tags" "a,c"                        # <select multiple>: several options
 
 # Navigate the session page

@@ -22,8 +22,9 @@
  * `secret` and otherwise back to `/login` with an error flash (like
  * the-internet's login); `/cross-frame` (loaded from `a.b.localhost`) embeds a
  * bordered and a scaled cross-origin iframe of the same site, each with a
- * button and a field. Pages for frame order, rejections and framework
- * listeners come from `knownLimitFixtures.ts`.
+ * button and a field; `/effects` has a tooltip, CSS hover captions, a to-do
+ * field, buttons whose results come late and a covered button. Pages for frame
+ * order, rejections and framework listeners come from `knownLimitFixtures.ts`.
  */
 
 import * as fs from 'fs';
@@ -345,6 +346,53 @@ const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
   };
 </script>`;
 
+/**
+ * What actions show and leave unfinished: a help icon showing a tooltip on
+ * mouseenter, cards whose caption only CSS `:hover` shows, a to-do field
+ * adding an item on Enter, buttons whose result comes later (after a timer,
+ * after a spinner, in 100 ms steps, after a 1.5 s long task), one showing a
+ * toast that hides itself, and a button covered by a transparent overlay.
+ */
+const EFFECTS_HTML = `<!doctype html><title>effects</title>
+<style>.card { width: 80px; height: 40px; display: inline-block; vertical-align: top; overflow: hidden } .card .caption { display: none } .card:hover .caption { display: block }</style>
+<span id="help" style="padding: 4px">?</span><div id="tip" role="tooltip" hidden>Saves a draft every minute</div>
+<div class="cards"><div class="card"><span class="caption">first card</span></div><div class="card"><span class="caption">second card</span></div></div>
+<input id="todo"><ul id="todos"></ul>
+<button id="later">Later</button><button id="spin">Spin</button><button id="steps">Steps</button><button id="block">Block</button><button id="toast">Toast</button>
+<div id="results"></div>
+<div style="position: relative; display: inline-block"><button id="covered">Covered</button><div id="cover" style="position: absolute; inset: 0"></div></div>
+<script>
+  window.coveredClicks = 0;
+  const results = document.getElementById('results');
+  const add = (text) => results.insertAdjacentHTML('beforeend', '<p>' + text + '</p>');
+  document.getElementById('help').onmouseenter = () => { document.getElementById('tip').hidden = false; };
+  document.getElementById('todo').onkeydown = (event) => {
+    if (event.key !== 'Enter' || !event.target.value) return;
+    document.getElementById('todos').insertAdjacentHTML('beforeend', '<li>' + event.target.value + '</li>');
+    event.target.value = '';
+  };
+  document.getElementById('later').onclick = () => setTimeout(() => add('Loaded later'), 1500);
+  document.getElementById('spin').onclick = () => {
+    results.insertAdjacentHTML('beforeend', '<div class="spinner">Please wait</div>');
+    setTimeout(() => { results.querySelector('.spinner').remove(); add('Spun'); }, 1500);
+  };
+  document.getElementById('steps').onclick = () => {
+    let step = 0;
+    const next = () => { add('Step ' + step); if (++step < 20) setTimeout(next, 100); };
+    next();
+  };
+  document.getElementById('block').onclick = () => setTimeout(() => {
+    const end = Date.now() + 1500;
+    while (Date.now() < end);
+    add('Unblocked');
+  }, 60);
+  document.getElementById('toast').onclick = () => {
+    results.insertAdjacentHTML('beforeend', '<div class="toast">Saved</div>');
+    setTimeout(() => results.querySelector('.toast').remove(), 3000);
+  };
+  document.getElementById('covered').onclick = () => window.coveredClicks++;
+</script>`;
+
 /** Body of a 404 page */
 const MISSING_PAGE_HTML = '<!doctype html><title>Not found</title><h1>Not found</h1>';
 
@@ -458,6 +506,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/cross-frame' || req.url?.startsWith('/cross-frame-child')) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(req.url === '/cross-frame' ? CROSS_FRAME_HTML : CROSS_FRAME_CHILD_HTML);
+      return;
+    }
+    if (req.url === '/effects') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(EFFECTS_HTML);
       return;
     }
     if (req.url === '/layout') {

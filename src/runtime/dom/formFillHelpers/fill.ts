@@ -18,6 +18,8 @@ import {
   clickTargetDetachedError,
   unexpectedResponseFormatError,
   operationFailedError,
+  pressNotReceivedError,
+  unreachableElementError,
 } from '@/errors/messages.js';
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import {
@@ -42,6 +44,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import {
   CLICK_NOT_RECEIVED_WARNING,
   POINTER_ACTION_DONE,
+  POINTER_ACTION_NOUN,
   domClickFallbackWarning,
 } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -373,25 +376,27 @@ export async function pressReachedTarget(cdp: CDPConnection): Promise<boolean> {
 
 /**
  * Dispatch real mouse events for an action, checking after the first press
- * that the target received it. If dispatching fails first, the press probe
- * is still removed from the page.
+ * that the target received it. With `stopIfMissed`, a press that missed is
+ * only released (no further presses). If dispatching fails first, the press
+ * probe is still removed from the page.
  *
  * @param cdp - CDP connection
  * @param action - What to do
- * @param x - Page x
- * @param y - Page y
+ * @param point - Page coordinates
+ * @param stopIfMissed - Stop after releasing a press that missed (--strict)
  * @returns False if the press never reached the target
  */
 async function dispatchMouseAction(
   cdp: CDPConnection,
   action: PointerAction,
-  x: number,
-  y: number
+  point: { x: number; y: number },
+  stopIfMissed: boolean
 ): Promise<boolean> {
   let reached: boolean | undefined;
   try {
-    for (const event of mouseEvents(action, x, y)) {
+    for (const event of mouseEvents(action, point.x, point.y)) {
       await cdp.send('Input.dispatchMouseEvent', event);
+      if (event['type'] === 'mouseReleased' && reached === false && stopIfMissed) break;
       if (event['type'] === 'mousePressed' && reached === undefined) {
         reached = await pressReachedTarget(cdp);
       }
@@ -425,30 +430,60 @@ function releaseClickTarget(cdp: CDPConnection): void {
 }
 
 /**
+ * Refuse a pointer action under `--strict` (exit 90, the page's state
+ * conflicts with the request): the element is unreachable by the mouse, or
+ * the press never reached it.
+ *
+ * @param result - Located click (selector and element description)
+ * @param action - What was refused
+ * @param reason - Why the mouse could not reach it; undefined when the press missed
+ * @returns Never
+ * @throws CommandError always
+ */
+function refuseUnreachable(
+  result: ClickResult,
+  action: PointerAction,
+  reason?: string | null
+): never {
+  const target = { selector: result.selector ?? '', element: result.element };
+  const verb = POINTER_ACTION_NOUN[action];
+  const err =
+    reason === undefined
+      ? pressNotReceivedError(target, verb)
+      : unreachableElementError(target, reason, verb);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.RESOURCE_CONFLICT);
+}
+
+/**
  * Click a located element.
  *
  * Uses real mouse events (pointerdown/mousedown/pointerup/mouseup/click, all
  * trusted) at the element's center when it is the topmost element there, so
  * components that react to pointer or mouse events (menus, selects) respond.
- * Otherwise (covered or zero-size) falls back to `el.click()` and says so.
+ * Otherwise (covered or zero-size) falls back to `el.click()` and says so,
+ * or with `strict` refuses (as it does when the press never reached it).
  * Double and right clicks, and hovering, work the same way.
  *
  * @param cdp - CDP connection
  * @param located - Locate result with center point
  * @param action - Click, double click, right click or hover
+ * @param strict - Refuse instead of falling back to DOM events
  * @returns Click result
+ * @throws CommandError under `strict` when a user could not reach the element
  */
 async function performClick(
   cdp: CDPConnection,
   located: LocatedClick,
-  action: PointerAction
+  action: PointerAction,
+  strict: boolean
 ): Promise<ClickResult> {
   const { x, y, hittable, obstruction, ...result } = located;
   if (!result.success) return result;
 
   if (hittable && x !== undefined && y !== undefined) {
-    const reached = await dispatchMouseAction(cdp, action, x, y);
+    const reached = await dispatchMouseAction(cdp, action, { x, y }, strict);
     releaseClickTarget(cdp);
+    if (!reached && strict) refuseUnreachable(result, action);
     return withMultipleMatchesWarning<ClickResult>(
       {
         ...result,
@@ -461,6 +496,10 @@ async function performClick(
     );
   }
 
+  if (strict) {
+    releaseClickTarget(cdp);
+    refuseUnreachable(result, action, obstruction ?? null);
+  }
   const response = (await cdp.send('Runtime.evaluate', {
     expression: domFallbackScript(action),
     returnByValue: true,
@@ -487,7 +526,7 @@ async function performClick(
 export async function clickElement(
   cdp: CDPConnection,
   selector: string,
-  options: { index?: number; action?: PointerAction } = {}
+  options: { index?: number; action?: PointerAction; strict?: boolean } = {}
 ): Promise<ClickResult> {
   const indexArg = options.index ?? 'null';
   const action = options.action ?? 'click';
@@ -522,7 +561,7 @@ export async function clickElement(
     }
 
     if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
-      return await performClick(cdp, cdpResponse.result.value, action);
+      return await performClick(cdp, cdpResponse.result.value, action, options.strict === true);
     }
 
     const err = unexpectedResponseFormatError('ClickResult');

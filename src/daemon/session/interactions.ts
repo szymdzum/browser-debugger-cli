@@ -1,13 +1,14 @@
 /**
  * Running page interactions (fill, click, submit, pressKey, scroll) one at a
- * time, reporting the dialogs, network requests and page changes they caused.
+ * time, reporting the dialogs, network requests and page changes they caused,
+ * and whether the page was still changing when they returned.
  */
 
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { ActionEffects, DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
-import { watchActionEffects } from '@/runtime/dom/actionEffects.js';
+import { pendingChanges, watchActionEffects } from '@/runtime/dom/actionEffects.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -40,6 +41,17 @@ export interface InteractionOptions {
    * whose effect shows in the DOM (click, submit) and that waited for it
    */
   detectNoEffect?: boolean;
+  /**
+   * List the elements it showed (`shown`): for hover and key presses, whose
+   * effect is often a menu, tooltip or new item rather than a message
+   */
+  reportShown?: boolean;
+  /**
+   * Say when the page was still changing as it returned (`settled: false`
+   * with `pending`): for actions that start app transitions (click, key
+   * press) and waited for the network
+   */
+  detectUnsettled?: boolean;
 }
 
 /** Runs one interaction after the previous one finished */
@@ -68,10 +80,11 @@ function succeeded(result: object): boolean {
  * from the page (without waiting: during a pending navigation that takes until
  * the new page commits), and the dialogs it opened, what it changed on the
  * page (see {@link watchActionEffects}) and the network requests it
- * triggered (see {@link watchTriggeredRequests}) are added to its result.
- * They are attributed by time: a dialog or request started by a page timer
- * or a navigation started earlier is reported by whichever interaction is
- * running then.
+ * triggered (see {@link watchTriggeredRequests}) are added to its result,
+ * and, when asked, what the page was still working on (see
+ * {@link pendingChanges}). They are attributed by time: a dialog or request
+ * started by a page timer or a navigation started earlier is reported by
+ * whichever interaction is running then.
  *
  * @param store - Session store recording accepted dialogs and network requests
  * @returns Interaction runner
@@ -91,17 +104,25 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
       try {
         const result = await action();
         const dialogs = store.dialogs.slice(firstDialog);
-        const changes = succeeded(result)
-          ? await effects?.collect({
-              dialogs: dialogs.length,
-              detectNoEffect: options.detectNoEffect === true,
-            })
-          : undefined;
+        if (!succeeded(result)) return { ...result, ...(dialogs.length > 0 && { dialogs }) };
+        const collected = await effects?.collect({
+          dialogs: dialogs.length,
+          detectNoEffect: options.detectNoEffect === true,
+          reportShown: options.reportShown === true,
+          detectUnsettled: options.detectUnsettled === true,
+        });
+        const { work, ...changes } = collected ?? {};
+        const requests = collectRequests?.();
+        const pending =
+          options.detectUnsettled && work
+            ? pendingChanges(work, requests?.triggeredRequests)
+            : undefined;
         return {
           ...result,
           ...(dialogs.length > 0 && { dialogs }),
           ...changes,
-          ...(succeeded(result) && collectRequests?.()),
+          ...(pending && { settled: false as const, pending }),
+          ...requests,
         };
       } finally {
         effects?.dispose();

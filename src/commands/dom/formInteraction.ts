@@ -43,13 +43,20 @@ import { OutputFormatter } from '@/ui/formatting.js';
 import {
   CLICK_RESULT_WAIT_HELP,
   POINTER_ACTION_DONE,
+  POINTER_ACTION_NOUN,
   actionStatusLine,
   dialogConsoleText,
   newMessageText,
   pageNavigationText,
+  shownElementText,
+  stillChangingNote,
 } from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/** Help of `--strict` on click and hover */
+const STRICT_OPTION_HELP =
+  'Fail (exit 90) instead of using DOM events when a real mouse cannot reach the element (covered, hidden, zero-size)';
 
 /**
  * Commander parser for `--modifiers`: rejects unknown names instead of
@@ -125,6 +132,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--double', 'Double-click')
     .option('--right', 'Right-click (opens the context menu)')
+    .option('--strict', STRICT_OPTION_HELP)
     .option('--no-wait', 'Skip waiting for network stability after click')
     .addOption(jsonOption())
     .addHelpText('after', CLICK_RESULT_WAIT_HELP)
@@ -138,6 +146,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .description('Move the mouse over an element (shows hover menus and tooltips)')
     .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .option('--strict', STRICT_OPTION_HELP)
     .option('--no-wait', 'Skip waiting for network stability after hovering')
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
@@ -349,6 +358,7 @@ async function runPointerCommand(
               ...target,
               wait: options.wait !== false,
               ...(action !== 'click' && { action }),
+              ...(options.strict && { strict: true }),
             }),
             call: domClick,
             command: action === 'hover' ? 'hover' : 'click',
@@ -376,35 +386,45 @@ interface ActionNotices extends ActionEffects {
 
 /**
  * Build an action's output: the status line ("✓ Element Clicked",
- * "⚠ Element Clicked (with warnings)" with the warning right below it, or
- * "⚠ Element Clicked (no visible effect: …)"), the details, what changed on
- * the page (`Page:` navigation, `New text:` messages), then the network
- * requests it triggered and the dialogs it caused. No request list is shown
- * when there were none (JSON has an empty `triggeredRequests` then).
+ * "⚠ Element Clicked (with warnings)" with the warning right below it,
+ * "⚠ Element Clicked (page still changing)" with what it was still working
+ * on, or "⚠ Element Clicked (no visible effect: …)"), the details, what
+ * changed on the page (`Page:` navigation, `New text:` messages, `Shown:`
+ * elements), then the network requests it triggered and the dialogs it
+ * caused. No request list is shown when there were none (JSON has an empty
+ * `triggeredRequests` then).
  *
  * @param done - What was done, e.g. "Element Clicked"
  * @param details - Label/value rows
  * @param result - Action result
- * @param keyWidth - Width of the labels
+ * @param options - Width of the labels; what the action is called in notes (e.g. "click")
  * @returns Output being built (more can be appended)
  */
 function formatActionOutput(
   done: string,
   details: Array<[string, string]>,
   result: ActionNotices,
-  keyWidth = 15
+  options: { keyWidth?: number; action?: string } = {}
 ): OutputFormatter {
+  const keyWidth = options.keyWidth ?? 15;
   const fmt = new OutputFormatter();
-  fmt.text(actionStatusLine(done, result.warning !== undefined, result.effect === 'none'));
+  const stillChanging = result.settled === false && result.pending !== undefined;
+  fmt.text(
+    actionStatusLine(done, {
+      warned: result.warning !== undefined,
+      noEffect: result.effect === 'none',
+      stillChanging,
+    })
+  );
   if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
+  if (stillChanging && result.pending) {
+    fmt.text(`⚠ ${stillChangingNote(options.action ?? 'action', result.pending)}`);
+  }
   fmt.blank();
   fmt.keyValueList(details, keyWidth);
   if (result.navigation) fmt.keyValue('Page', pageNavigationText(result.navigation), keyWidth);
-  (result.messages ?? []).forEach((message, index) => {
-    const text = newMessageText(message);
-    if (index === 0) fmt.keyValue('New text', text, keyWidth);
-    else fmt.text(' '.repeat(keyWidth) + text);
-  });
+  listRows(fmt, 'New text', (result.messages ?? []).map(newMessageText), keyWidth);
+  listRows(fmt, 'Shown', (result.shown ?? []).map(shownElementText), keyWidth);
 
   const omitted = result.triggeredRequestsOmitted;
   const requests = formatTriggeredRequestLines(result.triggeredRequests ?? [], omitted);
@@ -418,6 +438,22 @@ function formatActionOutput(
     fmt.text(`Dialog: ${dialogConsoleText(dialog)}`);
   }
   return fmt;
+}
+
+/**
+ * Rows of a list under one label: the label on the first row, the rest
+ * indented below it.
+ *
+ * @param fmt - Output being built
+ * @param label - Label, e.g. "New text"
+ * @param texts - One text per row
+ * @param keyWidth - Width of the labels
+ */
+function listRows(fmt: OutputFormatter, label: string, texts: string[], keyWidth: number): void {
+  texts.forEach((text, index) => {
+    if (index === 0) fmt.keyValue(label, text, keyWidth);
+    else fmt.text(' '.repeat(keyWidth) + text);
+  });
 }
 
 /** What the target rows of an action's output read */
@@ -485,7 +521,8 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
       elementRow(result),
       ['Method', result.method === 'dom' ? 'DOM events' : 'mouse events'],
     ],
-    result
+    result,
+    { action: POINTER_ACTION_NOUN[result.action ?? 'click'] }
   ).build();
 }
 
@@ -505,7 +542,10 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   if (result.navigationOccurred && !result.navigation) details.push(['Navigation', 'yes']);
   if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
 
-  const fmt = formatActionOutput('Form Submitted', details, result, 20);
+  const fmt = formatActionOutput('Form Submitted', details, result, {
+    keyWidth: 20,
+    action: 'submit',
+  });
   fmt.hints('Next steps:', [
     `${sessionCommand('bdg network list --last 10').padEnd(32)} Check network requests`,
     `${sessionCommand('bdg console --last 5').padEnd(32)} Check console messages`,
@@ -527,7 +567,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   if (result.times && result.times > 1) details.push(['Times', result.times.toString()]);
   if (result.modifiers?.length) details.push(['Modifiers', result.modifiers.join('+')]);
 
-  return formatActionOutput('Key Pressed', details, result).build();
+  return formatActionOutput('Key Pressed', details, result, { action: 'key press' }).build();
 }
 
 /**

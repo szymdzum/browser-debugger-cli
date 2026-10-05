@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stable `dom frames` indices** - Frames are listed in the document order of their `<iframe>` elements (open shadow roots included, out-of-process frames at their element's place) instead of in-process frames first in the order Chrome attached them, and `eval --frame <n>` exits 87 ("Frame index n is stale…", re-run `bdg dom frames`) when the frame at that index changed since the last listing instead of running in another frame (#346)
 - **No console error left by `dom eval` rejections** - `bdg dom eval 'Promise.reject(…)'` reports the rejection (exit 91) without leaving "Uncaught (in promise)" in `bdg console`: Chrome's report is revoked once bdg handles the promise, and revoked reports are dropped as in DevTools. Rejections nothing handles still show (#346)
 - **`dom listeners` across nested React roots** - For an element in a React root mounted inside another root, the outer root's `on…` props are listed too, as React runs them (#346)
+- **`dom hover` and `dom pressKey` say what they showed**: `Shown: div.figcaption "name: user2 View profile"` for a caption a hover revealed (also through CSS `:hover`), a tooltip or menu, or `Shown: li "Buy milk"` for the item Enter added (`shown: [{ text, element }]` in JSON, at most 3), besides the navigation and new messages they already reported (#346)
+- **`dom click` and `dom pressKey` say when the page was still changing** as they returned: `⚠ Element Clicked (page still changing)` with a note naming what was pending (content requests, a new page loading, a loading indicator, a DOM still changing, timers the click started, a page busy running a script) and suggesting `bdg dom wait <selector>`; JSON has `settled: false` and `pending`. The saucedemo `performance_glitch_user` login, which returned at 0.5 s while the products appeared after 5 s, now says so (#346)
+- **`--strict` for `dom click` (also `--double`/`--right`) and `dom hover`**: refuses with exit 90 instead of falling back to DOM events when a real mouse cannot reach the element, naming what covers it and suggesting `bdg dom layout`; also when the mouse press never reached it (#346)
+
+### Changed
+
+- **No "no visible effect" claim while a timer the click started is pending**: a result a page shows after a `setTimeout` is reported as pending work instead (#346)
 
 ## [0.9.0] - 2026-10-05
 

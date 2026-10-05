@@ -1,7 +1,8 @@
 /**
  * Page-side parts of the action-effects scripts, run in an isolated VM
- * context on element-like objects: focus/hover churn, why "no effect" can't
- * be claimed, and which parts of a message are its close controls.
+ * context on element-like objects: focus/hover churn, structural changes,
+ * why "no effect" can't be claimed, which parts of a message are its close
+ * controls, and the timers an action's handlers start.
  */
 
 import assert from 'node:assert/strict';
@@ -11,6 +12,8 @@ import * as vm from 'node:vm';
 import {
   CHURN_ONLY_JS,
   MESSAGE_CHROME_JS,
+  STRUCTURAL_CHANGE_JS,
+  TIMER_HOOK_JS,
   UNCERTAIN_JS,
 } from '@/runtime/dom/actionEffectsScripts.js';
 
@@ -49,6 +52,8 @@ const uncertain = vm.runInNewContext(`(${UNCERTAIN_JS})`) as (
 ) => string | undefined;
 
 const isChrome = vm.runInNewContext(`(${MESSAGE_CHROME_JS})`) as (node: FakeNode) => boolean;
+
+const structural = vm.runInNewContext(`(${STRUCTURAL_CHANGE_JS})`) as (record: FakeNode) => boolean;
 
 /**
  * Watch state after an action whose events hit `target` through `path`.
@@ -109,6 +114,12 @@ void describe('UNCERTAIN_JS', () => {
     );
   });
 
+  void it('gives up while a timer the action started is pending', () => {
+    const button = element('button');
+    const state = hitState(button, [body], { focus: button, timers: new Map([[1, 1500]]) });
+    assert.equal(uncertain(state, button), 'timer');
+  });
+
   void it('gives up on mailto:, tel: and javascript: links and links to other windows', () => {
     for (const protocol of ['mailto:', 'tel:', 'javascript:', 'slack:']) {
       const link = element('a', { href: 'x' }, { protocol, target: '' });
@@ -139,5 +150,82 @@ void describe('MESSAGE_CHROME_JS', () => {
     for (const name of ['closeable', 'enclosed', 'disclosure', 'closed']) {
       assert.equal(isChrome(element('span', { class: name })), false, name);
     }
+  });
+});
+
+void describe('STRUCTURAL_CHANGE_JS', () => {
+  const node = (nodeType: number): FakeNode => ({ nodeType });
+
+  void it('counts added or removed elements and attribute changes other than style', () => {
+    assert.equal(structural({ type: 'childList', addedNodes: [node(1)], removedNodes: [] }), true);
+    assert.equal(structural({ type: 'childList', addedNodes: [], removedNodes: [node(1)] }), true);
+    assert.equal(structural({ type: 'attributes', attributeName: 'class' }), true);
+  });
+
+  void it('ignores text-only changes and style animations', () => {
+    assert.equal(
+      structural({ type: 'childList', addedNodes: [node(3)], removedNodes: [node(3)] }),
+      false
+    );
+    assert.equal(structural({ type: 'characterData' }), false);
+    assert.equal(structural({ type: 'attributes', attributeName: 'style' }), false);
+  });
+});
+
+void describe('TIMER_HOOK_JS', () => {
+  /** A page with a fake timer API, the hook installed on it */
+  function hookedPage(): {
+    window: Record<string, unknown>;
+    state: { dispatching: boolean; stopped: boolean; timers: Map<number, number> };
+    fire: (id: number) => void;
+    restore: () => void;
+  } {
+    const callbacks = new Map<number, () => void>();
+    let next = 1;
+    const window: Record<string, unknown> = {
+      setTimeout: (callback: () => void) => {
+        callbacks.set(next, callback);
+        return next++;
+      },
+      clearTimeout: (id: number) => callbacks.delete(id),
+    };
+    const state = { dispatching: false, stopped: false, timers: new Map<number, number>() };
+    const hook = vm.runInNewContext(`(${TIMER_HOOK_JS})`, { window }) as (
+      s: typeof state
+    ) => () => void;
+    const restore = hook(state);
+    return { window, state, fire: (id) => callbacks.get(id)?.(), restore };
+  }
+
+  void it('tracks timers set while an event is dispatched until they fire or are cleared', () => {
+    const page = hookedPage();
+    const setTimer = page.window['setTimeout'] as (callback: () => void, ms: number) => number;
+    const clearTimer = page.window['clearTimeout'] as (id: number) => void;
+    page.state.dispatching = true;
+    let fired = false;
+    const fires = setTimer(() => (fired = true), 1500);
+    const cleared = setTimer(() => undefined, 500);
+    assert.deepEqual([...page.state.timers.keys()], [fires, cleared]);
+    page.fire(fires);
+    clearTimer(cleared);
+    assert.equal(fired, true);
+    assert.equal(page.state.timers.size, 0);
+  });
+
+  void it('ignores timers set outside events, short yields and long timeouts', () => {
+    const page = hookedPage();
+    const setTimer = page.window['setTimeout'] as (callback: () => void, ms: number) => number;
+    setTimer(() => undefined, 1500);
+    page.state.dispatching = true;
+    setTimer(() => undefined, 0);
+    setTimer(() => undefined, 60000);
+    assert.equal(page.state.timers.size, 0);
+  });
+
+  void it('restores the page timer functions it replaced', () => {
+    const page = hookedPage();
+    const hooked = page.window['setTimeout'];
+    page.restore();
+    assert.notEqual(page.window['setTimeout'], hooked);
   });
 });
