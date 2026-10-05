@@ -298,6 +298,10 @@ export const REACT_FILL_SCRIPT = `
  */
 export const CLICK_ELEMENT_SCRIPT = `
 (function(selector, parts, index, action) {
+  if (window.__bdgPressProbe) {
+    window.__bdgPressProbe.stop();
+    delete window.__bdgPressProbe;
+  }
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   
   if (allMatches.length === 0) {
@@ -433,6 +437,18 @@ export const CLICK_ELEMENT_SCRIPT = `
   else if (style.pointerEvents === 'none') obstruction = 'not clickable (pointer-events: none)';
   else if (!hasSize) obstruction = 'zero-size';
   else if (!hittable) obstruction = 'covered by another element' + coveredBy();
+
+  // Records whether the coming mouse press reaches the element at all; a
+  // browser dialog or bubble can swallow input while the page looks normal.
+  if (hittable && action !== 'hover') {
+    const probe = { reached: false };
+    const markReached = (event) => {
+      if (event.composedPath().includes(el)) probe.reached = true;
+    };
+    ['pointerdown', 'mousedown'].forEach((type) => view.addEventListener(type, markReached, true));
+    probe.stop = () => ['pointerdown', 'mousedown'].forEach((type) => view.removeEventListener(type, markReached, true));
+    window.__bdgPressProbe = probe;
+  }
 
   return {
     success: true,
