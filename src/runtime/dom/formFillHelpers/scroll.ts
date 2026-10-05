@@ -6,8 +6,13 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
+import { scrollNoEffectWarning } from '@/errors/messages.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
-import { VIEWPORT_SIZE_JS } from '@/runtime/dom/elementGeometry.js';
+import {
+  SCROLL_RANGE_JS,
+  VIEWPORT_SIZE_JS,
+  type ScrollRange,
+} from '@/runtime/dom/elementGeometry.js';
 import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
@@ -79,6 +84,7 @@ const SCROLL_BY_SCRIPT = `
 (function(options) {
   const beforeX = window.scrollX;
   const beforeY = window.scrollY;
+  const range = (${SCROLL_RANGE_JS})(window);
 
   if (options.top) {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -108,9 +114,60 @@ const SCROLL_BY_SCRIPT = `
     pageSize: {
       width: (document.scrollingElement || document.documentElement).scrollWidth,
       height: (document.scrollingElement || document.documentElement).scrollHeight
-    }
+    },
+    rangeBefore: range,
+    readyState: document.readyState
   };
 })`;
+
+/** What {@link SCROLL_BY_SCRIPT} returns besides the scroll result */
+interface PageScrollResult extends ScrollResult {
+  /** How far the page could scroll in each direction before the scroll */
+  rangeBefore: ScrollRange;
+  readyState: string;
+}
+
+/**
+ * The direction a page scroll asked for (the options allow one per axis;
+ * only one axis is checked, vertical first).
+ *
+ * @param options - Scroll options
+ * @returns Direction, or undefined when no distance was asked for
+ */
+function requestedDirection(options: ScrollOptions): keyof ScrollRange | undefined {
+  if (options.bottom || (options.down ?? 0) > 0) return 'down';
+  if (options.top || (options.up ?? 0) > 0) return 'up';
+  if ((options.right ?? 0) > 0) return 'right';
+  if ((options.left ?? 0) > 0) return 'left';
+  return undefined;
+}
+
+/**
+ * Warn when a page scroll moved nothing: the document does not scroll in
+ * that direction, the page was already at its edge, or scrolling is locked;
+ * while the page is still loading, also that it may grow.
+ *
+ * @param result - Page script result
+ * @param options - Scroll options
+ * @returns The scroll result, with `warning` when nothing scrolled
+ */
+function withNoEffectWarning(result: PageScrollResult, options: ScrollOptions): ScrollResult {
+  const { rangeBefore, readyState, ...scroll } = result;
+  const direction = requestedDirection(options);
+  const moved = scroll.scrolledBy && (scroll.scrolledBy.x !== 0 || scroll.scrolledBy.y !== 0);
+  if (!direction || moved || !scroll.viewportSize) return scroll;
+  const vertical = direction === 'up' || direction === 'down';
+  const scrollable = vertical
+    ? rangeBefore.up + rangeBefore.down > 0
+    : rangeBefore.left + rangeBefore.right > 0;
+  const warning = scrollNoEffectWarning({
+    direction,
+    reason: !scrollable ? 'too-small' : rangeBefore[direction] <= 0 ? 'at-edge' : 'locked',
+    viewport: vertical ? scroll.viewportSize.height : scroll.viewportSize.width,
+    readyState,
+  });
+  return { ...scroll, warning };
+}
 
 function isScrollResult(value: unknown): value is ScrollResult {
   if (typeof value !== 'object' || value === null) return false;
@@ -215,7 +272,7 @@ export async function scrollPage(
     }
 
     if (cdpResponse.result?.value && isScrollResult(cdpResponse.result.value)) {
-      return cdpResponse.result.value;
+      return withNoEffectWarning(cdpResponse.result.value as PageScrollResult, options);
     }
 
     return {

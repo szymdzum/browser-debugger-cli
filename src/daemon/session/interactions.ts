@@ -8,15 +8,13 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { ActionEffects, DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { watchActionEffects } from '@/runtime/dom/actionEffects.js';
+import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 import { watchTriggeredRequests } from './triggeredRequests.js';
 
 const log = createLogger('dom');
-
-/** Removes the node bound for index-based commands from the page */
-const UNBIND_TARGET_SCRIPT = 'delete window.__bdgTarget';
 
 /** What an interaction caused besides its own result */
 interface InteractionReport extends ActionEffects {

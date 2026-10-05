@@ -15,11 +15,14 @@
  * has a checkout form for readiness and fill read-back checks; `/layout`
  * places elements in view, under an overlay, below the fold, hidden and in
  * an iframe; `/hanging` is stuck loading on a script (`/never.js`) whose
- * server never answers; `/dynamic-loading` reveals a result a while after its
+ * server never answers, `/hanging-head` on one in its head (no body yet),
+ * `/hanging-login` posts to `/authenticate-hanging`, which never answers; `/dynamic-loading` reveals a result a while after its
  * Start button is clicked (like the-internet's dynamic_loading); `/login`
  * posts to `/authenticate`, which redirects to `/secure` for the password
  * `secret` and otherwise back to `/login` with an error flash (like
- * the-internet's login).
+ * the-internet's login); `/cross-frame` (loaded from `a.b.localhost`) embeds a
+ * bordered and a scaled cross-origin iframe of the same site, each with a
+ * button and a field.
  */
 
 import * as fs from 'fs';
@@ -245,11 +248,49 @@ const LAYOUT_HTML = `<!doctype html><title>layout</title>
 <script>document.getElementById('slot-host').attachShadow({ mode: 'open' }).innerHTML = '<div id="slot-fade" style="opacity: 0"><slot></slot></div>';</script>
 <div style="position: absolute; left: 750px; top: 510px; width: 100px; height: 0.4px; overflow: hidden"><a id="in-sliver" href="#">Sliver</a></div>`;
 
+/**
+ * Page embedding two cross-origin iframes of the same site (load it from
+ * `a.b.localhost`; the frames come from `c.b.localhost`), which Chrome keeps
+ * in the page's process, like a consent dialog served from a subdomain:
+ * `#plain` with a margin, border and padding, `#scaled` also scaled to half
+ * its size with `transform: scale(0.5)`.
+ */
+const CROSS_FRAME_HTML = `<!doctype html><title>cross frame</title>
+<style>body { margin: 8px } iframe { display: block; width: 400px; height: 200px; margin-left: 150px }</style>
+<p>Outside</p>
+<script>
+  window.events = [];
+  window.addEventListener('message', (e) => window.events.push(e.data));
+  const child = 'http://c.b.localhost:' + location.port + '/cross-frame-child#';
+  document.body.insertAdjacentHTML('beforeend',
+    '<iframe id="plain" src="' + child + 'plain" style="margin-top: 80px; border: 4px solid; padding: 10px"></iframe>' +
+    '<iframe id="scaled" src="' + child + 'scaled" style="margin-top: 20px; border: 6px solid; padding: 8px; transform: scale(0.5); transform-origin: 0 0"></iframe>');
+</script>`;
+
+/**
+ * Content of the `/cross-frame` iframes: a button and a field named after the
+ * frame (its URL's hash) that report to the page.
+ */
+const CROSS_FRAME_CHILD_HTML = `<!doctype html><body style="margin: 0">
+<label><span id="code-label">Code</span> <input id="code" style="margin-left: 60px"></label>
+<button id="accept" style="margin: 30px 0 0 90px">Accept</button>
+<script>
+  const name = location.hash.slice(1);
+  document.getElementById('code-label').textContent = 'Code ' + name;
+  document.getElementById('accept').textContent = 'Accept ' + name;
+  document.getElementById('accept').onclick = () => parent.postMessage('accepted:' + name, '*');
+  document.getElementById('code').oninput = (e) => parent.postMessage('code:' + name + ':' + e.target.value, '*');
+</script>`;
+
 /** Page stuck in readyState "loading": its script request is never answered. */
 const HANGING_HTML = `<!doctype html><title>hanging</title>
 <p id="ready">Content</p>
 <script src="/never.js"></script>
 <p id="late">After the script</p>`;
+
+/** Page stuck loading before its body exists: a script in the head is never answered. */
+const HANGING_HEAD_HTML = `<!doctype html><html><head><title>hanging head</title>
+<script src="/never.js"></script></head><body><form><input id="late-field"></form></body></html>`;
 
 /**
  * Login page posting to `/authenticate`; `{flash}` is replaced by the error
@@ -260,6 +301,12 @@ const LOGIN_HTML = `<!doctype html><title>login</title>
 <form id="login" method="post" action="/authenticate">
   <input id="username" name="username"><input id="password" name="password" type="password">
   <button type="submit">Login</button>
+</form>`;
+
+/** Login form whose POST (`/authenticate-hanging`) the server never answers. */
+const HANGING_LOGIN_HTML = `<!doctype html><title>hanging login</title>
+<form id="login" method="post" action="/authenticate-hanging">
+  <input id="username" name="username"><button type="submit">Login</button>
 </form>`;
 
 /** Error flash shown on `/login` after a failed login */
@@ -389,10 +436,25 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(req.url === '/deep' ? DEEP_HTML : DEEP_FRAME_HTML);
       return;
     }
-    if (req.url === '/never.js') return;
+    if (req.url === '/never.js' || req.url === '/authenticate-hanging') return;
+    if (req.url === '/hanging-login') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(HANGING_LOGIN_HTML);
+      return;
+    }
     if (req.url === '/hanging' || req.url === '/dynamic-loading') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(req.url === '/hanging' ? HANGING_HTML : DYNAMIC_LOADING_HTML);
+      return;
+    }
+    if (req.url === '/hanging-head') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(HANGING_HEAD_HTML);
+      return;
+    }
+    if (req.url === '/cross-frame' || req.url?.startsWith('/cross-frame-child')) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(req.url === '/cross-frame' ? CROSS_FRAME_HTML : CROSS_FRAME_CHILD_HTML);
       return;
     }
     if (req.url === '/layout') {

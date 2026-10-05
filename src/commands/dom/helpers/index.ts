@@ -14,7 +14,7 @@ export {
   getDOMElements,
   resolveSelector,
   resolveBackendNodeIds,
-  resolveA11yNodeForSelector,
+  selectMatch,
   assertNodeAttached,
 } from '@/commands/dom/helpers/query.js';
 

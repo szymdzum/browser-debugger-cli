@@ -538,9 +538,11 @@ export const FORM_DISCOVERY_SCRIPT = `
   const forms = document.querySelectorAll('form');
   let globalIndex = 0;
 
-  if (forms.length === 0) {
-    const bodyFields = discoverFields(document.body, 0, 0);
-    const bodyButtons = discoverButtons(document.body, bodyFields.length);
+  // A page still loading may not have a body yet
+  const pageRoot = document.body || document.documentElement;
+  if (forms.length === 0 && pageRoot) {
+    const bodyFields = discoverFields(pageRoot, 0, 0);
+    const bodyButtons = discoverButtons(pageRoot, bodyFields.length);
     if (bodyFields.length > 0) {
       result.forms.push({
         index: 0,
@@ -596,6 +598,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     }
   }
 
+  result.readyState = document.readyState;
   return result;
 })()
 `;

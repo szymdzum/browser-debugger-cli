@@ -3,7 +3,8 @@
  *
  * A page stuck loading on a script whose server never answers (`/hanging`)
  * is reported by the start and by `bdg page`, and "not found" errors on it
- * suggest `dom wait`. `dom wait` waits for timer-based results
+ * suggest `dom wait`; `dom scroll`, `dom form` and a `dom submit` timeout
+ * say what is still loading. `dom wait` waits for timer-based results
  * (`/dynamic-loading`): visible, text, gone, and a timeout that says what it
  * saw last.
  */
@@ -103,6 +104,36 @@ void describe('Page readiness', () => {
       /Timed out after 800ms waiting for #late to appear \(last seen: no matches, document\.readyState: loading\)/
     );
     assert.match((await bdg(['dom', 'wait', '#ready'])).stdout, /^✓ #ready found after \d+\.\ds/);
+  });
+
+  void it('dom scroll on the loading page says nothing scrolled and that it is still loading', async () => {
+    const { stdout } = await bdg(['dom', 'scroll', '--bottom']);
+    assert.match(stdout, /^⚠ Page Scrolled \(with warnings\)/);
+    assert.match(
+      stdout,
+      /Nothing to scroll: the document is no taller than the viewport \(\d+px\)\. The page is still loading \(document\.readyState: loading\)/
+    );
+  });
+
+  void it('dom form on a page without a body yet says it is still loading, not a script error', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}hanging-head`]);
+    const { output } = await bdg(['dom', 'form'], 88);
+    assert.match(output, /No forms discovered on the page yet; it is still loading/);
+    assert.match(output, /bdg dom wait --load/);
+    assert.doesNotMatch(output, /Uncaught/);
+  });
+
+  void it('a submit timeout names the page request the server has not answered', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}hanging-login`]);
+    const { output } = await bdg(
+      ['dom', 'submit', '#login', '--wait-navigation', '--timeout', '1500'],
+      102
+    );
+    assert.match(
+      output,
+      /timed out after 1500ms waiting for navigation: POST 127\.0\.0\.1:\d+\/authenticate-hanging pending for 1\.\ds/
+    );
+    assert.match(output, /has not answered the page request yet/);
   });
 
   void it('dom wait follows timer-based loading: visible, gone and text', async () => {

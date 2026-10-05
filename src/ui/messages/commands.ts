@@ -17,7 +17,7 @@ import type {
 } from '@/ipc/protocol/domTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
-import type { ViewportPosition } from '@/types.js';
+import type { DocumentRequestState, ViewportPosition } from '@/types.js';
 import {
   buildAgentDiscoveryHelp,
   buildCommonTaskExamples,
@@ -189,6 +189,16 @@ export function moreMatchesNote(hidden: number, jsonLimit?: number): string {
   const where =
     jsonLimit === undefined ? 'use --json for all' : `--json lists the first ${jsonLimit}`;
   return `... and ${hidden} more (${where})`;
+}
+
+/**
+ * Note under a list of a11y query matches cut by `--limit`.
+ *
+ * @param omitted - Matches not listed
+ * @returns e.g. "... and 213 more (--limit 0 lists all; their indices work too)"
+ */
+export function a11yMoreMatchesNote(omitted: number): string {
+  return `... and ${omitted} more (--limit 0 lists all; their indices work too)`;
 }
 
 /**
@@ -443,6 +453,16 @@ export function layoutHeadline(count: number, listed: number, selector: string):
 }
 
 /**
+ * Headline of `bdg dom layout` for a cached index.
+ *
+ * @param target - The index and the list it refers to, in words
+ * @returns e.g. `Element at index 0 of the last dom query "h3" (page x,y and size in CSS px):`
+ */
+export function indexLayoutHeadline(target: string): string {
+  return `Element at ${target} (page x,y and size in CSS px):`;
+}
+
+/**
  * Warning when a selector matched several elements and no --index was given.
  *
  * @param count - Number of matching elements
@@ -688,6 +708,34 @@ function pendingRequestLabel(request: PendingRequestInfo): string {
 }
 
 /**
+ * Requests still running, the longest-running first, in words.
+ *
+ * @param pending - The requests to name
+ * @param count - All requests still running
+ * @returns e.g. `GET …/app.js (pending 30s) and 2 more`
+ */
+export function pendingRequestsText(pending: PendingRequestInfo[], count: number): string {
+  const more = count - pending.length;
+  return `${pending.map(pendingRequestLabel).join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
+}
+
+/**
+ * How far a page request got, in words.
+ *
+ * @param request - The page request
+ * @returns e.g. `POST …/authenticate pending for 30s`, `POST …/authenticate returned 503 Service Unavailable`,
+ *   `POST …/authenticate failed (net::ERR_CONNECTION_REFUSED)`
+ */
+export function documentRequestText(request: DocumentRequestState): string {
+  const target = `${request.method} ${truncateUrl(request.url)}`;
+  if (request.errorText !== undefined) return `${target} failed (${request.errorText})`;
+  if (request.status !== undefined) {
+    return `${target} returned ${request.status}${request.statusText ? ` ${request.statusText}` : ''}`;
+  }
+  return `${target} pending for ${formatDuration(request.pendingMs ?? 0)}`;
+}
+
+/**
  * Start and `bdg page` when the document has not finished loading within
  * the readiness wait: its readyState and the requests it is waiting on.
  *
@@ -695,11 +743,9 @@ function pendingRequestLabel(request: PendingRequestInfo): string {
  * @returns Warning, e.g. `The page is still loading (document.readyState: loading); waiting on: GET …/jquery-ui.js (pending 30s)`
  */
 export function pageLoadingWarning(state: PageLoadingState): string {
-  const named = state.pending.map(pendingRequestLabel);
-  const more = state.pendingCount - named.length;
   const waitingOn =
-    named.length > 0
-      ? `; waiting on: ${named.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+    state.pending.length > 0
+      ? `; waiting on: ${pendingRequestsText(state.pending, state.pendingCount)}`
       : '';
   return `The page is still loading (document.readyState: ${state.readyState})${waitingOn}. Elements may be missing until it finishes: ${sessionCommand('bdg dom wait <selector>')} waits for one`;
 }
@@ -843,6 +889,19 @@ export function framesStillLoadingNote(empty: boolean): string {
 export function elementTextLine(text: string): string {
   const cut = text.endsWith('...') ? ' (cut at 500 characters; --full shows all of it)' : '';
   return `Text: ${text}${cut}`;
+}
+
+/**
+ * What an element without text holds, in `bdg dom get` output.
+ *
+ * @param children - First child elements, e.g. `iframe#app`
+ * @param count - Number of child elements
+ * @returns e.g. `No text; holds 1 element: iframe (see its HTML with --raw)`
+ */
+export function emptyElementLine(children: string[], count: number): string {
+  if (count === 0) return 'No text and no child elements';
+  const more = count > children.length ? `, … ${count - children.length} more` : '';
+  return `No text; holds ${pluralize(count, 'element')}: ${children.join(', ')}${more} (see its HTML with --raw)`;
 }
 
 /**

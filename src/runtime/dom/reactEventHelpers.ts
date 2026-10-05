@@ -84,6 +84,7 @@ export const FILL_REFUSAL_JS = `(el) => {
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const refusals = ${JSON.stringify(FILL_REFUSALS)};
   const refuse = (kind, cause) => ({
+    kind: kind,
     error: refusals[kind].message + (cause ? ' (' + cause + ')' : ''),
     suggestion: refusals[kind].suggestion
   });
@@ -202,6 +203,7 @@ export const REACT_FILL_SCRIPT = `
       success: false,
       error: ${JSON.stringify(LABEL_WITHOUT_CONTROL.message)},
       elementType: 'label',
+      unsuitableElement: true,
       suggestion: ${JSON.stringify(LABEL_WITHOUT_CONTROL.suggestion)}.split(${JSON.stringify(NAME_QUERY_PLACEHOLDER)}).join(quote('name=' + labelText))
     };
   }
@@ -217,7 +219,8 @@ export const REACT_FILL_SCRIPT = `
       success: false,
       error: refusal.error,
       elementType: tagName + viaLabel,
-      suggestion: refusal.suggestion
+      suggestion: refusal.suggestion,
+      unsuitableElement: refusal.kind === 'notFillable'
     };
   }
 

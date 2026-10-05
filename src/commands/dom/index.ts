@@ -15,13 +15,13 @@
  * Accessibility commands register via `a11y.ts`.
  */
 
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
 import { handleDomEval } from '@/commands/dom/eval.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import { handleDomFrames } from '@/commands/dom/frames.js';
-import { handleDomGet } from '@/commands/dom/get.js';
+import { DOM_GET_DEFAULT_SELECTOR, handleDomGet } from '@/commands/dom/get.js';
 import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
@@ -95,13 +95,14 @@ export function registerDomCommands(program: Command): void {
     .command('get')
     .description('Get semantic accessibility structure (default) or raw HTML (--raw)')
     .argument(
-      '[selector]',
-      'CSS selector or index from query results (e.g., ".error", "#app", 0); optional with --node-id'
+      '[selectorOrIndex]',
+      `CSS selector or numeric index from query results (0-based; e.g. ".error", "#app", 0); default: ${DOM_GET_DEFAULT_SELECTOR}`
     )
     .option('--raw', 'Output raw HTML with all filtering options')
     .option('--full', 'Show all of the element text (default: the first 500 characters)')
     .option('--all', 'Get all matches (only with --raw)')
-    .option('--nth <n>', 'Get the nth match, 0-based (only with --raw)', integerOption(0))
+    .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .addOption(new Option('--nth <n>', 'Alias of --index').argParser(integerOption(0)).hideHelp())
     .option(
       '--node-id <id>',
       'Get the element with this node id (from dom query/get --raw or a11y describe; implies --raw)',

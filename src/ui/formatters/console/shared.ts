@@ -55,6 +55,19 @@ export interface ConsoleFormatOptions {
   history?: boolean | undefined;
   /** Filter by level (error, warning, info, debug) */
   level?: ConsoleLevel | undefined;
+  /** Messages between the first and last listed index that the filters left out */
+  skipped?: ConsoleSkipped | undefined;
+}
+
+/**
+ * Messages the page and level filters left out between the first and last
+ * listed index (session indices then skip numbers).
+ */
+export interface ConsoleSkipped {
+  /** Logged by another page load (`--history` lists them) */
+  otherPages: number;
+  /** Of another level (`--level`) */
+  otherLevels: number;
 }
 
 /**

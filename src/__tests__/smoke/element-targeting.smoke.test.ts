@@ -551,10 +551,22 @@ void describe('Element layout', () => {
       );
       assert.match(
         await bdg(['dom', 'layout', '#straddle']),
-        /partly visible \(33%\); scroll down \d+px to see all of it$/m
+        /partly visible \(33%\); scroll down 40px to see all of it$/m,
+        'the smallest scroll showing all of it, not the one centring it'
+      );
+      await evaluate(
+        'scrollTo(0, 500); document.getElementById(\'click-targets\').insertAdjacentHTML(\'beforeend\', \'<p id="top-clip" style="position: absolute; left: 10px; margin: 0; width: 100px; height: 40px; top: \' + (scrollY - 5) + \'px">Top clip</p><p id="floating" style="position: fixed; left: 10px; bottom: -20px; margin: 0; width: 100px; height: 60px">Floating</p>\'); 1'
+      );
+      assert.match(
+        await bdg(['dom', 'layout', '#top-clip']),
+        /partly visible \(88%\); scroll up 5px to see all of it$/m
+      );
+      assert.match(
+        await bdg(['dom', 'layout', '#floating']),
+        /partly visible \(67%\); fixed position, page scroll does not move it$/m
       );
     } finally {
-      await evaluate("document.getElementById('click-targets').remove(); 1");
+      await evaluate("document.getElementById('click-targets').remove(); scrollTo(0, 0); 1");
     }
   });
 

@@ -113,6 +113,8 @@ export interface FillResult extends ActionEffects {
   suggestion?: string;
   /** Set when the target is a file input (filled through CDP instead) */
   fileInput?: boolean;
+  /** Set when the target is not a field (nor a label of one): a list from another command was likely meant */
+  unsuitableElement?: boolean;
   /** Something the page will likely object to (e.g. a value above max) */
   warning?: string;
   /** Elements the selector matched */
@@ -220,6 +222,8 @@ export interface SubmitResult extends ActionEffects {
   /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
   element?: string;
   clicked?: boolean;
+  /** Set when the target is neither a form nor a button: a list from another command was likely meant */
+  unsuitableElement?: boolean;
   networkRequests?: number;
   navigationOccurred?: boolean;
   waitTimeMs?: number;
@@ -375,7 +379,12 @@ export interface ElementLayout {
   percentVisible?: number;
   /** Why it is `hidden`, e.g. `display: none` */
   hiddenReason?: string;
-  /** Page scroll (`window.scrollBy`) that centres it in the viewport, when the page can scroll there */
+  /**
+   * Page scroll (`window.scrollBy`) that shows all of it, when the page can
+   * scroll there: for a `partly` visible element the smallest such scroll (the
+   * part cut off at the edge; the start of one larger than the viewport), for
+   * one out of view the scroll centring it (as `dom scroll <selector>` does)
+   */
   scrollBy?: LayoutPoint;
   /** Ancestor or iframe cutting it off (scroll that container instead of the page) */
   clippedBy?: string;
@@ -425,6 +434,8 @@ export interface RawFormData {
   forms: RawForm[];
   /** Same-origin iframes holding form fields, when the main document has none */
   frameForms?: Array<{ url: string }>;
+  /** The page's `document.readyState` when the forms were read */
+  readyState?: string;
 }
 
 export interface RawForm {

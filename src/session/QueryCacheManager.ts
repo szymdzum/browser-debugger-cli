@@ -24,7 +24,7 @@ import { readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 
 import { getSessionDir } from '@/session/paths.js';
-import type { DomQueryResult } from '@/types.js';
+import type { DomQueryResult, IndexSource } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -41,6 +41,28 @@ const CACHE_VERSION = 2;
  * Selector recorded for `dom form` results (fields carry their own selectors).
  */
 export const FORM_DISCOVERY_CACHE_SELECTOR = 'form:auto-discovered';
+
+/** Prefix of the selector recorded for `dom a11y query` results (followed by the pattern) */
+export const A11Y_CACHE_SELECTOR_PREFIX = 'a11y ';
+
+/**
+ * The list an index refers to, from the selector recorded with the cache.
+ *
+ * @param index - The index the user gave
+ * @param cacheSelector - Selector recorded with the cached results
+ * @returns The command whose results are cached, and its query
+ */
+export function indexSourceOf(index: number, cacheSelector: string): IndexSource {
+  if (cacheSelector === FORM_DISCOVERY_CACHE_SELECTOR) return { index, command: 'dom form' };
+  if (cacheSelector.startsWith(A11Y_CACHE_SELECTOR_PREFIX)) {
+    return {
+      index,
+      command: 'dom a11y query',
+      query: cacheSelector.slice(A11Y_CACHE_SELECTOR_PREFIX.length),
+    };
+  }
+  return { index, command: 'dom query', query: cacheSelector };
+}
 
 /**
  * Result of reading the cache.

@@ -17,6 +17,9 @@ import {
   noNodesFoundError,
   staleNodeError,
 } from '@/errors/messages.js';
+import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import {
   parseSelectorFilters,
@@ -26,6 +29,11 @@ import {
 
 /** Selector placeholder that makes page scripts use the bound node. */
 export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
+
+/** Removes the node bound for index-based commands from the window it was stored on */
+export const UNBIND_TARGET_SCRIPT = 'delete window.__bdgTarget';
+
+const log = createLogger('dom');
 
 /**
  * Page-side matching of filters ({@link SelectorFilter}) and scoped steps
@@ -236,19 +244,22 @@ export function selectorArgsJS(selector: string): string {
 
 /**
  * Store the node for the page scripts. It runs in the node's own frame, while
- * the scripts run in the top page, so the node goes on the top window (always
- * reachable for the same-origin frames bdg can target).
+ * the scripts run in the top page, so the node goes on the top window, which
+ * same-origin frames can reach. A cross-origin frame cannot write to the top
+ * window: the node then goes on its own window (`"frame"`) and the scripts
+ * run in that frame ({@link frameScopedConnection}).
  */
 const BIND_FUNCTION = `function () {
-  let host = window;
-  try { host = window.top; host.__bdgTarget = this; } catch (e) { host = window; host.__bdgTarget = this; }
-  return this.isConnected;
+  if (!this.isConnected) return false;
+  try { window.top.__bdgTarget = this; return 'top'; } catch (e) { window.__bdgTarget = this; return 'frame'; }
 }`;
 
-/** Selector and index the page scripts should use. */
+/** Selector and index the page scripts should use, and the connection to run them on. */
 export interface ScriptTarget {
   selector: string;
   index?: number;
+  /** Connection for the page scripts (scoped to the element's frame when the top page cannot reach it) */
+  cdp: CDPConnection;
 }
 
 /**
@@ -256,9 +267,11 @@ export interface ScriptTarget {
  *
  * @param cdp - CDP connection
  * @param backendNodeId - Backend node id from the query cache
+ * @returns Connection for the page scripts: the session's, or one running them
+ *   in the node's frame when that frame is cross-origin
  * @throws CommandError (exit 87) when the node no longer exists in the page
  */
-export async function bindTargetNode(cdp: CDPConnection, backendNodeId: number): Promise<void> {
+async function bindTargetNode(cdp: CDPConnection, backendNodeId: number): Promise<CDPConnection> {
   const err = staleNodeError();
   const stale = new CommandError(
     err.message,
@@ -281,7 +294,10 @@ export async function bindTargetNode(cdp: CDPConnection, backendNodeId: number):
     functionDeclaration: BIND_FUNCTION,
     returnByValue: true,
   })) as { result?: { value?: unknown } };
-  if (bound.result?.value !== true) throw stale;
+  const scope = bound.result?.value;
+  if (scope === 'frame') return frameScopedConnection(cdp, objectId);
+  if (scope !== 'top') throw stale;
+  return cdp;
 }
 
 /**
@@ -289,9 +305,9 @@ export async function bindTargetNode(cdp: CDPConnection, backendNodeId: number):
  *
  * @param cdp - CDP connection
  * @param params - Request with a selector (and optional index) or a backend node id
- * @returns Selector/index for the page script
+ * @returns Selector/index for the page script and the connection to run it on
  */
-export async function resolveScriptTarget(
+async function resolveScriptTarget(
   cdp: CDPConnection,
   params: { selector?: string; index?: number; backendNodeId?: number }
 ): Promise<ScriptTarget> {
@@ -299,10 +315,73 @@ export async function resolveScriptTarget(
     return {
       selector: params.selector ?? '',
       ...(params.index !== undefined && { index: params.index }),
+      cdp,
     };
   }
-  await bindTargetNode(cdp, params.backendNodeId);
-  return { selector: BOUND_TARGET_SELECTOR };
+  return { selector: BOUND_TARGET_SELECTOR, cdp: await bindTargetNode(cdp, params.backendNodeId) };
+}
+
+/**
+ * Whether an error is about the bound node: the placeholder only appears in
+ * "not found" messages, which for a bound node mean it left the page.
+ *
+ * @param text - Error message
+ * @returns True when the bound node was not found
+ */
+function boundNodeMissing(text: string | undefined): boolean {
+  return text?.includes(BOUND_TARGET_SELECTOR) === true;
+}
+
+/**
+ * Run an interaction on the element a request targets. Results and errors
+ * never show the internal placeholder: a bound node the page scripts could
+ * not find is reported as stale (87), and results carry the user's selector.
+ *
+ * @param cdp - CDP connection
+ * @param params - Request with a selector (and optional index) or a backend node id
+ * @param work - The interaction, given the script target
+ * @returns The interaction's result
+ * @throws CommandError (87) when the bound node left the page during the action
+ */
+export async function onScriptTarget<
+  T extends { selector?: string; error?: string; suggestion?: string; exitCode?: number },
+>(
+  cdp: CDPConnection,
+  params: { selector?: string; index?: number; backendNodeId?: number },
+  work: (target: ScriptTarget) => Promise<T>
+): Promise<T> {
+  const err = staleNodeError();
+  let target: ScriptTarget | undefined;
+  try {
+    target = await resolveScriptTarget(cdp, params);
+    const result = withUserSelector(await work(target), params.selector);
+    if (!boundNodeMissing(result.error)) return result;
+    return {
+      ...result,
+      error: err.message,
+      suggestion: err.suggestion,
+      exitCode: EXIT_CODES.STALE_CACHE,
+    };
+  } catch (error) {
+    if (!(error instanceof CommandError) || !boundNodeMissing(error.message)) throw error;
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+  } finally {
+    if (target && target.cdp !== cdp) unbindInFrame(target.cdp);
+  }
+}
+
+/**
+ * Remove a node bound in a cross-origin frame from that frame's window
+ * (through the scoped connection, so the script runs where the bind ran; the
+ * session removes the one bound on the top window after every interaction).
+ * Not waited for.
+ *
+ * @param frameConnection - Connection scoped to the node's frame
+ */
+function unbindInFrame(frameConnection: CDPConnection): void {
+  void frameConnection
+    .send('Runtime.evaluate', { expression: UNBIND_TARGET_SCRIPT })
+    .catch((error: unknown) => log.debug(`Frame target not unbound: ${getErrorMessage(error)}`));
 }
 
 /**
@@ -312,7 +391,7 @@ export async function resolveScriptTarget(
  * @param selector - Selector the user gave (or the cached query's selector)
  * @returns Result with the placeholder replaced
  */
-export function withUserSelector<T extends { selector?: string }>(
+function withUserSelector<T extends { selector?: string }>(
   result: T,
   selector: string | undefined
 ): T {

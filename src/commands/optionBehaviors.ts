@@ -89,9 +89,21 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Returns first matching element only',
     whenEnabled: 'Returns all matching elements (only works with --raw)',
   },
-  'get:--nth': {
-    default: 'Returns first matching element',
-    whenEnabled: 'Returns the nth matching element (0-based index, only works with --raw)',
+  'get:--index': {
+    default: 'Returns the first matching element (body without a selector)',
+    whenEnabled:
+      'Returns that match of the selector (0-based), in semantic and --raw output; --nth is an alias',
+    automaticBehavior:
+      'Out of range exits 81; with a numeric index argument (a cached query index) it exits 81',
+  },
+  'query:--limit': {
+    default:
+      'dom a11y query lists the first 50 matches and says how many more there are; --json returns all of them',
+    whenEnabled:
+      'Lists that many matches (0 = all), in human and JSON output; count is always the total, JSON omitted the rest',
+    automaticBehavior:
+      'All matches are cached for index-based access (bdg dom click 55 works even when 50 are listed); an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame',
+    tokenImpact: 'About one line per match; a page can have hundreds of links',
   },
   'eval:--frame': {
     default: "Evaluates in the page's main frame",
@@ -120,6 +132,13 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'console:--list': {
     default: 'Smart summary with errors deduplicated and warnings grouped',
     whenEnabled: 'Lists all messages chronologically without deduplication',
+  },
+  'console:--last': {
+    default: 'Smart summary (without --list); a list shows the last 100 messages',
+    whenEnabled:
+      'Lists the last N messages (0 = all) chronologically, also without --list; JSON gets messages',
+    automaticBehavior:
+      'The [n] shown are positions in the session message list (what bdg details console <n> takes); when the page or level filter left messages out between the listed ones, a note says how many and why',
   },
   'console:--level': {
     default: 'Shows all log levels (error, warning, log, info, debug)',
@@ -242,7 +261,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Reports every match of the selector (human output lists the first 20, JSON up to 100 plus an omitted count); a numeric argument reports that cached query element',
     whenEnabled: 'Reports only the nth match (0-based); out of range exits 81',
     automaticBehavior:
-      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). scrollBy centres the element (aligns its start when it is larger than the viewport; human output says "to centre it", or for a partly visible element "partly visible (24%); scroll down 302px to see all of it") and is limited to how far the page can scroll; fixed and sticky elements (page scroll does not move them, or only until they stick) and ones beyond that range get offScreenReason instead, which says "page scrolling is locked (…)" when the page cannot scroll because body/html is position: fixed or overflow: hidden, so in-flow content is not called fixed; a visible dialog (dialog[open], [aria-modal=true], [role=dialog|alertdialog]) is named as the likely cause ("likely by dialog div#consent"). page.viewport is the layout viewport without scrollbars, as dom scroll reports it; page.colorScheme is the prefers-color-scheme media feature the page sees (not the theme it renders). Content in a closed <details> or under content-visibility: hidden is hidden. coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none, nor for an element of the same click target: an overlay inside the link, button or label the element is in, a link to the same URL, or the textless absolutely positioned overlay link spanning the card that holds plain content); inert elements are flagged, not hidden',
+      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). scrollBy brings the whole element into view and is limited to how far the page can scroll: for an element out of view it centres it (aligns its start when it is larger than the viewport; human output says "to centre it"), for a partly visible one it is the smallest scroll that shows all of it (the part cut off at the top or bottom; the start of one larger than the viewport; "partly visible (87%); scroll up 5px to see all of it"). Elements a page script moves on scroll (floating menus) may move again after it; fixed and sticky elements (page scroll does not move them, or only until they stick) and ones beyond that range get offScreenReason instead, which says "page scrolling is locked (…)" when the page cannot scroll because body/html is position: fixed or overflow: hidden, so in-flow content is not called fixed; a visible dialog (dialog[open], [aria-modal=true], [role=dialog|alertdialog]) is named as the likely cause ("likely by dialog div#consent"). page.viewport is the layout viewport without scrollbars, as dom scroll reports it; page.colorScheme is the prefers-color-scheme media feature the page sees (not the theme it renders). Content in a closed <details> or under content-visibility: hidden is hidden. coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none, nor for an element of the same click target: an overlay inside the link, button or label the element is in, a link to the same URL, or the textless absolutely positioned overlay link spanning the card that holds plain content); inert elements are flagged, not hidden',
     tokenImpact:
       'About one line per element; a cheap alternative to screenshots for "where is it?"',
   },
@@ -264,6 +283,8 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'scroll:--bottom': {
     whenEnabled: 'Scrolls to the very bottom of the page',
+    automaticBehavior:
+      'A page scroll (--down/--up/--left/--right/--top/--bottom) that moved nothing still exits 0 but starts with a warning saying why: the document is no taller (wider) than the viewport, the page was already at that edge, or scrolling is locked; while document.readyState is not complete it adds that the page is still loading (bdg dom wait --load)',
   },
   'scroll:--no-wait': {
     default:

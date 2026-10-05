@@ -77,7 +77,10 @@ export interface ViewportPlacement {
   percentVisible?: number;
   /** Why it is `hidden` */
   hiddenReason?: string;
-  /** Page scroll that brings it into view (centred), when it is not fully in view and the page can scroll there */
+  /**
+   * Page scroll that brings it fully into view, when the page can scroll there:
+   * the smallest one for an element partly in view, centring it for one out of view
+   */
   scrollBy?: LayoutPoint;
   /** Ancestor or iframe cutting it off (page scroll alone does not show it) */
   clippedBy?: string;
@@ -118,7 +121,7 @@ export const VIEWPORT_SIZE_JS = `(view) => {
  * current position. Right-to-left pages scroll to negative `scrollX`. Content
  * that a scrolling body cuts off is reported through the body as a clipper.
  */
-const SCROLL_RANGE_JS = `(view) => {
+export const SCROLL_RANGE_JS = `(view) => {
   const doc = view.document;
   const scroller = doc.scrollingElement || doc.documentElement;
   const maxX = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
@@ -534,17 +537,45 @@ function visibleLength(start: number, size: number, viewSize: number, scroll: nu
 }
 
 /**
- * Page scroll along one axis that centres a span in the viewport (aligns its
- * start, when it is larger than the viewport), like
- * `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover
- * it. Limited to how far the page can scroll; when that is not far enough to
+ * How a scroll brings an element into view: `centre` it (an element out of
+ * view, like `bdg dom scroll <selector>`, so sticky headers and fixed footers
+ * at the edges do not cover it), or the `minimal` scroll that shows all of
+ * it (an element partly in view: the part cut off at one edge).
+ */
+export type ScrollAim = 'centre' | 'minimal';
+
+/**
+ * Where along one axis a scroll should bring a span's start (in the current
+ * viewport coordinates): centred, or just inside the edge cutting it off; a
+ * span larger than the viewport gets its start aligned either way.
+ *
+ * @param start - Start of the span in viewport coordinates
+ * @param size - Length of the span
+ * @param viewSize - Length of the viewport
+ * @param aim - Centre it, or the smallest scroll showing all of it
+ * @returns Scroll that would do it (negative: back), before limiting it to the page
+ */
+export function scrollTarget(
+  start: number,
+  size: number,
+  viewSize: number,
+  aim: ScrollAim
+): number {
+  if (size > viewSize) return start;
+  if (aim === 'centre') return start + size / 2 - viewSize / 2;
+  return start < 0 ? start : start + size - viewSize;
+}
+
+/**
+ * Page scroll along one axis that brings a span into view ({@link ScrollAim}).
+ * Limited to how far the page can scroll; when that is not far enough to
  * show the span fully, no scroll helps.
  *
  * @param start - Start of the span in viewport coordinates
  * @param size - Length of the span
  * @param viewSize - Length of the viewport
- * @param back - How far the page can scroll back (up or left)
- * @param forward - How far the page can scroll forward (down or right)
+ * @param range - How far the page can scroll back (up or left) and forward (down or right)
+ * @param aim - Centre it, or the smallest scroll showing all of it
  * @returns Pixels to scroll (negative: back), 0 when it is fully in view, null
  *   when the page cannot scroll far enough
  */
@@ -552,13 +583,13 @@ function axisScroll(
   start: number,
   size: number,
   viewSize: number,
-  back: number,
-  forward: number
+  range: { back: number; forward: number },
+  aim: ScrollAim
 ): number | null {
   const fully = Math.min(size, viewSize) - IN_VIEW_SLACK;
   if (visibleLength(start, size, viewSize, 0) >= fully) return 0;
-  const target = size > viewSize ? start : start + size / 2 - viewSize / 2;
-  const scroll = Math.round(Math.min(forward, Math.max(-back, target))) || 0;
+  const target = scrollTarget(start, size, viewSize, aim);
+  const scroll = Math.round(Math.min(range.forward, Math.max(-range.back, target))) || 0;
   return visibleLength(start, size, viewSize, scroll) >= fully ? scroll : null;
 }
 
@@ -585,7 +616,6 @@ export function classifyViewportPosition(
   const screen = edgesOf({ x: 0, y: 0, ...viewport });
   const view = geometry.clip ? overlap(screen, edgesOf(geometry.clip)) : screen;
   const seen = view && overlap(rect, view);
-  const advice = outOfViewAdvice(geometry, viewport);
   if (!seen) {
     const direction =
       directionOutside(rect, screen) ??
@@ -596,13 +626,17 @@ export function classifyViewportPosition(
         hiddenReason: `clipped by ${geometry.clipper ?? 'an ancestor'}`,
       };
     }
-    return { inViewport: direction, ...advice };
+    return { inViewport: direction, ...outOfViewAdvice(geometry, viewport, 'centre') };
   }
   const area = (seen.right - seen.left) * (seen.bottom - seen.top);
   const share = (area / (geometry.rect.width * geometry.rect.height)) * 100;
   if (share >= 99.5) return { inViewport: 'visible' };
   const percentVisible = Math.min(99, Math.max(1, Math.round(share)));
-  return { inViewport: 'partly', percentVisible, ...advice };
+  return {
+    inViewport: 'partly',
+    percentVisible,
+    ...outOfViewAdvice(geometry, viewport, 'minimal'),
+  };
 }
 
 /**
@@ -614,19 +648,23 @@ export function classifyViewportPosition(
  *
  * @param geometry - Page-side measurements
  * @param viewport - Top-level viewport size
+ * @param aim - Centre it (out of view), or the smallest scroll showing all of it (partly in view)
  * @returns `clippedBy`, `scrollBy` or `offScreenReason`, or nothing when no
  *   scroll is needed
  */
 function outOfViewAdvice(
   geometry: ElementGeometry,
-  viewport: LayoutSize
+  viewport: LayoutSize,
+  aim: ScrollAim
 ): Pick<ViewportPlacement, 'clippedBy' | 'scrollBy' | 'offScreenReason'> {
   if (geometry.clipper) return { clippedBy: geometry.clipper };
   if (geometry.fixed) return { offScreenReason: OFF_SCREEN_REASONS.fixed };
   if (geometry.sticky) return { offScreenReason: OFF_SCREEN_REASONS.sticky };
   const { rect, pageScroll } = geometry;
-  const x = axisScroll(rect.x, rect.width, viewport.width, pageScroll.left, pageScroll.right);
-  const y = axisScroll(rect.y, rect.height, viewport.height, pageScroll.up, pageScroll.down);
+  const horizontal = { back: pageScroll.left, forward: pageScroll.right };
+  const vertical = { back: pageScroll.up, forward: pageScroll.down };
+  const x = axisScroll(rect.x, rect.width, viewport.width, horizontal, aim);
+  const y = axisScroll(rect.y, rect.height, viewport.height, vertical, aim);
   if (x === null || y === null) {
     const { scrollLock } = geometry;
     return {

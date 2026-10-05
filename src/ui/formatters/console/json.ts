@@ -6,6 +6,7 @@
 
 import type { ConsoleMessage } from '@/types.js';
 
+import { lastMessages } from './chronological.js';
 import {
   analyzeMessages,
   type ConsoleFormatOptions,
@@ -53,11 +54,7 @@ export function buildConsoleJsonOutput(
     warnings: grouped.warnings.map((d) => toJsonError(d, false)),
   };
 
-  if (options.list) {
-    const displayMessages =
-      options.last && options.last > 0 ? messages.slice(-options.last) : messages;
-    output.messages = displayMessages;
-  }
+  if (options.list) output.messages = lastMessages(messages, options.last);
 
   return output;
 }

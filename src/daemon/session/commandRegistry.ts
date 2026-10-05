@@ -7,6 +7,7 @@ import { PatternDetector } from '@/daemon/patternDetector.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
 import { CommandError } from '@/errors/index.js';
+import { formDiscoveryFailedError } from '@/errors/messages.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
@@ -19,13 +20,15 @@ import {
   scrollPage,
   withActionStability,
 } from '@/runtime/dom/formFillHelpers/index.js';
+import { exceptionSummary } from '@/runtime/dom/formFillHelpers/shared.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
-import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
+import { onScriptTarget } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
 import { pageAppearance } from '@/runtime/page/emulation.js';
+import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
@@ -512,40 +515,38 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     dom_frames: async (cdp) => ({ frames: await listFrames(cdp, pageWebSocketUrl(store)) }),
 
     dom_fill: async (cdp, params) =>
-      interact(cdp, async () => {
-        const target = await resolveScriptTarget(cdp, params);
-        const fillOptions = filterDefined({
-          index: target.index,
-          blur: params.blur,
-          cwd: params.cwd,
-        });
-        return withActionStability(
-          cdp,
-          async () =>
-            withUserSelector(
-              await fillElement(cdp, target.selector, params.value, fillOptions),
-              params.selector
-            ),
-          params.wait !== false
-        );
-      }),
+      interact(cdp, async () =>
+        onScriptTarget(cdp, params, (target) =>
+          withActionStability(
+            cdp,
+            () =>
+              fillElement(
+                target.cdp,
+                target.selector,
+                params.value,
+                filterDefined({ index: target.index, blur: params.blur, cwd: params.cwd })
+              ),
+            params.wait !== false
+          )
+        )
+      ),
 
     dom_click: async (cdp, params) =>
       interact(
         cdp,
-        async () => {
-          const target = await resolveScriptTarget(cdp, params);
-          const clickOptions = filterDefined({ index: target.index, action: params.action });
-          return withActionStability(
-            cdp,
-            async () =>
-              withUserSelector(
-                await clickElement(cdp, target.selector, clickOptions),
-                params.selector
-              ),
-            params.wait !== false
-          );
-        },
+        async () =>
+          onScriptTarget(cdp, params, (target) =>
+            withActionStability(
+              cdp,
+              () =>
+                clickElement(
+                  target.cdp,
+                  target.selector,
+                  filterDefined({ index: target.index, action: params.action })
+                ),
+              params.wait !== false
+            )
+          ),
         {
           detectNoEffect:
             params.wait !== false && params.action !== 'hover' && params.action !== 'right',
@@ -556,64 +557,66 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       withTriggeredRequestCount(
         await interact(
           cdp,
-          async () => {
-            const target = await resolveScriptTarget(cdp, params);
-            const submitOptions = filterDefined({
-              index: target.index,
-              waitNavigation: params.waitNavigation,
-              waitNetwork: params.waitNetwork,
-              timeout: params.timeout,
-            });
-            return withUserSelector(
-              await submitForm(cdp, target.selector, submitOptions),
-              params.selector
-            );
-          },
+          async () =>
+            onScriptTarget(cdp, params, (target) =>
+              submitForm(target.cdp, target.selector, {
+                ...filterDefined({
+                  index: target.index,
+                  waitNavigation: params.waitNavigation,
+                  waitNetwork: params.waitNetwork,
+                  timeout: params.timeout,
+                }),
+                pendingRequests: () => store.pendingNetworkRequests.values(),
+              })
+            ),
           { detectNoEffect: params.waitNetwork !== 0 || params.waitNavigation === true }
         )
       ),
 
     dom_press_key: async (cdp, params) =>
-      interact(cdp, async () => {
-        const target = await resolveScriptTarget(cdp, params);
-        const pressKeyOptions = filterDefined({
-          index: target.index,
-          times: params.times,
-          modifiers: params.modifiers,
-        });
-        return withActionStability(
-          cdp,
-          async () =>
-            withUserSelector(
-              await pressKeyElement(cdp, target.selector, params.key, pressKeyOptions),
-              params.selector
-            ),
-          params.wait !== false
-        );
-      }),
+      interact(cdp, async () =>
+        onScriptTarget(cdp, params, (target) =>
+          withActionStability(
+            cdp,
+            () =>
+              pressKeyElement(
+                target.cdp,
+                target.selector,
+                params.key,
+                filterDefined({
+                  index: target.index,
+                  times: params.times,
+                  modifiers: params.modifiers,
+                })
+              ),
+            params.wait !== false
+          )
+        )
+      ),
 
     dom_scroll: async (cdp, params) =>
-      interact(cdp, async () => {
-        const target = await resolveScriptTarget(cdp, params);
-        const scrollOptions = filterDefined({
-          index: target.index,
-          down: params.down,
-          up: params.up,
-          left: params.left,
-          right: params.right,
-          top: params.top,
-          bottom: params.bottom,
-        });
-        return withActionStability(
-          cdp,
-          async () =>
-            withUserSelector(
-              await scrollPage(cdp, target.selector || undefined, scrollOptions),
-              params.selector
-            ),
-          params.wait !== false
-        );
-      }),
+      interact(cdp, async () =>
+        onScriptTarget(cdp, params, (target) =>
+          withActionStability(
+            cdp,
+            () =>
+              scrollPage(
+                target.cdp,
+                target.selector || undefined,
+                filterDefined({
+                  index: target.index,
+                  down: params.down,
+                  up: params.up,
+                  left: params.left,
+                  right: params.right,
+                  top: params.top,
+                  bottom: params.bottom,
+                })
+              ),
+            params.wait !== false
+          )
+        )
+      ),
 
     dom_listeners: async (cdp, params) =>
       withBusyPageRecovery(cdp, inspectEventListeners(cdp, params)),
@@ -646,7 +649,17 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         result?: { value?: unknown };
       };
       if (cdpResponse.exceptionDetails) {
-        throw new Error(`Form discovery failed: ${cdpResponse.exceptionDetails.text}`);
+        const readyState = await readDocumentReadyState(cdp);
+        const loading = readyState !== undefined && readyState !== 'complete';
+        const err = formDiscoveryFailedError(
+          exceptionSummary(cdpResponse.exceptionDetails),
+          readyState
+        );
+        throw new CommandError(
+          err.message,
+          { suggestion: err.suggestion },
+          loading ? EXIT_CODES.RESOURCE_NOT_FOUND : EXIT_CODES.SOFTWARE_ERROR
+        );
       }
       const rawData = cdpResponse.result?.value;
       if (!isRawFormData(rawData)) {

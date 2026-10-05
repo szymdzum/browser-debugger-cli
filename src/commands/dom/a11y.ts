@@ -21,6 +21,7 @@ import type {
   A11yQueryCommandOptions,
   A11yDescribeCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import {
   elementNotFoundError,
@@ -28,7 +29,7 @@ import {
   noA11yNodesFoundError,
   notInAccessibilityTreeError,
 } from '@/errors/messages.js';
-import { QueryCacheManager } from '@/session/QueryCacheManager.js';
+import { A11Y_CACHE_SELECTOR_PREFIX, QueryCacheManager } from '@/session/QueryCacheManager.js';
 import {
   a11yIgnoredReasons,
   collectA11yTree,
@@ -36,13 +37,16 @@ import {
   parseQueryPattern,
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
-import type { A11yNode } from '@/types.js';
+import type { A11yNode, A11yQueryResult } from '@/types.js';
 import {
   formatA11yTree,
   formatA11yQueryResult,
   formatA11yNodeWithContext,
 } from '@/ui/formatters/a11y.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/** Matches `dom a11y query` lists by default in human output (a page can have hundreds of links; JSON lists all) */
+const A11Y_QUERY_LIMIT = 50;
 
 /**
  * Handle bdg dom a11y tree command
@@ -133,19 +137,36 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
 
       const indexed = { ...result, nodes: result.nodes.map((node, index) => ({ ...node, index })) };
       await QueryCacheManager.getInstance().set({
-        selector: `a11y ${pattern}`,
+        selector: `${A11Y_CACHE_SELECTOR_PREFIX}${pattern}`,
         count: indexed.count,
         nodes: indexed.nodes.map((node) => ({
           index: node.index,
           nodeId: node.backendDOMNodeId ?? 0,
           tag: node.role,
+          ...(node.name && { preview: node.name }),
         })),
       });
-      return { success: true, data: indexed };
+      return {
+        success: true,
+        data: limitMatches(indexed, options.limit ?? (options.json ? 0 : A11Y_QUERY_LIMIT)),
+      };
     },
     options,
     formatA11yQueryResult
   );
+}
+
+/**
+ * The matches to list: the first `limit` (all with 0), counting the rest as
+ * omitted. All of them are cached, so their indices work either way.
+ *
+ * @param result - Query result
+ * @param limit - Matches to list (0 = all)
+ * @returns The result with the listed matches
+ */
+export function limitMatches(result: A11yQueryResult, limit: number): A11yQueryResult {
+  if (limit === 0 || result.nodes.length <= limit) return result;
+  return { ...result, nodes: result.nodes.slice(0, limit), omitted: result.nodes.length - limit };
 }
 
 /**
@@ -278,6 +299,11 @@ export function registerA11yCommands(domCmd: Command): void {
     .argument(
       '<pattern>',
       "Fields role, name, description as key:value or key=value, separated by spaces or commas; * is a wildcard. A name or description runs to the next field or the end, so it may contain spaces and colons; quote the whole pattern (e.g. 'role=button name=Sign in', 'name=E-mail address:')"
+    )
+    .option(
+      '--limit <n>',
+      `Matches to list (default: ${A11Y_QUERY_LIMIT}, all with --json; 0 = all); all are indexed`,
+      integerOption(0)
     )
     .addOption(jsonOption())
     .action(async (pattern: string, options: A11yQueryCommandOptions) => {

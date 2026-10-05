@@ -7,7 +7,13 @@
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { noMatchContext } from '@/commands/dom/helpers/query.js';
-import { staleNodeError, unreachableElementsNote, withLoadingHint } from '@/errors/messages.js';
+import {
+  otherIndexSourceNote,
+  staleNodeError,
+  unreachableElementsNote,
+  withLoadingHint,
+} from '@/errors/messages.js';
+import type { IndexSource } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -24,6 +30,8 @@ interface ResultPayload {
   error?: string | undefined;
   suggestion?: string | undefined;
   exitCode?: number | undefined;
+  /** The element is not one the command acts on (fill, submit) */
+  unsuitableElement?: boolean | undefined;
 }
 
 interface CommandResult<T> {
@@ -56,11 +64,12 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
 
 /**
  * Resolve an element target, invoke the IPC call, and normalize failures
- * into the structured `CommandRunner` result shape.
+ * into the structured `CommandRunner` result shape. A numeric index names the
+ * list it refers to (`indexSource` in the data, and in errors).
  */
 export async function runElementCommand<Req, Res extends ResultPayload>(
   options: ElementCommandOptions<Req, Res>
-): Promise<CommandResult<Omit<Res, 'success'>>> {
+): Promise<CommandResult<Omit<Res, 'success'> & { indexSource?: IndexSource }>> {
   const { selectorOrIndex, index, command, buildRequest, call } = options;
 
   const target = await DomElementResolver.getInstance().resolve(selectorOrIndex, index, command);
@@ -87,10 +96,48 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
       : response.data.success
         ? undefined
         : failedResultFailure(response.data, options);
+  if (failure && target.source) {
+    return indexFailure(failure, target.source, target.preview, response.data);
+  }
   if (failure) return withNotFoundContext(failure, target.selector, response.status !== 'error');
 
   const { success: _success, ...data } = response.data as Res;
-  return { success: true, data };
+  return { success: true, data: { ...data, ...(target.source && { indexSource: target.source }) } };
+}
+
+/**
+ * A failure on a cached index, told in terms of the index: a stale element
+ * (87) names the index and the command that refreshes it, and an element a
+ * form command cannot act on, from the results of another command, gets a
+ * note on which list the index refers to.
+ *
+ * @param failure - Failed command result
+ * @param source - The index and the list it refers to
+ * @param preview - What the cached element was when listed
+ * @param result - Action result, when the daemon answered
+ * @returns The failure in terms of the index
+ */
+function indexFailure<Res extends ResultPayload>(
+  failure: CommandResult<never>,
+  source: IndexSource,
+  preview: string | undefined,
+  result: Res | undefined
+): CommandResult<never> {
+  if (failure.exitCode === EXIT_CODES.STALE_CACHE) {
+    const err = staleNodeError(source.index, source);
+    return {
+      success: false,
+      error: err.message,
+      exitCode: EXIT_CODES.STALE_CACHE,
+      errorContext: { suggestion: err.suggestion },
+    };
+  }
+  if (!result?.unsuitableElement || source.command === 'dom form') return failure;
+  const note = otherIndexSourceNote(source, preview);
+  return {
+    ...failure,
+    errorContext: { suggestion: joinLines(failure.errorContext?.suggestion, note) },
+  };
 }
 
 /**
@@ -104,14 +151,9 @@ function errorResponseFailure<Req, Res extends ResultPayload>(
   response: IpcResponse<Res>,
   options: ElementCommandOptions<Req, Res>
 ): CommandResult<never> {
-  const { selectorOrIndex, action } = options;
-  const staleIndex =
-    response.exitCode === EXIT_CODES.STALE_CACHE && /^\d+$/.test(selectorOrIndex)
-      ? staleNodeError(Number(selectorOrIndex)).message
-      : undefined;
   return {
     success: false,
-    error: staleIndex ?? response.error ?? `Failed to ${action}`,
+    error: response.error ?? `Failed to ${options.action}`,
     exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
     ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
   };
