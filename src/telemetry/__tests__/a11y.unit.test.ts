@@ -290,6 +290,32 @@ describe('parseQueryPattern', () => {
     });
   });
 
+  test('rejects a misspelled field swallowed by a name, with a did-you-mean', () => {
+    for (const [pattern, word, similar] of [
+      ['name:Save rol:button', 'rol', 'role'],
+      ['name=Save, nme=x', 'nme', 'name'],
+      ['role=button name=Save descripton=Primary', 'descripton', 'description'],
+    ] as const) {
+      assert.throws(
+        () => parseQueryPattern(pattern),
+        (error: unknown) =>
+          error instanceof CommandError &&
+          error.exitCode === EXIT_CODES.INVALID_ARGUMENTS &&
+          error.message === `Unknown query field: "${word}" (did you mean "${similar}"?)` &&
+          /put it in inner quotes/.test(error.metadata.suggestion ?? ''),
+        pattern
+      );
+    }
+  });
+
+  test('keeps label words that are not near a field name, and quoted names', () => {
+    assert.deepEqual(parseQueryPattern('name=Due date: today'), { name: 'Due date: today' });
+    assert.deepEqual(parseQueryPattern('name=Promo code: Note: optional'), {
+      name: 'Promo code: Note: optional',
+    });
+    assert.deepEqual(parseQueryPattern('name="Save rol:button"'), { name: 'Save rol:button' });
+  });
+
   test('keeps inner quotes for names that contain field-like text', () => {
     assert.deepEqual(parseQueryPattern('name="Choose role: admin" role=combobox'), {
       name: 'Choose role: admin',

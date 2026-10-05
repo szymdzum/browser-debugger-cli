@@ -4,6 +4,7 @@ import { unknownQueryFieldError } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { levenshteinDistance } from '@/utils/levenshtein.js';
 
 /**
  * Builds accessibility tree from raw CDP nodes.
@@ -371,14 +372,14 @@ const NEXT_KNOWN_QUERY_FIELD = /[\s,]+(?:role|name|description|desc)\s*[:=](?=\s
  *
  * @param text - Text after `key:`
  * @param field - Field the value is for
- * @returns The value and where it ends in `text`
+ * @returns The value, where it ends in `text`, and whether it was quoted
  */
 function readQueryValue(
   text: string,
   field: keyof A11yQueryPattern
-): { value: string; end: number } {
+): { value: string; end: number; quoted: boolean } {
   const quoted = QUOTED_QUERY_VALUE.exec(text);
-  if (quoted?.[1]) return { value: quoted[1].slice(1, -1), end: quoted[0].length };
+  if (quoted?.[1]) return { value: quoted[1].slice(1, -1), end: quoted[0].length, quoted: true };
   const next = (field === 'role' ? NEXT_QUERY_FIELD : NEXT_KNOWN_QUERY_FIELD).exec(text);
   const end = next ? next.index : text.length;
   const value = text
@@ -386,7 +387,7 @@ function readQueryValue(
     .trim()
     .replace(/,+$/, '')
     .replace(/^(["'])(.*)\1$/s, '$2');
-  return { value, end };
+  return { value, end, quoted: false };
 }
 
 /**
@@ -400,7 +401,7 @@ function readQueryValue(
  *
  * @param patternString - Query pattern string
  * @returns Parsed query pattern
- * @throws CommandError (81) for unknown keys
+ * @throws CommandError (81) for unknown keys, also a misspelled one inside a name
  *
  * @example
  * ```typescript
@@ -416,20 +417,51 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
   for (let key = QUERY_KEY.exec(rest); key; key = QUERY_KEY.exec(rest)) {
     const rawKey = key[1] ?? '';
     const field = QUERY_FIELDS[rawKey.toLowerCase()];
-    if (!field) {
-      const err = unknownQueryFieldError(rawKey);
-      throw new CommandError(
-        err.message,
-        { suggestion: err.suggestion },
-        EXIT_CODES.INVALID_ARGUMENTS
-      );
-    }
+    if (!field) throwUnknownField(rawKey);
     const valueText = rest.slice(key.index + key[0].length);
-    const { value, end } = readQueryValue(valueText, field);
+    const { value, end, quoted } = readQueryValue(valueText, field);
+    if (!quoted && field !== 'role') checkMisspelledField(value, field);
     if (value) pattern[field] = value;
     rest = valueText.slice(end);
   }
   return pattern;
+}
+
+/**
+ * Throw the exit-81 error for an unknown query field.
+ *
+ * @param field - The unrecognized key
+ * @param similar - A known field it looks like a typo of
+ * @param value - The name or description that absorbed it
+ * @throws CommandError (81)
+ */
+function throwUnknownField(field: string, similar?: string, value?: string): never {
+  const err = unknownQueryFieldError(field, similar, value);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/** A `word:`/`word=` inside a name or description. */
+const ABSORBED_KEY = /[\s,]([a-z]+)\s*[:=]/gi;
+
+/**
+ * Reject a name or description that swallowed a misspelled field
+ * (`name:Save rol:button`): a `word:` within edit distance 1 of role, name or
+ * desc (2 of description). Wider distances would catch common label words
+ * (`Date:`, `Note:`, `Code:`).
+ *
+ * @param value - Unquoted name or description
+ * @param field - Field it is the value of
+ * @throws CommandError (81) with a "did you mean" suggestion
+ */
+function checkMisspelledField(value: string, field: keyof A11yQueryPattern): void {
+  for (const [, word = ''] of value.matchAll(ABSORBED_KEY)) {
+    const lower = word.toLowerCase();
+    if (QUERY_FIELDS[lower]) continue;
+    const similar = Object.keys(QUERY_FIELDS).find(
+      (name) => levenshteinDistance(lower, name) <= (name.length > 4 ? 2 : 1)
+    );
+    if (similar) throwUnknownField(word, similar, `${field}=${value}`);
+  }
 }
 
 /**

@@ -7,7 +7,12 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { keyPressFailedError, operationFailedError, unknownKeyError } from '@/errors/messages.js';
+import {
+  VIA_LABEL_SUFFIX,
+  keyPressFailedError,
+  operationFailedError,
+  unknownKeyError,
+} from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 import {
   throwIfInvalidSelector,
@@ -57,9 +62,8 @@ const FOCUS_ELEMENT_SCRIPT = `
   } else {
     el = allMatches[0];
   }
-  // Keys go to the control a label stands for, as a user clicks the label first
   const labelControl = (${LABEL_CONTROL_JS})(el);
-  const viaLabel = labelControl ? ' (via label)' : '';
+  const viaLabel = labelControl ? ${JSON.stringify(VIA_LABEL_SUFFIX)} : '';
   if (labelControl) el = labelControl;
 
   const pageLevel = el === document.body || el === document.documentElement;

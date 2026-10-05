@@ -92,7 +92,11 @@ export async function fillElement(
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
       const result = cdpResponse.result.value;
-      return result.fileInput ? await setFileInput(cdp, selector, value, options) : result;
+      if (!result.fileInput) return result;
+      const uploaded = await setFileInput(cdp, selector, value, options);
+      return uploaded.success && result.elementType
+        ? { ...uploaded, elementType: result.elementType }
+        : uploaded;
     }
 
     const err = unexpectedResponseFormatError('FillResult');

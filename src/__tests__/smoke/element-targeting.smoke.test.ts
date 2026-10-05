@@ -62,6 +62,12 @@ const TODO_HTML =
     .join('') +
   '</ul>';
 
+const SCOPES_HTML =
+  '<div class="card"><span>Pro plan</span><div id="card-host"></div></div>' +
+  '<section id="nest"><div><div><i class="x">1</i></div><i class="x">2</i></div></section>' +
+  '<div id="hidden-script" style="display:none">Hidden words<script>var secretWord = 1;</script>' +
+  '<style>.secretWord{}</style></div>';
+
 const VISIBILITY_HTML =
   '<ul id="shown"><li>shown</li><li style="display:none">gone</li>' +
   '<li style="visibility:hidden">invisible</li></ul>';
@@ -170,6 +176,25 @@ void describe('Element targeting', () => {
     assert.match(output, /descendant \(space\) or child \(>\) combinator/);
     assert.match(await bdg(['dom', 'query', 'li:not(:visible)'], 81), /inside :has\(\)/);
     await bdg(['dom', 'query', 'p:has-text("")'], 81);
+  });
+
+  void it('scopes into open shadow roots, in document order and without duplicates', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(SCOPES_HTML)}); ` +
+        "document.getElementById('card-host').attachShadow({ mode: 'open' }).innerHTML = " +
+        '\'<button class="btn" onclick="window.hit=\\\'shadow\\\'">Buy</button>\'; 1'
+    );
+    await bdg(['dom', 'click', 'div.card:has-text("Pro plan") .btn']);
+    assert.equal(await evaluate('window.hit'), 'shadow');
+    assert.equal((await queryPreviews('div.card:has(.btn:text-is("Buy"))')).length, 1);
+    assert.deepEqual(await queryPreviews('#nest div:visible .x'), ['1', '2']);
+    assert.deepEqual(await queryPreviews('#nest i:text-is("2"), #nest i:text-is("1")'), ['1', '2']);
+    await bdg(['dom', 'query', '#nest div:has(:scope > i:visible)'], 81);
+  });
+
+  void it('ignores script and style text of hidden elements', async () => {
+    assert.equal((await queryPreviews('#hidden-script:has-text("hidden words")')).length, 1);
+    await bdg(['dom', 'query', '#hidden-script:has-text("secretWord")'], 83);
   });
 
   void it('matches the text of hidden elements and counts what :visible left out', async () => {

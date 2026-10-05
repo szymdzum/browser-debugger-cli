@@ -51,7 +51,9 @@ const LABELS_HTML =
   '<form id="labels" onsubmit="return false"><label>Customer name: <input name="custname"></label>' +
   '<label for="em">E-mail address:</label><input id="em" type="email">' +
   '<label><input type="checkbox" id="agree"> I agree</label>' +
-  '<label id="orphan">Orphan note</label></form>';
+  '<label id="orphan">Orphan note</label>' +
+  '<label id="fancy">Fancy <input type="checkbox" id="fancybox" style="opacity:0;position:absolute"><span>box</span></label>' +
+  '<label>Avatar <input type="file" id="avatar"></label></form>';
 
 /** JSON output of a DOM action */
 type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
@@ -390,6 +392,28 @@ void describe('DOM interactions', () => {
     const orphan = await bdg(['dom', 'fill', '#orphan', 'x'], 81);
     assert.match(orphan, /not associated with a form control/);
     assert.match(orphan, /a11y query 'name=Orphan note'/);
+  });
+
+  void it('clicks the label of a transparent control, and uploads through a label', async () => {
+    const click = JSON.parse(await bdg(['dom', 'click', '#fancy', '--json'])) as {
+      data: { elementType: string };
+    };
+    assert.equal(click.data.elementType, 'label');
+    assert.equal(await evaluate("document.getElementById('fancybox').checked"), true);
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-upload-')), 'avatar.txt');
+    fs.writeFileSync(file, 'x');
+    try {
+      const fill = JSON.parse(
+        await bdg(['dom', 'fill', 'label:has-text("Avatar")', file, '--json'])
+      ) as { data: { elementType: string; value: string } };
+      assert.equal(fill.data.elementType, 'input (via label)');
+      assert.equal(
+        await evaluate("document.getElementById('avatar').files[0]?.name"),
+        'avatar.txt'
+      );
+    } finally {
+      fs.rmSync(path.dirname(file), { recursive: true, force: true });
+    }
   });
 
   void it('finds an a11y name with spaces and a colon', async () => {

@@ -367,6 +367,50 @@ export function siblingAfterFilterError(selector: string, combinator: string): E
 }
 
 /**
+ * A `:has()` with filters whose selector starts with a sibling combinator
+ * (`:has(+ a:visible)`): its matches are searched under the element, where
+ * siblings are not.
+ *
+ * @param selector - Selector as given
+ * @param combinator - `+` or `~`
+ * @returns Message and suggestion
+ */
+export function siblingInHasError(selector: string, combinator: string): ErrorWithSuggestion {
+  return {
+    message: `:has() with text or visibility filters can only look inside an element, not at its siblings ("${combinator}"): ${selector}`,
+    suggestion:
+      'Use a descendant or child: li:has(a:visible), li:has(> a:visible); for a sibling, put the filter on it: li + a:visible',
+  };
+}
+
+/** How a selector with filters is malformed (before the browser sees it). */
+const MALFORMED_SELECTOR_DETAILS = {
+  'empty-in-list': () => 'a selector in the list is empty',
+  'leading-combinator': (combinator: string) => `it starts with the combinator "${combinator}"`,
+  'trailing-combinator': () => 'it ends with a combinator',
+  'empty-has': () => ':has() has an empty selector',
+  'scope-in-has': () =>
+    ':has() with filters is already relative to the element; write :has(> a:visible) instead of :has(:scope > a:visible)',
+} as const;
+
+/**
+ * A selector with filters that is malformed in a way bdg detects while
+ * splitting it (so the error shows the selector as given, not rewritten CSS).
+ *
+ * @param selector - Selector as given
+ * @param problem - What is wrong
+ * @param combinator - The combinator, for `leading-combinator`
+ * @returns Message and suggestion
+ */
+export function malformedSelectorError(
+  selector: string,
+  problem: keyof typeof MALFORMED_SELECTOR_DETAILS,
+  combinator = ''
+): ErrorWithSuggestion {
+  return invalidSelectorError(selector, MALFORMED_SELECTOR_DETAILS[problem](combinator));
+}
+
+/**
  * `:has-text()` with empty text, which every element would match.
  *
  * @param selector - Selector as given
@@ -939,12 +983,21 @@ export function singleFileInputError(count: number): ErrorWithSuggestion {
  * Unknown field in an a11y query pattern.
  *
  * @param field - The unrecognized key
+ * @param similar - A known field it looks like a typo of
+ * @param value - The `name=…`/`description=…` field that absorbed it
  */
-export function unknownQueryFieldError(field: string): ErrorWithSuggestion {
+export function unknownQueryFieldError(
+  field: string,
+  similar?: string,
+  value?: string
+): ErrorWithSuggestion {
+  const usage =
+    "Use role, name or description, e.g. bdg dom a11y query 'role=button name=Sign in'. Quote the whole pattern for the shell; a name with spaces or colons goes last ('name=E-mail address:') or in inner quotes ('name=\"Role: admin\" role=textbox')";
+  if (!similar) return { message: `Unknown query field: "${field}"`, suggestion: usage };
+  const [key = '', ...text] = (value ?? '').split('=');
   return {
-    message: `Unknown query field: "${field}"`,
-    suggestion:
-      "Use role, name or description, e.g. bdg dom a11y query 'role=button name=Sign in'. Quote the whole pattern for the shell; a name with spaces or colons goes last ('name=E-mail address:') or in inner quotes ('name=\"Role: admin\" role=textbox')",
+    message: `Unknown query field: "${field}" (did you mean "${similar}"?)`,
+    suggestion: `Fix the field name, e.g. ${similar}=…; if the ${key} really contains "${field}:", put it in inner quotes: '${key}="${text.join('=')}"'`,
   };
 }
 
@@ -983,6 +1036,22 @@ export function fillableElementNotFoundError(selector: string): ErrorWithSuggest
     suggestion: 'Verify the selector matches a fillable element (input, textarea, select)',
   };
 }
+
+/** Appended to the element type when an action went to a label's control. */
+export const VIA_LABEL_SUFFIX = ' (via label)';
+
+/** Placeholder for the shell-quoted `name=…` field in {@link LABEL_WITHOUT_CONTROL}. */
+export const NAME_QUERY_PLACEHOLDER = '{nameQuery}';
+
+/**
+ * Filling a `<label>` that has no form control (used by the page script,
+ * which puts the label's quoted `name=<text>` in place of
+ * {@link NAME_QUERY_PLACEHOLDER}).
+ */
+export const LABEL_WITHOUT_CONTROL: ErrorWithSuggestion = {
+  message: 'Element is not fillable (a <label> not associated with a form control)',
+  suggestion: `Find the field by its accessible name: bdg dom a11y query ${NAME_QUERY_PLACEHOLDER}, or list the form fields: bdg dom form`,
+};
 
 /**
  * Clickable element not found.

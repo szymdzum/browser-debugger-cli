@@ -134,7 +134,7 @@ bdg dom fill 'label:has-text("Customer name") input' "Ada"    # The input inside
 bdg dom click 'tr:text-is("Ada Lovelace") > td button'        # A button in a table row
 ```
 
-Inside other pseudo-classes (`:not(:visible)`, `:is(a:has-text("x"))`) the filters are rejected with exit 81. Text may be double- or single-quoted (escape a quote inside with `\`) or unquoted (`:has-text(Save)`). Other Playwright syntax (`:text()`, `text=…`, `>>`) is not supported.
+A descendant step after a filter (and a `:has()` with filters) also searches the open shadow roots under the element, with the whole step inside one shadow tree (`my-card:has-text("Pro") button` finds a button in the card's shadow root); a child step (`>`) stays in the element's own tree. Matches come in document order, each once. Inside other pseudo-classes (`:not(:visible)`, `:is(a:has-text("x"))`) or after a sibling combinator inside `:has()` (`:has(+ a:visible)`) the filters are rejected with exit 81; a `:has()` with filters is already relative, so write `:has(> a:visible)`, not `:has(:scope > a:visible)`. Text may be double- or single-quoted (escape a quote inside with `\`) or unquoted (`:has-text(Save)`). Other Playwright syntax (`:text()`, `text=…`, `>>`) is not supported.
 
 **Labels stand for their control.** `dom fill`, `dom click` (and `--double`) and `dom pressKey` on a `<label>` act on its form control (`label.control`: the `for` target or the control inside it), like Playwright; the result's element type says so (`input (via label)`). A click goes to the label itself when the control is hidden or transparent (custom checkboxes), which activates the control the same way. Filling a label without a control exits 81 and suggests `bdg dom a11y query 'name=…'` or `bdg dom form`.
 
@@ -172,7 +172,7 @@ bdg dom a11y describe --json                      # JSON output
 - `name=<value>` - Filter by accessible name (case-insensitive)
 - `description=<value>` - Filter by accessible description (case-insensitive)
 - Combine with spaces or commas for AND logic: `role=button,name=Submit`
-- `key:value` works too. A role ends at the next field; a name or description runs to the next `role=`/`name=`/`description=` with a value, or to the end of the argument, so it may contain spaces and colons (`'name=E-mail address:'`). Quote the whole pattern for the shell (`name="E-mail address:"` reaches bdg without its quotes, which is fine when the name is last). Put a value in inner quotes when it contains field-like text: `'name="Choose role: admin" role=combobox'`
+- `key:value` works too. A role ends at the next field; a name or description runs to the next `role=`/`name=`/`description=` with a value, or to the end of the argument, so it may contain spaces and colons (`'name=E-mail address:'`). Quote the whole pattern for the shell (`name="E-mail address:"` reaches bdg without its quotes, which is fine when the name is last). A `word:` inside a name that looks like a misspelled field (`name=Save rol:button`) exits 81 with a "did you mean"; quote the name if it really contains it. Put a value in inner quotes when it contains field-like text: `'name="Choose role: admin" role=combobox'`
 
 **Output:**
 - Tree view shows role, name, description, and key properties

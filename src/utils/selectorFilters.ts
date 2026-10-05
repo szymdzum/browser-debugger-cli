@@ -18,10 +18,11 @@
 import { CommandError } from '@/errors/index.js';
 import {
   emptyTextFilterError,
-  invalidSelectorError,
+  malformedSelectorError,
   invalidSelectorFilterError,
   misplacedSelectorFilterError,
   siblingAfterFilterError,
+  siblingInHasError,
 } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -75,6 +76,9 @@ const FILTER_NAME = /:(has-text|text-is|visible)(?![\w-])/iy;
 
 /** `:has(` at a given position (sticky). */
 const HAS_OPEN = /:has\(/iy;
+
+/** `:scope`, which a `:has()` with filters adds itself. */
+const SCOPE_PSEUDO = /:scope(?![\w-])/i;
 
 /** Characters that form combinators between compounds. */
 const COMBINATOR_CHAR = /[\s>+~]/;
@@ -236,10 +240,10 @@ function reject(err: { message: string; suggestion: string }): never {
  * @throws CommandError (81) for an empty selector or misplaced filters
  */
 function parsePart(part: string, selector: string): SelectorPart {
-  if (part.trim() === '') reject(invalidSelectorError(selector, 'a selector in the list is empty'));
+  if (part.trim() === '') reject(malformedSelectorError(selector, 'empty-in-list'));
   if (!FILTER_NAME_HINT.test(part)) return { css: part.trim(), filters: [] };
   const { leading, steps } = parseChain(part, selector);
-  if (leading) reject(invalidSelectorError(selector, `it starts with the combinator "${leading}"`));
+  if (leading) reject(malformedSelectorError(selector, 'leading-combinator', leading));
   const [first, ...rest] = steps;
   return {
     css: first?.css ?? '*',
@@ -314,7 +318,7 @@ function splitCompounds(text: string, selector: string): RawCompound[] {
     if (char.trim() && !combinator.trim()) combinator = char;
     return index;
   });
-  if (start === -1) reject(invalidSelectorError(selector, 'it ends with a combinator'));
+  if (start === -1) reject(malformedSelectorError(selector, 'trailing-combinator'));
   compounds.push({ combinator, text: text.slice(start) });
   return compounds;
 }
@@ -381,10 +385,10 @@ function findHasFilters(text: string, selector: string): FilterMatch[] {
 function parseHasArgument(argument: string, selector: string): SelectorFilter | null {
   if (!FILTER_NAME_HINT.test(argument)) return null;
   const selectors = splitSelectorList(argument).map((relative) => {
-    if (relative.trim() === '')
-      reject(invalidSelectorError(selector, ':has() has an empty selector'));
+    if (relative.trim() === '') reject(malformedSelectorError(selector, 'empty-has'));
+    if (SCOPE_PSEUDO.test(relative)) reject(malformedSelectorError(selector, 'scope-in-has'));
     const { leading, steps } = parseChain(relative, selector);
-    if (leading && leading !== '>') reject(siblingAfterFilterError(selector, leading));
+    if (leading && leading !== '>') reject(siblingInHasError(selector, leading));
     const [first, ...rest] = steps;
     return first ? [{ ...first, combinator: (leading || ' ') as ScopeCombinator }, ...rest] : [];
   });

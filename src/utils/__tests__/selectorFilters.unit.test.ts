@@ -295,8 +295,18 @@ void describe('parseSelectorFilters', () => {
   void it('rejects sibling combinators after a filtered compound', () => {
     assertRejected('li:visible + li', /descendant \(space\) or child \(>\) combinator .* not "\+"/);
     assertRejected('h2:has-text("x") ~ p', /not "~"/);
-    assertRejected('li:has(+ a:visible)', /not "\+"/);
-    assertRejected('li:has(~ a:has-text("x"))', /not "~"/);
+  });
+
+  void it('rejects a sibling combinator or :scope leading a :has() with filters', () => {
+    assertRejected(
+      'li:has(+ a:visible)',
+      /:has\(\) with text or visibility filters can only look inside an element.*\("\+"\)/
+    );
+    assertRejected('li:has(~ a:has-text("x"))', /not at its siblings \("~"\)/);
+    assertRejected(
+      'li:has(:scope > a:visible)',
+      /write :has\(> a:visible\) instead of :has\(:scope > a:visible\)/
+    );
   });
 
   void it('rejects filters inside pseudo-classes other than :has()', () => {

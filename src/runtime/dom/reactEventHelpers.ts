@@ -6,6 +6,11 @@
  * to properly trigger React's event system.
  */
 
+import {
+  LABEL_WITHOUT_CONTROL,
+  NAME_QUERY_PLACEHOLDER,
+  VIA_LABEL_SUFFIX,
+} from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 
@@ -97,13 +102,12 @@ export const REACT_FILL_SCRIPT = `
     const labelText = (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 60);
     return {
       success: false,
-      error: 'Element is not fillable (a <label> not associated with a form control)',
+      error: ${JSON.stringify(LABEL_WITHOUT_CONTROL.message)},
       elementType: 'label',
-      suggestion: 'Find the field by its accessible name: bdg dom a11y query ' + quote('name=' + labelText) + ', or list the form fields: bdg dom form'
+      suggestion: ${JSON.stringify(LABEL_WITHOUT_CONTROL.suggestion)}.split(${JSON.stringify(NAME_QUERY_PLACEHOLDER)}).join(quote('name=' + labelText))
     };
   }
-  // A label stands for its control, as when a user clicks it before typing
-  const viaLabel = labelControl ? ' (via label)' : '';
+  const viaLabel = labelControl ? ${JSON.stringify(VIA_LABEL_SUFFIX)} : '';
   if (labelControl) el = labelControl;
 
   const tagName = el.tagName.toLowerCase();
@@ -371,13 +375,11 @@ export const CLICK_ELEMENT_SCRIPT = `
     }
   }
   
-  // A label stands for its control: click the control when a user could see
-  // it (a hidden or transparent one is reached by clicking the label itself)
   const labelControl = action === 'click' || action === 'double' ? (${LABEL_CONTROL_JS})(el) : null;
   const viaLabel = labelControl &&
     (typeof labelControl.checkVisibility !== 'function' || labelControl.checkVisibility({ visibilityProperty: true, opacityProperty: true })) &&
     labelControl.getClientRects().length > 0
-    ? ' (via label)'
+    ? ${JSON.stringify(VIA_LABEL_SUFFIX)}
     : '';
   if (viaLabel) el = labelControl;
 
