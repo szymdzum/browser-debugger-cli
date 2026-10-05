@@ -7,6 +7,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { ChromeLaunchError } from '@/connection/errors.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { connectCDP, navigateToTarget } from '@/daemon/session/cdpSetup.js';
 import {
@@ -42,6 +43,19 @@ export type SessionEndReason = 'normal' | 'crash' | 'timeout' | 'closed';
 
 /** How long Chrome gets to exit after the page connection drops, before the end is called a closed tab */
 const CRASH_SETTLE_MS = 500;
+
+/** Ports tried when automatically chosen ports turn out to be taken */
+const PORT_ATTEMPTS = 3;
+
+/**
+ * Whether a launch failed because another process holds the port.
+ *
+ * @param error - Launch error
+ * @returns True for a PORT_IN_USE launch error
+ */
+function isPortConflict(error: unknown): boolean {
+  return error instanceof ChromeLaunchError && error.issue?.code === 'PORT_IN_USE';
+}
 
 /** Summary of a running session, as reported to the CLI on start. */
 export interface SessionInfo {
@@ -244,15 +258,13 @@ export class Session {
   private async acquireResources(): Promise<void> {
     this.store.resetSessionStart();
     const { chromeWsUrl } = this.config;
-    const port = chromeWsUrl
-      ? externalChromePort(chromeWsUrl)
-      : await getSessionPort(this.config.port || undefined);
-    this.config = { ...this.config, port };
-    this.throwIfStopping();
-    if (!this.config.chromeWsUrl) {
-      await reapOrphanedChrome();
+    if (chromeWsUrl) {
+      this.config = { ...this.config, port: externalChromePort(chromeWsUrl) };
+      this.throwIfStopping();
+      this.chrome = await setupChromeConnection(this.config, this.store, log, this.notify);
+    } else {
+      await this.launchOwnChrome();
     }
-    this.chrome = await setupChromeConnection(this.config, this.store, log, this.notify);
     this.throwIfStopping();
     if (this.chrome) {
       await findPageTarget(this.config, this.store, log);
@@ -273,6 +285,31 @@ export class Session {
       log
     );
     this.throwIfStopping();
+  }
+
+  /**
+   * Choose the port and launch Chrome on it.
+   *
+   * A Chrome left by this session's crashed daemon is reaped first, so the
+   * session gets its remembered port back. If another process took an
+   * automatically chosen port before Chrome could listen on it, another port
+   * is chosen (the taken one now answers, so it is skipped).
+   */
+  private async launchOwnChrome(): Promise<void> {
+    await reapOrphanedChrome();
+    const explicitPort = this.config.port || undefined;
+    for (let attempt = 1; ; attempt++) {
+      this.config = { ...this.config, port: await getSessionPort(explicitPort) };
+      this.throwIfStopping();
+      try {
+        this.chrome = await setupChromeConnection(this.config, this.store, log, this.notify);
+        return;
+      } catch (error) {
+        const retry = !explicitPort && attempt < PORT_ATTEMPTS && isPortConflict(error);
+        if (!retry) throw error;
+        log.info(`Port ${this.config.port} was taken by another process; choosing another`);
+      }
+    }
   }
 
   /**

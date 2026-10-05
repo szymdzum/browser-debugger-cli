@@ -46,17 +46,27 @@ export function markStartupLogs(userDataDir: string): StartupLogs {
 }
 
 /**
+ * Chrome's output (stderr, then stdout) since {@link markStartupLogs}. The
+ * marked offsets are byte sizes, so the files are cut before decoding.
+ *
+ * @param logs - Log positions
+ * @returns Output lines
+ */
+export function readStartupLines(logs: StartupLogs): string[] {
+  return logs.files.flatMap(({ file, offset }) => {
+    if (!fs.existsSync(file)) return [];
+    return fs.readFileSync(file).subarray(offset).toString('utf8').split('\n');
+  });
+}
+
+/**
  * Chrome's output since {@link markStartupLogs}, last lines first trimmed.
  *
  * @param logs - Log positions
  * @returns Up to {@link OUTPUT_LINES} non-empty lines
  */
 function readStartupOutput(logs: StartupLogs): string[] {
-  const lines = logs.files.flatMap(({ file, offset }) => {
-    if (!fs.existsSync(file)) return [];
-    return fs.readFileSync(file, 'utf8').slice(offset).split('\n');
-  });
-  return lines
+  return readStartupLines(logs)
     .map((line) => line.trim())
     .filter(Boolean)
     .slice(-OUTPUT_LINES);

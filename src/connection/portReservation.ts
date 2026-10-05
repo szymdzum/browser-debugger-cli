@@ -20,18 +20,19 @@ export interface PortReservation {
 /** How long a connection attempt may take when checking a port */
 const CONNECT_CHECK_MS = 500;
 
+/** Loopback addresses Chrome may listen on (it falls back to IPv6 when IPv4 is taken) */
+const LOOPBACK_HOSTS = ['127.0.0.1', '::1'] as const;
+
 /**
- * Whether something already accepts connections on 127.0.0.1:port. A
- * listener on all interfaces (`0.0.0.0`/`::`) does not stop bdg from binding
- * 127.0.0.1 on macOS, but Chrome would then fail to listen, so it is checked
- * by connecting.
+ * Whether something already accepts connections on host:port.
  *
  * @param port - Port to check
+ * @param host - Address to connect to
  * @returns True if a connection was accepted
  */
-export function isPortAnswering(port: number): Promise<boolean> {
+export function acceptsConnections(port: number, host: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = net.connect({ port, host: '127.0.0.1' });
+    const socket = net.connect({ port, host });
     const finish = (answering: boolean): void => {
       socket.destroy();
       resolve(answering);
@@ -40,6 +41,22 @@ export function isPortAnswering(port: number): Promise<boolean> {
     socket.once('connect', () => finish(true));
     socket.once('error', () => finish(false));
   });
+}
+
+/**
+ * Whether something already accepts connections on the port, on 127.0.0.1 or
+ * ::1. A listener on all interfaces (`0.0.0.0`/`::`) does not stop bdg from
+ * binding 127.0.0.1 on macOS, but Chrome would then fail to listen; a Chrome
+ * on [::1] (one that found 127.0.0.1 taken) does not stop it either, but a
+ * second Chrome would be reached through the first one's port. Both are found
+ * by connecting.
+ *
+ * @param port - Port to check
+ * @returns True if a connection was accepted on either address
+ */
+export async function isPortAnswering(port: number): Promise<boolean> {
+  const answers = await Promise.all(LOOPBACK_HOSTS.map((host) => acceptsConnections(port, host)));
+  return answers.some(Boolean);
 }
 
 /**
