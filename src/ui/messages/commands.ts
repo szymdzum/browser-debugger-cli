@@ -97,29 +97,45 @@ function scrollAdvice(scrollBy: LayoutPoint): string {
 }
 
 /**
+ * How to bring a not fully visible element into view, in words.
+ *
+ * @param element - Element layout
+ * @returns e.g. "scroll down 760px", "off-screen: fixed position, page scroll
+ *   does not move it"; undefined when neither applies
+ */
+function layoutScrollNote(
+  element: Pick<ElementLayout, 'scrollBy' | 'offScreenReason'>
+): string | undefined {
+  if (element.scrollBy) return scrollAdvice(element.scrollBy);
+  return element.offScreenReason && `off-screen: ${element.offScreenReason}`;
+}
+
+/**
  * Where an element is relative to the viewport, for `bdg dom layout`.
  *
  * @param element - Element layout
  * @returns e.g. "visible", "partly visible (40%)", "below fold (scroll down 760px)",
- *   "out of view in ul#list (below)", "hidden (display: none)"
+ *   "out of view in ul#list (below)", "hidden (display: none)",
+ *   "left of viewport (off-screen: beyond the page's scroll range)"
  */
 export function layoutPositionLabel(
   element: Pick<
     ElementLayout,
-    'inViewport' | 'percentVisible' | 'hiddenReason' | 'scrollBy' | 'clippedBy'
+    'inViewport' | 'percentVisible' | 'hiddenReason' | 'scrollBy' | 'clippedBy' | 'offScreenReason'
   >
 ): string {
-  const { inViewport, percentVisible, hiddenReason, scrollBy, clippedBy } = element;
+  const { inViewport, percentVisible, hiddenReason, clippedBy } = element;
   if (inViewport === 'visible') return 'visible';
+  const note = layoutScrollNote(element);
   if (inViewport === 'partly') {
     const clipped = clippedBy ? `, clipped by ${clippedBy}` : '';
     const label = `partly visible (${percentVisible ?? 0}%${clipped})`;
-    return scrollBy ? `${label} (${scrollAdvice(scrollBy)})` : label;
+    return note ? `${label} (${note})` : label;
   }
   const label = viewportPositionHint(inViewport, clippedBy) ?? inViewport;
   if (hiddenReason) return `${label} (${hiddenReason})`;
   if (clippedBy) return `${label} (${inViewport})`;
-  return scrollBy ? `${label} (${scrollAdvice(scrollBy)})` : label;
+  return note ? `${label} (${note})` : label;
 }
 
 /**

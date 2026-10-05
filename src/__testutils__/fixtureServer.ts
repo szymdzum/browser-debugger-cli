@@ -93,8 +93,10 @@ const DEEP_FRAME_HTML = `<!doctype html><p class="note">frame</p>
  * Page for `dom layout`: a button in view, one under an overlay, one below
  * the fold, a hidden paragraph, a same-origin iframe at a known offset, a
  * button with `pointer-events: none`, one under a `pointer-events: none`
- * overlay, a dropdown escaping an `overflow: hidden` parent and a link
- * wrapped over two lines.
+ * overlay, a dropdown escaping an `overflow: hidden` parent, a link
+ * wrapped over two lines, a button in a closed `<details>`, a fixed
+ * off-canvas link, a skip link beyond the page's scroll range, and a fixed
+ * element inside a transformed container (which scrolls with the page).
  */
 const LAYOUT_HTML = `<!doctype html><title>layout</title>
 <style>body { margin: 0; height: 3000px; } button { position: absolute; width: 100px; height: 30px; }</style>
@@ -113,7 +115,11 @@ const LAYOUT_HTML = `<!doctype html><title>layout</title>
     <ul id="dropdown" style="position: absolute; top: 30px; margin: 0"><li>Option</li></ul>
   </div>
 </div>
-<p style="position: absolute; left: 10px; top: 350px; margin: 0; width: 11ch; font: 20px/20px monospace"><b>AAAAAAA</b> <a id="wrapped" href="#">BB CC</a> <b>DDDDDDD</b></p>`;
+<p style="position: absolute; left: 10px; top: 350px; margin: 0; width: 11ch; font: 20px/20px monospace"><b>AAAAAAA</b> <a id="wrapped" href="#">BB CC</a> <b>DDDDDDD</b></p>
+<details style="position: absolute; left: 10px; top: 450px"><summary>FAQ</summary><button id="in-details" style="position: static">Answer</button></details>
+<nav style="position: fixed; left: 0; top: 0; width: 200px; transform: translateX(-100%)"><a id="off-canvas" href="#">Menu</a></nav>
+<a id="skip" href="#save" style="position: absolute; left: -9999px; top: 0">Skip</a>
+<div style="position: absolute; top: 2000px; left: 0; transform: translateZ(0)"><div id="fixed-in-transform" style="position: fixed; top: 0; left: 0">Toast</div></div>`;
 
 /**
  * Running fixture server handle.

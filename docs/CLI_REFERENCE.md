@@ -113,7 +113,7 @@ Three Playwright-style filters can be added at the **end** of a selector (of eac
 |--------|-------------------------|
 | `:has-text("text")` | rendered text (whitespace collapsed) contains `text`, case-insensitive; also matches ancestors, so give an element selector |
 | `:text-is("text")` | rendered text (trimmed, whitespace collapsed) is exactly `text`, case-sensitive |
-| `:visible` | has a non-empty box and `visibility: visible` (not `display:none` or inside it, not zero-size); like Playwright, `opacity: 0` still counts as visible |
+| `:visible` | is rendered, has a non-empty box and `visibility: visible` (not `display:none` or inside it, not inside a closed `<details>` or under `content-visibility: hidden`, not zero-size); like Playwright, `opacity: 0` still counts as visible |
 
 ```bash
 bdg dom click 'button:has-text("Save")'            # Button containing "Save"
@@ -312,15 +312,17 @@ Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
 ```
 
 - Coordinates are CSS pixels; `bounds` is relative to the top-level page (iframe offsets and page scroll included), `viewport` to the visible area
-- `inViewport`: `visible`, `partly` (with `percentVisible`), `above`, `below`, `left`, `right` or `hidden` (with `hiddenReason`: `display: none`, `visibility: hidden`, zero size, inside a hidden iframe)
-- Same-origin iframes and overflow containers (scroll lists, `overflow: hidden`) clip what counts as visible, following containing blocks (an absolutely positioned dropdown escapes a static `overflow: hidden` parent; fixed elements are not clipped). When one cuts the element off, `clippedBy` names it (`out of view in ul#list (below)`) and there is no `scrollBy`; otherwise `scrollBy` is the page scroll that shows the element fully
+- `inViewport`: `visible`, `partly` (with `percentVisible`), `above`, `below`, `left`, `right` or `hidden` (with `hiddenReason`: `display: none`, `visibility: hidden`, zero size, `inside a closed <details>`, `content-visibility: hidden on div#…`, inside a hidden iframe)
+- Same-origin iframes and overflow containers (scroll lists, `overflow: hidden`) clip what counts as visible, following containing blocks (an absolutely positioned dropdown escapes a static `overflow: hidden` parent; fixed elements are not clipped). A `<body>` that scrolls on its own (the root element has `overflow` other than `visible`) clips like any container. When one cuts the element off, `clippedBy` names it (`out of view in ul#list (below)`, `out of view in body (below)`) and there is no `scrollBy`
+- `scrollBy`: the page scroll (`bdg dom scroll --down/--up/--right/--left`) that centres an element that is not fully in view (aligns the top of one taller than the viewport), like `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover it; limited to how far the page can actually scroll
+- `offScreenReason` replaces `scrollBy` when no page scroll can bring the element fully into view: `fixed position, page scroll does not move it` (the element or a container is `position: fixed` relative to the viewport, e.g. an off-canvas menu; a fixed element inside a transformed container scrolls with the page and gets `scrollBy`) or `beyond the page's scroll range` (e.g. a `left: -9999px` skip link). The position (`left`, `above`, `partly`, …) is kept; human output shows `left of viewport (off-screen: …)`
 - `coveredBy`: the topmost element at the center of the largest visible box (a wrapped link has one per line), when it is another element (not one inside it or around it), e.g. a modal backdrop or sticky header; overlays over an iframe count too. Not reported for elements hit-testing skips (`pointer-events: none`)
 - `inert: true` for elements inside an `inert` element (through shadow roots): shown, but not interactive; human output adds `inert`
 - `opacity: 0` elements count as visible (like `:visible`); human output adds `opacity: 0`
 - Elements in open shadow roots and same-origin iframes are found like with the other DOM commands; one page-side pass measures them all
 - Known limit: CSS transforms on iframes (and zoom) are not applied to the offsets of elements inside them
 
-**JSON (`data`):** `{ selector, count, omitted?, page: { viewport: { width, height }, scroll: { x, y }, document: { width, height } }, elements: [{ index, tag, element, text?, context?, bounds: { x, y, width, height }, viewport: { x, y }, inViewport, percentVisible?, hiddenReason?, scrollBy?: { x, y }, clippedBy?, coveredBy?, inert?, computed: { display, visibility, position, opacity, zIndex } }] }`
+**JSON (`data`):** `{ selector, count, omitted?, page: { viewport: { width, height }, scroll: { x, y }, document: { width, height } }, elements: [{ index, tag, element, text?, context?, bounds: { x, y, width, height }, viewport: { x, y }, inViewport, percentVisible?, hiddenReason?, scrollBy?: { x, y }, clippedBy?, offScreenReason?, coveredBy?, inert?, computed: { display, visibility, position, opacity, zIndex } }] }`
 
 ### JavaScript Evaluation
 

@@ -43,6 +43,8 @@ function element(index: number, y: number, coveredBy: string | null = null): Raw
       clipper: null,
       hidden: null,
       inert: false,
+      fixed: false,
+      pageScroll: { left: 0, up: 300, right: 0, down: 2200 },
       offset: { x: 0, y: 0 },
     },
     coveredBy,

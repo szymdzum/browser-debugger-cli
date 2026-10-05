@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Release workflow** - npm releases are published by GitHub Actions with npm Trusted Publishing (OIDC, with provenance) when a GitHub release is published, instead of bumping the version in the workflow with an npm token; no token or one-time password is needed. See `docs/RELEASE_PROCESS.md`
 
+### Fixed
+
+- **`dom layout` visibility and scroll advice** - Content in a closed `<details>` or under `content-visibility: hidden` is `hidden` (with the reason) and no longer matches `:visible`. `scrollBy` centres the element (like `dom scroll <selector>`, so sticky headers and fixed footers do not cover it) and is limited to how far the page can scroll; fixed elements (off-canvas menus; not those inside a transformed container, which scroll with the page) and elements beyond the scroll range (`left: -9999px` skip links) get `offScreenReason` instead, and a `<body>` that scrolls on its own is reported as `clippedBy: body`. An empty selector exits 81 in `dom layout`, `click` and the other selector commands instead of failing with a script error (#316)
+
 ## [0.8.0] - 2026-10-04
 
 Thanks to @sfc-gh-mochen, @sfc-gh-adsaxena and @StealthEyeLLC, whose pull requests (#169, #199, #200, #252) led to the text selectors, `bdg eval`, `dom eval --frame`, readable binary WebSocket messages and `bdg dom listeners` in this release.

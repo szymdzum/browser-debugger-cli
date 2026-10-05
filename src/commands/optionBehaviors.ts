@@ -186,7 +186,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Reports every match of the selector (human output lists the first 20, JSON up to 100 plus an omitted count); a numeric argument reports that cached query element',
     whenEnabled: 'Reports only the nth match (0-based); out of range exits 81',
     automaticBehavior:
-      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none); inert elements are flagged, not hidden',
+      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). scrollBy centres the element and is limited to how far the page can scroll; fixed elements and ones beyond that range get offScreenReason instead. Content in a closed <details> or under content-visibility: hidden is hidden. coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none); inert elements are flagged, not hidden',
     tokenImpact:
       'About one line per element; a cheap alternative to screenshots for "where is it?"',
   },

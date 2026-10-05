@@ -11,7 +11,12 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { indexOutOfRangeError, noNodesFoundError, staleNodeError } from '@/errors/messages.js';
+import {
+  emptySelectorError,
+  indexOutOfRangeError,
+  noNodesFoundError,
+  staleNodeError,
+} from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { parseSelectorFilters, type SelectorFilter } from '@/utils/selectorFilters.js';
 
@@ -20,13 +25,16 @@ export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
 
 /**
  * Page-side test of one text or visibility filter ({@link SelectorFilter}).
- * Visible means a non-empty box and `visibility: visible`, as in Playwright
- * (`opacity: 0` still counts as visible). Text is the rendered text (`innerText`, `textContent` for elements without
- * it) with whitespace collapsed; filter texts arrive normalized (`has-text`
+ * Visible means rendered (`checkVisibility()`: not inside a closed `<details>`
+ * or under `content-visibility: hidden`), a non-empty box and
+ * `visibility: visible`, as in Playwright (`opacity: 0` still counts as visible). Text is
+ * the rendered text (`innerText`, `textContent` for elements without it) with
+ * whitespace collapsed; filter texts arrive normalized (`has-text`
  * lowercased).
  */
 const FILTER_MATCHES_JS = `(el, filter) => {
   if (filter.kind === 'visible') {
+    if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
     const rect = el.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0 && el.ownerDocument.defaultView.getComputedStyle(el).visibility === 'visible';
   }
@@ -86,9 +94,17 @@ export const FIND_ELEMENTS_JS = `function (selector, parts) {
  *
  * @param selector - Selector as the user gave it (or the bound-node placeholder)
  * @returns JS source of the two arguments, e.g. `"li:visible", [{...}]`
- * @throws CommandError (81) for a misplaced or malformed filter
+ * @throws CommandError (81) for an empty selector or a misplaced or malformed filter
  */
 export function selectorArgsJS(selector: string): string {
+  if (selector.trim() === '') {
+    const err = emptySelectorError();
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
   return `${JSON.stringify(selector)}, ${JSON.stringify(parseSelectorFilters(selector))}`;
 }
 

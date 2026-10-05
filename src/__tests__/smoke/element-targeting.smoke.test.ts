@@ -171,6 +171,8 @@ interface LayoutData {
     inViewport: string;
     hiddenReason?: string;
     scrollBy?: { x: number; y: number };
+    clippedBy?: string;
+    offScreenReason?: string;
     coveredBy?: string;
   }>;
 }
@@ -206,7 +208,7 @@ void describe('Element layout', () => {
     const [save] = data.elements;
     assert.deepEqual(save?.bounds, { x: 20, y: 2000, width: 120, height: 40 });
     assert.equal(save?.inViewport, 'below');
-    assert.equal(save?.scrollBy?.y, 2040 - data.page.viewport.height);
+    assert.equal(save?.scrollBy?.y, Math.round(2020 - data.page.viewport.height / 2));
     assert.ok(data.page.document.height >= 3000);
     assert.match(
       await bdg(['dom', 'layout', '#save']),
@@ -246,6 +248,57 @@ void describe('Element layout', () => {
     const [gone] = (await layout('#gone')).elements;
     assert.equal(gone?.inViewport, 'hidden');
     assert.equal(gone?.hiddenReason, 'display: none');
+  });
+
+  void it('reports content in a closed <details> as hidden and not :visible', async () => {
+    const [answer] = (await layout('#in-details')).elements;
+    assert.equal(answer?.inViewport, 'hidden');
+    assert.equal(answer?.hiddenReason, 'inside a closed <details>');
+    const visible = JSON.parse(await bdg(['dom', 'query', 'button:visible', '--json'])) as {
+      data: { nodes: Array<{ id?: string }> };
+    };
+    const ids = visible.data.nodes.map((node) => node.id);
+    assert.ok(ids.includes('top') && !ids.includes('in-details'), JSON.stringify(ids));
+  });
+
+  void it('gives no page scroll for a fixed off-canvas link or one beyond the scroll range', async () => {
+    const [offCanvas, skip] = (await layout('#off-canvas, #skip')).elements;
+    assert.equal(offCanvas?.inViewport, 'left');
+    assert.equal(offCanvas?.scrollBy, undefined);
+    assert.match(offCanvas?.offScreenReason ?? '', /fixed/);
+    assert.equal(skip?.inViewport, 'left');
+    assert.equal(skip?.scrollBy, undefined);
+    assert.match(skip?.offScreenReason ?? '', /scroll range/);
+
+    const [inTransform] = (await layout('#fixed-in-transform')).elements;
+    assert.equal(
+      inTransform?.inViewport,
+      'below',
+      'fixed inside a transform scrolls with the page'
+    );
+    assert.ok(inTransform?.scrollBy, 'gets scroll advice');
+    assert.equal(inTransform?.offScreenReason, undefined);
+  });
+
+  void it('names a scrolling body instead of advising a page scroll it cannot do', async () => {
+    await evaluate(
+      "document.documentElement.style.cssText = 'height: 100%; overflow: hidden'; document.body.style.cssText = 'position: relative; overflow: auto; height: 100%'; 1"
+    );
+    try {
+      const [save] = (await layout('#save')).elements;
+      assert.equal(save?.inViewport, 'below');
+      assert.equal(save?.clippedBy, 'body');
+      assert.equal(save?.scrollBy, undefined);
+    } finally {
+      await evaluate(
+        "document.documentElement.style.cssText = ''; document.body.style.cssText = ''; 1"
+      );
+    }
+  });
+
+  void it('exits 81 for an empty selector', async () => {
+    assert.match(await bdg(['dom', 'layout', ''], 81), /selector is empty/);
+    await bdg(['dom', 'click', ''], 81);
   });
 
   void it('adds the iframe offset for an element inside a same-origin iframe', async () => {
