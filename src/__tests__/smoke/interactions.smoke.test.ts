@@ -20,6 +20,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 
 /**
  * Run a bdg command and assert its exit code.
@@ -195,6 +196,41 @@ void describe('DOM interactions', () => {
       await evaluate(
         "document.getElementById('floats').remove(); document.body.style.minHeight = ''; scrollTo(0, 0); 1"
       );
+    }
+  });
+
+  void it('captures the scrolled-to part of the page in a viewport screenshot', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-shot-'));
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', '<div id="tall"><div style="height: 4000px"></div><p style="font: 40px serif">' + 'Lorem ipsum dolor sit amet '.repeat(300) + '</p></div>'); 1`
+    );
+    /**
+     * Take a viewport screenshot at a scroll position.
+     *
+     * @param name - File name
+     * @param scroll - Script that scrolls the page
+     * @returns Size of the image in bytes
+     */
+    const shoot = async (name: string, scroll: string): Promise<number> => {
+      await evaluate(`${scroll}; 1`);
+      const output = await bdg([
+        'dom',
+        'screenshot',
+        path.join(dir, name),
+        '--no-full-page',
+        '--json',
+      ]);
+      return (JSON.parse(output) as { data: { size: number } }).data.size;
+    };
+    try {
+      const blank = await shoot(
+        'blank.png',
+        "document.getElementById('tall').firstElementChild.scrollIntoView()"
+      );
+      const text = await shoot('text.png', 'scrollTo(0, document.documentElement.scrollHeight)');
+      assert.ok(text > blank * 3, `text at the bottom: ${text} bytes, blank area: ${blank} bytes`);
+    } finally {
+      await evaluate("document.getElementById('tall').remove(); scrollTo(0, 0); 1");
     }
   });
 
@@ -483,6 +519,19 @@ void describe('DOM interactions', () => {
     await bdg(['page', 'back']);
   });
 
+  void it('reports the status of the navigated document, not of one its script loads', async () => {
+    const url = String(await evaluate('location.href'));
+    const missing = await bdg(['page', 'navigate', new URL('/missing-page', url).href]);
+    assert.match(missing, /Status: +404/);
+    assert.match(missing, /responded with HTTP 404/);
+
+    const spa = await bdg(['page', 'navigate', new URL('/spa-missing', url).href, '--json']);
+    const { data } = JSON.parse(spa) as { data: { status: number; warning?: string } };
+    assert.equal(data.status, 404);
+    assert.match(data.warning ?? '', /HTTP 404, then loaded .*\/\?\/spa-missing \(HTTP 200\)/);
+    await bdg(['page', 'navigate', url]);
+  });
+
   void it('collapses framework roots and names jQuery handlers and React props in listener lists', async () => {
     await bdg(['page', 'navigate', `${fixture.url}framework-listeners`]);
     type Listed = {
@@ -609,6 +658,52 @@ void describe('DOM interactions', () => {
       await bdg(['dom', 'click', '#cancel']),
       /^✓ Element Clicked\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"/
     );
+  });
+
+  void it('names a select by its label or selected option, not its options run together', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', '<span id="sorts"><span>Name (A to Z)</span><select class="sort" aria-label="Sort products"><option value="az">Name (A to Z)</option><option value="za">Name (Z to A)</option></select>' +
+        '<span>Size</span><select class="bare"><option>Small</option><option>Large</option></select><input type="checkbox" class="pick"></span>'); 1`
+    );
+    try {
+      assert.match(
+        await bdg(['dom', 'fill', '.sort', 'za']),
+        /Element: +select\.sort "Sort products"/
+      );
+      assert.match(await bdg(['dom', 'fill', '.bare', 'Large']), /Element: +select\.bare "Large"/);
+      assert.match(
+        await bdg(['dom', 'click', '.pick']),
+        /Element: +input\.pick in span#sorts "Name \(A to Z\) Size"/
+      );
+    } finally {
+      await evaluate("document.getElementById('sorts').remove(); 1");
+    }
+  });
+
+  void it('names a select by label, then aria-label, then name, then selected option', async () => {
+    const options = '<option>One</option><option selected>Two</option>';
+    const html =
+      `<div id="naming"><label for="s1">By label</label><select id="s1" aria-label="Aria" name="n1">${options}</select>` +
+      `<select id="s2" aria-label="By aria" name="n2">${options}</select>` +
+      `<select id="s3" name="by-name">${options}</select>` +
+      `<select id="s4">${options}</select>` +
+      `<p><span>Row</span><span style="display:none">Gone</span><span style="visibility:hidden">Ghost</span>` +
+      `<select>${options}</select><textarea>typed</textarea><input type="checkbox" class="row-pick"></p></div>`;
+    await evaluate(`document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(html)}); 1`);
+    try {
+      const names = await evaluate(
+        `['#s1', '#s2', '#s3', '#s4', '.row-pick'].map((s) => (${ELEMENT_IDENTITY_JS})(document.querySelector(s)))`
+      );
+      assert.deepEqual(names, [
+        'select#s1 "By label"',
+        'select#s2 "By aria"',
+        'select#s3 "by-name"',
+        'select#s4 "Two"',
+        'input.row-pick in p "Row"',
+      ]);
+    } finally {
+      await evaluate("document.getElementById('naming').remove(); 1");
+    }
   });
 
   void it('lists API requests and sums up assets after an action', async () => {

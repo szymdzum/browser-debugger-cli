@@ -12,7 +12,11 @@ import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { httpErrorWarning, notAPageWarning, stillLoadingWarning } from '@/ui/messages/commands.js';
+import {
+  documentStatusWarning,
+  notAPageWarning,
+  stillLoadingWarning,
+} from '@/ui/messages/commands.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -52,14 +56,16 @@ export async function navigatePage(
   const navigated = nextNavigation(cdp, mainFrameId);
   const document = documentResponse(cdp, mainFrameId);
   const deadline = Date.now() + PAGE_READY_TIMEOUT_MS;
+  let loaderId: string | undefined;
   try {
     const sent = startAction(cdp, action, url);
     sent.catch(() => undefined);
     const started = await Promise.race([sent, delay(PAGE_READY_TIMEOUT_MS)]);
     if (started === undefined) return await stillLoading(cdp, action);
-    if (started === 'not-a-page') {
+    if (started.notAPage) {
       return { action, ...(await currentLocation(cdp)), warning: notAPageWarning() };
     }
+    loaderId = started.loaderId;
     const how = await Promise.race([navigated.done, delay(Math.max(0, deadline - Date.now()))]);
     if (how === 'loaded') {
       await waitForPageReady(cdp, { maxWaitMs: Math.max(0, deadline - Date.now()) });
@@ -68,7 +74,10 @@ export async function navigatePage(
     navigated.stop();
     document.stop();
   }
-  const result = withStatus({ action, ...(await currentLocation(cdp)) }, document.response());
+  const result = withStatus(
+    { action, ...(await currentLocation(cdp)) },
+    document.response(loaderId)
+  );
   const loading = await readPageLoadingState(cdp, options.pendingRequests?.() ?? []);
   return loading ? { ...result, loading } : result;
 }
@@ -95,7 +104,15 @@ async function startWithoutWaiting(
   sent.catch((error: unknown) => log.debug(`Navigation not started: ${getErrorMessage(error)}`));
   const started = await Promise.race([sent, delay(NO_WAIT_GRACE_MS)]);
   const result = { action, url: url ?? (await pageTarget(cdp)).url, title: '' };
-  return started === 'not-a-page' ? { ...result, warning: notAPageWarning() } : result;
+  return started?.notAPage ? { ...result, warning: notAPageWarning() } : result;
+}
+
+/** How an action started */
+interface StartedAction {
+  /** The URL loaded no document (a download) */
+  notAPage: boolean;
+  /** Loader of the new document, when the browser names it (navigate only) */
+  loaderId?: string;
 }
 
 /**
@@ -104,18 +121,18 @@ async function startWithoutWaiting(
  * @param cdp - CDP connection
  * @param action - What to do
  * @param url - Normalized URL for navigate
- * @returns 'not-a-page' when the URL loaded no document (a download), else 'started'
+ * @returns Whether a document is loading, and its loader when known
  * @throws CommandError (80) when the URL cannot be reached, (81) without a history entry
  */
 async function startAction(
   cdp: CDPConnection,
   action: PageAction,
   url: string | undefined
-): Promise<'started' | 'not-a-page'> {
+): Promise<StartedAction> {
   if (action === 'navigate') return navigateTo(cdp, url ?? '');
   if (action === 'reload') await cdp.send('Page.reload', {});
   else await goThroughHistory(cdp, action === 'back' ? -1 : 1);
-  return 'started';
+  return { notAPage: false };
 }
 
 /**
@@ -183,49 +200,94 @@ async function stillLoading(cdp: CDPConnection, action: PageAction): Promise<Pag
   };
 }
 
-/**
- * Add the document's HTTP status (and a warning for an error status).
- *
- * @param result - Navigation result
- * @param response - The main document's response, if one arrived
- * @returns Result with status
- */
-function withStatus(
-  result: PageNavigationResult,
-  response: { status: number; url: string } | undefined
-): PageNavigationResult {
-  if (!response) return result;
-  const url = result.url.startsWith('chrome-error://') ? response.url : result.url;
-  return {
-    ...result,
-    url,
-    status: response.status,
-    ...(response.status >= 400 && { warning: httpErrorWarning(response.status) }),
-  };
+/** HTTP response of a document loaded in the main frame */
+interface DocumentResponse {
+  status: number;
+  url: string;
+}
+
+/** Documents the main frame loaded during a navigation */
+export interface DocumentResponses {
+  /** The navigation's own document (after HTTP redirects) */
+  first: DocumentResponse;
+  /** The last document loaded after it (a script or meta refresh moved on), if any */
+  later?: DocumentResponse;
 }
 
 /**
- * Watch for the response of the main frame's next document.
+ * Add the HTTP status of the navigation's own document, with a warning for an
+ * error status or for a later document that answered differently (a 404 page
+ * whose script loads the app, as single-page apps on static hosts do).
+ *
+ * @param result - Navigation result
+ * @param documents - The main frame's document responses, if one arrived
+ * @returns Result with status
+ */
+export function withStatus(
+  result: PageNavigationResult,
+  documents: DocumentResponses | undefined
+): PageNavigationResult {
+  if (!documents) return result;
+  const { first, later } = documents;
+  const url = result.url.startsWith('chrome-error://') ? first.url : result.url;
+  const warning = documentStatusWarning(first.status, later);
+  return { ...result, url, status: first.status, ...(warning && { warning }) };
+}
+
+/** A main-frame document event: request start or response */
+interface DocumentEvent {
+  requestId: string;
+  loaderId?: string;
+  type?: string;
+  frameId?: string;
+}
+
+/**
+ * Watch for the responses of the main frame's documents. Only documents
+ * requested after the watch began count (a response to a request from
+ * before belongs to an earlier navigation). The navigation's own document
+ * is the one of its loader when the browser named it, else the first; the
+ * documents after it were loaded by the page itself.
  *
  * @param cdp - CDP connection
  * @param mainFrameId - Main frame id
- * @returns The response seen so far, and a function to stop listening
+ * @returns The responses seen so far (given the navigation's loader, if known),
+ *   and a function to stop listening
  */
-function documentResponse(
-  cdp: CDPConnection,
+export function documentResponse(
+  cdp: Pick<CDPConnection, 'on'>,
   mainFrameId: string
-): { response: () => { status: number; url: string } | undefined; stop: () => void } {
-  let seen: { status: number; url: string } | undefined;
-  const stop = cdp.on<{
-    type?: string;
-    frameId?: string;
-    response: { status: number; url: string };
-  }>('Network.responseReceived', (params) => {
-    if (params.type === 'Document' && params.frameId === mainFrameId) {
-      seen = { status: params.response.status, url: params.response.url };
-    }
+): { response: (loaderId?: string) => DocumentResponses | undefined; stop: () => void } {
+  const requested = new Set<string>();
+  const responses: Array<DocumentResponse & { loaderId?: string }> = [];
+  const isMainDocument = (params: DocumentEvent): boolean =>
+    params.type === 'Document' && params.frameId === mainFrameId;
+  const stopRequests = cdp.on<DocumentEvent>('Network.requestWillBeSent', (params) => {
+    if (isMainDocument(params)) requested.add(params.requestId);
   });
-  return { response: () => seen, stop };
+  const stopResponses = cdp.on<DocumentEvent & { response: DocumentResponse }>(
+    'Network.responseReceived',
+    (params) => {
+      if (!isMainDocument(params) || !requested.has(params.requestId)) return;
+      const { status, url } = params.response;
+      responses.push({ status, url, ...(params.loaderId && { loaderId: params.loaderId }) });
+    }
+  );
+  const response = (loaderId?: string): DocumentResponses | undefined => {
+    const index = loaderId ? responses.findIndex((r) => r.loaderId === loaderId) : 0;
+    const own = responses[index];
+    if (index < 0 || !own) return undefined;
+    const last = responses.length - 1 > index ? responses[responses.length - 1] : undefined;
+    const first = { status: own.status, url: own.url };
+    return last ? { first, later: { status: last.status, url: last.url } } : { first };
+  };
+  return {
+    response,
+    stop: () => {
+      stopRequests();
+      stopResponses();
+    },
+  };
 }
 
 /**
@@ -270,16 +332,20 @@ function nextNavigation(
  *
  * @param cdp - CDP connection
  * @param url - Normalized URL
- * @returns 'not-a-page' when no document was loaded (a download), else 'started'
+ * @returns Whether a document is loading (not for a download), and its loader
  * @throws CommandError (80) when the URL cannot be reached
  */
-async function navigateTo(cdp: CDPConnection, url: string): Promise<'started' | 'not-a-page'> {
+async function navigateTo(cdp: CDPConnection, url: string): Promise<StartedAction> {
   const navigation = (await cdp.send('Page.navigate', { url })) as {
     errorText?: string;
     loaderId?: string;
   };
-  if (navigation.errorText === 'net::ERR_ABORTED' && !navigation.loaderId) return 'not-a-page';
-  if (!navigation.errorText || !UNREACHABLE_ERRORS.test(navigation.errorText)) return 'started';
+  if (navigation.errorText === 'net::ERR_ABORTED' && !navigation.loaderId) {
+    return { notAPage: true };
+  }
+  if (!navigation.errorText || !UNREACHABLE_ERRORS.test(navigation.errorText)) {
+    return { notAPage: false, ...(navigation.loaderId && { loaderId: navigation.loaderId }) };
+  }
   const err = navigationFailedError(url, navigation.errorText);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_URL);
 }

@@ -250,6 +250,21 @@ export async function getElementBounds(ref: NodeRef): Promise<ElementBounds> {
 }
 
 /**
+ * Page coordinates of the visible area's top-left corner. A capture clip is
+ * in page coordinates, so a viewport capture must start at the scroll
+ * position, not at the page origin (which shows nothing once scrolled). Read
+ * after any metrics override, which can move the scroll position.
+ *
+ * @returns Scroll offset of the visual viewport in CSS pixels
+ */
+async function visibleAreaOrigin(): Promise<ScrollPosition> {
+  const response = await callCDP('Page.getLayoutMetrics', {});
+  const metrics = response.data?.result as Protocol.Page.GetLayoutMetricsResponse | undefined;
+  const viewport = metrics?.cssVisualViewport;
+  return { x: viewport?.pageX ?? 0, y: viewport?.pageY ?? 0 };
+}
+
+/**
  * Capture a screenshot of the page. Auto-resizes oversized pages by default
  * to keep Claude Vision token cost bounded; falls back to viewport capture
  * when the page is taller than the tall-page threshold.
@@ -306,20 +321,7 @@ export async function capturePageScreenshot(
     }
   }
 
-  let clipX = 0;
-  let clipY = 0;
-  if (useScroll && !effectiveFullPage) {
-    const scrollResponse = await callCDP('Runtime.evaluate', {
-      expression: 'JSON.stringify({ x: window.scrollX, y: window.scrollY })',
-      returnByValue: true,
-    });
-    const scrollPos = JSON.parse(
-      (scrollResponse.data?.result as { result?: { value?: string } })?.result?.value ??
-        '{"x":0,"y":0}'
-    ) as { x: number; y: number };
-    clipX = scrollPos.x;
-    clipY = scrollPos.y;
-  }
+  const clipOrigin = effectiveFullPage ? { x: 0, y: 0 } : await visibleAreaOrigin();
 
   let screenshotResult: Protocol.Page.CaptureScreenshotResponse | undefined;
   try {
@@ -328,8 +330,8 @@ export async function capturePageScreenshot(
       ...(quality !== undefined && { quality }),
       captureBeyondViewport: effectiveFullPage,
       clip: {
-        x: clipX,
-        y: clipY,
+        x: clipOrigin.x,
+        y: clipOrigin.y,
         width: captureWidth,
         height: captureHeight,
         scale,

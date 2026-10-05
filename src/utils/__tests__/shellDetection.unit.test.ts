@@ -112,9 +112,25 @@ void describe('Shell Detection Utilities', () => {
   });
 
   void describe('detectScriptQuoteDamage()', () => {
-    void describe('detects bare function arguments', () => {
+    /**
+     * Detect damage for a script that failed with `<name> is not defined`.
+     *
+     * @param script - Script
+     * @param name - Undefined identifier
+     * @returns Detection result
+     */
+    const undefinedName = (
+      script: string,
+      name: string
+    ): ReturnType<typeof detectScriptQuoteDamage> =>
+      detectScriptQuoteDamage(
+        script,
+        `ReferenceError: ${name} is not defined\n    at <anonymous>:1:1`
+      );
+
+    void describe('detects bare arguments of string-taking DOM methods', () => {
       void it('detects querySelector with bare argument', () => {
-        const result = detectScriptQuoteDamage('document.querySelector(input)');
+        const result = undefinedName('document.querySelector(input)', 'input');
 
         assert.equal(result.damaged, true);
         assert.equal(result.type, 'unquoted-argument');
@@ -123,96 +139,168 @@ void describe('Shell Detection Utilities', () => {
       });
 
       void it('detects getElementById with bare argument', () => {
-        const result = detectScriptQuoteDamage('document.getElementById(myId)');
+        const result = undefinedName('document.getElementById(myId)', 'myId');
 
         assert.equal(result.damaged, true);
         assert.ok(result.details?.includes('getElementById'));
         assert.ok(result.details?.includes('myId'));
       });
 
-      void it('detects closest with bare argument', () => {
-        const result = detectScriptQuoteDamage('element.closest(div)');
-
-        assert.equal(result.damaged, true);
-        assert.ok(result.details?.includes('closest'));
-        assert.ok(result.details?.includes('div'));
+      void it('detects closest, getAttribute, classList.add and matches', () => {
+        assert.equal(undefinedName('element.closest(div)', 'div').damaged, true);
+        assert.equal(undefinedName('el.getAttribute(href)', 'href').damaged, true);
+        assert.equal(undefinedName('el.classList.add(active)', 'active').damaged, true);
+        assert.equal(undefinedName('element.matches(button)', 'button').damaged, true);
       });
 
-      void it('detects getAttribute with bare argument', () => {
-        const result = detectScriptQuoteDamage('el.getAttribute(href)');
-
-        assert.equal(result.damaged, true);
-        assert.ok(result.details?.includes('getAttribute'));
-        assert.ok(result.details?.includes('href'));
+      void it('detects a hyphenated id and a compound selector', () => {
+        assert.equal(undefinedName('document.getElementById(my-id)', 'my').damaged, true);
+        assert.equal(
+          undefinedName('document.querySelector(button.primary)', 'button').damaged,
+          true
+        );
       });
 
-      void it('detects classList.add with bare argument', () => {
-        const result = detectScriptQuoteDamage('el.classList.add(active)');
-
-        assert.equal(result.damaged, true);
-        assert.ok(result.details?.includes('add'));
-        assert.ok(result.details?.includes('active'));
+      void it('detects class, id and child selectors left bare', () => {
+        const cases: Array<[string, string, string]> = [
+          ['document.querySelector(.btn)', "SyntaxError: Unexpected token '.'", '".btn"'],
+          ['el.closest(.card).id', "SyntaxError: Unexpected token '.'", 'closest(".card").id'],
+          [
+            'document.querySelector(#main)',
+            "SyntaxError: Private field '#main' must be declared in an enclosing class",
+            '"#main"',
+          ],
+          ['document.querySelector(#main)', 'SyntaxError: Invalid or unexpected token', '"#main"'],
+          ['document.querySelector(> p)', "SyntaxError: Unexpected token '>'", '"> p"'],
+          ['document.querySelector(div > p)', 'ReferenceError: div is not defined', '"div > p"'],
+        ];
+        for (const [script, error, fixed] of cases) {
+          const result = detectScriptQuoteDamage(script, error);
+          assert.equal(result.damaged, true, script);
+          assert.ok(result.suggestion?.includes(fixed), `${script}: ${result.suggestion}`);
+        }
       });
 
-      void it('detects matches with bare argument', () => {
-        const result = detectScriptQuoteDamage('element.matches(button)');
+      void it('ignores punctuation errors outside string-taking DOM methods', () => {
+        assert.equal(
+          detectScriptQuoteDamage('Math.round(.5 .x)', "SyntaxError: Unexpected token '.'").damaged,
+          false
+        );
+        assert.equal(
+          detectScriptQuoteDamage(
+            'document.querySelector(a).x.',
+            "SyntaxError: Unexpected token '.'"
+          ).damaged,
+          false
+        );
+        assert.equal(
+          detectScriptQuoteDamage('items.push(#x)', 'SyntaxError: Invalid or unexpected token')
+            .damaged,
+          false
+        );
+      });
+
+      void it('detects a selector of several words from missing )', () => {
+        const result = detectScriptQuoteDamage(
+          'document.querySelector(div p).textContent',
+          'SyntaxError: missing ) after argument list'
+        );
 
         assert.equal(result.damaged, true);
-        assert.ok(result.details?.includes('matches'));
+        assert.ok(result.suggestion?.includes('document.querySelector("div p").textContent'));
+        assert.equal(
+          detectScriptQuoteDamage('Math.max(a b)', 'SyntaxError: missing ) after argument list')
+            .damaged,
+          false
+        );
+      });
+
+      void it('detects a selector of several words from Unexpected identifier', () => {
+        const result = detectScriptQuoteDamage(
+          'document.querySelector(div p)',
+          "SyntaxError: Unexpected identifier 'p'"
+        );
+
+        assert.equal(result.damaged, true);
+        assert.ok(result.suggestion?.includes('document.querySelector("div p")'));
       });
     });
 
-    void describe('accepts valid scripts', () => {
-      void it('accepts properly quoted strings', () => {
-        assert.equal(detectScriptQuoteDamage('document.querySelector("input")').damaged, false);
-        assert.equal(detectScriptQuoteDamage("document.querySelector('input')").damaged, false);
-        assert.equal(detectScriptQuoteDamage('el.getAttribute("href")').damaged, false);
+    void describe('stays quiet when stripped quotes do not explain the error', () => {
+      void it('ignores a redeclaration error (Math.round(x) false positive)', () => {
+        const script = 'const x = 2.5; Math.round(x)';
+
+        assert.equal(
+          detectScriptQuoteDamage(script, "SyntaxError: Identifier 'x' has already been declared")
+            .damaged,
+          false
+        );
+        assert.equal(
+          detectScriptQuoteDamage(
+            'const a = 1; const a = 2; document.querySelector(a)',
+            "SyntaxError: Identifier 'a' has already been declared"
+          ).damaged,
+          false
+        );
       });
 
-      void it('accepts scripts without function calls', () => {
-        assert.equal(detectScriptQuoteDamage('document.title').damaged, false);
-        assert.equal(detectScriptQuoteDamage('window.location.href').damaged, false);
-        assert.equal(detectScriptQuoteDamage('1 + 2').damaged, false);
+      void it('ignores a method that does not take a string', () => {
+        assert.equal(undefinedName('Math.round(x)', 'x').damaged, false);
+        assert.equal(undefinedName('items.push(item)', 'item').damaged, false);
       });
 
-      void it('accepts numeric arguments', () => {
-        assert.equal(detectScriptQuoteDamage('array.slice(0, 5)').damaged, false);
-        assert.equal(detectScriptQuoteDamage('Math.max(1, 2, 3)').damaged, false);
+      void it('ignores an error about another identifier', () => {
+        assert.equal(undefinedName('foo.bar; document.querySelector(input)', 'foo').damaged, false);
+        assert.equal(undefinedName('document.querySelector(inputs)', 'input').damaged, false);
       });
 
-      void it('accepts empty script', () => {
-        const result = detectScriptQuoteDamage('');
+      void it('ignores a name the script declares', () => {
+        assert.equal(
+          undefinedName('document.querySelector(sel); let sel = "a"', 'sel').damaged,
+          false
+        );
+      });
 
-        assert.equal(result.damaged, false);
+      void it('ignores errors stripped quotes do not cause', () => {
+        assert.equal(
+          detectScriptQuoteDamage('document.querySelector(input)', 'TypeError: x is not a function')
+            .damaged,
+          false
+        );
+        assert.equal(
+          detectScriptQuoteDamage(
+            'document.querySelector(new Foo)',
+            "SyntaxError: Unexpected identifier 'Foo'"
+          ).damaged,
+          false
+        );
+      });
+
+      void it('ignores quoted and numeric arguments', () => {
+        assert.equal(undefinedName('document.querySelector("input")', 'input').damaged, false);
+        assert.equal(undefinedName("document.querySelector('input')", 'input').damaged, false);
+        assert.equal(undefinedName('array.slice(0, 5)', 'array').damaged, false);
+        assert.equal(undefinedName('', 'x').damaged, false);
       });
     });
 
     void describe('suggestion quality', () => {
       void it('provides corrected full expression', () => {
-        const result = detectScriptQuoteDamage('document.querySelector(input).value');
+        const result = undefinedName('document.querySelector(input).value', 'input');
 
         assert.ok(result.suggestion?.includes('document.querySelector("input").value'));
       });
 
       void it('preserves context around damaged part', () => {
-        const result = detectScriptQuoteDamage('element.closest(div).textContent');
+        const result = undefinedName('element.closest(div).textContent', 'div');
 
         assert.ok(result.suggestion?.includes('element.closest("div").textContent'));
       });
 
       void it('includes bdg dom eval command', () => {
-        const result = detectScriptQuoteDamage('func(arg)');
+        const result = undefinedName('el.getAttribute(arg)', 'arg');
 
         assert.ok(result.suggestion?.includes('bdg dom eval'));
-      });
-    });
-
-    void describe('unexpected identifier fallback', () => {
-      void it('detects unexpected identifier error pattern', () => {
-        const result = detectScriptQuoteDamage("Unexpected identifier 'foo'");
-
-        assert.equal(result.damaged, true);
-        assert.ok(result.suggestion?.includes('single quotes'));
       });
     });
   });
@@ -238,7 +326,7 @@ void describe('Shell Detection Utilities', () => {
         assert.doesNotThrow(
           () => {
             detectSelectorQuoteDamage(input);
-            detectScriptQuoteDamage(input);
+            detectScriptQuoteDamage(input, `ReferenceError: ${input} is not defined`);
             hasAttributeSelector(input);
           },
           `Should not throw for input: ${JSON.stringify(input)}`
@@ -251,7 +339,7 @@ void describe('Shell Detection Utilities', () => {
 
       for (const input of inputs) {
         const selectorResult = detectSelectorQuoteDamage(input);
-        const scriptResult = detectScriptQuoteDamage(input);
+        const scriptResult = detectScriptQuoteDamage(input, 'ReferenceError: arg is not defined');
 
         assert.equal(typeof selectorResult.damaged, 'boolean');
         assert.equal(typeof scriptResult.damaged, 'boolean');
@@ -274,7 +362,7 @@ void describe('Shell Detection Utilities', () => {
       for (const input of specialChars) {
         assert.doesNotThrow(() => {
           detectSelectorQuoteDamage(input);
-          detectScriptQuoteDamage(input);
+          detectScriptQuoteDamage(input, "SyntaxError: Unexpected identifier 'b'");
         });
       }
     });
