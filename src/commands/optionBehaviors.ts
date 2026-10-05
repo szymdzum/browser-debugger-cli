@@ -14,6 +14,14 @@ import {
 } from '@/commands/dom/screenshotResize.js';
 import type { OptionBehavior } from '@/commands/helpJson.js';
 
+/** What DOM actions report about the network requests they triggered */
+const TRIGGERED_REQUESTS_BEHAVIOR =
+  'Requests that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return; human output lists the first 10; absent when network telemetry is off)';
+
+/** What `--no-wait` does to a DOM action's triggered requests */
+const NO_WAIT_TRIGGERED_REQUESTS =
+  'Returns immediately without waiting for network; triggeredRequests lists only requests bdg saw start before returning (often none yet; check bdg network list later)';
+
 /**
  * Registry key format: "command:flag" (e.g., "screenshot:--no-resize")
  */
@@ -102,10 +110,9 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
 
   'fill:--no-wait': {
-    default: 'Waits for network stability after filling input (200ms idle)',
-    whenDisabled: 'Returns immediately without waiting for network',
-    automaticBehavior:
-      'Network wait helps ensure React/Vue state updates complete before next action',
+    default: 'Waits for network stability after filling input (150ms idle, up to 2s)',
+    whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
+    automaticBehavior: `Network wait helps ensure React/Vue state updates complete before next action. ${TRIGGERED_REQUESTS_BEHAVIOR}`,
   },
   'fill:--no-blur': {
     default: 'Triggers blur event after filling (validates most form fields)',
@@ -114,10 +121,10 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Blur triggers validation in most frameworks - disable only if you need to continue typing',
   },
   'click:--no-wait': {
-    default: 'Waits for network stability after click (200ms idle)',
-    whenDisabled: 'Returns immediately without waiting for network',
-    automaticBehavior:
-      'Network wait helps ensure AJAX requests triggered by click complete. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning)',
+    default: 'Waits for network stability after click (150ms idle, up to 2s)',
+    whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
+    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning)`,
+    tokenImpact: 'A click that navigates lists the whole page load in JSON triggeredRequests',
   },
   'click:--double': {
     default: 'Single click',
@@ -131,19 +138,19 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'hover:--no-wait': {
     default: 'Waits for network stability after moving the mouse (menus may load content)',
-    whenDisabled: 'Returns immediately without waiting for network',
-    automaticBehavior:
-      'The mouse stays over the element afterwards, so hover menus stay open until the next mouse action',
+    whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
+    automaticBehavior: `The mouse stays over the element afterwards, so hover menus stay open until the next mouse action. ${TRIGGERED_REQUESTS_BEHAVIOR}`,
   },
   'navigate:--no-wait': {
     default: 'Waits until the new page has loaded and the network and DOM are idle (up to 15 s)',
     whenDisabled: 'Returns as soon as the navigation has started',
     automaticBehavior:
-      'Also applies to page reload/back/forward; indices from earlier queries become stale (87)',
+      'Also applies to page reload/back/forward; indices from earlier queries become stale (87). Triggered requests are not listed (they are the page load; see bdg network list)',
   },
   'pressKey:--no-wait': {
-    default: 'Waits for network stability after key press (200ms idle)',
-    whenDisabled: 'Returns immediately without waiting for network',
+    default: 'Waits for network stability after key press (150ms idle, up to 2s)',
+    whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
+    automaticBehavior: TRIGGERED_REQUESTS_BEHAVIOR,
   },
   'pressKey:--times': {
     default: 'Presses key once',
@@ -160,6 +167,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'submit:--wait-network': {
     default: 'Default network idle timeout',
     whenEnabled: 'Custom network idle timeout in ms (use for slow APIs)',
+    automaticBehavior: TRIGGERED_REQUESTS_BEHAVIOR,
   },
 
   'listeners:--type': {
@@ -192,10 +200,10 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'Scrolls to the very bottom of the page',
   },
   'scroll:--no-wait': {
-    default: 'Waits for lazy-loaded content to stabilize after scroll (200ms network idle)',
-    whenDisabled: 'Returns immediately without waiting for lazy-loaded content',
-    automaticBehavior:
-      'Wait helps ensure images and infinite scroll content load before next action',
+    default:
+      'Waits for lazy-loaded content to stabilize after scroll (150ms network idle, up to 2s)',
+    whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
+    automaticBehavior: `Wait helps ensure images and infinite scroll content load before next action. ${TRIGGERED_REQUESTS_BEHAVIOR}`,
   },
   'scroll:--index': {
     whenEnabled: 'If selector matches multiple elements, scrolls to the nth element (0-based)',

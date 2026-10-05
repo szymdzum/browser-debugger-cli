@@ -589,8 +589,11 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       withBusyPageRecovery(cdp, inspectEventListeners(cdp, params)),
 
     page_navigate: async (cdp, params) =>
-      interact(cdp, () =>
-        navigatePage(cdp, params.action, filterDefined({ url: params.url, wait: params.wait }))
+      interact(
+        cdp,
+        () =>
+          navigatePage(cdp, params.action, filterDefined({ url: params.url, wait: params.wait })),
+        { reportRequests: false }
       ),
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {

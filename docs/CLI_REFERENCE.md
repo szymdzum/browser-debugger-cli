@@ -430,6 +430,29 @@ Interact with page elements using real mouse and keyboard input. All interaction
 
 JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are accepted automatically so they never block a session; `prompt()` receives an empty string. Dialogs opened by `fill`/`click`/`submit`/`pressKey` are listed in their result (`data.dialogs` in JSON), and every accepted dialog also appears in `bdg console`.
 
+DOM actions (`fill`, `click` incl. `--double`/`--right`, `hover`, `pressKey`, `submit`, `scroll`) also report the network requests they triggered: every request that started after the action began and before the command returned (after its usual stability wait; no extra waiting). Requests still running then are shown as pending; `data:`/`blob:` URLs and CORS preflights are left out. Human output lists the first 10 under `Triggered:` (nothing when there were none; `-q` keeps the list, it is a result, not a hint); JSON lists up to 50 in `data.triggeredRequests` (`[]` when none, absent when network telemetry is off) and how many more there were in `data.triggeredRequestsOmitted`. With `--no-wait` only requests bdg saw start before the command returned are listed (often none yet: use `bdg network list` afterwards). `bdg page navigate`/`reload`/`back`/`forward` do not list requests (they are the page load: use `bdg network list`). Attribution is by time, so a request a page timer starts during the action is listed too.
+
+```text
+✓ Element Clicked
+
+Selector:      #save
+Element Type:  button
+Method:        mouse events
+
+Triggered:
+  POST 127.0.0.1:8080/api/save → 200 (85ms)
+  GET 127.0.0.1:8080/api/items → pending
+```
+
+```json
+"triggeredRequests": [
+  { "requestId": "1234.5", "method": "POST", "url": "http://127.0.0.1:8080/api/save", "status": 200, "durationMs": 85 },
+  { "requestId": "1234.6", "method": "GET", "url": "http://127.0.0.1:8080/api/items", "pending": true }
+]
+```
+
+Failed requests have `failed: true` and `errorText` (no `status`).
+
 Interactions run one at a time per session (concurrent `pressKey` calls no longer interleave). Values the browser would not take as given (a color that is not `#rrggbb`, a range value outside min/max or off-step, an unparseable number or date) fail with exit 81 and leave the field's previous value; a number outside min/max is filled with a warning.
 
 ```bash

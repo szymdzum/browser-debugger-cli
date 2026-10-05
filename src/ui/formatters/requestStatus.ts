@@ -6,37 +6,10 @@
  * response keeps its HTTP status even if loading failed afterwards.
  */
 
+import { BODY_ABORTED, getRequestState } from '@/telemetry/requestState.js';
 import type { NetworkRequest } from '@/types.js';
 
-/** Lifecycle state of a captured request. */
-export type RequestState = 'pending' | 'failed' | 'complete';
-
-/**
- * Classify a request.
- *
- * @param request - Captured request
- * @returns Its lifecycle state
- */
-export function getRequestState(request: Pick<NetworkRequest, 'status'>): RequestState {
-  if (request.status === undefined) return 'pending';
-  return request.status === 0 ? 'failed' : 'complete';
-}
-
-/**
- * Why a request failed, leaving out Chrome stopping an unneeded body after a
- * complete response (204/304 report `net::ERR_ABORTED` that way).
- *
- * @param request - Captured request
- * @returns Reason, or undefined when there is none worth showing
- */
-export function failureReason(
-  request: Pick<NetworkRequest, 'status' | 'errorText'>
-): string | undefined {
-  if (!request.errorText) return undefined;
-  return getRequestState(request) === 'complete' && request.errorText === BODY_ABORTED
-    ? undefined
-    : request.errorText;
-}
+export { failureReason, getRequestState, type RequestState } from '@/telemetry/requestState.js';
 
 /**
  * Human-readable status: the HTTP status (with the failure reason if loading
@@ -53,9 +26,3 @@ export function formatRequestStatus(request: Pick<NetworkRequest, 'status' | 'er
     ? `${request.status} (${request.errorText})`
     : String(request.status);
 }
-
-/**
- * Error Chrome reports when it stops reading a response body nobody needs
- * (the response itself arrived; not a failure of the request).
- */
-const BODY_ABORTED = 'net::ERR_ABORTED';

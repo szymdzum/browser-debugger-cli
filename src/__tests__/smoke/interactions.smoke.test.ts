@@ -158,6 +158,21 @@ void describe('DOM interactions', () => {
     assert.equal(await evaluate('window.submits'), before + 1);
   });
 
+  void it('reports the network requests a click triggered', async () => {
+    type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
+    const clicked = JSON.parse(await bdg(['dom', 'click', '#load', '--json'])) as Triggered;
+    const request = clicked.data.triggeredRequests?.find((r) =>
+      String(r['url']).endsWith('/api/test')
+    );
+    assert.equal(request?.['method'], 'POST', JSON.stringify(clicked.data.triggeredRequests));
+    assert.equal(request?.['status'], 200);
+    assert.equal(typeof request?.['durationMs'], 'number');
+    assert.match(await bdg(['dom', 'click', '#load']), /Triggered:\n {2}POST .*\/api\/test → 200/);
+
+    const filled = JSON.parse(await bdg(['dom', 'fill', '#name', 'quiet', '--json'])) as Triggered;
+    assert.deepEqual(filled.data.triggeredRequests, []);
+  });
+
   void it('submits a form element and refuses invalid forms', async () => {
     const before = (await evaluate('window.submits')) as number;
     await evaluate(

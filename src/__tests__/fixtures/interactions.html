@@ -17,6 +17,7 @@
     <div id="editor" contenteditable="true"></div>
     <div id="menu-trigger" tabindex="0">Menu</div>
     <div id="menu" hidden>Opened</div>
+    <button id="load" type="button">Load</button>
 
     <script>
       // Event log for assertions: "<id>:<type>[:<key>]"
@@ -54,6 +55,11 @@
         setTimeout(() => {
           agree.checked = window.agreeState;
         }, 0);
+      });
+
+      // Loads data from the fixture API (triggered-request reporting)
+      document.getElementById('load').addEventListener('click', () => {
+        void fetch('/api/test', { method: 'POST', body: '{}' });
       });
 
       // Radix/MUI-style menu: opens on pointerdown, not on click
