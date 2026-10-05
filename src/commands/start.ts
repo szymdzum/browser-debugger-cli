@@ -11,6 +11,7 @@ import { PORT_OPTION_DESCRIPTION } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
   chromeWsUrlConflictError,
+  externalChromeUnreachableError,
   invalidChromeFlagError,
   invalidUserDataDirError,
   missingStartUrlError,
@@ -20,7 +21,8 @@ import type { TelemetryType } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
-import { validateChromeWsUrl, validateUrl } from '@/utils/url.js';
+import { fetchBrowserWsUrl } from '@/utils/http.js';
+import { devToolsHttpEndpoint, validateChromeWsUrl, validateUrl } from '@/utils/url.js';
 
 /**
  * Parsed command-line flags shared by the start subcommands.
@@ -133,7 +135,7 @@ function applyCollectorOptions(command: Command): Command {
     .option('--no-headless', 'Show browser window')
     .option(
       '--chrome-ws-url <url>',
-      'Connect to existing Chrome via its DevTools WebSocket URL: browser (ws://host:port/devtools/browser/<id>, uses the first tab) or page (.../devtools/page/<id>)'
+      'Connect to an existing Chrome: its DevTools port (9222, host:port, http://host:port), or a WebSocket URL: browser (ws://host:port/devtools/browser/<id>, uses the first tab) or page (.../devtools/page/<id>)'
     )
     .option('-q, --quiet', 'Quiet mode - minimal output for AI agents', false)
     .addOption(jsonOption())
@@ -304,12 +306,58 @@ export function registerStartCommands(program: Command): void {
         options,
         program.commands.map((command) => command.name())
       );
+      validated.sessionOptions.chromeWsUrl = await resolveChromeWsUrl(
+        validated.sessionOptions.chromeWsUrl
+      );
     } catch (error) {
       handleValidationError(error, options.json ?? false);
     }
 
     await startSessionViaDaemon(validated.url, validated.sessionOptions, SESSION_TELEMETRY);
   });
+}
+
+/**
+ * Turn a `--chrome-ws-url` that names the HTTP DevTools endpoint (a port,
+ * `host:port`, or `http://host:port`) into the browser's WebSocket URL from
+ * its `/json/version`, so users need not look it up themselves.
+ *
+ * @param value - Option value (WebSocket URLs are returned unchanged)
+ * @returns WebSocket URL, or undefined without the option
+ * @throws CommandError (101) when the endpoint does not answer
+ */
+async function resolveChromeWsUrl(value: string | undefined): Promise<string | undefined> {
+  const endpoint = value === undefined ? null : devToolsHttpEndpoint(value);
+  if (endpoint === null) return value;
+  const { hostname, port, protocol } = new URL(endpoint);
+  const wsUrl = await fetchBrowserWsUrl(Number(port), undefined, {
+    host: hostname,
+    secure: protocol === 'https:',
+  });
+  if (wsUrl !== null) return atEndpoint(wsUrl, endpoint);
+  const err = externalChromeUnreachableError(endpoint, false);
+  throw new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.CDP_CONNECTION_FAILURE
+  );
+}
+
+/**
+ * Point a WebSocket URL Chrome reported at the endpoint the user gave: Chrome
+ * reports its own host and port, which differ behind a proxy or forwarded
+ * port, and only ws:// (an https endpoint is a TLS proxy, so wss://).
+ *
+ * @param wsUrl - URL from `/json/version`
+ * @param endpoint - Endpoint origin the user gave
+ * @returns The URL with the endpoint's host, port and matching scheme
+ */
+function atEndpoint(wsUrl: string, endpoint: string): string {
+  const resolved = new URL(wsUrl);
+  const target = new URL(endpoint);
+  resolved.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
+  resolved.host = target.host;
+  return resolved.toString();
 }
 
 /**

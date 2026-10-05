@@ -251,6 +251,14 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'Alias for --force, kept for compatibility',
   },
 
+  'bdg:--chrome-ws-url': {
+    default: 'bdg launches its own Chrome (closed on stop)',
+    whenEnabled:
+      'Attaches to a running Chrome instead; it keeps running after stop. --port and -u cannot be combined with it',
+    automaticBehavior:
+      'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version; a browser URL uses the first open tab',
+  },
+
   'stop:--kill-chrome': {
     default:
       'Chrome launched by bdg is always closed on stop; an attached Chrome (--chrome-ws-url) is left running',

@@ -235,10 +235,35 @@ export function safeParseUrl(input: string): URL | null {
 }
 
 /**
+ * The HTTP DevTools endpoint a `--chrome-ws-url` value names instead of a
+ * WebSocket URL: a port (`9222`), `host:port` (nothing after it), or an
+ * `http(s)://` URL of the endpoint (any path is ignored).
+ *
+ * @param value - Option value
+ * @returns Endpoint origin, e.g. `http://127.0.0.1:9222`, or null for anything else
+ */
+export function devToolsHttpEndpoint(value: string): string | null {
+  const trimmed = value.trim();
+  if (/^\d{1,5}$/.test(trimmed)) return `http://127.0.0.1:${trimmed}`;
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : /^[^/\s]+:\d{1,5}\/?$/.test(trimmed)
+      ? `http://${trimmed}`
+      : null;
+  if (candidate === null) return null;
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Validate a `--chrome-ws-url` value.
  *
- * Accepted schemes: `ws://` and `wss://`. Rejects other schemes, malformed
- * URLs, and empty input so users hear about the problem at the CLI boundary
+ * Accepted: `ws://` and `wss://` DevTools URLs, or the HTTP endpoint they come
+ * from ({@link devToolsHttpEndpoint}). Rejects other schemes, malformed URLs,
+ * and empty input so users hear about the problem at the CLI boundary
  * instead of after a daemon round-trip.
  *
  * @param url - ws URL to validate
@@ -249,9 +274,11 @@ export function validateChromeWsUrl(url: string): ValidationResult {
   if (!trimmed) {
     return invalid(
       '--chrome-ws-url cannot be empty',
-      'Expected: ws://host:port/devtools/browser/<uuid>'
+      'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
+
+  if (devToolsHttpEndpoint(trimmed) !== null) return valid();
 
   let parsed: URL;
   try {
@@ -259,21 +286,21 @@ export function validateChromeWsUrl(url: string): ValidationResult {
   } catch {
     return invalid(
       `--chrome-ws-url is not a valid URL: '${url}'`,
-      'Expected: ws://host:port/devtools/browser/<uuid>'
+      'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
 
   if (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:') {
     return invalid(
       `--chrome-ws-url must use ws:// or wss://, got '${parsed.protocol}'`,
-      `Find it with: curl -s http://${parsed.host || '127.0.0.1:9222'}/json/version | jq -r .webSocketDebuggerUrl`
+      `Give the DevTools port instead, e.g. --chrome-ws-url ${parsed.hostname || '127.0.0.1'}:9222`
     );
   }
 
   if (!parsed.hostname) {
     return invalid(
       `--chrome-ws-url is missing a hostname: '${url}'`,
-      'Expected: ws://host:port/devtools/browser/<uuid>'
+      'Expected: the DevTools port (9222), host:port, or ws://host:port/devtools/browser/<uuid>'
     );
   }
 

@@ -5,6 +5,7 @@ import {
   extractHostnameWithPath,
   normalizeUrl,
   safeParseUrl,
+  devToolsHttpEndpoint,
   validateChromeWsUrl,
   validateUrl,
 } from '@/utils/url.js';
@@ -92,17 +93,45 @@ void describe('validateChromeWsUrl', () => {
     }
   });
 
-  void it('rejects http:// scheme with a hint for the same host', () => {
-    const result = validateChromeWsUrl('http://127.0.0.1:9333/json');
+  void it('accepts the HTTP DevTools endpoint (resolved at start)', () => {
+    assert.equal(validateChromeWsUrl('9222').valid, true);
+    assert.equal(validateChromeWsUrl('localhost:9222').valid, true);
+    assert.equal(validateChromeWsUrl('http://127.0.0.1:9333/json').valid, true);
+  });
+
+  void it('rejects other schemes with a hint for the port form', () => {
+    const result = validateChromeWsUrl('ftp://127.0.0.1/x');
     assert.equal(result.valid, false);
     if (!result.valid) {
       assert.match(result.error, /ws:\/\/ or wss:\/\//);
-      assert.match(result.suggestion ?? '', /127\.0\.0\.1:9333\/json\/version/);
+      assert.match(result.suggestion ?? '', /--chrome-ws-url 127\.0\.0\.1:9222/);
     }
   });
 
   void it('requires a browser or page path', () => {
     assert.equal(validateChromeWsUrl('ws://127.0.0.1:9222').valid, false);
     assert.equal(validateChromeWsUrl('ws://127.0.0.1:9222/devtools/page/ABC').valid, true);
+  });
+});
+
+void describe('devToolsHttpEndpoint', () => {
+  void it('turns a port, host:port or http URL into the endpoint origin', () => {
+    assert.equal(devToolsHttpEndpoint('9222'), 'http://127.0.0.1:9222');
+    assert.equal(devToolsHttpEndpoint('localhost:9333'), 'http://localhost:9333');
+    assert.equal(devToolsHttpEndpoint('http://10.0.0.5:9222/json/version'), 'http://10.0.0.5:9222');
+  });
+
+  void it('accepts explicit http(s) URLs on default ports', () => {
+    assert.equal(
+      devToolsHttpEndpoint('https://devtools.example.com'),
+      'https://devtools.example.com'
+    );
+    assert.equal(devToolsHttpEndpoint('http://[::1]:9222/'), 'http://[::1]:9222');
+  });
+
+  void it('leaves WebSocket URLs, portless hosts and host:port with a path alone', () => {
+    assert.equal(devToolsHttpEndpoint('ws://127.0.0.1:9222/devtools/browser/x'), null);
+    assert.equal(devToolsHttpEndpoint('localhost'), null);
+    assert.equal(devToolsHttpEndpoint('localhost:9222/devtools/browser/x'), null);
   });
 });

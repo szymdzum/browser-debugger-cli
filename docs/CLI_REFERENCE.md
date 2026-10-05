@@ -914,11 +914,14 @@ bdg localhost:3000 --user-data-dir ~/custom # Custom Chrome profile directory
 ```bash
 # Chrome Options
 bdg localhost:3000 --headless                   # Launch Chrome in headless mode
-bdg localhost:3000 --chrome-ws-url <url>        # Connect to existing Chrome instance
+bdg localhost:3000 --chrome-ws-url 9222        # Connect to existing Chrome instance
 
-# --chrome-ws-url takes the browser URL from http://host:port/json/version
-# (ws://host:port/devtools/browser/<id>; bdg uses the first open tab, or opens one)
+# --chrome-ws-url takes the DevTools port of a running Chrome (9222, host:port or
+# http://host:port; bdg looks up the browser URL in /json/version), the browser URL
+# itself (ws://host:port/devtools/browser/<id>; bdg uses the first open tab, or opens one)
 # or a page URL from /json/list (ws://host:port/devtools/page/<id>).
+# Useful to log in by hand first (OAuth, passkeys) in a Chrome started with
+# --remote-debugging-port=9222 --user-data-dir=<dir>, then attach bdg to it.
 # The Chrome keeps running after bdg stop. --port and -u cannot be combined with it
 # (the running Chrome has its own); a stale browser id or a missing page id is refused (83).
 
