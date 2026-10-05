@@ -1,14 +1,15 @@
 /**
  * Watching an action's effects over CDP: main-frame navigation events,
  * pending navigations, the snapshot timing out, the second look before
- * "no effect", and cleanup.
+ * "no effect", shown elements, the page's work (an unanswered read, a DOM
+ * still changing on a second look), and cleanup.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { watchActionEffects } from '@/runtime/dom/actionEffects.js';
+import { watchActionEffects, type CollectedEffects } from '@/runtime/dom/actionEffects.js';
 
 type Handler = (params: unknown, sessionId?: string) => void;
 
@@ -49,7 +50,10 @@ class FakeCdp {
     if (expression === undefined) return Promise.resolve({});
     this.expressions.push(expression);
     if (expression.includes('new MutationObserver')) return this.start.then(wrap);
-    if (expression.includes('const scrolled')) return Promise.resolve(wrap(this.reads.shift()));
+    if (expression.includes('const scrolled')) {
+      const read = this.reads.shift();
+      return read === NO_ANSWER ? new Promise(() => undefined) : Promise.resolve(wrap(read));
+    }
     return Promise.resolve({});
   }
 
@@ -57,7 +61,7 @@ class FakeCdp {
   get readsSent(): boolean[] {
     return this.expressions
       .filter((e) => e.includes('const scrolled'))
-      .map((e) => e.endsWith('(true)'));
+      .map((e) => /\(true, (true|false)\)$/.test(e));
   }
 
   /** Whether the stop script was sent */
@@ -80,6 +84,20 @@ function wrap(value: unknown): unknown {
   return { result: { value } };
 }
 
+/** A read the page never answers */
+const NO_ANSWER = Symbol('no answer');
+
+/**
+ * Effects without the page's work.
+ *
+ * @param collected - Collected effects
+ * @returns The effects alone
+ */
+function effectsOnly(collected: CollectedEffects): Omit<CollectedEffects, 'work'> {
+  const { work: _work, ...effects } = collected;
+  return effects;
+}
+
 /** Snapshot before the action */
 const START = { href: 'https://a.test/', messages: [] };
 
@@ -99,7 +117,7 @@ void describe('watchActionEffects', () => {
       frame: { ...MAIN_FRAME, id: 'child', parentId: 'main' },
     });
     ignored.emit('Page.frameNavigated', { frame: MAIN_FRAME }, 'oopif-session');
-    assert.deepEqual(await quiet.collect({ dialogs: 0, detectNoEffect: false }), {});
+    assert.deepEqual(effectsOnly(await quiet.collect({ dialogs: 0, detectNoEffect: false })), {});
     quiet.dispose();
 
     const fresh = { ...QUIET, href: 'https://a.test/next', fresh: true };
@@ -122,7 +140,10 @@ void describe('watchActionEffects', () => {
     const watch = watchActionEffects(cdp.connection);
     cdp.emit('Page.frameNavigated', { frame: MAIN_FRAME });
     const effects = await watch.collect({ dialogs: 0, detectNoEffect: true });
-    assert.deepEqual(effects, { navigation: { url: 'https://a.test/next', sameDocument: false } });
+    assert.deepEqual(effectsOnly(effects), {
+      navigation: { url: 'https://a.test/next', sameDocument: false },
+    });
+    assert.equal(effects.work?.unresponsive, true, 'a snapshot unanswered means a busy page');
     assert.deepEqual(cdp.readsSent, [], 'no read without a snapshot');
     watch.dispose();
     assert.ok(cdp.stopSent, 'the stop follows a snapshot that may still run');
@@ -133,7 +154,10 @@ void describe('watchActionEffects', () => {
     const watch = watchActionEffects(cdp.connection);
     await tick();
     cdp.emit('Page.frameStartedLoading', { frameId: 'main' });
-    assert.deepEqual(await watch.collect({ dialogs: 0, detectNoEffect: true }), {});
+    const effects = await watch.collect({ dialogs: 0, detectNoEffect: true });
+    assert.deepEqual(effectsOnly(effects), {});
+    assert.equal(effects.work?.navigating, true);
+    assert.equal(effects.work?.unresponsive, false);
     assert.deepEqual(cdp.readsSent, []);
     watch.dispose();
   });
@@ -141,12 +165,14 @@ void describe('watchActionEffects', () => {
   void it('claims no effect only when the second look is still quiet', async () => {
     const quiet = new FakeCdp(Promise.resolve(START), [QUIET, QUIET]);
     const none = watchActionEffects(quiet.connection);
-    assert.deepEqual(await none.collect({ dialogs: 0, detectNoEffect: true }), { effect: 'none' });
+    assert.deepEqual(effectsOnly(await none.collect({ dialogs: 0, detectNoEffect: true })), {
+      effect: 'none',
+    });
     assert.deepEqual(quiet.readsSent, [false, true]);
 
     const late = new FakeCdp(Promise.resolve(START), [QUIET, { ...QUIET, changes: 1 }]);
     const changed = watchActionEffects(late.connection);
-    assert.deepEqual(await changed.collect({ dialogs: 0, detectNoEffect: true }), {});
+    assert.deepEqual(effectsOnly(await changed.collect({ dialogs: 0, detectNoEffect: true })), {});
   });
 
   void it('stops listening on dispose, and stops the page watch unless a read did', async () => {
@@ -163,5 +189,57 @@ void describe('watchActionEffects', () => {
     other.dispose();
     assert.equal(unread.listening, 0);
     assert.equal(unread.stopSent, true);
+  });
+
+  void it('lists shown elements when asked', async () => {
+    const shown = [{ text: 'Saves a draft', element: 'div#tip' }];
+    const cdp = new FakeCdp(Promise.resolve(START), [{ ...QUIET, changes: 1, shown }]);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({ dialogs: 0, detectNoEffect: false, reportShown: true });
+    assert.deepEqual(effects.shown, shown);
+    assert.ok(cdp.expressions.some((e) => e.endsWith('(false, true)')));
+    watch.dispose();
+  });
+
+  void it('marks a page whose read got no answer as busy', async () => {
+    const cdp = new FakeCdp(Promise.resolve(START), [NO_ANSWER]);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({ dialogs: 0, detectNoEffect: true });
+    assert.equal(effects.work?.unresponsive, true);
+    assert.equal(effects.effect, undefined);
+    watch.dispose();
+  });
+
+  void it('looks again at a busy DOM and reports it changing only if it kept changing', async () => {
+    const busy = {
+      ...QUIET,
+      changes: 5,
+      settle: { burstAges: [120, 30], loading: null },
+    };
+    const kept = { ...busy, settle: { ...busy.settle, burstAges: [300, 150, 40] } };
+    const calm = { ...busy, settle: { ...busy.settle, burstAges: [400, 290] } };
+    for (const [recheck, expected] of [
+      [kept, true],
+      [calm, false],
+    ] as const) {
+      const cdp = new FakeCdp(Promise.resolve(START), [busy, recheck]);
+      const watch = watchActionEffects(cdp.connection);
+      const effects = await watch.collect({
+        dialogs: 0,
+        detectNoEffect: true,
+        detectUnsettled: true,
+      });
+      assert.equal(effects.work?.domChanging, expected);
+      assert.deepEqual(cdp.readsSent, [false, false]);
+      watch.dispose();
+    }
+
+    const once = new FakeCdp(Promise.resolve(START), [
+      { ...busy, settle: { ...busy.settle, burstAges: [30] } },
+    ]);
+    const single = watchActionEffects(once.connection);
+    await single.collect({ dialogs: 0, detectNoEffect: false, detectUnsettled: true });
+    assert.deepEqual(once.readsSent, [false], 'one render needs no second look');
+    single.dispose();
   });
 });

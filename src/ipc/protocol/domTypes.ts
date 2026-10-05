@@ -66,14 +66,42 @@ export interface NewMessage {
   element: string;
 }
 
+/** An element a hover or key press showed (added, or made visible) */
+export interface ShownElement {
+  /** Its visible text, at most 120 characters */
+  text: string;
+  /** The element, e.g. `div.figcaption` */
+  element: string;
+}
+
+/** What the page was still working on when an action returned */
+export interface PendingChanges {
+  /** Content requests (documents, fetch/XHR, scripts) the action started that were still running */
+  requests?: number;
+  /** A new document was still loading */
+  navigation?: true;
+  /** A loading indicator that appeared during the action and was still shown, e.g. `div#loading` */
+  loading?: string;
+  /** The DOM was still changing (several bursts of changes, the last one under 150 ms ago) */
+  domChanging?: true;
+  /** The page did not answer within 250 ms (a long-running script) */
+  busy?: true;
+}
+
 /** What an action changed on the page, besides its triggered requests */
 export interface ActionEffects {
   /** The page navigated or changed its URL (absent when it did not) */
   navigation?: PageNavigation;
   /** Messages that appeared or changed (at most 3; absent when none did) */
   messages?: NewMessage[];
+  /** Elements a hover or key press showed (at most 3, outermost first; absent when none) */
+  shown?: ShownElement[];
   /** "none" when the action had no visible effect: no DOM change, request or navigation */
   effect?: 'none';
+  /** False when the page was still changing as the action returned (absent otherwise) */
+  settled?: false;
+  /** What the page was still working on (with `settled: false`) */
+  pending?: PendingChanges;
 }
 
 /** A filled field's value differing from the one given */

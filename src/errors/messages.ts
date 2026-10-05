@@ -1663,6 +1663,53 @@ export function clickTargetDetachedError(selector: string): ErrorWithSuggestion 
 }
 
 /**
+ * A pointer action refused under `--strict` because a real mouse could not
+ * reach the element (covered, hidden, zero-size, pointer-events: none).
+ *
+ * @param target - Selector and element description, as the click located it
+ * @param reason - Why the mouse could not reach it, e.g. "covered by another element (div#shield)"
+ * @param verb - What was refused, e.g. "click", "hover"
+ * @returns Message naming the obstruction, and how to inspect it
+ */
+export function unreachableElementError(
+  target: { selector: string; element?: string | undefined },
+  reason: string | null | undefined,
+  verb: string
+): ErrorWithSuggestion {
+  const element = target.element ?? target.selector;
+  return {
+    message: `Did not ${verb} ${element}: it is ${reason ?? 'not reachable by the mouse'}, so a user could not ${verb} it (--strict)`,
+    suggestion: `See what is in the way with ${sessionCommand(`bdg dom layout ${shellQuote(target.selector)}`)}, then close the overlay or scroll; without --strict bdg uses DOM events instead`,
+  };
+}
+
+/**
+ * A mouse press refused under `--strict` because it did not reach the
+ * element: it was sent, but landed on another element, or the page never
+ * saw it (a browser dialog or bubble captured the input).
+ *
+ * @param target - Selector and element description, as the click located it
+ * @param verb - What was refused, e.g. "click"
+ * @param landedOn - The element the press landed on, when the page saw it
+ * @returns Message, and how to inspect the page
+ */
+export function pressNotReceivedError(
+  target: { selector: string; element?: string | undefined },
+  verb: string,
+  landedOn?: string
+): ErrorWithSuggestion {
+  const element = target.element ?? target.selector;
+  const where =
+    landedOn === undefined
+      ? 'the page saw no press: the browser may be showing a dialog or bubble that captures input'
+      : `landed on ${landedOn}`;
+  return {
+    message: `Did not ${verb} ${element}: the press did not reach the element (it was sent, but ${where}) (--strict)`,
+    suggestion: `Check the page with ${sessionCommand('bdg dom screenshot page.png')} and ${sessionCommand(`bdg dom layout ${shellQuote(target.selector)}`)}`,
+  };
+}
+
+/**
  * Key press failed.
  */
 export function keyPressFailedError(details: string): ErrorWithSuggestion {

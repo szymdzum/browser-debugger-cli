@@ -13,6 +13,7 @@ import {
   VIA_LABEL_SUFFIX,
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
+import { REVEAL_SNAPSHOT_JS } from '@/runtime/dom/actionEffectsScripts.js';
 import { ELEMENT_DESCRIPTION_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 
@@ -451,6 +452,11 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * When selector matches multiple elements without index, prioritizes visible ones.
  * A `<label>` is clicked (and double-clicked) through its control when that
  * is visible ({@link LABEL_CONTROL_JS}), reported as e.g. `input (via label)`.
+ * A hover first notes what is hidden around the element
+ * ({@link REVEAL_SNAPSHOT_JS}), so its result can say what it revealed. For
+ * a press, a probe (`window.__bdgPressProbe`) records whether the press
+ * reaches the element, and otherwise which element it landed on: a browser
+ * dialog or bubble can swallow input while the page looks normal.
  */
 export const CLICK_ELEMENT_SCRIPT = `
 (function(selector, parts, index, action) {
@@ -602,12 +608,14 @@ export const CLICK_ELEMENT_SCRIPT = `
   else if (!hasSize) obstruction = 'zero-size';
   else if (!hittable) obstruction = 'covered by another element' + coveredBy();
 
-  // Records whether the coming mouse press reaches the element at all; a
-  // browser dialog or bubble can swallow input while the page looks normal.
+  if (action === 'hover') (${REVEAL_SNAPSHOT_JS})(el);
+
   if (hittable && action !== 'hover') {
-    const probe = { reached: false };
+    const probe = { reached: false, landedOn: null };
     const markReached = (event) => {
-      if (event.composedPath().includes(el)) probe.reached = true;
+      const path = event.composedPath();
+      if (path.includes(el)) probe.reached = true;
+      else if (!probe.landedOn && path[0] && path[0].nodeType === 1) probe.landedOn = describe(path[0]);
     };
     ['pointerdown', 'mousedown'].forEach((type) => view.addEventListener(type, markReached, true));
     probe.stop = () => ['pointerdown', 'mousedown'].forEach((type) => view.removeEventListener(type, markReached, true));

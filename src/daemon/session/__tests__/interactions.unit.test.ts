@@ -134,6 +134,28 @@ void describe('createInteractionRunner', () => {
     assert.equal(failed.effect, undefined);
   });
 
+  void it('says the page was still changing only when asked to', async () => {
+    const waiting = {
+      start: { href: 'https://shop.test/', messages: [] },
+      read: {
+        href: 'https://shop.test/',
+        fresh: false,
+        changes: 0,
+        messages: [],
+        settle: { burstAges: [], loading: 'div.spinner' },
+      },
+    };
+    const interact = createInteractionRunner(new TelemetryStore());
+    const action = (): Promise<{ success: boolean }> => Promise.resolve({ success: true });
+
+    const detected = await interact(fakeCdp(waiting), action, { detectUnsettled: true });
+    assert.equal(detected.settled, false);
+    assert.deepEqual(detected.pending, { loading: 'div.spinner' });
+    const plain = await interact(fakeCdp(waiting), action);
+    assert.equal(plain.settled, undefined);
+    assert.equal('work' in plain, false, 'the page work stays internal');
+  });
+
   void it('reports nothing when effects are off or the page could not be read', async () => {
     const interact = createInteractionRunner(new TelemetryStore());
     const action = (): Promise<{ success: boolean }> => Promise.resolve({ success: true });

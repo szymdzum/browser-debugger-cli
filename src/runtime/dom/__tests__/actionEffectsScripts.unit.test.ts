@@ -1,7 +1,8 @@
 /**
  * Page-side parts of the action-effects scripts, run in an isolated VM
- * context on element-like objects: focus/hover churn, why "no effect" can't
- * be claimed, and which parts of a message are its close controls.
+ * context on element-like objects: focus/hover churn, structural changes,
+ * why "no effect" can't be claimed, which parts of a message are its close
+ * controls.
  */
 
 import assert from 'node:assert/strict';
@@ -11,6 +12,7 @@ import * as vm from 'node:vm';
 import {
   CHURN_ONLY_JS,
   MESSAGE_CHROME_JS,
+  STRUCTURAL_CHANGE_JS,
   UNCERTAIN_JS,
 } from '@/runtime/dom/actionEffectsScripts.js';
 
@@ -49,6 +51,8 @@ const uncertain = vm.runInNewContext(`(${UNCERTAIN_JS})`) as (
 ) => string | undefined;
 
 const isChrome = vm.runInNewContext(`(${MESSAGE_CHROME_JS})`) as (node: FakeNode) => boolean;
+
+const structural = vm.runInNewContext(`(${STRUCTURAL_CHANGE_JS})`) as (record: FakeNode) => boolean;
 
 /**
  * Watch state after an action whose events hit `target` through `path`.
@@ -139,5 +143,24 @@ void describe('MESSAGE_CHROME_JS', () => {
     for (const name of ['closeable', 'enclosed', 'disclosure', 'closed']) {
       assert.equal(isChrome(element('span', { class: name })), false, name);
     }
+  });
+});
+
+void describe('STRUCTURAL_CHANGE_JS', () => {
+  const node = (nodeType: number): FakeNode => ({ nodeType });
+
+  void it('counts added or removed elements and attribute changes other than style', () => {
+    assert.equal(structural({ type: 'childList', addedNodes: [node(1)], removedNodes: [] }), true);
+    assert.equal(structural({ type: 'childList', addedNodes: [], removedNodes: [node(1)] }), true);
+    assert.equal(structural({ type: 'attributes', attributeName: 'class' }), true);
+  });
+
+  void it('ignores text-only changes and style animations', () => {
+    assert.equal(
+      structural({ type: 'childList', addedNodes: [node(3)], removedNodes: [node(3)] }),
+      false
+    );
+    assert.equal(structural({ type: 'characterData' }), false);
+    assert.equal(structural({ type: 'attributes', attributeName: 'style' }), false);
   });
 });

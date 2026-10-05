@@ -22,6 +22,14 @@ const TRIGGERED_REQUESTS_BEHAVIOR =
 const ACTION_EFFECTS_BEHAVIOR =
   'The result also says what changed on the page: a navigation (Page: navigated to <url> (status), or URL changed to <url> (same document); JSON navigation { url, sameDocument, status }), and messages that appeared or changed in alert/status/aria-live elements or flash/error/toast-like classes (New text: "…" (element); JSON messages [{ text, element }], at most 3; after a navigation every message on the new page counts; texts of only digits and time units, such as clocks and counters, are left out, but other text that changes on its own, such as a rotating banner, can show up). Both are absent when nothing changed. Cost: one page script sent before the action without waiting for it and one read after it, a few ms; when the page does not answer (a pending navigation) bdg waits at most 200 ms for the snapshot and 250 ms per read, and the navigation is still reported from CDP events';
 
+/** What click and pressKey report when the page was still changing as they returned */
+const STILL_CHANGING_BEHAVIOR =
+  'When the page was still changing as the action returned, the status line says (page still changing), a note below it says what was pending and suggests bdg dom wait <selector>, and JSON has settled: false with pending { requests (document, fetch/XHR and script requests still running), navigation (a new page still loading), loading (a loading indicator that appeared, e.g. "div#loading"), domChanging (DOM changes kept coming in bursts over a second look 250 ms later; a single render, ticking text and style animations do not count), busy (the page did not answer within 250 ms: a long script) }; absent when the page looked settled (exit code stays 0). A result a timer renders later, with no DOM change, request or loading indicator before it, is not detected. Cost: nothing extra, except 250 ms plus one read when the DOM looked busy. Not checked with --no-wait';
+
+/** What hover and pressKey report about elements they showed */
+const SHOWN_BEHAVIOR =
+  'Elements the action showed are listed (Shown: <element> "<text>"; JSON shown [{ text, element }], at most 3, outermost first): elements with visible text added inside the target\'s form, search box, dialog or combobox (else its grandparent, or its parent when that is the body), and popups and messages added anywhere (tooltip, menu, listbox, dialog, alert, status roles, popover, aria-live, message-like classes); widgets elsewhere on the page and re-rendered elements whose text was there before do not count';
+
 /** What `--no-wait` does to a DOM action's triggered requests */
 const NO_WAIT_TRIGGERED_REQUESTS =
   'Returns immediately without waiting for network; triggeredRequests lists only requests bdg saw start before returning (often none yet; check bdg network list later)';
@@ -159,7 +167,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'click:--no-wait': {
     default: 'Waits for network stability after click (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning). Results the page shows later without requests (timers, spinners) are not waited for: use bdg dom wait <selector> --visible. ${ACTION_EFFECTS_BEHAVIOR}. A click with no DOM change, no request and no navigation (checked again 300 ms later, which adds 300 ms plus at most 250 ms for the read) is reported as ⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms) and effect: "none" in JSON (exit code stays 0); not claimed with --no-wait, for hover or right-click, after a copy or cut, or when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, or moved focus to an element that is not a button or link. Effects outside the DOM (CSS :hover/:focus-within styles, canvas, clipboard without a copy event) are not seen`,
+    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning; --strict refuses instead). Results the page shows later (timers, spinners, slow renders) are not waited for but reported as pending work: use bdg dom wait <selector> --visible. ${ACTION_EFFECTS_BEHAVIOR}. ${STILL_CHANGING_BEHAVIOR}. A click with no DOM change, no request and no navigation (checked again 300 ms later, which adds 300 ms plus at most 250 ms for the read) is reported as ⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms) and effect: "none" in JSON (exit code stays 0); not claimed with --no-wait, for hover or right-click, after a copy or cut, or when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, or moved focus to an element that is not a button or link. Effects outside the DOM (CSS :hover/:focus-within styles, canvas, clipboard without a copy event) are not seen`,
     tokenImpact: 'A click that navigates lists the whole page load in JSON triggeredRequests',
   },
   'click:--double': {
@@ -172,10 +180,24 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'Right-click: the page gets contextmenu (custom context menus open); cannot be combined with --double',
   },
+  'click:--strict': {
+    default:
+      'A covered, hidden or zero-size element is clicked with DOM events (method "dom", with a warning, exit 0)',
+    whenEnabled:
+      'Refuses with exit 90 (RESOURCE_CONFLICT: the page state blocks the request) when a real mouse cannot reach the element, naming what covers it and suggesting bdg dom layout <selector>; also when the mouse press never reached the element (it is released, no further presses for --double)',
+    automaticBehavior:
+      'Applies to --double and --right too. Nothing is dispatched when the element is unreachable, so the page is unchanged',
+  },
   'hover:--no-wait': {
     default: 'Waits for network stability after moving the mouse (menus may load content)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `The mouse stays over the element afterwards, so hover menus stay open until the next mouse action. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
+    automaticBehavior: `The mouse stays over the element afterwards, so hover menus stay open until the next mouse action. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}. ${SHOWN_BEHAVIOR}; for a hover also elements around it (its parent's subtree) and tooltips, menus, listboxes, dialogs and popovers anywhere that were hidden before, so captions shown by CSS :hover count (hidden elements noted by identity right before the mouse moves: up to 1500, within 8 ms). A hover never claims "no visible effect" and does not check whether the page was still changing`,
+  },
+  'hover:--strict': {
+    default:
+      'A covered, hidden or zero-size element gets synthetic mouseover/mouseenter events (method "dom", with a warning)',
+    whenEnabled:
+      'Refuses with exit 90 when a real mouse cannot reach the element, naming what covers it and suggesting bdg dom layout <selector>',
   },
   'navigate:--no-wait': {
     default: 'Waits until the new page has loaded and the network and DOM are idle (up to 15 s)',
@@ -186,7 +208,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'pressKey:--no-wait': {
     default: 'Waits for network stability after key press (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
+    automaticBehavior: `${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}. ${SHOWN_BEHAVIOR}, such as the item Enter added to a list. ${STILL_CHANGING_BEHAVIOR}. A key press never claims "no visible effect"`,
   },
   'pressKey:--times': {
     default: 'Presses key once',

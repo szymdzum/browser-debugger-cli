@@ -554,7 +554,11 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
                 clickElement(
                   target.cdp,
                   target.selector,
-                  filterDefined({ index: target.index, action: params.action })
+                  filterDefined({
+                    index: target.index,
+                    action: params.action,
+                    strict: params.strict,
+                  })
                 ),
               params.wait !== false
             )
@@ -562,6 +566,8 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         {
           detectNoEffect:
             params.wait !== false && params.action !== 'hover' && params.action !== 'right',
+          reportShown: params.action === 'hover',
+          detectUnsettled: params.wait !== false && params.action !== 'hover',
         }
       ),
 
@@ -586,24 +592,27 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       ),
 
     dom_press_key: async (cdp, params) =>
-      interact(cdp, async () =>
-        onScriptTarget(cdp, params, (target) =>
-          withActionStability(
-            cdp,
-            () =>
-              pressKeyElement(
-                target.cdp,
-                target.selector,
-                params.key,
-                filterDefined({
-                  index: target.index,
-                  times: params.times,
-                  modifiers: params.modifiers,
-                })
-              ),
-            params.wait !== false
-          )
-        )
+      interact(
+        cdp,
+        async () =>
+          onScriptTarget(cdp, params, (target) =>
+            withActionStability(
+              cdp,
+              () =>
+                pressKeyElement(
+                  target.cdp,
+                  target.selector,
+                  params.key,
+                  filterDefined({
+                    index: target.index,
+                    times: params.times,
+                    modifiers: params.modifiers,
+                  })
+                ),
+              params.wait !== false
+            )
+          ),
+        { reportShown: true, detectUnsettled: params.wait !== false }
       ),
 
     dom_scroll: async (cdp, params) =>

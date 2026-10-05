@@ -1,6 +1,7 @@
 /**
- * What a DOM action changed: new messages, navigation, "no effect", and how
- * they read in human output.
+ * What a DOM action changed: new messages, shown elements, navigation, "no
+ * effect", whether the page was still changing, and how they read in human
+ * output.
  */
 
 import assert from 'node:assert/strict';
@@ -8,19 +9,28 @@ import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
 import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.js';
+import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import {
+  domKeptChanging,
+  domLooksBusy,
   hadNoEffect,
   newMessages,
   pageNavigation,
+  pendingChanges,
+  shownElements,
   type NavigationEvents,
+  type PageWork,
   type ReadSnapshot,
   type SeenMessage,
+  type SettleSignals,
 } from '@/runtime/dom/actionEffects.js';
 import { FIELD_VALUES_JS, MOVED_VALUE_JS } from '@/runtime/dom/reactEventHelpers.js';
 import {
   actionStatusLine,
   newMessageText,
   pageNavigationText,
+  shownElementText,
+  stillChangingNote,
   valueMismatchWarning,
 } from '@/ui/messages/commands.js';
 
@@ -192,6 +202,10 @@ void describe('hadNoEffect', () => {
       hadNoEffect(read(), { messages: [{ text: 'Saved', element: 'div' }] }, NOTHING_ELSE),
       false
     );
+    assert.equal(
+      hadNoEffect(read(), { shown: [{ text: 'Tip', element: 'div' }] }, NOTHING_ELSE),
+      false
+    );
   });
 
   void it('does not claim it when the check is uncertain or the page was not read', () => {
@@ -206,11 +220,44 @@ void describe('hadNoEffect', () => {
 void describe('effect output', () => {
   void it('says when an action had no visible effect', () => {
     assert.equal(
-      actionStatusLine('Element Clicked', false, true),
+      actionStatusLine('Element Clicked', { warned: false, noEffect: true }),
       '⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)'
     );
-    assert.equal(actionStatusLine('Element Clicked', true), '⚠ Element Clicked (with warnings)');
-    assert.equal(actionStatusLine('Element Clicked', false), '✓ Element Clicked');
+    assert.equal(
+      actionStatusLine('Element Clicked', { warned: true }),
+      '⚠ Element Clicked (with warnings)'
+    );
+    assert.equal(actionStatusLine('Element Clicked', { warned: false }), '✓ Element Clicked');
+  });
+
+  void it('says when the page was still changing', () => {
+    assert.equal(
+      actionStatusLine('Element Clicked', { warned: false, stillChanging: true }),
+      '⚠ Element Clicked (page still changing)'
+    );
+    assert.equal(
+      actionStatusLine('Key Pressed', { warned: true, stillChanging: true }),
+      '⚠ Key Pressed (with warnings; page still changing)'
+    );
+    assert.equal(
+      stillChangingNote('click', { requests: 2, domChanging: true }),
+      'The page was still changing when the click returned (2 requests pending, DOM still changing); wait for the result with bdg dom wait <selector>'
+    );
+    assert.equal(
+      stillChangingNote('key press', {
+        navigation: true,
+        loading: 'div#loading',
+        busy: true,
+      }),
+      'The page was still changing when the key press returned (a new page still loading, loading indicator div#loading shown, page busy running a script); wait for the result with bdg dom wait <selector>'
+    );
+  });
+
+  void it('names shown elements with their text', () => {
+    assert.equal(
+      shownElementText({ text: 'name: user2 View profile', element: 'div.figcaption' }),
+      'div.figcaption "name: user2 View profile"'
+    );
   });
 
   void it('describes navigations and new messages', () => {
@@ -333,6 +380,108 @@ void describe('submit wait messages', () => {
     assert.equal(
       submitNetworkBusyWarning(10000, 2),
       'The new page loaded, but 2 requests still had not finished after 10000ms'
+    );
+  });
+});
+
+void describe('shownElements', () => {
+  void it('leaves out texts reported as messages, keeps three and cuts long texts', () => {
+    const shown = [
+      { text: 'Saved', element: 'div.toast' },
+      { text: 'one', element: 'li' },
+      { text: 'two', element: 'li' },
+      { text: 'x'.repeat(200), element: 'li' },
+      { text: 'four', element: 'li' },
+    ];
+    const result = shownElements(shown, [{ text: 'Saved', element: 'div.toast' }]);
+    assert.deepEqual(
+      result.map((element) => element.text.length),
+      [3, 3, 120]
+    );
+    assert.ok(result[2]?.text.endsWith('…'));
+  });
+});
+
+/**
+ * Settle signals of a read.
+ *
+ * @param fields - Signals that differ from a quiet page
+ * @returns Signals
+ */
+function settle(fields: Partial<SettleSignals> = {}): SettleSignals {
+  return { burstAges: [], loading: null, ...fields };
+}
+
+/**
+ * Page work after an action.
+ *
+ * @param fields - Work that differs from a settled page
+ * @returns Work
+ */
+function work(fields: Partial<PageWork> = {}): PageWork {
+  return {
+    settle: settle(),
+    domChanging: false,
+    unresponsive: false,
+    navigating: false,
+    ...fields,
+  };
+}
+
+void describe('domLooksBusy and domKeptChanging', () => {
+  void it('looks again only after recent bursts, not after one render or old ones', () => {
+    assert.equal(domLooksBusy(settle({ burstAges: [120, 40] })), true);
+    assert.equal(domLooksBusy(settle({ burstAges: [40] })), false, 'one render');
+    assert.equal(domLooksBusy(settle({ burstAges: [480, 300] })), false, 'quiet since');
+    assert.equal(domLooksBusy(settle({ burstAges: [900, 40] })), false, 'one in the window');
+    assert.equal(domLooksBusy(undefined), false);
+  });
+
+  void it('counts the DOM as still changing with two new bursts during the second look', () => {
+    assert.equal(domKeptChanging(settle({ burstAges: [400, 180, 60] }), 260), true);
+    assert.equal(domKeptChanging(settle({ burstAges: [400, 300, 60] }), 260), false, 'a poller');
+    assert.equal(domKeptChanging(undefined, 260), false);
+  });
+});
+
+void describe('pendingChanges', () => {
+  /**
+   * A triggered request.
+   *
+   * @param resourceType - CDP resource type
+   * @param pending - Whether it was still running
+   * @returns Request
+   */
+  const request = (resourceType: string, pending = true): TriggeredRequest => ({
+    requestId: resourceType,
+    method: 'GET',
+    url: `https://a.test/${resourceType}`,
+    resourceType,
+    ...(pending && { pending: true as const }),
+  });
+
+  void it('is undefined for a settled page', () => {
+    assert.equal(pendingChanges(work()), undefined);
+  });
+
+  void it('counts pending content requests, not assets, streams or finished ones', () => {
+    const requests = ['Fetch', 'XHR', 'Document', 'Script', 'Image', 'Stylesheet', 'EventSource']
+      .map((type) => request(type))
+      .concat(request('Fetch', false));
+    assert.deepEqual(pendingChanges(work(), requests), { requests: 4 });
+  });
+
+  void it('names a loader, a pending navigation, an ongoing DOM and a busy page', () => {
+    assert.deepEqual(
+      pendingChanges(
+        work({
+          settle: settle({ loading: 'div#loading' }),
+          navigating: true,
+          domChanging: true,
+          unresponsive: true,
+        })
+      ),
+      { navigation: true, loading: 'div#loading', domChanging: true, busy: true }
     );
   });
 });

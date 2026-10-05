@@ -262,6 +262,8 @@ export interface DomClickCommand {
   wait?: boolean;
   /** Double or right click, or only hover (default: click) */
   action?: 'click' | 'double' | 'right' | 'hover';
+  /** Refuse (exit 90) instead of falling back to DOM events when a real mouse can't reach it */
+  strict?: boolean;
 }
 
 export type DomClickData = ClickResult;

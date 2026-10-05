@@ -4,7 +4,9 @@
  * Drives the `/interactions` fixture with `dom fill`, `dom pressKey` and
  * `dom click` and asserts on what the page observed: trusted key input,
  * Enter semantics, controlled checkboxes, pointer-driven menus, and clear
- * errors for read-only and disabled fields.
+ * errors for read-only and disabled fields; and the `/effects` fixture for
+ * what hovers and key presses showed, results that come late, and
+ * `--strict` refusals.
  */
 
 import * as assert from 'node:assert/strict';
@@ -1073,5 +1075,82 @@ void describe('DOM interactions', () => {
       'accepted:scaled',
       'code:scaled:xyz',
     ]);
+  });
+
+  void it('reports the tooltip or caption a hover showed, stable when the page shifts', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    assert.match(
+      await bdg(['dom', 'hover', '#help']),
+      /\nShown: +div#tip "Saves a draft every minute"\n/
+    );
+    const card = JSON.parse(await bdg(['dom', 'hover', '.card', '--index', '1', '--json'])) as {
+      data: { shown?: unknown; effect?: string };
+    };
+    assert.deepEqual(card.data.shown, [{ text: 'second card', element: 'span.caption' }]);
+    assert.equal(card.data.effect, undefined, 'hover never claims no effect');
+
+    const shifted = JSON.parse(await bdg(['dom', 'hover', '#shift-target', '--json'])) as {
+      data: { shown?: unknown };
+    };
+    assert.equal(
+      shifted.data.shown,
+      undefined,
+      'elements moving in the page are not revealed ones'
+    );
+  });
+
+  void it('reports the item an Enter added, not a widget elsewhere that changed meanwhile', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    await bdg(['dom', 'fill', '#todo', 'Write tests']);
+    const pressed = JSON.parse(await bdg(['dom', 'pressKey', '#todo', 'Enter', '--json'])) as {
+      data: { shown?: unknown };
+    };
+    assert.deepEqual(pressed.data.shown, [{ text: 'Write tests', element: 'li' }]);
+    assert.equal(await evaluate("document.querySelectorAll('#ticker p').length > 0"), true);
+    await bdg(['dom', 'fill', '#todo', 'Ship it']);
+    assert.match(await bdg(['dom', 'pressKey', '#todo', 'Enter']), /\nShown: +li "Ship it"\n/);
+  });
+
+  void it('says when the page was still changing as a click returned', async () => {
+    type Unsettled = {
+      data: { settled?: boolean; pending?: Record<string, unknown>; effect?: string };
+    };
+    const click = async (selector: string): Promise<Unsettled['data']> => {
+      await bdg(['page', 'navigate', `${fixture.url}effects`]);
+      return (JSON.parse(await bdg(['dom', 'click', selector, '--json'])) as Unsettled).data;
+    };
+
+    assert.deepEqual((await click('#spin')).pending, { loading: 'div.spinner' });
+    assert.equal((await click('#steps')).pending?.['domChanging'], true);
+    assert.equal((await click('#twice')).settled, undefined, 'two renders that stop are settled');
+    assert.equal((await click('#block')).pending?.['busy'], true);
+    assert.equal(
+      (await click('#toast')).settled,
+      undefined,
+      "a toast's hide timer is not pending work"
+    );
+
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    assert.match(
+      await bdg(['dom', 'click', '#block']),
+      /^⚠ Element Clicked \(page still changing\)\n⚠ The page was still changing when the click returned \(page busy running a script\); wait for the result with bdg dom wait <selector>\n/
+    );
+  });
+
+  void it('refuses with --strict what a user could not click or hover', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    const refused = await bdg(['dom', 'click', '#covered', '--strict'], 90);
+    assert.match(refused, /covered by another element \(div#cover\)/);
+    assert.match(refused, /bdg dom layout '#covered'/);
+    const hover = JSON.parse(await bdg(['dom', 'hover', '#covered', '--strict', '--json'], 90)) as {
+      success: boolean;
+      exitCode: number;
+    };
+    assert.deepEqual([hover.success, hover.exitCode], [false, 90]);
+    assert.equal(await evaluate('window.coveredClicks'), 0);
+
+    await bdg(['dom', 'click', '#covered']);
+    assert.equal(await evaluate('window.coveredClicks'), 1, 'without --strict DOM events are used');
+    assert.match(await bdg(['dom', 'click', '#toast', '--strict']), /Method: +mouse events/);
   });
 });

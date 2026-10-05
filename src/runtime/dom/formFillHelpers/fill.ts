@@ -18,6 +18,8 @@ import {
   clickTargetDetachedError,
   unexpectedResponseFormatError,
   operationFailedError,
+  pressNotReceivedError,
+  unreachableElementError,
 } from '@/errors/messages.js';
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import {
@@ -42,6 +44,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import {
   CLICK_NOT_RECEIVED_WARNING,
   POINTER_ACTION_DONE,
+  POINTER_ACTION_NOUN,
   domClickFallbackWarning,
 } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -339,68 +342,94 @@ export function mouseEvents(
 
 /**
  * Page script that stops the press probe installed by CLICK_ELEMENT_SCRIPT
- * and evaluates to whether the mouse press reached the target.
+ * and evaluates to whether the mouse press reached the target and, when it
+ * did not, the element it landed on (if the page saw it at all).
  */
 const PRESS_PROBE_READ_SCRIPT = `(() => {
   const probe = window.__bdgPressProbe;
   delete window.__bdgPressProbe;
-  if (!probe) return true;
+  if (!probe) return { reached: true };
   probe.stop();
-  return probe.reached;
+  return { reached: probe.reached, landedOn: probe.landedOn };
 })()`;
 
+/** Whether a mouse press reached its target, and where it landed instead */
+interface PressOutcome {
+  reached: boolean;
+  /** The element the press landed on, when it missed and the page saw it */
+  landedOn?: string;
+}
+
 /**
- * Whether the mouse press just dispatched reached the target element.
+ * Read the press probe: whether the mouse press just dispatched reached the
+ * target element, and otherwise where it landed.
  *
  * Any doubt (no probe, evaluation failure) counts as reached, so only a
  * press that the page provably never saw is reported.
  *
  * @param cdp - CDP connection
- * @returns False only when the target received no pointerdown/mousedown
+ * @returns Outcome; not reached only when the target received no pointerdown/mousedown
  */
-export async function pressReachedTarget(cdp: CDPConnection): Promise<boolean> {
+async function readPressProbe(cdp: CDPConnection): Promise<PressOutcome> {
   try {
     const response = (await cdp.send('Runtime.evaluate', {
       expression: PRESS_PROBE_READ_SCRIPT,
       returnByValue: true,
-    })) as { result?: { value?: unknown } };
-    return response.result?.value !== false;
+    })) as { result?: { value?: { reached?: unknown; landedOn?: unknown } } };
+    const value = response.result?.value;
+    if (value?.reached !== false) return { reached: true };
+    return typeof value.landedOn === 'string'
+      ? { reached: false, landedOn: value.landedOn }
+      : { reached: false };
   } catch (error) {
     log.debug(`Press probe not read: ${getErrorMessage(error)}`);
-    return true;
+    return { reached: true };
   }
 }
 
 /**
+ * Whether the mouse press just dispatched reached the target element
+ * (see {@link readPressProbe}).
+ *
+ * @param cdp - CDP connection
+ * @returns False only when the target received no pointerdown/mousedown
+ */
+export async function pressReachedTarget(cdp: CDPConnection): Promise<boolean> {
+  return (await readPressProbe(cdp)).reached;
+}
+
+/**
  * Dispatch real mouse events for an action, checking after the first press
- * that the target received it. If dispatching fails first, the press probe
- * is still removed from the page.
+ * that the target received it. With `stopIfMissed`, a press that missed is
+ * only released (no further presses). If dispatching fails first, the press
+ * probe is still removed from the page.
  *
  * @param cdp - CDP connection
  * @param action - What to do
- * @param x - Page x
- * @param y - Page y
- * @returns False if the press never reached the target
+ * @param point - Page coordinates
+ * @param stopIfMissed - Stop after releasing a press that missed (--strict)
+ * @returns Whether the first press reached the target, and where it landed otherwise
  */
 async function dispatchMouseAction(
   cdp: CDPConnection,
   action: PointerAction,
-  x: number,
-  y: number
-): Promise<boolean> {
-  let reached: boolean | undefined;
+  point: { x: number; y: number },
+  stopIfMissed: boolean
+): Promise<PressOutcome> {
+  let outcome: PressOutcome | undefined;
   try {
-    for (const event of mouseEvents(action, x, y)) {
+    for (const event of mouseEvents(action, point.x, point.y)) {
       await cdp.send('Input.dispatchMouseEvent', event);
-      if (event['type'] === 'mousePressed' && reached === undefined) {
-        reached = await pressReachedTarget(cdp);
+      if (event['type'] === 'mouseReleased' && outcome?.reached === false && stopIfMissed) break;
+      if (event['type'] === 'mousePressed' && outcome === undefined) {
+        outcome = await readPressProbe(cdp);
       }
     }
   } catch (error) {
-    if (reached === undefined) await pressReachedTarget(cdp);
+    if (outcome === undefined) await readPressProbe(cdp);
     throw error;
   }
-  return reached ?? true;
+  return outcome ?? { reached: true };
 }
 
 /** Click target as located by CLICK_ELEMENT_SCRIPT. */
@@ -425,42 +454,77 @@ function releaseClickTarget(cdp: CDPConnection): void {
 }
 
 /**
+ * Refuse a pointer action under `--strict` (exit 90, the page's state
+ * conflicts with the request): the element is unreachable by the mouse, or
+ * the press never reached it.
+ *
+ * @param result - Located click (selector and element description)
+ * @param action - What was refused
+ * @param why - Why the mouse could not reach it (nothing was sent), or the
+ *   press that was sent and missed
+ * @returns Never
+ * @throws CommandError always
+ */
+function refuseUnreachable(
+  result: ClickResult,
+  action: PointerAction,
+  why: { obstruction: string | null } | { missed: PressOutcome }
+): never {
+  const target = { selector: result.selector ?? '', element: result.element };
+  const verb = POINTER_ACTION_NOUN[action];
+  const err =
+    'missed' in why
+      ? pressNotReceivedError(target, verb, why.missed.landedOn)
+      : unreachableElementError(target, why.obstruction, verb);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.RESOURCE_CONFLICT);
+}
+
+/**
  * Click a located element.
  *
  * Uses real mouse events (pointerdown/mousedown/pointerup/mouseup/click, all
  * trusted) at the element's center when it is the topmost element there, so
  * components that react to pointer or mouse events (menus, selects) respond.
- * Otherwise (covered or zero-size) falls back to `el.click()` and says so.
+ * Otherwise (covered or zero-size) falls back to `el.click()` and says so,
+ * or with `strict` refuses (as it does when the press never reached it).
  * Double and right clicks, and hovering, work the same way.
  *
  * @param cdp - CDP connection
  * @param located - Locate result with center point
  * @param action - Click, double click, right click or hover
+ * @param strict - Refuse instead of falling back to DOM events
  * @returns Click result
+ * @throws CommandError under `strict` when a user could not reach the element
  */
 async function performClick(
   cdp: CDPConnection,
   located: LocatedClick,
-  action: PointerAction
+  action: PointerAction,
+  strict: boolean
 ): Promise<ClickResult> {
   const { x, y, hittable, obstruction, ...result } = located;
   if (!result.success) return result;
 
   if (hittable && x !== undefined && y !== undefined) {
-    const reached = await dispatchMouseAction(cdp, action, x, y);
+    const press = await dispatchMouseAction(cdp, action, { x, y }, strict);
     releaseClickTarget(cdp);
+    if (!press.reached && strict) refuseUnreachable(result, action, { missed: press });
     return withMultipleMatchesWarning<ClickResult>(
       {
         ...result,
         action,
         method: 'mouse',
-        ...(!reached && { warning: CLICK_NOT_RECEIVED_WARNING }),
+        ...(!press.reached && { warning: CLICK_NOT_RECEIVED_WARNING }),
       },
       result.selectedIndex,
       `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`
     );
   }
 
+  if (strict) {
+    releaseClickTarget(cdp);
+    refuseUnreachable(result, action, { obstruction: obstruction ?? null });
+  }
   const response = (await cdp.send('Runtime.evaluate', {
     expression: domFallbackScript(action),
     returnByValue: true,
@@ -487,7 +551,7 @@ async function performClick(
 export async function clickElement(
   cdp: CDPConnection,
   selector: string,
-  options: { index?: number; action?: PointerAction } = {}
+  options: { index?: number; action?: PointerAction; strict?: boolean } = {}
 ): Promise<ClickResult> {
   const indexArg = options.index ?? 'null';
   const action = options.action ?? 'click';
@@ -522,7 +586,7 @@ export async function clickElement(
     }
 
     if (cdpResponse.result?.value && isClickResult(cdpResponse.result.value)) {
-      return await performClick(cdp, cdpResponse.result.value, action);
+      return await performClick(cdp, cdpResponse.result.value, action, options.strict === true);
     }
 
     const err = unexpectedResponseFormatError('ClickResult');
