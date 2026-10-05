@@ -8,6 +8,7 @@
  * - `eval.ts` — evaluate JavaScript in the page (or an iframe)
  * - `frames.ts` — list the page's iframes
  * - `listeners.ts` — list event listeners that run for an element
+ * - `layout.ts` — positions, sizes and visibility of elements
  *
  * Form-related commands register via `form.ts` and `formInteraction.ts`.
  * Accessibility commands register via `a11y.ts`.
@@ -20,6 +21,7 @@ import { handleDomEval } from '@/commands/dom/eval.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import { handleDomFrames } from '@/commands/dom/frames.js';
 import { handleDomGet } from '@/commands/dom/get.js';
+import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
 import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
@@ -44,6 +46,7 @@ export function registerDomCommands(program: Command): void {
   registerA11yCommands(dom);
   registerFormCommand(dom);
   registerListenersCommand(dom);
+  registerLayoutCommand(dom);
 
   dom
     .command('query')

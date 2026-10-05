@@ -11,7 +11,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { staleNodeError } from '@/errors/messages.js';
+import { indexOutOfRangeError, noNodesFoundError, staleNodeError } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { parseSelectorFilters, type SelectorFilter } from '@/utils/selectorFilters.js';
 
@@ -176,4 +176,35 @@ export function withUserSelector<T extends { selector?: string }>(
 ): T {
   if (result.selector !== BOUND_TARGET_SELECTOR) return result;
   return { ...result, ...(selector !== undefined && { selector }) };
+}
+
+/**
+ * Error for an element a command could not find.
+ *
+ * @param target - Selector (and index) or backend node id the command was given
+ * @param matchCount - Elements the selector matched
+ * @returns Stale (87), out of range (81) or not found (83) error
+ */
+export function missingElementError(
+  target: { selector: string; index?: number; backendNodeId?: number },
+  matchCount: number
+): CommandError {
+  if (target.backendNodeId !== undefined) {
+    const err = staleNodeError();
+    return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+  }
+  if (matchCount > 0) {
+    const err = indexOutOfRangeError(target.index ?? 0, matchCount - 1);
+    return new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  const err = noNodesFoundError(target.selector);
+  return new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.RESOURCE_NOT_FOUND
+  );
 }

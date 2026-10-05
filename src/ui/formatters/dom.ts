@@ -6,6 +6,7 @@ import {
   frameLabel,
   moreMatchesNote,
   noFramesMessage,
+  viewportPositionHint,
 } from '@/ui/messages/commands.js';
 import { parseSelectorFilters } from '@/utils/selectorFilters.js';
 
@@ -29,8 +30,9 @@ function textExtractionScript(selector: string, index: number): string {
 /**
  * Format DOM query results for human-readable output.
  *
- * Displays found nodes with their index, tag, classes, and preview text,
- * up to {@link QUERY_DISPLAY_LIMIT} of them (no match is an error, exit 83).
+ * Displays found nodes with their index, tag, classes, and preview text
+ * (plus where they are when outside the viewport or hidden, e.g.
+ * `(below fold)`), up to {@link QUERY_DISPLAY_LIMIT} of them (no match is an error, exit 83).
  * The text extraction hint is left out for selectors with text or visibility
  * filters, which `document.querySelectorAll` does not understand.
  *
@@ -68,7 +70,9 @@ export function formatDomQuery(data: DomQueryResult): string {
       .join('');
     const context = node.context ? ` (in ${node.context})` : '';
     const preview = node.preview ? ` ${node.preview}` : '';
-    return `[${node.index}] <${node.tag}${attributes}>${context}${preview}`;
+    const position = node.inViewport && viewportPositionHint(node.inViewport, node.clippedBy);
+    const location = position ? ` (${position})` : '';
+    return `[${node.index}] <${node.tag}${attributes}>${context}${preview}${location}`;
   });
 
   const hasMultipleResults = count > 1;

@@ -9,6 +9,7 @@ import type { HintDetails } from '@/errors/notices.js';
 import type {
   ClickResult,
   FillResult,
+  LayoutResult,
   ListenersResult,
   PressKeyResult,
   RawFormData,
@@ -316,6 +317,19 @@ export interface DomListenersCommand {
 export type DomListenersData = ListenersResult;
 
 /**
+ * dom_layout: positions, sizes and visibility of elements.
+ */
+export interface DomLayoutCommand {
+  selector: string;
+  /** Only this match (default: every match) */
+  index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
+}
+
+export type DomLayoutData = LayoutResult;
+
+/**
  * dom_form_discover: run the form discovery script and return raw form data.
  */
 export type DomFormDiscoverCommand = Record<string, never>;
@@ -346,6 +360,7 @@ export type RegistryShape = {
   dom_scroll: CommandDef<DomScrollCommand, DomScrollData>;
   dom_form_discover: CommandDef<DomFormDiscoverCommand, DomFormDiscoverData>;
   dom_listeners: CommandDef<DomListenersCommand, DomListenersData>;
+  dom_layout: CommandDef<DomLayoutCommand, DomLayoutData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
 };
 
@@ -407,6 +422,7 @@ export const COMMANDS: RegistryShape = {
   page_navigate: defineCommand(),
   dom_form_discover: defineCommand(),
   dom_listeners: defineCommand(),
+  dom_layout: defineCommand(),
 };
 
 /**

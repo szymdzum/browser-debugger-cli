@@ -18,9 +18,18 @@ import {
   eitherArgumentRequiredError,
   invalidSelectorError,
   nodeIdNotFoundError,
+  operationFailedError,
   staleNodeError,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
+import type { LayoutSize } from '@/ipc/protocol/domTypes.js';
+import {
+  ELEMENT_GEOMETRY_JS,
+  VIEWPORT_SIZE_JS,
+  classifyViewportPosition,
+  type ElementGeometry,
+} from '@/runtime/dom/elementGeometry.js';
+import { ELEMENT_CONTEXT_JS, ELEMENT_TEXT_JS, textPreview } from '@/runtime/dom/elementInfo.js';
 import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import type {
@@ -30,6 +39,7 @@ import type {
   DomGetOptions,
   DomContext,
   NodeRef,
+  ViewportPosition,
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
@@ -39,9 +49,6 @@ const log = createLogger('dom');
 
 /** Maximum concurrent CDP calls to avoid overwhelming the connection. */
 const CDP_CONCURRENCY_LIMIT = 10;
-
-/** Length of the text preview shown for queried elements. */
-const PREVIEW_LENGTH = 80;
 
 /**
  * Convert CDP's flat attribute list to a record.
@@ -85,35 +92,6 @@ async function getOuterHTML(ref: NodeRef): Promise<string | undefined> {
   return (response.data?.result as Protocol.DOM.GetOuterHTMLResponse | undefined)?.outerHTML;
 }
 
-/**
- * Page-side text of an element as a user sees it: `innerText` for a rendered
- * element (CSS-hidden parts left out, inline elements not split apart), none
- * for an element that is not rendered, `textContent` for SVG and other
- * elements without `innerText` and for `display: contents` wrappers (no box
- * of their own, but their children are shown).
- */
-const ELEMENT_TEXT_JS = `(el) => {
-  if (typeof el.innerText !== 'string') return el.textContent || '';
-  if (!el.checkVisibility || el.checkVisibility()) return el.innerText;
-  const boxless = el.ownerDocument.defaultView.getComputedStyle(el).display === 'contents';
-  return boxless ? el.textContent || '' : '';
-}`;
-
-/**
- * Short text preview of an element's text: whitespace collapsed, cut on a
- * whole character (an emoji is never split, which would make JSON invalid).
- *
- * @param text - Element text as the page renders it
- * @returns Collapsed text, truncated to {@link PREVIEW_LENGTH} characters
- */
-export function textPreview(text: string): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
-  const characters = Array.from(collapsed);
-  return characters.length > PREVIEW_LENGTH
-    ? characters.slice(0, PREVIEW_LENGTH).join('') + '...'
-    : collapsed;
-}
-
 /** Counter giving each query its own object group (queries may run concurrently) */
 let queryCount = 0;
 
@@ -155,53 +133,114 @@ async function withSelection<T>(
   }
 }
 
-/** Where each element of a page-side array lives (an iframe and/or a shadow root), and its text */
+/** Matches whose viewport position `dom query` reports (measuring is not free) */
+const VIEWPORT_HINT_LIMIT = 100;
+
+/**
+ * Where each element of a page-side array lives (an iframe and/or a shadow
+ * root), its text and, for the first {@link VIEWPORT_HINT_LIMIT}, its position
+ * relative to the viewport, plus the viewport size. An element that cannot be
+ * read gets empty details instead of failing the whole query.
+ */
 const ELEMENT_DETAILS_FUNCTION = `function () {
-  const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '');
+  const contextOf = ${ELEMENT_CONTEXT_JS};
   const textOf = ${ELEMENT_TEXT_JS};
-  return Array.from(this, (el) => {
-    const parts = [];
-    for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
-      const frame = doc.defaultView.frameElement;
-      parts.unshift(describe(frame));
-      doc = frame.ownerDocument;
+  const geometryOf = ${ELEMENT_GEOMETRY_JS};
+  const read = (el, index) => {
+    try {
+      return { context: contextOf(el), text: textOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
+    } catch (e) {
+      return {};
     }
-    const root = el.getRootNode();
-    if (root.host) parts.push('shadow root of <' + describe(root.host) + '>');
-    return { context: parts.join(' > '), text: textOf(el) };
-  });
+  };
+  return { viewport: (${VIEWPORT_SIZE_JS})(window), elements: Array.from(this, read) };
 }`;
+
+/** One element of a selection with what `dom query` shows about it. */
+interface ElementDetails {
+  backendNodeId: number;
+  context: string;
+  text: string;
+  inViewport?: ViewportPosition;
+  clippedBy?: string;
+}
+
+/** What {@link ELEMENT_DETAILS_FUNCTION} returns for one element. */
+interface PageElementDetails {
+  context?: string;
+  text?: string;
+  geometry?: ElementGeometry | null;
+}
+
+/** What {@link ELEMENT_DETAILS_FUNCTION} returns. */
+interface PageDetails {
+  viewport?: LayoutSize;
+  elements?: PageElementDetails[];
+}
 
 /**
  * Backend node ids of the elements in a page-side array, each with where it
- * lives (empty for the main document) and its text.
+ * lives (empty for the main document), its text and its viewport position.
  *
  * @param arrayObjectId - Remote object id of the array
  * @returns Elements in array order (ones that cannot be described are left out)
+ * @throws CommandError (91) when the page could not describe the matches
  */
-async function elementsWithDetails(
-  arrayObjectId: string
-): Promise<Array<{ backendNodeId: number; context: string; text: string }>> {
+async function elementsWithDetails(arrayObjectId: string): Promise<ElementDetails[]> {
+  const { viewport, elements = [] } = await readPageDetails(arrayObjectId);
+  const ids = await elementBackendNodeIds(arrayObjectId);
+  return ids.flatMap((backendNodeId, index) => {
+    if (backendNodeId === undefined) return [];
+    const details = elements[index];
+    return [
+      {
+        backendNodeId,
+        context: details?.context ?? '',
+        text: details?.text ?? '',
+        ...viewportHint(details?.geometry, viewport),
+      },
+    ];
+  });
+}
+
+/**
+ * Run {@link ELEMENT_DETAILS_FUNCTION} on a page-side array.
+ *
+ * @param arrayObjectId - Remote object id of the array
+ * @returns Details of each element and the viewport size
+ * @throws CommandError (91) when the script failed
+ */
+async function readPageDetails(arrayObjectId: string): Promise<PageDetails> {
   const response = await callCDP('Runtime.callFunctionOn', {
     objectId: arrayObjectId,
     functionDeclaration: ELEMENT_DETAILS_FUNCTION,
     returnByValue: true,
   });
-  const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
-    ?.value;
-  const details = (Array.isArray(value) ? value : []) as Array<{ context?: string; text?: string }>;
-  const ids = await elementBackendNodeIds(arrayObjectId);
-  return ids.flatMap((backendNodeId, index) =>
-    backendNodeId === undefined
-      ? []
-      : [
-          {
-            backendNodeId,
-            context: details[index]?.context ?? '',
-            text: details[index]?.text ?? '',
-          },
-        ]
-  );
+  const result = response.data?.result as
+    Partial<Protocol.Runtime.CallFunctionOnResponse> | undefined;
+  if (response.status === 'error' || result?.exceptionDetails) {
+    const detail =
+      result?.exceptionDetails?.exception?.description ?? response.error ?? 'no result';
+    const err = operationFailedError('describe the matches', detail.split('\n')[0] ?? detail);
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
+  }
+  return (result?.result?.value ?? {}) as PageDetails;
+}
+
+/**
+ * Viewport position of a measured element for `dom query`.
+ *
+ * @param geometry - Page-side measurements (none beyond the hint limit)
+ * @param viewport - Viewport size
+ * @returns `inViewport` (and `clippedBy`), or nothing when not measured
+ */
+function viewportHint(
+  geometry: ElementGeometry | null | undefined,
+  viewport: LayoutSize | undefined
+): Pick<ElementDetails, 'inViewport' | 'clippedBy'> {
+  if (!geometry || !viewport) return {};
+  const { inViewport, clippedBy } = classifyViewportPosition(geometry, viewport);
+  return { inViewport, ...(clippedBy && { clippedBy }) };
 }
 
 /**
@@ -295,7 +334,8 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
     log.debug(`Querying ${elements.length} elements with selector: ${selector}`);
   }
 
-  const nodes = await mapConcurrently(elements, async ({ backendNodeId, context, text }, index) => {
+  const nodes = await mapConcurrently(elements, async (element, index) => {
+    const { backendNodeId, context, text, inViewport, clippedBy } = element;
     const desc = await describeNode({ backendNodeId });
     if (!desc) return { index, nodeId: 0 };
     const attributes = unpackAttributes(desc.attributes);
@@ -309,6 +349,8 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
       ...(classes && { classes }),
       ...(preview && { preview }),
       ...(context && { context }),
+      ...(inViewport && { inViewport }),
+      ...(clippedBy && { clippedBy }),
     };
   });
 

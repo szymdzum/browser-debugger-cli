@@ -349,6 +349,14 @@ export interface DomContext {
 export type NodeRef = { nodeId: number } | { backendNodeId: number };
 
 /**
+ * Where an element is relative to the top-level viewport: fully `visible`,
+ * `partly` visible, outside it in one direction, or `hidden` (not rendered,
+ * `visibility: hidden`, zero size, inert, or clipped away).
+ */
+export type ViewportPosition =
+  'visible' | 'partly' | 'above' | 'below' | 'left' | 'right' | 'hidden';
+
+/**
  * Result of a DOM query operation.
  */
 export interface DomQueryResult {
@@ -368,6 +376,10 @@ export interface DomQueryResult {
     preview?: string;
     /** Enclosing iframe(s) and shadow root, e.g. "iframe#pay > shadow root of <x-card>" */
     context?: string;
+    /** Where the element is relative to the viewport when queried (first 100 matches) */
+    inViewport?: ViewportPosition;
+    /** Ancestor or iframe cutting it off, e.g. a scrolled list */
+    clippedBy?: string;
     /** Unique selector for this node (set by form discovery) */
     selector?: string;
   }>;

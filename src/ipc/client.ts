@@ -433,3 +433,10 @@ export async function domListeners(
 ): Promise<ClientResponse<'dom_listeners'>> {
   return sendCommand('dom_listeners', params);
 }
+
+/** Positions, sizes and visibility of elements. */
+export async function domLayout(
+  params: NoType<(typeof COMMANDS)['dom_layout']['requestSchema']>
+): Promise<ClientResponse<'dom_layout'>> {
+  return sendCommand('dom_layout', params);
+}

@@ -58,6 +58,7 @@ bdg page navigate example.com/about
 bdg eval "document.title"          # Run JavaScript in the page (--frame for iframes)
 bdg network list --preset errors   # Network requests, console: bdg console
 bdg dom listeners "#save"          # Which event listeners run for an element
+bdg dom layout "#save"             # Where it is, whether it is visible or covered
 bdg stop                           # End session
 ```
 

@@ -8,7 +8,9 @@
  * `/ws` is a WebSocket echo server; `/frames` embeds a cross-origin iframe
  * (`localhost` vs `127.0.0.1`), starts a worker and requests a missing image;
  * `/deep` has controls inside an open shadow root and a same-origin iframe;
- * `/eval-frames` embeds a same-origin and a cross-origin iframe.
+ * `/eval-frames` embeds a same-origin and a cross-origin iframe; `/layout`
+ * places elements in view, under an overlay, below the fold, hidden and in
+ * an iframe.
  */
 
 import * as fs from 'fs';
@@ -88,6 +90,32 @@ const DEEP_FRAME_HTML = `<!doctype html><p class="note">frame</p>
 </script>`;
 
 /**
+ * Page for `dom layout`: a button in view, one under an overlay, one below
+ * the fold, a hidden paragraph, a same-origin iframe at a known offset, a
+ * button with `pointer-events: none`, one under a `pointer-events: none`
+ * overlay, a dropdown escaping an `overflow: hidden` parent and a link
+ * wrapped over two lines.
+ */
+const LAYOUT_HTML = `<!doctype html><title>layout</title>
+<style>body { margin: 0; height: 3000px; } button { position: absolute; width: 100px; height: 30px; }</style>
+<button id="top" style="left: 10px; top: 10px">Top</button>
+<button id="covered" style="left: 10px; top: 60px">Covered</button>
+<div id="overlay" style="position: absolute; left: 0; top: 50px; width: 200px; height: 50px; background: rgba(0, 0, 0, 0.4)"></div>
+<p id="gone" style="display: none">Gone</p>
+<iframe src="/deep-frame" style="position: absolute; left: 300px; top: 100px; width: 400px; height: 200px; border: 5px solid; padding: 10px"></iframe>
+<button id="save" style="left: 20px; top: 2000px; width: 120px; height: 40px">Save</button>
+<div id="floor" style="position: absolute; left: 0; top: 115px; width: 200px; height: 40px"></div>
+<button id="click-through" style="left: 10px; top: 120px; pointer-events: none">Through</button>
+<div id="glass" style="position: absolute; left: 0; top: 160px; width: 200px; height: 50px; pointer-events: none"></div>
+<button id="under-glass" style="left: 10px; top: 170px">Under glass</button>
+<div style="position: absolute; left: 10px; top: 250px; width: 200px">
+  <div style="overflow: hidden; height: 20px">
+    <ul id="dropdown" style="position: absolute; top: 30px; margin: 0"><li>Option</li></ul>
+  </div>
+</div>
+<p style="position: absolute; left: 10px; top: 350px; margin: 0; width: 11ch; font: 20px/20px monospace"><b>AAAAAAA</b> <a id="wrapped" href="#">BB CC</a> <b>DDDDDDD</b></p>`;
+
+/**
  * Running fixture server handle.
  */
 export interface FixtureServer {
@@ -145,6 +173,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/deep' || req.url === '/deep-frame') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(req.url === '/deep' ? DEEP_HTML : DEEP_FRAME_HTML);
+      return;
+    }
+    if (req.url === '/layout') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(LAYOUT_HTML);
       return;
     }
     if (req.url === '/eval-frames') {
