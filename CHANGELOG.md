@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`--chrome-ws-url <port>`** - Attach to a running Chrome by its DevTools port (`9222`, `host:port` or `http://host:port`); bdg looks up the browser WebSocket URL itself, so logging in by hand first and then attaching takes one command (#47)
+
 ### Changed
 
 - **Release workflow** - npm releases are published by GitHub Actions with npm Trusted Publishing (OIDC, with provenance) when a GitHub release is published, instead of bumping the version in the workflow with an npm token; no token or one-time password is needed. See `docs/RELEASE_PROCESS.md`
