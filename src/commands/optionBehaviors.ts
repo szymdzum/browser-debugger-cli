@@ -123,7 +123,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'click:--no-wait': {
     default: 'Waits for network stability after click (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning)`,
+    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning). Results the page shows later without requests (timers, spinners) are not waited for: use bdg dom wait <selector> --visible`,
     tokenImpact: 'A click that navigates lists the whole page load in JSON triggeredRequests',
   },
   'click:--double': {
@@ -168,6 +168,36 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Default network idle timeout',
     whenEnabled: 'Custom network idle timeout in ms (use for slow APIs)',
     automaticBehavior: TRIGGERED_REQUESTS_BEHAVIOR,
+  },
+
+  'wait:--timeout': {
+    default: 'Gives up after 10000 ms',
+    whenEnabled: 'Gives up after the given milliseconds (1 to 600000)',
+    automaticBehavior:
+      'The page is watched (DOM mutations plus a 100 ms poll for style changes) and answers as soon as the matches change; a navigation during the wait continues it on the new document. A timeout exits 102 (CDP_TIMEOUT) with what the page showed last, e.g. "2 matches, none visible" or "document.readyState: loading", and a next step (dom query for no matches, dom layout for hidden ones, peek for a page still loading)',
+  },
+  'wait:--visible': {
+    default: 'Counts every match, hidden ones included',
+    whenEnabled:
+      'Counts only visible matches (rendered, non-empty box, visibility: visible; opacity 0 counts as visible, as with :visible)',
+    automaticBehavior:
+      'With --gone, waits until no match is visible (the element may stay in the DOM hidden)',
+  },
+  'wait:--gone': {
+    default: 'Waits for at least one match',
+    whenEnabled:
+      'Waits until nothing matches (nothing visible with --visible, nothing containing the text with --text), seen twice in a row in the same document once it is no longer loading, so the empty document right after a navigation does not count (a page stuck in readyState loading never meets it)',
+  },
+  'wait:--text': {
+    default: 'Any match counts',
+    whenEnabled:
+      'Only matches whose text contains the given text count (case-insensitive, whitespace collapsed; hidden elements are matched by their text nodes, as with :has-text)',
+    automaticBehavior: 'Needs a selector; use body to look in the whole page',
+  },
+  'wait:--load': {
+    default: 'Does not look at document.readyState',
+    whenEnabled:
+      'Also waits for document.readyState "complete"; without a selector waits only for that (a script whose server never answers keeps it "loading")',
   },
 
   'listeners:--type': {

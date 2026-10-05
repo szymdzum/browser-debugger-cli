@@ -16,6 +16,14 @@ BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost:5173   # Sa
 
 A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
+A page that has not finished loading when the start returns (the start waits about 2 s; e.g. a script whose server never answers) still starts the session (exit 0) with a warning naming up to 3 requests it waits on, load-blocking ones (scripts, styles, images, frames) first:
+
+```text
+⚠ The page is still loading (document.readyState: loading); waiting on: GET code.jquery.com/ui/1.13.2/jquery-ui.js (pending 2s). Elements may be missing until it finishes: bdg dom wait <selector> waits for one
+```
+
+JSON adds `data.loading: { readyState, pending: [{ method, url, resourceType?, pendingMs }], pendingCount }` (absent once the document is complete). `bdg page navigate`/`reload`/`back`/`forward` report the same (`⚠` line, `data.loading`). While the page is still loading, "not found" errors (`dom query`, `get`, `layout`, `click`, `fill` and the other actions, `eval --frame`) and an empty `dom frames` say so and suggest `bdg dom wait` (one extra `document.readyState` check, only when something was not found).
+
 ### Check session status
 ```bash
 bdg status                      # Basic status information
@@ -356,6 +364,33 @@ Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
 
 **JSON (`data`):** `{ selector, count, omitted?, page: { viewport: { width, height }, scroll: { x, y }, document: { width, height } }, elements: [{ index, tag, element, text?, context?, bounds: { x, y, width, height }, viewport: { x, y }, inViewport, percentVisible?, hiddenReason?, scrollBy?: { x, y }, clippedBy?, offScreenReason?, coveredBy?, invisible?, inert?, computed: { display, visibility, position, opacity, zIndex } }] }`
 
+### Waiting for Elements
+
+`dom click` and the other actions wait for the requests they start, not for results a page shows later (timers, spinners, animations). `bdg dom wait` waits for those instead of `sleep` loops:
+
+```bash
+bdg dom wait "#finish" --visible              # A match becomes visible (timer-based loading)
+bdg dom wait ".toast" --text "Saved"          # A match contains the text (case-insensitive)
+bdg dom wait "#loading" --gone                # Nothing matches any more (--visible: nothing visible)
+bdg dom wait 'li:has-text("Buy milk")'        # Selector filters work too (:has-text, :text-is, :visible)
+bdg dom wait "#app" --load                    # ...and document.readyState is complete
+bdg dom wait --load                           # Only the page load
+bdg dom wait "#result" --timeout 30000        # Default 10000 ms; up to 600000
+```
+
+**Output:**
+```text
+✓ div#finish visible after 5.1s
+```
+
+- Selectors reach open shadow roots and same-origin iframes, like the other DOM commands; an invalid selector exits 81
+- The page is watched (DOM mutations, plus a 100 ms poll for style changes the mutations do not show) and answers as soon as the matches change; a navigation during the wait continues it on the new document
+- Already met: returns at once (`after 0.0s`). `--gone` needs two snapshots in a row of the same document without matches, once it is no longer `loading` (about 50 ms when nothing matches already), so the empty document right after a navigation does not count
+- `--text` needs a selector (`body` searches the whole page); hidden elements match by their text nodes, as with `:has-text`
+- Timeout: exit 102 with what the page showed last and a next step, e.g. `Timed out after 10s waiting for div#finish to be visible (last seen: 2 matches, none visible)`, then `The matches are hidden; see why with bdg dom layout 'div#finish'`
+
+**JSON (`data`):** `{ selector?, text?, visible?, gone?, load?, elapsedMs, count, textCount?, visibleCount, readyState }`
+
 ### JavaScript Evaluation
 
 Execute JavaScript in the page context.
@@ -565,6 +600,7 @@ bdg dom click "#login-btn"
 bdg dom click "button.submit" --index 2
 bdg dom click 0                                   # Use cached query index (0-based)
 bdg dom click "#fast-btn" --no-wait               # Skip network stability wait
+bdg dom click "#start" && bdg dom wait "#finish" --visible   # Results shown later by a timer
 bdg dom click ".row" --double                     # Double-click
 bdg dom click ".row" --right                      # Right-click (context menu)
 bdg dom hover "nav .menu"                         # Hover (opens hover menus)

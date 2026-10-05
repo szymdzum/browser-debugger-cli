@@ -5,8 +5,9 @@
  * cleaning up stale files, and validating command arguments.
  */
 
-import type { DomFrame } from '@/ipc/protocol/commands.js';
+import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { ElementLayout, LayoutPoint, PageLayout } from '@/ipc/protocol/domTypes.js';
+import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { ViewportPosition } from '@/types.js';
 import {
   buildAgentDiscoveryHelp,
@@ -14,7 +15,7 @@ import {
   buildUrlExamples,
   buildSessionManagementReminder,
 } from '@/ui/formatters/helpFormatters.js';
-import { joinLines } from '@/ui/formatting.js';
+import { formatDuration, joinLines, pluralize, truncateUrl } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
 
@@ -366,6 +367,111 @@ export function notAPageWarning(): string {
  */
 export function stillLoadingWarning(ms: number): string {
   return `The new page has not answered within ${Math.round(ms / 1000)}s; it is still loading (check with ${sessionCommand('bdg status')})`;
+}
+
+/**
+ * A request the page is still waiting for.
+ *
+ * @param request - Pending request
+ * @returns e.g. `GET code.jquery.com/ui/.../jquery-ui.js (pending 30s)`
+ */
+function pendingRequestLabel(request: PendingRequestInfo): string {
+  return `${request.method} ${truncateUrl(request.url)} (pending ${formatDuration(request.pendingMs)})`;
+}
+
+/**
+ * Start and `bdg page` when the document has not finished loading within
+ * the readiness wait: its readyState and the requests it is waiting on.
+ *
+ * @param state - Loading state of the page
+ * @returns Warning, e.g. `The page is still loading (document.readyState: loading); waiting on: GET …/jquery-ui.js (pending 30s)`
+ */
+export function pageLoadingWarning(state: PageLoadingState): string {
+  const named = state.pending.map(pendingRequestLabel);
+  const more = state.pendingCount - named.length;
+  const waitingOn =
+    named.length > 0
+      ? `; waiting on: ${named.join(', ')}${more > 0 ? ` and ${more} more` : ''}`
+      : '';
+  return `The page is still loading (document.readyState: ${state.readyState})${waitingOn}. Elements may be missing until it finishes: ${sessionCommand('bdg dom wait <selector>')} waits for one`;
+}
+
+/**
+ * Help of `dom click`/`submit`: they wait for the network only, so results a
+ * page shows later (timers, spinners, animations) are waited for with `dom wait`.
+ */
+export const CLICK_RESULT_WAIT_HELP = joinLines(
+  '',
+  'Waits only for the requests the action starts (150 ms idle, up to 2 s), not for',
+  'results the page shows later (timers, spinners, animations). Wait for those with:',
+  "  bdg dom wait '#result' --visible          # or --text 'Saved', or '.spinner' --gone"
+);
+
+/** Examples in the help of `bdg dom wait` */
+export const WAIT_HELP_EXAMPLES = joinLines(
+  '',
+  'Examples:',
+  "  bdg dom wait '#finish' --visible          # timer-based loading (a spinner, then the result)",
+  "  bdg dom wait '.toast' --text 'Saved'      # a match containing the text",
+  "  bdg dom wait '#loading' --gone            # the spinner went away",
+  '  bdg dom wait --load                       # the page finished loading'
+);
+
+/**
+ * The elements `bdg dom wait` waits for.
+ *
+ * @param condition - What is waited for
+ * @returns e.g. `#finish with text "hello world"`
+ */
+export function waitTargetLabel(condition: WaitCondition): string {
+  const text = condition.text !== undefined ? ` with text "${condition.text}"` : '';
+  return `${condition.selector ?? 'the page'}${text}`;
+}
+
+/**
+ * One-line result of `bdg dom wait`.
+ *
+ * @param condition - What was waited for
+ * @param elapsedMs - How long it took
+ * @returns e.g. `✓ div#finish visible after 5.1s`
+ */
+export function waitMetMessage(condition: WaitCondition, elapsedMs: number): string {
+  const after = `after ${(elapsedMs / 1000).toFixed(1)}s`;
+  if (condition.selector === undefined) return `✓ Page loaded ${after}`;
+  const state = condition.gone
+    ? condition.visible
+      ? 'hidden'
+      : 'gone'
+    : condition.visible
+      ? 'visible'
+      : 'found';
+  const loaded = condition.load ? ' and page loaded' : '';
+  return `✓ ${waitTargetLabel(condition)} ${state}${loaded} ${after}`;
+}
+
+/**
+ * What the page showed, for a `bdg dom wait` that timed out.
+ *
+ * @param snapshot - Last thing the page reported
+ * @param condition - What was waited for
+ * @returns e.g. `2 matches, none visible` or `document.readyState: loading`
+ */
+export function waitSnapshotSummary(snapshot: WaitSnapshot, condition: WaitCondition): string {
+  const some = (count: number): string => (count === 0 ? 'none' : String(count));
+  const parts: string[] = [];
+  if (condition.selector !== undefined) {
+    parts.push(snapshot.count === 0 ? 'no matches' : pluralize(snapshot.count, 'match', 'matches'));
+    if (condition.text !== undefined && snapshot.count > 0) {
+      parts.push(`${some(snapshot.textCount)} with text "${condition.text}"`);
+    }
+    if (condition.visible && snapshot.textCount > 0) {
+      parts.push(`${some(snapshot.visibleCount)} visible`);
+    }
+  }
+  if (condition.load || snapshot.readyState !== 'complete') {
+    parts.push(`document.readyState: ${snapshot.readyState}`);
+  }
+  return parts.join(', ');
 }
 
 /**

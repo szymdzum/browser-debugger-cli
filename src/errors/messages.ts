@@ -7,9 +7,19 @@
 import * as path from 'path';
 
 import type { DomFrame } from '@/ipc/protocol/commands.js';
+import {
+  countedMatches,
+  type WaitCondition,
+  type WaitSnapshot,
+} from '@/runtime/dom/waitCondition.js';
 import { getSessionBaseDir, getSessionName } from '@/session/paths.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
-import { frameLabel, frameUrlLabel } from '@/ui/messages/commands.js';
+import {
+  frameLabel,
+  frameUrlLabel,
+  waitSnapshotSummary,
+  waitTargetLabel,
+} from '@/ui/messages/commands.js';
 import {
   noActiveSessionMessage,
   sessionCommand,
@@ -975,8 +985,13 @@ export const CROSS_ORIGIN_FRAMES_NOTE =
  *
  * @param selector - Selector as given
  * @param hiddenMatches - Elements only its `:visible` filters excluded
+ * @param readyState - The page's `document.readyState`, when known (a hint is added while it loads)
  */
-export function noNodesFoundError(selector: string, hiddenMatches = 0): ErrorWithSuggestion {
+export function noNodesFoundError(
+  selector: string,
+  hiddenMatches = 0,
+  readyState?: string
+): ErrorWithSuggestion {
   const hidden =
     hiddenMatches > 0
       ? hiddenMatches === 1
@@ -985,8 +1000,141 @@ export function noNodesFoundError(selector: string, hiddenMatches = 0): ErrorWit
       : '';
   return {
     message: `No nodes found matching "${selector}"`,
-    suggestion: `${hidden}Verify the CSS selector is correct. ${CROSS_ORIGIN_FRAMES_NOTE}`,
+    suggestion: withLoadingHint(
+      `${hidden}Verify the CSS selector is correct. ${CROSS_ORIGIN_FRAMES_NOTE}`,
+      readyState,
+      selector
+    ),
   };
+}
+
+/**
+ * Quote a value for a POSIX shell command line.
+ *
+ * @param value - Value
+ * @returns The value in single quotes
+ */
+function shellQuote(value: string): string {
+  return `'${value.split("'").join(`'\\''`)}'`;
+}
+
+/**
+ * Hint for something not found while the page has not finished loading.
+ *
+ * @param readyState - The page's `document.readyState` (not `complete`)
+ * @param selector - Selector that matched nothing, if any
+ * @returns e.g. `The page is still loading (document.readyState: loading); wait for the element with: bdg dom wait '#login'`
+ */
+export function pageStillLoadingHint(readyState: string, selector?: string): string {
+  const wait =
+    selector !== undefined && selector.trim() !== ''
+      ? `wait for the element with: ${sessionCommand(`bdg dom wait ${shellQuote(selector)}`)}`
+      : `wait for it with: ${sessionCommand('bdg dom wait --load')}`;
+  return `The page is still loading (document.readyState: ${readyState}); ${wait}`;
+}
+
+/**
+ * Put the still-loading hint before a "not found" suggestion when the page
+ * has not finished loading.
+ *
+ * @param suggestion - Suggestion of the error
+ * @param readyState - The page's `document.readyState`, if known
+ * @param selector - Selector that matched nothing, if any
+ * @returns The suggestion, with the hint first while the page loads
+ */
+export function withLoadingHint(
+  suggestion: string,
+  readyState: string | undefined,
+  selector?: string
+): string {
+  if (readyState === undefined || readyState === 'complete') return suggestion;
+  return joinLines(pageStillLoadingHint(readyState, selector), suggestion || undefined);
+}
+
+/**
+ * `bdg dom wait` without a selector or --load, or with --text/--gone but no selector.
+ *
+ * @returns Message and suggestion
+ */
+export function waitTargetRequiredError(): ErrorWithSuggestion {
+  return {
+    message: 'dom wait needs a selector (--text and --gone apply to its matches), or --load',
+    suggestion: `e.g. ${sessionCommand("bdg dom wait '#result' --visible")}, ${sessionCommand("bdg dom wait body --text 'Welcome'")} or ${sessionCommand('bdg dom wait --load')}`,
+  };
+}
+
+/**
+ * `bdg dom wait` that ran out of time: what it waited for and what the page
+ * showed last, with a next step that fits.
+ *
+ * @param condition - What was waited for
+ * @param snapshot - Last thing the page reported (none when it never answered)
+ * @param timeoutMs - The --timeout
+ * @returns Message and suggestion
+ */
+export function waitTimeoutError(
+  condition: WaitCondition,
+  snapshot: WaitSnapshot | undefined,
+  timeoutMs: number
+): ErrorWithSuggestion {
+  const seen = snapshot
+    ? `last seen: ${waitSnapshotSummary(snapshot, condition)}`
+    : 'the page did not answer';
+  return {
+    message: `Timed out after ${formatDuration(timeoutMs)} waiting for ${waitGoal(condition)} (${seen})`,
+    suggestion: waitTimeoutSuggestion(condition, snapshot),
+  };
+}
+
+/**
+ * What `bdg dom wait` waits for, as a phrase.
+ *
+ * @param condition - What is waited for
+ * @returns e.g. `#finish to be visible` or `the page to load`
+ */
+function waitGoal(condition: WaitCondition): string {
+  if (condition.selector === undefined) return 'the page to load';
+  const state = condition.gone
+    ? condition.visible
+      ? 'to be hidden'
+      : 'to be gone'
+    : condition.visible
+      ? 'to be visible'
+      : 'to appear';
+  return `${waitTargetLabel(condition)} ${state}${condition.load ? ' and the page to load' : ''}`;
+}
+
+/**
+ * Next step after a `bdg dom wait` timeout.
+ *
+ * @param condition - What was waited for
+ * @param snapshot - Last thing the page reported
+ * @returns Suggestion
+ */
+function waitTimeoutSuggestion(
+  condition: WaitCondition,
+  snapshot: WaitSnapshot | undefined
+): string {
+  const more = 'allow more time with --timeout <ms>';
+  const selector = condition.selector;
+  if (snapshot && snapshot.readyState !== 'complete') {
+    return `The page is still loading; see the requests it waits on with ${sessionCommand('bdg peek')}, or ${more}`;
+  }
+  if (
+    !snapshot ||
+    selector === undefined ||
+    condition.gone ||
+    countedMatches(snapshot, condition) > 0
+  ) {
+    return `Check the page with ${sessionCommand('bdg peek')}, or ${more}`;
+  }
+  if (snapshot.count === 0) {
+    return `Check the selector with ${sessionCommand(`bdg dom query ${shellQuote(selector)}`)}, or ${more}`;
+  }
+  if (snapshot.textCount === 0) {
+    return `The matches do not contain the text; see what they say with ${sessionCommand(`bdg dom query ${shellQuote(selector)}`)}`;
+  }
+  return `The matches are hidden; see why with ${sessionCommand(`bdg dom layout ${shellQuote(selector)}`)}, or ${more}`;
 }
 
 /**

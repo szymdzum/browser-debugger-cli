@@ -259,6 +259,20 @@ export interface ListenersCommandOptions extends BaseOptions, IndexOptions {
  */
 export type LayoutCommandOptions = BaseOptions & IndexOptions;
 
+/** Options for `bdg dom wait` */
+export interface WaitCommandOptions extends BaseOptions {
+  /** Text a match must contain */
+  text?: string;
+  /** Wait for the matches to be gone */
+  gone?: boolean;
+  /** Only count visible matches */
+  visible?: boolean;
+  /** Wait for document.readyState to be complete */
+  load?: boolean;
+  /** Give up after this many milliseconds */
+  timeout: number;
+}
+
 /** Options for A11y tree command */
 export type A11yTreeCommandOptions = BaseOptions;
 

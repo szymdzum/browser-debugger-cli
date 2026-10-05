@@ -9,6 +9,7 @@
  * - `frames.ts` — list the page's iframes
  * - `listeners.ts` — list event listeners that run for an element
  * - `layout.ts` — positions, sizes and visibility of elements
+ * - `wait.ts` — wait for elements to appear, show, contain a text or go away
  *
  * Form-related commands register via `form.ts` and `formInteraction.ts`.
  * Accessibility commands register via `a11y.ts`.
@@ -25,6 +26,7 @@ import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
 import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
+import { registerWaitCommand } from '@/commands/dom/wait.js';
 import type {
   DomQueryCommandOptions,
   DomGetCommandOptions,
@@ -47,6 +49,7 @@ export function registerDomCommands(program: Command): void {
   registerFormCommand(dom);
   registerListenersCommand(dom);
   registerLayoutCommand(dom);
+  registerWaitCommand(dom);
 
   dom
     .command('query')

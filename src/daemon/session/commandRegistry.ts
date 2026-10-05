@@ -23,6 +23,7 @@ import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
+import { waitForCondition } from '@/runtime/dom/wait.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
@@ -604,11 +605,16 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
 
     dom_layout: async (cdp, params) => withBusyPageRecovery(cdp, inspectLayout(cdp, params)),
 
+    dom_wait: async (cdp, params) => waitForCondition(cdp, params),
+
     page_navigate: async (cdp, params) =>
       interact(
         cdp,
         () =>
-          navigatePage(cdp, params.action, filterDefined({ url: params.url, wait: params.wait })),
+          navigatePage(cdp, params.action, {
+            ...filterDefined({ url: params.url, wait: params.wait }),
+            pendingRequests: () => store.pendingNetworkRequests.values(),
+          }),
         { reportRequests: false }
       ),
 

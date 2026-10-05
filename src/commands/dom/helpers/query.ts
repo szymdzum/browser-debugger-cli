@@ -138,37 +138,66 @@ async function withSelection<T>(
 }
 
 /**
- * The "no nodes" error for a selector that matched nothing. When the
- * selector uses `:visible`, it says how many elements match without it (one
- * more page search, on this failure path only).
+ * The "no nodes" error for a selector that matched nothing. One more page
+ * evaluation, on this failure path only, tells whether the page is still
+ * loading (the error then suggests `dom wait`) and, when the selector uses
+ * `:visible`, how many elements match without it.
  *
  * @param selector - Selector as given
  * @returns Message and suggestion
  */
 export async function noMatchesError(selector: string): Promise<ErrorWithSuggestion> {
-  return noNodesFoundError(selector, await hiddenMatchCount(selector));
+  const { hidden, readyState } = await noMatchContext(selector);
+  return noNodesFoundError(selector, hidden, readyState);
 }
 
 /**
- * Count the elements a selector matches with its `:visible` filters removed.
+ * The page's readyState and the number of elements the selector matches
+ * with its `:visible` filters removed, in one evaluation.
  *
  * @param selector - Selector as given
- * @returns Count, or 0 when it has no `:visible` filter or the page search fails
+ * @returns Hidden matches (0 without a `:visible` filter) and readyState (undefined when the page did not answer)
  */
-async function hiddenMatchCount(selector: string): Promise<number> {
+async function noMatchContext(selector: string): Promise<{ hidden: number; readyState?: string }> {
   const parts = parseSelectorFilters(selector);
   const unfiltered = parts && withoutVisibleFilters(parts);
-  if (!unfiltered) return 0;
+  const hidden = unfiltered
+    ? `(() => { try { return (${DEEP_QUERY_JS})(${JSON.stringify(selector)}, ${JSON.stringify(unfiltered)}).length; } catch (e) { return 0; } })()`
+    : '0';
   try {
     const evaluated = await callCDP('Runtime.evaluate', {
-      expression: `(${DEEP_QUERY_JS})(${JSON.stringify(selector)}, ${JSON.stringify(unfiltered)}).length`,
+      expression: `({ hidden: ${hidden}, readyState: document.readyState })`,
       returnByValue: true,
     });
     const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
-    return typeof result?.value === 'number' ? result.value : 0;
+    const value = (result?.value ?? {}) as { hidden?: unknown; readyState?: unknown };
+    return {
+      hidden: typeof value.hidden === 'number' ? value.hidden : 0,
+      ...(typeof value.readyState === 'string' && { readyState: value.readyState }),
+    };
   } catch (error) {
-    log.debug(`Could not count hidden matches: ${getErrorMessage(error)}`);
-    return 0;
+    log.debug(`Could not read the page after no match: ${getErrorMessage(error)}`);
+    return { hidden: 0 };
+  }
+}
+
+/**
+ * The page's `document.readyState`, read for a failure that may come from a
+ * page still loading.
+ *
+ * @returns The state, or undefined when the page did not answer
+ */
+export async function documentReadyState(): Promise<string | undefined> {
+  try {
+    const evaluated = await callCDP('Runtime.evaluate', {
+      expression: 'document.readyState',
+      returnByValue: true,
+    });
+    const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
+    return typeof result?.value === 'string' ? result.value : undefined;
+  } catch (error) {
+    log.debug(`Could not read document.readyState: ${getErrorMessage(error)}`);
+    return undefined;
   }
 }
 

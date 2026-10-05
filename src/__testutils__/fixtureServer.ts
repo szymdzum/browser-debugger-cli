@@ -13,7 +13,9 @@
  * `/frame-origins` has srcdoc, about:blank, data: and sandboxed iframes;
  * `/framework-listeners` has React- and jQuery-style listeners; `/layout`
  * places elements in view, under an overlay, below the fold, hidden and in
- * an iframe.
+ * an iframe; `/hanging` is stuck loading on a script (`/never.js`) whose
+ * server never answers; `/dynamic-loading` reveals a result a while after its
+ * Start button is clicked (like the-internet's dynamic_loading).
  */
 
 import * as fs from 'fs';
@@ -185,6 +187,37 @@ const LAYOUT_HTML = `<!doctype html><title>layout</title>
 <script>document.getElementById('slot-host').attachShadow({ mode: 'open' }).innerHTML = '<div id="slot-fade" style="opacity: 0"><slot></slot></div>';</script>
 <div style="position: absolute; left: 750px; top: 510px; width: 100px; height: 0.4px; overflow: hidden"><a id="in-sliver" href="#">Sliver</a></div>`;
 
+/** Page stuck in readyState "loading": its script request is never answered. */
+const HANGING_HTML = `<!doctype html><title>hanging</title>
+<p id="ready">Content</p>
+<script src="/never.js"></script>
+<p id="late">After the script</p>`;
+
+/** How long `/dynamic-loading` shows its spinner before the result */
+const DYNAMIC_LOADING_MS = 1500;
+
+/**
+ * Timer-based loading without requests: Start hides itself and shows
+ * "Loading...", which is removed {@link DYNAMIC_LOADING_MS} later when the
+ * hidden `#finish` is shown and `#status` says "Done".
+ */
+const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
+<div id="start"><button>Start</button></div>
+<div id="loading" style="display: none">Loading...</div>
+<div id="finish" style="display: none"><h4>Hello World!</h4></div>
+<p id="status">Idle</p>
+<script>
+  document.querySelector('#start button').onclick = () => {
+    document.getElementById('start').style.display = 'none';
+    document.getElementById('loading').style.display = 'block';
+    setTimeout(() => {
+      document.getElementById('loading').remove();
+      document.getElementById('finish').style.display = 'block';
+      document.getElementById('status').textContent = 'Done';
+    }, ${DYNAMIC_LOADING_MS});
+  };
+</script>`;
+
 /**
  * Running fixture server handle.
  */
@@ -243,6 +276,12 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/deep' || req.url === '/deep-frame') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(req.url === '/deep' ? DEEP_HTML : DEEP_FRAME_HTML);
+      return;
+    }
+    if (req.url === '/never.js') return;
+    if (req.url === '/hanging' || req.url === '/dynamic-loading') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(req.url === '/hanging' ? HANGING_HTML : DYNAMIC_LOADING_HTML);
       return;
     }
     if (req.url === '/layout') {

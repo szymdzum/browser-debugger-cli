@@ -6,7 +6,8 @@
  */
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { UNREACHABLE_ELEMENTS_HINT, staleNodeError } from '@/errors/messages.js';
+import { documentReadyState } from '@/commands/dom/helpers/query.js';
+import { UNREACHABLE_ELEMENTS_HINT, staleNodeError, withLoadingHint } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 interface IpcResponse<T> {
@@ -59,8 +60,7 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
 export async function runElementCommand<Req, Res extends ResultPayload>(
   options: ElementCommandOptions<Req, Res>
 ): Promise<CommandResult<Omit<Res, 'success'>>> {
-  const { selectorOrIndex, index, command, buildRequest, call, action, failureSuggestion } =
-    options;
+  const { selectorOrIndex, index, command, buildRequest, call } = options;
 
   const target = await DomElementResolver.getInstance().resolve(selectorOrIndex, index, command);
 
@@ -80,43 +80,86 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
   });
 
   const response = await call(request);
+  const failure =
+    response.status === 'error' || !response.data
+      ? errorResponseFailure(response, options)
+      : response.data.success
+        ? undefined
+        : failedResultFailure(response.data, options);
+  if (failure) return withNotFoundLoadingHint(failure, target.selector);
 
-  if (response.status === 'error' || !response.data) {
-    const staleIndex =
-      response.exitCode === EXIT_CODES.STALE_CACHE && /^\d+$/.test(selectorOrIndex)
-        ? staleNodeError(Number(selectorOrIndex)).message
-        : undefined;
-    return {
-      success: false,
-      error: staleIndex ?? response.error ?? `Failed to ${action}`,
-      exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-      ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
-    };
-  }
-
-  const result = response.data;
-
-  if (!result.success) {
-    const exitCode =
-      result.exitCode ??
-      (result.error?.includes('not found')
-        ? EXIT_CODES.RESOURCE_NOT_FOUND
-        : EXIT_CODES.INVALID_ARGUMENTS);
-
-    const suggestion = result.suggestion ?? failureSuggestion;
-    return {
-      success: false,
-      error: result.error ?? `Failed to ${action}`,
-      exitCode,
-      errorContext: {
-        suggestion:
-          exitCode === EXIT_CODES.RESOURCE_NOT_FOUND
-            ? `${suggestion} (${UNREACHABLE_ELEMENTS_HINT})`
-            : suggestion,
-      },
-    };
-  }
-
-  const { success: _success, ...data } = result;
+  const { success: _success, ...data } = response.data as Res;
   return { success: true, data };
+}
+
+/**
+ * Failure for an error response of the daemon.
+ *
+ * @param response - Error response
+ * @param options - Command options (selector or index, action)
+ * @returns Failed command result
+ */
+function errorResponseFailure<Req, Res extends ResultPayload>(
+  response: IpcResponse<Res>,
+  options: ElementCommandOptions<Req, Res>
+): CommandResult<never> {
+  const { selectorOrIndex, action } = options;
+  const staleIndex =
+    response.exitCode === EXIT_CODES.STALE_CACHE && /^\d+$/.test(selectorOrIndex)
+      ? staleNodeError(Number(selectorOrIndex)).message
+      : undefined;
+  return {
+    success: false,
+    error: staleIndex ?? response.error ?? `Failed to ${action}`,
+    exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+    ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
+  };
+}
+
+/**
+ * Failure for an action whose page script reported failure.
+ *
+ * @param result - Action result
+ * @param options - Command options (action, fallback suggestion)
+ * @returns Failed command result
+ */
+function failedResultFailure<Req, Res extends ResultPayload>(
+  result: Res,
+  options: ElementCommandOptions<Req, Res>
+): CommandResult<never> {
+  const exitCode =
+    result.exitCode ??
+    (result.error?.includes('not found')
+      ? EXIT_CODES.RESOURCE_NOT_FOUND
+      : EXIT_CODES.INVALID_ARGUMENTS);
+  const suggestion = result.suggestion ?? options.failureSuggestion;
+  return {
+    success: false,
+    error: result.error ?? `Failed to ${options.action}`,
+    exitCode,
+    errorContext: {
+      suggestion:
+        exitCode === EXIT_CODES.RESOURCE_NOT_FOUND
+          ? `${suggestion} (${UNREACHABLE_ELEMENTS_HINT})`
+          : suggestion,
+    },
+  };
+}
+
+/**
+ * Add the still-loading hint to a "not found" failure while the page has
+ * not finished loading (one page evaluation, on this failure path only).
+ *
+ * @param failure - Failed command result
+ * @param selector - Selector that was looked for
+ * @returns The failure, with the hint when the page is loading
+ */
+async function withNotFoundLoadingHint(
+  failure: CommandResult<never>,
+  selector: string
+): Promise<CommandResult<never>> {
+  if (failure.exitCode !== EXIT_CODES.RESOURCE_NOT_FOUND) return failure;
+  const readyState = await documentReadyState();
+  const suggestion = withLoadingHint(failure.errorContext?.suggestion ?? '', readyState, selector);
+  return suggestion ? { ...failure, errorContext: { suggestion } } : failure;
 }

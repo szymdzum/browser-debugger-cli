@@ -24,7 +24,7 @@ import type {
 } from './session/index.js';
 import type { NoType } from './utils/index.js';
 
-import { getQuickIPCRequestTimeout } from '@/constants.js';
+import { getIPCRequestTimeout, getQuickIPCRequestTimeout } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -439,4 +439,24 @@ export async function domLayout(
   params: NoType<(typeof COMMANDS)['dom_layout']['requestSchema']>
 ): Promise<ClientResponse<'dom_layout'>> {
   return sendCommand('dom_layout', params);
+}
+
+/** Time the client gives `dom wait` beyond its --timeout (the daemon reports the timeout first) */
+const WAIT_IPC_MARGIN_MS = 10_000;
+
+/**
+ * Wait until elements appear, become visible, contain a text or are gone,
+ * and/or the page has loaded.
+ *
+ * @param params - Condition and timeout
+ * @returns What the page showed once the condition was met
+ */
+export async function domWait(
+  params: NoType<(typeof COMMANDS)['dom_wait']['requestSchema']>
+): Promise<ClientResponse<'dom_wait'>> {
+  return sendCommand(
+    'dom_wait',
+    params,
+    Math.max(getIPCRequestTimeout(), params.timeout + WAIT_IPC_MARGIN_MS)
+  );
 }

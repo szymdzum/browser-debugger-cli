@@ -369,6 +369,7 @@ export type RegistryShape = {
   dom_form_discover: CommandDef<DomFormDiscoverCommand, DomFormDiscoverData>;
   dom_listeners: CommandDef<DomListenersCommand, DomListenersData>;
   dom_layout: CommandDef<DomLayoutCommand, DomLayoutData>;
+  dom_wait: CommandDef<DomWaitCommand, DomWaitData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
 };
 
@@ -387,6 +388,66 @@ export interface PageNavigationResult {
   status?: number;
   /** Something worth knowing: an HTTP error, a download, a page still loading */
   warning?: string;
+  /** The new document had not finished loading within the wait (absent once complete) */
+  loading?: PageLoadingState;
+}
+
+/** A request the page is still waiting for */
+export interface PendingRequestInfo {
+  method: string;
+  url: string;
+  /** CDP resource type (Script, Stylesheet, Image, ...) when known */
+  resourceType?: string;
+  /** How long it has been running */
+  pendingMs: number;
+}
+
+/** A document that has not finished loading (`document.readyState` is not `complete`) */
+export interface PageLoadingState {
+  /** `loading` or `interactive` */
+  readyState: string;
+  /** The longest-running requests, load-blocking ones (scripts, styles, images, frames) first */
+  pending: PendingRequestInfo[];
+  /** All requests still running (more than `pending` lists when there are many) */
+  pendingCount: number;
+}
+
+/**
+ * dom_wait: wait until elements matching a selector appear, become visible,
+ * contain a text or are gone, and/or the page has loaded.
+ */
+export interface DomWaitCommand {
+  /** Selector (filters like :has-text and :visible allowed); optional with `load` */
+  selector?: string;
+  /** Text one of the matches must contain (case-insensitive) */
+  text?: string;
+  /** Wait for the matches (or visible matches with `visible`) to be gone */
+  gone?: boolean;
+  /** Only count visible matches */
+  visible?: boolean;
+  /** Also wait for `document.readyState` to be `complete` */
+  load?: boolean;
+  /** Give up after this many milliseconds */
+  timeout: number;
+}
+
+/** What the page showed when a `dom wait` condition was met */
+export interface DomWaitData {
+  selector?: string;
+  text?: string;
+  gone?: boolean;
+  visible?: boolean;
+  load?: boolean;
+  /** Time from the start of the wait until the condition was met */
+  elapsedMs: number;
+  /** Elements matching the selector */
+  count: number;
+  /** Of those, the ones containing `text` (with `text` only) */
+  textCount?: number;
+  /** Of those (or of the text matches), the visible ones */
+  visibleCount: number;
+  /** `document.readyState` of the page */
+  readyState: string;
 }
 
 /**
@@ -431,6 +492,7 @@ export const COMMANDS: RegistryShape = {
   dom_form_discover: defineCommand(),
   dom_listeners: defineCommand(),
   dom_layout: defineCommand(),
+  dom_wait: defineCommand(),
 };
 
 /**

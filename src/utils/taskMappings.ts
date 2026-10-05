@@ -53,6 +53,13 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     cdpAlternative: 'Runtime.evaluate with value assignment',
   },
 
+  wait_for_element: {
+    commands: ['dom wait'],
+    description:
+      'Wait until an element appears, becomes visible, contains a text or is gone (or the page loads)',
+    cdpAlternative: 'Runtime.evaluate polling with querySelector (awaitPromise)',
+  },
+
   click_element: {
     commands: ['dom click'],
     description: 'Click element by selector',
