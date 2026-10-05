@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { ChromeLaunchError } from '@/connection/errors.js';
-import { reservePort } from '@/connection/portReservation.js';
+import { isPortAnswering, reservePort } from '@/connection/portReservation.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
 
 describe('Port Reservation - Success Cases', () => {
@@ -328,3 +328,33 @@ async function closeServer(server: net.Server): Promise<void> {
     server.close(() => resolve());
   });
 }
+
+describe('Port Reservation - IPv6 loopback (#314)', () => {
+  test('a listener on [::1] only makes the port taken', async (t) => {
+    const port = await findAvailablePort(9500);
+    const server = net.createServer();
+    const listening = await new Promise<boolean>((resolve) => {
+      server.once('error', () => resolve(false));
+      server.listen(port, '::1', () => resolve(true));
+    });
+    if (!listening) {
+      t.skip('IPv6 loopback is not available');
+      return;
+    }
+    try {
+      assert.equal(await isPortAnswering(port), true);
+      await assert.rejects(reservePort(port), (error: unknown) => {
+        assert.ok(error instanceof ChromeLaunchError);
+        assert.equal(error.issue?.code, 'PORT_IN_USE');
+        return true;
+      });
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  test('a port nobody listens on is not answering', async () => {
+    const port = await findAvailablePort(9500);
+    assert.equal(await isPortAnswering(port), false);
+  });
+});

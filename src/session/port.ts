@@ -25,7 +25,7 @@ const PORT_RANGE_END = 9322; // Allow 100 ports for concurrent sessions
 
 /**
  * Check if a port is available (not in use by any process, including one
- * listening on all interfaces).
+ * listening on all interfaces or on ::1 only).
  *
  * @param port - Port number to check
  * @returns Promise resolving to true if port is available
@@ -108,11 +108,15 @@ export function writeSessionPort(port: number): void {
  *
  * Logic:
  * 1. If a port is explicitly provided, use it (user override; a named session
- *    saves it so other sessions skip it)
- * 2. Otherwise, under a lock shared by all sessions, reuse the saved port if
- *    it is free and no other running session claims it (session stability)
+ *    saves and claims it under the lock so other sessions skip it)
+ * 2. Otherwise, under a lock shared by all sessions on the machine (any
+ *    BDG_SESSION_DIR), reuse the saved port if it is free and no other
+ *    running session claims it (session stability)
  * 3. Otherwise, take the first free, unclaimed port from
  *    {@link firstCandidatePort} upwards and save it (the claim)
+ *
+ * The claim is also recorded in the machine-wide registry (under the lock),
+ * so sessions of other base directories skip it too.
  *
  * This provides session isolation: named sessions and different
  * BDG_SESSION_DIR values automatically use different ports, even when they
@@ -123,17 +127,21 @@ export function writeSessionPort(port: number): void {
  */
 export async function getSessionPort(explicitPort?: number | null): Promise<number> {
   if (explicitPort !== undefined && explicitPort !== null) {
-    if (getSessionName() !== null) writeSessionPort(explicitPort);
-    return explicitPort;
+    if (getSessionName() === null) return explicitPort;
+    return withPortLock((recordClaim) => {
+      writeSessionPort(explicitPort);
+      recordClaim(explicitPort);
+      return Promise.resolve(explicitPort);
+    });
   }
-  return withPortLock(async () => {
+  return withPortLock(async (recordClaim) => {
     const claimed = portsClaimedByOtherSessions();
     const savedPort = readSessionPort();
-    if (savedPort !== null && !claimed.has(savedPort) && (await isPortAvailable(savedPort))) {
-      return savedPort;
-    }
-    const port = await findAvailablePort(firstCandidatePort(), claimed);
+    const reuse =
+      savedPort !== null && !claimed.has(savedPort) && (await isPortAvailable(savedPort));
+    const port = reuse ? savedPort : await findAvailablePort(firstCandidatePort(), claimed);
     writeSessionPort(port);
+    recordClaim(port);
     return port;
   });
 }

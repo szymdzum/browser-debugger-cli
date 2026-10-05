@@ -3,11 +3,20 @@
  *
  * Sessions started at the same time must not pick the same CDP port: Chrome
  * binds it only after the choice is made. A session claims its port by
- * writing `port.txt` while holding a lock shared by all sessions under the
- * same base directory; a running session's claim is skipped by the others.
+ * writing `port.txt` while holding a lock; a running session's claim is
+ * skipped by the others.
+ *
+ * Ports belong to the machine, not to a session directory, so the lock and a
+ * registry of claiming session directories live in one directory per user
+ * under the OS temp directory: sessions of different `BDG_SESSION_DIR`s see
+ * each other's claims too. That directory is used only if it is a real
+ * directory owned by the user that nobody else can write to; otherwise the
+ * lock falls back to the base session directory and only that directory's
+ * claims are seen (the launched Chrome's identity is still checked).
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 import {
@@ -21,8 +30,14 @@ import { delay } from '@/utils/async.js';
 
 const log = createLogger('session');
 
-/** Lock file guarding port selection, in the base session directory */
+/** Lock file guarding port selection, in the port registry (or base session) directory */
 const PORT_LOCK_FILE = 'port.lock';
+
+/** Subdirectory of the port registry: one file per claimed port, holding the claiming session directory */
+const CLAIMS_DIR = 'claims';
+
+/** Overrides the port registry directory (tests) */
+const PORT_REGISTRY_DIR_ENV = 'BDG_PORT_REGISTRY_DIR';
 
 /** How long to wait for the lock before choosing a port without it */
 const LOCK_WAIT_MS = 5000;
@@ -31,6 +46,12 @@ const LOCK_WAIT_MS = 5000;
 const STALE_LOCK_MS = 10000;
 
 const LOCK_POLL_MS = 25;
+
+/** Permission bits that let other users write */
+const GROUP_OTHER_WRITE = 0o022;
+
+/** Records a port claim; a no-op when the registry cannot be used safely */
+export type RecordPortClaim = (port: number) => void;
 
 /**
  * Read a port number from a `port.txt` file.
@@ -49,17 +70,132 @@ export function readPortFile(portPath: string): number | null {
 }
 
 /**
+ * Directory holding the port lock and the claims registry, shared by every
+ * session of the user on this machine.
+ *
+ * @returns `$BDG_PORT_REGISTRY_DIR`, else `<os temp dir>/bdg-ports-<uid>`
+ */
+export function getPortRegistryDir(): string {
+  const override = process.env[PORT_REGISTRY_DIR_ENV]?.trim();
+  if (override) return path.resolve(override);
+  const uid = process.getuid?.();
+  return path.join(os.tmpdir(), uid === undefined ? 'bdg-ports' : `bdg-ports-${uid}`);
+}
+
+/**
+ * Whether a path is a directory the current user can trust: a real directory
+ * (not a symlink), owned by the user, not writable by group or others.
+ *
+ * @param dir - Directory
+ * @returns Why it cannot be trusted, or null if it can
+ */
+export function untrustedDirReason(dir: string): string | null {
+  const stat = fs.lstatSync(dir);
+  if (!stat.isDirectory()) return 'not a directory';
+  const uid = process.getuid?.();
+  if (uid !== undefined && stat.uid !== uid) return `owned by uid ${stat.uid}`;
+  if (process.platform !== 'win32' && (stat.mode & GROUP_OTHER_WRITE) !== 0) {
+    return `writable by others (mode ${(stat.mode & 0o777).toString(8)})`;
+  }
+  return null;
+}
+
+/**
+ * The port registry directory, created (mode 0700) if missing, if it can be
+ * trusted (see {@link untrustedDirReason}).
+ *
+ * @param create - Create the directory (and its claims subdirectory) if missing
+ * @returns The directory, or null if it is missing or untrusted
+ */
+function trustedRegistryDir(create: boolean): string | null {
+  const dir = getPortRegistryDir();
+  try {
+    if (create) {
+      fs.mkdirSync(path.dirname(dir), { recursive: true });
+      fs.mkdirSync(path.join(dir, CLAIMS_DIR), { recursive: true, mode: 0o700 });
+    }
+    if (!fs.existsSync(dir)) return null;
+    const reason = untrustedDirReason(dir) ?? untrustedDirReason(path.join(dir, CLAIMS_DIR));
+    if (reason === null) return dir;
+    log.info(`Not using the port registry ${dir} (${reason}); port claims are per directory`);
+  } catch (error) {
+    logDebugError(log, `use the port registry ${dir}`, error);
+  }
+  return null;
+}
+
+/**
+ * Record in the registry that this session directory claims a port. Written
+ * to a new temporary file that is renamed into place, so no symlink is
+ * followed. The claim holds while that session runs and its `port.txt` names
+ * the port; it needs no removal.
+ *
+ * @param registryDir - Trusted registry directory
+ * @param port - Claimed port
+ */
+function writePortClaim(registryDir: string, port: number): void {
+  const claimPath = path.join(registryDir, CLAIMS_DIR, String(port));
+  const tempPath = `${claimPath}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tempPath, getSessionDir(), { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    fs.renameSync(tempPath, claimPath);
+  } catch (error) {
+    logDebugError(log, `record the claim of port ${port}`, error);
+    fs.rmSync(tempPath, { force: true });
+  }
+}
+
+/**
+ * Session directories in the registry (any base directory).
+ *
+ * @returns Claiming session directories; none if the registry is untrusted
+ */
+function registeredSessionDirs(): string[] {
+  const registryDir = trustedRegistryDir(false);
+  if (registryDir === null) return [];
+  const claimsDir = path.join(registryDir, CLAIMS_DIR);
+  try {
+    return fs
+      .readdirSync(claimsDir)
+      .filter((file) => /^\d+$/.test(file))
+      .map((file) => readClaim(path.join(claimsDir, file)))
+      .filter((dir): dir is string => dir !== null);
+  } catch (error) {
+    logDebugError(log, `list ${claimsDir}`, error);
+    return [];
+  }
+}
+
+/**
+ * Read the session directory of one claim.
+ *
+ * @param claimPath - Claim file
+ * @returns Absolute session directory, or null if unreadable or partly written
+ */
+function readClaim(claimPath: string): string | null {
+  try {
+    const dir = fs.readFileSync(claimPath, 'utf8').trim();
+    return path.isAbsolute(dir) ? dir : null;
+  } catch (error) {
+    logDebugError(log, `read ${claimPath}`, error);
+    return null;
+  }
+}
+
+/**
  * Ports claimed by other sessions that are running or starting (their daemon
- * socket exists).
+ * socket exists): sessions of this base directory, and sessions of any base
+ * directory found in the machine-wide registry.
  *
  * @returns Claimed ports
  */
 export function portsClaimedByOtherSessions(): Set<number> {
   const ownDir = getSessionDir();
-  const ports = listSessionDirs()
-    .filter(({ dir }) => dir !== ownDir)
-    .filter(({ dir }) => fs.existsSync(sessionFilePathIn(dir, 'DAEMON_SOCKET')))
-    .map(({ dir }) => readPortFile(sessionFilePathIn(dir, 'PORT')));
+  const dirs = new Set([...listSessionDirs().map(({ dir }) => dir), ...registeredSessionDirs()]);
+  const ports = [...dirs]
+    .filter((dir) => dir !== ownDir)
+    .filter((dir) => fs.existsSync(sessionFilePathIn(dir, 'DAEMON_SOCKET')))
+    .map((dir) => readPortFile(sessionFilePathIn(dir, 'PORT')));
   return new Set(ports.filter((port): port is number => port !== null));
 }
 
@@ -124,21 +260,28 @@ function releaseLock(lockPath: string, token: string): void {
 }
 
 /**
- * Run port selection under the lock shared by all sessions of the base
- * directory. If the lock cannot be taken in time, the selection runs anyway.
+ * Run port selection under the lock shared by all sessions of the user on
+ * this machine (in the trusted registry directory; else in the base session
+ * directory). If the lock cannot be taken in time, the selection runs anyway.
  *
- * @param select - Chooses and records the port
+ * @param select - Chooses the port; gets a function recording the claim in
+ *   the registry, a no-op without the registry lock
  * @returns The chosen port
  */
-export async function withPortLock(select: () => Promise<number>): Promise<number> {
-  const baseDir = getSessionBaseDir();
-  fs.mkdirSync(baseDir, { recursive: true });
-  const lockPath = path.join(baseDir, PORT_LOCK_FILE);
+export async function withPortLock(
+  select: (recordClaim: RecordPortClaim) => Promise<number>
+): Promise<number> {
+  const registryDir = trustedRegistryDir(true);
+  const lockDir = registryDir ?? getSessionBaseDir();
+  fs.mkdirSync(lockDir, { recursive: true });
+  const lockPath = path.join(lockDir, PORT_LOCK_FILE);
   const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const locked = await acquireLock(lockPath, token);
   if (!locked) log.debug('Port lock busy; choosing a port without it');
+  const recordClaim: RecordPortClaim =
+    locked && registryDir !== null ? (port) => writePortClaim(registryDir, port) : () => {};
   try {
-    return await select();
+    return await select(recordClaim);
   } finally {
     if (locked) releaseLock(lockPath, token);
   }

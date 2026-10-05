@@ -18,14 +18,23 @@ import {
   listSessionDirs,
 } from '@/session/paths.js';
 import { findAvailablePort, firstCandidatePort, getSessionPort } from '@/session/port.js';
-import { portsClaimedByOtherSessions, withPortLock } from '@/session/portClaims.js';
+import {
+  getPortRegistryDir,
+  portsClaimedByOtherSessions,
+  untrustedDirReason,
+  withPortLock,
+} from '@/session/portClaims.js';
 import { toRunningSession } from '@/session/sessionList.js';
 import { selectSession, validateSessionName } from '@/session/sessionName.js';
 import { formatSessionList } from '@/ui/formatters/sessions.js';
 import { formatNoSessionMessage } from '@/ui/formatters/status.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-const savedEnv = { dir: process.env['BDG_SESSION_DIR'], name: process.env['BDG_SESSION'] };
+const savedEnv = {
+  dir: process.env['BDG_SESSION_DIR'],
+  name: process.env['BDG_SESSION'],
+  registry: process.env['BDG_PORT_REGISTRY_DIR'],
+};
 let base: string;
 
 /**
@@ -71,12 +80,14 @@ function assertInvalid(fn: () => void, message: RegExp): void {
 beforeEach(() => {
   base = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-131-'));
   process.env['BDG_SESSION_DIR'] = base;
+  process.env['BDG_PORT_REGISTRY_DIR'] = path.join(base, 'ports');
   delete process.env['BDG_SESSION'];
 });
 
 afterEach(() => {
   restoreEnv('BDG_SESSION_DIR', savedEnv.dir);
   restoreEnv('BDG_SESSION', savedEnv.name);
+  restoreEnv('BDG_PORT_REGISTRY_DIR', savedEnv.registry);
   fs.rmSync(base, { recursive: true, force: true });
 });
 
@@ -188,7 +199,95 @@ void describe('port choice', () => {
     assert.notEqual(port, claimed);
     assert.ok(port >= 9223);
     assert.equal(fs.readFileSync(getSessionFilePath('PORT'), 'utf-8'), String(port));
+    assert.equal(fs.existsSync(path.join(getPortRegistryDir(), 'port.lock')), false);
+  });
+
+  void it('sees running sessions of other base directories through the registry', async () => {
+    const otherBase = path.join(base, 'other-base');
+    process.env['BDG_SESSION_DIR'] = otherBase;
+    process.env['BDG_SESSION'] = 'remote';
+    const remotePort = await getSessionPort();
+    fs.writeFileSync(path.join(getSessionDir(), 'daemon.sock'), '');
+
+    process.env['BDG_SESSION_DIR'] = base;
+    process.env['BDG_SESSION'] = 'local';
+    assert.deepEqual([...portsClaimedByOtherSessions()], [remotePort]);
+    assert.notEqual(await getSessionPort(), remotePort);
+  });
+
+  void it('ignores registry claims of stopped sessions and changed ports', () => {
+    const claims = path.join(getPortRegistryDir(), 'claims');
+    const stopped = path.join(base, 'elsewhere', 'stopped');
+    const moved = path.join(base, 'elsewhere', 'moved');
+    fs.mkdirSync(stopped, { recursive: true });
+    fs.mkdirSync(moved, { recursive: true });
+    fs.writeFileSync(path.join(stopped, 'port.txt'), '9260');
+    fs.writeFileSync(path.join(moved, 'port.txt'), '9262');
+    fs.writeFileSync(path.join(moved, 'daemon.sock'), '');
+    fs.mkdirSync(claims, { recursive: true });
+    fs.writeFileSync(path.join(claims, '9260'), stopped);
+    fs.writeFileSync(path.join(claims, '9261'), moved);
+    fs.writeFileSync(path.join(claims, '9263'), 'not-a-path');
+    process.env['BDG_SESSION'] = 'agent-1';
+    assert.deepEqual([...portsClaimedByOtherSessions()], [9262]);
+  });
+
+  void it('creates the registry private to the user (mode 0700)', async () => {
+    process.env['BDG_SESSION'] = 'agent-1';
+    await getSessionPort();
+    for (const dir of [getPortRegistryDir(), path.join(getPortRegistryDir(), 'claims')]) {
+      assert.equal(fs.statSync(dir).mode & 0o777, 0o700, dir);
+    }
+  });
+
+  void it('ignores and does not write a registry others can write to', async () => {
+    const registry = getPortRegistryDir();
+    const claims = path.join(registry, 'claims');
+    const remote = path.join(base, 'elsewhere', 'remote');
+    fs.mkdirSync(remote, { recursive: true });
+    fs.writeFileSync(path.join(remote, 'port.txt'), '9270');
+    fs.writeFileSync(path.join(remote, 'daemon.sock'), '');
+    fs.mkdirSync(claims, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(claims, '9270'), remote);
+    fs.chmodSync(registry, 0o777);
+    process.env['BDG_SESSION'] = 'agent-1';
+    assert.deepEqual([...portsClaimedByOtherSessions()], []);
+    const port = await getSessionPort();
+    assert.equal(fs.existsSync(path.join(claims, String(port))), false);
     assert.equal(fs.existsSync(path.join(base, 'port.lock')), false);
+  });
+
+  void it('ignores a registry that is a symlink', () => {
+    const real = path.join(base, 'real-registry');
+    fs.mkdirSync(path.join(real, 'claims'), { recursive: true, mode: 0o700 });
+    fs.chmodSync(real, 0o700);
+    fs.symlinkSync(real, getPortRegistryDir());
+    assert.match(untrustedDirReason(getPortRegistryDir()) ?? '', /not a directory/);
+    fakeRunningSession('other', 9280);
+    process.env['BDG_SESSION'] = 'self';
+    fs.writeFileSync(path.join(real, 'claims', '9281'), path.join(base, 'nowhere'));
+    assert.deepEqual([...portsClaimedByOtherSessions()], [9280]);
+  });
+
+  void it('replaces a symlinked claim file instead of writing through it', async () => {
+    const claims = path.join(getPortRegistryDir(), 'claims');
+    fs.mkdirSync(claims, { recursive: true, mode: 0o700 });
+    fs.chmodSync(getPortRegistryDir(), 0o700);
+    const victim = path.join(base, 'victim.txt');
+    fs.writeFileSync(victim, 'untouched');
+    process.env['BDG_SESSION'] = 'agent-1';
+    fs.symlinkSync(victim, path.join(claims, '9999'));
+    assert.equal(await getSessionPort(9999), 9999);
+    assert.equal(fs.readFileSync(victim, 'utf8'), 'untouched');
+    assert.equal(fs.lstatSync(path.join(claims, '9999')).isSymbolicLink(), false);
+    assert.equal(fs.readFileSync(path.join(claims, '9999'), 'utf8'), getSessionDir());
+  });
+
+  void it('keeps the registry in a per-user directory under the OS temp directory', () => {
+    delete process.env['BDG_PORT_REGISTRY_DIR'];
+    const dir = getPortRegistryDir();
+    assert.equal(path.dirname(dir), os.tmpdir());
+    assert.match(path.basename(dir), /^bdg-ports(-\d+)?$/);
   });
 
   void it('does not reuse a saved port another running session claims', async () => {
@@ -229,7 +328,8 @@ void describe('port lock', () => {
   });
 
   void it('removes a lock left by a dead process', async () => {
-    const lockPath = path.join(base, 'port.lock');
+    const lockPath = path.join(getPortRegistryDir(), 'port.lock');
+    fs.mkdirSync(getPortRegistryDir(), { recursive: true });
     fs.writeFileSync(lockPath, '');
     const old = new Date(Date.now() - 60_000);
     fs.utimesSync(lockPath, old, old);

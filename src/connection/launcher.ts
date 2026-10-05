@@ -19,6 +19,7 @@ import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
 
+import { verifyLaunchedChrome } from './chromeIdentity.js';
 import { ChromeLaunchError } from './errors.js';
 import { resolveChromeBinary } from './launcher/binaryResolver.js';
 import { buildChromeFlags } from './launcher/flagsBuilder.js';
@@ -140,12 +141,13 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   logger.debug(`User data directory: ${userDataDir}`);
   applyProfilePreferences(userDataDir, options, logger);
 
-  const chromeOptions = buildChromeOptions(options);
+  const chromeOptions = buildChromeOptions({ ...options, port });
   const launcher = new chromeLauncher.Launcher(chromeOptions);
 
+  const logs = markStartupLogs(userDataDir);
   const startup = watchStartupExit(
     () => (launcher as unknown as { chromeProcess?: ChildProcess }).chromeProcess,
-    markStartupLogs(userDataDir),
+    logs,
     userDataDir
   );
   try {
@@ -176,11 +178,12 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       );
     }
 
+    await verifyLaunchedChrome({ logs, port, pid: chromeProcessPid });
     logger.info(`Chrome launched successfully (PID: ${chromeProcessPid}, ${launchDurationMs}ms)`);
 
     return {
       pid: chromeProcessPid,
-      port: launcher.port ?? port,
+      port,
       userDataDir: launcher.userDataDir,
       kill: async (): Promise<void> => {
         return Promise.resolve().then(() => {
