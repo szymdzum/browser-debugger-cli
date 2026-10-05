@@ -10,6 +10,7 @@ import type {
   ElementLayout,
   FillValueMismatch,
   LayoutPoint,
+  LayoutSize,
   PageLayout,
 } from '@/ipc/protocol/domTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
@@ -207,6 +208,20 @@ export const LAYOUT_REASONS = {
   on: ' on ',
 } as const;
 
+/** Start of the off-screen reason of an element a scroll-locked page hides ({@link scrollLockedReason}) */
+const SCROLL_LOCKED_PREFIX = 'page scrolling is locked';
+
+/**
+ * Off-screen reason for an element out of view on a page whose scrolling is
+ * locked (a modal or consent dialog usually does that).
+ *
+ * @param lock - What locks it, e.g. `overflow: hidden on body`
+ * @returns e.g. `page scrolling is locked (overflow: hidden on body), likely by a dialog`
+ */
+export function scrollLockedReason(lock: string): string {
+  return `${SCROLL_LOCKED_PREFIX} (${lock}), likely by a dialog`;
+}
+
 /** Short location hints for elements a user cannot see without scrolling */
 const VIEWPORT_POSITION_HINTS: Partial<Record<ViewportPosition, string>> = {
   above: 'above viewport',
@@ -234,30 +249,47 @@ export function viewportPositionHint(
 }
 
 /**
- * Page scroll that would bring an element into view, in words.
+ * Page scroll that would bring an element into view, in words. The scroll
+ * centres the element, or aligns its start when it is larger than the viewport.
  *
  * @param scrollBy - Scroll amounts
- * @returns e.g. "scroll down 760px"
+ * @param centred - Whether the element fits the viewport (and so ends up centred)
+ * @returns e.g. "scroll down 760px to centre it"
  */
-function scrollAdvice(scrollBy: LayoutPoint): string {
+function scrollAdvice(scrollBy: LayoutPoint, centred: boolean): string {
   const steps = [
     scrollBy.y !== 0 && `${scrollBy.y > 0 ? 'down' : 'up'} ${Math.abs(scrollBy.y)}px`,
     scrollBy.x !== 0 && `${scrollBy.x > 0 ? 'right' : 'left'} ${Math.abs(scrollBy.x)}px`,
   ].filter(Boolean);
-  return `scroll ${steps.join(', ')}`;
+  return `scroll ${steps.join(', ')} ${centred ? 'to centre it' : 'to bring it into view'}`;
 }
+
+/** What {@link layoutPositionLabel} reads of an element */
+type LabelledLayout = Pick<
+  ElementLayout,
+  | 'inViewport'
+  | 'percentVisible'
+  | 'hiddenReason'
+  | 'scrollBy'
+  | 'clippedBy'
+  | 'offScreenReason'
+  | 'bounds'
+>;
 
 /**
  * How to bring a not fully visible element into view, in words.
  *
  * @param element - Element layout
- * @returns e.g. "scroll down 760px", "off-screen: fixed position, page scroll
+ * @param viewport - Viewport size (an element larger than it is not centred)
+ * @returns e.g. "scroll down 760px to centre it", "off-screen: fixed position, page scroll
  *   does not move it"; undefined when neither applies
  */
-function layoutScrollNote(
-  element: Pick<ElementLayout, 'scrollBy' | 'offScreenReason'>
-): string | undefined {
-  if (element.scrollBy) return scrollAdvice(element.scrollBy);
+function layoutScrollNote(element: LabelledLayout, viewport?: LayoutSize): string | undefined {
+  if (element.scrollBy) {
+    const { width, height } = element.bounds;
+    const fits = !viewport || (width <= viewport.width && height <= viewport.height);
+    return scrollAdvice(element.scrollBy, fits);
+  }
   return element.offScreenReason && `off-screen: ${element.offScreenReason}`;
 }
 
@@ -265,39 +297,40 @@ function layoutScrollNote(
  * Where an element is relative to the viewport, for `bdg dom layout`.
  *
  * @param element - Element layout
- * @returns e.g. "visible", "partly visible (40%)", "below fold (scroll down 760px)",
+ * @param viewport - Viewport size, when known
+ * @returns e.g. "visible", "partly visible (40%)", "below fold (scroll down 760px to centre it)",
  *   "out of view in ul#list (below)", "hidden (display: none)",
- *   "left of viewport (off-screen: beyond the page's scroll range)"
+ *   "left of viewport (off-screen: beyond the page's scroll range)",
+ *   "below fold; page scrolling is locked (overflow: hidden on body), likely by a dialog"
  */
-export function layoutPositionLabel(
-  element: Pick<
-    ElementLayout,
-    'inViewport' | 'percentVisible' | 'hiddenReason' | 'scrollBy' | 'clippedBy' | 'offScreenReason'
-  >
-): string {
-  const { inViewport, percentVisible, hiddenReason, clippedBy } = element;
+export function layoutPositionLabel(element: LabelledLayout, viewport?: LayoutSize): string {
+  const { inViewport, percentVisible, hiddenReason, clippedBy, offScreenReason } = element;
   if (inViewport === 'visible') return 'visible';
-  const note = layoutScrollNote(element);
+  const locked = !element.scrollBy && offScreenReason?.startsWith(SCROLL_LOCKED_PREFIX);
+  const note = locked ? undefined : layoutScrollNote(element, viewport);
   if (inViewport === 'partly') {
     const clipped = clippedBy ? `, clipped by ${clippedBy}` : '';
     const label = `partly visible (${percentVisible ?? 0}%${clipped})`;
+    if (locked) return `${label}; ${offScreenReason}`;
     return note ? `${label} (${note})` : label;
   }
   const label = viewportPositionHint(inViewport, clippedBy) ?? inViewport;
   if (hiddenReason) return `${label} (${hiddenReason})`;
   if (clippedBy) return `${label} (${inViewport})`;
+  if (locked) return `${label}; ${offScreenReason}`;
   return note ? `${label} (${note})` : label;
 }
 
 /**
  * Page dimensions line of `bdg dom layout`.
  *
- * @param page - Viewport, scroll position and document size
- * @returns e.g. "Page: viewport 1280×720, scrolled to 0,0, document 1280×2400"
+ * @param page - Viewport, scroll position, document size and color scheme
+ * @returns e.g. "Page: viewport 1280×720, scrolled to 0,0, document 1280×2400, dark color scheme"
  */
 export function pageLayoutLine(page: PageLayout): string {
-  const { viewport, scroll, document } = page;
-  return `Page: viewport ${viewport.width}×${viewport.height}, scrolled to ${scroll.x},${scroll.y}, document ${document.width}×${document.height}`;
+  const { viewport, scroll, document, colorScheme } = page;
+  const scheme = colorScheme ? `, ${colorScheme} color scheme` : '';
+  return `Page: viewport ${viewport.width}×${viewport.height}, scrolled to ${scroll.x},${scroll.y}, document ${document.width}×${document.height}${scheme}`;
 }
 
 /**
@@ -663,6 +696,43 @@ export function frameUrlLabel(url: string): string {
  */
 export function noFramesMessage(): string {
   return 'The page has no iframes';
+}
+
+/**
+ * Text of an element in `bdg dom get` output.
+ *
+ * @param text - Collapsed text, ending in `...` when it was cut
+ * @returns e.g. `Text: Welcome to ... (cut at 500 characters; --raw shows the HTML)`
+ */
+export function elementTextLine(text: string): string {
+  const cut = text.endsWith('...') ? ' (cut at 500 characters; --raw shows the HTML)' : '';
+  return `Text: ${text}${cut}`;
+}
+
+/**
+ * Note on an element screenshot that captured more than the element's border
+ * box, because content (floats, positioned children) overflows it.
+ *
+ * @param box - Border box
+ * @param captured - Area captured
+ * @returns e.g. `grown from 940×37 to 940×285 to include content overflowing the element`
+ */
+export function screenshotGrownNote(
+  box: { width: number; height: number },
+  captured: { width: number; height: number }
+): string {
+  return `grown from ${box.width}×${box.height} to ${captured.width}×${captured.height} to include content overflowing the element`;
+}
+
+/**
+ * Next commands after `bdg dom query`, by index so they reach matches in
+ * shadow roots and iframes too.
+ *
+ * @param index - Match to use in the examples
+ * @returns One line
+ */
+export function queryNextSteps(index: number): string {
+  return `Next: bdg dom get ${index} (text), bdg dom get ${index} --raw (HTML), bdg dom layout ${index} (position)`;
 }
 
 /**

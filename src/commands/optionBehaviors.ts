@@ -33,6 +33,13 @@ type BehaviorKey = string;
  * Keyed by "command:flag" to support same flag names across different commands.
  */
 const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
+  'screenshot:--selector': {
+    default: 'Captures the page (full page unless --no-full-page)',
+    whenEnabled:
+      'Captures one element; the selector (or a query index) can also be given as the second argument: bdg dom screenshot out.png "#sel". Both given and naming different elements exits 81',
+    automaticBehavior:
+      'The capture covers the border box plus content overflowing it (uncleared floats, positioned children; not what an overflow: hidden ancestor cuts off, nor fixed descendants); JSON element.bounds is the border box and element.captured the larger area when it grew, which human output notes',
+  },
   'screenshot:--no-resize': {
     default: `Images auto-resized to max ${MAX_EDGE_PX}px longest edge for Claude Vision optimization (~1,600 tokens)`,
     whenDisabled: `Full resolution capture preserved (may use 10,000+ tokens for large pages)`,
@@ -81,7 +88,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       "Evaluates in one iframe's main world (its own globals), including cross-origin (out-of-process) iframes; output gains a frame field (its URL)",
     automaticBehavior:
-      'The value is matched as: a 0-based index (bdg dom frames order, main page not counted), else an exact name/id attribute, else a case-insensitive part of the URL. Several matches fail with 81 listing them; none fails with 83 listing all frames. Frames are looked up on every call (a reloaded iframe is found again).',
+      'The value is matched as: a 0-based index (bdg dom frames order, main page not counted), else an exact name/id attribute, else a case-insensitive part of the name, id or URL. Several matches fail with 81 listing them; none fails with 83 listing all frames. Frames are looked up on every call (a reloaded iframe is found again).',
   },
 
   'console:-H': {
@@ -223,7 +230,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Reports every match of the selector (human output lists the first 20, JSON up to 100 plus an omitted count); a numeric argument reports that cached query element',
     whenEnabled: 'Reports only the nth match (0-based); out of range exits 81',
     automaticBehavior:
-      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). scrollBy centres the element and is limited to how far the page can scroll; fixed elements and ones beyond that range get offScreenReason instead. Content in a closed <details> or under content-visibility: hidden is hidden. coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none); inert elements are flagged, not hidden',
+      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). scrollBy centres the element (aligns its start when it is larger than the viewport; human output says "to centre it") and is limited to how far the page can scroll; fixed elements and ones beyond that range get offScreenReason instead, which says "page scrolling is locked (…), likely by a dialog" when the page cannot scroll because body/html is position: fixed or overflow: hidden (a consent or modal dialog), so in-flow content is not called fixed. page.viewport is the layout viewport without scrollbars, as dom scroll reports it; page.colorScheme is the prefers-color-scheme the page sees. Content in a closed <details> or under content-visibility: hidden is hidden. coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none); inert elements are flagged, not hidden',
     tokenImpact:
       'About one line per element; a cheap alternative to screenshots for "where is it?"',
   },
@@ -319,6 +326,23 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       "A named session's directory (Chrome profile, ~60 MB; logs; port.txt) is kept for its next start",
     whenEnabled:
       'After cleaning up, deletes the directory of the session named by --session (exit 81 without --session); a running session is refused unless --force is given, and the directory is kept (exit 90) if the daemon still answers, cleanup reported a problem, or its Chrome has not exited',
+  },
+
+  'bdg:--viewport': {
+    default:
+      'A launched Chrome opens a 1920x1080 window (the viewport is smaller by the scrollbar, and in a visible window by the browser UI); an attached Chrome keeps its window',
+    whenEnabled:
+      'The page gets exactly that viewport (CSS px, e.g. 1280x800) for the whole session, through navigations and reloads (Emulation.setDeviceMetricsOverride at the display pixel ratio); a launched Chrome also opens its window at that size, so tabs the page opens get it too',
+    automaticBehavior:
+      'Works with --chrome-ws-url: the override belongs to the session, and Chrome drops it when the session ends, so the attached browser gets its own size back. bdg status shows the resulting layout viewport without the scrollbar (Viewport: 1265×800 (--viewport 1280x800)). Invalid sizes (not WxH, a side outside 1-10000) exit 81',
+  },
+  'bdg:--color-scheme': {
+    default:
+      'The page sees the system setting for prefers-color-scheme (headless Chrome follows the OS, so a dark OS renders dark pages); bdg status and dom layout show which one',
+    whenEnabled:
+      'Emulates prefers-color-scheme: light or dark for the whole session (Emulation.setEmulatedMedia); other values exit 81 with a suggestion',
+    automaticBehavior:
+      'Applies to the session page (and its same-process iframes); Chrome drops it when the session ends, also for an attached Chrome (--chrome-ws-url)',
   },
 
   'bdg:--chrome-ws-url': {

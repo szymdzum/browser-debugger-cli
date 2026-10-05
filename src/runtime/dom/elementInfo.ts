@@ -7,17 +7,22 @@
 /** Length of the text preview shown for elements. */
 const PREVIEW_LENGTH = 80;
 
+/** Length of the text `dom get` shows for an element. */
+export const ELEMENT_TEXT_LENGTH = 500;
+
 /**
  * Page-side text of an element as a user sees it: `innerText` for a rendered
  * element (CSS-hidden parts left out, inline elements not split apart), none
  * for an element that is not rendered, `textContent` for SVG and other
  * elements without `innerText` and for `display: contents` wrappers (no box
- * of their own, but their children are shown). For large containers (more
+ * of their own, but their children are shown), and the label of an
+ * `<option>` (which its `<select>` renders). For large containers (more
  * than 2000 characters of text) only the start is read, from the text nodes
  * whose parent is rendered, so a preview never lays out a whole page's text.
  */
 export const ELEMENT_TEXT_JS = `(el) => {
   const all = el.textContent || '';
+  if (el.tagName === 'OPTION') return el.label;
   if (typeof el.innerText !== 'string') return all.slice(0, 2000);
   const rendered = (node) => !node.checkVisibility || node.checkVisibility();
   if (!rendered(el)) {
@@ -27,7 +32,7 @@ export const ELEMENT_TEXT_JS = `(el) => {
   if (all.length <= 2000) return el.innerText;
   const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let start = '';
-  while (start.length < 500 && walker.nextNode()) {
+  while (start.length < 1000 && walker.nextNode()) {
     const parent = walker.currentNode.parentElement;
     if (!parent || rendered(parent)) start += walker.currentNode.data;
   }
@@ -99,12 +104,11 @@ export const ELEMENT_CONTEXT_JS = `(el) => {
  * whole character (an emoji is never split, which would make JSON invalid).
  *
  * @param text - Element text as the page renders it
- * @returns Collapsed text, truncated to {@link PREVIEW_LENGTH} characters
+ * @param length - Characters kept
+ * @returns Collapsed text, truncated to `length` characters (followed by `...`)
  */
-export function textPreview(text: string): string {
+export function textPreview(text: string, length = PREVIEW_LENGTH): string {
   const collapsed = text.replace(/\s+/g, ' ').trim();
   const characters = Array.from(collapsed);
-  return characters.length > PREVIEW_LENGTH
-    ? characters.slice(0, PREVIEW_LENGTH).join('') + '...'
-    : collapsed;
+  return characters.length > length ? characters.slice(0, length).join('') + '...' : collapsed;
 }

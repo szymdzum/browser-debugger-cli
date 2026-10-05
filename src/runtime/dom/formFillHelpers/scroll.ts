@@ -7,6 +7,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
+import { VIEWPORT_SIZE_JS } from '@/runtime/dom/elementGeometry.js';
 import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
@@ -17,6 +18,9 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Scroll options.
+ *
+ * The reported viewport is the layout viewport without scrollbars and the
+ * page size the scrolling element's, as in `bdg dom layout`.
  */
 export interface ScrollOptions {
   down?: number;
@@ -53,10 +57,6 @@ const SCROLL_TO_ELEMENT_SCRIPT = `
 
   el.scrollIntoView({ behavior: 'instant', block: 'center' });
 
-  const rect = el.getBoundingClientRect();
-  const scrollX = window.scrollX + rect.left + rect.width / 2 - window.innerWidth / 2;
-  const scrollY = window.scrollY + rect.top + rect.height / 2 - window.innerHeight / 2;
-
   return {
     success: true,
     scrollType: 'element',
@@ -67,13 +67,10 @@ const SCROLL_TO_ELEMENT_SCRIPT = `
       x: Math.round(window.scrollX),
       y: Math.round(window.scrollY)
     },
-    viewportSize: {
-      width: window.innerWidth,
-      height: window.innerHeight
-    },
+    viewportSize: (${VIEWPORT_SIZE_JS})(window),
     pageSize: {
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight
+      width: (document.scrollingElement || document.documentElement).scrollWidth,
+      height: (document.scrollingElement || document.documentElement).scrollHeight
     }
   };
 })`;
@@ -107,13 +104,10 @@ const SCROLL_BY_SCRIPT = `
     scrollType: options.top || options.bottom ? 'position' : 'offset',
     scrolledTo: { x: Math.round(afterX), y: Math.round(afterY) },
     scrolledBy: { x: Math.round(afterX - beforeX), y: Math.round(afterY - beforeY) },
-    viewportSize: {
-      width: window.innerWidth,
-      height: window.innerHeight
-    },
+    viewportSize: (${VIEWPORT_SIZE_JS})(window),
     pageSize: {
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight
+      width: (document.scrollingElement || document.documentElement).scrollWidth,
+      height: (document.scrollingElement || document.documentElement).scrollHeight
     }
   };
 })`;

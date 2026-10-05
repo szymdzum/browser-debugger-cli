@@ -99,7 +99,8 @@ const LAYOUT_JS = `function (found, index, limit) {
   const page = {
     viewport: viewportSize(top),
     scroll: { x: top.scrollX, y: top.scrollY },
-    document: { width: scroller.scrollWidth, height: scroller.scrollHeight }
+    document: { width: scroller.scrollWidth, height: scroller.scrollHeight },
+    colorScheme: top.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   };
   const pageOverlay = viewportOverlay(top, page.viewport);
   const encloses = (outer, node) => {
@@ -306,6 +307,7 @@ function roundPage(page: PageLayout): PageLayout {
     viewport: { width: Math.round(page.viewport.width), height: Math.round(page.viewport.height) },
     scroll: { x: Math.round(page.scroll.x), y: Math.round(page.scroll.y) },
     document: { width: Math.round(page.document.width), height: Math.round(page.document.height) },
+    ...(page.colorScheme && { colorScheme: page.colorScheme }),
   };
 }
 

@@ -7,7 +7,8 @@
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { documentReadyState } from '@/commands/dom/helpers/query.js';
-import { UNREACHABLE_ELEMENTS_HINT, staleNodeError, withLoadingHint } from '@/errors/messages.js';
+import { staleNodeError, unreachableElementsNote, withLoadingHint } from '@/errors/messages.js';
+import { joinLines } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 interface IpcResponse<T> {
@@ -85,7 +86,7 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
       ? errorResponseFailure(response, options)
       : response.data.success
         ? undefined
-        : failedResultFailure(response.data, options);
+        : failedResultFailure(response.data, options, target.selector);
   if (failure) return withNotFoundLoadingHint(failure, target.selector);
 
   const { success: _success, ...data } = response.data as Res;
@@ -121,11 +122,13 @@ function errorResponseFailure<Req, Res extends ResultPayload>(
  *
  * @param result - Action result
  * @param options - Command options (action, fallback suggestion)
+ * @param selector - Selector that was looked for (the cached query's for an index)
  * @returns Failed command result
  */
 function failedResultFailure<Req, Res extends ResultPayload>(
   result: Res,
-  options: ElementCommandOptions<Req, Res>
+  options: ElementCommandOptions<Req, Res>,
+  selector: string
 ): CommandResult<never> {
   const exitCode =
     result.exitCode ??
@@ -140,7 +143,7 @@ function failedResultFailure<Req, Res extends ResultPayload>(
     errorContext: {
       suggestion:
         exitCode === EXIT_CODES.RESOURCE_NOT_FOUND
-          ? `${suggestion} (${UNREACHABLE_ELEMENTS_HINT})`
+          ? joinLines(suggestion, unreachableElementsNote(selector))
           : suggestion,
     },
   };

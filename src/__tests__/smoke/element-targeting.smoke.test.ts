@@ -217,7 +217,7 @@ void describe('Element targeting', () => {
 /** The `data` of `dom layout --json` (the fields the tests read). */
 interface LayoutData {
   count: number;
-  page: { viewport: { height: number }; document: { height: number } };
+  page: { viewport: { width: number; height: number }; document: { height: number } };
   elements: Array<{
     index: number;
     element: string;
@@ -268,7 +268,7 @@ void describe('Element layout', () => {
     assert.ok(data.page.document.height >= 3000);
     assert.match(
       await bdg(['dom', 'layout', '#save']),
-      /20,2000 120×40 {2}below fold \(scroll down \d+px\)/
+      /20,2000 120×40 {2}below fold \(scroll down \d+px to centre it\)/
     );
   });
 
@@ -350,6 +350,37 @@ void describe('Element layout', () => {
         "document.documentElement.style.cssText = ''; document.body.style.cssText = ''; 1"
       );
     }
+  });
+
+  void it('says page scrolling is locked (dialog) instead of calling in-flow content fixed', async () => {
+    await evaluate(
+      "document.body.style.cssText = 'position: fixed; overflow: hidden; top: 0; left: 0; right: 0'; 1"
+    );
+    try {
+      const [save] = (await layout('#save')).elements;
+      assert.equal(save?.inViewport, 'below');
+      assert.equal(save?.scrollBy, undefined);
+      assert.equal(
+        save?.offScreenReason,
+        'page scrolling is locked (position: fixed, overflow: hidden on body), likely by a dialog'
+      );
+      assert.match(
+        await bdg(['dom', 'layout', '#save']),
+        /below fold; page scrolling is locked \(position: fixed, overflow: hidden on body\), likely by a dialog$/m
+      );
+      const [offCanvas] = (await layout('#off-canvas')).elements;
+      assert.match(offCanvas?.offScreenReason ?? '', /fixed position/);
+    } finally {
+      await evaluate("document.body.style.cssText = ''; 1");
+    }
+  });
+
+  void it('reports the same viewport (without scrollbars) in dom scroll and dom layout', async () => {
+    const { page } = await layout('#top');
+    const scroll = JSON.parse(await bdg(['dom', 'scroll', '#top', '--json'])) as {
+      data: { viewportSize: { width: number; height: number } };
+    };
+    assert.deepEqual(scroll.data.viewportSize, page.viewport);
   });
 
   void it('clips a scroll list inside CSS zoom where it shows', async () => {

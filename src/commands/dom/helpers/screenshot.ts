@@ -22,6 +22,8 @@ import {
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { viewportOverride } from '@/runtime/page/emulation.js';
+import { readSessionMetadata } from '@/session/metadata.js';
 import type { ScreenshotResult, ScreenshotOptions, ElementBounds, NodeRef } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -180,6 +182,36 @@ async function restoreScrollPosition(position: ScrollPosition): Promise<void> {
 }
 
 /**
+ * Capture at a pixel ratio of 1 (CSS px = image px) on a high-DPI display:
+ * the viewport is overridden at its size (the session's `--viewport`, else
+ * the visible one) until the returned function puts back what was there
+ * before, the session's viewport or none.
+ *
+ * @param devicePixelRatio - Page's pixel ratio
+ * @param viewport - Visible viewport size
+ * @returns Function restoring the device metrics
+ */
+async function useUnitPixelRatio(
+  devicePixelRatio: number,
+  viewport: { clientWidth: number; clientHeight: number }
+): Promise<() => Promise<void>> {
+  if (devicePixelRatio === 1) return () => Promise.resolve();
+  const sessionViewport = readSessionMetadata()?.viewport;
+  const size = sessionViewport ?? {
+    width: Math.round(viewport.clientWidth),
+    height: Math.round(viewport.clientHeight),
+  };
+  await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(size, 1));
+  return async () => {
+    if (sessionViewport) {
+      await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
+    } else {
+      await callCDP('Emulation.clearDeviceMetricsOverride', {});
+    }
+  };
+}
+
+/**
  * Get the bounding box (border box, so padding and border are included) of an
  * element via CDP DOM.getBoxModel.
  *
@@ -264,14 +296,8 @@ export async function capturePageScreenshot(
   const finalWidth = Math.round(captureWidth * scale);
   const finalHeight = Math.round(captureHeight * scale);
 
+  const restoreMetrics = await useUnitPixelRatio(devicePixelRatio, viewport);
   if (devicePixelRatio !== 1) {
-    await callCDP('Emulation.setDeviceMetricsOverride', {
-      width: Math.round(viewport.clientWidth),
-      height: Math.round(viewport.clientHeight),
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
-
     if (options.scroll) {
       await callCDP('Runtime.evaluate', {
         expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(options.scroll)})[0]?.scrollIntoView({ block: 'center', behavior: 'instant' })`,
@@ -312,9 +338,7 @@ export async function capturePageScreenshot(
     screenshotResult = screenshotResponse.data?.result as
       Protocol.Page.CaptureScreenshotResponse | undefined;
   } finally {
-    if (devicePixelRatio !== 1) {
-      await callCDP('Emulation.clearDeviceMetricsOverride', {});
-    }
+    await restoreMetrics();
   }
 
   if (!screenshotResult?.data) {
@@ -374,15 +398,103 @@ export async function capturePageScreenshot(
   return result;
 }
 
+/** Descendants {@link CONTENT_OVERFLOW_JS} looks at, so a huge element stays cheap */
+const OVERFLOW_SCAN_LIMIT = 2000;
+
 /**
- * Capture a screenshot of a single element, clipped to its bounding box.
+ * Page-side distances (CSS px, never negative) by which an element's rendered
+ * descendants reach beyond its border box on each side: uncleared floats,
+ * absolutely positioned and transformed children. Descendants of an element
+ * that clips its overflow (`overflow` other than `visible`) are cut off by it
+ * and not counted, nor are fixed ones (they belong to the viewport) or what
+ * lies outside the document (skip links at -9999px). Zero everywhere when the
+ * element clips its own overflow.
+ */
+const CONTENT_OVERFLOW_JS = `function () {
+  const view = this.ownerDocument.defaultView;
+  const scroller = this.ownerDocument.scrollingElement || this.ownerDocument.documentElement;
+  const own = this.getBoundingClientRect();
+  const reach = { left: own.left, top: own.top, right: own.right, bottom: own.bottom };
+  const page = { left: -view.scrollX, top: -view.scrollY, right: scroller.scrollWidth - view.scrollX, bottom: scroller.scrollHeight - view.scrollY };
+  const clips = (style) => style.overflowX !== 'visible' || style.overflowY !== 'visible';
+  let budget = ${OVERFLOW_SCAN_LIMIT};
+  const walk = (el) => {
+    for (const child of el.children) {
+      if (--budget < 0) return;
+      const style = view.getComputedStyle(child);
+      if (style.display === 'none' || style.position === 'fixed') continue;
+      const r = child.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0 && style.visibility === 'visible') {
+        reach.left = Math.min(reach.left, Math.max(r.left, page.left));
+        reach.top = Math.min(reach.top, Math.max(r.top, page.top));
+        reach.right = Math.max(reach.right, Math.min(r.right, page.right));
+        reach.bottom = Math.max(reach.bottom, Math.min(r.bottom, page.bottom));
+      }
+      if (!clips(style)) walk(child);
+    }
+  };
+  if (!clips(view.getComputedStyle(this))) walk(this);
+  return { left: own.left - reach.left, top: own.top - reach.top, right: reach.right - own.right, bottom: reach.bottom - own.bottom };
+}`;
+
+/** Overflow (px) below which the capture keeps to the border box (subpixel rounding) */
+const OVERFLOW_SLACK = 1;
+
+/**
+ * Area an element screenshot captures: the border box, grown to the content
+ * that overflows it ({@link CONTENT_OVERFLOW_JS}), so floated children are
+ * not cropped away.
+ *
+ * @param ref - Node reference
+ * @param bounds - Border box (DOM.getBoxModel coordinates)
+ * @returns The area, or the border box when nothing overflows (or the page cannot be asked)
+ */
+async function captureArea(ref: NodeRef, bounds: ElementBounds): Promise<ElementBounds> {
+  const objectGroup = `bdg-shot-${process.pid}`;
+  try {
+    const resolved = await callCDP('DOM.resolveNode', { ...ref, objectGroup });
+    const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
+      .objectId;
+    if (!objectId) return bounds;
+    const response = await callCDP('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: CONTENT_OVERFLOW_JS,
+      returnByValue: true,
+    });
+    const overflow = (response.data?.result as { result?: { value?: Record<string, number> } })
+      ?.result?.value;
+    if (!overflow) return bounds;
+    const [left, top, right, bottom] = ['left', 'top', 'right', 'bottom'].map((side) =>
+      Math.max(0, overflow[side] ?? 0)
+    ) as [number, number, number, number];
+    if (Math.max(left, top, right, bottom) <= OVERFLOW_SLACK) return bounds;
+    return {
+      x: bounds.x - left,
+      y: bounds.y - top,
+      width: bounds.width + left + right,
+      height: bounds.height + top + bottom,
+    };
+  } catch (error) {
+    log.debug(`Could not measure overflowing content: ${String(error)}`);
+    return bounds;
+  } finally {
+    await callCDP('Runtime.releaseObjectGroup', { objectGroup }).catch(() => undefined);
+  }
+}
+
+/**
+ * Capture a screenshot of a single element: its border box, grown to include
+ * content overflowing it ({@link captureArea}). The box model is relative to
+ * the viewport and the capture clip to the page, so the page scroll is added
+ * (the reported bounds are page coordinates, like `dom layout`'s).
  */
 export async function captureElementScreenshot(
   outputPath: string,
   ref: NodeRef,
   options: { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean } = {}
 ): Promise<ScreenshotResult> {
-  const bounds = await getElementBounds(ref);
+  const box = await getElementBounds(ref);
+  const bounds = await captureArea(ref, box);
 
   const format = options.format ?? 'png';
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
@@ -407,36 +519,28 @@ export async function captureElementScreenshot(
   const metricsResult = metricsResponse.data?.result as
     Protocol.Page.GetLayoutMetricsResponse | undefined;
   const viewport = metricsResult?.visualViewport ?? { clientWidth: 800, clientHeight: 600 };
+  const scroll = metricsResult?.cssLayoutViewport ?? { pageX: 0, pageY: 0 };
+  const onPage = (area: ElementBounds): ElementBounds => ({
+    ...area,
+    x: area.x + scroll.pageX,
+    y: area.y + scroll.pageY,
+  });
+  const clip = onPage(bounds);
 
-  if (devicePixelRatio !== 1) {
-    await callCDP('Emulation.setDeviceMetricsOverride', {
-      width: Math.round(viewport.clientWidth),
-      height: Math.round(viewport.clientHeight),
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
-  }
+  const restoreMetrics = await useUnitPixelRatio(devicePixelRatio, viewport);
 
   let screenshotResult: Protocol.Page.CaptureScreenshotResponse | undefined;
   try {
     const screenshotResponse = await callCDP('Page.captureScreenshot', {
       format,
       ...(quality !== undefined && { quality }),
-      clip: {
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height,
-        scale,
-      },
+      clip: { ...clip, scale },
       captureBeyondViewport: true,
     });
     screenshotResult = screenshotResponse.data?.result as
       Protocol.Page.CaptureScreenshotResponse | undefined;
   } finally {
-    if (devicePixelRatio !== 1) {
-      await callCDP('Emulation.clearDeviceMetricsOverride', {});
-    }
+    await restoreMetrics();
   }
 
   if (!screenshotResult?.data) {
@@ -455,12 +559,8 @@ export async function captureElementScreenshot(
     fullPage: false,
     finalTokens: calculateImageTokens(finalWidth, finalHeight),
     element: {
-      bounds: {
-        x: Math.round(bounds.x),
-        y: Math.round(bounds.y),
-        width: Math.round(bounds.width),
-        height: Math.round(bounds.height),
-      },
+      bounds: roundBounds(onPage(box)),
+      ...(bounds !== box && { captured: roundBounds(clip) }),
     },
   };
 
@@ -476,4 +576,19 @@ export async function captureElementScreenshot(
   }
 
   return result;
+}
+
+/**
+ * Bounds in whole pixels.
+ *
+ * @param bounds - Bounds
+ * @returns Rounded bounds
+ */
+function roundBounds(bounds: ElementBounds): ElementBounds {
+  return {
+    x: Math.round(bounds.x),
+    y: Math.round(bounds.y),
+    width: Math.round(bounds.width),
+    height: Math.round(bounds.height),
+  };
 }

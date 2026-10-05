@@ -153,6 +153,51 @@ void describe('DOM interactions', () => {
     assert.equal(fs.existsSync(path.join(dir, 'mismatch.png')), false);
   });
 
+  void it('takes the element as an argument and includes floated content', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-shot-'));
+    const file = path.join(dir, 'floats.png');
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', '<div id="floats" style="width: 300px"><h3 style="margin: 0; height: 30px">Floats</h3>' +
+        '<div style="float: left; width: 100px; height: 120px"></div><div style="float: left; width: 100px; height: 120px"></div></div>'); 1`
+    );
+    try {
+      const output = await bdg(['dom', 'screenshot', file, '#floats', '--json']);
+      const { element } = (
+        JSON.parse(output) as {
+          data: {
+            element: {
+              selector: string;
+              bounds: { height: number };
+              captured?: { height: number };
+            };
+          };
+        }
+      ).data;
+      assert.equal(element.selector, '#floats');
+      assert.equal(element.bounds.height, 30);
+      assert.equal(element.captured?.height, 150);
+      assert.match(
+        await bdg(['dom', 'screenshot', file, '#floats']),
+        /grown from 300×30 to 300×150/
+      );
+      await bdg(['dom', 'screenshot', file, '#floats', '--selector', '#floats']);
+      await bdg(['dom', 'screenshot', file, '#floats', '--selector', 'h3'], 81);
+
+      await evaluate("document.body.style.minHeight = '4000px'; scrollTo(0, 50); 1");
+      const scrolled = JSON.parse(await bdg(['dom', 'screenshot', file, '#floats', '--json'])) as {
+        data: { element: { bounds: { y: number } } };
+      };
+      const laidOut = JSON.parse(await bdg(['dom', 'layout', '#floats', '--json'])) as {
+        data: { elements: Array<{ bounds: { y: number } }> };
+      };
+      assert.equal(scrolled.data.element.bounds.y, laidOut.data.elements[0]?.bounds.y);
+    } finally {
+      await evaluate(
+        "document.getElementById('floats').remove(); document.body.style.minHeight = ''; scrollTo(0, 0); 1"
+      );
+    }
+  });
+
   void it('fill toggles a controlled checkbox through its click handler', async () => {
     await bdg(['dom', 'fill', '#agree', 'true']);
     assert.equal(await evaluate("document.getElementById('agree').checked"), true);

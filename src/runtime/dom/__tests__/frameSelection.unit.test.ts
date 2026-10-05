@@ -1,5 +1,6 @@
 /**
- * `dom eval --frame` picks one iframe by index, name/id attribute or URL part,
+ * `dom eval --frame` picks one iframe by index, name/id attribute or a part
+ * of the name, id or URL,
  * and fails with the candidates (81) or the available frames (83) otherwise.
  */
 
@@ -72,6 +73,20 @@ void describe('selectFrame', () => {
     assert.equal(selectFrame(FRAMES, 'slot').index, 2);
   });
 
+  void it('picks a frame by a case-insensitive part of the name or id', () => {
+    assert.equal(selectFrame(FRAMES, 'WIDG').index, 0);
+    const editor: DomFrame = {
+      index: 3,
+      url: 'about:blank',
+      id: 'mce_0_ifr',
+      origin: 'http://localhost:3000',
+      crossOrigin: false,
+      outOfProcess: false,
+    };
+    assert.equal(selectFrame([...FRAMES, editor], 'mce').index, 3);
+    assert.equal(selectionError('check').exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+  });
+
   void it('fails with 81 listing the candidates when several frames match', () => {
     const error = selectionError('example');
     assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
@@ -134,7 +149,7 @@ void describe('frame output', () => {
   });
 
   void it('prints the eval value alone (the frame goes to stderr)', () => {
-    assert.equal(formatDomEval({ result: 'Pay', type: 'string' }), '"Pay"');
+    assert.equal(formatDomEval({ result: 'Pay', type: 'string' }), 'Pay');
     assert.equal(evalFrameLine('https://pay.example/'), 'Frame: https://pay.example/');
     assert.equal(evalFrameLine(''), 'Frame: (no URL)');
   });

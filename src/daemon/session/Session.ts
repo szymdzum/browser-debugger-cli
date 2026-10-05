@@ -25,6 +25,7 @@ import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
+import { applySessionEmulation } from '@/runtime/page/emulation.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
@@ -222,6 +223,8 @@ export class Session {
         autoStopAt: this.autoStopAt,
         targetId: target?.id,
         webSocketDebuggerUrl: target?.webSocketDebuggerUrl,
+        viewport: this.config.viewport,
+        colorScheme: this.config.colorScheme,
       }),
     };
   }
@@ -280,6 +283,8 @@ export class Session {
       external: Boolean(chromeWsUrl),
       signal: this.launchAbort.signal,
     });
+    this.throwIfStopping();
+    await applySessionEmulation(this.cdp, this.config);
     this.throwIfStopping();
     this.cleanupFunctions = await startTelemetryCollectors(this.cdp, this.config, this.store, log);
     this.throwIfStopping();
@@ -385,6 +390,8 @@ function buildConfig(url: string, port: number, options: SessionOptions): Sessio
       maxBodySize: options.maxBodySize,
       chromeWsUrl: options.chromeWsUrl,
       chromeFlags: options.chromeFlags,
+      viewport: options.viewport,
+      colorScheme: options.colorScheme,
     }),
   };
 }

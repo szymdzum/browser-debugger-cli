@@ -77,28 +77,34 @@ void describe('formatDomQuery identifying details', () => {
     );
   });
 });
-void describe('formatDomQuery text hint', () => {
-  void it('gives a shell-safe script for the shown match', () => {
+void describe('formatDomQuery next steps', () => {
+  void it('is one line of bdg commands by index (they reach shadow roots and iframes)', () => {
     const output = formatDomQuery({
       selector: "a[title='x']",
-      count: 1,
-      nodes: [{ index: 0, nodeId: 1, tag: 'a' }],
+      count: 2,
+      nodes: [
+        { index: 0, nodeId: 1, tag: 'a', context: 'shadow root of <x-card>' },
+        { index: 1, nodeId: 2, tag: 'a' },
+      ],
     });
-    assert.ok(
-      output.includes(
-        `bdg dom eval '(el => el && (el.value ?? el.innerText))(document.querySelectorAll("a[title='\\''x'\\'']")[0])'`
-      )
+    const next = output.split('\n').filter((line) => line.startsWith('Next: '));
+    assert.equal(next.length, 1);
+    assert.match(
+      next[0] ?? '',
+      /bdg dom get 0 \(text\), bdg dom get 0 --raw \(HTML\), bdg dom layout 0/
     );
+    assert.doesNotMatch(output, /querySelectorAll|Extract text/);
   });
+});
 
-  void it('leaves the script out for selectors with text or visibility filters', () => {
+void describe('formatDomQuery options', () => {
+  void it('shows the value and label of an <option>', () => {
     const output = formatDomQuery({
-      selector: 'button:has-text("Save")',
+      selector: 'option',
       count: 1,
-      nodes: [{ index: 0, nodeId: 1, tag: 'button' }],
+      nodes: [{ index: 0, nodeId: 1, tag: 'option', value: 'ca', preview: 'Canada' }],
     });
-    assert.ok(!output.includes('Extract text'));
-    assert.ok(output.includes('bdg dom get 0'));
+    assert.match(output, /\[0\] <option value="ca"> Canada/);
   });
 });
 

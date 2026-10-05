@@ -5,26 +5,13 @@ import {
   frameLabel,
   moreMatchesNote,
   noFramesMessage,
+  queryNextSteps,
+  screenshotGrownNote,
   viewportPositionHint,
 } from '@/ui/messages/commands.js';
-import { parseSelectorFilters } from '@/utils/selectorFilters.js';
 
 /** Matches listed in human output (JSON has all of them) */
 const QUERY_DISPLAY_LIMIT = 50;
-
-/**
- * A shell-quoted `dom eval` script reading the text (or a field's value) of
- * the n-th match in the main document, as rendered (null for matches inside iframes or
- * shadow roots, which `document.querySelectorAll` does not reach).
- *
- * @param selector - CSS selector
- * @param index - Match to read
- * @returns Single-quoted script, safe to paste into a shell
- */
-function textExtractionScript(selector: string, index: number): string {
-  const script = `(el => el && (el.value ?? el.innerText))(document.querySelectorAll(${JSON.stringify(selector)})[${index}])`;
-  return `'${script.replace(/'/g, `'\\''`)}'`;
-}
 
 /**
  * Format DOM query results for human-readable output.
@@ -32,8 +19,8 @@ function textExtractionScript(selector: string, index: number): string {
  * Displays found nodes with their index, tag, classes, and preview text
  * (plus where they are when outside the viewport or hidden, e.g.
  * `(below fold)`), up to {@link QUERY_DISPLAY_LIMIT} of them (no match is an error, exit 83).
- * The text extraction hint is left out for selectors with text or visibility
- * filters, which `document.querySelectorAll` does not understand.
+ * One line of next commands follows; they take the match's index, so they
+ * work for matches in shadow roots and iframes too.
  *
  * @param data - DOM query result containing selector, count, and matching nodes
  * @returns Formatted output string
@@ -63,6 +50,7 @@ export function formatDomQuery(data: DomQueryResult): string {
       node.id && ` id="${node.id}"`,
       node.name && ` name="${node.name}"`,
       node.type && ` type="${node.type}"`,
+      node.value !== undefined && ` value="${node.value}"`,
       node.classes?.length && ` class="${node.classes.join(' ')}"`,
     ]
       .filter(Boolean)
@@ -74,20 +62,13 @@ export function formatDomQuery(data: DomQueryResult): string {
     return `[${node.index}] <${node.tag}${attributes}>${context}${preview}${location}`;
   });
 
-  const hasMultipleResults = count > 1;
-  const exampleIndex = hasMultipleResults ? (nodes[0]?.index ?? 0) : 0;
+  const exampleIndex = nodes[0]?.index ?? 0;
 
   return fmt
     .text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`)
     .list(nodeLines)
     .list(count > QUERY_DISPLAY_LIMIT ? [moreMatchesNote(count - QUERY_DISPLAY_LIMIT)] : [])
-    .hints('Next steps:', [
-      `Get HTML:        bdg dom get ${exampleIndex} --raw`,
-      `Accessibility:   bdg dom get ${exampleIndex}`,
-      ...(parseSelectorFilters(selector)
-        ? []
-        : [`Extract text:    bdg dom eval ${textExtractionScript(selector, exampleIndex)}`]),
-    ])
+    .tip(queryNextSteps(exampleIndex))
     .build();
 }
 
@@ -139,18 +120,21 @@ export function formatDomGet(data: DomGetResult): string {
 /**
  * Format DOM eval results for human-readable output.
  *
- * Outputs the evaluated JavaScript result as formatted JSON. The iframe it
- * ran in (`--frame`) is reported on stderr, so stdout stays the bare value.
+ * A string result is printed as is (not JSON-quoted), so text reads and
+ * pipes like `echo`; other values are formatted JSON, and values Chrome only
+ * describes (functions, DOM nodes) their description. The iframe it ran in
+ * (`--frame`) is reported on stderr, so stdout stays the bare value. `--json`
+ * output is unchanged (the value in `data.result`).
  *
  * @param data - DOM eval result containing the evaluated value
- * @returns Formatted JSON string
+ * @returns The string, or formatted JSON
  *
  * @example
  * ```typescript
- * formatDomEval({ result: 'My Page Title' });
- * // Output: "My Page Title"
+ * formatDomEval({ result: 'My Page Title', type: 'string' });
+ * // Output: My Page Title
  *
- * formatDomEval({ result: { url: 'https://example.com', title: 'Example' } });
+ * formatDomEval({ result: { url: 'https://example.com', title: 'Example' }, type: 'object' });
  * // Output:
  * // {
  * //   "url": "https://example.com",
@@ -160,8 +144,7 @@ export function formatDomGet(data: DomGetResult): string {
  */
 export function formatDomEval(data: { result: unknown; type?: string }): string {
   if (data.type === 'undefined') return 'undefined';
-  const isDescription = typeof data.result === 'string' && data.type !== 'string';
-  if (isDescription) return data.result as string;
+  if (typeof data.result === 'string') return data.result;
   return JSON.stringify(data.result ?? null, null, 2);
 }
 
@@ -206,6 +189,9 @@ export function formatDomFrames(data: { frames: DomFrame[] }): string {
  *
  * formatDomScreenshot({ path: './page.png', fullPageSkipped: { reason: 'page_too_tall', ... } });
  * // Output: Screenshot saved to ./page.png (viewport only - page too tall)
+ *
+ * // An element whose floated children overflow it
+ * // Output: Screenshot saved to ./el.png (grown from 940×37 to 940×285 to include content overflowing the element)
  * ```
  */
 export function formatDomScreenshot(data: ScreenshotResult): string {
@@ -213,6 +199,10 @@ export function formatDomScreenshot(data: ScreenshotResult): string {
 
   if (data.fullPageSkipped && !data.scrolledTo) {
     output += ' (viewport only - page too tall)';
+  }
+
+  if (data.element?.captured) {
+    output += ` (${screenshotGrownNote(data.element.bounds, data.element.captured)})`;
   }
 
   return output;

@@ -1,4 +1,4 @@
-import type { TelemetryType } from '@/types.js';
+import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 
 export interface SessionConfig {
   url: string;
@@ -12,4 +12,8 @@ export interface SessionConfig {
   chromeWsUrl?: string;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
   chromeFlags?: string[];
+  /** Viewport size to emulate (`--viewport`) */
+  viewport?: ViewportSize;
+  /** `prefers-color-scheme` to emulate (`--color-scheme`) */
+  colorScheme?: ColorScheme;
 }

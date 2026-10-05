@@ -17,7 +17,11 @@ import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
-import { conflictingOptionsMessage, genericError } from '@/errors/messages.js';
+import {
+  conflictingOptionsMessage,
+  conflictingTargetError,
+  genericError,
+} from '@/errors/messages.js';
 import { missingArgumentError } from '@/errors/messages.js';
 import type { ScreenshotResult, ElementBounds, NodeRef } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
@@ -136,6 +140,7 @@ function addElementInfo(
       ...(options.selector !== undefined && { selector: options.selector }),
       ...(options.index !== undefined && { index: options.index }),
       bounds,
+      ...(result.element?.captured && { captured: result.element.captured }),
     },
   };
 }
@@ -309,14 +314,45 @@ function assertScreenshotOptions(outputPath: string, options: DomScreenshotComma
 }
 
 /**
- * Handle `bdg dom screenshot <path>`.
+ * Fold the optional positional target (`bdg dom screenshot out.png "#sel"`,
+ * or an index from a query) into `--selector` / `--index`.
+ *
+ * @param target - Positional selector or index, if given
+ * @param options - Command options
+ * @returns Options with the target as `selector` or `index`
+ * @throws CommandError (81) when the option names a different element
+ */
+export function withPositionalTarget(
+  target: string | undefined,
+  options: DomScreenshotCommandOptions
+): DomScreenshotCommandOptions {
+  if (target === undefined) return options;
+  const isIndex = /^\d+$/.test(target);
+  const key = isIndex ? 'index' : 'selector';
+  const value = isIndex ? Number(target) : target;
+  const given = options[key];
+  if (given !== undefined && given !== value) {
+    const err = conflictingTargetError(`--${key} ${String(given)}`, target);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  return { ...options, [key]: value };
+}
+
+/**
+ * Handle `bdg dom screenshot <path> [selector|index]`.
  *
  * Dispatches to page, element, or sequence capture based on flags.
  */
 export async function handleDomScreenshot(
   outputPath: string,
-  options: DomScreenshotCommandOptions
+  target: string | undefined,
+  commandOptions: DomScreenshotCommandOptions
 ): Promise<void> {
+  const options = withPositionalTarget(target, commandOptions);
   assertScreenshotOptions(outputPath, options);
   if (options.follow) {
     await handleSequenceCapture(outputPath, options);

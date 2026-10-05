@@ -340,6 +340,8 @@ export interface DomContext {
   tag: string;
   classes?: string[];
   preview?: string;
+  /** Up to 500 characters of text, when it is longer than the preview */
+  text?: string;
 }
 
 /**
@@ -347,6 +349,15 @@ export interface DomContext {
  * within one command) or a `backendNodeId` (valid while the node exists).
  */
 export type NodeRef = { nodeId: number } | { backendNodeId: number };
+
+/** `prefers-color-scheme` value a session emulates (`--color-scheme`) */
+export type ColorScheme = 'light' | 'dark';
+
+/** Viewport size in CSS px (`--viewport`) */
+export interface ViewportSize {
+  width: number;
+  height: number;
+}
 
 /**
  * Where an element is relative to the top-level viewport: fully `visible`,
@@ -371,6 +382,8 @@ export interface DomQueryResult {
     id?: string;
     name?: string;
     type?: string;
+    /** `value` attribute of an `<option>` */
+    value?: string;
     classes?: string[];
     /** Text content preview (display only, never used for targeting) */
     preview?: string;
@@ -426,7 +439,13 @@ export interface ScreenshotResult {
   element?: {
     selector?: string;
     index?: number;
+    /** Border box of the element (page coordinates for element captures) */
     bounds: ElementBounds;
+    /**
+     * Area captured, when content overflowing the element (floats, positioned
+     * descendants) made it larger than the border box
+     */
+    captured?: ElementBounds;
   };
   /** Capture mode used */
   captureMode?: 'full_page' | 'viewport';

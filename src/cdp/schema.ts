@@ -338,9 +338,46 @@ export function getProtocolCounts(): {
 }
 
 /**
+ * Words agents search for that a method's name and description lack, e.g.
+ * "viewport" for `Emulation.setDeviceMetricsOverride`.
+ */
+const SEARCH_KEYWORDS: Record<string, string[]> = {
+  'Emulation.setDeviceMetricsOverride': [
+    'viewport',
+    'window size',
+    'screen size',
+    'resize',
+    'responsive',
+    'mobile',
+  ],
+  'Emulation.setEmulatedMedia': [
+    'color scheme',
+    'dark mode',
+    'light mode',
+    'prefers-color-scheme',
+    'reduced motion',
+    'print',
+  ],
+  'Browser.setWindowBounds': ['window size', 'resize'],
+};
+
+/**
+ * Lower-case text without spaces, hyphens and underscores, so "user agent"
+ * finds `setUserAgentOverride`.
+ *
+ * @param text - Text
+ * @returns Normalized text
+ */
+function searchable(text: string): string {
+  return text.toLowerCase().replace(/[\s_-]+/g, '');
+}
+
+/**
  * Search methods by keyword (case-insensitive).
  *
- * Searches in method names and descriptions.
+ * Searches method names, extra keywords ({@link SEARCH_KEYWORDS}) and
+ * descriptions. Matches by name or keyword come first, then those found only
+ * in the description, each in protocol order.
  *
  * @param query - Search query
  * @returns Array of matching method schemas
@@ -349,25 +386,30 @@ export function getProtocolCounts(): {
  * ```typescript
  * const cookies = searchMethods('cookie');
  * // Returns: Network.getCookies, Network.setCookie, Network.deleteCookies, etc.
+ * searchMethods('viewport')[0]?.name; // 'Emulation.setDeviceMetricsOverride'
  * ```
  */
 export function searchMethods(query: string): MethodSchema[] {
   const protocol = loadProtocol();
-  const results: MethodSchema[] = [];
+  const named: MethodSchema[] = [];
+  const described: MethodSchema[] = [];
   const lowerQuery = query.toLowerCase();
+  const needle = searchable(query);
 
   protocol.domains.forEach((domain) => {
     if (!domain.commands) return;
 
     domain.commands.forEach((command) => {
-      const nameMatch = command.name.toLowerCase().includes(lowerQuery);
+      const keywords = SEARCH_KEYWORDS[`${domain.domain}.${command.name}`] ?? [];
+      const nameMatch =
+        searchable(command.name).includes(needle) ||
+        keywords.some((keyword) => searchable(keyword).includes(needle));
       const descMatch = command.description?.toLowerCase().includes(lowerQuery) ?? false;
 
-      if (nameMatch || descMatch) {
-        results.push(buildMethodSchema(domain.domain, command));
-      }
+      if (nameMatch) named.push(buildMethodSchema(domain.domain, command));
+      else if (descMatch) described.push(buildMethodSchema(domain.domain, command));
     });
   });
 
-  return results;
+  return [...named, ...described];
 }

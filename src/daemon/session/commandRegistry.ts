@@ -25,6 +25,7 @@ import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
+import { pageAppearance } from '@/runtime/page/emulation.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
@@ -429,7 +430,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       );
     },
 
-    session_status: async (_cdp, _params) => {
+    session_status: async (cdp, _params) => {
       const duration = Date.now() - store.sessionStartTime;
       const lastNetworkRequest = store.networkRequests[store.networkRequests.length - 1];
       const lastConsoleMessage = store.consoleMessages[store.consoleMessages.length - 1];
@@ -440,6 +441,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         target: {
           url: store.targetInfo?.url ?? '',
           title: store.targetInfo?.title ?? '',
+          ...(await pageAppearance(cdp)),
         },
         activeTelemetry: store.activeTelemetry,
         activity: filterDefined({
@@ -456,7 +458,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
         navigationId: store.getCurrentNavigationId?.() ?? 0,
       };
 
-      return Promise.resolve(result);
+      return result;
     },
 
     session_har_data: async (_cdp, _params) => {

@@ -6,14 +6,6 @@
  */
 
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
-import {
-  buildCommonTasksSection,
-  buildDomainCommandsSection,
-  buildLiveMonitoringSection,
-  buildSessionManagementSection,
-  buildCdpSection,
-  buildDiscoverySection,
-} from '@/ui/formatters/sessionFormatters.js';
 import { joinLines } from '@/ui/formatting.js';
 import { pageLoadingWarning } from '@/ui/messages/commands.js';
 
@@ -57,55 +49,39 @@ export function startNotices(options: LandingPageOptions): string[] {
   ];
 }
 
+/** Most useful commands after a start, cheapest first (screenshots cost the most tokens) */
+const START_NEXT_COMMANDS = [
+  'bdg dom layout <selector>',
+  'bdg dom query <selector>',
+  'bdg dom form',
+  'bdg peek',
+  'bdg dom screenshot out.png',
+];
+
 /**
- * Generate the landing page display for session start.
- *
- * Shows a clean, organized overview of available commands grouped by priority.
- * High-level commands are presented first to guide agents toward token-efficient
- * wrappers before falling back to verbose CDP commands.
- *
- * Section order optimized for agent discoverability:
- * 1. Common tasks with token savings estimates
- * 2. Comprehensive domain command coverage (12+ commands)
- * 3. Live monitoring capabilities
- * 4. Session management
- * 5. Advanced CDP access (positioned as fallback)
- * 6. Discovery resources for agents
+ * Generate the start output: the target, the notices of {@link startNotices},
+ * one line of next commands and where to find the rest. Kept to a few lines
+ * because agents read it on every start; `bdg --help` lists everything.
  *
  * @param options - Landing page options
- * @returns Formatted landing page string
+ * @returns Formatted start output
  *
  * @example
  * ```typescript
- * const message = landingPage({
- *   url: 'http://localhost:3000'
- * });
- * console.log(message);
+ * landingPage({ url: 'http://localhost:3000' });
+ * // Session Started
+ * // Target: http://localhost:3000
+ * // Next: bdg dom layout <selector>, bdg dom query <selector>, ...
+ * // More: bdg --help (bdg --help --json for agents)
  * ```
  */
 export function landingPage(options: LandingPageOptions): string {
-  const { url } = options;
-  const notices = startNotices(options);
-
   return joinLines(
-    '',
     'Session Started',
-    '',
-    `Target: ${url}`,
-    '',
-    ...(notices.length > 0 ? [...notices, ''] : []),
-    buildCommonTasksSection(),
-    '',
-    buildDomainCommandsSection(),
-    '',
-    buildLiveMonitoringSection(),
-    '',
-    buildSessionManagementSection(),
-    '',
-    buildCdpSection(),
-    '',
-    buildDiscoverySection(),
-    ''
+    `Target: ${options.url}`,
+    ...startNotices(options),
+    `Next: ${START_NEXT_COMMANDS.join(', ')}`,
+    'More: bdg --help (bdg --help --json for agents)'
   );
 }
 

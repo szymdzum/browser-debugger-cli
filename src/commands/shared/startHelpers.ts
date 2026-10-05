@@ -167,6 +167,8 @@ async function requestSession(
         headless: options.headless,
         chromeWsUrl: options.chromeWsUrl,
         chromeFlags: options.chromeFlags,
+        viewport: options.viewport,
+        colorScheme: options.colorScheme,
       })
     );
     if (response.status === 'error') return describeStartFailure(response, options);

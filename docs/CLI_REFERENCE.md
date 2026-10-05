@@ -12,7 +12,16 @@ bdg localhost:3000
 
 bdg https://example.com --chrome-flags "--ignore-certificate-errors"
 BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost:5173   # Same, via environment
+
+bdg localhost:3000 --viewport 1280x800       # Exact viewport (CSS px) for the whole session
+bdg localhost:3000 --color-scheme dark       # Emulate prefers-color-scheme: light or dark
 ```
+
+The start output is a few lines: the target, notices (session name, HTTP error, auto-stop), the most useful next commands and a pointer to `bdg --help`. `-q` prints one line.
+
+- `--viewport <WxH>` (e.g. `1280x800`; `X`, `×` and `,` work too, each side 1-10000) gives the page exactly that viewport for the session, through navigations and reloads (`Emulation.setDeviceMetricsOverride` at the display's pixel ratio). A launched Chrome also opens its window at that size, so tabs the page opens get it too. It works with `--chrome-ws-url`: the override belongs to the session's connection and Chrome drops it when the session ends. Without it, a launched Chrome opens a 1920×1080 window (the viewport is smaller by the scrollbar, and by the browser UI in a visible window). Invalid values exit 81
+- `--color-scheme light|dark` emulates `prefers-color-scheme` for the session (`Emulation.setEmulatedMedia`). Without it the page sees the system setting: headless Chrome follows the OS, so a dark OS renders dark pages. Other values exit 81 with a suggestion
+- `bdg status` shows the viewport and color scheme the page renders with (`Viewport: 1265×800 (--viewport 1280x800)`, the layout viewport without the scrollbar; `Color scheme: dark (system setting)`); JSON has them in `pageState` (and the start options as `viewport` / `colorScheme`)
 
 A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
@@ -234,6 +243,7 @@ bdg dom get "h1"                              # Get semantic A11y representation
 bdg dom get "button"                          # [Button] "Submit" (focusable)
 bdg dom get "#searchInput"                    # [Searchbox] "Search" (focusable)
 bdg dom get ".nav-link"                       # First matching element
+bdg dom get "#content"                        # [Generic] <div> + a Text: line (up to 500 characters)
 
 # Raw HTML output
 bdg dom get "h1" --raw                        # Get full HTML with attributes
@@ -263,7 +273,11 @@ bdg dom get "h1" --raw --json                # HTML as JSON
 [Searchbox] "Search" (focusable, required)
 [Navigation] "Main menu"
 [Paragraph]
+[Generic] <div#content>
+Text: Welcome to the docs. This guide covers ... (cut at 500 characters; --raw shows the HTML)
 ```
+
+An element whose text is longer than the one-line preview gets a `Text:` line with up to 500 characters of it (whitespace collapsed); `--json` has it as `domContext.text`.
 
 **When to use `--raw`:**
 - Need exact HTML structure with classes and attributes
@@ -291,7 +305,8 @@ bdg dom query --json                          # JSON output
 - Lists nodeId, tag, classes, and text preview (the text as rendered: hidden parts left out)
 - No match exits 83, like `dom get` and `dom a11y`
 - Matches outside the viewport or hidden get a hint: `(below fold)`, `(above viewport)`, `(left of viewport)`, `(right of viewport)`, `(hidden)`, or `(out of view in ul#list)` for one scrolled out of a container; `--json` has `inViewport` (and `clippedBy`) for the first 100 matches (see `dom layout`)
-- Use results with `bdg dom get` for full details, `bdg dom layout` for positions
+- `<option>` elements show their `value` attribute and label: `[2] <option value="ca"> Canada (hidden)`
+- One `Next:` line follows (hidden with `-q`): `bdg dom get 0` (text), `bdg dom get 0 --raw` (HTML), `bdg dom layout 0` (position). They take the index, so they work for matches in shadow roots and iframes too
 
 ### Event Listeners
 
@@ -350,21 +365,23 @@ Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
 3 elements match "button" (page x,y and size in CSS px):
   [0] button#menu.icon "Menu"  10,10 40×40  visible
   [1] button#accept "Accept"  300,60 100×30  visible  covered by div#cookie-banner.modal
-  [2] button#save "Save"  420,1180 120×40  below fold (scroll down 500px)
+  [2] button#save "Save"  420,1180 120×40  below fold (scroll down 500px to centre it)
 ```
 
 - Coordinates are CSS pixels; `bounds` is relative to the top-level page (iframe offsets and page scroll included), `viewport` to the visible area
 - `inViewport`: `visible`, `partly` (with `percentVisible`), `above`, `below`, `left`, `right` or `hidden` (with `hiddenReason`: `display: none`, `visibility: hidden`, zero size, `inside a closed <details>`, `content-visibility: hidden on div#…`, `clipped by div#acc: zero height` for content of a collapsed `height: 0; overflow: hidden` accordion, inside a hidden iframe). Human output shows no coordinates for hidden elements
 - Same-origin iframes and overflow containers (scroll lists, `overflow: hidden`) clip what counts as visible, following containing blocks (an absolutely positioned dropdown escapes a static `overflow: hidden` parent; fixed elements are not clipped). CSS `zoom` and `transform: scale()` on or around a container are taken into account. A `<body>` that scrolls on its own (the root element has `overflow` other than `visible`) clips like any container. When one cuts the element off, `clippedBy` names it (`out of view in ul#list (below)`, `out of view in body (below)`) and there is no `scrollBy`
-- `scrollBy`: the page scroll (`bdg dom scroll --down/--up/--right/--left`) that centres an element that is not fully in view (aligns the top of one taller than the viewport), like `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover it; limited to how far the page can actually scroll
+- `scrollBy`: the page scroll (`bdg dom scroll --down/--up/--right/--left`) that centres an element that is not fully in view (aligns the top of one taller than the viewport), like `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover it; limited to how far the page can actually scroll. Human output says so: `(scroll down 500px to centre it)`, or `to bring it into view` for an element larger than the viewport
 - `offScreenReason` replaces `scrollBy` when no page scroll can bring the element fully into view: `fixed position, page scroll does not move it` (the element or a container is `position: fixed` relative to the viewport, e.g. an off-canvas menu; a fixed element inside a transformed container scrolls with the page and gets `scrollBy`) or `beyond the page's scroll range` (e.g. a `left: -9999px` skip link). The position (`left`, `above`, `partly`, …) is kept; human output shows `left of viewport (off-screen: …)`
+- Scroll-locked pages: when the page cannot scroll (the document is no taller than the viewport) because `body` or `html` is `position: fixed` or `overflow: hidden`, as a consent or modal dialog does, content below the fold gets `page scrolling is locked (position: fixed, overflow: hidden on body), likely by a dialog` instead (in-flow content of a fixed `body` is not called fixed); human output: `below fold; page scrolling is locked (…), likely by a dialog`. Close the dialog first
+- The page line names the `prefers-color-scheme` the page sees (`…, dark color scheme`; `page.colorScheme` in JSON). `page.viewport` is the layout viewport without scrollbars, the same size `dom scroll` reports
 - `coveredBy`: the topmost element at the center of the largest visible box (a wrapped link has one per line), when it is another element (not one inside it), e.g. a modal backdrop or sticky header; overlays over an iframe count too. An ancestor counts only when it is painted above the element, e.g. a card's `::after` overlay (`dom click` reports the same element). Where the viewport or a scroll container has overlay scrollbars (macOS, mobile; they take no space), the 16 px strip along its right and bottom edges is avoided when the element shows outside it, because those scrollbars catch hit tests for about a second after a scroll. Not reported for elements hit-testing skips (`pointer-events: none`)
 - `inert: true` for elements inside an `inert` element (through shadow roots): shown, but not interactive; human output adds `inert`
 - `invisible`: why an element that is rendered still cannot be seen: `opacity: 0` on it or an ancestor, including a slot or shadow wrapper around slotted content (`opacity: 0 on div#menu`), or a `clip-path: inset()` / `clip: rect()` that cuts it away entirely (the "visually hidden" pattern). These elements keep their `inViewport` and count as visible for `:visible` (like Playwright); human output adds the reason
 - Elements in open shadow roots and same-origin iframes are found like with the other DOM commands; one page-side pass measures them all
 - Known limit: CSS transforms on iframes (and zoom) are not applied to the offsets of elements inside them; a rotated or skewed container (or one inside a rotated or skewed ancestor) clips at its unscaled size from its bounding box's corner
 
-**JSON (`data`):** `{ selector, count, omitted?, page: { viewport: { width, height }, scroll: { x, y }, document: { width, height } }, elements: [{ index, tag, element, text?, context?, bounds: { x, y, width, height }, viewport: { x, y }, inViewport, percentVisible?, hiddenReason?, scrollBy?: { x, y }, clippedBy?, offScreenReason?, coveredBy?, invisible?, inert?, computed: { display, visibility, position, opacity, zIndex } }] }`
+**JSON (`data`):** `{ selector, count, omitted?, page: { viewport: { width, height }, scroll: { x, y }, document: { width, height }, colorScheme? }, elements: [{ index, tag, element, text?, context?, bounds: { x, y, width, height }, viewport: { x, y }, inViewport, percentVisible?, hiddenReason?, scrollBy?: { x, y }, clippedBy?, offScreenReason?, coveredBy?, invisible?, inert?, computed: { display, visibility, position, opacity, zIndex } }] }`
 
 ### Waiting for Elements
 
@@ -402,6 +419,9 @@ bdg dom eval "document.title"                     # Evaluate expression
 bdg dom eval "document.querySelector('h1').textContent"
 bdg dom eval --json                               # JSON output with full Runtime.evaluate response
 ```
+
+Human output prints a string result as is (`My Page`, not `"My Page"`), other values as
+formatted JSON (`undefined` for no value). `--json` keeps the value in `data.result`.
 
 **Shell Quote Handling:**
 
@@ -454,8 +474,8 @@ bdg dom frames                                    # [0] http://localhost:3000/wi
 bdg dom frames --json                             # { frames: [{ index, url, name?, id?, origin, crossOrigin, outOfProcess, parentIndex? }] }
 
 bdg dom eval --frame 1 'document.title'           # By index (0-based; the main page is not listed)
-bdg dom eval --frame checkout 'location.href'     # By name or id attribute of the <iframe> (exact)
-bdg dom eval --frame pay.example 'window.config'  # By part of the URL (case-insensitive)
+bdg dom eval --frame checkout 'location.href'     # By name or id attribute of the <iframe> (exact match first)
+bdg dom eval --frame pay.example 'window.config'  # By part of the name, id or URL (case-insensitive)
 ```
 
 - Human output prints `Frame: <url>` on stderr (hidden with `-q`), so stdout is only the value and pipes into `jq`; `--json` adds `"frame": "<url>"` to `data` (`"frame": ""` for a frame without URL; human output shows `Frame: (no URL)`)
@@ -644,6 +664,8 @@ bdg dom scroll --top                              # Scroll to page top
 bdg dom scroll "li.item" --index 5               # Scroll to nth match
 ```
 
+Scroll output reports the viewport without scrollbars (`Viewport: 1905×993`) and the page size of the scrolling element, the same numbers as `dom layout`.
+
 **Press Key Options:**
 | Option | Description |
 |--------|-------------|
@@ -678,9 +700,16 @@ bdg dom screenshot full-res.png --no-resize
 # Scroll to element before capture (captures viewport)
 bdg dom screenshot footer.png --scroll "footer"
 
+# One element: a selector or query index as the second argument (or --selector / --index)
+bdg dom screenshot card.png ".card"
+bdg dom screenshot card.png --selector ".card"
+bdg dom screenshot card.png 2
+
 # Custom quality
 bdg dom screenshot high-res.jpg --quality 100
 ```
+
+**Element screenshots:** the capture covers the element's border box plus content that overflows it (uncleared floats, absolutely positioned or transformed children), so a container whose floated content hangs out of it is not cropped to its heading; content an `overflow: hidden` ancestor cuts off and fixed descendants are left out. Human output then says `(grown from 940×37 to 940×285 to include content overflowing the element)`; JSON keeps the border box in `element.bounds` (page coordinates, like `dom layout`) and adds `element.captured`. Elements of a scrolled page are captured where they are (the page scroll is taken into account). An element given both as an argument and with `--selector`/`--index` must be the same one (exit 81 otherwise).
 
 **Auto-resize behavior:**
 - Images exceeding 1568px on longest edge are scaled down
@@ -1006,8 +1035,10 @@ bdg cdp --list
 # List methods in a domain
 bdg cdp Network --list
 
-# Search for methods by keyword
+# Search for methods by keyword (names, descriptions and common words:
+# "viewport" finds Emulation.setDeviceMetricsOverride first; name matches come first)
 bdg cdp --search cookie
+bdg cdp --search viewport
 
 # Describe a specific method (parameters and return types)
 bdg cdp Network.getCookies --describe

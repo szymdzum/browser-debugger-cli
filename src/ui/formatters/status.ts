@@ -3,6 +3,7 @@ import { describeRunningChrome, type RunningChromeInfo } from '@/session/chrome.
 import type { LastSessionEnd } from '@/session/lastSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
+import type { ColorScheme, ViewportSize } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -27,6 +28,10 @@ export interface StatusData {
   telemetry?: string[];
   /** When `--timeout` stops the session (ISO time) */
   autoStopAt?: string;
+  /** Viewport given with `--viewport` (`pageState.viewport` is the current one) */
+  viewport?: ViewportSize;
+  /** Color scheme given with `--color-scheme` (`pageState.colorScheme` is the current one) */
+  colorScheme?: ColorScheme;
   stale?: boolean;
   stalePid?: number;
   warning?: string;
@@ -101,6 +106,7 @@ export function formatSessionStatus(
     if (pageState.title) {
       fmt.keyValue('Title', pageState.title, 18);
     }
+    fmt.keyValueList(appearanceLines(metadata, pageState), 18);
   }
 
   if (activity) {
@@ -153,6 +159,40 @@ export function formatSessionStatus(
 }
 
 /**
+ * Viewport and color scheme lines of the target: what the page renders with,
+ * and whether `--viewport` / `--color-scheme` set it or it is the system's.
+ *
+ * @param metadata - Session metadata (the start options)
+ * @param pageState - Page state (what the page reported)
+ * @returns Key-value pairs (none for what is unknown)
+ */
+export function appearanceLines(
+  metadata: Pick<SessionMetadata, 'viewport' | 'colorScheme'>,
+  pageState: PageState
+): Array<[string, string]> {
+  const viewport = pageState.viewport ?? metadata.viewport;
+  const scheme = pageState.colorScheme ?? metadata.colorScheme;
+  return [
+    ...(viewport
+      ? [
+          [
+            'Viewport',
+            `${viewport.width}×${viewport.height}${metadata.viewport ? ` (--viewport ${metadata.viewport.width}x${metadata.viewport.height})` : ''}`,
+          ] as [string, string],
+        ]
+      : []),
+    ...(scheme
+      ? [
+          [
+            'Color scheme',
+            `${scheme} (${metadata.colorScheme ? '--color-scheme' : 'system setting'})`,
+          ] as [string, string],
+        ]
+      : []),
+  ];
+}
+
+/**
  * Convert status data to JSON format
  */
 export function formatStatusAsJson(
@@ -192,6 +232,8 @@ export function formatStatusAsJson(
     durationFormatted: duration.formatted,
     port: metadata.port,
     ...(metadata.autoStopAt && { autoStopAt: new Date(metadata.autoStopAt).toISOString() }),
+    ...(metadata.viewport && { viewport: metadata.viewport }),
+    ...(metadata.colorScheme && { colorScheme: metadata.colorScheme }),
     targetId: metadata.targetId,
     webSocketDebuggerUrl: metadata.webSocketDebuggerUrl,
     telemetry: metadata.activeTelemetry ?? ['network', 'console', 'dom'],
