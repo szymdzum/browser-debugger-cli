@@ -16,7 +16,7 @@ import {
   type ReadSnapshot,
   type SeenMessage,
 } from '@/runtime/dom/actionEffects.js';
-import { MOVED_VALUE_JS } from '@/runtime/dom/reactEventHelpers.js';
+import { FIELD_VALUES_JS, MOVED_VALUE_JS } from '@/runtime/dom/reactEventHelpers.js';
 import {
   actionStatusLine,
   newMessageText,
@@ -84,6 +84,15 @@ void describe('newMessages', () => {
     );
   });
 
+  void it('leaves out texts that tick on their own (clocks, counters)', () => {
+    const before = [seen(1, '12:04:33'), seen(2, '57%'), seen(3, '3 s')];
+    const after = [seen(1, '12:04:34'), seen(2, '58%'), seen(3, '2 s'), seen(4, 'Saved 2 items')];
+    assert.deepEqual(
+      newMessages(before, after, false).map((message) => message.text),
+      ['Saved 2 items']
+    );
+  });
+
   void it('counts every message of a new document as new', () => {
     assert.deepEqual(newMessages([seen(1, 'Invalid')], [seen(1, 'Invalid')], true), [
       { text: 'Invalid', element: 'div.flash' },
@@ -131,6 +140,14 @@ void describe('pageNavigation', () => {
       url: 'https://site.test/secure',
       sameDocument: false,
     });
+  });
+
+  void it('reports a same-document change Chrome announced when the page was not read', () => {
+    assert.deepEqual(
+      pageNavigation(undefined, undefined, events({ withinDocumentUrl: 'https://todo.test/#/a' })),
+      { url: 'https://todo.test/#/a', sameDocument: true }
+    );
+    assert.equal(pageNavigation(undefined, undefined, events()), undefined);
   });
 
   void it('reports a same-document URL change, and nothing when the URL stayed', () => {
@@ -190,7 +207,7 @@ void describe('effect output', () => {
   void it('says when an action had no visible effect', () => {
     assert.equal(
       actionStatusLine('Element Clicked', false, true),
-      '⚠ Element Clicked (no visible effect: no DOM change, no requests, no navigation)'
+      '⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)'
     );
     assert.equal(actionStatusLine('Element Clicked', true), '⚠ Element Clicked (with warnings)');
     assert.equal(actionStatusLine('Element Clicked', false), '✓ Element Clicked');
@@ -213,42 +230,63 @@ void describe('effect output', () => {
 });
 
 void describe('fill value moved to another field', () => {
+  const fieldValues = vm.runInNewContext(`(${FIELD_VALUES_JS})`) as (
+    field: Record<string, unknown>
+  ) => Map<unknown, string>;
   const movedTo = vm.runInNewContext(`(${MOVED_VALUE_JS})`) as (
     field: Record<string, unknown>,
-    expected: string
+    expected: string,
+    before?: Map<unknown, string>
   ) => string | undefined;
 
   /**
-   * A form-like object holding fields.
+   * Text fields in one form.
    *
-   * @param fields - Field-like objects
+   * @param fields - Field-like objects (localName input and type text added)
    * @returns Fields, each pointing at the form
    */
   function inForm(...fields: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
     const form = { elements: fields };
-    return fields.map((field) => Object.assign(field, { form }));
+    return fields.map((field) =>
+      Object.assign(field, { localName: 'input', type: field['type'] ?? 'text', form })
+    );
   }
 
-  void it('names the field holding the value given', () => {
-    const [first, last] = inForm(
-      { localName: 'input', type: 'text', id: 'first-name', value: 'Lovelace' },
-      { localName: 'input', type: 'text', id: 'last-name', value: '' }
+  void it('names the field whose value changed to the value given', () => {
+    const [first = {}, last = {}] = inForm(
+      { id: 'first-name', value: 'Ada' },
+      { id: 'last-name', value: '' }
     );
-    assert.equal(movedTo(last ?? {}, 'Lovelace'), 'input#first-name');
-    assert.equal(movedTo(first ?? {}, 'Ada'), undefined);
+    const before = fieldValues(last);
+    first['value'] = 'Lovelace';
+    assert.equal(movedTo(last, 'Lovelace', before), 'input#first-name');
+    assert.equal(movedTo(last, 'Lovelace'), undefined, 'nothing recorded before the fill');
+  });
+
+  void it('ignores a field that already had the value, and values under 2 characters', () => {
+    const [, last = {}] = inForm({ id: 'first', value: 'Smith' }, { id: 'last', value: '' });
+    assert.equal(movedTo(last, 'Smith', fieldValues(last)), undefined);
+    const [other = {}, field = {}] = inForm({ id: 'a', value: '' }, { id: 'b', value: '' });
+    const before = fieldValues(field);
+    other['value'] = 'x';
+    assert.equal(movedTo(field, 'x', before), undefined);
   });
 
   void it('names a field without id by its name, and never searches for passwords', () => {
-    const [, last] = inForm(
-      { localName: 'input', type: 'text', id: '', name: 'first', value: 'Lovelace' },
-      { localName: 'input', type: 'text', id: '', name: 'last', value: '' }
+    const [first = {}, last = {}] = inForm(
+      { id: '', name: 'first', value: '' },
+      { id: '', name: 'last', value: '' }
     );
-    assert.equal(movedTo(last ?? {}, 'Lovelace'), 'input[name="first"]');
-    const [, password] = inForm(
-      { localName: 'input', type: 'text', id: 'user', value: 'hunter2' },
-      { localName: 'input', type: 'password', id: 'pass', value: '' }
+    const before = fieldValues(last);
+    first['value'] = 'Lovelace';
+    assert.equal(movedTo(last, 'Lovelace', before), 'input[name="first"]');
+    const [user = {}, password = {}] = inForm(
+      { id: 'user', value: '' },
+      { id: 'pass', type: 'password', value: '' }
     );
-    assert.equal(movedTo(password ?? {}, 'hunter2'), undefined);
+    const recorded = fieldValues(password);
+    user['value'] = 'hunter2';
+    assert.equal(movedTo(password, 'hunter2', recorded), undefined);
   });
 
   void it('says where the value went in the warning', () => {

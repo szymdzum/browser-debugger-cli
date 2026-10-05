@@ -89,7 +89,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
       const firstDialog = store.dialogs.length;
       const collectRequests =
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
-      const effects = options.reportEffects === false ? undefined : await watchActionEffects(cdp);
+      const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
       try {
         const result = await action();
         const dialogs = store.dialogs.slice(firstDialog);

@@ -108,7 +108,8 @@ export function formReadinessMessage(summary: {
 }
 
 /** Why an action's status line is not a clean success when nothing changed */
-export const NO_VISIBLE_EFFECT = 'no visible effect: no DOM change, no requests, no navigation';
+export const NO_VISIBLE_EFFECT =
+  'no visible effect observed: no DOM change, requests or navigation within 300 ms';
 
 /**
  * Status line of a DOM action: a check mark only for a clean success.
@@ -117,7 +118,7 @@ export const NO_VISIBLE_EFFECT = 'no visible effect: no DOM change, no requests,
  * @param warned - Whether the action has warnings (shown right below)
  * @param noEffect - Whether the action had no visible effect
  * @returns e.g. "✓ Element Clicked", "⚠ Element Clicked (with warnings)" or
- *   "⚠ Element Clicked (no visible effect: no DOM change, no requests, no navigation)"
+ *   "⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)"
  */
 export function actionStatusLine(done: string, warned: boolean, noEffect = false): string {
   if (noEffect) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;

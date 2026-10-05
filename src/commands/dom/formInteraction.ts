@@ -487,6 +487,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   if (result.networkRequests !== undefined)
     details.push(['Network Requests', result.networkRequests.toString()]);
   if (result.navigationOccurred === false) details.push(['Navigation', 'no']);
+  if (result.navigationOccurred && !result.navigation) details.push(['Navigation', 'yes']);
   if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
 
   const fmt = formatActionOutput('Form Submitted', details, result, 20);

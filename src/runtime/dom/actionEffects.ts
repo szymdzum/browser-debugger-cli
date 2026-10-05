@@ -1,8 +1,12 @@
 /**
  * What a DOM action changed on the page: whether it navigated (to a new
  * document or within the same one), which messages appeared, and whether it
- * had no visible effect at all. Costs one page script before the action and
- * one after it (plus a short second look when nothing seemed to happen).
+ * had no visible effect at all. Costs one page script sent before the action
+ * (not waited for: CDP runs it before the action's own scripts) and one read
+ * after it, plus a second look 300 ms later when nothing seemed to happen.
+ * Worst case, when the page does not answer (a navigation is pending), the
+ * snapshot is given up after {@link START_TIMEOUT_MS} and each read after
+ * {@link READ_TIMEOUT_MS}.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -12,6 +16,11 @@ import {
   EFFECTS_START_SCRIPT,
   EFFECTS_STOP_SCRIPT,
 } from '@/runtime/dom/actionEffectsScripts.js';
+import {
+  listenForActivity,
+  type ActivityListener,
+  type NavigationEvents,
+} from '@/runtime/dom/pageActivity.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -24,11 +33,21 @@ const MAX_NEW_MESSAGES = 3;
 /** Longest message text reported */
 const MAX_MESSAGE_LENGTH = 120;
 
-/** How long a page script may take before its part of the report is skipped */
-const SCRIPT_TIMEOUT_MS = 1000;
+/** How long collecting waits for the snapshot taken before the action */
+const START_TIMEOUT_MS = 200;
+
+/** How long a read after the action may take before its part is skipped */
+const READ_TIMEOUT_MS = 250;
 
 /** Second look before claiming "no effect" (late timers, animations) */
 const NO_EFFECT_RECHECK_MS = 300;
+
+/**
+ * Texts that tick on their own (clocks, counters, countdowns, percentages):
+ * digits with separators and at most a time unit, e.g. `12:04:33`, `57%`,
+ * `3 s`. Their changes are not reported as new messages.
+ */
+const TICKING_TEXT = /^[\d\s:.,/%+\-–—()]*\d[\d\s:.,/%+\-–—()]*(ms|s|sec|secs|min|mins|h|am|pm)?$/i;
 
 /** A message element as a page snapshot lists it */
 export interface SeenMessage {
@@ -44,6 +63,8 @@ interface StartSnapshot {
   messages: SeenMessage[];
 }
 
+export type { NavigationEvents };
+
 /** The page after the action */
 export interface ReadSnapshot {
   href: string;
@@ -54,16 +75,6 @@ export interface ReadSnapshot {
   /** Why "no effect" can't be claimed even without changes */
   uncertain?: string;
   messages: SeenMessage[];
-}
-
-/** Main-frame navigation events seen during the action */
-export interface NavigationEvents {
-  /** Last new document committed in the main frame */
-  document?: { url: string; loaderId: string };
-  /** Last same-document URL change of the main frame */
-  withinDocumentUrl?: string;
-  /** HTTP status of documents by loader */
-  statusByLoader: Map<string, number>;
 }
 
 /** What the action did besides changing the page, for the "no effect" decision */
@@ -80,8 +91,11 @@ export interface OtherActivity {
  * Messages that are new after the action: all of them after a new document
  * loaded; otherwise those whose text is shown more often than before (a
  * re-rendered message with the same text is not new) and those whose
- * element changed its text. Each text is reported once, at most
- * {@link MAX_NEW_MESSAGES}, cut to {@link MAX_MESSAGE_LENGTH} characters.
+ * element changed its text. Texts that tick on their own
+ * ({@link TICKING_TEXT}: clocks, counters) are left out; other elements
+ * that change on their own (a rotating banner) are not recognised. Each text
+ * is reported once, at most {@link MAX_NEW_MESSAGES}, cut to
+ * {@link MAX_MESSAGE_LENGTH} characters.
  *
  * @param before - Messages before the action
  * @param after - Messages after the action
@@ -112,7 +126,8 @@ export function newMessages(
   const result: NewMessage[] = [];
   for (const message of after) {
     if (result.length >= MAX_NEW_MESSAGES) break;
-    if (reported.has(message.text) || !isNew(message)) continue;
+    if (reported.has(message.text) || TICKING_TEXT.test(message.text)) continue;
+    if (!isNew(message)) continue;
     reported.add(message.text);
     result.push({ text: cutText(message.text), element: message.element });
   }
@@ -136,6 +151,9 @@ function cutText(text: string): string {
  * frame (also when it has the URL it had, as after a form POST that
  * redirects back), or a same-document URL change (history API, hash).
  *
+ * Without the URL before the action, a same-document change is reported
+ * only when Chrome announced one.
+ *
  * @param startHref - URL before the action (undefined when not read)
  * @param read - Page read after the action (undefined when not read)
  * @param events - Main-frame navigation events
@@ -155,7 +173,8 @@ export function pageNavigation(
     };
   }
   const url = read?.href ?? events.withinDocumentUrl;
-  if (url === undefined || startHref === undefined || url === startHref) return undefined;
+  if (url === undefined || url === startHref) return undefined;
+  if (startHref === undefined && events.withinDocumentUrl === undefined) return undefined;
   return { url, sameDocument: true };
 }
 
@@ -195,168 +214,140 @@ export interface ActionEffectsWatch {
    * @returns What changed
    */
   collect(options: { dialogs: number; detectNoEffect: boolean }): Promise<ActionEffects>;
-  /** Stop listening (always call) */
+  /** Stop listening and stop the page's watch (always call) */
   dispose(): void;
+}
+
+/** One action's watch: the listener, the snapshot before, and whether a read stopped it */
+interface Watch {
+  cdp: CDPConnection;
+  listener: ActivityListener;
+  start: Promise<StartSnapshot | undefined>;
+  stopConfirmed: boolean;
 }
 
 /**
  * Start watching an action's effects: listen for main-frame navigations,
- * document statuses, requests and new windows, and snapshot the page.
+ * document statuses, requests and new windows, and send the page snapshot
+ * without waiting for it.
  *
  * @param cdp - CDP connection
  * @returns Watch to collect from after the action
  */
-export async function watchActionEffects(cdp: CDPConnection): Promise<ActionEffectsWatch> {
-  const listener = listenForActivity(cdp);
-  const start = await evaluate<StartSnapshot>(cdp, EFFECTS_START_SCRIPT);
-  let stopped = false;
-
-  const read = async (stop: boolean): Promise<ReadSnapshot | undefined> => {
-    if (listener.navigationPending()) return undefined;
-    stopped ||= stop;
-    return evaluate<ReadSnapshot>(cdp, `(${EFFECTS_READ_SCRIPT})(${stop})`);
+export function watchActionEffects(cdp: CDPConnection): ActionEffectsWatch {
+  const watch: Watch = {
+    cdp,
+    listener: listenForActivity(cdp),
+    start: evaluate<StartSnapshot>(cdp, EFFECTS_START_SCRIPT),
+    stopConfirmed: false,
   };
-  const effectsOf = (snapshot: ReadSnapshot | undefined): ActionEffects => {
-    const navigation = pageNavigation(start?.href, snapshot, listener.events);
-    const messages =
-      start && snapshot ? newMessages(start.messages, snapshot.messages, snapshot.fresh) : [];
-    return {
-      ...(navigation && { navigation }),
-      ...(messages.length > 0 && { messages }),
-    };
-  };
-
   return {
-    async collect({ dialogs, detectNoEffect }) {
-      if (!start) return {};
-      let snapshot = await read(false);
-      let effects = effectsOf(snapshot);
-      const quiet = (): boolean =>
-        hadNoEffect(snapshot, effects, { ...listener.activity(), dialogs });
-      if (!detectNoEffect || !quiet()) return effects;
-      await delay(NO_EFFECT_RECHECK_MS);
-      snapshot = await read(true);
-      effects = effectsOf(snapshot);
-      return quiet() ? { ...effects, effect: 'none' } : effects;
-    },
-    dispose() {
-      listener.dispose();
-      if (start && !stopped) {
-        void cdp
-          .send('Runtime.evaluate', { expression: EFFECTS_STOP_SCRIPT })
-          .catch((error: unknown) =>
-            log.debug(`Effects watch not stopped: ${getErrorMessage(error)}`)
-          );
-      }
-    },
+    collect: (options) => collectEffects(watch, options),
+    dispose: () => disposeWatch(watch),
   };
 }
 
 /**
- * Evaluate a page script for its value, giving up after
- * {@link SCRIPT_TIMEOUT_MS} (a pending navigation holds evaluations) or on
- * an exception.
+ * What changed: the navigation (from CDP events even without a snapshot),
+ * new messages and, when asked, "no effect" after a second look.
+ *
+ * @param watch - The action's watch
+ * @param options - Dialogs the action opened, and whether to decide "no effect"
+ * @returns What changed
+ */
+async function collectEffects(
+  watch: Watch,
+  options: { dialogs: number; detectNoEffect: boolean }
+): Promise<ActionEffects> {
+  const start = await raceTimeout(watch.start, START_TIMEOUT_MS);
+  if (!start) return effectsOf(undefined, undefined, watch.listener.events);
+  let snapshot = await readPage(watch, false);
+  let effects = effectsOf(start, snapshot, watch.listener.events);
+  const quiet = (): boolean =>
+    hadNoEffect(snapshot, effects, { ...watch.listener.activity(), dialogs: options.dialogs });
+  if (!options.detectNoEffect || !quiet()) return effects;
+  await delay(NO_EFFECT_RECHECK_MS);
+  snapshot = await readPage(watch, true);
+  effects = effectsOf(start, snapshot, watch.listener.events);
+  return quiet() ? { ...effects, effect: 'none' } : effects;
+}
+
+/**
+ * Navigation and new messages from the snapshots and CDP events.
+ *
+ * @param start - Snapshot before the action, if taken
+ * @param snapshot - Read after the action, if taken
+ * @param events - Main-frame navigation events
+ * @returns Effects, without empty parts
+ */
+function effectsOf(
+  start: StartSnapshot | undefined,
+  snapshot: ReadSnapshot | undefined,
+  events: NavigationEvents
+): ActionEffects {
+  const navigation = pageNavigation(start?.href, snapshot, events);
+  const messages =
+    start && snapshot ? newMessages(start.messages, snapshot.messages, snapshot.fresh) : [];
+  return {
+    ...(navigation && { navigation }),
+    ...(messages.length > 0 && { messages }),
+  };
+}
+
+/**
+ * Read the page after the action, unless a main-frame load is pending (the
+ * read would wait for the new page). A stopping read that answered stops the
+ * page's watch, so disposing need not.
+ *
+ * @param watch - The action's watch
+ * @param stop - Also stop the page's watch
+ * @returns The read, or undefined
+ */
+async function readPage(watch: Watch, stop: boolean): Promise<ReadSnapshot | undefined> {
+  if (watch.listener.navigationPending()) return undefined;
+  const expression = `(${EFFECTS_READ_SCRIPT})(${stop})`;
+  const snapshot = await raceTimeout(
+    evaluate<ReadSnapshot>(watch.cdp, expression),
+    READ_TIMEOUT_MS
+  );
+  if (stop && snapshot) watch.stopConfirmed = true;
+  return snapshot;
+}
+
+/**
+ * Stop listening, and stop the page's watch unless a read did. The stop is
+ * sent even when the snapshot never answered: CDP runs it after the
+ * snapshot, wherever that ran (the page also stops watching on its own
+ * after 30 s).
+ *
+ * @param watch - The action's watch
+ */
+function disposeWatch(watch: Watch): void {
+  watch.listener.dispose();
+  if (watch.stopConfirmed) return;
+  void watch.cdp
+    .send('Runtime.evaluate', { expression: EFFECTS_STOP_SCRIPT })
+    .catch((error: unknown) => log.debug(`Effects watch not stopped: ${getErrorMessage(error)}`));
+}
+
+/**
+ * Evaluate a page script for its value (undefined on an exception or a
+ * failed call).
  *
  * @param cdp - CDP connection
  * @param expression - Script
  * @returns Its value, or undefined
  */
 async function evaluate<T>(cdp: CDPConnection, expression: string): Promise<T | undefined> {
-  const response = cdp
-    .send('Runtime.evaluate', { expression, returnByValue: true })
-    .then((reply) => {
-      const typed = reply as { result?: { value?: T }; exceptionDetails?: { text?: string } };
-      if (typed.exceptionDetails)
-        log.debug(`Effects script failed: ${typed.exceptionDetails.text}`);
-      return typed.exceptionDetails ? undefined : typed.result?.value;
-    })
-    .catch((error: unknown) => {
-      log.debug(`Effects script not run: ${getErrorMessage(error)}`);
-      return undefined;
-    });
-  return raceTimeout(response, SCRIPT_TIMEOUT_MS);
-}
-
-/** Live view of the CDP events an action caused */
-interface ActivityListener {
-  events: NavigationEvents;
-  /** Requests started and windows opened so far */
-  activity: () => Omit<OtherActivity, 'dialogs'>;
-  /** Whether a main-frame load started and has not committed or stopped */
-  navigationPending: () => boolean;
-  dispose: () => void;
-}
-
-/** CDP events read by {@link listenForActivity} */
-interface FrameEvent {
-  frame: { id: string; parentId?: string; url: string; urlFragment?: string; loaderId: string };
-}
-
-/**
- * Listen for the main frame's navigations, document responses, requests
- * and new windows. Events of attached child targets (out-of-process frames,
- * workers) are not main-frame navigations, but their requests count.
- * `Network.enable` is sent without waiting (see `withActionStability`): the
- * session's network collector usually has the domain enabled already.
- *
- * @param cdp - CDP connection
- * @returns Live listener
- */
-function listenForActivity(cdp: CDPConnection): ActivityListener {
-  const events: NavigationEvents = { statusByLoader: new Map() };
-  let requests = 0;
-  let opened = false;
-  let loading = false;
-  const mainFrame = new Set<string>();
-  const cleanups = [
-    cdp.on<FrameEvent>('Page.frameNavigated', ({ frame }, sessionId) => {
-      if (sessionId !== undefined || frame.parentId !== undefined) return;
-      mainFrame.add(frame.id);
-      loading = false;
-      events.document = { url: frame.url + (frame.urlFragment ?? ''), loaderId: frame.loaderId };
-    }),
-    cdp.on<{ frameId: string; url: string }>(
-      'Page.navigatedWithinDocument',
-      ({ frameId, url }, sessionId) => {
-        if (sessionId === undefined && mainFrame.has(frameId)) events.withinDocumentUrl = url;
-      }
-    ),
-    cdp.on<{ frameId: string }>('Page.frameStartedLoading', ({ frameId }, sessionId) => {
-      if (sessionId === undefined && mainFrame.has(frameId)) loading = true;
-    }),
-    cdp.on<{ frameId: string }>('Page.frameStoppedLoading', ({ frameId }, sessionId) => {
-      if (sessionId === undefined && mainFrame.has(frameId)) loading = false;
-    }),
-    cdp.on<{ type?: string; loaderId?: string; response: { status: number } }>(
-      'Network.responseReceived',
-      ({ type, loaderId, response }) => {
-        if (type === 'Document' && loaderId) events.statusByLoader.set(loaderId, response.status);
-      }
-    ),
-    cdp.on('Network.requestWillBeSent', () => {
-      requests++;
-    }),
-    cdp.on('Page.windowOpen', () => {
-      opened = true;
-    }),
-    cdp.on('Page.downloadWillBegin', () => {
-      opened = true;
-    }),
-  ];
-  void cdp
-    .send('Network.enable')
-    .catch((error: unknown) => log.debug(`Network.enable failed: ${getErrorMessage(error)}`));
-  void cdp
-    .send('Page.getFrameTree')
-    .then((tree) => {
-      const id = (tree as { frameTree?: { frame?: { id?: string } } }).frameTree?.frame?.id;
-      if (id) mainFrame.add(id);
-    })
-    .catch((error: unknown) => log.debug(`No frame tree: ${getErrorMessage(error)}`));
-  return {
-    events,
-    activity: () => ({ requests, opened }),
-    navigationPending: () => loading,
-    dispose: () => cleanups.forEach((cleanup) => cleanup()),
-  };
+  try {
+    const reply = (await cdp.send('Runtime.evaluate', { expression, returnByValue: true })) as {
+      result?: { value?: T };
+      exceptionDetails?: { text?: string };
+    };
+    if (!reply.exceptionDetails) return reply.result?.value;
+    log.debug(`Effects script failed: ${reply.exceptionDetails.text}`);
+  } catch (error) {
+    log.debug(`Effects script not run: ${getErrorMessage(error)}`);
+  }
+  return undefined;
 }

@@ -630,6 +630,7 @@ void describe('DOM interactions', () => {
       moved,
       /^⚠ Element Filled \(with warnings\)\n⚠ Warning: The field's value is "" after filling \(expected "Lovelace"\); the value appeared in input#first instead\n/
     );
+    await bdg(['dom', 'fill', '#first', 'Ada']);
     const movedJson = JSON.parse(await bdg(['dom', 'fill', '#last', 'Lovelace', '--json'])) as {
       data: { valueMismatch?: { expected: string; actual: string; movedTo?: string } };
     };
@@ -656,11 +657,11 @@ void describe('DOM interactions', () => {
     assert.match(first, /Element: +input\.toggle in li "Write report"/);
     assert.match(
       await bdg(['dom', 'click', '#behind']),
-      /^⚠ Element Clicked \(no visible effect: no DOM change, no requests, no navigation\)\n⚠ Warning: Element is covered by another element/
+      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n⚠ Warning: Element is covered by another element/
     );
     assert.match(
       await bdg(['dom', 'click', '#cancel']),
-      /^⚠ Element Clicked \(no visible effect: no DOM change, no requests, no navigation\)\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"/
+      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"/
     );
   });
 
@@ -745,7 +746,7 @@ void describe('DOM interactions', () => {
 
     assert.match(
       await bdg(['dom', 'click', '#broken']),
-      /^⚠ Element Clicked \(no visible effect: no DOM change, no requests, no navigation\)\n/
+      /^⚠ Element Clicked \(no visible effect observed: no DOM change, requests or navigation within 300 ms\)\n/
     );
     assert.equal((await click('#broken')).effect, 'none');
     assert.equal(
@@ -759,6 +760,14 @@ void describe('DOM interactions', () => {
       /^✓ Element Clicked\n[\s\S]*\nNew text: +"Zip is required" \(p#form-error\.error\)\n/
     );
     assert.equal((await click('#validate')).messages, undefined, 'the same text is not new again');
+
+    for (const selector of ['#mail', '#copy', '#attach']) {
+      assert.equal(
+        (await click(selector)).effect,
+        undefined,
+        `${selector} is not claimed as no effect`
+      );
+    }
 
     const hash = await click('#filter-active');
     assert.deepEqual(hash.navigation, { url: `${fixture.url}forms#/active`, sameDocument: true });

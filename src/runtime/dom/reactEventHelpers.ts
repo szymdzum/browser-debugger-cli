@@ -59,6 +59,19 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
 }`;
 
 /**
+ * Page-side list of the other text-like fields of a field's form (of the
+ * document when it has none), with their values: taken before a fill, so
+ * {@link MOVED_VALUE_JS} can tell which one the page changed.
+ */
+export const FIELD_VALUES_JS = `(field) => {
+  const fields = field.form ? Array.from(field.form.elements) : Array.from(field.ownerDocument.querySelectorAll('input, textarea'));
+  return new Map(fields
+    .filter((f) => f !== field && /^(input|textarea)$/.test(f.localName) &&
+      !/^(checkbox|radio|password|hidden|submit|button|reset|file|image)$/i.test(f.type || ''))
+    .map((f) => [f, String(f.value)]));
+}`;
+
+/**
  * JavaScript function to fill an input element in a React-compatible way.
  *
  * This approach:
@@ -200,6 +213,7 @@ export const REACT_FILL_SCRIPT = `
     warnings.push('The field is ' + unreachable + '; a user could not fill it (the value was set anyway)');
   }
 
+  const fieldsBefore = (${FIELD_VALUES_JS})(el);
   el.focus();
 
   if (tagName === 'select' && el.multiple) {
@@ -335,7 +349,7 @@ export const REACT_FILL_SCRIPT = `
   if (options.blur !== false) {
     el.blur();
   }
-  window.__bdgFillCheck = { el: el, expected: expected };
+  window.__bdgFillCheck = { el: el, expected: expected, before: fieldsBefore };
 
   return {
     success: true,
@@ -360,19 +374,17 @@ export const REACT_FILL_SCRIPT = `
 `;
 
 /**
- * Page-side search for the field a moved value went to: another text-like
- * field of the same form (of the document without one) whose value is the
- * one given, trimmed. Evaluates to its id or name (`input#first-name`,
- * `input[name="first"]`) or else its description, or undefined. Passwords
- * are never searched for.
+ * Page-side search for the field a moved value went to: one of the fields
+ * recorded before the fill ({@link FIELD_VALUES_JS}) whose value changed to
+ * the one given (trimmed, at least 2 characters). Evaluates to its id or
+ * name (`input#first-name`, `input[name="first"]`) or else its
+ * description, or undefined. Passwords are never searched for.
  */
-export const MOVED_VALUE_JS = `(field, expected) => {
+export const MOVED_VALUE_JS = `(field, expected, before) => {
   const wanted = String(expected).trim();
-  if (wanted === '' || (field.type || '').toLowerCase() === 'password') return undefined;
-  const fields = field.form ? Array.from(field.form.elements) : Array.from(field.ownerDocument.querySelectorAll('input, textarea'));
-  const other = fields.find((f) => f !== field && /^(input|textarea)$/.test(f.localName) &&
-    !/^(checkbox|radio|password|hidden|submit|button|reset|file|image)$/i.test(f.type || '') &&
-    String(f.value).trim() === wanted);
+  if (!before || wanted.length < 2 || (field.type || '').toLowerCase() === 'password') return undefined;
+  const other = Array.from(before.keys()).find((f) =>
+    String(f.value).trim() === wanted && String(before.get(f)).trim() !== wanted);
   if (!other) return undefined;
   if (other.id) return other.localName + '#' + other.id;
   return other.name ? other.localName + '[name="' + other.name + '"]' : (${ELEMENT_DESCRIPTION_JS})(other);
@@ -396,7 +408,7 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
     if (!check.el.isConnected) return null;
     const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected);
     if (!mismatch) return null;
-    const movedTo = (${MOVED_VALUE_JS})(check.el, check.expected);
+    const movedTo = (${MOVED_VALUE_JS})(check.el, check.expected, check.before);
     return movedTo ? Object.assign(mismatch, { movedTo: movedTo }) : mismatch;
   };
   return new Promise((resolve) => {

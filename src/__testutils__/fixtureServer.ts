@@ -112,7 +112,9 @@ const FRAME_ORIGINS_HTML = `<!doctype html><title>frame origins</title>
  * button loading a stylesheet, an image and a fetch, a select whose
  * change handler submits its form (navigating away), a button that does
  * nothing (like saucedemo problem_user's Remove), one that changes its text,
- * one that shows an error text, and a link changing the URL's hash.
+ * one that shows an error text, a link changing the URL's hash, a mailto:
+ * link, a button copying to the clipboard and one attaching a closed shadow
+ * root.
  */
 const FORMS_HTML = `<!doctype html><title>forms</title>
 <form id="checkout" onsubmit="return false">
@@ -144,7 +146,11 @@ const FORMS_HTML = `<!doctype html><title>forms</title>
 <button id="add" type="button" onclick="this.textContent = this.textContent === 'Add' ? 'Added' : 'Add'">Add</button>
 <button id="validate" type="button" onclick="document.getElementById('form-error').textContent = 'Zip is required'">Check</button>
 <p id="form-error" class="error"></p>
-<a id="filter-active" href="#/active">Active</a>`;
+<a id="filter-active" href="#/active">Active</a>
+<a id="mail" href="mailto:help@example.test">Mail us</a>
+<button id="copy" type="button" onclick="document.execCommand('copy')">Copy</button>
+<div id="host"></div>
+<button id="attach" type="button" onclick="document.getElementById('host').attachShadow({ mode: 'closed' }).innerHTML = '<p>Inside</p>'">Attach</button>`;
 
 /**
  * Framework-style listeners: a React-like root container (two bound
