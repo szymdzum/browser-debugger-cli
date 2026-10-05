@@ -203,8 +203,14 @@ export interface ElementListener {
   handler: ListenerHandler;
   /** The handler does nothing (an empty function, like React's `onclick` placeholder) */
   noop?: true;
-  /** Registered through this framework; `handler` is the real handler, not the framework's dispatcher */
-  framework?: 'jQuery';
+  /**
+   * Registered through this framework; `handler` is the real handler, not
+   * the framework's dispatcher. React handlers are `on…` props of the node
+   * (`reactProp`), run by React's dispatchers on its root container.
+   */
+  framework?: 'jQuery' | 'React';
+  /** React prop the handler is set as, e.g. `onClick`, `onClickCapture` */
+  reactProp?: string;
   /** jQuery delegate selector (`.on(type, selector, fn)`) the element matched */
   delegateSelector?: string;
 }
@@ -252,6 +258,8 @@ export interface ListenersResult {
   frame?: string;
   /** jQuery handlers not resolved (over 50 per call): their dispatcher is listed instead */
   jqueryHandlersSkipped?: number;
+  /** React `on…` props not resolved (over 50 per call) */
+  reactHandlersSkipped?: number;
   /** Event types with listeners close to the requested ones, when none matched (`Click` → `click`) */
   typeSuggestions?: string[];
   /** Elements the selector matched */

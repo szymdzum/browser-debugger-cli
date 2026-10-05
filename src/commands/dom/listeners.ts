@@ -5,7 +5,8 @@
  * The daemon collects them with `DOMDebugger.getEventListeners`; listeners on
  * ancestors matter because frameworks (React, jQuery) attach their handlers
  * to a root container or the document and dispatch from there. jQuery's
- * dispatcher is replaced by the jQuery handlers it runs for the element, and
+ * dispatcher is replaced by the jQuery handlers it runs for the element,
+ * React's `on…` props of the element and its ancestors are listed, and
  * framework roots (React's root container) are summarised per node unless
  * `--all` is given.
  */

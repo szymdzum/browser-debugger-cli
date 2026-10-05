@@ -103,12 +103,14 @@ const FRAME_ORIGINS_HTML = `<!doctype html><title>frame origins</title>
 /**
  * Framework-style listeners: a React-like root container (two bound
  * dispatchers for 12 event types, capture and bubble) with a no-op
- * `onclick` on its button, and a minimal jQuery stand-in (`jQuery._data`)
- * whose dispatcher on `document` holds a delegate for `.row` and one for
- * `.nomatch`.
+ * `onclick` on its buttons, React props (`__reactProps$abc` with an
+ * `onClick` on `#buy`, a fiber with `onKeyDownCapture` on `#card`), and a
+ * minimal jQuery stand-in (`jQuery._data`) whose dispatcher on `document`
+ * holds a delegate for `.row` and one for `.nomatch`.
  */
 const FRAMEWORK_LISTENERS_HTML = `<!doctype html><title>framework listeners</title>
-<div id="root"><button id="go">Go</button><div class="row" id="row">Row</div></div>
+<div id="root"><button id="go">Go</button><div class="row" id="row">Row</div>
+<div id="card"><button id="buy">Buy</button></div></div>
 <script>
   const root = document.getElementById('root');
   function dispatchDiscreteEvent() {}
@@ -118,6 +120,10 @@ const FRAMEWORK_LISTENERS_HTML = `<!doctype html><title>framework listeners</tit
   ['scroll', 'wheel', 'mousemove']
     .forEach((type) => [true, false].forEach((capture) => root.addEventListener(type, dispatchEvent.bind(null, type), capture)));
   document.getElementById('go').onclick = function noop() {};
+  const buy = document.getElementById('buy');
+  buy.onclick = function noop() {};
+  buy.__reactProps$abc = { onClick: function handleBuy() { return 'bought'; }, children: 'Buy' };
+  document.getElementById('card').__reactFiber$abc = { memoizedProps: { onKeyDownCapture: function cardKeys() {} } };
   const handle = function (e) { return jQuery.event.dispatch(e); };
   const events = { click: [
     { type: 'click', origType: 'click', selector: '.row', handler: function rowClicked() { return 'row'; } },

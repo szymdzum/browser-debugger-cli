@@ -438,7 +438,7 @@ void describe('DOM interactions', () => {
     await bdg(['page', 'back']);
   });
 
-  void it('collapses framework roots and names jQuery handlers in listener lists', async () => {
+  void it('collapses framework roots and names jQuery handlers and React props in listener lists', async () => {
     await bdg(['page', 'navigate', `${fixture.url}framework-listeners`]);
     type Listed = {
       data: {
@@ -447,8 +447,9 @@ void describe('DOM interactions', () => {
           on: string;
           noop?: boolean;
           framework?: string;
+          reactProp?: string;
           delegateSelector?: string;
-          handler: { name: string };
+          handler: { name: string; scriptId: string };
         }>;
         collapsed?: Array<{ node: string; types: string[]; count: number; capture: boolean }>;
         typeSuggestions?: string[];
@@ -471,7 +472,10 @@ void describe('DOM interactions', () => {
       human,
       /Framework roots.*\n {2}ancestor {2}div#root {2}React root: 12 event types, capture and bubble/
     );
-    assert.match(human, /Note: (?:\w+, )*click, .* have no listener on the element itself/);
+    assert.match(
+      human,
+      /Note: React's root container \(div#root\) handles click, .*but no React on… prop .*; the element's own click listener is only React's no-op placeholder/
+    );
     assert.equal((await listed(['#go', '--all'])).listeners.length, 25);
 
     const row = await listed(['#row', '--type', 'click']);
@@ -482,5 +486,24 @@ void describe('DOM interactions', () => {
     );
 
     assert.deepEqual((await listed(['#row', '--type', 'Click'])).typeSuggestions, ['click']);
+
+    const buy = await listed(['#buy']);
+    assert.deepEqual(
+      buy.listeners.map((l) => `${l.type}:${l.on}:${l.reactProp ?? (l.noop ? 'no-op' : '')}`),
+      ['click:target:onClick', 'click:target:no-op', 'keydown:ancestor:onKeyDownCapture']
+    );
+    const [handleBuy] = buy.listeners;
+    assert.equal(handleBuy?.framework, 'React');
+    assert.equal(handleBuy?.handler.name, 'handleBuy');
+    assert.notEqual(handleBuy?.handler.scriptId, '0', 'has a location');
+    const buyHuman = await bdg(['dom', 'listeners', '#buy']);
+    assert.match(
+      buyHuman,
+      /\n\nclick\n {2}target .* handleBuy .*\[React onClick\] function handleBuy/
+    );
+    assert.match(
+      buyHuman,
+      /Note: the element's own click listener is only React's no-op placeholder; the React on… handlers listed above for click run/
+    );
   });
 });

@@ -7,17 +7,18 @@ import type {
   ElementListener,
   ListenersResult,
 } from '@/ipc/protocol/domTypes.js';
-import { delegatedOnlyTypes } from '@/runtime/dom/listenerSummary.js';
+import { delegationNotes } from '@/runtime/dom/listenerSummary.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   COLLAPSED_LISTENERS_HEADING,
   NO_LISTENERS_HINT,
   collapsedListenersSummary,
-  delegatedListenersNote,
+  delegationNote,
   eventTypeSuggestion,
   jqueryHandlersSkippedNote,
   listenersHeadline,
   noListenersMessage,
+  reactHandlersSkippedNote,
 } from '@/ui/messages/commands.js';
 import { truncateByLength } from '@/utils/strings.js';
 
@@ -50,7 +51,7 @@ export function handlerLocation(handler: ElementListener['handler']): string {
  */
 function listenerCells(listener: ElementListener): string[] {
   const flags = [
-    listener.framework,
+    listener.reactProp ? `React ${listener.reactProp}` : listener.framework,
     listener.delegateSelector && `delegate ${listener.delegateSelector}`,
     listener.noop && 'no-op',
     listener.useCapture && 'capture',
@@ -88,9 +89,9 @@ function alignColumns(rows: string[][]): string[] {
 const COLLAPSED_HANDLERS_SHOWN = 3;
 
 /**
- * Format `bdg dom listeners` output: listeners grouped by event type,
- * nearest first, then one line per framework root, with a note for events
- * handled only by delegation.
+ * Format `bdg dom listeners` output: listeners grouped by event type, the
+ * handlers nearest the element first, then one line per framework root,
+ * with notes for events the element has no listener of its own for.
  *
  * @param result - Listener report
  * @param types - Event types asked for with --type, if any
@@ -108,14 +109,34 @@ export function formatListeners(result: ListenersOutput, types?: string[]): stri
     fmt.text(listenersHeadline(result.element, count, result));
     appendListenerGroups(fmt, result.listeners);
     appendCollapsed(fmt, collapsed);
-    const delegated = delegatedOnlyTypes(result.listeners, collapsed);
-    if (delegated.length > 0) fmt.blank().text(delegatedListenersNote(delegated));
+    appendDelegationNotes(fmt, result.listeners, collapsed);
   }
   if (result.jqueryHandlersSkipped) {
     fmt.blank().text(jqueryHandlersSkippedNote(result.jqueryHandlersSkipped));
   }
+  if (result.reactHandlersSkipped) {
+    fmt.blank().text(reactHandlersSkippedNote(result.reactHandlersSkipped));
+  }
   if (result.warning) fmt.blank().text(`⚠ Warning: ${result.warning}`);
   return fmt.build();
+}
+
+/**
+ * Add a note per way events reach their handlers without a listener on the
+ * element itself (React props, React root, jQuery, plain delegation).
+ *
+ * @param fmt - Output being built
+ * @param listeners - Listeners
+ * @param collapsed - Collapsed roots
+ */
+function appendDelegationNotes(
+  fmt: OutputFormatter,
+  listeners: ElementListener[],
+  collapsed: CollapsedListeners[]
+): void {
+  const notes = delegationNotes(listeners, collapsed).flatMap((note) => delegationNote(note) ?? []);
+  if (notes.length > 0) fmt.blank();
+  notes.forEach((note) => fmt.text(note));
 }
 
 /**

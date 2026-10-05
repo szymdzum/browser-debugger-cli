@@ -63,7 +63,7 @@ void describe('formatListeners', () => {
     });
     assert.match(
       output,
-      /Note: click has no listener on the element itself; frameworks like React/
+      /Note: click has no listener on the element itself; the listeners on its ancestors, document or window listed above still run for it/
     );
   });
 
@@ -111,7 +111,11 @@ void describe('handlerLocation', () => {
       output,
       / {2}ancestor {2}div#__next {2}React root: 3 event types, capture and bubble \(onSave, dispatchEvent\)/
     );
-    assert.match(output, /Note: click, keydown have no listener on the element itself/);
+    assert.match(
+      output,
+      /Note: React's root container \(div#__next\) handles click and keydown, but no React on… prop for them was found on the element or its ancestors; the element's own click listener is only React's no-op placeholder/
+    );
+    assert.doesNotMatch(output, /no listener on the element itself/);
   });
 
   void it('marks jQuery handlers and their delegate selector', () => {
@@ -127,6 +131,43 @@ void describe('handlerLocation', () => {
       ],
     });
     assert.match(output, /onSave .*\[jQuery, delegate \.row\] function/);
+    assert.match(
+      output,
+      /Note: click has no listener on the element itself; jQuery runs the handlers listed above by delegation from document/
+    );
+  });
+
+  void it('shows React props first and explains the placeholder', () => {
+    const react = listener({
+      framework: 'React',
+      reactProp: 'onClick',
+      handler: { ...listener().handler, name: 'handleBuy', preview: 'function handleBuy(){}' },
+    });
+    const placeholder = listener({ noop: true, handler: { ...listener().handler, name: 'tn' } });
+    const output = formatListeners({
+      element: 'button#add',
+      listeners: [react, placeholder],
+      reactHandlersSkipped: 2,
+    });
+    const lines = output.split('\n');
+    assert.match(
+      lines[3] ?? '',
+      /^ {2}target {2}button#save {2}handleBuy .*\[React onClick\] function handleBuy/
+    );
+    assert.match(lines[4] ?? '', /tn .*\[no-op\]/);
+    assert.match(
+      output,
+      /Note: the element's own click listener is only React's no-op placeholder; the React on… handlers listed above for click run from React's root container/
+    );
+    assert.match(output, /Note: 2 more React handler props not listed/);
+  });
+
+  void it('adds no note when React props are all there is to say', () => {
+    const output = formatListeners({
+      element: 'input',
+      listeners: [listener({ type: 'input', framework: 'React', reactProp: 'onChange' })],
+    });
+    assert.doesNotMatch(output, /Note:/);
   });
 
   void it('suggests the event type a mistyped --type meant', () => {
