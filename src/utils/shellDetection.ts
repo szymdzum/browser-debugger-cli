@@ -100,7 +100,7 @@ function checkUnquotedAttribute(selector: string): ShellDamageResult {
  * @returns True for a `const`/`let`/`var`/`function`/`class` declaration of it
  */
 function declares(script: string, name: string): boolean {
-  const escaped = name.replace(/\$/g, '\\$');
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`\\b(?:const|let|var|function|class)\\s+${escaped}\\b`).test(script);
 }
 
