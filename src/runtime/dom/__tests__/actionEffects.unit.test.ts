@@ -210,7 +210,6 @@ void describe('hadNoEffect', () => {
 
   void it('does not claim it when the check is uncertain or the page was not read', () => {
     assert.equal(hadNoEffect(read({ uncertain: 'control' }), {}, NOTHING_ELSE), false);
-    assert.equal(hadNoEffect(read({ uncertain: 'timer' }), {}, NOTHING_ELSE), false);
     assert.equal(hadNoEffect(read({ fresh: true }), {}, NOTHING_ELSE), false);
     const { changes: _changes, ...uncounted } = read();
     assert.equal(hadNoEffect(uncounted, {}, NOTHING_ELSE), false);
@@ -248,10 +247,9 @@ void describe('effect output', () => {
       stillChangingNote('key press', {
         navigation: true,
         loading: 'div#loading',
-        timers: 1,
         busy: true,
       }),
-      'The page was still changing when the key press returned (a new page still loading, loading indicator div#loading shown, 1 timer set by the key press not fired yet, page busy running a script); wait for the result with bdg dom wait <selector>'
+      'The page was still changing when the key press returned (a new page still loading, loading indicator div#loading shown, page busy running a script); wait for the result with bdg dom wait <selector>'
     );
   });
 
@@ -411,7 +409,7 @@ void describe('shownElements', () => {
  * @returns Signals
  */
 function settle(fields: Partial<SettleSignals> = {}): SettleSignals {
-  return { burstAges: [], timers: 0, loading: null, ...fields };
+  return { burstAges: [], loading: null, ...fields };
 }
 
 /**
@@ -423,7 +421,6 @@ function settle(fields: Partial<SettleSignals> = {}): SettleSignals {
 function work(fields: Partial<PageWork> = {}): PageWork {
   return {
     settle: settle(),
-    changed: true,
     domChanging: false,
     unresponsive: false,
     navigating: false,
@@ -485,17 +482,6 @@ void describe('pendingChanges', () => {
         })
       ),
       { navigation: true, loading: 'div#loading', domChanging: true, busy: true }
-    );
-  });
-
-  void it('counts the action timers only when the DOM did not change yet', () => {
-    assert.deepEqual(pendingChanges(work({ changed: false, settle: settle({ timers: 1 }) })), {
-      timers: 1,
-    });
-    assert.equal(
-      pendingChanges(work({ settle: settle({ timers: 1 }) })),
-      undefined,
-      "a toast's hide timer"
     );
   });
 });

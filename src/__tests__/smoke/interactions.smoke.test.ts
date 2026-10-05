@@ -1077,7 +1077,7 @@ void describe('DOM interactions', () => {
     ]);
   });
 
-  void it('reports the tooltip or caption a hover showed and the item an Enter added', async () => {
+  void it('reports the tooltip or caption a hover showed, stable when the page shifts', async () => {
     await bdg(['page', 'navigate', `${fixture.url}effects`]);
     assert.match(
       await bdg(['dom', 'hover', '#help']),
@@ -1089,8 +1089,26 @@ void describe('DOM interactions', () => {
     assert.deepEqual(card.data.shown, [{ text: 'second card', element: 'span.caption' }]);
     assert.equal(card.data.effect, undefined, 'hover never claims no effect');
 
+    const shifted = JSON.parse(await bdg(['dom', 'hover', '#shift-target', '--json'])) as {
+      data: { shown?: unknown };
+    };
+    assert.equal(
+      shifted.data.shown,
+      undefined,
+      'elements moving in the page are not revealed ones'
+    );
+  });
+
+  void it('reports the item an Enter added, not a widget elsewhere that changed meanwhile', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
     await bdg(['dom', 'fill', '#todo', 'Write tests']);
-    assert.match(await bdg(['dom', 'pressKey', '#todo', 'Enter']), /\nShown: +li "Write tests"\n/);
+    const pressed = JSON.parse(await bdg(['dom', 'pressKey', '#todo', 'Enter', '--json'])) as {
+      data: { shown?: unknown };
+    };
+    assert.deepEqual(pressed.data.shown, [{ text: 'Write tests', element: 'li' }]);
+    assert.equal(await evaluate("document.querySelectorAll('#ticker p').length > 0"), true);
+    await bdg(['dom', 'fill', '#todo', 'Ship it']);
+    assert.match(await bdg(['dom', 'pressKey', '#todo', 'Enter']), /\nShown: +li "Ship it"\n/);
   });
 
   void it('says when the page was still changing as a click returned', async () => {
@@ -1102,12 +1120,9 @@ void describe('DOM interactions', () => {
       return (JSON.parse(await bdg(['dom', 'click', selector, '--json'])) as Unsettled).data;
     };
 
-    const later = await click('#later');
-    assert.equal(later.settled, false);
-    assert.deepEqual(later.pending, { timers: 1 });
-    assert.equal(later.effect, undefined, 'a pending timer is not "no effect"');
     assert.deepEqual((await click('#spin')).pending, { loading: 'div.spinner' });
     assert.equal((await click('#steps')).pending?.['domChanging'], true);
+    assert.equal((await click('#twice')).settled, undefined, 'two renders that stop are settled');
     assert.equal((await click('#block')).pending?.['busy'], true);
     assert.equal(
       (await click('#toast')).settled,
@@ -1117,8 +1132,8 @@ void describe('DOM interactions', () => {
 
     await bdg(['page', 'navigate', `${fixture.url}effects`]);
     assert.match(
-      await bdg(['dom', 'click', '#later']),
-      /^⚠ Element Clicked \(page still changing\)\n⚠ The page was still changing when the click returned \(1 timer set by the click not fired yet\); wait for the result with bdg dom wait <selector>\n/
+      await bdg(['dom', 'click', '#block']),
+      /^⚠ Element Clicked \(page still changing\)\n⚠ The page was still changing when the click returned \(page busy running a script\); wait for the result with bdg dom wait <selector>\n/
     );
   });
 

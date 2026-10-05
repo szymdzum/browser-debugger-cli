@@ -147,8 +147,6 @@ export function stillChangingNote(action: string, pending: PendingChanges): stri
     pending.navigation && 'a new page still loading',
     pending.loading !== undefined && `loading indicator ${pending.loading} shown`,
     pending.domChanging && 'DOM still changing',
-    pending.timers !== undefined &&
-      `${pluralize(pending.timers, 'timer')} set by the ${action} not fired yet`,
     pending.busy && 'page busy running a script',
   ].filter((part): part is string => typeof part === 'string');
   const wait = sessionCommand('bdg dom wait <selector>');

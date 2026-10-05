@@ -28,7 +28,7 @@ const LOCATED = {
 /**
  * Fake CDP connection answering the locate script and the press probe.
  *
- * @param probe - What reading the press probe evaluates to, or an error to throw
+ * @param probe - Whether the press probe saw the press arrive (or what it evaluates to), or an error to throw
  * @param failingEvent - Mouse event type whose dispatch fails, if any
  * @param located - What the locate script evaluates to
  * @returns Connection and the methods/expressions it was sent, in order
@@ -54,7 +54,8 @@ function fakeCdp(
     if (expression.includes('__bdgPressProbe')) {
       sent.push('probe');
       if (probe instanceof Error) return Promise.reject(probe);
-      return Promise.resolve({ result: { value: probe } });
+      const value = typeof probe === 'boolean' ? { reached: probe } : probe;
+      return Promise.resolve({ result: { value } });
     }
     return Promise.resolve({});
   };
@@ -161,7 +162,19 @@ void describe('clickElement --strict', () => {
     const { cdp, sent } = fakeCdp(false);
     const error = await refusal(clickElement(cdp, 'a', { action: 'double', strict: true }));
     assert.equal(error.exitCode, EXIT_CODES.RESOURCE_CONFLICT);
-    assert.match(error.message, /the mouse press never reached it/);
+    assert.match(
+      error.message,
+      /the press did not reach the element \(it was sent, but the page saw no press: the browser may be showing a dialog or bubble/
+    );
     assert.deepEqual(sent, ['mouseMoved', 'mousePressed', 'probe', 'mouseReleased']);
+  });
+
+  void it('names where a missed press landed', async () => {
+    const { cdp } = fakeCdp({ reached: false, landedOn: 'div#overlay' });
+    const error = await refusal(clickElement(cdp, 'a', { strict: true }));
+    assert.match(
+      error.message,
+      /^Did not click a: the press did not reach the element \(it was sent, but landed on div#overlay\) \(--strict\)$/
+    );
   });
 });

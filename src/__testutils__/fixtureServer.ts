@@ -349,18 +349,23 @@ const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
 /**
  * What actions show and leave unfinished: a help icon showing a tooltip on
  * mouseenter, cards whose caption only CSS `:hover` shows, a to-do field
- * adding an item on Enter, buttons whose result comes later (after a timer,
- * after a spinner, in 100 ms steps, after a 1.5 s long task), one showing a
- * toast that hides itself, and a button covered by a transparent overlay.
+ * adding an item on Enter (while a ticker elsewhere adds a line on every
+ * key), buttons whose result comes later (after a spinner, in 100 ms steps,
+ * after a 1.5 s long task), one rendering twice and then stopping, one
+ * showing a toast that hides itself, a button covered by a transparent
+ * overlay, and a hover target whose mouseenter removes 200 of the 1600
+ * text elements beside it.
  */
 const EFFECTS_HTML = `<!doctype html><title>effects</title>
 <style>.card { width: 80px; height: 40px; display: inline-block; vertical-align: top; overflow: hidden } .card .caption { display: none } .card:hover .caption { display: block }</style>
 <span id="help" style="padding: 4px">?</span><div id="tip" role="tooltip" hidden>Saves a draft every minute</div>
 <div class="cards"><div class="card"><span class="caption">first card</span></div><div class="card"><span class="caption">second card</span></div></div>
-<input id="todo"><ul id="todos"></ul>
-<button id="later">Later</button><button id="spin">Spin</button><button id="steps">Steps</button><button id="block">Block</button><button id="toast">Toast</button>
+<section id="todo-app"><header><input id="todo"></header><ul id="todos"></ul></section>
+<button id="spin">Spin</button><button id="twice">Twice</button><button id="steps">Steps</button><button id="block">Block</button><button id="toast">Toast</button>
 <div id="results"></div>
 <div style="position: relative; display: inline-block"><button id="covered">Covered</button><div id="cover" style="position: absolute; inset: 0"></div></div>
+<aside id="ticker"></aside>
+<div id="shift" style="font-size: 4px"><span id="shift-target" style="font-size: 16px">Shift</span></div>
 <script>
   window.coveredClicks = 0;
   const results = document.getElementById('results');
@@ -371,7 +376,18 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
     document.getElementById('todos').insertAdjacentHTML('beforeend', '<li>' + event.target.value + '</li>');
     event.target.value = '';
   };
-  document.getElementById('later').onclick = () => setTimeout(() => add('Loaded later'), 1500);
+  document.addEventListener('keydown', () => {
+    document.getElementById('ticker').insertAdjacentHTML('beforeend', '<p>Market update</p>');
+  });
+  document.getElementById('twice').onclick = () => {
+    add('First render');
+    setTimeout(() => add('Second render'), 100);
+  };
+  const shift = document.getElementById('shift');
+  shift.insertAdjacentHTML('beforeend', Array.from({ length: 1600 }, (_, i) => '<span> s' + i + '</span>').join(''));
+  document.getElementById('shift-target').onmouseenter = () => {
+    Array.from(shift.querySelectorAll('span:not(#shift-target)')).slice(0, 200).forEach((span) => span.remove());
+  };
   document.getElementById('spin').onclick = () => {
     results.insertAdjacentHTML('beforeend', '<div class="spinner">Please wait</div>');
     setTimeout(() => { results.querySelector('.spinner').remove(); add('Spun'); }, 1500);

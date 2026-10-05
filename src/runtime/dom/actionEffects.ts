@@ -94,8 +94,6 @@ export type { NavigationEvents };
 export interface SettleSignals {
   /** How long ago each recent burst of structural DOM changes was (ms, newest last) */
   burstAges: number[];
-  /** Timers the action's handlers started that had not fired */
-  timers: number;
   /** A loading indicator shown since the action began, described */
   loading: string | null;
 }
@@ -120,8 +118,6 @@ export interface ReadSnapshot {
 export interface PageWork {
   /** Signals of the last read, when there was one in the same document */
   settle?: SettleSignals;
-  /** The action changed the DOM */
-  changed: boolean;
   /** The DOM kept changing in bursts over a second look ({@link domLooksBusy}) */
   domChanging: boolean;
   /** A read got no answer within its time (a long script) */
@@ -255,10 +251,9 @@ export function domKeptChanging(settle: SettleSignals | undefined, sinceMs: numb
  * What the page was still working on when the action returned, or undefined
  * when it looked settled: content requests (documents, fetch/XHR, scripts)
  * still pending, a new document still loading, a loading indicator that
- * appeared, a DOM still changing ({@link domKeptChanging}), timers the
- * action's handlers started (only when the action changed nothing yet, so a
- * toast's hide timer does not count), or a page that did not answer (a long
- * script).
+ * appeared, a DOM still changing ({@link domKeptChanging}), or a page that
+ * did not answer (a long script). A result a timer renders later, with no
+ * DOM change before it, is not seen.
  *
  * @param work - What collecting saw
  * @param requests - Requests the action triggered (with pending ones)
@@ -272,13 +267,11 @@ export function pendingChanges(
   const pendingRequests = requests.filter(
     (request) => request.pending && CONTENT_REQUEST_TYPES.has(request.resourceType ?? '')
   ).length;
-  const timers = !work.changed && settle !== undefined ? settle.timers : 0;
   const pending: PendingChanges = {
     ...(pendingRequests > 0 && { requests: pendingRequests }),
     ...(work.navigating && { navigation: true as const }),
     ...(settle?.loading && { loading: settle.loading }),
     ...(work.domChanging && { domChanging: true as const }),
-    ...(timers > 0 && { timers }),
     ...(work.unresponsive && { busy: true as const }),
   };
   return Object.keys(pending).length > 0 ? pending : undefined;
@@ -413,12 +406,7 @@ export function watchActionEffects(cdp: CDPConnection): ActionEffectsWatch {
  * @returns What changed
  */
 async function collectEffects(watch: Watch, options: CollectOptions): Promise<CollectedEffects> {
-  const started = await raceTimeout(
-    watch.start.then((value) => ({ value })),
-    START_TIMEOUT_MS
-  );
-  if (!started) watch.unresponsive = !watch.listener.navigationPending();
-  const start = started?.value;
+  const start = await awaitStart(watch);
   if (!start) {
     return { ...effectsOf(undefined, undefined, watch.listener.events), work: pageWork(watch) };
   }
@@ -433,14 +421,42 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
     effects = effectsOf(start, snapshot, watch.listener.events);
     if (quiet()) effects = { ...effects, effect: 'none' };
   }
-  let domChanging = false;
-  if (options.detectUnsettled && domLooksBusy(snapshot?.settle)) {
-    const firstRead = Date.now();
-    await delay(STILL_CHANGING_RECHECK_MS);
-    const recheck = await readPage(watch, { stop: false, reportShown: false });
-    domChanging = domKeptChanging(recheck?.settle, Date.now() - firstRead);
-  }
+  const domChanging = options.detectUnsettled === true && (await stillChanging(watch, snapshot));
   return { ...effects, work: pageWork(watch, snapshot, domChanging) };
+}
+
+/**
+ * The snapshot taken before the action, waiting at most
+ * {@link START_TIMEOUT_MS}; a snapshot still unanswered then (and no
+ * navigation pending) marks the page unresponsive.
+ *
+ * @param watch - The action's watch
+ * @returns The snapshot, or undefined
+ */
+async function awaitStart(watch: Watch): Promise<StartSnapshot | undefined> {
+  const started = await raceTimeout(
+    watch.start.then((value) => ({ value })),
+    START_TIMEOUT_MS
+  );
+  if (!started) watch.unresponsive = !watch.listener.navigationPending();
+  return started?.value;
+}
+
+/**
+ * Whether the DOM is still changing: when the last read looked busy
+ * ({@link domLooksBusy}), a second read {@link STILL_CHANGING_RECHECK_MS}
+ * later must see it keep changing ({@link domKeptChanging}).
+ *
+ * @param watch - The action's watch
+ * @param snapshot - Last read, if any
+ * @returns True when the DOM kept changing
+ */
+async function stillChanging(watch: Watch, snapshot: ReadSnapshot | undefined): Promise<boolean> {
+  if (!domLooksBusy(snapshot?.settle)) return false;
+  const firstRead = Date.now();
+  await delay(STILL_CHANGING_RECHECK_MS);
+  const recheck = await readPage(watch, { stop: false, reportShown: false });
+  return domKeptChanging(recheck?.settle, Date.now() - firstRead);
 }
 
 /**
@@ -454,7 +470,6 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
 function pageWork(watch: Watch, snapshot?: ReadSnapshot, domChanging = false): PageWork {
   return {
     ...(snapshot?.settle && { settle: snapshot.settle }),
-    changed: (snapshot?.changes ?? 0) > 0,
     domChanging,
     unresponsive: watch.unresponsive,
     navigating: watch.listener.navigationPending(),

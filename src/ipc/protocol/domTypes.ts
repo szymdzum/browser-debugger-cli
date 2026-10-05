@@ -84,8 +84,6 @@ export interface PendingChanges {
   loading?: string;
   /** The DOM was still changing (several bursts of changes, the last one under 150 ms ago) */
   domChanging?: true;
-  /** Timers the action's event handlers started that had not fired (counted only when the DOM had not changed yet) */
-  timers?: number;
   /** The page did not answer within 250 ms (a long-running script) */
   busy?: true;
 }

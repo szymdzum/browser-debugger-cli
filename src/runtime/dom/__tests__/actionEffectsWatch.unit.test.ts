@@ -214,7 +214,7 @@ void describe('watchActionEffects', () => {
     const busy = {
       ...QUIET,
       changes: 5,
-      settle: { burstAges: [120, 30], timers: 0, loading: null },
+      settle: { burstAges: [120, 30], loading: null },
     };
     const kept = { ...busy, settle: { ...busy.settle, burstAges: [300, 150, 40] } };
     const calm = { ...busy, settle: { ...busy.settle, burstAges: [400, 290] } };

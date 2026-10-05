@@ -142,7 +142,7 @@ void describe('createInteractionRunner', () => {
         fresh: false,
         changes: 0,
         messages: [],
-        settle: { burstAges: [], timers: 1, loading: null },
+        settle: { burstAges: [], loading: 'div.spinner' },
       },
     };
     const interact = createInteractionRunner(new TelemetryStore());
@@ -150,7 +150,7 @@ void describe('createInteractionRunner', () => {
 
     const detected = await interact(fakeCdp(waiting), action, { detectUnsettled: true });
     assert.equal(detected.settled, false);
-    assert.deepEqual(detected.pending, { timers: 1 });
+    assert.deepEqual(detected.pending, { loading: 'div.spinner' });
     const plain = await interact(fakeCdp(waiting), action);
     assert.equal(plain.settled, undefined);
     assert.equal('work' in plain, false, 'the page work stays internal');

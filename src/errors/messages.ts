@@ -1684,20 +1684,27 @@ export function unreachableElementError(
 }
 
 /**
- * A mouse press refused under `--strict` because the page never saw it on
- * the element (a browser dialog or bubble captured the input).
+ * A mouse press refused under `--strict` because it did not reach the
+ * element: it was sent, but landed on another element, or the page never
+ * saw it (a browser dialog or bubble captured the input).
  *
  * @param target - Selector and element description, as the click located it
  * @param verb - What was refused, e.g. "click"
+ * @param landedOn - The element the press landed on, when the page saw it
  * @returns Message, and how to inspect the page
  */
 export function pressNotReceivedError(
   target: { selector: string; element?: string | undefined },
-  verb: string
+  verb: string,
+  landedOn?: string
 ): ErrorWithSuggestion {
   const element = target.element ?? target.selector;
+  const where =
+    landedOn === undefined
+      ? 'the page saw no press: the browser may be showing a dialog or bubble that captures input'
+      : `landed on ${landedOn}`;
   return {
-    message: `Did not ${verb} ${element}: the mouse press never reached it (the browser may be showing a dialog or bubble that captures input) (--strict)`,
+    message: `Did not ${verb} ${element}: the press did not reach the element (it was sent, but ${where}) (--strict)`,
     suggestion: `Check the page with ${sessionCommand('bdg dom screenshot page.png')} and ${sessionCommand(`bdg dom layout ${shellQuote(target.selector)}`)}`,
   };
 }

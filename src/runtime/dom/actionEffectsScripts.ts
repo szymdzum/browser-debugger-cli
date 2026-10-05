@@ -2,7 +2,7 @@
  * Page scripts behind the "what changed" part of DOM action results: one
  * snapshot before the action ({@link EFFECTS_START_SCRIPT}) and one read after
  * it ({@link EFFECTS_READ_SCRIPT}), plus the snapshot a hover takes of what
- * is shown around its target ({@link REVEAL_SNAPSHOT_JS}).
+ * is hidden around its target ({@link REVEAL_SNAPSHOT_JS}).
  */
 
 import { ELEMENT_DESCRIPTION_JS } from '@/runtime/dom/elementInfo.js';
@@ -42,8 +42,21 @@ const LOADER_CANDIDATES = [
 const REVEAL_GLOBAL_CANDIDATES =
   '[role="tooltip"], [role="menu"], [role="listbox"], [role="dialog"], [popover]';
 
-/** Elements of the hovered area whose visibility a hover snapshot keeps */
+/** Elements a hover snapshot looks at, at most */
 const MAX_REVEAL_CANDIDATES = 1500;
+
+/** Time a hover snapshot may spend before it stops looking (ms) */
+const REVEAL_BUDGET_MS = 8;
+
+/**
+ * Containers that hold a target and the results of its key presses (a form,
+ * a search box, a dialog); without one, the target's grandparent is used
+ */
+const NEAR_CONTAINERS =
+  'form, [role="form"], [role="search"], dialog, [role="dialog"], [role="combobox"]';
+
+/** Added elements reported wherever they are: popups and messages */
+const POPUP_ROLES = /^(tooltip|menu|listbox|dialog|alert|alertdialog|status)$/;
 
 /** Messages kept per snapshot (after filtering) */
 const MAX_MESSAGES = 50;
@@ -68,10 +81,6 @@ const MAX_WATCH_MS = 30000;
 
 /** Bursts of DOM changes a watch keeps (their times) */
 const MAX_BURSTS = 20;
-
-/** Shortest and longest timer an action's handlers start that counts as pending work (ms) */
-const MIN_TIMER_MS = 50;
-const MAX_TIMER_MS = 10000;
 
 /**
  * Page-side test whether an element is shown: rendered, not aria-hidden,
@@ -177,57 +186,79 @@ const LOADERS_JS = `() => {
 }`;
 
 /**
- * Page-side list of the elements a hover may show: the area around the
- * hovered element (its parent and everything in it, at most
- * {@link MAX_REVEAL_CANDIDATES} elements) and tooltips, menus, listboxes,
- * dialogs and popovers anywhere on the page.
- */
-const REVEAL_CANDIDATES_JS = `(scope) => {
-  const list = [scope];
-  for (const el of scope.querySelectorAll('*')) {
-    if (list.length >= ${MAX_REVEAL_CANDIDATES}) break;
-    list.push(el);
-  }
-  return list.concat(Array.from(document.querySelectorAll(${JSON.stringify(REVEAL_GLOBAL_CANDIDATES)})));
-}`;
-
-/**
  * Page-side snapshot a hover takes right before the mouse moves (called by
- * the click script with the hovered element): which elements around it
- * ({@link REVEAL_CANDIDATES_JS}) are shown, kept in the action's watch so its
- * read can tell what the hover revealed, also through CSS `:hover` rules
- * that change no DOM. Does nothing without a running watch (another frame).
+ * the click script with the hovered element): the elements around it (its
+ * parent and everything in it) and the tooltips, menus, listboxes, dialogs
+ * and popovers anywhere on the page that are hidden, at most
+ * {@link MAX_REVEAL_CANDIDATES} looked at within {@link REVEAL_BUDGET_MS}.
+ * They are kept by identity in the action's watch, so its read can tell
+ * which of them the hover revealed, also through CSS `:hover` rules that
+ * change no DOM, and elements moving in the page can't pass for revealed
+ * ones. Does nothing without a running watch (another frame).
  */
 export const REVEAL_SNAPSHOT_JS = `(el) => {
   const state = window.__bdgEffects;
   if (!state || state.stopped) return;
+  const deadline = performance.now() + ${REVEAL_BUDGET_MS};
   const shown = ${SHOWN_JS};
   const parent = el.parentElement;
   const scope = parent && !/^(body|html)$/.test(parent.localName) ? parent : el;
-  const visible = new Set();
-  for (const candidate of (${REVEAL_CANDIDATES_JS})(scope)) if (shown(candidate)) visible.add(candidate);
-  state.reveal = { scope: scope, visible: visible };
+  const hidden = [];
+  let looked = 0;
+  const room = () => looked < ${MAX_REVEAL_CANDIDATES} && performance.now() <= deadline;
+  const look = (candidate) => {
+    looked++;
+    if (!shown(candidate)) hidden.push(candidate);
+  };
+  for (const candidate of document.querySelectorAll(${JSON.stringify(REVEAL_GLOBAL_CANDIDATES)})) {
+    if (!room()) break;
+    look(candidate);
+  }
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT);
+  for (let node = scope; node && room(); node = walker.nextNode()) look(node);
+  state.reveal = { target: el, hidden: hidden };
+}`;
+
+/**
+ * Page-side container whose added elements count as an action's result:
+ * the target's form, search box, dialog or combobox, else its grandparent
+ * (its parent when the grandparent is the body).
+ */
+const NEAR_SCOPE_JS = `(target) => {
+  const container = target.closest(${JSON.stringify(NEAR_CONTAINERS)});
+  if (container) return container;
+  const parent = target.parentElement || target;
+  const grandparent = parent.parentElement;
+  return grandparent && !/^(body|html)$/.test(grandparent.localName) ? grandparent : parent;
 }`;
 
 /**
  * Page-side list of the elements an action showed: elements added during
- * the watch and, after a hover, elements around it that were not shown
- * before ({@link REVEAL_SNAPSHOT_JS}). Only shown ones with visible text
- * count, the outermost of nested ones, and not those whose text a removed
- * element had (a re-render). At most {@link MAX_SHOWN}, within
- * {@link SHOWN_BUDGET_MS}.
+ * the watch inside the target's container ({@link NEAR_SCOPE_JS}) or, anywhere,
+ * popups and messages (tooltip, menu, listbox, dialog, alert and status
+ * roles, `aria-live`, message-like classes), plus, after a hover, the
+ * elements hidden before it that are shown now ({@link REVEAL_SNAPSHOT_JS}).
+ * Background widgets elsewhere on the page do not count. Only shown ones
+ * with visible text count, the outermost of nested ones, and not those
+ * whose text a removed element had (a re-render). At most
+ * {@link MAX_SHOWN}, within {@link SHOWN_BUDGET_MS}.
  */
 export const SHOWN_ELEMENTS_JS = `(state) => {
   const deadline = performance.now() + ${SHOWN_BUDGET_MS};
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const shown = ${SHOWN_JS};
   const visibleText = ${VISIBLE_TEXT_JS};
+  const word = /\\b(${MESSAGE_WORDS.join('|')})\\b/i;
+  const target = state.reveal ? state.reveal.target : state.keyTarget;
+  const scope = target && target.isConnected ? (${NEAR_SCOPE_JS})(target) : null;
+  const popup = (el) => ${POPUP_ROLES}.test(el.getAttribute('role') || '') || el.hasAttribute('popover') ||
+    (el.hasAttribute('aria-live') && el.getAttribute('aria-live') !== 'off') ||
+    word.test(el.getAttribute('class') || '') || word.test(el.id || '');
+  const near = (el) => (scope !== null && scope.contains(el)) || popup(el);
   const contentOf = (node) => (node.textContent || '').replace(/\\s+/g, ' ').trim();
   const removed = new Set(state.removed.map(contentOf));
-  const candidates = new Set(state.added.filter((node) => node.isConnected));
-  if (state.reveal && state.reveal.scope.isConnected) {
-    for (const el of (${REVEAL_CANDIDATES_JS})(state.reveal.scope)) if (!state.reveal.visible.has(el)) candidates.add(el);
-  }
+  const candidates = new Set(state.added.filter((node) => node.isConnected && near(node)));
+  if (state.reveal) for (const el of state.reveal.hidden) if (el.isConnected) candidates.add(el);
   const found = [];
   for (const el of candidates) {
     if (performance.now() > deadline) break;
@@ -271,8 +302,7 @@ export const STRUCTURAL_CHANGE_JS = `(record) => {
 /**
  * Page-side reason why "no effect" can't be claimed even without DOM
  * changes, or undefined: `clipboard` (a copy or cut happened), `no-event`
- * (no event reached the page), `timer` (a timer the action's handlers
- * started has not fired yet), `control` (form controls, labels, media,
+ * (no event reached the page), `control` (form controls, labels, media,
  * frames, popover/command buttons: their effect needs no DOM change),
  * `new-window` (download or `target` links), `external-link` (mailto:, tel:,
  * javascript: and other non-http links), `closed-shadow` (a custom element
@@ -282,7 +312,6 @@ export const STRUCTURAL_CHANGE_JS = `(record) => {
 export const UNCERTAIN_JS = `(state, active) => {
   if (state.copied) return 'clipboard';
   if (state.targets.size === 0) return 'no-event';
-  if (state.timers && state.timers.size > 0) return 'timer';
   const controls = /^(input|select|textarea|option|label|canvas|video|audio|iframe|embed|object)$/;
   for (const node of state.path) {
     if (controls.test(node.localName) || node.isContentEditable) return 'control';
@@ -303,8 +332,7 @@ export const UNCERTAIN_JS = `(state, active) => {
 /**
  * Page-side signs, at a read, that the page is still working on the
  * action's result: how long ago each recent burst of DOM changes was (ms,
- * newest last), timers the action's handlers started that have not fired,
- * and a loading indicator shown since the start (described).
+ * newest last), and a loading indicator shown since the start (described).
  */
 const SETTLE_JS = `(state) => {
   const now = performance.now();
@@ -312,47 +340,7 @@ const SETTLE_JS = `(state) => {
   const loader = (${LOADERS_JS})().find((el) => !state.loaders.has(el));
   return {
     burstAges: state.bursts.map((time) => Math.round(now - time)),
-    timers: state.timers.size,
     loading: loader ? describe(loader) : null
-  };
-}`;
-
-/**
- * Page-side hook of `setTimeout`/`clearTimeout` that records timers the
- * action's event handlers start (while one of its events is being
- * dispatched, `state.dispatching`), of {@link MIN_TIMER_MS} to
- * {@link MAX_TIMER_MS}, in `state.timers` until they fire or are cleared.
- * Leaves `state.later`, the page's own `setTimeout`, for the watch's timers.
- * Evaluates to a function restoring the originals (when still installed).
- */
-export const TIMER_HOOK_JS = `(state) => {
-  const realSet = window.setTimeout;
-  const realClear = window.clearTimeout;
-  const watchedSet = function (callback, ms) {
-    const wait = Number(ms) || 0;
-    if (!state.dispatching || state.stopped || typeof callback !== 'function' || wait < ${MIN_TIMER_MS} || wait > ${MAX_TIMER_MS}) {
-      return realSet.apply(this, arguments);
-    }
-    const args = Array.from(arguments);
-    let id;
-    args[0] = function () {
-      state.timers.delete(id);
-      return callback.apply(this, arguments);
-    };
-    id = realSet.apply(this, args);
-    state.timers.set(id, wait);
-    return id;
-  };
-  const watchedClear = function (id) {
-    state.timers.delete(id);
-    return realClear.apply(this, arguments);
-  };
-  window.setTimeout = watchedSet;
-  window.clearTimeout = watchedClear;
-  state.later = (callback, ms) => realSet.call(window, callback, ms);
-  return () => {
-    if (window.setTimeout === watchedSet) window.setTimeout = realSet;
-    if (window.clearTimeout === watchedClear) window.clearTimeout = realClear;
   };
 }`;
 
@@ -363,10 +351,9 @@ export const TIMER_HOOK_JS = `(state) => {
  * also counts as a change) counting changes other than
  * {@link CHURN_ONLY_JS}, keeping the elements added and removed and the
  * times of {@link STRUCTURAL_CHANGE_JS} bursts. Capture listeners record
- * which elements the action's events reached, copy/cut events, the scroll
- * position at the first press (a click scrolls its target into view first)
- * and, until the end of each event's task, that an event is being
- * dispatched ({@link TIMER_HOOK_JS}). The watch stops itself after
+ * which elements the action's events reached, the first key press's target,
+ * copy/cut events and the scroll position at the first press (a click
+ * scrolls its target into view first). The watch stops itself after
  * {@link MAX_WATCH_MS}, so a snapshot that ran late (after a navigation,
  * with nobody reading it) leaves nothing behind. Evaluates to the URL and
  * the messages.
@@ -379,7 +366,7 @@ export const EFFECTS_START_SCRIPT = `(() => {
   const state = {
     ids: ids, changes: 0, targets: new Set(), path: new Set(), focus: document.activeElement,
     pressScroll: null, copied: false, stopped: false, added: [], removed: [], bursts: [],
-    timers: new Map(), dispatching: false, loaders: new Set((${LOADERS_JS})())
+    keyTarget: null, loaders: new Set((${LOADERS_JS})())
   };
   const keep = (list, nodes) => {
     for (const node of nodes) if (node.nodeType === 1 && list.length < ${MAX_TRACKED_NODES}) list.push(node);
@@ -414,36 +401,27 @@ export const EFFECTS_START_SCRIPT = `(() => {
     return root;
   };
   Element.prototype.attachShadow = watchedAttach;
-  const restoreTimers = (${TIMER_HOOK_JS})(state);
   const types = ['pointerdown', 'mousedown', 'click', 'keydown', 'focusin', 'submit', 'mouseover', 'input', 'change', 'copy', 'cut'];
   const pressTypes = ['pointerdown', 'mousedown', 'click', 'keydown', 'submit'];
-  const dispatchTypes = types.concat(['pointerup', 'mouseup', 'dblclick', 'contextmenu', 'keypress', 'keyup', 'pointerover']);
   const record = (event) => {
     if (event.type === 'copy' || event.type === 'cut') state.copied = true;
     const path = event.composedPath().filter((node) => node.nodeType === 1);
     if (path[0]) state.targets.add(path[0]);
+    if (path[0] && !state.keyTarget && event.type === 'keydown') state.keyTarget = path[0];
     path.forEach((node) => state.path.add(node));
     if (!state.pressScroll && pressTypes.includes(event.type)) state.pressScroll = [scrollX, scrollY];
   };
-  const dispatching = () => {
-    if (state.dispatching) return;
-    state.dispatching = true;
-    state.later(() => { state.dispatching = false; }, 0);
-  };
   types.forEach((type) => window.addEventListener(type, record, true));
-  dispatchTypes.forEach((type) => window.addEventListener(type, dispatching, true));
   state.flush = () => count(observer.takeRecords());
   state.stop = () => {
     if (state.stopped) return;
     state.stopped = true;
     clearTimeout(expiry);
     observer.disconnect();
-    restoreTimers();
     if (Element.prototype.attachShadow === watchedAttach) Element.prototype.attachShadow = attachShadow;
     types.forEach((type) => window.removeEventListener(type, record, true));
-    dispatchTypes.forEach((type) => window.removeEventListener(type, dispatching, true));
   };
-  const expiry = state.later(state.stop, ${MAX_WATCH_MS});
+  const expiry = setTimeout(state.stop, ${MAX_WATCH_MS});
   window.__bdgEffects = state;
   return { href: location.href, messages: (${MESSAGES_JS})(ids) };
 })()`;
