@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import {
   buildListenerReport,
-  delegatedOnlyTypes,
+  delegationNotes,
   describeChainEntry,
   functionNameFromSource,
   handlerPreview,
@@ -18,6 +18,7 @@ import {
   suggestEventTypes,
   type ChainListeners,
   type HandlerDetails,
+  type ReactPropHandler,
   type ResolvedHandler,
 } from '@/runtime/dom/listenerSummary.js';
 
@@ -149,14 +150,16 @@ void describe('buildListenerReport', () => {
   });
 });
 
-void describe('delegatedOnlyTypes', () => {
-  void it('lists interaction types with listeners only above the element', () => {
+void describe('delegationNotes', () => {
+  void it('notes interaction types with plain listeners only above the element', () => {
     const withoutTarget = buildListenerReport(CHAIN.slice(1), []).listeners;
-    assert.deepEqual(delegatedOnlyTypes(withoutTarget), ['click']);
+    assert.deepEqual(delegationNotes(withoutTarget), [
+      { kind: 'delegated', types: ['click'], placeholderTypes: [], node: undefined },
+    ]);
   });
 
   void it('is empty when the element has its own listener', () => {
-    assert.deepEqual(delegatedOnlyTypes(buildListenerReport(CHAIN, []).listeners), []);
+    assert.deepEqual(delegationNotes(buildListenerReport(CHAIN, []).listeners), []);
   });
 });
 
@@ -265,7 +268,8 @@ void describe('framework listeners', () => {
     const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS);
     assert.deepEqual(
       report.listeners.map((l) => `${l.type}:${l.on}`),
-      ['click:target', 'click:document']
+      ['click:document', 'click:target'],
+      'no-op last'
     );
     assert.equal(report.collapsed.length, 1);
     const [root] = report.collapsed;
@@ -293,8 +297,12 @@ void describe('framework listeners', () => {
     assert.ok(!isNoopSource('function onSave(e) {}'));
     assert.ok(!isNoopSource('() => go()'));
     const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS);
-    assert.equal(report.listeners[0]?.noop, true);
-    assert.ok(delegatedOnlyTypes(report.listeners, report.collapsed).includes('click'));
+    assert.equal(report.listeners.find((l) => l.on === 'target')?.noop, true);
+    const [note] = delegationNotes(report.listeners, report.collapsed);
+    assert.equal(note?.kind, 'react-root');
+    assert.equal(note?.node, 'div#__next');
+    assert.ok(note?.types.includes('click'));
+    assert.deepEqual(note?.placeholderTypes, ['click']);
   });
 
   void it("shows jQuery's handlers instead of its dispatcher", () => {
@@ -346,5 +354,140 @@ void describe('suggestEventTypes', () => {
     assert.deepEqual(suggestEventTypes(['onclick'], available), ['click']);
     assert.deepEqual(suggestEventTypes(['keydwn'], available), ['keydown']);
     assert.deepEqual(suggestEventTypes(['submit'], available), []);
+  });
+});
+
+/**
+ * A React prop handler at a chain position.
+ *
+ * @param position - Chain position of the element the prop is on
+ * @param prop - Prop name
+ * @param name - Handler name
+ * @returns Prop handler
+ */
+function reactProp(position: number, prop: string, name: string): ReactPropHandler {
+  const capture = prop.endsWith('Capture');
+  const type = prop.slice(2, capture ? -7 : undefined).toLowerCase();
+  return {
+    position,
+    prop,
+    type,
+    capture,
+    name,
+    source: `function ${name}(e) { buy(e) }`,
+    scriptId: '9',
+    lineNumber: 0,
+    columnNumber: 2344,
+  };
+}
+
+/** The inspected button and its document, as chain entries */
+const BUTTON = { className: 'HTMLButtonElement', description: 'button#save' };
+const DOCUMENT = { className: 'HTMLDocument', description: '#document' };
+
+void describe('React prop handlers', () => {
+  const props = [reactProp(0, 'onClick', 'handleBuy'), reactProp(1, 'onKeyDownCapture', 'keys')];
+
+  void it('lists them with the element they are on, framework and prop', () => {
+    const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS, {}, props);
+    assert.deepEqual(report.listeners[0], {
+      type: 'click',
+      on: 'target',
+      node: 'button.cta',
+      useCapture: false,
+      passive: false,
+      once: false,
+      handler: {
+        name: 'handleBuy',
+        preview: 'function handleBuy(e) { buy(e) }',
+        scriptId: '9',
+        lineNumber: 0,
+        columnNumber: 2344,
+      },
+      framework: 'React',
+      reactProp: 'onClick',
+    });
+    const keys = report.listeners.find((l) => l.reactProp === 'onKeyDownCapture');
+    assert.deepEqual(
+      [keys?.type, keys?.on, keys?.node, keys?.useCapture],
+      ['keydown', 'ancestor', 'div#__next', true]
+    );
+    assert.equal(report.collapsed[0]?.count, 20, 'props are not collapsed into the root');
+  });
+
+  void it("puts the element's handlers first, then ancestors, no-ops last", () => {
+    const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS, {}, props);
+    assert.deepEqual(
+      report.listeners.map((l) => `${l.type}:${l.on}:${l.reactProp ?? (l.noop ? 'noop' : '')}`),
+      [
+        'click:target:onClick',
+        'click:document:',
+        'click:target:noop',
+        'keydown:ancestor:onKeyDownCapture',
+      ]
+    );
+  });
+
+  void it('orders event types by their nearest handler', () => {
+    const chain: ChainListeners[] = [
+      { position: 0, entry: BUTTON, listeners: [cdpListener('keydown', 'function u0(){}')] },
+      {
+        position: 1,
+        entry: DOCUMENT,
+        listeners: [cdpListener('blur', 'function track(e) { go() }')],
+      },
+    ];
+    const report = buildListenerReport(chain, [], {}, [reactProp(0, 'onSubmit', 'save')]);
+    assert.deepEqual(
+      report.listeners.map((l) => l.type),
+      ['submit', 'blur', 'keydown']
+    );
+  });
+
+  void it('keeps only the requested event types', () => {
+    const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS, { types: ['keydown'] }, props);
+    assert.deepEqual(
+      report.listeners.map((l) => `${l.type}:${l.reactProp ?? l.on}`),
+      ['keydown:onKeyDownCapture', 'keydown:ancestor', 'keydown:ancestor']
+    );
+  });
+
+  void it("notes React's placeholder when the handler is resolved", () => {
+    const report = buildListenerReport(REACT_CHAIN, REACT_DETAILS, {}, props);
+    const notes = delegationNotes(report.listeners, report.collapsed);
+    assert.deepEqual(notes[0], {
+      kind: 'react',
+      types: ['click', 'keydown'],
+      placeholderTypes: ['click'],
+      node: undefined,
+    });
+    assert.equal(notes[1]?.kind, 'react-root');
+    assert.ok(!notes[1]?.types.includes('click'));
+  });
+
+  void it('notes jQuery delegation separately from plain delegation', () => {
+    const chain: ChainListeners[] = [
+      { position: 0, entry: BUTTON, listeners: [] },
+      {
+        position: 1,
+        entry: DOCUMENT,
+        listeners: [cdpListener('click', 'function(e){}'), cdpListener('input', 'function(e){}')],
+      },
+    ];
+    const jquery: ResolvedHandler = {
+      type: 'click',
+      name: 'row',
+      scriptId: '1',
+      lineNumber: 0,
+      columnNumber: 0,
+    };
+    const report = buildListenerReport(chain, [{ jquery: [jquery] }, {}]);
+    assert.deepEqual(
+      delegationNotes(report.listeners).map((n) => [n.kind, n.types, n.node]),
+      [
+        ['jquery', ['click'], 'document'],
+        ['delegated', ['input'], undefined],
+      ]
+    );
   });
 });

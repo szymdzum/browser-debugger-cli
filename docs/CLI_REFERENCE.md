@@ -311,25 +311,27 @@ bdg dom listeners "#save" --json
 Event listeners for button#save (93)
 
 click
-  target    button#save  onSave     script 4:8:18   function onSave(e) { … }
-  document  document     rowClicked script 5:3:12   [jQuery, delegate .row] function rowClicked() { … }
+  target    button#save  handleSave  script 12:1:2345  [React onClick] ()=>f(e)
+  document  document     rowClicked  script 5:3:12     [jQuery, delegate .row] function rowClicked() { … }
+  target    button#save  u0          script 9:1:3812   [no-op] function u0(){}
 
 Framework roots (one line per node; --all lists each listener):
   ancestor  div#__next  React root: 45 event types, capture and bubble (dispatchDiscreteEvent, dispatchContinuousEvent, dispatchEvent)
 ```
 
-- Nearest first within each event type: `target`, then `ancestor`s outward, then `document`, `window`
+- The handlers that run for the element come first: event types whose nearest handler is on the element come before those handled only by ancestors, document or window (alphabetically on ties). Within a type, nearest first (`target`, `ancestor`s outward, `document`, `window`), framework handlers before plain listeners on the same node, `[no-op]` handlers last
 - Handler: name, a one-line source preview (80 characters) and its location (`script <id>:<line>:<column>`, 1-based like DevTools; JSON `lineNumber`/`columnNumber` are 0-based as in CDP)
 - Inline `on…` attributes and `on…` properties are included; empty handlers (React puts `onclick = function noop(){}` on clickable elements) are marked `[no-op]` and do not count as the element's own handler
 - React roots are collapsed: on an ancestor recognised as a React root container (React's `__reactContainer$…`/`_reactRootContainer` keys, or dispatchers named `dispatchDiscreteEvent`/`dispatchContinuousEvent`/`dispatchEvent`), the function objects that each listen for several event types and together for many (bound functions count as the function they call) become one line under `Framework roots`; `--all` lists them one by one. Other handlers that listen for many types (an analytics listener on `document`) are never collapsed. With `--type`, only the requested types count, so `--type click` shows React's click dispatchers individually
+- React: the `on…` handler props React rendered on the element and its ancestors (`__reactProps$…` in React 17-19, `__reactEventHandlers$…` in React 16, else the fiber's `memoizedProps`) are listed with their name, source and location, marked `[React onClick]` (`framework: "React"`, `reactProp` in JSON). The event type comes from the prop (`onClick` → `click`, `onDoubleClick` → `dblclick`, `onClickCapture` → `click` with `useCapture`); React runs them from its root container. At most 50 props are listed per call (`reactHandlersSkipped` counts the rest); a prop whose getter throws is skipped. Preact is not resolved
 - jQuery: when the page has jQuery (`jQuery._data`), its dispatcher is replaced by the jQuery handlers it runs for the element, with their real name, source and location, marked `[jQuery]`; delegated ones (`$(document).on('click', '.row', fn)`) show `delegate .row` and only when the element matches the selector. A jQuery dispatcher none of whose handlers run for the element (its delegates match other elements) is left out. At most 50 jQuery handlers are resolved per call; beyond that the dispatcher is listed as is and a note (`jqueryHandlersSkipped` in JSON) says how many were not resolved. A page whose `jQuery`/`$` globals throw only loses the jQuery details
-- When an interaction event (click, input, keydown, …) has listeners only above the element, a note explains the delegation
+- When an interaction event (click, input, keydown, …) has no listener of its own on the element (`[no-op]` aside), a note says how it reaches its handlers: React's `[no-op]` placeholder next to resolved React handlers, a React root container without an `on…` prop for it, jQuery delegation, or plain listeners on ancestors, document or window
 - The heading names the cached index and the iframe holding the element (`Event listeners for p [2] in iframe#sd (3)`)
 - No listeners at all is not an error (exit 0); a selector without match exits 83, an `--index` out of range 81. A `--type` that matches nothing but is close to a listened type (`Click`, `onclick`) suggests it (`typeSuggestions` in JSON)
 - Elements in open shadow roots and same-origin iframes are found like with the other DOM commands
 - Uses `DOMDebugger.getEventListeners`; the Debugger domain is not enabled, so `debugger;` statements do not pause the page
 
-**JSON (`data`):** `{ selector, index?, element, frame?, matchCount?, warning?, typeSuggestions?, jqueryHandlersSkipped?, listeners: [{ type, on: "target"|"ancestor"|"document"|"window", node, useCapture, passive, once, noop?, framework?: "jQuery", delegateSelector?, handler: { name, preview, scriptId, lineNumber, columnNumber } }], collapsed?: [{ on, node, framework?, types, count, capture, bubble, handlers: [{ name, preview, scriptId, lineNumber, columnNumber }] }] }`
+**JSON (`data`):** `{ selector, index?, element, frame?, matchCount?, warning?, typeSuggestions?, jqueryHandlersSkipped?, reactHandlersSkipped?, listeners: [{ type, on: "target"|"ancestor"|"document"|"window", node, useCapture, passive, once, noop?, framework?: "jQuery"|"React", reactProp?, delegateSelector?, handler: { name, preview, scriptId, lineNumber, columnNumber } }], collapsed?: [{ on, node, framework?, types, count, capture, bubble, handlers: [{ name, preview, scriptId, lineNumber, columnNumber }] }] }`
 
 ### Element Layout
 

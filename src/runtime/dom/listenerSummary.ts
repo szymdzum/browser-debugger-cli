@@ -161,6 +161,16 @@ export interface ResolvedHandler {
   columnNumber: number;
 }
 
+/** A React `on…` prop handler of the element or one of its ancestors */
+export interface ReactPropHandler extends ResolvedHandler {
+  /** Position in the chain of the element the prop is on (0 = the element) */
+  position: number;
+  /** Prop name, e.g. `onClickCapture` */
+  prop: string;
+  /** Runs in the capture phase (`on…Capture`) */
+  capture: boolean;
+}
+
 /** What to keep in the report */
 export interface ReportOptions {
   /** Event types to keep (default: all) */
@@ -254,6 +264,39 @@ function jqueryListeners(
     framework: 'jQuery' as const,
     ...(resolved.selector && { delegateSelector: resolved.selector }),
   }));
+}
+
+/**
+ * Report entries for React's `on…` props: React runs them from its root
+ * container's dispatchers, for the element the prop is on.
+ *
+ * @param found - Listeners per chain entry (every entry of the chain)
+ * @param react - React prop handlers, in chain order
+ * @returns Entries, one per prop
+ */
+function placeReactProps(found: ChainListeners[], react: ReactPropHandler[]): PlacedListener[] {
+  return react.flatMap((resolved, i) => {
+    const owner = found.find((item) => item.position === resolved.position);
+    if (!owner) return [];
+    const listener: ElementListener = {
+      type: resolved.type,
+      on: listenerPlacement(owner.entry, owner.position),
+      node: describeChainEntry(owner.entry),
+      useCapture: resolved.capture,
+      passive: false,
+      once: false,
+      handler: {
+        name: resolved.name || functionNameFromSource(resolved.source),
+        preview: handlerPreview(resolved.source),
+        scriptId: resolved.scriptId,
+        lineNumber: resolved.lineNumber,
+        columnNumber: resolved.columnNumber,
+      },
+      framework: 'React',
+      reactProp: resolved.prop,
+    };
+    return [{ position: owner.position, entry: owner.entry, listener, identity: `react-${i}` }];
+  });
 }
 
 /**
@@ -395,59 +438,155 @@ function placeListeners(found: ChainListeners[], details: HandlerDetails[]): Pla
   });
 }
 
+/** Sort rank of no-op handlers: after every handler that does something */
+const NOOP_RANK = Number.MAX_SAFE_INTEGER;
+
 /**
- * Build the listener report: filtered to `types` (if given), framework
- * roots collapsed (unless `all`), grouped by event type (alphabetically),
- * nearest first within a type.
+ * Sort rank of a report entry: its distance from the element, no-ops last.
+ *
+ * @param placed - Report entry
+ * @returns Rank (lower comes first)
+ */
+function handlerRank({ listener, position }: PlacedListener): number {
+  return listener.noop ? NOOP_RANK : position;
+}
+
+/**
+ * Order report entries so the handlers that run for the element come
+ * first: event types whose nearest handler (no-ops aside) is closest to the
+ * element first (alphabetically on ties), and within a type, nearest first
+ * with no-ops last and, on one node, framework handlers (React props, jQuery
+ * handlers) before plain listeners.
+ *
+ * @param placed - Report entries
+ * @returns Entries in report order
+ */
+function orderListeners(placed: PlacedListener[]): PlacedListener[] {
+  const typeRank = new Map<string, number>();
+  for (const item of placed) {
+    const type = item.listener.type;
+    typeRank.set(type, Math.min(typeRank.get(type) ?? NOOP_RANK, handlerRank(item)));
+  }
+  const rankOf = (item: PlacedListener): number => typeRank.get(item.listener.type) ?? NOOP_RANK;
+  return [...placed].sort(
+    (a, b) =>
+      rankOf(a) - rankOf(b) ||
+      a.listener.type.localeCompare(b.listener.type) ||
+      handlerRank(a) - handlerRank(b) ||
+      a.position - b.position ||
+      Number(!a.listener.framework) - Number(!b.listener.framework)
+  );
+}
+
+/**
+ * Build the listener report: React's `on…` props added, filtered to `types`
+ * (if given), framework roots collapsed (unless `all`), grouped by event
+ * type with the handlers nearest the element first (see {@link orderListeners}).
  *
  * @param found - Listeners per chain entry, in chain order
  * @param details - Per flattened listener: handler name, jQuery handlers (missing = unknown)
  * @param options - Event types to keep, whether to keep every root listener
+ * @param react - React prop handlers of the element and its ancestors
  * @returns Ordered listeners and collapsed framework roots
  */
 export function buildListenerReport(
   found: ChainListeners[],
   details: HandlerDetails[],
-  options: ReportOptions = {}
+  options: ReportOptions = {},
+  react: ReactPropHandler[] = []
 ): ListenerReport {
   const { types, all } = options;
-  const placed = placeListeners(found, details).filter(
+  const placed = [...placeListeners(found, details), ...placeReactProps(found, react)].filter(
     ({ listener }) => !types?.length || types.includes(listener.type)
   );
   const { kept, collapsed } = all
     ? { kept: placed, collapsed: [] }
     : collapseFrameworkRoots(placed);
-  const listeners = kept
-    .sort((a, b) => a.listener.type.localeCompare(b.listener.type) || a.position - b.position)
-    .map(({ listener }) => listener);
-  return { listeners, collapsed };
+  return { listeners: orderListeners(kept).map(({ listener }) => listener), collapsed };
 }
 
 /**
- * Interaction event types that have listeners, but none (that does
- * anything) on the element itself: frameworks (React, jQuery) handle these
- * by delegation.
+ * How an event type without a listener of its own on the element reaches
+ * its handlers:
+ * - `react`: React runs `on…` props listed in the report (from its root)
+ * - `react-root`: a React root listens for it, but no `on…` prop was found
+ * - `jquery`: jQuery runs delegated handlers listed in the report
+ * - `delegated`: plain listeners on ancestors, document or window
+ */
+export type DelegationKind = 'react' | 'react-root' | 'jquery' | 'delegated';
+
+/** Interaction event types handled the same way, for the report's notes */
+export interface DelegationNote {
+  kind: DelegationKind;
+  /** Event types, in report order */
+  types: string[];
+  /** Those of `types` whose only listener on the element is a no-op (React's placeholder) */
+  placeholderTypes: string[];
+  /** The node handling them: the React root container or jQuery's node */
+  node?: string | undefined;
+}
+
+/** Order of the notes */
+const DELEGATION_KINDS: DelegationKind[] = ['react', 'react-root', 'jquery', 'delegated'];
+
+/**
+ * How one event type reaches its handlers, if not by a listener of the element.
+ *
+ * @param type - Event type
+ * @param listeners - Listener report
+ * @param collapsed - Collapsed framework roots
+ * @returns Kind and handling node, undefined when the element has its own listener
+ */
+function delegationOf(
+  type: string,
+  listeners: ElementListener[],
+  collapsed: CollapsedListeners[]
+): { kind: DelegationKind; node?: string | undefined } | undefined {
+  const ofType = listeners.filter((l) => l.type === type);
+  const ownListener = ofType.some((l) => l.on === 'target' && !l.noop && l.framework !== 'React');
+  if (ownListener) return undefined;
+  if (ofType.some((l) => l.framework === 'React')) return { kind: 'react' };
+  const root = collapsed.find((c) => c.framework === REACT_ROOT && c.types.includes(type));
+  if (root) return { kind: 'react-root', node: root.node };
+  const jquery = ofType.find((l) => l.framework === 'jQuery');
+  if (jquery) return { kind: 'jquery', node: jquery.node };
+  return { kind: 'delegated' };
+}
+
+/**
+ * Notes for interaction event types the element has no listener of its own
+ * for (no-ops aside), grouped by how they reach their handlers: React `on…`
+ * props, a React root without props, jQuery delegation, or plain listeners
+ * on ancestors, document or window.
  *
  * @param listeners - Listener report
  * @param collapsed - Collapsed framework roots
- * @returns Event types, in report order
+ * @returns Notes, React first; none when every type has a listener on the element
  */
-export function delegatedOnlyTypes(
+export function delegationNotes(
   listeners: ElementListener[],
   collapsed: CollapsedListeners[] = []
-): string[] {
-  const delegated = listeners.filter((listener) => listener.on !== 'target');
+): DelegationNote[] {
   const types = [
-    ...new Set([
-      ...delegated.map((listener) => listener.type),
-      ...collapsed.flatMap((c) => c.types),
-    ]),
-  ];
-  return types.filter(
-    (type) =>
-      INTERACTION_EVENT_TYPES.has(type) &&
-      !listeners.some((l) => l.type === type && l.on === 'target' && !l.noop)
-  );
+    ...new Set([...listeners.map((l) => l.type), ...collapsed.flatMap((c) => c.types)]),
+  ].filter((type) => INTERACTION_EVENT_TYPES.has(type));
+  const notes = new Map<DelegationKind, DelegationNote>();
+  for (const type of types) {
+    const delegation = delegationOf(type, listeners, collapsed);
+    if (!delegation) continue;
+    const note = notes.get(delegation.kind) ?? {
+      kind: delegation.kind,
+      types: [],
+      placeholderTypes: [],
+      node: delegation.node,
+    };
+    note.types.push(type);
+    if (listeners.some((l) => l.type === type && l.on === 'target' && l.noop)) {
+      note.placeholderTypes.push(type);
+    }
+    notes.set(delegation.kind, note);
+  }
+  return DELEGATION_KINDS.flatMap((kind) => notes.get(kind) ?? []);
 }
 
 /**

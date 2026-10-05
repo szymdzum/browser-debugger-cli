@@ -8,6 +8,7 @@
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { ElementLayout, LayoutPoint, PageLayout } from '@/ipc/protocol/domTypes.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
+import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { ViewportPosition } from '@/types.js';
 import {
   buildAgentDiscoveryHelp,
@@ -296,14 +297,60 @@ export function noListenersMessage(element: string, types?: string[]): string {
 export const NO_LISTENERS_HINT =
   'Inline on… attributes and on… properties are included, and so are handlers frameworks delegate to ancestors (React, jQuery)';
 
+/** Event types named in a note; the rest are counted */
+const NOTE_TYPES_SHOWN = 5;
+
 /**
- * Note for event types handled only by ancestors, document or window.
+ * "click", "click and keydown", "click, keydown and input", "a, b, c, d, e
+ * and 3 more".
  *
- * @param types - Event types without a listener on the element itself
+ * @param types - Event types
+ * @returns The types as a list in prose
+ */
+function typeList(types: string[]): string {
+  if (types.length > NOTE_TYPES_SHOWN + 1) {
+    return `${types.slice(0, NOTE_TYPES_SHOWN).join(', ')} and ${types.length - NOTE_TYPES_SHOWN} more`;
+  }
+  return types.length > 1
+    ? `${types.slice(0, -1).join(', ')} and ${types[types.length - 1]}`
+    : (types[0] ?? '');
+}
+
+/**
+ * Note for interaction event types the element has no listener of its own for.
+ *
+ * @param note - How the types reach their handlers
+ * @returns One-line note, or undefined when the listed handlers say it all
+ */
+export function delegationNote(note: DelegationNote): string | undefined {
+  const types = typeList(note.types);
+  const has = note.types.length === 1 ? 'has' : 'have';
+  const placeholders = typeList(note.placeholderTypes);
+  const placeholder = `the element's own ${placeholders} listener is only React's no-op placeholder`;
+  switch (note.kind) {
+    case 'react':
+      if (note.placeholderTypes.length === 0) return undefined;
+      return `Note: ${placeholder}; the React on… handlers listed above for ${placeholders} run from React's root container`;
+    case 'react-root':
+      return `Note: React's root container (${note.node ?? 'its root'}) handles ${types}, but no React on… prop for ${note.types.length === 1 ? 'it' : 'them'} was found on the element or its ancestors${note.placeholderTypes.length > 0 ? `; ${placeholder}` : ''}`;
+    case 'jquery':
+      return `Note: ${types} ${has} no listener on the element itself; jQuery runs the handlers listed above by delegation from ${note.node ?? 'an ancestor'}`;
+    case 'delegated': {
+      const own =
+        note.placeholderTypes.length > 0 ? 'no listener that does anything' : 'no listener';
+      return `Note: ${types} ${has} ${own} on the element itself; the listeners on its ancestors, document or window listed above still run for it (event delegation)`;
+    }
+  }
+}
+
+/**
+ * React prop handlers left unresolved because there were too many.
+ *
+ * @param count - Handlers not resolved
  * @returns One-line note
  */
-export function delegatedListenersNote(types: string[]): string {
-  return `Note: ${types.join(', ')} ${types.length === 1 ? 'has' : 'have'} no listener on the element itself; frameworks like React and jQuery delegate events to a root container, document or window, so these still run for it`;
+export function reactHandlersSkippedNote(count: number): string {
+  return `Note: ${count} more React handler prop${count === 1 ? '' : 's'} not listed (narrow down with --type)`;
 }
 
 /**

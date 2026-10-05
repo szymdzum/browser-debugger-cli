@@ -4,7 +4,8 @@
  * Collects the listeners of the element, every ancestor (through open shadow
  * roots), its document and its window with `DOMDebugger.getEventListeners`,
  * so handlers that frameworks attach by delegation (React on its root
- * container, jQuery on `document`) are found too. The Debugger domain is not
+ * container, jQuery on `document`) are found too, along with the handlers
+ * behind them (jQuery's handlers, React's `on…` props). The Debugger domain is not
  * enabled: that would make `debugger;` statements pause the page.
  */
 
@@ -28,6 +29,7 @@ import {
   type ChainListeners,
   type HandlerDetails,
   type ListenerReport,
+  type ReactPropHandler,
   type ResolvedHandler,
 } from '@/runtime/dom/listenerSummary.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
@@ -74,6 +76,10 @@ interface PageDetails {
   frame?: string;
   /** jQuery handlers left unresolved (over the limit) */
   jquerySkipped?: number;
+  /** React `on…` props of the element and its ancestors */
+  react: ReactPropHandler[];
+  /** React props left unresolved (over the limit) */
+  reactSkipped?: number;
 }
 
 /** Distinguishes the object groups of concurrent calls */
@@ -106,7 +112,7 @@ export async function inspectEventListeners(
       const framework = page.roots[item.position];
       return framework ? { ...item, entry: { ...item.entry, framework } } : item;
     });
-    const report = buildListenerReport(found, page.details, params);
+    const report = buildListenerReport(found, page.details, params, page.react);
     const result: ListenersResult = {
       success: true,
       selector: params.selector,
@@ -117,6 +123,7 @@ export async function inspectEventListeners(
       ...(report.collapsed.length > 0 && { collapsed: report.collapsed }),
       ...typeSuggestions(found, report, params.types),
       ...(page.jquerySkipped && { jqueryHandlersSkipped: page.jquerySkipped }),
+      ...(page.reactSkipped && { reactHandlersSkipped: page.reactSkipped }),
       ...(params.backendNodeId === undefined && { matchCount }),
     };
     return withMultipleMatchesWarning(result, params.index, 'listing the first');
@@ -297,8 +304,9 @@ function typeSuggestions(
  * Ask the page about the element and its listeners' handlers: their names
  * (`Function.name` also knows names of arrow functions assigned to
  * variables, and `bound f` for bound functions), which function object each
- * calls, the jQuery handlers behind jQuery's dispatcher, React root
- * containers and the element's iframe.
+ * calls, the jQuery handlers behind jQuery's dispatcher, React's `on…`
+ * props of the element and its ancestors, React root containers and the
+ * element's iframe.
  *
  * @param cdp - CDP connection
  * @param chain - Event targets, element first
@@ -334,7 +342,7 @@ async function pageDetails(
     return toPageDetails(info, await Promise.all(fns.map((fn) => handlerSource(cdp, fn))));
   } catch (error) {
     log.debug(`Handler details not read: ${getErrorMessage(error)}`);
-    return { details: [], roots: [] };
+    return { details: [], roots: [], react: [] };
   }
 }
 
@@ -430,12 +438,16 @@ async function handlerSource(
   return { ...source, ...location };
 }
 
+/** Location of a handler whose source could not be read */
+const UNKNOWN_SOURCE: HandlerSource = { scriptId: '0', lineNumber: 0, columnNumber: 0 };
+
 /**
  * Combine the page's report with the framework handlers' sources.
  *
  * @param info - Page report
- * @param sources - Source and location of each jQuery handler, in report order
- * @returns Details per listener
+ * @param sources - Source and location of each jQuery handler, then each
+ *   React prop handler, in report order
+ * @returns Details per listener and the React prop handlers
  */
 function toPageDetails(info: ElementInfo, sources: HandlerSource[]): PageDetails {
   let next = 0;
@@ -447,13 +459,19 @@ function toPageDetails(info: ElementInfo, sources: HandlerSource[]): PageDetails
       type: handler.type,
       selector: handler.selector ?? undefined,
       name: handler.name,
-      ...(sources[next++] ?? { scriptId: '0', lineNumber: 0, columnNumber: 0 }),
+      ...(sources[next++] ?? UNKNOWN_SOURCE),
     })),
+  }));
+  const react = info.react.map((handler) => ({
+    ...handler,
+    ...(sources[next++] ?? UNKNOWN_SOURCE),
   }));
   return {
     details,
     roots: info.roots,
+    react,
     ...(info.frame && { frame: info.frame }),
     ...(info.jquerySkipped > 0 && { jquerySkipped: info.jquerySkipped }),
+    ...(info.reactSkipped > 0 && { reactSkipped: info.reactSkipped }),
   };
 }

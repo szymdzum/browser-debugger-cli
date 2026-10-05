@@ -1,7 +1,7 @@
 /**
  * The page-side part of `dom listeners`, run against fake DOM objects:
- * jQuery handlers behind its dispatcher, function identities, and pages
- * whose globals throw.
+ * jQuery handlers behind its dispatcher, React's `on…` props, function
+ * identities, and pages whose globals throw.
  */
 
 import assert from 'node:assert/strict';
@@ -11,6 +11,7 @@ import * as vm from 'node:vm';
 import {
   ELEMENT_INFO_JS,
   MAX_JQUERY_HANDLERS,
+  MAX_REACT_HANDLERS,
   type ElementInfo,
 } from '@/runtime/dom/listenerPageScripts.js';
 
@@ -158,5 +159,98 @@ void describe('ELEMENT_INFO_JS', () => {
         ['bound dispatchDiscreteEvent', 1, 'dispatchDiscreteEvent'],
       ]
     );
+  });
+});
+
+/**
+ * A fake button inside a fake div (React's DOM nodes carry their props
+ * under keys with a random suffix), inside a document without jQuery.
+ *
+ * @param buttonKeys - Own keys of the button
+ * @param divKeys - Own keys of the div
+ * @returns The chain: button, div, document
+ */
+function reactChain(buttonKeys: object, divKeys: object): [object, object, object] {
+  const document = { nodeType: 9, parentNode: null };
+  const div = { nodeType: 1, parentNode: document, ...divKeys };
+  const button = {
+    nodeType: 1,
+    parentNode: div,
+    ownerDocument: { defaultView: { frameElement: null } },
+    ...buttonKeys,
+  };
+  return [button, div, document];
+}
+
+/**
+ * Run the page function on a chain without listeners.
+ *
+ * @param chain - Element first
+ * @returns Page report and the React handler functions
+ */
+function reactInfo(chain: object[]): { info: ElementInfo; fns: unknown[] } {
+  const [info, ...fns] = elementInfo.call(chain[0] ?? {}, [], ...chain);
+  return { info, fns };
+}
+
+void describe('ELEMENT_INFO_JS React props', () => {
+  void it('resolves on… props of the element and its ancestors', () => {
+    const handleBuy = function handleBuy(): void {};
+    const keys = (): void => undefined;
+    const chain = reactChain(
+      { __reactProps$abc: { onClick: handleBuy, className: 'cta', children: 'Buy' } },
+      { __reactFiber$xyz: { memoizedProps: { onKeyDownCapture: keys, onDoubleClick: keys } } }
+    );
+    const { info, fns } = reactInfo(chain);
+    assert.deepEqual(info.react, [
+      { position: 0, prop: 'onClick', type: 'click', capture: false, name: 'handleBuy' },
+      { position: 1, prop: 'onKeyDownCapture', type: 'keydown', capture: true, name: 'keys' },
+      { position: 1, prop: 'onDoubleClick', type: 'dblclick', capture: false, name: 'keys' },
+    ]);
+    assert.deepEqual(fns, [handleBuy, keys, keys]);
+    assert.equal(info.reactSkipped, 0);
+  });
+
+  void it("reads React 16's event handler props", () => {
+    const submit = function save(): void {};
+    const { info } = reactInfo(reactChain({ __reactEventHandlers$q1: { onSubmit: submit } }, {}));
+    assert.deepEqual(
+      info.react.map((r) => [r.prop, r.type, r.name]),
+      [['onSubmit', 'submit', 'save']]
+    );
+  });
+
+  void it('skips props that throw or are no functions, and pages without React', () => {
+    const props = { onFocus: 'not a function', onBlur: null, onclick: (): void => undefined };
+    Object.defineProperty(props, 'onChange', {
+      enumerable: true,
+      get: () => {
+        throw new Error('blocked');
+      },
+    });
+    const throwingKeys = new Proxy(
+      {},
+      {
+        ownKeys: () => {
+          throw new Error('blocked');
+        },
+      }
+    );
+    const { info } = reactInfo(reactChain({ __reactProps$a: props }, {}));
+    assert.deepEqual(info.react, []);
+    assert.deepEqual(reactInfo([throwingKeys, ...reactChain({}, {}).slice(1)]).info.react, []);
+  });
+
+  void it('stops after the limit and counts the rest', () => {
+    const many = Object.fromEntries(
+      Array.from({ length: MAX_REACT_HANDLERS + 3 }, (_, i) => [
+        `onEvent${i}`,
+        (): void => undefined,
+      ])
+    );
+    const { info, fns } = reactInfo(reactChain({ __reactProps$a: many }, {}));
+    assert.equal(info.react.length, MAX_REACT_HANDLERS);
+    assert.equal(fns.length, MAX_REACT_HANDLERS);
+    assert.equal(info.reactSkipped, 3);
   });
 });
