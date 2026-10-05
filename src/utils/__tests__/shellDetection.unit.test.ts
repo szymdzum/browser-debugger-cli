@@ -161,6 +161,45 @@ void describe('Shell Detection Utilities', () => {
         );
       });
 
+      void it('detects class, id and child selectors left bare', () => {
+        const cases: Array<[string, string, string]> = [
+          ['document.querySelector(.btn)', "SyntaxError: Unexpected token '.'", '".btn"'],
+          ['el.closest(.card).id', "SyntaxError: Unexpected token '.'", 'closest(".card").id'],
+          [
+            'document.querySelector(#main)',
+            "SyntaxError: Private field '#main' must be declared in an enclosing class",
+            '"#main"',
+          ],
+          ['document.querySelector(#main)', 'SyntaxError: Invalid or unexpected token', '"#main"'],
+          ['document.querySelector(> p)', "SyntaxError: Unexpected token '>'", '"> p"'],
+          ['document.querySelector(div > p)', 'ReferenceError: div is not defined', '"div > p"'],
+        ];
+        for (const [script, error, fixed] of cases) {
+          const result = detectScriptQuoteDamage(script, error);
+          assert.equal(result.damaged, true, script);
+          assert.ok(result.suggestion?.includes(fixed), `${script}: ${result.suggestion}`);
+        }
+      });
+
+      void it('ignores punctuation errors outside string-taking DOM methods', () => {
+        assert.equal(
+          detectScriptQuoteDamage('Math.round(.5 .x)', "SyntaxError: Unexpected token '.'").damaged,
+          false
+        );
+        assert.equal(
+          detectScriptQuoteDamage(
+            'document.querySelector(a).x.',
+            "SyntaxError: Unexpected token '.'"
+          ).damaged,
+          false
+        );
+        assert.equal(
+          detectScriptQuoteDamage('items.push(#x)', 'SyntaxError: Invalid or unexpected token')
+            .damaged,
+          false
+        );
+      });
+
       void it('detects a selector of several words from missing )', () => {
         const result = detectScriptQuoteDamage(
           'document.querySelector(div p).textContent',

@@ -54,7 +54,10 @@ export const ELEMENT_DESCRIPTION_JS = `(node) => node.tagName.toLowerCase() +
  * `button#add.btn "Add to cart"`. An element without visible text and
  * without an id is named by the nearest of three ancestors that has text,
  * e.g. `input.toggle in div.view "Write report"` (rows of a list share their
- * aria-label), leaving out the options of `<select>`s in it; otherwise its
+ * aria-label), leaving out the options of `<select>`s in it (read like
+ * `innerText`: CSS-hidden text is left out of a rendered ancestor; at most
+ * 500 text nodes; selects in shadow roots are not looked into), and never
+ * past an editable ancestor, whose text may be typed input; otherwise its
  * aria-label, placeholder or title is used. A `<select>` is named by its
  * label, aria-label or name, else by its selected option, e.g.
  * `select.sort "Sort products"`. Texts are cut at 40 characters.
@@ -78,13 +81,16 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
     clean(node.getAttribute('aria-label')) ||
     clean(node.getAttribute('name')) ||
     clean(node.selectedOptions && node.selectedOptions[0] && node.selectedOptions[0].label);
+  const shown = (node, options) => !node.checkVisibility || node.checkVisibility(options);
   const textOutsideSelects = (node) => {
     if (!node.querySelector('select')) return shownText(node);
+    const hiddenLeftOut = shown(node);
     const walker = node.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     let text = '';
-    while (text.length < 200 && walker.nextNode()) {
+    for (let visited = 0; visited < 500 && text.length < 200 && walker.nextNode(); visited++) {
       const parent = walker.currentNode.parentElement;
-      if (parent && !parent.closest('select') && (!parent.checkVisibility || parent.checkVisibility())) text += ' ' + walker.currentNode.data;
+      if (!parent || parent.closest('select, textarea')) continue;
+      if (!hiddenLeftOut || shown(parent, { visibilityProperty: true })) text += ' ' + walker.currentNode.data;
     }
     return clean(text);
   };
@@ -92,7 +98,8 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
   if (visible) return describe(el) + ' "' + cut(visible) + '"';
   let ancestor = el.id || el.isContentEditable ? null : el.parentElement;
   for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
-    const text = isControl(ancestor) ? '' : textOutsideSelects(ancestor);
+    if (isControl(ancestor)) break;
+    const text = textOutsideSelects(ancestor);
     if (text) return describe(el) + ' in ' + describe(ancestor) + ' "' + cut(text) + '"';
   }
   const attribute = attributeText(el);

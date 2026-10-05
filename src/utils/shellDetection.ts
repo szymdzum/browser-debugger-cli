@@ -51,6 +51,16 @@ const NOT_DEFINED_PATTERN = /^ReferenceError: ([\w$]+) is not defined/;
 const SEVERAL_WORDS_PATTERN =
   /^SyntaxError: (?:missing \) after argument list|Unexpected identifier '([\w$]+)')/;
 
+/**
+ * The syntax errors V8 raises for a selector starting with punctuation:
+ * `fn(.btn)`, `fn(#main)`, `fn(> p)`
+ */
+const SELECTOR_SYNTAX_PATTERN =
+  /^SyntaxError: (?:Unexpected token '[^']*'|Invalid or unexpected token|Private field '#[^']*' must be declared)/;
+
+/** Start of a CSS selector that is not a JavaScript expression */
+const SELECTOR_PUNCTUATION = /^[.#>~+*[:]/;
+
 /** Words that may start a valid expression of several words */
 const EXPRESSION_KEYWORDS = /^(?:new|typeof|void|delete|await|yield)\b/;
 
@@ -95,7 +105,10 @@ function declares(script: string, name: string): boolean {
 }
 
 /** An error stripped quotes can cause, and the identifier it names (if it does) */
-type QuoteError = { kind: 'undefined'; name: string } | { kind: 'syntax'; name?: string };
+type QuoteError =
+  | { kind: 'undefined'; name: string }
+  | { kind: 'syntax'; name?: string }
+  | { kind: 'selector'; name?: undefined };
 
 /**
  * Whether text starts with an identifier (and not with a longer one).
@@ -112,7 +125,8 @@ function startsWithName(text: string, name: string): boolean {
  * Whether an unquoted argument is what the error complains about: for
  * `ReferenceError` the argument starts with the undefined name (`input`,
  * `my-id`, `button.primary`); for `SyntaxError` it is several bare words
- * (`div p`), the unexpected one (when named) among the later ones.
+ * (`div p`), the unexpected one (when named) among the later ones; for a
+ * syntax error at punctuation it starts like a selector (`.btn`, `#main`).
  *
  * @param argument - Unquoted argument
  * @param error - What the error says
@@ -120,6 +134,7 @@ function startsWithName(text: string, name: string): boolean {
  */
 function explainsError(argument: string, error: QuoteError): boolean {
   if (error.kind === 'undefined') return startsWithName(argument, error.name);
+  if (error.kind === 'selector') return SELECTOR_PUNCTUATION.test(argument);
   const [, ...laterWords] = argument.split(/\s+/);
   return (
     !EXPRESSION_KEYWORDS.test(argument) &&
@@ -138,6 +153,7 @@ function explainsError(argument: string, error: QuoteError): boolean {
 function quoteRelatedError(errorMessage: string): QuoteError | undefined {
   const notDefined = NOT_DEFINED_PATTERN.exec(errorMessage);
   if (notDefined?.[1]) return { kind: 'undefined', name: notDefined[1] };
+  if (SELECTOR_SYNTAX_PATTERN.test(errorMessage)) return { kind: 'selector' };
   const syntax = SEVERAL_WORDS_PATTERN.exec(errorMessage);
   if (!syntax) return undefined;
   return syntax[1] ? { kind: 'syntax', name: syntax[1] } : { kind: 'syntax' };
@@ -170,7 +186,8 @@ export function detectSelectorQuoteDamage(selector: string): ShellDamageResult {
 /**
  * Detects shell quote damage in JavaScript expressions. Conservative: only an
  * error stripped quotes cause (`x is not defined`,
- * `missing ) after argument list`, `Unexpected identifier`) counts, about an
+ * `missing ) after argument list`, `Unexpected identifier`,
+ * `Unexpected token '.'`, `Invalid or unexpected token`) counts, about an
  * argument of a DOM method that takes a string (`querySelector(input)`),
  * which the script does not declare itself.
  *

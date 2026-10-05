@@ -20,6 +20,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 
 /**
  * Run a bdg command and assert its exit code.
@@ -676,6 +677,32 @@ void describe('DOM interactions', () => {
       );
     } finally {
       await evaluate("document.getElementById('sorts').remove(); 1");
+    }
+  });
+
+  void it('names a select by label, then aria-label, then name, then selected option', async () => {
+    const options = '<option>One</option><option selected>Two</option>';
+    const html =
+      `<div id="naming"><label for="s1">By label</label><select id="s1" aria-label="Aria" name="n1">${options}</select>` +
+      `<select id="s2" aria-label="By aria" name="n2">${options}</select>` +
+      `<select id="s3" name="by-name">${options}</select>` +
+      `<select id="s4">${options}</select>` +
+      `<p><span>Row</span><span style="display:none">Gone</span><span style="visibility:hidden">Ghost</span>` +
+      `<select>${options}</select><textarea>typed</textarea><input type="checkbox" class="row-pick"></p></div>`;
+    await evaluate(`document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(html)}); 1`);
+    try {
+      const names = await evaluate(
+        `['#s1', '#s2', '#s3', '#s4', '.row-pick'].map((s) => (${ELEMENT_IDENTITY_JS})(document.querySelector(s)))`
+      );
+      assert.deepEqual(names, [
+        'select#s1 "By label"',
+        'select#s2 "By aria"',
+        'select#s3 "by-name"',
+        'select#s4 "Two"',
+        'input.row-pick in p "Row"',
+      ]);
+    } finally {
+      await evaluate("document.getElementById('naming').remove(); 1");
     }
   });
 
