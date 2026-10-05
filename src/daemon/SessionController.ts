@@ -54,6 +54,22 @@ const log = createLogger('daemon');
 const STARTING_ERROR = 'The session is still starting';
 const COMMAND_TIMEOUT_MS = 30000;
 const QUERY_TIMEOUT_MS = 5000;
+/** Time a `dom wait` gets beyond its own --timeout to report the timeout itself */
+const WAIT_COMMAND_MARGIN_MS = 5000;
+
+/**
+ * How long a session command may run: `dom wait` runs for its own
+ * --timeout, everything else gets {@link COMMAND_TIMEOUT_MS}.
+ *
+ * @param name - Command name
+ * @param params - Command parameters
+ * @returns Timeout in milliseconds
+ */
+function commandTimeoutMs(name: CommandName, params: unknown): number {
+  if (name !== 'dom_wait') return COMMAND_TIMEOUT_MS;
+  const { timeout } = params as { timeout?: number };
+  return Math.max(COMMAND_TIMEOUT_MS, (timeout ?? 0) + WAIT_COMMAND_MARGIN_MS);
+}
 
 /**
  * Run a promise with a timeout, clearing the timer either way.
@@ -332,7 +348,11 @@ export class SessionController {
         n: CommandName,
         p: unknown
       ) => Promise<unknown>;
-      const data = await withTimeout(execute(name, params), COMMAND_TIMEOUT_MS, 'Command');
+      const data = await withTimeout(
+        execute(name, params),
+        commandTimeoutMs(name, params),
+        'Command'
+      );
       return { ...base, status: 'ok', data };
     } catch (error) {
       return { ...base, status: 'error', ...describeCommandError(error) };

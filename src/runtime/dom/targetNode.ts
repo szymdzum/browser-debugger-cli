@@ -48,7 +48,7 @@ export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
  * whole step CSS inside one shadow tree); a child step stays in the
  * element's own tree.
  */
-const FILTER_MATCHING_JS = `(shadowRoots) => {
+export const FILTER_MATCHING_JS = `(shadowRoots) => {
   const skipped = /^(script|style|noscript|template)$/;
   const hiddenText = (el) => {
     const walker = el.ownerDocument.createTreeWalker(el, 5, {

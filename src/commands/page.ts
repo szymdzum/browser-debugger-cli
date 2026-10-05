@@ -11,7 +11,11 @@ import { javascriptNavigationError } from '@/errors/messages.js';
 import { pageNavigate } from '@/ipc/client.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { PAGE_ACTION_DESCRIPTIONS, PAGE_ACTION_DONE } from '@/ui/messages/commands.js';
+import {
+  PAGE_ACTION_DESCRIPTIONS,
+  PAGE_ACTION_DONE,
+  pageLoadingWarning,
+} from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { validateUrl } from '@/utils/url.js';
 
@@ -41,6 +45,7 @@ function formatPageResult(result: PageNavigationResult): string {
       8
     );
   if (result.warning) fmt.text(`⚠ ${result.warning}`);
+  if (result.loading) fmt.text(`⚠ ${pageLoadingWarning(result.loading)}`);
   return fmt.build();
 }
 

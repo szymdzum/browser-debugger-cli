@@ -34,7 +34,11 @@ import {
   formatTriggeredRequestLines,
 } from '@/ui/formatters/triggeredRequests.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { POINTER_ACTION_DONE, dialogConsoleText } from '@/ui/messages/commands.js';
+import {
+  CLICK_RESULT_WAIT_HELP,
+  POINTER_ACTION_DONE,
+  dialogConsoleText,
+} from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -114,6 +118,7 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--right', 'Right-click (opens the context menu)')
     .option('--no-wait', 'Skip waiting for network stability after click')
     .addOption(jsonOption())
+    .addHelpText('after', CLICK_RESULT_WAIT_HELP)
     .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
       const action = options.double ? 'double' : options.right ? 'right' : 'click';
       await runPointerCommand(selectorOrIndex, options, action);
@@ -144,6 +149,7 @@ export function registerFormInteractionCommands(program: Command): void {
     )
     .option('--timeout <ms>', 'Maximum time to wait (milliseconds)', integerOption(1), 10000)
     .addOption(jsonOption())
+    .addHelpText('after', CLICK_RESULT_WAIT_HELP)
     .action(async (selectorOrIndex: string, options: SubmitCommandOptions) => {
       await runCommand(
         () =>

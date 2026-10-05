@@ -22,8 +22,10 @@ import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
+import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
+import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionPort } from '@/session/port.js';
@@ -65,6 +67,8 @@ export interface SessionInfo {
   targetTitle?: string;
   /** HTTP status of the page's main document, when known */
   documentStatus?: number;
+  /** The page had not finished loading when the readiness wait ended */
+  loading?: PageLoadingState;
 }
 
 /** Session metadata as reported in status responses. */
@@ -102,6 +106,7 @@ export class Session {
   private readonly launchAbort = new AbortController();
   private started = false;
   private documentRequestId: string | undefined;
+  private loading: PageLoadingState | undefined;
 
   private constructor(
     private config: SessionConfig,
@@ -196,6 +201,7 @@ export class Session {
       targetUrl: target?.url ?? this.config.url,
       ...(target?.title && { targetTitle: target.title }),
       ...(documentStatus !== undefined && { documentStatus }),
+      ...(this.loading && { loading: this.loading }),
     };
   }
 
@@ -284,6 +290,8 @@ export class Session {
       this.chrome,
       log
     );
+    this.throwIfStopping();
+    this.loading = await readPageLoadingState(this.cdp, this.store.pendingNetworkRequests.values());
     this.throwIfStopping();
   }
 

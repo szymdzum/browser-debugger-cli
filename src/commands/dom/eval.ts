@@ -6,9 +6,10 @@
  * `dom_eval` IPC command so the session's persistent CDP connection is reused.
  */
 
+import { documentReadyState } from '@/commands/dom/helpers/query.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomEvalCommandOptions } from '@/commands/shared/optionTypes.js';
-import { emptyScriptError } from '@/errors/messages.js';
+import { emptyScriptError, withLoadingHint } from '@/errors/messages.js';
 import { domEval } from '@/ipc/client.js';
 import { formatDomEval } from '@/ui/formatters/dom.js';
 import { evalFrameLine } from '@/ui/messages/commands.js';
@@ -33,11 +34,12 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
       }
       const response = await domEval(script, options.frame);
       if (response.status === 'error' || !response.data) {
+        const suggestion = await frameErrorSuggestion(response, options.frame);
         return {
           success: false,
           error: response.error ?? 'Failed to evaluate script',
           exitCode: response.exitCode ?? EXIT_CODES.CDP_CONNECTION_FAILURE,
-          ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
+          ...(suggestion && { errorContext: { suggestion } }),
         };
       }
       const { value, type, subtype, frame } = response.data;
@@ -55,4 +57,22 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
     options,
     formatDomEval
   );
+}
+
+/**
+ * Suggestion of a failed eval; a frame not found (83) while the page is
+ * still loading says so (its iframes may not exist yet).
+ *
+ * @param response - Error response
+ * @param frame - The --frame given, if any
+ * @returns Suggestion, if any
+ */
+async function frameErrorSuggestion(
+  response: { exitCode?: number; suggestion?: string },
+  frame: string | undefined
+): Promise<string | undefined> {
+  if (frame === undefined || response.exitCode !== EXIT_CODES.RESOURCE_NOT_FOUND) {
+    return response.suggestion;
+  }
+  return withLoadingHint(response.suggestion ?? '', await documentReadyState()) || undefined;
 }

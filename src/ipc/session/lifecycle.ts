@@ -6,6 +6,7 @@
 
 import type { IPCErrorCode } from './errors.js';
 
+import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { TelemetryType } from '@/types.js';
 
 /**
@@ -89,6 +90,8 @@ export interface StartSessionResponseData {
   targetTitle?: string;
   /** HTTP status of the page's main document, when known. */
   documentStatus?: number;
+  /** The page had not finished loading when the start returned. */
+  loading?: PageLoadingState;
   /** True if a stale session was auto-recovered before this one started. */
   recovered?: boolean;
   /** Target URL or ws URL of the stale session that was recovered, if recorded. */

@@ -313,6 +313,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       targetUrl: data.targetUrl,
       ...(data.targetTitle !== undefined && { targetTitle: data.targetTitle }),
       ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
+      ...(data.loading && { loading: data.loading }),
       port: data.port,
       ...(data.chromePid > 0 ? { chromePid: data.chromePid } : { externalChrome: true }),
       daemonPid: data.daemonPid,
@@ -323,6 +324,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
     const page = {
       url: data.targetUrl,
       ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
+      ...(data.loading && { loading: data.loading }),
       ...(autoStopAt && { autoStopAt }),
       ...(session && { session }),
     };

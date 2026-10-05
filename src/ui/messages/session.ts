@@ -5,6 +5,7 @@
  * status displays, and session management messages.
  */
 
+import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import {
   buildCommonTasksSection,
   buildDomainCommandsSection,
@@ -14,6 +15,7 @@ import {
   buildDiscoverySection,
 } from '@/ui/formatters/sessionFormatters.js';
 import { joinLines } from '@/ui/formatting.js';
+import { pageLoadingWarning } from '@/ui/messages/commands.js';
 
 /**
  * Options for the landing page display.
@@ -23,6 +25,8 @@ export interface LandingPageOptions {
   url: string;
   /** HTTP status of the main document (a warning is shown for 4xx/5xx) */
   documentStatus?: number;
+  /** The page had not finished loading (a warning names what it waits on) */
+  loading?: PageLoadingState;
   /** When `--timeout` will stop the session */
   autoStopAt?: Date;
   /** Name of a named session (`--session`) */
@@ -31,13 +35,14 @@ export interface LandingPageOptions {
 
 /**
  * Lines shown under the target in both the full and the quiet start output:
- * the session name, an HTTP error of the page, and when the session stops by itself.
+ * the session name, an HTTP error of the page, a page still loading, and
+ * when the session stops by itself.
  *
  * @param options - Landing page options
  * @returns Lines (empty when there is nothing to say)
  */
 export function startNotices(options: LandingPageOptions): string[] {
-  const { documentStatus, autoStopAt, session } = options;
+  const { documentStatus, loading, autoStopAt, session } = options;
   return [
     ...(session
       ? [
@@ -47,6 +52,7 @@ export function startNotices(options: LandingPageOptions): string[] {
     ...(documentStatus !== undefined && documentStatus >= 400
       ? [`⚠ The page responded with HTTP ${documentStatus}`]
       : []),
+    ...(loading ? [`⚠ ${pageLoadingWarning(loading)}`] : []),
     ...(autoStopAt ? [`Auto-stop: at ${autoStopAt.toLocaleTimeString()} (--timeout)`] : []),
   ];
 }

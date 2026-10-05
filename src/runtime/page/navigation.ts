@@ -8,6 +8,8 @@ import { UNREACHABLE_ERRORS } from '@/daemon/session/cdpSetup.js';
 import { CommandError } from '@/errors/index.js';
 import { navigationFailedError, noHistoryEntryError } from '@/errors/messages.js';
 import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
+import { readPageLoadingState } from '@/runtime/page/loadingState.js';
+import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { httpErrorWarning, notAPageWarning, stillLoadingWarning } from '@/ui/messages/commands.js';
@@ -28,18 +30,21 @@ const PAGE_READY_TIMEOUT_MS = 15_000;
  * navigation may still be waiting for the server). Otherwise the server gets
  * {@link PAGE_READY_TIMEOUT_MS} to answer, then the new document is waited on
  * to settle; its HTTP status is reported, with a warning for 4xx/5xx, for a
- * URL that is a download, or a page still loading.
+ * URL that is a download, or a server that has not answered. A document
+ * that has not finished loading by then is reported as `loading`, with the
+ * requests it waits on.
  *
  * @param cdp - CDP connection
  * @param action - Navigate to a URL, reload, or go back/forward in history
- * @param options - `url` for navigate, `wait: false` to return without waiting
+ * @param options - `url` for navigate, `wait: false` to return without waiting,
+ *   `pendingRequests`: the session's requests still running
  * @returns Where the page is now
  * @throws CommandError (80) for an unreachable URL, (81) without a history entry
  */
 export async function navigatePage(
   cdp: CDPConnection,
   action: PageAction,
-  options: { url?: string; wait?: boolean } = {}
+  options: { url?: string; wait?: boolean; pendingRequests?: () => Iterable<PendingRequest> } = {}
 ): Promise<PageNavigationResult> {
   const url = action === 'navigate' ? normalizeUrl(options.url ?? '') : undefined;
   if (options.wait === false) return startWithoutWaiting(cdp, action, url);
@@ -63,7 +68,9 @@ export async function navigatePage(
     navigated.stop();
     document.stop();
   }
-  return withStatus({ action, ...(await currentLocation(cdp)) }, document.response());
+  const result = withStatus({ action, ...(await currentLocation(cdp)) }, document.response());
+  const loading = await readPageLoadingState(cdp, options.pendingRequests?.() ?? []);
+  return loading ? { ...result, loading } : result;
 }
 
 /** How long `--no-wait` waits for an action to be refused (no history entry, unreachable URL) */
