@@ -108,8 +108,9 @@ export const SIBLING_POSITION_JS = `(el) => {
  * siblings ({@link SIBLING_POSITION_JS}), e.g. `div.figure (2nd of 3)`, with
  * its aria-label, placeholder or title when it has one. Only an element
  * without an id that is the only one of its kind is named by the nearest of
- * three ancestors that has text, e.g. `input.toggle in div.view "Write
- * report"` (rows of a list share their aria-label), leaving out the options
+ * three ancestors that has text, e.g.
+ * `input.toggle in div.view "Write report"` (rows of a list share their
+ * aria-label), leaving out the options
  * of `<select>`s in it (read like `innerText`: CSS-hidden text is left out of
  * a rendered ancestor; at most 500 text nodes; selects in shadow roots are
  * not looked into), and never past an editable ancestor, whose text may be

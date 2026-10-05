@@ -83,6 +83,15 @@ const CLICK_TARGETS_HTML =
   '<h3 id="faux-headline" style="margin: 0; font-size: 14px">Headline</h3>' +
   '<button id="under-card-link" style="left: 0; top: 40px">Save</button>' +
   '<a href="#story" style="position: absolute; inset: 0"></a></div>' +
+  '<div style="position: absolute; left: 450px; top: 360px; width: 100px; height: 40px">' +
+  '<h4 id="promo-headline" style="margin: 0">Promo</h4>' +
+  '<a href="#promo" style="position: absolute; inset: 0">Buy now</a></div>' +
+  '<div style="position: absolute; left: 560px; top: 360px; width: 100px; height: 40px">' +
+  '<h4 id="role-headline" style="margin: 0">Role</h4>' +
+  '<a href="#role" role="button" style="position: absolute; inset: 0"></a></div>' +
+  '<div style="position: absolute; left: 450px; top: 410px; width: 100px; height: 40px">' +
+  '<h4 id="dismiss-headline" style="margin: 0">Dismiss</h4>' +
+  '<button style="left: 0; top: 0; width: 100px; height: 40px">×</button></div>' +
   '<div style="position: absolute; top: 2500px; left: 0; height: 300px">' +
   '<div id="sticky-note" style="position: sticky; top: 0">Note</div></div></div>';
 
@@ -526,6 +535,12 @@ void describe('Element layout', () => {
           ['visible', 'a'],
         ],
         JSON.stringify(data.elements)
+      );
+      const covers = await layout('#promo-headline, #role-headline, #dismiss-headline');
+      assert.deepEqual(
+        covers.elements.map((element) => element.coveredBy),
+        ['a', 'a', 'button'],
+        'links with text, role=button overlays and dismiss buttons still cover'
       );
       assert.match(
         await bdg(['dom', 'layout', '#sticky-note']),

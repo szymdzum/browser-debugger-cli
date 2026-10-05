@@ -77,9 +77,11 @@ const CLICK_TARGET_SELECTOR =
  * would: both are in the same link, button or label (an overlay span inside
  * the card's link), or in links to the same URL (a card's overlay link next
  * to its headline link), or the element is plain content (in no link or
- * button) of a card whose overlay link spans it (the "faux block link" of
- * news sites: an absolutely positioned link in the card, not directly in
- * `<body>`, over the headline).
+ * button) of a card covered by its "faux block link" (news sites): an
+ * absolutely positioned `<a href>` without visible text of its own (empty,
+ * or an aria-label only), directly in the card (not `<body>`) and spanning
+ * it. Dismiss buttons, promo links with text and `[role=button]` overlays
+ * still count as covers.
  */
 const SAME_CLICK_TARGET_JS = `(node, hit) => {
   const parentOf = (n) => n.parentElement || (n.parentNode && n.parentNode.host) || null;
@@ -94,9 +96,12 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
   const mine = targetOf(node);
   if (mine) return mine === theirs || (mine.localName === 'a' && theirs.localName === 'a' && mine.href === theirs.href);
   const card = theirs.parentElement;
+  if (theirs.localName !== 'a' || theirs.hasAttribute('role')) return false;
   if (!card || card === node.ownerDocument.body || !card.contains(node)) return false;
+  const style = theirs.ownerDocument.defaultView.getComputedStyle(theirs);
+  if (style.position !== 'absolute' || (theirs.innerText || '').trim() !== '') return false;
   const outer = theirs.getBoundingClientRect();
-  const inner = node.getBoundingClientRect();
+  const inner = card.getBoundingClientRect();
   return outer.left <= inner.left + 1 && outer.top <= inner.top + 1 && outer.right >= inner.right - 1 && outer.bottom >= inner.bottom - 1;
 }`;
 

@@ -31,6 +31,7 @@ interface FakeNode {
   isContentEditable: boolean;
   getAttribute: (name: string) => string | null;
   matches: (selector: string) => boolean;
+  querySelector: (selector: string) => FakeNode | null;
   querySelectorAll: (selector: string) => FakeNode[];
   contains: (other: FakeNode) => boolean;
 }
@@ -87,6 +88,7 @@ function node(
     isContentEditable: false,
     getAttribute: (name) => self.attributes[name] ?? null,
     matches: (selector) => selector.split(/\s*,\s*/).some((part) => matchesSimple(self, part)),
+    querySelector: (selector) => descendants(self).find((n) => n.matches(selector)) ?? null,
     querySelectorAll: (selector) => descendants(self).filter((n) => n.matches(selector)),
     contains: (other) => other === self || descendants(self).includes(other),
   };

@@ -32,19 +32,42 @@ export const FORM_DISCOVERY_SCRIPT = `
   }
 
   // Inside an open dialog: <dialog open>, aria-modal or a dialog role, or a
-  // modal without them (DocSearch): a container below <body> whose class
-  // names a modal or dialog, or a fixed overlay over half the viewport or more
+  // modal without them (DocSearch): an overlay ancestor below <body>
+  // (position fixed or absolute) that is raised (z-index > 0) or has a
+  // backdrop and whose class names a modal or dialog, or a fixed overlay over
+  // half the viewport or more that is raised or lies over other page content
+  // at the viewport centre. Static wrappers (Drupal's
+  // dialog-off-canvas-main-canvas) and fixed app shells holding the whole
+  // page are not dialogs.
   function inDialog(element) {
     if (element.closest('dialog[open], [aria-modal="true"], [role="dialog"], [role="alertdialog"]')) return true;
     const viewportArea = window.innerWidth * window.innerHeight;
     for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+      const style = window.getComputedStyle(node);
+      if (style.position !== 'fixed' && style.position !== 'absolute') continue;
+      const raised = parseInt(style.zIndex, 10) > 0;
       const className = typeof node.className === 'string' ? node.className : '';
-      if (/(^|[\\s_-])(modal|dialog)($|[\\s_-])/i.test(className)) return true;
-      if (window.getComputedStyle(node).position !== 'fixed') continue;
+      if (/(^|[\\s_-])(modal|dialog)($|[\\s_-])/i.test(className) && (raised || hasBackdrop(node))) return true;
+      if (style.position !== 'fixed') continue;
       const box = node.getBoundingClientRect();
-      if (box.width * box.height >= viewportArea / 2) return true;
+      if (box.width * box.height >= viewportArea / 2 && (raised || coversContent(node))) return true;
     }
     return false;
+  }
+
+  // A backdrop element next to or inside an overlay
+  function hasBackdrop(node) {
+    const backdrop = /backdrop|overlay/i;
+    const near = [node.previousElementSibling, node.nextElementSibling, ...Array.from(node.children)];
+    return near.some((n) => n && typeof n.className === 'string' && backdrop.test(n.className));
+  }
+
+  // The overlay is on top at the viewport centre with other page content
+  // (not its ancestors) below it
+  function coversContent(node) {
+    const stack = document.elementsFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    if (!stack.length || !node.contains(stack[0])) return false;
+    return stack.some((n) => !n.contains(node) && !node.contains(n));
   }
 
   function isUnique(selector) {
@@ -541,7 +564,10 @@ export const FORM_DISCOVERY_SCRIPT = `
       const buttons = discoverButtons(formEl, globalIndex);
       globalIndex += buttons.length;
       const inIframe = formEl.ownerDocument !== document;
-      const shown = isShown(formEl) && (fields.length === 0 || fields.some((f) => !f.hidden));
+      // Shown when a field or a button is (buttons list shown ones only), or
+      // it has neither (a form with only type=hidden inputs and no button)
+      const shown = isShown(formEl) &&
+        (fields.some((f) => !f.hidden) || buttons.length > 0 || fields.length === 0);
       result.forms.push({
         index: i,
         name: extractFormName(formEl),

@@ -196,8 +196,9 @@ const NAME_SCAN_LIMIT = 5000;
 export function pageNamesJS(kind: 'id' | 'class'): string {
   return `(() => {
   const names = new Set();
-  const elements = Array.from(document.querySelectorAll('[${kind}]')).slice(0, ${NAME_SCAN_LIMIT});
-  for (const el of elements) {
+  const elements = document.querySelectorAll('[${kind}]');
+  for (let i = 0; i < elements.length && i < ${NAME_SCAN_LIMIT}; i++) {
+    const el = elements[i];
     ${kind === 'id' ? 'if (el.id) names.add(el.id);' : 'for (const name of el.classList) names.add(name);'}
   }
   return Array.from(names);

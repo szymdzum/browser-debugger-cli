@@ -74,6 +74,21 @@ const SEARCH_FORMS_HTML =
   '<form id="hidden-search" role="search" style="display: none"><input type="search" name="q" id="hidden-q"></form>' +
   '<dialog id="search-dialog"><form method="dialog" role="search"><input type="search" name="q" id="dialog-q"></form></dialog>';
 
+/**
+ * A fixed app shell holding the page (with a static Drupal-style
+ * `dialog-off-canvas-main-canvas` wrapper), a logout form whose only visible
+ * control is its button, and a DocSearch-style raised modal overlay
+ */
+const FORM_SHELLS_HTML =
+  '<div class="app-shell" style="position: fixed; inset: 0; overflow: auto">' +
+  '<div class="dialog-off-canvas-main-canvas"><form id="drupal"><input id="drupal-q" name="q"></form></div>' +
+  '<form id="shell"><input id="shell-q" name="shell"></form>' +
+  '<form id="logout"><input type="hidden" name="csrf" value="x"><input name="extra" style="display: none">' +
+  '<button type="submit">Log out</button></form></div>' +
+  '<div class="DocSearch DocSearch-Container" style="position: fixed; inset: 0; z-index: 200">' +
+  '<div class="DocSearch-Modal" style="margin: 60px auto; width: 300px; background: white">' +
+  '<form class="DocSearch-Form"><input id="ds-q" type="search"></form></div></div>';
+
 /** JSON output of a DOM action */
 type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
 
@@ -883,6 +898,27 @@ void describe('DOM interactions', () => {
     assert.match(
       await bdg(['dom', 'fill', String(hidden?.fields[0]?.index), 'x']),
       /The field is hidden; a user could not fill it/
+    );
+  });
+
+  void it('keeps forms with only a button visible and tells dialogs from app shells', async () => {
+    await evaluate(`document.body.innerHTML = ${JSON.stringify(FORM_SHELLS_HTML)}; 1`);
+    type Listed = {
+      data: {
+        forms: Array<{ hidden: boolean; inDialog: boolean; fields: Array<{ selector: string }> }>;
+      };
+    };
+    const { forms } = (JSON.parse(await bdg(['dom', 'form', '--all', '--json'])) as Listed).data;
+    const formOf = (selector: string): Listed['data']['forms'][number] | undefined =>
+      forms.find((form) => form.fields.some((field) => field.selector === selector));
+    assert.equal(formOf('#ds-q')?.inDialog, true, 'a raised fixed overlay (DocSearch) is a dialog');
+    assert.equal(forms[0], formOf('#ds-q'), 'the dialog form comes first');
+    assert.equal(formOf('#shell-q')?.inDialog, false, 'a fixed app shell is not a dialog');
+    assert.equal(formOf('#drupal-q')?.inDialog, false, 'a static "dialog-…" wrapper is not one');
+    assert.equal(
+      formOf('input[name="extra"]')?.hidden,
+      false,
+      'a form with a visible button is shown'
     );
   });
 });
