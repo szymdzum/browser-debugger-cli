@@ -130,13 +130,22 @@ export function lastSessionEndText(end: { reason: string; endedAt: number }): st
 }
 
 /**
- * Hint after a failed start whose daemon had not exited when bdg stopped waiting.
+ * Note after a failed start whose daemon had not exited when bdg stopped waiting.
  *
  * @param pid - Daemon PID, when known
  * @param waitedMs - How long bdg waited
- * @returns Hint line
+ * @returns Note
  */
 export function daemonStillExitingHint(pid: number | undefined, waitedMs: number): string {
   const daemon = pid === undefined ? 'The daemon' : `The daemon (PID ${pid})`;
-  return `${daemon} was still shutting down after ${waitedMs / 1000}s; check with bdg sessions, or end it with ${sessionCommand('bdg cleanup --force')}`;
+  return `${daemon} was still shutting down after ${waitedMs / 1000}s`;
+}
+
+/**
+ * What to do about a daemon still shutting down after a failed start.
+ *
+ * @returns Suggestion
+ */
+export function daemonStillExitingSuggestion(): string {
+  return `check with bdg sessions, or end it with ${sessionCommand('bdg cleanup --force')}`;
 }

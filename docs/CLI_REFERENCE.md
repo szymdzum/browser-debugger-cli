@@ -25,6 +25,8 @@ The start output is a few lines: the target, notices (session name, HTTP error, 
 
 A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
+When a start fails after it launched the session's daemon and the daemon reported the failure (an attach refusal, Chrome that cannot be launched, a URL that cannot be loaded), the daemon exits, and `bdg` returns the error only once it is gone (waiting up to 3 s), so a `bdg sessions` or another start right after it does not see the session as still starting. A timeout or an unexpected error does not wait (the daemon may still be starting the session). When the daemon is still running after the wait, the error says so (`The daemon (PID 4242) was still shutting down after 3s; check with bdg sessions, or end it with bdg cleanup --force`), and the JSON error has `daemonStillRunning: true`, `daemonPid` and the commands in `suggestion` (after any suggestion the error already had).
+
 A page that has not finished loading when the start returns (the start waits about 2 s; e.g. a script whose server never answers) still starts the session (exit 0) with a warning naming up to 3 requests it waits on, load-blocking ones (scripts, styles, images, frames) first:
 
 ```text
