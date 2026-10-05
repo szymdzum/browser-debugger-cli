@@ -269,11 +269,12 @@ const UNHANDLED_REJECTION_TEXT = 'Uncaught (in promise)';
  * nothing ever handles stays.
  */
 class RevocableRejections {
-  /** Messages of rejections, by session and exception id */
+  /** Messages of rejections, by session and exception id, oldest first */
   private readonly pending = new Map<string, ConsoleMessage>();
 
   /**
-   * Remember a reported exception if it is an unhandled rejection.
+   * Remember a reported exception if it is an unhandled rejection. Past
+   * {@link MAX_CONSOLE_MESSAGES} rejections, the oldest is forgotten.
    *
    * @param details - Exception details
    * @param message - Its console message
@@ -286,6 +287,9 @@ class RevocableRejections {
   ): void {
     if (!details.text.startsWith(UNHANDLED_REJECTION_TEXT)) return;
     this.pending.set(this.key(details.exceptionId, sessionId), message);
+    if (this.pending.size <= MAX_CONSOLE_MESSAGES) return;
+    const [oldest] = this.pending.keys();
+    if (oldest !== undefined) this.pending.delete(oldest);
   }
 
   /**
@@ -304,13 +308,32 @@ class RevocableRejections {
   }
 
   /**
+   * Forget the rejections of a session whose documents are gone (it
+   * detached, or its contexts were cleared by a navigation): they can no
+   * longer be revoked.
+   *
+   * @param sessionId - Session (undefined: the page)
+   */
+  forgetSession(sessionId?: string): void {
+    const prefix = this.key('', sessionId);
+    for (const key of this.pending.keys()) {
+      if (key.startsWith(prefix)) this.pending.delete(key);
+    }
+  }
+
+  /** Forget every rejection (the collection stopped). */
+  clear(): void {
+    this.pending.clear();
+  }
+
+  /**
    * Map key of an exception: ids are counted per session.
    *
-   * @param exceptionId - Exception id
+   * @param exceptionId - Exception id ('' for the session's prefix)
    * @param sessionId - Session
    * @returns Key
    */
-  private key(exceptionId: number, sessionId?: string): string {
+  private key(exceptionId: number | '', sessionId?: string): string {
     return `${sessionId ?? ''}:${exceptionId}`;
   }
 }
@@ -424,6 +447,14 @@ export async function startConsoleCollection(
     rejections.revoke(messages, exceptionId, sessionId);
   });
 
+  registry.registerTyped(typed, 'Runtime.executionContextsCleared', (_params, sessionId) => {
+    rejections.forgetSession(sessionId);
+  });
+
+  registry.registerTyped(typed, 'Target.detachedFromTarget', ({ sessionId }) => {
+    rejections.forgetSession(sessionId);
+  });
+
   registry.registerTyped(typed, 'Log.entryAdded', ({ entry }) => {
     handleLogEntry(messages, entry, getCurrentNavigationId?.(), includeAll);
   });
@@ -438,6 +469,7 @@ export async function startConsoleCollection(
 
   return async () => {
     registry.cleanup();
+    rejections.clear();
     await detachChildren();
   };
 }

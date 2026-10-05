@@ -447,4 +447,52 @@ void describe('ELEMENT_INFO_JS Preact proxies', () => {
     assert.equal(unresolved.listeners[0]?.preact, undefined);
     assert.equal(getterRan, false);
   });
+
+  void it('leaves generic dispatchers and long look-alikes alone', () => {
+    const click = function onClick(): void {};
+    const listener = [{ position: 0, type: 'click', capture: false }];
+    const resolve = (source: string, keys: object): unknown => {
+      const [button] = reactChain(keys, {});
+      const [info] = elementInfo.call(button, listener, null, button, preactProxy(source), null);
+      return info.listeners[0]?.preact;
+    };
+    assert.equal(
+      resolve('function (e) { this.handlers[e.type](e) }', { handlers: { click } }),
+      undefined
+    );
+    assert.equal(
+      resolve('function (e) { return this.handlers[e.type + ":on"](e) }', {
+        handlers: { 'click:on': click, clickfalse: click },
+      }),
+      undefined,
+      'reads another key than the type plus capture flag'
+    );
+    assert.equal(
+      resolve('function (e) { return this.l[e.type + true](e); }', { l: { clickfalse: click } }),
+      undefined,
+      'reads the capture-phase handler of a bubble-phase listener'
+    );
+    assert.equal(
+      resolve('function (e) { var t = this.l[e.type + false]; return t; }', {
+        l: { clickfalse: click },
+      }),
+      undefined,
+      'does not call the handler with the event'
+    );
+    const padding = ' '.repeat(200);
+    assert.equal(
+      resolve(`function (e) {${padding} return this.l[e.type + false](e); }`, {
+        l: { clickfalse: click },
+      }),
+      undefined,
+      'too long for a minified proxy'
+    );
+    assert.deepEqual(
+      resolve('function eventProxy(e) {' + padding + ' this.l[e.type + false](e); }', {
+        l: { clickfalse: click },
+      }),
+      { name: 'onClick' },
+      'an unminified proxy is known by its name'
+    );
+  });
 });

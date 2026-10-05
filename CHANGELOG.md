@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`dom listeners` resolves Preact handlers** - Preact's event proxy on an element is replaced by the handler Preact runs for it, with its name, source and location, marked `[Preact]` (`framework: "Preact"`; Preact 8, 10 and 11, the handler store's key read from the proxy's source) (#346)
+- **`dom listeners` resolves Preact handlers** - Preact's event proxy on an element is replaced by the handler Preact runs for it, with its name, source and location, marked `[Preact]` (`framework: "Preact"`; Preact 10 and 11 and unminified builds, the handler store's key read from the proxy's source; other dispatchers are left alone) (#346)
 
 ### Fixed
 

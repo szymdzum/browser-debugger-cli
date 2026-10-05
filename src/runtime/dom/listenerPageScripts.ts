@@ -152,24 +152,66 @@ const REACT_HOSTS_JS = `(element, nodes) => {
   return hosts;
 }`;
 
+/** Longest source of a minified Preact event proxy (Preact 10 and 11: about 120 characters) */
+const MAX_PREACT_PROXY_LENGTH = 200;
+
+/**
+ * `(source, read) => boolean`: whether a proxy source calls the handler it
+ * reads (`read`: the match of `this.<key>[<event>.type + …]`) with the
+ * event, directly (`this.l[e.type + false](e)`) or through a variable
+ * (`var t = this.l[u.type + n]; … return t(l.event ? l.event(u) : u)`).
+ */
+const CALLS_READ_HANDLER_JS = `(source, read) => {
+  const event = read[2];
+  const passesEvent = (from) => {
+    const open = source.indexOf('(', from);
+    const close = source.indexOf(')', open);
+    if (open === -1 || close === -1 || source.slice(from, open).trim() !== '') return false;
+    return source.slice(open + 1, close).split(/[^\\w$]+/).includes(event);
+  };
+  const end = read.index + read[0].length;
+  if (passesEvent(end)) return true;
+  const assigned = /([\\w$]+)\\s*=\\s*$/.exec(source.slice(0, read.index));
+  if (!assigned) return false;
+  const variable = assigned[1];
+  for (let at = source.indexOf(variable, end); at !== -1; at = source.indexOf(variable, at + 1)) {
+    const before = source[at - 1] || '';
+    if (/[\\w$.]/.test(before)) continue;
+    if (passesEvent(at + variable.length)) return true;
+  }
+  return false;
+}`;
+
 /**
  * `(node, type, capture, handler) => function | null`: the handler Preact
  * runs from `handler` when it is Preact's event proxy on `node`. Preact
  * keeps an element's handlers in an object on the element under a mangled
- * key (`l` in Preact 10, `__e` in 11, `_listeners` in 8 and unmangled
- * builds), keyed by event type plus the capture flag (`clickfalse`; the
- * type alone in Preact 8); the key is read from the proxy's own source
- * (`this.l[e.type + useCapture]`), so it follows Preact's renames.
+ * key (`l` in Preact 10, `__e` in 11, `_listeners` unmangled), keyed by
+ * event type plus the capture flag (`clickfalse`); the key is read from the
+ * proxy's own source (`this.l[e.type + useCapture]`), so it follows
+ * Preact's renames. A proxy named `eventProxy`/`eventProxyCapture`
+ * (unminified builds; Preact 8 keys by type alone) is accepted as such;
+ * any other must look like Preact's minified one: a short function whose
+ * key holds a function for exactly the type plus capture flag, which it
+ * calls with the event. A generic dispatcher (`this.handlers[e.type](e)`)
+ * is left alone.
  */
 const PREACT_HANDLER_JS = `(node, type, capture, handler) => {
   const own = ${OWN_VALUE_JS};
   try {
     if (typeof handler !== 'function' || !node || typeof node !== 'object') return null;
-    const proxy = /this\\.([\\w$]+)\\[[\\w$]+\\.type(\\s*\\+)?/.exec(Function.prototype.toString.call(handler));
-    const store = proxy ? own(node, proxy[1]) : undefined;
+    const source = Function.prototype.toString.call(handler);
+    const read = /this\\.([\\w$]+)\\[([\\w$]+)\\.type(?:\\s*\\+\\s*(![01]|true|false|[\\w$]+))?\\s*\\]/.exec(source);
+    const store = read ? own(node, read[1]) : undefined;
     if (!store || typeof store !== 'object') return null;
-    const fn = own(store, proxy[2] ? type + capture : type);
-    return typeof fn === 'function' ? fn : null;
+    const flag = { true: true, '!0': true, false: false, '!1': false }[read[3]];
+    if (flag !== undefined && flag !== capture) return null;
+    const fn = own(store, read[3] ? type + capture : type);
+    if (typeof fn !== 'function') return null;
+    const name = own(handler, 'name');
+    if (name === 'eventProxy' || name === 'eventProxyCapture') return fn;
+    const minified = read[3] && source.length < ${MAX_PREACT_PROXY_LENGTH};
+    return minified && (${CALLS_READ_HANDLER_JS})(source, read) ? fn : null;
   } catch (e) { return null; }
 }`;
 
