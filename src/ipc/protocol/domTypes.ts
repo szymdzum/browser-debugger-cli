@@ -7,7 +7,7 @@
  * here lets runtime and transport evolve independently.
  */
 
-import type { FormStep, FieldOption } from '@/types.js';
+import type { FormStep, FieldOption, ViewportPosition } from '@/types.js';
 
 /**
  * A JavaScript dialog (alert, confirm, prompt, beforeunload) that bdg accepted
@@ -216,6 +216,82 @@ export interface ListenersResult {
   matchCount?: number;
   /** Set when several elements matched and no --index was given */
   warning?: string;
+}
+
+/** A point in CSS pixels. */
+export interface LayoutPoint {
+  x: number;
+  y: number;
+}
+
+/** A width and height in CSS pixels. */
+export interface LayoutSize {
+  width: number;
+  height: number;
+}
+
+/** Position and size of an element's border box in CSS pixels. */
+export type LayoutBox = LayoutPoint & LayoutSize;
+
+/** Computed styles that decide whether and how an element shows. */
+export interface LayoutComputedStyle {
+  display: string;
+  visibility: string;
+  position: string;
+  opacity: string;
+  zIndex: string;
+}
+
+/** Where one element is on the page and whether a user can see it. */
+export interface ElementLayout {
+  /** Index among the selector's matches (or in the cached query) */
+  index: number;
+  tag: string;
+  /** Short description, e.g. `button#save.primary` */
+  element: string;
+  /** Text preview */
+  text?: string;
+  /** Enclosing iframe(s) and shadow root, e.g. `iframe#pay > shadow root of <x-card>` */
+  context?: string;
+  /** Border box relative to the top-level document (page coordinates) */
+  bounds: LayoutBox;
+  /** Top-left corner relative to the top-level viewport */
+  viewport: LayoutPoint;
+  inViewport: ViewportPosition;
+  /** Share of the element in view, for `partly` */
+  percentVisible?: number;
+  /** Why it is `hidden`, e.g. `display: none` */
+  hiddenReason?: string;
+  /** Page scroll (`window.scrollBy`) that brings it fully into view, when one helps */
+  scrollBy?: LayoutPoint;
+  /** Ancestor or iframe cutting it off (scroll that container instead of the page) */
+  clippedBy?: string;
+  /** Topmost element at the center of its visible part, when that is another element */
+  coveredBy?: string;
+  /** Inside an `inert` element: shown, but a user cannot interact with it */
+  inert?: true;
+  computed: LayoutComputedStyle;
+}
+
+/** Viewport, scroll position and document size of the top-level page. */
+export interface PageLayout {
+  viewport: LayoutSize;
+  scroll: LayoutPoint;
+  document: LayoutSize;
+}
+
+/** Layout of the elements a selector (or cached index) refers to. */
+export interface LayoutResult {
+  /** Always true: failures are reported as errors */
+  success: true;
+  /** Selector the elements were found with (for an index: the cached query's) */
+  selector: string;
+  /** Elements the selector matched (1 for an index) */
+  count: number;
+  page: PageLayout;
+  elements: ElementLayout[];
+  /** Matches left out of `elements` (beyond the limit) */
+  omitted?: number;
 }
 
 /**

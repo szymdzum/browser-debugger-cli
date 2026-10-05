@@ -250,6 +250,11 @@ export interface ListenersCommandOptions extends BaseOptions, IndexOptions {
   type?: string[];
 }
 
+/**
+ * Options for `dom layout`.
+ */
+export type LayoutCommandOptions = BaseOptions & IndexOptions;
+
 /** Options for A11y tree command */
 export type A11yTreeCommandOptions = BaseOptions;
 

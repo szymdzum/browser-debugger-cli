@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { textPreview } from '@/commands/dom/helpers/query.js';
+import { textPreview } from '@/runtime/dom/elementInfo.js';
 
 void describe('textPreview', () => {
   void it('never splits a character made of two UTF-16 units', () => {

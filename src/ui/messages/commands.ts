@@ -6,6 +6,8 @@
  */
 
 import type { DomFrame } from '@/ipc/protocol/commands.js';
+import type { ElementLayout, LayoutPoint, PageLayout } from '@/ipc/protocol/domTypes.js';
+import type { ViewportPosition } from '@/types.js';
 import {
   buildAgentDiscoveryHelp,
   buildCommonTaskExamples,
@@ -52,6 +54,100 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
  */
 export function moreMatchesNote(hidden: number): string {
   return `... and ${hidden} more (use --json for all)`;
+}
+
+/** Short location hints for elements a user cannot see without scrolling */
+const VIEWPORT_POSITION_HINTS: Partial<Record<ViewportPosition, string>> = {
+  above: 'above viewport',
+  below: 'below fold',
+  left: 'left of viewport',
+  right: 'right of viewport',
+  hidden: 'hidden',
+};
+
+/**
+ * Location hint for an element outside the viewport or hidden.
+ *
+ * @param position - Where the element is
+ * @param clippedBy - Ancestor or iframe cutting it off, if any
+ * @returns e.g. "below fold", "out of view in ul#list"; undefined for
+ *   elements (partly) in view
+ */
+export function viewportPositionHint(
+  position: ViewportPosition,
+  clippedBy?: string
+): string | undefined {
+  const outside = position !== 'visible' && position !== 'partly' && position !== 'hidden';
+  if (outside && clippedBy) return `out of view in ${clippedBy}`;
+  return VIEWPORT_POSITION_HINTS[position];
+}
+
+/**
+ * Page scroll that would bring an element into view, in words.
+ *
+ * @param scrollBy - Scroll amounts
+ * @returns e.g. "scroll down 760px"
+ */
+function scrollAdvice(scrollBy: LayoutPoint): string {
+  const steps = [
+    scrollBy.y !== 0 && `${scrollBy.y > 0 ? 'down' : 'up'} ${Math.abs(scrollBy.y)}px`,
+    scrollBy.x !== 0 && `${scrollBy.x > 0 ? 'right' : 'left'} ${Math.abs(scrollBy.x)}px`,
+  ].filter(Boolean);
+  return `scroll ${steps.join(', ')}`;
+}
+
+/**
+ * Where an element is relative to the viewport, for `bdg dom layout`.
+ *
+ * @param element - Element layout
+ * @returns e.g. "visible", "partly visible (40%)", "below fold (scroll down 760px)",
+ *   "out of view in ul#list (below)", "hidden (display: none)"
+ */
+export function layoutPositionLabel(
+  element: Pick<
+    ElementLayout,
+    'inViewport' | 'percentVisible' | 'hiddenReason' | 'scrollBy' | 'clippedBy'
+  >
+): string {
+  const { inViewport, percentVisible, hiddenReason, scrollBy, clippedBy } = element;
+  if (inViewport === 'visible') return 'visible';
+  if (inViewport === 'partly') {
+    const clipped = clippedBy ? `, clipped by ${clippedBy}` : '';
+    const label = `partly visible (${percentVisible ?? 0}%${clipped})`;
+    return scrollBy ? `${label} (${scrollAdvice(scrollBy)})` : label;
+  }
+  const label = viewportPositionHint(inViewport, clippedBy) ?? inViewport;
+  if (hiddenReason) return `${label} (${hiddenReason})`;
+  if (clippedBy) return `${label} (${inViewport})`;
+  return scrollBy ? `${label} (${scrollAdvice(scrollBy)})` : label;
+}
+
+/**
+ * Page dimensions line of `bdg dom layout`.
+ *
+ * @param page - Viewport, scroll position and document size
+ * @returns e.g. "Page: viewport 1280×720, scrolled to 0,0, document 1280×2400"
+ */
+export function pageLayoutLine(page: PageLayout): string {
+  const { viewport, scroll, document } = page;
+  return `Page: viewport ${viewport.width}×${viewport.height}, scrolled to ${scroll.x},${scroll.y}, document ${document.width}×${document.height}`;
+}
+
+/**
+ * Headline of `bdg dom layout`.
+ *
+ * @param count - Elements matched
+ * @param listed - Elements reported (fewer with --index)
+ * @param selector - Selector they matched
+ * @returns e.g. '3 elements match "button" (page x,y and size in CSS px):',
+ *   '1 of 3 elements matching "button" (...)'
+ */
+export function layoutHeadline(count: number, listed: number, selector: string): string {
+  const matched =
+    listed < count
+      ? `${listed} of ${count} elements matching "${selector}"`
+      : `${count} element${count === 1 ? ' matches' : 's match'} "${selector}"`;
+  return `${matched} (page x,y and size in CSS px):`;
 }
 
 /**

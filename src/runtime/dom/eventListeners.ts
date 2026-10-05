@@ -12,13 +12,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import {
-  eventListenersUnavailableError,
-  indexOutOfRangeError,
-  noNodesFoundError,
-  operationFailedError,
-  staleNodeError,
-} from '@/errors/messages.js';
+import { eventListenersUnavailableError, operationFailedError } from '@/errors/messages.js';
 import type { DomListenersCommand } from '@/ipc/protocol/commands.js';
 import type { ListenersResult } from '@/ipc/protocol/domTypes.js';
 import {
@@ -31,7 +25,7 @@ import {
   type ChainEntry,
   type ChainListeners,
 } from '@/runtime/dom/listenerSummary.js';
-import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -207,34 +201,6 @@ async function nodeChain(
     item?.objectId
       ? [{ objectId: item.objectId, className: item.className, description: item.description }]
       : []
-  );
-}
-
-/**
- * Error for an element that could not be found.
- *
- * @param params - Request
- * @param matchCount - Elements the selector matched
- * @returns Stale (87), out of range (81) or not found (83) error
- */
-function missingElementError(params: DomListenersCommand, matchCount: number): CommandError {
-  if (params.backendNodeId !== undefined) {
-    const err = staleNodeError();
-    return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
-  }
-  if (matchCount > 0) {
-    const err = indexOutOfRangeError(params.index ?? 0, matchCount - 1);
-    return new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.INVALID_ARGUMENTS
-    );
-  }
-  const err = noNodesFoundError(params.selector);
-  return new CommandError(
-    err.message,
-    { suggestion: err.suggestion },
-    EXIT_CODES.RESOURCE_NOT_FOUND
   );
 }
 

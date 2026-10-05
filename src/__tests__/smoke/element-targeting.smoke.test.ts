@@ -159,3 +159,117 @@ void describe('Element targeting', () => {
     await bdg(['dom', 'click', '0'], 87);
   });
 });
+
+/** The `data` of `dom layout --json` (the fields the tests read). */
+interface LayoutData {
+  count: number;
+  page: { viewport: { height: number }; document: { height: number } };
+  elements: Array<{
+    index: number;
+    context?: string;
+    bounds: { x: number; y: number; width: number; height: number };
+    inViewport: string;
+    hiddenReason?: string;
+    scrollBy?: { x: number; y: number };
+    coveredBy?: string;
+  }>;
+}
+
+/**
+ * Layout of the elements an argument refers to.
+ *
+ * @param args - Selector or index, then options
+ * @returns Layout data
+ */
+async function layout(...args: string[]): Promise<LayoutData> {
+  const output = await bdg(['dom', 'layout', ...args, '--json']);
+  return (JSON.parse(output) as { data: LayoutData }).data;
+}
+
+void describe('Element layout', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    await bdg([`${fixture.url}layout`, '--port', String(port), '--headless']);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('reports an element below the fold with page coordinates and the scroll to it', async () => {
+    const data = await layout('#save');
+    const [save] = data.elements;
+    assert.deepEqual(save?.bounds, { x: 20, y: 2000, width: 120, height: 40 });
+    assert.equal(save?.inViewport, 'below');
+    assert.equal(save?.scrollBy?.y, 2040 - data.page.viewport.height);
+    assert.ok(data.page.document.height >= 3000);
+    assert.match(
+      await bdg(['dom', 'layout', '#save']),
+      /20,2000 120×40 {2}below fold \(scroll down \d+px\)/
+    );
+  });
+
+  void it('names the element covering another, and none for an uncovered one', async () => {
+    const data = await layout('#top, #covered');
+    assert.deepEqual(
+      data.elements.map((element) => [element.inViewport, element.coveredBy]),
+      [
+        ['visible', undefined],
+        ['visible', 'div#overlay'],
+      ]
+    );
+  });
+
+  void it('reports no cover where hit-testing passes through or a link wraps', async () => {
+    const data = await layout('#click-through, #under-glass, #wrapped');
+    assert.deepEqual(
+      data.elements.map((element) => [element.inViewport, element.coveredBy]),
+      [
+        ['visible', undefined],
+        ['visible', undefined],
+        ['visible', undefined],
+      ]
+    );
+  });
+
+  void it('does not clip an absolutely positioned dropdown by a static overflow parent', async () => {
+    const [dropdown] = (await layout('#dropdown')).elements;
+    assert.equal(dropdown?.inViewport, 'visible', JSON.stringify(dropdown));
+  });
+
+  void it('says why a hidden element is hidden', async () => {
+    const [gone] = (await layout('#gone')).elements;
+    assert.equal(gone?.inViewport, 'hidden');
+    assert.equal(gone?.hiddenReason, 'display: none');
+  });
+
+  void it('adds the iframe offset for an element inside a same-origin iframe', async () => {
+    const [button] = (await layout('#frame-button')).elements;
+    assert.equal(button?.context, 'iframe');
+    assert.equal(button?.inViewport, 'visible');
+    assert.ok((button?.bounds.x ?? 0) >= 300 + 5 + 10 + 120, JSON.stringify(button));
+    assert.ok((button?.bounds.y ?? 0) >= 100 + 5 + 10, JSON.stringify(button));
+  });
+
+  void it('marks query matches outside the viewport and measures cached indices', async () => {
+    const output = await bdg(['dom', 'query', 'button']);
+    assert.match(output, /\[2\] <button id="save"> Save \(below fold\)$/m);
+    assert.match(output, /\[0\] <button id="top"> Top$/m);
+    const [save] = (await layout('2')).elements;
+    assert.equal(save?.index, 2);
+    assert.equal(save?.inViewport, 'below');
+  });
+
+  void it('exits 81 for --index out of range, 83 for no match and 87 for a stale index', async () => {
+    await bdg(['dom', 'layout', 'button', '--index', '9'], 81);
+    await bdg(['dom', 'layout', '#missing'], 83);
+    await bdg(['dom', 'query', '#save']);
+    await bdg(['dom', 'eval', "document.getElementById('save').remove(); 1"]);
+    await bdg(['dom', 'layout', '0'], 87);
+  });
+});

@@ -21,6 +21,7 @@ import {
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
+import { inspectLayout } from '@/runtime/dom/layout.js';
 import { resolveScriptTarget, withUserSelector } from '@/runtime/dom/targetNode.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
@@ -587,6 +588,8 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
 
     dom_listeners: async (cdp, params) =>
       withBusyPageRecovery(cdp, inspectEventListeners(cdp, params)),
+
+    dom_layout: async (cdp, params) => withBusyPageRecovery(cdp, inspectLayout(cdp, params)),
 
     page_navigate: async (cdp, params) =>
       interact(

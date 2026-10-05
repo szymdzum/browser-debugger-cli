@@ -78,6 +78,14 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
     cdpAlternative: 'DOMDebugger.getEventListeners on the element and each ancestor',
   },
 
+  element_layout: {
+    commands: ['dom layout'],
+    description:
+      'Where elements are (page/viewport coordinates, size), whether they are in view, hidden or covered',
+    cdpAlternative:
+      'Runtime.evaluate with getBoundingClientRect, getComputedStyle and elementFromPoint',
+  },
+
   accessibility_tree: {
     commands: ['dom a11y'],
     description: 'Get accessibility tree for page or element',

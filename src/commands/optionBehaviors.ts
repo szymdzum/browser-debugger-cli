@@ -181,6 +181,16 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Pages with many window/document listeners produce long lists; --type keeps the output short',
   },
 
+  'layout:--index': {
+    default:
+      'Reports every match of the selector (human output lists the first 20, JSON up to 100 plus an omitted count); a numeric argument reports that cached query element',
+    whenEnabled: 'Reports only the nth match (0-based); out of range exits 81',
+    automaticBehavior:
+      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none); inert elements are flagged, not hidden',
+    tokenImpact:
+      'About one line per element; a cheap alternative to screenshots for "where is it?"',
+  },
+
   'scroll:--down': {
     whenEnabled: 'Scrolls page down by specified pixel amount',
   },

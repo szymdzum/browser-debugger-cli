@@ -47,6 +47,7 @@ export function buildDomainCommandsSection(): string {
     '  bdg dom pressKey <selector> <key> Press key (Enter, Tab, Escape, etc.)',
     '  bdg dom a11y [search]             Accessibility search (tree, query, describe)',
     '  bdg dom listeners <selector>      Event listeners (incl. delegated)',
+    '  bdg dom layout <selector|index>   Positions, sizes, visibility (no screenshot)',
     '',
     'Network:',
     '  bdg network har [path]            Export HTTP Archive (HAR)',

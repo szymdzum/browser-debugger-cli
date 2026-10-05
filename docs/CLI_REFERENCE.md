@@ -256,7 +256,8 @@ bdg dom query --json                          # JSON output
 - Shows count and preview of matched elements (the first 50; `--json` has all)
 - Lists nodeId, tag, classes, and text preview (the text as rendered: hidden parts left out)
 - No match exits 83, like `dom get` and `dom a11y`
-- Use results with `bdg dom get` for full details
+- Matches outside the viewport or hidden get a hint: `(below fold)`, `(above viewport)`, `(left of viewport)`, `(right of viewport)`, `(hidden)`, or `(out of view in ul#list)` for one scrolled out of a container; `--json` has `inViewport` (and `clippedBy`) for the first 100 matches (see `dom layout`)
+- Use results with `bdg dom get` for full details, `bdg dom layout` for positions
 
 ### Event Listeners
 
@@ -289,6 +290,37 @@ click
 - Uses `DOMDebugger.getEventListeners`; the Debugger domain is not enabled, so `debugger;` statements do not pause the page
 
 **JSON (`data`):** `{ selector, index?, element, matchCount?, warning?, listeners: [{ type, on: "target"|"ancestor"|"document"|"window", node, useCapture, passive, once, handler: { name, preview, scriptId, lineNumber, columnNumber } }] }`
+
+### Element Layout
+
+Where elements are and whether a user can see them, without a screenshot: position and size, viewport position, what covers them, and the styles that decide how they show. Takes a selector (every match, or one with `--index`) or a cached query index.
+
+```bash
+bdg dom layout "button"                       # Every match (first 20 listed; --json up to 100)
+bdg dom layout "button" --index 2             # Third match only (0-based; out of range exits 81)
+bdg dom layout 0                              # Cached query index (stale index exits 87)
+bdg dom layout "#save" --json
+```
+
+**Output:**
+```text
+Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
+3 elements match "button" (page x,y and size in CSS px):
+  [0] button#menu.icon "Menu"  10,10 40×40  visible
+  [1] button#accept "Accept"  300,60 100×30  visible  covered by div#cookie-banner.modal
+  [2] button#save "Save"  420,1180 120×40  below fold (scroll down 500px)
+```
+
+- Coordinates are CSS pixels; `bounds` is relative to the top-level page (iframe offsets and page scroll included), `viewport` to the visible area
+- `inViewport`: `visible`, `partly` (with `percentVisible`), `above`, `below`, `left`, `right` or `hidden` (with `hiddenReason`: `display: none`, `visibility: hidden`, zero size, inside a hidden iframe)
+- Same-origin iframes and overflow containers (scroll lists, `overflow: hidden`) clip what counts as visible, following containing blocks (an absolutely positioned dropdown escapes a static `overflow: hidden` parent; fixed elements are not clipped). When one cuts the element off, `clippedBy` names it (`out of view in ul#list (below)`) and there is no `scrollBy`; otherwise `scrollBy` is the page scroll that shows the element fully
+- `coveredBy`: the topmost element at the center of the largest visible box (a wrapped link has one per line), when it is another element (not one inside it or around it), e.g. a modal backdrop or sticky header; overlays over an iframe count too. Not reported for elements hit-testing skips (`pointer-events: none`)
+- `inert: true` for elements inside an `inert` element (through shadow roots): shown, but not interactive; human output adds `inert`
+- `opacity: 0` elements count as visible (like `:visible`); human output adds `opacity: 0`
+- Elements in open shadow roots and same-origin iframes are found like with the other DOM commands; one page-side pass measures them all
+- Known limit: CSS transforms on iframes (and zoom) are not applied to the offsets of elements inside them
+
+**JSON (`data`):** `{ selector, count, omitted?, page: { viewport: { width, height }, scroll: { x, y }, document: { width, height } }, elements: [{ index, tag, element, text?, context?, bounds: { x, y, width, height }, viewport: { x, y }, inViewport, percentVisible?, hiddenReason?, scrollBy?: { x, y }, clippedBy?, coveredBy?, inert?, computed: { display, visibility, position, opacity, zIndex } }] }`
 
 ### JavaScript Evaluation
 

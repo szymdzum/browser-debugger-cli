@@ -33,6 +33,27 @@ void describe('formatDomQuery', () => {
   });
 });
 
+void describe('formatDomQuery viewport hints', () => {
+  void it('marks elements outside the viewport or hidden, and nothing for visible ones', () => {
+    const output = formatDomQuery({
+      selector: 'button',
+      count: 5,
+      nodes: [
+        { index: 0, nodeId: 1, tag: 'button', preview: 'Top', inViewport: 'visible' },
+        { index: 1, nodeId: 2, tag: 'button', preview: 'Edge', inViewport: 'partly' },
+        { index: 2, nodeId: 3, tag: 'button', preview: 'Save', inViewport: 'below' },
+        { index: 3, nodeId: 4, tag: 'button', inViewport: 'hidden' },
+        { index: 4, nodeId: 5, tag: 'li', inViewport: 'below', clippedBy: 'ul#list' },
+      ],
+    });
+    assert.match(output, /\[4\] <li> \(out of view in ul#list\)$/m);
+    assert.match(output, /\[0\] <button> Top$/m);
+    assert.match(output, /\[1\] <button> Edge$/m);
+    assert.match(output, /\[2\] <button> Save \(below fold\)$/m);
+    assert.match(output, /\[3\] <button> \(hidden\)$/m);
+  });
+});
+
 void describe('formatDomQuery identifying details', () => {
   void it('shows id, name, type and the enclosing frame or shadow root', () => {
     const output = formatDomQuery({
