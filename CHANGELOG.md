@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`--chrome-ws-url <port>`** - Attach to a running Chrome by its DevTools port (`9222`, `host:port` or `http://host:port`); bdg looks up the browser WebSocket URL itself, so logging in by hand first and then attaching takes one command (#47)
+- **Triggered requests after DOM actions** - `bdg dom click` (incl. `--double`/`--right`), `hover`, `fill`, `pressKey`, `submit` and `scroll` list the network requests the action started (method, URL, status, duration; pending when still running) under `Triggered:` (first 10) and in JSON as `data.triggeredRequests`, from the session's network telemetry and without waiting longer than before (#111)
 
 ### Changed
 

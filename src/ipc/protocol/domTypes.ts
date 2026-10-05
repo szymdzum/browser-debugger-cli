@@ -21,6 +21,27 @@ export interface DialogInfo {
 }
 
 /**
+ * A network request that started while a command ran (after the action began
+ * and before the command returned).
+ */
+export interface TriggeredRequest {
+  /** Request id (what `bdg details network <id>` takes) */
+  requestId: string;
+  method: string;
+  url: string;
+  /** HTTP status, once a response arrived */
+  status?: number;
+  /** How long it took, once it finished or failed */
+  durationMs?: number;
+  /** Set when it failed without a response (DNS, refused, aborted, blocked) */
+  failed?: true;
+  /** Why it failed (also set when loading failed after the response) */
+  errorText?: string;
+  /** Set when it was still running when the command returned */
+  pending?: true;
+}
+
+/**
  * Result of filling an element.
  */
 export interface FillResult {
@@ -41,6 +62,10 @@ export interface FillResult {
   exitCode?: number;
   /** Dialogs accepted while the command ran */
   dialogs?: DialogInfo[];
+  /** Requests the action triggered (absent when network telemetry is off) */
+  triggeredRequests?: TriggeredRequest[];
+  /** Requests left out of `triggeredRequests` (it lists the first 50) */
+  triggeredRequestsOmitted?: number;
 }
 
 /**
@@ -65,6 +90,10 @@ export interface ClickResult {
   warning?: string;
   /** Dialogs accepted while the command ran */
   dialogs?: DialogInfo[];
+  /** Requests the action triggered (absent when network telemetry is off) */
+  triggeredRequests?: TriggeredRequest[];
+  /** Requests left out of `triggeredRequests` (it lists the first 50) */
+  triggeredRequestsOmitted?: number;
 }
 
 /**
@@ -87,6 +116,10 @@ export interface PressKeyResult {
   warning?: string;
   /** Dialogs accepted while the command ran */
   dialogs?: DialogInfo[];
+  /** Requests the action triggered (absent when network telemetry is off) */
+  triggeredRequests?: TriggeredRequest[];
+  /** Requests left out of `triggeredRequests` (it lists the first 50) */
+  triggeredRequestsOmitted?: number;
 }
 
 /**
@@ -107,6 +140,10 @@ export interface ScrollResult {
   matchCount?: number;
   /** Set when the selector matched several elements */
   warning?: string;
+  /** Requests the action triggered (absent when network telemetry is off) */
+  triggeredRequests?: TriggeredRequest[];
+  /** Requests left out of `triggeredRequests` (it lists the first 50) */
+  triggeredRequestsOmitted?: number;
 }
 
 /**
@@ -124,6 +161,10 @@ export interface SubmitResult {
   exitCode?: number;
   /** Dialogs accepted while the command ran */
   dialogs?: DialogInfo[];
+  /** Requests the action triggered (absent when network telemetry is off) */
+  triggeredRequests?: TriggeredRequest[];
+  /** Requests left out of `triggeredRequests` (it lists the first 50) */
+  triggeredRequestsOmitted?: number;
 }
 
 /** Where an event listener is attached, seen from the inspected element. */

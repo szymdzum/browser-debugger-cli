@@ -24,11 +24,15 @@ import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import { conflictingOptionsMessage, internalError, scrollOptionsError } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
-import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
+import type { DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import { findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
+import {
+  TRIGGERED_REQUESTS_TITLE,
+  formatTriggeredRequestLines,
+} from '@/ui/formatters/triggeredRequests.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { POINTER_ACTION_DONE, dialogConsoleText } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -347,15 +351,27 @@ async function runPointerCommand(
 type ActionOutput<T> = Omit<T, 'success'>;
 
 /**
- * Add an action's warning and the dialogs it caused to the output.
+ * Add the network requests an action triggered, its warning and the dialogs
+ * it caused to the output. No request list is shown when there were none
+ * (JSON has an empty `triggeredRequests` then).
  *
  * @param fmt - Output being built
  * @param result - Action result
  */
 function appendNotices(
   fmt: OutputFormatter,
-  result: { warning?: string | undefined; dialogs?: DialogInfo[] | undefined }
+  result: {
+    warning?: string | undefined;
+    dialogs?: DialogInfo[] | undefined;
+    triggeredRequests?: TriggeredRequest[] | undefined;
+    triggeredRequestsOmitted?: number | undefined;
+  }
 ): void {
+  const requests = formatTriggeredRequestLines(
+    result.triggeredRequests ?? [],
+    result.triggeredRequestsOmitted
+  );
+  if (requests.length > 0) fmt.blank().section(TRIGGERED_REQUESTS_TITLE, requests);
   if (result.warning) {
     fmt.blank();
     fmt.text(`⚠ Warning: ${result.warning}`);
