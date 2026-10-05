@@ -63,7 +63,7 @@ export function summarizePendingRequests(
  * @param cdp - CDP connection
  * @returns The state, or undefined when the page did not answer in time
  */
-async function readDocumentReadyState(cdp: CDPSender): Promise<string | undefined> {
+export async function readDocumentReadyState(cdp: CDPSender): Promise<string | undefined> {
   try {
     const evaluated = cdp.send('Runtime.evaluate', {
       expression: 'document.readyState',

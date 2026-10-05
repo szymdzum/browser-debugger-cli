@@ -117,6 +117,18 @@ export function formatScriptExecutionError(
 }
 
 /**
+ * What a page script threw, in one line (`TypeError: Cannot read …` rather
+ * than CDP's bare "Uncaught").
+ *
+ * @param details - Exception details from Runtime.evaluate
+ * @returns First line of the exception's description
+ */
+export function exceptionSummary(details: Protocol.Runtime.ExceptionDetails): string {
+  const description = details.exception?.description ?? details.text;
+  return description.split('\n')[0] ?? description;
+}
+
+/**
  * Throw a user error when a page script failed because the CSS selector is
  * invalid (the browser's `querySelectorAll` rejected it), instead of reporting
  * a script failure.

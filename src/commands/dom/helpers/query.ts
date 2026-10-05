@@ -44,13 +44,12 @@ import {
   pageNamesJS,
   selectorArgsJS,
 } from '@/runtime/dom/targetNode.js';
-import { resolveA11yNode } from '@/telemetry/a11y.js';
 import type {
-  A11yNode,
   DomQueryResult,
   DomGetResult,
   DomGetOptions,
   DomContext,
+  IndexSource,
   NodeRef,
   ViewportPosition,
 } from '@/types.js';
@@ -545,7 +544,75 @@ export async function getDomContext(
     ...(classes && classes.length > 0 && { classes }),
     ...(preview && { preview }),
     ...(longer !== preview && { text: longer }),
+    ...(!preview && (await childElements(ref))),
   };
+}
+
+/** Child elements named for an element without text */
+const CHILDREN_LISTED = 5;
+
+/**
+ * The child elements of an element (for one without text: a body holding
+ * only an iframe, an empty app root).
+ *
+ * @param ref - Node reference
+ * @returns The first {@link CHILDREN_LISTED} as `tag#id.class` and how many there are
+ */
+async function childElements(ref: NodeRef): Promise<Pick<DomContext, 'children' | 'childCount'>> {
+  const response = await callCDP('DOM.describeNode', { ...ref, depth: 1 });
+  const node = (response.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node;
+  const elements = (node?.children ?? []).filter((child) => child.nodeType === 1);
+  return {
+    children: elements.slice(0, CHILDREN_LISTED).map(childLabel),
+    childCount: elements.length,
+  };
+}
+
+/**
+ * A child element in a few characters.
+ *
+ * @param node - Child node
+ * @returns e.g. `iframe#app.full`
+ */
+function childLabel(node: Protocol.DOM.Node): string {
+  const attributes = unpackAttributes(node.attributes);
+  const id = attributes['id'] ? `#${attributes['id']}` : '';
+  const classes = (attributes['class'] ?? '').split(/\s+/).filter(Boolean).slice(0, 2);
+  return `${node.nodeName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join('')}`;
+}
+
+/**
+ * All matches of a selector.
+ *
+ * @param selector - CSS selector
+ * @returns Backend node ids of the matches (at least one)
+ * @throws CommandError (83) when nothing matches
+ */
+async function selectMatches(selector: string): Promise<number[]> {
+  const backendNodeIds = await selectAll(selector);
+  if (backendNodeIds.length > 0) return backendNodeIds;
+  const err = await noMatchesError(selector);
+  throw new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    EXIT_CODES.RESOURCE_NOT_FOUND
+  );
+}
+
+/**
+ * One match of a selector.
+ *
+ * @param selector - CSS selector
+ * @param index - Which match (0-based)
+ * @returns Its backend node id
+ * @throws CommandError (83) when nothing matches, (81) for an index beyond the matches
+ */
+export async function selectMatch(selector: string, index = 0): Promise<number> {
+  const backendNodeIds = await selectMatches(selector);
+  const backendNodeId = backendNodeIds[index];
+  if (backendNodeId !== undefined) return backendNodeId;
+  const err = indexOutOfRangeError(index, backendNodeIds.length - 1);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 /**
@@ -556,28 +623,10 @@ export async function getDomContext(
  * @returns Node references to describe
  */
 async function selectForGet(selector: string, options: DomGetOptions): Promise<NodeRef[]> {
-  const backendNodeIds = await selectAll(selector);
-  if (backendNodeIds.length === 0) {
-    const err = await noMatchesError(selector);
-    throw new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.RESOURCE_NOT_FOUND
-    );
+  if (options.all) {
+    return (await selectMatches(selector)).map((backendNodeId) => ({ backendNodeId }));
   }
-  if (options.all) return backendNodeIds.map((backendNodeId) => ({ backendNodeId }));
-
-  const position = options.nth ?? 0;
-  const backendNodeId = backendNodeIds[position];
-  if (backendNodeId === undefined) {
-    const err = indexOutOfRangeError(position, backendNodeIds.length - 1);
-    throw new CommandError(
-      err.message,
-      { suggestion: err.suggestion },
-      EXIT_CODES.INVALID_ARGUMENTS
-    );
-  }
-  return [{ backendNodeId }];
+  return [{ backendNodeId: await selectMatch(selector, options.nth ?? 0) }];
 }
 
 /**
@@ -671,17 +720,6 @@ export async function resolveBackendNodeIds(selectors: string[]): Promise<(numbe
 }
 
 /**
- * Accessibility node of the first element matching a selector.
- *
- * @param selector - CSS selector
- * @returns A11y node, or null when nothing matches or the node is not exposed
- */
-export async function resolveA11yNodeForSelector(selector: string): Promise<A11yNode | null> {
-  const [backendNodeId] = await resolveBackendNodeIds([selector]);
-  return backendNodeId === undefined ? null : resolveA11yNode({ backendNodeId });
-}
-
-/**
  * Check that a cached element is still part of the current page.
  *
  * `DOM.describeNode` still answers for nodes of a previous document, so
@@ -690,10 +728,13 @@ export async function resolveA11yNodeForSelector(selector: string): Promise<A11y
  * false for removed elements.
  *
  * @param backendNodeId - Backend node id from the query cache
- * @param index - Index the user gave, for the error message
+ * @param source - Index the user gave and the list it refers to, for the error message
  * @throws CommandError (87) when the element is gone
  */
-export async function assertNodeAttached(backendNodeId: number, index?: number): Promise<void> {
+export async function assertNodeAttached(
+  backendNodeId: number,
+  source?: IndexSource
+): Promise<void> {
   const resolved = await callCDP('DOM.resolveNode', { backendNodeId, objectGroup: 'bdg-check' });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     .objectId;
@@ -709,7 +750,7 @@ export async function assertNodeAttached(backendNodeId: number, index?: number):
     await callCDP('Runtime.releaseObjectGroup', { objectGroup: 'bdg-check' });
   }
   if (!attached) {
-    const err = staleNodeError(index);
+    const err = staleNodeError(source?.index, source);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
   }
 }

@@ -171,11 +171,39 @@ void describe('classifyViewportPosition', () => {
     assert.equal(classifyViewportPosition(at(1200, 1200), VIEWPORT).inViewport, 'below');
   });
 
-  void it('reports the visible share of an element crossing the fold', () => {
+  void it('reports the visible share of an element crossing the fold, with the scroll showing all of it', () => {
     assert.deepEqual(classifyViewportPosition(at(0, 790, 100, 40), VIEWPORT), {
       inViewport: 'partly',
       percentVisible: 25,
-      scrollBy: { x: 0, y: 410 },
+      scrollBy: { x: 0, y: 30 },
+    });
+  });
+
+  void it('scrolls up only by the part cut off at the top of a partly visible element', () => {
+    assert.deepEqual(classifyViewportPosition(at(0, -5, 266, 37), VIEWPORT), {
+      inViewport: 'partly',
+      percentVisible: 86,
+      scrollBy: { x: 0, y: -5 },
+    });
+  });
+
+  void it('scrolls to the start of a partly visible element taller than the viewport', () => {
+    assert.deepEqual(classifyViewportPosition(at(0, 300, 100, 2000), VIEWPORT).scrollBy, {
+      x: 0,
+      y: 300,
+    });
+    assert.deepEqual(classifyViewportPosition(at(0, -300, 100, 900), VIEWPORT).scrollBy, {
+      x: 0,
+      y: -300,
+    });
+  });
+
+  void it('advises no scroll for a partly visible fixed element', () => {
+    const geometry = { ...at(0, 790, 100, 40), fixed: true };
+    assert.deepEqual(classifyViewportPosition(geometry, VIEWPORT), {
+      inViewport: 'partly',
+      percentVisible: 25,
+      offScreenReason: OFF_SCREEN_REASONS.fixed,
     });
   });
 

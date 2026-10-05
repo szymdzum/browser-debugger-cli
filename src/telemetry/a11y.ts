@@ -2,6 +2,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { unknownQueryFieldError } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
+import { childFrameIds } from '@/runtime/dom/frameLayout.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { levenshteinDistance } from '@/utils/levenshtein.js';
@@ -119,22 +120,12 @@ async function collectFrameNodes(
     Protocol.Page.GetFrameTreeResponse | undefined;
   const known = [...pageNodes];
   const collected: Protocol.Accessibility.AXNode[] = [];
-  for (const [index, frameId] of childFrames(tree?.frameTree).entries()) {
+  for (const [index, frameId] of childFrameIds(tree?.frameTree).entries()) {
     const nodes = await frameNodes(frameId, `f${index}:`, known);
     known.push(...nodes);
     collected.push(...nodes);
   }
   return collected;
-}
-
-/**
- * Ids of all frames below a frame tree's root.
- *
- * @param tree - Frame tree
- * @returns Frame ids, depth-first
- */
-function childFrames(tree: Protocol.Page.FrameTree | undefined): string[] {
-  return (tree?.childFrames ?? []).flatMap((child) => [child.frame.id, ...childFrames(child)]);
 }
 
 /**
@@ -268,6 +259,8 @@ const TEXT_ROLES = new Set(['statictext', 'inlinetextbox']);
  * Queries accessibility tree by pattern (role, name, description).
  *
  * Performs case-insensitive matching with AND logic for multiple fields.
+ * An element reported more than once (by the page's tree and its frame's)
+ * is listed once.
  *
  * @param tree - Accessibility tree to search
  * @param pattern - Query pattern with optional role, name, description
@@ -287,13 +280,17 @@ const TEXT_ROLES = new Set(['statictext', 'inlinetextbox']);
  */
 export function queryA11yTree(tree: A11yTree, pattern: A11yQueryPattern): A11yQueryResult {
   const matches: A11yNode[] = [];
+  const seenElements = new Set<number>();
 
   const wantsText = pattern.role !== undefined && TEXT_ROLES.has(pattern.role.toLowerCase());
   for (const node of tree.nodes.values()) {
     if (!wantsText && TEXT_ROLES.has(node.role.toLowerCase())) continue;
-    if (matchesPattern(node, pattern)) {
-      matches.push(node);
+    if (!matchesPattern(node, pattern)) continue;
+    if (node.backendDOMNodeId !== undefined) {
+      if (seenElements.has(node.backendDOMNodeId)) continue;
+      seenElements.add(node.backendDOMNodeId);
     }
+    matches.push(node);
   }
 
   return {

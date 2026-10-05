@@ -300,9 +300,33 @@ void describe('fill value moved to another field', () => {
 void describe('submit wait messages', () => {
   void it('suggests fetch only when the form sent no page request', () => {
     assert.match(submitTimeoutError(10000, true).suggestion, /sent no page request.*fetch/);
-    const sent = submitTimeoutError(10000, true, 'POST https://site.test/authenticate');
+    const document = { method: 'POST', url: 'https://site.test/authenticate' };
+    const sent = submitTimeoutError(10000, true, { document: { ...document, pendingMs: 10000 } });
     assert.doesNotMatch(sent.suggestion, /fetch/);
-    assert.match(sent.suggestion, /POST https:\/\/site\.test\/authenticate.*larger --timeout/);
+    assert.match(sent.suggestion, /larger --timeout/);
+  });
+
+  void it('names the page request the submit is waiting for, and how far it got', () => {
+    const document = { method: 'POST', url: 'https://site.test/authenticate' };
+    assert.match(
+      submitTimeoutError(30000, true, { document: { ...document, pendingMs: 30000 } }).message,
+      /waiting for navigation: POST site\.test\/authenticate pending for 30s$/
+    );
+    const failed = submitTimeoutError(30000, true, {
+      document: { ...document, status: 503, statusText: 'Service Unavailable' },
+    });
+    assert.match(
+      failed.message,
+      /: POST site\.test\/authenticate returned 503 Service Unavailable$/
+    );
+    assert.match(failed.suggestion, /answered with an error/);
+    assert.match(
+      submitTimeoutError(30000, false, {
+        pending: [{ method: 'GET', url: 'https://site.test/app.js', pendingMs: 9000 }],
+        pendingCount: 3,
+      }).message,
+      /waiting for network idle: waiting on GET site\.test\/app\.js \(pending 9s\) and 2 more$/
+    );
   });
 
   void it('warns when the new page loaded but requests kept running', () => {

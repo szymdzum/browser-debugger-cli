@@ -2,9 +2,12 @@
  * Human-readable output of `bdg dom layout`.
  */
 
+import { indexSourceText } from '@/errors/messages.js';
 import type { ElementLayout, LayoutResult, LayoutSize } from '@/ipc/protocol/domTypes.js';
+import type { IndexSource } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
+  indexLayoutHeadline,
   layoutHeadline,
   layoutPositionLabel,
   moreMatchesNote,
@@ -14,8 +17,8 @@ import {
 /** Elements listed in human output (JSON has up to 100) */
 const LAYOUT_DISPLAY_LIMIT = 20;
 
-/** `bdg dom layout` data (the `success` flag is implied by the envelope) */
-type LayoutOutput = Omit<LayoutResult, 'success'>;
+/** `bdg dom layout` data (the `success` flag is implied by the envelope), with the list an index refers to */
+type LayoutOutput = Omit<LayoutResult, 'success'> & { indexSource?: IndexSource | undefined };
 
 /**
  * One element as a compact line: index, description, text, page position
@@ -55,7 +58,11 @@ export function formatLayout(data: LayoutOutput): string {
   const more = data.elements.length - shown.length + (data.omitted ?? 0);
   return new OutputFormatter()
     .text(pageLayoutLine(data.page))
-    .text(layoutHeadline(data.count, data.elements.length + (data.omitted ?? 0), data.selector))
+    .text(
+      data.indexSource
+        ? indexLayoutHeadline(indexSourceText(data.indexSource))
+        : layoutHeadline(data.count, data.elements.length + (data.omitted ?? 0), data.selector)
+    )
     .list(shown.map((element) => layoutLine(element, data.page.viewport)))
     .list(more > 0 ? [moreMatchesNote(more, data.omitted ? data.elements.length : undefined)] : [])
     .build();

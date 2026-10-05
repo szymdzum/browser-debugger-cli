@@ -1,6 +1,7 @@
 import type { DomContext } from '@/types.js';
 import type { A11yTree, A11yQueryResult, A11yNode } from '@/types.js';
 import { OutputFormatter, areHintsHidden } from '@/ui/formatting.js';
+import { a11yMoreMatchesNote } from '@/ui/messages/commands.js';
 
 /**
  * Data structure for a11y node with DOM context.
@@ -135,6 +136,7 @@ export function formatA11yQueryResult(result: A11yQueryResult): string {
     const index = node.index !== undefined ? `[${node.index}] ` : '';
     fmt.text(index + formatA11yNodeOneLine(node)).blank();
   }
+  if (result.omitted) fmt.text(a11yMoreMatchesNote(result.omitted)).blank();
 
   const first = result.nodes[0];
   if (first?.index !== undefined && !areHintsHidden()) {

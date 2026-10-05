@@ -33,6 +33,8 @@ import {
   textPreview,
 } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
+import { findFrameOwner, placeInOwnerFrame } from '@/runtime/dom/frameLayout.js';
+import { measureFrameOffset } from '@/runtime/dom/frameScopedConnection.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -207,7 +209,7 @@ const LAYOUT_JS = `function (found, index, limit) {
       computed: { display: style.display, visibility: style.visibility, position: style.position, opacity: style.opacity, zIndex: style.zIndex }
     };
   });
-  return { count: found.length, page: page, elements: elements };
+  return { count: found.length, page: page, elements: elements, crossOriginFrame: top.parent !== top };
 }`;
 
 /** One element as {@link LAYOUT_JS} measures it. */
@@ -229,6 +231,8 @@ export interface RawLayout {
   /** Set when at least one element was measured */
   page?: PageLayout;
   elements: RawElementLayout[];
+  /** Measured inside a cross-origin iframe: `page` and the coordinates are that frame's */
+  crossOriginFrame?: boolean;
 }
 
 /** Distinguishes the object groups of concurrent calls */
@@ -291,7 +295,9 @@ async function measureSelector(cdp: CDPConnection, params: DomLayoutCommand): Pr
  * @param cdp - CDP connection
  * @param backendNodeId - Backend node id
  * @param objectGroup - Object group for the handle
- * @returns Measurements; no elements when the node left the page
+ * @returns Measurements; no elements when the node left the page. An element
+ *   of a cross-origin iframe (from an a11y query) is placed in the top-level
+ *   viewport through the iframe's own measurements.
  */
 async function measureNode(
   cdp: CDPConnection,
@@ -311,7 +317,12 @@ async function measureNode(
     functionDeclaration: `function () { return (${LAYOUT_JS})(this.isConnected ? [this] : [], null, 1); }`,
     returnByValue: true,
   })) as Protocol.Runtime.CallFunctionOnResponse;
-  return (response.result.value as RawLayout | undefined) ?? { count: 0, elements: [] };
+  const raw = (response.result.value as RawLayout | undefined) ?? { count: 0, elements: [] };
+  if (!raw.crossOriginFrame) return raw;
+  const owner = await findFrameOwner(cdp, objectId);
+  if (owner === undefined) return raw;
+  const ownerLayout = await measureNode(cdp, owner, objectGroup);
+  return placeInOwnerFrame(raw, ownerLayout, await measureFrameOffset(cdp, objectId));
 }
 
 /**

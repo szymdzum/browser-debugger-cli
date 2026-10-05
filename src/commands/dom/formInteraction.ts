@@ -9,9 +9,8 @@
 
 import { InvalidArgumentError, type Command } from 'commander';
 
-import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
-import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type {
   FillCommandOptions,
@@ -25,6 +24,7 @@ import { CommandError } from '@/errors/index.js';
 import {
   VIA_LABEL_SUFFIX,
   conflictingOptionsMessage,
+  indexSourceText,
   internalError,
   scrollOptionsError,
 } from '@/errors/messages.js';
@@ -34,6 +34,7 @@ import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHe
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import { findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
+import type { IndexSource } from '@/types.js';
 import {
   formatTriggeredRequestLines,
   formatTriggeredRequestsTitle,
@@ -236,72 +237,65 @@ export function registerFormInteractionCommands(program: Command): void {
     .option('--no-wait', 'Skip waiting for lazy-loaded content after scroll')
     .addOption(jsonOption())
     .action(async (selector: string | undefined, options: ScrollCommandOptions) => {
-      await runCommand(
-        async () => {
-          const problem = scrollOptionsProblem(selector, options);
-          if (problem) {
-            const err = scrollOptionsError(problem);
-            return {
-              success: false,
-              error: err.message,
-              exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: { suggestion: err.suggestion },
-            };
-          }
-
-          const target = selector
-            ? await DomElementResolver.getInstance().resolve(selector, options.index, 'scroll')
-            : undefined;
-          if (target && !target.success) {
-            return {
-              success: false,
-              error: target.error,
-              exitCode: target.exitCode,
-              ...(target.suggestion && { errorContext: { suggestion: target.suggestion } }),
-            };
-          }
-
-          const response = await domScroll({
-            ...(target && { selector: target.selector }),
-            ...(target?.index !== undefined && { index: target.index }),
-            ...(target?.backendNodeId !== undefined && { backendNodeId: target.backendNodeId }),
-            ...(options.down !== undefined && { down: options.down }),
-            ...(options.up !== undefined && { up: options.up }),
-            ...(options.left !== undefined && { left: options.left }),
-            ...(options.right !== undefined && { right: options.right }),
-            ...(options.top !== undefined && { top: options.top }),
-            ...(options.bottom !== undefined && { bottom: options.bottom }),
-            wait: options.wait !== false,
-          });
-
-          if (response.status === 'error' || !response.data) {
-            return {
-              success: false,
-              error: response.error ?? 'Failed to scroll',
-              exitCode: response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
-            };
-          }
-
-          const result = response.data;
-          if (!result.success) {
-            return {
-              success: false,
-              error: result.error ?? 'Failed to scroll',
-              exitCode: result.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
-              errorContext: {
-                suggestion: result.suggestion ?? 'Verify the selector exists on the page',
-              },
-            };
-          }
-
-          const { success: _success, ...data } = result;
-          return { success: true, data };
-        },
-        options,
-        formatScrollOutput
-      );
+      await runCommand(() => runScroll(selector, options), options, formatScrollOutput);
     });
+}
+
+/**
+ * Scroll to an element (selector or cached index) or by offsets/to an edge.
+ *
+ * @param selector - Selector or index argument, if any
+ * @param options - Scroll options
+ * @returns Command result
+ */
+async function runScroll(
+  selector: string | undefined,
+  options: ScrollCommandOptions
+): Promise<CommandResult<ActionOutput<ScrollResult>>> {
+  const problem = scrollOptionsProblem(selector, options);
+  if (problem) {
+    const err = scrollOptionsError(problem);
+    return {
+      success: false,
+      error: err.message,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: { suggestion: err.suggestion },
+    };
+  }
+  const request = {
+    ...(options.down !== undefined && { down: options.down }),
+    ...(options.up !== undefined && { up: options.up }),
+    ...(options.left !== undefined && { left: options.left }),
+    ...(options.right !== undefined && { right: options.right }),
+    ...(options.top !== undefined && { top: options.top }),
+    ...(options.bottom !== undefined && { bottom: options.bottom }),
+    wait: options.wait !== false,
+  };
+  if (selector) {
+    return runElementCommand<Parameters<typeof domScroll>[0], ScrollResult>({
+      selectorOrIndex: selector,
+      index: options.index,
+      buildRequest: (target) => ({ ...target, ...request }),
+      call: domScroll,
+      command: 'scroll',
+      action: 'scroll',
+      failureSuggestion: 'Verify the selector exists on the page',
+    });
+  }
+  const response = await domScroll(request);
+  const result = response.data;
+  if (response.status === 'error' || !result?.success) {
+    return {
+      success: false,
+      error: result?.error ?? response.error ?? 'Failed to scroll',
+      exitCode: result?.exitCode ?? response.exitCode ?? EXIT_CODES.INVALID_ARGUMENTS,
+      ...((result?.suggestion ?? response.suggestion) && {
+        errorContext: { suggestion: result?.suggestion ?? response.suggestion ?? '' },
+      }),
+    };
+  }
+  const { success: _success, ...data } = result;
+  return { success: true, data };
 }
 
 /**
@@ -366,8 +360,11 @@ async function runPointerCommand(
   );
 }
 
-/** Action result as returned in `data` (the `success` flag is implied by the envelope). */
-type ActionOutput<T> = Omit<T, 'success'>;
+/**
+ * Action result as returned in `data` (the `success` flag is implied by the
+ * envelope), with the list a numeric index refers to.
+ */
+type ActionOutput<T> = Omit<T, 'success'> & { indexSource?: IndexSource | undefined };
 
 /** What every action result may report besides its own details */
 interface ActionNotices extends ActionEffects {
@@ -423,31 +420,49 @@ function formatActionOutput(
   return fmt;
 }
 
+/** What the target rows of an action's output read */
+interface ActionTarget {
+  selector?: string | undefined;
+  element?: string | undefined;
+  elementType?: string | undefined;
+  indexSource?: IndexSource | undefined;
+}
+
 /**
  * Row naming the element an action hit, e.g.
  * `Element: input.toggle in div.view "Write report"` (just its tag when the
- * page could not describe it).
+ * page could not describe it), with the list a numeric index refers to
+ * (`(index 0 of the last dom query "h3")`).
  *
  * @param result - Action result
  * @returns Label/value row
  */
-function elementRow(result: {
-  element?: string | undefined;
-  elementType?: string | undefined;
-}): [string, string] {
-  if (result.element === undefined) return ['Element Type', result.elementType ?? 'unknown'];
+function elementRow(result: ActionTarget): [string, string] {
+  const source = result.indexSource ? ` (${indexSourceText(result.indexSource)})` : '';
+  if (result.element === undefined) {
+    return ['Element Type', `${result.elementType ?? 'unknown'}${source}`];
+  }
   const viaLabel = result.elementType?.endsWith(VIA_LABEL_SUFFIX) ? VIA_LABEL_SUFFIX : '';
-  return ['Element', `${result.element}${viaLabel}`];
+  return ['Element', `${result.element}${viaLabel}${source}`];
+}
+
+/**
+ * Selector row of an action's output; none for an index into a11y query
+ * results, whose "selector" is the a11y pattern (the element row names it).
+ *
+ * @param result - Action result
+ * @returns The row, or none
+ */
+function selectorRows(result: ActionTarget): Array<[string, string]> {
+  if (result.indexSource?.command === 'dom a11y query') return [];
+  return [['Selector', result.selector ?? 'unknown']];
 }
 
 /**
  * Format fill command output for human-readable display.
  */
 function formatFillOutput(result: ActionOutput<FillResult>): string {
-  const details: [string, string][] = [
-    ['Selector', result.selector ?? 'unknown'],
-    elementRow(result),
-  ];
+  const details: [string, string][] = [...selectorRows(result), elementRow(result)];
 
   if (result.inputType) details.push(['Input Type', result.inputType]);
   if (result.checked !== undefined) {
@@ -466,7 +481,7 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
   return formatActionOutput(
     `Element ${POINTER_ACTION_DONE[result.action ?? 'click']}`,
     [
-      ['Selector', result.selector ?? 'unknown'],
+      ...selectorRows(result),
       elementRow(result),
       ['Method', result.method === 'dom' ? 'DOM events' : 'mouse events'],
     ],
@@ -479,7 +494,7 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
  */
 function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
   const details: [string, string][] = [
-    ['Selector', result.selector ?? 'unknown'],
+    ...selectorRows(result),
     ...(result.element !== undefined ? [elementRow(result)] : []),
     ['Submit Button', result.clicked ? 'used' : 'none'],
   ];
@@ -505,7 +520,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
 function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
   const details: [string, string][] = [
     ['Key', result.key ?? 'unknown'],
-    ['Selector', result.selector ?? 'unknown'],
+    ...selectorRows(result),
     elementRow(result),
   ];
 
@@ -520,7 +535,7 @@ function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
  */
 function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
   const details: [string, string][] = [['Scroll Type', result.scrollType]];
-  if (result.selector) details.push(['Selector', result.selector]);
+  if (result.selector) details.push(...selectorRows(result));
   if (result.element) details.push(elementRow(result));
   if (result.scrolledTo)
     details.push(['Position', `(${result.scrolledTo.x}, ${result.scrolledTo.y})`]);

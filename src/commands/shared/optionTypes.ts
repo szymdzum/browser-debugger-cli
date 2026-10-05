@@ -163,6 +163,8 @@ export type DomGetCommandOptions = BaseOptions &
   SelectionOptions & {
     /** All of the element's text instead of its first 500 characters (semantic output) */
     full?: boolean;
+    /** Which match of the selector (0-based); `--nth` is its alias */
+    index?: number;
   };
 
 /** Options for DOM screenshot command */
@@ -282,7 +284,10 @@ export interface WaitCommandOptions extends BaseOptions {
 export type A11yTreeCommandOptions = BaseOptions;
 
 /** Options for A11y query command */
-export type A11yQueryCommandOptions = BaseOptions;
+export interface A11yQueryCommandOptions extends BaseOptions {
+  /** Matches to list (0 = all) */
+  limit?: number;
+}
 
 /** Options for A11y describe command */
 export type A11yDescribeCommandOptions = BaseOptions;

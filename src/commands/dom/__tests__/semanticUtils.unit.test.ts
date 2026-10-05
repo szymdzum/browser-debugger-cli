@@ -1,6 +1,6 @@
 /**
  * `dom get` (semantic mode) shows up to 500 characters of an element's text
- * instead of one truncated line (#332).
+ * instead of one truncated line (#332), and what an element without text holds.
  */
 
 import assert from 'node:assert/strict';
@@ -40,5 +40,16 @@ void describe('formatSemanticNodeWithContext', () => {
       domContext: { tag: 'div', preview: textPreview(text), text },
     });
     assert.equal(output.split('\n')[1], `Text: ${text}`);
+  });
+
+  void it('says what an element without text holds (a body with only an iframe)', () => {
+    const output = formatSemanticNodeWithContext({
+      node: NODE,
+      domContext: { tag: 'body', children: ['iframe#app', 'script'], childCount: 2 },
+    });
+    assert.equal(
+      output,
+      '[Generic] <body>\nNo text; holds 2 elements: iframe#app, script (see its HTML with --raw)'
+    );
   });
 });

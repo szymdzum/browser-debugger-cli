@@ -10,150 +10,129 @@ import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import {
   getDOMElements,
   getDomContext,
-  noMatchesError,
-  resolveA11yNodeForSelector,
+  selectMatch,
   type DomGetOptions as DomGetHelperOptions,
-  type DomContext,
 } from '@/commands/dom/helpers/index.js';
 import {
   formatSemanticNodeWithContext,
-  queryDomContextBySelector,
   resolveNodeWithFallback,
+  type SemanticNodeWithContext,
 } from '@/commands/dom/semanticUtils.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomGetCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
 import {
-  elementAtIndexNotFoundError,
   conflictingOptionsMessage,
+  indexWithIndexOptionError,
+  nodeIdNotFoundError,
   optionRequiresMessage,
-  missingArgumentError,
 } from '@/errors/messages.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { formatDomGet } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
-async function handleIndexGetRaw(index: number, options: DomGetCommandOptions): Promise<void> {
+/** What `bdg dom get` reads without a selector */
+export const DOM_GET_DEFAULT_SELECTOR = 'body';
+
+/**
+ * The element to read: a cached index or a selector match.
+ *
+ * @param selectorOrIndex - CSS selector or cached index
+ * @param index - Which match of the selector (0-based)
+ * @returns Backend node id
+ * @throws CommandError (83) no match, (81) index out of range, (87) stale cached index
+ */
+async function targetNodeId(selectorOrIndex: string, index: number | undefined): Promise<number> {
   const resolver = DomElementResolver.getInstance();
+  if (resolver.isNumericIndex(selectorOrIndex)) {
+    return (await resolver.getNodeIdForIndex(Number(selectorOrIndex))).nodeId;
+  }
+  return selectMatch(selectorOrIndex, index ?? 0);
+}
+
+/**
+ * Semantic view of one element: its accessibility node (or one inferred from
+ * the DOM) and its DOM context.
+ *
+ * @param backendNodeId - The element
+ * @param full - All of its text instead of the first 500 characters
+ * @returns Node and context
+ * @throws CommandError (83) when the element is gone
+ */
+async function semanticElement(
+  backendNodeId: number,
+  full: boolean
+): Promise<SemanticNodeWithContext> {
+  const ref = { backendNodeId };
+  const [a11yNode, domContext] = await Promise.all([
+    resolveA11yNode(ref),
+    getDomContext(ref, { full }),
+  ]);
+  const node = resolveNodeWithFallback(a11yNode, domContext, backendNodeId);
+  if (!node) {
+    const err = nodeIdNotFoundError(backendNodeId);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+  return { node, domContext };
+}
+
+/**
+ * Raw view: the element(s) with attributes and outer HTML.
+ *
+ * @param selectorOrIndex - CSS selector or cached index
+ * @param options - Command options (`--all`, `--index`)
+ */
+async function handleRawGet(selectorOrIndex: string, options: DomGetCommandOptions): Promise<void> {
   await runCommand(
     async () => {
-      const targetNode = await resolver.getNodeIdForIndex(index);
-      const getOptions = filterDefined({ nodeId: targetNode.nodeId }) as DomGetHelperOptions;
-      const result = await getDOMElements(getOptions);
-      return { success: true, data: result };
+      const resolver = DomElementResolver.getInstance();
+      const getOptions = resolver.isNumericIndex(selectorOrIndex)
+        ? { nodeId: (await resolver.getNodeIdForIndex(Number(selectorOrIndex))).nodeId }
+        : (filterDefined({
+            selector: selectorOrIndex,
+            all: options.all,
+            nth: matchIndex(options),
+          }) as DomGetHelperOptions);
+      return { success: true, data: await getDOMElements(getOptions) };
     },
     options,
     formatDomGet
   );
 }
 
-async function handleIndexGetSemantic(index: number, options: DomGetCommandOptions): Promise<void> {
-  const resolver = DomElementResolver.getInstance();
+/**
+ * Semantic view of the target.
+ *
+ * @param selectorOrIndex - CSS selector or cached index
+ * @param options - Command options (`--index`, `--full`)
+ */
+async function handleSemanticGet(
+  selectorOrIndex: string,
+  options: DomGetCommandOptions
+): Promise<void> {
   await runCommand(
     async () => {
-      const targetNode = await resolver.getNodeIdForIndex(index);
-      const ref = { backendNodeId: targetNode.nodeId };
-      const [a11yNode, domContext] = await Promise.all([
-        resolveA11yNode(ref),
-        getDomContext(ref, { full: options.full === true }),
-      ]);
-
-      const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
-
-      if (!node) {
-        const err = elementAtIndexNotFoundError(index, 'cached query');
-        throw new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
-      }
-
-      return { success: true, data: { node, domContext } };
+      const backendNodeId = await targetNodeId(selectorOrIndex, matchIndex(options));
+      return { success: true, data: await semanticElement(backendNodeId, options.full === true) };
     },
     options,
     formatSemanticNodeWithContext
   );
 }
 
-async function handleIndexGet(index: number, options: DomGetCommandOptions): Promise<void> {
-  if (options.raw) {
-    await handleIndexGetRaw(index, options);
-  } else {
-    await handleIndexGetSemantic(index, options);
-  }
-}
-
-async function handleSelectorGetRaw(
-  selector: string,
-  options: DomGetCommandOptions
-): Promise<void> {
-  await runCommand(
-    async () => {
-      const getOptions = filterDefined({
-        selector,
-        all: options.all,
-        nth: options.nth,
-      }) as DomGetHelperOptions;
-
-      const result = await getDOMElements(getOptions);
-      return { success: true, data: result };
-    },
-    options,
-    formatDomGet
-  );
-}
-
-async function handleSelectorGetSemantic(
-  selector: string,
-  options: DomGetCommandOptions
-): Promise<void> {
-  await runCommand(
-    async () => {
-      const a11yNode = await resolveA11yNodeForSelector(selector);
-
-      let domContext: DomContext | null = null;
-      let nodeId: number | undefined;
-
-      if (a11yNode?.backendDOMNodeId) {
-        nodeId = a11yNode.backendDOMNodeId;
-        domContext = await getDomContext(
-          { backendNodeId: nodeId },
-          { full: options.full === true }
-        );
-      } else if (!a11yNode) {
-        const queryResult = await queryDomContextBySelector(selector, {
-          full: options.full === true,
-        });
-        nodeId = queryResult.nodeId;
-        domContext = queryResult.domContext;
-      }
-
-      const node = resolveNodeWithFallback(a11yNode, domContext, nodeId);
-
-      if (!node) {
-        const err = await noMatchesError(selector);
-        throw new CommandError(
-          err.message,
-          { suggestion: err.suggestion },
-          EXIT_CODES.RESOURCE_NOT_FOUND
-        );
-      }
-
-      return { success: true, data: { node, domContext } };
-    },
-    options,
-    formatSemanticNodeWithContext
-  );
-}
-
-async function handleSelectorGet(selector: string, options: DomGetCommandOptions): Promise<void> {
-  if (options.raw) {
-    await handleSelectorGetRaw(selector, options);
-  } else {
-    await handleSelectorGetSemantic(selector, options);
-  }
+/**
+ * Which match of the selector to read: `--index`, or its alias `--nth`.
+ *
+ * @param options - Command options
+ * @returns 0-based index, undefined for the first match
+ */
+function matchIndex(options: DomGetCommandOptions): number | undefined {
+  return options.index ?? options.nth;
 }
 
 /**
@@ -173,23 +152,23 @@ function getOptionsConflict(
   if (options.full && (options.raw || options.nodeId !== undefined)) {
     return conflictingOptionsMessage('--full', options.raw ? '--raw' : '--node-id');
   }
-  if (options.all && options.nth !== undefined) {
-    return conflictingOptionsMessage('--all', '--nth');
+  if (options.index !== undefined && options.nth !== undefined) {
+    return conflictingOptionsMessage('--index', '--nth');
   }
-  if (!options.raw && (options.all || options.nth !== undefined)) {
-    return optionRequiresMessage(options.all ? '--all' : '--nth', '--raw');
+  if (options.all && matchIndex(options) !== undefined) {
+    return conflictingOptionsMessage('--all', '--index');
   }
+  if (options.all && !options.raw) return optionRequiresMessage('--all', '--raw');
   return null;
 }
 
 /**
- * Handle `bdg dom get [selectorOrIndex] [--node-id <id>]`.
+ * Handle `bdg dom get [selectorOrIndex] [--index <n>] [--node-id <id>]`.
  *
- * `--node-id` reads that node directly (raw output); otherwise dispatches to
- * the selector or index handler based on whether the argument parses as a
- * numeric index.
+ * `--node-id` reads that node directly (raw output); otherwise reads a cached
+ * index or a selector's match (`body` without an argument).
  *
- * @param selectorOrIndex - CSS selector or cached index (optional with --node-id)
+ * @param selectorOrIndex - CSS selector or cached index (default: body)
  * @param options - Command options
  */
 export async function handleDomGet(
@@ -209,19 +188,18 @@ export async function handleDomGet(
     );
     return;
   }
-  if (selectorOrIndex === undefined) {
-    const err = missingArgumentError('bdg dom get <selector|index> or bdg dom get --node-id <id>');
+  const target = selectorOrIndex ?? DOM_GET_DEFAULT_SELECTOR;
+  if (
+    DomElementResolver.getInstance().isNumericIndex(target) &&
+    matchIndex(options) !== undefined
+  ) {
+    const err = indexWithIndexOptionError(target, 'get');
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
-  const isNumericIndex = /^\d+$/.test(selectorOrIndex);
-
-  if (isNumericIndex) {
-    await handleIndexGet(parseInt(selectorOrIndex, 10), options);
-  } else {
-    await handleSelectorGet(selectorOrIndex, options);
-  }
+  if (options.raw) await handleRawGet(target, options);
+  else await handleSemanticGet(target, options);
 }

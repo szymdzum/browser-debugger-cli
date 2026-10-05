@@ -22,13 +22,17 @@
 import { noActiveSessionError } from '@/commands/shared/CommandRunner.js';
 import { CommandError } from '@/errors/index.js';
 import {
-  indexOutOfRangeError,
+  cachedIndexOutOfRangeError,
   indexWithIndexOptionError,
   staleNodeError,
 } from '@/errors/messages.js';
-import { QueryCacheManager, type QueryCacheValidation } from '@/session/QueryCacheManager.js';
+import {
+  QueryCacheManager,
+  indexSourceOf,
+  type QueryCacheValidation,
+} from '@/session/QueryCacheManager.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
-import type { DomQueryResult } from '@/types.js';
+import type { DomQueryResult, IndexSource } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -43,6 +47,10 @@ export interface ElementTargetSuccess {
   index?: number | undefined;
   /** Exact element from the query cache (index arguments only) */
   backendNodeId?: number | undefined;
+  /** The list the index refers to (index arguments only) */
+  source?: IndexSource | undefined;
+  /** What the cached element was when listed, e.g. `h3 "Welcome"` (index arguments only) */
+  preview?: string | undefined;
 }
 
 /**
@@ -125,10 +133,9 @@ export class DomElementResolver {
       };
     }
     try {
-      const index = parseInt(selectorOrIndex, 10);
-      const { node, selector } = await this.lookup(index);
+      const { node, selector, source } = await this.lookup(parseInt(selectorOrIndex, 10));
       if (node.nodeId <= 0) {
-        const err = staleNodeError(index);
+        const err = staleNodeError(source.index, source);
         return {
           success: false,
           error: err.message,
@@ -136,7 +143,13 @@ export class DomElementResolver {
           suggestion: err.suggestion,
         };
       }
-      return { success: true, selector: node.selector ?? selector, backendNodeId: node.nodeId };
+      return {
+        success: true,
+        selector: node.selector ?? selector,
+        backendNodeId: node.nodeId,
+        source,
+        preview: cachedNodePreview(node),
+      };
     } catch (error) {
       if (!(error instanceof CommandError)) throw error;
       return {
@@ -156,15 +169,15 @@ export class DomElementResolver {
    * @throws CommandError if there is no usable cache, the index is out of range,
    *   or the element is no longer in the page (87)
    */
-  async getNodeIdForIndex(index: number): Promise<{ nodeId: number }> {
-    const { node } = await this.lookup(index);
+  async getNodeIdForIndex(index: number): Promise<{ nodeId: number; source: IndexSource }> {
+    const { node, source } = await this.lookup(index);
     if (node.nodeId <= 0) {
-      const err = staleNodeError(index);
+      const err = staleNodeError(index, source);
       throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
     }
     const { assertNodeAttached } = await import('@/commands/dom/helpers/index.js');
-    await assertNodeAttached(node.nodeId, index);
-    return node;
+    await assertNodeAttached(node.nodeId, source);
+    return { nodeId: node.nodeId, source };
   }
 
   /**
@@ -184,7 +197,9 @@ export class DomElementResolver {
    * @returns Cached node and the query's selector
    * @throws CommandError (83) without a session, (81) without a usable cache, (87) for an index outside the cached results
    */
-  private async lookup(index: number): Promise<{ node: CachedNode; selector: string }> {
+  private async lookup(
+    index: number
+  ): Promise<{ node: CachedNode; selector: string; source: IndexSource }> {
     const validation: QueryCacheValidation = await this.cacheManager.validate();
     if (!validation.valid || !validation.cache) {
       if (!(await isDaemonAlive())) throw noActiveSessionError();
@@ -195,15 +210,23 @@ export class DomElementResolver {
       );
     }
     const { nodes, selector } = validation.cache;
+    const source = indexSourceOf(index, selector);
     const node = nodes.find((n) => n.index === index);
     if (!node) {
-      const err = indexOutOfRangeError(index, nodes.length - 1);
-      throw new CommandError(
-        `${err.message} in the last query ("${selector}")`,
-        { suggestion: nodes.length > 0 ? err.suggestion : 'Re-run the query' },
-        EXIT_CODES.STALE_CACHE
-      );
+      const err = cachedIndexOutOfRangeError(source, nodes.length);
+      throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
     }
-    return { node, selector };
+    return { node, selector, source };
   }
+}
+
+/**
+ * What a cached element was when it was listed.
+ *
+ * @param node - Cached node
+ * @returns e.g. `h3 "Welcome"`, `button`; undefined without a tag
+ */
+function cachedNodePreview(node: CachedNode): string | undefined {
+  if (!node.tag) return undefined;
+  return node.preview ? `${node.tag} "${node.preview}"` : node.tag;
 }

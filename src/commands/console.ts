@@ -23,8 +23,10 @@ import {
   formatConsole,
   formatConsoleFollowLines,
   LEVEL_MAP,
+  lastMessages,
   type ConsoleFormatOptions,
   type ConsoleLevel,
+  type ConsoleSkipped,
 } from '@/ui/formatters/console.js';
 import {
   followingConsoleMessage,
@@ -37,8 +39,19 @@ const DEFAULT_LAST = 100;
 
 const consoleLastOption = new Option(
   '--last <n>',
-  'Show last N console messages (0 = all)'
-).default(String(DEFAULT_LAST));
+  `List the last N console messages (0 = all; default: ${DEFAULT_LAST} with --list or --follow)`
+);
+
+/**
+ * Whether to list the messages instead of summarising them: with `--list`,
+ * and when `--last` asks for a number of them.
+ *
+ * @param options - Command options
+ * @returns True to list
+ */
+export function listsMessages(options: Pick<ConsoleCommandOptions, 'list' | 'last'>): boolean {
+  return options.list === true || options.last !== undefined;
+}
 
 /**
  * Keep the messages of the page currently loaded.
@@ -73,14 +86,51 @@ function applyFilters(
   return filtered;
 }
 
-function buildFormatOptions(options: ConsoleCommandOptions, lastN: number): ConsoleFormatOptions {
+/**
+ * Messages the filters left out between the first and the last listed
+ * message (their session indices skip them), by why: logged by another page
+ * load, or of another level.
+ *
+ * @param all - All messages of the session
+ * @param listed - Messages listed
+ * @returns Counts per reason
+ */
+export function skippedMessages(all: ConsoleMessage[], listed: ConsoleMessage[]): ConsoleSkipped {
+  const shown = new Set(listed.map((message) => message.index));
+  const indices = listed.map((message) => message.index).filter((index) => index !== undefined);
+  const skipped = { otherPages: 0, otherLevels: 0 };
+  if (indices.length < 2) return skipped;
+  const [first, last] = [Math.min(...indices), Math.max(...indices)];
+  const pages = new Set(listed.map((message) => message.navigationId));
+  for (const { index, navigationId } of all) {
+    if (index === undefined || index < first || index > last || shown.has(index)) continue;
+    if (pages.has(navigationId)) skipped.otherLevels++;
+    else skipped.otherPages++;
+  }
+  return skipped;
+}
+
+/**
+ * Formatting options from the command options.
+ *
+ * @param options - Command options
+ * @param lastN - `--last` value
+ * @param skipped - Messages the filters left out between the listed ones
+ * @returns Formatting options
+ */
+function buildFormatOptions(
+  options: ConsoleCommandOptions,
+  lastN: number,
+  skipped?: ConsoleSkipped
+): ConsoleFormatOptions {
   return {
     json: options.json,
-    list: options.list,
+    list: listsMessages(options),
     follow: options.follow,
     last: lastN,
     history: options.history,
     level: options.level,
+    skipped,
   };
 }
 
@@ -215,8 +265,9 @@ export function registerConsoleCommand(program: Command): void {
         },
         options,
         (data) => {
-          const { filtered } = data as ConsoleResult;
-          return formatConsole(filtered, buildFormatOptions(options, lastN));
+          const { messages, filtered } = data as ConsoleResult;
+          const skipped = skippedMessages(messages, lastMessages(filtered, lastN));
+          return formatConsole(filtered, buildFormatOptions(options, lastN, skipped));
         }
       );
     });

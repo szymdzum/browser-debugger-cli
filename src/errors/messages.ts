@@ -6,17 +6,20 @@
 
 import * as path from 'path';
 
-import type { DomFrame } from '@/ipc/protocol/commands.js';
+import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import {
   countedMatches,
   type WaitCondition,
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
 import { getSessionBaseDir, getSessionName } from '@/session/paths.js';
+import type { DocumentRequestState, IndexSource } from '@/types.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import {
+  documentRequestText,
   frameLabel,
   frameUrlLabel,
+  pendingRequestsText,
   waitSnapshotSummary,
   waitTargetLabel,
 } from '@/ui/messages/commands.js';
@@ -967,35 +970,81 @@ export function noHistoryEntryError(direction: 'back' | 'forward'): ErrorWithSug
   };
 }
 
+/** What a submit was still waiting for when its wait ran out */
+export interface SubmitBlockers {
+  /** The page request the submit sent, if any */
+  document?: DocumentRequestState | undefined;
+  /** Requests still running (the longest-running first) */
+  pending?: PendingRequestInfo[] | undefined;
+  /** All requests still running */
+  pendingCount?: number | undefined;
+}
+
 /**
- * The form was submitted but the wait for its result timed out. Waiting for
- * a navigation, the hint depends on whether a page request was sent: without
- * one the form probably submits via fetch; with one the server had not
- * answered (or the new page had not committed) yet.
+ * What to do about a submit that timed out waiting for a navigation, by how
+ * far its page request got: without one the form probably submits via fetch.
+ *
+ * @param document - The page request, if one was sent
+ * @returns Suggestion
+ */
+function submitNavigationSuggestion(document: DocumentRequestState | undefined): string {
+  if (document === undefined) {
+    return 'The form sent no page request, so it may not navigate (e.g. it submits via fetch); retry without --wait-navigation';
+  }
+  const details = `see it with ${sessionCommand('bdg network list --last 10')}`;
+  if (document.errorText !== undefined) return `The page request failed; ${details}`;
+  if (document.status !== undefined && document.status >= 400) {
+    return `The server answered with an error; ${details}`;
+  }
+  if (document.status !== undefined) {
+    return 'The server answered without a new page; retry without --wait-navigation';
+  }
+  return 'The server has not answered the page request yet; retry with a larger --timeout';
+}
+
+/**
+ * What a timed-out submit was waiting on, in words: its page request when a
+ * navigation was awaited or the request had not loaded a page, otherwise the
+ * requests still running.
+ *
+ * @param waitNavigation - Whether a navigation was awaited
+ * @param blockers - The page request and the requests still running
+ * @returns e.g. `POST …/authenticate pending for 10s`; undefined when nothing is known
+ */
+function submitWaitDetail(waitNavigation: boolean, blockers: SubmitBlockers): string | undefined {
+  const { document, pending = [] } = blockers;
+  const loadedPage =
+    document?.status !== undefined && document.status < 400 && document.errorText === undefined;
+  if (document && (waitNavigation || !loadedPage)) return documentRequestText(document);
+  if (pending.length === 0) return undefined;
+  return `waiting on ${pendingRequestsText(pending, blockers.pendingCount ?? pending.length)}`;
+}
+
+/**
+ * The form was submitted but the wait for its result timed out. The message
+ * names what it was waiting on: the page request the submit sent (pending,
+ * answered with an error, failed; waiting for a navigation, also one that
+ * answered), or else the requests still running.
  *
  * @param timeout - Timeout in ms
  * @param waitNavigation - Whether a navigation was awaited
- * @param documentRequest - First page request sent, e.g. `POST https://…/login`
+ * @param blockers - The page request and the requests still running
+ * @returns e.g. `Form submitted, but timed out after 10000ms waiting for navigation: POST …/authenticate pending for 10s`
  */
 export function submitTimeoutError(
   timeout: number,
   waitNavigation: boolean,
-  documentRequest?: string
+  blockers: SubmitBlockers = {}
 ): ErrorWithSuggestion {
-  const message = `Form submitted, but timed out after ${timeout}ms waiting for ${waitNavigation ? 'navigation' : 'network idle'}`;
+  const detail = submitWaitDetail(waitNavigation, blockers);
+  const message = `Form submitted, but timed out after ${timeout}ms waiting for ${waitNavigation ? 'navigation' : 'network idle'}${detail ? `: ${detail}` : ''}`;
   if (!waitNavigation) {
     return {
       message,
       suggestion: 'Increase --timeout, or use --wait-network 0 to return right after submitting',
     };
   }
-  return {
-    message,
-    suggestion:
-      documentRequest === undefined
-        ? 'The form sent no page request, so it may not navigate (e.g. it submits via fetch); retry without --wait-navigation'
-        : `The page request (${documentRequest}) had not loaded a page yet; retry with a larger --timeout`,
-  };
+  return { message, suggestion: submitNavigationSuggestion(blockers.document) };
 }
 
 /**
@@ -1026,11 +1075,51 @@ export function nodeIdNotFoundError(nodeId: number): ErrorWithSuggestion {
 }
 
 /**
+ * The list an index refers to, in words.
+ *
+ * @param source - Where the index comes from
+ * @returns e.g. `index 0 of the last dom query "h3"`, `index 2 of the last dom form`
+ */
+export function indexSourceText(source: IndexSource): string {
+  return `index ${source.index} of ${cachedListText(source)}`;
+}
+
+/**
+ * The cached list an index refers to, in words.
+ *
+ * @param source - Where the index comes from
+ * @returns e.g. `the last dom query "h3"`
+ */
+function cachedListText(source: IndexSource): string {
+  const query = source.query === undefined ? '' : ` "${source.query}"`;
+  return `the last ${source.command}${query}`;
+}
+
+/**
+ * The command that refreshes the list an index refers to.
+ *
+ * @param source - Where the index comes from
+ * @returns e.g. `bdg dom query 'h3'`
+ */
+function refreshCommand(source: IndexSource): string {
+  if (source.query === undefined) return sessionCommand(`bdg ${source.command}`);
+  return sessionCommand(`bdg ${source.command} ${shellQuote(source.query)}`);
+}
+
+/**
  * A cached node is gone (page navigated or the element was removed).
  *
- * @param index - Index the user gave (query or form results), if any
+ * @param index - Index the user gave, if any
+ * @param source - The list the index refers to, when known
+ * @returns Message and suggestion
  */
-export function staleNodeError(index?: number): ErrorWithSuggestion {
+export function staleNodeError(index?: number, source?: IndexSource): ErrorWithSuggestion {
+  if (source) {
+    return {
+      message: `The element at ${indexSourceText(source)} is no longer in the page (it was removed or the page navigated)`,
+      suggestion: `Re-run "${refreshCommand(source)}" to get fresh indices`,
+    };
+  }
   const element = index === undefined ? 'The element' : `The element at index ${index}`;
   return {
     message: `${element} is no longer in the page (it was removed or the page navigated)`,
@@ -1039,13 +1128,38 @@ export function staleNodeError(index?: number): ErrorWithSuggestion {
 }
 
 /**
- * Element at index not found (stale cache).
+ * An index beyond the cached results.
+ *
+ * @param source - The index and the list it refers to
+ * @param count - Number of cached results
+ * @returns Message and suggestion
  */
-export function elementAtIndexNotFoundError(index: number, selector: string): ErrorWithSuggestion {
+export function cachedIndexOutOfRangeError(
+  source: IndexSource,
+  count: number
+): ErrorWithSuggestion {
+  const results = count === 1 ? '1 result' : `${count} results`;
   return {
-    message: `Element at index ${index} not found`,
-    suggestion: `Re-run "bdg dom query ${selector}" to refresh the cache`,
+    message: `Index ${source.index} is out of range for ${cachedListText(source)} (${results})`,
+    suggestion:
+      count > 0
+        ? `Use an index between 0 and ${count - 1}, or re-run "${refreshCommand(source)}"`
+        : `Re-run "${refreshCommand(source)}"`,
   };
+}
+
+/**
+ * Note for a form command (fill, submit) whose index refers to results of
+ * another command and hit an element it cannot act on.
+ *
+ * @param source - The index and the list it refers to
+ * @param preview - What the cached element is, e.g. `h3 "Welcome"`
+ * @returns e.g. `index 0 refers to the last dom query results ("h3": h3 "Welcome"); run bdg dom form to target form fields by index`
+ */
+export function otherIndexSourceNote(source: IndexSource, preview?: string): string {
+  const query = source.query === undefined ? '' : `"${source.query}"`;
+  const what = [query, preview].filter(Boolean).join(': ');
+  return `index ${source.index} refers to the last ${source.command} results${what ? ` (${what})` : ''}; run ${sessionCommand('bdg dom form')} to target form fields by index`;
 }
 
 /** What a page holds that selectors cannot search (a cheap page check) */
@@ -1154,6 +1268,41 @@ export function noNodesFoundError(
  */
 function shellQuote(value: string): string {
   return `'${value.split("'").join(`'\\''`)}'`;
+}
+
+/** Why a page scroll moved nothing */
+export interface ScrollNoEffect {
+  /** Direction asked for */
+  direction: 'up' | 'down' | 'left' | 'right';
+  /** The document is no larger than the viewport, the page was at its edge already, or it did not move although it could */
+  reason: 'too-small' | 'at-edge' | 'locked';
+  /** Viewport size along the axis (px) */
+  viewport: number;
+  /** The page's `document.readyState` */
+  readyState: string;
+}
+
+/** Edge of the page in each direction */
+const SCROLL_EDGES = { up: 'top', down: 'bottom', left: 'left edge', right: 'right edge' };
+
+/**
+ * Warning of `bdg dom scroll` when the page did not move, with the
+ * still-loading hint while the document is not complete (it may grow).
+ *
+ * @param effect - Why nothing scrolled
+ * @returns e.g. `Nothing to scroll: the document is no taller than the viewport (993px)`
+ */
+export function scrollNoEffectWarning(effect: ScrollNoEffect): string {
+  const vertical = effect.direction === 'up' || effect.direction === 'down';
+  const reasons = {
+    'too-small': `Nothing to scroll: the document is no ${vertical ? 'taller' : 'wider'} than the viewport (${effect.viewport}px)`,
+    'at-edge': `Nothing scrolled: the page is already at the ${SCROLL_EDGES[effect.direction]}`,
+    locked:
+      'Nothing scrolled although the page is larger than the viewport; its scrolling may be locked (e.g. overflow: hidden while a dialog is open)',
+  };
+  const loading =
+    effect.readyState === 'complete' ? undefined : pageStillLoadingHint(effect.readyState);
+  return [reasons[effect.reason], loading].filter(Boolean).join('. ');
 }
 
 /**
@@ -1809,11 +1958,35 @@ export function internalError(context: string): ErrorWithSuggestion {
 /**
  * No forms found on page.
  */
-export function noFormsFoundError(): ErrorWithSuggestion {
+export function noFormsFoundError(readyState?: string): ErrorWithSuggestion {
+  const check =
+    'Check if forms exist with: bdg dom query "form, input, [role=textbox]" or inspect the page manually';
+  if (readyState === undefined || readyState === 'complete') {
+    return { message: 'No forms discovered on the page', suggestion: check };
+  }
   return {
-    message: 'No forms discovered on the page',
-    suggestion:
-      'Check if forms exist with: bdg dom query "form, input, [role=textbox]" or inspect the page manually',
+    message: 'No forms discovered on the page yet; it is still loading',
+    suggestion: joinLines(pageStillLoadingHint(readyState), check),
+  };
+}
+
+/**
+ * The form discovery script threw.
+ *
+ * @param detail - What it threw, e.g. `TypeError: Cannot read properties of null`
+ * @param readyState - The page's `document.readyState`, when known
+ * @returns Message and suggestion (the still-loading hint while the page loads)
+ */
+export function formDiscoveryFailedError(detail: string, readyState?: string): ErrorWithSuggestion {
+  if (readyState !== undefined && readyState !== 'complete') {
+    return {
+      message: `Form discovery failed while the page is still loading (${detail})`,
+      suggestion: pageStillLoadingHint(readyState),
+    };
+  }
+  return {
+    message: `Form discovery failed: ${detail}`,
+    suggestion: `The page changed or threw while it was read; retry, or look at the fields with ${sessionCommand('bdg dom query "form, input, select, textarea"')}`,
   };
 }
 

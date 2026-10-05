@@ -6,15 +6,11 @@
  * of the two data sources is available.
  */
 
-import {
-  getDomContext,
-  resolveBackendNodeIds,
-  type DomContext,
-} from '@/commands/dom/helpers/index.js';
+import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
-import { elementTextLine } from '@/ui/messages/commands.js';
+import { elementTextLine, emptyElementLine } from '@/ui/messages/commands.js';
 
 /**
  * Accessibility node paired with its surrounding DOM context for display.
@@ -77,7 +73,8 @@ function buildPropertiesText(node: A11yNode): string {
  * Format a semantic node together with DOM context for human-readable output.
  *
  * The role line is followed by up to 500 characters of the element's text
- * (all of it with `dom get --full`) when it is longer than the one-line preview.
+ * (all of it with `dom get --full`) when it is longer than the one-line
+ * preview, or, for an element without text or name, what it holds.
  *
  * @param data - Accessibility node and optional DOM context
  * @returns Role line, plus a text line for elements with longer text
@@ -89,7 +86,11 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   const propsText = buildPropertiesText(node);
   const inferredText = node.inferred ? ' (inferred from DOM)' : '';
   const line = `${roleText}${contextText}${propsText}${inferredText}`;
-  return domContext?.text ? joinLines(line, elementTextLine(domContext.text)) : line;
+  if (domContext?.text) return joinLines(line, elementTextLine(domContext.text));
+  if (domContext?.childCount !== undefined && !node.name) {
+    return joinLines(line, emptyElementLine(domContext.children ?? [], domContext.childCount));
+  }
+  return line;
 }
 
 /**
@@ -108,23 +109,4 @@ export function resolveNodeWithFallback(
   if (a11yNode) return a11yNode;
   if (domContext && nodeId) return synthesizeA11yNode(domContext, nodeId);
   return null;
-}
-
-/**
- * Look up a single element by selector to produce its nodeId and DOM context.
- *
- * Used by `dom get` (semantic mode) when the accessibility tree has no node
- * for the selector — the selector-based DOM context allows us to synthesize
- * one.
- */
-export async function queryDomContextBySelector(
-  selector: string,
-  options: { full?: boolean } = {}
-): Promise<{ nodeId: number | undefined; domContext: DomContext | null }> {
-  const [backendNodeId] = await resolveBackendNodeIds([selector]);
-  if (backendNodeId === undefined) {
-    return { nodeId: undefined, domContext: null };
-  }
-  const domContext = await getDomContext({ backendNodeId }, options);
-  return { nodeId: backendNodeId, domContext };
 }

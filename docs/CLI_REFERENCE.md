@@ -187,6 +187,8 @@ bdg dom a11y query 'name=E-mail address:'         # A name with spaces or colons
 bdg dom a11y query 'role=textbox name=E-mail address:'  # Combine criteria (AND logic)
 bdg dom a11y query 'description=Click to submit'  # Find by description
 bdg dom a11y query role=button --json             # JSON output
+bdg dom a11y query role=link --limit 0            # List all matches (default: the first 50)
+bdg dom click 0                                   # Act on a match by its index
 
 # Describe specific element by CSS selector
 bdg dom a11y describe "button[type='submit']"     # Get accessibility info for element
@@ -206,6 +208,7 @@ bdg dom a11y describe --json                      # JSON output
 - Tree view shows role, name, description, and key properties
 - Ignored nodes are automatically filtered out
 - Human-readable format limited to 50 nodes (use `--json` for complete output)
+- `a11y query` lists each element once (an element the page and its frame's tree both report is not repeated) and the first 50 matches (`--limit <n>`, `0` for all; `... and 213 more` says how many it left out, JSON has `count` and `omitted`). All matches are indexed: `bdg dom click 55`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `get` and `listeners` take them, also for an element of a cross-origin iframe of the same site, such as a consent dialog served from a subdomain (its scripts then run in that iframe, mouse events land on it through the iframe's position, and `layout` places it in the top-level page)
 
 **JSON Output (jq-friendly):**
 
@@ -248,13 +251,15 @@ bdg dom get "h1"                              # Get semantic A11y representation
 bdg dom get "button"                          # [Button] "Submit" (focusable)
 bdg dom get "#searchInput"                    # [Searchbox] "Search" (focusable)
 bdg dom get ".nav-link"                       # First matching element
+bdg dom get ".nav-link" --index 2             # Third match (0-based; --nth is an alias)
+bdg dom get                                   # The body (default selector)
 bdg dom get "#content"                        # [Generic] <div> + a Text: line (up to 500 characters)
 bdg dom get "#content" --full                 # All of its text (not with --raw or --node-id)
 
 # Raw HTML output
 bdg dom get "h1" --raw                        # Get full HTML with attributes
 bdg dom get "button" --raw --all             # Get all matching elements
-bdg dom get "button" --raw --nth 2           # Get 3rd matching element (0-based)
+bdg dom get "button" --raw --index 2         # Get 3rd matching element (0-based)
 bdg dom get --node-id 123                    # Get by node id (from query/get --raw or a11y describe)
 
 # JSON output
@@ -269,7 +274,7 @@ bdg dom get "h1" --raw --json                # HTML as JSON
 | **Token Efficiency** | 70-99% reduction | Full HTML |
 | **Use Case** | AI agents, automation | Debugging, inspection |
 | **Format** | `[Role] "Name" (properties)` | Complete HTML with attributes |
-| **Filtering** | First match only | `--all`, `--nth`, `--node-id` |
+| **Filtering** | First match, or `--index` | `--all`, `--index`, `--node-id` |
 
 **Semantic Output Examples:**
 ```text
@@ -283,12 +288,12 @@ bdg dom get "h1" --raw --json                # HTML as JSON
 Text: Welcome to the docs. This guide covers ... (cut at 500 characters; --full shows all of it)
 ```
 
-An element whose text is longer than the one-line preview gets a `Text:` line with up to 500 characters of it (whitespace collapsed); `--json` has it as `domContext.text`.
+An element whose text is longer than the one-line preview gets a `Text:` line with up to 500 characters of it (whitespace collapsed); `--json` has it as `domContext.text`. An element without text or name says what it holds instead: `No text; holds 1 element: iframe (see its HTML with --raw)` (`domContext.children`, `childCount`), e.g. a body that only holds an error page's iframe.
 
 **When to use `--raw`:**
 - Need exact HTML structure with classes and attributes
 - Multiple elements required (`--all`)
-- Specific element selection (`--nth`, `--node-id`)
+- Specific element selection by node id (`--node-id`)
 - CSS/HTML debugging
 
 **Token Efficiency:**
@@ -379,7 +384,7 @@ Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
 - Coordinates are CSS pixels; `bounds` is relative to the top-level page (iframe offsets and page scroll included), `viewport` to the visible area
 - `inViewport`: `visible`, `partly` (with `percentVisible`), `above`, `below`, `left`, `right` or `hidden` (with `hiddenReason`: `display: none`, `visibility: hidden`, zero size, `inside a closed <details>`, `content-visibility: hidden on div#…`, `clipped by div#acc: zero height` for content of a collapsed `height: 0; overflow: hidden` accordion, inside a hidden iframe). Human output shows no coordinates for hidden elements
 - Same-origin iframes and overflow containers (scroll lists, `overflow: hidden`) clip what counts as visible, following containing blocks (an absolutely positioned dropdown escapes a static `overflow: hidden` parent; fixed elements are not clipped). CSS `zoom` and `transform: scale()` on or around a container are taken into account. A `<body>` that scrolls on its own (the root element has `overflow` other than `visible`) clips like any container. When one cuts the element off, `clippedBy` names it (`out of view in ul#list (below)`, `out of view in body (below)`) and there is no `scrollBy`
-- `scrollBy`: the page scroll (`bdg dom scroll --down/--up/--right/--left`) that centres an element that is not fully in view (aligns the top of one taller than the viewport), like `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover it; limited to how far the page can actually scroll. Human output says so: `(scroll down 500px to centre it)`, or `to bring it into view` for an element larger than the viewport; for a partly visible element `partly visible (24%); scroll down 302px to see all of it` (`to show it from its start` when it is larger than the viewport)
+- `scrollBy`: the page scroll (`bdg dom scroll --down/--up/--right/--left`) that brings an element fully into view; limited to how far the page can actually scroll. An element out of view is centred (the top of one taller than the viewport is aligned), like `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover it: `(scroll down 500px to centre it)`, or `to bring it into view` for an element larger than the viewport. For a partly visible element it is the smallest scroll that shows all of it, the part cut off at the top or bottom: `partly visible (87%); scroll up 5px to see all of it` (`to show it from its start`, aligning its top, when it is larger than the viewport). An element a page script moves when the page scrolls (a floating menu) may move again after that scroll
 - `offScreenReason` replaces `scrollBy` when no page scroll can bring the element fully into view: `fixed position, page scroll does not move it` (the element or a container is `position: fixed` relative to the viewport, e.g. an off-canvas menu; a fixed element inside a transformed container scrolls with the page and gets `scrollBy`), `sticky position, page scroll moves it only until it sticks` (it or an ancestor is `position: sticky`, so the scroll needed cannot be told) or `beyond the page's scroll range` (e.g. a `left: -9999px` skip link). The position (`left`, `above`, `partly`, …) is kept; human output shows `left of viewport (off-screen: …)`, or `partly visible (40%); fixed position, …`
 - Scroll-locked pages: when the page cannot scroll (the document is no taller than the viewport) because `body` or `html` is `position: fixed` or `overflow: hidden`, as a consent or modal dialog does, content below the fold gets `page scrolling is locked (position: fixed, overflow: hidden on body)` instead (in-flow content of a fixed `body` is not called fixed). When a visible dialog is on the page (`dialog[open]`, `[aria-modal=true]`, `[role=dialog]`, `[role=alertdialog]`), it is named as the likely cause: `…, likely by dialog div#sp_message_container_1482251`. Human output: `below fold; page scrolling is locked (…)`. Close the dialog first
 - The page line names the `prefers-color-scheme` the page sees (`…, prefers-color-scheme: dark`; `page.colorScheme` in JSON), the media preference, not the theme the page renders. `page.viewport` is the layout viewport without scrollbars, the same size `dom scroll` reports
@@ -619,7 +624,7 @@ Requests during the action (5):
 ]
 ```
 
-`Element` (`data.element` in JSON) names the element the action hit, by its tag, id, classes and text, or the text of a nearby ancestor (`input.toggle in div.view "Write report"`), so a click by index or on one of several matches says which one it was. The status line has a check mark only for a clean success: an action with warnings (covered element clicked with DOM events, click not received, value mismatch, several matches) prints `⚠ Element Clicked (with warnings)` with the warning right below it, before the details and requests.
+`Element` (`data.element` in JSON) names the element the action hit, by its tag, id, classes and text, or the text of a nearby ancestor (`input.toggle in div.view "Write report"`), so a click by index or on one of several matches says which one it was. A numeric index refers to the last `dom query`, `dom form` or `dom a11y query` results (one cache holds the last of them), and the output says which: `Element: h3 "Welcome" (index 0 of the last dom query "h3")` (`data.indexSource: { index, command, query? }`; for an a11y query the `Selector` row is left out, as its pattern is not a selector). Errors name it too: a stale index says `The element at index 0 of the last dom a11y query "name:Accept all" is no longer in the page` and how to refresh it (87), and `fill`/`submit` on an element of a query or a11y query they cannot act on add `index 0 refers to the last dom query results ("h3": h3 "Welcome"); run bdg dom form to target form fields by index`. The status line has a check mark only for a clean success: an action with warnings (covered element clicked with DOM events, click not received, value mismatch, several matches) prints `⚠ Element Clicked (with warnings)` with the warning right below it, before the details and requests.
 
 Actions also say what changed on the page, after the details and before the requests. A navigation is shown as `Page: navigated to https://…/secure (200)` (a new document, also at the same URL, as after a form POST that redirects back) or `Page: URL changed to …/#/active (same document)` (history API, hash), `navigation: { url, sameDocument, status }` in JSON; it comes from CDP events, so it is reported even when the page could not be read. Messages that appeared or changed in alert/status/`aria-live` elements, `<output>` or elements whose class or id has a word like flash, alert, error, toast, notice, message, invalid or feedback are listed as `New text: "Your password is invalid!" (div#flash.flash.error)` (`messages: [{ text, element }]`, at most 3, 120 characters each, without close controls such as the "×" or aria-hidden parts; after a navigation every message of the new page counts). Texts of only digits and time units (clocks, counters) are left out; other text that changes on its own (a rotating banner) can show up. Both are left out when nothing changed. A `click` or `submit` that changed nothing at all (no DOM change, request, navigation, dialog or new window, checked again 300 ms later) prints `⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)` and has `effect: "none"`, still exiting 0. It is not claimed with `--no-wait`, for `hover` and `--right`, after a copy or cut, when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, or when focus moved to an element that is not a button or link; focus/hover class changes on the clicked element don't count as changes, shadow roots attached meanwhile do. Effects outside the DOM (CSS `:hover`/`:focus-within` styles, canvas) are not seen. This costs one page script sent before the action (without waiting for it) and one read after it (about 1 ms on small pages, under 10 ms on large ones); when the page does not answer (a pending navigation), bdg waits at most 200 ms for the snapshot and 250 ms per read.
 
@@ -690,7 +695,9 @@ bdg dom scroll --top                              # Scroll to page top
 bdg dom scroll "li.item" --index 5               # Scroll to nth match
 ```
 
-Scroll output reports the viewport without scrollbars (`Viewport: 1905×993`) and the page size of the scrolling element, the same numbers as `dom layout`.
+A submit whose wait runs out (`--timeout`, exit 102) names what it was waiting on: its page request and how far it got (`timed out after 10000ms waiting for navigation: POST …/authenticate pending for 10s`, `… returned 503 Service Unavailable`, `… failed (net::ERR_…)`), or else the requests still running (`waiting on GET …/app.js (pending 9s) and 2 more`).
+
+Scroll output reports the viewport without scrollbars (`Viewport: 1905×993`) and the page size of the scrolling element, the same numbers as `dom layout`. A page scroll that moved nothing says why, as a warning (still exit 0): `Nothing to scroll: the document is no taller than the viewport (993px)`, `Nothing scrolled: the page is already at the bottom`, or that scrolling may be locked; while the page is still loading it adds `The page is still loading (document.readyState: loading); wait for it with: bdg dom wait --load`.
 
 **Press Key Options:**
 | Option | Description |
@@ -1014,7 +1021,7 @@ bdg console -H
 bdg console --list
 bdg console -l
 
-# Limit to last N messages
+# List the last N messages (also without --list)
 bdg console --last 50
 
 # Stream console messages in real-time
@@ -1026,6 +1033,8 @@ bdg console --json
 ```
 
 **Default behavior:**
+- `--last <n>` lists the last N messages (like `--list`; without it the summary is shown)
+- `[n]` in a list is the message's position in the session (what `bdg details console <n>` takes); when the page or level filter left messages out between listed ones, a note under the list says how many and why (`not listed in between: 1 message from another page load (-H lists all)`)
 - Shows messages from **current page load only** (most recent navigation)
 - Errors deduplicated with occurrence count and source location
 - Warnings listed with source location

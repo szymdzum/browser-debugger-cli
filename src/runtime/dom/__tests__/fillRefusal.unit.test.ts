@@ -116,6 +116,7 @@ void describe('FILL_REFUSAL_JS', () => {
 
   void it('calls a readonly field read-only', () => {
     assert.deepEqual(refusal(element('textarea', { readOnly: true })), {
+      kind: 'readOnly',
       error: 'The element is read-only (readonly attribute)',
       suggestion: FILL_REFUSALS.readOnly.suggestion,
     });
@@ -151,6 +152,7 @@ void describe('FILL_REFUSAL_JS', () => {
 
   void it('says when an element is not a fillable kind', () => {
     assert.deepEqual(refusal(element('span')), {
+      kind: 'notFillable',
       error:
         'Element is not fillable (<span> is not an input, textarea, select or contenteditable element)',
       suggestion: FILL_REFUSALS.notFillable.suggestion,

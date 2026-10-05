@@ -89,6 +89,12 @@ const FORM_SHELLS_HTML =
   '<div class="DocSearch-Modal" style="margin: 60px auto; width: 300px; background: white">' +
   '<form class="DocSearch-Form"><input id="ds-q" type="search"></form></div></div>';
 
+/** A heading, a field and a button named for a11y queries, and 60 links (more than a11y query lists) */
+const A11Y_INDEX_HTML =
+  '<h3>Welcome</h3><input id="code" aria-label="Access code">' +
+  '<button id="go" onclick="window.events.push(\'go\')">Go ahead</button>' +
+  Array.from({ length: 60 }, (_, i) => `<a href="#l${i}">Link ${i}</a>`).join(' ');
+
 /** JSON output of a DOM action */
 type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
 
@@ -922,5 +928,86 @@ void describe('DOM interactions', () => {
       false,
       'a form with a visible button is shown'
     );
+  });
+
+  void it('acts on a11y query indices and says which list an index refers to', async () => {
+    await evaluate(`document.body.innerHTML = ${JSON.stringify(A11Y_INDEX_HTML)}; 1`);
+    await takeEvents();
+    await bdg(['dom', 'a11y', 'query', 'role:button name:Go ahead']);
+    const click = await bdg(['dom', 'click', '0']);
+    assert.match(
+      click,
+      /^Element: +button#go "Go ahead" \(index 0 of the last dom a11y query "role:button name:Go ahead"\)$/m
+    );
+    assert.doesNotMatch(click, /^Selector:/m);
+    assert.deepEqual(await takeEvents(), ['go']);
+
+    await bdg(['dom', 'a11y', 'query', 'role:textbox name:Access code']);
+    assert.match(await bdg(['dom', 'fill', '0', '1234']), /^✓ Element Filled/);
+    assert.equal(await evaluate("document.getElementById('code').value"), '1234');
+
+    await bdg(['dom', 'query', 'h3']);
+    const wrongList = await bdg(['dom', 'fill', '0', 'x'], 81);
+    assert.match(
+      wrongList,
+      /index 0 refers to the last dom query results \("h3": h3 "Welcome"\); run bdg dom form to target form fields by index/
+    );
+
+    await bdg(['dom', 'a11y', 'query', 'role:button name:Go ahead']);
+    await evaluate("document.getElementById('go').remove(); 1");
+    const stale = await bdg(['dom', 'click', '0'], 87);
+    assert.match(
+      stale,
+      /element at index 0 of the last dom a11y query "role:button name:Go ahead"/
+    );
+    assert.doesNotMatch(stale, /__bdg_bound_target__|querySelector/);
+  });
+
+  void it('lists a11y matches once each, up to --limit', async () => {
+    const links = await bdg(['dom', 'a11y', 'query', 'role:link']);
+    assert.match(links, /^\[49\] \[Link\] "Link 49"/m);
+    assert.doesNotMatch(links, /^\[50\]/m);
+    assert.match(links, /\.\.\. and 10 more \(--limit 0 lists all; their indices work too\)/);
+    const all = await bdg(['dom', 'a11y', 'query', 'role:link', '--limit', '0', '--json']);
+    const { data } = JSON.parse(all) as { data: { count: number; nodes: unknown[] } };
+    assert.equal(data.count, 60);
+    assert.equal(data.nodes.length, 60);
+    assert.match(await bdg(['dom', 'get', '55']), /\[Link\] "Link 55"/);
+  });
+
+  void it('dom get takes --index (and --nth), and reads the body without a selector', async () => {
+    assert.match(await bdg(['dom', 'get', 'a', '--index', '2']), /^\[Link\] "Link 2"/);
+    assert.match(await bdg(['dom', 'get', 'a', '--nth', '3']), /^\[Link\] "Link 3"/);
+    assert.match(await bdg(['dom', 'get', 'a', '--index', '1', '--raw']), /href="#l1"/);
+    assert.match(await bdg(['dom', 'get', '0', '--index', '1'], 81), /already an index/);
+    assert.match(await bdg(['dom', 'get']), /Link 0/);
+    await evaluate("document.body.innerHTML = '<iframe></iframe>'; 1");
+    assert.match(
+      await bdg(['dom', 'get']),
+      /No text; holds 1 element: iframe \(see its HTML with --raw\)/
+    );
+  });
+
+  void it('says nothing scrolled on a page no taller than the viewport', async () => {
+    const output = await bdg(['dom', 'scroll', '--bottom']);
+    assert.match(output, /^⚠ Page Scrolled \(with warnings\)/);
+    assert.match(output, /Nothing to scroll: the document is no taller than the viewport/);
+    assert.doesNotMatch(output, /still loading/);
+  });
+
+  void it('clicks, fills and measures a11y matches in a cross-origin iframe of the same site', async () => {
+    const port = new URL(fixture.url).port;
+    await bdg(['page', 'navigate', `http://a.b.localhost:${port}/cross-frame`]);
+    await bdg(['dom', 'wait', 'iframe', '--load']);
+    await bdg(['dom', 'a11y', 'query', 'role:button name:Accept all']);
+    assert.match(await bdg(['dom', 'click', '0']), /Method: +mouse events/);
+    const layout = await bdg(['dom', 'layout', '0', '--json']);
+    const [button] = (
+      JSON.parse(layout) as { data: { elements: Array<{ bounds: { x: number } }> } }
+    ).data.elements;
+    assert.ok((button?.bounds.x ?? 0) > 150 + 4 + 90, layout);
+    await bdg(['dom', 'a11y', 'query', 'role:textbox name:Code']);
+    await bdg(['dom', 'fill', '0', 'xyz']);
+    assert.deepEqual(await evaluate('window.events'), ['accepted', 'code:xyz']);
   });
 });

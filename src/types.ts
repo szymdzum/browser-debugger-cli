@@ -324,10 +324,12 @@ export interface A11yQueryPattern {
  * Result from A11y query operation.
  */
 export interface A11yQueryResult {
-  /** Matching nodes */
+  /** Matching nodes (the first `--limit` of them) */
   nodes: A11yNode[];
   /** Total matches found */
   count: number;
+  /** Matches not listed because of `--limit` (their indices still work) */
+  omitted?: number;
   /** Query pattern used */
   pattern: A11yQueryPattern;
 }
@@ -342,6 +344,10 @@ export interface DomContext {
   preview?: string;
   /** Up to 500 characters of text, when it is longer than the preview */
   text?: string;
+  /** First child elements (`tag#id.class`), for an element without text */
+  children?: string[];
+  /** Number of child elements, for an element without text */
+  childCount?: number;
 }
 
 /**
@@ -357,6 +363,36 @@ export type ColorScheme = 'light' | 'dark';
 export interface ViewportSize {
   width: number;
   height: number;
+}
+
+/**
+ * The page (document) request an action sent, as far as it got: still
+ * pending, answered with a status, or failed.
+ */
+export interface DocumentRequestState {
+  method: string;
+  url: string;
+  /** How long it has been running (pending requests) */
+  pendingMs?: number;
+  /** HTTP status of the response, once answered */
+  status?: number;
+  statusText?: string;
+  /** Network error, when it failed */
+  errorText?: string;
+}
+
+/**
+ * The list a numeric index refers to: the results of the last
+ * `bdg dom query`, `bdg dom form` or `bdg dom a11y query` (one cache holds
+ * the last of them).
+ */
+export interface IndexSource {
+  /** The index the user gave (0-based) */
+  index: number;
+  /** Command whose results are cached */
+  command: 'dom query' | 'dom form' | 'dom a11y query';
+  /** The query's selector or a11y pattern (not for `dom form`) */
+  query?: string;
 }
 
 /**

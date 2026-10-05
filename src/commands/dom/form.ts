@@ -346,7 +346,7 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
       }
 
       if (rawData.forms.length === 0) {
-        const err = noFormsFoundError();
+        const err = noFormsFoundError(rawData.readyState);
         return {
           success: false,
           error: err.message,

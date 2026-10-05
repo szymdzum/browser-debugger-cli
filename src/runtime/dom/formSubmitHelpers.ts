@@ -7,10 +7,14 @@ import { CDPTimeoutError } from '@/connection/errors.js';
 import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFlightRequests.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.js';
+import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { summarizePendingRequests } from '@/runtime/page/loadingState.js';
+import type { PendingRequest } from '@/telemetry/network.js';
+import type { DocumentRequestState } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import { clickElement } from './formFillHelpers/index.js';
@@ -27,6 +31,8 @@ export interface SubmitOptions {
   waitNetwork?: number;
   /** Maximum time to wait in milliseconds (default: 10000) */
   timeout?: number;
+  /** Requests still running in the session (named when the wait times out) */
+  pendingRequests?: () => Iterable<PendingRequest>;
 }
 
 export type { SubmitResult } from '@/ipc/protocol/domTypes.js';
@@ -119,6 +125,17 @@ const FAILURE_SUGGESTIONS: Record<NonNullable<PrepareResult['reason']>, string> 
   disabled: 'Complete the steps that enable the button first (see "bdg dom form" for its state)',
 };
 
+/** The page request a submission sent, as the watcher follows it */
+interface TrackedDocumentRequest {
+  requestId: string;
+  method: string;
+  url: string;
+  startedAt: number;
+  status?: number;
+  statusText?: string;
+  errorText?: string;
+}
+
 /**
  * Watches navigation and network activity from before a submission is
  * triggered, so fast navigations are not missed.
@@ -129,7 +146,7 @@ const FAILURE_SUGGESTIONS: Record<NonNullable<PrepareResult['reason']>, string> 
  */
 class SubmissionWatcher {
   private navigated = false;
-  private documentRequest: string | undefined;
+  private documentRequest: TrackedDocumentRequest | undefined;
   private onChange: (() => void) | null = null;
   private readonly requests: InFlightRequests;
   private readonly disposers: Array<() => void> = [];
@@ -150,9 +167,23 @@ class SubmissionWatcher {
         'Network.requestWillBeSent',
         (params, sessionId) => {
           if (sessionId !== undefined || params.type !== 'Document') return;
-          this.documentRequest ??= `${params.request.method} ${params.request.url}`;
+          this.documentRequest ??= {
+            requestId: params.requestId,
+            method: params.request.method,
+            url: params.request.url,
+            startedAt: Date.now(),
+          };
         }
-      )
+      ),
+      cdp.on<Protocol.Network.ResponseReceivedEvent>('Network.responseReceived', (params) => {
+        if (params.requestId !== this.documentRequest?.requestId) return;
+        this.documentRequest.status = params.response.status;
+        this.documentRequest.statusText = params.response.statusText;
+      }),
+      cdp.on<Protocol.Network.LoadingFailedEvent>('Network.loadingFailed', (params) => {
+        if (params.requestId !== this.documentRequest?.requestId) return;
+        this.documentRequest.errorText = params.errorText;
+      })
     );
   }
 
@@ -161,9 +192,19 @@ class SubmissionWatcher {
     return this.navigated;
   }
 
-  /** The first page request sent since watching began (`POST https://…`), if any */
-  get firstDocumentRequest(): string | undefined {
-    return this.documentRequest;
+  /** How far the first page request sent since watching began got, if one was sent */
+  get firstDocumentRequest(): DocumentRequestState | undefined {
+    const request = this.documentRequest;
+    if (!request) return undefined;
+    const answered = request.status !== undefined || request.errorText !== undefined;
+    return {
+      method: request.method,
+      url: request.url,
+      ...(!answered && { pendingMs: Date.now() - request.startedAt }),
+      ...(request.status !== undefined && { status: request.status }),
+      ...(request.statusText && { statusText: request.statusText }),
+      ...(request.errorText !== undefined && { errorText: request.errorText }),
+    };
   }
 
   /** Requests still in flight */
@@ -262,6 +303,7 @@ async function triggerSubmit(
       clicked: false,
       exitCode: FAILURE_EXIT_CODES[reason],
       suggestion: FAILURE_SUGGESTIONS[reason],
+      ...(reason === 'not-submittable' && { unsuitableElement: true }),
     };
     return { failure };
   }
@@ -280,6 +322,24 @@ async function triggerSubmit(
     ...(click.suggestion !== undefined && { suggestion: click.suggestion }),
   };
   return { failure };
+}
+
+/**
+ * The requests still running in the session, the longest-running first.
+ *
+ * @param pendingRequests - Source of the session's pending requests
+ * @returns The ones to name and the count, none without a source
+ */
+function pendingSummary(pendingRequests: (() => Iterable<PendingRequest>) | undefined): {
+  pending?: PendingRequestInfo[];
+  pendingCount?: number;
+} {
+  if (!pendingRequests) return {};
+  const requests = [...pendingRequests()];
+  return {
+    pending: summarizePendingRequests(requests, Date.now()),
+    pendingCount: requests.length,
+  };
 }
 
 /**
@@ -321,7 +381,10 @@ export async function submitForm(
     };
   } catch (error) {
     if (!(error instanceof CDPTimeoutError)) throw error;
-    const err = submitTimeoutError(timeout, waitNavigation, watcher.firstDocumentRequest);
+    const err = submitTimeoutError(timeout, waitNavigation, {
+      document: watcher.firstDocumentRequest,
+      ...pendingSummary(options.pendingRequests),
+    });
     return {
       success: false,
       error: err.message,

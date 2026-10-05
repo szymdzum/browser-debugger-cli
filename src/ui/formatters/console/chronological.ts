@@ -5,6 +5,7 @@
 
 import type { ConsoleMessage } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { consoleIndexGapNote } from '@/ui/messages/consoleMessages.js';
 import { truncateByLength } from '@/utils/strings.js';
 
 import { formatSourceLocation, formatTimestamp, type ConsoleFormatOptions } from './shared.js';
@@ -23,10 +24,7 @@ export function formatConsoleChronological(
 ): string {
   const fmt = new OutputFormatter();
 
-  let displayMessages = messages;
-  if (options.last && options.last > 0) {
-    displayMessages = messages.slice(-options.last);
-  }
+  const displayMessages = lastMessages(messages, options.last);
 
   const headerSuffix = options.history ? ' (all navigations)' : '';
   const header =
@@ -72,5 +70,24 @@ export function formatConsoleChronological(
     }
   }
 
+  const { skipped } = options;
+  if (skipped && skipped.otherPages + skipped.otherLevels > 0) {
+    fmt.blank();
+    fmt.text(consoleIndexGapNote(skipped));
+  }
   return fmt.build();
+}
+
+/**
+ * The messages `--last` selects: the last N (all for 0 or none).
+ *
+ * @param messages - Messages after the page and level filters
+ * @param last - `--last` value
+ * @returns The messages to list
+ */
+export function lastMessages(
+  messages: ConsoleMessage[],
+  last: number | undefined
+): ConsoleMessage[] {
+  return last && last > 0 ? messages.slice(-last) : messages;
 }
