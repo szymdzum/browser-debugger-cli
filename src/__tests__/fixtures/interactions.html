@@ -18,6 +18,10 @@
     <div id="menu-trigger" tabindex="0">Menu</div>
     <div id="menu" hidden>Opened</div>
     <button id="load" type="button">Load</button>
+    <button id="load-delayed" type="button" onclick="fetch('/api/delayed')">Load slowly</button>
+    <button id="navigate-slow" type="button" onclick="location.href = '/slow'">
+      Open slow page
+    </button>
 
     <script>
       // Event log for assertions: "<id>:<type>[:<key>]"

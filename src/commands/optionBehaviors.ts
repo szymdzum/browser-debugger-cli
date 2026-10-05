@@ -16,7 +16,7 @@ import type { OptionBehavior } from '@/commands/helpJson.js';
 
 /** What DOM actions report about the network requests they triggered */
 const TRIGGERED_REQUESTS_BEHAVIOR =
-  'Requests that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return; human output lists the first 10; absent when network telemetry is off)';
+  'Requests (and WebSocket connections) that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return, loading when the response arrived but its body is still streaming; human output lists the first 10; absent when network telemetry is off). Attribution is by time: requests a page timer or poller starts meanwhile are listed too, whether or not the action caused them';
 
 /** What `--no-wait` does to a DOM action's triggered requests */
 const NO_WAIT_TRIGGERED_REQUESTS =

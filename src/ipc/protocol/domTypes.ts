@@ -39,6 +39,11 @@ export interface TriggeredRequest {
   errorText?: string;
   /** Set when it was still running when the command returned */
   pending?: true;
+  /**
+   * Set when the response arrived but its body was still loading when the
+   * command returned (a stream such as EventSource, a slow download)
+   */
+  loading?: true;
 }
 
 /**

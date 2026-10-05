@@ -56,6 +56,17 @@ export function moreMatchesNote(hidden: number): string {
   return `... and ${hidden} more (use --json for all)`;
 }
 
+/**
+ * Note under a shortened list of requests an action triggered when JSON
+ * output left some out too (they are only in the network telemetry then).
+ *
+ * @param hidden - Requests not listed
+ * @returns e.g. "... and 50 more (see bdg network list)"
+ */
+export function moreRequestsNote(hidden: number): string {
+  return `... and ${hidden} more (see bdg network list)`;
+}
+
 /** Short location hints for elements a user cannot see without scrolling */
 const VIEWPORT_POSITION_HINTS: Partial<Record<ViewportPosition, string>> = {
   above: 'above viewport',

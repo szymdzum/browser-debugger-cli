@@ -3,7 +3,8 @@
  *
  * Serves `src/__tests__/fixtures/index.html` plus a small JSON endpoint so smoke
  * tests never depend on the public internet. `/slow` delays its response so a
- * session start can be interrupted while the page is loading; `/redirect`
+ * session start can be interrupted while the page is loading (and a click can
+ * start a slow navigation), `/api/delayed` answers after 500 ms; `/redirect`
  * answers 302 to `/`; `/interactions` serves a form for input/key/click tests;
  * `/ws` is a WebSocket echo server; `/frames` embeds a cross-origin iframe
  * (`localhost` vs `127.0.0.1`), starts a worker and requests a missing image;
@@ -30,6 +31,9 @@ const INTERACTIONS_HTML = path.join(FIXTURES_DIR, 'interactions.html');
 
 /** Delay for the `/slow` route, long enough to stop a session mid-startup. */
 const SLOW_RESPONSE_MS = 8000;
+
+/** Delay for the `/api/delayed` route, longer than an action's 150 ms idle wait. */
+const DELAYED_API_MS = 500;
 
 /** 1x1 PNG served at /pixel.png (binary response bodies). */
 const PIXEL_PNG = Buffer.from(
@@ -193,6 +197,14 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/not-found.png') {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('missing');
+      return;
+    }
+    if (req.url === '/api/delayed') {
+      const timer = setTimeout(() => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok' }));
+      }, DELAYED_API_MS);
+      req.on('close', () => clearTimeout(timer));
       return;
     }
     if (req.url === '/api/test') {

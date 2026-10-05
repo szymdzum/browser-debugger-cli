@@ -47,6 +47,22 @@ async function evaluate(expression: string): Promise<unknown> {
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
+/** JSON output of a DOM action */
+type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
+
+/**
+ * Find a request an action reported by the end of its URL.
+ *
+ * @param output - JSON output of the action
+ * @param urlEnd - End of the request's URL
+ * @returns The request, if listed
+ */
+function triggeredRequest(output: string, urlEnd: string): Record<string, unknown> | undefined {
+  return (JSON.parse(output) as Triggered).data.triggeredRequests?.find((r) =>
+    String(r['url']).endsWith(urlEnd)
+  );
+}
+
 /**
  * Read and reset the page's event log.
  *
@@ -159,7 +175,6 @@ void describe('DOM interactions', () => {
   });
 
   void it('reports the network requests a click triggered', async () => {
-    type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
     const clicked = JSON.parse(await bdg(['dom', 'click', '#load', '--json'])) as Triggered;
     const request = clicked.data.triggeredRequests?.find((r) =>
       String(r['url']).endsWith('/api/test')
@@ -167,10 +182,28 @@ void describe('DOM interactions', () => {
     assert.equal(request?.['method'], 'POST', JSON.stringify(clicked.data.triggeredRequests));
     assert.equal(request?.['status'], 200);
     assert.equal(typeof request?.['durationMs'], 'number');
-    assert.match(await bdg(['dom', 'click', '#load']), /Triggered:\n {2}POST .*\/api\/test → 200/);
+    assert.match(
+      await bdg(['dom', 'click', '#load']),
+      /Requests during the action:\n {2}POST .*\/api\/test → 200/
+    );
 
     const filled = JSON.parse(await bdg(['dom', 'fill', '#name', 'quiet', '--json'])) as Triggered;
     assert.deepEqual(filled.data.triggeredRequests, []);
+  });
+
+  void it('waits for a request the handler starts, but not for a slow navigation', async () => {
+    const delayed = await bdg(['dom', 'click', '#load-delayed', '--json']);
+    const request = triggeredRequest(delayed, '/api/delayed');
+    assert.equal(request?.['status'], 200, delayed);
+    assert.equal(request?.['pending'], undefined, delayed);
+
+    const url = String(await evaluate('location.href'));
+    const started = Date.now();
+    const navigating = await bdg(['dom', 'click', '#navigate-slow', '--json']);
+    const elapsed = Date.now() - started;
+    assert.ok(elapsed < 4000, `click returned after ${elapsed}ms`);
+    assert.equal(triggeredRequest(navigating, '/slow')?.['pending'], true, navigating);
+    await bdg(['page', 'navigate', url]);
   });
 
   void it('submits a form element and refuses invalid forms', async () => {

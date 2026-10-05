@@ -16,7 +16,7 @@ import {
   clickElement,
   pressKeyElement,
   scrollPage,
-  waitForActionStability,
+  withActionStability,
 } from '@/runtime/dom/formFillHelpers/index.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
@@ -515,24 +515,30 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           blur: params.blur,
           cwd: params.cwd,
         });
-        const result = withUserSelector(
-          await fillElement(cdp, target.selector, params.value, fillOptions),
-          params.selector
+        return withActionStability(
+          cdp,
+          async () =>
+            withUserSelector(
+              await fillElement(cdp, target.selector, params.value, fillOptions),
+              params.selector
+            ),
+          params.wait !== false
         );
-        if (result.success && params.wait !== false) await waitForActionStability(cdp);
-        return result;
       }),
 
     dom_click: async (cdp, params) =>
       interact(cdp, async () => {
         const target = await resolveScriptTarget(cdp, params);
         const clickOptions = filterDefined({ index: target.index, action: params.action });
-        const result = withUserSelector(
-          await clickElement(cdp, target.selector, clickOptions),
-          params.selector
+        return withActionStability(
+          cdp,
+          async () =>
+            withUserSelector(
+              await clickElement(cdp, target.selector, clickOptions),
+              params.selector
+            ),
+          params.wait !== false
         );
-        if (result.success && params.wait !== false) await waitForActionStability(cdp);
-        return result;
       }),
 
     dom_submit: async (cdp, params) =>
@@ -558,12 +564,15 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           times: params.times,
           modifiers: params.modifiers,
         });
-        const result = withUserSelector(
-          await pressKeyElement(cdp, target.selector, params.key, pressKeyOptions),
-          params.selector
+        return withActionStability(
+          cdp,
+          async () =>
+            withUserSelector(
+              await pressKeyElement(cdp, target.selector, params.key, pressKeyOptions),
+              params.selector
+            ),
+          params.wait !== false
         );
-        if (result.success && params.wait !== false) await waitForActionStability(cdp);
-        return result;
       }),
 
     dom_scroll: async (cdp, params) =>
@@ -578,12 +587,15 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           top: params.top,
           bottom: params.bottom,
         });
-        const result = withUserSelector(
-          await scrollPage(cdp, target.selector || undefined, scrollOptions),
-          params.selector
+        return withActionStability(
+          cdp,
+          async () =>
+            withUserSelector(
+              await scrollPage(cdp, target.selector || undefined, scrollOptions),
+              params.selector
+            ),
+          params.wait !== false
         );
-        if (result.success && params.wait !== false) await waitForActionStability(cdp);
-        return result;
       }),
 
     dom_listeners: async (cdp, params) =>

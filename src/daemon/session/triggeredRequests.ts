@@ -6,8 +6,8 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
-import type { NetworkRequest } from '@/types.js';
 import { failureReason, getRequestState } from '@/telemetry/requestState.js';
+import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 
 /** URLs that never reach the network (inline data, in-page objects) */
 const LOCAL_URL_PATTERN = /^(data|blob):/i;
@@ -21,15 +21,22 @@ export interface CollectedRequests {
   triggeredRequestsOmitted?: number;
 }
 
+/** A request seen starting, and whether it was still in flight */
+interface StartedRequest {
+  request: NetworkRequest;
+  inFlight?: boolean;
+}
+
 /** Lists the requests started since the watch began */
 export type TriggeredRequestsCollector = () => CollectedRequests | undefined;
 
 /**
  * Start attributing requests to an interaction.
  *
- * Requests are attributed by time: every request bdg saw start between this
- * call and the collector's call belongs to the interaction, including one a
- * page timer happened to start meanwhile. Collecting adds no wait: requests
+ * Requests are attributed by time: every request (and WebSocket connection)
+ * bdg saw start between this call and the collector's call belongs to the
+ * interaction, including one a page timer or poller happened to start
+ * meanwhile. Collecting adds no wait: requests
  * still running then are reported as pending.
  *
  * @param store - Session store holding the network telemetry
@@ -40,18 +47,47 @@ export function watchTriggeredRequests(store: TelemetryStore): TriggeredRequests
   if (!store.activeTelemetry.includes('network')) return () => undefined;
   const startedAt = Date.now();
   const firstFinished = store.networkRequests.length;
+  const firstWebSocket = store.websocketConnections.length;
   return () => {
-    const started = [
-      ...store.networkRequests.slice(firstFinished),
-      ...[...store.pendingNetworkRequests.values()].map((pending) => pending.request),
+    const started: StartedRequest[] = [
+      ...store.networkRequests.slice(firstFinished).map((request) => ({ request })),
+      ...[...store.pendingNetworkRequests.values()].map((pending) => ({
+        request: pending.request,
+        inFlight: true,
+      })),
+      ...store.websocketConnections
+        .slice(firstWebSocket)
+        .map((connection) => ({ request: webSocketAsRequest(connection) })),
     ]
-      .filter((request) => request.timestamp >= startedAt && isReportable(request))
-      .sort(byStartTime);
+      .filter(({ request }) => request.timestamp >= startedAt && isReportable(request))
+      .sort((a, b) => byStartTime(a.request, b.request));
     const omitted = started.length - MAX_TRIGGERED_REQUESTS;
     return {
-      triggeredRequests: started.slice(0, MAX_TRIGGERED_REQUESTS).map(toTriggeredRequest),
+      triggeredRequests: started
+        .slice(0, MAX_TRIGGERED_REQUESTS)
+        .map(({ request, inFlight }) => toTriggeredRequest(request, inFlight)),
       ...(omitted > 0 && { triggeredRequestsOmitted: omitted }),
     };
+  };
+}
+
+/**
+ * A WebSocket connection as a request: its handshake (`GET ws://…`, 101 once
+ * it opened, failed when it closed without one).
+ *
+ * @param connection - Captured WebSocket connection
+ * @returns Request-shaped view of the handshake
+ */
+function webSocketAsRequest(connection: WebSocketConnection): NetworkRequest {
+  const failed = connection.status === undefined && connection.closedTime !== undefined;
+  return {
+    requestId: connection.requestId,
+    url: connection.url,
+    method: 'GET',
+    timestamp: connection.timestamp,
+    ...(connection.status !== undefined && { status: connection.status }),
+    ...(failed && { status: 0 }),
+    ...(failed && connection.errorMessage !== undefined && { errorText: connection.errorMessage }),
   };
 }
 
@@ -84,9 +120,11 @@ function isReportable(request: NetworkRequest): boolean {
  * Summarize a captured request.
  *
  * @param request - Captured request
+ * @param inFlight - Whether it was still in flight (a request with a response
+ *   is then still loading its body: a stream, a slow download)
  * @returns Triggered request entry
  */
-export function toTriggeredRequest(request: NetworkRequest): TriggeredRequest {
+export function toTriggeredRequest(request: NetworkRequest, inFlight = false): TriggeredRequest {
   const state = getRequestState(request);
   const errorText = failureReason(request);
   return {
@@ -94,6 +132,7 @@ export function toTriggeredRequest(request: NetworkRequest): TriggeredRequest {
     method: request.method,
     url: request.url,
     ...(state === 'complete' && { status: request.status }),
+    ...(state === 'complete' && inFlight && { loading: true as const }),
     ...(state !== 'pending' && request.duration !== undefined && { durationMs: request.duration }),
     ...(state === 'failed' && { failed: true as const }),
     ...(errorText !== undefined && { errorText }),

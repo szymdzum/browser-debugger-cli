@@ -4,7 +4,7 @@
  * - `fill.ts`      — fillElement, clickElement
  * - `pressKey.ts`  — pressKeyElement + types
  * - `scroll.ts`    — scrollPage + types
- * - `stability.ts` — waitForActionStability
+ * - `stability.ts` — withActionStability
  * - `shared.ts`    — internal script/error helpers
  *
  * Callers keep importing from `@/commands/dom/formFillHelpers.js` which
@@ -22,4 +22,4 @@ export {
   type ScrollOptions,
   type ScrollResult,
 } from '@/runtime/dom/formFillHelpers/scroll.js';
-export { waitForActionStability } from '@/runtime/dom/formFillHelpers/stability.js';
+export { withActionStability } from '@/runtime/dom/formFillHelpers/stability.js';
