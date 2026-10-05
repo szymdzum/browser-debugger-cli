@@ -12,7 +12,7 @@ import {
   VIA_LABEL_SUFFIX,
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
-import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
+import { ELEMENT_DESCRIPTION_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 
 /**
@@ -360,22 +360,50 @@ export const REACT_FILL_SCRIPT = `
 `;
 
 /**
+ * Page-side search for the field a moved value went to: another text-like
+ * field of the same form (of the document without one) whose value is the
+ * one given, trimmed. Evaluates to its id or name (`input#first-name`,
+ * `input[name="first"]`) or else its description, or undefined. Passwords
+ * are never searched for.
+ */
+export const MOVED_VALUE_JS = `(field, expected) => {
+  const wanted = String(expected).trim();
+  if (wanted === '' || (field.type || '').toLowerCase() === 'password') return undefined;
+  const fields = field.form ? Array.from(field.form.elements) : Array.from(field.ownerDocument.querySelectorAll('input, textarea'));
+  const other = fields.find((f) => f !== field && /^(input|textarea)$/.test(f.localName) &&
+    !/^(checkbox|radio|password|hidden|submit|button|reset|file|image)$/i.test(f.type || '') &&
+    String(f.value).trim() === wanted);
+  if (!other) return undefined;
+  if (other.id) return other.localName + '#' + other.id;
+  return other.name ? other.localName + '[name="' + other.name + '"]' : (${ELEMENT_DESCRIPTION_JS})(other);
+}`;
+
+/**
  * Page script reading back the field the last fill left in
  * `window.__bdgFillCheck`, after one macrotask (so frameworks that render
  * asynchronously have updated it). The macrotask comes from a
  * `MessageChannel`, which fake timers and page code rarely replace. Evaluates
- * to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), or null when the value
- * matches, nothing was left (the page navigated) or the field left the page.
+ * to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo` when the
+ * value turned up in another field ({@link MOVED_VALUE_JS}), or null when the
+ * value matches, nothing was left (the page navigated) or the field left the
+ * page.
  */
 export const FILL_READ_BACK_SCRIPT = `(() => {
   const check = window.__bdgFillCheck;
   delete window.__bdgFillCheck;
   if (!check) return null;
+  const readBack = () => {
+    if (!check.el.isConnected) return null;
+    const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected);
+    if (!mismatch) return null;
+    const movedTo = (${MOVED_VALUE_JS})(check.el, check.expected);
+    return movedTo ? Object.assign(mismatch, { movedTo: movedTo }) : mismatch;
+  };
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {
       channel.port1.close();
-      resolve(check.el.isConnected ? (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected) || null : null);
+      resolve(readBack());
     };
     channel.port2.postMessage(null);
   });

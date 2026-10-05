@@ -18,6 +18,10 @@ import type { OptionBehavior } from '@/commands/helpJson.js';
 const TRIGGERED_REQUESTS_BEHAVIOR =
   'Requests (and WebSocket connections) that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return, loading when the response arrived but its body is still streaming; with resourceType; human output lists documents, XHR/fetch and WebSockets first (up to 10) and counts static assets on one line; absent when network telemetry is off). Attribution is by time: requests a page timer or poller starts meanwhile are listed too, whether or not the action caused them';
 
+/** What every DOM action reports about the page besides its requests */
+const ACTION_EFFECTS_BEHAVIOR =
+  'The result also says what changed on the page: a navigation (Page: navigated to <url> (status), or URL changed to <url> (same document); JSON navigation { url, sameDocument, status }), and messages that appeared or changed in alert/status/aria-live elements or flash/error/toast-like classes (New text: "…" (element); JSON messages [{ text, element }], at most 3; after a navigation every message on the new page counts). Both are absent when nothing changed. Costs one page script before and one after the action (a few ms)';
+
 /** What `--no-wait` does to a DOM action's triggered requests */
 const NO_WAIT_TRIGGERED_REQUESTS =
   'Returns immediately without waiting for network; triggeredRequests lists only requests bdg saw start before returning (often none yet; check bdg network list later)';
@@ -119,7 +123,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'fill:--no-wait': {
     default: 'Waits for network stability after filling input (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Network wait helps ensure React/Vue state updates complete before next action. The value is read back after filling: when the page rejected or moved it, the output starts with a warning and JSON has valueMismatch { expected, actual } (exit code stays 0). ${TRIGGERED_REQUESTS_BEHAVIOR}`,
+    automaticBehavior: `Network wait helps ensure React/Vue state updates complete before next action. The value is read back after filling: when the page rejected or moved it, the output starts with a warning and JSON has valueMismatch { expected, actual } (exit code stays 0), plus movedTo naming the field of the form that got the value instead. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
   },
   'fill:--no-blur': {
     default: 'Triggers blur event after filling (validates most form fields)',
@@ -130,7 +134,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'click:--no-wait': {
     default: 'Waits for network stability after click (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning). Results the page shows later without requests (timers, spinners) are not waited for: use bdg dom wait <selector> --visible`,
+    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning). Results the page shows later without requests (timers, spinners) are not waited for: use bdg dom wait <selector> --visible. ${ACTION_EFFECTS_BEHAVIOR}. A click with no DOM change, no request and no navigation (checked again 300 ms later) is reported as ⚠ Element Clicked (no visible effect: …) and effect: "none" in JSON (exit code stays 0); not claimed with --no-wait, for hover or right-click, or when the click hit a form control, label, media, iframe or popover button, whose effect needs no DOM change`,
     tokenImpact: 'A click that navigates lists the whole page load in JSON triggeredRequests',
   },
   'click:--double': {
@@ -146,7 +150,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'hover:--no-wait': {
     default: 'Waits for network stability after moving the mouse (menus may load content)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `The mouse stays over the element afterwards, so hover menus stay open until the next mouse action. ${TRIGGERED_REQUESTS_BEHAVIOR}`,
+    automaticBehavior: `The mouse stays over the element afterwards, so hover menus stay open until the next mouse action. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
   },
   'navigate:--no-wait': {
     default: 'Waits until the new page has loaded and the network and DOM are idle (up to 15 s)',
@@ -157,7 +161,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'pressKey:--no-wait': {
     default: 'Waits for network stability after key press (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: TRIGGERED_REQUESTS_BEHAVIOR,
+    automaticBehavior: `${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
   },
   'pressKey:--times': {
     default: 'Presses key once',
@@ -170,11 +174,13 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'submit:--wait-navigation': {
     default: 'Waits for network stability only',
     whenEnabled: 'Waits for page navigation to complete (use for forms that redirect)',
+    automaticBehavior:
+      'A navigation is a new document loading in the main frame, also at the same URL (a POST that redirects back to the form after a login error). When the new page loaded but requests were still running at --timeout, the submit succeeds with a warning; without a navigation it exits 102, and the hint says whether a page request was sent (slow server) or not (the form may submit via fetch)',
   },
   'submit:--wait-network': {
     default: 'Default network idle timeout',
     whenEnabled: 'Custom network idle timeout in ms (use for slow APIs)',
-    automaticBehavior: TRIGGERED_REQUESTS_BEHAVIOR,
+    automaticBehavior: `${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}. A submit with no DOM change, request or navigation reports effect: "none" like dom click`,
   },
 
   'wait:--timeout': {
@@ -257,7 +263,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default:
       'Waits for lazy-loaded content to stabilize after scroll (150ms network idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Wait helps ensure images and infinite scroll content load before next action. ${TRIGGERED_REQUESTS_BEHAVIOR}`,
+    automaticBehavior: `Wait helps ensure images and infinite scroll content load before next action. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}`,
   },
   'scroll:--index': {
     whenEnabled: 'If selector matches multiple elements, scrolls to the nth element (0-based)',

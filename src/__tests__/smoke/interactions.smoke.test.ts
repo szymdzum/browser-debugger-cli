@@ -628,12 +628,16 @@ void describe('DOM interactions', () => {
     const moved = await bdg(['dom', 'fill', '#last', 'Lovelace']);
     assert.match(
       moved,
-      /^⚠ Element Filled \(with warnings\)\n⚠ Warning: The field's value is "" after filling \(expected "Lovelace"\); the page may have rejected or moved the input\n/
+      /^⚠ Element Filled \(with warnings\)\n⚠ Warning: The field's value is "" after filling \(expected "Lovelace"\); the value appeared in input#first instead\n/
     );
     const movedJson = JSON.parse(await bdg(['dom', 'fill', '#last', 'Lovelace', '--json'])) as {
-      data: { valueMismatch?: { expected: string; actual: string } };
+      data: { valueMismatch?: { expected: string; actual: string; movedTo?: string } };
     };
-    assert.deepEqual(movedJson.data.valueMismatch, { expected: 'Lovelace', actual: '' });
+    assert.deepEqual(movedJson.data.valueMismatch, {
+      expected: 'Lovelace',
+      actual: '',
+      movedTo: 'input#first',
+    });
     assert.match(await bdg(['dom', 'fill', '#zip', '12345']), /^✓ Element Filled\n/);
 
     assert.match(
@@ -652,11 +656,11 @@ void describe('DOM interactions', () => {
     assert.match(first, /Element: +input\.toggle in li "Write report"/);
     assert.match(
       await bdg(['dom', 'click', '#behind']),
-      /^⚠ Element Clicked \(with warnings\)\n⚠ Warning: Element is covered by another element/
+      /^⚠ Element Clicked \(no visible effect: no DOM change, no requests, no navigation\)\n⚠ Warning: Element is covered by another element/
     );
     assert.match(
       await bdg(['dom', 'click', '#cancel']),
-      /^✓ Element Clicked\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"/
+      /^⚠ Element Clicked \(no visible effect: no DOM change, no requests, no navigation\)\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"/
     );
   });
 
@@ -725,5 +729,65 @@ void describe('DOM interactions', () => {
     const filled = await bdg(['dom', 'fill', '#jump-to', 'b']);
     assert.match(filled, /^✓ Element Filled\n/);
     assert.match(String(await evaluate('location.href')), /\/forms-jumped\?to=b$/);
+  });
+
+  void it('says when a click had no visible effect, and what a click changed', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}forms`]);
+    type Effects = {
+      data: {
+        effect?: string;
+        navigation?: { url: string; sameDocument: boolean; status?: number };
+        messages?: Array<{ text: string; element: string }>;
+      };
+    };
+    const click = async (selector: string): Promise<Effects['data']> =>
+      (JSON.parse(await bdg(['dom', 'click', selector, '--json'])) as Effects).data;
+
+    assert.match(
+      await bdg(['dom', 'click', '#broken']),
+      /^⚠ Element Clicked \(no visible effect: no DOM change, no requests, no navigation\)\n/
+    );
+    assert.equal((await click('#broken')).effect, 'none');
+    assert.equal(
+      (await click('#add')).effect,
+      undefined,
+      'a button changing its text has an effect'
+    );
+
+    assert.match(
+      await bdg(['dom', 'click', '#validate']),
+      /^✓ Element Clicked\n[\s\S]*\nNew text: +"Zip is required" \(p#form-error\.error\)\n/
+    );
+    assert.equal((await click('#validate')).messages, undefined, 'the same text is not new again');
+
+    const hash = await click('#filter-active');
+    assert.deepEqual(hash.navigation, { url: `${fixture.url}forms#/active`, sameDocument: true });
+    assert.equal(hash.effect, undefined);
+  });
+
+  void it('waits for a form POST that redirects back to its own URL and shows its flash', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}login`]);
+    await bdg(['dom', 'fill', '#username', 'tom']);
+    await bdg(['dom', 'fill', '#password', 'wrong']);
+    const failed = await bdg(['dom', 'submit', '#login', '--wait-navigation', '--timeout', '5000']);
+    assert.match(failed, /\nPage: +navigated to http:\/\/127\.0\.0\.1:\d+\/login \(200\)\n/);
+    assert.match(
+      failed,
+      /\nNew text: +"Your password is invalid!" \(div#flash\.flash\.error\)\n/,
+      'the × close link is left out'
+    );
+
+    await bdg(['dom', 'fill', '#password', 'secret']);
+    const json = JSON.parse(await bdg(['dom', 'click', 'button', '--json'])) as {
+      data: { navigation?: unknown; messages?: unknown };
+    };
+    assert.deepEqual(json.data.navigation, {
+      url: `${fixture.url}secure`,
+      sameDocument: false,
+      status: 200,
+    });
+    assert.deepEqual(json.data.messages, [
+      { text: 'You logged into a secure area!', element: 'div#flash.flash.success' },
+    ]);
   });
 });

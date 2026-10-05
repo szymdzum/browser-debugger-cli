@@ -17,7 +17,10 @@ import {
 import type { NetworkRequest } from '@/types.js';
 
 /** CDP stub answering every call with an empty result. */
-const cdp = { send: () => Promise.resolve({}) } as unknown as CDPConnection;
+const cdp = {
+  send: () => Promise.resolve({}),
+  on: () => () => undefined,
+} as unknown as CDPConnection;
 
 /**
  * Build a captured request.

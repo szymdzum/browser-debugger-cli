@@ -16,7 +16,10 @@
  * places elements in view, under an overlay, below the fold, hidden and in
  * an iframe; `/hanging` is stuck loading on a script (`/never.js`) whose
  * server never answers; `/dynamic-loading` reveals a result a while after its
- * Start button is clicked (like the-internet's dynamic_loading).
+ * Start button is clicked (like the-internet's dynamic_loading); `/login`
+ * posts to `/authenticate`, which redirects to `/secure` for the password
+ * `secret` and otherwise back to `/login` with an error flash (like
+ * the-internet's login).
  */
 
 import * as fs from 'fs';
@@ -106,8 +109,10 @@ const FRAME_ORIGINS_HTML = `<!doctype html><title>frame origins</title>
  * attribute), a last-name field whose input handler moves the value into the
  * first name, a radio group, a checkbox group, a Cancel button before the
  * submit button, two to-do rows with checkboxes, a covered button, and a
- * button loading a stylesheet, an image and a fetch, and a select whose
- * change handler submits its form (navigating away).
+ * button loading a stylesheet, an image and a fetch, a select whose
+ * change handler submits its form (navigating away), a button that does
+ * nothing (like saucedemo problem_user's Remove), one that changes its text,
+ * one that shows an error text, and a link changing the URL's hash.
  */
 const FORMS_HTML = `<!doctype html><title>forms</title>
 <form id="checkout" onsubmit="return false">
@@ -134,7 +139,12 @@ const FORMS_HTML = `<!doctype html><title>forms</title>
   fetch('/api/test');
 ">Load</button>
 <form id="jump" action="/forms-jumped"><select id="jump-to" name="to" onchange="this.form.submit()">
-<option value="a">A</option><option value="b">B</option></select></form>`;
+<option value="a">A</option><option value="b">B</option></select></form>
+<button id="broken" type="button" onclick="void 0">Remove</button>
+<button id="add" type="button" onclick="this.textContent = this.textContent === 'Add' ? 'Added' : 'Add'">Add</button>
+<button id="validate" type="button" onclick="document.getElementById('form-error').textContent = 'Zip is required'">Check</button>
+<p id="form-error" class="error"></p>
+<a id="filter-active" href="#/active">Active</a>`;
 
 /**
  * Framework-style listeners: a React-like root container (two bound
@@ -235,6 +245,25 @@ const HANGING_HTML = `<!doctype html><title>hanging</title>
 <script src="/never.js"></script>
 <p id="late">After the script</p>`;
 
+/**
+ * Login page posting to `/authenticate`; `{flash}` is replaced by the error
+ * flash after a failed login (with a "×" close link, like the-internet).
+ */
+const LOGIN_HTML = `<!doctype html><title>login</title>
+<div id="flash-messages">{flash}</div>
+<form id="login" method="post" action="/authenticate">
+  <input id="username" name="username"><input id="password" name="password" type="password">
+  <button type="submit">Login</button>
+</form>`;
+
+/** Error flash shown on `/login` after a failed login */
+const LOGIN_ERROR_FLASH =
+  '<div id="flash" class="flash error">Your password is invalid!<a href="#" class="close">×</a></div>';
+
+/** Page `/authenticate` redirects to after a successful login */
+const SECURE_HTML = `<!doctype html><title>secure</title>
+<div id="flash" class="flash success">You logged into a secure area!</div>`;
+
 /** How long `/dynamic-loading` shows its spinner before the result */
 const DYNAMIC_LOADING_MS = 1500;
 
@@ -285,7 +314,29 @@ export interface FixtureServer {
 export async function startFixtureServer(): Promise<FixtureServer> {
   const html = fs.readFileSync(FIXTURE_HTML);
   const interactionsHtml = fs.readFileSync(INTERACTIONS_HTML);
+  let loginFailed = false;
   const server = http.createServer((req, res) => {
+    if (req.url === '/authenticate' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+      req.on('end', () => {
+        const password = new URLSearchParams(body).get('password');
+        loginFailed = password !== 'secret';
+        res.writeHead(303, { Location: loginFailed ? '/login' : '/secure' });
+        res.end();
+      });
+      return;
+    }
+    if (req.url === '/login' || req.url === '/secure') {
+      const page =
+        req.url === '/secure'
+          ? SECURE_HTML
+          : LOGIN_HTML.replace('{flash}', loginFailed ? LOGIN_ERROR_FLASH : '');
+      if (req.url === '/login') loginFailed = false;
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(page);
+      return;
+    }
     if (req.url === '/slow') {
       const timer = setTimeout(() => {
         res.writeHead(200, { 'Content-Type': 'text/html' });
