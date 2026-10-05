@@ -267,7 +267,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'Uses the named session in ~/.bdg/sessions/<name>/ (or $BDG_SESSION_DIR/sessions/<name>/) with its own daemon, Chrome, profile and port; every command (status, stop, cleanup, ...) acts on that session only',
     automaticBehavior:
-      'Accepted before or after any subcommand; --session wins over BDG_SESSION. Without --port a named session takes the first free port above 9222 not claimed by another running session, and keeps it in port.txt. Names: 1-40 letters, digits, "-" or "_" (exit 81 otherwise, also when the socket path would be too long)',
+      'Accepted before or after any subcommand; --session wins over BDG_SESSION. Names are case-insensitive (lower-cased: ALPHA is alpha). Without --port a named session takes the first free port above 9222 not claimed by another running session, and keeps it in port.txt. Names: 1-40 letters, digits, "-" or "_", starting with a letter or digit (exit 81 otherwise, also when the socket path would be too long). Hints and suggestions in its output carry --session <name>',
   },
 
   'cleanup:-f': {
@@ -277,13 +277,19 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'cleanup:--aggressive': {
     whenEnabled: 'Alias for --force, kept for compatibility',
   },
+  'cleanup:--purge': {
+    default:
+      "A named session's directory (Chrome profile, ~60 MB; logs; port.txt) is kept for its next start",
+    whenEnabled:
+      'After cleaning up, deletes the directory of the session named by --session (exit 81 without --session); a running session is refused unless --force is given',
+  },
 
   'bdg:--chrome-ws-url': {
     default: 'bdg launches its own Chrome (closed on stop)',
     whenEnabled:
-      'Attaches to a running Chrome instead; it keeps running after stop. --port and -u cannot be combined with it',
+      'Attaches to a running Chrome instead; it keeps running after stop. --port, -u and --[no-]headless cannot be combined with it (exit 81)',
     automaticBehavior:
-      'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version; a browser URL uses the first open tab',
+      'A port (9222), host:port or http://host:port is turned into the browser WebSocket URL via /json/version; a browser URL uses the first open tab. Refused with exit 90 when another running bdg session launched that Chrome or drives that tab (sessions of this BDG_SESSION_DIR, and of others that claimed a port)',
   },
 
   'stop:--kill-chrome': {

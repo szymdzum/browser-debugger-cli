@@ -62,6 +62,17 @@ export interface SessionDirEntry {
 export type SessionFileType = keyof typeof SESSION_FILES;
 
 /**
+ * Files a running session keeps in its directory; left behind (stale) when
+ * its daemon dies without tearing down.
+ */
+export const SESSION_STATE_FILES = [
+  'DAEMON_PID',
+  'DAEMON_SOCKET',
+  'CHROME_PID',
+  'METADATA',
+] as const satisfies readonly SessionFileType[];
+
+/**
  * Get the base session directory: `$BDG_SESSION_DIR`, else `~/.bdg`.
  *
  * It is the default session's directory and holds named sessions under
@@ -80,14 +91,15 @@ export function getSessionBaseDir(): string {
 }
 
 /**
- * The selected session name (`--session` / `BDG_SESSION`).
+ * The selected session name (`--session` / `BDG_SESSION`), lower-cased:
+ * session names are case-insensitive.
  *
  * @returns Session name, or null for the default session
  */
 export function getSessionName(): string | null {
   const name = process.env[SESSION_NAME_ENV]?.trim();
   if (!name) return null;
-  return name;
+  return name.toLowerCase();
 }
 
 /**
@@ -133,6 +145,21 @@ export function listSessionDirs(): SessionDirEntry[] {
     { name: null, dir: getSessionBaseDir() },
     ...names.map((name) => ({ name, dir: path.join(namedRoot, name) })),
   ];
+}
+
+/**
+ * Which session a directory holds, from its location: `<base>/sessions/<name>`
+ * is a named session, any other directory a default session (its own base).
+ *
+ * @param dir - Absolute session directory
+ * @returns Session name (null for a default session) and base directory
+ */
+export function sessionOfDir(dir: string): { name: string | null; baseDir: string } {
+  const parent = path.dirname(dir);
+  if (path.basename(parent) === NAMED_SESSIONS_DIR) {
+    return { name: path.basename(dir), baseDir: path.dirname(parent) };
+  }
+  return { name: null, baseDir: dir };
 }
 
 /**

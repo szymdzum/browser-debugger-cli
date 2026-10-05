@@ -12,7 +12,7 @@ import {
 import { IPCEarlyCloseError, IPCTimeoutError } from '@/ipc/transport/IPCError.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { escapeControlChars } from '@/ui/formatting.js';
-import { STOP_MESSAGES } from '@/ui/messages/session.js';
+import { noActiveSessionMessage, startSessionSuggestion } from '@/ui/messages/sessionCommand.js';
 import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -25,8 +25,8 @@ export type { BaseOptions };
  */
 export function noActiveSessionError(): CommandError {
   return new CommandError(
-    STOP_MESSAGES.DAEMON_NOT_RUNNING,
-    { suggestion: 'Start a session with: bdg <url>' },
+    noActiveSessionMessage(),
+    { suggestion: startSessionSuggestion() },
     EXIT_CODES.RESOURCE_NOT_FOUND
   );
 }
@@ -255,8 +255,8 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       if (options.json) {
         console.log(
           JSON.stringify(
-            OutputBuilder.buildJsonError(STOP_MESSAGES.DAEMON_NOT_RUNNING, {
-              suggestion: 'Start a session with: bdg <url>',
+            OutputBuilder.buildJsonError(noActiveSessionMessage(), {
+              suggestion: startSessionSuggestion(),
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
             }),
             null,

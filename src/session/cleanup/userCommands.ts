@@ -11,7 +11,7 @@ import {
 } from '@/session/cleanup/staleSession.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
 import { clearLastSessionEnd } from '@/session/lastSession.js';
-import { getSessionFilePath } from '@/session/paths.js';
+import { SESSION_STATE_FILES, getSessionFilePath } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -75,16 +75,13 @@ export async function performSessionCleanup(
   };
 }
 
-/** Files a session leaves behind (stale ones are what cleanup removes) */
-const SESSION_FILE_TYPES = ['DAEMON_PID', 'DAEMON_SOCKET', 'CHROME_PID', 'METADATA'] as const;
-
 /**
  * How many session files exist.
  *
  * @returns Number of existing session files
  */
 function countSessionFiles(): number {
-  return SESSION_FILE_TYPES.filter((type) => fs.existsSync(getSessionFilePath(type))).length;
+  return SESSION_STATE_FILES.filter((type) => fs.existsSync(getSessionFilePath(type))).length;
 }
 
 /**

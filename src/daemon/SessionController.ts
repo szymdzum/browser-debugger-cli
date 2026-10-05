@@ -18,7 +18,9 @@ import { CommandError } from '@/errors/index.js';
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   cdpRequestRejectedError,
+  sessionAlreadyRunningMessage,
   sessionEndedDuringCommandError,
+  sessionUnavailableSuggestion,
 } from '@/errors/messages.js';
 import {
   type ClientRequestUnion,
@@ -41,13 +43,12 @@ import {
 import { clearLastSessionEnd, writeLastSessionEnd } from '@/session/lastSession.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeIssue } from '@/ui/messages/chrome.js';
+import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 
 const log = createLogger('daemon');
-
-const NO_SESSION_ERROR = 'No active session';
 
 /** Error for requests that need the session while `bdg <url>` is still starting it */
 const STARTING_ERROR = 'The session is still starting';
@@ -183,11 +184,11 @@ export class SessionController {
    * @returns Error message, plus exit code and suggestion while starting
    */
   private noSessionError(): { error: string; exitCode?: number; suggestion?: string } {
-    if (!this.launching) return { error: NO_SESSION_ERROR };
+    if (!this.launching) return { error: noActiveSessionMessage() };
     return {
       error: STARTING_ERROR,
       exitCode: EXIT_CODES.RESOURCE_BUSY,
-      suggestion: 'Wait until "bdg <url>" returns, then retry',
+      suggestion: sessionUnavailableSuggestion(EXIT_CODES.RESOURCE_BUSY),
     };
   }
 
@@ -436,7 +437,7 @@ export class SessionController {
       return {
         ...base,
         status: 'error',
-        message: 'No active session found',
+        message: noActiveSessionMessage(),
         errorCode: IPCErrorCode.NO_SESSION,
       };
     }
@@ -503,7 +504,7 @@ export class SessionController {
       };
     }
     return {
-      message: `Session already running (PID ${process.pid}). Stop it first with: bdg stop`,
+      message: sessionAlreadyRunningMessage(process.pid),
       errorCode: IPCErrorCode.SESSION_ALREADY_RUNNING,
       existingSession: { ...existingSession, targetUrl },
     };

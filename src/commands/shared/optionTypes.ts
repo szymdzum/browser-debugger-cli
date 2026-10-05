@@ -65,6 +65,8 @@ export interface CleanupOptions {
   removeOutput?: boolean;
   /** Aggressive cleanup - kill all Chrome processes */
   aggressive?: boolean;
+  /** Also delete the named session's directory (profile, logs, port) */
+  purge?: boolean;
 }
 
 /**

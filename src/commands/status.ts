@@ -19,6 +19,7 @@ import {
   formatNoSessionMessage,
   type StatusData,
 } from '@/ui/formatters/status.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -54,6 +55,15 @@ function withSessionName(data: StatusData): StatusData {
 }
 
 /**
+ * Force-clean the selected session and start it again.
+ *
+ * @returns Command line
+ */
+function resetCommand(): string {
+  return `${sessionCommand('bdg cleanup --force')} && ${sessionCommand('bdg <url>')}`;
+}
+
+/**
  * Register status command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -81,7 +91,7 @@ export function registerStatusCommand(program: Command): void {
                 error: `Daemon error: ${response.error ?? 'Unknown error'}`,
                 exitCode: EXIT_CODES.SOFTWARE_ERROR,
                 errorContext: {
-                  suggestion: 'Try: bdg cleanup --force && bdg <url>',
+                  suggestion: `Try: ${resetCommand()}`,
                 },
               };
             }
@@ -93,7 +103,7 @@ export function registerStatusCommand(program: Command): void {
                 error: invalidResponseError('missing data'),
                 exitCode: EXIT_CODES.SOFTWARE_ERROR,
                 errorContext: {
-                  suggestion: 'This is unexpected. Try: bdg cleanup --force && bdg <url>',
+                  suggestion: `This is unexpected. Try: ${resetCommand()}`,
                 },
               };
             }
@@ -165,7 +175,7 @@ export function registerStatusCommand(program: Command): void {
               error: `Error checking status: ${errorMessage}`,
               exitCode: EXIT_CODES.SOFTWARE_ERROR,
               errorContext: {
-                suggestion: 'Try: bdg cleanup --force to reset session state',
+                suggestion: `Try: ${sessionCommand('bdg cleanup --force')} to reset session state`,
               },
             };
           }

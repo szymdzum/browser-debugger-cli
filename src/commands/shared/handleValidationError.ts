@@ -10,8 +10,8 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
  *
  * For `CommandError`, emits either a JSON envelope (when `json=true`) or
  * a human-readable message + suggestion, then exits with the error's own
- * exit code. For anything else, prints the message and exits with
- * `INVALID_ARGUMENTS`.
+ * exit code. For anything else, prints the message (as an envelope with
+ * `--json`) and exits with `INVALID_ARGUMENTS`.
  *
  * @param error - Error thrown from validation code
  * @param json - Whether the caller is in `--json` output mode
@@ -34,6 +34,14 @@ export function handleValidationError(error: unknown, json: boolean): never {
     }
     process.exit(error.exitCode);
   }
-  console.error(genericError(error instanceof Error ? error.message : String(error)));
+  const message = error instanceof Error ? error.message : String(error);
+  if (json) {
+    const envelope = OutputBuilder.buildJsonError(message, {
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+    });
+    console.log(JSON.stringify(envelope, null, 2));
+  } else {
+    console.error(genericError(message));
+  }
   process.exit(EXIT_CODES.INVALID_ARGUMENTS);
 }

@@ -14,6 +14,11 @@ import {
   warningMessage,
 } from '@/ui/messages/commands.js';
 import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
+import {
+  noActiveSessionMessage,
+  sessionCommand,
+  startSessionSuggestion,
+} from '@/ui/messages/sessionCommand.js';
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -76,10 +81,10 @@ export function registerStopCommand(program: Command): void {
               if (response.errorCode === IPCErrorCode.NO_SESSION) {
                 return {
                   success: false,
-                  error: response.message ?? STOP_MESSAGES.NO_SESSION,
+                  error: response.message ?? noActiveSessionMessage(),
                   exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
                   errorContext: {
-                    suggestion: 'Start a session with: bdg <url>',
+                    suggestion: startSessionSuggestion(),
                   },
                 };
               }
@@ -90,7 +95,7 @@ export function registerStopCommand(program: Command): void {
                 error: response.message ?? STOP_MESSAGES.FAILED,
                 exitCode,
                 errorContext: {
-                  suggestion: 'Check session status with: bdg status',
+                  suggestion: `Check session status with: ${sessionCommand('bdg status')}`,
                 },
               };
             }
@@ -101,10 +106,10 @@ export function registerStopCommand(program: Command): void {
             if (isDaemonNotRunningError(errorMessage)) {
               return {
                 success: false,
-                error: STOP_MESSAGES.DAEMON_NOT_RUNNING,
+                error: noActiveSessionMessage(),
                 exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
                 errorContext: {
-                  suggestion: 'Start a session with: bdg <url>',
+                  suggestion: startSessionSuggestion(),
                 },
               };
             }
@@ -114,7 +119,7 @@ export function registerStopCommand(program: Command): void {
               error: stopFailedError(errorMessage),
               exitCode: EXIT_CODES.SOFTWARE_ERROR,
               errorContext: {
-                suggestion: 'Try: bdg cleanup --force to reset session state',
+                suggestion: `Try: ${sessionCommand('bdg cleanup --force')} to reset session state`,
               },
             };
           }

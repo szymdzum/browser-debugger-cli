@@ -13,7 +13,7 @@ import { launchDaemon } from '@/daemon/launcher.js';
 import {
   LAUNCHED_CHROME_DESCRIPTION,
   sessionAlreadyRunningError,
-  ALREADY_RUNNING_SUGGESTION,
+  alreadyRunningSuggestion,
   sessionTargetMismatchError,
   daemonNotRunningError,
   invalidResponseError,
@@ -33,6 +33,7 @@ import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { startNotices } from '@/ui/messages/session.js';
+import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
 import { delay } from '@/utils/async.js';
 import { getExitCodeForIPCError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -193,7 +194,7 @@ async function requestSession(
     if (isConnectionError(error)) {
       return {
         ok: false,
-        error: 'No active session (daemon not running)',
+        error: `${noActiveSessionMessage()} (daemon not running)`,
         human: daemonNotRunningError({ suggestStatus: true, suggestRetry: true }),
         exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
         retryable: true,
@@ -250,7 +251,7 @@ function describeStartFailure(
       human: sessionAlreadyRunningError(pid, duration ? duration * 1000 : 0, targetUrl),
       exitCode,
       errorCode: response.errorCode,
-      details: { ...details, suggestion: ALREADY_RUNNING_SUGGESTION },
+      details: { ...details, suggestion: alreadyRunningSuggestion() },
     };
   }
   if (response.errorCode === IPCErrorCode.SESSION_TARGET_MISMATCH) {

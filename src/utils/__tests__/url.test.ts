@@ -112,6 +112,25 @@ void describe('validateChromeWsUrl', () => {
     assert.equal(validateChromeWsUrl('ws://127.0.0.1:9222').valid, false);
     assert.equal(validateChromeWsUrl('ws://127.0.0.1:9222/devtools/page/ABC').valid, true);
   });
+
+  void it('rejects ports out of range (#321)', () => {
+    for (const value of ['99999', '0', '127.0.0.1:99999', 'localhost:0']) {
+      const result = validateChromeWsUrl(value);
+      assert.equal(result.valid, false, value);
+      if (!result.valid) assert.match(result.error, /port \d+ is out of range \(1-65535\)/, value);
+    }
+  });
+
+  void it('rejects host: without a port (#321)', () => {
+    const result = validateChromeWsUrl('localhost:');
+    assert.equal(result.valid, false);
+    if (!result.valid) assert.match(result.error, /missing the port: 'localhost:'/);
+  });
+
+  void it('accepts the edge ports 1 and 65535', () => {
+    assert.equal(validateChromeWsUrl('1').valid, true);
+    assert.equal(validateChromeWsUrl('localhost:65535').valid, true);
+  });
 });
 
 void describe('devToolsHttpEndpoint', () => {
@@ -133,5 +152,11 @@ void describe('devToolsHttpEndpoint', () => {
     assert.equal(devToolsHttpEndpoint('ws://127.0.0.1:9222/devtools/browser/x'), null);
     assert.equal(devToolsHttpEndpoint('localhost'), null);
     assert.equal(devToolsHttpEndpoint('localhost:9222/devtools/browser/x'), null);
+  });
+
+  void it('returns null for ports out of range', () => {
+    assert.equal(devToolsHttpEndpoint('99999'), null);
+    assert.equal(devToolsHttpEndpoint('0'), null);
+    assert.equal(devToolsHttpEndpoint('localhost:0'), null);
   });
 });

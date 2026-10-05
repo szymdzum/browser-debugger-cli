@@ -183,17 +183,26 @@ function readClaim(claimPath: string): string | null {
 }
 
 /**
+ * Session directories other than the selected one that bdg knows of: those of
+ * this base directory, and those of any base directory found in the
+ * machine-wide registry. They need not hold a running session.
+ *
+ * @returns Session directories
+ */
+export function otherSessionDirs(): string[] {
+  const ownDir = getSessionDir();
+  const dirs = new Set([...listSessionDirs().map(({ dir }) => dir), ...registeredSessionDirs()]);
+  return [...dirs].filter((dir) => dir !== ownDir);
+}
+
+/**
  * Ports claimed by other sessions that are running or starting (their daemon
- * socket exists): sessions of this base directory, and sessions of any base
- * directory found in the machine-wide registry.
+ * socket exists), see {@link otherSessionDirs}.
  *
  * @returns Claimed ports
  */
 export function portsClaimedByOtherSessions(): Set<number> {
-  const ownDir = getSessionDir();
-  const dirs = new Set([...listSessionDirs().map(({ dir }) => dir), ...registeredSessionDirs()]);
-  const ports = [...dirs]
-    .filter((dir) => dir !== ownDir)
+  const ports = otherSessionDirs()
     .filter((dir) => fs.existsSync(sessionFilePathIn(dir, 'DAEMON_SOCKET')))
     .map((dir) => readPortFile(sessionFilePathIn(dir, 'PORT')));
   return new Set(ports.filter((port): port is number => port !== null));

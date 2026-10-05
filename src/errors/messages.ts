@@ -7,8 +7,14 @@
 import * as path from 'path';
 
 import type { DomFrame } from '@/ipc/protocol/commands.js';
+import { getSessionBaseDir, getSessionName } from '@/session/paths.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import { frameLabel } from '@/ui/messages/commands.js';
+import {
+  noActiveSessionMessage,
+  sessionCommand,
+  startSessionSuggestion,
+} from '@/ui/messages/sessionCommand.js';
 import {
   detectSelectorQuoteDamage,
   detectScriptQuoteDamage,
@@ -16,7 +22,8 @@ import {
 } from '@/utils/shellDetection.js';
 
 /**
- * Generate "session already running" error message.
+ * Generate "session already running" error message (commands carry
+ * `--session` for a named session).
  *
  * @param pid - Process ID of running session
  * @param duration - Session duration in milliseconds
@@ -36,22 +43,56 @@ export function sessionAlreadyRunningError(
 ): string {
   return joinLines(
     '',
-    'Error: Session already running',
+    `Error: ${sessionLabel()} already running`,
     '',
     `  PID:      ${pid}`,
     targetUrl && `  Target:   ${targetUrl}`,
     `  Duration: ${formatDuration(duration)}`,
     '',
     'Suggestions:',
-    '  View session:     bdg status',
-    '  Stop and restart: bdg stop && bdg <url>',
+    `  View session:     ${sessionCommand('bdg status')}`,
+    `  Stop and restart: ${stopAndRestartCommand()}`,
     ''
   );
 }
 
-/** What to do when `bdg <url>` finds a session already running */
-export const ALREADY_RUNNING_SUGGESTION =
-  'Use the running session (bdg status), or stop it first: bdg stop && bdg <url>';
+/**
+ * The daemon's one-line answer to `bdg <url>` while its session runs.
+ *
+ * @param pid - Daemon PID
+ * @returns Message
+ */
+export function sessionAlreadyRunningMessage(pid: number): string {
+  return `${sessionLabel()} already running (PID ${pid}). Stop it first with: ${sessionCommand('bdg stop')}`;
+}
+
+/**
+ * "Session" or `Session "<name>"` for the selected session.
+ *
+ * @returns Label
+ */
+function sessionLabel(): string {
+  const name = getSessionName();
+  return name === null ? 'Session' : `Session "${name}"`;
+}
+
+/**
+ * Stop the selected session and start it again.
+ *
+ * @returns Command line
+ */
+function stopAndRestartCommand(): string {
+  return `${sessionCommand('bdg stop')} && ${sessionCommand('bdg <url>')}`;
+}
+
+/**
+ * What to do when `bdg <url>` finds the selected session already running.
+ *
+ * @returns Suggestion
+ */
+export function alreadyRunningSuggestion(): string {
+  return `Use the running session (${sessionCommand('bdg status')}), or stop it first: ${stopAndRestartCommand()}`;
+}
 
 /**
  * Human-readable description of a bdg-launched Chrome (as opposed to one
@@ -83,7 +124,7 @@ export function sessionTargetMismatchError(
     `  Current:   ${currentTarget ?? '(unknown)'}`,
     `  Requested: ${requestedTarget ?? '(unknown)'}`,
     '',
-    "Run 'bdg stop' before attaching to a different target.",
+    `Run '${sessionCommand('bdg stop')}' before attaching to a different target.`,
     ''
   );
 }
@@ -112,8 +153,7 @@ export interface DaemonErrorContext {
 export function sessionNotRespondingError(seconds: number): ErrorWithSuggestion {
   return {
     message: `The session did not respond within ${seconds}s`,
-    suggestion:
-      'Retry in a moment; if it stays unresponsive, end it with: bdg cleanup --force (stops the daemon and its Chrome)',
+    suggestion: `Retry in a moment; if it stays unresponsive, end it with: ${sessionCommand('bdg cleanup --force')} (stops the daemon and its Chrome)`,
   };
 }
 
@@ -126,8 +166,7 @@ export function sessionNotRespondingError(seconds: number): ErrorWithSuggestion 
 export function commandTimedOutError(seconds: number): ErrorWithSuggestion {
   return {
     message: `The command did not finish within ${seconds}s (the page may be busy or frozen)`,
-    suggestion:
-      'Check the session with: bdg status; if the page stays frozen, end it with: bdg cleanup --force',
+    suggestion: `Check the session with: ${sessionCommand('bdg status')}; if the page stays frozen, end it with: ${sessionCommand('bdg cleanup --force')}`,
   };
 }
 
@@ -139,8 +178,8 @@ export function commandTimedOutError(seconds: number): ErrorWithSuggestion {
  */
 export function sessionUnavailableSuggestion(exitCode: number): string {
   return exitCode === 85
-    ? 'Wait until "bdg <url>" returns, then retry'
-    : 'Start a session with: bdg <url>';
+    ? `Wait until "${sessionCommand('bdg <url>')}" returns, then retry`
+    : startSessionSuggestion();
 }
 
 /**
@@ -168,13 +207,13 @@ export function sessionUnavailableSuggestion(exitCode: number): string {
  */
 export function daemonNotRunningError(context?: DaemonErrorContext): string {
   return joinLines(
-    'Error: No active session',
+    `Error: ${noActiveSessionMessage()}`,
     context?.staleCleanedUp && '(Stale daemon files were cleaned up)',
     context?.lastError && `Last error: ${context.lastError}`,
-    'Start a session with: bdg <url>',
+    startSessionSuggestion(),
     context?.suggestStatus && '',
     context?.suggestStatus && 'Or check daemon status:',
-    context?.suggestStatus && '  bdg status',
+    context?.suggestStatus && `  ${sessionCommand('bdg status')}`,
     context?.suggestRetry && '',
     context?.suggestRetry && 'Or try the command again if this was transient'
   );
@@ -267,7 +306,7 @@ export function elementNotFoundError(selector: string): ErrorWithSuggestion {
   return {
     message,
     suggestion: joinLines(
-      'Check the selector syntax, or wait for the element to load (bdg peek shows the page state)',
+      `Check the selector syntax, or wait for the element to load (${sessionCommand('bdg peek')} shows the page state)`,
       CROSS_ORIGIN_FRAMES_NOTE
     ),
   };
@@ -530,7 +569,7 @@ export function invalidUserDataDirError(value: string, reason: string): ErrorWit
 export function invalidSessionNameError(name: string, maxLength: number): ErrorWithSuggestion {
   return {
     message: `Invalid session name "${name}"`,
-    suggestion: `Use 1-${maxLength} letters, digits, "-" or "_", e.g. --session agent-1`,
+    suggestion: `Use 1-${maxLength} letters, digits, "-" or "_", starting with a letter or digit, e.g. --session agent-1`,
   };
 }
 
@@ -549,6 +588,17 @@ export function sessionNameSocketTooLongError(
   return {
     message: `Session name "${name}" makes the daemon socket path too long (${Buffer.byteLength(socketPath)} bytes, at most ${max}): ${socketPath}`,
     suggestion: 'Use a shorter session name, or a shorter BDG_SESSION_DIR (e.g. /tmp/bdg)',
+  };
+}
+
+/**
+ * `bdg cleanup --purge` without a named session (the default session's
+ * directory holds the named sessions).
+ */
+export function purgeNeedsNamedSessionError(): ErrorWithSuggestion {
+  return {
+    message: "--purge deletes a named session's directory and needs --session <name>",
+    suggestion: 'Name the session: bdg cleanup --session <name> --purge (see bdg sessions)',
   };
 }
 
@@ -586,7 +636,7 @@ export function sessionDirNotWritableError(dir: string, reason: string): ErrorWi
  */
 export function socketPathTooLongError(socketPath: string, max: number): ErrorWithSuggestion {
   return {
-    message: `Session directory path is too long for the daemon socket (${socketPath.length} characters, at most ${max})`,
+    message: `Session directory path is too long for the daemon socket (${Buffer.byteLength(socketPath)} bytes, at most ${max}): ${socketPath}`,
     suggestion: SESSION_DIR_SUGGESTION,
   };
 }
@@ -606,6 +656,43 @@ export function externalChromeUnreachableError(
     suggestion: secure
       ? 'Chrome itself serves ws:// only; use ws://host:port/... unless a TLS proxy is in front of it'
       : 'Check that Chrome runs with --remote-debugging-port and is reachable from here',
+  };
+}
+
+/**
+ * Something answers on the `--chrome-ws-url` endpoint, but it is not Chrome's
+ * DevTools HTTP endpoint (e.g. a web server on that port).
+ *
+ * @param endpoint - e.g. http://127.0.0.1:3000
+ */
+export function notDevToolsEndpointError(endpoint: string): ErrorWithSuggestion {
+  return {
+    message: `${endpoint} answers, but it is not a Chrome DevTools endpoint (no /json/version)`,
+    suggestion:
+      "Give Chrome's debugging port (the --remote-debugging-port it was started with), not the page's port",
+  };
+}
+
+/**
+ * Another running bdg session uses the Chrome (or tab) `--chrome-ws-url`
+ * points to.
+ *
+ * @param endpoint - e.g. http://127.0.0.1:9222
+ * @param owner - The other session: name (null for a default session),
+ *   directory, base directory and whether it launched that Chrome
+ */
+export function chromeInUseBySessionError(
+  endpoint: string,
+  owner: { name: string | null; dir: string; baseDir: string; launched: boolean }
+): ErrorWithSuggestion {
+  const label = owner.name === null ? 'the default bdg session' : `bdg session "${owner.name}"`;
+  const what = owner.launched ? 'was launched by' : 'has its tab driven by';
+  const envPrefix =
+    owner.baseDir === getSessionBaseDir() ? '' : `BDG_SESSION_DIR=${owner.baseDir} `;
+  const ownerCommand = (command: string): string => envPrefix + sessionCommand(command, owner.name);
+  return {
+    message: `The Chrome at ${endpoint} ${what} ${label} (${owner.dir}); attaching would take it over`,
+    suggestion: `Use that session (${ownerCommand('bdg status')}), stop it first (${ownerCommand('bdg stop')}), or attach to another Chrome or tab (a page URL from ${endpoint}/json/list)`,
   };
 }
 
@@ -634,7 +721,7 @@ export function externalBrowserIdMismatchError(
 ): ErrorWithSuggestion {
   return {
     message: `The Chrome at ${endpoint} has a different browser id (it was restarted, or the URL is from another Chrome)`,
-    suggestion: `Use its current URL: bdg <url> --chrome-ws-url ${actual}`,
+    suggestion: `Use its current URL: ${sessionCommand(`bdg <url> --chrome-ws-url ${actual}`)}`,
   };
 }
 
@@ -645,7 +732,7 @@ export function externalBrowserIdMismatchError(
  */
 export function chromeWsUrlConflictError(options: string[]): ErrorWithSuggestion {
   return {
-    message: `${options.join(' and ')} cannot be used with --chrome-ws-url (the running Chrome already has its port and profile)`,
+    message: `${options.join(' and ')} cannot be used with --chrome-ws-url (the running Chrome already has its port, profile and window mode)`,
     suggestion: 'Drop them, or let bdg launch Chrome without --chrome-ws-url',
   };
 }
@@ -747,7 +834,7 @@ export function invalidChromeFlagError(flag: string): ErrorWithSuggestion {
 export function sessionEndedDuringCommandError(): ErrorWithSuggestion {
   return {
     message: 'The session ended while the command was running',
-    suggestion: 'Start a new session with: bdg <url>',
+    suggestion: `Start a new session with: ${sessionCommand('bdg <url>')}`,
   };
 }
 

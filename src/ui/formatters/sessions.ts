@@ -5,9 +5,10 @@ import { OutputFormatter } from '@/ui/formatting.js';
 const DEFAULT_SESSION_LABEL = '(default)';
 
 /**
- * Format the running sessions as a table.
+ * Format the sessions as a table, followed by the cleanup commands of
+ * crashed and stale sessions.
  *
- * @param data - Running sessions
+ * @param data - Sessions
  * @returns Human-readable list
  */
 export function formatSessionList(data: { sessions: RunningSessionInfo[] }): string {
@@ -36,6 +37,10 @@ export function formatSessionList(data: { sessions: RunningSessionInfo[] }): str
         .join('  ')
         .trimEnd()
     );
+  }
+  const cleanups = data.sessions.flatMap((session) => (session.cleanup ? [session.cleanup] : []));
+  if (cleanups.length > 0) {
+    fmt.hints('Crashed or stale sessions (daemon gone); clean up with:', cleanups);
   }
   return fmt.build();
 }

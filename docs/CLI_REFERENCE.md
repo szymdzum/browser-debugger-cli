@@ -38,15 +38,21 @@ BDG_SESSION=agent-2 bdg localhost:5173      # Same, via environment
 bdg --session agent-1 peek                  # --session goes before or after the subcommand
 bdg dom eval "document.title" --session agent-1
 BDG_SESSION=agent-2 bdg status              # Status shows the session name and its port
-bdg sessions                                # List running sessions (name, state, port, PID, URL)
+bdg sessions                                # List sessions (name, state, port, PID, URL), incl. crashed ones
 bdg stop --session agent-1                  # Stops agent-1 only
 bdg cleanup --session agent-2               # Cleans up agent-2 only
+bdg cleanup --session agent-2 --purge       # ... and deletes its directory (Chrome profile, logs)
 ```
 
-- **Selection**: `--session <name>` (accepted by every command) wins over `BDG_SESSION`; without either, commands use the default session as before. Names are 1-40 letters, digits, `-` or `_` (exit 81 otherwise)
-- **Directories**: a named session lives in `~/.bdg/sessions/<name>/`. `BDG_SESSION_DIR` moves the base directory: the default session uses `$BDG_SESSION_DIR` itself (unchanged) and named sessions `$BDG_SESSION_DIR/sessions/<name>/`. The daemon socket path must stay under the OS limit (103 bytes on macOS, 107 on Linux); a name that would exceed it is refused with exit 81
+- **Selection**: `--session <name>` (accepted by every command) wins over `BDG_SESSION`; without either, commands use the default session as before. Names are 1-40 letters, digits, `-` or `_`, starting with a letter or digit, so `--session --json` is an error instead of a session named `--json` (exit 81 otherwise)
+- **Case**: names are case-insensitive and stored lower-cased: `--session ALPHA` is the session `alpha` (same directory, listed and shown as `alpha`) on every file system
+- **Hints**: the hints, suggestions and errors of a named session carry `--session <name>` (`bdg stop --session agent-1`, `No active session "agent-1"`), so copying them never acts on the default session
+- **Directories**: a named session lives in `~/.bdg/sessions/<name>/`. `BDG_SESSION_DIR` moves the base directory: the default session uses `$BDG_SESSION_DIR` itself (unchanged) and named sessions `$BDG_SESSION_DIR/sessions/<name>/`. The daemon socket path (`<dir>/daemon.sock`) must fit the OS limit for Unix sockets with room for a temporary `.<pid>` suffix: at most 95 bytes on macOS, 99 on Linux. A longer path is refused with exit 81, for the default session too; the error blames the directory when even a one-letter name would not fit, and the name otherwise
+- **Removing a session**: a stopped named session keeps its directory (Chrome profile of ~60 MB, logs, `port.txt`) for its next start. `bdg cleanup --session <name> --purge` deletes it (add `--force` to stop a running one first); `--purge` needs `--session`
 - **Ports**: without `--port`, a named session takes the first free port from 9223 upwards that no other running session has claimed (9222 is left to the default session), and keeps it in its `port.txt` for the next start. Sessions starting at the same time never pick the same port, also across different `BDG_SESSION_DIR`s (claims and the selection lock live in a per-user directory under the OS temp directory). bdg only connects to the Chrome it launched: if another process answers on the port, an automatically chosen port is replaced (up to 3 tries) and an explicit `--port` fails with exit 100. The default session keeps choosing from 9222
 - **Independence**: `stop`, `cleanup` and every other command act on the selected session only; `bdg cleanup` without `--session` cleans the default session, as before
+- **Crashed sessions**: `bdg sessions` also lists sessions whose daemon died: `crashed` while the Chrome bdg launched for them still runs (JSON has its `chromePid`), `stale` when only their files are left. Both come with the command that cleans them up (`cleanup` in JSON, e.g. `bdg cleanup --session p3`)
+- **Attaching**: `--chrome-ws-url` refuses (exit 90) a Chrome that another running bdg session launched (stopping that session would close it), and a tab another session is attached to; another tab of a shared Chrome can be attached with its page URL from `/json/list`. Sessions of this base directory are checked, and sessions of other `BDG_SESSION_DIR`s that claimed a port
 
 ## Live Monitoring
 
@@ -1022,8 +1028,12 @@ bdg localhost:3000 --chrome-ws-url 9222        # Connect to existing Chrome inst
 # or a page URL from /json/list (ws://host:port/devtools/page/<id>).
 # Useful to log in by hand first (OAuth, passkeys) in a Chrome started with
 # --remote-debugging-port=9222 --user-data-dir=<dir>, then attach bdg to it.
-# The Chrome keeps running after bdg stop. --port and -u cannot be combined with it
-# (the running Chrome has its own); a stale browser id or a missing page id is refused (83).
+# The Chrome keeps running after bdg stop. --port, -u and --[no-]headless cannot be
+# combined with it (exit 81; the running Chrome has its own); a stale browser id or a
+# missing page id is refused (83); a port out of range or `host:` without a port is
+# invalid (80); an HTTP server that is not DevTools (e.g. the app's port) is reported as
+# "not a Chrome DevTools endpoint" (101); a Chrome or tab used by another running bdg
+# session is refused (90). In status JSON, chromePid is null for an attached Chrome.
 
 # Output Optimization
 bdg localhost:3000 --max-body-size 10           # Set max response body size (MB, default: 5)

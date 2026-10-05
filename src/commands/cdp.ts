@@ -15,6 +15,7 @@ import { CommandError } from '@/errors/index.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
 import { formatHint } from '@/ui/messages/hints.js';
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -214,7 +215,7 @@ function domainSuggestion(domainName: string): string {
  */
 function blockedAlternative(methodName: string): string | undefined {
   const blocked = BLOCKED_CDP_METHODS[methodName];
-  return blocked && `${blocked.alternative} (raw ${methodName} is blocked)`;
+  return blocked && `${sessionCommand(blocked.alternative)} (raw ${methodName} is blocked)`;
 }
 
 /**
@@ -501,7 +502,7 @@ async function handleExecuteMethod(
       success: false,
       error: `${normalized} is blocked via raw CDP: ${blocked.reason}`,
       exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-      errorContext: { suggestion: `Use: ${blocked.alternative}` },
+      errorContext: { suggestion: `Use: ${sessionCommand(blocked.alternative)}` },
     };
   }
   if (!normalized) {

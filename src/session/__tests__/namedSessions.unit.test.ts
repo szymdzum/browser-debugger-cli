@@ -4,13 +4,18 @@
  */
 
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
+import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { CommandError } from '@/errors/index.js';
+import { findConflictingOwner } from '@/session/chromeOwners.js';
 import {
+  MAX_DAEMON_SOCKET_PATH_BYTES,
   getSessionBaseDir,
   getSessionDir,
   getSessionFilePath,
@@ -24,11 +29,12 @@ import {
   untrustedDirReason,
   withPortLock,
 } from '@/session/portClaims.js';
-import { toRunningSession } from '@/session/sessionList.js';
+import { listRunningSessions, toRunningSession } from '@/session/sessionList.js';
 import { selectSession, validateSessionName } from '@/session/sessionName.js';
 import { formatSessionList } from '@/ui/formatters/sessions.js';
 import { formatNoSessionMessage } from '@/ui/formatters/status.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 const savedEnv = {
   dir: process.env['BDG_SESSION_DIR'],
@@ -128,7 +134,9 @@ void describe('session directory', () => {
 void describe('session name validation', () => {
   void it('accepts letters, digits, - and _ up to 40 characters', () => {
     process.env['BDG_SESSION_DIR'] = '/tmp/b';
-    for (const name of ['a', 'agent-1', 'Agent_2', 'x'.repeat(40)]) validateSessionName(name);
+    for (const name of ['a', 'agent-1', 'Agent_2', '1st', 'x'.repeat(40)]) {
+      validateSessionName(name);
+    }
   });
 
   void it('rejects other names with exit 81 and a suggestion', () => {
@@ -137,9 +145,26 @@ void describe('session name validation', () => {
     }
   });
 
-  void it('rejects a name whose socket path would be too long', () => {
+  void it('blames the name when only a shorter name would fit the socket path', () => {
+    const fixedBytes = '/tmp/'.length + '/sessions/'.length + '/daemon.sock'.length;
+    process.env['BDG_SESSION_DIR'] =
+      `/tmp/${'d'.repeat(MAX_DAEMON_SOCKET_PATH_BYTES - fixedBytes - 1)}`;
+    validateSessionName('a');
+    assertInvalid(
+      () => validateSessionName('agent-1'),
+      /Session name "agent-1" .*socket path too long/
+    );
+  });
+
+  void it('blames the directory when no name would fit the socket path', () => {
     process.env['BDG_SESSION_DIR'] = path.join(base, 'd'.repeat(80));
-    assertInvalid(() => validateSessionName('agent-1'), /socket path too long/);
+    assertInvalid(() => validateSessionName('a'), /Session directory path is too long/);
+  });
+
+  void it('rejects names that do not start with a letter or digit', () => {
+    for (const name of ['-x', '--json', '-h', '_a']) {
+      assertInvalid(() => validateSessionName(name), /Invalid session name/);
+    }
   });
 });
 
@@ -160,6 +185,14 @@ void describe('session selection', () => {
     process.env['BDG_SESSION'] = '';
     selectSession(undefined);
     assert.equal(process.env['BDG_SESSION'], undefined);
+  });
+
+  void it('lower-cases names so they are case-insensitive', () => {
+    selectSession('ALPHA');
+    assert.equal(process.env['BDG_SESSION'], 'alpha');
+    assert.equal(getSessionDir(), path.join(base, 'sessions', 'alpha'));
+    process.env['BDG_SESSION'] = 'Agent-1';
+    assert.equal(getSessionName(), 'agent-1');
   });
 
   void it('rejects an invalid BDG_SESSION and an empty --session', () => {
@@ -388,5 +421,99 @@ void describe('session list', () => {
     assert.match(text, /No active session "agent-1"/);
     assert.match(text, /bdg <url> --session agent-1/);
     assert.match(text, /bdg cleanup --session agent-1/);
+  });
+
+  void it('lists stale sessions with their cleanup command, and skips unusable names', async () => {
+    const stale = path.join(base, 'sessions', 'p3');
+    fs.mkdirSync(stale, { recursive: true });
+    fs.writeFileSync(path.join(stale, 'daemon.pid'), '999999');
+    fs.writeFileSync(path.join(stale, 'session.meta.json'), JSON.stringify({ port: 9226 }));
+    fs.mkdirSync(path.join(base, 'sessions', 'stopped'), { recursive: true });
+    fs.mkdirSync(path.join(base, 'sessions', '--json'), { recursive: true });
+    fs.writeFileSync(path.join(base, 'sessions', '--json', 'daemon.pid'), '1');
+    assert.deepEqual(await listRunningSessions(), [
+      { name: 'p3', state: 'stale', port: 9226, cleanup: 'bdg cleanup --session p3' },
+    ]);
+  });
+
+  void it('lists a session whose daemon died while its Chrome runs as crashed', async () => {
+    const dir = path.join(base, 'sessions', 'p4');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'port.txt'), '9227');
+    const fakeChrome = spawn(
+      process.execPath,
+      ['-e', 'setTimeout(() => {}, 30000)', '--', chromeSessionMarkerFlag(dir)],
+      { stdio: 'ignore' }
+    );
+    try {
+      const pid = fakeChrome.pid ?? 0;
+      fs.writeFileSync(path.join(dir, 'chrome.pid'), String(pid));
+      await waitUntil(() => isProcessAlive(pid));
+      assert.deepEqual(await listRunningSessions(), [
+        {
+          name: 'p4',
+          state: 'crashed',
+          port: 9227,
+          chromePid: pid,
+          cleanup: 'bdg cleanup --session p4',
+        },
+      ]);
+      assert.match(
+        formatSessionList({ sessions: await listRunningSessions() }),
+        /p4\s+crashed\s+9227[\s\S]*clean up with:\n\s+bdg cleanup --session p4/
+      );
+    } finally {
+      fakeChrome.kill('SIGKILL');
+    }
+  });
+});
+
+/**
+ * Poll until a condition holds (up to 2 s).
+ *
+ * @param condition - Condition to wait for
+ */
+async function waitUntil(condition: () => boolean): Promise<void> {
+  for (let i = 0; i < 40 && !condition(); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
+/**
+ * A directory that looks like a running session driving a tab: a listening
+ * daemon socket and metadata.
+ *
+ * @param name - Session name
+ * @param meta - Metadata (targetId, chromePid)
+ * @returns Server to close after the test
+ */
+async function fakeLiveSession(
+  name: string,
+  meta: { targetId: string; chromePid: number }
+): Promise<net.Server> {
+  const dir = path.join(base, 'sessions', name);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'session.meta.json'), JSON.stringify({ port: 9930, ...meta }));
+  const server = net.createServer((socket) => socket.end());
+  await new Promise<void>((resolve) => server.listen(path.join(dir, 'daemon.sock'), resolve));
+  return server;
+}
+
+void describe('Chrome owners (attach)', () => {
+  void it('finds a session that launched the Chrome, or drives the tab to attach to', async () => {
+    const launched = await fakeLiveSession('alpha', { targetId: 'T1', chromePid: 4242 });
+    const attached = await fakeLiveSession('att1', { targetId: 'T2', chromePid: 0 });
+    try {
+      process.env['BDG_SESSION'] = 'spy';
+      assert.equal((await findConflictingOwner(['T1', 'T9'], 'T9'))?.name, 'alpha');
+      assert.equal((await findConflictingOwner(['T2', 'T3'], 'T2'))?.name, 'att1');
+      assert.equal(await findConflictingOwner(['T2', 'T3'], 'T3'), null, 'another tab is free');
+      assert.equal(await findConflictingOwner(['T7'], 'T7'), null);
+      process.env['BDG_SESSION'] = 'alpha';
+      assert.equal((await findConflictingOwner(['T1', 'T2'], 'T2'))?.name, 'att1');
+    } finally {
+      launched.close();
+      attached.close();
+    }
   });
 });

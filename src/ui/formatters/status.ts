@@ -5,6 +5,7 @@ import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
+import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 export interface StatusData {
@@ -12,7 +13,8 @@ export interface StatusData {
   session?: string;
   active: boolean;
   bdgPid?: number;
-  chromePid?: number | undefined;
+  /** Chrome launched by bdg; null for an attached Chrome */
+  chromePid?: number | null | undefined;
   chromeAlive?: boolean;
   /** Attached to a Chrome bdg did not launch (`--chrome-ws-url`); it has no known PID */
   externalChrome?: boolean;
@@ -142,9 +144,9 @@ export function formatSessionStatus(
   fmt
     .blank()
     .section('Commands:', [
-      'Peek data:       bdg peek',
-      'Run JavaScript:  bdg dom eval <script>',
-      'End session:     bdg stop',
+      `Peek data:       ${sessionCommand('bdg peek', sessionName ?? null)}`,
+      `Run JavaScript:  ${sessionCommand('bdg dom eval <script>', sessionName ?? null)}`,
+      `End session:     ${sessionCommand('bdg stop', sessionName ?? null)}`,
     ]);
 
   return fmt.build();
@@ -182,7 +184,8 @@ export function formatStatusAsJson(
   return {
     active: true,
     bdgPid: pid,
-    chromePid: metadata.chromePid,
+    chromePid:
+      metadata.chromePid !== undefined && metadata.chromePid > 0 ? metadata.chromePid : null,
     ...(metadata.chromePid ? { chromeAlive } : { externalChrome: true }),
     startTime: metadata.startTime,
     duration: duration.durationMs,
@@ -205,24 +208,24 @@ export function formatNoSessionMessage(data: StatusData = { active: false }): st
     return fmt
       .text(`Session starting: ${data.starting.url} (${seconds}s so far)`)
       .blank()
-      .text('Commands work once "bdg <url>" returns.')
+      .text(`Commands work once "${sessionCommand('bdg <url>', data.session ?? null)}" returns.`)
       .build();
   }
   if (data.ending) {
     return fmt.text('The session is ending (its Chrome is being closed)').build();
   }
-  fmt.text(data.session ? `No active session "${data.session}"` : 'No active session found');
-  const sessionFlag = data.session ? ` --session ${data.session}` : '';
+  const session = data.session ?? null;
+  fmt.text(noActiveSessionMessage(session));
   if (data.lastSession) fmt.text(lastSessionEndText(data.lastSession));
   if (data.orphanedChromePid) {
     fmt.text(`Chrome of an earlier session is still running (PID ${data.orphanedChromePid})`);
   }
   return fmt
     .hints('Suggestions:', [
-      `Start a new session:     bdg <url>${sessionFlag}`,
+      `Start a new session:     ${sessionCommand('bdg <url>', session)}`,
       data.orphanedChromePid
-        ? `Close that Chrome:       bdg cleanup${sessionFlag}`
-        : `Clean up after a crash:  bdg cleanup${sessionFlag}`,
+        ? `Close that Chrome:       ${sessionCommand('bdg cleanup', session)}`
+        : `Clean up after a crash:  ${sessionCommand('bdg cleanup', session)}`,
     ])
     .build();
 }

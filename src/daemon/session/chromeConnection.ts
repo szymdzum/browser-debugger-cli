@@ -13,17 +13,20 @@ import type { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  chromeInUseBySessionError,
   externalBrowserIdMismatchError,
   externalChromeUnreachableError,
   externalPageNotFoundError,
+  notDevToolsEndpointError,
 } from '@/errors/messages.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import { writeChromePid } from '@/session/chrome.js';
+import { findConflictingOwner } from '@/session/chromeOwners.js';
 import { getSessionDir } from '@/session/paths.js';
 import type { CDPTarget, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { createPageTarget, fetchBrowserWsUrl, fetchCDPTargets } from '@/utils/http.js';
+import { createPageTarget, fetchCDPTargets, probeDevToolsEndpoint } from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -104,14 +107,21 @@ async function resolveExternalTarget(
   const { hostname, pathname, protocol, port } = new URL(wsUrl);
   const http = { host: hostname, secure: protocol === 'wss:' };
   const endpoint = `${http.secure ? 'https' : 'http'}://${hostname}:${config.port}`;
-  const browserWsUrl = await fetchBrowserWsUrl(config.port, log, http);
-  if (!browserWsUrl)
-    fail(externalChromeUnreachableError(endpoint, http.secure), EXIT_CODES.CDP_CONNECTION_FAILURE);
+  const probe = await probeDevToolsEndpoint(config.port, log, http);
+  if (probe.kind !== 'devtools') {
+    const err =
+      probe.kind === 'not-devtools'
+        ? notDevToolsEndpointError(endpoint)
+        : externalChromeUnreachableError(endpoint, http.secure);
+    fail(err, EXIT_CODES.CDP_CONNECTION_FAILURE);
+  }
+  const browserWsUrl = probe.wsUrl;
   const targets = await fetchCDPTargets(config.port, log, http);
   const targetId = pathname.split('/').pop() ?? '';
   if (!pathname.startsWith(BROWSER_WS_PATH)) {
     const known = targets.find((t) => t.id === targetId);
     if (!known) fail(externalPageNotFoundError(targetId, endpoint), EXIT_CODES.RESOURCE_NOT_FOUND);
+    await assertNotOwned(targets, known.id, endpoint);
     return { ...known, webSocketDebuggerUrl: wsUrl };
   }
   if (new URL(browserWsUrl).pathname !== pathname) {
@@ -119,9 +129,9 @@ async function resolveExternalTarget(
     fail(externalBrowserIdMismatchError(endpoint, actual), EXIT_CODES.RESOURCE_NOT_FOUND);
   }
 
-  const page =
-    targets.find((t) => t.type === 'page') ??
-    (await createPageTarget(hostname, config.port, log, http));
+  const firstPage = targets.find((t) => t.type === 'page');
+  await assertNotOwned(targets, firstPage?.id ?? '', endpoint);
+  const page = firstPage ?? (await createPageTarget(hostname, config.port, log, http));
   if (!page)
     fail(externalChromeUnreachableError(endpoint, http.secure), EXIT_CODES.CDP_CONNECTION_FAILURE);
   log.info(`Attaching to page ${page.url} of the external Chrome`);
@@ -129,6 +139,28 @@ async function resolveExternalTarget(
     ...page,
     webSocketDebuggerUrl: withEndpoint(page.webSocketDebuggerUrl, protocol, hostname, port),
   };
+}
+
+/**
+ * Refuse to attach when another running bdg session launched this Chrome or
+ * drives the tab this session would use: taking it over would mix both
+ * sessions' telemetry and let one end the other.
+ *
+ * @param targets - Every target of the Chrome
+ * @param targetId - Tab this session would drive ('' for a tab still to be opened)
+ * @param endpoint - e.g. http://127.0.0.1:9222
+ * @throws CommandError (90) naming the other session
+ */
+async function assertNotOwned(
+  targets: CDPTarget[],
+  targetId: string,
+  endpoint: string
+): Promise<void> {
+  const owner = await findConflictingOwner(
+    targets.map((t) => t.id),
+    targetId
+  );
+  if (owner) fail(chromeInUseBySessionError(endpoint, owner), EXIT_CODES.RESOURCE_CONFLICT);
 }
 
 /**

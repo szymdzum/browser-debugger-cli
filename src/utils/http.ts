@@ -89,28 +89,58 @@ export async function fetchCDPTargets(
 }
 
 /**
+ * What answers on a DevTools HTTP endpoint: a Chrome (with its browser-level
+ * WebSocket URL), an HTTP server that is not DevTools, or nothing.
+ */
+export type DevToolsProbe =
+  { kind: 'devtools'; wsUrl: string } | { kind: 'not-devtools' } | { kind: 'unreachable' };
+
+/**
+ * Ask an endpoint for its DevTools version (`/json/version`).
+ *
+ * @param port - Chrome debugging port
+ * @param logger - Optional logger for debug output
+ * @param options - Host and HTTPS
+ * @returns What answered
+ */
+export async function probeDevToolsEndpoint(
+  port: number,
+  logger?: Logger,
+  options?: Pick<FetchCDPTargetsOptions, 'host' | 'secure'>
+): Promise<DevToolsProbe> {
+  const url = `${options?.secure ? 'https' : 'http'}://${options?.host ?? HTTP_LOCALHOST}:${port}/json/version`;
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(CDP_HTTP_TIMEOUT_MS) });
+  } catch (error) {
+    logger?.debug(`Chrome version request failed: ${getErrorMessage(error)} (${url})`);
+    return { kind: 'unreachable' };
+  }
+  try {
+    const data = (await response.json()) as { webSocketDebuggerUrl?: unknown } | null;
+    const wsUrl = data?.webSocketDebuggerUrl;
+    if (response.ok && typeof wsUrl === 'string') return { kind: 'devtools', wsUrl };
+  } catch (error) {
+    logger?.debug(`Chrome version response is not JSON: ${getErrorMessage(error)} (${url})`);
+  }
+  return { kind: 'not-devtools' };
+}
+
+/**
  * The browser-level DevTools WebSocket URL of a Chrome (`/json/version`).
  *
  * @param port - Chrome debugging port
  * @param logger - Optional logger for debug output
  * @param options - Host and HTTPS
- * @returns The URL, or null if Chrome could not be reached
+ * @returns The URL, or null if no Chrome answered
  */
 export async function fetchBrowserWsUrl(
   port: number,
   logger?: Logger,
   options?: Pick<FetchCDPTargetsOptions, 'host' | 'secure'>
 ): Promise<string | null> {
-  const url = `${options?.secure ? 'https' : 'http'}://${options?.host ?? HTTP_LOCALHOST}:${port}/json/version`;
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(CDP_HTTP_TIMEOUT_MS) });
-    if (!response.ok) return null;
-    const data = (await response.json()) as { webSocketDebuggerUrl?: unknown };
-    return typeof data.webSocketDebuggerUrl === 'string' ? data.webSocketDebuggerUrl : null;
-  } catch (error) {
-    logger?.debug(`Chrome version request failed: ${getErrorMessage(error)} (${url})`);
-    return null;
-  }
+  const probe = await probeDevToolsEndpoint(port, logger, options);
+  return probe.kind === 'devtools' ? probe.wsUrl : null;
 }
 
 /**

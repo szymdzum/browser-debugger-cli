@@ -78,7 +78,8 @@ export async function launchDaemon(): Promise<void> {
  * Check that the session directory can hold the daemon's files before
  * spawning it (otherwise the daemon dies and only its log says why).
  *
- * @throws SessionDirError (103) for a file or a too-long path, (82) when not writable
+ * @throws SessionDirError (103) for a file, (81) for a too-long path like a
+ *   named session's, (82) when not writable
  */
 export function assertUsableSessionDir(): void {
   const dir = getSessionDir();
@@ -88,7 +89,10 @@ export function assertUsableSessionDir(): void {
   if (fs.existsSync(dir) && !fs.statSync(dir).isDirectory()) fail(sessionDirIsFileError(dir));
   const socketPath = getSessionFilePath('DAEMON_SOCKET');
   if (Buffer.byteLength(socketPath) > MAX_DAEMON_SOCKET_PATH_BYTES) {
-    fail(socketPathTooLongError(socketPath, MAX_DAEMON_SOCKET_PATH_BYTES));
+    fail(
+      socketPathTooLongError(socketPath, MAX_DAEMON_SOCKET_PATH_BYTES),
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
   }
   try {
     ensureSessionDir();

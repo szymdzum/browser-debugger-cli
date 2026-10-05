@@ -69,12 +69,22 @@ export async function removeStaleDaemonFiles(): Promise<boolean> {
 export function findOrphanedChrome(): number | null {
   const chromePid = readChromePid();
   if (!chromePid) return null;
-  if (hasArgument(getProcessCommand(chromePid), chromeSessionMarkerFlag(getSessionDir()))) {
-    return chromePid;
-  }
+  if (isSessionChrome(chromePid, getSessionDir())) return chromePid;
   log.debug(`PID ${chromePid} is no longer a bdg Chrome; dropping chrome.pid`);
   clearChromePid();
   return null;
+}
+
+/**
+ * Whether a process is the Chrome bdg launched for a session directory: its
+ * command line carries the directory's marker flag.
+ *
+ * @param pid - Process ID
+ * @param sessionDir - Session directory
+ * @returns True for that session's Chrome
+ */
+export function isSessionChrome(pid: number, sessionDir: string): boolean {
+  return hasArgument(getProcessCommand(pid), chromeSessionMarkerFlag(sessionDir));
 }
 
 /**

@@ -5,6 +5,8 @@
  * tips, and interactive command suggestions.
  * */
 
+import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+
 export const PREVIEW_EMPTY_STATES = {
   NO_DATA: '(none)',
   NO_NETWORK_REQUESTS: 'No network requests yet',
@@ -21,7 +23,7 @@ export const PREVIEW_HEADERS = {
  * @returns Single-line tip for basic peek usage
  */
 export function compactTipsMessage(): string {
-  return 'Tip: bdg peek --last 50 | bdg peek --verbose';
+  return `Tip: ${sessionCommand('bdg peek --last 50')} | ${sessionCommand('bdg peek --verbose')}`;
 }
 
 /**
@@ -32,9 +34,9 @@ export function compactTipsMessage(): string {
 export function verboseCommandsMessage(): string {
   return [
     'Commands:',
-    '  Full preview:    bdg peek --last 50',
-    '  Watch live:      bdg tail',
-    '  End session:     bdg stop',
+    `  Full preview:    ${sessionCommand('bdg peek --last 50')}`,
+    `  Watch live:      ${sessionCommand('bdg tail')}`,
+    `  End session:     ${sessionCommand('bdg stop')}`,
   ].join('\n');
 }
 
