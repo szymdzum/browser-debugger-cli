@@ -26,6 +26,8 @@ export interface BaseOptions {
   json?: boolean;
   /** Hide tips and hints (`-q`, accepted by every command) */
   quiet?: boolean;
+  /** Named session to act on (`--session`, accepted by every command) */
+  session?: string;
 }
 
 /**

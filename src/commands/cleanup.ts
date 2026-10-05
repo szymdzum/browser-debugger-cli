@@ -9,7 +9,7 @@ import type { CleanupResult } from '@/commands/types.js';
 import { sessionDirIsFileError } from '@/errors/messages.js';
 import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
-import { getSessionDir } from '@/session/paths.js';
+import { getSessionDir, getSessionName } from '@/session/paths.js';
 import { readDaemonPid } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
@@ -18,6 +18,7 @@ import {
   sessionDirectoryCleanMessage,
   noSessionFilesMessage,
   sessionStillActiveError,
+  sessionStillActiveSuggestion,
   warningMessage,
 } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -71,7 +72,7 @@ export function registerCleanupCommand(program: Command): void {
               error: sessionStillActiveError(readDaemonPid() ?? 0),
               exitCode: EXIT_CODES.RESOURCE_BUSY,
               errorContext: {
-                suggestion: 'Stop gracefully: bdg stop\nForce cleanup: bdg cleanup --force',
+                suggestion: sessionStillActiveSuggestion(getSessionName()),
                 warning: 'Force cleanup kills the running daemon and its Chrome',
               },
             };

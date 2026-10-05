@@ -8,6 +8,8 @@ import { lastSessionEndText } from '@/ui/messages/session.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 export interface StatusData {
+  /** Name of the selected session (named sessions only) */
+  session?: string;
   active: boolean;
   bdgPid?: number;
   chromePid?: number | undefined;
@@ -47,13 +49,15 @@ export interface StatusData {
  * @param activity - Live activity metrics from the session
  * @param pageState - Current page state from the session
  * @param verbose - Also show the session's Chrome executable, mode and profile
+ * @param sessionName - Name of a named session
  */
 export function formatSessionStatus(
   metadata: SessionMetadata,
   pid: number,
   activity?: SessionActivity,
   pageState?: PageState,
-  verbose = false
+  verbose = false,
+  sessionName?: string
 ): string {
   const duration = calculateDuration(metadata.startTime);
 
@@ -64,6 +68,7 @@ export function formatSessionStatus(
   fmt.text('Session Status').separator('━', 50);
   fmt.keyValueList(
     [
+      ...(sessionName ? [['Session', sessionName] as [string, string]] : []),
       ['Status', 'ACTIVE'],
       ['Duration', duration.formatted],
       ...(metadata.autoStopAt
@@ -206,17 +211,18 @@ export function formatNoSessionMessage(data: StatusData = { active: false }): st
   if (data.ending) {
     return fmt.text('The session is ending (its Chrome is being closed)').build();
   }
-  fmt.text('No active session found');
+  fmt.text(data.session ? `No active session "${data.session}"` : 'No active session found');
+  const sessionFlag = data.session ? ` --session ${data.session}` : '';
   if (data.lastSession) fmt.text(lastSessionEndText(data.lastSession));
   if (data.orphanedChromePid) {
     fmt.text(`Chrome of an earlier session is still running (PID ${data.orphanedChromePid})`);
   }
   return fmt
     .hints('Suggestions:', [
-      'Start a new session:     bdg <url>',
+      `Start a new session:     bdg <url>${sessionFlag}`,
       data.orphanedChromePid
-        ? 'Close that Chrome:       bdg cleanup'
-        : 'Clean up after a crash:  bdg cleanup',
+        ? `Close that Chrome:       bdg cleanup${sessionFlag}`
+        : `Clean up after a crash:  bdg cleanup${sessionFlag}`,
     ])
     .build();
 }

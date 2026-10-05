@@ -18,7 +18,12 @@ import {
   socketPathTooLongError,
 } from '@/errors/messages.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
-import { ensureSessionDir, getSessionDir, getSessionFilePath } from '@/session/paths.js';
+import {
+  MAX_DAEMON_SOCKET_PATH_BYTES,
+  ensureSessionDir,
+  getSessionDir,
+  getSessionFilePath,
+} from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -69,9 +74,6 @@ export async function launchDaemon(): Promise<void> {
   await waitForDaemonReady(() => exited);
 }
 
-/** Longest Unix socket path (sun_path is 104 bytes on macOS, 108 on Linux, NUL included) */
-const MAX_SOCKET_PATH = process.platform === 'darwin' ? 103 : 107;
-
 /**
  * Check that the session directory can hold the daemon's files before
  * spawning it (otherwise the daemon dies and only its log says why).
@@ -85,8 +87,8 @@ export function assertUsableSessionDir(): void {
   };
   if (fs.existsSync(dir) && !fs.statSync(dir).isDirectory()) fail(sessionDirIsFileError(dir));
   const socketPath = getSessionFilePath('DAEMON_SOCKET');
-  if (Buffer.byteLength(socketPath) > MAX_SOCKET_PATH) {
-    fail(socketPathTooLongError(socketPath, MAX_SOCKET_PATH));
+  if (Buffer.byteLength(socketPath) > MAX_DAEMON_SOCKET_PATH_BYTES) {
+    fail(socketPathTooLongError(socketPath, MAX_DAEMON_SOCKET_PATH_BYTES));
   }
   try {
     ensureSessionDir();

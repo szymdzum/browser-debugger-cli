@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`--chrome-ws-url <port>`** - Attach to a running Chrome by its DevTools port (`9222`, `host:port` or `http://host:port`); bdg looks up the browser WebSocket URL itself, so logging in by hand first and then attaching takes one command (#47)
 - **Triggered requests after DOM actions** - `bdg dom click` (incl. `--double`/`--right`), `hover`, `fill`, `pressKey`, `submit` and `scroll` list the network requests the action started (method, URL, status, duration; pending when still running) under `Triggered:` (first 10) and in JSON as `data.triggeredRequests`, from the session's network telemetry and without waiting longer than before (#111)
+- **Named sessions: `--session <name>` / `BDG_SESSION`** - Run several independent sessions on one machine (e.g. one per agent): each named session has its own daemon, Chrome, profile and files in `~/.bdg/sessions/<name>/` (`$BDG_SESSION_DIR/sessions/<name>/` with `BDG_SESSION_DIR`). The option is accepted by every command, before or after the subcommand; `stop`, `cleanup` and the other commands act on the selected session only. Without `--port`, a named session picks a free port above 9222 that no other running session claims, even when sessions start at the same time. `bdg status` shows the session name, and the new `bdg sessions` lists running sessions with their state, port, PID and URL. Without `--session`, everything behaves as before (#131)
 
 ### Changed
 

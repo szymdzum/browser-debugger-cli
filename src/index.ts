@@ -8,6 +8,7 @@ import { commandRegistry } from '@/commands.js';
 import { assertNotGroupSubcommand } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
+import { selectSession } from '@/session/sessionName.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { enableDebugLogging } from '@/ui/logging/index.js';
 import { hideHints } from '@/ui/formatting.js';
@@ -17,6 +18,9 @@ import { VERSION } from '@/utils/version.js';
 
 const CLI_NAME = 'bdg';
 const CLI_DESCRIPTION = 'Browser telemetry via Chrome DevTools Protocol';
+const SESSION_OPTION_FLAGS = '--session <name>';
+const SESSION_OPTION_DESCRIPTION =
+  'Use a named session (own daemon, Chrome and port) instead of the default one; env: BDG_SESSION';
 
 /**
  * Extract command path from argv for subcommand help routing.
@@ -150,6 +154,7 @@ async function main(): Promise<void> {
     .description(CLI_DESCRIPTION)
     .version(VERSION)
     .option('--debug', 'Enable debug logging (verbose output)')
+    .option(SESSION_OPTION_FLAGS, SESSION_OPTION_DESCRIPTION)
     .enablePositionalOptions()
     .exitOverride()
     .configureOutput({
@@ -162,12 +167,13 @@ async function main(): Promise<void> {
     });
 
   commandRegistry.forEach((register) => register(program));
-  addGlobalDebugOption(program);
+  addGlobalOptions(program);
   program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));
   assertKnownHelpTopic(program, helpTopic);
   assertNotGroupSubcommand(program, process.argv);
 
   if (jsonMode && (wantsHelp() || hasNoArguments())) {
+    selectSession(sessionFromArgv(process.argv));
     const commandPath = extractCommandPath(process.argv);
     const help =
       commandPath.length > 0
@@ -186,12 +192,12 @@ async function main(): Promise<void> {
 }
 
 /**
- * Make `--debug` and `-q` accepted after any subcommand (program options are
- * positional).
+ * Make `--debug`, `-q` and `--session` accepted after any subcommand (program
+ * options are positional).
  *
- * @param command - Command whose subcommands get a hidden `--debug` option
+ * @param command - Command whose subcommands get the hidden global options
  */
-function addGlobalDebugOption(command: Command): void {
+function addGlobalOptions(command: Command): void {
   for (const sub of command.commands) {
     if (!sub.options.some((option) => option.long === '--debug')) {
       sub.addOption(new Option('--debug', 'Enable debug logging').hideHelp());
@@ -199,24 +205,61 @@ function addGlobalDebugOption(command: Command): void {
     if (!sub.options.some((option) => option.long === '--quiet')) {
       sub.addOption(new Option('-q, --quiet', 'Hide tips and hints').hideHelp());
     }
-    addGlobalDebugOption(sub);
+    if (!sub.options.some((option) => option.long === '--session')) {
+      sub.addOption(new Option(SESSION_OPTION_FLAGS, SESSION_OPTION_DESCRIPTION).hideHelp());
+    }
+    addGlobalOptions(sub);
   }
+}
+
+/**
+ * The `--session` value on the command line, for paths that run before
+ * Commander parses it (`bdg --help --json --session a`).
+ *
+ * @param argv - Process arguments
+ * @returns The last `--session <name>` / `--session=<name>` value, if any
+ */
+function sessionFromArgv(argv: string[]): string | undefined {
+  let value: string | undefined;
+  argv.forEach((arg, i) => {
+    if (arg === '--session') value = argv[i + 1];
+    else if (arg.startsWith('--session=')) value = arg.slice('--session='.length);
+  });
+  return value;
+}
+
+/**
+ * The value of a global option closest to the command that runs: the command
+ * itself, then its group (`bdg dom --session a query`), then the program.
+ *
+ * @param command - Command about to run
+ * @param key - Option attribute name
+ * @returns The value, or undefined when no level was given the option
+ */
+function nearestOption<T>(command: Command, key: string): T | undefined {
+  for (let level: Command | null = command; level; level = level.parent) {
+    const value = level.opts<Record<string, T | undefined>>()[key];
+    if (value !== undefined) return value;
+  }
+  return undefined;
 }
 
 /**
  * Apply program-level options to the command about to run.
  *
- * Enables debug logging for `--debug` anywhere, hides hints for `-q`, and forwards `--json` given
- * before the subcommand (`bdg --json peek`) to that subcommand.
+ * Enables debug logging for `--debug` anywhere, hides hints for `-q`, selects the session
+ * (the `--session` closest to the subcommand wins, then `BDG_SESSION`), and forwards
+ * `--json` given before the subcommand (`bdg --json peek`) to that subcommand.
  *
  * @param program - Root command
  * @param actionCommand - Command whose action is about to run
+ * @throws CommandError (81) for an invalid session name
  */
 function applyGlobalOptions(program: Command, actionCommand: Command): void {
-  const root = program.opts<{ debug?: boolean; json?: boolean }>();
-  const own = actionCommand.opts<{ debug?: boolean; quiet?: boolean }>();
-  if (root.debug || own.debug) enableDebugLogging();
-  if (own.quiet) hideHints();
+  const root = program.opts<{ json?: boolean }>();
+  if (nearestOption<boolean>(actionCommand, 'debug')) enableDebugLogging();
+  selectSession(nearestOption<string>(actionCommand, 'session'));
+  if (nearestOption<boolean>(actionCommand, 'quiet')) hideHints();
   const acceptsJson = actionCommand.options.some((option) => option.long === '--json');
   if (root.json && actionCommand !== program && acceptsJson) {
     actionCommand.setOptionValue('json', true);

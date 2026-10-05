@@ -29,6 +29,25 @@ bdg stop                        # Stop session (closes Chrome launched by bdg)
 bdg stop --kill-chrome          # Kept for compatibility (no additional effect)
 ```
 
+### Multiple sessions
+Several agents on one machine can each run their own session: a named session has its own daemon, Chrome, profile, CDP port and files.
+
+```bash
+bdg localhost:3000 --session agent-1        # Start a named session
+BDG_SESSION=agent-2 bdg localhost:5173      # Same, via environment
+bdg --session agent-1 peek                  # --session goes before or after the subcommand
+bdg dom eval "document.title" --session agent-1
+BDG_SESSION=agent-2 bdg status              # Status shows the session name and its port
+bdg sessions                                # List running sessions (name, state, port, PID, URL)
+bdg stop --session agent-1                  # Stops agent-1 only
+bdg cleanup --session agent-2               # Cleans up agent-2 only
+```
+
+- **Selection**: `--session <name>` (accepted by every command) wins over `BDG_SESSION`; without either, commands use the default session as before. Names are 1-40 letters, digits, `-` or `_` (exit 81 otherwise)
+- **Directories**: a named session lives in `~/.bdg/sessions/<name>/`. `BDG_SESSION_DIR` moves the base directory: the default session uses `$BDG_SESSION_DIR` itself (unchanged) and named sessions `$BDG_SESSION_DIR/sessions/<name>/`. The daemon socket path must stay under the OS limit (103 bytes on macOS, 107 on Linux); a name that would exceed it is refused with exit 81
+- **Ports**: without `--port`, a named session takes the first free port from 9223 upwards that no other running session has claimed (9222 is left to the default session), and keeps it in its `port.txt` for the next start. Sessions starting at the same time never pick the same port. The default session keeps choosing from 9222
+- **Independence**: `stop`, `cleanup` and every other command act on the selected session only; `bdg cleanup` without `--session` cleans the default session, as before
+
 ## Live Monitoring
 
 ### Preview collected data
@@ -962,11 +981,11 @@ Things bdg does without being asked, and how to change them:
 - **Dialogs are accepted automatically**: `alert`/`confirm` are accepted and `prompt` is answered with an empty string, so a dialog never blocks the page
 - **One page is followed**: the session stays on its tab; links opening a new tab (`target="_blank"`, `window.open`) are not followed
 - **`--timeout <seconds>`** (1-3600) stops the session that many seconds after the page has loaded, as with `bdg stop`; the start output shows the time (`autoStopAt` with `--json`)
-- **The CDP port is remembered**: without `--port`, the port is saved in `port.txt` and reused while it is free, so each session directory keeps its port
+- **The CDP port is remembered**: without `--port`, the port is saved in `port.txt` and reused while it is free (and not claimed by another running session), so each session directory keeps its port
 
 ## Session Files
 
-bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`):
+bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`); a named session (`--session <name>`) uses `~/.bdg/sessions/<name>/` with the same files:
 
 - **daemon.sock** - Unix socket for IPC; a session is running iff it accepts connections
 - **daemon.pid** - Daemon process ID (informational)
@@ -978,7 +997,7 @@ bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`):
 
 **Key Behaviors:**
 - **One daemon = one session**: only `bdg <url>` starts the daemon; it exits when the session ends (stop, Chrome disconnect, or `--timeout`)
-- **Only one session at a time**: the daemon claims its socket atomically; a second `bdg <url>` reports the running session
+- **One session per directory**: the daemon claims its socket atomically; a second `bdg <url>` for the same session reports the running one. Use `--session <name>` to run more (see [Multiple sessions](#multiple-sessions))
 - **Commands without a session**: exit 83 ("No active session") without starting anything; `bdg status` reports `active: false` (exit 0)
 - **Crash recovery**: files left by a killed daemon are cleaned up by `bdg status`, `bdg cleanup` or the next `bdg <url>`; an orphaned Chrome is killed only if its command line carries the `--bdg-session-dir=<dir>` marker bdg adds at launch
 

@@ -38,6 +38,7 @@ type WithTypeAndSession = { type: string; sessionId: string };
  * @param requestName - Name used in errors and logs
  * @param expectedType - Response type to validate, if any
  * @param timeoutMs - How long to wait for the response (default: IPC timeout)
+ * @param socketPath - Daemon socket (default: the selected session's)
  * @returns The daemon's response
  */
 export async function sendRequest<
@@ -47,10 +48,9 @@ export async function sendRequest<
   request: TRequest,
   requestName: string,
   expectedType?: string,
-  timeoutMs: number = getIPCRequestTimeout()
+  timeoutMs: number = getIPCRequestTimeout(),
+  socketPath: string = getDaemonSocketPath()
 ): Promise<TResponse> {
-  const socketPath = getDaemonSocketPath();
-
   return new Promise((resolve, reject) => {
     const buffer = new JSONLBuffer();
     let resolved = false;

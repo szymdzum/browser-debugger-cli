@@ -3,14 +3,12 @@ import { createServer, type Server, type Socket } from 'net';
 
 import { DaemonError } from '@/daemon/errors.js';
 import { probeDaemonSocket } from '@/session/daemonSocket.js';
+import { MAX_SOCKET_PATH_BYTES } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 export type ConnectionHandler = (socket: Socket) => void;
-
-/** Unix socket path limit (sun_path is 104 bytes on macOS incl. NUL; 108 on Linux). */
-const MAX_SOCKET_PATH_BYTES = 103;
 
 /** Error code thrown when another daemon already owns the socket path. */
 export const DAEMON_ALREADY_RUNNING_CODE = 'DAEMON_ALREADY_RUNNING';

@@ -9,6 +9,7 @@ import { registerDomCommands } from '@/commands/dom/index.js';
 import { registerNetworkCommands } from '@/commands/network/index.js';
 import { registerPageCommands } from '@/commands/page.js';
 import { registerPeekCommand } from '@/commands/peek.js';
+import { registerSessionsCommand } from '@/commands/sessions.js';
 import { registerStartCommands } from '@/commands/start.js';
 import { registerStatusCommand } from '@/commands/status.js';
 import { registerStopCommand } from '@/commands/stop.js';
@@ -37,6 +38,7 @@ export const commandRegistry: CommandRegistrar[] = [
 
   addCommandGroup('Session Management:'),
   registerStatusCommand,
+  registerSessionsCommand,
   registerStopCommand,
   registerCleanupCommand,
 

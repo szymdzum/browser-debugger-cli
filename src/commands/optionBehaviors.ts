@@ -251,6 +251,15 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'Verbose output with full URLs and resource types',
   },
 
+  'bdg:--session': {
+    default:
+      'The default session in ~/.bdg (or $BDG_SESSION_DIR); BDG_SESSION=<name> selects a named session like the flag',
+    whenEnabled:
+      'Uses the named session in ~/.bdg/sessions/<name>/ (or $BDG_SESSION_DIR/sessions/<name>/) with its own daemon, Chrome, profile and port; every command (status, stop, cleanup, ...) acts on that session only',
+    automaticBehavior:
+      'Accepted before or after any subcommand; --session wins over BDG_SESSION. Without --port a named session takes the first free port above 9222 not claimed by another running session, and keeps it in port.txt. Names: 1-40 letters, digits, "-" or "_" (exit 81 otherwise, also when the socket path would be too long)',
+  },
+
   'cleanup:-f': {
     default: 'Refuses to run while a session is active; removes files left by a crashed session',
     whenEnabled: 'Kills the running daemon and its Chrome first (use when a session is stuck)',
