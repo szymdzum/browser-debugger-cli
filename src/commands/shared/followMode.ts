@@ -5,9 +5,36 @@
  * and display updates (like tail -f behavior).
  */
 
+import { handleDaemonConnectionError } from '@/commands/shared/daemonErrorHandler.js';
 import { genericError } from '@/errors/messages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/** What a refresh asks for: nothing to keep following, or the exit code to stop with */
+export type FollowPoll = { exitCode: number } | undefined;
+
+/**
+ * Report a failed fetch in follow mode: a lost connection is reported and
+ * retried while the session was seen before, otherwise follow mode stops.
+ *
+ * @param failure - The fetch's error and exit code
+ * @param options - JSON output and the retry interval shown
+ * @returns The exit code to stop with, or undefined to keep following
+ */
+export function followFetchFailure(
+  failure: { error: string; exitCode?: number | undefined },
+  options: { json?: boolean | undefined; retryIntervalMs: number }
+): FollowPoll {
+  const result = handleDaemonConnectionError(failure.error, {
+    json: options.json,
+    follow: true,
+    retryIntervalMs: options.retryIntervalMs,
+    exitCode: failure.exitCode,
+  });
+  return result.shouldExit
+    ? { exitCode: result.exitCode ?? EXIT_CODES.RESOURCE_NOT_FOUND }
+    : undefined;
+}
 
 /**
  * Options for configuring follow mode behavior.
@@ -30,6 +57,7 @@ export interface FollowModeOptions {
  * - First refresh call (awaited)
  * - Periodic interval-based refresh
  * - SIGINT handler for graceful shutdown
+ * - Stopping with the exit code a refresh returns (e.g. the session is gone)
  *
  * @param refreshFn - Async function to call on each refresh cycle
  * @param options - Configuration options for follow mode
@@ -50,18 +78,23 @@ export interface FollowModeOptions {
  * ```
  */
 export async function setupFollowMode(
-  refreshFn: () => Promise<void>,
+  refreshFn: () => Promise<FollowPoll>,
   options: FollowModeOptions
 ): Promise<void> {
   const { startMessage, stopMessage, intervalMs = 1000 } = options;
+  const stopIfAsked = (poll: FollowPoll): void => {
+    if (poll) process.exit(poll.exitCode);
+  };
 
   console.error(startMessage());
-  await refreshFn();
+  stopIfAsked(await refreshFn());
 
   const intervalId = setInterval(() => {
-    refreshFn().catch((error: unknown) => {
-      console.error(genericError(getErrorMessage(error)));
-    });
+    refreshFn()
+      .then(stopIfAsked)
+      .catch((error: unknown) => {
+        console.error(genericError(getErrorMessage(error)));
+      });
   }, intervalMs);
 
   process.on('SIGINT', () => {
