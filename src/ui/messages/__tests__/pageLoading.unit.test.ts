@@ -77,7 +77,13 @@ void describe('waitMetMessage', () => {
 });
 
 void describe('waitSnapshotSummary', () => {
-  const complete = { count: 2, textCount: 2, visibleCount: 0, readyState: 'complete' };
+  const complete = {
+    count: 2,
+    textCount: 2,
+    visibleCount: 0,
+    readyState: 'complete',
+    documentId: 1,
+  };
 
   void it('describes matches, text matches and visible ones', () => {
     assert.equal(
@@ -102,7 +108,13 @@ void describe('waitSnapshotSummary', () => {
   });
 
   void it('adds the readyState for --load and for a page still loading', () => {
-    const loading = { count: 0, textCount: 0, visibleCount: 0, readyState: 'loading' };
+    const loading = {
+      count: 0,
+      textCount: 0,
+      visibleCount: 0,
+      readyState: 'loading',
+      documentId: 1,
+    };
     assert.equal(waitSnapshotSummary(loading, { load: true }), 'document.readyState: loading');
     assert.equal(
       waitSnapshotSummary(loading, { selector: '#a' }),

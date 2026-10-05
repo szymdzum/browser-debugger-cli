@@ -41,7 +41,7 @@ void describe('waitTimeoutError', () => {
   void it('says what was waited for and what was seen last', () => {
     const err = waitTimeoutError(
       { selector: 'div#finish', visible: true },
-      { count: 2, textCount: 2, visibleCount: 0, readyState: 'complete' },
+      { count: 2, textCount: 2, visibleCount: 0, readyState: 'complete', documentId: 1 },
       10_000
     );
     assert.equal(
@@ -54,7 +54,7 @@ void describe('waitTimeoutError', () => {
   void it('points to the selector when nothing matched', () => {
     const err = waitTimeoutError(
       { selector: '#nope' },
-      { count: 0, textCount: 0, visibleCount: 0, readyState: 'complete' },
+      { count: 0, textCount: 0, visibleCount: 0, readyState: 'complete', documentId: 1 },
       1_500
     );
     assert.equal(
@@ -67,7 +67,7 @@ void describe('waitTimeoutError', () => {
   void it('points to the text when the matches lack it', () => {
     const err = waitTimeoutError(
       { selector: '#s', text: 'Done' },
-      { count: 1, textCount: 0, visibleCount: 0, readyState: 'complete' },
+      { count: 1, textCount: 0, visibleCount: 0, readyState: 'complete', documentId: 1 },
       500
     );
     assert.match(
@@ -80,7 +80,7 @@ void describe('waitTimeoutError', () => {
   void it('names a page still loading and a page that never answered', () => {
     const loading = waitTimeoutError(
       { load: true },
-      { count: 0, textCount: 0, visibleCount: 0, readyState: 'loading' },
+      { count: 0, textCount: 0, visibleCount: 0, readyState: 'loading', documentId: 1 },
       1_000
     );
     assert.equal(

@@ -186,7 +186,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'wait:--gone': {
     default: 'Waits for at least one match',
     whenEnabled:
-      'Waits until nothing matches (nothing visible with --visible, nothing containing the text with --text); met at once when nothing matches already',
+      'Waits until nothing matches (nothing visible with --visible, nothing containing the text with --text), seen twice in a row in the same document once it is no longer loading, so the empty document right after a navigation does not count (a page stuck in readyState loading never meets it)',
   },
   'wait:--text': {
     default: 'Any match counts',

@@ -11,7 +11,7 @@ import type { PendingRequestInfo, PageLoadingState } from '@/ipc/protocol/comman
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { delay } from '@/utils/async.js';
+import { raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('readiness');
@@ -70,7 +70,7 @@ async function readDocumentReadyState(cdp: CDPSender): Promise<string | undefine
       returnByValue: true,
     }) as Promise<{ result?: { value?: unknown } }>;
     evaluated.catch(() => undefined);
-    const response = await Promise.race([evaluated, delay(READY_STATE_TIMEOUT_MS)]);
+    const response = await raceTimeout(evaluated, READY_STATE_TIMEOUT_MS);
     const value = response?.result?.value;
     return typeof value === 'string' ? value : undefined;
   } catch (error) {

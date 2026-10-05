@@ -29,6 +29,8 @@ export interface WaitSnapshot {
   visibleCount: number;
   /** `document.readyState` */
   readyState: string;
+  /** The document's identity (`performance.timeOrigin`): a new document after a navigation has another */
+  documentId: number;
 }
 
 /**
@@ -56,13 +58,48 @@ export function countedMatches(snapshot: WaitSnapshot, condition: WaitCondition)
 /**
  * Whether the page shows what is waited for.
  *
+ * Elements are gone only when two consecutive snapshots of the same
+ * document, neither of it still `loading`, show none: right after a
+ * navigation commits, the new document is empty for a moment.
+ *
  * @param snapshot - What the page shows
  * @param condition - What is waited for
+ * @param previous - The snapshot before it, if any
  * @returns True when the elements are there (or gone with `gone`) and, with `load`, the page loaded
  */
-export function isWaitConditionMet(snapshot: WaitSnapshot, condition: WaitCondition): boolean {
+export function isWaitConditionMet(
+  snapshot: WaitSnapshot,
+  condition: WaitCondition,
+  previous?: WaitSnapshot
+): boolean {
   if (condition.load && snapshot.readyState !== 'complete') return false;
   if (condition.selector === undefined) return true;
-  const counted = countedMatches(snapshot, condition);
-  return condition.gone ? counted === 0 : counted > 0;
+  if (!condition.gone) return countedMatches(snapshot, condition) > 0;
+  if (previous?.documentId !== snapshot.documentId) return false;
+  return showsNoneSettled(previous, condition) && showsNoneSettled(snapshot, condition);
+}
+
+/**
+ * Whether a `--gone` wait should confirm this snapshot with another one: it
+ * shows no (counted) matches in a document past `loading`.
+ *
+ * @param snapshot - What the page shows
+ * @param condition - What is waited for
+ * @returns True when one more snapshot of the same document may meet the condition
+ */
+export function needsGoneConfirmation(snapshot: WaitSnapshot, condition: WaitCondition): boolean {
+  if (!condition.gone || condition.selector === undefined) return false;
+  if (condition.load && snapshot.readyState !== 'complete') return false;
+  return showsNoneSettled(snapshot, condition);
+}
+
+/**
+ * No counted matches, in a document that is no longer `loading`.
+ *
+ * @param snapshot - What the page shows
+ * @param condition - What is waited for
+ * @returns True when nothing counted matches in a settled document
+ */
+function showsNoneSettled(snapshot: WaitSnapshot, condition: WaitCondition): boolean {
+  return snapshot.readyState !== 'loading' && countedMatches(snapshot, condition) === 0;
 }

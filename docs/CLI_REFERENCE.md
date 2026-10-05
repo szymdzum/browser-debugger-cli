@@ -385,7 +385,7 @@ bdg dom wait "#result" --timeout 30000        # Default 10000 ms; up to 600000
 
 - Selectors reach open shadow roots and same-origin iframes, like the other DOM commands; an invalid selector exits 81
 - The page is watched (DOM mutations, plus a 100 ms poll for style changes the mutations do not show) and answers as soon as the matches change; a navigation during the wait continues it on the new document
-- Already met: returns at once (`after 0.0s`). `--gone` with nothing matching is met at once too
+- Already met: returns at once (`after 0.0s`). `--gone` needs two snapshots in a row of the same document without matches, once it is no longer `loading` (about 50 ms when nothing matches already), so the empty document right after a navigation does not count
 - `--text` needs a selector (`body` searches the whole page); hidden elements match by their text nodes, as with `:has-text`
 - Timeout: exit 102 with what the page showed last and a next step, e.g. `Timed out after 10s waiting for div#finish to be visible (last seen: 2 matches, none visible)`, then `The matches are hidden; see why with bdg dom layout 'div#finish'`
 

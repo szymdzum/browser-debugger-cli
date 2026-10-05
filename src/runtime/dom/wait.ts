@@ -7,23 +7,26 @@
  * shows changes; the condition is decided here ({@link isWaitConditionMet}).
  * Each page call lasts at most {@link WAIT_SLICE_MS}, so a navigation during
  * the wait (the page's context is destroyed) only costs a retry on the new
- * document.
+ * document. `--gone` is confirmed by a second snapshot of the same settled
+ * document, so the empty document right after a navigation does not count.
  */
 
-import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { invalidSelectorError, waitTimeoutError } from '@/errors/messages.js';
 import type { DomWaitCommand, DomWaitData } from '@/ipc/protocol/commands.js';
+import { isContextLostError } from '@/runtime/dom/evalHelpers.js';
 import { DEEP_QUERY_JS, FILTER_MATCHING_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import {
   isWaitConditionMet,
+  needsGoneConfirmation,
   normalizeWaitText,
   type WaitCondition,
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
+import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { delay } from '@/utils/async.js';
+import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -36,6 +39,9 @@ const WAIT_SLICE_MS = 2000;
 
 /** Pause before asking a page that could not answer (navigating) again */
 const RETRY_DELAY_MS = 100;
+
+/** Pause before the snapshot that confirms elements are gone */
+const GONE_CONFIRM_DELAY_MS = 50;
 
 /**
  * Page-side: report what the page shows (matches, text matches, visible
@@ -53,12 +59,13 @@ const WAIT_SNAPSHOT_JS = `async function (selector, parts, text, previous, slice
       count: matches.length,
       textCount: withText.length,
       visibleCount: withText.filter((el) => passesAll(el, visibleFilter)).length,
-      readyState: document.readyState
+      readyState: document.readyState,
+      documentId: performance.timeOrigin
     };
   };
   const changed = (s) => previous === null || s.count !== previous.count ||
     s.textCount !== previous.textCount || s.visibleCount !== previous.visibleCount ||
-    s.readyState !== previous.readyState;
+    s.readyState !== previous.readyState || s.documentId !== previous.documentId;
   let current = snapshot();
   if (changed(current)) return current;
   return await new Promise((resolve) => {
@@ -90,23 +97,31 @@ const WAIT_SNAPSHOT_JS = `async function (selector, parts, text, previous, slice
  * @param cdp - CDP connection
  * @param params - Condition and timeout
  * @returns What the page showed when it was met, and how long it took
- * @throws CommandError (81) for an invalid selector, (102) when the timeout passed
+ * @throws CommandError (81) for an invalid selector, (102) when the timeout passed;
+ *   CDP errors other than a lost page context (a closed connection) as they are
  */
 export async function waitForCondition(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   params: DomWaitCommand
 ): Promise<DomWaitData> {
   const condition = waitConditionOf(params);
   const started = Date.now();
   const deadline = started + params.timeout;
   let last: WaitSnapshot | undefined;
+  let confirming = false;
   while (Date.now() < deadline) {
-    const snapshot = await nextSnapshot(cdp, condition, last ?? null, deadline);
+    const snapshot = await nextSnapshot(
+      cdp,
+      condition,
+      confirming ? null : (last ?? null),
+      deadline
+    );
     if (!snapshot) {
+      confirming = false;
       await delay(RETRY_DELAY_MS);
       continue;
     }
-    if (isWaitConditionMet(snapshot, condition)) {
+    if (isWaitConditionMet(snapshot, condition, last)) {
       return {
         ...condition,
         elapsedMs: Date.now() - started,
@@ -114,6 +129,8 @@ export async function waitForCondition(
       };
     }
     last = snapshot;
+    confirming = needsGoneConfirmation(snapshot, condition);
+    if (confirming) await delay(GONE_CONFIRM_DELAY_MS);
   }
   const err = waitTimeoutError(condition, last, params.timeout);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.CDP_TIMEOUT);
@@ -160,11 +177,12 @@ function snapshotData(
  * @param condition - What is waited for
  * @param previous - Last snapshot (null for the first call)
  * @param deadline - When the wait ends (epoch ms)
- * @returns The snapshot, or undefined when the page could not answer (navigating, out of time)
- * @throws CommandError (81) for an invalid selector
+ * @returns The snapshot, or undefined when the page could not answer (its context was lost
+ *   to a navigation, or the time ran out)
+ * @throws CommandError (81) for an invalid selector; other CDP errors (a closed connection) as they are
  */
 async function nextSnapshot(
-  cdp: CDPConnection,
+  cdp: CDPSender,
   condition: WaitCondition,
   previous: WaitSnapshot | null,
   deadline: number
@@ -180,8 +198,9 @@ async function nextSnapshot(
     returnByValue: true,
   }) as Promise<Protocol.Runtime.EvaluateResponse>;
   evaluated.catch(() => undefined);
-  const response = await Promise.race([evaluated, delay(remaining)]).catch((error: unknown) => {
-    log.debug(`dom wait: page did not answer (${getErrorMessage(error)}), retrying`);
+  const response = await raceTimeout(evaluated, remaining).catch((error: unknown) => {
+    if (!isContextLostError(error)) throw error;
+    log.debug(`dom wait: page context lost (${getErrorMessage(error)}), retrying`);
     return undefined;
   });
   if (!response) return undefined;
