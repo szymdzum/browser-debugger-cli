@@ -518,9 +518,9 @@ function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
   if (result.scrolledBy && (result.scrolledBy.x !== 0 || result.scrolledBy.y !== 0))
     details.push(['Scrolled By', `(${result.scrolledBy.x}, ${result.scrolledBy.y})`]);
   if (result.viewportSize)
-    details.push(['Viewport', `${result.viewportSize.width}x${result.viewportSize.height}`]);
+    details.push(['Viewport', `${result.viewportSize.width}×${result.viewportSize.height}`]);
   if (result.pageSize)
-    details.push(['Page Size', `${result.pageSize.width}x${result.pageSize.height}`]);
+    details.push(['Page Size', `${result.pageSize.width}×${result.pageSize.height}`]);
 
   return formatActionOutput('Page Scrolled', details, result).build();
 }

@@ -66,7 +66,7 @@ export function registerDomCommands(program: Command): void {
     .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
     .option(
       '--frame <frame>',
-      'Evaluate in an iframe, cross-origin ones included: index, name/id attribute, or part of the URL (see dom frames)'
+      'Evaluate in an iframe, cross-origin ones included: index, name/id attribute, or part of the name, id or URL (see dom frames)'
     )
     .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
@@ -115,6 +115,10 @@ export function registerDomCommands(program: Command): void {
     .command('screenshot')
     .description('Capture page or element screenshot')
     .argument('<path>', 'Output file path, or directory for --follow mode')
+    .argument(
+      '[selector]',
+      'Element to capture: CSS selector or index from a query (same as --selector / --index)'
+    )
     .option('--selector <selector>', 'CSS selector for element capture')
     .option(
       '--index <number>',
@@ -134,7 +138,9 @@ export function registerDomCommands(program: Command): void {
     .option('--interval <ms>', 'Capture interval for --follow (default: 1000)')
     .option('--limit <count>', 'Max frames for --follow')
     .option('-j, --json', 'Output as JSON')
-    .action(async (path: string, options: DomScreenshotCommandOptions) => {
-      await handleDomScreenshot(path, options);
-    });
+    .action(
+      async (path: string, target: string | undefined, options: DomScreenshotCommandOptions) => {
+        await handleDomScreenshot(path, target, options);
+      }
+    );
 }

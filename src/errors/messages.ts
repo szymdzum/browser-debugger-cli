@@ -317,7 +317,7 @@ export function elementNotFoundError(selector: string): ErrorWithSuggestion {
     message,
     suggestion: joinLines(
       `Check the selector syntax, or wait for the element to load (${sessionCommand('bdg peek')} shows the page state)`,
-      CROSS_ORIGIN_FRAMES_NOTE
+      unreachableElementsNote(selector)
     ),
   };
 }
@@ -553,6 +553,37 @@ export function missingStartUrlError(): ErrorWithSuggestion {
   return {
     message: 'Missing URL to open',
     suggestion: 'Put the URL first, e.g. bdg localhost:3000 --port 9333',
+  };
+}
+
+/**
+ * `--viewport` given something that is not a width and height.
+ *
+ * @param value - What was given
+ * @param max - Largest side accepted
+ */
+export function invalidViewportError(value: string, max: number): ErrorWithSuggestion {
+  return {
+    message: `Invalid --viewport: "${value}"`,
+    suggestion: `Give width x height in CSS px (1-${max} each), e.g. --viewport 1280x800`,
+  };
+}
+
+/**
+ * `--color-scheme` given another value than the ones it takes.
+ *
+ * @param value - What was given
+ * @param similar - Close matches
+ * @param schemes - Accepted values
+ */
+export function invalidColorSchemeError(
+  value: string,
+  similar: string[],
+  schemes: readonly string[]
+): ErrorWithSuggestion {
+  return {
+    message: `Unknown --color-scheme: "${value}"`,
+    suggestion: similar[0] ? `Did you mean: ${similar[0]}?` : `Available: ${schemes.join(', ')}`,
   };
 }
 
@@ -820,9 +851,20 @@ export function unknownKeyError(keyName: string, similar: string[]): ErrorWithSu
   };
 }
 
-/** Where selectors cannot look, for "not found" errors */
-export const UNREACHABLE_ELEMENTS_HINT =
-  'elements in closed shadow roots, cross-origin iframes and <object>/<embed> documents cannot be reached';
+/**
+ * `dom screenshot` given an element both as an argument and as an option,
+ * and they differ.
+ *
+ * @param option - The option and its value, e.g. `--selector #a`
+ * @param positional - The element argument
+ * @returns Message and suggestion
+ */
+export function conflictingTargetError(option: string, positional: string): ErrorWithSuggestion {
+  return {
+    message: `${option} and the element argument "${positional}" name different elements`,
+    suggestion: 'Name the element once: bdg dom screenshot <path> <selector|index>',
+  };
+}
 
 /**
  * Two options given together where one would be ignored.
@@ -976,9 +1018,20 @@ export function elementAtIndexNotFoundError(index: number, selector: string): Er
   };
 }
 
-/** Where selectors do not reach (open shadow roots and same-origin iframes are searched) */
-export const CROSS_ORIGIN_FRAMES_NOTE =
-  'Elements inside cross-origin iframes, <object>/<embed> documents and closed shadow roots are not searched';
+/**
+ * Where selectors do not reach (open shadow roots and same-origin iframes are
+ * searched), and how to reach an element in a cross-origin iframe instead.
+ *
+ * @param selector - Selector that matched nothing
+ * @returns Note for "not found" suggestions
+ */
+export function unreachableElementsNote(selector: string): string {
+  const script = `document.querySelector(${JSON.stringify(selector)})`.replaceAll("'", `'\\''`);
+  return joinLines(
+    'Closed shadow roots, cross-origin iframes and <object>/<embed> documents are not searched.',
+    `For an element in a cross-origin iframe: ${sessionCommand('bdg dom frames')}, then ${sessionCommand(`bdg dom eval --frame <n> '${script}'`)}`
+  );
+}
 
 /**
  * No nodes found for selector.
@@ -1001,7 +1054,7 @@ export function noNodesFoundError(
   return {
     message: `No nodes found matching "${selector}"`,
     suggestion: withLoadingHint(
-      `${hidden}Verify the CSS selector is correct. ${CROSS_ORIGIN_FRAMES_NOTE}`,
+      `${hidden}Verify the CSS selector is correct. ${unreachableElementsNote(selector)}`,
       readyState,
       selector
     ),
@@ -1416,7 +1469,7 @@ const LIST_FRAMES_HINT = 'List frames: bdg dom frames';
 export function emptyFrameError(): ErrorWithSuggestion {
   return {
     message: 'The frame is empty',
-    suggestion: `Pass an index, a name/id attribute, or part of the URL. ${LIST_FRAMES_HINT}`,
+    suggestion: `Pass an index, a name/id attribute, or part of the name, id or URL. ${LIST_FRAMES_HINT}`,
   };
 }
 
@@ -1446,7 +1499,7 @@ export function ambiguousFrameError(query: string, candidates: DomFrame[]): Erro
   return {
     message: `Frame "${query}" matches ${candidates.length} frames`,
     suggestion: joinLines(
-      'Pick one by index or a longer part of the URL:',
+      'Pick one by index, or a longer part of the name, id or URL:',
       ...candidates.map((frame) => `  ${frameLabel(frame)}`)
     ),
   };

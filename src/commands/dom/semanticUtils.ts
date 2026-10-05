@@ -13,6 +13,8 @@ import {
 } from '@/commands/dom/helpers/index.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
+import { joinLines } from '@/ui/formatting.js';
+import { elementTextLine } from '@/ui/messages/commands.js';
 
 /**
  * Accessibility node paired with its surrounding DOM context for display.
@@ -48,7 +50,7 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
       domContext.classes && domContext.classes.length > 0
         ? `.${domContext.classes.slice(0, 3).join('.')}`
         : '';
-    const previewPart = domContext.preview ? ` "${domContext.preview}"` : '';
+    const previewPart = domContext.preview && !domContext.text ? ` "${domContext.preview}"` : '';
     return ` ${tagPart}${classPart}>${previewPart}`;
   }
 
@@ -74,8 +76,11 @@ function buildPropertiesText(node: A11yNode): string {
 /**
  * Format a semantic node together with DOM context for human-readable output.
  *
+ * The role line is followed by up to 500 characters of the element's text
+ * when it is longer than the one-line preview.
+ *
  * @param data - Accessibility node and optional DOM context
- * @returns One-line formatted string
+ * @returns Role line, plus a text line for elements with longer text
  */
 export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
   const { node, domContext } = data;
@@ -83,8 +88,8 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   const contextText = buildContextText(node, domContext);
   const propsText = buildPropertiesText(node);
   const inferredText = node.inferred ? ' (inferred from DOM)' : '';
-
-  return `${roleText}${contextText}${propsText}${inferredText}`;
+  const line = `${roleText}${contextText}${propsText}${inferredText}`;
+  return domContext?.text ? joinLines(line, elementTextLine(domContext.text)) : line;
 }
 
 /**

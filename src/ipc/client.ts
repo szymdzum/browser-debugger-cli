@@ -196,6 +196,8 @@ export async function startSession(
       headless: options.headless,
       chromeWsUrl: options.chromeWsUrl,
       chromeFlags: options.chromeFlags,
+      viewport: options.viewport,
+      colorScheme: options.colorScheme,
     }),
   });
 

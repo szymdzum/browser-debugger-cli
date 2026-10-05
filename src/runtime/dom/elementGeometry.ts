@@ -12,7 +12,7 @@
 import type { LayoutBox, LayoutPoint, LayoutSize } from '@/ipc/protocol/domTypes.js';
 import { ELEMENT_DESCRIPTION_JS } from '@/runtime/dom/elementInfo.js';
 import type { ViewportPosition } from '@/types.js';
-import { LAYOUT_REASONS } from '@/ui/messages/commands.js';
+import { LAYOUT_REASONS, scrollLockedReason } from '@/ui/messages/commands.js';
 
 /** Measurements of one element ({@link ELEMENT_GEOMETRY_JS}). */
 export interface ElementGeometry {
@@ -37,8 +37,21 @@ export interface ElementGeometry {
   fixed: boolean;
   /** How far the top-level page can scroll from where it is now */
   pageScroll: ScrollRange;
+  /**
+   * Why the top-level page cannot scroll although content is below the fold
+   * ({@link SCROLL_LOCK_JS}); null when it is not locked
+   */
+  scrollLock?: ScrollLock | null;
   /** Offset of its document's viewport within the top-level viewport (iframes) */
   offset: LayoutPoint;
+}
+
+/** What keeps the top-level page from scrolling ({@link SCROLL_LOCK_JS}). */
+export interface ScrollLock {
+  /** The styles locking it, e.g. `position: fixed, overflow: hidden on body` */
+  by: string;
+  /** A visible dialog that is likely the reason, e.g. `div#consent`; null when there is none */
+  dialog: string | null;
 }
 
 /** Edges of a viewport or clip along which overlay scrollbars (that take no space) show after a scroll. */
@@ -110,6 +123,38 @@ const SCROLL_RANGE_JS = `(view) => {
   const rtl = view.scrollX < 0 || view.getComputedStyle(doc.documentElement).direction === 'rtl';
   const left = rtl ? maxX + view.scrollX : view.scrollX;
   return { left: Math.max(0, left), up: Math.max(0, view.scrollY), right: Math.max(0, maxX - left), down: Math.max(0, maxY - view.scrollY) };
+}`;
+
+/**
+ * Page-side reason the page of a window cannot be scrolled although its
+ * content may extend below the fold: the scrolling element is no taller than
+ * the viewport while the body or root element is `position: fixed` or has
+ * `overflow: hidden` (or `clip`), which is how dialogs lock page scrolling,
+ * with the first visible dialog of the page (`dialog[open]`,
+ * `[aria-modal=true]`, `[role=dialog]`, `[role=alertdialog]`) as the likely
+ * reason. Null when the page can scroll or nothing locks it.
+ */
+const SCROLL_LOCK_JS = `(view, describe) => {
+  const doc = view.document;
+  const scroller = doc.scrollingElement || doc.documentElement;
+  if (scroller.scrollHeight > scroller.clientHeight + 1) return null;
+  const lockOf = (node, name) => {
+    if (!node) return null;
+    const style = view.getComputedStyle(node);
+    const parts = [];
+    if (style.position === 'fixed') parts.push('position: fixed');
+    if (style.overflowY === 'hidden' || style.overflowY === 'clip') parts.push('overflow: ' + style.overflowY);
+    return parts.length > 0 ? parts.join(', ') + ' on ' + name : null;
+  };
+  const by = lockOf(doc.body, 'body') || lockOf(doc.documentElement, 'html');
+  if (!by) return null;
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && (!el.checkVisibility || el.checkVisibility({ visibilityProperty: true }));
+  };
+  const dialogs = doc.querySelectorAll('dialog[open], [aria-modal="true"], [role="dialog"], [role="alertdialog"]');
+  const dialog = Array.from(dialogs).find(shown);
+  return { by: by, dialog: dialog ? describe(dialog) : null };
 }`;
 
 /**
@@ -227,7 +272,7 @@ const FIXED_TO_VIEWPORT_JS = `(n) => {
  * `height: 0; overflow: hidden` accordion) hides it, e.g.
  * `clipped by div#acc: zero height` (null when none has), and whether the
  * node is fixed to the viewport (it or a container in its containing-block
- * chain is `position: fixed`).
+ * chain is `position: fixed`; `fixedBy` is that node).
  */
 const ANCESTOR_CLIP_JS = `(node, rect, describe) => {
   const clipBox = ${CLIP_BOX_JS};
@@ -240,7 +285,7 @@ const ANCESTOR_CLIP_JS = `(node, rect, describe) => {
   const doc = node.ownerDocument;
   const rootStyle = styleOf(doc.documentElement);
   const bodyClips = rootStyle.overflowX !== 'visible' || rootStyle.overflowY !== 'visible';
-  const result = { clip: null, overlay: { right: false, bottom: false }, clipper: null, collapsed: null, fixed: false };
+  const result = { clip: null, overlay: { right: false, bottom: false }, clipper: null, collapsed: null, fixed: false, fixedBy: null };
   const add = (p) => {
     const box = clipBox(p);
     const contains = rect.left >= box.left && rect.top >= box.top && rect.right <= box.right && rect.bottom <= box.bottom;
@@ -257,7 +302,7 @@ const ANCESTOR_CLIP_JS = `(node, rect, describe) => {
   };
   let position = styleOf(node).position;
   if (position === 'fixed') {
-    if (fixedToViewport(node)) return Object.assign(result, { fixed: true });
+    if (fixedToViewport(node)) return Object.assign(result, { fixed: true, fixedBy: node });
     position = 'absolute';
   }
   for (let p = parentOf(node); p && p !== doc.documentElement; p = parentOf(p)) {
@@ -267,11 +312,11 @@ const ANCESTOR_CLIP_JS = `(node, rect, describe) => {
     if (boxed && (style.overflowX !== 'visible' || style.overflowY !== 'visible')) add(p);
     position = style.position;
     if (position === 'fixed') {
-      if (fixedToViewport(p)) break;
+      if (fixedToViewport(p)) return Object.assign(result, { fixed: true, fixedBy: p });
       position = 'absolute';
     }
   }
-  return Object.assign(result, { fixed: position === 'fixed' });
+  return result;
 }`;
 
 /** Page-side test of a `clip-path` that cuts everything away: `inset()` with percentages leaving no area. */
@@ -326,7 +371,9 @@ const INVISIBLE_REASON_JS = `(el, describe) => {
  * collapsed to zero size), why a rendered one is still invisible
  * ({@link INVISIBLE_REASON_JS}), whether it is inert (an `inert` element
  * around it, through shadow roots) or fixed to the top-level viewport, and how
- * far the top-level page can scroll ({@link SCROLL_RANGE_JS}).
+ * far the top-level page can scroll ({@link SCROLL_RANGE_JS}) or what locks
+ * its scrolling ({@link SCROLL_LOCK_JS}). Content of a body fixed to lock the
+ * page is not counted as fixed: it is in-flow content the lock holds in place.
  *
  * Rendering is decided by `checkVisibility()`, so content Chrome skips
  * (inside a closed `<details>`, under `content-visibility: hidden`) is hidden
@@ -338,6 +385,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const frameOffset = ${FRAME_OFFSET_JS};
   const ancestorClip = ${ANCESTOR_CLIP_JS};
   const scrollRange = ${SCROLL_RANGE_JS};
+  const scrollLock = ${SCROLL_LOCK_JS};
   const invisibleReason = ${INVISIBLE_REASON_JS};
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const reasons = ${JSON.stringify(LAYOUT_REASONS)};
@@ -383,6 +431,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   let overlay = own.overlay;
   let clipper = own.clipper;
   let fixed = own.fixed;
+  let fixedBy = own.fixedBy;
   let hidden = hiddenReason(styleOf(el), box) || own.collapsed;
   let x = 0;
   let y = 0;
@@ -401,6 +450,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     overlay = { right: clip.right < inner.right ? outer.overlay.right : overlay.right, bottom: clip.bottom < inner.bottom ? outer.overlay.bottom : overlay.bottom };
     clipper = clipper || outer.clipper;
     fixed = outer.fixed;
+    fixedBy = outer.fixedBy;
     hidden = hidden || outer.collapsed;
     x += offset.x;
     y += offset.y;
@@ -410,7 +460,9 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   while (top.frameElement) top = top.parent;
   const toBox = (r) => r && { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top };
   const invisible = hidden ? null : invisibleReason(el, describe);
-  return { rect: toBox(rect), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, pageScroll: scrollRange(top), offset: { x: x, y: y } };
+  const lock = scrollLock(top, describe);
+  if (lock && fixedBy === top.document.body) fixed = false;
+  return { rect: toBox(rect), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
 }`;
 
 /**
@@ -549,7 +601,7 @@ export function classifyViewportPosition(
  * cutting it off when there is one (page scroll alone would not help),
  * otherwise the page scroll, unless the page scroll does not move it (fixed)
  * or cannot go far enough (it is beyond the scrollable area, or the page does
- * not scroll at all).
+ * not scroll at all, e.g. locked by a dialog).
  *
  * @param geometry - Page-side measurements
  * @param viewport - Top-level viewport size
@@ -565,6 +617,13 @@ function outOfViewAdvice(
   const { rect, pageScroll } = geometry;
   const x = axisScroll(rect.x, rect.width, viewport.width, pageScroll.left, pageScroll.right);
   const y = axisScroll(rect.y, rect.height, viewport.height, pageScroll.up, pageScroll.down);
-  if (x === null || y === null) return { offScreenReason: OFF_SCREEN_REASONS.outOfRange };
+  if (x === null || y === null) {
+    const { scrollLock } = geometry;
+    return {
+      offScreenReason: scrollLock
+        ? scrollLockedReason(scrollLock.by, scrollLock.dialog)
+        : OFF_SCREEN_REASONS.outOfRange,
+    };
+  }
   return x === 0 && y === 0 ? {} : { scrollBy: { x, y } };
 }

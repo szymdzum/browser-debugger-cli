@@ -7,7 +7,7 @@
 import type { IPCErrorCode } from './errors.js';
 
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
-import type { TelemetryType } from '@/types.js';
+import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
  * Base message interface with type and session ID.
@@ -60,6 +60,10 @@ export interface SessionOptions {
   chromeWsUrl?: string;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']). */
   chromeFlags?: string[];
+  /** Viewport size the page is emulated at (`--viewport`). */
+  viewport?: ViewportSize;
+  /** `prefers-color-scheme` the page is emulated with (`--color-scheme`). */
+  colorScheme?: ColorScheme;
 }
 
 /**

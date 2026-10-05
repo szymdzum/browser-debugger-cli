@@ -2,7 +2,7 @@
  * Human-readable output of `bdg dom layout`.
  */
 
-import type { ElementLayout, LayoutResult } from '@/ipc/protocol/domTypes.js';
+import type { ElementLayout, LayoutResult, LayoutSize } from '@/ipc/protocol/domTypes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   layoutHeadline,
@@ -25,14 +25,15 @@ type LayoutOutput = Omit<LayoutResult, 'success'>;
  * it as the clipping iframe).
  *
  * @param element - Element layout
- * @returns e.g. `[0] button#save "Save"  420,1180 120×40  below fold (scroll down 500px)`
+ * @param viewport - Viewport size, when known (an element larger than it is not centred by the scroll)
+ * @returns e.g. `[0] button#save "Save"  420,1180 120×40  below fold (scroll down 500px to centre it)`
  */
-export function layoutLine(element: ElementLayout): string {
+export function layoutLine(element: ElementLayout, viewport?: LayoutSize): string {
   const { bounds } = element;
   return [
     `[${element.index}] ${element.element}${element.text ? ` "${element.text}"` : ''}`,
     element.inViewport !== 'hidden' && `${bounds.x},${bounds.y} ${bounds.width}×${bounds.height}`,
-    layoutPositionLabel(element),
+    layoutPositionLabel(element, viewport),
     element.coveredBy && `covered by ${element.coveredBy}`,
     element.inert && 'inert',
     element.invisible,
@@ -55,7 +56,7 @@ export function formatLayout(data: LayoutOutput): string {
   return new OutputFormatter()
     .text(pageLayoutLine(data.page))
     .text(layoutHeadline(data.count, data.elements.length + (data.omitted ?? 0), data.selector))
-    .list(shown.map(layoutLine))
+    .list(shown.map((element) => layoutLine(element, data.page.viewport)))
     .list(more > 0 ? [moreMatchesNote(more, data.omitted ? data.elements.length : undefined)] : [])
     .build();
 }

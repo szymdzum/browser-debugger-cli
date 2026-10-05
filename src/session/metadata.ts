@@ -7,7 +7,7 @@
 
 import * as fs from 'fs';
 
-import type { TelemetryType } from '@/types.js';
+import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
@@ -30,6 +30,10 @@ export interface SessionMetadata {
   activeTelemetry?: TelemetryType[] | undefined;
   /** When `--timeout` stops the session (epoch ms) */
   autoStopAt?: number | undefined;
+  /** Viewport the page is emulated at (`--viewport`) */
+  viewport?: ViewportSize | undefined;
+  /** `prefers-color-scheme` the page is emulated with (`--color-scheme`) */
+  colorScheme?: ColorScheme | undefined;
 }
 
 /**

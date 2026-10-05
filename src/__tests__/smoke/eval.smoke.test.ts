@@ -57,6 +57,21 @@ void describe('dom eval', () => {
     await fixture.close();
   });
 
+  void it('prints string results raw in human mode and other values as JSON', async () => {
+    const text = await runCommand('dom', ['eval', '"a \\"quoted\\"\\nline"'], { timeout: 60000 });
+    assert.equal(text.exitCode, 0, text.stderr);
+    assert.equal(text.stdout.trimEnd(), 'a "quoted"\nline');
+    const object = await runCommand('dom', ['eval', '({ a: "x" })'], { timeout: 60000 });
+    assert.deepEqual(JSON.parse(object.stdout), { a: 'x' });
+    const number = await runCommand('dom', ['eval', '1 + 1'], { timeout: 60000 });
+    assert.equal(number.stdout.trim(), '2');
+    assert.equal((await evaluate('"a \\"quoted\\""')).data?.result, 'a "quoted"');
+    const ambiguous = await runCommand('dom', ['eval', 'JSON.stringify([1, 2])'], {
+      timeout: 60000,
+    });
+    assert.equal(ambiguous.stdout.trim(), '"[1,2]"');
+  });
+
   void it('returns values JSON cannot represent as readable descriptions', async () => {
     const cases: Array<[string, unknown, string, string?]> = [
       ['NaN', 'NaN', 'number'],

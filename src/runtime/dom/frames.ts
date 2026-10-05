@@ -585,7 +585,7 @@ export async function frameContextLostError(
  * @param page - The session's connection
  * @param wsUrl - WebSocket URL of the page target
  * @param script - JavaScript expression
- * @param query - Requested frame (index, name/id attribute, or part of the URL)
+ * @param query - Requested frame (index, name/id attribute, or part of the name, id or URL)
  * @returns Value, type and the frame's URL
  * @throws CommandError (81/83) when the frame is ambiguous or missing, (83)
  *   when it navigated or was removed while the script ran, else as evaluateScript

@@ -364,9 +364,12 @@ export interface ElementLayout {
 
 /** Viewport, scroll position and document size of the top-level page. */
 export interface PageLayout {
+  /** Layout viewport without scrollbars (as `dom scroll` reports it) */
   viewport: LayoutSize;
   scroll: LayoutPoint;
   document: LayoutSize;
+  /** `prefers-color-scheme` the page sees (the system's unless `--color-scheme` was given at start) */
+  colorScheme?: 'light' | 'dark';
 }
 
 /** Layout of the elements a selector (or cached index) refers to. */

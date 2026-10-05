@@ -30,7 +30,12 @@ import {
   classifyViewportPosition,
   type ElementGeometry,
 } from '@/runtime/dom/elementGeometry.js';
-import { ELEMENT_CONTEXT_JS, ELEMENT_TEXT_JS, textPreview } from '@/runtime/dom/elementInfo.js';
+import {
+  ELEMENT_CONTEXT_JS,
+  ELEMENT_TEXT_JS,
+  ELEMENT_TEXT_LENGTH,
+  textPreview,
+} from '@/runtime/dom/elementInfo.js';
 import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import type {
@@ -415,7 +420,7 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
       index,
       nodeId: desc.backendNodeId,
       tag: desc.nodeName.toLowerCase(),
-      ...identifyingAttributes(attributes),
+      ...identifyingAttributes(attributes, desc.nodeName),
       ...(classes && { classes }),
       ...(preview && { preview }),
       ...(context && { context }),
@@ -431,15 +436,19 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
  * The attributes that tell similar elements apart (form fields especially).
  *
  * @param attributes - Element attributes
- * @returns id, name and type when present
+ * @param nodeName - Element name (`OPTION`s also report their `value`)
+ * @returns id, name and type (and an option's value) when present
  */
 function identifyingAttributes(
-  attributes: Record<string, string>
-): Pick<DomQueryResult['nodes'][number], 'id' | 'name' | 'type'> {
+  attributes: Record<string, string>,
+  nodeName: string
+): Pick<DomQueryResult['nodes'][number], 'id' | 'name' | 'type' | 'value'> {
+  const value = nodeName === 'OPTION' ? attributes['value'] : undefined;
   return {
     ...(attributes['id'] && { id: attributes['id'] }),
     ...(attributes['name'] && { name: attributes['name'] }),
     ...(attributes['type'] && { type: attributes['type'] }),
+    ...(value !== undefined && { value }),
   };
 }
 
@@ -483,11 +492,14 @@ export async function getDomContext(ref: NodeRef): Promise<DomContext | null> {
     return null;
   }
   const classes = unpackAttributes(desc.attributes)['class']?.split(/\s+/).filter(Boolean);
-  const preview = textPreview(await elementText(ref));
+  const text = await elementText(ref);
+  const preview = textPreview(text);
+  const longer = textPreview(text, ELEMENT_TEXT_LENGTH);
   return {
     tag: desc.nodeName.toLowerCase(),
     ...(classes && classes.length > 0 && { classes }),
     ...(preview && { preview }),
+    ...(longer !== preview && { text: longer }),
   };
 }
 

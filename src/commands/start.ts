@@ -14,11 +14,13 @@ import {
   externalChromeUnreachableError,
   invalidChromeFlagError,
   notDevToolsEndpointError,
+  invalidColorSchemeError,
   invalidUserDataDirError,
+  invalidViewportError,
   missingStartUrlError,
   unknownCommandError,
 } from '@/errors/messages.js';
-import type { TelemetryType } from '@/types.js';
+import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { probeDevToolsEndpoint } from '@/utils/http.js';
@@ -49,6 +51,10 @@ export interface CollectorOptions {
   json?: boolean;
   /** Custom Chrome flags (space-separated string). */
   chromeFlags?: string;
+  /** Viewport size, e.g. `1280x800`. */
+  viewport?: string;
+  /** `prefers-color-scheme` to emulate: light or dark. */
+  colorScheme?: string;
 }
 
 /**
@@ -143,7 +149,53 @@ export function applyCollectorOptions(command: Command): Command {
     .option(
       '--chrome-flags <flags>',
       'Custom Chrome flags (space-separated, e.g., --chrome-flags="--ignore-certificate-errors --disable-web-security")'
+    )
+    .option(
+      '--viewport <WxH>',
+      'Viewport size in CSS px for the whole session, e.g. 1280x800 (default: 1920x1080 window)'
+    )
+    .option(
+      '--color-scheme <scheme>',
+      'Emulate prefers-color-scheme for the session: light or dark (default: the system setting)'
     );
+}
+
+/** Largest viewport side accepted by `--viewport` (CSS px) */
+const MAX_VIEWPORT_SIDE = 10000;
+
+/** Values of `--color-scheme` */
+const COLOR_SCHEMES: readonly ColorScheme[] = ['light', 'dark'];
+
+/**
+ * Parse a `--viewport` value: width and height in CSS px joined by `x`
+ * (`1280x800`; `X`, `×` and `,` work too).
+ *
+ * @param value - Option value
+ * @returns Viewport size
+ * @throws CommandError (81) for anything else, or a side outside 1-10000
+ */
+export function parseViewport(value: string): ViewportSize {
+  const match = /^\s*(\d+)\s*[xX×,]\s*(\d+)\s*$/.exec(value);
+  const width = Number(match?.[1]);
+  const height = Number(match?.[2]);
+  const valid = (side: number): boolean => side >= 1 && side <= MAX_VIEWPORT_SIDE;
+  if (match && valid(width) && valid(height)) return { width, height };
+  const err = invalidViewportError(value, MAX_VIEWPORT_SIDE);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * Parse a `--color-scheme` value (case-insensitive).
+ *
+ * @param value - Option value
+ * @returns The scheme
+ * @throws CommandError (81) for another value, suggesting the closest one
+ */
+export function parseColorScheme(value: string): ColorScheme {
+  const scheme = COLOR_SCHEMES.find((candidate) => candidate === value.trim().toLowerCase());
+  if (scheme) return scheme;
+  const err = invalidColorSchemeError(value, findSimilar(value, [...COLOR_SCHEMES]), COLOR_SCHEMES);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 /**
@@ -163,6 +215,8 @@ function buildSessionOptions(options: CollectorOptions): {
   quiet: boolean;
   json: boolean;
   chromeFlags: string[] | undefined;
+  viewport: ViewportSize | undefined;
+  colorScheme: ColorScheme | undefined;
 } {
   const maxBodySizeRule = positiveIntRule({
     name: '--max-body-size',
@@ -201,6 +255,9 @@ function buildSessionOptions(options: CollectorOptions): {
     quiet: options.quiet ?? false,
     json: options.json ?? false,
     chromeFlags,
+    viewport: options.viewport !== undefined ? parseViewport(options.viewport) : undefined,
+    colorScheme:
+      options.colorScheme !== undefined ? parseColorScheme(options.colorScheme) : undefined,
   };
 }
 

@@ -7,7 +7,7 @@
 import type { IPCMessage } from './lifecycle.js';
 import type { PageState, SessionActivity } from './types.js';
 
-import type { NetworkRequest, TelemetryType } from '@/types.js';
+import type { ColorScheme, NetworkRequest, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
  * Status request (client → daemon).
@@ -39,6 +39,10 @@ export interface StatusResponseData {
     activeTelemetry?: TelemetryType[];
     /** When `--timeout` stops the session (epoch ms) */
     autoStopAt?: number;
+    /** Viewport the page is emulated at (`--viewport`) */
+    viewport?: ViewportSize;
+    /** `prefers-color-scheme` the page is emulated with (`--color-scheme`) */
+    colorScheme?: ColorScheme;
   };
   /** Session activity metrics. */
   activity?: SessionActivity;

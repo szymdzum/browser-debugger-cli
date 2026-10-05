@@ -193,6 +193,20 @@ function fail(err: { message: string; suggestion: string }, exitCode: number): n
 }
 
 /**
+ * Chrome flags of a launched Chrome: with `--viewport`, a window of that size
+ * first (so tabs the page opens get it too), then the user's own flags, which
+ * win over it.
+ *
+ * @param config - Session configuration
+ * @returns Flags, or undefined without any
+ */
+export function windowSizeFlags(config: SessionConfig): string[] | undefined {
+  if (!config.viewport) return config.chromeFlags;
+  const { width, height } = config.viewport;
+  return [`--window-size=${width},${height}`, ...(config.chromeFlags ?? [])];
+}
+
+/**
  * Launch a new Chrome instance and record its PID for crash cleanup.
  */
 async function setupLaunchedChrome(config: SessionConfig, log: Logger): Promise<LaunchedChrome> {
@@ -203,7 +217,7 @@ async function setupLaunchedChrome(config: SessionConfig, log: Logger): Promise<
     ...filterDefined({
       userDataDir: config.userDataDir,
       headless: config.headless,
-      chromeFlags: config.chromeFlags,
+      chromeFlags: windowSizeFlags(config),
     }),
   });
 

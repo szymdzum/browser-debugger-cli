@@ -56,6 +56,11 @@ void describe('Session Lifecycle Smoke Tests', () => {
 
     assert.equal(result.exitCode, 0, `Start failed: ${result.stderr}`);
     assert.equal(await isDaemonRunning(), true);
+    const lines = result.stderr.trim().split('\n');
+    assert.ok(lines.length <= 8, `start output has ${lines.length} lines:\n${result.stderr}`);
+    assert.match(result.stderr, /^Session Started\nTarget: http:\/\/127\.0\.0\.1:\d+\//m);
+    assert.match(result.stderr, /^Next: bdg dom layout .*bdg dom screenshot/m);
+    assert.match(result.stderr, /^More: bdg --help/m);
   });
 
   void it('should provide data via peek before stop', async () => {

@@ -9,7 +9,7 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Pick the frame a `--frame` value names: a 0-based index, an exact `name`
- * or `id` attribute, or else a case-insensitive part of the URL.
+ * or `id` attribute, or else a case-insensitive part of the name, id or URL.
  *
  * @param frames - Frames of the page
  * @param query - Requested frame
@@ -34,7 +34,9 @@ function candidatesFor(frames: DomFrame[], wanted: string): DomFrame[] {
   const named = frames.filter((frame) => frame.name === wanted || frame.id === wanted);
   if (named.length > 0) return named;
   const needle = wanted.toLowerCase();
-  return frames.filter((frame) => frame.url.toLowerCase().includes(needle));
+  return frames.filter((frame) =>
+    [frame.name, frame.id, frame.url].some((text) => text?.toLowerCase().includes(needle))
+  );
 }
 
 /**

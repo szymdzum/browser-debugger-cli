@@ -165,7 +165,7 @@ export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;
 
 /** Options for DOM eval command */
 export interface DomEvalCommandOptions extends BaseOptions {
-  /** Iframe to evaluate in: index, name/id attribute, or part of the URL */
+  /** Iframe to evaluate in: index, name/id attribute, or part of the name, id or URL */
   frame?: string;
 }
 
@@ -327,6 +327,10 @@ export interface SessionStartOptions {
   json?: boolean | undefined;
   /** Custom Chrome flags (e.g., ['--ignore-certificate-errors']) */
   chromeFlags: string[] | undefined;
+  /** Viewport size to emulate (`--viewport`) */
+  viewport?: ViewportSize | undefined;
+  /** `prefers-color-scheme` to emulate (`--color-scheme`) */
+  colorScheme?: ColorScheme | undefined;
 }
 
 // ConsoleLevel is defined in types.ts for proper architectural layering
@@ -334,7 +338,7 @@ export interface SessionStartOptions {
 export type { ConsoleLevel } from '@/types.js';
 
 // Import locally for use in ConsoleCommandOptions
-import type { ConsoleLevel } from '@/types.js';
+import type { ColorScheme, ConsoleLevel, ViewportSize } from '@/types.js';
 
 /**
  * Options for console command.

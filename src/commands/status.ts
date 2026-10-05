@@ -133,6 +133,8 @@ export function registerStatusCommand(program: Command): void {
               webSocketDebuggerUrl: data.sessionMetadata.webSocketDebuggerUrl,
               activeTelemetry: data.sessionMetadata.activeTelemetry,
               autoStopAt: data.sessionMetadata.autoStopAt,
+              viewport: data.sessionMetadata.viewport,
+              colorScheme: data.sessionMetadata.colorScheme,
             };
 
             latestMetadata = metadata;

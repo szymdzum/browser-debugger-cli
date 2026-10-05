@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 
 import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
 import { formatLayout, layoutLine } from '@/ui/formatters/layout.js';
+import { scrollLockedReason } from '@/ui/messages/commands.js';
 
 const PAGE = {
   viewport: { width: 1280, height: 720 },
@@ -45,7 +46,31 @@ void describe('layoutLine', () => {
   void it('shows position, size and how far to scroll for an element below the fold', () => {
     assert.equal(
       layoutLine(layout()),
-      '[0] button#save "Save"  420,1180 120×40  below fold (scroll down 500px)'
+      '[0] button#save "Save"  420,1180 120×40  below fold (scroll down 500px to centre it)'
+    );
+  });
+
+  void it('does not promise to centre an element larger than the viewport', () => {
+    const tall = layout({ bounds: { x: 0, y: 1180, width: 300, height: 900 } });
+    assert.match(
+      layoutLine(tall, PAGE.viewport),
+      /below fold \(scroll down 500px to bring it into view\)$/
+    );
+    assert.match(layoutLine(layout(), PAGE.viewport), /to centre it\)$/);
+  });
+
+  void it('says that page scrolling is locked rather than calling in-flow content fixed', () => {
+    const { scrollBy: _scrollBy, ...rest } = layout();
+    assert.equal(
+      layoutLine({
+        ...rest,
+        offScreenReason: scrollLockedReason('overflow: hidden on body', 'div#consent'),
+      }),
+      '[0] button#save "Save"  420,1180 120×40  below fold; page scrolling is locked (overflow: hidden on body), likely by dialog div#consent'
+    );
+    assert.match(
+      layoutLine({ ...rest, offScreenReason: scrollLockedReason('overflow: hidden on body') }),
+      /below fold; page scrolling is locked \(overflow: hidden on body\)$/
     );
   });
 
@@ -61,7 +86,7 @@ void describe('layoutLine', () => {
     );
     assert.equal(
       line,
-      '[0] button#save "Save"  420,1180 120×40  partly visible (40%) (scroll left 20px)  covered by div#overlay.backdrop  in iframe#pay'
+      '[0] button#save "Save"  420,1180 120×40  partly visible (40%) (scroll left 20px to centre it)  covered by div#overlay.backdrop  in iframe#pay'
     );
   });
 
@@ -128,6 +153,16 @@ void describe('formatLayout', () => {
     assert.match(output, /\[19\] button#save/);
     assert.doesNotMatch(output, /\[20\]/);
     assert.match(output, /\.\.\. and 110 more \(--json lists the first 25\)$/m);
+  });
+
+  void it('names the color scheme the page sees when known', () => {
+    const output = formatLayout({
+      selector: 'li',
+      count: 1,
+      page: { ...PAGE, colorScheme: 'dark' },
+      elements: [layout()],
+    });
+    assert.match(output, /document 1280×2400, dark color scheme$/m);
   });
 
   void it('points to --json for the rest when JSON lists every match', () => {

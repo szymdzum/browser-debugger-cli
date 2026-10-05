@@ -4,6 +4,8 @@
  * Common types used across session messages and session commands.
  */
 
+import type { ColorScheme, ViewportSize } from '@/types.js';
+
 /**
  * Session activity metrics.
  */
@@ -26,4 +28,8 @@ export interface PageState {
   url: string;
   /** Current page title. */
   title: string;
+  /** Layout viewport without scrollbars (left out when the page did not answer in time). */
+  viewport?: ViewportSize;
+  /** `prefers-color-scheme` the page sees (left out when the page did not answer in time). */
+  colorScheme?: ColorScheme;
 }
