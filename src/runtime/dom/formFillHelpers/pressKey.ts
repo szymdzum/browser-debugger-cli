@@ -23,7 +23,7 @@ import {
   shortcutCommands,
   type KeyDefinition,
 } from '@/runtime/dom/keyMapping.js';
-import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -57,6 +57,10 @@ const FOCUS_ELEMENT_SCRIPT = `
   } else {
     el = allMatches[0];
   }
+  // Keys go to the control a label stands for, as a user clicks the label first
+  const labelControl = (${LABEL_CONTROL_JS})(el);
+  const viaLabel = labelControl ? ' (via label)' : '';
+  if (labelControl) el = labelControl;
 
   const pageLevel = el === document.body || el === document.documentElement;
   if (!pageLevel) {
@@ -89,7 +93,7 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
-  return { success: true, selector: selector, elementType: el.tagName.toLowerCase(), matchCount: allMatches.length };
+  return { success: true, selector: selector, elementType: el.tagName.toLowerCase() + viaLabel, matchCount: allMatches.length };
 })`;
 
 /** Exit codes and suggestions for focus failures, by reason. */

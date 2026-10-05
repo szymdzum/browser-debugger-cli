@@ -20,6 +20,7 @@ import {
   nodeIdNotFoundError,
   operationFailedError,
   staleNodeError,
+  type ErrorWithSuggestion,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import type { LayoutSize } from '@/ipc/protocol/domTypes.js';
@@ -43,7 +44,9 @@ import type {
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { parseSelectorFilters, withoutVisibleFilters } from '@/utils/selectorFilters.js';
 
 const log = createLogger('dom');
 
@@ -130,6 +133,41 @@ async function withSelection<T>(
     return await use(selectionObjectId(selector, evaluated));
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+  }
+}
+
+/**
+ * The "no nodes" error for a selector that matched nothing. When the
+ * selector uses `:visible`, it says how many elements match without it (one
+ * more page search, on this failure path only).
+ *
+ * @param selector - Selector as given
+ * @returns Message and suggestion
+ */
+export async function noMatchesError(selector: string): Promise<ErrorWithSuggestion> {
+  return noNodesFoundError(selector, await hiddenMatchCount(selector));
+}
+
+/**
+ * Count the elements a selector matches with its `:visible` filters removed.
+ *
+ * @param selector - Selector as given
+ * @returns Count, or 0 when it has no `:visible` filter or the page search fails
+ */
+async function hiddenMatchCount(selector: string): Promise<number> {
+  const parts = parseSelectorFilters(selector);
+  const unfiltered = parts && withoutVisibleFilters(parts);
+  if (!unfiltered) return 0;
+  try {
+    const evaluated = await callCDP('Runtime.evaluate', {
+      expression: `(${DEEP_QUERY_JS})(${JSON.stringify(selector)}, ${JSON.stringify(unfiltered)}).length`,
+      returnByValue: true,
+    });
+    const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
+    return typeof result?.value === 'number' ? result.value : 0;
+  } catch (error) {
+    log.debug(`Could not count hidden matches: ${getErrorMessage(error)}`);
+    return 0;
   }
 }
 
@@ -431,7 +469,7 @@ export async function getDomContext(ref: NodeRef): Promise<DomContext | null> {
 async function selectForGet(selector: string, options: DomGetOptions): Promise<NodeRef[]> {
   const backendNodeIds = await selectAll(selector);
   if (backendNodeIds.length === 0) {
-    const err = noNodesFoundError(selector);
+    const err = await noMatchesError(selector);
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
@@ -523,7 +561,7 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
 export async function resolveSelector(selector: string): Promise<NodeRef> {
   const backendNodeId = (await selectAll(selector))[0];
   if (backendNodeId === undefined) {
-    const err = noNodesFoundError(selector);
+    const err = await noMatchesError(selector);
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },

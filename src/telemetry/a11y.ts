@@ -351,18 +351,52 @@ const QUERY_FIELDS: Record<string, keyof A11yQueryPattern> = {
   desc: 'description',
 };
 
+/** The next `key:`/`key=` anywhere (fields may follow other text). */
+const QUERY_KEY = /([a-z]+)\s*[:=]/i;
+
+/** A quoted value (it may contain anything but its own quote). */
+const QUOTED_QUERY_VALUE = /^\s*("[^"]*"|'[^']*')/;
+
+/** Where a role value ends: at the next `key:` after a space or comma. */
+const NEXT_QUERY_FIELD = /[\s,]+[a-z]+\s*[:=]/i;
+
 /**
- * One `key:value` (or `key=value`) field: the value is quoted, or runs until
- * the next `key:`/`key=` after a space or comma.
+ * Where a name or description ends: only at a known field that has a value,
+ * so names keep their spaces and colons (`name=E-mail address:`).
  */
-const QUERY_FIELD = /([a-z]+)\s*[:=](?:\s*("[^"]*"|'[^']*')|((?:(?![\s,]+[a-z]+\s*[:=]).)*))/gis;
+const NEXT_KNOWN_QUERY_FIELD = /[\s,]+(?:role|name|description|desc)\s*[:=](?=\s*[^\s,])/i;
+
+/**
+ * Read one field value.
+ *
+ * @param text - Text after `key:`
+ * @param field - Field the value is for
+ * @returns The value and where it ends in `text`
+ */
+function readQueryValue(
+  text: string,
+  field: keyof A11yQueryPattern
+): { value: string; end: number } {
+  const quoted = QUOTED_QUERY_VALUE.exec(text);
+  if (quoted?.[1]) return { value: quoted[1].slice(1, -1), end: quoted[0].length };
+  const next = (field === 'role' ? NEXT_QUERY_FIELD : NEXT_KNOWN_QUERY_FIELD).exec(text);
+  const end = next ? next.index : text.length;
+  const value = text
+    .slice(0, end)
+    .trim()
+    .replace(/,+$/, '')
+    .replace(/^(["'])(.*)\1$/s, '$2');
+  return { value, end };
+}
 
 /**
  * Parses query pattern string into A11yQueryPattern object.
  *
  * Fields are `key:value` or `key=value`, separated by spaces or commas.
- * Values may contain spaces (quote them if they contain `key:`-like text).
- * Keys: role, name, description (desc). Case-insensitive.
+ * Keys: role, name, description (desc). Case-insensitive. A role ends at the
+ * next `key:`; a name or description runs to the next role/name/description
+ * field with a value, or to the end, so it may contain spaces and colons
+ * (`name=E-mail address:`). Quote a value to end it explicitly.
  *
  * @param patternString - Query pattern string
  * @returns Parsed query pattern
@@ -373,12 +407,14 @@ const QUERY_FIELD = /([a-z]+)\s*[:=](?:\s*("[^"]*"|'[^']*')|((?:(?![\s,]+[a-z]+\
  * parseQueryPattern('role:button name:Submit')     // { role: 'button', name: 'Submit' }
  * parseQueryPattern('role=link,name=Google Chrome') // { role: 'link', name: 'Google Chrome' }
  * parseQueryPattern('name:"Sign in" role:button')  // { name: 'Sign in', role: 'button' }
+ * parseQueryPattern('name=E-mail address:')        // { name: 'E-mail address:' }
  * ```
  */
 export function parseQueryPattern(patternString: string): A11yQueryPattern {
   const pattern: A11yQueryPattern = {};
-  for (const [, rawKey = '', quoted, plain = ''] of patternString.matchAll(QUERY_FIELD)) {
-    const rawValue = quoted ?? plain;
+  let rest = patternString;
+  for (let key = QUERY_KEY.exec(rest); key; key = QUERY_KEY.exec(rest)) {
+    const rawKey = key[1] ?? '';
     const field = QUERY_FIELDS[rawKey.toLowerCase()];
     if (!field) {
       const err = unknownQueryFieldError(rawKey);
@@ -388,11 +424,10 @@ export function parseQueryPattern(patternString: string): A11yQueryPattern {
         EXIT_CODES.INVALID_ARGUMENTS
       );
     }
-    const value = rawValue
-      .trim()
-      .replace(/,+$/, '')
-      .replace(/^(["'])(.*)\1$/s, '$2');
+    const valueText = rest.slice(key.index + key[0].length);
+    const { value, end } = readQueryValue(valueText, field);
     if (value) pattern[field] = value;
+    rest = valueText.slice(end);
   }
   return pattern;
 }

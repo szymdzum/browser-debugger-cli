@@ -291,6 +291,13 @@ export function indexOutOfRangeError(index: number, max: number): ErrorWithSugge
   };
 }
 
+/** Finding elements by accessible name, quoted for the shell (the name may contain spaces and colons). */
+export const A11Y_NAME_QUERY_EXAMPLE = "bdg dom a11y query 'name=…'";
+
+/** Where text filters can go, for selector errors. */
+const SCOPED_FILTER_EXAMPLES =
+  'Put the filter on the element it tests, e.g. li:has-text("Buy milk") .toggle (the .toggle in that row) or label:has-text("Name") input, or test what an element contains with :has(), e.g. li:has(label:text-is("Buy milk"))';
+
 /** Playwright selector syntax bdg does not support (`:text()`, `>>` chains, `text=` engines, layout pseudo-classes). */
 const PLAYWRIGHT_ONLY_SYNTAX =
   /:(?:text|text-matches|nth-match|left-of|right-of|above|below|near)\(|>>|^\s*(?:text|css|xpath|role|id|data-testid|internal:\w+)=/i;
@@ -320,14 +327,14 @@ export function invalidSelectorError(selector: string, detail?: string): ErrorWi
   return {
     message: `Invalid CSS selector: ${selector}${detail ? ` (${detail})` : ''}`,
     suggestion: PLAYWRIGHT_ONLY_SYNTAX.test(selector)
-      ? 'Playwright-only syntax is not CSS. bdg supports :has-text("…"), :text-is("…") and :visible at the end of a selector, e.g. button:has-text("Save"), or find elements by accessible name: bdg dom a11y query name="…"'
+      ? `Playwright-only syntax is not CSS. bdg supports :has-text("…"), :text-is("…") and :visible, e.g. button:has-text("Save"), or scoped to a row or label: li:has-text("Buy milk") .toggle; or find elements by accessible name: ${A11Y_NAME_QUERY_EXAMPLE}`
       : 'Check the selector syntax, e.g. bdg dom query "button.primary"',
   };
 }
 
 /**
- * A text or visibility filter (`:has-text()`, `:text-is()`, `:visible`) that
- * is not at the end of a selector.
+ * A text or visibility filter (`:has-text()`, `:text-is()`, `:visible`)
+ * inside a pseudo-class other than `:has()`, e.g. `:not(:visible)`.
  *
  * @param selector - Selector as given
  * @param filter - The misplaced filter as written
@@ -338,8 +345,38 @@ export function misplacedSelectorFilterError(
   filter: string
 ): ErrorWithSuggestion {
   return {
-    message: `${filter} must come last in a selector (after the CSS of the element to match): ${selector}`,
-    suggestion: `Move it to the end, e.g. form button:has-text("Save"); to match an element by what it contains use CSS :has(), e.g. div:has(> button), or find elements by accessible name: bdg dom a11y query name="…"`,
+    message: `${filter} can only be used on an element of the selector or inside :has(), not inside other pseudo-classes: ${selector}`,
+    suggestion: `${SCOPED_FILTER_EXAMPLES}; or find elements by accessible name: ${A11Y_NAME_QUERY_EXAMPLE}`,
+  };
+}
+
+/**
+ * A sibling combinator (`+`, `~`) after a filtered compound: the rest of the
+ * selector is matched under the filtered element, so only descendant and
+ * child combinators can follow it.
+ *
+ * @param selector - Selector as given
+ * @param combinator - The combinator found
+ * @returns Message and suggestion
+ */
+export function siblingAfterFilterError(selector: string, combinator: string): ErrorWithSuggestion {
+  return {
+    message: `Only a descendant (space) or child (>) combinator can follow a text or visibility filter, not "${combinator}": ${selector}`,
+    suggestion: `Put the filter on the element to match, e.g. h2 + p:has-text("x"), or scope by a common ancestor: section:has-text("x") p`,
+  };
+}
+
+/**
+ * `:has-text()` with empty text, which every element would match.
+ *
+ * @param selector - Selector as given
+ * @returns Message and suggestion
+ */
+export function emptyTextFilterError(selector: string): ErrorWithSuggestion {
+  return {
+    message: `:has-text() needs the text to look for (empty text matches every element): ${selector}`,
+    suggestion:
+      'Give the text, e.g. button:has-text("Save"); use :text-is("") for elements without text',
   };
 }
 
@@ -789,11 +826,20 @@ export const CROSS_ORIGIN_FRAMES_NOTE =
 
 /**
  * No nodes found for selector.
+ *
+ * @param selector - Selector as given
+ * @param hiddenMatches - Elements only its `:visible` filters excluded
  */
-export function noNodesFoundError(selector: string): ErrorWithSuggestion {
+export function noNodesFoundError(selector: string, hiddenMatches = 0): ErrorWithSuggestion {
+  const hidden =
+    hiddenMatches > 0
+      ? hiddenMatches === 1
+        ? '1 element matches without :visible but is hidden (check with bdg dom layout). '
+        : `${hiddenMatches} elements match without :visible but are hidden (check with bdg dom layout). `
+      : '';
   return {
     message: `No nodes found matching "${selector}"`,
-    suggestion: `Verify the CSS selector is correct. ${CROSS_ORIGIN_FRAMES_NOTE}`,
+    suggestion: `${hidden}Verify the CSS selector is correct. ${CROSS_ORIGIN_FRAMES_NOTE}`,
   };
 }
 
@@ -847,7 +893,7 @@ export function eitherArgumentRequiredError(
 export function invalidQueryPatternError(pattern: string): ErrorWithSuggestion {
   return {
     message: 'Query pattern must specify at least one field',
-    suggestion: `Received: "${pattern}". Try: bdg dom a11y query "role:button" or "name:Submit"`,
+    suggestion: `Received: "${pattern}". Try: bdg dom a11y query role=button, or ${A11Y_NAME_QUERY_EXAMPLE}`,
   };
 }
 
@@ -897,7 +943,8 @@ export function singleFileInputError(count: number): ErrorWithSuggestion {
 export function unknownQueryFieldError(field: string): ErrorWithSuggestion {
   return {
     message: `Unknown query field: "${field}"`,
-    suggestion: 'Use role, name or description, e.g.: bdg dom a11y query "role:button name:Submit"',
+    suggestion:
+      "Use role, name or description, e.g. bdg dom a11y query 'role=button name=Sign in'. Quote the whole pattern for the shell; a name with spaces or colons goes last ('name=E-mail address:') or in inner quotes ('name=\"Role: admin\" role=textbox')",
   };
 }
 

@@ -107,13 +107,15 @@ Binary response bodies (images, fonts) are only captured in sessions started wit
 
 DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes.
 
-Three Playwright-style filters can be added at the **end** of a selector (of each selector in a list), alone or combined:
+Three Playwright-style filters can be added to an element of a selector (of each selector in a list), alone or combined:
 
 | Filter | Keeps elements whose... |
 |--------|-------------------------|
-| `:has-text("text")` | rendered text (whitespace collapsed) contains `text`, case-insensitive; also matches ancestors, so give an element selector |
-| `:text-is("text")` | rendered text (trimmed, whitespace collapsed) is exactly `text`, case-sensitive |
+| `:has-text("text")` | text (whitespace collapsed) contains `text`, case-insensitive; also matches ancestors, so give an element selector. Empty text is rejected (exit 81) |
+| `:text-is("text")` | text (trimmed, whitespace collapsed) is exactly `text`, case-sensitive |
 | `:visible` | is rendered, has a non-empty box and `visibility: visible` (not `display:none` or inside it, not inside a closed `<details>` or under `content-visibility: hidden`, not zero-size); like Playwright, `opacity: 0` still counts as visible |
+
+The text is the rendered text (`innerText`) of a visible element and its `textContent` when it is hidden (`display: none`, `visibility: hidden`), so, like Playwright, text filters match hidden elements too: add `:visible` to leave them out. Button inputs (`input[type=submit|button|reset]`) match by their value. When a selector with `:visible` matches nothing, the error says how many elements match without it.
 
 ```bash
 bdg dom click 'button:has-text("Save")'            # Button containing "Save"
@@ -123,7 +125,23 @@ bdg dom fill 'input[name="q"]:visible' "shoes"     # The visible one of several 
 bdg dom query '.item:has-text("x"):visible, button:has-text("Load more")'
 ```
 
-Text may be double- or single-quoted (escape a quote inside with `\`) or unquoted (`:has-text(Save)`). Elsewhere in a selector (`div:has-text("x") > button`, `:not(:visible)`) the filters are rejected with exit 81: match the containing element with CSS `:has()` (`div:has(> button)`), put the filter on the last element (`div > button:has-text("x")`), or find elements by accessible name with `bdg dom a11y query name="…"`. Other Playwright syntax (`:text()`, `text=…`, `>>`) is not supported.
+**Scoped to a row or label.** A filter on an earlier element of the selector scopes the rest: the part after it is matched inside each element that passes the filter. This reaches the control in the row or label that holds the text. Only a descendant (space) or child (`>`) combinator can follow a filtered element (`+`/`~` exit 81). Filters also work inside `:has()`, which tests what an element contains:
+
+```bash
+bdg dom click 'li:has-text("Write report") .toggle'           # The checkbox in the row saying "Write report"
+bdg dom click 'li:has(label:text-is("Write report")) .toggle' # Same, by the exact label text
+bdg dom fill 'label:has-text("Customer name") input' "Ada"    # The input inside that label
+bdg dom click 'tr:text-is("Ada Lovelace") > td button'        # A button in a table row
+```
+
+Inside other pseudo-classes (`:not(:visible)`, `:is(a:has-text("x"))`) the filters are rejected with exit 81. Text may be double- or single-quoted (escape a quote inside with `\`) or unquoted (`:has-text(Save)`). Other Playwright syntax (`:text()`, `text=…`, `>>`) is not supported.
+
+**Labels stand for their control.** `dom fill`, `dom click` (and `--double`) and `dom pressKey` on a `<label>` act on its form control (`label.control`: the `for` target or the control inside it), like Playwright; the result's element type says so (`input (via label)`). A click goes to the label itself when the control is hidden or transparent (custom checkboxes), which activates the control the same way. Filling a label without a control exits 81 and suggests `bdg dom a11y query 'name=…'` or `bdg dom form`.
+
+```bash
+bdg dom fill 'label:has-text("Customer name")' "Ada"   # Fills the field the label names
+bdg dom click 'label:text-is("Remember me")'            # Checks the checkbox
+```
 
 ### Accessibility Tree Inspection
 
@@ -136,10 +154,11 @@ bdg dom a11y tree --json        # Full tree in JSON format
 
 # Query nodes by role, name, or description
 bdg dom a11y query role=button                    # Find all buttons
-bdg dom a11y query name="Submit"                  # Find by accessible name
-bdg dom a11y query role=button,name="Submit"      # Combine criteria (AND logic)
-bdg dom a11y query description="Click to submit"  # Find by description
-bdg dom a11y query --json                         # JSON output
+bdg dom a11y query name=Submit                    # Find by accessible name (substring, case-insensitive)
+bdg dom a11y query 'name=E-mail address:'         # A name with spaces or colons: quote the whole field
+bdg dom a11y query 'role=textbox name=E-mail address:'  # Combine criteria (AND logic)
+bdg dom a11y query 'description=Click to submit'  # Find by description
+bdg dom a11y query role=button --json             # JSON output
 
 # Describe specific element by CSS selector
 bdg dom a11y describe "button[type='submit']"     # Get accessibility info for element
@@ -152,7 +171,8 @@ bdg dom a11y describe --json                      # JSON output
 - `role=<value>` - Filter by ARIA role (case-insensitive)
 - `name=<value>` - Filter by accessible name (case-insensitive)
 - `description=<value>` - Filter by accessible description (case-insensitive)
-- Combine with commas for AND logic: `role=button,name=Submit`
+- Combine with spaces or commas for AND logic: `role=button,name=Submit`
+- `key:value` works too. A role ends at the next field; a name or description runs to the next `role=`/`name=`/`description=` with a value, or to the end of the argument, so it may contain spaces and colons (`'name=E-mail address:'`). Quote the whole pattern for the shell (`name="E-mail address:"` reaches bdg without its quotes, which is fine when the name is last). Put a value in inner quotes when it contains field-like text: `'name="Choose role: admin" role=combobox'`
 
 **Output:**
 - Tree view shows role, name, description, and key properties

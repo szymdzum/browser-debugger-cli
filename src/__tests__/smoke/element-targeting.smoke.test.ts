@@ -55,6 +55,13 @@ const LIST_HTML =
   '<label>M<input type="radio" name="size" value="m"></label>' +
   '<label>L<input type="radio" name="size" value="l"></label></form>';
 
+const TODO_HTML =
+  '<ul id="todos">' +
+  ['Buy milk', 'Write report', 'Call Ada']
+    .map((t) => `<li><input class="toggle" type="checkbox"><label>${t}</label></li>`)
+    .join('') +
+  '</ul>';
+
 const VISIBILITY_HTML =
   '<ul id="shown"><li>shown</li><li style="display:none">gone</li>' +
   '<li style="visibility:hidden">invisible</li></ul>';
@@ -145,10 +152,31 @@ void describe('Element targeting', () => {
     ]);
   });
 
-  void it('rejects text and visibility filters that are not at the end with 81', async () => {
-    const output = await bdg(['dom', 'click', 'form:has-text("Send") button'], 81);
-    assert.match(output, /must come last/);
-    await bdg(['dom', 'query', 'li:visible a'], 81);
+  void it('clicks the control in the row that holds a text (scoped filters, :has)', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(TODO_HTML)}); 1`
+    );
+    const checked = (): Promise<unknown> =>
+      evaluate("[...document.querySelectorAll('#todos .toggle')].map((t) => t.checked)");
+    await bdg(['dom', 'click', 'li:has-text("Write report") .toggle']);
+    assert.deepEqual(await checked(), [false, true, false]);
+    await bdg(['dom', 'click', '#todos li:has(label:text-is("Buy milk")) > .toggle']);
+    assert.deepEqual(await checked(), [true, true, false]);
+    assert.deepEqual(await queryPreviews('#todos li:has-text("report") label'), ['Write report']);
+  });
+
+  void it('rejects filters before sibling combinators or inside :not() with 81', async () => {
+    const output = await bdg(['dom', 'click', 'li:has-text("Buy milk") + li .toggle'], 81);
+    assert.match(output, /descendant \(space\) or child \(>\) combinator/);
+    assert.match(await bdg(['dom', 'query', 'li:not(:visible)'], 81), /inside :has\(\)/);
+    await bdg(['dom', 'query', 'p:has-text("")'], 81);
+  });
+
+  void it('matches the text of hidden elements and counts what :visible left out', async () => {
+    assert.equal((await queryPreviews('#shown li:has-text("invisible")')).length, 1);
+    assert.equal((await queryPreviews('#shown li:text-is("gone")')).length, 1);
+    const output = await bdg(['dom', 'query', '#shown li:has-text("invisible"):visible'], 83);
+    assert.match(output, /1 element match(es)? without :visible but is hidden/);
   });
 
   void it('fails with 87 after the page navigated', async () => {

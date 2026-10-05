@@ -18,28 +18,60 @@ import {
   staleNodeError,
 } from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { parseSelectorFilters, type SelectorFilter } from '@/utils/selectorFilters.js';
+import {
+  parseSelectorFilters,
+  type ScopedStep,
+  type SelectorFilter,
+} from '@/utils/selectorFilters.js';
 
 /** Selector placeholder that makes page scripts use the bound node. */
 export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
 
 /**
- * Page-side test of one text or visibility filter ({@link SelectorFilter}).
- * Visible means rendered (`checkVisibility()`: not inside a closed `<details>`
- * or under `content-visibility: hidden`), a non-empty box and
- * `visibility: visible`, as in Playwright (`opacity: 0` still counts as visible). Text is
- * the rendered text (`innerText`, `textContent` for elements without it) with
- * whitespace collapsed; filter texts arrive normalized (`has-text`
- * lowercased).
+ * Page-side matching of filters ({@link SelectorFilter}) and scoped steps
+ * ({@link ScopedStep}): returns `{ passes, descend }`.
+ *
+ * Visible means rendered (`checkVisibility()`: not inside a closed
+ * `<details>` or under `content-visibility: hidden`), a non-empty box and
+ * `visibility: visible`, as in Playwright (`opacity: 0` still counts as
+ * visible). Text is the rendered text (`innerText`) of visible elements and
+ * `textContent` of hidden ones (display or visibility), so text filters match
+ * hidden elements like Playwright's and `:visible` decides visibility; button
+ * inputs use their value. Whitespace is collapsed; filter texts arrive
+ * normalized (`has-text` lowercased). `:has()` filters and steps match CSS
+ * relative to an element (`:scope > css`).
  */
-const FILTER_MATCHES_JS = `(el, filter) => {
-  if (filter.kind === 'visible') {
-    if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
-    const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 && el.ownerDocument.defaultView.getComputedStyle(el).visibility === 'visible';
-  }
-  const text = (typeof el.innerText === 'string' ? el.innerText : el.textContent || '').replace(/\\s+/g, ' ').trim();
-  return filter.kind === 'text-is' ? text === filter.text : text.toLowerCase().includes(filter.text);
+const FILTER_MATCHING_JS = `() => {
+  const textOf = (el) => {
+    if (el.localName === 'input' && /^(submit|button|reset)$/i.test(el.type)) return el.value;
+    const rendered = typeof el.innerText === 'string' &&
+      (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));
+    return ((rendered ? el.innerText : el.textContent) || '').replace(/\\s+/g, ' ').trim();
+  };
+  const passes = (el, filter) => {
+    if (filter.kind === 'visible') {
+      if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && el.ownerDocument.defaultView.getComputedStyle(el).visibility === 'visible';
+    }
+    if (filter.kind === 'has') return filter.selectors.some((chain) => descend(el, chain).length > 0);
+    const text = textOf(el);
+    return filter.kind === 'text-is' ? text === filter.text : text.toLowerCase().includes(filter.text);
+  };
+  const descend = (scope, steps) => {
+    let current = [scope];
+    for (const step of steps) {
+      const next = new Set();
+      for (const el of current) {
+        for (const match of el.querySelectorAll(':scope ' + step.combinator + ' ' + step.css)) {
+          if (step.filters.every((filter) => passes(match, filter))) next.add(match);
+        }
+      }
+      current = [...next];
+    }
+    return current;
+  };
+  return { passes: passes, descend: descend };
 }`;
 
 /**
@@ -48,7 +80,8 @@ const FILTER_MATCHES_JS = `(el, filter) => {
  *
  * Takes the selector and, when it has text or visibility filters, its parts
  * from {@link parseSelectorFilters}: their CSS runs as one selector list and
- * a match is kept when it passes the filters of a part it matches.
+ * a match is kept when it passes the filters of a part it matches; a part
+ * with scoped steps contributes the steps' matches under it instead.
  * Matches of the document come first, then those of each shadow root and
  * frame in document order. Cross-origin iframes are separate processes and
  * cannot be searched. Throws a `SyntaxError` for an invalid selector.
@@ -69,8 +102,15 @@ export const DEEP_QUERY_JS = `function (selector, parts) {
   };
   visit(document);
   if (!parts) return found;
-  const passes = ${FILTER_MATCHES_JS};
-  return found.filter((el) => parts.some((part) => el.matches(part.css) && part.filters.every((filter) => passes(el, filter))));
+  const { passes, descend } = (${FILTER_MATCHING_JS})();
+  const result = new Set();
+  for (const el of found) {
+    for (const part of parts) {
+      if (!el.matches(part.css) || !part.filters.every((filter) => passes(el, filter))) continue;
+      for (const match of descend(el, part.steps || [])) result.add(match);
+    }
+  }
+  return [...result];
 }`;
 
 /**
@@ -86,6 +126,14 @@ export const FIND_ELEMENTS_JS = `function (selector, parts) {
   }
   return (${DEEP_QUERY_JS})(selector, parts);
 }`;
+
+/**
+ * Page-side: the form control a `<label>` stands for (`label.control`: its
+ * `for` target or the control inside it), or null for other elements and
+ * labels without one. Fill, click and key presses act on that control, like
+ * Playwright.
+ */
+export const LABEL_CONTROL_JS = `(el) => (el && el.localName === 'label' ? el.control : null)`;
 
 /**
  * Arguments for {@link DEEP_QUERY_JS} / {@link FIND_ELEMENTS_JS} and the page

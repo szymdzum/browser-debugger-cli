@@ -34,7 +34,7 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
-import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   CLICK_NOT_RECEIVED_WARNING,
@@ -186,7 +186,7 @@ async function setFileInput(
   if (problem) return problem;
   try {
     const located = (await cdp.send('Runtime.evaluate', {
-      expression: `(${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}]`,
+      expression: `((el) => (${LABEL_CONTROL_JS})(el) || el)((${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}])`,
       objectGroup: UPLOAD_OBJECT_GROUP,
     })) as { result?: { objectId?: string }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
     if (located.exceptionDetails) throwIfInvalidSelector(located.exceptionDetails, selector);

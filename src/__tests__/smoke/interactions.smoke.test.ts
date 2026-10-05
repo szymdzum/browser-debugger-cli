@@ -47,6 +47,12 @@ async function evaluate(expression: string): Promise<unknown> {
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
+const LABELS_HTML =
+  '<form id="labels" onsubmit="return false"><label>Customer name: <input name="custname"></label>' +
+  '<label for="em">E-mail address:</label><input id="em" type="email">' +
+  '<label><input type="checkbox" id="agree"> I agree</label>' +
+  '<label id="orphan">Orphan note</label></form>';
+
 /** JSON output of a DOM action */
 type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
 
@@ -361,6 +367,39 @@ void describe('DOM interactions', () => {
       ['pointerdown:target']
     );
     await bdg(['dom', 'listeners', '#missing'], 83);
+  });
+
+  void it('acts on the control a <label> stands for', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(LABELS_HTML)}); 1`
+    );
+    assert.match(
+      await bdg(['dom', 'fill', 'label:has-text("Customer name")', 'Ada']),
+      /input \(via label\)/
+    );
+    assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Ada');
+    await bdg(['dom', 'fill', 'label:has-text("Customer name") input', 'Bob']);
+    assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Bob');
+    await bdg(['dom', 'pressKey', 'label[for=em]', 'a']);
+    assert.equal(await evaluate("document.getElementById('em').value"), 'a');
+    const click = JSON.parse(
+      await bdg(['dom', 'click', 'label:has-text("I agree")', '--json'])
+    ) as { data: { elementType: string } };
+    assert.equal(click.data.elementType, 'input (via label)');
+    assert.equal(await evaluate("document.getElementById('agree').checked"), true);
+    const orphan = await bdg(['dom', 'fill', '#orphan', 'x'], 81);
+    assert.match(orphan, /not associated with a form control/);
+    assert.match(orphan, /a11y query 'name=Orphan note'/);
+  });
+
+  void it('finds an a11y name with spaces and a colon', async () => {
+    const output = await bdg(['dom', 'a11y', 'query', 'name=E-mail address:', '--json']);
+    const { data } = JSON.parse(output) as { data: { nodes: Array<{ role: string }> } };
+    assert.ok(
+      data.nodes.some((node) => node.role === 'textbox'),
+      output
+    );
+    await bdg(['dom', 'a11y', 'query', 'role=textbox name=E-mail address:']);
   });
 
   void it('navigates the page and its history', async () => {

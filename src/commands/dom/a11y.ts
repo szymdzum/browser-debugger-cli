@@ -92,7 +92,8 @@ function quoteQueryValue(text: string): string {
  * Handle bdg dom a11y query <pattern> command
  *
  * Queries the accessibility tree using role/name/description patterns via IPC.
- * Pattern format: "role:button name:Submit" (space-separated key:value pairs)
+ * Pattern format: "role:button name:Submit" (key:value or key=value pairs; a
+ * name or description may contain spaces and colons)
  *
  * @param pattern - Query pattern string
  * @param options - Command options
@@ -276,7 +277,7 @@ export function registerA11yCommands(domCmd: Command): void {
     .description('Query elements by accessibility properties (e.g., "role:button", "name:Submit")')
     .argument(
       '<pattern>',
-      'Fields role, name, description as key:value or key=value, separated by spaces or commas; * is a wildcard (e.g. "role:button name:Submit", "role=link,name=Google Chrome")'
+      "Fields role, name, description as key:value or key=value, separated by spaces or commas; * is a wildcard. A name or description runs to the next field or the end, so it may contain spaces and colons; quote the whole pattern (e.g. 'role=button name=Sign in', 'name=E-mail address:')"
     )
     .addOption(jsonOption())
     .action(async (pattern: string, options: A11yQueryCommandOptions) => {
