@@ -14,6 +14,7 @@ import {
   unknownKeyError,
 } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
+import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
@@ -97,7 +98,13 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
-  return { success: true, selector: selector, elementType: el.tagName.toLowerCase() + viaLabel, matchCount: allMatches.length };
+  return {
+    success: true,
+    selector: selector,
+    element: (${ELEMENT_IDENTITY_JS})(el),
+    elementType: el.tagName.toLowerCase() + viaLabel,
+    matchCount: allMatches.length
+  };
 })`;
 
 /** Exit codes and suggestions for focus failures, by reason. */
@@ -175,6 +182,7 @@ export async function pressKeyElement(
       success: boolean;
       reason?: string;
       error?: string;
+      element?: string;
       elementType?: string;
       matchCount?: number;
     };
@@ -201,6 +209,7 @@ export async function pressKeyElement(
         key: keyName,
         times,
         ...(modifierFlags > 0 && { modifiers: describeModifiers(modifierFlags) }),
+        ...(focusResult.element !== undefined && { element: focusResult.element }),
         elementType: focusResult.elementType,
         ...(focusResult.matchCount !== undefined && { matchCount: focusResult.matchCount }),
       },

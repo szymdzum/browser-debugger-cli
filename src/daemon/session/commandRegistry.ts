@@ -5,6 +5,7 @@ import { CDPConnectionError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
+import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
 import { CommandError } from '@/errors/index.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
@@ -544,19 +545,21 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       }),
 
     dom_submit: async (cdp, params) =>
-      interact(cdp, async () => {
-        const target = await resolveScriptTarget(cdp, params);
-        const submitOptions = filterDefined({
-          index: target.index,
-          waitNavigation: params.waitNavigation,
-          waitNetwork: params.waitNetwork,
-          timeout: params.timeout,
-        });
-        return withUserSelector(
-          await submitForm(cdp, target.selector, submitOptions),
-          params.selector
-        );
-      }),
+      withTriggeredRequestCount(
+        await interact(cdp, async () => {
+          const target = await resolveScriptTarget(cdp, params);
+          const submitOptions = filterDefined({
+            index: target.index,
+            waitNavigation: params.waitNavigation,
+            waitNetwork: params.waitNetwork,
+            timeout: params.timeout,
+          });
+          return withUserSelector(
+            await submitForm(cdp, target.selector, submitOptions),
+            params.selector
+          );
+        })
+      ),
 
     dom_press_key: async (cdp, params) =>
       interact(cdp, async () => {

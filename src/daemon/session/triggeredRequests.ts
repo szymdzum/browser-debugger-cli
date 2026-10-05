@@ -6,13 +6,17 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
+import { isNotableRequest } from '@/telemetry/requestKinds.js';
 import { failureReason, getRequestState } from '@/telemetry/requestState.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 
 /** URLs that never reach the network (inline data, in-page objects) */
 const LOCAL_URL_PATTERN = /^(data|blob):/i;
 
-/** Requests listed in a result (a click that loads a page triggers its whole load) */
+/**
+ * Requests listed in a result (a click that loads a page triggers its whole
+ * load); notable ones ({@link isNotableRequest}) are kept before assets
+ */
 export const MAX_TRIGGERED_REQUESTS = 50;
 
 /** Requests started since the watch began: the first ones, and how many more there were */
@@ -61,14 +65,54 @@ export function watchTriggeredRequests(store: TelemetryStore): TriggeredRequests
     ]
       .filter(({ request }) => request.timestamp >= startedAt && isReportable(request))
       .sort((a, b) => byStartTime(a.request, b.request));
-    const omitted = started.length - MAX_TRIGGERED_REQUESTS;
+    const triggered = started.map(({ request, inFlight }) => toTriggeredRequest(request, inFlight));
+    const kept = keepNotableFirst(triggered, MAX_TRIGGERED_REQUESTS);
+    const omitted = triggered.length - kept.length;
     return {
-      triggeredRequests: started
-        .slice(0, MAX_TRIGGERED_REQUESTS)
-        .map(({ request, inFlight }) => toTriggeredRequest(request, inFlight)),
+      triggeredRequests: kept,
       ...(omitted > 0 && { triggeredRequestsOmitted: omitted }),
     };
   };
+}
+
+/**
+ * At most `limit` requests, notable ones first (pages, API calls, sockets,
+ * failures), then assets, still in start order.
+ *
+ * @param requests - Requests in start order
+ * @param limit - How many to keep
+ * @returns Kept requests, in start order
+ */
+export function keepNotableFirst(requests: TriggeredRequest[], limit: number): TriggeredRequest[] {
+  if (requests.length <= limit) return requests;
+  const notable = requests.filter(isNotableRequest).slice(0, limit);
+  const assets = requests
+    .filter((request) => !isNotableRequest(request))
+    .slice(0, limit - notable.length);
+  const kept = new Set([...notable, ...assets]);
+  return requests.filter((request) => kept.has(request));
+}
+
+/**
+ * Count a submission's network requests as its request list does (the
+ * submit watcher counts every request id CDP reported until the wait ended:
+ * `data:` URLs and preflights included, a redirect chain once), so
+ * `networkRequests`, the listed requests and JSON agree. Without network
+ * telemetry the watcher's count stays.
+ *
+ * @param result - Submit result with the requests it triggered
+ * @returns The result, `networkRequests` matching `triggeredRequests`
+ */
+export function withTriggeredRequestCount<
+  T extends {
+    networkRequests?: number | undefined;
+    triggeredRequests?: TriggeredRequest[] | undefined;
+    triggeredRequestsOmitted?: number | undefined;
+  },
+>(result: T): T {
+  if (result.networkRequests === undefined || result.triggeredRequests === undefined) return result;
+  const total = result.triggeredRequests.length + (result.triggeredRequestsOmitted ?? 0);
+  return { ...result, networkRequests: total };
 }
 
 /**
@@ -85,6 +129,7 @@ function webSocketAsRequest(connection: WebSocketConnection): NetworkRequest {
     url: connection.url,
     method: 'GET',
     timestamp: connection.timestamp,
+    resourceType: 'WebSocket',
     ...(connection.status !== undefined && { status: connection.status }),
     ...(failed && { status: 0 }),
     ...(failed && connection.errorMessage !== undefined && { errorText: connection.errorMessage }),
@@ -131,6 +176,7 @@ export function toTriggeredRequest(request: NetworkRequest, inFlight = false): T
     requestId: request.requestId,
     method: request.method,
     url: request.url,
+    ...(request.resourceType !== undefined && { resourceType: request.resourceType }),
     ...(state === 'complete' && { status: request.status }),
     ...(state === 'complete' && inFlight && { loading: true as const }),
     ...(state !== 'pending' && request.duration !== undefined && { durationMs: request.duration }),

@@ -12,7 +12,32 @@ import {
   VIA_LABEL_SUFFIX,
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
+import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
+
+/**
+ * Page-side read-back of a filled field: `{ expected, actual }` when its
+ * value is not what was asked for (the page rejected, reformatted or moved
+ * the input), undefined when it is. Checkboxes and radios compare as
+ * `checked`/`unchecked`, a multiple select as its selected values joined by
+ * ", ", contenteditable text with whitespace collapsed. Password values are
+ * masked (an empty one stays "", which tells the value was dropped).
+ */
+export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
+  const type = (field.type || '').toLowerCase();
+  const actual = field.isContentEditable
+    ? (field.textContent || '')
+    : type === 'checkbox' || type === 'radio'
+      ? (field.checked ? 'checked' : 'unchecked')
+      : field.localName === 'select' && field.multiple
+        ? Array.from(field.selectedOptions).map((o) => o.value).join(', ')
+        : field.value;
+  const collapse = (text) => String(text).replace(/\\s+/g, ' ').trim();
+  const same = field.isContentEditable ? collapse(actual) === collapse(expected) : actual === expected;
+  if (same) return undefined;
+  const mask = (text) => (type === 'password' && text !== '' ? '********' : text);
+  return { expected: mask(expected), actual: mask(actual) };
+}`;
 
 /**
  * JavaScript function to fill an input element in a React-compatible way.
@@ -25,13 +50,19 @@ import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js'
  * A `<label>` is filled through its control ({@link LABEL_CONTROL_JS}),
  * reported as e.g. `input (via label)`.
  *
+ * After the events (and a macrotask, so frameworks that render
+ * asynchronously have updated the field) the value is read back: when it is
+ * not what was asked for (the page rejected, reformatted or moved the input)
+ * the result has `valueMismatch` with both values (passwords masked).
+ *
  * @remarks
  * Works with React, Vue, Angular, and vanilla JS applications.
  */
 export const REACT_FILL_SCRIPT = `
-(function(selector, parts, value, options) {
+(async function(selector, parts, value, options) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   const warnings = [];
+  let expected = value;
   // Why a user could not reach the field (the value is still set, so scripted
   // flows keep working, but the result may not be what a user would see)
   const unreachableReason = (field) => {
@@ -173,6 +204,7 @@ export const REACT_FILL_SCRIPT = `
       };
     }
     options.forEach((o) => { o.selected = chosen.includes(o); });
+    expected = chosen.map((o) => o.value).join(', ');
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   } else if (tagName === 'select') {
@@ -191,6 +223,7 @@ export const REACT_FILL_SCRIPT = `
       };
     }
     el.value = option.value;
+    expected = option.value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   } else if (inputType === 'checkbox' || inputType === 'radio') {
@@ -218,6 +251,7 @@ export const REACT_FILL_SCRIPT = `
         suggestion: 'Select another option in the same group instead'
       };
     }
+    expected = shouldCheck ? 'checked' : 'unchecked';
     if (el.checked !== shouldCheck) {
       el.click();
     }
@@ -283,7 +317,8 @@ export const REACT_FILL_SCRIPT = `
   if (options.blur !== false) {
     el.blur();
   }
-  
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
   return {
     success: true,
     selector: selector,
@@ -294,6 +329,8 @@ export const REACT_FILL_SCRIPT = `
         : tagName === 'select' && el.multiple
           ? Array.from(el.selectedOptions).map((o) => o.value).join(', ')
           : el.value,
+    valueMismatch: (${FILL_VALUE_MISMATCH_JS})(el, expected),
+    element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: tagName + viaLabel,
     inputType: inputType || null,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
@@ -485,6 +522,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   return {
     success: true,
     selector: selector,
+    element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: tagName + viaLabel,
     matchCount: allMatches.length,
     selectedIndex: typeof index === 'number' ? index : undefined,

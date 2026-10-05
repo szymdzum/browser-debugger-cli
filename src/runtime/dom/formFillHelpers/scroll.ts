@@ -7,6 +7,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import type { ScrollResult } from '@/ipc/protocol/domTypes.js';
+import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
@@ -60,6 +61,7 @@ const SCROLL_TO_ELEMENT_SCRIPT = `
     success: true,
     scrollType: 'element',
     selector: selector,
+    element: (${ELEMENT_IDENTITY_JS})(el),
     matchCount: allMatches.length,
     scrolledTo: {
       x: Math.round(window.scrollX),

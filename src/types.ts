@@ -546,6 +546,8 @@ export interface FormField {
   name: string | null;
   placeholder?: string | undefined;
   required: boolean;
+  /** Name of the radio/checkbox group the field belongs to (counted once in the summary) */
+  groupLabel?: string | undefined;
   disabled: boolean;
   readOnly: boolean;
   hidden: boolean;
@@ -585,7 +587,9 @@ export interface FormBlocker {
 }
 
 /**
- * Summary statistics for a form.
+ * Summary statistics for a form. Counts cover the visible, editable fields;
+ * a radio or checkbox group (same name) counts once, filled when any of its
+ * options is checked.
  */
 export interface FormSummary {
   totalFields: number;
@@ -596,6 +600,12 @@ export interface FormSummary {
   requiredTotal: number;
   requiredFilled: number;
   requiredRemaining: number;
+  /** Labels of the fields (choice groups once) left empty, required or not */
+  emptyFieldLabels: string[];
+  /**
+   * Every required field is filled, nothing is invalid, the submit button is
+   * enabled, and at least one field is filled (or the form has none)
+   */
   readyToSubmit: boolean;
   blockers: FormBlocker[];
 }

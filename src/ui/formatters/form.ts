@@ -13,6 +13,11 @@ import type {
   FormSummary,
 } from '@/types.js';
 import { OutputFormatter, areHintsHidden } from '@/ui/formatting.js';
+import {
+  REQUIRED_FIELD_EMPTY_REASON,
+  formReadinessMessage,
+  requiredFieldsEmptyMessage,
+} from '@/ui/messages/commands.js';
 
 const COLUMN_WIDTHS = {
   index: 4,
@@ -183,7 +188,9 @@ function formatTableHeader(): string {
 }
 
 /**
- * Format summary line.
+ * Format summary line, e.g. "Summary: 1/3 fields filled | 2 required fields
+ * empty: Last Name, Zip | NOT ready" (a radio or checkbox group counts as one
+ * field).
  *
  * @param summary - Form summary
  * @returns Summary string
@@ -197,15 +204,12 @@ function formatSummaryLine(summary: FormSummary): string {
     parts.push(`${summary.invalidFields} invalid`);
   }
 
-  if (summary.requiredRemaining > 0) {
-    parts.push(`${summary.requiredRemaining} required remaining`);
-  }
+  const requiredEmpty = summary.blockers
+    .filter((blocker) => blocker.reason === REQUIRED_FIELD_EMPTY_REASON)
+    .map((blocker) => blocker.label);
+  if (requiredEmpty.length > 0) parts.push(requiredFieldsEmptyMessage(requiredEmpty));
 
-  if (summary.readyToSubmit) {
-    parts.push('READY to submit');
-  } else {
-    parts.push('NOT ready');
-  }
+  parts.push(formReadinessMessage(summary));
 
   return `Summary: ${parts.join(' | ')}`;
 }

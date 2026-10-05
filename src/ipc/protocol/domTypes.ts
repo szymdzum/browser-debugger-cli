@@ -29,6 +29,8 @@ export interface TriggeredRequest {
   requestId: string;
   method: string;
   url: string;
+  /** CDP resource type, e.g. `Document`, `Fetch`, `Stylesheet` */
+  resourceType?: string;
   /** HTTP status, once a response arrived */
   status?: number;
   /** How long it took, once it finished or failed */
@@ -46,6 +48,14 @@ export interface TriggeredRequest {
   loading?: true;
 }
 
+/** A filled field's value differing from the one given */
+export interface FillValueMismatch {
+  /** Value given (for a select: the chosen option's value; checkboxes: checked/unchecked) */
+  expected: string;
+  /** Value the field has after filling */
+  actual: string;
+}
+
 /**
  * Result of filling an element.
  */
@@ -54,9 +64,16 @@ export interface FillResult {
   error?: string;
   selector?: string;
   value?: string;
+  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  element?: string;
   elementType?: string;
   inputType?: string | null;
   checked?: boolean;
+  /**
+   * Set when the field's value read back after filling is not the one given
+   * (the page rejected, reformatted or moved it; passwords masked)
+   */
+  valueMismatch?: FillValueMismatch;
   suggestion?: string;
   /** Set when the target is a file input (filled through CDP instead) */
   fileInput?: boolean;
@@ -80,6 +97,8 @@ export interface ClickResult {
   success: boolean;
   error?: string;
   selector?: string;
+  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  element?: string;
   elementType?: string;
   matchCount?: number;
   selectedIndex?: number;
@@ -108,6 +127,8 @@ export interface PressKeyResult {
   success: boolean;
   error?: string;
   selector?: string;
+  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  element?: string;
   key?: string;
   times?: number;
   /** Modifier keys held, e.g. ["Ctrl", "Shift"] */
@@ -137,6 +158,8 @@ export interface ScrollResult {
   exitCode?: number;
   scrollType: 'element' | 'position' | 'offset';
   selector?: string;
+  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  element?: string;
   scrolledTo?: { x: number; y: number };
   scrolledBy?: { x: number; y: number };
   viewportSize?: { width: number; height: number };
@@ -158,6 +181,8 @@ export interface SubmitResult {
   success: boolean;
   error?: string;
   selector?: string;
+  /** The element acted on, e.g. `input.toggle in div.view "Write report"` */
+  element?: string;
   clicked?: boolean;
   networkRequests?: number;
   navigationOccurred?: boolean;
@@ -384,7 +409,10 @@ export interface RawField {
   label: string;
   name: string | null;
   placeholder?: string;
+  /** `required`, aria-required, or a label marked with an asterisk */
   required: boolean;
+  /** Name of the radio/checkbox group (legend, radiogroup label or name) */
+  groupLabel?: string;
   disabled: boolean;
   readOnly: boolean;
   hidden: boolean;
@@ -407,5 +435,10 @@ export interface RawButton {
   label: string;
   type: string;
   disabled: boolean;
-  isPrimary: boolean;
+  /** A submit button by markup: `<input type=submit>` or `type="submit"` written out */
+  explicitSubmit: boolean;
+  /** A `<button>` without a type in a form: submits it, like Enter does */
+  formDefault: boolean;
+  /** Has a class like `primary`, `btn-primary` or `submit` */
+  primaryClass: boolean;
 }

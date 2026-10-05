@@ -7,6 +7,7 @@
 
 import type { Command } from 'commander';
 
+import { calculateSummary, primaryButtonIndex } from '@/commands/dom/formSummary.js';
 import { resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -18,8 +19,6 @@ import type {
   DiscoveredForm,
   FormField,
   FormButton,
-  FormSummary,
-  FormBlocker,
   FieldValidation,
   RawForm,
   RawField,
@@ -223,6 +222,7 @@ function transformField(raw: RawField): FormField {
     name: raw.name,
     placeholder: raw.placeholder,
     required: raw.required,
+    groupLabel: raw.groupLabel,
     disabled: raw.disabled,
     readOnly: raw.readOnly,
     hidden: raw.hidden,
@@ -242,82 +242,19 @@ function transformField(raw: RawField): FormField {
  * Transform raw button to structured FormButton.
  *
  * @param raw - Raw button data
+ * @param primaryIndex - Index of the form's primary button, if any
  * @returns Structured FormButton
  */
-function transformButton(raw: RawButton): FormButton {
+function transformButton(raw: RawButton, primaryIndex: number | undefined): FormButton {
   return {
     index: raw.index,
     selector: raw.selector,
     label: raw.label,
     type: raw.type as 'submit' | 'reset' | 'button',
-    primary: raw.isPrimary,
+    primary: raw.index === primaryIndex,
     enabled: !raw.disabled,
     disabledReason: raw.disabled ? 'Button is disabled' : undefined,
     command: `bdg dom click ${raw.index}`,
-  };
-}
-
-/**
- * Calculate form summary statistics.
- *
- * @param fields - Transformed form fields
- * @param buttons - Transformed form buttons
- * @returns Form summary
- */
-function calculateSummary(fields: FormField[], buttons: FormButton[]): FormSummary {
-  const visibleFields = fields.filter((f) => !f.hidden);
-  const editableFields = visibleFields.filter((f) => !f.disabled && !f.readOnly);
-  const requiredFields = editableFields.filter((f) => f.required);
-  const filledFields = editableFields.filter((f) => f.state === 'filled' || f.state === 'checked');
-  const validFields = editableFields.filter((f) => f.validation.valid);
-  const invalidFields = editableFields.filter((f) => !f.validation.valid);
-  const emptyRequired = requiredFields.filter(
-    (f) => f.state === 'empty' || f.state === 'unchecked'
-  );
-
-  const blockers: FormBlocker[] = [];
-
-  for (const field of emptyRequired) {
-    blockers.push({
-      index: field.index,
-      label: field.label,
-      reason: 'Required field is empty',
-      command: field.command,
-    });
-  }
-
-  for (const field of invalidFields) {
-    if (!emptyRequired.includes(field)) {
-      blockers.push({
-        index: field.index,
-        label: field.label,
-        reason: field.validation.message ?? 'Validation failed',
-        command: field.command,
-      });
-    }
-  }
-
-  const submitButton = buttons.find((b) => b.type === 'submit' && b.primary);
-  if (submitButton && !submitButton.enabled) {
-    blockers.push({
-      index: submitButton.index,
-      label: submitButton.label,
-      reason: submitButton.disabledReason ?? 'Submit button is disabled',
-      command: submitButton.command,
-    });
-  }
-
-  return {
-    totalFields: editableFields.length,
-    filledFields: filledFields.length,
-    emptyFields: editableFields.length - filledFields.length,
-    validFields: validFields.length,
-    invalidFields: invalidFields.length,
-    requiredTotal: requiredFields.length,
-    requiredFilled: requiredFields.length - emptyRequired.length,
-    requiredRemaining: emptyRequired.length,
-    readyToSubmit: blockers.length === 0,
-    blockers,
   };
 }
 
@@ -329,7 +266,8 @@ function calculateSummary(fields: FormField[], buttons: FormButton[]): FormSumma
  */
 function transformForm(raw: RawForm): DiscoveredForm {
   const fields = raw.fields.map(transformField);
-  const buttons = raw.buttons.map(transformButton);
+  const primaryIndex = primaryButtonIndex(raw.buttons);
+  const buttons = raw.buttons.map((button) => transformButton(button, primaryIndex));
 
   return {
     index: raw.index,

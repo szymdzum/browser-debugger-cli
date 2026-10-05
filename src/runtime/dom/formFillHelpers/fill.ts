@@ -24,6 +24,7 @@ import {
   formatScriptExecutionError,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
+  withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   REACT_FILL_SCRIPT,
@@ -66,6 +67,7 @@ export async function fillElement(
     const response = await cdp.send('Runtime.evaluate', {
       expression,
       returnByValue: true,
+      awaitPromise: true,
       userGesture: true,
     });
 
@@ -92,7 +94,7 @@ export async function fillElement(
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
       const result = cdpResponse.result.value;
-      if (!result.fileInput) return result;
+      if (!result.fileInput) return withValueMismatchWarning(result);
       const uploaded = await setFileInput(cdp, selector, value, options);
       return uploaded.success && result.elementType
         ? { ...uploaded, elementType: result.elementType }
