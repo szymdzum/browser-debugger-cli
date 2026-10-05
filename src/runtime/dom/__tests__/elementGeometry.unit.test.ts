@@ -41,6 +41,7 @@ function at(
     clip,
     clipper: null,
     hidden: null,
+    invisible: null,
     inert: false,
     fixed: false,
     pageScroll,

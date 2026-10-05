@@ -44,6 +44,8 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
   buildRequest: (target: { selector: string; index?: number; backendNodeId?: number }) => Req;
   /** Invoke the IPC client function. */
   call: (req: Req) => Promise<IpcResponse<Res>>;
+  /** `bdg dom` subcommand being run, e.g. "fill" (for suggestions). */
+  command: string;
   /** Operation label used in fallback error messages (e.g. "fill element"). */
   action: string;
   /** Fallback suggestion when the result reports failure without one. */
@@ -57,9 +59,10 @@ export interface ElementCommandOptions<Req, Res extends ResultPayload> {
 export async function runElementCommand<Req, Res extends ResultPayload>(
   options: ElementCommandOptions<Req, Res>
 ): Promise<CommandResult<Omit<Res, 'success'>>> {
-  const { selectorOrIndex, index, buildRequest, call, action, failureSuggestion } = options;
+  const { selectorOrIndex, index, command, buildRequest, call, action, failureSuggestion } =
+    options;
 
-  const target = await DomElementResolver.getInstance().resolve(selectorOrIndex, index);
+  const target = await DomElementResolver.getInstance().resolve(selectorOrIndex, index, command);
 
   if (!target.success) {
     return {

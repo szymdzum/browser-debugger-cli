@@ -285,7 +285,9 @@ function viewportHint(
 /**
  * The page-side array of a selector query, or the error explaining why there
  * is none: a selector the browser rejects (a `SyntaxError` DOMException) is the
- * user's (81); anything else (no session, a page navigating away) is not.
+ * user's (81; the browser's message is left out for selectors with filters,
+ * as it quotes the CSS bdg rewrote them to); anything else (no session, a
+ * page navigating away) is not.
  *
  * @param selector - CSS selector
  * @param evaluated - `Runtime.evaluate` response
@@ -300,7 +302,7 @@ function selectionObjectId(
     {}) as Partial<Protocol.Runtime.EvaluateResponse>;
   const description = exceptionDetails?.exception?.description;
   if (description?.startsWith('SyntaxError')) {
-    const detail = description.split('\n')[0];
+    const detail = parseSelectorFilters(selector) ? undefined : description.split('\n')[0];
     const err = invalidSelectorError(selector, detail);
     throw new CommandError(
       err.message,

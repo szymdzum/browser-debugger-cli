@@ -43,7 +43,7 @@ void describe('DomElementResolver without a session', () => {
       cacheReturning({ valid: false, cache: null, error: 'No cached query results found' })
     );
 
-    const result = await resolver.resolve('0');
+    const result = await resolver.resolve('0', undefined, 'click');
 
     assert.equal(result.success, false);
     assert.equal(!result.success && result.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
@@ -73,6 +73,7 @@ void describe('runElementCommand', () => {
           error: 'The element is no longer in the page',
           exitCode: EXIT_CODES.STALE_CACHE,
         }),
+      command: 'click',
       action: 'click element',
       failureSuggestion: '',
     });
@@ -85,9 +86,10 @@ void describe('runElementCommand', () => {
 void describe('DomElementResolver with --index', () => {
   void it('refuses --index together with a numeric index (81)', async () => {
     const resolver = new DomElementResolver(cacheReturning({ valid: false, cache: null }));
-    const result = await resolver.resolve('1', 3);
+    const result = await resolver.resolve('1', 3, 'layout');
     assert.equal(result.success, false);
     assert.equal(!result.success && result.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
     assert.match(!result.success ? result.error : '', /already an index/);
+    assert.match(!result.success ? (result.suggestion ?? '') : '', /bdg dom layout 1,/);
   });
 });

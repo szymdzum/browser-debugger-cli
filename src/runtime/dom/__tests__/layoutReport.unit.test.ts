@@ -42,6 +42,7 @@ function element(index: number, y: number, coveredBy: string | null = null): Raw
       clip: null,
       clipper: null,
       hidden: null,
+      invisible: null,
       inert: false,
       fixed: false,
       pageScroll: { left: 0, up: 300, right: 0, down: 2200 },

@@ -11,10 +11,10 @@
  * ```typescript
  * const resolver = DomElementResolver.getInstance();
  *
- * const target = await resolver.resolve('0');
+ * const target = await resolver.resolve('0', undefined, 'click');
  * // { success: true, selector: '.cached-selector', backendNodeId: 42 }
  *
- * const target = await resolver.resolve('button.submit');
+ * const target = await resolver.resolve('button.submit', undefined, 'click');
  * // { success: true, selector: 'button.submit' }
  * ```
  */
@@ -104,14 +104,19 @@ export class DomElementResolver {
    *
    * @param selectorOrIndex - CSS selector or numeric index from query results
    * @param explicitIndex - Optional explicit --index flag value (0-based, selectors only)
+   * @param command - `bdg dom` subcommand being run, e.g. "click" (for suggestions)
    * @returns Resolution result
    */
-  async resolve(selectorOrIndex: string, explicitIndex?: number): Promise<ElementTargetResult> {
+  async resolve(
+    selectorOrIndex: string,
+    explicitIndex: number | undefined,
+    command: string
+  ): Promise<ElementTargetResult> {
     if (!this.isNumericIndex(selectorOrIndex)) {
       return { success: true, selector: selectorOrIndex, index: explicitIndex };
     }
     if (explicitIndex !== undefined) {
-      const err = indexWithIndexOptionError(selectorOrIndex);
+      const err = indexWithIndexOptionError(selectorOrIndex, command);
       return {
         success: false,
         error: err.message,

@@ -95,6 +95,7 @@ export function registerFormInteractionCommands(program: Command): void {
               wait: options.wait !== false,
             }),
             call: domFill,
+            command: 'fill',
             action: 'fill element',
             failureSuggestion:
               'Verify the selector matches a fillable element (input, textarea, select)',
@@ -158,6 +159,7 @@ export function registerFormInteractionCommands(program: Command): void {
               timeout: options.timeout,
             }),
             call: domSubmit,
+            command: 'submit',
             action: 'submit form',
             failureSuggestion: 'Verify the selector matches a form or submit button',
           }),
@@ -194,6 +196,7 @@ export function registerFormInteractionCommands(program: Command): void {
               wait: options.wait !== false,
             }),
             call: domPressKey,
+            command: 'pressKey',
             action: 'press key',
             failureSuggestion: 'Verify the selector matches a focusable element',
           }),
@@ -233,7 +236,7 @@ export function registerFormInteractionCommands(program: Command): void {
           }
 
           const target = selector
-            ? await DomElementResolver.getInstance().resolve(selector, options.index)
+            ? await DomElementResolver.getInstance().resolve(selector, options.index, 'scroll')
             : undefined;
           if (target && !target.success) {
             return {
@@ -340,6 +343,7 @@ async function runPointerCommand(
               ...(action !== 'click' && { action }),
             }),
             call: domClick,
+            command: action === 'hover' ? 'hover' : 'click',
             action: action === 'hover' ? 'hover element' : 'click element',
             failureSuggestion: 'Verify the selector matches a clickable element',
           }),

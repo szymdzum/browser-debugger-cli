@@ -19,8 +19,10 @@ type LayoutOutput = Omit<LayoutResult, 'success'>;
 
 /**
  * One element as a compact line: index, description, text, page position
- * and size, where it is relative to the viewport, what covers it, an inert
- * or fully transparent element and the iframe or shadow root it is in.
+ * and size (not for hidden elements, which have no meaningful box), where it
+ * is relative to the viewport, what covers it, an inert or invisible element
+ * and the iframe or shadow root it is in (unless the position already names
+ * it as the clipping iframe).
  *
  * @param element - Element layout
  * @returns e.g. `[0] button#save "Save"  420,1180 120×40  below fold (scroll down 500px)`
@@ -29,12 +31,12 @@ export function layoutLine(element: ElementLayout): string {
   const { bounds } = element;
   return [
     `[${element.index}] ${element.element}${element.text ? ` "${element.text}"` : ''}`,
-    `${bounds.x},${bounds.y} ${bounds.width}×${bounds.height}`,
+    element.inViewport !== 'hidden' && `${bounds.x},${bounds.y} ${bounds.width}×${bounds.height}`,
     layoutPositionLabel(element),
     element.coveredBy && `covered by ${element.coveredBy}`,
     element.inert && 'inert',
-    element.computed.opacity === '0' && 'opacity: 0',
-    element.context && `in ${element.context}`,
+    element.invisible,
+    element.context && element.context !== element.clippedBy && `in ${element.context}`,
   ]
     .filter(Boolean)
     .join('  ');
@@ -54,6 +56,6 @@ export function formatLayout(data: LayoutOutput): string {
     .text(pageLayoutLine(data.page))
     .text(layoutHeadline(data.count, data.elements.length + (data.omitted ?? 0), data.selector))
     .list(shown.map(layoutLine))
-    .list(more > 0 ? [moreMatchesNote(more)] : [])
+    .list(more > 0 ? [moreMatchesNote(more, data.omitted ? data.elements.length : undefined)] : [])
     .build();
 }

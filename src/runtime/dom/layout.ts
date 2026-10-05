@@ -44,12 +44,24 @@ const log = createLogger('dom');
 export const LAYOUT_ELEMENT_LIMIT = 100;
 
 /**
+ * Strip (CSS px) along the right and bottom edges of the viewport and of
+ * clipping containers that hit-testing avoids when the element shows outside
+ * it: overlay scrollbars (macOS, mobile) appear there for about a second after
+ * a scroll and catch hit tests, which then return the scroller.
+ */
+const OVERLAY_SCROLLBAR_SIZE = 16;
+
+/**
  * Page function: layout of the matches in `found` (all up to `limit`, or the
  * one at `index`) and of the top-level page. An element covers another when
  * it is the topmost element at the center of the largest visible part of the
- * other's boxes (a wrapped link has one per line) and neither contains the
- * other; hit-testing goes up through the iframes, so an overlay over an
- * iframe covers the elements in it. Elements hit-testing skips
+ * other's boxes (a wrapped link has one per line, the strip where overlay
+ * scrollbars show is avoided when possible) and does not lie inside it. An
+ * ancestor covers it only when the ancestor is painted above it there (its
+ * `::before`/`::after` overlay, or its background over a negative
+ * `z-index`), as `dom click` finds: the element is in the hit-test stack below
+ * the ancestor. Hit-testing goes up through the iframes, so an overlay over
+ * an iframe covers the elements in it. Elements hit-testing skips
  * (`pointer-events: none`, also through an iframe) get no cover.
  */
 const LAYOUT_JS = `function (found, index, limit) {
@@ -77,9 +89,14 @@ const LAYOUT_JS = `function (found, index, limit) {
   };
   const coverAt = (node, x, y) => {
     const root = node.getRootNode();
-    const hit = (typeof root.elementFromPoint === 'function' ? root : node.ownerDocument).elementFromPoint(x, y);
-    return hit && !encloses(node, hit) && !encloses(hit, node) ? hit : null;
+    const scope = typeof root.elementFromPoint === 'function' ? root : node.ownerDocument;
+    const hit = scope.elementFromPoint(x, y);
+    if (!hit || encloses(node, hit)) return null;
+    if (!encloses(hit, node)) return hit;
+    return scope.elementsFromPoint(x, y).indexOf(node) > 0 ? hit : null;
   };
+  const clearOfScrollbar = (start, end, edge) =>
+    end > edge - ${OVERLAY_SCROLLBAR_SIZE} && edge - ${OVERLAY_SCROLLBAR_SIZE} > start ? edge - ${OVERLAY_SCROLLBAR_SIZE} : end;
   const visibleCenter = (el, g) => {
     const bounds = [{ x: 0, y: 0, width: page.viewport.width, height: page.viewport.height }].concat(g.clip ? [g.clip] : []);
     let best = null;
@@ -90,7 +107,10 @@ const LAYOUT_JS = `function (found, index, limit) {
       const right = Math.min(...boxes.map((b) => b.x + b.width));
       const bottom = Math.min(...boxes.map((b) => b.y + b.height));
       const area = (right - left) * (bottom - top);
-      if (right > left && bottom > top && (!best || area > best.area)) best = { area: area, x: (left + right) / 2, y: (top + bottom) / 2 };
+      if (!(right > left && bottom > top) || (best && area <= best.area)) continue;
+      const clearRight = clearOfScrollbar(left, right, Math.min(...bounds.map((b) => b.x + b.width)));
+      const clearBottom = clearOfScrollbar(top, bottom, Math.min(...bounds.map((b) => b.y + b.height)));
+      best = { area: area, x: (left + clearRight) / 2, y: (top + clearBottom) / 2 };
     }
     return best;
   };
@@ -295,6 +315,7 @@ function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
     viewport: { x: Math.round(rect.x), y: Math.round(rect.y) },
     ...placement,
     ...(inView && raw.coveredBy && { coveredBy: raw.coveredBy }),
+    ...(raw.geometry.invisible && { invisible: raw.geometry.invisible }),
     ...(raw.geometry.inert && { inert: true }),
     computed: raw.computed,
   };

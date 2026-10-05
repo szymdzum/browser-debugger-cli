@@ -312,6 +312,12 @@ export interface ElementLayout {
   offScreenReason?: string;
   /** Topmost element at the center of its visible part, when that is another element */
   coveredBy?: string;
+  /**
+   * Why it cannot be seen although it is rendered: `opacity: 0` on it or an
+   * ancestor, or a `clip-path`/`clip` that cuts it away entirely, e.g.
+   * `opacity: 0 on div#menu` (`inViewport` still says where it is)
+   */
+  invisible?: string;
   /** Inside an `inert` element: shown, but a user cannot interact with it */
   inert?: true;
   computed: LayoutComputedStyle;

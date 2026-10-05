@@ -59,10 +59,14 @@ export const CLICK_NOT_RECEIVED_WARNING =
  * Note under a shortened list of matches.
  *
  * @param hidden - Matches not listed
- * @returns e.g. "... and 1174 more (use --json for all)"
+ * @param jsonLimit - How many JSON output lists, when it leaves some out too
+ * @returns e.g. "... and 1174 more (use --json for all)",
+ *   "... and 8980 more (--json lists the first 100)"
  */
-export function moreMatchesNote(hidden: number): string {
-  return `... and ${hidden} more (use --json for all)`;
+export function moreMatchesNote(hidden: number, jsonLimit?: number): string {
+  const where =
+    jsonLimit === undefined ? 'use --json for all' : `--json lists the first ${jsonLimit}`;
+  return `... and ${hidden} more (${where})`;
 }
 
 /**

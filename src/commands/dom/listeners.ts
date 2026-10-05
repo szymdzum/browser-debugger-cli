@@ -69,6 +69,7 @@ async function listElementListeners(
       ...(options.all && { all: true }),
     }),
     call: domListeners,
+    command: 'listeners',
     action: 'list event listeners',
     failureSuggestion: 'Verify the selector matches an element: bdg dom query "<selector>"',
   });

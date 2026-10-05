@@ -52,6 +52,7 @@ async function measureLayout(
     index: options.index,
     buildRequest: (target) => target,
     call: domLayout,
+    command: 'layout',
     action: 'measure the layout',
     failureSuggestion: 'Verify the selector matches an element: bdg dom query "<selector>"',
   });

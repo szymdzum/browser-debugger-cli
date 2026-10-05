@@ -227,6 +227,7 @@ interface LayoutData {
     clippedBy?: string;
     offScreenReason?: string;
     coveredBy?: string;
+    invisible?: string;
   }>;
 }
 
@@ -347,6 +348,59 @@ void describe('Element layout', () => {
         "document.documentElement.style.cssText = ''; document.body.style.cssText = ''; 1"
       );
     }
+  });
+
+  void it('clips a scroll list inside CSS zoom where it shows', async () => {
+    const data = await layout('.zoomed');
+    assert.deepEqual(
+      data.elements.map((element) => [element.inViewport, element.clippedBy]),
+      [
+        ['visible', undefined],
+        ['visible', undefined],
+        ['partly', 'div#zoom-box'],
+        ['below', 'div#zoom-box'],
+      ],
+      JSON.stringify(data.elements)
+    );
+  });
+
+  void it('reports an ancestor ::after overlay as cover, like dom click', async () => {
+    const [inCard] = (await layout('#in-card')).elements;
+    assert.equal(inCard?.coveredBy, 'div.card');
+    assert.match(
+      await bdg(['dom', 'click', '#in-card']),
+      /covered by another element \(div\.card\)/
+    );
+  });
+
+  void it('reports a collapsed accordion as hiding, and an opacity: 0 parent', async () => {
+    const [inAccordion, inFaded] = (await layout('#in-accordion, #in-faded')).elements;
+    assert.equal(inAccordion?.inViewport, 'hidden');
+    assert.equal(inAccordion?.hiddenReason, 'clipped by div#accordion: zero height');
+    assert.equal(inFaded?.inViewport, 'visible');
+    assert.equal(inFaded?.invisible, 'opacity: 0 on div#faded');
+    const human = await bdg(['dom', 'layout', '#in-accordion']);
+    assert.match(
+      human,
+      /^ {2}\[0\] a#in-accordion "Answer link" {2}hidden \(clipped by div#accordion: zero height\)$/m
+    );
+  });
+
+  void it('matches :has-text against the text of visibility: hidden elements', async () => {
+    const ghost = JSON.parse(
+      await bdg(['dom', 'query', 'span:has-text("ghost text")', '--json'])
+    ) as { data: { nodes: Array<{ id?: string }> } };
+    assert.deepEqual(
+      ghost.data.nodes.map((node) => node.id),
+      ['ghost']
+    );
+  });
+
+  void it('suggests the command that was run when an index gets --index', async () => {
+    assert.match(
+      await bdg(['dom', 'layout', '0', '--index', '1'], 81),
+      /bdg dom layout 0, or bdg dom layout "<selector>" --index <n>/
+    );
   });
 
   void it('exits 81 for an empty selector', async () => {
