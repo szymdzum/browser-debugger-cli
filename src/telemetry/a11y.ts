@@ -4,6 +4,7 @@ import { unknownQueryFieldError } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { levenshteinDistance } from '@/utils/levenshtein.js';
 
 /**
  * Builds accessibility tree from raw CDP nodes.
@@ -351,50 +352,116 @@ const QUERY_FIELDS: Record<string, keyof A11yQueryPattern> = {
   desc: 'description',
 };
 
+/** The next `key:`/`key=` anywhere (fields may follow other text). */
+const QUERY_KEY = /([a-z]+)\s*[:=]/i;
+
+/** A quoted value (it may contain anything but its own quote). */
+const QUOTED_QUERY_VALUE = /^\s*("[^"]*"|'[^']*')/;
+
+/** Where a role value ends: at the next `key:` after a space or comma. */
+const NEXT_QUERY_FIELD = /[\s,]+[a-z]+\s*[:=]/i;
+
 /**
- * One `key:value` (or `key=value`) field: the value is quoted, or runs until
- * the next `key:`/`key=` after a space or comma.
+ * Where a name or description ends: only at a known field that has a value,
+ * so names keep their spaces and colons (`name=E-mail address:`).
  */
-const QUERY_FIELD = /([a-z]+)\s*[:=](?:\s*("[^"]*"|'[^']*')|((?:(?![\s,]+[a-z]+\s*[:=]).)*))/gis;
+const NEXT_KNOWN_QUERY_FIELD = /[\s,]+(?:role|name|description|desc)\s*[:=](?=\s*[^\s,])/i;
+
+/**
+ * Read one field value.
+ *
+ * @param text - Text after `key:`
+ * @param field - Field the value is for
+ * @returns The value, where it ends in `text`, and whether it was quoted
+ */
+function readQueryValue(
+  text: string,
+  field: keyof A11yQueryPattern
+): { value: string; end: number; quoted: boolean } {
+  const quoted = QUOTED_QUERY_VALUE.exec(text);
+  if (quoted?.[1]) return { value: quoted[1].slice(1, -1), end: quoted[0].length, quoted: true };
+  const next = (field === 'role' ? NEXT_QUERY_FIELD : NEXT_KNOWN_QUERY_FIELD).exec(text);
+  const end = next ? next.index : text.length;
+  const value = text
+    .slice(0, end)
+    .trim()
+    .replace(/,+$/, '')
+    .replace(/^(["'])(.*)\1$/s, '$2');
+  return { value, end, quoted: false };
+}
 
 /**
  * Parses query pattern string into A11yQueryPattern object.
  *
  * Fields are `key:value` or `key=value`, separated by spaces or commas.
- * Values may contain spaces (quote them if they contain `key:`-like text).
- * Keys: role, name, description (desc). Case-insensitive.
+ * Keys: role, name, description (desc). Case-insensitive. A role ends at the
+ * next `key:`; a name or description runs to the next role/name/description
+ * field with a value, or to the end, so it may contain spaces and colons
+ * (`name=E-mail address:`). Quote a value to end it explicitly.
  *
  * @param patternString - Query pattern string
  * @returns Parsed query pattern
- * @throws CommandError (81) for unknown keys
+ * @throws CommandError (81) for unknown keys, also a misspelled one inside a name
  *
  * @example
  * ```typescript
  * parseQueryPattern('role:button name:Submit')     // { role: 'button', name: 'Submit' }
  * parseQueryPattern('role=link,name=Google Chrome') // { role: 'link', name: 'Google Chrome' }
  * parseQueryPattern('name:"Sign in" role:button')  // { name: 'Sign in', role: 'button' }
+ * parseQueryPattern('name=E-mail address:')        // { name: 'E-mail address:' }
  * ```
  */
 export function parseQueryPattern(patternString: string): A11yQueryPattern {
   const pattern: A11yQueryPattern = {};
-  for (const [, rawKey = '', quoted, plain = ''] of patternString.matchAll(QUERY_FIELD)) {
-    const rawValue = quoted ?? plain;
+  let rest = patternString;
+  for (let key = QUERY_KEY.exec(rest); key; key = QUERY_KEY.exec(rest)) {
+    const rawKey = key[1] ?? '';
     const field = QUERY_FIELDS[rawKey.toLowerCase()];
-    if (!field) {
-      const err = unknownQueryFieldError(rawKey);
-      throw new CommandError(
-        err.message,
-        { suggestion: err.suggestion },
-        EXIT_CODES.INVALID_ARGUMENTS
-      );
-    }
-    const value = rawValue
-      .trim()
-      .replace(/,+$/, '')
-      .replace(/^(["'])(.*)\1$/s, '$2');
+    if (!field) throwUnknownField(rawKey);
+    const valueText = rest.slice(key.index + key[0].length);
+    const { value, end, quoted } = readQueryValue(valueText, field);
+    if (!quoted && field !== 'role') checkMisspelledField(value, field);
     if (value) pattern[field] = value;
+    rest = valueText.slice(end);
   }
   return pattern;
+}
+
+/**
+ * Throw the exit-81 error for an unknown query field.
+ *
+ * @param field - The unrecognized key
+ * @param similar - A known field it looks like a typo of
+ * @param value - The name or description that absorbed it
+ * @throws CommandError (81)
+ */
+function throwUnknownField(field: string, similar?: string, value?: string): never {
+  const err = unknownQueryFieldError(field, similar, value);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/** A `word:`/`word=` inside a name or description. */
+const ABSORBED_KEY = /[\s,]([a-z]+)\s*[:=]/gi;
+
+/**
+ * Reject a name or description that swallowed a misspelled field
+ * (`name:Save rol:button`): a `word:` within edit distance 1 of role, name or
+ * desc (2 of description). Wider distances would catch common label words
+ * (`Date:`, `Note:`, `Code:`).
+ *
+ * @param value - Unquoted name or description
+ * @param field - Field it is the value of
+ * @throws CommandError (81) with a "did you mean" suggestion
+ */
+function checkMisspelledField(value: string, field: keyof A11yQueryPattern): void {
+  for (const [, word = ''] of value.matchAll(ABSORBED_KEY)) {
+    const lower = word.toLowerCase();
+    if (QUERY_FIELDS[lower]) continue;
+    const similar = Object.keys(QUERY_FIELDS).find(
+      (name) => levenshteinDistance(lower, name) <= (name.length > 4 ? 2 : 1)
+    );
+    if (similar) throwUnknownField(word, similar, `${field}=${value}`);
+  }
 }
 
 /**

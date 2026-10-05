@@ -34,7 +34,7 @@ import {
   type FillResult,
   type ClickResult,
 } from '@/runtime/dom/reactEventHelpers.js';
-import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   CLICK_NOT_RECEIVED_WARNING,
@@ -92,7 +92,11 @@ export async function fillElement(
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
       const result = cdpResponse.result.value;
-      return result.fileInput ? await setFileInput(cdp, selector, value, options) : result;
+      if (!result.fileInput) return result;
+      const uploaded = await setFileInput(cdp, selector, value, options);
+      return uploaded.success && result.elementType
+        ? { ...uploaded, elementType: result.elementType }
+        : uploaded;
     }
 
     const err = unexpectedResponseFormatError('FillResult');
@@ -186,7 +190,7 @@ async function setFileInput(
   if (problem) return problem;
   try {
     const located = (await cdp.send('Runtime.evaluate', {
-      expression: `(${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}]`,
+      expression: `((el) => (${LABEL_CONTROL_JS})(el) || el)((${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}])`,
       objectGroup: UPLOAD_OBJECT_GROUP,
     })) as { result?: { objectId?: string }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
     if (located.exceptionDetails) throwIfInvalidSelector(located.exceptionDetails, selector);

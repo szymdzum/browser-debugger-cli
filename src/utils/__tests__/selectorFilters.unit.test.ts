@@ -10,7 +10,11 @@ import { CommandError } from '@/errors/index.js';
 import { invalidSelectorError } from '@/errors/messages.js';
 import { selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { parseSelectorFilters, splitSelectorList } from '@/utils/selectorFilters.js';
+import {
+  parseSelectorFilters,
+  splitSelectorList,
+  withoutVisibleFilters,
+} from '@/utils/selectorFilters.js';
 
 /**
  * Assert that parsing fails with exit 81 and a message matching `pattern`.
@@ -141,15 +145,195 @@ void describe('parseSelectorFilters', () => {
     assert.deepEqual(texts('a:HAS-TEXT("X"):Visible'), ['x', 'visible']);
   });
 
-  void it('rejects filters that are not at the end', () => {
-    assertRejected('div:has-text("x") > button', /:has-text\("x"\) must come last/);
-    assertRejected('li:visible a', /:visible must come last/);
-    assertRejected('a:visible.active', /:visible must come last/);
-    assertRejected('a:visible[href]', /:visible must come last/);
-    assertRejected(':not(:visible)', /:visible must come last/);
-    assertRejected('div:has(:text-is("x"))', /:text-is\("x"\) must come last/);
-    assertRejected('a, div:has-text("x") p', /:has-text\("x"\) must come last/);
-    assertRejected('li:visible :has-text("x")', /:visible must come last/);
+  void it('takes filters out of the middle of a compound', () => {
+    assert.deepEqual(parseSelectorFilters('a:visible.active'), [
+      { css: 'a.active', filters: [{ kind: 'visible' }] },
+    ]);
+    assert.deepEqual(parseSelectorFilters('a:has-text("x")[href]'), [
+      { css: 'a[href]', filters: [{ kind: 'has-text', text: 'x' }] },
+    ]);
+  });
+
+  void it('scopes the rest of the selector under a filtered compound (descendant)', () => {
+    assert.deepEqual(parseSelectorFilters('li:has-text("Write report") .toggle'), [
+      {
+        css: 'li',
+        filters: [{ kind: 'has-text', text: 'write report' }],
+        steps: [{ combinator: ' ', css: '.toggle', filters: [] }],
+      },
+    ]);
+    assert.deepEqual(parseSelectorFilters('#form label:has-text("Customer name") input'), [
+      {
+        css: '#form label',
+        filters: [{ kind: 'has-text', text: 'customer name' }],
+        steps: [{ combinator: ' ', css: 'input', filters: [] }],
+      },
+    ]);
+  });
+
+  void it('scopes under a filtered compound with a child combinator', () => {
+    assert.deepEqual(parseSelectorFilters('tr:text-is("Ada") > td button'), [
+      {
+        css: 'tr',
+        filters: [{ kind: 'text-is', text: 'Ada' }],
+        steps: [{ combinator: '>', css: 'td button', filters: [] }],
+      },
+    ]);
+    assert.deepEqual(parseSelectorFilters('ul>li:visible>a'), [
+      {
+        css: 'ul > li',
+        filters: [{ kind: 'visible' }],
+        steps: [{ combinator: '>', css: 'a', filters: [] }],
+      },
+    ]);
+  });
+
+  void it('chains several filtered compounds into steps', () => {
+    assert.deepEqual(
+      parseSelectorFilters('section:has-text("A") li:has-text("B") > .toggle:visible'),
+      [
+        {
+          css: 'section',
+          filters: [{ kind: 'has-text', text: 'a' }],
+          steps: [
+            { combinator: ' ', css: 'li', filters: [{ kind: 'has-text', text: 'b' }] },
+            { combinator: '>', css: '.toggle', filters: [{ kind: 'visible' }] },
+          ],
+        },
+      ]
+    );
+    assert.deepEqual(parseSelectorFilters('li:visible :has-text("x")'), [
+      {
+        css: 'li',
+        filters: [{ kind: 'visible' }],
+        steps: [{ combinator: ' ', css: '*', filters: [{ kind: 'has-text', text: 'x' }] }],
+      },
+    ]);
+  });
+
+  void it('keeps sibling combinators before a filtered compound in its CSS', () => {
+    assert.deepEqual(parseSelectorFilters('h2 + p:has-text("x") a'), [
+      {
+        css: 'h2 + p',
+        filters: [{ kind: 'has-text', text: 'x' }],
+        steps: [{ combinator: ' ', css: 'a', filters: [] }],
+      },
+    ]);
+    assert.deepEqual(parseSelectorFilters('a ~ b:visible'), [
+      { css: 'a ~ b', filters: [{ kind: 'visible' }] },
+    ]);
+  });
+
+  void it('scopes each selector of a list separately', () => {
+    assert.deepEqual(parseSelectorFilters('li:has-text("x") a, button:visible'), [
+      {
+        css: 'li',
+        filters: [{ kind: 'has-text', text: 'x' }],
+        steps: [{ combinator: ' ', css: 'a', filters: [] }],
+      },
+      { css: 'button', filters: [{ kind: 'visible' }] },
+    ]);
+  });
+
+  void it('reads filters inside :has() as a test of what an element contains', () => {
+    assert.deepEqual(parseSelectorFilters('li:has(label:text-is("Write report")) .toggle'), [
+      {
+        css: 'li',
+        filters: [
+          {
+            kind: 'has',
+            selectors: [
+              [
+                {
+                  combinator: ' ',
+                  css: 'label',
+                  filters: [{ kind: 'text-is', text: 'Write report' }],
+                },
+              ],
+            ],
+          },
+        ],
+        steps: [{ combinator: ' ', css: '.toggle', filters: [] }],
+      },
+    ]);
+    assert.deepEqual(parseSelectorFilters('li.todo:has(> label:visible, b span:has-text(x))'), [
+      {
+        css: 'li.todo',
+        filters: [
+          {
+            kind: 'has',
+            selectors: [
+              [{ combinator: '>', css: 'label', filters: [{ kind: 'visible' }] }],
+              [{ combinator: ' ', css: 'b span', filters: [{ kind: 'has-text', text: 'x' }] }],
+            ],
+          },
+        ],
+      },
+    ]);
+    assert.deepEqual(parseSelectorFilters('div:has(:text-is("x"))'), [
+      {
+        css: 'div',
+        filters: [
+          {
+            kind: 'has',
+            selectors: [[{ combinator: ' ', css: '*', filters: [{ kind: 'text-is', text: 'x' }] }]],
+          },
+        ],
+      },
+    ]);
+  });
+
+  void it('keeps a :has() without filters as CSS, next to other filters', () => {
+    assert.deepEqual(parseSelectorFilters('li:has(> input:checked):has-text("x")'), [
+      { css: 'li:has(> input:checked)', filters: [{ kind: 'has-text', text: 'x' }] },
+    ]);
+    assert.deepEqual(parseSelectorFilters('div:has([title=":visible"]) a:visible'), [
+      { css: 'div:has([title=":visible"]) a', filters: [{ kind: 'visible' }] },
+    ]);
+  });
+
+  void it('rejects sibling combinators after a filtered compound', () => {
+    assertRejected('li:visible + li', /descendant \(space\) or child \(>\) combinator .* not "\+"/);
+    assertRejected('h2:has-text("x") ~ p', /not "~"/);
+  });
+
+  void it('rejects a sibling combinator or :scope leading a :has() with filters', () => {
+    assertRejected(
+      'li:has(+ a:visible)',
+      /:has\(\) with text or visibility filters can only look inside an element.*\("\+"\)/
+    );
+    assertRejected('li:has(~ a:has-text("x"))', /not at its siblings \("~"\)/);
+    assertRejected(
+      'li:has(:scope > a:visible)',
+      /write :has\(> a:visible\) instead of :has\(:scope > a:visible\)/
+    );
+  });
+
+  void it('rejects filters inside pseudo-classes other than :has()', () => {
+    assertRejected(
+      ':not(:visible)',
+      /:visible can only be used on an element .* or inside :has\(\)/
+    );
+    assertRejected('a:is(.x:has-text("y"))', /:has-text\("y"\) can only be used/);
+    assertRejected('li:has(a:not(:visible))', /:visible can only be used/);
+  });
+
+  void it('rejects an empty selector in a list or a dangling combinator without leaking rewritten CSS', () => {
+    assertRejected(
+      'button:has-text("x"), a, ',
+      /Invalid CSS selector: button:has-text\("x"\), a, +\(a selector in the list is empty\)/
+    );
+    assertRejected('li:visible >', /ends with a combinator/);
+    assertRejected('> li:visible', /starts with the combinator ">"/);
+  });
+
+  void it('rejects :has-text() with empty text, which would match everything', () => {
+    assertRejected('p:has-text()', /:has-text\(\) needs the text to look for/);
+    assertRejected('p:has-text("")', /needs the text to look for/);
+    assertRejected("p:has-text('  ')", /needs the text to look for/);
+    assert.deepEqual(parseSelectorFilters('p:text-is("")'), [
+      { css: 'p', filters: [{ kind: 'text-is', text: '' }] },
+    ]);
   });
 
   void it('rejects text filters without their text', () => {
@@ -161,12 +345,30 @@ void describe('parseSelectorFilters', () => {
   });
 });
 
+void describe('withoutVisibleFilters', () => {
+  void it('drops :visible everywhere (steps and :has()) and keeps the other filters', () => {
+    const parts = parseSelectorFilters('li:visible:has(a:visible) b:has-text("x"):visible') ?? [];
+    assert.deepEqual(withoutVisibleFilters(parts), [
+      {
+        css: 'li',
+        filters: [{ kind: 'has', selectors: [[{ combinator: ' ', css: 'a', filters: [] }]] }],
+        steps: [{ combinator: ' ', css: 'b', filters: [{ kind: 'has-text', text: 'x' }] }],
+      },
+    ]);
+  });
+
+  void it('returns null when nothing uses :visible', () => {
+    assert.equal(withoutVisibleFilters(parseSelectorFilters('a:has-text("x") b') ?? []), null);
+  });
+});
+
 void describe('invalidSelectorError', () => {
   void it('points Playwright-only syntax to the supported filters and a11y query', () => {
     for (const selector of ['button:text("Save")', 'text=Save', 'div >> button', 'a:near(.b)']) {
       const { suggestion } = invalidSelectorError(selector);
       assert.match(suggestion, /:has-text\("…"\), :text-is\("…"\) and :visible/, selector);
-      assert.match(suggestion, /bdg dom a11y query name=/, selector);
+      assert.match(suggestion, /li:has-text\("Buy milk"\) \.toggle/, selector);
+      assert.match(suggestion, /bdg dom a11y query 'name=…'/, selector);
     }
   });
 

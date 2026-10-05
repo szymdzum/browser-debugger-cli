@@ -7,6 +7,7 @@
  */
 
 export {
+  noMatchesError,
   queryDOMElements,
   getDomContext,
   getDOMElements,

@@ -6,8 +6,13 @@
  * to properly trigger React's event system.
  */
 
+import {
+  LABEL_WITHOUT_CONTROL,
+  NAME_QUERY_PLACEHOLDER,
+  VIA_LABEL_SUFFIX,
+} from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
-import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 
 /**
  * JavaScript function to fill an input element in a React-compatible way.
@@ -16,6 +21,9 @@ import { FIND_ELEMENTS_JS } from '@/runtime/dom/targetNode.js';
  * 1. Uses native property setters to bypass React's value tracking
  * 2. Dispatches input/change events that React listens for
  * 3. Properly handles focus/blur for form validation
+ *
+ * A `<label>` is filled through its control ({@link LABEL_CONTROL_JS}),
+ * reported as e.g. `input (via label)`.
  *
  * @remarks
  * Works with React, Vue, Angular, and vanilla JS applications.
@@ -87,7 +95,21 @@ export const REACT_FILL_SCRIPT = `
   } else {
     el = allMatches[0];
   }
-  
+
+  const labelControl = (${LABEL_CONTROL_JS})(el);
+  if (el.localName === 'label' && !labelControl) {
+    const quote = (text) => "'" + String(text).split("'").join("'\\\\''") + "'";
+    const labelText = (el.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 60);
+    return {
+      success: false,
+      error: ${JSON.stringify(LABEL_WITHOUT_CONTROL.message)},
+      elementType: 'label',
+      suggestion: ${JSON.stringify(LABEL_WITHOUT_CONTROL.suggestion)}.split(${JSON.stringify(NAME_QUERY_PLACEHOLDER)}).join(quote('name=' + labelText))
+    };
+  }
+  const viaLabel = labelControl ? ${JSON.stringify(VIA_LABEL_SUFFIX)} : '';
+  if (labelControl) el = labelControl;
+
   const tagName = el.tagName.toLowerCase();
   const inputType = el.type?.toLowerCase();
   
@@ -102,7 +124,7 @@ export const REACT_FILL_SCRIPT = `
     return {
       success: false,
       error: 'Element is not fillable',
-      elementType: tagName,
+      elementType: tagName + viaLabel,
       suggestion: 'Only input, textarea, select, and contenteditable elements can be filled'
     };
   }
@@ -111,7 +133,7 @@ export const REACT_FILL_SCRIPT = `
     return {
       success: false,
       error: 'Element is disabled',
-      elementType: tagName,
+      elementType: tagName + viaLabel,
       suggestion: 'Enable the field first (it may depend on another input)'
     };
   }
@@ -119,7 +141,7 @@ export const REACT_FILL_SCRIPT = `
     return {
       success: false,
       error: 'Element is read-only',
-      elementType: tagName,
+      elementType: tagName + viaLabel,
       suggestion: 'Read-only fields cannot be filled'
     };
   }
@@ -146,7 +168,7 @@ export const REACT_FILL_SCRIPT = `
         success: false,
         error: 'Option not found: ' + missing,
         exitCode: 81,
-        elementType: tagName,
+        elementType: tagName + viaLabel,
         suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
       };
     }
@@ -164,7 +186,7 @@ export const REACT_FILL_SCRIPT = `
         success: false,
         error: 'Option not found: ' + value,
         exitCode: 81,
-        elementType: tagName,
+        elementType: tagName + viaLabel,
         suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
       };
     }
@@ -181,7 +203,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: 'Expected true or false for a ' + inputType + ', got "' + value + '"',
-        elementType: tagName,
+        elementType: tagName + viaLabel,
         inputType: inputType,
         suggestion: 'Use true/false (also yes/no, on/off, 1/0)'
       };
@@ -191,7 +213,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: 'A radio button cannot be unchecked',
-        elementType: tagName,
+        elementType: tagName + viaLabel,
         inputType: inputType,
         suggestion: 'Select another option in the same group instead'
       };
@@ -203,7 +225,7 @@ export const REACT_FILL_SCRIPT = `
     return {
       success: false,
       fileInput: true,
-      elementType: tagName,
+      elementType: tagName + viaLabel,
       inputType: inputType,
       error: 'File input'
     };
@@ -229,7 +251,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: 'Value is ' + value.length + ' characters; the field accepts at most ' + el.maxLength,
-        elementType: tagName,
+        elementType: tagName + viaLabel,
         inputType: inputType || null,
         suggestion: 'Shorten the value (a user could not type more than maxlength characters)'
       };
@@ -245,7 +267,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: rejection.error,
-        elementType: tagName,
+        elementType: tagName + viaLabel,
         inputType: inputType,
         suggestion: rejection.suggestion
       };
@@ -272,7 +294,7 @@ export const REACT_FILL_SCRIPT = `
         : tagName === 'select' && el.multiple
           ? Array.from(el.selectedOptions).map((o) => o.value).join(', ')
           : el.value,
-    elementType: tagName,
+    elementType: tagName + viaLabel,
     inputType: inputType || null,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
     matchCount: allMatches.length,
@@ -295,6 +317,8 @@ export const REACT_FILL_SCRIPT = `
  * Handles both direct selector matching and indexed selection.
  * When index is provided, selects the nth matching element (0-based).
  * When selector matches multiple elements without index, prioritizes visible ones.
+ * A `<label>` is clicked (and double-clicked) through its control when that
+ * is visible ({@link LABEL_CONTROL_JS}), reported as e.g. `input (via label)`.
  */
 export const CLICK_ELEMENT_SCRIPT = `
 (function(selector, parts, index, action) {
@@ -351,6 +375,14 @@ export const CLICK_ELEMENT_SCRIPT = `
     }
   }
   
+  const labelControl = action === 'click' || action === 'double' ? (${LABEL_CONTROL_JS})(el) : null;
+  const viaLabel = labelControl &&
+    (typeof labelControl.checkVisibility !== 'function' || labelControl.checkVisibility({ visibilityProperty: true, opacityProperty: true })) &&
+    labelControl.getClientRects().length > 0
+    ? ${JSON.stringify(VIA_LABEL_SUFFIX)}
+    : '';
+  if (viaLabel) el = labelControl;
+
   const tagName = el.tagName.toLowerCase();
   if (tagName === 'option') {
     const quote = (text) => "'" + String(text).split("'").join("'\\\\''") + "'";
@@ -360,7 +392,7 @@ export const CLICK_ELEMENT_SCRIPT = `
       success: false,
       error: 'An <option> is chosen through its <select>, not clicked',
       selector: selector,
-      elementType: tagName,
+      elementType: tagName + viaLabel,
       exitCode: 81,
       suggestion: 'bdg dom fill ' + quote(target) + ' ' + quote(el.value || el.text.trim())
     };
@@ -371,7 +403,7 @@ export const CLICK_ELEMENT_SCRIPT = `
       success: false,
       error: 'Element is disabled',
       selector: selector,
-      elementType: tagName,
+      elementType: tagName + viaLabel,
       suggestion: 'A user cannot click a disabled element; enable it first (it may depend on other fields)'
     };
   }
@@ -453,7 +485,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   return {
     success: true,
     selector: selector,
-    elementType: tagName,
+    elementType: tagName + viaLabel,
     matchCount: allMatches.length,
     selectedIndex: typeof index === 'number' ? index : undefined,
     x: x,

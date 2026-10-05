@@ -47,6 +47,14 @@ async function evaluate(expression: string): Promise<unknown> {
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
+const LABELS_HTML =
+  '<form id="labels" onsubmit="return false"><label>Customer name: <input name="custname"></label>' +
+  '<label for="em">E-mail address:</label><input id="em" type="email">' +
+  '<label><input type="checkbox" id="agree"> I agree</label>' +
+  '<label id="orphan">Orphan note</label>' +
+  '<label id="fancy">Fancy <input type="checkbox" id="fancybox" style="opacity:0;position:absolute"><span>box</span></label>' +
+  '<label>Avatar <input type="file" id="avatar"></label></form>';
+
 /** JSON output of a DOM action */
 type Triggered = { data: { triggeredRequests?: Array<Record<string, unknown>> } };
 
@@ -361,6 +369,61 @@ void describe('DOM interactions', () => {
       ['pointerdown:target']
     );
     await bdg(['dom', 'listeners', '#missing'], 83);
+  });
+
+  void it('acts on the control a <label> stands for', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', ${JSON.stringify(LABELS_HTML)}); 1`
+    );
+    assert.match(
+      await bdg(['dom', 'fill', 'label:has-text("Customer name")', 'Ada']),
+      /input \(via label\)/
+    );
+    assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Ada');
+    await bdg(['dom', 'fill', 'label:has-text("Customer name") input', 'Bob']);
+    assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Bob');
+    await bdg(['dom', 'pressKey', 'label[for=em]', 'a']);
+    assert.equal(await evaluate("document.getElementById('em').value"), 'a');
+    const click = JSON.parse(
+      await bdg(['dom', 'click', 'label:has-text("I agree")', '--json'])
+    ) as { data: { elementType: string } };
+    assert.equal(click.data.elementType, 'input (via label)');
+    assert.equal(await evaluate("document.getElementById('agree').checked"), true);
+    const orphan = await bdg(['dom', 'fill', '#orphan', 'x'], 81);
+    assert.match(orphan, /not associated with a form control/);
+    assert.match(orphan, /a11y query 'name=Orphan note'/);
+  });
+
+  void it('clicks the label of a transparent control, and uploads through a label', async () => {
+    const click = JSON.parse(await bdg(['dom', 'click', '#fancy', '--json'])) as {
+      data: { elementType: string };
+    };
+    assert.equal(click.data.elementType, 'label');
+    assert.equal(await evaluate("document.getElementById('fancybox').checked"), true);
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-upload-')), 'avatar.txt');
+    fs.writeFileSync(file, 'x');
+    try {
+      const fill = JSON.parse(
+        await bdg(['dom', 'fill', 'label:has-text("Avatar")', file, '--json'])
+      ) as { data: { elementType: string; value: string } };
+      assert.equal(fill.data.elementType, 'input (via label)');
+      assert.equal(
+        await evaluate("document.getElementById('avatar').files[0]?.name"),
+        'avatar.txt'
+      );
+    } finally {
+      fs.rmSync(path.dirname(file), { recursive: true, force: true });
+    }
+  });
+
+  void it('finds an a11y name with spaces and a colon', async () => {
+    const output = await bdg(['dom', 'a11y', 'query', 'name=E-mail address:', '--json']);
+    const { data } = JSON.parse(output) as { data: { nodes: Array<{ role: string }> } };
+    assert.ok(
+      data.nodes.some((node) => node.role === 'textbox'),
+      output
+    );
+    await bdg(['dom', 'a11y', 'query', 'role=textbox name=E-mail address:']);
   });
 
   void it('navigates the page and its history', async () => {

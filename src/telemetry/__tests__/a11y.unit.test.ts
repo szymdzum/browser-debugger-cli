@@ -11,8 +11,10 @@ import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
 
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
 import { buildTreeFromRawNodes, parseQueryPattern, queryA11yTree } from '@/telemetry/a11y.js';
 import type { A11yTree } from '@/types.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 describe('buildTreeFromRawNodes', () => {
   test('builds tree from valid CDP nodes', () => {
@@ -260,8 +262,77 @@ describe('parseQueryPattern', () => {
     assert.deepEqual(parseQueryPattern('name: "Sign in"'), { name: 'Sign in' });
   });
 
-  test('rejects unknown fields', () => {
-    assert.throws(() => parseQueryPattern('rol:button'), /Unknown query field: "rol"/);
+  test('takes the rest of a last name verbatim (spaces and colons)', () => {
+    assert.deepEqual(parseQueryPattern('name=E-mail address:'), { name: 'E-mail address:' });
+    assert.deepEqual(parseQueryPattern('name=Customer name:'), { name: 'Customer name:' });
+    assert.deepEqual(parseQueryPattern('name=Time: 10:30 am'), { name: 'Time: 10:30 am' });
+    assert.deepEqual(parseQueryPattern('role=textbox name=E-mail address:'), {
+      role: 'textbox',
+      name: 'E-mail address:',
+    });
+    assert.deepEqual(parseQueryPattern('description=Note: see docs, then retry'), {
+      description: 'Note: see docs, then retry',
+    });
+  });
+
+  test('ends a name at a following known field with a value', () => {
+    assert.deepEqual(parseQueryPattern('name=E-mail address: role=textbox'), {
+      name: 'E-mail address:',
+      role: 'textbox',
+    });
+    assert.deepEqual(parseQueryPattern('name:Submit,role:button'), {
+      name: 'Submit',
+      role: 'button',
+    });
+    assert.deepEqual(parseQueryPattern('name=Delivery time: desc=Optional'), {
+      name: 'Delivery time:',
+      description: 'Optional',
+    });
+  });
+
+  test('rejects a misspelled field swallowed by a name, with a did-you-mean', () => {
+    for (const [pattern, word, similar] of [
+      ['name:Save rol:button', 'rol', 'role'],
+      ['name=Save, nme=x', 'nme', 'name'],
+      ['role=button name=Save descripton=Primary', 'descripton', 'description'],
+    ] as const) {
+      assert.throws(
+        () => parseQueryPattern(pattern),
+        (error: unknown) =>
+          error instanceof CommandError &&
+          error.exitCode === EXIT_CODES.INVALID_ARGUMENTS &&
+          error.message === `Unknown query field: "${word}" (did you mean "${similar}"?)` &&
+          /put it in inner quotes/.test(error.metadata.suggestion ?? ''),
+        pattern
+      );
+    }
+  });
+
+  test('keeps label words that are not near a field name, and quoted names', () => {
+    assert.deepEqual(parseQueryPattern('name=Due date: today'), { name: 'Due date: today' });
+    assert.deepEqual(parseQueryPattern('name=Promo code: Note: optional'), {
+      name: 'Promo code: Note: optional',
+    });
+    assert.deepEqual(parseQueryPattern('name="Save rol:button"'), { name: 'Save rol:button' });
+  });
+
+  test('keeps inner quotes for names that contain field-like text', () => {
+    assert.deepEqual(parseQueryPattern('name="Choose role: admin" role=combobox'), {
+      name: 'Choose role: admin',
+      role: 'combobox',
+    });
+  });
+
+  test('rejects unknown fields with a quoting hint', () => {
+    assert.throws(
+      () => parseQueryPattern('rol:button'),
+      (error: unknown) =>
+        error instanceof CommandError &&
+        error.exitCode === EXIT_CODES.INVALID_ARGUMENTS &&
+        /Unknown query field: "rol"/.test(error.message) &&
+        /'name=E-mail address:'/.test(error.metadata.suggestion ?? '')
+    );
+    assert.throws(() => parseQueryPattern('role=button nme=x'), /Unknown query field: "nme"/);
   });
 
   test('returns empty object when there are no fields', () => {

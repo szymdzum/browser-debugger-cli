@@ -2,9 +2,8 @@
  * `bdg dom query` — find elements by CSS selector and populate the query cache.
  */
 
-import { queryDOMElements } from '@/commands/dom/helpers/index.js';
+import { noMatchesError, queryDOMElements } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { noNodesFoundError } from '@/errors/messages.js';
 import type { DomQueryCommandOptions } from '@/commands/shared/optionTypes.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { formatDomQuery } from '@/ui/formatters/dom.js';
@@ -28,7 +27,7 @@ export async function handleDomQuery(
       const cache = QueryCacheManager.getInstance();
       if (result.count === 0) {
         await cache.clear();
-        const err = noNodesFoundError(selector);
+        const err = await noMatchesError(selector);
         return {
           success: false,
           error: err.message,

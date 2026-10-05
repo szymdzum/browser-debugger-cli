@@ -7,7 +7,12 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { keyPressFailedError, operationFailedError, unknownKeyError } from '@/errors/messages.js';
+import {
+  VIA_LABEL_SUFFIX,
+  keyPressFailedError,
+  operationFailedError,
+  unknownKeyError,
+} from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
 import {
   throwIfInvalidSelector,
@@ -23,7 +28,7 @@ import {
   shortcutCommands,
   type KeyDefinition,
 } from '@/runtime/dom/keyMapping.js';
-import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -57,6 +62,9 @@ const FOCUS_ELEMENT_SCRIPT = `
   } else {
     el = allMatches[0];
   }
+  const labelControl = (${LABEL_CONTROL_JS})(el);
+  const viaLabel = labelControl ? ${JSON.stringify(VIA_LABEL_SUFFIX)} : '';
+  if (labelControl) el = labelControl;
 
   const pageLevel = el === document.body || el === document.documentElement;
   if (!pageLevel) {
@@ -89,7 +97,7 @@ const FOCUS_ELEMENT_SCRIPT = `
     }
   }
 
-  return { success: true, selector: selector, elementType: el.tagName.toLowerCase(), matchCount: allMatches.length };
+  return { success: true, selector: selector, elementType: el.tagName.toLowerCase() + viaLabel, matchCount: allMatches.length };
 })`;
 
 /** Exit codes and suggestions for focus failures, by reason. */
