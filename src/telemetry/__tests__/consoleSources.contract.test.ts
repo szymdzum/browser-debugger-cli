@@ -184,6 +184,83 @@ void describe('Console sources', () => {
     }
   });
 
+  void it('removes an unhandled rejection once a handler is attached, per session', () => {
+    const rejection = (exceptionId: number, timestamp: number, message: string): unknown => ({
+      timestamp,
+      exceptionDetails: {
+        exceptionId,
+        text: 'Uncaught (in promise)',
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: { type: 'object', subtype: 'error', description: `Error: ${message}` },
+      },
+    });
+    cdp.emit('Runtime.exceptionThrown', rejection(1, 1000, 'from eval'));
+    cdp.emit('Runtime.exceptionThrown', rejection(1, 2000, 'in frame'), 'frame-1');
+    cdp.emit('Runtime.exceptionThrown', rejection(2, 3000, 'never handled'));
+    cdp.emit('Runtime.exceptionThrown', {
+      timestamp: 4000,
+      exceptionDetails: { exceptionId: 3, text: 'Uncaught', lineNumber: 0, columnNumber: 0 },
+    });
+
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 1 });
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 3 });
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 9 });
+
+    assert.deepEqual(
+      messages.map((m) => m.text),
+      [
+        'Uncaught (in promise) Error: in frame',
+        'Uncaught (in promise) Error: never handled',
+        'Uncaught',
+      ]
+    );
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 1 }, 'frame-1');
+    assert.equal(messages.length, 2);
+  });
+
+  void it('keeps the same exception id of the page and an iframe apart', () => {
+    const rejection = (text: string): unknown => ({
+      timestamp: 1000,
+      exceptionDetails: {
+        exceptionId: 7,
+        text: 'Uncaught (in promise)',
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: { type: 'object', subtype: 'error', description: `Error: ${text}` },
+      },
+    });
+    cdp.emit('Runtime.exceptionThrown', rejection('page'));
+    cdp.emit('Runtime.exceptionThrown', rejection('oopif'), 'oopif-1');
+
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 7 }, 'oopif-1');
+    assert.deepEqual(
+      messages.map((m) => m.text),
+      ['Uncaught (in promise) Error: page']
+    );
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 7 });
+    assert.deepEqual(messages, []);
+  });
+
+  void it('forgets rejections of a detached session or cleared contexts', () => {
+    const rejection = (exceptionId: number): unknown => ({
+      timestamp: 1000 + exceptionId,
+      exceptionDetails: {
+        exceptionId,
+        text: 'Uncaught (in promise)',
+        lineNumber: 0,
+        columnNumber: 0,
+      },
+    });
+    cdp.emit('Runtime.exceptionThrown', rejection(1));
+    cdp.emit('Runtime.exceptionThrown', rejection(2), 'frame-1');
+    cdp.emit('Runtime.executionContextsCleared', {});
+    cdp.emit('Target.detachedFromTarget', { sessionId: 'frame-1' });
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 1 });
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 2 }, 'frame-1');
+    assert.equal(messages.length, 2, 'reports of gone documents are no longer revoked');
+  });
+
   void it('fails to start when the page console cannot be enabled', async () => {
     const failing = new MockSessionCDP();
     failing.failing.add('Runtime.enable');

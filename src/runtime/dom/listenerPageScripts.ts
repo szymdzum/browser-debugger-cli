@@ -1,8 +1,9 @@
 /**
  * Page-side functions of `bdg dom listeners`: what only the page can tell
  * about an element's listeners (handler names and identities, React root
- * containers, the handlers behind jQuery's dispatcher, React's `on…` props
- * of the element and its ancestors, the element's iframe).
+ * containers, the handlers behind jQuery's dispatcher and Preact's event
+ * proxy, React's `on…` props of the element and its ancestors, the
+ * element's iframe).
  *
  * Each piece is a function expression in a string, combined into
  * {@link ELEMENT_INFO_JS}; every lookup of page globals is guarded, so a
@@ -108,11 +109,30 @@ const REACT_PROPS_JS = `(node) => {
 const MAX_FIBER_STEPS = 1000;
 
 /**
+ * `(fiber) => fiber | null`: for a React root's fiber, the fiber of the
+ * nearest React-rendered DOM element at or above its container (where
+ * React continues for nested roots: an outer root's handlers run for
+ * events in an inner one); null for other fibers and for top-level roots.
+ */
+const OUTER_ROOT_FIBER_JS = `(fiber) => {
+  const own = ${OWN_VALUE_JS};
+  const container = own(own(fiber, 'stateNode'), 'containerInfo');
+  try {
+    for (let node = container; node && typeof node === 'object'; node = node.parentNode) {
+      const outer = (${REACT_FIBER_JS})(node);
+      if (outer) return outer;
+    }
+  } catch (e) { return null; }
+  return null;
+}`;
+
+/**
  * `(element, nodes) => Array<{ node, position }>`: the DOM elements whose
  * React props run for events on the element, nearest first. With a fiber,
  * the host components on its `.return` path (so a portal's React parents
- * count and DOM parents outside the React path don't); `position` is the
- * node's place in the chain, null outside it. Without one, the chain's elements.
+ * count and DOM parents outside the React path don't), continued from a
+ * nested root's container into the outer root; `position` is the node's
+ * place in the chain, null outside it. Without one, the chain's elements.
  */
 const REACT_HOSTS_JS = `(element, nodes) => {
   const own = ${OWN_VALUE_JS};
@@ -127,9 +147,72 @@ const REACT_HOSTS_JS = `(element, nodes) => {
       const position = nodes.indexOf(node);
       hosts.push({ node, position: position === -1 ? null : position });
     }
-    fiber = own(fiber, 'return');
+    fiber = own(fiber, 'return') || (${OUTER_ROOT_FIBER_JS})(fiber);
   }
   return hosts;
+}`;
+
+/** Longest source of a minified Preact event proxy (Preact 10 and 11: about 120 characters) */
+const MAX_PREACT_PROXY_LENGTH = 200;
+
+/**
+ * `(source, read) => boolean`: whether a proxy source calls the handler it
+ * reads (`read`: the match of `this.<key>[<event>.type + …]`) with the
+ * event, directly (`this.l[e.type + false](e)`) or through a variable
+ * (`var t = this.l[u.type + n]; … return t(l.event ? l.event(u) : u)`).
+ */
+const CALLS_READ_HANDLER_JS = `(source, read) => {
+  const event = read[2];
+  const passesEvent = (from) => {
+    const open = source.indexOf('(', from);
+    const close = source.indexOf(')', open);
+    if (open === -1 || close === -1 || source.slice(from, open).trim() !== '') return false;
+    return source.slice(open + 1, close).split(/[^\\w$]+/).includes(event);
+  };
+  const end = read.index + read[0].length;
+  if (passesEvent(end)) return true;
+  const assigned = /([\\w$]+)\\s*=\\s*$/.exec(source.slice(0, read.index));
+  if (!assigned) return false;
+  const variable = assigned[1];
+  for (let at = source.indexOf(variable, end); at !== -1; at = source.indexOf(variable, at + 1)) {
+    const before = source[at - 1] || '';
+    if (/[\\w$.]/.test(before)) continue;
+    if (passesEvent(at + variable.length)) return true;
+  }
+  return false;
+}`;
+
+/**
+ * `(node, type, capture, handler) => function | null`: the handler Preact
+ * runs from `handler` when it is Preact's event proxy on `node`. Preact
+ * keeps an element's handlers in an object on the element under a mangled
+ * key (`l` in Preact 10, `__e` in 11, `_listeners` unmangled), keyed by
+ * event type plus the capture flag (`clickfalse`); the key is read from the
+ * proxy's own source (`this.l[e.type + useCapture]`), so it follows
+ * Preact's renames. A proxy named `eventProxy`/`eventProxyCapture`
+ * (unminified builds; Preact 8 keys by type alone) is accepted as such;
+ * any other must look like Preact's minified one: a short function whose
+ * key holds a function for exactly the type plus capture flag, which it
+ * calls with the event. A generic dispatcher (`this.handlers[e.type](e)`)
+ * is left alone.
+ */
+const PREACT_HANDLER_JS = `(node, type, capture, handler) => {
+  const own = ${OWN_VALUE_JS};
+  try {
+    if (typeof handler !== 'function' || !node || typeof node !== 'object') return null;
+    const source = Function.prototype.toString.call(handler);
+    const read = /this\\.([\\w$]+)\\[([\\w$]+)\\.type(?:\\s*\\+\\s*(![01]|true|false|[\\w$]+))?\\s*\\]/.exec(source);
+    const store = read ? own(node, read[1]) : undefined;
+    if (!store || typeof store !== 'object') return null;
+    const flag = { true: true, '!0': true, false: false, '!1': false }[read[3]];
+    if (flag !== undefined && flag !== capture) return null;
+    const fn = own(store, read[3] ? type + capture : type);
+    if (typeof fn !== 'function') return null;
+    const name = own(handler, 'name');
+    if (name === 'eventProxy' || name === 'eventProxyCapture') return fn;
+    const minified = read[3] && source.length < ${MAX_PREACT_PROXY_LENGTH};
+    return minified && (${CALLS_READ_HANDLER_JS})(source, read) ? fn : null;
+  } catch (e) { return null; }
 }`;
 
 /** `(node) => string`: CDP-like description of an element, e.g. `div#app.card` */
@@ -240,17 +323,18 @@ const REACT_HANDLERS_JS = `(element, nodes, wanted, fns) => {
 
 /**
  * Page function, called on the element with the listeners (position in the
- * chain and event type of each), the requested event types (null for all;
+ * chain, event type and capture flag of each), the requested event types (null for all;
  * React props are filtered before the limit), then the chain's objects, then each
  * listener's handler, then the function each handler calls (a bound
  * function's target, else null).
  *
- * Returns `[info, ...jQueryHandlers, ...reactHandlers]`. `info` has the
+ * Returns `[info, ...jQueryAndPreactHandlers, ...reactHandlers]`. `info` has the
  * iframe element holding the element's document (`frame`), a framework
  * label per chain entry (`roots`), per listener the handler's name, the
  * identity and name of the function it calls (equal identities are the same
  * function object) and, for jQuery's dispatcher, the jQuery handlers that
- * run for the element; then the React `on…` props that run for the
+ * run for the element, for Preact's event proxy the handler Preact runs
+ * (`preact`); then the React `on…` props that run for the
  * element's events (`react`, see {@link REACT_HANDLERS_JS}). Their functions follow `info` in the same order.
  * After {@link MAX_JQUERY_HANDLERS}, dispatchers stay unresolved and are
  * counted in `jquerySkipped`; after {@link MAX_REACT_HANDLERS}, React props
@@ -282,7 +366,13 @@ export const ELEMENT_INFO_JS = `function (listeners, types, ...rest) {
     const entry = { name: typeof handler === 'function' ? handler.name : null, identity: identity(target),
       targetName: typeof target === 'function' ? target.name : null };
     const resolved = jq ? (${JQUERY_HANDLERS_JS})(jq, this, nodes[listener.position], listener.type, handler) : null;
-    if (!resolved) return entry;
+    if (!resolved) {
+      const preact = (${PREACT_HANDLER_JS})(nodes[listener.position], listener.type, listener.capture, handler);
+      if (!preact) return entry;
+      fns.push(preact);
+      const preactName = (${OWN_VALUE_JS})(preact, 'name');
+      return { ...entry, preact: { name: typeof preactName === 'string' ? preactName : '' } };
+    }
     if (fns.length + resolved.length > ${MAX_JQUERY_HANDLERS}) {
       jquerySkipped += resolved.length;
       return entry;
@@ -304,6 +394,8 @@ export interface ElementInfo {
     identity: number | null;
     targetName: string | null;
     jquery?: Array<{ type: string; selector: string | null; name: string }>;
+    /** The handler Preact runs from this listener (set when it is Preact's event proxy) */
+    preact?: { name: string };
   }>;
   /** jQuery handlers left unresolved (over the limit) */
   jquerySkipped: number;

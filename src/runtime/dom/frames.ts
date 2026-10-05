@@ -34,7 +34,7 @@ import {
   withBusyPageRecovery,
 } from '@/runtime/dom/evalHelpers.js';
 import { effectiveFrameOrigin, isCrossOrigin } from '@/runtime/dom/frameOrigin.js';
-import { frameError, selectFrame } from '@/runtime/dom/frameSelection.js';
+import { assertFrameIndexCurrent, frameError, selectFrame } from '@/runtime/dom/frameSelection.js';
 import { attachedSessionOf } from '@/telemetry/attachedTargets.js';
 import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -94,6 +94,45 @@ interface OwnerAttributes {
   /** `sandbox` attribute ('' when present without tokens) */
   sandbox?: string;
 }
+
+/** The iframe element of a frame: its node (to order siblings) and attributes */
+interface FrameOwner extends OwnerAttributes {
+  backendNodeId?: number;
+}
+
+/** The page's iframes as listed, and the frame id behind each index */
+export interface FrameListing {
+  frames: DomFrame[];
+  /** Frame id of each listed frame, by index */
+  frameIds: string[];
+}
+
+/**
+ * Page function, called with iframe elements of one document: their
+ * indices in document order. Shadow roots are walked through their host
+ * (a shadow root's content comes before the host's children, as in
+ * shadow-including tree order).
+ */
+const DOCUMENT_ORDER_JS = `function (...nodes) {
+  const path = (node) => {
+    const nodesUp = [];
+    for (let n = node; n; n = n.parentNode || (n.nodeType === 11 ? n.host : null)) nodesUp.unshift(n);
+    return nodesUp;
+  };
+  const paths = nodes.map(path);
+  const compare = (i, j) => {
+    const a = paths[i];
+    const b = paths[j];
+    let depth = 0;
+    while (depth < a.length && depth < b.length && a[depth] === b[depth]) depth++;
+    const x = a[depth];
+    const y = b[depth];
+    if (!x || !y) return a.length - b.length;
+    if (x.nodeType === 11 || y.nodeType === 11) return x.nodeType === 11 ? -1 : 1;
+    return x.compareDocumentPosition(y) & 4 ? -1 : 1;
+  };
+  return nodes.map((_, i) => i).sort(compare);
+}`;
 
 /**
  * Run `work` on a second connection to the page, closed afterwards.
@@ -284,16 +323,24 @@ function flattenTrees(trees: SessionTree[]): FrameNode[] {
 }
 
 /**
- * Iframes below the main frame, depth-first.
+ * Iframes below the main frame, depth-first, siblings in the document order
+ * of their iframe elements (frames without a known place last, in tree order).
  *
  * @param nodes - All frames
  * @param mainFrameId - The page's main frame
+ * @param rank - Place of each frame among its siblings, by id
  * @returns Iframes in listing order
  */
-function iframesInOrder(nodes: FrameNode[], mainFrameId: string): FrameNode[] {
-  const ordered: FrameNode[] = [];
+export function iframesInOrder<T extends Pick<FrameNode, 'frame'>>(
+  nodes: T[],
+  mainFrameId: string,
+  rank: Map<string, number>
+): T[] {
+  const ordered: T[] = [];
+  const place = (node: T): number => rank.get(node.frame.id) ?? Number.MAX_SAFE_INTEGER;
   const visit = (parentId: string): void => {
-    for (const node of nodes.filter((n) => n.frame.parentId === parentId)) {
+    const children = nodes.filter((n) => n.frame.parentId === parentId);
+    for (const node of children.sort((a, b) => place(a) - place(b))) {
       ordered.push(node);
       visit(node.frame.id);
     }
@@ -317,18 +364,18 @@ function attributeValue(attributes: string[] = [], key: string): string | undefi
 }
 
 /**
- * Attributes of the iframe element of a frame (read in its parent's session).
+ * The iframe element of a frame (read in its parent's session).
  *
  * @param fc - Frame connection
  * @param frameId - Frame
  * @param ownerSession - Session of the parent frame
- * @returns `name`, `id` and `sandbox` attributes when set
+ * @returns Its node, and `name`, `id` and `sandbox` attributes when set
  */
-async function ownerAttributes(
+async function frameOwner(
   fc: FrameConnection,
   frameId: string,
   ownerSession?: string
-): Promise<OwnerAttributes> {
+): Promise<FrameOwner> {
   try {
     const { backendNodeId } = await sendToSession<Protocol.DOM.GetFrameOwnerResponse>(
       fc,
@@ -345,7 +392,12 @@ async function ownerAttributes(
     const name = attributeValue(node.attributes, 'name');
     const id = attributeValue(node.attributes, 'id');
     const sandbox = attributeValue(node.attributes, 'sandbox');
-    return { ...(name && { name }), ...(id && { id }), ...(sandbox !== undefined && { sandbox }) };
+    return {
+      backendNodeId,
+      ...(name && { name }),
+      ...(id && { id }),
+      ...(sandbox !== undefined && { sandbox }),
+    };
   } catch (error) {
     log.debug(`No iframe element for frame ${frameId}: ${getErrorMessage(error)}`);
     return {};
@@ -456,8 +508,100 @@ function initialListingState(
 }
 
 /**
- * Find every iframe of the page, nested and out-of-process ones included.
- * Frames that go away while they are being listed are skipped.
+ * Indices of iframe elements of one document, in document order.
+ *
+ * @param fc - Frame connection
+ * @param backendNodeIds - The iframe elements
+ * @param ownerSession - Session of the document
+ * @returns Their indices in document order
+ * @throws Errors of CDP (e.g. an element removed meanwhile)
+ */
+async function documentOrder(
+  fc: FrameConnection,
+  backendNodeIds: number[],
+  ownerSession?: string
+): Promise<number[]> {
+  const objectIds = await Promise.all(
+    backendNodeIds.map(async (backendNodeId) => {
+      const { object } = await sendToSession<Protocol.DOM.ResolveNodeResponse>(
+        fc,
+        'DOM.resolveNode',
+        { backendNodeId },
+        ownerSession
+      );
+      return object.objectId ?? '';
+    })
+  );
+  const { result } = await sendToSession<Protocol.Runtime.CallFunctionOnResponse>(
+    fc,
+    'Runtime.callFunctionOn',
+    {
+      objectId: objectIds[0],
+      functionDeclaration: DOCUMENT_ORDER_JS,
+      arguments: objectIds.map((objectId) => ({ objectId })),
+      returnByValue: true,
+    },
+    ownerSession
+  );
+  return result.value as number[];
+}
+
+/**
+ * Frames grouped by their parent.
+ *
+ * @param iframes - Frames
+ * @returns Frames of each parent, by parent id
+ */
+function groupByParent(iframes: FrameNode[]): Map<string, FrameNode[]> {
+  const byParent = new Map<string, FrameNode[]>();
+  for (const node of iframes) {
+    const parentId = node.frame.parentId ?? '';
+    byParent.set(parentId, [...(byParent.get(parentId) ?? []), node]);
+  }
+  return byParent;
+}
+
+/**
+ * Place of each frame among its siblings, from the document order of their
+ * iframe elements. Chrome's frame tree lists frames in the order they were
+ * attached and leaves out-of-process ones to their own sessions, so neither
+ * gives a stable order. Siblings that cannot be ordered get no place.
+ *
+ * @param fc - Frame connection
+ * @param iframes - All iframes
+ * @param owners - Iframe element of each frame, by id
+ * @param sessionOf - Session of each frame, by id
+ * @returns Place of each frame among its siblings, by id
+ */
+async function siblingRanks(
+  fc: FrameConnection,
+  iframes: FrameNode[],
+  owners: Map<string, FrameOwner>,
+  sessionOf: Map<string, string | undefined>
+): Promise<Map<string, number>> {
+  const rank = new Map<string, number>();
+  const groups = [...groupByParent(iframes)].map(async ([parentId, siblings]) => {
+    const placed = siblings.flatMap((node) => {
+      const backendNodeId = owners.get(node.frame.id)?.backendNodeId;
+      return backendNodeId === undefined ? [] : [{ id: node.frame.id, backendNodeId }];
+    });
+    if (placed.length < 2) return;
+    try {
+      const nodeIds = placed.map((item) => item.backendNodeId);
+      const order = await documentOrder(fc, nodeIds, sessionOf.get(parentId));
+      order.forEach((index, place) => rank.set(placed[index]?.id ?? '', place));
+    } catch (error) {
+      log.debug(`Frames of ${parentId} not ordered: ${getErrorMessage(error)}`);
+    }
+  });
+  await Promise.all(groups);
+  return rank;
+}
+
+/**
+ * Find every iframe of the page, nested and out-of-process ones included,
+ * siblings in the document order of their iframe elements. Frames that go
+ * away while they are being listed are skipped.
  *
  * @param fc - Frame connection
  * @returns Iframes in listing order
@@ -466,14 +610,24 @@ async function discoverFrames(fc: FrameConnection): Promise<LocatedFrame[]> {
   const [page, outOfProcess] = await Promise.all([readSession(fc), outOfProcessTrees(fc)]);
   const nodes = flattenTrees([page, ...outOfProcess]);
   const sessionOf = new Map(nodes.map((node) => [node.frame.id, node.sessionId]));
-  const iframes = iframesInOrder(nodes, page.tree.frame.id);
-  const owners = await Promise.all(
-    iframes.map((node) =>
-      ownerAttributes(fc, node.frame.id, sessionOf.get(node.frame.parentId ?? ''))
+  const mainFrameId = page.tree.frame.id;
+  const iframes = nodes.filter((node) => node.frame.id !== mainFrameId);
+  const owners = new Map(
+    await Promise.all(
+      iframes.map(
+        async (node) =>
+          [
+            node.frame.id,
+            await frameOwner(fc, node.frame.id, sessionOf.get(node.frame.parentId ?? '')),
+          ] as const
+      )
     )
   );
+  const rank = await siblingRanks(fc, iframes, owners, sessionOf);
   const state = initialListingState(page, sessionOf);
-  return iframes.map((node, index) => describeFrame(node, index, owners[index] ?? {}, state));
+  return iframesInOrder(iframes, mainFrameId, rank).map((node, index) =>
+    describeFrame(node, index, owners.get(node.frame.id) ?? {}, state)
+  );
 }
 
 /**
@@ -481,11 +635,11 @@ async function discoverFrames(fc: FrameConnection): Promise<LocatedFrame[]> {
  *
  * @param page - The session's connection
  * @param wsUrl - WebSocket URL of the page target
- * @returns Iframes in listing order
+ * @returns Iframes in listing order, and the frame id behind each index
  */
-export async function listFrames(page: CDPConnection, wsUrl: string): Promise<DomFrame[]> {
+export async function listFrames(page: CDPConnection, wsUrl: string): Promise<FrameListing> {
   const frames = await withFrameConnection(page, wsUrl, discoverFrames);
-  return frames.map((frame) => frame.info);
+  return { frames: frames.map((frame) => frame.info), frameIds: frames.map((f) => f.frameId) };
 }
 
 /**
@@ -493,14 +647,22 @@ export async function listFrames(page: CDPConnection, wsUrl: string): Promise<Do
  *
  * @param fc - Frame connection
  * @param query - Requested frame
+ * @param listedIds - Frame id behind each index of the last `dom frames` listing, if any
  * @returns The frame and its context's unique id
- * @throws CommandError (81/83) when the frame is ambiguous, missing or has no context
+ * @throws CommandError (81/83) when the frame is ambiguous, missing or has no
+ *   context, (87) when an index names another frame than when it was listed
  */
 async function resolveFrame(
   fc: FrameConnection,
-  query: string
+  query: string,
+  listedIds?: string[]
 ): Promise<{ frame: LocatedFrame; uniqueContextId: string }> {
   const frames = await discoverFrames(fc);
+  assertFrameIndexCurrent(
+    query,
+    frames.map((frame) => frame.frameId),
+    listedIds
+  );
   const selected = selectFrame(
     frames.map((frame) => frame.info),
     query
@@ -586,18 +748,21 @@ export async function frameContextLostError(
  * @param wsUrl - WebSocket URL of the page target
  * @param script - JavaScript expression
  * @param query - Requested frame (index, name/id attribute, or part of the name, id or URL)
+ * @param listedIds - Frame id behind each index of the last `dom frames` listing, if any
  * @returns Value, type and the frame's URL
- * @throws CommandError (81/83) when the frame is ambiguous or missing, (83)
- *   when it navigated or was removed while the script ran, else as evaluateScript
+ * @throws CommandError (81/83) when the frame is ambiguous or missing, (87)
+ *   when an index names another frame than when it was listed, (83) when it
+ *   navigated or was removed while the script ran, else as evaluateScript
  */
 export async function evaluateInFrame(
   page: CDPConnection,
   wsUrl: string,
   script: string,
-  query: string
+  query: string,
+  listedIds?: string[]
 ): Promise<DomEvalData> {
   return withFrameConnection(page, wsUrl, async (fc) => {
-    const { frame, uniqueContextId } = await resolveFrame(fc, query);
+    const { frame, uniqueContextId } = await resolveFrame(fc, query, listedIds);
     try {
       const result = await evaluateScript(fc.conn, script, {
         ...(frame.sessionId && { sessionId: frame.sessionId }),

@@ -66,7 +66,7 @@ export function registerDomCommands(program: Command): void {
     .argument('<script>', 'JavaScript to execute (e.g., "document.title", "window.location.href")')
     .option(
       '--frame <frame>',
-      'Evaluate in an iframe, cross-origin ones included: index, name/id attribute, or part of the name, id or URL (see dom frames)'
+      'Evaluate in an iframe, cross-origin ones included: index (from dom frames; 87 when stale), name/id attribute, or part of the name, id or URL'
     )
     .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
@@ -85,7 +85,9 @@ export function registerDomCommands(program: Command): void {
 
   dom
     .command('frames')
-    .description("List the page's iframes (nested and cross-origin ones included) for eval --frame")
+    .description(
+      "List the page's iframes in document order (nested and cross-origin ones included) for eval --frame"
+    )
     .option('-j, --json', 'Output as JSON')
     .action(async (options: DomFramesCommandOptions) => {
       await handleDomFrames(options);

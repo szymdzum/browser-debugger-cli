@@ -178,4 +178,40 @@ void describe('dom eval --frame', () => {
     ]);
     assert.equal(sandboxed.data?.result, 'null');
   });
+
+  void it('lists frames in document order and refuses an index that went stale', async () => {
+    const navigated = await runCommand('page', ['navigate', `${fixture.url}frame-order`]);
+    assert.equal(navigated.exitCode, 0, navigated.stderr);
+    const names = async (): Promise<Array<string | undefined>> =>
+      (await runJson<{ frames: DomFrame[] }>(['dom', 'frames'])).data?.frames.map((f) => f.name) ??
+      [];
+    assert.deepEqual(await names(), ['shadowed', 'cross', 'last']);
+    assert.deepEqual(await names(), ['shadowed', 'cross', 'last']);
+
+    const added = await runJson(['dom', 'eval', 'await addFirst()']);
+    assert.equal(added.exitCode, 0, added.error);
+    const stale = await runJson(['dom', 'eval', 'window.name', '--frame', '0']);
+    assert.equal(stale.exitCode, EXIT_CODES.STALE_CACHE);
+    assert.match(stale.error ?? '', /Frame index 0 is stale/);
+    assert.match(stale.suggestion ?? '', /Re-run bdg dom frames/);
+    const byName = await runJson<{ result: unknown }>([
+      'dom',
+      'eval',
+      'window.name',
+      '--frame',
+      'cross',
+    ]);
+    assert.equal(byName.data?.result, 'cross', 'names still work');
+
+    assert.deepEqual(await names(), ['first', 'shadowed', 'cross', 'last']);
+    const fresh = await runJson<{ result: unknown }>([
+      'dom',
+      'eval',
+      'window.name',
+      '--frame',
+      '0',
+    ]);
+    assert.equal(fresh.exitCode, 0, fresh.error);
+    assert.equal(fresh.data?.result, 'first');
+  });
 });

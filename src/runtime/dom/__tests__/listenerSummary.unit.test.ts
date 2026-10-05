@@ -506,4 +506,33 @@ void describe('React prop handlers', () => {
       ]
     );
   });
+
+  void it("replaces Preact's proxy with the handler it runs, keeping its type and phase", () => {
+    const chain: ChainListeners[] = [
+      {
+        position: 0,
+        entry: BUTTON,
+        listeners: [cdpListener('click', 'function(u){if(this.l){}}', { useCapture: true })],
+      },
+    ];
+    const preact = {
+      name: 'save',
+      source: 'function save() {}',
+      scriptId: '7',
+      lineNumber: 1,
+      columnNumber: 2,
+    };
+    const report = buildListenerReport(chain, [{ preact }]);
+    assert.deepEqual(
+      report.listeners.map((l) => [
+        l.type,
+        l.useCapture,
+        l.framework,
+        l.handler.name,
+        l.handler.scriptId,
+      ]),
+      [['click', true, 'Preact', 'save', '7']]
+    );
+    assert.deepEqual(delegationNotes(report.listeners), []);
+  });
 });

@@ -1776,6 +1776,20 @@ export function frameNotFoundError(query: string, frames: DomFrame[]): ErrorWith
 }
 
 /**
+ * A `dom eval --frame` index that names another frame (or none) than when
+ * `bdg dom frames` listed it.
+ *
+ * @param index - Requested index
+ */
+export function staleFrameIndexError(index: number): ErrorWithSuggestion {
+  return {
+    message: `Frame index ${index} is stale: the page's iframes changed since bdg dom frames listed them`,
+    suggestion:
+      'Re-run bdg dom frames to refresh the indices, or pick the frame by name, id or URL (--frame <name>)',
+  };
+}
+
+/**
  * `dom eval --frame` matching more than one iframe.
  *
  * @param query - Requested frame

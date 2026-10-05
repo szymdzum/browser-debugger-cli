@@ -639,6 +639,42 @@ void describe('DOM interactions', () => {
     );
   });
 
+  void it("lists an outer React root's props for a nested root, and Preact's handlers", async () => {
+    type Listed = {
+      data: {
+        listeners: Array<{
+          type: string;
+          on: string;
+          node: string;
+          useCapture: boolean;
+          framework?: string;
+          handler: { name: string; scriptId: string };
+        }>;
+      };
+    };
+    const listed = async (selector: string): Promise<string[]> => {
+      const output = await bdg(['dom', 'listeners', selector, '--json']);
+      return (JSON.parse(output) as Listed).data.listeners.map(
+        (l) => `${l.type}:${l.node}:${l.framework ?? '-'}:${l.handler.name}:${l.useCapture}`
+      );
+    };
+    await bdg(['page', 'navigate', `${fixture.url}nested-react`]);
+    assert.deepEqual(await listed('#inner-btn'), [
+      'click:button#inner-btn:React:innerClick:false',
+      'click:section#outer-section:React:outerClick:false',
+    ]);
+
+    await bdg(['page', 'navigate', `${fixture.url}preact-listeners`]);
+    assert.deepEqual(await listed('#save'), [
+      'click:button#save:Preact:preactSave:false',
+      'click:div#wrap:Preact:wrapCapture:true',
+    ]);
+    assert.match(
+      await bdg(['dom', 'listeners', '#save']),
+      /target +button#save +preactSave +script \d+:\d+:\d+ +\[Preact\] function preactSave/
+    );
+  });
+
   void it('reports a fill the page moved, and form readiness by group and required field', async () => {
     await bdg(['page', 'navigate', `${fixture.url}forms`]);
     type Summary = { totalFields: number; filledFields: number; readyToSubmit: boolean };

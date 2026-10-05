@@ -332,7 +332,13 @@ async function pageDetails(
       objectId: chain[0]?.objectId,
       functionDeclaration: ELEMENT_INFO_JS,
       arguments: [
-        { value: listeners.map(({ position, listener }) => ({ position, type: listener.type })) },
+        {
+          value: listeners.map(({ position, listener }) => ({
+            position,
+            type: listener.type,
+            capture: listener.useCapture,
+          })),
+        },
         { value: types ?? null },
         ...chain.map((entry) => ({ objectId: entry.objectId })),
         ...handlers.map(objectArgument),
@@ -448,13 +454,13 @@ const UNKNOWN_SOURCE: HandlerSource = { scriptId: '0', lineNumber: 0, columnNumb
  * Combine the page's report with the framework handlers' sources.
  *
  * @param info - Page report
- * @param sources - Source and location of each jQuery handler, then each
- *   React prop handler, in report order
+ * @param sources - Source and location of each jQuery or Preact handler,
+ *   then each React prop handler, in report order
  * @returns Details per listener and the React prop handlers
  */
 function toPageDetails(info: ElementInfo, sources: HandlerSource[]): PageDetails {
   let next = 0;
-  const details = info.listeners.map(({ name, identity, targetName, jquery }) => ({
+  const details = info.listeners.map(({ name, identity, targetName, jquery, preact }) => ({
     name: name ?? undefined,
     identity: identity ?? undefined,
     targetName: targetName ?? undefined,
@@ -464,6 +470,10 @@ function toPageDetails(info: ElementInfo, sources: HandlerSource[]): PageDetails
       name: handler.name,
       ...(sources[next++] ?? UNKNOWN_SOURCE),
     })),
+    preact: preact && {
+      name: preact.name,
+      ...(sources[next++] ?? UNKNOWN_SOURCE),
+    },
   }));
   const react = info.react.map((handler) => ({
     ...handler,
