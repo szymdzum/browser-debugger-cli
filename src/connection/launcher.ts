@@ -23,6 +23,7 @@ import { ChromeLaunchError } from './errors.js';
 import { resolveChromeBinary } from './launcher/binaryResolver.js';
 import { buildChromeFlags } from './launcher/flagsBuilder.js';
 import { loadChromePrefs, ensureJSONCompatiblePrefs } from './launcher/preferencesLoader.js';
+import { writeProfilePreferences } from './launcher/profilePreferences.js';
 import { reservePort } from './portReservation.js';
 import { markStartupLogs, watchStartupExit } from './startupExit.js';
 
@@ -62,7 +63,11 @@ export interface LaunchOptions extends Pick<
 > {
   /** Remote debugging port (defaults to 9222 when omitted) */
   port?: number;
-  /** Directory for Chrome profile data. Falls back to persistent ~/.bdg/chrome-profile directory */
+  /**
+   * Directory for Chrome profile data, chosen by the user: bdg's default
+   * preferences are not written into it. Falls back to the bdg-managed
+   * persistent profile in the session directory (~/.bdg/chrome-profile)
+   */
   userDataDir?: string | undefined;
   /** Base directory for creating user data dir (defaults to OS temp dir, injectable for testing) */
   baseDir?: string | undefined;
@@ -133,6 +138,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   logger.info(`Launching Chrome on port ${port}...`);
   logger.debug(`User data directory: ${userDataDir}`);
+  applyProfilePreferences(userDataDir, options, logger);
 
   const chromeOptions = buildChromeOptions(options);
   const launcher = new chromeLauncher.Launcher(chromeOptions);
@@ -250,34 +256,58 @@ function getPersistentUserDataDir(baseDir?: string): string {
 }
 
 /**
- * Load Chrome preferences from options.
+ * Preferences for the launched profile: bdg's defaults (no translate prompt,
+ * no password manager or leak check, whose bubbles capture input) for
+ * profiles bdg manages, with the caller's preferences on top. A profile the
+ * user chose (`--user-data-dir`) gets only preferences the caller passed.
  *
  * File-based preferences take precedence over inline preferences because
  * files allow for complex, reusable configurations that can be version
  * controlled and shared across team members or CI environments.
  *
  * @param options - Launch options containing prefs or prefsFile
- * @returns Chrome preferences object or undefined if no preferences specified
- * @throws ChromeLaunchError if prefs file cannot be read, parsed, or doesn't exist
+ * @returns Merged preferences (empty when there is nothing to apply)
+ * @throws ChromeLaunchError if prefs file cannot be read or parsed, or prefs are not JSON
  */
+export function resolveChromePrefs(options: LaunchOptions): Record<string, unknown> {
+  const defaults = options.userDataDir === undefined ? BDG_CHROME_PREFS : {};
+  const prefs = { ...defaults, ...loadChromePrefs(options) };
+  ensureJSONCompatiblePrefs(prefs);
+  return prefs;
+}
+
+/**
+ * Write the launch preferences into the profile, if there are any.
+ *
+ * @param userDataDir - Chrome user data directory
+ * @param options - Launch options
+ * @param logger - Logger for failures
+ * @throws ChromeLaunchError if prefs file cannot be read or parsed, or prefs are not JSON
+ */
+function applyProfilePreferences(
+  userDataDir: string,
+  options: LaunchOptions,
+  logger: Logger
+): void {
+  const prefs = resolveChromePrefs(options);
+  if (Object.keys(prefs).length > 0) writeProfilePreferences(userDataDir, prefs, logger);
+}
+
 /**
  * Build chrome-launcher options from bdg launch options.
  *
  * Maps LaunchOptions to chrome-launcher API format using a clean utility approach
- * that filters out undefined values automatically. User preferences override bdg
- * defaults to allow customization while maintaining sensible base configuration.
+ * that filters out undefined values automatically. Preferences are not passed:
+ * chrome-launcher would replace whole nested sections of an existing profile's
+ * Preferences, so `writeProfilePreferences` merges them instead.
  *
  * @param options - bdg launch options to convert
  * @returns chrome-launcher compatible options object
- * @throws ChromeLaunchError if preference loading fails
  */
 function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
-  const userPrefs = loadChromePrefs(options);
   const userDataDir =
     options.userDataDir ?? getPersistentUserDataDir(options.baseDir ?? options.sessionDir);
   const chromePathOverride = resolveChromeBinary(options);
-
-  const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;
 
   return {
     logLevel: options.logLevel ?? DEFAULT_CHROME_LOG_LEVEL,
@@ -292,7 +322,6 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
       connectionPollInterval: options.connectionPollInterval ?? CHROME_READY_POLL_MS,
       maxConnectionRetries: options.maxConnectionRetries ?? CHROME_READY_POLL_ATTEMPTS,
       portStrictMode: options.portStrictMode,
-      prefs: ensureJSONCompatiblePrefs(mergedPrefs),
       envVars: options.envVars,
       chromePath: chromePathOverride,
     }),

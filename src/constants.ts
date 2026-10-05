@@ -74,8 +74,12 @@ export const DOCKER_CHROME_FLAGS = [
 
 /**
  * BDG-specific Chrome preferences for automation
- * These preferences are automatically merged with user preferences when launching Chrome
- * User preferences take precedence over these defaults
+ * Written into the launched profile's Default/Preferences (dotted names become nested paths)
+ * before every launch, so persistent profiles get them too. User preferences take precedence.
+ *
+ * The password manager and its leak check are off: after a login their bubble
+ * (e.g. "Change your password") captures all input in headless Chrome, so
+ * later clicks silently never reach the page.
  *
  * Note: Crash/restore popup suppression is handled by Chrome flags (--disable-session-crashed-bubble, --disable-infobars)
  * which are more reliable than preference-based approaches.
@@ -85,6 +89,9 @@ export const BDG_CHROME_PREFS: Record<string, unknown> = {
   'translate.enabled': false, // Disable Google Translate popup
   translate_site_blacklist: ['*'], // Block translate for all sites
   'profile.exit_type': 'Normal', // Trick Chrome into thinking it shut down correctly
+  credentials_enable_service: false, // No "Save password?" bubble
+  'profile.password_manager_enabled': false, // Password manager off
+  'profile.password_manager_leak_detection': false, // No "Change your password" breach dialog
 };
 
 // ============================================================================

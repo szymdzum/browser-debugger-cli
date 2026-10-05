@@ -988,6 +988,8 @@ bdg localhost:3000 --all                    # Include all data (disable filterin
 bdg localhost:3000 --user-data-dir ~/custom # Custom Chrome profile directory
 ```
 
+Profiles bdg manages (`~/.bdg/chrome-profile`, a named session's profile) have the password manager and its leak check turned off, because their bubbles capture clicks in headless Chrome. bdg leaves a profile given with `-u`/`--user-data-dir` as it is; turn them off there yourself (Settings > Passwords) if clicks stop reaching the page after a login.
+
 ### Advanced Options
 ```bash
 # Chrome Options

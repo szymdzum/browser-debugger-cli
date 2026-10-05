@@ -36,7 +36,11 @@ import {
 } from '@/runtime/dom/reactEventHelpers.js';
 import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { POINTER_ACTION_DONE, domClickFallbackWarning } from '@/ui/messages/commands.js';
+import {
+  CLICK_NOT_RECEIVED_WARNING,
+  POINTER_ACTION_DONE,
+  domClickFallbackWarning,
+} from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -279,6 +283,72 @@ export function mouseEvents(
   return action === 'double' ? [moved, ...press(1), ...press(2)] : [moved, ...press(1)];
 }
 
+/**
+ * Page script that stops the press probe installed by CLICK_ELEMENT_SCRIPT
+ * and evaluates to whether the mouse press reached the target.
+ */
+const PRESS_PROBE_READ_SCRIPT = `(() => {
+  const probe = window.__bdgPressProbe;
+  delete window.__bdgPressProbe;
+  if (!probe) return true;
+  probe.stop();
+  return probe.reached;
+})()`;
+
+/**
+ * Whether the mouse press just dispatched reached the target element.
+ *
+ * Any doubt (no probe, evaluation failure) counts as reached, so only a
+ * press that the page provably never saw is reported.
+ *
+ * @param cdp - CDP connection
+ * @returns False only when the target received no pointerdown/mousedown
+ */
+export async function pressReachedTarget(cdp: CDPConnection): Promise<boolean> {
+  try {
+    const response = (await cdp.send('Runtime.evaluate', {
+      expression: PRESS_PROBE_READ_SCRIPT,
+      returnByValue: true,
+    })) as { result?: { value?: unknown } };
+    return response.result?.value !== false;
+  } catch (error) {
+    log.debug(`Press probe not read: ${getErrorMessage(error)}`);
+    return true;
+  }
+}
+
+/**
+ * Dispatch real mouse events for an action, checking after the first press
+ * that the target received it. If dispatching fails first, the press probe
+ * is still removed from the page.
+ *
+ * @param cdp - CDP connection
+ * @param action - What to do
+ * @param x - Page x
+ * @param y - Page y
+ * @returns False if the press never reached the target
+ */
+async function dispatchMouseAction(
+  cdp: CDPConnection,
+  action: PointerAction,
+  x: number,
+  y: number
+): Promise<boolean> {
+  let reached: boolean | undefined;
+  try {
+    for (const event of mouseEvents(action, x, y)) {
+      await cdp.send('Input.dispatchMouseEvent', event);
+      if (event['type'] === 'mousePressed' && reached === undefined) {
+        reached = await pressReachedTarget(cdp);
+      }
+    }
+  } catch (error) {
+    if (reached === undefined) await pressReachedTarget(cdp);
+    throw error;
+  }
+  return reached ?? true;
+}
+
 /** Click target as located by CLICK_ELEMENT_SCRIPT. */
 type LocatedClick = ClickResult & {
   x?: number;
@@ -323,12 +393,15 @@ async function performClick(
   if (!result.success) return result;
 
   if (hittable && x !== undefined && y !== undefined) {
-    for (const event of mouseEvents(action, x, y)) {
-      await cdp.send('Input.dispatchMouseEvent', event);
-    }
+    const reached = await dispatchMouseAction(cdp, action, x, y);
     releaseClickTarget(cdp);
     return withMultipleMatchesWarning<ClickResult>(
-      { ...result, action, method: 'mouse' },
+      {
+        ...result,
+        action,
+        method: 'mouse',
+        ...(!reached && { warning: CLICK_NOT_RECEIVED_WARNING }),
+      },
       result.selectedIndex,
       `${POINTER_ACTION_DONE[action].toLowerCase()} the first visible one`
     );

@@ -359,3 +359,15 @@ export function portInUseError(port: number): string {
     `  - See what uses the port: lsof -i :${port}`
   );
 }
+
+/**
+ * Warning when bdg's Chrome preferences (password manager and leak check
+ * off, etc.) could not be written into the profile.
+ *
+ * @param file - Preferences file
+ * @param reason - Why
+ * @returns Message
+ */
+export function chromePrefsNotAppliedMessage(file: string, reason: string): string {
+  return `Warning: Chrome preferences not applied to ${file} (${reason}); password manager bubbles may capture clicks`;
+}

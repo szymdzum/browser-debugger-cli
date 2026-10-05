@@ -47,6 +47,13 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
 }
 
 /**
+ * Warning shown when a mouse press was dispatched but the target never
+ * received it (e.g. a browser dialog or bubble captured the input).
+ */
+export const CLICK_NOT_RECEIVED_WARNING =
+  'The click may not have reached the element: the page saw no mouse press (the browser may be showing a dialog or bubble that captures input)';
+
+/**
  * Note under a shortened list of matches.
  *
  * @param hidden - Matches not listed
