@@ -11,7 +11,9 @@ import type {
   FillValueMismatch,
   LayoutPoint,
   LayoutSize,
+  NewMessage,
   PageLayout,
+  PageNavigation,
 } from '@/ipc/protocol/domTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
@@ -105,21 +107,51 @@ export function formReadinessMessage(summary: {
   return `READY to submit (no field is marked required; empty: ${fieldLabelList(summary.emptyFieldLabels)})`;
 }
 
+/** Why an action's status line is not a clean success when nothing changed */
+export const NO_VISIBLE_EFFECT =
+  'no visible effect observed: no DOM change, requests or navigation within 300 ms';
+
 /**
  * Status line of a DOM action: a check mark only for a clean success.
  *
  * @param done - What was done, e.g. "Element Clicked"
  * @param warned - Whether the action has warnings (shown right below)
- * @returns e.g. "✓ Element Clicked" or "⚠ Element Clicked (with warnings)"
+ * @param noEffect - Whether the action had no visible effect
+ * @returns e.g. "✓ Element Clicked", "⚠ Element Clicked (with warnings)" or
+ *   "⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)"
  */
-export function actionStatusLine(done: string, warned: boolean): string {
+export function actionStatusLine(done: string, warned: boolean, noEffect = false): string {
+  if (noEffect) return `⚠ ${done} (${NO_VISIBLE_EFFECT})`;
   return warned ? `⚠ ${done} (with warnings)` : `✓ ${done}`;
+}
+
+/**
+ * How an action changed the page's location, for its `Page:` row.
+ *
+ * @param navigation - Navigation the action caused
+ * @returns e.g. "navigated to https://example.com/secure (200)" or
+ *   "URL changed to https://example.com/#/active (same document)"
+ */
+export function pageNavigationText(navigation: PageNavigation): string {
+  if (navigation.sameDocument) return `URL changed to ${navigation.url} (same document)`;
+  const status = navigation.status === undefined ? '' : ` (${navigation.status})`;
+  return `navigated to ${navigation.url}${status}`;
+}
+
+/**
+ * A message an action made appear, for its `New text:` rows.
+ *
+ * @param message - New message
+ * @returns e.g. `"Your password is invalid!" (div#flash.flash.error)`
+ */
+export function newMessageText(message: NewMessage): string {
+  return `"${message.text}" (${message.element})`;
 }
 
 /**
  * Warning shown when a filled field's value read back is not the one given:
  * cut to its maxlength, a password of another length (values never shown),
- * or another value.
+ * or another value (naming the field the value went to, when one has it).
  *
  * @param mismatch - Value given and value found (masked for passwords)
  * @returns Warning text
@@ -131,7 +163,11 @@ export function valueMismatchWarning(mismatch: FillValueMismatch): string {
   if (mismatch.expectedLength !== undefined) {
     return `The password field's value differs from the one filled (length ${mismatch.actualLength ?? 0}, expected ${mismatch.expectedLength}); the page may have rejected or changed the input`;
   }
-  return `The field's value is "${mismatch.actual}" after filling (expected "${mismatch.expected}"); the page may have rejected or moved the input`;
+  const outcome =
+    mismatch.movedTo === undefined
+      ? 'the page may have rejected or moved the input'
+      : `the value appeared in ${mismatch.movedTo} instead`;
+  return `The field's value is "${mismatch.actual}" after filling (expected "${mismatch.expected}"); ${outcome}`;
 }
 
 /**

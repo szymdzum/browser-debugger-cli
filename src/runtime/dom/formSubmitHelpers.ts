@@ -6,7 +6,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPTimeoutError } from '@/connection/errors.js';
 import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFlightRequests.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { submitTimeoutError } from '@/errors/messages.js';
+import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
 import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
@@ -122,9 +122,14 @@ const FAILURE_SUGGESTIONS: Record<NonNullable<PrepareResult['reason']>, string> 
 /**
  * Watches navigation and network activity from before a submission is
  * triggered, so fast navigations are not missed.
+ *
+ * A navigation is a new document committed in the main frame
+ * (`Page.frameNavigated`), whatever its URL: a POST that redirects back to
+ * the form's own URL (a login error) navigates too.
  */
 class SubmissionWatcher {
   private navigated = false;
+  private documentRequest: string | undefined;
   private onChange: (() => void) | null = null;
   private readonly requests: InFlightRequests;
   private readonly disposers: Array<() => void> = [];
@@ -136,17 +141,34 @@ class SubmissionWatcher {
     this.requests = trackInFlightRequests(cdp, () => this.onChange?.());
     this.disposers.push(this.requests.dispose);
     this.disposers.push(
-      cdp.on<Protocol.Page.FrameNavigatedEvent>('Page.frameNavigated', (params) => {
-        if (params.frame.parentId !== undefined) return;
+      cdp.on<Protocol.Page.FrameNavigatedEvent>('Page.frameNavigated', (params, sessionId) => {
+        if (sessionId !== undefined || params.frame.parentId !== undefined) return;
         this.navigated = true;
         this.onChange?.();
-      })
+      }),
+      cdp.on<Protocol.Network.RequestWillBeSentEvent>(
+        'Network.requestWillBeSent',
+        (params, sessionId) => {
+          if (sessionId !== undefined || params.type !== 'Document') return;
+          this.documentRequest ??= `${params.request.method} ${params.request.url}`;
+        }
+      )
     );
   }
 
   /** Whether the main frame navigated since watching began. */
   get navigationOccurred(): boolean {
     return this.navigated;
+  }
+
+  /** The first page request sent since watching began (`POST https://…`), if any */
+  get firstDocumentRequest(): string | undefined {
+    return this.documentRequest;
+  }
+
+  /** Requests still in flight */
+  get pendingRequests(): number {
+    return this.requests.count;
   }
 
   /** Requests started since watching began. */
@@ -156,13 +178,19 @@ class SubmissionWatcher {
 
   /**
    * Wait until the network is idle for `waitNetwork` ms and, if requested,
-   * the main frame navigated.
+   * the main frame navigated. When a requested navigation happened but the
+   * network was still busy at the timeout (a slow script or tracker on the
+   * new page), the wait ends without an error: resolves to `'busy'`.
    *
    * @param options - Wait conditions
-   * @returns Resolves when done
+   * @returns `'idle'`, or `'busy'` when only the network wait timed out
    * @throws CDPTimeoutError after `timeout` ms
    */
-  wait(options: { waitNavigation: boolean; waitNetwork: number; timeout: number }): Promise<void> {
+  wait(options: {
+    waitNavigation: boolean;
+    waitNetwork: number;
+    timeout: number;
+  }): Promise<'idle' | 'busy'> {
     const { waitNavigation, waitNetwork, timeout } = options;
     return new Promise((resolve, reject) => {
       let idle: NodeJS.Timeout | null = null;
@@ -173,13 +201,15 @@ class SubmissionWatcher {
       };
       const deadline = setTimeout(() => {
         finish();
-        reject(new CDPTimeoutError('Wait for completion timed out', new Error(`${timeout}ms`)));
+        if (waitNavigation && this.navigated) resolve('busy');
+        else
+          reject(new CDPTimeoutError('Wait for completion timed out', new Error(`${timeout}ms`)));
       }, timeout);
       const check = (): void => {
         const networkIdle = waitNetwork === 0 || this.requests.count === 0;
         if (networkIdle && (!waitNavigation || this.navigated)) {
           finish();
-          resolve();
+          resolve('idle');
         }
       };
       const schedule = (): void => {
@@ -273,9 +303,10 @@ export async function submitForm(
     const triggered = await triggerSubmit(cdp, selector, index);
     if ('failure' in triggered) return triggered.failure;
 
-    if (waitNetwork > 0 || waitNavigation) {
-      await watcher.wait({ waitNavigation, waitNetwork, timeout });
-    }
+    const outcome =
+      waitNetwork > 0 || waitNavigation
+        ? await watcher.wait({ waitNavigation, waitNetwork, timeout })
+        : 'idle';
     return {
       success: true,
       selector,
@@ -284,10 +315,13 @@ export async function submitForm(
       networkRequests: watcher.networkRequests,
       navigationOccurred: watcher.navigationOccurred,
       waitTimeMs: Date.now() - startTime,
+      ...(outcome === 'busy' && {
+        warning: submitNetworkBusyWarning(timeout, watcher.pendingRequests),
+      }),
     };
   } catch (error) {
     if (!(error instanceof CDPTimeoutError)) throw error;
-    const err = submitTimeoutError(timeout, waitNavigation);
+    const err = submitTimeoutError(timeout, waitNavigation, watcher.firstDocumentRequest);
     return {
       success: false,
       error: err.message,

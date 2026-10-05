@@ -29,7 +29,7 @@ import {
   scrollOptionsError,
 } from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
-import type { DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
+import type { ActionEffects, DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import { findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
@@ -44,6 +44,8 @@ import {
   POINTER_ACTION_DONE,
   actionStatusLine,
   dialogConsoleText,
+  newMessageText,
+  pageNavigationText,
 } from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -368,7 +370,7 @@ async function runPointerCommand(
 type ActionOutput<T> = Omit<T, 'success'>;
 
 /** What every action result may report besides its own details */
-interface ActionNotices {
+interface ActionNotices extends ActionEffects {
   warning?: string | undefined;
   dialogs?: DialogInfo[] | undefined;
   triggeredRequests?: TriggeredRequest[] | undefined;
@@ -376,11 +378,12 @@ interface ActionNotices {
 }
 
 /**
- * Build an action's output: the status line ("✓ Element Clicked", or
- * "⚠ Element Clicked (with warnings)" with the warning right below it), the
- * details, then the network requests it triggered and the dialogs it caused.
- * No request list is shown when there were none (JSON has an empty
- * `triggeredRequests` then).
+ * Build an action's output: the status line ("✓ Element Clicked",
+ * "⚠ Element Clicked (with warnings)" with the warning right below it, or
+ * "⚠ Element Clicked (no visible effect: …)"), the details, what changed on
+ * the page (`Page:` navigation, `New text:` messages), then the network
+ * requests it triggered and the dialogs it caused. No request list is shown
+ * when there were none (JSON has an empty `triggeredRequests` then).
  *
  * @param done - What was done, e.g. "Element Clicked"
  * @param details - Label/value rows
@@ -395,10 +398,16 @@ function formatActionOutput(
   keyWidth = 15
 ): OutputFormatter {
   const fmt = new OutputFormatter();
-  fmt.text(actionStatusLine(done, result.warning !== undefined));
+  fmt.text(actionStatusLine(done, result.warning !== undefined, result.effect === 'none'));
   if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
   fmt.blank();
   fmt.keyValueList(details, keyWidth);
+  if (result.navigation) fmt.keyValue('Page', pageNavigationText(result.navigation), keyWidth);
+  (result.messages ?? []).forEach((message, index) => {
+    const text = newMessageText(message);
+    if (index === 0) fmt.keyValue('New text', text, keyWidth);
+    else fmt.text(' '.repeat(keyWidth) + text);
+  });
 
   const omitted = result.triggeredRequestsOmitted;
   const requests = formatTriggeredRequestLines(result.triggeredRequests ?? [], omitted);
@@ -477,8 +486,8 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
 
   if (result.networkRequests !== undefined)
     details.push(['Network Requests', result.networkRequests.toString()]);
-  if (result.navigationOccurred !== undefined)
-    details.push(['Navigation', result.navigationOccurred ? 'yes' : 'no']);
+  if (result.navigationOccurred === false) details.push(['Navigation', 'no']);
+  if (result.navigationOccurred && !result.navigation) details.push(['Navigation', 'yes']);
   if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
 
   const fmt = formatActionOutput('Form Submitted', details, result, 20);

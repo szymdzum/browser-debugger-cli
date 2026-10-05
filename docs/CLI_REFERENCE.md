@@ -611,7 +611,21 @@ Requests during the action (5):
 
 `Element` (`data.element` in JSON) names the element the action hit, by its tag, id, classes and text, or the text of a nearby ancestor (`input.toggle in div.view "Write report"`), so a click by index or on one of several matches says which one it was. The status line has a check mark only for a clean success: an action with warnings (covered element clicked with DOM events, click not received, value mismatch, several matches) prints `⚠ Element Clicked (with warnings)` with the warning right below it, before the details and requests.
 
-After `dom fill` the field's value is read back. When it is not the value given (the page rejected, reformatted or moved the input, e.g. a handler that writes it into another field) the command still succeeds (exit 0) but warns first, `The field's value is "" after filling (expected "Lovelace"); the page may have rejected or moved the input`, and JSON has `valueMismatch: { "expected": "Lovelace", "actual": "" }`. Values are compared as the browser normalises them (colors case-insensitively, numbers and ranges as numbers, email trimmed, textarea line endings, times without zero seconds); a value the page cut to the field's maxlength is reported as `The value was cut to 10 characters by maxlength` (`truncatedTo`), and a password mismatch only by length (`The password field's value differs from the one filled (length 8, expected 12)`, masked values plus `expectedLength`/`actualLength`). The value is read back separately, a moment after the fill returned and for at most 1 s; when the change navigated the page (a `<select onchange="form.submit()">`) the fill reports success without it. A warning rather than an error, because pages legitimately reformat values (phone masks, trimming, upper-casing).
+Actions also say what changed on the page, after the details and before the requests. A navigation is shown as `Page: navigated to https://…/secure (200)` (a new document, also at the same URL, as after a form POST that redirects back) or `Page: URL changed to …/#/active (same document)` (history API, hash), `navigation: { url, sameDocument, status }` in JSON; it comes from CDP events, so it is reported even when the page could not be read. Messages that appeared or changed in alert/status/`aria-live` elements, `<output>` or elements whose class or id has a word like flash, alert, error, toast, notice, message, invalid or feedback are listed as `New text: "Your password is invalid!" (div#flash.flash.error)` (`messages: [{ text, element }]`, at most 3, 120 characters each, without close controls such as the "×" or aria-hidden parts; after a navigation every message of the new page counts). Texts of only digits and time units (clocks, counters) are left out; other text that changes on its own (a rotating banner) can show up. Both are left out when nothing changed. A `click` or `submit` that changed nothing at all (no DOM change, request, navigation, dialog or new window, checked again 300 ms later) prints `⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms)` and has `effect: "none"`, still exiting 0. It is not claimed with `--no-wait`, for `hover` and `--right`, after a copy or cut, when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, or when focus moved to an element that is not a button or link; focus/hover class changes on the clicked element don't count as changes, shadow roots attached meanwhile do. Effects outside the DOM (CSS `:hover`/`:focus-within` styles, canvas) are not seen. This costs one page script sent before the action (without waiting for it) and one read after it (about 1 ms on small pages, under 10 ms on large ones); when the page does not answer (a pending navigation), bdg waits at most 200 ms for the snapshot and 250 ms per read.
+
+```text
+✓ Form Submitted
+
+Selector:           #login
+Element:            button.radius "Login"
+Submit Button:      used
+Network Requests:   11
+Wait Time:          1390ms
+Page:               navigated to https://the-internet.herokuapp.com/login (200)
+New text:           "Your password is invalid!" (div#flash.flash.error)
+```
+
+After `dom fill` the field's value is read back. When it is not the value given (the page rejected, reformatted or moved the input, e.g. a handler that writes it into another field) the command still succeeds (exit 0) but warns first, `The field's value is "" after filling (expected "Lovelace"); the page may have rejected or moved the input`, and JSON has `valueMismatch: { "expected": "Lovelace", "actual": "" }`. When another text field of the form changed to the value given during the fill (values of at least 2 characters), the warning ends `the value appeared in input#first-name instead` (`movedTo`). Values are compared as the browser normalises them (colors case-insensitively, numbers and ranges as numbers, email trimmed, textarea line endings, times without zero seconds); a value the page cut to the field's maxlength is reported as `The value was cut to 10 characters by maxlength` (`truncatedTo`), and a password mismatch only by length (`The password field's value differs from the one filled (length 8, expected 12)`, masked values plus `expectedLength`/`actualLength`). The value is read back separately, a moment after the fill returned and for at most 1 s; when the change navigated the page (a `<select onchange="form.submit()">`) the fill reports success without it. A warning rather than an error, because pages legitimately reformat values (phone masks, trimming, upper-casing).
 
 Failed requests have `failed: true` and `errorText` (no `status`).
 
@@ -655,7 +669,7 @@ bdg dom pressKey 0 Enter                          # Use cached query index
 # Submit forms (smart wait for navigation/network)
 bdg dom submit "#login-form"
 bdg dom submit "#login-form" --wait-network 2000  # Wait 2s for network idle
-bdg dom submit "#login-form" --wait-navigation    # Wait for page navigation
+bdg dom submit "#login-form" --wait-navigation    # Wait for page navigation (any new document, also at the same URL)
 
 # Scroll page (waits for lazy-loaded content)
 bdg dom scroll "footer"                           # Scroll element into view

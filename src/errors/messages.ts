@@ -968,18 +968,48 @@ export function noHistoryEntryError(direction: 'back' | 'forward'): ErrorWithSug
 }
 
 /**
- * The form was submitted but the wait for its result timed out.
+ * The form was submitted but the wait for its result timed out. Waiting for
+ * a navigation, the hint depends on whether a page request was sent: without
+ * one the form probably submits via fetch; with one the server had not
+ * answered (or the new page had not committed) yet.
  *
  * @param timeout - Timeout in ms
  * @param waitNavigation - Whether a navigation was awaited
+ * @param documentRequest - First page request sent, e.g. `POST https://…/login`
  */
-export function submitTimeoutError(timeout: number, waitNavigation: boolean): ErrorWithSuggestion {
+export function submitTimeoutError(
+  timeout: number,
+  waitNavigation: boolean,
+  documentRequest?: string
+): ErrorWithSuggestion {
+  const message = `Form submitted, but timed out after ${timeout}ms waiting for ${waitNavigation ? 'navigation' : 'network idle'}`;
+  if (!waitNavigation) {
+    return {
+      message,
+      suggestion: 'Increase --timeout, or use --wait-network 0 to return right after submitting',
+    };
+  }
   return {
-    message: `Form submitted, but timed out after ${timeout}ms waiting for ${waitNavigation ? 'navigation' : 'network idle'}`,
-    suggestion: waitNavigation
-      ? 'The form may not navigate (e.g. it submits via fetch); retry without --wait-navigation or with a larger --timeout'
-      : 'Increase --timeout, or use --wait-network 0 to return right after submitting',
+    message,
+    suggestion:
+      documentRequest === undefined
+        ? 'The form sent no page request, so it may not navigate (e.g. it submits via fetch); retry without --wait-navigation'
+        : `The page request (${documentRequest}) had not loaded a page yet; retry with a larger --timeout`,
   };
+}
+
+/**
+ * Warning of a submit whose navigation happened but whose network was still
+ * busy when the wait ran out (the new page is there; a slow script or
+ * tracker kept loading).
+ *
+ * @param timeout - Timeout in ms
+ * @param pending - Requests still in flight
+ * @returns Warning text
+ */
+export function submitNetworkBusyWarning(timeout: number, pending: number): string {
+  const requests = pending === 1 ? '1 request' : `${pending} requests`;
+  return `The new page loaded, but ${requests} still had not finished after ${timeout}ms`;
 }
 
 /**

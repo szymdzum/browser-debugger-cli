@@ -9,15 +9,36 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
 
-/** CDP stub recording page scripts. */
-function fakeCdp(): CDPConnection & { expressions: string[] } {
+/** What the stub's page scripts evaluate to */
+interface PageReplies {
+  /** Snapshot before the action */
+  start?: unknown;
+  /** Read after the action */
+  read?: unknown;
+}
+
+/**
+ * CDP stub recording page scripts; the effect snapshots evaluate to the
+ * given replies (to nothing by default).
+ *
+ * @param replies - Values of the effect scripts
+ * @returns Stub
+ */
+function fakeCdp(replies: PageReplies = {}): CDPConnection & { expressions: string[] } {
   const expressions: string[] = [];
+  const valueOf = (expression: string): unknown => {
+    if (expression.includes('new MutationObserver')) return replies.start;
+    if (expression.includes('const scrolled')) return replies.read;
+    return undefined;
+  };
   return {
     expressions,
     send: (_method: string, params?: { expression?: string }) => {
-      if (params?.expression) expressions.push(params.expression);
-      return Promise.resolve({});
+      if (!params?.expression) return Promise.resolve({});
+      expressions.push(params.expression);
+      return Promise.resolve({ result: { value: valueOf(params.expression) } });
     },
+    on: () => () => undefined,
   } as unknown as CDPConnection & { expressions: string[] };
 }
 
@@ -75,6 +96,54 @@ void describe('createInteractionRunner', () => {
 
     assert.deepEqual(result.dialogs, [{ type: 'confirm', message: 'Sure?' }]);
     assert.ok(cdp.expressions.includes('delete window.__bdgTarget'));
+  });
+
+  void it('adds the URL change and the messages that appeared', async () => {
+    const interact = createInteractionRunner(new TelemetryStore());
+    const cdp = fakeCdp({
+      start: { href: 'https://todo.test/#/', messages: [] },
+      read: {
+        href: 'https://todo.test/#/active',
+        fresh: false,
+        changes: 3,
+        messages: [{ id: 1, text: 'Saved', element: 'div.toast' }],
+      },
+    });
+
+    const result = await interact(cdp, () => Promise.resolve({ success: true }));
+
+    assert.deepEqual(result.navigation, { url: 'https://todo.test/#/active', sameDocument: true });
+    assert.deepEqual(result.messages, [{ text: 'Saved', element: 'div.toast' }]);
+    assert.equal(result.effect, undefined);
+  });
+
+  void it('reports no effect only when asked to and nothing changed', async () => {
+    const quiet = {
+      start: { href: 'https://shop.test/', messages: [] },
+      read: { href: 'https://shop.test/', fresh: false, changes: 0, messages: [] },
+    };
+    const interact = createInteractionRunner(new TelemetryStore());
+    const action = (): Promise<{ success: boolean }> => Promise.resolve({ success: true });
+
+    const detected = await interact(fakeCdp(quiet), action, { detectNoEffect: true });
+    assert.equal(detected.effect, 'none');
+    assert.equal((await interact(fakeCdp(quiet), action)).effect, undefined);
+    const failed = await interact(fakeCdp(quiet), () => Promise.resolve({ success: false }), {
+      detectNoEffect: true,
+    });
+    assert.equal(failed.effect, undefined);
+  });
+
+  void it('reports nothing when effects are off or the page could not be read', async () => {
+    const interact = createInteractionRunner(new TelemetryStore());
+    const action = (): Promise<{ success: boolean }> => Promise.resolve({ success: true });
+
+    const off = fakeCdp({ start: { href: 'a', messages: [] } });
+    assert.deepEqual(await interact(off, action, { reportEffects: false }), { success: true });
+    assert.ok(!off.expressions.some((expression) => expression.includes('MutationObserver')));
+    assert.deepEqual(await interact(fakeCdp(), action, { detectNoEffect: true }), {
+      success: true,
+    });
   });
 });
 

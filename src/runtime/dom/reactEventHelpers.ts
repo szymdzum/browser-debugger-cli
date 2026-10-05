@@ -12,7 +12,7 @@ import {
   VIA_LABEL_SUFFIX,
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
-import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
+import { ELEMENT_DESCRIPTION_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 
 /**
@@ -56,6 +56,19 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
   const cut = field.maxLength > 0 && actual.length === field.maxLength && expected.length > actual.length &&
     expected.startsWith(actual);
   return cut ? { expected: expected, actual: actual, truncatedTo: actual.length } : { expected: expected, actual: actual };
+}`;
+
+/**
+ * Page-side list of the other text-like fields of a field's form (of the
+ * document when it has none), with their values: taken before a fill, so
+ * {@link MOVED_VALUE_JS} can tell which one the page changed.
+ */
+export const FIELD_VALUES_JS = `(field) => {
+  const fields = field.form ? Array.from(field.form.elements) : Array.from(field.ownerDocument.querySelectorAll('input, textarea'));
+  return new Map(fields
+    .filter((f) => f !== field && /^(input|textarea)$/.test(f.localName) &&
+      !/^(checkbox|radio|password|hidden|submit|button|reset|file|image)$/i.test(f.type || ''))
+    .map((f) => [f, String(f.value)]));
 }`;
 
 /**
@@ -200,6 +213,7 @@ export const REACT_FILL_SCRIPT = `
     warnings.push('The field is ' + unreachable + '; a user could not fill it (the value was set anyway)');
   }
 
+  const fieldsBefore = (${FIELD_VALUES_JS})(el);
   el.focus();
 
   if (tagName === 'select' && el.multiple) {
@@ -335,7 +349,7 @@ export const REACT_FILL_SCRIPT = `
   if (options.blur !== false) {
     el.blur();
   }
-  window.__bdgFillCheck = { el: el, expected: expected };
+  window.__bdgFillCheck = { el: el, expected: expected, before: fieldsBefore };
 
   return {
     success: true,
@@ -360,22 +374,48 @@ export const REACT_FILL_SCRIPT = `
 `;
 
 /**
+ * Page-side search for the field a moved value went to: one of the fields
+ * recorded before the fill ({@link FIELD_VALUES_JS}) whose value changed to
+ * the one given (trimmed, at least 2 characters). Evaluates to its id or
+ * name (`input#first-name`, `input[name="first"]`) or else its
+ * description, or undefined. Passwords are never searched for.
+ */
+export const MOVED_VALUE_JS = `(field, expected, before) => {
+  const wanted = String(expected).trim();
+  if (!before || wanted.length < 2 || (field.type || '').toLowerCase() === 'password') return undefined;
+  const other = Array.from(before.keys()).find((f) =>
+    String(f.value).trim() === wanted && String(before.get(f)).trim() !== wanted);
+  if (!other) return undefined;
+  if (other.id) return other.localName + '#' + other.id;
+  return other.name ? other.localName + '[name="' + other.name + '"]' : (${ELEMENT_DESCRIPTION_JS})(other);
+}`;
+
+/**
  * Page script reading back the field the last fill left in
  * `window.__bdgFillCheck`, after one macrotask (so frameworks that render
  * asynchronously have updated it). The macrotask comes from a
  * `MessageChannel`, which fake timers and page code rarely replace. Evaluates
- * to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), or null when the value
- * matches, nothing was left (the page navigated) or the field left the page.
+ * to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), with `movedTo` when the
+ * value turned up in another field ({@link MOVED_VALUE_JS}), or null when the
+ * value matches, nothing was left (the page navigated) or the field left the
+ * page.
  */
 export const FILL_READ_BACK_SCRIPT = `(() => {
   const check = window.__bdgFillCheck;
   delete window.__bdgFillCheck;
   if (!check) return null;
+  const readBack = () => {
+    if (!check.el.isConnected) return null;
+    const mismatch = (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected);
+    if (!mismatch) return null;
+    const movedTo = (${MOVED_VALUE_JS})(check.el, check.expected, check.before);
+    return movedTo ? Object.assign(mismatch, { movedTo: movedTo }) : mismatch;
+  };
   return new Promise((resolve) => {
     const channel = new MessageChannel();
     channel.port1.onmessage = () => {
       channel.port1.close();
-      resolve(check.el.isConnected ? (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected) || null : null);
+      resolve(readBack());
     };
     channel.port2.postMessage(null);
   });

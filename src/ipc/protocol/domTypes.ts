@@ -48,6 +48,34 @@ export interface TriggeredRequest {
   loading?: true;
 }
 
+/** How the page changed location during an action */
+export interface PageNavigation {
+  /** URL the page shows after the action */
+  url: string;
+  /** True for a same-document change (history API, hash); false for a new document */
+  sameDocument: boolean;
+  /** HTTP status of the new document, when known */
+  status?: number;
+}
+
+/** A message (alert, status, flash, error text) the page showed during an action */
+export interface NewMessage {
+  /** Its visible text (close buttons and aria-hidden parts left out), at most 120 characters */
+  text: string;
+  /** The element showing it, e.g. `div#flash.flash.error` */
+  element: string;
+}
+
+/** What an action changed on the page, besides its triggered requests */
+export interface ActionEffects {
+  /** The page navigated or changed its URL (absent when it did not) */
+  navigation?: PageNavigation;
+  /** Messages that appeared or changed (at most 3; absent when none did) */
+  messages?: NewMessage[];
+  /** "none" when the action had no visible effect: no DOM change, request or navigation */
+  effect?: 'none';
+}
+
 /** A filled field's value differing from the one given */
 export interface FillValueMismatch {
   /** Value given (for a select: the chosen option's value; checkboxes: checked/unchecked) */
@@ -60,12 +88,14 @@ export interface FillValueMismatch {
   expectedLength?: number;
   /** Password fields (values masked): length of the field's value */
   actualLength?: number;
+  /** Another field of the form that holds the value given, e.g. `input#first-name` */
+  movedTo?: string;
 }
 
 /**
  * Result of filling an element.
  */
-export interface FillResult {
+export interface FillResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
@@ -99,7 +129,7 @@ export interface FillResult {
 /**
  * Result of clicking an element.
  */
-export interface ClickResult {
+export interface ClickResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
@@ -129,7 +159,7 @@ export interface ClickResult {
 /**
  * Result of pressing a key on an element.
  */
-export interface PressKeyResult {
+export interface PressKeyResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
@@ -157,7 +187,7 @@ export interface PressKeyResult {
 /**
  * Result of a scroll operation.
  */
-export interface ScrollResult {
+export interface ScrollResult extends ActionEffects {
   success: boolean;
   error?: string;
   suggestion?: string;
@@ -183,7 +213,7 @@ export interface ScrollResult {
 /**
  * Result of submitting a form.
  */
-export interface SubmitResult {
+export interface SubmitResult extends ActionEffects {
   success: boolean;
   error?: string;
   selector?: string;
@@ -193,6 +223,8 @@ export interface SubmitResult {
   networkRequests?: number;
   navigationOccurred?: boolean;
   waitTimeMs?: number;
+  /** Set when the page loaded but its requests had not finished by the timeout */
+  warning?: string;
   suggestion?: string;
   exitCode?: number;
   /** Dialogs accepted while the command ran */

@@ -532,35 +532,46 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       }),
 
     dom_click: async (cdp, params) =>
-      interact(cdp, async () => {
-        const target = await resolveScriptTarget(cdp, params);
-        const clickOptions = filterDefined({ index: target.index, action: params.action });
-        return withActionStability(
-          cdp,
-          async () =>
-            withUserSelector(
-              await clickElement(cdp, target.selector, clickOptions),
-              params.selector
-            ),
-          params.wait !== false
-        );
-      }),
+      interact(
+        cdp,
+        async () => {
+          const target = await resolveScriptTarget(cdp, params);
+          const clickOptions = filterDefined({ index: target.index, action: params.action });
+          return withActionStability(
+            cdp,
+            async () =>
+              withUserSelector(
+                await clickElement(cdp, target.selector, clickOptions),
+                params.selector
+              ),
+            params.wait !== false
+          );
+        },
+        {
+          detectNoEffect:
+            params.wait !== false && params.action !== 'hover' && params.action !== 'right',
+        }
+      ),
 
     dom_submit: async (cdp, params) =>
       withTriggeredRequestCount(
-        await interact(cdp, async () => {
-          const target = await resolveScriptTarget(cdp, params);
-          const submitOptions = filterDefined({
-            index: target.index,
-            waitNavigation: params.waitNavigation,
-            waitNetwork: params.waitNetwork,
-            timeout: params.timeout,
-          });
-          return withUserSelector(
-            await submitForm(cdp, target.selector, submitOptions),
-            params.selector
-          );
-        })
+        await interact(
+          cdp,
+          async () => {
+            const target = await resolveScriptTarget(cdp, params);
+            const submitOptions = filterDefined({
+              index: target.index,
+              waitNavigation: params.waitNavigation,
+              waitNetwork: params.waitNetwork,
+              timeout: params.timeout,
+            });
+            return withUserSelector(
+              await submitForm(cdp, target.selector, submitOptions),
+              params.selector
+            );
+          },
+          { detectNoEffect: params.waitNetwork !== 0 || params.waitNavigation === true }
+        )
       ),
 
     dom_press_key: async (cdp, params) =>
@@ -620,7 +631,7 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
             ...filterDefined({ url: params.url, wait: params.wait }),
             pendingRequests: () => store.pendingNetworkRequests.values(),
           }),
-        { reportRequests: false }
+        { reportRequests: false, reportEffects: false }
       ),
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {
