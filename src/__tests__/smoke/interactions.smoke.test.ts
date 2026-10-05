@@ -579,4 +579,11 @@ void describe('DOM interactions', () => {
       'Stylesheet',
     ]);
   });
+
+  void it('fills a select whose change handler navigates away', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}forms`]);
+    const filled = await bdg(['dom', 'fill', '#jump-to', 'b']);
+    assert.match(filled, /^✓ Element Filled\n/);
+    assert.match(String(await evaluate('location.href')), /\/forms-jumped\?to=b$/);
+  });
 });

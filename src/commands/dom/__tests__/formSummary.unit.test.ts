@@ -206,6 +206,31 @@ void describe('primaryButtonIndex', () => {
     assert.equal(primaryButtonIndex([rawButton('Delete')]), undefined);
   });
 
+  void it('knows cancel and back in other languages', () => {
+    for (const label of [
+      'Abbrechen',
+      'Zurück',
+      'Annuler',
+      'Retour',
+      'Cancelar',
+      'Volver',
+      'Annulla',
+      'Indietro',
+      'Anuluj',
+      'Wstecz',
+    ]) {
+      assert.equal(primaryButtonIndex([rawButton(label)]), undefined, label);
+    }
+  });
+
+  void it('takes the last untyped form button, or the one styled as primary', () => {
+    const draft = rawButton('Save draft');
+    const send = rawButton('Send');
+    assert.equal(primaryButtonIndex([draft, send]), send.index);
+    const styled = rawButton('Order', { primaryClass: true });
+    assert.equal(primaryButtonIndex([styled, rawButton('Later')]), styled.index);
+  });
+
   void it('ignores a button outside a form unless it is styled as primary', () => {
     assert.equal(primaryButtonIndex([rawButton('Toggle', { formDefault: false })]), undefined);
   });

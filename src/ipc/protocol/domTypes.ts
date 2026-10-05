@@ -54,6 +54,12 @@ export interface FillValueMismatch {
   expected: string;
   /** Value the field has after filling */
   actual: string;
+  /** Set when the page cut the value to the field's maxlength */
+  truncatedTo?: number;
+  /** Password fields (values masked): length of the value given */
+  expectedLength?: number;
+  /** Password fields (values masked): length of the field's value */
+  actualLength?: number;
 }
 
 /**

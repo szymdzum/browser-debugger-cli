@@ -107,6 +107,19 @@ void describe('formatTriggeredRequestLines with assets', () => {
     ]);
   });
 
+  void it('lists requests that are not GETs, pings and CSP reports', () => {
+    const beacon = triggered('collect', { method: 'POST', resourceType: 'Other', status: 204 });
+    const ping = triggered('ping', { method: 'POST', resourceType: 'Ping', status: 204 });
+    const report = triggered('csp', { method: 'POST', resourceType: 'CSPViolationReport' });
+    const other = triggered('favicon.ico', { resourceType: 'Other', status: 200 });
+    assert.deepEqual(formatTriggeredRequestLines([beacon, ping, report, other]), [
+      'POST 127.0.0.1:8080/collect → 204',
+      'POST 127.0.0.1:8080/ping → 204',
+      'POST 127.0.0.1:8080/csp → pending',
+      '+ 1 asset (other)',
+    ]);
+  });
+
   void it('lists an asset that failed', () => {
     const missing = triggered('missing.png', { resourceType: 'Image', status: 404 });
     assert.deepEqual(formatTriggeredRequestLines([page, missing, stylesheet]), [

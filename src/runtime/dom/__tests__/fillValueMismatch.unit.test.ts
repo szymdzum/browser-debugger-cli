@@ -9,10 +9,12 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
+import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import { withValueMismatchWarning } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FILL_VALUE_MISMATCH_JS } from '@/runtime/dom/reactEventHelpers.js';
+import { valueMismatchWarning } from '@/ui/messages/commands.js';
 
-type Mismatch = { expected: string; actual: string } | undefined;
+type Mismatch = FillValueMismatch | undefined;
 
 const pageCheck = vm.runInNewContext(`(${FILL_VALUE_MISMATCH_JS})`) as (
   field: Record<string, unknown>,
@@ -43,10 +45,24 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
     );
   });
 
-  void it('masks passwords, keeping an empty value visible', () => {
-    assert.deepEqual(
-      valueMismatch({ localName: 'input', type: 'password', value: '' }, 'secret_sauce'),
-      { expected: '********', actual: '' }
+  void it('masks passwords and gives their lengths', () => {
+    const mismatch = valueMismatch(
+      { localName: 'input', type: 'password', value: 'secret' },
+      'secret_sauce'
+    );
+    assert.deepEqual(mismatch, {
+      expected: '********',
+      actual: '********',
+      expectedLength: 12,
+      actualLength: 6,
+    });
+    assert.equal(
+      valueMismatchWarning(mismatch as FillValueMismatch),
+      "The password field's value differs from the one filled (length 6, expected 12); the page may have rejected or changed the input"
+    );
+    assert.equal(
+      valueMismatch({ localName: 'input', type: 'password', value: '' }, 'x')?.actual,
+      ''
     );
   });
 
@@ -73,6 +89,52 @@ void describe('FILL_VALUE_MISMATCH_JS', () => {
       ),
       undefined
     );
+  });
+});
+
+/**
+ * Whether a field of an input type holding `actual` matches `expected`.
+ *
+ * @param type - Input type
+ * @param actual - Value the browser holds
+ * @param expected - Value given to fill
+ * @returns True when no mismatch is reported
+ */
+function matches(type: string, actual: string, expected: string): boolean {
+  const localName = type === 'textarea' ? 'textarea' : 'input';
+  return valueMismatch({ localName, type, value: actual }, expected) === undefined;
+}
+
+void describe('FILL_VALUE_MISMATCH_JS normalised values', () => {
+  void it('compares colors case-insensitively', () => {
+    assert.ok(matches('color', '#aabbcc', '#AABBCC'));
+    assert.ok(!matches('color', '#000000', '#aabbcc'));
+  });
+
+  void it('compares numbers and ranges as numbers', () => {
+    assert.ok(matches('number', '1.5', '1.50'));
+    assert.ok(matches('range', '7', '07'));
+    assert.ok(!matches('number', '', '3'));
+  });
+
+  void it('normalises textarea line endings and trims email', () => {
+    assert.ok(matches('textarea', 'a\nb', 'a\r\nb'));
+    assert.ok(matches('email', 'ada@example.com', ' ada@example.com '));
+  });
+
+  void it('takes times without zero seconds and local date-times with T', () => {
+    assert.ok(matches('time', '10:00', '10:00:00'));
+    assert.ok(matches('datetime-local', '2024-01-05T10:00', '2024-01-05 10:00:00'));
+    assert.ok(!matches('time', '10:05', '10:00'));
+  });
+
+  void it('reports a value cut to maxlength as truncated', () => {
+    const mismatch = valueMismatch(
+      { localName: 'input', type: 'text', value: '0123456789', maxLength: 10 },
+      '0123456789AB'
+    );
+    assert.equal(mismatch?.truncatedTo, 10);
+    assert.equal(valueMismatchWarning(mismatch), 'The value was cut to 10 characters by maxlength');
   });
 });
 

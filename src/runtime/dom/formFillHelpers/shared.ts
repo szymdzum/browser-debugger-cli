@@ -45,8 +45,7 @@ export function withMultipleMatchesWarning<
  */
 export function withValueMismatchWarning(result: FillResult): FillResult {
   if (!result.valueMismatch) return result;
-  const { expected, actual } = result.valueMismatch;
-  const warning = valueMismatchWarning(expected, actual);
+  const warning = valueMismatchWarning(result.valueMismatch);
   return { ...result, warning: result.warning ? `${warning}; ${result.warning}` : warning };
 }
 

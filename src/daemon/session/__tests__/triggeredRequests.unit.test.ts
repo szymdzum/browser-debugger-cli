@@ -221,6 +221,13 @@ void describe('withTriggeredRequestCount', () => {
     );
   });
 
+  void it('counts zero when the submission triggered no reportable request', () => {
+    assert.equal(
+      withTriggeredRequestCount({ networkRequests: 2, triggeredRequests: [] }).networkRequests,
+      0
+    );
+  });
+
   void it("keeps the watcher's count without network telemetry", () => {
     assert.equal(withTriggeredRequestCount({ networkRequests: 2 }).networkRequests, 2);
   });

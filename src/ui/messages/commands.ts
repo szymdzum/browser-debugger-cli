@@ -6,9 +6,14 @@
  */
 
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
-import type { ElementLayout, LayoutPoint, PageLayout } from '@/ipc/protocol/domTypes.js';
-import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
+import type {
+  ElementLayout,
+  FillValueMismatch,
+  LayoutPoint,
+  PageLayout,
+} from '@/ipc/protocol/domTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
+import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { ViewportPosition } from '@/types.js';
 import {
   buildAgentDiscoveryHelp,
@@ -111,14 +116,21 @@ export function actionStatusLine(done: string, warned: boolean): string {
 }
 
 /**
- * Warning shown when a filled field's value read back is not the one given.
+ * Warning shown when a filled field's value read back is not the one given:
+ * cut to its maxlength, a password of another length (values never shown),
+ * or another value.
  *
- * @param expected - Value given (masked for passwords)
- * @param actual - Value the field has (masked for passwords)
+ * @param mismatch - Value given and value found (masked for passwords)
  * @returns Warning text
  */
-export function valueMismatchWarning(expected: string, actual: string): string {
-  return `The field's value is "${actual}" after filling (expected "${expected}"); the page may have rejected or moved the input`;
+export function valueMismatchWarning(mismatch: FillValueMismatch): string {
+  if (mismatch.truncatedTo !== undefined) {
+    return `The value was cut to ${mismatch.truncatedTo} characters by maxlength`;
+  }
+  if (mismatch.expectedLength !== undefined) {
+    return `The password field's value differs from the one filled (length ${mismatch.actualLength ?? 0}, expected ${mismatch.expectedLength}); the page may have rejected or changed the input`;
+  }
+  return `The field's value is "${mismatch.actual}" after filling (expected "${mismatch.expected}"); the page may have rejected or moved the input`;
 }
 
 /**

@@ -69,29 +69,33 @@ export const FORM_DISCOVERY_SCRIPT = `
       cleaned = cleaned.replace(pattern, '');
     }
     cleaned = cleaned.replace(/\\s{2,}/g, ' ').trim();
-    cleaned = cleaned.replace(/^\\*\\s*/, '').replace(/\\s*\\*(\\s*:?)$/, '$1');
+    cleaned = cleaned.replace(/^\\*\\s+/, '').replace(/\\s+\\*(\\s*:?)$/, '$1');
     return cleaned || text.trim();
   }
 
-  // Text of the label element(s) naming a field, as written (before cleanup)
-  function rawLabelText(element) {
+  // The element labelling a field: label[for], aria-labelledby, wrapping label
+  function labelElement(element) {
     const labelFor = element.id ? document.querySelector('label[for="' + CSS.escape(element.id) + '"]') : null;
-    if (labelFor) return labelFor.textContent;
     const labelledBy = element.getAttribute('aria-labelledby');
-    const labelEl = labelledBy ? document.getElementById(labelledBy) : null;
-    if (labelEl) return labelEl.textContent;
-    const wrappingLabel = element.closest('label');
-    if (!wrappingLabel) return '';
-    const clone = wrappingLabel.cloneNode(true);
-    clone.querySelectorAll('input, select, textarea, button').forEach(i => i.remove());
-    return clone.textContent;
+    return labelFor || (labelledBy && document.getElementById(labelledBy)) || element.closest('label');
   }
 
-  // Required by attribute, ARIA, or a label marked with an asterisk ("Name *")
+  // A standalone required star in label text: "* Name", "Name *", "Name *:"
+  // (not a footnote mark such as "Terms*")
+  function labelMarksRequired(text) {
+    return /^\\*\\s|\\s\\*\\s*:?$/.test(String(text).trim());
+  }
+
+  // Required by attribute, ARIA, or a label marked with a standalone star,
+  // or with an element of its own holding just "*" (<span aria-hidden>*</span>)
   function isRequired(element) {
     if (element.required || element.getAttribute('aria-required') === 'true') return true;
-    const text = (rawLabelText(element) || '').trim();
-    return /^\\*|\\*\\s*:?$/.test(text);
+    const label = labelElement(element);
+    if (!label) return false;
+    const clone = label.cloneNode(true);
+    clone.querySelectorAll('input, select, textarea, button').forEach(i => i.remove());
+    return labelMarksRequired(clone.textContent || '') ||
+      Array.from(clone.querySelectorAll('*')).some(n => n.textContent.trim() === '*');
   }
 
   // Name of the radio or checkbox group a field belongs to: its radiogroup's

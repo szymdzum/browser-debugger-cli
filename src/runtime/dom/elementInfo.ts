@@ -50,7 +50,8 @@ export const ELEMENT_DESCRIPTION_JS = `(node) => node.tagName.toLowerCase() +
  * without an id is named by the nearest of three ancestors that has text,
  * e.g. `input.toggle in div.view "Write report"` (rows of a list share their
  * aria-label); otherwise its aria-label, placeholder or title is used. Texts
- * are cut at 40 characters.
+ * are cut at 40 characters. Contenteditable elements count as controls: what
+ * was typed into them is never echoed (nor their ancestors' text).
  */
 export const ELEMENT_IDENTITY_JS = `(el) => {
   const describe = ${ELEMENT_DESCRIPTION_JS};
@@ -59,14 +60,14 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
     const characters = Array.from(text);
     return characters.length > 40 ? characters.slice(0, 40).join('') + '…' : text;
   };
-  const isControl = (node) => /^(input|select|textarea)$/.test(node.localName);
+  const isControl = (node) => /^(input|select|textarea)$/.test(node.localName) || node.isContentEditable;
   const shownText = (node) => (isControl(node) ? '' : clean(typeof node.innerText === 'string' ? node.innerText : node.textContent));
   const buttonValue = (node) => (node.localName === 'input' && /^(submit|button|reset)$/i.test(node.type) ? clean(node.value) : '');
   const attributeText = (node) =>
     clean(node.getAttribute('aria-label')) || clean(node.getAttribute('placeholder')) || clean(node.getAttribute('title'));
   const visible = shownText(el) || buttonValue(el);
   if (visible) return describe(el) + ' "' + cut(visible) + '"';
-  let ancestor = el.id ? null : el.parentElement;
+  let ancestor = el.id || el.isContentEditable ? null : el.parentElement;
   for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
     const text = shownText(ancestor);
     if (text) return describe(el) + ' in ' + describe(ancestor) + ' "' + cut(text) + '"';

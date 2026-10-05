@@ -106,7 +106,8 @@ const FRAME_ORIGINS_HTML = `<!doctype html><title>frame origins</title>
  * attribute), a last-name field whose input handler moves the value into the
  * first name, a radio group, a checkbox group, a Cancel button before the
  * submit button, two to-do rows with checkboxes, a covered button, and a
- * button loading a stylesheet, an image and a fetch.
+ * button loading a stylesheet, an image and a fetch, and a select whose
+ * change handler submits its form (navigating away).
  */
 const FORMS_HTML = `<!doctype html><title>forms</title>
 <form id="checkout" onsubmit="return false">
@@ -131,7 +132,9 @@ const FORMS_HTML = `<!doctype html><title>forms</title>
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/style.css?' + Date.now(); document.head.append(link);
   const img = new Image(); img.src = '/pixel.png?' + Date.now(); document.body.append(img);
   fetch('/api/test');
-">Load</button>`;
+">Load</button>
+<form id="jump" action="/forms-jumped"><select id="jump-to" name="to" onchange="this.form.submit()">
+<option value="a">A</option><option value="b">B</option></select></form>`;
 
 /**
  * Framework-style listeners: a React-like root container (two bound

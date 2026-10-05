@@ -4,8 +4,21 @@
  * images), by CDP resource type.
  */
 
-/** Resource types listed one by one after an action */
-const ACTIVITY_RESOURCE_TYPES = new Set(['Document', 'XHR', 'Fetch', 'WebSocket', 'EventSource']);
+/**
+ * Resource types listed one by one after an action: pages, API calls,
+ * sockets, and the requests a page sends about itself (pings, beacons,
+ * preflights, CSP reports)
+ */
+const ACTIVITY_RESOURCE_TYPES = new Set([
+  'Document',
+  'XHR',
+  'Fetch',
+  'WebSocket',
+  'EventSource',
+  'Ping',
+  'Preflight',
+  'CSPViolationReport',
+]);
 
 /** Short names of asset types, in the order summaries list them */
 const ASSET_TYPE_NAMES: ReadonlyArray<[string, string]> = [
@@ -18,23 +31,26 @@ const ASSET_TYPE_NAMES: ReadonlyArray<[string, string]> = [
 
 /** Fields a request needs to be classified */
 interface ClassifiedRequest {
+  method?: string | undefined;
   resourceType?: string | undefined;
   status?: number | undefined;
   failed?: true | undefined;
 }
 
 /**
- * Whether a request is worth its own line after an action: a document, XHR,
- * fetch, EventSource or WebSocket request, one of unknown type, or an asset
- * that failed (an HTTP error or no response).
+ * Whether a request is worth its own line after an action: one of the
+ * {@link ACTIVITY_RESOURCE_TYPES}, one of unknown type, any request that is
+ * not a GET (a `sendBeacon` POST typed `Other`), or an asset that failed (an
+ * HTTP error or no response).
  *
- * @param request - Request with its CDP resource type
- * @returns False for assets that loaded normally
+ * @param request - Request with its method and CDP resource type
+ * @returns False for assets fetched with GET that loaded normally
  */
 export function isNotableRequest(request: ClassifiedRequest): boolean {
   if (request.resourceType === undefined || ACTIVITY_RESOURCE_TYPES.has(request.resourceType)) {
     return true;
   }
+  if (request.method !== undefined && request.method.toUpperCase() !== 'GET') return true;
   return request.failed === true || (request.status ?? 0) >= 400;
 }
 

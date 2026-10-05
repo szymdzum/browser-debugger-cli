@@ -16,12 +16,16 @@ import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
 
 /**
- * Page-side read-back of a filled field: `{ expected, actual }` when its
- * value is not what was asked for (the page rejected, reformatted or moved
- * the input), undefined when it is. Checkboxes and radios compare as
- * `checked`/`unchecked`, a multiple select as its selected values joined by
- * ", ", contenteditable text with whitespace collapsed. Password values are
- * masked (an empty one stays "", which tells the value was dropped).
+ * Page-side read-back of a filled field: a mismatch when its value is not
+ * what was asked for (the page rejected, reformatted or moved the input),
+ * undefined when it is. Values are compared as the browser normalises them:
+ * colors case-insensitively, numbers and ranges as numbers, email trimmed,
+ * textarea line endings as `\n`, times and local date-times without zero
+ * seconds and with `T` (`2024-01-05 10:00:00` is `2024-01-05T10:00`).
+ * Checkboxes and radios compare as `checked`/`unchecked`, a multiple select
+ * as its selected values joined by ", ", contenteditable text with
+ * whitespace collapsed. A value cut to the field's maxlength sets
+ * `truncatedTo`; a password mismatch gives masked values and both lengths.
  */
 export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
   const type = (field.type || '').toLowerCase();
@@ -31,12 +35,27 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
       ? (field.checked ? 'checked' : 'unchecked')
       : field.localName === 'select' && field.multiple
         ? Array.from(field.selectedOptions).map((o) => o.value).join(', ')
-        : field.value;
-  const collapse = (text) => String(text).replace(/\\s+/g, ' ').trim();
-  const same = field.isContentEditable ? collapse(actual) === collapse(expected) : actual === expected;
+        : String(field.value);
+  const time = (text) => text.trim().replace(' ', 'T').replace(/(\\d\\d:\\d\\d):00(\\.0+)?$/, '$1');
+  const normalize = (text) => {
+    text = String(text);
+    if (field.isContentEditable) return text.replace(/\\s+/g, ' ').trim();
+    if (field.localName === 'textarea') return text.replace(/\\r\\n?/g, '\\n');
+    if (type === 'color') return text.trim().toLowerCase();
+    if (type === 'email') return text.trim();
+    if (type === 'time' || type === 'datetime-local') return time(text);
+    return text;
+  };
+  const numeric = (type === 'number' || type === 'range') && actual.trim() !== '' && String(expected).trim() !== '';
+  const same = numeric ? Number(actual) === Number(expected) : normalize(actual) === normalize(expected);
   if (same) return undefined;
-  const mask = (text) => (type === 'password' && text !== '' ? '********' : text);
-  return { expected: mask(expected), actual: mask(actual) };
+  if (type === 'password') {
+    const mask = (text) => (text === '' ? '' : '********');
+    return { expected: mask(expected), actual: mask(actual), expectedLength: expected.length, actualLength: actual.length };
+  }
+  const cut = field.maxLength > 0 && actual.length === field.maxLength && expected.length > actual.length &&
+    expected.startsWith(actual);
+  return cut ? { expected: expected, actual: actual, truncatedTo: actual.length } : { expected: expected, actual: actual };
 }`;
 
 /**
@@ -50,16 +69,15 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
  * A `<label>` is filled through its control ({@link LABEL_CONTROL_JS}),
  * reported as e.g. `input (via label)`.
  *
- * After the events (and a macrotask, so frameworks that render
- * asynchronously have updated the field) the value is read back: when it is
- * not what was asked for (the page rejected, reformatted or moved the input)
- * the result has `valueMismatch` with both values (passwords masked).
+ * The result is returned right away (a change handler may navigate). The
+ * field and the value to expect are left in `window.__bdgFillCheck` for
+ * {@link FILL_READ_BACK_SCRIPT}, which reads the value back a moment later.
  *
  * @remarks
  * Works with React, Vue, Angular, and vanilla JS applications.
  */
 export const REACT_FILL_SCRIPT = `
-(async function(selector, parts, value, options) {
+(function(selector, parts, value, options) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   const warnings = [];
   let expected = value;
@@ -317,7 +335,7 @@ export const REACT_FILL_SCRIPT = `
   if (options.blur !== false) {
     el.blur();
   }
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  window.__bdgFillCheck = { el: el, expected: expected };
 
   return {
     success: true,
@@ -329,7 +347,6 @@ export const REACT_FILL_SCRIPT = `
         : tagName === 'select' && el.multiple
           ? Array.from(el.selectedOptions).map((o) => o.value).join(', ')
           : el.value,
-    valueMismatch: (${FILL_VALUE_MISMATCH_JS})(el, expected),
     element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: tagName + viaLabel,
     inputType: inputType || null,
@@ -341,6 +358,28 @@ export const REACT_FILL_SCRIPT = `
   };
 })
 `;
+
+/**
+ * Page script reading back the field the last fill left in
+ * `window.__bdgFillCheck`, after one macrotask (so frameworks that render
+ * asynchronously have updated it). The macrotask comes from a
+ * `MessageChannel`, which fake timers and page code rarely replace. Evaluates
+ * to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), or null when the value
+ * matches, nothing was left (the page navigated) or the field left the page.
+ */
+export const FILL_READ_BACK_SCRIPT = `(() => {
+  const check = window.__bdgFillCheck;
+  delete window.__bdgFillCheck;
+  if (!check) return null;
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve(check.el.isConnected ? (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected) || null : null);
+    };
+    channel.port2.postMessage(null);
+  });
+})()`;
 
 /**
  * JavaScript function to locate an element for clicking.

@@ -12,9 +12,12 @@ import type {
 } from '@/runtime/dom/formTypes.js';
 import { REQUIRED_FIELD_EMPTY_REASON } from '@/ui/messages/commands.js';
 
-/** Button labels that leave or clear a form instead of submitting it */
+/**
+ * Button labels that leave or clear a form instead of submitting it (English,
+ * German, French, Spanish, Italian and Polish cancel/back words)
+ */
 const DISMISSIVE_BUTTON_LABEL =
-  /^(cancel|reset|back|go back|previous|prev|close|clear|discard|delete|remove)\b/i;
+  /^(cancel|reset|back|go back|previous|prev|close|clear|discard|delete|remove|abbrechen|zurück|annuler|retour|cancelar|volver|annulla|indietro|anuluj|wstecz)\b/iu;
 
 /**
  * Fields a user fills as one: the options of a radio or checkbox group (same
@@ -135,10 +138,12 @@ export function calculateSummary(fields: FormField[], buttons: FormButton[]): Fo
 }
 
 /**
- * The button that submits the form, as a user would pick it: never one that
- * cancels, resets or goes back; first a button written as a submit button
- * (`type="submit"`, `<input type=submit>`), then the form's default button
- * (a `<button>` without a type inside a form), then one styled as primary.
+ * The button that submits the form, as a user would pick it. Buttons that
+ * cancel, reset, go back or delete ({@link DISMISSIVE_BUTTON_LABEL}) never
+ * are. Then, in order: a button written as a submit button
+ * (`type="submit"`, `<input type=submit>`); among the form's untyped
+ * `<button>`s (each submits it) one styled as primary, else the last one
+ * (forms put Cancel or Back first); else any button styled as primary.
  * Buttons outside a form submit nothing, so only their style counts.
  *
  * @param buttons - Raw buttons of one form
@@ -148,9 +153,11 @@ export function primaryButtonIndex(buttons: RawButton[]): number | undefined {
   const candidates = buttons.filter(
     (button) => button.type !== 'reset' && !DISMISSIVE_BUTTON_LABEL.test(button.label.trim())
   );
+  const formDefaults = candidates.filter((button) => button.formDefault);
   const primary =
     candidates.find((button) => button.explicitSubmit) ??
-    candidates.find((button) => button.formDefault) ??
+    formDefaults.find((button) => button.primaryClass) ??
+    formDefaults.at(-1) ??
     candidates.find((button) => button.primaryClass);
   return primary?.index;
 }
