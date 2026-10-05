@@ -116,12 +116,20 @@ void describe('classifyViewportPosition', () => {
   void it('says that page scrolling is locked for content below the fold of a locked page', () => {
     const locked = {
       ...at(20, 3400, 100, 40, null, { left: 0, up: 0, right: 0, down: 0 }),
-      scrollLock: 'position: fixed, overflow: hidden on body',
+      scrollLock: { by: 'position: fixed, overflow: hidden on body', dialog: null },
     };
     assert.deepEqual(classifyViewportPosition(locked, VIEWPORT), {
       inViewport: 'below',
+      offScreenReason: 'page scrolling is locked (position: fixed, overflow: hidden on body)',
+    });
+    const byDialog = {
+      ...locked,
+      scrollLock: { by: 'overflow: hidden on html', dialog: 'div#consent' },
+    };
+    assert.deepEqual(classifyViewportPosition(byDialog, VIEWPORT), {
+      inViewport: 'below',
       offScreenReason:
-        'page scrolling is locked (position: fixed, overflow: hidden on body), likely by a dialog',
+        'page scrolling is locked (overflow: hidden on html), likely by dialog div#consent',
     });
     assert.deepEqual(classifyViewportPosition({ ...locked, rect: at(10, 10).rect }, VIEWPORT), {
       inViewport: 'visible',

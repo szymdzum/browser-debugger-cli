@@ -213,13 +213,16 @@ const SCROLL_LOCKED_PREFIX = 'page scrolling is locked';
 
 /**
  * Off-screen reason for an element out of view on a page whose scrolling is
- * locked (a modal or consent dialog usually does that).
+ * locked, naming the visible dialog that likely locked it when there is one.
  *
  * @param lock - What locks it, e.g. `overflow: hidden on body`
- * @returns e.g. `page scrolling is locked (overflow: hidden on body), likely by a dialog`
+ * @param dialog - Visible dialog on the page, e.g. `div#consent` (null: none)
+ * @returns e.g. `page scrolling is locked (overflow: hidden on body), likely by dialog div#consent`,
+ *   or `page scrolling is locked (overflow: hidden on body)`
  */
-export function scrollLockedReason(lock: string): string {
-  return `${SCROLL_LOCKED_PREFIX} (${lock}), likely by a dialog`;
+export function scrollLockedReason(lock: string, dialog: string | null = null): string {
+  const cause = dialog ? `, likely by dialog ${dialog}` : '';
+  return `${SCROLL_LOCKED_PREFIX} (${lock})${cause}`;
 }
 
 /** Short location hints for elements a user cannot see without scrolling */
@@ -301,7 +304,7 @@ function layoutScrollNote(element: LabelledLayout, viewport?: LayoutSize): strin
  * @returns e.g. "visible", "partly visible (40%)", "below fold (scroll down 760px to centre it)",
  *   "out of view in ul#list (below)", "hidden (display: none)",
  *   "left of viewport (off-screen: beyond the page's scroll range)",
- *   "below fold; page scrolling is locked (overflow: hidden on body), likely by a dialog"
+ *   "below fold; page scrolling is locked (overflow: hidden on body), likely by dialog div#consent"
  */
 export function layoutPositionLabel(element: LabelledLayout, viewport?: LayoutSize): string {
   const { inViewport, percentVisible, hiddenReason, clippedBy, offScreenReason } = element;

@@ -121,7 +121,9 @@ export function formatDomGet(data: DomGetResult): string {
  * Format DOM eval results for human-readable output.
  *
  * A string result is printed as is (not JSON-quoted), so text reads and
- * pipes like `echo`; other values are formatted JSON, and values Chrome only
+ * pipes like `echo`, unless that would read as another value (empty,
+ * `undefined`, or valid JSON such as `42` or `[1,2]`): then it stays
+ * JSON-quoted. Other values are formatted JSON, and values Chrome only
  * describes (functions, DOM nodes) their description. The iframe it ran in
  * (`--frame`) is reported on stderr, so stdout stays the bare value. `--json`
  * output is unchanged (the value in `data.result`).
@@ -144,8 +146,28 @@ export function formatDomGet(data: DomGetResult): string {
  */
 export function formatDomEval(data: { result: unknown; type?: string }): string {
   if (data.type === 'undefined') return 'undefined';
-  if (typeof data.result === 'string') return data.result;
-  return JSON.stringify(data.result ?? null, null, 2);
+  const { result } = data;
+  if (typeof result === 'string' && (data.type !== 'string' || !looksLikeOtherValue(result))) {
+    return result;
+  }
+  return JSON.stringify(result ?? null, null, 2);
+}
+
+/**
+ * Whether a string printed as is would read as another value: empty,
+ * `undefined`, or valid JSON (`42`, `true`, `null`, `[1,2]`, `{"a":1}`).
+ *
+ * @param text - String result
+ * @returns True when it must be JSON-quoted to read as a string
+ */
+function looksLikeOtherValue(text: string): boolean {
+  if (text === '' || text === 'undefined') return true;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

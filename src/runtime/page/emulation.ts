@@ -10,6 +10,10 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import { VIEWPORT_SIZE_JS } from '@/runtime/dom/elementGeometry.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
+const log = createLogger('session');
 
 /**
  * `Emulation.setDeviceMetricsOverride` parameters for a session viewport: a
@@ -85,7 +89,8 @@ export async function pageAppearance(cdp: CDPConnection): Promise<PageAppearance
       viewport: { width: value.width, height: value.height },
       colorScheme: value.dark ? 'dark' : 'light',
     };
-  } catch {
+  } catch (error) {
+    log.debug(`Could not read the page's viewport and color scheme: ${getErrorMessage(error)}`);
     return {};
   } finally {
     clearTimeout(timer);

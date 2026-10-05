@@ -66,6 +66,10 @@ void describe('dom eval', () => {
     const number = await runCommand('dom', ['eval', '1 + 1'], { timeout: 60000 });
     assert.equal(number.stdout.trim(), '2');
     assert.equal((await evaluate('"a \\"quoted\\""')).data?.result, 'a "quoted"');
+    const ambiguous = await runCommand('dom', ['eval', 'JSON.stringify([1, 2])'], {
+      timeout: 60000,
+    });
+    assert.equal(ambiguous.stdout.trim(), '"[1,2]"');
   });
 
   void it('returns values JSON cannot represent as readable descriptions', async () => {

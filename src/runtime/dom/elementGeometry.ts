@@ -39,11 +39,19 @@ export interface ElementGeometry {
   pageScroll: ScrollRange;
   /**
    * Why the top-level page cannot scroll although content is below the fold
-   * ({@link SCROLL_LOCK_JS}), e.g. `overflow: hidden on body`; null when it is not locked
+   * ({@link SCROLL_LOCK_JS}); null when it is not locked
    */
-  scrollLock?: string | null;
+  scrollLock?: ScrollLock | null;
   /** Offset of its document's viewport within the top-level viewport (iframes) */
   offset: LayoutPoint;
+}
+
+/** What keeps the top-level page from scrolling ({@link SCROLL_LOCK_JS}). */
+export interface ScrollLock {
+  /** The styles locking it, e.g. `position: fixed, overflow: hidden on body` */
+  by: string;
+  /** A visible dialog that is likely the reason, e.g. `div#consent`; null when there is none */
+  dialog: string | null;
 }
 
 /** Edges of a viewport or clip along which overlay scrollbars (that take no space) show after a scroll. */
@@ -121,10 +129,12 @@ const SCROLL_RANGE_JS = `(view) => {
  * Page-side reason the page of a window cannot be scrolled although its
  * content may extend below the fold: the scrolling element is no taller than
  * the viewport while the body or root element is `position: fixed` or has
- * `overflow: hidden` (or `clip`), which is how dialogs lock page scrolling.
- * Null when the page can scroll or nothing locks it.
+ * `overflow: hidden` (or `clip`), which is how dialogs lock page scrolling,
+ * with the first visible dialog of the page (`dialog[open]`,
+ * `[aria-modal=true]`, `[role=dialog]`, `[role=alertdialog]`) as the likely
+ * reason. Null when the page can scroll or nothing locks it.
  */
-const SCROLL_LOCK_JS = `(view) => {
+const SCROLL_LOCK_JS = `(view, describe) => {
   const doc = view.document;
   const scroller = doc.scrollingElement || doc.documentElement;
   if (scroller.scrollHeight > scroller.clientHeight + 1) return null;
@@ -136,7 +146,15 @@ const SCROLL_LOCK_JS = `(view) => {
     if (style.overflowY === 'hidden' || style.overflowY === 'clip') parts.push('overflow: ' + style.overflowY);
     return parts.length > 0 ? parts.join(', ') + ' on ' + name : null;
   };
-  return lockOf(doc.body, 'body') || lockOf(doc.documentElement, 'html');
+  const by = lockOf(doc.body, 'body') || lockOf(doc.documentElement, 'html');
+  if (!by) return null;
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && (!el.checkVisibility || el.checkVisibility({ visibilityProperty: true }));
+  };
+  const dialogs = doc.querySelectorAll('dialog[open], [aria-modal="true"], [role="dialog"], [role="alertdialog"]');
+  const dialog = Array.from(dialogs).find(shown);
+  return { by: by, dialog: dialog ? describe(dialog) : null };
 }`;
 
 /**
@@ -442,7 +460,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   while (top.frameElement) top = top.parent;
   const toBox = (r) => r && { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top };
   const invisible = hidden ? null : invisibleReason(el, describe);
-  const lock = scrollLock(top);
+  const lock = scrollLock(top, describe);
   if (lock && fixedBy === top.document.body) fixed = false;
   return { rect: toBox(rect), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
 }`;
@@ -602,7 +620,9 @@ function outOfViewAdvice(
   if (x === null || y === null) {
     const { scrollLock } = geometry;
     return {
-      offScreenReason: scrollLock ? scrollLockedReason(scrollLock) : OFF_SCREEN_REASONS.outOfRange,
+      offScreenReason: scrollLock
+        ? scrollLockedReason(scrollLock.by, scrollLock.dialog)
+        : OFF_SCREEN_REASONS.outOfRange,
     };
   }
   return x === 0 && y === 0 ? {} : { scrollBy: { x, y } };

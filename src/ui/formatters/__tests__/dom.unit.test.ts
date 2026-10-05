@@ -5,7 +5,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { formatDomGet, formatDomQuery } from '@/ui/formatters/dom.js';
+import { formatDomEval, formatDomGet, formatDomQuery } from '@/ui/formatters/dom.js';
 
 void describe('formatDomQuery', () => {
   void it('shows the text preview, and nothing for elements without text', () => {
@@ -118,5 +118,37 @@ void describe('formatDomGet', () => {
     });
     assert.match(output, /\[0\] <p>a<\/p>/);
     assert.match(output, /\[1\] <p>b<\/p>/);
+  });
+});
+
+void describe('formatDomEval', () => {
+  void it('prints strings as is, multi-line text included', () => {
+    assert.equal(formatDomEval({ result: 'My Page', type: 'string' }), 'My Page');
+    assert.equal(formatDomEval({ result: 'a "b"\nline 2', type: 'string' }), 'a "b"\nline 2');
+    assert.equal(formatDomEval({ result: '1px solid', type: 'string' }), '1px solid');
+  });
+
+  void it('quotes strings that would read as another value', () => {
+    const cases: Array<[string, string]> = [
+      ['', '""'],
+      ['undefined', '"undefined"'],
+      ['42', '"42"'],
+      ['true', '"true"'],
+      ['null', '"null"'],
+      ['[1,2]', '"[1,2]"'],
+      ['{"a":1}', '"{\\"a\\":1}"'],
+    ];
+    for (const [result, expected] of cases) {
+      assert.equal(formatDomEval({ result, type: 'string' }), expected, result);
+    }
+  });
+
+  void it('keeps other values as before', () => {
+    assert.equal(formatDomEval({ result: 42, type: 'number' }), '42');
+    assert.equal(formatDomEval({ result: [1, 2], type: 'object' }), '[\n  1,\n  2\n]');
+    assert.equal(formatDomEval({ result: null, type: 'object' }), 'null');
+    assert.equal(formatDomEval({ result: undefined, type: 'undefined' }), 'undefined');
+    assert.equal(formatDomEval({ result: '-0', type: 'number' }), '-0');
+    assert.equal(formatDomEval({ result: 'body', type: 'object' }), 'body');
   });
 });

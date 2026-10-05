@@ -352,7 +352,7 @@ void describe('Element layout', () => {
     }
   });
 
-  void it('says page scrolling is locked (dialog) instead of calling in-flow content fixed', async () => {
+  void it('says page scrolling is locked instead of calling in-flow content fixed', async () => {
     await evaluate(
       "document.body.style.cssText = 'position: fixed; overflow: hidden; top: 0; left: 0; right: 0'; 1"
     );
@@ -362,16 +362,22 @@ void describe('Element layout', () => {
       assert.equal(save?.scrollBy, undefined);
       assert.equal(
         save?.offScreenReason,
-        'page scrolling is locked (position: fixed, overflow: hidden on body), likely by a dialog'
-      );
-      assert.match(
-        await bdg(['dom', 'layout', '#save']),
-        /below fold; page scrolling is locked \(position: fixed, overflow: hidden on body\), likely by a dialog$/m
+        'page scrolling is locked (position: fixed, overflow: hidden on body)'
       );
       const [offCanvas] = (await layout('#off-canvas')).elements;
       assert.match(offCanvas?.offScreenReason ?? '', /fixed position/);
+
+      await evaluate(
+        'document.body.insertAdjacentHTML(\'beforeend\', \'<div id="consent" role="dialog" style="position: fixed; left: 300px; top: 300px; width: 200px; height: 100px">Cookies?</div><div id="closed" role="dialog" hidden>Old</div>\'); 1'
+      );
+      assert.match(
+        await bdg(['dom', 'layout', '#save']),
+        /below fold; page scrolling is locked \(position: fixed, overflow: hidden on body\), likely by dialog div#consent$/m
+      );
     } finally {
-      await evaluate("document.body.style.cssText = ''; 1");
+      await evaluate(
+        "document.body.style.cssText = ''; document.querySelectorAll('#consent, #closed').forEach((el) => el.remove()); 1"
+      );
     }
   });
 

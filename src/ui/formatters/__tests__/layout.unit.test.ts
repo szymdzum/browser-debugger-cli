@@ -64,9 +64,13 @@ void describe('layoutLine', () => {
     assert.equal(
       layoutLine({
         ...rest,
-        offScreenReason: scrollLockedReason('overflow: hidden on body'),
+        offScreenReason: scrollLockedReason('overflow: hidden on body', 'div#consent'),
       }),
-      '[0] button#save "Save"  420,1180 120×40  below fold; page scrolling is locked (overflow: hidden on body), likely by a dialog'
+      '[0] button#save "Save"  420,1180 120×40  below fold; page scrolling is locked (overflow: hidden on body), likely by dialog div#consent'
+    );
+    assert.match(
+      layoutLine({ ...rest, offScreenReason: scrollLockedReason('overflow: hidden on body') }),
+      /below fold; page scrolling is locked \(overflow: hidden on body\)$/
     );
   });
 
