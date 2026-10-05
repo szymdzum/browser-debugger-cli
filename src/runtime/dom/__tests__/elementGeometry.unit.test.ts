@@ -39,6 +39,7 @@ function at(
   return {
     rect: { x, y, width, height },
     clip,
+    clipOverlay: { right: false, bottom: false },
     clipper: null,
     hidden: null,
     invisible: null,

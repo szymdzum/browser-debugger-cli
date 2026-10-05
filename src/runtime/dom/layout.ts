@@ -44,19 +44,35 @@ const log = createLogger('dom');
 export const LAYOUT_ELEMENT_LIMIT = 100;
 
 /**
- * Strip (CSS px) along the right and bottom edges of the viewport and of
- * clipping containers that hit-testing avoids when the element shows outside
- * it: overlay scrollbars (macOS, mobile) appear there for about a second after
- * a scroll and catch hit tests, which then return the scroller.
+ * Page-side end of a visible span kept clear of an overlay scrollbar along
+ * an edge (16 CSS px wide): overlay scrollbars (macOS, mobile) show for about a
+ * second after a scroll and catch hit tests, which then return the scroller.
+ * The span ends before the strip when it reaches into it and also shows
+ * outside it; without overlay scrollbars along the edge it is unchanged.
+ * Arguments: span start and end, the edge, whether overlay scrollbars show there.
  */
-const OVERLAY_SCROLLBAR_SIZE = 16;
+export const CLEAR_OF_SCROLLBAR_JS = `(start, end, edge, overlay) =>
+  overlay && end > edge - 16 && edge - 16 > start ? edge - 16 : end`;
+
+/**
+ * Page-side edges of the top-level viewport with overlay scrollbars: the page
+ * scrolls along an axis while its scrollbar takes no space (the window is as
+ * wide or tall as the viewport).
+ */
+const VIEWPORT_OVERLAY_JS = `(view, viewport) => {
+  const scroller = view.document.scrollingElement || view.document.documentElement;
+  return {
+    right: scroller.scrollHeight > viewport.height && view.innerWidth - viewport.width < 1,
+    bottom: scroller.scrollWidth > viewport.width && view.innerHeight - viewport.height < 1
+  };
+}`;
 
 /**
  * Page function: layout of the matches in `found` (all up to `limit`, or the
  * one at `index`) and of the top-level page. An element covers another when
  * it is the topmost element at the center of the largest visible part of the
- * other's boxes (a wrapped link has one per line, the strip where overlay
- * scrollbars show is avoided when possible) and does not lie inside it. An
+ * other's boxes (a wrapped link has one per line; the strip where overlay
+ * scrollbars show is avoided when possible, {@link CLEAR_OF_SCROLLBAR_JS}) and does not lie inside it. An
  * ancestor covers it only when the ancestor is painted above it there (its
  * `::before`/`::after` overlay, or its background over a negative
  * `z-index`), as `dom click` finds: the element is in the hit-test stack below
@@ -71,6 +87,8 @@ const LAYOUT_JS = `function (found, index, limit) {
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const contextOf = ${ELEMENT_CONTEXT_JS};
   const textOf = ${ELEMENT_TEXT_JS};
+  const clearOfScrollbar = ${CLEAR_OF_SCROLLBAR_JS};
+  const viewportOverlay = ${VIEWPORT_OVERLAY_JS};
   const picked = index === null
     ? found.slice(0, limit).map((el, i) => [i, el])
     : (found[index] ? [[index, found[index]]] : []);
@@ -83,6 +101,7 @@ const LAYOUT_JS = `function (found, index, limit) {
     scroll: { x: top.scrollX, y: top.scrollY },
     document: { width: scroller.scrollWidth, height: scroller.scrollHeight }
   };
+  const pageOverlay = viewportOverlay(top, page.viewport);
   const encloses = (outer, node) => {
     for (let n = node; n; n = n.parentNode || n.host) if (n === outer) return true;
     return false;
@@ -95,8 +114,6 @@ const LAYOUT_JS = `function (found, index, limit) {
     if (!encloses(hit, node)) return hit;
     return scope.elementsFromPoint(x, y).indexOf(node) > 0 ? hit : null;
   };
-  const clearOfScrollbar = (start, end, edge) =>
-    end > edge - ${OVERLAY_SCROLLBAR_SIZE} && edge - ${OVERLAY_SCROLLBAR_SIZE} > start ? edge - ${OVERLAY_SCROLLBAR_SIZE} : end;
   const visibleCenter = (el, g) => {
     const bounds = [{ x: 0, y: 0, width: page.viewport.width, height: page.viewport.height }].concat(g.clip ? [g.clip] : []);
     let best = null;
@@ -108,8 +125,12 @@ const LAYOUT_JS = `function (found, index, limit) {
       const bottom = Math.min(...boxes.map((b) => b.y + b.height));
       const area = (right - left) * (bottom - top);
       if (!(right > left && bottom > top) || (best && area <= best.area)) continue;
-      const clearRight = clearOfScrollbar(left, right, Math.min(...bounds.map((b) => b.x + b.width)));
-      const clearBottom = clearOfScrollbar(top, bottom, Math.min(...bounds.map((b) => b.y + b.height)));
+      let clearRight = clearOfScrollbar(left, right, page.viewport.width, pageOverlay.right);
+      let clearBottom = clearOfScrollbar(top, bottom, page.viewport.height, pageOverlay.bottom);
+      if (g.clip) {
+        clearRight = clearOfScrollbar(left, clearRight, g.clip.x + g.clip.width, g.clipOverlay.right);
+        clearBottom = clearOfScrollbar(top, clearBottom, g.clip.y + g.clip.height, g.clipOverlay.bottom);
+      }
       best = { area: area, x: (left + clearRight) / 2, y: (top + clearBottom) / 2 };
     }
     return best;

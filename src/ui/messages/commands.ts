@@ -80,6 +80,25 @@ export function moreRequestsNote(hidden: number): string {
   return `... and ${hidden} more (see ${sessionCommand('bdg network list')})`;
 }
 
+/**
+ * Pieces of the reasons `bdg dom layout` gives for hidden and invisible
+ * elements. The page-side measurement builds the reasons from them, e.g.
+ * `clipped by div#acc: zero height`, `opacity: 0 on div#menu`.
+ */
+export const LAYOUT_REASONS = {
+  /** Hidden: an `<option>` of a closed `<select>` has no box */
+  option: 'not rendered (an <option> is shown by its <select>)',
+  /** Hidden: start of the reason for a clipping container with no area, followed by it */
+  clippedBy: 'clipped by ',
+  /** Which size of that container is zero */
+  zeroHeight: 'zero height',
+  zeroWidth: 'zero width',
+  /** Invisible: fully transparent */
+  transparent: 'opacity: 0',
+  /** Joins an invisible reason to the ancestor causing it */
+  on: ' on ',
+} as const;
+
 /** Short location hints for elements a user cannot see without scrolling */
 const VIEWPORT_POSITION_HINTS: Partial<Record<ViewportPosition, string>> = {
   above: 'above viewport',

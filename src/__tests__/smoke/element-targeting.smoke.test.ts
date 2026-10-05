@@ -18,6 +18,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { LAYOUT_REASONS } from '@/ui/messages/commands.js';
 
 /**
  * Run a bdg command and assert its exit code.
@@ -219,6 +220,7 @@ interface LayoutData {
   page: { viewport: { height: number }; document: { height: number } };
   elements: Array<{
     index: number;
+    element: string;
     context?: string;
     bounds: { x: number; y: number; width: number; height: number };
     inViewport: string;
@@ -383,6 +385,29 @@ void describe('Element layout', () => {
     assert.match(
       human,
       /^ {2}\[0\] a#in-accordion "Answer link" {2}hidden \(clipped by div#accordion: zero height\)$/m
+    );
+  });
+
+  void it('flags clip, clip-path and slot-wrapper opacity, and explains a hidden <option>', async () => {
+    const data = await layout('#sr-only, #in-clipped, #first-option, #slotted, #in-sliver');
+    const byElement = new Map(data.elements.map((element) => [element.element, element]));
+    assert.equal(byElement.get('span#sr-only')?.invisible, 'clip: rect(0px, 0px, 0px, 0px)');
+    assert.equal(byElement.get('a#in-clipped')?.invisible, 'clip-path: inset(50%) on div#clipped');
+    assert.equal(byElement.get('a#slotted')?.invisible, 'opacity: 0 on div#slot-fade');
+    const option = byElement.get('option#first-option');
+    assert.equal(option?.inViewport, 'hidden');
+    assert.equal(option?.hiddenReason, LAYOUT_REASONS.option);
+    const sliver = byElement.get('a#in-sliver');
+    assert.notEqual(sliver?.inViewport, 'hidden', JSON.stringify(sliver));
+  });
+
+  void it('finds content of a closed <details> by its text', async () => {
+    const found = JSON.parse(
+      await bdg(['dom', 'query', 'button:has-text("answer")', '--json'])
+    ) as { data: { nodes: Array<{ id?: string }> } };
+    assert.deepEqual(
+      found.data.nodes.map((node) => node.id),
+      ['in-details']
     );
   });
 

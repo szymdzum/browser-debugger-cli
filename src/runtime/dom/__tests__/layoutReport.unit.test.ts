@@ -40,6 +40,7 @@ function element(index: number, y: number, coveredBy: string | null = null): Raw
     geometry: {
       rect: { x: 10.6, y, width: 120.2, height: 40 },
       clip: null,
+      clipOverlay: { right: false, bottom: false },
       clipper: null,
       hidden: null,
       invisible: null,
