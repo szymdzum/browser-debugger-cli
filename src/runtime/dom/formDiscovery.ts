@@ -69,7 +69,48 @@ export const FORM_DISCOVERY_SCRIPT = `
       cleaned = cleaned.replace(pattern, '');
     }
     cleaned = cleaned.replace(/\\s{2,}/g, ' ').trim();
+    cleaned = cleaned.replace(/^\\*\\s+/, '').replace(/\\s+\\*(\\s*:?)$/, '$1');
     return cleaned || text.trim();
+  }
+
+  // The element labelling a field: label[for], aria-labelledby, wrapping label
+  function labelElement(element) {
+    const labelFor = element.id ? document.querySelector('label[for="' + CSS.escape(element.id) + '"]') : null;
+    const labelledBy = element.getAttribute('aria-labelledby');
+    return labelFor || (labelledBy && document.getElementById(labelledBy)) || element.closest('label');
+  }
+
+  // A standalone required star in label text: "* Name", "Name *", "Name *:"
+  // (not a footnote mark such as "Terms*")
+  function labelMarksRequired(text) {
+    return /^\\*\\s|\\s\\*\\s*:?$/.test(String(text).trim());
+  }
+
+  // Required by attribute, ARIA, or a label marked with a standalone star,
+  // or with an element of its own holding just "*" (<span aria-hidden>*</span>)
+  function isRequired(element) {
+    if (element.required || element.getAttribute('aria-required') === 'true') return true;
+    const label = labelElement(element);
+    if (!label) return false;
+    const clone = label.cloneNode(true);
+    clone.querySelectorAll('input, select, textarea, button').forEach(i => i.remove());
+    return labelMarksRequired(clone.textContent || '') ||
+      Array.from(clone.querySelectorAll('*')).some(n => n.textContent.trim() === '*');
+  }
+
+  // Name of the radio or checkbox group a field belongs to: its radiogroup's
+  // label, its fieldset's legend, or its name
+  function groupLabel(element) {
+    const type = element.type?.toLowerCase();
+    if ((type !== 'radio' && type !== 'checkbox') || !element.name) return undefined;
+    const group = element.closest('[role="radiogroup"], fieldset');
+    const named = group && (group.getAttribute('aria-label') ||
+      (group.querySelector(':scope > legend') || {}).textContent);
+    if (named && named.trim()) return cleanLabelText(named);
+    return element.name
+      .replace(/[_-]/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/^./, s => s.toUpperCase());
   }
 
   function extractLabel(element) {
@@ -240,7 +281,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     score += Math.min(distinctFields * 3, 30);
     const textTypes = ['text', 'search', 'email', 'password', 'textarea', 'tel', 'url', 'number', 'textbox'];
     if (fields.some((f) => textTypes.includes(f.type))) score += 10;
-    const hasSubmit = buttons.some(b => b.type === 'submit' || b.isPrimary);
+    const hasSubmit = buttons.some(b => b.type === 'submit' || b.primaryClass);
     if (hasSubmit) score += 10;
     const style = window.getComputedStyle(formEl);
     if (style.display === 'none' || style.visibility === 'hidden') score -= 100;
@@ -392,7 +433,8 @@ export const FORM_DISCOVERY_SCRIPT = `
         label: extractLabel(el),
         name: el.name || null,
         placeholder: el.placeholder || undefined,
-        required: el.required || el.getAttribute('aria-required') === 'true',
+        required: isRequired(el),
+        groupLabel: groupLabel(el),
         disabled: el.disabled || el.getAttribute('aria-disabled') === 'true',
         readOnly: el.readOnly || false,
         hidden: isHidden,
@@ -427,17 +469,19 @@ export const FORM_DISCOVERY_SCRIPT = `
       if (style.display === 'none' || style.visibility === 'hidden') continue;
       const type = el.type?.toLowerCase() || 'button';
       const btnType = type === 'submit' ? 'submit' : type === 'reset' ? 'reset' : 'button';
-      const isPrimary = btnType === 'submit' ||
-                        el.classList.contains('primary') ||
-                        el.classList.contains('btn-primary') ||
-                        el.classList.contains('submit');
+      const explicitSubmit = btnType === 'submit' &&
+        (el.tagName === 'INPUT' || (el.getAttribute('type') || '').toLowerCase() === 'submit');
+      const formDefault = btnType === 'submit' && !explicitSubmit && Boolean(el.form);
+      const primaryClass = Array.from(el.classList).some(c => /^(btn[-_])?(primary|submit)$/i.test(c));
       buttons.push({
         index: idx,
         selector: generateSelector(el),
         label: extractButtonLabel(el),
         type: btnType,
         disabled: el.disabled || el.getAttribute('aria-disabled') === 'true',
-        isPrimary: isPrimary
+        explicitSubmit: explicitSubmit,
+        formDefault: formDefault,
+        primaryClass: primaryClass
       });
       idx++;
     }

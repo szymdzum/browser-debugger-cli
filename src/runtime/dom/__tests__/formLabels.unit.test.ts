@@ -41,3 +41,42 @@ void describe('cleanLabelText', () => {
     assert.equal(cleanLabelText('Email ▼'), 'Email');
   });
 });
+
+/**
+ * Extract `labelMarksRequired` from the injected script.
+ *
+ * @returns The page-side required-star check
+ */
+function loadLabelMarksRequired(): (text: string) => boolean {
+  const start = FORM_DISCOVERY_SCRIPT.indexOf('function labelMarksRequired(text) {');
+  const end = FORM_DISCOVERY_SCRIPT.indexOf('// Required by attribute', start);
+  assert.ok(start >= 0 && end > start, 'labelMarksRequired not found in FORM_DISCOVERY_SCRIPT');
+  const source = FORM_DISCOVERY_SCRIPT.slice(start, end);
+  return vm.runInNewContext(`${source}; labelMarksRequired`) as (text: string) => boolean;
+}
+
+const labelMarksRequired = loadLabelMarksRequired();
+
+void describe('labelMarksRequired', () => {
+  void it('takes a standalone star before or after the label as required', () => {
+    assert.equal(labelMarksRequired('First Name *'), true);
+    assert.equal(labelMarksRequired('First Name *:'), true);
+    assert.equal(labelMarksRequired('* First Name'), true);
+    assert.equal(labelMarksRequired('  Zip\n  *  '), true);
+  });
+
+  void it('ignores footnote stars and stars inside the text', () => {
+    assert.equal(labelMarksRequired('Terms*'), false);
+    assert.equal(labelMarksRequired('*Terms'), false);
+    assert.equal(labelMarksRequired('Rate * 2'), false);
+    assert.equal(labelMarksRequired('Name'), false);
+  });
+});
+
+void describe('cleanLabelText stars', () => {
+  void it('drops a standalone required star but keeps a footnote star', () => {
+    assert.equal(cleanLabelText('Last Name *'), 'Last Name');
+    assert.equal(cleanLabelText('Last Name *:'), 'Last Name:');
+    assert.equal(cleanLabelText('Terms*'), 'Terms*');
+  });
+});

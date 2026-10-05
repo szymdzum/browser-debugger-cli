@@ -8,7 +8,12 @@ import { describe, it } from 'node:test';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
-import { toTriggeredRequest, watchTriggeredRequests } from '@/daemon/session/triggeredRequests.js';
+import {
+  MAX_TRIGGERED_REQUESTS,
+  toTriggeredRequest,
+  watchTriggeredRequests,
+  withTriggeredRequestCount,
+} from '@/daemon/session/triggeredRequests.js';
 import type { NetworkRequest } from '@/types.js';
 
 /** CDP stub answering every call with an empty result. */
@@ -161,10 +166,70 @@ void describe('watchTriggeredRequests streams and WebSockets', () => {
       }
     );
     assert.deepEqual(collect()?.triggeredRequests, [
-      { requestId: 'open', method: 'GET', url: 'ws://127.0.0.1:8080/ws', status: 101 },
-      { requestId: 'connecting', method: 'GET', url: 'ws://127.0.0.1:8080/slow', pending: true },
-      { requestId: 'refused', method: 'GET', url: 'ws://127.0.0.1:1/ws', failed: true },
+      { ...webSocket('open', 'ws://127.0.0.1:8080/ws'), status: 101 },
+      { ...webSocket('connecting', 'ws://127.0.0.1:8080/slow'), pending: true },
+      { ...webSocket('refused', 'ws://127.0.0.1:1/ws'), failed: true },
     ]);
+  });
+});
+
+/**
+ * Triggered request entry of a WebSocket handshake.
+ *
+ * @param requestId - Request id
+ * @param url - Socket URL
+ * @returns Entry without its state
+ */
+function webSocket(requestId: string, url: string): Record<string, string> {
+  return { requestId, method: 'GET', url, resourceType: 'WebSocket' };
+}
+
+void describe('watchTriggeredRequests over the limit', () => {
+  void it('keeps pages, API calls and failed assets before assets, in start order', () => {
+    const store = networkStore();
+    const collect = watchTriggeredRequests(store);
+    const now = Date.now();
+    const assets = Array.from({ length: MAX_TRIGGERED_REQUESTS + 5 }, (_, i) =>
+      request(`asset${i}`, { timestamp: now + 1 + i, resourceType: 'Script', status: 200 })
+    );
+    store.networkRequests.push(
+      request('page', { timestamp: now, resourceType: 'Document', status: 200 }),
+      ...assets,
+      request('missing', { timestamp: now + 100, resourceType: 'Image', status: 404 }),
+      request('api', { timestamp: now + 101, resourceType: 'Fetch', status: 200 })
+    );
+
+    const collected = collect();
+    const ids = collected?.triggeredRequests.map((r) => r.requestId) ?? [];
+    assert.equal(ids.length, MAX_TRIGGERED_REQUESTS);
+    assert.equal(ids[0], 'page');
+    assert.deepEqual(ids.slice(-2), ['missing', 'api']);
+    assert.equal(collected?.triggeredRequestsOmitted, 8);
+  });
+});
+
+void describe('withTriggeredRequestCount', () => {
+  void it('counts a submission by its request list, JSON omissions included', () => {
+    const triggeredRequests = [toTriggeredRequest(request('a', { status: 200 }))];
+    assert.equal(
+      withTriggeredRequestCount({
+        networkRequests: 14,
+        triggeredRequests,
+        triggeredRequestsOmitted: 3,
+      }).networkRequests,
+      4
+    );
+  });
+
+  void it('counts zero when the submission triggered no reportable request', () => {
+    assert.equal(
+      withTriggeredRequestCount({ networkRequests: 2, triggeredRequests: [] }).networkRequests,
+      0
+    );
+  });
+
+  void it("keeps the watcher's count without network telemetry", () => {
+    assert.equal(withTriggeredRequestCount({ networkRequests: 2 }).networkRequests, 2);
   });
 });
 

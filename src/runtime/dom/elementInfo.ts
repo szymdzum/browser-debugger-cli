@@ -43,6 +43,40 @@ export const ELEMENT_DESCRIPTION_JS = `(node) => node.tagName.toLowerCase() +
   (node.classList && node.classList.length ? '.' + Array.from(node.classList).slice(0, 2).join('.') : '')`;
 
 /**
+ * Page-side identity of an element an action hit, so the output says which
+ * one it was: its short description ({@link ELEMENT_DESCRIPTION_JS}) and
+ * visible text (button value for button inputs), e.g.
+ * `button#add.btn "Add to cart"`. An element without visible text and
+ * without an id is named by the nearest of three ancestors that has text,
+ * e.g. `input.toggle in div.view "Write report"` (rows of a list share their
+ * aria-label); otherwise its aria-label, placeholder or title is used. Texts
+ * are cut at 40 characters. Contenteditable elements count as controls: what
+ * was typed into them is never echoed (nor their ancestors' text).
+ */
+export const ELEMENT_IDENTITY_JS = `(el) => {
+  const describe = ${ELEMENT_DESCRIPTION_JS};
+  const clean = (text) => (text || '').replace(/\\s+/g, ' ').trim();
+  const cut = (text) => {
+    const characters = Array.from(text);
+    return characters.length > 40 ? characters.slice(0, 40).join('') + '…' : text;
+  };
+  const isControl = (node) => /^(input|select|textarea)$/.test(node.localName) || node.isContentEditable;
+  const shownText = (node) => (isControl(node) ? '' : clean(typeof node.innerText === 'string' ? node.innerText : node.textContent));
+  const buttonValue = (node) => (node.localName === 'input' && /^(submit|button|reset)$/i.test(node.type) ? clean(node.value) : '');
+  const attributeText = (node) =>
+    clean(node.getAttribute('aria-label')) || clean(node.getAttribute('placeholder')) || clean(node.getAttribute('title'));
+  const visible = shownText(el) || buttonValue(el);
+  if (visible) return describe(el) + ' "' + cut(visible) + '"';
+  let ancestor = el.id || el.isContentEditable ? null : el.parentElement;
+  for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
+    const text = shownText(ancestor);
+    if (text) return describe(el) + ' in ' + describe(ancestor) + ' "' + cut(text) + '"';
+  }
+  const attribute = attributeText(el);
+  return attribute ? describe(el) + ' "' + cut(attribute) + '"' : describe(el);
+}`;
+
+/**
  * Page-side location of an element: the iframes it is in (outermost first)
  * and the shadow root holding it, e.g. `iframe#pay > shadow root of <x-card>`;
  * empty for the main document.

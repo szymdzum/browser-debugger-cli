@@ -19,13 +19,16 @@ import {
   unexpectedResponseFormatError,
   operationFailedError,
 } from '@/errors/messages.js';
+import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import {
   escapeValueForJS,
   formatScriptExecutionError,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
+  withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
+  FILL_READ_BACK_SCRIPT,
   REACT_FILL_SCRIPT,
   CLICK_ELEMENT_SCRIPT,
   isFillResult,
@@ -92,7 +95,7 @@ export async function fillElement(
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
       const result = cdpResponse.result.value;
-      if (!result.fileInput) return result;
+      if (!result.fileInput) return withValueMismatchWarning(await withReadBack(cdp, result));
       const uploaded = await setFileInput(cdp, selector, value, options);
       return uploaded.success && result.elementType
         ? { ...uploaded, elementType: result.elementType }
@@ -109,6 +112,53 @@ export async function fillElement(
     const err = operationFailedError('fill element', errorMessage);
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
   }
+}
+
+/** How long reading a filled value back may take before it is skipped */
+const READ_BACK_TIMEOUT_MS = 1000;
+
+/**
+ * Add the read-back of a successful fill ({@link FILL_READ_BACK_SCRIPT}):
+ * `valueMismatch` when the field's value is not the one given. The fill
+ * stands without it when the read-back fails, takes longer than
+ * {@link READ_BACK_TIMEOUT_MS} or finds nothing (a change handler navigated
+ * or replaced the page).
+ *
+ * @param cdp - CDP connection
+ * @param result - Fill result
+ * @returns The result, with `valueMismatch` when the value differs
+ */
+async function withReadBack(cdp: CDPConnection, result: FillResult): Promise<FillResult> {
+  if (!result.success) return result;
+  let timer: NodeJS.Timeout | undefined;
+  const timedOut = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), READ_BACK_TIMEOUT_MS);
+  });
+  const readBack = cdp
+    .send('Runtime.evaluate', {
+      expression: FILL_READ_BACK_SCRIPT,
+      returnByValue: true,
+      awaitPromise: true,
+    })
+    .then((response) => (response as { result?: { value?: unknown } }).result?.value)
+    .catch((error: unknown) => {
+      log.debug(`Filled value not read back: ${getErrorMessage(error)}`);
+      return undefined;
+    });
+  const mismatch = await Promise.race([readBack, timedOut]).finally(() => clearTimeout(timer));
+  return isValueMismatch(mismatch) ? { ...result, valueMismatch: mismatch } : result;
+}
+
+/**
+ * Whether a read-back value is a mismatch.
+ *
+ * @param value - Value from {@link FILL_READ_BACK_SCRIPT}
+ * @returns True for `{ expected, actual }`
+ */
+function isValueMismatch(value: unknown): value is FillValueMismatch {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj['expected'] === 'string' && typeof obj['actual'] === 'string';
 }
 
 /** Empties a file input as a user removing the selection would (with events). */

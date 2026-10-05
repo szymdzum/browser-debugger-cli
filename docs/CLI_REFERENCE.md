@@ -501,7 +501,7 @@ Form: "Create Account" (step 2 of 3)
    5  button       Back                     (secondary)          enabled
    6  button       Create Account           (primary)            enabled
 ══════════════════════════════════════════════════════════════════════
-Summary: 0/5 fields filled | 3 required remaining | NOT ready
+Summary: 0/5 fields filled | 4 required fields empty: Email address, Password, Confirm password, Terms & Conditions | NOT ready (no fields filled)
 
 Remaining:
   bdg dom fill 0 "<value>"                   # Email address
@@ -523,7 +523,8 @@ Remaining:
     "summary": {
       "totalFields": 5,
       "filledFields": 0,
-      "requiredRemaining": 3,
+      "requiredRemaining": 4,
+      "emptyFieldLabels": ["Email address", "Password", "Confirm password", "Newsletter", "Terms & Conditions"],
       "readyToSubmit": false,
       "blockers": [...]
     }
@@ -537,6 +538,8 @@ Remaining:
 - **Validation**: Detects HTML5 and custom validation errors
 - **Custom components**: Flags non-native inputs with interaction warnings
 - **Ready-to-use commands**: Shows exact commands to fill each field
+- **Readiness**: a radio or checkbox group (same name) counts as one field, filled when any option is checked. Required means the `required` attribute, `aria-required="true"`, or a label with a standalone `*` (`Name *`, `* Name`, or an element of its own holding `*`; a footnote star such as `Terms*` does not count). The form is `READY to submit` only when every required field is filled, nothing is invalid, the submit button is enabled, and at least one field is filled (an untouched form is `NOT ready (no fields filled)`); when no field is marked required the empty ones are named (`READY to submit (no field is marked required; empty: Last Name)`). In JSON, `summary.readyToSubmit` is therefore `false` for an untouched form (it used to be `true` when no field was required), the field counts (`totalFields`, `filledFields`, ...) count a choice group once, and `emptyFieldLabels` names the empty fields
+- **Primary button** (a heuristic): at most one button is `(primary)`. A button whose label starts with a cancel, back or delete word never is (Cancel, Reset, Back, Previous, Close, Clear, Discard, Delete, Remove, Abbrechen, Zurück, Annuler, Retour, Cancelar, Volver, Annulla, Indietro, Anuluj, Wstecz), nor a reset button. Then, in order: a button written as a submit button (`type="submit"`, `<input type=submit>`); among the form's untyped `<button>`s (each submits the form) the one styled as primary (`primary`, `btn-primary`, `btn_primary`, `submit` classes), else the last one; else any button styled as primary. Buttons outside a `<form>` submit nothing, so only their style counts
 
 **Workflow Example:**
 ```bash
@@ -563,26 +566,31 @@ JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are accepted a
 
 The network wait watches requests from before the action, so a request an event handler sends right away (`onclick = () => fetch(...)`) is waited for: the command returns once no request has been running for 150 ms, or after 2 s with the rest still running (a click that starts a navigation to a slow page returns after 2 s with the page request pending).
 
-DOM actions (`fill`, `click` incl. `--double`/`--right`, `hover`, `pressKey`, `submit`, `scroll`) also report the network requests they triggered: every request, and every WebSocket connection (`GET ws://… → 101`), that started after the action began and before the command returned (after its usual stability wait; no extra waiting). Requests still running then are shown as pending, and ones whose response arrived while the body still loads (EventSource streams, slow downloads) as `200 (loading)` (`"loading": true` in JSON); `data:`/`blob:` URLs and CORS preflights are left out. Human output lists the first 10 under `Requests during the action:` (nothing when there were none; `-q` keeps the list, it is a result, not a hint); JSON lists up to 50 in `data.triggeredRequests` (`[]` when none, absent when network telemetry is off) and how many more there were in `data.triggeredRequestsOmitted` (those are only in `bdg network list`). With `--no-wait` only requests bdg saw start before the command returned are listed (often none yet: use `bdg network list` afterwards). `bdg page navigate`/`reload`/`back`/`forward` do not list requests (they are the page load: use `bdg network list`). Attribution is by time, not cause: a request a page timer or poller starts during the action is listed too (and a poller keeps the network busy, so the action waits the full 2 s).
+DOM actions (`fill`, `click` incl. `--double`/`--right`, `hover`, `pressKey`, `submit`, `scroll`) also report the network requests they triggered: every request, and every WebSocket connection (`GET ws://… → 101`), that started after the action began and before the command returned (after its usual stability wait; no extra waiting). Requests still running then are shown as pending, and ones whose response arrived while the body still loads (EventSource streams, slow downloads) as `200 (loading)` (`"loading": true` in JSON); `data:`/`blob:` URLs and CORS preflights are left out. Human output lists documents, XHR/fetch, EventSource, WebSocket, ping and CSP-report requests, every request that is not a GET (e.g. a `sendBeacon` POST typed `Other`) and assets that failed first, up to 10, under `Requests during the action (N):` with N the total, and counts the static assets that loaded (stylesheets, scripts, fonts, images, media, by CDP resource type) on one line, e.g. `+ 97 assets (css, js, fonts, images)`; the rows, the `... and N more` note and the assets line add up to N (nothing is shown when there were none; `-q` keeps the list, it is a result, not a hint). JSON keeps every request with its `resourceType` and lists up to 50 (pages, API calls and failures kept before assets when there are more). `dom submit`'s `Network Requests` (`data.networkRequests`) is the number of these reportable requests (listed plus `triggeredRequestsOmitted`; `data:`/`blob:` URLs and preflights not counted), the same total as the list title; it used to come from a separate counter in `data.triggeredRequests` (`[]` when none, absent when network telemetry is off) and how many more there were in `data.triggeredRequestsOmitted` (those are only in `bdg network list`). With `--no-wait` only requests bdg saw start before the command returned are listed (often none yet: use `bdg network list` afterwards). `bdg page navigate`/`reload`/`back`/`forward` do not list requests (they are the page load: use `bdg network list`). Attribution is by time, not cause: a request a page timer or poller starts during the action is listed too (and a poller keeps the network busy, so the action waits the full 2 s).
 
 ```text
 ✓ Element Clicked
 
 Selector:      #save
-Element Type:  button
+Element:       button#save.primary "Save"
 Method:        mouse events
 
-Requests during the action:
+Requests during the action (5):
   POST 127.0.0.1:8080/api/save → 200 (85ms)
   GET 127.0.0.1:8080/api/items → pending
+  + 3 assets (css, images)
 ```
 
 ```json
 "triggeredRequests": [
-  { "requestId": "1234.5", "method": "POST", "url": "http://127.0.0.1:8080/api/save", "status": 200, "durationMs": 85 },
-  { "requestId": "1234.6", "method": "GET", "url": "http://127.0.0.1:8080/api/items", "pending": true }
+  { "requestId": "1234.5", "method": "POST", "url": "http://127.0.0.1:8080/api/save", "resourceType": "Fetch", "status": 200, "durationMs": 85 },
+  { "requestId": "1234.6", "method": "GET", "url": "http://127.0.0.1:8080/api/items", "resourceType": "XHR", "pending": true }
 ]
 ```
+
+`Element` (`data.element` in JSON) names the element the action hit, by its tag, id, classes and text, or the text of a nearby ancestor (`input.toggle in div.view "Write report"`), so a click by index or on one of several matches says which one it was. The status line has a check mark only for a clean success: an action with warnings (covered element clicked with DOM events, click not received, value mismatch, several matches) prints `⚠ Element Clicked (with warnings)` with the warning right below it, before the details and requests.
+
+After `dom fill` the field's value is read back. When it is not the value given (the page rejected, reformatted or moved the input, e.g. a handler that writes it into another field) the command still succeeds (exit 0) but warns first, `The field's value is "" after filling (expected "Lovelace"); the page may have rejected or moved the input`, and JSON has `valueMismatch: { "expected": "Lovelace", "actual": "" }`. Values are compared as the browser normalises them (colors case-insensitively, numbers and ranges as numbers, email trimmed, textarea line endings, times without zero seconds); a value the page cut to the field's maxlength is reported as `The value was cut to 10 characters by maxlength` (`truncatedTo`), and a password mismatch only by length (`The password field's value differs from the one filled (length 8, expected 12)`, masked values plus `expectedLength`/`actualLength`). The value is read back separately, a moment after the fill returned and for at most 1 s; when the change navigated the page (a `<select onchange="form.submit()">`) the fill reports success without it. A warning rather than an error, because pages legitimately reformat values (phone masks, trimming, upper-casing).
 
 Failed requests have `failed: true` and `errorText` (no `status`).
 

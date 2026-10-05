@@ -12,7 +12,51 @@ import {
   VIA_LABEL_SUFFIX,
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
+import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
+
+/**
+ * Page-side read-back of a filled field: a mismatch when its value is not
+ * what was asked for (the page rejected, reformatted or moved the input),
+ * undefined when it is. Values are compared as the browser normalises them:
+ * colors case-insensitively, numbers and ranges as numbers, email trimmed,
+ * textarea line endings as `\n`, times and local date-times without zero
+ * seconds and with `T` (`2024-01-05 10:00:00` is `2024-01-05T10:00`).
+ * Checkboxes and radios compare as `checked`/`unchecked`, a multiple select
+ * as its selected values joined by ", ", contenteditable text with
+ * whitespace collapsed. A value cut to the field's maxlength sets
+ * `truncatedTo`; a password mismatch gives masked values and both lengths.
+ */
+export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
+  const type = (field.type || '').toLowerCase();
+  const actual = field.isContentEditable
+    ? (field.textContent || '')
+    : type === 'checkbox' || type === 'radio'
+      ? (field.checked ? 'checked' : 'unchecked')
+      : field.localName === 'select' && field.multiple
+        ? Array.from(field.selectedOptions).map((o) => o.value).join(', ')
+        : String(field.value);
+  const time = (text) => text.trim().replace(' ', 'T').replace(/(\\d\\d:\\d\\d):00(\\.0+)?$/, '$1');
+  const normalize = (text) => {
+    text = String(text);
+    if (field.isContentEditable) return text.replace(/\\s+/g, ' ').trim();
+    if (field.localName === 'textarea') return text.replace(/\\r\\n?/g, '\\n');
+    if (type === 'color') return text.trim().toLowerCase();
+    if (type === 'email') return text.trim();
+    if (type === 'time' || type === 'datetime-local') return time(text);
+    return text;
+  };
+  const numeric = (type === 'number' || type === 'range') && actual.trim() !== '' && String(expected).trim() !== '';
+  const same = numeric ? Number(actual) === Number(expected) : normalize(actual) === normalize(expected);
+  if (same) return undefined;
+  if (type === 'password') {
+    const mask = (text) => (text === '' ? '' : '********');
+    return { expected: mask(expected), actual: mask(actual), expectedLength: expected.length, actualLength: actual.length };
+  }
+  const cut = field.maxLength > 0 && actual.length === field.maxLength && expected.length > actual.length &&
+    expected.startsWith(actual);
+  return cut ? { expected: expected, actual: actual, truncatedTo: actual.length } : { expected: expected, actual: actual };
+}`;
 
 /**
  * JavaScript function to fill an input element in a React-compatible way.
@@ -25,6 +69,10 @@ import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js'
  * A `<label>` is filled through its control ({@link LABEL_CONTROL_JS}),
  * reported as e.g. `input (via label)`.
  *
+ * The result is returned right away (a change handler may navigate). The
+ * field and the value to expect are left in `window.__bdgFillCheck` for
+ * {@link FILL_READ_BACK_SCRIPT}, which reads the value back a moment later.
+ *
  * @remarks
  * Works with React, Vue, Angular, and vanilla JS applications.
  */
@@ -32,6 +80,7 @@ export const REACT_FILL_SCRIPT = `
 (function(selector, parts, value, options) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
   const warnings = [];
+  let expected = value;
   // Why a user could not reach the field (the value is still set, so scripted
   // flows keep working, but the result may not be what a user would see)
   const unreachableReason = (field) => {
@@ -173,6 +222,7 @@ export const REACT_FILL_SCRIPT = `
       };
     }
     options.forEach((o) => { o.selected = chosen.includes(o); });
+    expected = chosen.map((o) => o.value).join(', ');
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   } else if (tagName === 'select') {
@@ -191,6 +241,7 @@ export const REACT_FILL_SCRIPT = `
       };
     }
     el.value = option.value;
+    expected = option.value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   } else if (inputType === 'checkbox' || inputType === 'radio') {
@@ -218,6 +269,7 @@ export const REACT_FILL_SCRIPT = `
         suggestion: 'Select another option in the same group instead'
       };
     }
+    expected = shouldCheck ? 'checked' : 'unchecked';
     if (el.checked !== shouldCheck) {
       el.click();
     }
@@ -283,7 +335,8 @@ export const REACT_FILL_SCRIPT = `
   if (options.blur !== false) {
     el.blur();
   }
-  
+  window.__bdgFillCheck = { el: el, expected: expected };
+
   return {
     success: true,
     selector: selector,
@@ -294,6 +347,7 @@ export const REACT_FILL_SCRIPT = `
         : tagName === 'select' && el.multiple
           ? Array.from(el.selectedOptions).map((o) => o.value).join(', ')
           : el.value,
+    element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: tagName + viaLabel,
     inputType: inputType || null,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
@@ -304,6 +358,28 @@ export const REACT_FILL_SCRIPT = `
   };
 })
 `;
+
+/**
+ * Page script reading back the field the last fill left in
+ * `window.__bdgFillCheck`, after one macrotask (so frameworks that render
+ * asynchronously have updated it). The macrotask comes from a
+ * `MessageChannel`, which fake timers and page code rarely replace. Evaluates
+ * to the mismatch ({@link FILL_VALUE_MISMATCH_JS}), or null when the value
+ * matches, nothing was left (the page navigated) or the field left the page.
+ */
+export const FILL_READ_BACK_SCRIPT = `(() => {
+  const check = window.__bdgFillCheck;
+  delete window.__bdgFillCheck;
+  if (!check) return null;
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      channel.port1.close();
+      resolve(check.el.isConnected ? (${FILL_VALUE_MISMATCH_JS})(check.el, check.expected) || null : null);
+    };
+    channel.port2.postMessage(null);
+  });
+})()`;
 
 /**
  * JavaScript function to locate an element for clicking.
@@ -485,6 +561,7 @@ export const CLICK_ELEMENT_SCRIPT = `
   return {
     success: true,
     selector: selector,
+    element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: tagName + viaLabel,
     matchCount: allMatches.length,
     selectedIndex: typeof index === 'number' ? index : undefined,

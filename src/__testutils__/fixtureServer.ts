@@ -11,7 +11,8 @@
  * `/deep` has controls inside an open shadow root and a same-origin iframe;
  * `/eval-frames` embeds a same-origin and a cross-origin iframe;
  * `/frame-origins` has srcdoc, about:blank, data: and sandboxed iframes;
- * `/framework-listeners` has React- and jQuery-style listeners; `/layout`
+ * `/framework-listeners` has React- and jQuery-style listeners; `/forms`
+ * has a checkout form for readiness and fill read-back checks; `/layout`
  * places elements in view, under an overlay, below the fold, hidden and in
  * an iframe; `/hanging` is stuck loading on a script (`/never.js`) whose
  * server never answers; `/dynamic-loading` reveals a result a while after its
@@ -99,6 +100,41 @@ const FRAME_ORIGINS_HTML = `<!doctype html><title>frame origins</title>
 <iframe id="dataf" src="data:text/html,<p>data</p>"></iframe>
 <iframe id="sb" sandbox="allow-scripts" src="/deep-frame"></iframe>
 <iframe id="sbso" sandbox="allow-scripts allow-same-origin" src="/deep-frame"></iframe>`;
+
+/**
+ * Form readiness and action feedback: required fields (label `*` and the
+ * attribute), a last-name field whose input handler moves the value into the
+ * first name, a radio group, a checkbox group, a Cancel button before the
+ * submit button, two to-do rows with checkboxes, a covered button, and a
+ * button loading a stylesheet, an image and a fetch, and a select whose
+ * change handler submits its form (navigating away).
+ */
+const FORMS_HTML = `<!doctype html><title>forms</title>
+<form id="checkout" onsubmit="return false">
+  <label for="first">First Name *</label><input id="first" name="first">
+  <label for="last">Last Name *</label>
+  <input id="last" name="last" oninput="document.getElementById('first').value = this.value; this.value = ''">
+  <label for="zip">Zip</label><input id="zip" name="zip" required>
+  <fieldset><legend>Size</legend>
+    <label><input type="radio" name="size" value="s"> Small</label>
+    <label><input type="radio" name="size" value="l"> Large</label>
+  </fieldset>
+  <label><input type="checkbox" name="extra" value="cheese"> Cheese</label>
+  <label><input type="checkbox" name="extra" value="onion"> Onion</label>
+  <button id="cancel" class="btn btn_secondary">Cancel</button>
+  <input type="submit" id="continue" class="btn btn_primary" value="Continue">
+</form>
+<ul><li><input type="checkbox" class="toggle"><label>Write report</label></li>
+<li><input type="checkbox" class="toggle"><label>Buy milk</label></li></ul>
+<div style="position:relative"><button id="behind" type="button">Behind</button>
+<div style="position:absolute;inset:0"></div></div>
+<button id="load-assets" type="button" onclick="
+  const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/style.css?' + Date.now(); document.head.append(link);
+  const img = new Image(); img.src = '/pixel.png?' + Date.now(); document.body.append(img);
+  fetch('/api/test');
+">Load</button>
+<form id="jump" action="/forms-jumped"><select id="jump-to" name="to" onchange="this.form.submit()">
+<option value="a">A</option><option value="b">B</option></select></form>`;
 
 /**
  * Framework-style listeners: a React-like root container (two bound
@@ -298,6 +334,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/eval-frames') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(EVAL_FRAMES_HTML);
+      return;
+    }
+    if (req.url === '/forms') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(FORMS_HTML);
       return;
     }
     if (req.url === '/frame-origins' || req.url === '/framework-listeners') {

@@ -192,7 +192,7 @@ void describe('DOM interactions', () => {
     assert.equal(typeof request?.['durationMs'], 'number');
     assert.match(
       await bdg(['dom', 'click', '#load']),
-      /Requests during the action:\n {2}POST .*\/api\/test → 200/
+      /Requests during the action \(1\):\n {2}POST .*\/api\/test → 200/
     );
 
     const filled = JSON.parse(await bdg(['dom', 'fill', '#name', 'quiet', '--json'])) as Triggered;
@@ -377,7 +377,7 @@ void describe('DOM interactions', () => {
     );
     assert.match(
       await bdg(['dom', 'fill', 'label:has-text("Customer name")', 'Ada']),
-      /input \(via label\)/
+      /Element: +input in label "Customer name:" \(via label\)/
     );
     assert.equal(await evaluate("document.querySelector('[name=custname]').value"), 'Ada');
     await bdg(['dom', 'fill', 'label:has-text("Customer name") input', 'Bob']);
@@ -505,5 +505,85 @@ void describe('DOM interactions', () => {
       buyHuman,
       /Note: the element's own click listener is only React's no-op placeholder; the React on… handlers listed above for click run/
     );
+  });
+
+  void it('reports a fill the page moved, and form readiness by group and required field', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}forms`]);
+    type Summary = { totalFields: number; filledFields: number; readyToSubmit: boolean };
+    type Discovered = {
+      data: {
+        forms: Array<{ summary: Summary; buttons: Array<{ label: string; primary: boolean }> }>;
+      };
+    };
+    const discover = async (): Promise<Discovered['data']['forms'][number] | undefined> =>
+      (JSON.parse(await bdg(['dom', 'form', '--json'])) as Discovered).data.forms[0];
+
+    const untouched = await discover();
+    assert.equal(untouched?.summary.totalFields, 5, 'radio and checkbox groups count once');
+    assert.equal(untouched?.summary.readyToSubmit, false);
+    assert.deepEqual(
+      untouched?.buttons.map((b) => `${b.label}:${b.primary}`),
+      ['Cancel:false', 'Continue:true']
+    );
+    assert.match(
+      await bdg(['dom', 'form']),
+      /0\/5 fields filled \| 3 required fields empty: First Name, Last Name, Zip \| NOT ready/
+    );
+
+    await bdg(['dom', 'fill', '#first', 'Ada']);
+    const moved = await bdg(['dom', 'fill', '#last', 'Lovelace']);
+    assert.match(
+      moved,
+      /^⚠ Element Filled \(with warnings\)\n⚠ Warning: The field's value is "" after filling \(expected "Lovelace"\); the page may have rejected or moved the input\n/
+    );
+    const movedJson = JSON.parse(await bdg(['dom', 'fill', '#last', 'Lovelace', '--json'])) as {
+      data: { valueMismatch?: { expected: string; actual: string } };
+    };
+    assert.deepEqual(movedJson.data.valueMismatch, { expected: 'Lovelace', actual: '' });
+    assert.match(await bdg(['dom', 'fill', '#zip', '12345']), /^✓ Element Filled\n/);
+
+    assert.match(
+      await bdg(['dom', 'form']),
+      /2\/5 fields filled \| 1 required field empty: Last Name \| NOT ready/
+    );
+    await bdg(['dom', 'fill', 'input[name=size][value=l]', 'true']);
+    assert.equal((await discover())?.summary.filledFields, 3);
+  });
+
+  void it('names the element an action hit and puts warnings before the details', async () => {
+    await bdg(['dom', 'query', '.toggle']);
+    assert.match(await bdg(['dom', 'click', '1']), /Element: +input\.toggle in li "Buy milk"/);
+    const first = await bdg(['dom', 'click', '.toggle']);
+    assert.match(first, /^⚠ Element Clicked \(with warnings\)\n⚠ Warning: 2 elements match/);
+    assert.match(first, /Element: +input\.toggle in li "Write report"/);
+    assert.match(
+      await bdg(['dom', 'click', '#behind']),
+      /^⚠ Element Clicked \(with warnings\)\n⚠ Warning: Element is covered by another element/
+    );
+    assert.match(
+      await bdg(['dom', 'click', '#cancel']),
+      /^✓ Element Clicked\n\nSelector: +#cancel\nElement: +button#cancel\.btn\.btn_secondary "Cancel"/
+    );
+  });
+
+  void it('lists API requests and sums up assets after an action', async () => {
+    const human = await bdg(['dom', 'click', '#load-assets']);
+    assert.match(
+      human,
+      /Requests during the action \(3\):\n {2}GET .*\/api\/test → 200.*\n {2}\+ 2 assets \(css, images\)/
+    );
+    const json = JSON.parse(await bdg(['dom', 'click', '#load-assets', '--json'])) as Triggered;
+    assert.deepEqual(json.data.triggeredRequests?.map((r) => r['resourceType']).sort(), [
+      'Fetch',
+      'Image',
+      'Stylesheet',
+    ]);
+  });
+
+  void it('fills a select whose change handler navigates away', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}forms`]);
+    const filled = await bdg(['dom', 'fill', '#jump-to', 'b']);
+    assert.match(filled, /^✓ Element Filled\n/);
+    assert.match(String(await evaluate('location.href')), /\/forms-jumped\?to=b$/);
   });
 });

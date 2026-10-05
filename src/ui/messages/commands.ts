@@ -6,9 +6,14 @@
  */
 
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
-import type { ElementLayout, LayoutPoint, PageLayout } from '@/ipc/protocol/domTypes.js';
-import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
+import type {
+  ElementLayout,
+  FillValueMismatch,
+  LayoutPoint,
+  PageLayout,
+} from '@/ipc/protocol/domTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
+import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { ViewportPosition } from '@/types.js';
 import {
   buildAgentDiscoveryHelp,
@@ -50,6 +55,84 @@ export function domClickFallbackWarning(reason: string | null | undefined): stri
   return `Element is ${reason ?? 'not reachable by the mouse'}; dispatched DOM events instead of mouse events (a user could not reach it like this)`;
 }
 
+/** Reason of a `bdg dom form` blocker for a required field left empty */
+export const REQUIRED_FIELD_EMPTY_REASON = 'Required field is empty';
+
+/**
+ * Field labels as a list (without a trailing colon), the first five and how
+ * many more.
+ *
+ * @param labels - Field labels
+ * @returns e.g. "Last Name, Zip"
+ */
+function fieldLabelList(labels: string[]): string {
+  const shown = labels
+    .slice(0, 5)
+    .map((label) => label.replace(/\s*:\s*$/, ''))
+    .join(', ');
+  return labels.length > 5 ? `${shown} and ${labels.length - 5} more` : shown;
+}
+
+/**
+ * Part of the `bdg dom form` summary naming the required fields left empty.
+ *
+ * @param labels - Labels of the empty required fields
+ * @returns e.g. "2 required fields empty: Last Name, Zip"
+ */
+export function requiredFieldsEmptyMessage(labels: string[]): string {
+  const fields = labels.length === 1 ? 'field' : 'fields';
+  return `${labels.length} required ${fields} empty: ${fieldLabelList(labels)}`;
+}
+
+/**
+ * Readiness at the end of the `bdg dom form` summary.
+ *
+ * @param summary - Whether the form is ready, how many fields are filled and
+ *   required, and the labels of the empty ones
+ * @returns e.g. "READY to submit", "NOT ready (no fields filled)"
+ */
+export function formReadinessMessage(summary: {
+  readyToSubmit: boolean;
+  filledFields: number;
+  requiredTotal: number;
+  emptyFieldLabels: string[];
+}): string {
+  if (!summary.readyToSubmit) {
+    return summary.filledFields === 0 ? 'NOT ready (no fields filled)' : 'NOT ready';
+  }
+  if (summary.requiredTotal > 0 || summary.emptyFieldLabels.length === 0) return 'READY to submit';
+  return `READY to submit (no field is marked required; empty: ${fieldLabelList(summary.emptyFieldLabels)})`;
+}
+
+/**
+ * Status line of a DOM action: a check mark only for a clean success.
+ *
+ * @param done - What was done, e.g. "Element Clicked"
+ * @param warned - Whether the action has warnings (shown right below)
+ * @returns e.g. "✓ Element Clicked" or "⚠ Element Clicked (with warnings)"
+ */
+export function actionStatusLine(done: string, warned: boolean): string {
+  return warned ? `⚠ ${done} (with warnings)` : `✓ ${done}`;
+}
+
+/**
+ * Warning shown when a filled field's value read back is not the one given:
+ * cut to its maxlength, a password of another length (values never shown),
+ * or another value.
+ *
+ * @param mismatch - Value given and value found (masked for passwords)
+ * @returns Warning text
+ */
+export function valueMismatchWarning(mismatch: FillValueMismatch): string {
+  if (mismatch.truncatedTo !== undefined) {
+    return `The value was cut to ${mismatch.truncatedTo} characters by maxlength`;
+  }
+  if (mismatch.expectedLength !== undefined) {
+    return `The password field's value differs from the one filled (length ${mismatch.actualLength ?? 0}, expected ${mismatch.expectedLength}); the page may have rejected or changed the input`;
+  }
+  return `The field's value is "${mismatch.actual}" after filling (expected "${mismatch.expected}"); the page may have rejected or moved the input`;
+}
+
 /**
  * Warning shown when a mouse press was dispatched but the target never
  * received it (e.g. a browser dialog or bubble captured the input).
@@ -80,6 +163,29 @@ export function moreMatchesNote(hidden: number, jsonLimit?: number): string {
  */
 export function moreRequestsNote(hidden: number): string {
   return `... and ${hidden} more (see ${sessionCommand('bdg network list')})`;
+}
+
+/**
+ * Title of the list of requests that started while an action ran (they are
+ * attributed by time, so a page poller's requests are listed too: the title
+ * doesn't claim the action caused them).
+ *
+ * @param total - Requests in all
+ * @returns e.g. "Requests during the action (18):"
+ */
+export function triggeredRequestsTitle(total: number): string {
+  return `Requests during the action (${total}):`;
+}
+
+/**
+ * Line counting the static assets an action loaded instead of listing them.
+ *
+ * @param count - Asset requests
+ * @param types - Short type names, e.g. ["css", "js", "images"]
+ * @returns e.g. "+ 97 assets (css, js, fonts, images)"
+ */
+export function assetRequestsNote(count: number, types: string[]): string {
+  return `+ ${count} ${count === 1 ? 'asset' : 'assets'} (${types.join(', ')})`;
 }
 
 /**

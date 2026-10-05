@@ -16,7 +16,7 @@ import type { OptionBehavior } from '@/commands/helpJson.js';
 
 /** What DOM actions report about the network requests they triggered */
 const TRIGGERED_REQUESTS_BEHAVIOR =
-  'Requests (and WebSocket connections) that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return, loading when the response arrived but its body is still streaming; human output lists the first 10; absent when network telemetry is off). Attribution is by time: requests a page timer or poller starts meanwhile are listed too, whether or not the action caused them';
+  'Requests (and WebSocket connections) that start after the action begins are returned as triggeredRequests (method, url, status, durationMs; pending when still running at return, loading when the response arrived but its body is still streaming; with resourceType; human output lists documents, XHR/fetch and WebSockets first (up to 10) and counts static assets on one line; absent when network telemetry is off). Attribution is by time: requests a page timer or poller starts meanwhile are listed too, whether or not the action caused them';
 
 /** What `--no-wait` does to a DOM action's triggered requests */
 const NO_WAIT_TRIGGERED_REQUESTS =
@@ -112,7 +112,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'fill:--no-wait': {
     default: 'Waits for network stability after filling input (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Network wait helps ensure React/Vue state updates complete before next action. ${TRIGGERED_REQUESTS_BEHAVIOR}`,
+    automaticBehavior: `Network wait helps ensure React/Vue state updates complete before next action. The value is read back after filling: when the page rejected or moved it, the output starts with a warning and JSON has valueMismatch { expected, actual } (exit code stays 0). ${TRIGGERED_REQUESTS_BEHAVIOR}`,
   },
   'fill:--no-blur': {
     default: 'Triggers blur event after filling (validates most form fields)',

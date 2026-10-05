@@ -22,7 +22,12 @@ import type {
 } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
-import { conflictingOptionsMessage, internalError, scrollOptionsError } from '@/errors/messages.js';
+import {
+  VIA_LABEL_SUFFIX,
+  conflictingOptionsMessage,
+  internalError,
+  scrollOptionsError,
+} from '@/errors/messages.js';
 import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
 import type { DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
@@ -30,13 +35,14 @@ import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
 import { findUnknownModifiers } from '@/runtime/dom/keyMapping.js';
 import type { FillResult, ClickResult } from '@/runtime/dom/reactEventHelpers.js';
 import {
-  TRIGGERED_REQUESTS_TITLE,
   formatTriggeredRequestLines,
+  formatTriggeredRequestsTitle,
 } from '@/ui/formatters/triggeredRequests.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   CLICK_RESULT_WAIT_HELP,
   POINTER_ACTION_DONE,
+  actionStatusLine,
   dialogConsoleText,
 } from '@/ui/messages/commands.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -361,92 +367,111 @@ async function runPointerCommand(
 /** Action result as returned in `data` (the `success` flag is implied by the envelope). */
 type ActionOutput<T> = Omit<T, 'success'>;
 
+/** What every action result may report besides its own details */
+interface ActionNotices {
+  warning?: string | undefined;
+  dialogs?: DialogInfo[] | undefined;
+  triggeredRequests?: TriggeredRequest[] | undefined;
+  triggeredRequestsOmitted?: number | undefined;
+}
+
 /**
- * Add the network requests an action triggered, its warning and the dialogs
- * it caused to the output. No request list is shown when there were none
- * (JSON has an empty `triggeredRequests` then).
+ * Build an action's output: the status line ("✓ Element Clicked", or
+ * "⚠ Element Clicked (with warnings)" with the warning right below it), the
+ * details, then the network requests it triggered and the dialogs it caused.
+ * No request list is shown when there were none (JSON has an empty
+ * `triggeredRequests` then).
  *
- * @param fmt - Output being built
+ * @param done - What was done, e.g. "Element Clicked"
+ * @param details - Label/value rows
  * @param result - Action result
+ * @param keyWidth - Width of the labels
+ * @returns Output being built (more can be appended)
  */
-function appendNotices(
-  fmt: OutputFormatter,
-  result: {
-    warning?: string | undefined;
-    dialogs?: DialogInfo[] | undefined;
-    triggeredRequests?: TriggeredRequest[] | undefined;
-    triggeredRequestsOmitted?: number | undefined;
-  }
-): void {
-  const requests = formatTriggeredRequestLines(
-    result.triggeredRequests ?? [],
-    result.triggeredRequestsOmitted
-  );
-  if (requests.length > 0) fmt.blank().section(TRIGGERED_REQUESTS_TITLE, requests);
-  if (result.warning) {
-    fmt.blank();
-    fmt.text(`⚠ Warning: ${result.warning}`);
+function formatActionOutput(
+  done: string,
+  details: Array<[string, string]>,
+  result: ActionNotices,
+  keyWidth = 15
+): OutputFormatter {
+  const fmt = new OutputFormatter();
+  fmt.text(actionStatusLine(done, result.warning !== undefined));
+  if (result.warning) fmt.text(`⚠ Warning: ${result.warning}`);
+  fmt.blank();
+  fmt.keyValueList(details, keyWidth);
+
+  const omitted = result.triggeredRequestsOmitted;
+  const requests = formatTriggeredRequestLines(result.triggeredRequests ?? [], omitted);
+  if (requests.length > 0) {
+    fmt
+      .blank()
+      .section(formatTriggeredRequestsTitle(result.triggeredRequests ?? [], omitted), requests);
   }
   for (const dialog of result.dialogs ?? []) {
     fmt.blank();
     fmt.text(`Dialog: ${dialogConsoleText(dialog)}`);
   }
+  return fmt;
+}
+
+/**
+ * Row naming the element an action hit, e.g.
+ * `Element: input.toggle in div.view "Write report"` (just its tag when the
+ * page could not describe it).
+ *
+ * @param result - Action result
+ * @returns Label/value row
+ */
+function elementRow(result: {
+  element?: string | undefined;
+  elementType?: string | undefined;
+}): [string, string] {
+  if (result.element === undefined) return ['Element Type', result.elementType ?? 'unknown'];
+  const viaLabel = result.elementType?.endsWith(VIA_LABEL_SUFFIX) ? VIA_LABEL_SUFFIX : '';
+  return ['Element', `${result.element}${viaLabel}`];
 }
 
 /**
  * Format fill command output for human-readable display.
  */
 function formatFillOutput(result: ActionOutput<FillResult>): string {
-  const fmt = new OutputFormatter();
-  fmt.text('✓ Element Filled');
-  fmt.blank();
-
   const details: [string, string][] = [
     ['Selector', result.selector ?? 'unknown'],
-    ['Element Type', result.elementType ?? 'unknown'],
+    elementRow(result),
   ];
 
   if (result.inputType) details.push(['Input Type', result.inputType]);
   if (result.checked !== undefined) {
     details.push(['Checked', result.checked ? 'true' : 'false']);
-  } else if (result.value) {
-    details.push(['Value', result.value]);
+  } else if (result.value !== undefined) {
+    details.push(['Value', result.value === '' ? '(empty)' : result.value]);
   }
 
-  fmt.keyValueList(details, 15);
-  appendNotices(fmt, result);
-  return fmt.build();
+  return formatActionOutput('Element Filled', details, result).build();
 }
 
 /**
  * Format click command output for human-readable display.
  */
 function formatClickOutput(result: ActionOutput<ClickResult>): string {
-  const fmt = new OutputFormatter();
-  fmt.text(`✓ Element ${POINTER_ACTION_DONE[result.action ?? 'click']}`);
-  fmt.blank();
-  fmt.keyValueList(
+  return formatActionOutput(
+    `Element ${POINTER_ACTION_DONE[result.action ?? 'click']}`,
     [
       ['Selector', result.selector ?? 'unknown'],
-      ['Element Type', result.elementType ?? 'unknown'],
+      elementRow(result),
       ['Method', result.method === 'dom' ? 'DOM events' : 'mouse events'],
     ],
-    15
-  );
-  appendNotices(fmt, result);
-  return fmt.build();
+    result
+  ).build();
 }
 
 /**
  * Format submit command output for human-readable display.
  */
 function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
-  const fmt = new OutputFormatter();
-  fmt.text('✓ Form Submitted');
-  fmt.blank();
-
   const details: [string, string][] = [
     ['Selector', result.selector ?? 'unknown'],
+    ...(result.element !== undefined ? [elementRow(result)] : []),
     ['Submit Button', result.clicked ? 'used' : 'none'],
   ];
 
@@ -456,8 +481,7 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
     details.push(['Navigation', result.navigationOccurred ? 'yes' : 'no']);
   if (result.waitTimeMs !== undefined) details.push(['Wait Time', `${result.waitTimeMs}ms`]);
 
-  fmt.keyValueList(details, 20);
-  appendNotices(fmt, result);
+  const fmt = formatActionOutput('Form Submitted', details, result, 20);
   fmt.hints('Next steps:', [
     `${sessionCommand('bdg network list --last 10').padEnd(32)} Check network requests`,
     `${sessionCommand('bdg console --last 5').padEnd(32)} Check console messages`,
@@ -470,34 +494,25 @@ function formatSubmitOutput(result: ActionOutput<SubmitResult>): string {
  * Format pressKey command output for human-readable display.
  */
 function formatPressKeyOutput(result: ActionOutput<PressKeyResult>): string {
-  const fmt = new OutputFormatter();
-  fmt.text('✓ Key Pressed');
-  fmt.blank();
-
   const details: [string, string][] = [
     ['Key', result.key ?? 'unknown'],
     ['Selector', result.selector ?? 'unknown'],
-    ['Element Type', result.elementType ?? 'unknown'],
+    elementRow(result),
   ];
 
   if (result.times && result.times > 1) details.push(['Times', result.times.toString()]);
   if (result.modifiers?.length) details.push(['Modifiers', result.modifiers.join('+')]);
 
-  fmt.keyValueList(details, 15);
-  appendNotices(fmt, result);
-  return fmt.build();
+  return formatActionOutput('Key Pressed', details, result).build();
 }
 
 /**
  * Format scroll command output for human-readable display.
  */
 function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
-  const fmt = new OutputFormatter();
-  fmt.text('✓ Page Scrolled');
-  fmt.blank();
-
   const details: [string, string][] = [['Scroll Type', result.scrollType]];
   if (result.selector) details.push(['Selector', result.selector]);
+  if (result.element) details.push(elementRow(result));
   if (result.scrolledTo)
     details.push(['Position', `(${result.scrolledTo.x}, ${result.scrolledTo.y})`]);
   if (result.scrolledBy && (result.scrolledBy.x !== 0 || result.scrolledBy.y !== 0))
@@ -507,7 +522,5 @@ function formatScrollOutput(result: ActionOutput<ScrollResult>): string {
   if (result.pageSize)
     details.push(['Page Size', `${result.pageSize.width}x${result.pageSize.height}`]);
 
-  fmt.keyValueList(details, 15);
-  appendNotices(fmt, result);
-  return fmt.build();
+  return formatActionOutput('Page Scrolled', details, result).build();
 }

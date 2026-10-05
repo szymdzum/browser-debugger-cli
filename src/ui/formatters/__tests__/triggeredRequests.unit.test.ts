@@ -10,6 +10,7 @@ import {
   MAX_TRIGGERED_REQUESTS_SHOWN,
   formatTriggeredRequest,
   formatTriggeredRequestLines,
+  formatTriggeredRequestsTitle,
 } from '@/ui/formatters/triggeredRequests.js';
 
 /**
@@ -80,5 +81,64 @@ void describe('formatTriggeredRequestLines', () => {
 
   void it('is empty without requests', () => {
     assert.deepEqual(formatTriggeredRequestLines([]), []);
+  });
+});
+
+void describe('formatTriggeredRequestLines with assets', () => {
+  const page = triggered('checkout', { resourceType: 'Document', status: 200 });
+  const api = triggered('api/cart', { method: 'POST', resourceType: 'Fetch', status: 201 });
+  const socket = triggered('ws', { resourceType: 'WebSocket', status: 101 });
+  const stylesheet = triggered('app.css', { resourceType: 'Stylesheet', status: 200 });
+  const assets = [
+    stylesheet,
+    triggered('app.js', { resourceType: 'Script', status: 200 }),
+    triggered('logo.png', { resourceType: 'Image', status: 200 }),
+    triggered('font.woff2', { resourceType: 'Font', status: 200 }),
+    triggered('manifest.json', { resourceType: 'Manifest', status: 200 }),
+  ];
+
+  void it('lists documents, API calls and sockets, and counts assets on one line', () => {
+    const lines = formatTriggeredRequestLines([stylesheet, page, ...assets.slice(1), api, socket]);
+    assert.deepEqual(lines, [
+      'GET 127.0.0.1:8080/checkout → 200',
+      'POST 127.0.0.1:8080/api/cart → 201',
+      'GET 127.0.0.1:8080/ws → 101',
+      '+ 5 assets (css, js, fonts, images, manifest)',
+    ]);
+  });
+
+  void it('lists requests that are not GETs, pings and CSP reports', () => {
+    const beacon = triggered('collect', { method: 'POST', resourceType: 'Other', status: 204 });
+    const ping = triggered('ping', { method: 'POST', resourceType: 'Ping', status: 204 });
+    const report = triggered('csp', { method: 'POST', resourceType: 'CSPViolationReport' });
+    const other = triggered('favicon.ico', { resourceType: 'Other', status: 200 });
+    assert.deepEqual(formatTriggeredRequestLines([beacon, ping, report, other]), [
+      'POST 127.0.0.1:8080/collect → 204',
+      'POST 127.0.0.1:8080/ping → 204',
+      'POST 127.0.0.1:8080/csp → pending',
+      '+ 1 asset (other)',
+    ]);
+  });
+
+  void it('lists an asset that failed', () => {
+    const missing = triggered('missing.png', { resourceType: 'Image', status: 404 });
+    assert.deepEqual(formatTriggeredRequestLines([page, missing, stylesheet]), [
+      'GET 127.0.0.1:8080/checkout → 200',
+      'GET 127.0.0.1:8080/missing.png → 404',
+      '+ 1 asset (css)',
+    ]);
+  });
+
+  void it('adds up to the total in the title: rows, "more" and assets', () => {
+    const calls = Array.from({ length: MAX_TRIGGERED_REQUESTS_SHOWN + 4 }, (_, i) =>
+      triggered(`api/${i}`, { resourceType: 'XHR', status: 200 })
+    );
+    const requests = [...calls, ...assets];
+    const lines = formatTriggeredRequestLines(requests, 2);
+    const rows = lines.filter((line) => line.startsWith('GET ')).length;
+    const more = Number(/\.\.\. and (\d+) more/.exec(lines.join('\n'))?.[1]);
+    const assetCount = Number(/\+ (\d+) assets/.exec(lines.join('\n'))?.[1]);
+    assert.equal(formatTriggeredRequestsTitle(requests, 2), 'Requests during the action (21):');
+    assert.equal(rows + more + assetCount, 21);
   });
 });

@@ -8,6 +8,7 @@ import { trackInFlightRequests, type InFlightRequests } from '@/connection/inFli
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { submitTimeoutError } from '@/errors/messages.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
+import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -83,9 +84,10 @@ const PREPARE_SUBMIT_SCRIPT = `
     // Like pressing Enter: the form's default button is the submitter, so its
     // name=value is sent too
     const submitter = submitters.find((f) => !f.matches(':disabled'));
+    const element = (${ELEMENT_IDENTITY_JS})(submitter || el);
     if (submitter) el.requestSubmit(submitter);
     else el.requestSubmit();
-    return { action: 'submitted', clicked: Boolean(submitter) };
+    return { action: 'submitted', clicked: Boolean(submitter), element: element };
   }
   return { action: 'click' };
 })`;
@@ -94,6 +96,8 @@ interface PrepareResult {
   action: 'submitted' | 'click' | 'fail';
   /** Whether a submit button took part (its value is sent) */
   clicked?: boolean;
+  /** The submit button used, or the form without one */
+  element?: string;
   reason?: 'not-found' | 'range' | 'not-submittable' | 'invalid' | 'disabled';
   error?: string;
 }
@@ -207,7 +211,7 @@ async function triggerSubmit(
   cdp: CDPConnection,
   selector: string,
   index: number | undefined
-): Promise<{ failure: SubmitResult } | { clicked: boolean }> {
+): Promise<{ failure: SubmitResult } | { clicked: boolean; element?: string | undefined }> {
   const response = (await cdp.send('Runtime.evaluate', {
     expression: `(${PREPARE_SUBMIT_SCRIPT})(${selectorArgsJS(selector)}, ${index ?? 'null'})`,
     returnByValue: true,
@@ -231,10 +235,12 @@ async function triggerSubmit(
     };
     return { failure };
   }
-  if (prepared.action === 'submitted') return { clicked: prepared.clicked === true };
+  if (prepared.action === 'submitted') {
+    return { clicked: prepared.clicked === true, element: prepared.element };
+  }
 
   const click = await clickElement(cdp, selector, index !== undefined ? { index } : {});
-  if (click.success) return { clicked: true };
+  if (click.success) return { clicked: true, element: click.element };
   const failure: SubmitResult = {
     success: false,
     error: click.error ?? 'Click failed',
@@ -273,6 +279,7 @@ export async function submitForm(
     return {
       success: true,
       selector,
+      ...(triggered.element !== undefined && { element: triggered.element }),
       clicked: triggered.clicked,
       networkRequests: watcher.networkRequests,
       navigationOccurred: watcher.navigationOccurred,
