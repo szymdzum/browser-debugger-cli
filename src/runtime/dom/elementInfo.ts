@@ -72,6 +72,31 @@ export const ELEMENT_TEXT_JS = `(el, full) => {
 }`;
 
 /**
+ * Page-side live state of a form control, which its attributes do not show:
+ * the type and current value of an `<input>` (for checkboxes and radios
+ * `checked` and their `value` attribute, not the default "on"), the value of
+ * a `<textarea>`, the labels of a `<select>`'s selected
+ * options and the type of a `<button>` in a form (`submit` when it has none;
+ * outside a form only a type attribute is shown). Empty for other elements.
+ */
+export const ELEMENT_STATE_JS = `(el) => {
+  switch (el.localName) {
+    case 'input':
+      return /^(checkbox|radio)$/.test(el.type)
+        ? { type: el.type, checked: el.checked, value: el.getAttribute('value') || '' }
+        : { type: el.type, value: el.value };
+    case 'textarea':
+      return { value: el.value };
+    case 'select':
+      return { selected: Array.from(el.selectedOptions || [], (option) => option.label).join(', ') };
+    case 'button':
+      return el.form ? { type: el.type } : {};
+    default:
+      return {};
+  }
+}`;
+
+/**
  * Page-side short description of an element: tag, id and up to two classes,
  * e.g. `button#save.primary.large`.
  */

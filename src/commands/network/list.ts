@@ -25,7 +25,9 @@ import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
   formatNetworkFollowRows,
   formatNetworkList,
+  pageStartOf,
   type NetworkListOptions,
+  type PageStart,
 } from '@/ui/formatters/networkList.js';
 import {
   followingNetworkMessage,
@@ -157,6 +159,7 @@ function buildFormatOptions(
     last: lastLimit,
     totalCount: result.totalCount,
     filteredCount: result.filteredCount,
+    ...(result.pageStart && { pageStart: result.pageStart }),
   };
 }
 
@@ -200,9 +203,11 @@ async function runFollowMode(
         console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
       }
     } else {
+      const pageStart = pageStartOf(result.data);
       const text = formatNetworkFollowRows(fresh, {
         header: !started,
         verbose: options.verbose ?? false,
+        ...(pageStart && { pageStart }),
       });
       if (text) console.log(text);
     }
@@ -216,6 +221,13 @@ async function runFollowMode(
     intervalMs: FOLLOW_INTERVAL,
   });
 }
+
+/** What the less obvious columns of the list mean */
+const COLUMNS_HELP = `Columns:
+  START  When the request started, from the start of the current page (its document
+         request): +1.2s. Requests of earlier pages are negative. --json has the
+         absolute time (timestamp, epoch ms) and data.pageStart.
+  TIME   How long it took (to its last byte or failure); - while pending`;
 
 function formatPresetHelp(): string {
   return Object.entries(FILTER_PRESETS)
@@ -233,6 +245,12 @@ interface NetworkListResult {
   totalCount: number;
   /** Requests matching the filters, before `--last` */
   filteredCount: number;
+  /**
+   * Start of the current page (its document request) that the START column
+   * counts from: `timestamp` (epoch ms) and `sentTime` (Chrome's monotonic
+   * time, seconds), like the requests' own
+   */
+  pageStart?: PageStart;
 }
 
 export function registerListCommand(networkCmd: Command): void {
@@ -261,7 +279,10 @@ export function registerListCommand(networkCmd: Command): void {
     .addOption(networkLastOption)
     .addOption(new Option('-f, --follow', 'Stream network requests in real-time').default(false))
     .addOption(new Option('-v, --verbose', 'Show full URLs and additional details').default(false))
-    .addHelpText('after', `\n${getFilterHelpText()}\n\nPresets:\n${formatPresetHelp()}`)
+    .addHelpText(
+      'after',
+      `\n${COLUMNS_HELP}\n\n${getFilterHelpText()}\n\nPresets:\n${formatPresetHelp()}`
+    )
     .action(async (options: NetworkListCommandOptions) => {
       let resourceTypes: Protocol.Network.ResourceType[];
       let lastN: number;
@@ -297,12 +318,14 @@ export function registerListCommand(networkCmd: Command): void {
           }
 
           const filtered = filterRequests(result.data, options, resourceTypes);
+          const pageStart = pageStartOf(result.data);
           return {
             success: true,
             data: {
               requests: lastN === 0 ? filtered : filtered.slice(-lastN),
               totalCount: result.data.length,
               filteredCount: filtered.length,
+              ...(pageStart && { pageStart }),
             },
           };
         },

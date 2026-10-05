@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`dom listeners` resolves Preact handlers** - Preact's event proxy on an element is replaced by the handler Preact runs for it, with its name, source and location, marked `[Preact]` (`framework: "Preact"`; Preact 10 and 11 and unminified builds, the handler store's key read from the proxy's source; other dispatchers are left alone) (#346)
+- **`dom query` shows the attributes that identify an element** - by type, in its tag: an image's `src` file name and `alt`, a link's `href`, a field's type, name, placeholder and current value (masked for passwords; `checked` for checkboxes and radios), a button's type, a select's name and selected option, an iframe's host and a form's `action`/`method`; long values are cut in the middle. `--json` has the full values in `attributes`, and `dom get` shows the same after the role (`domContext.attributes`) (#346)
+- **`network list` START column** - when each request started, from the start of the current page (`+1.2s`; earlier pages negative), from Chrome's timestamps. `--json` requests now carry `sentTime` and `navigationId`, and `data.pageStart` is the start the column counts from (#346)
+- **`details network` shows the remote port** (`serverPort` in JSON) and labels a loopback address of a request to another host as a proxy: `Remote Address: 127.0.0.1:9000 (local proxy)` instead of `127.0.0.1` (#346)
 
 ### Fixed
 
@@ -19,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`dom hover` and `dom pressKey` say what they showed**: `Shown: div.figcaption "name: user2 View profile"` for a caption a hover revealed (also through CSS `:hover`), a tooltip or menu, or `Shown: li "Buy milk"` for the item Enter added near the target (`shown: [{ text, element }]` in JSON, at most 3; widgets elsewhere on the page are left out), besides the navigation and new messages they already reported (#346)
 - **`dom click` and `dom pressKey` say when the page was still changing** as they returned: `⚠ Element Clicked (page still changing)` with a note naming what was pending (content requests, a new page loading, a loading indicator, a DOM still changing, a page busy running a script) and suggesting `bdg dom wait <selector>`; JSON has `settled: false` and `pending`. The saucedemo `performance_glitch_user` login, which returned at 0.5 s while the products appeared after 5 s, now says so (#346)
 - **`--strict` for `dom click` (also `--double`/`--right`) and `dom hover`**: refuses with exit 90 instead of falling back to DOM events when a real mouse cannot reach the element, naming what covers it and suggesting `bdg dom layout`; also when the mouse press never reached it (#346)
+- **`details network` repeated headers** - a header the server sent several times (CDP joins them with newlines) printed its second value on an unindented line, read as `Strict-Transport-Security: max-age=63072000 / max-age=63072000`; each value now gets its own line and a value repeated verbatim is listed once with `(sent 2 times)` (#346)
+- **`network list` column alignment** - the method column widens for `OPTIONS`, which shifted the rest of its row (#346)
+- **Help says where selectors search** - `dom query --help` says that open shadow roots and same-origin iframes are searched and closed shadow roots and cross-origin iframes are not (with `dom eval --frame` for the latter); `get`, `layout`, `click`, `fill`, `hover`, `submit` and `pressKey` name the scope in their argument help (#346)
 
 ## [0.9.0] - 2026-10-05
 

@@ -7,6 +7,7 @@
 import type { SessionNetworkHeadersData } from '@/ipc/protocol/commands.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { headerRepeatedNote } from '@/ui/messages/networkMessages.js';
 
 /**
  * Format network request headers for display.
@@ -47,10 +48,26 @@ export function formatNetworkHeaders(data: SessionNetworkHeadersData): string {
 }
 
 /**
+ * The values of a header, one per line. A header sent several times reaches
+ * CDP as one value with the values joined by newlines (`Set-Cookie`, or a
+ * server repeating `Strict-Transport-Security`); a value sent more than once
+ * is listed once, saying how often it was sent.
+ *
+ * @param value - Header value as CDP reports it
+ * @returns e.g. `['max-age=63072000 (sent 2 times)']`
+ */
+export function headerValueLines(value: string): string[] {
+  const counts = new Map<string, number>();
+  for (const line of value.split('\n')) counts.set(line, (counts.get(line) ?? 0) + 1);
+  return [...counts].map(([line, count]) =>
+    count > 1 ? `${line} ${headerRepeatedNote(count)}` : line
+  );
+}
+
+/**
  * Format a section of headers with consistent formatting.
  *
- * Repeated headers (CDP joins e.g. multiple `Set-Cookie` values with newlines)
- * are printed one per line.
+ * Repeated headers are printed one value per line ({@link headerValueLines}).
  *
  * @param fmt - Output formatter instance
  * @param headers - Headers to format
@@ -60,7 +77,7 @@ function formatHeaderSection(fmt: OutputFormatter, headers: Record<string, strin
   const keyWidth = Math.max(...entries.map(([k]) => k.length)) + 4;
 
   entries.forEach(([key, value]) => {
-    value.split('\n').forEach((line) => fmt.keyValue(`  ${key}`, line, keyWidth));
+    headerValueLines(value).forEach((line) => fmt.keyValue(`  ${key}`, line, keyWidth));
   });
 }
 

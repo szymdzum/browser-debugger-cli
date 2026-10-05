@@ -23,8 +23,11 @@
  * the-internet's login); `/cross-frame` (loaded from `a.b.localhost`) embeds a
  * bordered and a scaled cross-origin iframe of the same site, each with a
  * button and a field; `/effects` has a tooltip, CSS hover captions, a to-do
- * field, buttons whose results come late and a covered button. Pages for frame
- * order, rejections and framework listeners come from `knownLimitFixtures.ts`.
+ * field, buttons whose results come late and a covered button; `/attributes`
+ * has an image, a link, a form with fields and an iframe for `dom query`'s key
+ * attributes; `/repeated-headers` sends the same header value twice. Pages for
+ * frame order, rejections and framework listeners come from
+ * `knownLimitFixtures.ts`.
  */
 
 import * as fs from 'fs';
@@ -409,6 +412,19 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
   document.getElementById('covered').onclick = () => window.coveredClicks++;
 </script>`;
 
+/** Elements with key attributes for `dom query` (#346) */
+const ATTRIBUTES_HTML = `<!doctype html><title>attributes</title>
+<img id="logo" src="/static/media/sl-404.168b1cce.jpg" alt="Sauce Labs Backpack">
+<a id="about" href="https://saucelabs.com/about/company">About</a>
+<form id="login" action="/authenticate" method="post">
+  <input id="user" name="user" placeholder="Username" value="ada">
+  <input id="pass" name="pass" type="password" value="secret">
+  <label><input type="radio" name="size" value="medium" checked> Medium</label>
+  <select id="sort" name="sort"><option>Name</option><option selected>Price (low to high)</option></select>
+  <button id="go">Go</button>
+</form>
+<iframe id="pay" src="/frame-child?x=1"></iframe>`;
+
 /** Body of a 404 page */
 const MISSING_PAGE_HTML = '<!doctype html><title>Not found</title><h1>Not found</h1>';
 
@@ -548,6 +564,18 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/forms') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(FORMS_HTML);
+      return;
+    }
+    if (req.url === '/attributes') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(ATTRIBUTES_HTML);
+      return;
+    }
+    if (req.url === '/repeated-headers') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('X-Repeated', ['max-age=63072000', 'max-age=63072000']);
+      res.writeHead(200);
+      res.end('{}');
       return;
     }
     if (req.url === '/frame-origins' || req.url === '/framework-listeners') {

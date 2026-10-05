@@ -86,6 +86,8 @@ function calculateSliceBounds(
 interface NetworkPreview {
   requestId: string;
   timestamp: number;
+  sentTime?: number;
+  navigationId?: number;
   method: string;
   url: string;
   status?: number;
@@ -113,6 +115,8 @@ function mapNetworkRequestToPreview(
   return filterDefined({
     requestId: req.requestId,
     timestamp: req.timestamp,
+    sentTime: req.sentTime,
+    navigationId: req.navigationId,
     method: req.method,
     url: req.url,
     status: req.status,

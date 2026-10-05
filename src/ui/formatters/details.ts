@@ -1,10 +1,13 @@
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js';
 import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
+import { headerValueLines } from '@/ui/formatters/networkHeaders.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { localProxyNote } from '@/ui/messages/networkMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
+import { safeParseUrl } from '@/utils/url.js';
 
 /** Characters of each WebSocket message shown in human output (`--json` has all) */
 const MESSAGE_PREVIEW_LENGTH = 200;
@@ -109,6 +112,44 @@ function formatBytes(bytes: number): string {
 }
 
 /**
+ * Whether an IP address is a loopback address (`127.0.0.0/8`, `::1`).
+ *
+ * @param ip - Address as CDP reports it (IPv6 may come in brackets)
+ * @returns True for loopback
+ */
+function isLoopback(ip: string): boolean {
+  const bare = ip.replace(/^\[|\]$/g, '').toLowerCase();
+  return /^(::ffff:)?127\./.test(bare) || bare === '::1';
+}
+
+/**
+ * Whether a URL's host is this machine (`localhost`, `*.localhost` or a loopback address).
+ *
+ * @param url - Request URL
+ * @returns True for local hosts (and URLs without a host)
+ */
+function isLocalHost(url: string): boolean {
+  const hostname = safeParseUrl(url)?.hostname.toLowerCase();
+  if (!hostname) return true;
+  return hostname === 'localhost' || hostname.endsWith('.localhost') || isLoopback(hostname);
+}
+
+/**
+ * The address Chrome connected to, with its port. A loopback address for a
+ * request to another host is a proxy on this machine (CDP reports the
+ * address of the connection, and has no proxy flag), and says so.
+ *
+ * @param request - Request with `serverIPAddress`
+ * @returns e.g. `93.184.215.14:443`, `[2606:4700::1]:443`, `127.0.0.1:9000 (local proxy)`
+ */
+export function remoteAddress(request: NetworkRequest): string {
+  const ip = request.serverIPAddress ?? '';
+  const host = ip.includes(':') && !ip.startsWith('[') ? `[${ip}]` : ip;
+  const address = request.serverPort ? `${host}:${request.serverPort}` : host;
+  return isLoopback(ip) && !isLocalHost(request.url) ? `${address} ${localProxyNote()}` : address;
+}
+
+/**
  * Summary rows of a request: identity, outcome, timing and size.
  *
  * @param request - Captured request
@@ -132,13 +173,14 @@ function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
     rows.push(['Size', sizes.join(', ')]);
   }
   if (request.fromCache) rows.push(['From Cache', 'yes']);
-  if (request.serverIPAddress) rows.push(['Remote Address', request.serverIPAddress]);
+  if (request.serverIPAddress) rows.push(['Remote Address', remoteAddress(request)]);
   if (request.blockedReason) rows.push(['Blocked', request.blockedReason]);
   return rows;
 }
 
 /**
- * Add a header block.
+ * Add a header block, a header sent several times one value per line
+ * ({@link headerValueLines}).
  *
  * @param fmt - Formatter
  * @param title - Block title
@@ -146,7 +188,9 @@ function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
  */
 function addHeaders(fmt: OutputFormatter, title: string, headers: Record<string, string>): void {
   fmt.text(title).separator('━', 70);
-  Object.entries(headers).forEach(([key, value]) => fmt.text(`  ${key}: ${value}`));
+  Object.entries(headers).forEach(([key, value]) =>
+    headerValueLines(value).forEach((line) => fmt.text(`  ${key}: ${line}`))
+  );
   fmt.blank();
 }
 

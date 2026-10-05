@@ -53,3 +53,25 @@ void describe('formatSemanticNodeWithContext', () => {
     );
   });
 });
+
+void describe('formatSemanticNodeWithContext key attributes', () => {
+  void it('names the key attributes like dom query, without repeating the name or value', () => {
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '1', role: 'image', name: 'Backpack' },
+        domContext: {
+          tag: 'img',
+          attributes: { src: 'https://cdn.test/img/sl-404.jpg', alt: 'Backpack' },
+        },
+      }),
+      '[Image] "Backpack" src="…/sl-404.jpg"'
+    );
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '2', role: 'textbox', name: 'Name', value: 'Ada', focusable: true },
+        domContext: { tag: 'input', attributes: { type: 'text', name: 'custname', value: 'Ada' } },
+      }),
+      '[Textbox] "Name" type="text" name="custname" (value: "Ada", focusable)'
+    );
+  });
+});

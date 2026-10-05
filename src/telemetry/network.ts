@@ -157,7 +157,7 @@ function applyResponse(
   response: Protocol.Network.Response,
   resourceType?: Protocol.Network.ResourceType
 ): void {
-  const { status, mimeType, headers, timing, remoteIPAddress, connectionId } = response;
+  const { status, mimeType, headers, timing, remoteIPAddress, remotePort, connectionId } = response;
   request.status = status;
   if (response.statusText) request.statusText = response.statusText;
   request.mimeType = mimeType;
@@ -181,6 +181,7 @@ function applyResponse(
     };
   }
   if (remoteIPAddress) request.serverIPAddress = remoteIPAddress;
+  if (remotePort) request.serverPort = remotePort;
   if (connectionId !== undefined) request.connection = String(connectionId);
 }
 

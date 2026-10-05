@@ -9,6 +9,7 @@
 import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
+import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
 import { joinLines } from '@/ui/formatting.js';
 import { elementTextLine, emptyElementLine } from '@/ui/messages/commands.js';
 
@@ -53,6 +54,26 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
   return '';
 }
 
+/**
+ * Key attributes of the element (src, href, a field's type and name, ...),
+ * leaving out what the role line already shows: values equal to the
+ * accessible name (an image's alt, a field's placeholder) and the value
+ * when the accessibility node has one.
+ *
+ * @param node - Accessibility node
+ * @param domContext - DOM context with the key attributes
+ * @returns ` src="…/logo.png"`-style text, or empty
+ */
+function buildKeyAttributesText(node: A11yNode, domContext: DomContext | null): string {
+  if (!domContext?.attributes) return '';
+  const shown = Object.entries(domContext.attributes)
+    .filter(([, value]) => Boolean(node.name) && value === node.name)
+    .map(([name]) => name);
+  if (node.value !== undefined && node.value !== '') shown.push('value');
+  const items = keyAttributeItems(domContext.tag, domContext.attributes, new Set(shown));
+  return items.length > 0 ? ` ${items.join(' ')}` : '';
+}
+
 function buildPropertiesText(node: A11yNode): string {
   const props: string[] = [];
   if (node.value !== undefined && node.value !== '') props.push(`value: "${node.value}"`);
@@ -72,7 +93,9 @@ function buildPropertiesText(node: A11yNode): string {
 /**
  * Format a semantic node together with DOM context for human-readable output.
  *
- * The role line is followed by up to 500 characters of the element's text
+ * The role line names the element's key attributes (an image's file name, a
+ * link's href, a field's type and name), like `dom query` does, and is
+ * followed by up to 500 characters of the element's text
  * (all of it with `dom get --full`) when it is longer than the one-line
  * preview, or, for an element without text or name, what it holds.
  *
@@ -83,9 +106,10 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   const { node, domContext } = data;
   const roleText = buildRoleText(node);
   const contextText = buildContextText(node, domContext);
+  const keysText = buildKeyAttributesText(node, domContext);
   const propsText = buildPropertiesText(node);
   const inferredText = node.inferred ? ' (inferred from DOM)' : '';
-  const line = `${roleText}${contextText}${propsText}${inferredText}`;
+  const line = `${roleText}${contextText}${keysText}${propsText}${inferredText}`;
   if (domContext?.text) return joinLines(line, elementTextLine(domContext.text));
   if (domContext?.childCount !== undefined && !node.name) {
     return joinLines(line, emptyElementLine(domContext.children ?? [], domContext.childCount));

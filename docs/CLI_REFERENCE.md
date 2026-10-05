@@ -127,11 +127,13 @@ bdg details console <index>         # Full console message with args
 
 Binary response bodies (images, fonts) are only captured in sessions started with `--all`; in `--json` output they are base64 with `responseBodyBase64: true`.
 
+`details network` shows the address Chrome connected to with its port (`Remote Address: 93.184.215.14:443`; `serverIPAddress` and `serverPort` in JSON). Behind a proxy that is the proxy's address: CDP has no proxy flag, so a loopback address for a request to another host is labelled `127.0.0.1:9000 (local proxy)` (a proxy on another machine cannot be told apart from the server). A header the server sent several times (CDP joins the values with newlines) is listed one value per line, and a value repeated verbatim once, with how often it was sent: `Strict-Transport-Security: max-age=63072000 (sent 2 times)`; `--json` keeps the header as CDP reported it.
+
 ## DOM Commands
 
 ### Selectors
 
-DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes.
+DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `wait`, `listeners`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes (nested ones included). Closed shadow roots and cross-origin iframes cannot be searched: use `bdg dom eval --frame <frame>` for a cross-origin iframe (see `bdg dom frames`).
 
 Three Playwright-style filters can be added to an element of a selector (of each selector in a list), alone or combined:
 
@@ -314,6 +316,8 @@ bdg dom query --json                          # JSON output
 **Output:**
 - Shows count and preview of matched elements (the first 50; `--json` has all)
 - Lists nodeId, tag, classes, and text preview (the text as rendered: hidden parts left out)
+- Each match shows the attributes that identify it by its type, in its tag: id, name and type, then for `img` the file name of `src` and `alt`, for `a` its `href`, for `input` its placeholder and current value (`••••` for passwords; checkboxes and radios their `value` attribute and `checked`), for `textarea` its name, placeholder and value, for `button` its type (in a form also without a type attribute: `submit`), for `select` its name and the selected option (`selected="Price (low to high)"`), for `iframe` the host of `src`, and for `form` its `action` and `method`, e.g. `[0] <img src="…/sl-404-Cq1a9k9X.jpg" alt="Sauce Labs Backpack" class="inventory_item_img">`. Absolute URLs keep `//` before the host (`href="//saucelabs.com"`) so they do not read as relative paths; values over 40 characters are cut in the middle. `--json` has the full values in `attributes` (e.g. `{ "src": "/assets/sl-404-Cq1a9k9X.jpg", "alt": "…" }`; password values masked); `dom get` shows the same attributes after the role (`[Image] "Sauce Labs Backpack" src="…/sl-404-Cq1a9k9X.jpg"`, `domContext.attributes` in JSON), leaving out values equal to the accessible name
+- Selectors search open shadow roots and same-origin iframes, not closed shadow roots or cross-origin iframes (see [Selectors](#selectors))
 - No match exits 83, like `dom get` and `dom a11y`
 - Matches outside the viewport or hidden get a hint: `(below fold)`, `(above viewport)`, `(left of viewport)`, `(right of viewport)`, `(hidden)`, or `(out of view in ul#list)` for one scrolled out of a container; `--json` has `inViewport` (and `clippedBy`) for the first 100 matches (see `dom layout`)
 - `<option>` elements show their `value` attribute and label: `[2] <option value="ca"> Canada (hidden)`
@@ -880,6 +884,15 @@ bdg network list --verbose
 
 # JSON output
 bdg network list --json
+```
+
+**Columns:** `START` is when the request started, counted from the start of the current page (its document request, the latest main-frame navigation): `+0.0s` for the document, `+1.2s` for a request 1.2 s later, whole seconds from 100 s (`+250s`) and minutes from 1000 s (`+17m`); requests of earlier pages are negative (`-35.2s`). It uses Chrome's own timestamps, so it is exact to the millisecond. `TIME` is how long the request took (`-` while pending). The method column widens for `OPTIONS`. In `--json`, each request has its absolute start `timestamp` (epoch ms), `sentTime` (Chrome's monotonic clock, seconds) and `navigationId` (the page load it belongs to), and `data.pageStart` (`timestamp`, `sentTime`) is the start the column counts from.
+
+```text
+[ID]         START STS METH    TYP     SIZE   TIME  URL
+[17380.1]    +0.0s 200 GET     DOC   1.4 KB  345ms  www.saucedemo.com
+[17380.20]   +0.4s 204 OPTIONS OTH        -   95ms  events.backtrace.io/api/uniqu…UNIVERSE&token=TOKEN
+[17380.27]   +2.2s 200 GET     IMG    392 B  144ms  www.saucedemo.com/assets/sl-404-Cq1a9k9X.jpg
 ```
 
 **Filter Syntax Reference:**

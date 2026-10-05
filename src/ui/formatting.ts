@@ -189,13 +189,15 @@ export function truncateUrl(url: string, maxLength: number = 60): string {
 const MIN_URL_END_SHOWN = 12;
 
 /**
- * Cut text in the middle, marking the cut with "…".
+ * Cut text in the middle, marking the cut with "…" (text that fits is
+ * returned as is).
  *
  * @param text - Text
  * @param maxLength - Maximum length
- * @returns Start and end of the text around "…"
+ * @returns Text, or its start and end around "…"
  */
-function cutMiddle(text: string, maxLength: number): string {
+export function cutMiddle(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
   const head = Math.ceil((maxLength - 1) / 2);
   return `${text.substring(0, head)}…${text.substring(text.length - (maxLength - 1 - head))}`;
 }
