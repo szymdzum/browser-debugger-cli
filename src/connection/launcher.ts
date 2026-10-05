@@ -78,7 +78,7 @@ export interface LaunchOptions extends Pick<
   prefsFile?: string | undefined;
   /** Override Chrome binary detection with an explicit path */
   chromePath?: string;
-  /** bdg session directory, recorded as a marker flag on the Chrome command line */
+  /** bdg session directory: recorded as a marker flag on the Chrome command line, and holds the default profile */
   sessionDir?: string | undefined;
 }
 
@@ -114,7 +114,8 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   const reservation = await reservePort(port);
   reservation.release();
 
-  const userDataDir = options.userDataDir ?? getPersistentUserDataDir(options.baseDir);
+  const userDataDir =
+    options.userDataDir ?? getPersistentUserDataDir(options.baseDir ?? options.sessionDir);
 
   if (!fs.existsSync(userDataDir)) {
     try {
@@ -204,7 +205,9 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 /**
  * Get the default persistent user-data-dir path.
  *
- * Uses the session directory ($BDG_SESSION_DIR) to store Chrome profile data,
+ * Uses the session directory (`~/.bdg`, `$BDG_SESSION_DIR`, or
+ * `<base>/sessions/<name>` for a named session, passed as `sessionDir`) to
+ * store Chrome profile data,
  * ensuring each session has its own isolated Chrome profile. This prevents
  * SingletonLock conflicts when multiple agents run concurrently.
  *
@@ -212,7 +215,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
  * For shared login state across sessions, use --user-data-dir to specify a
  * shared location explicitly.
  *
- * @param baseDir - Optional base directory (defaults to session dir). Allows injection for testing or custom locations.
+ * @param baseDir - Optional base directory (defaults to `~/.bdg` or `$BDG_SESSION_DIR`). Allows injection for testing or custom locations.
  * @returns Absolute path to session-isolated user-data-dir
  * @throws Error if user data directory cannot be created due to permission issues
  */
@@ -270,7 +273,8 @@ function getPersistentUserDataDir(baseDir?: string): string {
  */
 function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
   const userPrefs = loadChromePrefs(options);
-  const userDataDir = options.userDataDir ?? getPersistentUserDataDir(options.baseDir);
+  const userDataDir =
+    options.userDataDir ?? getPersistentUserDataDir(options.baseDir ?? options.sessionDir);
   const chromePathOverride = resolveChromeBinary(options);
 
   const mergedPrefs = userPrefs ? { ...BDG_CHROME_PREFS, ...userPrefs } : BDG_CHROME_PREFS;

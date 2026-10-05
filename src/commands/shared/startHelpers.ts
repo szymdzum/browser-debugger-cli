@@ -27,6 +27,7 @@ import {
 } from '@/ipc/index.js';
 import { IPCTimeoutError } from '@/ipc/transport/index.js';
 import { isConnectionError } from '@/ipc/utils/errors.js';
+import { getSessionName } from '@/session/paths.js';
 import type { TelemetryType } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { escapeControlChars, joinLines } from '@/ui/formatting.js';
@@ -304,8 +305,10 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
   const { data } = outcome;
   const autoStopAt =
     options.timeout !== undefined ? new Date(Date.now() + options.timeout * 1000) : undefined;
+  const session = getSessionName() ?? undefined;
   if (options.json) {
     const result = {
+      ...(session && { session }),
       targetUrl: data.targetUrl,
       ...(data.targetTitle !== undefined && { targetTitle: data.targetTitle }),
       ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
@@ -320,6 +323,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       url: data.targetUrl,
       ...(data.documentStatus !== undefined && { documentStatus: data.documentStatus }),
       ...(autoStopAt && { autoStopAt }),
+      ...(session && { session }),
     };
     const text = options.quiet
       ? [`Session started: ${data.targetUrl}`, ...startNotices(page)].join('\n')

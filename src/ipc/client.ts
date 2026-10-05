@@ -71,6 +71,7 @@ async function assertResponsive(): Promise<void> {
  * Request status information from the daemon.
  * Returns daemon state, session metadata, and activity metrics.
  *
+ * @param socketPath - Daemon socket to ask (default: the selected session's)
  * @returns Status response with daemon and session information
  * @throws Error if connection fails or times out
  *
@@ -83,13 +84,14 @@ async function assertResponsive(): Promise<void> {
  * }
  * ```
  */
-export async function getStatus(): Promise<StatusResponse> {
+export async function getStatus(socketPath?: string): Promise<StatusResponse> {
   const request: StatusRequest = withSession({ type: 'status_request' });
   return sendRequest<StatusRequest, StatusResponse>(
     request,
     'status',
     'status_response',
-    getQuickIPCRequestTimeout()
+    getQuickIPCRequestTimeout(),
+    socketPath
   );
 }
 

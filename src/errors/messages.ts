@@ -427,6 +427,37 @@ export function invalidUserDataDirError(value: string, reason: string): ErrorWit
   };
 }
 
+/**
+ * A `--session` / `BDG_SESSION` name bdg cannot use as a directory name.
+ *
+ * @param name - The rejected name
+ * @param maxLength - Longest allowed name
+ */
+export function invalidSessionNameError(name: string, maxLength: number): ErrorWithSuggestion {
+  return {
+    message: `Invalid session name "${name}"`,
+    suggestion: `Use 1-${maxLength} letters, digits, "-" or "_", e.g. --session agent-1`,
+  };
+}
+
+/**
+ * A session name whose daemon socket path would exceed the OS limit.
+ *
+ * @param name - Session name
+ * @param socketPath - Resulting socket path
+ * @param max - Longest socket path in bytes
+ */
+export function sessionNameSocketTooLongError(
+  name: string,
+  socketPath: string,
+  max: number
+): ErrorWithSuggestion {
+  return {
+    message: `Session name "${name}" makes the daemon socket path too long (${Buffer.byteLength(socketPath)} bytes, at most ${max}): ${socketPath}`,
+    suggestion: 'Use a shorter session name, or a shorter BDG_SESSION_DIR (e.g. /tmp/bdg)',
+  };
+}
+
 /** Fix for an unusable session directory */
 const SESSION_DIR_SUGGESTION =
   'Set BDG_SESSION_DIR to a short, writable directory, e.g. BDG_SESSION_DIR=/tmp/bdg';

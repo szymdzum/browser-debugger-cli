@@ -25,18 +25,25 @@ export interface LandingPageOptions {
   documentStatus?: number;
   /** When `--timeout` will stop the session */
   autoStopAt?: Date;
+  /** Name of a named session (`--session`) */
+  session?: string;
 }
 
 /**
  * Lines shown under the target in both the full and the quiet start output:
- * an HTTP error of the page, and when the session stops by itself.
+ * the session name, an HTTP error of the page, and when the session stops by itself.
  *
  * @param options - Landing page options
  * @returns Lines (empty when there is nothing to say)
  */
 export function startNotices(options: LandingPageOptions): string[] {
-  const { documentStatus, autoStopAt } = options;
+  const { documentStatus, autoStopAt, session } = options;
   return [
+    ...(session
+      ? [
+          `Session: ${session} (pass --session ${session} or set BDG_SESSION=${session} on every command)`,
+        ]
+      : []),
     ...(documentStatus !== undefined && documentStatus >= 400
       ? [`⚠ The page responded with HTTP ${documentStatus}`]
       : []),

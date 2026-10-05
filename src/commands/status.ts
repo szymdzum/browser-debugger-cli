@@ -12,6 +12,7 @@ import { describeRunningChrome } from '@/session/chrome.js';
 import { findOrphanedChrome, removeStaleDaemonFiles } from '@/session/cleanup/staleSession.js';
 import { readLastSessionEnd } from '@/session/lastSession.js';
 import type { SessionMetadata } from '@/session/metadata.js';
+import { getSessionName } from '@/session/paths.js';
 import {
   formatSessionStatus,
   formatStatusAsJson,
@@ -39,6 +40,17 @@ function inactiveStatus(starting?: StatusData['starting'], ending?: boolean): St
     ...(orphanedChromePid !== null && { orphanedChromePid }),
     ...(lastSession && { lastSession }),
   };
+}
+
+/**
+ * Add the selected session's name (named sessions only).
+ *
+ * @param data - Status data
+ * @returns Status data with `session` for a named session
+ */
+function withSessionName(data: StatusData): StatusData {
+  const session = getSessionName();
+  return session === null ? data : { session, ...data };
 }
 
 /**
@@ -99,7 +111,7 @@ export function registerStatusCommand(program: Command): void {
               if (data.pageState) {
                 jsonOutput.pageState = data.pageState;
               }
-              return { success: true, data: jsonOutput };
+              return { success: true, data: withSessionName(jsonOutput) };
             }
 
             const metadata: SessionMetadata = {
@@ -129,7 +141,7 @@ export function registerStatusCommand(program: Command): void {
               jsonOutput.pageState = data.pageState;
             }
 
-            return { success: true, data: jsonOutput };
+            return { success: true, data: withSessionName(jsonOutput) };
           } catch (error) {
             const errorMessage = getErrorMessage(error);
             if (error instanceof IPCTimeoutError) {
@@ -145,7 +157,7 @@ export function registerStatusCommand(program: Command): void {
               await removeStaleDaemonFiles();
               latestMetadata = undefined;
               latestSessionPid = undefined;
-              return { success: true, data: inactiveStatus() };
+              return { success: true, data: withSessionName(inactiveStatus()) };
             }
 
             return {
@@ -173,7 +185,8 @@ export function registerStatusCommand(program: Command): void {
             latestSessionPid,
             latestActivity,
             latestPageState,
-            options.verbose ?? false
+            options.verbose ?? false,
+            data.session
           );
         }
       );

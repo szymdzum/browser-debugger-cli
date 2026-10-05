@@ -256,6 +256,17 @@ export function sessionStillActiveError(pid: number): string {
 }
 
 /**
+ * How to clean up a session that is still running.
+ *
+ * @param session - Name of a named session, or null for the default session
+ * @returns Suggestion lines
+ */
+export function sessionStillActiveSuggestion(session: string | null): string {
+  const flag = session ? ` --session ${session}` : '';
+  return `Stop gracefully: bdg stop${flag}\nForce cleanup: bdg cleanup --force${flag}`;
+}
+
+/**
  * Generate help message when no URL is provided to start command.
  *
  * Displays comprehensive guidance optimized for agent discovery:

@@ -3,7 +3,7 @@
  *
  * Handles automatic port selection and persistence for session isolation.
  * Each session directory can have its own persistent port, enabling multiple
- * concurrent bdg sessions with different BDG_SESSION_DIR values.
+ * concurrent bdg sessions (named sessions or different BDG_SESSION_DIR values).
  */
 
 import * as fs from 'fs';
@@ -12,7 +12,8 @@ import * as net from 'net';
 import { isPortAnswering } from '@/connection/portReservation.js';
 import { DEFAULT_CDP_PORT } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
-import { ensureSessionDir, getSessionFilePath } from '@/session/paths.js';
+import { ensureSessionDir, getSessionFilePath, getSessionName } from '@/session/paths.js';
+import { portsClaimedByOtherSessions, readPortFile, withPortLock } from '@/session/portClaims.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
@@ -47,20 +48,35 @@ async function isPortAvailable(port: number): Promise<boolean> {
 }
 
 /**
+ * First port tried for this session: the default session starts at
+ * DEFAULT_CDP_PORT, named sessions one above so they leave it to the default
+ * session.
+ *
+ * @returns First candidate port
+ */
+export function firstCandidatePort(): number {
+  return getSessionName() === null ? PORT_RANGE_START : PORT_RANGE_START + 1;
+}
+
+/**
  * Find an available port starting from a given port.
  *
  * @param startPort - Port to start scanning from
+ * @param claimed - Ports to skip (claimed by other sessions)
  * @returns Promise resolving to an available port
- * @throws Error if no available port found in range
+ * @throws CommandError if no available port found in range
  */
-async function findAvailablePort(startPort: number = PORT_RANGE_START): Promise<number> {
+export async function findAvailablePort(
+  startPort: number = PORT_RANGE_START,
+  claimed: ReadonlySet<number> = new Set()
+): Promise<number> {
   for (let port = startPort; port <= PORT_RANGE_END; port++) {
-    if (await isPortAvailable(port)) {
+    if (!claimed.has(port) && (await isPortAvailable(port))) {
       return port;
     }
   }
   throw new CommandError(
-    `No available port found in range ${PORT_RANGE_START}-${PORT_RANGE_END}.`,
+    `No available port found in range ${startPort}-${PORT_RANGE_END}.`,
     { suggestion: 'Stop some bdg sessions or Chrome instances and retry.' },
     EXIT_CODES.SOFTWARE_ERROR
   );
@@ -72,20 +88,8 @@ async function findAvailablePort(startPort: number = PORT_RANGE_START): Promise<
  * @returns Saved port number or null if not found/invalid
  */
 export function readSessionPort(): number | null {
-  try {
-    const portPath = getSessionFilePath('PORT');
-    if (!fs.existsSync(portPath)) {
-      return null;
-    }
-    const content = fs.readFileSync(portPath, 'utf-8').trim();
-    const port = parseInt(content, 10);
-    if (isNaN(port) || port < 1 || port > 65535) {
-      return null;
-    }
-    return port;
-  } catch {
-    return null;
-  }
+  const portPath = getSessionFilePath('PORT');
+  return fs.existsSync(portPath) ? readPortFile(portPath) : null;
 }
 
 /**
@@ -103,36 +107,33 @@ export function writeSessionPort(port: number): void {
  * Get or allocate a port for this session.
  *
  * Logic:
- * 1. If a port is explicitly provided, use it (user override)
- * 2. Check if there's a saved port in the session directory
- * 3. If saved port exists and is available, reuse it (session stability)
- * 4. Otherwise, find a new available port and save it
+ * 1. If a port is explicitly provided, use it (user override; a named session
+ *    saves it so other sessions skip it)
+ * 2. Otherwise, under a lock shared by all sessions, reuse the saved port if
+ *    it is free and no other running session claims it (session stability)
+ * 3. Otherwise, take the first free, unclaimed port from
+ *    {@link firstCandidatePort} upwards and save it (the claim)
  *
- * This provides session isolation: different BDG_SESSION_DIR values
- * will automatically use different ports.
+ * This provides session isolation: named sessions and different
+ * BDG_SESSION_DIR values automatically use different ports, even when they
+ * start at the same time.
  *
  * @param explicitPort - User-provided port (takes precedence)
  * @returns Promise resolving to the port to use
  */
 export async function getSessionPort(explicitPort?: number | null): Promise<number> {
-  // User explicitly specified a port - use it directly
   if (explicitPort !== undefined && explicitPort !== null) {
+    if (getSessionName() !== null) writeSessionPort(explicitPort);
     return explicitPort;
   }
-
-  // Check for saved session port
-  const savedPort = readSessionPort();
-
-  if (savedPort !== null) {
-    // Verify the saved port is still available
-    if (await isPortAvailable(savedPort)) {
+  return withPortLock(async () => {
+    const claimed = portsClaimedByOtherSessions();
+    const savedPort = readSessionPort();
+    if (savedPort !== null && !claimed.has(savedPort) && (await isPortAvailable(savedPort))) {
       return savedPort;
     }
-    // Saved port is in use by another process, need to find a new one
-  }
-
-  // Find a new available port
-  const newPort = await findAvailablePort();
-  writeSessionPort(newPort);
-  return newPort;
+    const port = await findAvailablePort(firstCandidatePort(), claimed);
+    writeSessionPort(port);
+    return port;
+  });
 }
