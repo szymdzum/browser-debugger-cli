@@ -260,6 +260,13 @@ const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
   };
 </script>`;
 
+/** Body of a 404 page */
+const MISSING_PAGE_HTML = '<!doctype html><title>Not found</title><h1>Not found</h1>';
+
+/** A 404 page that loads the app, as single-page apps on static hosts do */
+const SPA_MISSING_HTML =
+  "<!doctype html><title>Not found</title><script>location.replace('/?' + location.pathname)</script>";
+
 /**
  * Running fixture server handle.
  */
@@ -308,6 +315,11 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/redirect') {
       res.writeHead(302, { Location: '/' });
       res.end();
+      return;
+    }
+    if (req.url === '/missing-page' || req.url === '/spa-missing') {
+      res.writeHead(404, { 'Content-Type': 'text/html' });
+      res.end(req.url === '/missing-page' ? MISSING_PAGE_HTML : SPA_MISSING_HTML);
       return;
     }
     if (req.url === '/error-page') {

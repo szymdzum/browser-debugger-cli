@@ -530,13 +530,24 @@ export const PAGE_ACTION_DESCRIPTIONS = {
 } as const;
 
 /**
- * `bdg page navigate` to a page that answered with an HTTP error.
+ * `bdg page navigate|reload|back|forward` when the document answered with an
+ * error status, or the page then loaded another document that answered
+ * differently (a 404 page whose script loads the app).
  *
- * @param status - HTTP status
- * @returns Warning
+ * @param status - HTTP status of the navigation's document
+ * @param later - The last document the page loaded afterwards, if any
+ * @returns Warning, or undefined when there is nothing to report
  */
-export function httpErrorWarning(status: number): string {
-  return `The page responded with HTTP ${status}`;
+export function documentStatusWarning(
+  status: number,
+  later?: { status: number; url: string }
+): string | undefined {
+  const failed = status >= 400;
+  const laterFailed = later !== undefined && later.status >= 400;
+  if (later && (failed || laterFailed)) {
+    return `The page responded with HTTP ${status}, then loaded ${later.url} (HTTP ${later.status})`;
+  }
+  return failed ? `The page responded with HTTP ${status}` : undefined;
 }
 
 /**

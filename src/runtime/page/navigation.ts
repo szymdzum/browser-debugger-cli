@@ -12,7 +12,11 @@ import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { httpErrorWarning, notAPageWarning, stillLoadingWarning } from '@/ui/messages/commands.js';
+import {
+  documentStatusWarning,
+  notAPageWarning,
+  stillLoadingWarning,
+} from '@/ui/messages/commands.js';
 import { delay } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -183,47 +187,62 @@ async function stillLoading(cdp: CDPConnection, action: PageAction): Promise<Pag
   };
 }
 
+/** HTTP response of a document loaded in the main frame */
+interface DocumentResponse {
+  status: number;
+  url: string;
+}
+
+/** Documents the main frame loaded during a navigation */
+interface DocumentResponses {
+  /** The navigation's own document (after HTTP redirects) */
+  first: DocumentResponse;
+  /** The last document loaded after it (a script or meta refresh moved on), if any */
+  later?: DocumentResponse;
+}
+
 /**
- * Add the document's HTTP status (and a warning for an error status).
+ * Add the HTTP status of the navigation's own document, with a warning for an
+ * error status or for a later document that answered differently (a 404 page
+ * whose script loads the app, as single-page apps on static hosts do).
  *
  * @param result - Navigation result
- * @param response - The main document's response, if one arrived
+ * @param documents - The main frame's document responses, if one arrived
  * @returns Result with status
  */
 function withStatus(
   result: PageNavigationResult,
-  response: { status: number; url: string } | undefined
+  documents: DocumentResponses | undefined
 ): PageNavigationResult {
-  if (!response) return result;
-  const url = result.url.startsWith('chrome-error://') ? response.url : result.url;
-  return {
-    ...result,
-    url,
-    status: response.status,
-    ...(response.status >= 400 && { warning: httpErrorWarning(response.status) }),
-  };
+  if (!documents) return result;
+  const { first, later } = documents;
+  const url = result.url.startsWith('chrome-error://') ? first.url : result.url;
+  const warning = documentStatusWarning(first.status, later);
+  return { ...result, url, status: first.status, ...(warning && { warning }) };
 }
 
 /**
- * Watch for the response of the main frame's next document.
+ * Watch for the responses of the main frame's documents. The first one is
+ * the navigation's own; later ones were loaded by the page itself.
  *
  * @param cdp - CDP connection
  * @param mainFrameId - Main frame id
- * @returns The response seen so far, and a function to stop listening
+ * @returns The responses seen so far, and a function to stop listening
  */
 function documentResponse(
   cdp: CDPConnection,
   mainFrameId: string
-): { response: () => { status: number; url: string } | undefined; stop: () => void } {
-  let seen: { status: number; url: string } | undefined;
+): { response: () => DocumentResponses | undefined; stop: () => void } {
+  let seen: DocumentResponses | undefined;
   const stop = cdp.on<{
     type?: string;
     frameId?: string;
-    response: { status: number; url: string };
+    response: DocumentResponse;
   }>('Network.responseReceived', (params) => {
-    if (params.type === 'Document' && params.frameId === mainFrameId) {
-      seen = { status: params.response.status, url: params.response.url };
-    }
+    if (params.type !== 'Document' || params.frameId !== mainFrameId) return;
+    const response = { status: params.response.status, url: params.response.url };
+    if (seen) seen.later = response;
+    else seen = { first: response };
   });
   return { response: () => seen, stop };
 }

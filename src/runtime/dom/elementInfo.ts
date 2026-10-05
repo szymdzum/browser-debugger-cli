@@ -54,9 +54,12 @@ export const ELEMENT_DESCRIPTION_JS = `(node) => node.tagName.toLowerCase() +
  * `button#add.btn "Add to cart"`. An element without visible text and
  * without an id is named by the nearest of three ancestors that has text,
  * e.g. `input.toggle in div.view "Write report"` (rows of a list share their
- * aria-label); otherwise its aria-label, placeholder or title is used. Texts
- * are cut at 40 characters. Contenteditable elements count as controls: what
- * was typed into them is never echoed (nor their ancestors' text).
+ * aria-label), leaving out the options of `<select>`s in it; otherwise its
+ * aria-label, placeholder or title is used. A `<select>` is named by its
+ * label, aria-label or name, else by its selected option, e.g.
+ * `select.sort "Sort products"`. Texts are cut at 40 characters.
+ * Contenteditable elements count as controls: what was typed into them is
+ * never echoed (nor their ancestors' text).
  */
 export const ELEMENT_IDENTITY_JS = `(el) => {
   const describe = ${ELEMENT_DESCRIPTION_JS};
@@ -70,11 +73,26 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
   const buttonValue = (node) => (node.localName === 'input' && /^(submit|button|reset)$/i.test(node.type) ? clean(node.value) : '');
   const attributeText = (node) =>
     clean(node.getAttribute('aria-label')) || clean(node.getAttribute('placeholder')) || clean(node.getAttribute('title'));
-  const visible = shownText(el) || buttonValue(el);
+  const selectName = (node) =>
+    clean(node.labels && node.labels[0] && node.labels[0].innerText) ||
+    clean(node.getAttribute('aria-label')) ||
+    clean(node.getAttribute('name')) ||
+    clean(node.selectedOptions && node.selectedOptions[0] && node.selectedOptions[0].label);
+  const textOutsideSelects = (node) => {
+    if (!node.querySelector('select')) return shownText(node);
+    const walker = node.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let text = '';
+    while (text.length < 200 && walker.nextNode()) {
+      const parent = walker.currentNode.parentElement;
+      if (parent && !parent.closest('select') && (!parent.checkVisibility || parent.checkVisibility())) text += ' ' + walker.currentNode.data;
+    }
+    return clean(text);
+  };
+  const visible = shownText(el) || buttonValue(el) || (el.localName === 'select' ? selectName(el) : '');
   if (visible) return describe(el) + ' "' + cut(visible) + '"';
   let ancestor = el.id || el.isContentEditable ? null : el.parentElement;
   for (let depth = 0; ancestor && depth < 3; depth++, ancestor = ancestor.parentElement) {
-    const text = shownText(ancestor);
+    const text = isControl(ancestor) ? '' : textOutsideSelects(ancestor);
     if (text) return describe(el) + ' in ' + describe(ancestor) + ' "' + cut(text) + '"';
   }
   const attribute = attributeText(el);

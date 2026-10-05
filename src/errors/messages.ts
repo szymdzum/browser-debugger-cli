@@ -1578,6 +1578,24 @@ export function pageNavigatedDuringEvalError(): ErrorWithSuggestion {
   };
 }
 
+/** `Identifier 'x' has already been declared` */
+const REDECLARED_PATTERN = /^SyntaxError: Identifier '([\w$]+)' has already been declared/;
+
+/**
+ * Tip for a top-level `const`/`let` whose name the page or the script itself
+ * already declares (`dom eval` runs like the console: names persist between
+ * calls, and a page's own top-level `let`/`const`/`class` cannot be declared again).
+ *
+ * @param name - The redeclared identifier
+ * @returns Tip
+ */
+function redeclarationTip(name: string): string {
+  return [
+    `'${name}' is already declared at the top level, by the page or earlier in this script.`,
+    `Rename it, or wrap the script in a block so its names stay local: ${sessionCommand(`bdg dom eval '{ const ${name} = ...; ${name} }'`)}`,
+  ].join('\n');
+}
+
 /**
  * Script execution error with shell quote detection.
  *
@@ -1599,7 +1617,8 @@ export function scriptExecutionError(
     };
   }
 
-  const quoteCheck = detectScriptQuoteDamage(receivedScript);
+  const quoteCheck = detectScriptQuoteDamage(receivedScript, errorMessage);
+  const redeclared = REDECLARED_PATTERN.exec(errorMessage)?.[1];
   const truncatedScript =
     receivedScript.length > 100 ? receivedScript.slice(0, 100) + '...' : receivedScript;
 
@@ -1616,6 +1635,9 @@ export function scriptExecutionError(
       lines.push('');
       lines.push(quoteCheck.suggestion);
     }
+  } else if (redeclared) {
+    lines.push('');
+    lines.push(redeclarationTip(redeclared));
   } else if (/^SyntaxError\b/.test(errorMessage)) {
     lines.push('');
     lines.push('Tips:');
