@@ -2,6 +2,7 @@
  * Console message collection via CDP Runtime and Log domains.
  *
  * Captures console.log, console.error, etc. and JavaScript exceptions
+ * (unhandled rejections removed again when a handler is attached later)
  * with automatic nested object expansion, browser messages (failed loads,
  * CORS, security, deprecations), and the same from cross-origin iframes and
  * workers.
@@ -105,15 +106,18 @@ function createMessage(
 /**
  * Insert a message in timestamp order.
  * Messages are kept sorted by timestamp to handle async expansion delays.
+ *
+ * @returns False when the message limit is reached (the message is dropped)
  */
-function insertMessageByTimestamp(messages: ConsoleMessage[], message: ConsoleMessage): void {
+function insertMessageByTimestamp(messages: ConsoleMessage[], message: ConsoleMessage): boolean {
   if (messages.length >= MAX_CONSOLE_MESSAGES) {
     log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
-    return;
+    return false;
   }
 
   const insertIndex = findInsertIndex(messages, message.timestamp);
   messages.splice(insertIndex, 0, message);
+  return true;
 }
 
 /**
@@ -232,22 +236,83 @@ export function formatExceptionText(details: Protocol.Runtime.ExceptionDetails):
 
 /**
  * Handle an exception thrown event.
+ *
+ * @returns The message added, undefined when filtered out or over the limit
  */
 function handleExceptionThrown(
   messages: ConsoleMessage[],
   params: ExceptionThrownEvent,
   context: MessageContext,
   includeAll: boolean
-): void {
+): ConsoleMessage | undefined {
   const exception = params.exceptionDetails;
   const text = formatExceptionText(exception);
 
   if (shouldExcludeConsoleMessage(text, 'error', includeAll)) {
-    return;
+    return undefined;
   }
 
   const message = createMessage('error', text, params.timestamp, undefined, context);
-  insertMessageByTimestamp(messages, message);
+  return insertMessageByTimestamp(messages, message) ? message : undefined;
+}
+
+/** CDP's text of an unhandled promise rejection (the only kind Chrome revokes) */
+const UNHANDLED_REJECTION_TEXT = 'Uncaught (in promise)';
+
+/**
+ * Unhandled promise rejections that may still be revoked: Chrome reports a
+ * rejection without a handler at the end of the task, and revokes the
+ * report (`Runtime.exceptionRevoked`) when a handler is attached later, as
+ * DevTools does by removing the message. `bdg dom eval` attaches its
+ * handler only after the evaluation returns, so this is what keeps
+ * `bdg dom eval 'Promise.reject(…)'` out of the console; a rejection
+ * nothing ever handles stays.
+ */
+class RevocableRejections {
+  /** Messages of rejections, by session and exception id */
+  private readonly pending = new Map<string, ConsoleMessage>();
+
+  /**
+   * Remember a reported exception if it is an unhandled rejection.
+   *
+   * @param details - Exception details
+   * @param message - Its console message
+   * @param sessionId - Session it was reported on (undefined: the page)
+   */
+  track(
+    details: Protocol.Runtime.ExceptionDetails,
+    message: ConsoleMessage,
+    sessionId?: string
+  ): void {
+    if (!details.text.startsWith(UNHANDLED_REJECTION_TEXT)) return;
+    this.pending.set(this.key(details.exceptionId, sessionId), message);
+  }
+
+  /**
+   * Remove the message of a revoked rejection.
+   *
+   * @param messages - Console messages (updated)
+   * @param exceptionId - Revoked exception
+   * @param sessionId - Session it was revoked on (undefined: the page)
+   */
+  revoke(messages: ConsoleMessage[], exceptionId: number, sessionId?: string): void {
+    const key = this.key(exceptionId, sessionId);
+    const message = this.pending.get(key);
+    this.pending.delete(key);
+    const index = message ? messages.indexOf(message) : -1;
+    if (index !== -1) messages.splice(index, 1);
+  }
+
+  /**
+   * Map key of an exception: ids are counted per session.
+   *
+   * @param exceptionId - Exception id
+   * @param sessionId - Session
+   * @returns Key
+   */
+  private key(exceptionId: number, sessionId?: string): string {
+    return `${sessionId ?? ''}:${exceptionId}`;
+  }
 }
 
 /**
@@ -345,12 +410,18 @@ export async function startConsoleCollection(
     handleConsoleAPICall(senderFor(cdp, sessionId), messages, params, context, includeAll);
   });
 
-  registry.registerTyped(typed, 'Runtime.exceptionThrown', (params) => {
+  const rejections = new RevocableRejections();
+  registry.registerTyped(typed, 'Runtime.exceptionThrown', (params, sessionId) => {
     const context: MessageContext = {
       navigationId: getCurrentNavigationId?.(),
       stackTrace: convertStackTrace(params.exceptionDetails.stackTrace),
     };
-    handleExceptionThrown(messages, params, context, includeAll);
+    const message = handleExceptionThrown(messages, params, context, includeAll);
+    if (message) rejections.track(params.exceptionDetails, message, sessionId);
+  });
+
+  registry.registerTyped(typed, 'Runtime.exceptionRevoked', ({ exceptionId }, sessionId) => {
+    rejections.revoke(messages, exceptionId, sessionId);
   });
 
   registry.registerTyped(typed, 'Log.entryAdded', ({ entry }) => {

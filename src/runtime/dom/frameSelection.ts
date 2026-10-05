@@ -3,7 +3,12 @@
  */
 
 import { CommandError } from '@/errors/index.js';
-import { ambiguousFrameError, emptyFrameError, frameNotFoundError } from '@/errors/messages.js';
+import {
+  ambiguousFrameError,
+  emptyFrameError,
+  frameNotFoundError,
+  staleFrameIndexError,
+} from '@/errors/messages.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -20,6 +25,28 @@ export function selectFrame(frames: DomFrame[], query: string): DomFrame {
   const wanted = query.trim();
   if (!wanted) throw frameError(emptyFrameError(), EXIT_CODES.INVALID_ARGUMENTS);
   return single(frames, wanted, candidatesFor(frames, wanted));
+}
+
+/**
+ * Check that a `--frame` index still names the frame the last
+ * `bdg dom frames` listed at that index (frames added, removed or
+ * reordered since shift the indices; a navigation replaces every frame).
+ *
+ * @param query - Requested frame
+ * @param currentIds - Frame id of each frame now, by index
+ * @param listedIds - Frame id of each frame when last listed, undefined when never listed
+ * @throws CommandError (87) when the index names another frame (or none) now
+ */
+export function assertFrameIndexCurrent(
+  query: string,
+  currentIds: string[],
+  listedIds: string[] | undefined
+): void {
+  const wanted = query.trim();
+  if (!listedIds || !/^\d+$/.test(wanted)) return;
+  const index = Number(wanted);
+  if (currentIds[index] === listedIds[index]) return;
+  throw frameError(staleFrameIndexError(index), EXIT_CODES.STALE_CACHE);
 }
 
 /**

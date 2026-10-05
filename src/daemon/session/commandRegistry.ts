@@ -365,6 +365,8 @@ function pageWebSocketUrl(store: TelemetryStore): string {
 export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
   const patternDetector = new PatternDetector();
   const interact = createInteractionRunner(store);
+  /** Frame id behind each index of the last `dom frames` listing */
+  let listedFrameIds: string[] | undefined;
 
   return {
     session_peek: async (_cdp, params) => {
@@ -510,9 +512,19 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     dom_eval: async (cdp, params) =>
       params.frame === undefined
         ? evaluateScript(cdp, params.script)
-        : evaluateInFrame(cdp, pageWebSocketUrl(store), params.script, params.frame),
+        : evaluateInFrame(
+            cdp,
+            pageWebSocketUrl(store),
+            params.script,
+            params.frame,
+            listedFrameIds
+          ),
 
-    dom_frames: async (cdp) => ({ frames: await listFrames(cdp, pageWebSocketUrl(store)) }),
+    dom_frames: async (cdp) => {
+      const { frames, frameIds } = await listFrames(cdp, pageWebSocketUrl(store));
+      listedFrameIds = frameIds;
+      return { frames };
+    },
 
     dom_fill: async (cdp, params) =>
       interact(cdp, async () =>

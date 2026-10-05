@@ -144,7 +144,12 @@ export interface HandlerDetails {
   targetName?: string | undefined;
   /** Handlers jQuery runs from this listener (set when it is jQuery's dispatcher) */
   jquery?: ResolvedHandler[] | undefined;
+  /** The handler Preact runs from this listener (set when it is Preact's event proxy) */
+  preact?: FrameworkHandler | undefined;
 }
+
+/** A framework's handler found behind its dispatcher, of the dispatcher's event type */
+export type FrameworkHandler = Omit<ResolvedHandler, 'type'>;
 
 /** A handler registered through a framework, found behind its dispatcher */
 export interface ResolvedHandler {
@@ -246,16 +251,19 @@ function toElementListener(
 }
 
 /**
- * Report entries for a jQuery dispatcher: one per jQuery handler that runs
- * for the element, with the dispatcher's flags.
+ * Report entries for a framework's dispatcher: one per handler it runs for
+ * the element (jQuery's handlers, Preact's handler), with the dispatcher's
+ * type and flags.
  *
- * @param dispatcher - Entry built for jQuery's own listener
+ * @param dispatcher - Entry built for the framework's own listener
  * @param handlers - Handlers behind it
+ * @param framework - The framework
  * @returns Entries naming the real handlers
  */
-function jqueryListeners(
+function frameworkListeners(
   dispatcher: ElementListener,
-  handlers: ResolvedHandler[]
+  handlers: FrameworkHandler[],
+  framework: 'jQuery' | 'Preact'
 ): ElementListener[] {
   return handlers.map((resolved) => ({
     ...dispatcher,
@@ -266,9 +274,23 @@ function jqueryListeners(
       lineNumber: resolved.lineNumber,
       columnNumber: resolved.columnNumber,
     },
-    framework: 'jQuery' as const,
+    framework,
     ...(resolved.selector && { delegateSelector: resolved.selector }),
   }));
+}
+
+/**
+ * Report entries for one listener: itself, or the handlers behind a
+ * framework's dispatcher.
+ *
+ * @param built - Entry built for the listener
+ * @param detail - What the page reported about its handler
+ * @returns Entries
+ */
+function resolveDispatcher(built: ElementListener, detail: HandlerDetails): ElementListener[] {
+  if (detail.jquery) return frameworkListeners(built, detail.jquery, 'jQuery');
+  if (detail.preact) return frameworkListeners(built, [detail.preact], 'Preact');
+  return [built];
 }
 
 /** Chain position given to React parents outside the chain: after the last one inside */
@@ -448,11 +470,11 @@ export function collapseFrameworkRoots(placed: PlacedListener[]): {
 }
 
 /**
- * Report entries of every listener, jQuery dispatchers replaced by the
- * handlers they run for the element.
+ * Report entries of every listener, jQuery dispatchers and Preact proxies
+ * replaced by the handlers they run for the element.
  *
  * @param found - Listeners per chain entry, in chain order
- * @param details - Per flattened listener: handler name, jQuery handlers
+ * @param details - Per flattened listener: handler name, jQuery or Preact handlers
  * @returns Entries in chain order
  */
 function placeListeners(found: ChainListeners[], details: HandlerDetails[]): PlacedListener[] {
@@ -460,7 +482,7 @@ function placeListeners(found: ChainListeners[], details: HandlerDetails[]): Pla
   return flat.flatMap(({ entry, listener }, i) => {
     const detail = details[i] ?? {};
     const built = toElementListener(listener, entry, detail.name);
-    const listeners = detail.jquery ? jqueryListeners(built, detail.jquery) : [built];
+    const listeners = resolveDispatcher(built, detail);
     return listeners.map((item) => ({
       position: entry.position,
       entry: entry.entry,

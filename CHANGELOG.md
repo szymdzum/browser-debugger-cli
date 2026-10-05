@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`dom listeners` resolves Preact handlers** - Preact's event proxy on an element is replaced by the handler Preact runs for it, with its name, source and location, marked `[Preact]` (`framework: "Preact"`; Preact 8, 10 and 11, the handler store's key read from the proxy's source) (#346)
+
+### Fixed
+
+- **Stable `dom frames` indices** - Frames are listed in the document order of their `<iframe>` elements (open shadow roots included, out-of-process frames at their element's place) instead of in-process frames first in the order Chrome attached them, and `eval --frame <n>` exits 87 ("Frame index n is stale…", re-run `bdg dom frames`) when the frame at that index changed since the last listing instead of running in another frame (#346)
+- **No console error left by `dom eval` rejections** - `bdg dom eval 'Promise.reject(…)'` reports the rejection (exit 91) without leaving "Uncaught (in promise)" in `bdg console`: Chrome's report is revoked once bdg handles the promise, and revoked reports are dropped as in DevTools. Rejections nothing handles still show (#346)
+- **`dom listeners` across nested React roots** - For an element in a React root mounted inside another root, the outer root's `on…` props are listed too, as React runs them (#346)
+
 ## [0.9.0] - 2026-10-05
 
 Thanks to the fresh-agent UX tests: four agents with no prior knowledge of bdg worked through real sites three times, and most entries below come from what slowed them down. Between the first and third round their workarounds dropped sharply (hand-written `dom eval` on the forms task 5 → 0, visual questions 7 → 1, screenshots 6 → 2 in total, blind `sleep` loops gone).

@@ -184,6 +184,41 @@ void describe('Console sources', () => {
     }
   });
 
+  void it('removes an unhandled rejection once a handler is attached, per session', () => {
+    const rejection = (exceptionId: number, timestamp: number, message: string): unknown => ({
+      timestamp,
+      exceptionDetails: {
+        exceptionId,
+        text: 'Uncaught (in promise)',
+        lineNumber: 0,
+        columnNumber: 0,
+        exception: { type: 'object', subtype: 'error', description: `Error: ${message}` },
+      },
+    });
+    cdp.emit('Runtime.exceptionThrown', rejection(1, 1000, 'from eval'));
+    cdp.emit('Runtime.exceptionThrown', rejection(1, 2000, 'in frame'), 'frame-1');
+    cdp.emit('Runtime.exceptionThrown', rejection(2, 3000, 'never handled'));
+    cdp.emit('Runtime.exceptionThrown', {
+      timestamp: 4000,
+      exceptionDetails: { exceptionId: 3, text: 'Uncaught', lineNumber: 0, columnNumber: 0 },
+    });
+
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 1 });
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 3 });
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 9 });
+
+    assert.deepEqual(
+      messages.map((m) => m.text),
+      [
+        'Uncaught (in promise) Error: in frame',
+        'Uncaught (in promise) Error: never handled',
+        'Uncaught',
+      ]
+    );
+    cdp.emit('Runtime.exceptionRevoked', { reason: 'Handler added', exceptionId: 1 }, 'frame-1');
+    assert.equal(messages.length, 2);
+  });
+
   void it('fails to start when the page console cannot be enabled', async () => {
     const failing = new MockSessionCDP();
     failing.failing.add('Runtime.enable');

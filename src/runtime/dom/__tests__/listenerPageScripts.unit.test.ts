@@ -313,6 +313,30 @@ void describe('ELEMENT_INFO_JS React props', () => {
     );
   });
 
+  void it("continues from a nested root's container into the outer root", () => {
+    const fn = (): void => undefined;
+    const document = { nodeType: 9, parentNode: null };
+    const section = { nodeType: 1, localName: 'section', parentNode: document };
+    const mount = { nodeType: 1, localName: 'div', id: 'mount', parentNode: section };
+    const button = { nodeType: 1, localName: 'button', parentNode: mount };
+    const outerRoot = { tag: 3, stateNode: { containerInfo: document }, return: null };
+    const sectionFiber = { type: 'section', stateNode: section, return: outerRoot };
+    const mountFiber = { type: 'div', stateNode: mount, return: sectionFiber };
+    const innerRoot = { tag: 3, stateNode: { containerInfo: mount }, return: null };
+    const buttonFiber = { type: 'button', stateNode: button, return: innerRoot };
+    Object.assign(button, { __reactFiber$i: buttonFiber, __reactProps$i: { onClick: fn } });
+    Object.assign(mount, { __reactFiber$o: mountFiber, __reactContainer$i: innerRoot });
+    Object.assign(section, {
+      __reactFiber$o: sectionFiber,
+      __reactProps$o: { onClick: fn, onMouseEnter: fn },
+    });
+    const { info } = reactInfo([button, mount, section, document]);
+    assert.deepEqual(
+      info.react.map((r) => `${r.position}:${r.prop}`),
+      ['0:onClick', '2:onClick']
+    );
+  });
+
   void it('runs no getters of the page and skips props that are no functions', () => {
     let getterRan = false;
     const props = { onFocus: 'not a function', onBlur: null, onclick: (): void => undefined };
@@ -355,5 +379,72 @@ void describe('ELEMENT_INFO_JS React props', () => {
       ['onClick']
     );
     assert.equal(clicks.reactSkipped, 0);
+  });
+});
+
+/**
+ * A Preact event proxy: reads the handler from the element under `key`,
+ * like Preact 10 (`l`, type plus capture flag) or 8 (`_listeners`, type).
+ *
+ * @param source - Proxy source
+ * @returns The proxy
+ */
+function preactProxy(source: string): () => void {
+  return vm.runInThisContext(`(${source})`) as () => void;
+}
+
+void describe('ELEMENT_INFO_JS Preact proxies', () => {
+  void it("resolves the handler behind Preact's proxy, by type and phase", () => {
+    const click = function preactClick(): void {};
+    const capture = function wrapCapture(): void {};
+    const proxy = preactProxy(
+      'function (u) { if (this.l) { var t = this.l[u.type + false]; return t(u); } }'
+    );
+    const proxyCapture = preactProxy(
+      'function (u) { if (this.l) { var t = this.l[u.type + true]; return t(u); } }'
+    );
+    const plain = function plainListener(): void {};
+    const [button] = reactChain({ l: { clickfalse: click, clicktrue: capture } }, {});
+    const listeners = [
+      { position: 0, type: 'click', capture: false },
+      { position: 0, type: 'click', capture: true },
+      { position: 0, type: 'click', capture: false },
+    ];
+    const handlers = [proxy, proxyCapture, plain];
+    const [info, ...fns] = elementInfo.call(
+      button,
+      listeners,
+      null,
+      button,
+      ...handlers,
+      null,
+      null,
+      null
+    );
+    assert.deepEqual(
+      info.listeners.map((l) => l.preact),
+      [{ name: 'preactClick' }, { name: 'wrapCapture' }, undefined]
+    );
+    assert.deepEqual(fns, [click, capture]);
+  });
+
+  void it("follows the proxy's key (Preact 8 keys by type alone) and runs no getters", () => {
+    const save = function save(): void {};
+    const proxy = preactProxy('function eventProxy(e) { return this._listeners[e.type](e); }');
+    const [button] = reactChain({ _listeners: { submit: save } }, {});
+    const listener = [{ position: 0, type: 'submit', capture: false }];
+    const [info] = elementInfo.call(button, listener, null, button, proxy, null);
+    assert.deepEqual(info.listeners[0]?.preact, { name: 'save' });
+    let getterRan = false;
+    const guarded = reactChain({}, {})[0];
+    Object.defineProperty(guarded, '_listeners', {
+      get: () => {
+        getterRan = true;
+        return { submit: save };
+      },
+    });
+    const [unresolved] = elementInfo.call(guarded, listener, null, guarded, proxy, null);
+    assert.equal(unresolved.listeners[0]?.preact, undefined);
+    assert.equal(getterRan, false);
   });
 });

@@ -273,9 +273,10 @@ export interface ElementListener {
   /**
    * Registered through this framework; `handler` is the real handler, not
    * the framework's dispatcher. React handlers are `on…` props of the node
-   * (`reactProp`), run by React's dispatchers on its root container.
+   * (`reactProp`), run by React's dispatchers on its root container;
+   * Preact handlers are run by Preact's event proxy on the node itself.
    */
-  framework?: 'jQuery' | 'React';
+  framework?: 'jQuery' | 'Preact' | 'React';
   /** React prop the handler is set as, e.g. `onClick`, `onClickCapture` */
   reactProp?: string;
   /** jQuery delegate selector (`.on(type, selector, fn)`) the element matched */

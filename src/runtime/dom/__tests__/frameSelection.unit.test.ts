@@ -9,7 +9,8 @@ import { describe, it } from 'node:test';
 
 import { CommandError } from '@/errors/index.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
-import { selectFrame } from '@/runtime/dom/frameSelection.js';
+import { assertFrameIndexCurrent, selectFrame } from '@/runtime/dom/frameSelection.js';
+import { iframesInOrder } from '@/runtime/dom/frames.js';
 import { formatDomEval, formatDomFrames } from '@/ui/formatters/dom.js';
 import { evalFrameLine } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -169,5 +170,62 @@ void describe('frame output', () => {
     assert.equal(formatDomEval({ result: 'Pay', type: 'string' }), 'Pay');
     assert.equal(evalFrameLine('https://pay.example/'), 'Frame: https://pay.example/');
     assert.equal(evalFrameLine(''), 'Frame: (no URL)');
+  });
+});
+
+void describe('frame indices', () => {
+  /**
+   * A frame tree node.
+   *
+   * @param id - Frame id
+   * @param parentId - Parent frame id
+   * @returns Node with a frame
+   */
+  const node = (id: string, parentId: string): { frame: { id: string; parentId: string } } => ({
+    frame: { id, parentId },
+  });
+
+  void it('lists siblings in document order, depth-first, unplaced ones last', () => {
+    const nodes = [
+      node('a', 'main'),
+      node('c', 'main'),
+      node('a1', 'a'),
+      node('a2', 'a'),
+      node('late', 'main'),
+      node('oopif', 'main'),
+    ];
+    const rank = new Map([
+      ['oopif', 0],
+      ['a', 1],
+      ['c', 2],
+      ['a2', 0],
+      ['a1', 1],
+    ]);
+    const ordered = iframesInOrder(nodes as never[], 'main', rank) as typeof nodes;
+    assert.deepEqual(
+      ordered.map((n) => n.frame.id),
+      ['oopif', 'a', 'a2', 'a1', 'c', 'late']
+    );
+  });
+
+  void it('fails with 87 when an index names another frame than when listed', () => {
+    const stale = (query: string, current: string[], listed?: string[]): number | undefined => {
+      try {
+        assertFrameIndexCurrent(query, current, listed);
+        return undefined;
+      } catch (error) {
+        assert.ok(error instanceof CommandError);
+        assert.match(error.message, /Frame index \d+ is stale/);
+        assert.match(String(error.metadata['suggestion']), /Re-run bdg dom frames/);
+        return error.exitCode;
+      }
+    };
+    assert.equal(stale('0', ['a', 'b'], ['a', 'b']), undefined);
+    assert.equal(stale('0', ['new', 'a', 'b'], ['a', 'b']), EXIT_CODES.STALE_CACHE);
+    assert.equal(stale(' 1 ', ['a'], ['a', 'b']), EXIT_CODES.STALE_CACHE);
+    assert.equal(stale('2', ['a', 'b', 'c'], ['a', 'b']), EXIT_CODES.STALE_CACHE);
+    assert.equal(stale('5', ['a', 'b'], ['a', 'b']), undefined, 'out of range is "not found"');
+    assert.equal(stale('0', ['new'], undefined), undefined, 'never listed');
+    assert.equal(stale('widget', ['new'], ['a']), undefined, 'names are resolved afresh');
   });
 });

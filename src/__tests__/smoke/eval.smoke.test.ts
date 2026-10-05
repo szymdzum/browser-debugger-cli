@@ -165,4 +165,21 @@ void describe('dom eval', () => {
     assert.equal(exitCode, 83);
     assert.match(error ?? '', /The page navigated while the script ran/);
   });
+
+  void it('leaves no console error for a rejection it reports, but keeps real ones', async () => {
+    const navigated = await runCommand('page', ['navigate', `${fixture.url}rejections`]);
+    assert.equal(navigated.exitCode, 0, navigated.stderr);
+    assert.equal((await evaluate('Promise.reject(new Error("from eval"))')).exitCode, 91);
+    const later = await evaluate('later()');
+    assert.equal(later.exitCode, 91);
+    assert.match(later.error ?? '', /page later/);
+    await evaluate('setTimeout(() => Promise.reject(new Error("real page rejection"))); 1');
+    await evaluate('await new Promise((r) => setTimeout(r, 300)); 1');
+    const result = await runCommand('console', ['--json']);
+    const { data } = JSON.parse(result.stdout) as { data: { errors: Array<{ text: string }> } };
+    assert.deepEqual(
+      data.errors.map((e) => e.text),
+      ['Uncaught (in promise) Error: real page rejection']
+    );
+  });
 });

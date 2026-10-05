@@ -22,7 +22,8 @@
  * `secret` and otherwise back to `/login` with an error flash (like
  * the-internet's login); `/cross-frame` (loaded from `a.b.localhost`) embeds a
  * bordered and a scaled cross-origin iframe of the same site, each with a
- * button and a field.
+ * button and a field. Pages for frame order, rejections and framework
+ * listeners come from `knownLimitFixtures.ts`.
  */
 
 import * as fs from 'fs';
@@ -32,6 +33,8 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 
 import { WebSocketServer } from 'ws';
+
+import { KNOWN_LIMIT_ROUTES } from '@/__testutils__/knownLimitFixtures.js';
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -460,6 +463,12 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/layout') {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(LAYOUT_HTML);
+      return;
+    }
+    const knownLimitPage = KNOWN_LIMIT_ROUTES[req.url ?? ''];
+    if (knownLimitPage !== undefined) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(knownLimitPage);
       return;
     }
     if (req.url === '/eval-frames') {
