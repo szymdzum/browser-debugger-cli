@@ -6,12 +6,13 @@ import { Option, type Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
-import {
-  handleDaemonConnectionError,
-  noteFollowConnected,
-} from '@/commands/shared/daemonErrorHandler.js';
+import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchConsoleMessages, createErrorResult } from '@/commands/shared/dataFetcher.js';
-import { setupFollowMode } from '@/commands/shared/followMode.js';
+import {
+  followFetchFailure,
+  setupFollowMode,
+  type FollowPoll,
+} from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validation.js';
@@ -94,17 +95,10 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
   const shown = new Set<string>();
   let navigationId: number | undefined;
   let started = false;
-  const showConsole = async (): Promise<void> => {
+  const showConsole = async (): Promise<FollowPoll> => {
     const result = await fetchConsoleMessages();
     if (!result.success) {
-      const errorResult = handleDaemonConnectionError(result.error, {
-        json: options.json,
-        follow: true,
-        retryIntervalMs: 1000,
-        exitCode: result.exitCode,
-      });
-      if (errorResult.shouldExit) process.exit(errorResult.exitCode);
-      return;
+      return followFetchFailure(result, { json: options.json, retryIntervalMs: 1000 });
     }
     noteFollowConnected();
 
@@ -131,6 +125,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
       if (text) console.log(text);
     }
     started = true;
+    return undefined;
   };
 
   await setupFollowMode(showConsole, {

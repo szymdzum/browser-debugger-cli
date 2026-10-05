@@ -5,12 +5,13 @@
 import type { Command } from 'commander';
 
 import { jsonOption, showBothSectionsWhenBothRequested } from '@/commands/shared/commonOptions.js';
-import {
-  handleDaemonConnectionError,
-  noteFollowConnected,
-} from '@/commands/shared/daemonErrorHandler.js';
+import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchPreviewOutput } from '@/commands/shared/dataFetcher.js';
-import { setupFollowMode } from '@/commands/shared/followMode.js';
+import {
+  followFetchFailure,
+  setupFollowMode,
+  type FollowPoll,
+} from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { TailCommandOptions } from '@/commands/shared/optionTypes.js';
 import { MAX_LAST_ITEMS, positiveIntRule } from '@/commands/shared/validation.js';
@@ -71,23 +72,17 @@ export function registerTailCommand(program: Command): void {
         handleValidationError(error, options.json ?? false);
       }
 
-      const showPreview = async (): Promise<void> => {
+      const showPreview = async (): Promise<FollowPoll> => {
         const result = await fetchPreviewOutput({ lastN });
 
         if (!result.success) {
-          const errorResult = handleDaemonConnectionError(result.error, {
-            json: options.json,
-            follow: true,
-            retryIntervalMs: interval,
-            exitCode: result.exitCode,
-          });
-          if (errorResult.shouldExit) process.exit(errorResult.exitCode);
-          return;
+          return followFetchFailure(result, { json: options.json, retryIntervalMs: interval });
         }
         noteFollowConnected();
 
         if (!options.json) console.clear();
         console.log(formatPreview(result.data, createPreviewOptions(options, lastN)));
+        return undefined;
       };
 
       await setupFollowMode(showPreview, {

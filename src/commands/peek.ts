@@ -6,16 +6,17 @@ import type { Command } from 'commander';
 
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption, showBothSectionsWhenBothRequested } from '@/commands/shared/commonOptions.js';
-import {
-  handleDaemonConnectionError,
-  noteFollowConnected,
-} from '@/commands/shared/daemonErrorHandler.js';
+import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import {
   fetchPreviewOutput,
   createErrorResult,
   type FetchResult,
 } from '@/commands/shared/dataFetcher.js';
-import { setupFollowMode } from '@/commands/shared/followMode.js';
+import {
+  followFetchFailure,
+  setupFollowMode,
+  type FollowPoll,
+} from '@/commands/shared/followMode.js';
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
 import { MAX_LAST_ITEMS, positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
@@ -122,18 +123,11 @@ async function runFollowMode(
   resourceTypes: Protocol.Network.ResourceType[],
   baseOptions: PreviewOptions
 ): Promise<void> {
-  const showPreview = async (): Promise<void> => {
+  const showPreview = async (): Promise<FollowPoll> => {
     const result = await fetchAndFilterPreview(lastN, resourceTypes, peekSection(options));
 
     if (!result.success) {
-      const errorResult = handleDaemonConnectionError(result.error, {
-        json: options.json,
-        follow: true,
-        retryIntervalMs: 1000,
-        exitCode: result.exitCode,
-      });
-      if (errorResult.shouldExit) process.exit(errorResult.exitCode);
-      return;
+      return followFetchFailure(result, { json: options.json, retryIntervalMs: 1000 });
     }
     noteFollowConnected();
 
@@ -144,6 +138,7 @@ async function runFollowMode(
       result.data.unfilteredNetworkCount
     );
     console.log(formatPreview(result.data.output, previewOptions));
+    return undefined;
   };
 
   await setupFollowMode(showPreview, {
