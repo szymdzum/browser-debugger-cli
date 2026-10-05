@@ -481,7 +481,9 @@ Interact with page elements using real mouse and keyboard input. All interaction
 
 JavaScript dialogs (`alert`, `confirm`, `prompt`, `beforeunload`) are accepted automatically so they never block a session; `prompt()` receives an empty string. Dialogs opened by `fill`/`click`/`submit`/`pressKey` are listed in their result (`data.dialogs` in JSON), and every accepted dialog also appears in `bdg console`.
 
-DOM actions (`fill`, `click` incl. `--double`/`--right`, `hover`, `pressKey`, `submit`, `scroll`) also report the network requests they triggered: every request that started after the action began and before the command returned (after its usual stability wait; no extra waiting). Requests still running then are shown as pending; `data:`/`blob:` URLs and CORS preflights are left out. Human output lists the first 10 under `Triggered:` (nothing when there were none; `-q` keeps the list, it is a result, not a hint); JSON lists up to 50 in `data.triggeredRequests` (`[]` when none, absent when network telemetry is off) and how many more there were in `data.triggeredRequestsOmitted`. With `--no-wait` only requests bdg saw start before the command returned are listed (often none yet: use `bdg network list` afterwards). `bdg page navigate`/`reload`/`back`/`forward` do not list requests (they are the page load: use `bdg network list`). Attribution is by time, so a request a page timer starts during the action is listed too.
+The network wait watches requests from before the action, so a request an event handler sends right away (`onclick = () => fetch(...)`) is waited for: the command returns once no request has been running for 150 ms, or after 2 s with the rest still running (a click that starts a navigation to a slow page returns after 2 s with the page request pending).
+
+DOM actions (`fill`, `click` incl. `--double`/`--right`, `hover`, `pressKey`, `submit`, `scroll`) also report the network requests they triggered: every request, and every WebSocket connection (`GET ws://… → 101`), that started after the action began and before the command returned (after its usual stability wait; no extra waiting). Requests still running then are shown as pending, and ones whose response arrived while the body still loads (EventSource streams, slow downloads) as `200 (loading)` (`"loading": true` in JSON); `data:`/`blob:` URLs and CORS preflights are left out. Human output lists the first 10 under `Requests during the action:` (nothing when there were none; `-q` keeps the list, it is a result, not a hint); JSON lists up to 50 in `data.triggeredRequests` (`[]` when none, absent when network telemetry is off) and how many more there were in `data.triggeredRequestsOmitted` (those are only in `bdg network list`). With `--no-wait` only requests bdg saw start before the command returned are listed (often none yet: use `bdg network list` afterwards). `bdg page navigate`/`reload`/`back`/`forward` do not list requests (they are the page load: use `bdg network list`). Attribution is by time, not cause: a request a page timer or poller starts during the action is listed too (and a poller keeps the network busy, so the action waits the full 2 s).
 
 ```text
 ✓ Element Clicked
@@ -490,7 +492,7 @@ Selector:      #save
 Element Type:  button
 Method:        mouse events
 
-Triggered:
+Requests during the action:
   POST 127.0.0.1:8080/api/save → 200 (85ms)
   GET 127.0.0.1:8080/api/items → pending
 ```

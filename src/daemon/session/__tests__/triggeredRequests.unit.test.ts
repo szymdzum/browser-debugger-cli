@@ -119,6 +119,55 @@ void describe('watchTriggeredRequests', () => {
   });
 });
 
+void describe('watchTriggeredRequests streams and WebSockets', () => {
+  void it('marks a request whose response arrived but whose body still loads', () => {
+    const store = networkStore();
+    const collect = watchTriggeredRequests(store);
+    store.pendingNetworkRequests.set('sse', {
+      request: request('sse', { status: 200 }),
+      timestamp: Date.now(),
+    });
+    assert.deepEqual(collect()?.triggeredRequests, [
+      {
+        requestId: 'sse',
+        method: 'GET',
+        url: 'http://127.0.0.1:8080/sse',
+        status: 200,
+        loading: true,
+      },
+    ]);
+  });
+
+  void it('lists WebSocket connections opened during the action by their handshake', () => {
+    const store = networkStore();
+    store.websocketConnections.push({
+      requestId: 'old',
+      url: 'ws://127.0.0.1:8080/old',
+      timestamp: Date.now() - 1000,
+      status: 101,
+      frames: [],
+    });
+    const collect = watchTriggeredRequests(store);
+    const now = Date.now();
+    store.websocketConnections.push(
+      { requestId: 'open', url: 'ws://127.0.0.1:8080/ws', timestamp: now, status: 101, frames: [] },
+      { requestId: 'connecting', url: 'ws://127.0.0.1:8080/slow', timestamp: now, frames: [] },
+      {
+        requestId: 'refused',
+        url: 'ws://127.0.0.1:1/ws',
+        timestamp: now,
+        closedTime: now,
+        frames: [],
+      }
+    );
+    assert.deepEqual(collect()?.triggeredRequests, [
+      { requestId: 'open', method: 'GET', url: 'ws://127.0.0.1:8080/ws', status: 101 },
+      { requestId: 'connecting', method: 'GET', url: 'ws://127.0.0.1:8080/slow', pending: true },
+      { requestId: 'refused', method: 'GET', url: 'ws://127.0.0.1:1/ws', failed: true },
+    ]);
+  });
+});
+
 void describe('toTriggeredRequest', () => {
   void it('marks requests that failed without a response, keeping why', () => {
     assert.deepEqual(
