@@ -830,6 +830,8 @@ void describe('DOM interactions', () => {
     assert.deepEqual(json.data.messages, [
       { text: 'You logged into a secure area!', element: 'div#flash.flash.success' },
     ]);
+  });
+
   void it('names why an element cannot be filled', async () => {
     await bdg(['page', 'navigate', `${fixture.url}interactions`]);
     await evaluate(
