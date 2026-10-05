@@ -9,7 +9,6 @@
 import * as fs from 'fs';
 import * as assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import * as os from 'os';
 import * as path from 'path';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
@@ -19,6 +18,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 
 /**
  * Run a bdg command with `--json` and return the envelope's `data`.
@@ -42,6 +42,8 @@ async function runJson<T>(command: string, args: string[]): Promise<T> {
 async function evaluate(expression: string): Promise<unknown> {
   return (await runJson<{ result: unknown }>('dom', ['eval', expression])).result;
 }
+
+after(removeTempDirs);
 
 void describe('Shadow DOM and iframe targeting', () => {
   let fixture: FixtureServer;
@@ -126,7 +128,7 @@ void describe('Shadow DOM and iframe targeting', () => {
     ]);
     assert.equal(button.node.name, 'Shadow');
 
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-deep-')), 'button.png');
+    const file = path.join(makeTempDir('bdg-deep-'), 'button.png');
     await runJson('dom', ['screenshot', file, '--selector', '#frame-button']);
     const png = fs.readFileSync(file);
     const [width, height] = [png.readUInt32BE(16), png.readUInt32BE(20)];

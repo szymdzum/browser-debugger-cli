@@ -9,7 +9,6 @@
 import * as fs from 'fs';
 import * as assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import * as os from 'os';
 import * as path from 'path';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
@@ -19,6 +18,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 
 /**
  * Run a bdg command with `--json` and return the parsed envelope's `data`.
@@ -38,6 +38,8 @@ interface ListedRequest {
   url: string;
   status?: number;
 }
+
+after(removeTempDirs);
 
 void describe('Network and navigation', () => {
   let fixture: FixtureServer;
@@ -102,7 +104,7 @@ void describe('Network and navigation', () => {
   });
 
   void it('exports the redirect target to HAR', async () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'out.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'out.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, `HAR failed: ${result.stderr}`);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
@@ -251,7 +253,7 @@ void describe('Full headers and cookies', () => {
   });
 
   void it('exports cookies to HAR', async () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'cookies.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'cookies.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
@@ -306,7 +308,7 @@ void describe('HAR export with --all', () => {
   });
 
   void it('exports binary bodies once base64-encoded, in start order, with the browser', async () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'all.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'all.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
@@ -389,7 +391,7 @@ void describe('WebSocket connections', () => {
 
   void it('exports the messages to HAR', async () => {
     await runJson('dom', ['eval', 'window.socket.close()']);
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'ws.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'ws.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {

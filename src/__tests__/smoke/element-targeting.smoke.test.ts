@@ -623,6 +623,35 @@ void describe('Key attributes in dom query and dom get', () => {
     assert.doesNotMatch(output, /secret/);
   });
 
+  void it('never shows secret values, in human output or JSON', async () => {
+    for (const args of [
+      ['dom', 'query', 'input'],
+      ['dom', 'query', 'input', '--json'],
+      ['dom', 'get', '#pass', '--json'],
+      ['dom', 'get', '#shown', '--json'],
+      ['dom', 'get', '#card'],
+      ['dom', 'a11y', 'tree'],
+      ['dom', 'a11y', 'tree', '--json'],
+      ['dom', 'a11y', 'query', 'role:textbox'],
+      ['dom', 'a11y', 'query', 'role:textbox', '--json'],
+    ]) {
+      const output = await bdg(args);
+      assert.doesNotMatch(
+        output,
+        /secret|tok-hidden|4111|246810|•{5,}/,
+        `bdg ${args.join(' ')}: ${output}`
+      );
+    }
+    const query = await bdg(['dom', 'a11y', 'query', 'role:textbox', '--json']);
+    assert.match(query, /"value": "ada"/);
+    assert.match(query, /"value": "••••"/);
+    const human = await bdg(['dom', 'query', '#csrf, #card, #shown']);
+    assert.match(human, /<input id="csrf" name="csrf" type="hidden">/);
+    assert.match(human, /<input id="card" name="card" type="text" value="••••">/);
+    assert.match(human, /<input id="shown" name="password2" type="text" value="••••">/);
+    assert.match(await bdg(['dom', 'get', '#pass']), /value: "••••"/);
+  });
+
   void it('has the full values in JSON and the same attributes in dom get', async () => {
     const output = await bdg(['dom', 'query', 'img, #pass', '--json']);
     const nodes = (

@@ -419,6 +419,10 @@ const ATTRIBUTES_HTML = `<!doctype html><title>attributes</title>
 <form id="login" action="/authenticate" method="post">
   <input id="user" name="user" placeholder="Username" value="ada">
   <input id="pass" name="pass" type="password" value="secret">
+  <input id="csrf" name="csrf" type="hidden" value="tok-hidden-123">
+  <input id="card" name="card" autocomplete="cc-number" value="4111111111111111">
+  <input id="shown" name="password2" value="shown-secret">
+  <input id="code" autocomplete="one-time-code" aria-label="Code" value="246810">
   <label><input type="radio" name="size" value="medium" checked> Medium</label>
   <select id="sort" name="sort"><option>Name</option><option selected>Price (low to high)</option></select>
   <button id="go">Go</button>

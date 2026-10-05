@@ -51,12 +51,16 @@ export function formatNetworkHeaders(data: SessionNetworkHeadersData): string {
  * The values of a header, one per line. A header sent several times reaches
  * CDP as one value with the values joined by newlines (`Set-Cookie`, or a
  * server repeating `Strict-Transport-Security`); a value sent more than once
- * is listed once, saying how often it was sent.
+ * is listed once, saying how often it was sent. `Set-Cookie` lines are all
+ * kept: each one sets a cookie, and repeating one is not the same as sending
+ * it once.
  *
+ * @param name - Header name
  * @param value - Header value as CDP reports it
  * @returns e.g. `['max-age=63072000 (sent 2 times)']`
  */
-export function headerValueLines(value: string): string[] {
+export function headerValueLines(name: string, value: string): string[] {
+  if (name.toLowerCase() === 'set-cookie') return value.split('\n');
   const counts = new Map<string, number>();
   for (const line of value.split('\n')) counts.set(line, (counts.get(line) ?? 0) + 1);
   return [...counts].map(([line, count]) =>
@@ -77,7 +81,7 @@ function formatHeaderSection(fmt: OutputFormatter, headers: Record<string, strin
   const keyWidth = Math.max(...entries.map(([k]) => k.length)) + 4;
 
   entries.forEach(([key, value]) => {
-    headerValueLines(value).forEach((line) => fmt.keyValue(`  ${key}`, line, keyWidth));
+    headerValueLines(key, value).forEach((line) => fmt.keyValue(`  ${key}`, line, keyWidth));
   });
 }
 

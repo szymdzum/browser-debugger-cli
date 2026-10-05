@@ -12,7 +12,13 @@ import { describe, test } from 'node:test';
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { buildTreeFromRawNodes, parseQueryPattern, queryA11yTree } from '@/telemetry/a11y.js';
+import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
+import {
+  buildTreeFromRawNodes,
+  maskSecretValues,
+  parseQueryPattern,
+  queryA11yTree,
+} from '@/telemetry/a11y.js';
 import type { A11yTree } from '@/types.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -491,5 +497,46 @@ describe('queryA11yTree', () => {
     assert.equal(result.count, 1);
     assert.ok(result.nodes[0]);
     assert.equal(result.nodes[0].name, 'Submit');
+  });
+});
+
+void describe('maskSecretValues', () => {
+  void test('masks the value of a secret field and hides the text inside it', () => {
+    const tree = buildTreeFromRawNodes([
+      {
+        nodeId: '1',
+        ignored: false,
+        role: { type: 'role', value: 'RootWebArea' },
+        childIds: ['2', '4'],
+      },
+      {
+        nodeId: '2',
+        ignored: false,
+        role: { type: 'role', value: 'textbox' },
+        name: { type: 'computedString', value: 'Password' },
+        value: { type: 'string', value: '•••••••' },
+        childIds: ['3'],
+        backendDOMNodeId: 10,
+      },
+      {
+        nodeId: '3',
+        ignored: false,
+        role: { type: 'role', value: 'StaticText' },
+        name: { type: 'computedString', value: 'hunter2' },
+      },
+      {
+        nodeId: '4',
+        ignored: false,
+        role: { type: 'role', value: 'textbox' },
+        value: { type: 'string', value: 'ada' },
+        backendDOMNodeId: 11,
+      },
+    ] as Protocol.Accessibility.AXNode[]);
+    maskSecretValues(tree, new Set(['2']));
+    assert.equal(tree.nodes.get('2')?.value, MASKED_VALUE);
+    assert.equal(tree.nodes.get('2')?.name, 'Password');
+    assert.equal(tree.nodes.get('3')?.name, undefined);
+    assert.equal(tree.nodes.get('4')?.value, 'ada');
+    assert.doesNotMatch(JSON.stringify([...tree.nodes.values()]), /hunter2|•{5,}/);
   });
 });

@@ -7,6 +7,7 @@
  */
 
 import type { DomContext } from '@/commands/dom/helpers/index.js';
+import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
 import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
@@ -130,7 +131,22 @@ export function resolveNodeWithFallback(
   domContext: DomContext | null,
   nodeId: number | undefined
 ): A11yNode | null {
-  if (a11yNode) return a11yNode;
+  if (a11yNode) return withSecretMasked(a11yNode, domContext);
   if (domContext && nodeId) return synthesizeA11yNode(domContext, nodeId);
   return null;
+}
+
+/**
+ * The accessibility node with its value masked when the element holds a
+ * secret (`domContext.sensitive`): Chrome reports a password field's value
+ * as one bullet per character, and a field switched to text by a "show
+ * password" button in clear.
+ *
+ * @param node - Accessibility node
+ * @param domContext - DOM context of the same element
+ * @returns The node, with {@link MASKED_VALUE} as its value for a secret
+ */
+export function withSecretMasked(node: A11yNode, domContext: DomContext | null): A11yNode {
+  if (!domContext?.sensitive || !node.value) return node;
+  return { ...node, value: MASKED_VALUE };
 }

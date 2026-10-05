@@ -6,7 +6,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { keyAttributes, MASKED_VALUE } from '@/commands/dom/helpers/keyAttributes.js';
+import { keyAttributes } from '@/commands/dom/helpers/keyAttributes.js';
+import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
 
 void describe('keyAttributes', () => {
   void it('reads src and alt of an image, href of a link, src of an iframe', () => {
@@ -78,5 +79,24 @@ void describe('keyAttributes', () => {
 
   void it('has nothing for other elements', () => {
     assert.equal(keyAttributes('div', { id: 'x', title: 'y' }), undefined);
+  });
+});
+
+void describe('keyAttributes secrets', () => {
+  void it("never reports a hidden input's value", () => {
+    assert.deepEqual(
+      keyAttributes('input', { name: 'csrf', value: 'token' }, { type: 'hidden', value: 'token' }),
+      { type: 'hidden', name: 'csrf' }
+    );
+  });
+
+  void it('masks the value and selected option of a field the page marked sensitive', () => {
+    assert.deepEqual(
+      keyAttributes('input', { name: 'card' }, { type: 'text', value: '4111', sensitive: true }),
+      { type: 'text', name: 'card', value: MASKED_VALUE }
+    );
+    assert.deepEqual(keyAttributes('select', {}, { selected: '12', sensitive: true }), {
+      selected: MASKED_VALUE,
+    });
   });
 });

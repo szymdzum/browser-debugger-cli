@@ -122,31 +122,49 @@ function isLoopback(ip: string): boolean {
   return /^(::ffff:)?127\./.test(bare) || bare === '::1';
 }
 
+/** Ports of URLs without one */
+const DEFAULT_PORTS: Record<string, string> = {
+  'http:': '80',
+  'https:': '443',
+  'ws:': '80',
+  'wss:': '443',
+};
+
 /**
- * Whether a URL's host is this machine (`localhost`, `*.localhost` or a loopback address).
+ * Whether a request probably went through a proxy on this machine: Chrome
+ * connected to a loopback address on another port than the URL's (given or
+ * the scheme's default), for a host that is not this machine. A loopback
+ * host from `/etc/hosts` (`myapp.test`) is connected to on the URL's port,
+ * so it is not taken for a proxy. CDP has no proxy flag; this is a guess.
  *
- * @param url - Request URL
- * @returns True for local hosts (and URLs without a host)
+ * @param request - Request with `serverIPAddress` and `serverPort`
+ * @returns True when the connection looks like a local proxy
  */
-function isLocalHost(url: string): boolean {
-  const hostname = safeParseUrl(url)?.hostname.toLowerCase();
-  if (!hostname) return true;
-  return hostname === 'localhost' || hostname.endsWith('.localhost') || isLoopback(hostname);
+function looksLikeLocalProxy(request: NetworkRequest): boolean {
+  const url = safeParseUrl(request.url);
+  if (!url || request.serverPort === undefined || !isLoopback(request.serverIPAddress ?? '')) {
+    return false;
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || isLoopback(hostname)) {
+    return false;
+  }
+  const urlPort = url.port || DEFAULT_PORTS[url.protocol];
+  return urlPort !== undefined && String(request.serverPort) !== urlPort;
 }
 
 /**
- * The address Chrome connected to, with its port. A loopback address for a
- * request to another host is a proxy on this machine (CDP reports the
- * address of the connection, and has no proxy flag), and says so.
+ * The address Chrome connected to, with its port, noting when it looks like
+ * a proxy on this machine ({@link looksLikeLocalProxy}).
  *
  * @param request - Request with `serverIPAddress`
- * @returns e.g. `93.184.215.14:443`, `[2606:4700::1]:443`, `127.0.0.1:9000 (local proxy)`
+ * @returns e.g. `93.184.215.14:443`, `[2606:4700::1]:443`, `127.0.0.1:9000 (loopback; likely a local proxy)`
  */
 export function remoteAddress(request: NetworkRequest): string {
   const ip = request.serverIPAddress ?? '';
   const host = ip.includes(':') && !ip.startsWith('[') ? `[${ip}]` : ip;
   const address = request.serverPort ? `${host}:${request.serverPort}` : host;
-  return isLoopback(ip) && !isLocalHost(request.url) ? `${address} ${localProxyNote()}` : address;
+  return looksLikeLocalProxy(request) ? `${address} ${localProxyNote()}` : address;
 }
 
 /**
@@ -189,7 +207,7 @@ function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
 function addHeaders(fmt: OutputFormatter, title: string, headers: Record<string, string>): void {
   fmt.text(title).separator('━', 70);
   Object.entries(headers).forEach(([key, value]) =>
-    headerValueLines(value).forEach((line) => fmt.text(`  ${key}: ${line}`))
+    headerValueLines(key, value).forEach((line) => fmt.text(`  ${key}: ${line}`))
   );
   fmt.blank();
 }

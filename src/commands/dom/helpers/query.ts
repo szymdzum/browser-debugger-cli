@@ -568,6 +568,7 @@ export async function getDomContext(
     tag,
     ...(classes && classes.length > 0 && { classes }),
     ...(keys && { attributes: keys }),
+    ...(state.sensitive && { sensitive: true }),
     ...(preview && { preview }),
     ...(longer !== preview && { text: longer }),
     ...(!preview && (await childElements(ref))),

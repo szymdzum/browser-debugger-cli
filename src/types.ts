@@ -353,6 +353,8 @@ export interface DomContext {
   childCount?: number;
   /** Attributes that identify it by its type (see {@link KeyAttributes}) */
   attributes?: KeyAttributes;
+  /** A field holding a secret (password, card, one-time code): its value is shown masked */
+  sensitive?: boolean;
 }
 
 /**
@@ -362,9 +364,12 @@ export interface DomContext {
  */
 export interface ElementState {
   type?: string;
+  /** Masked in the page for sensitive fields; never read for hidden inputs */
   value?: string;
   checked?: boolean;
   selected?: string;
+  /** A field holding a secret (its value and selected option are masked) */
+  sensitive?: boolean;
 }
 
 /**

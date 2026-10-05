@@ -33,11 +33,11 @@ export function headerRepeatedNote(count: number): string {
 }
 
 /**
- * Note after a loopback remote address of a request to another host: Chrome
- * connected to a proxy on this machine, not to the server.
+ * Note after a loopback remote address of a request to another host and
+ * port: Chrome probably connected to a proxy on this machine, not the server.
  *
  * @returns Note text
  */
 export function localProxyNote(): string {
-  return '(local proxy)';
+  return '(loopback; likely a local proxy)';
 }

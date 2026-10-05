@@ -14,6 +14,7 @@ import type { Command } from 'commander';
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { getDomContext, resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
 import type { DomContext } from '@/commands/dom/helpers/index.js';
+import { withSecretMasked } from '@/commands/dom/semanticUtils.js';
 import { runCommand, runJsonCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type {
@@ -235,7 +236,7 @@ async function handleA11yDescribe(
       domContext = await getDomContext({ backendNodeId: domNodeId });
     }
 
-    return { node, domContext };
+    return { node: withSecretMasked(node, domContext), domContext };
   }
 
   if (options.json) {
