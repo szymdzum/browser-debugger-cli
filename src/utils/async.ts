@@ -29,3 +29,24 @@ export async function raceTimeout<T>(promise: Promise<T>, ms: number): Promise<T
     clearTimeout(timer);
   }
 }
+
+/**
+ * Poll a condition until it holds or a time runs out.
+ *
+ * @param condition - Checked first right away, then every `pollMs`
+ * @param timeoutMs - Milliseconds to wait at most
+ * @param pollMs - Milliseconds between checks
+ * @returns True when the condition held, false when the time ran out
+ */
+export async function waitUntil(
+  condition: () => boolean,
+  timeoutMs: number,
+  pollMs = 25
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition()) {
+    if (Date.now() >= deadline) return false;
+    await delay(Math.min(pollMs, Math.max(0, deadline - Date.now())));
+  }
+  return true;
+}

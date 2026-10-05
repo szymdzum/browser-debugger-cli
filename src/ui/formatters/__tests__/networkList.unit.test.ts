@@ -1,12 +1,12 @@
 /**
- * Network list rows: URL display and the TIME column.
+ * Network list rows: URL display, the START and TIME columns.
  */
 
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NetworkRequest } from '@/types.js';
-import { formatNetworkList } from '@/ui/formatters/networkList.js';
+import { formatNetworkList, formatStartOffset, pageStartOf } from '@/ui/formatters/networkList.js';
 import { truncateUrl } from '@/ui/formatting.js';
 
 void describe('truncateUrl', () => {
@@ -96,5 +96,87 @@ void describe('formatNetworkList', () => {
     assert.equal(header(5, 5), 'NETWORK REQUESTS (last 1 of 5)');
     assert.equal(header(1, 240), 'NETWORK REQUESTS (1 matching, 240 in all)');
     assert.equal(header(21, 240), 'NETWORK REQUESTS (last 1 of 21 matching, 240 in all)');
+  });
+});
+
+void describe('START column', () => {
+  const request = (overrides: Partial<NetworkRequest>): NetworkRequest => ({
+    requestId: overrides.requestId ?? 'r',
+    url: 'https://a.test/',
+    method: 'GET',
+    timestamp: 0,
+    ...overrides,
+  });
+
+  void it('counts from the document request of the latest navigation', () => {
+    const requests = [
+      request({
+        requestId: 'old',
+        resourceType: 'Document',
+        navigationId: 1,
+        timestamp: 1000,
+        sentTime: 10,
+      }),
+      request({
+        requestId: 'img',
+        resourceType: 'Image',
+        navigationId: 2,
+        timestamp: 4900,
+        sentTime: 13.9,
+      }),
+      request({
+        requestId: 'doc',
+        resourceType: 'Document',
+        navigationId: 2,
+        timestamp: 5000,
+        sentTime: 14,
+      }),
+      request({
+        requestId: 'frame',
+        resourceType: 'Document',
+        navigationId: 2,
+        timestamp: 6000,
+        sentTime: 15,
+      }),
+    ];
+    assert.deepEqual(pageStartOf(requests), { timestamp: 5000, sentTime: 14 });
+    assert.equal(pageStartOf([]), undefined);
+  });
+
+  void it("falls back to the page's earliest request without a captured document", () => {
+    const requests = [
+      request({ requestId: 'b', navigationId: 3, timestamp: 2000 }),
+      request({ requestId: 'a', navigationId: 3, timestamp: 1500 }),
+    ];
+    assert.deepEqual(pageStartOf(requests), { timestamp: 1500 });
+  });
+
+  void it("formats the offset compactly, in Chrome's time when both have it", () => {
+    const start = { timestamp: 10_000, sentTime: 100 };
+    const at = (sentTime: number): string => formatStartOffset(request({ sentTime }), start);
+    assert.equal(at(100), '+0.0s');
+    assert.equal(at(101.234), '+1.2s');
+    assert.equal(at(199.9), '+99.9s');
+    assert.equal(at(350), '+250s');
+    assert.equal(at(100 + 3600), '+60m');
+    assert.equal(at(64.8), '-35.2s');
+    assert.equal(formatStartOffset(request({ timestamp: 12_500 }), start), '+2.5s');
+    assert.equal(formatStartOffset(request({}), undefined), '-');
+  });
+
+  void it('adds the column to each row, aligned with long methods', () => {
+    const requests = [
+      request({ requestId: '1', timestamp: 1000, status: 200, duration: 5 }),
+      request({ requestId: '2', method: 'OPTIONS', timestamp: 2200, status: 204, duration: 5 }),
+    ];
+    const lines = formatNetworkList(requests, { pageStart: { timestamp: 1000 } }).split('\n');
+    const header = lines.find((l) => l.includes('START')) ?? '';
+    const rows = lines.filter((l) => l.startsWith('[1]') || l.startsWith('[2]'));
+    assert.match(header, /^\[ID\]\s+START STS METH\s+TYP/);
+    assert.match(rows[0] ?? '', /^\[1\]\s+\+0\.0s 200 GET {5}/);
+    assert.match(rows[1] ?? '', /^\[2\]\s+\+1\.2s 204 OPTIONS /);
+    const urlColumn = (line: string): number => line.indexOf('a.test');
+    assert.equal(urlColumn(rows[0] ?? ''), urlColumn(rows[1] ?? ''));
+    assert.equal(header.indexOf('URL'), urlColumn(rows[0] ?? ''));
   });
 });

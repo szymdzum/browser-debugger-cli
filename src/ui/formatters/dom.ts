@@ -1,5 +1,6 @@
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
+import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   frameLabel,
@@ -17,7 +18,8 @@ const QUERY_DISPLAY_LIMIT = 50;
 /**
  * Format DOM query results for human-readable output.
  *
- * Displays found nodes with their index, tag, classes, and preview text
+ * Displays found nodes with their index, tag, identifying attributes
+ * ({@link queryTagAttributes}), classes, and preview text
  * (plus where they are when outside the viewport or hidden, e.g.
  * `(below fold)`), up to {@link QUERY_DISPLAY_LIMIT} of them (no match is an error, exit 83).
  * One line of next commands follows; they take the match's index, so they
@@ -47,14 +49,8 @@ export function formatDomQuery(data: DomQueryResult): string {
   const fmt = new OutputFormatter();
 
   const nodeLines = nodes.slice(0, QUERY_DISPLAY_LIMIT).map((node) => {
-    const attributes = [
-      node.id && ` id="${node.id}"`,
-      node.name && ` name="${node.name}"`,
-      node.type && ` type="${node.type}"`,
-      node.value !== undefined && ` value="${node.value}"`,
-      node.classes?.length && ` class="${node.classes.join(' ')}"`,
-    ]
-      .filter(Boolean)
+    const attributes = queryTagAttributes(node)
+      .map((item) => ` ${item}`)
       .join('');
     const context = node.context ? ` (in ${node.context})` : '';
     const preview = node.preview ? ` ${node.preview}` : '';
@@ -71,6 +67,27 @@ export function formatDomQuery(data: DomQueryResult): string {
     .list(count > QUERY_DISPLAY_LIMIT ? [moreMatchesNote(count - QUERY_DISPLAY_LIMIT)] : [])
     .tip(queryNextSteps(exampleIndex))
     .build();
+}
+
+/**
+ * The attributes shown in a `dom query` match's tag: id, then name, type and
+ * the key attributes of its type ({@link keyAttributeItems}: an image's file
+ * name and alt, a link's href, a field's placeholder and value), then class.
+ *
+ * @param node - Query match
+ * @returns `name="value"` items
+ */
+function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
+  const identifying = {
+    ...(node.name && { name: node.name }),
+    ...(node.type && { type: node.type }),
+    ...(node.value !== undefined && { value: node.value }),
+  };
+  return [
+    ...(node.id ? [`id="${node.id}"`] : []),
+    ...keyAttributeItems(node.tag ?? '', { ...identifying, ...node.attributes }),
+    ...(node.classes?.length ? [`class="${node.classes.join(' ')}"`] : []),
+  ];
 }
 
 /**

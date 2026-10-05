@@ -16,7 +16,7 @@ import type { Command } from 'commander';
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { jsonOption, SELECTOR_OR_INDEX_ARGUMENT } from '@/commands/shared/commonOptions.js';
 import type { ListenersCommandOptions } from '@/commands/shared/optionTypes.js';
 import { eventTypesOption, integerOption } from '@/commands/shared/validation.js';
 import { domListeners } from '@/ipc/client.js';
@@ -32,7 +32,7 @@ export function registerListenersCommand(dom: Command): void {
   dom
     .command('listeners')
     .description('List event listeners that run for an element (incl. delegated ones on ancestors)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option(
       '--type <types>',

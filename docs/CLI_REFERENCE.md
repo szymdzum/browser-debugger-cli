@@ -25,6 +25,8 @@ The start output is a few lines: the target, notices (session name, HTTP error, 
 
 A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
+When a start fails after it launched the session's daemon and the daemon reported the failure (an attach refusal, Chrome that cannot be launched, a URL that cannot be loaded), the daemon exits, and `bdg` returns the error only once it is gone (waiting up to 3 s), so a `bdg sessions` or another start right after it does not see the session as still starting. A timeout or an unexpected error does not wait (the daemon may still be starting the session). When the daemon is still running after the wait, the error says so (`The daemon (PID 4242) was still shutting down after 3s; check with bdg sessions, or end it with bdg cleanup --force`), and the JSON error has `daemonStillRunning: true`, `daemonPid` and the commands in `suggestion` (after any suggestion the error already had).
+
 A page that has not finished loading when the start returns (the start waits about 2 s; e.g. a script whose server never answers) still starts the session (exit 0) with a warning naming up to 3 requests it waits on, load-blocking ones (scripts, styles, images, frames) first:
 
 ```text
@@ -127,11 +129,13 @@ bdg details console <index>         # Full console message with args
 
 Binary response bodies (images, fonts) are only captured in sessions started with `--all`; in `--json` output they are base64 with `responseBodyBase64: true`.
 
+`details network` shows the address Chrome connected to with its port (`Remote Address: 93.184.215.14:443`; `serverIPAddress` and `serverPort` in JSON). Behind a proxy that is the proxy's address. CDP has no proxy flag, so bdg guesses: a loopback address on another port than the URL's (its explicit port, else 80/443) for a host that is not this machine is labelled `127.0.0.1:9000 (loopback; likely a local proxy)`. A host mapped to loopback in `/etc/hosts` (`myapp.test`) is connected to on the URL's port and gets no label; a proxy on another machine cannot be told apart from the server. A header the server sent several times (CDP joins the values with newlines) is listed one value per line, and a value repeated verbatim once, with how often it was sent: `Strict-Transport-Security: max-age=63072000 (sent 2 times)`. `Set-Cookie` lines are all listed, repeated ones too. `--json` keeps the header as CDP reported it.
+
 ## DOM Commands
 
 ### Selectors
 
-DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes.
+DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `wait`, `listeners`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes (nested ones included). Closed shadow roots and cross-origin iframes cannot be searched: use `bdg dom eval --frame <frame>` for a cross-origin iframe (see `bdg dom frames`).
 
 Three Playwright-style filters can be added to an element of a selector (of each selector in a list), alone or combined:
 
@@ -314,6 +318,9 @@ bdg dom query --json                          # JSON output
 **Output:**
 - Shows count and preview of matched elements (the first 50; `--json` has all)
 - Lists nodeId, tag, classes, and text preview (the text as rendered: hidden parts left out)
+- Each match shows the attributes that identify it by its type, in its tag: id, name and type, then for `img` the file name of `src` and `alt`, for `a` its `href`, for `input` its placeholder and current value (checkboxes and radios their `value` attribute and `checked`), for `textarea` its name, placeholder and value, for `button` its type (in a form also without a type attribute: `submit`), for `select` its name and the selected option (`selected="Price (low to high)"`), for `iframe` the host of `src`, and for `form` its `action` and `method`, e.g. `[0] <img src="…/sl-404-Cq1a9k9X.jpg" alt="Sauce Labs Backpack" class="inventory_item_img">`. Absolute URLs keep `//` before the host (`href="//saucelabs.com"`) so they do not read as relative paths; values over 40 characters are cut in the middle. `--json` has the full values in `attributes` on each node (an object; keys by element type as above, all strings except `checked`, a boolean; absent for other elements), e.g. `{ "src": "/assets/sl-404-Cq1a9k9X.jpg", "alt": "…" }`; `dom get` shows the same attributes after the role (`[Image] "Sauce Labs Backpack" src="…/sl-404-Cq1a9k9X.jpg"`, `domContext.attributes` in JSON, also in `dom a11y describe`), leaving out values equal to the accessible name
+- Secret values never leave the page, in human output or JSON: a hidden input's value is not read, and the value (or a select's selected option) of a sensitive field is replaced by `••••` whatever its length. Sensitive means a password field (live type or type attribute), a field masked by CSS (`-webkit-text-security`), `autocomplete` `cc-*`, `one-time-code`, `current-password` or `new-password`, or a field whose name, id or autocomplete looks like a password, one-time code or card code (`password`, `passwd`, `pwd`, `passcode`, `otp`, `cvv`, `cvc`; this covers a password field switched to text by a "show password" button). `dom get` and `a11y describe` mask the accessibility value of such a field too (`domContext.sensitive: true`). `dom get --raw` and `dom eval` still show the page's HTML and values as they are
+- Selectors search open shadow roots and same-origin iframes, not closed shadow roots or cross-origin iframes (see [Selectors](#selectors))
 - No match exits 83, like `dom get` and `dom a11y`
 - Matches outside the viewport or hidden get a hint: `(below fold)`, `(above viewport)`, `(left of viewport)`, `(right of viewport)`, `(hidden)`, or `(out of view in ul#list)` for one scrolled out of a container; `--json` has `inViewport` (and `clippedBy`) for the first 100 matches (see `dom layout`)
 - `<option>` elements show their `value` attribute and label: `[2] <option value="ca"> Canada (hidden)`
@@ -880,6 +887,22 @@ bdg network list --verbose
 
 # JSON output
 bdg network list --json
+```
+
+**Columns:** `START` is when the request started, counted from the start of the current page (its document request, the latest main-frame navigation): `+0.0s` for the document, `+1.2s` for a request 1.2 s later, whole seconds from 100 s (`+250s`) and minutes from 1000 s (`+17m`); requests of earlier pages are negative (`-35.2s`). It uses Chrome's own timestamps, so it is exact to the millisecond. `TIME` is how long the request took (`-` while pending). The method column widens for `OPTIONS`. JSON fields behind the column (`bdg network list --json`):
+
+- `data.requests[].timestamp` - absolute start, epoch ms (when bdg saw the request start)
+- `data.requests[].sentTime` - start in Chrome's monotonic clock, seconds (precise; only differences are meaningful)
+- `data.requests[].navigationId` - the main-frame navigation (page load) the request belongs to; the highest one is the current page
+- `data.pageStart` - `{ timestamp, sentTime? }` of the current page's document request, which `START` counts from (absent when nothing was captured)
+
+So a request's START in ms is `(sentTime - pageStart.sentTime) * 1000`, or `timestamp - pageStart.timestamp` without `sentTime`.
+
+```text
+[ID]         START STS METH    TYP     SIZE   TIME  URL
+[17380.1]    +0.0s 200 GET     DOC   1.4 KB  345ms  www.saucedemo.com
+[17380.20]   +0.4s 204 OPTIONS OTH        -   95ms  events.backtrace.io/api/uniqu…UNIVERSE&token=TOKEN
+[17380.27]   +2.2s 200 GET     IMG    392 B  144ms  www.saucedemo.com/assets/sl-404-Cq1a9k9X.jpg
 ```
 
 **Filter Syntax Reference:**

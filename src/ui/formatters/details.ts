@@ -1,10 +1,13 @@
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js';
 import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
+import { headerValueLines } from '@/ui/formatters/networkHeaders.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { localProxyNote } from '@/ui/messages/networkMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
+import { safeParseUrl } from '@/utils/url.js';
 
 /** Characters of each WebSocket message shown in human output (`--json` has all) */
 const MESSAGE_PREVIEW_LENGTH = 200;
@@ -109,6 +112,62 @@ function formatBytes(bytes: number): string {
 }
 
 /**
+ * Whether an IP address is a loopback address (`127.0.0.0/8`, `::1`).
+ *
+ * @param ip - Address as CDP reports it (IPv6 may come in brackets)
+ * @returns True for loopback
+ */
+function isLoopback(ip: string): boolean {
+  const bare = ip.replace(/^\[|\]$/g, '').toLowerCase();
+  return /^(::ffff:)?127\./.test(bare) || bare === '::1';
+}
+
+/** Ports of URLs without one */
+const DEFAULT_PORTS: Record<string, string> = {
+  'http:': '80',
+  'https:': '443',
+  'ws:': '80',
+  'wss:': '443',
+};
+
+/**
+ * Whether a request probably went through a proxy on this machine: Chrome
+ * connected to a loopback address on another port than the URL's (given or
+ * the scheme's default), for a host that is not this machine. A loopback
+ * host from `/etc/hosts` (`myapp.test`) is connected to on the URL's port,
+ * so it is not taken for a proxy. CDP has no proxy flag; this is a guess.
+ *
+ * @param request - Request with `serverIPAddress` and `serverPort`
+ * @returns True when the connection looks like a local proxy
+ */
+function looksLikeLocalProxy(request: NetworkRequest): boolean {
+  const url = safeParseUrl(request.url);
+  if (!url || request.serverPort === undefined || !isLoopback(request.serverIPAddress ?? '')) {
+    return false;
+  }
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || isLoopback(hostname)) {
+    return false;
+  }
+  const urlPort = url.port || DEFAULT_PORTS[url.protocol];
+  return urlPort !== undefined && String(request.serverPort) !== urlPort;
+}
+
+/**
+ * The address Chrome connected to, with its port, noting when it looks like
+ * a proxy on this machine ({@link looksLikeLocalProxy}).
+ *
+ * @param request - Request with `serverIPAddress`
+ * @returns e.g. `93.184.215.14:443`, `[2606:4700::1]:443`, `127.0.0.1:9000 (loopback; likely a local proxy)`
+ */
+export function remoteAddress(request: NetworkRequest): string {
+  const ip = request.serverIPAddress ?? '';
+  const host = ip.includes(':') && !ip.startsWith('[') ? `[${ip}]` : ip;
+  const address = request.serverPort ? `${host}:${request.serverPort}` : host;
+  return looksLikeLocalProxy(request) ? `${address} ${localProxyNote()}` : address;
+}
+
+/**
  * Summary rows of a request: identity, outcome, timing and size.
  *
  * @param request - Captured request
@@ -132,13 +191,14 @@ function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
     rows.push(['Size', sizes.join(', ')]);
   }
   if (request.fromCache) rows.push(['From Cache', 'yes']);
-  if (request.serverIPAddress) rows.push(['Remote Address', request.serverIPAddress]);
+  if (request.serverIPAddress) rows.push(['Remote Address', remoteAddress(request)]);
   if (request.blockedReason) rows.push(['Blocked', request.blockedReason]);
   return rows;
 }
 
 /**
- * Add a header block.
+ * Add a header block, a header sent several times one value per line
+ * ({@link headerValueLines}).
  *
  * @param fmt - Formatter
  * @param title - Block title
@@ -146,7 +206,9 @@ function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
  */
 function addHeaders(fmt: OutputFormatter, title: string, headers: Record<string, string>): void {
   fmt.text(title).separator('━', 70);
-  Object.entries(headers).forEach(([key, value]) => fmt.text(`  ${key}: ${value}`));
+  Object.entries(headers).forEach(([key, value]) =>
+    headerValueLines(key, value).forEach((line) => fmt.text(`  ${key}: ${line}`))
+  );
   fmt.blank();
 }
 

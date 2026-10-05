@@ -27,6 +27,10 @@ import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
 import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import { registerWaitCommand } from '@/commands/dom/wait.js';
+import {
+  SELECTOR_OR_INDEX_ARGUMENT,
+  SELECTOR_SCOPE_HELP,
+} from '@/commands/shared/commonOptions.js';
 import type {
   DomQueryCommandOptions,
   DomGetCommandOptions,
@@ -56,6 +60,7 @@ export function registerDomCommands(program: Command): void {
     .description('Find elements by CSS selector')
     .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option('-j, --json', 'Output as JSON')
+    .addHelpText('after', SELECTOR_SCOPE_HELP)
     .action(async (selector: string, options: DomQueryCommandOptions) => {
       await handleDomQuery(selector, options);
     });
@@ -98,7 +103,7 @@ export function registerDomCommands(program: Command): void {
     .description('Get semantic accessibility structure (default) or raw HTML (--raw)')
     .argument(
       '[selectorOrIndex]',
-      `CSS selector or numeric index from query results (0-based; e.g. ".error", "#app", 0); default: ${DOM_GET_DEFAULT_SELECTOR}`
+      `${SELECTOR_OR_INDEX_ARGUMENT} (e.g. ".error", "#app", 0); default: ${DOM_GET_DEFAULT_SELECTOR}`
     )
     .option('--raw', 'Output raw HTML with all filtering options')
     .option('--full', 'Show all of the element text (default: the first 500 characters)')

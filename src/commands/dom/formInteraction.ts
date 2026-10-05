@@ -11,7 +11,7 @@ import { InvalidArgumentError, type Command } from 'commander';
 
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { jsonOption, SELECTOR_OR_INDEX_ARGUMENT } from '@/commands/shared/commonOptions.js';
 import type {
   FillCommandOptions,
   ClickCommandOptions,
@@ -95,7 +95,7 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('fill')
     .description('Fill a form field with a value (React-compatible, waits for stability)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .argument('<value>', 'Value to fill (file inputs: paths separated by commas, "" clears)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
@@ -128,7 +128,7 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('click')
     .description('Click an element and wait for stability (accepts selector or index)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--double', 'Double-click')
     .option('--right', 'Right-click (opens the context menu)')
@@ -144,7 +144,7 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('hover')
     .description('Move the mouse over an element (shows hover menus and tooltips)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--strict', STRICT_OPTION_HELP)
     .option('--no-wait', 'Skip waiting for network stability after hovering')
@@ -156,7 +156,7 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('submit')
     .description('Submit a form by clicking submit button and waiting for completion')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--wait-navigation', 'Wait for page navigation after submit')
     .option(
@@ -195,7 +195,7 @@ export function registerFormInteractionCommands(program: Command): void {
   domCommand
     .command('pressKey')
     .description('Press a key on an element (for Enter-to-submit, keyboard navigation)')
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .argument('<key>', 'Key to press (Enter, Tab, Escape, Space, ArrowUp, etc.)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--times <n>', 'Press key multiple times (default: 1)', integerOption(1, 1000))

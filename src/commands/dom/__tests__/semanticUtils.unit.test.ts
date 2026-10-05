@@ -6,8 +6,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { formatSemanticNodeWithContext } from '@/commands/dom/semanticUtils.js';
-import { textPreview } from '@/runtime/dom/elementInfo.js';
+import {
+  formatSemanticNodeWithContext,
+  resolveNodeWithFallback,
+  withSecretMasked,
+} from '@/commands/dom/semanticUtils.js';
+import { MASKED_VALUE, textPreview } from '@/runtime/dom/elementInfo.js';
 
 const NODE = { nodeId: '1', role: 'generic' };
 
@@ -50,6 +54,49 @@ void describe('formatSemanticNodeWithContext', () => {
     assert.equal(
       output,
       '[Generic] <body>\nNo text; holds 2 elements: iframe#app, script (see its HTML with --raw)'
+    );
+  });
+});
+
+void describe('formatSemanticNodeWithContext key attributes', () => {
+  void it('names the key attributes like dom query, without repeating the name or value', () => {
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '1', role: 'image', name: 'Backpack' },
+        domContext: {
+          tag: 'img',
+          attributes: { src: 'https://cdn.test/img/sl-404.jpg', alt: 'Backpack' },
+        },
+      }),
+      '[Image] "Backpack" src="…/sl-404.jpg"'
+    );
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '2', role: 'textbox', name: 'Name', value: 'Ada', focusable: true },
+        domContext: { tag: 'input', attributes: { type: 'text', name: 'custname', value: 'Ada' } },
+      }),
+      '[Textbox] "Name" type="text" name="custname" (value: "Ada", focusable)'
+    );
+  });
+});
+
+void describe('withSecretMasked', () => {
+  void it('masks the accessibility value of a secret field (dom get, a11y describe)', () => {
+    const node = { nodeId: '1', role: 'textbox', name: 'Password', value: 'hunter2' };
+    assert.equal(withSecretMasked(node, { tag: 'input', sensitive: true }).value, MASKED_VALUE);
+    assert.equal(withSecretMasked(node, { tag: 'input' }).value, 'hunter2');
+    const resolved = resolveNodeWithFallback(node, { tag: 'input', sensitive: true }, 1);
+    assert.equal(resolved?.value, MASKED_VALUE);
+    assert.match(
+      formatSemanticNodeWithContext({
+        node: resolved ?? node,
+        domContext: {
+          tag: 'input',
+          sensitive: true,
+          attributes: { type: 'text', value: MASKED_VALUE },
+        },
+      }),
+      /value: "••••"/
     );
   });
 });

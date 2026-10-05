@@ -202,6 +202,13 @@ void describe('named sessions', () => {
     assert.equal(spy.exitCode, 90);
     assert.match(spy.error, /launched by bdg session "smoke-a"/);
     assert.match(spy.suggestion ?? '', /bdg stop --session smoke-a/);
+    for (const file of ['daemon.pid', 'daemon.sock']) {
+      assert.equal(
+        fs.existsSync(`${sessionBaseDir}/sessions/spy/${file}`),
+        false,
+        `the refused start returns after its daemon removed ${file}`
+      );
+    }
     const title = await runJson<{ result: string }>('dom', [
       'eval',
       'document.title',

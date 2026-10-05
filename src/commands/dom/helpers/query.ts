@@ -10,6 +10,7 @@
  * roots and same-origin iframes, like a user sees the page.
  */
 
+import { keyAttributes } from '@/commands/dom/helpers/keyAttributes.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -34,6 +35,7 @@ import {
 } from '@/runtime/dom/elementGeometry.js';
 import {
   ELEMENT_CONTEXT_JS,
+  ELEMENT_STATE_JS,
   ELEMENT_TEXT_JS,
   ELEMENT_TEXT_LENGTH,
   textPreview,
@@ -49,6 +51,7 @@ import type {
   DomGetResult,
   DomGetOptions,
   DomContext,
+  ElementState,
   IndexSource,
   NodeRef,
   ViewportPosition,
@@ -246,7 +249,8 @@ const VIEWPORT_HINT_LIMIT = 100;
 
 /**
  * Where each element of a page-side array lives (an iframe and/or a shadow
- * root), its text and, for the first {@link VIEWPORT_HINT_LIMIT}, its position
+ * root), its text, its form control state ({@link ELEMENT_STATE_JS}) and, for
+ * the first {@link VIEWPORT_HINT_LIMIT}, its position
  * relative to the viewport, plus the viewport size. An element that cannot be
  * read gets empty details instead of failing the whole query.
  */
@@ -254,9 +258,10 @@ const ELEMENT_DETAILS_FUNCTION = `function () {
   const contextOf = ${ELEMENT_CONTEXT_JS};
   const textOf = ${ELEMENT_TEXT_JS};
   const geometryOf = ${ELEMENT_GEOMETRY_JS};
+  const stateOf = ${ELEMENT_STATE_JS};
   const read = (el, index) => {
     try {
-      return { context: contextOf(el), text: textOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
+      return { context: contextOf(el), text: textOf(el), state: stateOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
     } catch (e) {
       return {};
     }
@@ -269,6 +274,7 @@ interface ElementDetails {
   backendNodeId: number;
   context: string;
   text: string;
+  state: ElementState;
   inViewport?: ViewportPosition;
   clippedBy?: string;
 }
@@ -277,6 +283,7 @@ interface ElementDetails {
 interface PageElementDetails {
   context?: string;
   text?: string;
+  state?: ElementState;
   geometry?: ElementGeometry | null;
 }
 
@@ -305,6 +312,7 @@ async function elementsWithDetails(arrayObjectId: string): Promise<ElementDetail
         backendNodeId,
         context: details?.context ?? '',
         text: details?.text ?? '',
+        state: details?.state ?? {},
         ...viewportHint(details?.geometry, viewport),
       },
     ];
@@ -445,17 +453,20 @@ export async function queryDOMElements(selector: string): Promise<DomQueryResult
   }
 
   const nodes = await mapConcurrently(elements, async (element, index) => {
-    const { backendNodeId, context, text, inViewport, clippedBy } = element;
+    const { backendNodeId, context, text, state, inViewport, clippedBy } = element;
     const desc = await describeNode({ backendNodeId });
     if (!desc) return { index, nodeId: 0 };
     const attributes = unpackAttributes(desc.attributes);
     const classes = attributes['class']?.split(/\s+/).filter(Boolean);
     const preview = textPreview(text);
+    const tag = desc.nodeName.toLowerCase();
+    const keys = keyAttributes(tag, attributes, state);
     return {
       index,
       nodeId: desc.backendNodeId,
-      tag: desc.nodeName.toLowerCase(),
+      tag,
       ...identifyingAttributes(attributes, desc.nodeName),
+      ...(keys && { attributes: keys }),
       ...(classes && { classes }),
       ...(preview && { preview }),
       ...(context && { context }),
@@ -487,36 +498,47 @@ function identifyingAttributes(
   };
 }
 
+/** What {@link elementTextAndState} reads */
+interface TextAndState {
+  text: string;
+  state: ElementState;
+}
+
 /**
- * The text of one element as the page renders it ({@link ELEMENT_TEXT_JS}).
+ * The text of one element as the page renders it ({@link ELEMENT_TEXT_JS})
+ * and its form control state ({@link ELEMENT_STATE_JS}).
  *
  * @param ref - Node reference
  * @param full - Read all of a large container's text, not just its start
- * @returns Element text, or empty when the node cannot be read
+ * @returns Element text and state, empty when the node cannot be read
  */
-async function elementText(ref: NodeRef, full: boolean): Promise<string> {
+async function elementTextAndState(ref: NodeRef, full: boolean): Promise<TextAndState> {
   const objectGroup = `bdg-text-${process.pid}-${++queryCount}`;
   const resolved = await callCDP('DOM.resolveNode', { ...ref, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     .objectId;
-  if (!objectId) return '';
+  if (!objectId) return { text: '', state: {} };
   try {
     const response = await callCDP('Runtime.callFunctionOn', {
       objectId,
-      functionDeclaration: `function (full) { return (${ELEMENT_TEXT_JS})(this, full); }`,
+      functionDeclaration: `function (full) { return { text: (${ELEMENT_TEXT_JS})(this, full), state: (${ELEMENT_STATE_JS})(this) }; }`,
       arguments: [{ value: full }],
       returnByValue: true,
     });
-    const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
-      ?.value;
-    return typeof value === 'string' ? value : '';
+    const value = (
+      response.data?.result as { result?: { value?: Partial<TextAndState> } } | undefined
+    )?.result?.value;
+    return {
+      text: typeof value?.text === 'string' ? value.text : '',
+      state: value?.state ?? {},
+    };
   } finally {
     await callCDP('Runtime.releaseObjectGroup', { objectGroup });
   }
 }
 
 /**
- * Get DOM context (tag, classes, text preview) for a node: a one-line
+ * Get DOM context (tag, classes, key attributes, text preview) for a node: a one-line
  * preview, and up to {@link ELEMENT_TEXT_LENGTH} characters of text when it
  * is longer (all of it with `full`).
  *
@@ -535,13 +557,18 @@ export async function getDomContext(
     return null;
   }
   const full = options.full === true;
-  const classes = unpackAttributes(desc.attributes)['class']?.split(/\s+/).filter(Boolean);
-  const text = await elementText(ref, full);
+  const attributes = unpackAttributes(desc.attributes);
+  const classes = attributes['class']?.split(/\s+/).filter(Boolean);
+  const { text, state } = await elementTextAndState(ref, full);
   const preview = textPreview(text);
   const longer = textPreview(text, full ? Number.POSITIVE_INFINITY : ELEMENT_TEXT_LENGTH);
+  const tag = desc.nodeName.toLowerCase();
+  const keys = keyAttributes(tag, attributes, state);
   return {
-    tag: desc.nodeName.toLowerCase(),
+    tag,
     ...(classes && classes.length > 0 && { classes }),
+    ...(keys && { attributes: keys }),
+    ...(state.sensitive && { sensitive: true }),
     ...(preview && { preview }),
     ...(longer !== preview && { text: longer }),
     ...(!preview && (await childElements(ref))),

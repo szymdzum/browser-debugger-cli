@@ -152,3 +152,97 @@ void describe('formatDomEval', () => {
     assert.equal(formatDomEval({ result: 'body', type: 'object' }), 'body');
   });
 });
+
+void describe('formatDomQuery key attributes', () => {
+  const line = (node: Parameters<typeof formatDomQuery>[0]['nodes'][number]): string =>
+    formatDomQuery({ selector: 'x', count: 1, nodes: [node] })
+      .split('\n')[1]
+      ?.trim() ?? '';
+
+  void it("shows an image's file name and alt", () => {
+    assert.equal(
+      line({
+        index: 0,
+        nodeId: 1,
+        tag: 'img',
+        classes: ['inventory_item_img'],
+        attributes: { src: '/static/media/sl-404.168b1cce.jpg', alt: 'Sauce Labs Backpack' },
+      }),
+      '[0] <img src="…/sl-404.168b1cce.jpg" alt="Sauce Labs Backpack" class="inventory_item_img">'
+    );
+  });
+
+  void it('shows links, form targets and iframe hosts without their scheme, keeping // ', () => {
+    assert.match(
+      line({ index: 0, nodeId: 1, tag: 'a', attributes: { href: 'https://saucelabs.com/' } }),
+      /<a href="\/\/saucelabs\.com">/
+    );
+    assert.match(
+      line({ index: 0, nodeId: 1, tag: 'a', attributes: { href: '#' } }),
+      /<a href="#">/
+    );
+    assert.match(
+      line({
+        index: 0,
+        nodeId: 1,
+        tag: 'iframe',
+        attributes: { src: 'https://js.stripe.com/v3/elements-inner.html?x=1' },
+      }),
+      /<iframe src="\/\/js\.stripe\.com\/…">/
+    );
+    assert.match(
+      line({ index: 0, nodeId: 1, tag: 'form', attributes: { action: '/post', method: 'post' } }),
+      /<form action="\/post" method="post">/
+    );
+  });
+
+  void it('cuts long values in the middle', () => {
+    const output = line({
+      index: 0,
+      nodeId: 1,
+      tag: 'input',
+      type: 'text',
+      attributes: { type: 'text', placeholder: `Start ${'x'.repeat(60)} end` },
+    });
+    const placeholder = /placeholder="([^"]*)"/.exec(output)?.[1] ?? '';
+    assert.equal(placeholder.length, 40);
+    assert.match(placeholder, /^Start x+…x* end$/);
+  });
+
+  void it('shows a field once with its live type, value and checked state', () => {
+    assert.equal(
+      line({
+        index: 0,
+        nodeId: 1,
+        tag: 'input',
+        id: 'password',
+        name: 'password',
+        type: 'password',
+        attributes: { type: 'password', name: 'password', value: '••••' },
+      }),
+      '[0] <input id="password" name="password" type="password" value="••••">'
+    );
+    assert.equal(
+      line({
+        index: 1,
+        nodeId: 2,
+        tag: 'input',
+        name: 'size',
+        type: 'radio',
+        attributes: { type: 'radio', name: 'size', value: 'medium', checked: true },
+      }),
+      '[1] <input name="size" type="radio" value="medium" checked>'
+    );
+  });
+
+  void it("shows a select's selected option and a button's default type", () => {
+    assert.match(
+      line({ index: 0, nodeId: 1, tag: 'select', attributes: { selected: 'Name (A to Z)' } }),
+      /<select selected="Name \(A to Z\)">/
+    );
+    assert.match(
+      line({ index: 0, nodeId: 1, tag: 'button', attributes: { type: 'submit' } }),
+      /<button type="submit">/
+    );
+  });
+});

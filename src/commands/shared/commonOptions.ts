@@ -39,3 +39,15 @@ export function showBothSectionsWhenBothRequested(options: {
     options.console = false;
   }
 }
+
+/** Where selectors search, for the help of commands that take one */
+const SELECTOR_SCOPE = 'searches open shadow roots and same-origin iframes';
+
+/** Help of a `<selectorOrIndex>` argument */
+export const SELECTOR_OR_INDEX_ARGUMENT = `CSS selector (${SELECTOR_SCOPE}) or numeric index from query results (0-based)`;
+
+/** Help text after `dom query`'s options: what selectors search and what they cannot */
+export const SELECTOR_SCOPE_HELP = `
+Selectors search the page, open shadow roots and same-origin iframes (nested ones
+included). They cannot reach into closed shadow roots or cross-origin iframes:
+use bdg dom eval --frame <frame> for those (see bdg dom frames).`;

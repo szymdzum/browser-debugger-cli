@@ -9,8 +9,6 @@
 import * as assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +20,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 import { ensureTestSessionDir, getTestHomeDir } from '@/__testutils__/testHome.js';
 
 const CLI_PATH = path.resolve(
@@ -53,6 +52,8 @@ async function evaluate(expression: string): Promise<unknown> {
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
+after(removeTempDirs);
+
 void describe('Session end', () => {
   let fixture: FixtureServer;
 
@@ -67,7 +68,7 @@ void describe('Session end', () => {
   });
 
   void it('keeps cookies and storage of a user data dir across bdg stop', async () => {
-    const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-profile-'));
+    const profile = makeTempDir('bdg-profile-');
     const start = async (): Promise<void> => {
       const port = await getFreePort();
       await bdg([fixture.url, '--port', String(port), '--headless', '-u', profile]);

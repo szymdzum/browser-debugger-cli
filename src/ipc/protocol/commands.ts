@@ -48,6 +48,10 @@ export interface SessionPeekData {
   network: Array<{
     requestId: string;
     timestamp: number;
+    /** Chrome's monotonic time (seconds) when the request was sent */
+    sentTime?: number;
+    /** Main-frame navigation (page load) the request belongs to */
+    navigationId?: number;
     method: string;
     url: string;
     status?: number;

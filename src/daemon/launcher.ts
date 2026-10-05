@@ -35,16 +35,24 @@ const log = createLogger('launcher');
 const DAEMON_READY_TIMEOUT_MS = 5000;
 const DAEMON_READY_POLL_MS = 20;
 
+/** A daemon this process spawned */
+export interface SpawnedDaemon {
+  pid: number | undefined;
+  /** Whether it has exited (from the child process's exit event) */
+  hasExited: () => boolean;
+}
+
 /**
  * Ensure a daemon is running, spawning one if needed.
  *
+ * @returns The daemon it spawned, or undefined when one was already running
  * @throws DaemonStartupError if the daemon script is missing or the daemon
  *   does not accept connections in time
  */
-export async function launchDaemon(): Promise<void> {
+export async function launchDaemon(): Promise<SpawnedDaemon | undefined> {
   if (await isDaemonAlive()) {
     log.debug('Daemon already running');
-    return;
+    return undefined;
   }
 
   if (!fs.existsSync(DAEMON_SCRIPT_PATH)) {
@@ -72,6 +80,7 @@ export async function launchDaemon(): Promise<void> {
   daemon.unref();
 
   await waitForDaemonReady(() => exited);
+  return { pid: daemon.pid, hasExited: () => exited };
 }
 
 /**

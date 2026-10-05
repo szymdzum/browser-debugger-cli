@@ -71,6 +71,74 @@ export const ELEMENT_TEXT_JS = `(el, full) => {
   return withoutDecorations(el, start);
 }`;
 
+/** Shown instead of a secret field value (the same for every length) */
+export const MASKED_VALUE = '••••';
+
+/**
+ * Page-side check whether a form control holds a secret whose value must
+ * never leave the page: a password field (live type or type attribute), a
+ * field shown masked by CSS (`-webkit-text-security` other than `none`),
+ * one whose `autocomplete` names a password, a payment card (`cc-*`) or a
+ * one-time code, or a field named like a password, one-time code or card code
+ * (`password`, `passwd`, `pwd`, `passcode`, `otp`, `cvv`, `cvc`), which
+ * covers a password field switched to text by a "show password" button.
+ */
+export const SENSITIVE_FIELD_JS = `(el) => {
+  const autocomplete = el.getAttribute('autocomplete') || '';
+  if (/(^|\\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\\s|$)/i.test(autocomplete)) return true;
+  if (el.type === 'password' || /^password$/i.test(el.getAttribute('type') || '')) return true;
+  const names = [el.getAttribute('name'), el.id, autocomplete].join(' ');
+  if (/passw|passwd|pwd|passcode|(^|[^a-z])otp([^a-z]|$)|cvv|cvc/i.test(names)) return true;
+  try {
+    const security = el.ownerDocument.defaultView.getComputedStyle(el).getPropertyValue('-webkit-text-security');
+    return Boolean(security) && security !== 'none';
+  } catch (e) {
+    return false;
+  }
+}`;
+
+/**
+ * Page-side live state of a form control, which its attributes do not show:
+ * the type and current value of an `<input>` (for checkboxes and radios
+ * `checked` and their `value` attribute, not the default "on"), the value of
+ * a `<textarea>`, the labels of a `<select>`'s selected options and the type
+ * of a `<button>` in a form (`submit` when it has none; outside a form only
+ * a type attribute is shown). Empty for other elements.
+ *
+ * Secrets never leave the page: a hidden input's value is left out, and the
+ * value (or selected option) of a sensitive field ({@link SENSITIVE_FIELD_JS})
+ * is replaced by {@link MASKED_VALUE}, whatever its length, with
+ * `sensitive: true`.
+ */
+export const ELEMENT_STATE_JS = `(el) => {
+  const isSensitive = ${SENSITIVE_FIELD_JS};
+  const mask = (value) => (value ? '${MASKED_VALUE}' : '');
+  const guarded = (state) => {
+    if (!isSensitive(el)) return state;
+    const result = { ...state, sensitive: true };
+    if ('value' in result) result.value = mask(result.value);
+    if ('selected' in result) result.selected = mask(result.selected);
+    return result;
+  };
+  switch (el.localName) {
+    case 'input':
+      if (el.type === 'hidden') return { type: 'hidden' };
+      return guarded(
+        /^(checkbox|radio)$/.test(el.type)
+          ? { type: el.type, checked: el.checked, value: el.getAttribute('value') || '' }
+          : { type: el.type, value: el.value }
+      );
+    case 'textarea':
+      return guarded({ value: el.value });
+    case 'select':
+      return guarded({ selected: Array.from(el.selectedOptions || [], (option) => option.label).join(', ') });
+    case 'button':
+      return el.form ? { type: el.type } : {};
+    default:
+      return {};
+  }
+}`;
+
 /**
  * Page-side short description of an element: tag, id and up to two classes,
  * e.g. `button#save.primary.large`.

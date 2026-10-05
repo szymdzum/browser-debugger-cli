@@ -2,8 +2,10 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { unknownQueryFieldError } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
+import { MASKED_VALUE, SENSITIVE_FIELD_JS } from '@/runtime/dom/elementInfo.js';
 import { childFrameIds } from '@/runtime/dom/frameLayout.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
+import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { levenshteinDistance } from '@/utils/levenshtein.js';
 
@@ -97,10 +99,93 @@ export async function collectA11yTree(): Promise<A11yTree> {
       );
     }
 
-    return buildTreeFromRawNodes([...result.nodes, ...(await collectFrameNodes(result.nodes))]);
+    const tree = buildTreeFromRawNodes([
+      ...result.nodes,
+      ...(await collectFrameNodes(result.nodes)),
+    ]);
+    return maskSecretValues(tree, await sensitiveNodeIds(tree));
   } finally {
     await callCDP('Accessibility.disable', {});
   }
+}
+
+/** Concurrent page checks for {@link sensitiveNodeIds} */
+const SENSITIVE_CHECK_CONCURRENCY = 10;
+
+/**
+ * The accessibility nodes whose value is a secret: nodes with a value whose
+ * element is a sensitive field ({@link SENSITIVE_FIELD_JS}: passwords, card
+ * fields, one-time codes). Only nodes with a value are checked, one page
+ * call each (a page has few).
+ *
+ * @param tree - Accessibility tree
+ * @returns Node ids of secret fields
+ */
+async function sensitiveNodeIds(tree: A11yTree): Promise<Set<string>> {
+  const candidates = [...tree.nodes.values()].filter(
+    (node) => node.value !== undefined && node.backendDOMNodeId !== undefined
+  );
+  const limiter = new ConcurrencyLimiter(SENSITIVE_CHECK_CONCURRENCY);
+  const checked = await Promise.all(
+    candidates.map((node) =>
+      limiter.run(async () =>
+        (await isSensitiveField(node.backendDOMNodeId ?? 0)) ? node.nodeId : null
+      )
+    )
+  );
+  return new Set(checked.filter((id): id is string => id !== null));
+}
+
+/**
+ * Whether an element is a sensitive field. An element that cannot be read
+ * counts as one, so a value is never shown by mistake.
+ *
+ * @param backendNodeId - The element
+ * @returns True for secret fields (and unreadable elements)
+ */
+async function isSensitiveField(backendNodeId: number): Promise<boolean> {
+  const objectGroup = 'bdg-a11y-secret';
+  const resolved = await callCDP('DOM.resolveNode', { backendNodeId, objectGroup });
+  const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
+    ?.objectId;
+  if (!objectId) return true;
+  try {
+    const response = await callCDP('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: `function () { return this.nodeType !== 1 || (${SENSITIVE_FIELD_JS})(this); }`,
+      returnByValue: true,
+    });
+    const value = (response.data?.result as { result?: { value?: unknown } } | undefined)?.result
+      ?.value;
+    return value !== false;
+  } finally {
+    await callCDP('Runtime.releaseObjectGroup', { objectGroup });
+  }
+}
+
+/**
+ * The tree with the values of secret fields masked ({@link MASKED_VALUE},
+ * whatever their length), and the names and values of the nodes inside them
+ * left out (the text Chrome lists under a text field is its value).
+ *
+ * @param tree - Accessibility tree
+ * @param secretIds - Node ids of secret fields
+ * @returns The same tree (nodes replaced in place)
+ */
+export function maskSecretValues(tree: A11yTree, secretIds: ReadonlySet<string>): A11yTree {
+  const hide = (nodeId: string, inside: boolean): void => {
+    const node = tree.nodes.get(nodeId);
+    if (!node) return;
+    const { name: _name, value: _value, ...rest } = node;
+    const masked = inside
+      ? rest
+      : { ...node, ...(node.value !== undefined && { value: MASKED_VALUE }) };
+    tree.nodes.set(nodeId, masked);
+    if (tree.root.nodeId === nodeId) tree.root = masked;
+    node.childIds?.forEach((childId) => hide(childId, true));
+  };
+  secretIds.forEach((nodeId) => hide(nodeId, false));
+  return tree;
 }
 
 /**

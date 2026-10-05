@@ -9,7 +9,6 @@
 import * as fs from 'fs';
 import * as assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
-import * as os from 'os';
 import * as path from 'path';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
@@ -19,6 +18,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 
 /**
  * Run a bdg command with `--json` and return the parsed envelope's `data`.
@@ -38,6 +38,8 @@ interface ListedRequest {
   url: string;
   status?: number;
 }
+
+after(removeTempDirs);
 
 void describe('Network and navigation', () => {
   let fixture: FixtureServer;
@@ -68,8 +70,41 @@ void describe('Network and navigation', () => {
     assert.ok(final, 'final document request should be recorded');
   });
 
+  void it('shows when each request started, from the start of the page', async () => {
+    const human = await runCommand('network', ['list', '--last', '0'], { timeout: 30000 });
+    assert.equal(human.exitCode, 0, human.stderr);
+    assert.match(human.stdout, /^\[ID\]\s+START STS METH/m);
+    const documentRow = human.stdout
+      .split('\n')
+      .find((line) => / DOC /.test(line) && line.trimEnd().endsWith(new URL(fixture.url).host));
+    assert.match(documentRow ?? '', /\s\+0\.0s 200 GET /, human.stdout);
+
+    const data = await runJson<{
+      pageStart?: { timestamp: number; sentTime?: number };
+      requests: Array<
+        ListedRequest & { timestamp: number; sentTime?: number; navigationId?: number }
+      >;
+    }>('network', ['list', '--last', '0']);
+    const final = data.requests.find((r) => r.url === fixture.url && r.status === 200);
+    assert.equal(typeof final?.sentTime, 'number');
+    assert.equal(typeof final?.navigationId, 'number');
+    assert.equal(data.pageStart?.sentTime, final?.sentTime);
+    assert.equal(data.pageStart?.timestamp, final?.timestamp);
+  });
+
+  void it('lists a repeated header value once and the remote port', async () => {
+    await runJson('dom', ['eval', "fetch('/repeated-headers').then((r) => r.status)"]);
+    const data = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
+    const request = data.requests.find((r) => r.url.endsWith('/repeated-headers'));
+    assert.ok(request, `Requests: ${JSON.stringify(data.requests)}`);
+    const human = await runCommand('details', ['network', request.requestId], { timeout: 30000 });
+    assert.equal(human.exitCode, 0, human.stderr);
+    assert.match(human.stdout, /^ {2}X-Repeated: max-age=63072000 \(sent 2 times\)$/im);
+    assert.match(human.stdout, /^Remote Address:\s+(127\.0\.0\.1|\[::1\]):\d+$/m);
+  });
+
   void it('exports the redirect target to HAR', async () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'out.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'out.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, `HAR failed: ${result.stderr}`);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
@@ -218,7 +253,7 @@ void describe('Full headers and cookies', () => {
   });
 
   void it('exports cookies to HAR', async () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'cookies.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'cookies.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
@@ -273,7 +308,7 @@ void describe('HAR export with --all', () => {
   });
 
   void it('exports binary bodies once base64-encoded, in start order, with the browser', async () => {
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'all.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'all.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {
@@ -356,7 +391,7 @@ void describe('WebSocket connections', () => {
 
   void it('exports the messages to HAR', async () => {
     await runJson('dom', ['eval', 'window.socket.close()']);
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-har-')), 'ws.har');
+    const file = path.join(makeTempDir('bdg-har-'), 'ws.har');
     const result = await runCommand('network', ['har', file], { timeout: 30000 });
     assert.equal(result.exitCode, 0, result.stderr);
     const har = JSON.parse(fs.readFileSync(file, 'utf8')) as {

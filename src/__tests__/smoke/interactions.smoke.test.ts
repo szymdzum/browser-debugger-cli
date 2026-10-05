@@ -11,7 +11,6 @@
 
 import * as assert from 'node:assert/strict';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
@@ -22,6 +21,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 
 /**
@@ -122,6 +122,8 @@ async function takeEvents(): Promise<string[]> {
   return (await evaluate('window.events.splice(0)')) as string[];
 }
 
+after(removeTempDirs);
+
 void describe('DOM interactions', () => {
   let fixture: FixtureServer;
 
@@ -182,7 +184,7 @@ void describe('DOM interactions', () => {
   });
 
   void it('writes screenshots in the format their file name says', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-shot-'));
+    const dir = makeTempDir('bdg-shot-');
     await bdg(['dom', 'screenshot', path.join(dir, 'page.jpg')]);
     assert.equal(
       fs.readFileSync(path.join(dir, 'page.jpg')).subarray(0, 2).toString('hex'),
@@ -196,7 +198,7 @@ void describe('DOM interactions', () => {
   });
 
   void it('takes the element as an argument and includes floated content', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-shot-'));
+    const dir = makeTempDir('bdg-shot-');
     const file = path.join(dir, 'floats.png');
     await evaluate(
       `document.body.insertAdjacentHTML('beforeend', '<div id="floats" style="width: 300px"><h3 style="margin: 0; height: 30px">Floats</h3>' +
@@ -241,7 +243,7 @@ void describe('DOM interactions', () => {
   });
 
   void it('captures the scrolled-to part of the page in a viewport screenshot', async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-shot-'));
+    const dir = makeTempDir('bdg-shot-');
     await evaluate(
       `document.body.insertAdjacentHTML('beforeend', '<div id="tall"><div style="height: 4000px"></div><p style="font: 40px serif">' + 'Lorem ipsum dolor sit amet '.repeat(300) + '</p></div>'); 1`
     );
@@ -395,7 +397,7 @@ void describe('DOM interactions', () => {
     const upload = byId('upload');
     assert.match(upload?.command ?? '', /fill \d+ "<path>"/);
 
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-upload-')), 'note.txt');
+    const file = path.join(makeTempDir('bdg-upload-'), 'note.txt');
     fs.writeFileSync(file, 'hello');
     await bdg(['dom', 'fill', String(upload?.index), file]);
     assert.equal(await evaluate("document.getElementById('upload').files[0].name"), 'note.txt');
@@ -521,7 +523,7 @@ void describe('DOM interactions', () => {
     };
     assert.equal(click.data.elementType, 'label');
     assert.equal(await evaluate("document.getElementById('fancybox').checked"), true);
-    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-upload-')), 'avatar.txt');
+    const file = path.join(makeTempDir('bdg-upload-'), 'avatar.txt');
     fs.writeFileSync(file, 'x');
     try {
       const fill = JSON.parse(

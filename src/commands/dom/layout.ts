@@ -10,7 +10,7 @@ import type { Command } from 'commander';
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
-import { jsonOption } from '@/commands/shared/commonOptions.js';
+import { jsonOption, SELECTOR_OR_INDEX_ARGUMENT } from '@/commands/shared/commonOptions.js';
 import type { LayoutCommandOptions } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import { domLayout } from '@/ipc/client.js';
@@ -28,7 +28,7 @@ export function registerLayoutCommand(dom: Command): void {
     .description(
       'Positions, sizes and visibility of elements (above/below the fold, hidden, covered) without a screenshot'
     )
-    .argument('<selectorOrIndex>', 'CSS selector or numeric index from query results (0-based)')
+    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
     .option('--index <n>', 'Only this match of the selector (0-based)', integerOption(0))
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: LayoutCommandOptions) => {

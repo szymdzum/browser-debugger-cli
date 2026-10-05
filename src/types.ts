@@ -154,7 +154,10 @@ export interface NetworkRequest {
   redirectURL?: string;
   encodedDataLength?: number;
   decodedBodyLength?: number;
+  /** Address Chrome connected to: the server's, or a proxy's (CDP `remoteIPAddress`) */
   serverIPAddress?: string;
+  /** Port Chrome connected to (CDP `remotePort`) */
+  serverPort?: number;
   connection?: string;
   /** Status text sent by the server (empty for HTTP/2) */
   statusText?: string;
@@ -348,7 +351,36 @@ export interface DomContext {
   children?: string[];
   /** Number of child elements, for an element without text */
   childCount?: number;
+  /** Attributes that identify it by its type (see {@link KeyAttributes}) */
+  attributes?: KeyAttributes;
+  /** A field holding a secret (password, card, one-time code): its value is shown masked */
+  sensitive?: boolean;
 }
+
+/**
+ * Live state of a form control read in the page: an input's type and value
+ * (`checked` for checkboxes and radios), a textarea's value, the labels of a
+ * select's selected options, the type of a button in a form.
+ */
+export interface ElementState {
+  type?: string;
+  /** Masked in the page for sensitive fields; never read for hidden inputs */
+  value?: string;
+  checked?: boolean;
+  selected?: string;
+  /** A field holding a secret (its value and selected option are masked) */
+  sensitive?: boolean;
+}
+
+/**
+ * The attributes that identify an element by its type, with full values:
+ * img `src`, `alt`; a `href`; input `type`, `name`, `placeholder`, `value`
+ * (current value, masked for passwords; for checkboxes and radios their
+ * `value` attribute) and `checked`; textarea `name`,
+ * `placeholder`, `value`; button `type` (`submit` by default in a form), `name`; select `name`, `selected`
+ * (labels of the selected options); iframe `src`; form `action`, `method`.
+ */
+export type KeyAttributes = Record<string, string | boolean>;
 
 /**
  * Reference to a DOM node for CDP calls: a per-connection `nodeId` (valid only
@@ -420,6 +452,8 @@ export interface DomQueryResult {
     type?: string;
     /** `value` attribute of an `<option>` */
     value?: string;
+    /** Attributes that identify it by its type (see {@link KeyAttributes}) */
+    attributes?: KeyAttributes;
     classes?: string[];
     /** Text content preview (display only, never used for targeting) */
     preview?: string;
