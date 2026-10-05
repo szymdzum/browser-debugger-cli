@@ -267,10 +267,12 @@ export interface ElementLayout {
   percentVisible?: number;
   /** Why it is `hidden`, e.g. `display: none` */
   hiddenReason?: string;
-  /** Page scroll (`window.scrollBy`) that brings it fully into view, when one helps */
+  /** Page scroll (`window.scrollBy`) that centres it in the viewport, when the page can scroll there */
   scrollBy?: LayoutPoint;
   /** Ancestor or iframe cutting it off (scroll that container instead of the page) */
   clippedBy?: string;
+  /** Why page scroll cannot bring it fully into view: it is fixed, or beyond the page's scroll range */
+  offScreenReason?: string;
   /** Topmost element at the center of its visible part, when that is another element */
   coveredBy?: string;
   /** Inside an `inert` element: shown, but a user cannot interact with it */

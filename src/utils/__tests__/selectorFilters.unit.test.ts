@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 
 import { CommandError } from '@/errors/index.js';
 import { invalidSelectorError } from '@/errors/messages.js';
+import { selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { parseSelectorFilters, splitSelectorList } from '@/utils/selectorFilters.js';
 
@@ -171,5 +172,24 @@ void describe('invalidSelectorError', () => {
 
   void it('keeps the plain syntax hint for other invalid selectors', () => {
     assert.match(invalidSelectorError('a[').suggestion, /Check the selector syntax/);
+  });
+});
+
+void describe('selectorArgsJS', () => {
+  void it('rejects an empty or blank selector with exit 81 before any page script runs', () => {
+    for (const selector of ['', '   ']) {
+      assert.throws(
+        () => selectorArgsJS(selector),
+        (error: unknown) =>
+          error instanceof CommandError &&
+          error.exitCode === EXIT_CODES.INVALID_ARGUMENTS &&
+          /The provided selector is empty/.test(error.message),
+        JSON.stringify(selector)
+      );
+    }
+  });
+
+  void it('passes plain CSS unchanged', () => {
+    assert.equal(selectorArgsJS('a.b'), '"a.b", null');
   });
 });

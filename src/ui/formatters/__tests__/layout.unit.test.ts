@@ -83,6 +83,18 @@ void describe('layoutLine', () => {
     );
   });
 
+  void it('says why page scroll cannot bring an off-screen element into view', () => {
+    const { scrollBy: _scrollBy, ...rest } = layout();
+    assert.equal(
+      layoutLine({
+        ...rest,
+        inViewport: 'left',
+        offScreenReason: 'fixed position, page scroll does not move it',
+      }),
+      '[0] button#save "Save"  420,1180 120×40  left of viewport (off-screen: fixed position, page scroll does not move it)'
+    );
+  });
+
   void it('mentions a fully transparent element', () => {
     const line = layoutLine(
       layout({ inViewport: 'visible', computed: { ...layout().computed, opacity: '0' } })

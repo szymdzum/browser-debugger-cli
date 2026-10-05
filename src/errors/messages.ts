@@ -296,6 +296,19 @@ const PLAYWRIGHT_ONLY_SYNTAX =
   /:(?:text|text-matches|nth-match|left-of|right-of|above|below|near)\(|>>|^\s*(?:text|css|xpath|role|id|data-testid|internal:\w+)=/i;
 
 /**
+ * Empty (or blank) selector: the browser rejects it, so it is caught before
+ * any page script runs.
+ *
+ * @returns Message and suggestion
+ */
+export function emptySelectorError(): ErrorWithSuggestion {
+  return {
+    message: 'Invalid CSS selector: The provided selector is empty',
+    suggestion: 'Pass a selector, e.g. bdg dom query "button.primary"',
+  };
+}
+
+/**
  * CSS selector rejected by the browser. Playwright-only syntax (`:text()`,
  * `>>`, `text=`) gets the filters bdg supports instead.
  *
