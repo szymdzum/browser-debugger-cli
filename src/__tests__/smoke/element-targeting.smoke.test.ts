@@ -18,6 +18,7 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { LAYOUT_REASONS } from '@/ui/messages/commands.js';
 
 /**
  * Run a bdg command and assert its exit code.
@@ -219,6 +220,7 @@ interface LayoutData {
   page: { viewport: { height: number }; document: { height: number } };
   elements: Array<{
     index: number;
+    element: string;
     context?: string;
     bounds: { x: number; y: number; width: number; height: number };
     inViewport: string;
@@ -227,6 +229,7 @@ interface LayoutData {
     clippedBy?: string;
     offScreenReason?: string;
     coveredBy?: string;
+    invisible?: string;
   }>;
 }
 
@@ -347,6 +350,82 @@ void describe('Element layout', () => {
         "document.documentElement.style.cssText = ''; document.body.style.cssText = ''; 1"
       );
     }
+  });
+
+  void it('clips a scroll list inside CSS zoom where it shows', async () => {
+    const data = await layout('.zoomed');
+    assert.deepEqual(
+      data.elements.map((element) => [element.inViewport, element.clippedBy]),
+      [
+        ['visible', undefined],
+        ['visible', undefined],
+        ['partly', 'div#zoom-box'],
+        ['below', 'div#zoom-box'],
+      ],
+      JSON.stringify(data.elements)
+    );
+  });
+
+  void it('reports an ancestor ::after overlay as cover, like dom click', async () => {
+    const [inCard] = (await layout('#in-card')).elements;
+    assert.equal(inCard?.coveredBy, 'div.card');
+    assert.match(
+      await bdg(['dom', 'click', '#in-card']),
+      /covered by another element \(div\.card\)/
+    );
+  });
+
+  void it('reports a collapsed accordion as hiding, and an opacity: 0 parent', async () => {
+    const [inAccordion, inFaded] = (await layout('#in-accordion, #in-faded')).elements;
+    assert.equal(inAccordion?.inViewport, 'hidden');
+    assert.equal(inAccordion?.hiddenReason, 'clipped by div#accordion: zero height');
+    assert.equal(inFaded?.inViewport, 'visible');
+    assert.equal(inFaded?.invisible, 'opacity: 0 on div#faded');
+    const human = await bdg(['dom', 'layout', '#in-accordion']);
+    assert.match(
+      human,
+      /^ {2}\[0\] a#in-accordion "Answer link" {2}hidden \(clipped by div#accordion: zero height\)$/m
+    );
+  });
+
+  void it('flags clip, clip-path and slot-wrapper opacity, and explains a hidden <option>', async () => {
+    const data = await layout('#sr-only, #in-clipped, #first-option, #slotted, #in-sliver');
+    const byElement = new Map(data.elements.map((element) => [element.element, element]));
+    assert.equal(byElement.get('span#sr-only')?.invisible, 'clip: rect(0px, 0px, 0px, 0px)');
+    assert.equal(byElement.get('a#in-clipped')?.invisible, 'clip-path: inset(50%) on div#clipped');
+    assert.equal(byElement.get('a#slotted')?.invisible, 'opacity: 0 on div#slot-fade');
+    const option = byElement.get('option#first-option');
+    assert.equal(option?.inViewport, 'hidden');
+    assert.equal(option?.hiddenReason, LAYOUT_REASONS.option);
+    const sliver = byElement.get('a#in-sliver');
+    assert.notEqual(sliver?.inViewport, 'hidden', JSON.stringify(sliver));
+  });
+
+  void it('finds content of a closed <details> by its text', async () => {
+    const found = JSON.parse(
+      await bdg(['dom', 'query', 'button:has-text("answer")', '--json'])
+    ) as { data: { nodes: Array<{ id?: string }> } };
+    assert.deepEqual(
+      found.data.nodes.map((node) => node.id),
+      ['in-details']
+    );
+  });
+
+  void it('matches :has-text against the text of visibility: hidden elements', async () => {
+    const ghost = JSON.parse(
+      await bdg(['dom', 'query', 'span:has-text("ghost text")', '--json'])
+    ) as { data: { nodes: Array<{ id?: string }> } };
+    assert.deepEqual(
+      ghost.data.nodes.map((node) => node.id),
+      ['ghost']
+    );
+  });
+
+  void it('suggests the command that was run when an index gets --index', async () => {
+    assert.match(
+      await bdg(['dom', 'layout', '0', '--index', '1'], 81),
+      /bdg dom layout 0, or bdg dom layout "<selector>" --index <n>/
+    );
   });
 
   void it('exits 81 for an empty selector', async () => {

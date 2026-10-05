@@ -65,10 +65,22 @@ void describe('layoutLine', () => {
     );
   });
 
-  void it('says why a hidden element is hidden and leaves out missing text', () => {
+  void it('says why a hidden element is hidden, without its meaningless box, and leaves out missing text', () => {
     const { text: _text, scrollBy: _scrollBy, ...rest } = layout();
     const line = layoutLine({ ...rest, inViewport: 'hidden', hiddenReason: 'display: none' });
-    assert.equal(line, '[0] button#save  420,1180 120×40  hidden (display: none)');
+    assert.equal(line, '[0] button#save  hidden (display: none)');
+  });
+
+  void it('does not repeat the iframe that clips an element as its context', () => {
+    const { scrollBy: _scrollBy, ...rest } = layout();
+    assert.equal(
+      layoutLine({ ...rest, clippedBy: 'iframe#f1', context: 'iframe#f1' }),
+      '[0] button#save "Save"  420,1180 120×40  out of view in iframe#f1 (below)'
+    );
+    assert.match(
+      layoutLine({ ...rest, clippedBy: 'ul#list', context: 'iframe#f1' }),
+      /out of view in ul#list \(below\) {2}in iframe#f1$/
+    );
   });
 
   void it('names the container an element is scrolled out of, and notes inert elements', () => {
@@ -95,11 +107,15 @@ void describe('layoutLine', () => {
     );
   });
 
-  void it('mentions a fully transparent element', () => {
-    const line = layoutLine(
-      layout({ inViewport: 'visible', computed: { ...layout().computed, opacity: '0' } })
+  void it('says why a rendered element is invisible (opacity on it or an ancestor, clip-path)', () => {
+    assert.match(
+      layoutLine(layout({ inViewport: 'visible', invisible: 'opacity: 0 on div#menu' })),
+      /visible {2}opacity: 0 on div#menu$/
     );
-    assert.match(line, /visible {2}opacity: 0$/);
+    assert.match(
+      layoutLine(layout({ inViewport: 'visible', invisible: 'clip-path: inset(50%)' })),
+      /visible {2}clip-path: inset\(50%\)$/
+    );
   });
 });
 
@@ -111,7 +127,13 @@ void describe('formatLayout', () => {
     assert.match(output, /^130 elements match "li" \(page x,y and size in CSS px\):$/m);
     assert.match(output, /\[19\] button#save/);
     assert.doesNotMatch(output, /\[20\]/);
-    assert.match(output, /\.\.\. and 110 more/);
+    assert.match(output, /\.\.\. and 110 more \(--json lists the first 25\)$/m);
+  });
+
+  void it('points to --json for the rest when JSON lists every match', () => {
+    const elements = Array.from({ length: 25 }, (_, index) => layout({ index }));
+    const output = formatLayout({ selector: 'li', count: 25, page: PAGE, elements });
+    assert.match(output, /\.\.\. and 5 more \(use --json for all\)$/m);
   });
 
   void it('says which share of the matches --index picked', () => {

@@ -140,8 +140,13 @@ const DEEP_FRAME_HTML = `<!doctype html><p class="note">frame</p>
  * button with `pointer-events: none`, one under a `pointer-events: none`
  * overlay, a dropdown escaping an `overflow: hidden` parent, a link
  * wrapped over two lines, a button in a closed `<details>`, a fixed
- * off-canvas link, a skip link beyond the page's scroll range, and a fixed
- * element inside a transformed container (which scrolls with the page).
+ * off-canvas link, a skip link beyond the page's scroll range, a fixed
+ * element inside a transformed container (which scrolls with the page), a
+ * scroll list inside CSS `zoom: 2`, a button under its card's `::after`
+ * overlay, a link in a collapsed `height: 0` accordion, a link in an
+ * `opacity: 0` parent, a `visibility: hidden` text, an sr-only `clip`, a
+ * `clip-path: inset(50%)` parent, an `<option>`, a link slotted into a
+ * transparent shadow wrapper and a link in a 0.4px tall clipping container.
  */
 const LAYOUT_HTML = `<!doctype html><title>layout</title>
 <style>body { margin: 0; height: 3000px; } button { position: absolute; width: 100px; height: 30px; }</style>
@@ -164,7 +169,21 @@ const LAYOUT_HTML = `<!doctype html><title>layout</title>
 <details style="position: absolute; left: 10px; top: 450px"><summary>FAQ</summary><button id="in-details" style="position: static">Answer</button></details>
 <nav style="position: fixed; left: 0; top: 0; width: 200px; transform: translateX(-100%)"><a id="off-canvas" href="#">Menu</a></nav>
 <a id="skip" href="#save" style="position: absolute; left: -9999px; top: 0">Skip</a>
-<div style="position: absolute; top: 2000px; left: 0; transform: translateZ(0)"><div id="fixed-in-transform" style="position: fixed; top: 0; left: 0">Toast</div></div>`;
+<div style="position: absolute; top: 2000px; left: 0; transform: translateZ(0)"><div id="fixed-in-transform" style="position: fixed; top: 0; left: 0">Toast</div></div>
+<div style="position: absolute; left: 750px; top: 10px"><div style="zoom: 2"><div id="zoom-box" style="width: 100px; height: 50px; overflow: auto; border: 2px solid">
+  <p class="zoomed" style="height: 20px; margin: 0">Z0</p><p class="zoomed" style="height: 20px; margin: 0">Z1</p><p class="zoomed" style="height: 20px; margin: 0">Z2</p><p class="zoomed" style="height: 20px; margin: 0">Z3</p>
+</div></div></div>
+<style>.card::after { content: ''; position: absolute; inset: 0; }</style>
+<div class="card" style="position: absolute; left: 750px; top: 150px; width: 150px; height: 50px"><button id="in-card" style="position: static">In card</button></div>
+<div id="accordion" style="position: absolute; left: 750px; top: 250px; width: 150px; height: 0; overflow: hidden"><a id="in-accordion" href="#">Answer link</a></div>
+<div id="faded" style="position: absolute; left: 750px; top: 300px; opacity: 0"><a id="in-faded" href="#">Faded link</a></div>
+<span id="ghost" style="position: absolute; left: 750px; top: 350px; visibility: hidden">Ghost text</span>
+<span id="sr-only" style="position: absolute; left: 750px; top: 400px; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Skip</span>
+<div id="clipped" style="position: absolute; left: 750px; top: 420px; clip-path: inset(50%)"><a id="in-clipped" href="#">Clipped</a></div>
+<select style="position: absolute; left: 750px; top: 450px"><option id="first-option">One</option></select>
+<div id="slot-host" style="position: absolute; left: 750px; top: 480px"><a id="slotted" href="#">Slotted</a></div>
+<script>document.getElementById('slot-host').attachShadow({ mode: 'open' }).innerHTML = '<div id="slot-fade" style="opacity: 0"><slot></slot></div>';</script>
+<div style="position: absolute; left: 750px; top: 510px; width: 100px; height: 0.4px; overflow: hidden"><a id="in-sliver" href="#">Sliver</a></div>`;
 
 /**
  * Running fixture server handle.

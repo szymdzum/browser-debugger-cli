@@ -12,6 +12,7 @@
 import type { LayoutBox, LayoutPoint, LayoutSize } from '@/ipc/protocol/domTypes.js';
 import { ELEMENT_DESCRIPTION_JS } from '@/runtime/dom/elementInfo.js';
 import type { ViewportPosition } from '@/types.js';
+import { LAYOUT_REASONS } from '@/ui/messages/commands.js';
 
 /** Measurements of one element ({@link ELEMENT_GEOMETRY_JS}). */
 export interface ElementGeometry {
@@ -19,10 +20,17 @@ export interface ElementGeometry {
   rect: LayoutBox;
   /** Area its iframes and overflow-clipping ancestors leave visible, in the same coordinates */
   clip: LayoutBox | null;
+  /** Whether overlay scrollbars of the clipping containers show along the clip's right and bottom edges */
+  clipOverlay: OverlayEdges;
   /** Innermost ancestor or iframe cutting off part of it, e.g. `ul#list` */
   clipper: string | null;
-  /** Why it cannot be seen regardless of position, e.g. `display: none` */
+  /** Why it cannot be seen regardless of position, e.g. `display: none`, `clipped by div#acc: zero height` */
   hidden: string | null;
+  /**
+   * Why it cannot be seen although it is rendered ({@link INVISIBLE_REASON_JS}),
+   * e.g. `opacity: 0 on div#menu`
+   */
+  invisible: string | null;
   /** Inside an `inert` element: shown, but not interactive */
   inert: boolean;
   /** Fixed to the top-level viewport (it or a container is `position: fixed`): page scroll does not move it */
@@ -31,6 +39,12 @@ export interface ElementGeometry {
   pageScroll: ScrollRange;
   /** Offset of its document's viewport within the top-level viewport (iframes) */
   offset: LayoutPoint;
+}
+
+/** Edges of a viewport or clip along which overlay scrollbars (that take no space) show after a scroll. */
+export interface OverlayEdges {
+  right: boolean;
+  bottom: boolean;
 }
 
 /** Distances (CSS px, never negative) a page can scroll in each direction. */
@@ -111,70 +125,206 @@ export const FRAME_OFFSET_JS = `(frame) => {
   };
 }`;
 
+/** Page-side parent in the flat tree: a slotted node's slot, then its parent, then a shadow root's host. */
+const FLAT_PARENT_JS = `(n) => n.assignedSlot || n.parentElement || (n.parentNode && n.parentNode.host) || null`;
+
+/**
+ * Page-side test of computed styles: true when they only scale or move the
+ * box (no `rotate`, and a 2D `transform` matrix without rotation or skew), so
+ * its bounding box is the box itself, scaled.
+ */
+export const SCALES_ONLY_JS = `(style) => {
+  if (style.rotate && style.rotate !== 'none') return false;
+  if (!style.transform || style.transform === 'none') return true;
+  const matrix = /^matrix\\(([^)]*)\\)$/.exec(style.transform);
+  if (!matrix) return false;
+  const values = matrix[1].split(',').map(parseFloat);
+  return Math.abs(values[1]) < 1e-6 && Math.abs(values[2]) < 1e-6;
+}`;
+
+/**
+ * Page-side padding box of a clipping container in its document's viewport
+ * coordinates. It is scaled by the container's rendered to layout size ratio
+ * (`getBoundingClientRect()` against `offsetWidth`/`offsetHeight`), so CSS
+ * `zoom` and `transform: scale()` on it or around it clip where they show;
+ * when it or an ancestor is rotated or skewed the bounding box is no longer
+ * its box, and the unscaled size is used. `clientWidth`/`clientHeight` are
+ * whole pixels: a container they report as 0 is measured from its rendered
+ * size minus borders, so only one with no area at all counts as collapsed.
+ */
+const CLIP_BOX_JS = `(p) => {
+  const scalesOnly = ${SCALES_ONLY_JS};
+  const parentOf = ${FLAT_PARENT_JS};
+  const styleOf = (n) => n.ownerDocument.defaultView.getComputedStyle(n);
+  let plain = true;
+  for (let n = p; n && plain; n = parentOf(n)) plain = scalesOnly(styleOf(n));
+  const style = styleOf(p);
+  const r = p.getBoundingClientRect();
+  const scaleX = plain && p.offsetWidth > 0 ? r.width / p.offsetWidth : 1;
+  const scaleY = plain && p.offsetHeight > 0 ? r.height / p.offsetHeight : 1;
+  const inner = (client, rendered, borders, scale) =>
+    client > 0 ? client * scale : Math.max(0, rendered - borders * scale);
+  const width = inner(p.clientWidth, plain ? r.width : p.offsetWidth, parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth), scaleX);
+  const height = inner(p.clientHeight, plain ? r.height : p.offsetHeight, parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth), scaleY);
+  const left = r.left + p.clientLeft * scaleX;
+  const top = r.top + p.clientTop * scaleY;
+  return { left: left, top: top, right: left + width, bottom: top + height };
+}`;
+
+/**
+ * Page-side overlay scrollbars of a clipping container: whether it scrolls
+ * along an axis with a scrollbar that takes no space (macOS, mobile), which
+ * shows over its right (vertical) or bottom (horizontal) edge after a scroll.
+ */
+const OVERLAY_SCROLLBARS_JS = `(p) => {
+  const style = p.ownerDocument.defaultView.getComputedStyle(p);
+  const scrolls = (overflow, content, client) => /auto|scroll/.test(overflow) && content > client;
+  const spare = (outer, client, a, b) => outer - client - parseFloat(a) - parseFloat(b) < 1;
+  return {
+    right: scrolls(style.overflowY, p.scrollHeight, p.clientHeight) && spare(p.offsetWidth, p.clientWidth, style.borderLeftWidth, style.borderRightWidth),
+    bottom: scrolls(style.overflowX, p.scrollWidth, p.clientWidth) && spare(p.offsetHeight, p.clientHeight, style.borderTopWidth, style.borderBottomWidth)
+  };
+}`;
+
+/**
+ * Page-side test of whether a container lets a `position: fixed` descendant
+ * escape to the viewport: false when it is transformed (or filtered,
+ * contained, …) and so holds it like an absolutely positioned one.
+ */
+const HOLDS_FIXED_JS = `(style) =>
+  style.transform !== 'none' || style.filter !== 'none' || style.perspective !== 'none' ||
+  /transform|filter|perspective/.test(style.willChange) || /paint|layout|strict|content/.test(style.contain)`;
+
+/**
+ * Page-side test of whether a `position: fixed` node is fixed to its
+ * document's viewport (no ancestor holds it, {@link HOLDS_FIXED_JS}).
+ */
+const FIXED_TO_VIEWPORT_JS = `(n) => {
+  const holdsFixed = ${HOLDS_FIXED_JS};
+  const parentOf = (node) => node.parentElement || (node.parentNode && node.parentNode.host) || null;
+  for (let p = parentOf(n); p && p !== n.ownerDocument.documentElement; p = parentOf(p)) {
+    if (holdsFixed(p.ownerDocument.defaultView.getComputedStyle(p))) return false;
+  }
+  return true;
+}`;
+
 /**
  * Page-side clip of a node by its ancestors (looked up through open shadow
- * roots): the padding boxes of those that cut off overflowing content and
- * hold the node in their containing-block chain. An absolutely positioned
- * node skips static ancestors (that are not transformed) up to its containing
- * block, a fixed one is not clipped at all unless a transformed (or filtered,
- * contained, …) ancestor holds it like an absolute one, and inline ancestors and
- * `display: contents` ones have no box to clip with. The root element is left
- * out (its overflow belongs to the viewport), and so is the body's overflow
- * unless the root element's overflow is not `visible` (then the body keeps its
- * own overflow and, e.g. as the page's scroller, clips like any container).
- * Returns the clip, the innermost ancestor cutting off part of `rect` (null
- * when none does) and whether the node is fixed to the viewport (it or a
- * container in its containing-block chain is `position: fixed`).
+ * roots): the padding boxes ({@link CLIP_BOX_JS}) of those that cut off
+ * overflowing content and hold the node in their containing-block chain. An
+ * absolutely positioned node skips static ancestors (that are not
+ * transformed) up to its containing block, a fixed one is not clipped at all
+ * unless a transformed (or filtered, contained, …) ancestor holds it like an
+ * absolute one, and inline ancestors and `display: contents` ones have no box
+ * to clip with. The root element is left out (its overflow belongs to the
+ * viewport), and so is the body's overflow unless the root element's
+ * overflow is not `visible` (then the body keeps its own overflow and, e.g.
+ * as the page's scroller, clips like any container).
+ * Returns the clip, whether overlay scrollbars of the containers show along
+ * its right and bottom edges ({@link OVERLAY_SCROLLBARS_JS}), the innermost
+ * ancestor cutting off part of `rect` (null when none does), why the
+ * innermost clipping ancestor with no area (a collapsed
+ * `height: 0; overflow: hidden` accordion) hides it, e.g.
+ * `clipped by div#acc: zero height` (null when none has), and whether the
+ * node is fixed to the viewport (it or a container in its containing-block
+ * chain is `position: fixed`).
  */
 const ANCESTOR_CLIP_JS = `(node, rect, describe) => {
+  const clipBox = ${CLIP_BOX_JS};
+  const overlayScrollbars = ${OVERLAY_SCROLLBARS_JS};
+  const holdsFixed = ${HOLDS_FIXED_JS};
+  const fixedToViewport = ${FIXED_TO_VIEWPORT_JS};
+  const reasons = ${JSON.stringify(LAYOUT_REASONS)};
   const styleOf = (n) => n.ownerDocument.defaultView.getComputedStyle(n);
   const parentOf = (n) => n.parentElement || (n.parentNode && n.parentNode.host) || null;
   const doc = node.ownerDocument;
   const rootStyle = styleOf(doc.documentElement);
   const bodyClips = rootStyle.overflowX !== 'visible' || rootStyle.overflowY !== 'visible';
-  const holdsFixed = (style) =>
-    style.transform !== 'none' || style.filter !== 'none' || style.perspective !== 'none' ||
-    /transform|filter|perspective/.test(style.willChange) || /paint|layout|strict|content/.test(style.contain);
-  const fixedToViewport = (n) => {
-    for (let p = parentOf(n); p && p !== doc.documentElement; p = parentOf(p)) {
-      if (holdsFixed(styleOf(p))) return false;
-    }
-    return true;
+  const result = { clip: null, overlay: { right: false, bottom: false }, clipper: null, collapsed: null, fixed: false };
+  const add = (p) => {
+    const box = clipBox(p);
+    const contains = rect.left >= box.left && rect.top >= box.top && rect.right <= box.right && rect.bottom <= box.bottom;
+    if (!result.clipper && !contains) result.clipper = describe(p);
+    const empty = box.bottom <= box.top ? reasons.zeroHeight : box.right <= box.left ? reasons.zeroWidth : null;
+    if (!result.collapsed && empty) result.collapsed = reasons.clippedBy + describe(p) + ': ' + empty;
+    const clip = result.clip || box;
+    const bars = overlayScrollbars(p);
+    result.overlay = {
+      right: box.right < clip.right ? bars.right : box.right > clip.right ? result.overlay.right : result.overlay.right || bars.right,
+      bottom: box.bottom < clip.bottom ? bars.bottom : box.bottom > clip.bottom ? result.overlay.bottom : result.overlay.bottom || bars.bottom
+    };
+    result.clip = { left: Math.max(clip.left, box.left), top: Math.max(clip.top, box.top), right: Math.min(clip.right, box.right), bottom: Math.min(clip.bottom, box.bottom) };
   };
   let position = styleOf(node).position;
-  let clip = null;
-  let clipper = null;
   if (position === 'fixed') {
-    if (fixedToViewport(node)) return { clip: null, clipper: null, fixed: true };
+    if (fixedToViewport(node)) return Object.assign(result, { fixed: true });
     position = 'absolute';
   }
   for (let p = parentOf(node); p && p !== doc.documentElement; p = parentOf(p)) {
     const style = styleOf(p);
     if (position === 'absolute' && style.position === 'static' && !holdsFixed(style)) continue;
     const boxed = style.display !== 'inline' && style.display !== 'contents' && (bodyClips || p !== doc.body);
-    if (boxed && (style.overflowX !== 'visible' || style.overflowY !== 'visible')) {
-      const r = p.getBoundingClientRect();
-      const left = r.left + p.clientLeft;
-      const top = r.top + p.clientTop;
-      const box = { left: left, top: top, right: left + p.clientWidth, bottom: top + p.clientHeight };
-      const contains = rect.left >= box.left && rect.top >= box.top && rect.right <= box.right && rect.bottom <= box.bottom;
-      if (!clipper && !contains) clipper = describe(p);
-      clip = clip ? { left: Math.max(clip.left, box.left), top: Math.max(clip.top, box.top), right: Math.min(clip.right, box.right), bottom: Math.min(clip.bottom, box.bottom) } : box;
-    }
+    if (boxed && (style.overflowX !== 'visible' || style.overflowY !== 'visible')) add(p);
     position = style.position;
     if (position === 'fixed') {
       if (fixedToViewport(p)) break;
       position = 'absolute';
     }
   }
-  return { clip: clip, clipper: clipper, fixed: position === 'fixed' };
+  return Object.assign(result, { fixed: position === 'fixed' });
+}`;
+
+/** Page-side test of a `clip-path` that cuts everything away: `inset()` with percentages leaving no area. */
+export const CLIP_PATH_CUTS_ALL_JS = `(clipPath) => {
+  const inset = /^inset\\(([^)]*)\\)/.exec(clipPath || '');
+  const values = inset ? inset[1].split(' round ')[0].trim().split(/\\s+/) : [];
+  if (values.length === 0 || values.some((v) => !/%$/.test(v))) return false;
+  const [top, right = top, bottom = top, left = right] = values.map(parseFloat);
+  return top + bottom >= 100 || left + right >= 100;
+}`;
+
+/**
+ * Page-side test of a `clip` that cuts everything away: `rect()` with no area
+ * on an absolutely positioned or fixed element (the "visually hidden"
+ * pattern; `clip` applies to no other element).
+ */
+export const CLIP_RECT_CUTS_ALL_JS = `(position, clip) => {
+  if ((position !== 'absolute' && position !== 'fixed') || !/^rect\\(/.test(clip || '')) return false;
+  const edges = (clip.match(/-?[\\d.]+/g) || []).map(Number);
+  return edges.length === 4 && (edges[1] <= edges[3] || edges[2] <= edges[0]);
+}`;
+
+/**
+ * Page-side reason an element that is rendered still cannot be seen: it or an
+ * ancestor in the flat tree (slots, shadow hosts, iframes) is fully
+ * transparent (`opacity: 0`), or cuts everything away
+ * ({@link CLIP_PATH_CUTS_ALL_JS}, {@link CLIP_RECT_CUTS_ALL_JS}). Other
+ * `clip-path` shapes are not evaluated. Null when none applies.
+ */
+const INVISIBLE_REASON_JS = `(el, describe) => {
+  const flatParent = ${FLAT_PARENT_JS};
+  const clipPathCutsAll = ${CLIP_PATH_CUTS_ALL_JS};
+  const clipRectCutsAll = ${CLIP_RECT_CUTS_ALL_JS};
+  const reasons = ${JSON.stringify(LAYOUT_REASONS)};
+  const parentOf = (n) => flatParent(n) || n.ownerDocument.defaultView.frameElement || null;
+  for (let n = el; n; n = parentOf(n)) {
+    const style = n.ownerDocument.defaultView.getComputedStyle(n);
+    const cause = parseFloat(style.opacity) === 0 ? reasons.transparent
+      : clipPathCutsAll(style.clipPath) ? 'clip-path: ' + style.clipPath
+      : clipRectCutsAll(style.position, style.clip) ? 'clip: ' + style.clip
+      : null;
+    if (cause) return n === el ? cause : cause + reasons.on + describe(n);
+  }
+  return null;
 }`;
 
 /**
  * Page-side measurement of an element ({@link ElementGeometry}): its box in
  * top-level viewport coordinates, its clip by ancestors
  * ({@link ANCESTOR_CLIP_JS}) and by the viewports of its iframes, why it
- * cannot be seen at all (if so), whether it is inert (an `inert` element
+ * cannot be seen at all (not rendered, or inside a clipping container
+ * collapsed to zero size), why a rendered one is still invisible
+ * ({@link INVISIBLE_REASON_JS}), whether it is inert (an `inert` element
  * around it, through shadow roots) or fixed to the top-level viewport, and how
  * far the top-level page can scroll ({@link SCROLL_RANGE_JS}).
  *
@@ -188,7 +338,9 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const frameOffset = ${FRAME_OFFSET_JS};
   const ancestorClip = ${ANCESTOR_CLIP_JS};
   const scrollRange = ${SCROLL_RANGE_JS};
+  const invisibleReason = ${INVISIBLE_REASON_JS};
   const describe = ${ELEMENT_DESCRIPTION_JS};
+  const reasons = ${JSON.stringify(LAYOUT_REASONS)};
   const styleOf = (node) => node.ownerDocument.defaultView.getComputedStyle(node);
   const parentOf = (node) => node.parentElement || (node.parentNode && node.parentNode.host) || null;
   const shift = (r, x, y) => r && { left: r.left + x, top: r.top + y, right: r.right + x, bottom: r.bottom + y };
@@ -209,7 +361,9 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const hiddenReason = (style, box) => {
     if (style.display === 'none') return 'display: none';
     if (style.display === 'contents') return 'display: contents (no box of its own)';
-    if (el.getClientRects().length === 0) return 'not rendered (an ancestor has display: none)';
+    if (el.getClientRects().length === 0) {
+      return el.tagName === 'OPTION' ? reasons.option : 'not rendered (an ancestor has display: none)';
+    }
     const skipped = skippedReason(el);
     if (skipped) return skipped;
     if (style.visibility !== 'visible') return 'visibility: ' + style.visibility;
@@ -226,22 +380,28 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   let rect = { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
   const own = ancestorClip(el, rect, describe);
   let clip = own.clip;
+  let overlay = own.overlay;
   let clipper = own.clipper;
   let fixed = own.fixed;
-  let hidden = hiddenReason(styleOf(el), box);
+  let hidden = hiddenReason(styleOf(el), box) || own.collapsed;
   let x = 0;
   let y = 0;
   for (let view = el.ownerDocument.defaultView; view && view.frameElement; view = view.parent) {
     const frame = view.frameElement;
     const size = viewportSize(view);
     if (!clipper && (rect.left < 0 || rect.top < 0 || rect.right > size.width || rect.bottom > size.height)) clipper = describe(frame);
+    const unframed = clip;
     clip = intersect(clip, { left: 0, top: 0, right: size.width, bottom: size.height });
+    overlay = { right: !!unframed && unframed.right <= clip.right && overlay.right, bottom: !!unframed && unframed.bottom <= clip.bottom && overlay.bottom };
     const offset = frameOffset(frame);
     rect = shift(rect, offset.x, offset.y);
     const outer = ancestorClip(frame, rect, describe);
-    clip = intersect(shift(clip, offset.x, offset.y), outer.clip);
+    const inner = shift(clip, offset.x, offset.y);
+    clip = intersect(inner, outer.clip);
+    overlay = { right: clip.right < inner.right ? outer.overlay.right : overlay.right, bottom: clip.bottom < inner.bottom ? outer.overlay.bottom : overlay.bottom };
     clipper = clipper || outer.clipper;
     fixed = outer.fixed;
+    hidden = hidden || outer.collapsed;
     x += offset.x;
     y += offset.y;
     if (!hidden && (frame.getClientRects().length === 0 || styleOf(frame).visibility !== 'visible' || skippedReason(frame))) hidden = 'inside a hidden iframe';
@@ -249,7 +409,8 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   let top = el.ownerDocument.defaultView;
   while (top.frameElement) top = top.parent;
   const toBox = (r) => r && { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top };
-  return { rect: toBox(rect), clip: toBox(clip), clipper: clipper, hidden: hidden, inert: isInert(), fixed: fixed, pageScroll: scrollRange(top), offset: { x: x, y: y } };
+  const invisible = hidden ? null : invisibleReason(el, describe);
+  return { rect: toBox(rect), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, pageScroll: scrollRange(top), offset: { x: x, y: y } };
 }`;
 
 /**

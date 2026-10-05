@@ -755,11 +755,12 @@ export function chromeWsUrlConflictError(options: string[]): ErrorWithSuggestion
  * A numeric index given together with `--index`.
  *
  * @param index - The index argument
+ * @param command - The `bdg dom` subcommand it was given to, e.g. "layout"
  */
-export function indexWithIndexOptionError(index: string): ErrorWithSuggestion {
+export function indexWithIndexOptionError(index: string, command: string): ErrorWithSuggestion {
   return {
     message: `--index applies to a selector, but "${index}" is already an index from the last query`,
-    suggestion: `Use one: bdg dom click ${index}, or bdg dom click "<selector>" --index <n>`,
+    suggestion: `Use one: bdg dom ${command} ${index}, or bdg dom ${command} "<selector>" --index <n>`,
   };
 }
 
