@@ -89,7 +89,7 @@ void describe('status appearance lines', () => {
       appearanceLines({}, { ...page, viewport: { width: 1905, height: 993 }, colorScheme: 'dark' }),
       [
         ['Viewport', '1905×993'],
-        ['Color scheme', 'dark (system setting)'],
+        ['Color scheme', 'prefers-color-scheme: dark (from the system setting)'],
       ]
     );
     assert.deepEqual(
@@ -99,14 +99,14 @@ void describe('status appearance lines', () => {
       ),
       [
         ['Viewport', '1265×800 (--viewport 1280x800)'],
-        ['Color scheme', 'light (--color-scheme)'],
+        ['Color scheme', 'prefers-color-scheme: light (emulated with --color-scheme)'],
       ]
     );
   });
 
   void it('falls back to the start options when the page did not answer', () => {
     assert.deepEqual(appearanceLines({ colorScheme: 'dark' }, page), [
-      ['Color scheme', 'dark (--color-scheme)'],
+      ['Color scheme', 'prefers-color-scheme: dark (emulated with --color-scheme)'],
     ]);
     assert.deepEqual(appearanceLines({}, page), []);
   });

@@ -6,7 +6,7 @@
  */
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { documentReadyState } from '@/commands/dom/helpers/query.js';
+import { noMatchContext } from '@/commands/dom/helpers/query.js';
 import { staleNodeError, unreachableElementsNote, withLoadingHint } from '@/errors/messages.js';
 import { joinLines } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -86,8 +86,8 @@ export async function runElementCommand<Req, Res extends ResultPayload>(
       ? errorResponseFailure(response, options)
       : response.data.success
         ? undefined
-        : failedResultFailure(response.data, options, target.selector);
-  if (failure) return withNotFoundLoadingHint(failure, target.selector);
+        : failedResultFailure(response.data, options);
+  if (failure) return withNotFoundContext(failure, target.selector, response.status !== 'error');
 
   const { success: _success, ...data } = response.data as Res;
   return { success: true, data };
@@ -122,47 +122,48 @@ function errorResponseFailure<Req, Res extends ResultPayload>(
  *
  * @param result - Action result
  * @param options - Command options (action, fallback suggestion)
- * @param selector - Selector that was looked for (the cached query's for an index)
  * @returns Failed command result
  */
 function failedResultFailure<Req, Res extends ResultPayload>(
   result: Res,
-  options: ElementCommandOptions<Req, Res>,
-  selector: string
+  options: ElementCommandOptions<Req, Res>
 ): CommandResult<never> {
   const exitCode =
     result.exitCode ??
     (result.error?.includes('not found')
       ? EXIT_CODES.RESOURCE_NOT_FOUND
       : EXIT_CODES.INVALID_ARGUMENTS);
-  const suggestion = result.suggestion ?? options.failureSuggestion;
   return {
     success: false,
     error: result.error ?? `Failed to ${options.action}`,
     exitCode,
-    errorContext: {
-      suggestion:
-        exitCode === EXIT_CODES.RESOURCE_NOT_FOUND
-          ? joinLines(suggestion, unreachableElementsNote(selector))
-          : suggestion,
-    },
+    errorContext: { suggestion: result.suggestion ?? options.failureSuggestion },
   };
 }
 
 /**
- * Add the still-loading hint to a "not found" failure while the page has
- * not finished loading (one page evaluation, on this failure path only).
+ * Add what the page says to a "not found" failure (one page evaluation, on
+ * this failure path only, {@link noMatchContext}): similar ids or classes,
+ * the places selectors do not search (for a page script that found nothing)
+ * and the still-loading hint while the page loads.
  *
  * @param failure - Failed command result
- * @param selector - Selector that was looked for
- * @returns The failure, with the hint when the page is loading
+ * @param selector - Selector that was looked for (the cached query's for an index)
+ * @param searched - The page script searched the page (the daemon did not fail first)
+ * @returns The failure, with the context in its suggestion
  */
-async function withNotFoundLoadingHint(
+async function withNotFoundContext(
   failure: CommandResult<never>,
-  selector: string
+  selector: string,
+  searched: boolean
 ): Promise<CommandResult<never>> {
   if (failure.exitCode !== EXIT_CODES.RESOURCE_NOT_FOUND) return failure;
-  const readyState = await documentReadyState();
-  const suggestion = withLoadingHint(failure.errorContext?.suggestion ?? '', readyState, selector);
+  const context = await noMatchContext(selector);
+  const note = searched ? unreachableElementsNote(selector, context.unsearched) : '';
+  const suggestion = withLoadingHint(
+    joinLines(context.similar, failure.errorContext?.suggestion, note ? note : undefined),
+    context.readyState,
+    selector
+  );
   return suggestion ? { ...failure, errorContext: { suggestion } } : failure;
 }

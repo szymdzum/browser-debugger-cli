@@ -18,15 +18,29 @@ void describe('truncateUrl', () => {
     assert.equal(truncateUrl('https://www.example.com/', 50), 'www.example.com');
   });
 
-  void it('cuts a long query, keeping its start so requests stay distinguishable', () => {
+  void it('cuts a long URL in the middle, keeping the host, the start and the end', () => {
     const cut = truncateUrl(`https://example.com/search?q=1&token=${'x'.repeat(80)}`, 50);
     assert.equal(cut.length, 50);
-    assert.match(cut, /^example\.com\/search\?q=1&token=x+…$/);
+    assert.match(cut, /^example\.com\/search\?q=1&t…x+$/);
   });
 
-  void it('keeps a short query when the path is shortened', () => {
-    const cut = truncateUrl(`https://example.com/a/${'p'.repeat(80)}/x.js?q=1`, 50);
-    assert.match(cut, /\/x\.js\?q=1$/);
+  void it('keeps the end of the path and query, where similar requests differ', () => {
+    const base = `https://api.example.com/v1/${'segment/'.repeat(8)}`;
+    const first = truncateUrl(`${base}users/17/orders?page=2`, 60);
+    const second = truncateUrl(`${base}users/17/orders?page=3`, 60);
+    assert.equal(first.length, 60);
+    assert.match(first, /^api\.example\.com\/v1\/seg.*….*users\/17\/orders\?page=2$/);
+    assert.notEqual(first, second);
+    assert.match(
+      truncateUrl(`https://example.com/a/${'p'.repeat(80)}/x.js?q=1`, 50),
+      /\/x\.js\?q=1$/
+    );
+  });
+
+  void it('cuts a long host in the middle too', () => {
+    const cut = truncateUrl(`https://${'h'.repeat(60)}.example.com/x`, 30);
+    assert.equal(cut.length, 30);
+    assert.match(cut, /^h+…h*\.example\.com\/x$/);
   });
 
   void it('shows non-web URLs as they are', () => {

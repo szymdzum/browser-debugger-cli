@@ -6,8 +6,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { calculateSummary, primaryButtonIndex } from '@/commands/dom/formSummary.js';
-import type { FormButton, FormField, RawButton } from '@/runtime/dom/formTypes.js';
+import { calculateSummary, orderForms, primaryButtonIndex } from '@/commands/dom/formSummary.js';
+import type {
+  FormButton,
+  FormField,
+  RawButton,
+  RawField,
+  RawForm,
+} from '@/runtime/dom/formTypes.js';
 import { formReadinessMessage, requiredFieldsEmptyMessage } from '@/ui/messages/commands.js';
 
 let nextIndex = 0;
@@ -244,6 +250,85 @@ void describe('primaryButtonIndex', () => {
     assert.equal(
       primaryButtonIndex([styled, rawButton('Help', { type: 'button', formDefault: false })]),
       styled.index
+    );
+  });
+});
+
+/**
+ * Build a raw form with one field and one button (indices in document order).
+ *
+ * @param name - Form name (also the field's selector)
+ * @param position - Document position (numbers its elements)
+ * @param fields - Form properties to set
+ * @returns Raw form
+ */
+function rawForm(name: string, position: number, fields: Partial<RawForm> = {}): RawForm {
+  const field: RawField = {
+    index: position * 2,
+    formIndex: position,
+    selector: `#${name}-q`,
+    type: 'search',
+    label: 'Search',
+    name: 'q',
+    required: false,
+    disabled: false,
+    readOnly: false,
+    hidden: fields.hidden === true,
+    native: true,
+    value: '',
+    isValid: true,
+  };
+  return {
+    index: position,
+    name,
+    action: null,
+    method: 'GET',
+    step: null,
+    relevanceScore: 10,
+    inIframe: false,
+    fields: [field],
+    buttons: [{ ...rawButton('Go'), index: position * 2 + 1, selector: `#${name}-go` }],
+    ...fields,
+  };
+}
+
+void describe('orderForms', () => {
+  void it('lists forms in an open dialog first, then visible ones, then hidden ones', () => {
+    const ordered = orderForms([
+      rawForm('hidden-demo', 0, { hidden: true, relevanceScore: 50 }),
+      rawForm('header', 1, { relevanceScore: 20 }),
+      rawForm('dialog', 2, { inDialog: true, relevanceScore: 5 }),
+      rawForm('footer', 3, { relevanceScore: 30 }),
+    ]);
+    assert.deepEqual(
+      ordered.map((form) => form.name),
+      ['dialog', 'footer', 'header', 'hidden-demo']
+    );
+  });
+
+  void it('numbers forms, fields and buttons in listing order, as fill and click use them', () => {
+    const ordered = orderForms([
+      rawForm('hidden-demo', 0, { hidden: true }),
+      rawForm('dialog', 1, { inDialog: true }),
+    ]);
+    assert.deepEqual(
+      ordered.map((form) => [
+        form.index,
+        form.fields.map((f) => `${f.index}:${f.formIndex}:${f.selector}`),
+        form.buttons.map((b) => `${b.index}:${b.selector}`),
+      ]),
+      [
+        [0, ['0:0:#dialog-q'], ['1:#dialog-go']],
+        [1, ['2:1:#hidden-demo-q'], ['3:#hidden-demo-go']],
+      ]
+    );
+  });
+
+  void it('keeps document order between forms of the same rank and relevance', () => {
+    const ordered = orderForms([rawForm('a', 0), rawForm('b', 1), rawForm('c', 2)]);
+    assert.deepEqual(
+      ordered.map((form) => form.name),
+      ['a', 'b', 'c']
     );
   });
 });

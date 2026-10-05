@@ -7,6 +7,7 @@
  */
 
 import {
+  FILL_REFUSALS,
   LABEL_WITHOUT_CONTROL,
   NAME_QUERY_PLACEHOLDER,
   VIA_LABEL_SUFFIX,
@@ -72,6 +73,39 @@ export const FIELD_VALUES_JS = `(field) => {
 }`;
 
 /**
+ * Page-side reason `dom fill` cannot fill an element, or null when it can:
+ * a disabled or read-only form control (naming the attribute or the disabled
+ * `<fieldset>`), or for any other element the switch that keeps it from being
+ * editable: `contenteditable="false"` (on it or the editor around it), an
+ * `inert` ancestor, `aria-readonly` or `aria-disabled`; otherwise it is not a
+ * fillable kind of element. Messages are {@link FILL_REFUSALS}.
+ */
+export const FILL_REFUSAL_JS = `(el) => {
+  const describe = ${ELEMENT_DESCRIPTION_JS};
+  const refusals = ${JSON.stringify(FILL_REFUSALS)};
+  const refuse = (kind, cause) => ({
+    error: refusals[kind].message + (cause ? ' (' + cause + ')' : ''),
+    suggestion: refusals[kind].suggestion
+  });
+  const tag = el.localName;
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    if (el.disabled || el.matches(':disabled')) {
+      return refuse('disabled', el.hasAttribute('disabled') ? 'disabled attribute' : el.closest('fieldset[disabled]') ? 'inside a disabled <fieldset>' : '');
+    }
+    return el.readOnly ? refuse('readOnly', 'readonly attribute') : null;
+  }
+  if (el.isContentEditable) return null;
+  const host = el.closest('[contenteditable]');
+  if (host && String(host.getAttribute('contenteditable')).trim().toLowerCase() === 'false') {
+    return refuse('readOnly', 'contenteditable="false"' + (host === el ? '' : ' on ' + describe(host)));
+  }
+  if (el.closest('[inert]')) return refuse('inert', 'inside an inert element');
+  if (el.getAttribute('aria-readonly') === 'true') return refuse('readOnly', 'aria-readonly="true"');
+  if (el.getAttribute('aria-disabled') === 'true') return refuse('disabled', 'aria-disabled="true"');
+  return refuse('notFillable', '<' + tag + '> is not an input, textarea, select or contenteditable element');
+}`;
+
+/**
  * JavaScript function to fill an input element in a React-compatible way.
  *
  * This approach:
@@ -98,7 +132,9 @@ export const REACT_FILL_SCRIPT = `
   // flows keep working, but the result may not be what a user would see)
   const unreachableReason = (field) => {
     if (field.closest('[inert]')) return 'inert';
-    const modal = field.ownerDocument.querySelector('dialog:modal');
+    const shown = (node) => !node.checkVisibility || node.checkVisibility();
+    const modal = field.ownerDocument.querySelector('dialog:modal') ||
+      Array.from(field.ownerDocument.querySelectorAll('[aria-modal="true"]')).find(shown);
     if (modal && !modal.contains(field)) return 'behind an open modal dialog';
     if (field.checkVisibility && !field.checkVisibility({ visibilityProperty: true, opacityProperty: true })) return 'hidden';
     return null;
@@ -174,37 +210,14 @@ export const REACT_FILL_SCRIPT = `
 
   const tagName = el.tagName.toLowerCase();
   const inputType = el.type?.toLowerCase();
-  
-  const isFillable = (
-    tagName === 'input' || 
-    tagName === 'textarea' || 
-    tagName === 'select' ||
-    el.isContentEditable
-  );
-  
-  if (!isFillable) {
-    return {
-      success: false,
-      error: 'Element is not fillable',
-      elementType: tagName + viaLabel,
-      suggestion: 'Only input, textarea, select, and contenteditable elements can be filled'
-    };
-  }
 
-  if (el.disabled || el.matches(':disabled')) {
+  const refusal = (${FILL_REFUSAL_JS})(el);
+  if (refusal) {
     return {
       success: false,
-      error: 'Element is disabled',
+      error: refusal.error,
       elementType: tagName + viaLabel,
-      suggestion: 'Enable the field first (it may depend on another input)'
-    };
-  }
-  if (el.readOnly) {
-    return {
-      success: false,
-      error: 'Element is read-only',
-      elementType: tagName + viaLabel,
-      suggestion: 'Read-only fields cannot be filled'
+      suggestion: refusal.suggestion
     };
   }
 

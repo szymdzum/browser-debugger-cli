@@ -8,15 +8,14 @@
 import { documentReadyState } from '@/commands/dom/helpers/query.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomFramesCommandOptions } from '@/commands/shared/optionTypes.js';
-import { pageStillLoadingHint } from '@/errors/messages.js';
 import { domFrames } from '@/ipc/client.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import { formatDomFrames } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
- * Handle `bdg dom frames`. An empty list from a page still loading says so
- * (`readyState` in JSON, a hint otherwise): its iframes may not exist yet.
+ * Handle `bdg dom frames`. The list of a page still loading says it may be
+ * incomplete (`readyState` in the data): its iframes may not exist yet.
  */
 export async function handleDomFrames(options: DomFramesCommandOptions): Promise<void> {
   await runCommand(
@@ -30,7 +29,7 @@ export async function handleDomFrames(options: DomFramesCommandOptions): Promise
           ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
         };
       }
-      return framesResult(response.data.frames, options.json === true);
+      return { success: true, data: await withReadyState(response.data.frames) };
     },
     options,
     formatDomFrames
@@ -38,24 +37,17 @@ export async function handleDomFrames(options: DomFramesCommandOptions): Promise
 }
 
 /**
- * The result for a list of frames; an empty one checks whether the page is
- * still loading (one page evaluation, only then).
+ * The frames, with the page's `readyState` while it is still loading (one
+ * page evaluation).
  *
  * @param frames - Frames of the page
- * @param json - JSON output (the hint is left to the `readyState` field)
- * @returns Command result
+ * @returns Frames, and `readyState` unless the page has loaded (or did not answer)
  */
-async function framesResult(
-  frames: DomFrame[],
-  json: boolean
-): Promise<{ success: true; data: { frames: DomFrame[]; readyState?: string }; hint?: string }> {
-  if (frames.length > 0) return { success: true, data: { frames } };
+async function withReadyState(
+  frames: DomFrame[]
+): Promise<{ frames: DomFrame[]; readyState?: string }> {
   const readyState = await documentReadyState();
-  if (readyState === undefined || readyState === 'complete')
-    return { success: true, data: { frames } };
-  return {
-    success: true,
-    data: { frames, readyState },
-    ...(!json && { hint: pageStillLoadingHint(readyState) }),
-  };
+  return readyState === undefined || readyState === 'complete'
+    ? { frames }
+    : { frames, readyState };
 }

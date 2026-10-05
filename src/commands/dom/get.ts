@@ -10,6 +10,7 @@ import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
 import {
   getDOMElements,
   getDomContext,
+  noMatchesError,
   resolveA11yNodeForSelector,
   type DomGetOptions as DomGetHelperOptions,
   type DomContext,
@@ -27,7 +28,6 @@ import {
   conflictingOptionsMessage,
   optionRequiresMessage,
   missingArgumentError,
-  noNodesFoundError,
 } from '@/errors/messages.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { formatDomGet } from '@/ui/formatters/dom.js';
@@ -54,7 +54,10 @@ async function handleIndexGetSemantic(index: number, options: DomGetCommandOptio
     async () => {
       const targetNode = await resolver.getNodeIdForIndex(index);
       const ref = { backendNodeId: targetNode.nodeId };
-      const [a11yNode, domContext] = await Promise.all([resolveA11yNode(ref), getDomContext(ref)]);
+      const [a11yNode, domContext] = await Promise.all([
+        resolveA11yNode(ref),
+        getDomContext(ref, { full: options.full === true }),
+      ]);
 
       const node = resolveNodeWithFallback(a11yNode, domContext, targetNode.nodeId);
 
@@ -115,9 +118,14 @@ async function handleSelectorGetSemantic(
 
       if (a11yNode?.backendDOMNodeId) {
         nodeId = a11yNode.backendDOMNodeId;
-        domContext = await getDomContext({ backendNodeId: nodeId });
+        domContext = await getDomContext(
+          { backendNodeId: nodeId },
+          { full: options.full === true }
+        );
       } else if (!a11yNode) {
-        const queryResult = await queryDomContextBySelector(selector);
+        const queryResult = await queryDomContextBySelector(selector, {
+          full: options.full === true,
+        });
         nodeId = queryResult.nodeId;
         domContext = queryResult.domContext;
       }
@@ -125,7 +133,7 @@ async function handleSelectorGetSemantic(
       const node = resolveNodeWithFallback(a11yNode, domContext, nodeId);
 
       if (!node) {
-        const err = noNodesFoundError(selector);
+        const err = await noMatchesError(selector);
         throw new CommandError(
           err.message,
           { suggestion: err.suggestion },
@@ -161,6 +169,9 @@ function getOptionsConflict(
 ): string | null {
   if (options.nodeId !== undefined && selectorOrIndex !== undefined) {
     return conflictingOptionsMessage('--node-id', 'a selector or index');
+  }
+  if (options.full && (options.raw || options.nodeId !== undefined)) {
+    return conflictingOptionsMessage('--full', options.raw ? '--raw' : '--node-id');
   }
   if (options.all && options.nth !== undefined) {
     return conflictingOptionsMessage('--all', '--nth');

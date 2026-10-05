@@ -79,6 +79,12 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     tokenImpact:
       'Semantic output uses 70-99% fewer tokens than raw HTML. Use --raw only when you need exact HTML structure.',
   },
+  'get:--full': {
+    default:
+      'Semantic output shows the element text up to 500 characters (whitespace collapsed; close buttons such as "×" and aria-hidden icons left out)',
+    whenEnabled: 'Shows all of the element text; cannot be combined with --raw or --node-id',
+    tokenImpact: 'A page-sized container can add thousands of tokens; target the element you need',
+  },
   'get:--all': {
     default: 'Returns first matching element only',
     whenEnabled: 'Returns all matching elements (only works with --raw)',
@@ -236,7 +242,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Reports every match of the selector (human output lists the first 20, JSON up to 100 plus an omitted count); a numeric argument reports that cached query element',
     whenEnabled: 'Reports only the nth match (0-based); out of range exits 81',
     automaticBehavior:
-      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). scrollBy centres the element (aligns its start when it is larger than the viewport; human output says "to centre it") and is limited to how far the page can scroll; fixed elements and ones beyond that range get offScreenReason instead, which says "page scrolling is locked (…)" when the page cannot scroll because body/html is position: fixed or overflow: hidden, so in-flow content is not called fixed; a visible dialog (dialog[open], [aria-modal=true], [role=dialog|alertdialog]) is named as the likely cause ("likely by dialog div#consent"). page.viewport is the layout viewport without scrollbars, as dom scroll reports it; page.colorScheme is the prefers-color-scheme the page sees. Content in a closed <details> or under content-visibility: hidden is hidden. coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none); inert elements are flagged, not hidden',
+      'Coordinates are CSS px: bounds relative to the top-level page (iframe offsets and page scroll included), viewport relative to the visible area. Iframes and overflow containers (scroll lists, overflow: hidden) clip what counts as visible (clippedBy names the one cutting it off). scrollBy centres the element (aligns its start when it is larger than the viewport; human output says "to centre it", or for a partly visible element "partly visible (24%); scroll down 302px to see all of it") and is limited to how far the page can scroll; fixed and sticky elements (page scroll does not move them, or only until they stick) and ones beyond that range get offScreenReason instead, which says "page scrolling is locked (…)" when the page cannot scroll because body/html is position: fixed or overflow: hidden, so in-flow content is not called fixed; a visible dialog (dialog[open], [aria-modal=true], [role=dialog|alertdialog]) is named as the likely cause ("likely by dialog div#consent"). page.viewport is the layout viewport without scrollbars, as dom scroll reports it; page.colorScheme is the prefers-color-scheme media feature the page sees (not the theme it renders). Content in a closed <details> or under content-visibility: hidden is hidden. coveredBy is the topmost element at the center of the largest visible box (none for pointer-events: none, nor for an element of the same click target: an overlay inside the link, button or label the element is in, a link to the same URL, or the textless absolutely positioned overlay link spanning the card that holds plain content); inert elements are flagged, not hidden',
     tokenImpact:
       'About one line per element; a cheap alternative to screenshots for "where is it?"',
   },

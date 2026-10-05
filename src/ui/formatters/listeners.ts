@@ -5,6 +5,7 @@
 import type {
   CollapsedListeners,
   ElementListener,
+  ListenerPlacement,
   ListenersResult,
 } from '@/ipc/protocol/domTypes.js';
 import { delegationNotes } from '@/runtime/dom/listenerSummary.js';
@@ -18,6 +19,7 @@ import {
   jqueryHandlersSkippedNote,
   listenersHeadline,
   noListenersMessage,
+  type ListenerCounts,
   reactHandlersSkippedNote,
 } from '@/ui/messages/commands.js';
 import { truncateByLength } from '@/utils/strings.js';
@@ -89,6 +91,27 @@ function alignColumns(rows: string[][]): string[] {
 const COLLAPSED_HANDLERS_SHOWN = 3;
 
 /**
+ * Listeners by where they are attached, collapsed framework roots included.
+ *
+ * @param listeners - Listed listeners
+ * @param collapsed - Collapsed framework roots
+ * @returns Counts on the element, its ancestors, and document or window
+ */
+function listenerCounts(
+  listeners: ElementListener[],
+  collapsed: CollapsedListeners[]
+): ListenerCounts {
+  const counts: ListenerCounts = { target: 0, ancestor: 0, global: 0 };
+  const add = (on: ListenerPlacement, count: number): void => {
+    if (on === 'target' || on === 'ancestor') counts[on] += count;
+    else counts.global += count;
+  };
+  listeners.forEach((listener) => add(listener.on, 1));
+  collapsed.forEach((root) => add(root.on, root.count));
+  return counts;
+}
+
+/**
  * Format `bdg dom listeners` output: listeners grouped by event type, the
  * handlers nearest the element first, then one line per framework root,
  * with notes for events the element has no listener of its own for.
@@ -105,8 +128,9 @@ export function formatListeners(result: ListenersOutput, types?: string[]): stri
     if (result.typeSuggestions?.length) fmt.text(eventTypeSuggestion(result.typeSuggestions));
     fmt.tip(NO_LISTENERS_HINT);
   } else {
-    const count = collapsed.reduce((sum, root) => sum + root.count, result.listeners.length);
-    fmt.text(listenersHeadline(result.element, count, result));
+    fmt.text(
+      listenersHeadline(result.element, listenerCounts(result.listeners, collapsed), result)
+    );
     appendListenerGroups(fmt, result.listeners);
     appendCollapsed(fmt, collapsed);
     appendDelegationNotes(fmt, result.listeners, collapsed);

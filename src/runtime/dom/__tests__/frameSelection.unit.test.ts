@@ -127,6 +127,23 @@ void describe('frame output', () => {
     assert.equal(formatDomFrames({ frames: [] }), 'The page has no iframes');
   });
 
+  void it('says the list may be incomplete while the page is still loading', () => {
+    assert.equal(
+      formatDomFrames({ frames: [], readyState: 'loading' }),
+      'No iframes yet; the page is still loading, so the list may be incomplete (bdg dom wait --load)'
+    );
+    const listed = formatDomFrames({ frames: FRAMES.slice(0, 1), readyState: 'interactive' });
+    assert.match(listed, /^\[0\] http:\/\/localhost:3000\/widget/);
+    assert.match(
+      listed,
+      /\nNote: the page is still loading, so the list may be incomplete \(bdg dom wait --load\)$/
+    );
+    assert.doesNotMatch(
+      formatDomFrames({ frames: FRAMES.slice(0, 1), readyState: 'complete' }),
+      /still loading/
+    );
+  });
+
   void it('indents nested frames, shortens long URLs and names empty ones', () => {
     const longUrl = `https://embed.example/?q=${'x'.repeat(200)}`;
     const nested: DomFrame[] = [

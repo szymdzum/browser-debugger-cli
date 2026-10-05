@@ -67,12 +67,52 @@ const VIEWPORT_OVERLAY_JS = `(view, viewport) => {
   };
 }`;
 
+/** Elements a click on any of their content activates */
+const CLICK_TARGET_SELECTOR =
+  'a[href], button, [role="button"], [role="link"], label, summary, input, select, textarea';
+
+/**
+ * Page-side test of whether an element on top of another one is part of the
+ * same click target, so a click there does what a click on the element
+ * would: both are in the same link, button or label (an overlay span inside
+ * the card's link), or in links to the same URL (a card's overlay link next
+ * to its headline link), or the element is plain content (in no link or
+ * button) of a card covered by its "faux block link" (news sites): an
+ * absolutely positioned `<a href>` without visible text of its own (empty,
+ * or an aria-label only), directly in the card (not `<body>`) and spanning
+ * it. Dismiss buttons, promo links with text and `[role=button]` overlays
+ * still count as covers.
+ */
+const SAME_CLICK_TARGET_JS = `(node, hit) => {
+  const parentOf = (n) => n.parentElement || (n.parentNode && n.parentNode.host) || null;
+  const targetOf = (n) => {
+    for (let p = n; p; p = parentOf(p)) {
+      if (p.matches && p.matches(${JSON.stringify(CLICK_TARGET_SELECTOR)})) return p;
+    }
+    return null;
+  };
+  const theirs = targetOf(hit);
+  if (!theirs) return false;
+  const mine = targetOf(node);
+  if (mine) return mine === theirs || (mine.localName === 'a' && theirs.localName === 'a' && mine.href === theirs.href);
+  const card = theirs.parentElement;
+  if (theirs.localName !== 'a' || theirs.hasAttribute('role')) return false;
+  if (!card || card === node.ownerDocument.body || !card.contains(node)) return false;
+  const style = theirs.ownerDocument.defaultView.getComputedStyle(theirs);
+  if (style.position !== 'absolute' || (theirs.innerText || '').trim() !== '') return false;
+  const outer = theirs.getBoundingClientRect();
+  const inner = card.getBoundingClientRect();
+  return outer.left <= inner.left + 1 && outer.top <= inner.top + 1 && outer.right >= inner.right - 1 && outer.bottom >= inner.bottom - 1;
+}`;
+
 /**
  * Page function: layout of the matches in `found` (all up to `limit`, or the
  * one at `index`) and of the top-level page. An element covers another when
  * it is the topmost element at the center of the largest visible part of the
  * other's boxes (a wrapped link has one per line; the strip where overlay
- * scrollbars show is avoided when possible, {@link CLEAR_OF_SCROLLBAR_JS}) and does not lie inside it. An
+ * scrollbars show is avoided when possible, {@link CLEAR_OF_SCROLLBAR_JS}) and does not lie inside it,
+ * nor part of the element's own click target ({@link SAME_CLICK_TARGET_JS}: the link, button
+ * or label it is in, or the overlay link of its card; a click there does the same). An
  * ancestor covers it only when the ancestor is painted above it there (its
  * `::before`/`::after` overlay, or its background over a negative
  * `z-index`), as `dom click` finds: the element is in the hit-test stack below
@@ -107,11 +147,12 @@ const LAYOUT_JS = `function (found, index, limit) {
     for (let n = node; n; n = n.parentNode || n.host) if (n === outer) return true;
     return false;
   };
+  const sameTarget = ${SAME_CLICK_TARGET_JS};
   const coverAt = (node, x, y) => {
     const root = node.getRootNode();
     const scope = typeof root.elementFromPoint === 'function' ? root : node.ownerDocument;
     const hit = scope.elementFromPoint(x, y);
-    if (!hit || encloses(node, hit)) return null;
+    if (!hit || encloses(node, hit) || sameTarget(node, hit)) return null;
     if (!encloses(hit, node)) return hit;
     return scope.elementsFromPoint(x, y).indexOf(node) > 0 ? hit : null;
   };

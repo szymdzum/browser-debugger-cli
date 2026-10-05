@@ -113,6 +113,15 @@ void describe('classifyViewportPosition', () => {
     });
   });
 
+  void it('does not suggest centring a sticky element, which page scroll moves only partly', () => {
+    const menu = { ...at(20, -300, 200, 400), sticky: true };
+    assert.deepEqual(classifyViewportPosition(menu, VIEWPORT), {
+      inViewport: 'partly',
+      percentVisible: 25,
+      offScreenReason: OFF_SCREEN_REASONS.sticky,
+    });
+  });
+
   void it('says that page scrolling is locked for content below the fold of a locked page', () => {
     const locked = {
       ...at(20, 3400, 100, 40, null, { left: 0, up: 0, right: 0, down: 0 }),

@@ -288,19 +288,18 @@ export function viewportPositionHint(
 }
 
 /**
- * Page scroll that would bring an element into view, in words. The scroll
- * centres the element, or aligns its start when it is larger than the viewport.
+ * Page scroll that would bring an element into view, in words.
  *
  * @param scrollBy - Scroll amounts
- * @param centred - Whether the element fits the viewport (and so ends up centred)
+ * @param purpose - What the scroll does, e.g. "centre it"
  * @returns e.g. "scroll down 760px to centre it"
  */
-function scrollAdvice(scrollBy: LayoutPoint, centred: boolean): string {
+function scrollAdvice(scrollBy: LayoutPoint, purpose: string): string {
   const steps = [
     scrollBy.y !== 0 && `${scrollBy.y > 0 ? 'down' : 'up'} ${Math.abs(scrollBy.y)}px`,
     scrollBy.x !== 0 && `${scrollBy.x > 0 ? 'right' : 'left'} ${Math.abs(scrollBy.x)}px`,
   ].filter(Boolean);
-  return `scroll ${steps.join(', ')} ${centred ? 'to centre it' : 'to bring it into view'}`;
+  return `scroll ${steps.join(', ')} to ${purpose}`;
 }
 
 /** What {@link layoutPositionLabel} reads of an element */
@@ -316,7 +315,20 @@ type LabelledLayout = Pick<
 >;
 
 /**
- * How to bring a not fully visible element into view, in words.
+ * Whether an element fits the viewport (the scroll then centres it; a larger
+ * one gets its start aligned).
+ *
+ * @param element - Element layout
+ * @param viewport - Viewport size, when known
+ * @returns True when it fits, or the viewport is unknown
+ */
+function fitsViewport(element: LabelledLayout, viewport?: LayoutSize): boolean {
+  const { width, height } = element.bounds;
+  return !viewport || (width <= viewport.width && height <= viewport.height);
+}
+
+/**
+ * How to bring an element that is out of view into view, in words.
  *
  * @param element - Element layout
  * @param viewport - Viewport size (an element larger than it is not centred)
@@ -325,11 +337,26 @@ type LabelledLayout = Pick<
  */
 function layoutScrollNote(element: LabelledLayout, viewport?: LayoutSize): string | undefined {
   if (element.scrollBy) {
-    const { width, height } = element.bounds;
-    const fits = !viewport || (width <= viewport.width && height <= viewport.height);
-    return scrollAdvice(element.scrollBy, fits);
+    const purpose = fitsViewport(element, viewport) ? 'centre it' : 'bring it into view';
+    return scrollAdvice(element.scrollBy, purpose);
   }
   return element.offScreenReason && `off-screen: ${element.offScreenReason}`;
+}
+
+/**
+ * How to see all of an element that is partly in view, in words.
+ *
+ * @param element - Element layout
+ * @param viewport - Viewport size (for an element larger than it, the scroll shows its start)
+ * @returns e.g. "scroll down 302px to see all of it", "sticky position, page scroll moves it
+ *   only until it sticks"; undefined when neither applies
+ */
+function partlyVisibleNote(element: LabelledLayout, viewport?: LayoutSize): string | undefined {
+  if (element.scrollBy) {
+    const purpose = fitsViewport(element, viewport) ? 'see all of it' : 'show it from its start';
+    return scrollAdvice(element.scrollBy, purpose);
+  }
+  return element.offScreenReason;
 }
 
 /**
@@ -337,7 +364,8 @@ function layoutScrollNote(element: LabelledLayout, viewport?: LayoutSize): strin
  *
  * @param element - Element layout
  * @param viewport - Viewport size, when known
- * @returns e.g. "visible", "partly visible (40%)", "below fold (scroll down 760px to centre it)",
+ * @returns e.g. "visible", "partly visible (40%); scroll down 302px to see all of it",
+ *   "below fold (scroll down 760px to centre it)",
  *   "out of view in ul#list (below)", "hidden (display: none)",
  *   "left of viewport (off-screen: beyond the page's scroll range)",
  *   "below fold; page scrolling is locked (overflow: hidden on body), likely by dialog div#consent"
@@ -346,13 +374,13 @@ export function layoutPositionLabel(element: LabelledLayout, viewport?: LayoutSi
   const { inViewport, percentVisible, hiddenReason, clippedBy, offScreenReason } = element;
   if (inViewport === 'visible') return 'visible';
   const locked = !element.scrollBy && offScreenReason?.startsWith(SCROLL_LOCKED_PREFIX);
-  const note = locked ? undefined : layoutScrollNote(element, viewport);
   if (inViewport === 'partly') {
     const clipped = clippedBy ? `, clipped by ${clippedBy}` : '';
     const label = `partly visible (${percentVisible ?? 0}%${clipped})`;
-    if (locked) return `${label}; ${offScreenReason}`;
-    return note ? `${label} (${note})` : label;
+    const note = partlyVisibleNote(element, viewport);
+    return note ? `${label}; ${note}` : label;
   }
+  const note = locked ? undefined : layoutScrollNote(element, viewport);
   const label = viewportPositionHint(inViewport, clippedBy) ?? inViewport;
   if (hiddenReason) return `${label} (${hiddenReason})`;
   if (clippedBy) return `${label} (${inViewport})`;
@@ -361,14 +389,39 @@ export function layoutPositionLabel(element: LabelledLayout, viewport?: LayoutSi
 }
 
 /**
+ * The `prefers-color-scheme` media feature the page sees, labelled as the
+ * preference it is (the page may still render its own theme), and where it
+ * comes from.
+ *
+ * @param scheme - Light or dark
+ * @param emulated - Set with `--color-scheme` (otherwise the system setting)
+ * @returns e.g. `prefers-color-scheme: dark (from the system setting)`
+ */
+export function colorSchemeLabel(scheme: string, emulated: boolean): string {
+  const source = emulated ? 'emulated with --color-scheme' : 'from the system setting';
+  return `prefers-color-scheme: ${scheme} (${source})`;
+}
+
+/**
+ * First line of `bdg status` for a running session.
+ *
+ * @param page - URL and title of the page, when the session reported them
+ * @returns e.g. `Session active: https://example.com/ — Example Domain`
+ */
+export function sessionActiveLine(page?: { url: string; title: string }): string {
+  if (!page) return 'Session active';
+  return `Session active: ${page.url}${page.title ? ` — ${page.title}` : ''}`;
+}
+
+/**
  * Page dimensions line of `bdg dom layout`.
  *
- * @param page - Viewport, scroll position, document size and color scheme
- * @returns e.g. "Page: viewport 1280×720, scrolled to 0,0, document 1280×2400, dark color scheme"
+ * @param page - Viewport, scroll position, document size and the color scheme the page is told to prefer
+ * @returns e.g. "Page: viewport 1280×720, scrolled to 0,0, document 1280×2400, prefers-color-scheme: dark"
  */
 export function pageLayoutLine(page: PageLayout): string {
   const { viewport, scroll, document, colorScheme } = page;
-  const scheme = colorScheme ? `, ${colorScheme} color scheme` : '';
+  const scheme = colorScheme ? `, prefers-color-scheme: ${colorScheme}` : '';
   return `Page: viewport ${viewport.width}×${viewport.height}, scrolled to ${scroll.x},${scroll.y}, document ${document.width}×${document.height}${scheme}`;
 }
 
@@ -400,21 +453,37 @@ export function multipleMatchesWarning(count: number, action: string): string {
   return `${count} elements match; ${action} (use --index or a more specific selector)`;
 }
 
+/** Listeners found, by where they are attached */
+export interface ListenerCounts {
+  target: number;
+  ancestor: number;
+  /** On the document and the window */
+  global: number;
+}
+
 /**
- * Headline of `bdg dom listeners`.
+ * Headline of `bdg dom listeners`, saying where the counted listeners are:
+ * the list covers the element, its ancestors, its document and window.
  *
  * @param element - Inspected element, e.g. "button#save"
- * @param count - Listeners found
- * @returns e.g. "Event listeners for button#save (3)"
+ * @param counts - Listeners found, by placement
+ * @param context - Index of the element and the iframe it is in, if any
+ * @returns e.g. "Event listeners for button#save (156: 3 on the element, 120 on ancestors, 33 on document and window)"
  */
 export function listenersHeadline(
   element: string,
-  count: number,
+  counts: ListenerCounts,
   context: { index?: number | undefined; frame?: string | undefined } = {}
 ): string {
   const index = context.index === undefined ? '' : ` [${context.index}]`;
   const frame = context.frame ? ` in ${context.frame}` : '';
-  return `Event listeners for ${element}${index}${frame} (${count})`;
+  const total = counts.target + counts.ancestor + counts.global;
+  const where = [
+    counts.target > 0 && `${counts.target} on the element`,
+    counts.ancestor > 0 && `${counts.ancestor} on ancestors`,
+    counts.global > 0 && `${counts.global} on document and window`,
+  ].filter(Boolean);
+  return `Event listeners for ${element}${index}${frame} (${total}: ${where.join(', ')})`;
 }
 
 /** Heading of the collapsed framework root listeners */
@@ -559,6 +628,9 @@ export const PAGE_ACTION_DONE = {
 } as const;
 
 /** Help text of the `bdg page` history commands */
+/** Description of `bdg page info` */
+export const PAGE_INFO_DESCRIPTION = 'Show the URL and title of the session page';
+
 export const PAGE_ACTION_DESCRIPTIONS = {
   reload: 'Reload the page',
   back: 'Go back one page (like the browser button)',
@@ -749,13 +821,27 @@ export function noFramesMessage(): string {
 }
 
 /**
+ * `bdg dom frames` while the page is still loading: its iframes may not
+ * exist yet.
+ *
+ * @param empty - No iframe was found
+ * @returns e.g. `No iframes yet; the page is still loading, so the list may be incomplete (bdg dom wait --load)`
+ */
+export function framesStillLoadingNote(empty: boolean): string {
+  const wait = `(${sessionCommand('bdg dom wait --load')})`;
+  return empty
+    ? `No iframes yet; the page is still loading, so the list may be incomplete ${wait}`
+    : `Note: the page is still loading, so the list may be incomplete ${wait}`;
+}
+
+/**
  * Text of an element in `bdg dom get` output.
  *
  * @param text - Collapsed text, ending in `...` when it was cut
- * @returns e.g. `Text: Welcome to ... (cut at 500 characters; --raw shows the HTML)`
+ * @returns e.g. `Text: Welcome to ... (cut at 500 characters; --full shows all of it)`
  */
 export function elementTextLine(text: string): string {
-  const cut = text.endsWith('...') ? ' (cut at 500 characters; --raw shows the HTML)' : '';
+  const cut = text.endsWith('...') ? ' (cut at 500 characters; --full shows all of it)' : '';
   return `Text: ${text}${cut}`;
 }
 

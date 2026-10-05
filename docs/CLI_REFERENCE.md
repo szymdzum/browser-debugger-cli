@@ -21,7 +21,7 @@ The start output is a few lines: the target, notices (session name, HTTP error, 
 
 - `--viewport <WxH>` (e.g. `1280x800`; `X`, `×` and `,` work too, each side 1-10000) gives the page exactly that viewport for the session, through navigations and reloads (`Emulation.setDeviceMetricsOverride` at the display's pixel ratio). A launched Chrome also opens its window at that size, so tabs the page opens get it too. It works with `--chrome-ws-url`: the override belongs to the session's connection and Chrome drops it when the session ends. Without it, a launched Chrome opens a 1920×1080 window (the viewport is smaller by the scrollbar, and by the browser UI in a visible window). Invalid values exit 81
 - `--color-scheme light|dark` emulates `prefers-color-scheme` for the session (`Emulation.setEmulatedMedia`). Without it the page sees the system setting: headless Chrome follows the OS, so a dark OS renders dark pages. Other values exit 81 with a suggestion
-- `bdg status` shows the viewport and color scheme the page renders with (`Viewport: 1265×800 (--viewport 1280x800)`, the layout viewport without the scrollbar; `Color scheme: dark (system setting)`); JSON has them in `pageState` (and the start options as `viewport` / `colorScheme`)
+- `bdg status` shows the viewport and color scheme the page renders with (`Viewport: 1265×800 (--viewport 1280x800)`, the layout viewport without the scrollbar; `Color scheme: prefers-color-scheme: dark (from the system setting)`, the media preference the page sees, not the theme it renders); JSON has them in `pageState` (and the start options as `viewport` / `colorScheme`)
 
 A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
@@ -31,14 +31,17 @@ A page that has not finished loading when the start returns (the start waits abo
 ⚠ The page is still loading (document.readyState: loading); waiting on: GET code.jquery.com/ui/1.13.2/jquery-ui.js (pending 2s). Elements may be missing until it finishes: bdg dom wait <selector> waits for one
 ```
 
-JSON adds `data.loading: { readyState, pending: [{ method, url, resourceType?, pendingMs }], pendingCount }` (absent once the document is complete). `bdg page navigate`/`reload`/`back`/`forward` report the same (`⚠` line, `data.loading`). While the page is still loading, "not found" errors (`dom query`, `get`, `layout`, `click`, `fill` and the other actions, `eval --frame`) and an empty `dom frames` say so and suggest `bdg dom wait` (one extra `document.readyState` check, only when something was not found).
+JSON adds `data.loading: { readyState, pending: [{ method, url, resourceType?, pendingMs }], pendingCount }` (absent once the document is complete). `bdg page navigate`/`reload`/`back`/`forward` report the same (`⚠` line, `data.loading`). While the page is still loading, "not found" errors (`dom query`, `get`, `layout`, `click`, `fill` and the other actions, `eval --frame`) and `dom frames` say so and suggest `bdg dom wait` (one extra `document.readyState` check, only when something was not found; `dom frames` checks every time: `No iframes yet; the page is still loading, so the list may be incomplete (bdg dom wait --load)`, or a note under a list, and its JSON has `data.readyState` until the page is complete).
 
 ### Check session status
 ```bash
 bdg status                      # Basic status information
 bdg status --verbose            # Include the Chrome executable, mode and profile
 bdg status --json               # JSON output
+bdg page info                   # Just the URL and title of the session page (--json: data.url, data.title)
 ```
+
+The first line of `bdg status` is `Session active: <url> — <title>`; the sections below it (process, target, activity, collectors) follow.
 
 ### Stop the session
 ```bash
@@ -161,6 +164,8 @@ A descendant step after a filter (and a `:has()` with filters) also searches the
 
 **Labels stand for their control.** `dom fill`, `dom click` (and `--double`) and `dom pressKey` on a `<label>` act on its form control (`label.control`: the `for` target or the control inside it), like Playwright; the result's element type says so (`input (via label)`). A click goes to the label itself when the control is hidden or transparent (custom checkboxes), which activates the control the same way. Filling a label without a control exits 81 and suggests `bdg dom a11y query 'name=…'` or `bdg dom form`.
 
+**Fields a user cannot change** exit 81 with the reason: `The element is disabled (disabled attribute)` (or `inside a disabled <fieldset>`, `aria-disabled="true"`), `The element is read-only (readonly attribute)` (or `contenteditable="false"`, also on the editor around the element, e.g. TinyMCE in read-only mode, and `aria-readonly="true"`), `The element is inert (inside an inert element)`; any other element says it is not an input, textarea, select or contenteditable element.
+
 ```bash
 bdg dom fill 'label:has-text("Customer name")' "Ada"   # Fills the field the label names
 bdg dom click 'label:text-is("Remember me")'            # Checks the checkbox
@@ -244,6 +249,7 @@ bdg dom get "button"                          # [Button] "Submit" (focusable)
 bdg dom get "#searchInput"                    # [Searchbox] "Search" (focusable)
 bdg dom get ".nav-link"                       # First matching element
 bdg dom get "#content"                        # [Generic] <div> + a Text: line (up to 500 characters)
+bdg dom get "#content" --full                 # All of its text (not with --raw or --node-id)
 
 # Raw HTML output
 bdg dom get "h1" --raw                        # Get full HTML with attributes
@@ -274,7 +280,7 @@ bdg dom get "h1" --raw --json                # HTML as JSON
 [Navigation] "Main menu"
 [Paragraph]
 [Generic] <div#content>
-Text: Welcome to the docs. This guide covers ... (cut at 500 characters; --raw shows the HTML)
+Text: Welcome to the docs. This guide covers ... (cut at 500 characters; --full shows all of it)
 ```
 
 An element whose text is longer than the one-line preview gets a `Text:` line with up to 500 characters of it (whitespace collapsed); `--json` has it as `domContext.text`.
@@ -306,6 +312,8 @@ bdg dom query --json                          # JSON output
 - No match exits 83, like `dom get` and `dom a11y`
 - Matches outside the viewport or hidden get a hint: `(below fold)`, `(above viewport)`, `(left of viewport)`, `(right of viewport)`, `(hidden)`, or `(out of view in ul#list)` for one scrolled out of a container; `--json` has `inViewport` (and `clippedBy`) for the first 100 matches (see `dom layout`)
 - `<option>` elements show their `value` attribute and label: `[2] <option value="ca"> Canada (hidden)`
+- Text previews (here, in `dom get`, `dom layout` and action output) leave out close buttons (`.close`, `aria-label="Close"`/`"Dismiss"`, a button or link showing just `×`) and `aria-hidden` icons, so a flash message does not end in `×`
+- No match exits 83. For a selector that is a single id or class, the error suggests up to 3 similar ones on the page (`Did you mean #remove-sauce-labs-backpack? (similar id on the page)`; near-typos first, then names sharing their end, then their start); it names cross-origin iframes and `<object>`/`<embed>` documents only when the page has them (selectors do not search them). The same applies to `dom click`, `fill` and the other actions
 - One `Next:` line follows (hidden with `-q`): `bdg dom get 0` (text), `bdg dom get 0 --raw` (HTML), `bdg dom layout 0` (position). They take the index, so they work for matches in shadow roots and iframes too
 
 ### Event Listeners
@@ -323,7 +331,7 @@ bdg dom listeners "#save" --json
 
 **Output:**
 ```text
-Event listeners for button#save (93)
+Event listeners for button#save (93: 3 on the element, 74 on ancestors, 16 on document and window)
 
 click
   target    button#save  handleSave  script 12:1:2345  [React onClick] ()=>f(e)
@@ -341,7 +349,7 @@ Framework roots (one line per node; --all lists each listener):
 - React: the `on…` handler props React runs for the element's events are listed with their name, source and location, marked `[React onClick]` (`framework: "React"`, `reactProp` in JSON): the element's own, and those of its React parents, found by walking React's fiber tree (so a portal's React parents count, shown by their description, and DOM parents outside the React tree don't; without a fiber, the DOM ancestors). Props are read from `__reactProps$…` (React 17-19), `__reactEventHandlers$…` (React 16) or the fiber's `memoizedProps`, without running getters. The event type comes from the prop (`onClick` → `click`, `onClickCapture` → `click` with `useCapture`, `onDoubleClick` → `dblclick`, `onFocus`/`onBlur` → `focusin`/`focusout` as React listens for them, `onGotPointerCapture` → `gotpointercapture`). Parents' bubble-phase props for events React does not bubble (`onMouseEnter`/`Leave`, `onPointerEnter`/`Leave`, `onScroll`, `onLoad`, `onError`, media events, …) are left out. At most 50 props are listed per call, after `--type` filtering (`reactHandlersSkipped` counts the rest). Preact is not resolved
 - jQuery: when the page has jQuery (`jQuery._data`), its dispatcher is replaced by the jQuery handlers it runs for the element, with their real name, source and location, marked `[jQuery]`; delegated ones (`$(document).on('click', '.row', fn)`) show `delegate .row` and only when the element matches the selector. A jQuery dispatcher none of whose handlers run for the element (its delegates match other elements) is left out. At most 50 jQuery handlers are resolved per call; beyond that the dispatcher is listed as is and a note (`jqueryHandlersSkipped` in JSON) says how many were not resolved. A page whose `jQuery`/`$` globals throw only loses the jQuery details
 - When an interaction event (click, input, keydown, …) has no listener of its own on the element (`[no-op]` aside), a note says how it reaches its handlers: React's `[no-op]` placeholder next to resolved React handlers, a React root container without an `on…` prop for it, jQuery delegation, or plain listeners on ancestors, document or window
-- The heading names the cached index and the iframe holding the element (`Event listeners for p [2] in iframe#sd (3)`)
+- The heading names the cached index and the iframe holding the element and says where the counted listeners are (`Event listeners for p [2] in iframe#sd (3: 1 on the element, 2 on ancestors)`; framework roots count all their listeners)
 - No listeners at all is not an error (exit 0); a selector without match exits 83, an `--index` out of range 81. A `--type` that matches nothing but is close to a listened type (`Click`, `onclick`) suggests it (`typeSuggestions` in JSON)
 - Elements in open shadow roots and same-origin iframes are found like with the other DOM commands
 - Uses `DOMDebugger.getEventListeners`; the Debugger domain is not enabled, so `debugger;` statements do not pause the page
@@ -371,11 +379,11 @@ Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
 - Coordinates are CSS pixels; `bounds` is relative to the top-level page (iframe offsets and page scroll included), `viewport` to the visible area
 - `inViewport`: `visible`, `partly` (with `percentVisible`), `above`, `below`, `left`, `right` or `hidden` (with `hiddenReason`: `display: none`, `visibility: hidden`, zero size, `inside a closed <details>`, `content-visibility: hidden on div#…`, `clipped by div#acc: zero height` for content of a collapsed `height: 0; overflow: hidden` accordion, inside a hidden iframe). Human output shows no coordinates for hidden elements
 - Same-origin iframes and overflow containers (scroll lists, `overflow: hidden`) clip what counts as visible, following containing blocks (an absolutely positioned dropdown escapes a static `overflow: hidden` parent; fixed elements are not clipped). CSS `zoom` and `transform: scale()` on or around a container are taken into account. A `<body>` that scrolls on its own (the root element has `overflow` other than `visible`) clips like any container. When one cuts the element off, `clippedBy` names it (`out of view in ul#list (below)`, `out of view in body (below)`) and there is no `scrollBy`
-- `scrollBy`: the page scroll (`bdg dom scroll --down/--up/--right/--left`) that centres an element that is not fully in view (aligns the top of one taller than the viewport), like `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover it; limited to how far the page can actually scroll. Human output says so: `(scroll down 500px to centre it)`, or `to bring it into view` for an element larger than the viewport
-- `offScreenReason` replaces `scrollBy` when no page scroll can bring the element fully into view: `fixed position, page scroll does not move it` (the element or a container is `position: fixed` relative to the viewport, e.g. an off-canvas menu; a fixed element inside a transformed container scrolls with the page and gets `scrollBy`) or `beyond the page's scroll range` (e.g. a `left: -9999px` skip link). The position (`left`, `above`, `partly`, …) is kept; human output shows `left of viewport (off-screen: …)`
+- `scrollBy`: the page scroll (`bdg dom scroll --down/--up/--right/--left`) that centres an element that is not fully in view (aligns the top of one taller than the viewport), like `bdg dom scroll <selector>`, so sticky headers and fixed footers at the edges do not cover it; limited to how far the page can actually scroll. Human output says so: `(scroll down 500px to centre it)`, or `to bring it into view` for an element larger than the viewport; for a partly visible element `partly visible (24%); scroll down 302px to see all of it` (`to show it from its start` when it is larger than the viewport)
+- `offScreenReason` replaces `scrollBy` when no page scroll can bring the element fully into view: `fixed position, page scroll does not move it` (the element or a container is `position: fixed` relative to the viewport, e.g. an off-canvas menu; a fixed element inside a transformed container scrolls with the page and gets `scrollBy`), `sticky position, page scroll moves it only until it sticks` (it or an ancestor is `position: sticky`, so the scroll needed cannot be told) or `beyond the page's scroll range` (e.g. a `left: -9999px` skip link). The position (`left`, `above`, `partly`, …) is kept; human output shows `left of viewport (off-screen: …)`, or `partly visible (40%); fixed position, …`
 - Scroll-locked pages: when the page cannot scroll (the document is no taller than the viewport) because `body` or `html` is `position: fixed` or `overflow: hidden`, as a consent or modal dialog does, content below the fold gets `page scrolling is locked (position: fixed, overflow: hidden on body)` instead (in-flow content of a fixed `body` is not called fixed). When a visible dialog is on the page (`dialog[open]`, `[aria-modal=true]`, `[role=dialog]`, `[role=alertdialog]`), it is named as the likely cause: `…, likely by dialog div#sp_message_container_1482251`. Human output: `below fold; page scrolling is locked (…)`. Close the dialog first
-- The page line names the `prefers-color-scheme` the page sees (`…, dark color scheme`; `page.colorScheme` in JSON). `page.viewport` is the layout viewport without scrollbars, the same size `dom scroll` reports
-- `coveredBy`: the topmost element at the center of the largest visible box (a wrapped link has one per line), when it is another element (not one inside it), e.g. a modal backdrop or sticky header; overlays over an iframe count too. An ancestor counts only when it is painted above the element, e.g. a card's `::after` overlay (`dom click` reports the same element). Where the viewport or a scroll container has overlay scrollbars (macOS, mobile; they take no space), the 16 px strip along its right and bottom edges is avoided when the element shows outside it, because those scrollbars catch hit tests for about a second after a scroll. Not reported for elements hit-testing skips (`pointer-events: none`)
+- The page line names the `prefers-color-scheme` the page sees (`…, prefers-color-scheme: dark`; `page.colorScheme` in JSON), the media preference, not the theme the page renders. `page.viewport` is the layout viewport without scrollbars, the same size `dom scroll` reports
+- `coveredBy`: the topmost element at the center of the largest visible box (a wrapped link has one per line), when it is another element (not one inside it), e.g. a modal backdrop or sticky header; overlays over an iframe count too. Elements of the same click target do not count, since a click there does the same: an overlay inside the link, button or label the element is in, a link to the same URL, or the overlay link of a news card over its plain headline (a "faux block link": an absolutely positioned link without text of its own spanning the card). Links with text, `[role=button]` overlays and dismiss buttons still count as covers. An ancestor counts only when it is painted above the element, e.g. a card's `::after` overlay (`dom click` reports the same element). Where the viewport or a scroll container has overlay scrollbars (macOS, mobile; they take no space), the 16 px strip along its right and bottom edges is avoided when the element shows outside it, because those scrollbars catch hit tests for about a second after a scroll. Not reported for elements hit-testing skips (`pointer-events: none`)
 - `inert: true` for elements inside an `inert` element (through shadow roots): shown, but not interactive; human output adds `inert`
 - `invisible`: why an element that is rendered still cannot be seen: `opacity: 0` on it or an ancestor, including a slot or shadow wrapper around slotted content (`opacity: 0 on div#menu`), or a `clip-path: inset()` / `clip: rect()` that cuts it away entirely (the "visually hidden" pattern). These elements keep their `inViewport` and count as visible for `:visible` (like Playwright); human output adds the reason
 - Elements in open shadow roots and same-origin iframes are found like with the other DOM commands; one page-side pass measures them all
@@ -472,7 +480,7 @@ a separate process. List the frames first:
 bdg dom frames                                    # [0] http://localhost:3000/widget  name=widget  same-origin
                                                   # [1] https://pay.example/  #checkout  cross-origin, out-of-process
                                                   #   [2] about:blank  same-origin  (nested in [1], same origin as it)
-bdg dom frames --json                             # { frames: [{ index, url, name?, id?, origin, crossOrigin, outOfProcess, parentIndex? }] }
+bdg dom frames --json                             # { frames: [{ index, url, name?, id?, origin, crossOrigin, outOfProcess, parentIndex? }], readyState? }
 
 bdg dom eval --frame 1 'document.title'           # By index (0-based; the main page is not listed)
 bdg dom eval --frame checkout 'location.href'     # By name or id attribute of the <iframe> (exact match first)
@@ -503,6 +511,8 @@ bdg dom form --all
 # Quick scan (names, types, required only)
 bdg dom form --brief
 ```
+
+Forms shown in an open dialog (`dialog[open]`, `aria-modal`, a dialog role, or a modal without them: a fixed or absolute overlay with a z-index above 0 or a backdrop whose class names a modal or dialog, or a fixed overlay over half the viewport that has a z-index above 0 or lies over other page content at the viewport centre; static wrappers and fixed app shells holding the whole page are not dialogs) are listed first, marked `(in dialog)`, then other visible forms, then hidden ones, marked `(hidden)` (JSON: `hidden`, `inDialog` on forms and in `otherForms`). Indices follow this order, so `bdg dom fill 0` fills the first field listed. Hidden fields (not rendered or visibility-hidden, also through an ancestor) are now listed, flagged with the status `hidden` (`hidden: true` in JSON; they used to be left out), and a form counts as shown when any of its fields or buttons is; filling one by index works but warns (`The field is hidden; a user could not fill it`), and so does filling a field behind an open modal dialog.
 
 **Human Output:**
 ```sql
@@ -652,6 +662,7 @@ bdg dom hover "nav .menu"                         # Hover (opens hover menus)
 bdg dom fill "#tags" "a,c"                        # <select multiple>: several options
 
 # Navigate the session page
+bdg page info                                     # URL and title of the session page
 bdg page navigate https://example.com/next        # Load a URL and wait for it
 bdg page back                                     # History back / forward
 bdg page reload
@@ -739,7 +750,9 @@ bdg dom screenshot high-res.jpg --quality 100
 List and filter captured network requests using Chrome DevTools-compatible filter syntax.
 
 ```bash
-# List recent requests (default: last 100)
+# List recent requests (default: last 100); long URLs are cut in the middle,
+# keeping the host, the start of the path and its end with the query
+# (api.example.com/v1/users/…/orders?page=2); --verbose shows them whole
 bdg network list
 
 # Show all requests
@@ -934,11 +947,12 @@ bdg network headers --header content-security-policy --json | jq '.data.response
 **Output:**
 - **Human-readable format** (default):
   - URL of the request
+  - Status line: method, HTTP status and status text (`Status: GET 404 Not Found`), `FAILED (<reason>)` or `pending`
   - Response headers (alphabetically sorted)
   - Request headers (alphabetically sorted)
   - Request ID for correlation with `bdg peek` output
 - **JSON format** (`--json` flag):
-  - Structured data with `url`, `requestId`, `requestHeaders`, `responseHeaders`
+  - Structured data with `url`, `requestId`, `method`, `status?`, `statusText?`, `errorText?`, `requestHeaders`, `responseHeaders`
   - Ideal for scripting and automation
 
 **Use Cases:**

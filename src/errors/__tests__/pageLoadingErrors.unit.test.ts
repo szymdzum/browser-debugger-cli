@@ -32,8 +32,14 @@ void describe('loading hints', () => {
   });
 
   void it('is part of the no-nodes error', () => {
-    assert.match(noNodesFoundError('#late', 0, 'loading').suggestion, /^The page is still loading/);
-    assert.doesNotMatch(noNodesFoundError('#late', 0, 'complete').suggestion, /still loading/);
+    assert.match(
+      noNodesFoundError('#late', { readyState: 'loading' }).suggestion,
+      /^The page is still loading/
+    );
+    assert.doesNotMatch(
+      noNodesFoundError('#late', { readyState: 'complete' }).suggestion,
+      /still loading/
+    );
   });
 });
 

@@ -9,6 +9,7 @@ import type {
   FormField,
   FormSummary,
   RawButton,
+  RawForm,
 } from '@/runtime/dom/formTypes.js';
 import { REQUIRED_FIELD_EMPTY_REASON } from '@/ui/messages/commands.js';
 
@@ -160,4 +161,44 @@ export function primaryButtonIndex(buttons: RawButton[]): number | undefined {
     formDefaults.at(-1) ??
     candidates.find((button) => button.primaryClass);
   return primary?.index;
+}
+
+/**
+ * Where a form is listed: shown in an open dialog first (what the user is
+ * looking at), then other visible forms, then hidden ones.
+ *
+ * @param form - Raw form
+ * @returns Rank, lower first
+ */
+function visibilityRank(form: RawForm): number {
+  if (form.hidden) return 2;
+  return form.inDialog ? 0 : 1;
+}
+
+/**
+ * Put forms in listing order (by {@link visibilityRank}, then by relevance)
+ * and number them, their fields and their buttons in that order, so the
+ * first field listed is 0 and `bdg dom fill <index>` / `click <index>` reach
+ * the element listed with that index (the indices are cached in this order).
+ * Within a form, fields come before buttons, both in document order.
+ *
+ * @param forms - Raw forms in document order
+ * @returns Forms in listing order, renumbered (the input is not changed)
+ */
+export function orderForms(forms: RawForm[]): RawForm[] {
+  const ordered = forms
+    .map((form, position) => ({ form, position }))
+    .sort(
+      (a, b) =>
+        visibilityRank(a.form) - visibilityRank(b.form) ||
+        b.form.relevanceScore - a.form.relevanceScore ||
+        a.position - b.position
+    );
+  let next = 0;
+  return ordered.map(({ form }, formIndex) => ({
+    ...form,
+    index: formIndex,
+    fields: form.fields.map((field) => ({ ...field, index: next++, formIndex })),
+    buttons: form.buttons.map((button) => ({ ...button, index: next++ })),
+  }));
 }

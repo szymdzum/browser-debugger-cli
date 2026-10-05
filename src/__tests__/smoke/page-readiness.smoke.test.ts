@@ -89,7 +89,11 @@ void describe('Page readiness', () => {
     assert.match(layout.output, /still loading/);
 
     const frames = await bdg(['dom', 'frames']);
-    assert.match(frames.stderr, /still loading.*bdg dom wait --load/);
+    assert.match(
+      frames.stdout,
+      /^No iframes yet; the page is still loading, so the list may be incomplete \(bdg dom wait --load\)/
+    );
+    assert.doesNotMatch(frames.stdout, /The page has no iframes/);
   });
 
   void it('dom wait on the loading page times out with what it saw', async () => {

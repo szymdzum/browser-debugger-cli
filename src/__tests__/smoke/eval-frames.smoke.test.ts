@@ -70,6 +70,19 @@ void describe('dom eval --frame', () => {
     assert.equal(cross?.outOfProcess, true);
   });
 
+  void it('points to dom frames when a selector finds nothing on a page with cross-origin iframes', async () => {
+    const query = await runJson<never>(['dom', 'query', '#missing']);
+    assert.equal(query.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
+    assert.match(
+      query.suggestion ?? '',
+      /The page has cross-origin iframes, which are not searched/
+    );
+    assert.match(query.suggestion ?? '', /bdg dom eval --frame <n>/);
+    const click = await runJson<never>(['dom', 'click', '#missing']);
+    assert.equal(click.exitCode, EXIT_CODES.RESOURCE_NOT_FOUND);
+    assert.match(click.suggestion ?? '', /The page has cross-origin iframes/);
+  });
+
   void it('evaluates in a same-origin iframe', async () => {
     const { exitCode, data } = await runJson<{ result: unknown; frame: string }>([
       'dom',
