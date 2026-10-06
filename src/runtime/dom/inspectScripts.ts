@@ -158,7 +158,7 @@ export interface RawInspect {
  * parent, the parent that lays it out (skipping `display: contents`), its
  * element children in the flat tree and whether an element is rendered.
  */
-const FLAT_TREE_JS = `(view) => {
+export const FLAT_TREE_JS = `(view) => {
   const style = (n, pseudo) => view.getComputedStyle(n, pseudo);
   const skipped = /^(script|style|template|link|meta|noscript|title|head|base)$/;
   const flatParent = (n) => n.assignedSlot || n.parentElement || (n.parentNode && n.parentNode.host) || null;
@@ -199,14 +199,15 @@ const FLAT_TREE_JS = `(view) => {
  * of the visible text in its flat tree (characters, whitespace aside), and
  * the element whose child text nodes those are (for the rendered font).
  * Text slotted into a shadow root is drawn with the slot's styles, and text
- * of an element with a shadow root that is not slotted is not drawn. Null
- * when there is no visible text.
+ * of an element with a shadow root that is not slotted is not drawn, nor is
+ * text inside a fully transparent descendant (a measuring copy under a
+ * mask). Null when there is no visible text.
  */
 const TEXT_HOLDER_JS = `(el, tree) => {
   const counts = new Map();
   const parents = new Map();
   let budget = 2000;
-  const shown = (n) => tree.style(n).display === 'contents' || tree.rendered(n);
+  const shown = (n) => Number(tree.style(n).opacity) !== 0 && (tree.style(n).display === 'contents' || tree.rendered(n));
   const nodesOf = (n) => {
     if (n.localName !== 'slot') return Array.from((n.shadowRoot || n).childNodes);
     const assigned = n.assignedNodes({ flatten: true });
@@ -386,7 +387,7 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
  * paints (a canvas, video, image, background) and the nearest one on top of
  * it that paints (an overlay).
  */
-const PAINT_RISKS_JS = `(el, tree, textParent) => {
+export const PAINT_RISKS_JS = `(el, tree, textParent) => {
   const risks = [];
   const chain = [];
   for (let n = el; n && chain.length < 60; n = tree.flatParent(n)) chain.push(n);

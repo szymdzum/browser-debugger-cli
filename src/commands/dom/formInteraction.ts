@@ -48,6 +48,7 @@ import {
   HOVER_USAGE,
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
+  pointerScrollText,
   actionStatusLine,
   dialogConsoleText,
   moreMessagesText,
@@ -575,6 +576,9 @@ function formatClickOutput(result: ActionOutput<ClickResult>): string {
       ...selectorRows(result),
       elementRow(result),
       ['Method', result.method === 'dom' ? 'DOM events' : 'mouse events'],
+      ...(result.scrolledBy
+        ? [['Scrolled', pointerScrollText(result.scrolledBy)] as [string, string]]
+        : []),
     ],
     result,
     { action: POINTER_ACTION_NOUN[result.action ?? 'click'] }

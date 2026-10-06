@@ -261,6 +261,8 @@ export interface InspectVisibility {
   coveredBy?: string;
   /** The cover paints nothing there: the element shows, but clicks land on the cover */
   coverTransparent?: true;
+  /** A `mask-image` on it or an ancestor, e.g. `mask-image on div.hero` (how much it hides is not evaluated) */
+  masked?: string;
 }
 
 /** A property asked for with `--props` */

@@ -7,7 +7,8 @@
  * the daemon ({@link buildAudit}), the same way `dom inspect` computes them.
  */
 
-import type { RawBackground } from '@/runtime/dom/inspectScripts.js';
+import { FLAT_TREE_JS, PAINT_RISKS_JS, type RawBackground } from '@/runtime/dom/inspectScripts.js';
+import { AUDIT_OUT_OF_VIEW_RISK } from '@/ui/messages/commands.js';
 
 /** Elements the walk looks at, at most */
 export const AUDIT_ELEMENT_CAP = 20000;
@@ -22,7 +23,11 @@ export interface RawAuditText {
   /** Backgrounds from the element up to the root, each with its own opacity */
   backgrounds: RawBackground[];
   opacity: number;
-  /** Blend modes and filters on it or an ancestor */
+  /**
+   * Why its contrast is approximate: blend modes and filters on it or an
+   * ancestor, an element painted behind or on top of it (in view), or that
+   * only its ancestors were checked (out of view, none of them paints)
+   */
   risks: string[];
   /** Inside the viewport */
   inView: boolean;
@@ -89,6 +94,8 @@ export interface RawAudit {
   scrollers?: Array<{ label: string; scrollWidth: number; width: number }>;
   layers?: RawLayer[];
   animations?: RawAnimation[];
+  /** Visible `<canvas>` elements (their animations are drawn by scripts, not CSS or Web Animations) */
+  canvases?: number;
 }
 
 /**
@@ -113,20 +120,31 @@ export const AUDIT_PAGE_JS = `function (checks) {
   const canvasDark = /dark/.test(scheme) && (!/light/.test(scheme) || view.matchMedia('(prefers-color-scheme: dark)').matches);
   const result = { viewport: viewport, pixelRatio: view.devicePixelRatio || 1, pageWidth: scroller.scrollWidth, canvasDark: canvasDark, walked: 0, capped: false };
   const texts = [], wide = [], truncated = [], images = [], layers = [], scrollers = [];
+  let canvases = 0;
+  const tree = (${FLAT_TREE_JS})(view);
+  const paintRisks = ${PAINT_RISKS_JS};
+  const clear = (color) => color === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(color) || /\\/\\s*0\\)$/.test(color);
   const chainOf = (n) => {
     const backgrounds = [];
     const risks = [];
     let opacity = 1;
+    let painted = false;
     for (let p = n; p && backgrounds.length < 60; p = parentOf(p)) {
       const s = style(p);
       const own = Number(s.opacity) || 0;
       const background = { color: s.backgroundColor, image: s.backgroundImage !== 'none' };
       backgrounds.push(own < 1 ? Object.assign(background, { opacity: own }) : background);
       opacity *= own;
+      if (p !== doc.documentElement && p !== doc.body && (background.image || !clear(s.backgroundColor))) painted = true;
       if (s.mixBlendMode !== 'normal') risks.push('mix-blend-mode ' + s.mixBlendMode + ' on ' + label(p));
       if (s.filter !== 'none') risks.push('filter on ' + label(p));
     }
-    return { backgrounds: backgrounds, risks: risks, opacity: opacity };
+    return { backgrounds: backgrounds, risks: risks, opacity: opacity, painted: painted };
+  };
+  const risksOf = (n, slot, chain, shown) => {
+    if (!shown) return chain.painted ? chain.risks : chain.risks.concat(${JSON.stringify(AUDIT_OUT_OF_VIEW_RISK)});
+    const text = slot && n.assignedNodes({ flatten: true }).find((c) => c.nodeType === 3 && c.data.trim() !== '');
+    return paintRisks(n, tree, text ? text.parentElement || n : n);
   };
   const visit = (n, fixed) => {
     if (result.walked >= ${AUDIT_ELEMENT_CAP}) { result.capped = true; return; }
@@ -145,7 +163,8 @@ export const AUDIT_PAGE_JS = `function (checks) {
       const text = slot ? short(n.assignedNodes({ flatten: true }).filter((c) => c.nodeType === 3).map((c) => c.data).join(' ')) : n.shadowRoot ? '' : ownText(n);
       if (text && Number(s.opacity) > 0 && r.width > 2 && r.height > 2) {
         const chain = chainOf(n);
-        if (chain.opacity > 0) texts.push(Object.assign({ label: label(n), text: short(text), color: s.color, fontSize: s.fontSize, fontWeight: s.fontWeight, inView: inView(r) }, chain));
+        const seen = inView(r);
+        if (chain.opacity > 0) texts.push({ label: label(n), text: short(text), color: s.color, fontSize: s.fontSize, fontWeight: s.fontWeight, inView: seen, backgrounds: chain.backgrounds, opacity: chain.opacity, risks: risksOf(n, slot, chain, seen) });
       }
     }
     if (shown && want('overflow')) {
@@ -161,6 +180,7 @@ export const AUDIT_PAGE_JS = `function (checks) {
     if (shown && want('overflow') && /^(auto|scroll)$/.test(s.overflowX) && n !== doc.documentElement && n !== doc.body && n.scrollWidth > n.clientWidth + 1) {
       scrollers.push({ label: label(n), scrollWidth: n.scrollWidth, width: n.clientWidth });
     }
+    if (want('animations') && shown && n.localName === 'canvas') canvases++;
     if (want('layers') && shown && (s.position === 'fixed' || s.position === 'sticky')) {
       layers.push({ label: label(n), position: s.position, zIndex: s.zIndex, rect: { x: r.left, y: r.top, w: r.width, h: r.height }, inView: inView(r) });
     }
@@ -177,6 +197,7 @@ export const AUDIT_PAGE_JS = `function (checks) {
   if (want('overflow')) Object.assign(result, { wide: wide, truncated: truncated, images: images, scrollers: scrollers });
   if (want('layers')) result.layers = layers;
   if (want('animations')) {
+    result.canvases = canvases;
     result.animations = doc.getAnimations().filter((a) => a.playState === 'running').slice(0, 200).map((a) => {
       const timing = a.effect && a.effect.getTiming ? a.effect.getTiming() : {};
       const target = a.effect && a.effect.target;

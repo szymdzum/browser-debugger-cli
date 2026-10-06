@@ -79,4 +79,38 @@ void describe('dom audit and css search', () => {
     assert.match(output, /<style> in inspect:\d+\n {4}.*font-family: "Fixture Sans"/);
     assert.match(await bdg(['css', 'search', 'no-such-token-xyz']), /is not in the page's/);
   });
+
+  void it('says what it cannot see: paint behind text, masks, canvas, and the scroll a hover made', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}inspect-paint`]);
+    const audit = await bdg(['dom', 'audit', 'contrast', 'animations']);
+    assert.match(
+      audit,
+      /p#over-image "White over an image in view" 16px \(approximate: img behind\)/
+    );
+    assert.match(
+      audit,
+      /p#low "White over an image out of view" 16px \(out of view\) \(approximate: only its ancestors were checked\)/
+    );
+    assert.match(
+      audit,
+      /\(\+ 1 canvas element: animations drawn by scripts on it are not listed\)/
+    );
+    const masked = await bdg(['dom', 'inspect', '#masked', '--tree', '0']);
+    assert.match(masked, /\[masked by mask-image\]/);
+    assert.match(
+      masked,
+      /\ntext {3}Arial 400 16\/normal · color #fff · contrast 15\.9 AAA on #222/
+    );
+    assert.match(await bdg(['dom', 'layout', '#masked']), /masked by mask-image$/m);
+    const gradient = await bdg(['dom', 'inspect', '#gradient', '--tree', '0']);
+    assert.match(
+      gradient,
+      /\nfill {3}bg-image linear-gradient\(90deg, #f00, #00f\) · clipped to the text/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#gradient', '--all']),
+      /-webkit-text-fill-color transparent/
+    );
+    assert.match(await bdg(['dom', 'hover', '#far']), /Scrolled: +page down \d+px to reach it/);
+  });
 });

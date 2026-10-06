@@ -88,8 +88,36 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
   });
 </script>`;
 
+/** A 10x10 black SVG image */
+const BLACK_IMAGE =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Crect width='10' height='10' fill='%23000'/%3E%3C/svg%3E";
+
+/**
+ * Paint that ancestors do not explain: a masked box with a transparent
+ * measuring copy of its text, gradient text, white text over an image in and
+ * out of view, a canvas, and a button far below the fold.
+ */
+const PAINT_HTML = `<!doctype html><html><head><title>Paint</title><style>
+body { margin: 0; font: 16px Arial; background: #fff; }
+#masked { position: relative; width: 300px; height: 80px; background: #222; color: #fff; mask-image: linear-gradient(#000, transparent); }
+#masked .measure { opacity: 0; position: absolute; color: #ff0; }
+#gradient { font-size: 40px; background: linear-gradient(90deg, #f00, #00f); background-clip: text; -webkit-text-fill-color: transparent; }
+.hero { position: relative; height: 200px; }
+.hero img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.hero p { position: relative; color: #fff; margin: 0; padding: 20px; }
+</style></head><body>
+<div id="masked"><span class="measure">A transparent measuring copy that is much longer</span>Hi</div>
+<h1 id="gradient">Gradient</h1>
+<div class="hero"><img src="${BLACK_IMAGE}" alt=""><p id="over-image">White over an image in view</p></div>
+<canvas width="100" height="50"></canvas>
+<div style="height: 2000px"></div>
+<div class="hero"><img src="${BLACK_IMAGE}" alt=""><p id="low">White over an image out of view</p></div>
+<button id="far">Far button</button>
+</body></html>`;
+
 /** Pages by path */
 export const INSPECT_ROUTES: Record<string, string> = {
   '/inspect': INSPECT_HTML,
   '/inspect-frame': INSPECT_FRAME_HTML,
+  '/inspect-paint': PAINT_HTML,
 };

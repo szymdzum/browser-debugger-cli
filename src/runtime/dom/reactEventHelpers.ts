@@ -460,7 +460,7 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
 /**
  * JavaScript function to locate an element for clicking.
  *
- * Scrolls the element into view and reports its center point and whether it
+ * Scrolls the element into view (reporting how far the page moved) and reports its center point and whether it
  * is the topmost element there (`hittable`). It does not click; see
  * `clickElement`, which dispatches real mouse events or falls back to
  * `el.click()`.
@@ -564,7 +564,11 @@ export const CLICK_ELEMENT_SCRIPT = `
       suggestion: 'A user cannot click a disabled element; enable it first (it may depend on other fields)'
     };
   }
-  el.scrollIntoView({ behavior: 'auto', block: 'center' });
+  let topView = el.ownerDocument.defaultView;
+  while (topView.frameElement) topView = topView.parent;
+  const scrollBefore = { x: topView.scrollX, y: topView.scrollY };
+  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  const scrolledBy = { x: Math.round(topView.scrollX - scrollBefore.x), y: Math.round(topView.scrollY - scrollBefore.y) };
 
   // The caller clicks with real mouse events at (x, y) when the element is the
   // topmost thing there; otherwise it falls back to el.click() via this handle.
@@ -651,7 +655,8 @@ export const CLICK_ELEMENT_SCRIPT = `
     x: x,
     y: y,
     hittable: hittable,
-    obstruction: obstruction
+    obstruction: obstruction,
+    scrolledBy: scrolledBy.x !== 0 || scrolledBy.y !== 0 ? scrolledBy : undefined
   };
 })
 `;

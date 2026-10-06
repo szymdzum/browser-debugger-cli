@@ -146,6 +146,7 @@ export function placeInOwnerFrame(
         clipper: inner.clipper ?? (inside(rect, frameView) ? outer.clipper : frame.element),
         hidden: inner.hidden ?? (outer.hidden ? 'inside a hidden iframe' : null),
         invisible: inner.invisible ?? outer.invisible,
+        masked: inner.invisible ? null : (inner.masked ?? outer.masked ?? null),
         fixed: outer.fixed,
         sticky: outer.sticky ?? false,
         pageScroll: outer.pageScroll,

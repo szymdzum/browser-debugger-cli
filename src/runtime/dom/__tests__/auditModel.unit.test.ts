@@ -97,4 +97,31 @@ void describe('dom audit', () => {
     assert.equal(imageFinding(image(400, 100, 'contain')), undefined);
     assert.equal(imageFinding(image(800, 800, 'none')), undefined);
   });
+
+  void it('keeps why a ratio is approximate, and counts canvas elements', () => {
+    const result = buildAudit(
+      {
+        ...BASE,
+        texts: [
+          {
+            ...text('p#low', 'rgb(255, 255, 255)'),
+            inView: false,
+            risks: ['only its ancestors were checked'],
+          },
+        ],
+        animations: [],
+        canvases: 2,
+      },
+      { checks: ['contrast', 'animations'], level: 'AA', limit: 20 }
+    );
+    assert.deepEqual(result.contrast?.items[0]?.approximate, ['only its ancestors were checked']);
+    assert.equal(result.canvases, 2);
+    assert.equal(
+      buildAudit(
+        { ...BASE, animations: [], canvases: 0 },
+        { checks: ['animations'], level: 'AA', limit: 20 }
+      ).canvases,
+      undefined
+    );
+  });
 });

@@ -420,6 +420,7 @@ function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
     ...(inView && raw.cover && { coveredBy: raw.cover.element }),
     ...(inView && raw.cover?.transparent && { coverTransparent: true }),
     ...(raw.geometry.invisible && { invisible: raw.geometry.invisible }),
+    ...(raw.geometry.masked && { masked: raw.geometry.masked }),
     ...(raw.geometry.inert && { inert: true }),
     ...(raw.geometry.fixed && { fixed: true }),
     computed: raw.computed,

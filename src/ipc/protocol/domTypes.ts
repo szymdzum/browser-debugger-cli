@@ -176,6 +176,8 @@ export interface ClickResult extends ActionEffects {
   method?: 'mouse' | 'dom';
   /** What was done: click, double (click), right (click) or hover */
   action?: 'click' | 'double' | 'right' | 'hover';
+  /** How far the page scrolled to bring the element into view (CSS px; absent when it did not move) */
+  scrolledBy?: { x: number; y: number };
   /** Exit code for a failure */
   exitCode?: number;
   /** Why the DOM fallback was used (element covered or without size) */
@@ -437,6 +439,11 @@ export interface ElementLayout {
    * `opacity: 0 on div#menu` (`inViewport` still says where it is)
    */
   invisible?: string;
+  /**
+   * A `mask-image` on it or an ancestor, e.g. `mask-image on div.hero`: part
+   * or all of it may not show (how much is not evaluated)
+   */
+  masked?: string;
   /** Inside an `inert` element: shown, but a user cannot interact with it */
   inert?: true;
   computed: LayoutComputedStyle;
