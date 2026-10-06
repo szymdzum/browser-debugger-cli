@@ -18,6 +18,7 @@ import {
   buildEffects,
   buildRadius,
   buildStrokes,
+  buildText,
   effectiveBackground,
   renderedFont,
   textContrast,
@@ -231,6 +232,76 @@ void describe('text paint', () => {
         rendered: 'Arial',
       }
     );
+  });
+
+  const font = (color: string, family = 'Georgia'): Record<string, string> => ({
+    color,
+    'font-family': family,
+    'font-size': '16px',
+    'font-weight': '400',
+  });
+  const onGrey = {
+    backgrounds: [{ color: 'rgb(221, 221, 221)', image: false }],
+    canvasDark: false,
+    rendered: true,
+    hasText: true,
+  };
+
+  void it('describes the text of the descendant that draws it, and names it', () => {
+    const text = buildText(
+      { style: font('rgb(253, 120, 101)'), holderStyle: font('rgb(234, 236, 240)') },
+      { ...onGrey, textual: true, textHolder: 'abbr' },
+      []
+    );
+    assert.equal(text?.holder, 'abbr');
+    assert.equal(text?.color, '#eaecf0');
+    assert.equal(text?.contrast?.level, 'fail');
+    const own = buildText({ style: font('rgb(0, 0, 0)') }, { ...onGrey, textual: true }, []);
+    assert.equal(own?.holder, undefined);
+    assert.equal(own?.color, '#000');
+  });
+
+  void it('gives no contrast for text not rendered, and no text group without text', () => {
+    const gone = buildText(
+      { style: font('rgb(0, 0, 0)') },
+      { ...onGrey, textual: true, rendered: false },
+      []
+    );
+    assert.equal(gone?.contrast, undefined);
+    const parentStyle = font('rgb(0, 0, 0)', 'Georgia');
+    const icon = buildText(
+      { style: font('rgb(0, 0, 0)', 'Arial'), parentStyle },
+      { ...onGrey, textual: false, hasText: false },
+      []
+    );
+    assert.equal(icon, undefined);
+  });
+
+  void it("keeps a container's rendered font only when its text has the container's family", () => {
+    const parentStyle = font('rgb(0, 0, 0)', 'Georgia');
+    const fallback = [{ familyName: 'Times', isCustomFont: false, glyphCount: 9 }];
+    const raw = { ...onGrey, textual: false };
+    const same = buildText(
+      {
+        style: font('rgb(0, 0, 0)', 'Brand'),
+        parentStyle,
+        holderStyle: font('rgb(0, 0, 0)', 'Brand'),
+      },
+      raw,
+      fallback
+    );
+    assert.equal(same?.rendered, 'Times');
+    const other = buildText(
+      {
+        style: font('rgb(0, 0, 0)', 'Brand'),
+        parentStyle,
+        holderStyle: font('rgb(0, 0, 0)', 'Mono'),
+      },
+      raw,
+      fallback
+    );
+    assert.equal(other?.family, 'Brand');
+    assert.equal(other?.rendered, undefined);
   });
 });
 

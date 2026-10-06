@@ -511,6 +511,7 @@ Output notation:
   16/24           font size / line height; 'webfont loaded' = drawn with a downloaded font;
                   (rendered "X") = drawn with another font than declared (a fallback)
   contrast 4.47   WCAG ratio, rounded down, against the background behind the text
+  text in X       the text is drawn by descendant X (the one with most of it): its font, color, contrast
   (+N not rendered)  children with display: none (or not in the layout)
   hints           declarations on this element that have no effect, why, the fix and where they are
                   ('none': checked, nothing found)

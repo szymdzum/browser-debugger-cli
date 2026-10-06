@@ -71,6 +71,7 @@ interface RelatedNodes {
   node: number;
   parent?: number;
   textHolder?: number;
+  fontHolder?: number;
   pseudo: Array<{ type: PseudoSource['type']; backendNodeId: number }>;
 }
 
@@ -169,7 +170,7 @@ function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<Ins
     style: sources.style,
     parentStyle: sources.parentStyle,
     replaced: sources.raw.replaced === true,
-    formControl: sources.raw.formControl,
+    formControl: sources.raw.formControl && sources.raw.hasText,
     ...(sources.hints === false && { hints: false }),
     label: (declaration) => sourceLabel(declaration, cdp),
     ...(sources.rules && { rules: true }),
@@ -345,7 +346,7 @@ async function readSources(
   return {
     raw,
     ...styles,
-    fonts: raw.ownText || raw.formControl ? styles.fonts.node : styles.fonts.textHolder,
+    fonts: raw.textHolder ? styles.fonts.textHolder : styles.fonts.node,
     ...measured,
     ...(params.rules && { rules: true }),
     ...(params.why && { why: params.why }),
@@ -378,18 +379,19 @@ async function readPage(
 }
 
 /**
- * The backend node id of the element's layout parent or first text holder.
+ * The backend node id of the element's layout parent, the element that
+ * draws most of its text, or the parent of that text's nodes.
  *
  * @param cdp - CDP connection
  * @param objectId - The element
- * @param which - `parent` or `textHolder`
+ * @param which - `parent`, `textHolder` or `fontHolder`
  * @param objectGroup - Object group for handles
  * @returns Backend node id, or undefined when there is none
  */
 async function relatedNode(
   cdp: CDPConnection,
   objectId: string,
-  which: 'parent' | 'textHolder',
+  which: 'parent' | 'textHolder' | 'fontHolder',
   objectGroup: string
 ): Promise<number | undefined> {
   const response = (await cdp.send('Runtime.callFunctionOn', {
@@ -403,8 +405,8 @@ async function relatedNode(
 }
 
 /**
- * The backend node ids of the element, its layout parent, its first text
- * holder and its generated pseudo-elements.
+ * The backend node ids of the element, its layout parent, its text holder
+ * (with the parent of its text nodes) and its generated pseudo-elements.
  *
  * @param cdp - CDP connection
  * @param objectId - The element
@@ -416,10 +418,11 @@ async function relatedNodes(
   objectId: string,
   objectGroup: string
 ): Promise<RelatedNodes> {
-  const [node, parent, textHolder] = await Promise.all([
+  const [node, parent, textHolder, fontHolder] = await Promise.all([
     describe(cdp, objectId),
     relatedNode(cdp, objectId, 'parent', objectGroup),
     relatedNode(cdp, objectId, 'textHolder', objectGroup),
+    relatedNode(cdp, objectId, 'fontHolder', objectGroup),
   ]);
   const pseudo = (node.pseudoElements ?? [])
     .filter((p) => p.pseudoType === 'before' || p.pseudoType === 'after')
@@ -430,7 +433,8 @@ async function relatedNodes(
   return {
     node: node.backendNodeId,
     ...(parent && { parent }),
-    ...(textHolder && { textHolder }),
+    ...(textHolder && textHolder !== node.backendNodeId && { textHolder }),
+    ...(fontHolder && { fontHolder }),
     pseudo,
   };
 }
@@ -481,6 +485,8 @@ async function measure(
 interface CdpStyles {
   style: StyleMap;
   parentStyle?: StyleMap;
+  /** Computed styles of the descendant that draws the text, when it is not the element */
+  holderStyle?: StyleMap;
   pseudo: PseudoSource[];
   fonts: { node: PlatformFont[]; textHolder: PlatformFont[] };
   size?: { w: number; h: number };
@@ -503,6 +509,7 @@ async function nodeIdLookup(
     related.node,
     related.parent,
     related.textHolder,
+    related.fontHolder,
     ...related.pseudo.map((p) => p.backendNodeId),
   ];
   const ids = await pushNodes(
@@ -527,22 +534,29 @@ async function readStyles(
 ): Promise<CdpStyles> {
   await enableStyleDomains(cdp);
   const nodeIdOf = await nodeIdLookup(cdp, related);
-  const [matched, style, parentStyle, nodeFonts, holderFonts, size, pseudo] = await Promise.all([
-    readMatched(cdp, nodeIdOf(related.node), params),
-    computedStyle(cdp, nodeIdOf(related.node)),
-    related.parent === undefined ? undefined : computedStyle(cdp, nodeIdOf(related.parent)),
-    platformFonts(cdp, nodeIdOf(related.node)),
-    platformFonts(cdp, nodeIdOf(related.textHolder)),
-    borderBoxSize(cdp, related.node),
-    Promise.all(
-      related.pseudo.map((p) =>
-        pseudoSource(cdp, p.type, p.backendNodeId, nodeIdOf(p.backendNodeId))
-      )
-    ),
-  ]);
+  const optionalStyle = (backendNodeId: number | undefined): Promise<StyleMap | undefined> =>
+    backendNodeId === undefined
+      ? Promise.resolve(undefined)
+      : computedStyle(cdp, nodeIdOf(backendNodeId));
+  const [matched, style, parentStyle, holderStyle, nodeFonts, holderFonts, size, pseudo] =
+    await Promise.all([
+      readMatched(cdp, nodeIdOf(related.node), params),
+      computedStyle(cdp, nodeIdOf(related.node)),
+      optionalStyle(related.parent),
+      optionalStyle(related.textHolder),
+      platformFonts(cdp, nodeIdOf(related.node)),
+      platformFonts(cdp, nodeIdOf(related.fontHolder)),
+      borderBoxSize(cdp, related.node),
+      Promise.all(
+        related.pseudo.map((p) =>
+          pseudoSource(cdp, p.type, p.backendNodeId, nodeIdOf(p.backendNodeId))
+        )
+      ),
+    ]);
   return {
     style,
     ...(parentStyle && { parentStyle }),
+    ...(holderStyle && { holderStyle }),
     pseudo,
     fonts: { node: nodeFonts, textHolder: holderFonts },
     ...(size && { size }),

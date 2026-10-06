@@ -38,7 +38,10 @@ export interface InspectSources {
   raw: RawInspect;
   style: StyleMap;
   parentStyle?: StyleMap;
+  /** Computed styles of the descendant that draws the text, when it is not the element */
+  holderStyle?: StyleMap;
   pseudo: PseudoSource[];
+  /** Platform fonts of the text (of the descendant that draws it, when there is one) */
   fonts: PlatformFont[];
   /** Border box size from `DOM.getBoxModel`; absent when the element has no box */
   size?: { w: number; h: number };
@@ -166,7 +169,11 @@ function pageLooksDark(raw: Pick<RawInspect, 'backgrounds' | 'canvasDark'>): boo
  */
 function groups(sources: InspectSources): Partial<InspectResult> {
   const { style, parentStyle, raw } = sources;
-  const text = buildText(style, parentStyle, raw, sources.fonts);
+  const text = buildText(
+    { style, parentStyle, holderStyle: sources.holderStyle },
+    raw,
+    sources.fonts
+  );
   const fills = buildFills(style);
   const strokes = buildStrokes(style);
   const radius = buildRadius(style);

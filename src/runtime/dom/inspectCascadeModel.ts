@@ -97,6 +97,7 @@ export interface CascadeInput {
   props?: string[];
   /** Check for declarations that have no effect (default true) */
   hints?: boolean;
+  /** A form control that draws text (its font is checked against the parent's) */
   formControl?: boolean;
 }
 

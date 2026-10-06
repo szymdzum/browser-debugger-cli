@@ -277,6 +277,7 @@ function contrastText(contrast: InspectContrast | undefined): string | undefined
  */
 function textLine(text: InspectText): string | undefined {
   return groupLine('text', [
+    text.holder && `in ${text.holder}`,
     ...fontParts(text),
     text.color && `color ${text.color}`,
     contrastText(text.contrast),

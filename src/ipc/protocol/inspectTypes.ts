@@ -106,6 +106,11 @@ export interface InspectContrast {
 
 /** Typography (for containers without text of their own: only what differs from the parent) */
 export interface InspectText {
+  /**
+   * Label of the descendant that draws most of the text when it is not the
+   * element (`abbr`, `slot.button__label`): the fields describe its text
+   */
+  holder?: string;
   family?: string;
   /** Font Chrome rendered the text with, when it is not the first family */
   rendered?: string;
