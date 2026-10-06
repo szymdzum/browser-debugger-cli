@@ -128,6 +128,7 @@
   "overrides": {
     "eslint-plugin-tsdoc": {
       "@typescript-eslint/utils": "^8.71.0"
-    }
+    },
+    "shell-quote": "^1.12.0"
   }
 }
