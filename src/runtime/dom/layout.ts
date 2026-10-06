@@ -110,7 +110,7 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
 /**
  * Page function: layout of the matches in `found` (all up to `limit`, or the
  * one at `index`) and of the top-level page. An element covers another when
- * it is the topmost element at the center of the largest visible part of the
+ * it is painted above it at the center of the largest visible part of the
  * other's boxes (a wrapped link has one per line; the strip where overlay
  * scrollbars show is avoided when possible, {@link CLEAR_OF_SCROLLBAR_JS}) and does not lie inside it,
  * nor part of the element's own click target ({@link SAME_CLICK_TARGET_JS}: the link, button
@@ -120,7 +120,10 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
  * `z-index`), as `dom click` finds: the element is in the hit-test stack below
  * the ancestor. Hit-testing goes up through the iframes, so an overlay over
  * an iframe covers the elements in it. Elements hit-testing skips
- * (`pointer-events: none`, also through an iframe) get no cover.
+ * (`pointer-events: none`, also through an iframe) get no cover. The cover
+ * named is the first element above that paints there (a sticky header's
+ * background, not the transparent logo on it; inside a shadow host, what its
+ * shadow root paints), else the topmost one, marked transparent.
  */
 const LAYOUT_JS = `function (found, index, limit) {
   const geometryOf = ${ELEMENT_GEOMETRY_JS};
@@ -150,13 +153,21 @@ const LAYOUT_JS = `function (found, index, limit) {
     return false;
   };
   const sameTarget = ${SAME_CLICK_TARGET_JS};
+  const paintsAt = (n, x, y) => {
+    if (!paintsNothing(n)) return true;
+    if (!n.shadowRoot) return false;
+    return n.shadowRoot.elementsFromPoint(x, y).some((e) => e !== n && encloses(n, e) && !paintsNothing(e));
+  };
   const coverAt = (node, x, y) => {
     const root = node.getRootNode();
-    const scope = typeof root.elementFromPoint === 'function' ? root : node.ownerDocument;
-    const hit = scope.elementFromPoint(x, y);
-    if (!hit || encloses(node, hit) || sameTarget(node, hit)) return null;
-    if (!encloses(hit, node)) return hit;
-    return scope.elementsFromPoint(x, y).indexOf(node) > 0 ? hit : null;
+    const scope = typeof root.elementsFromPoint === 'function' ? root : node.ownerDocument;
+    const stack = scope.elementsFromPoint(x, y);
+    const at = stack.indexOf(node);
+    const above = (at < 0 ? stack.slice(0, 1) : stack.slice(0, at)).filter((hit) =>
+      !encloses(node, hit) && !sameTarget(node, hit) && (at >= 0 || !encloses(hit, node)));
+    if (above.length === 0) return null;
+    const painter = above.find((hit) => paintsAt(hit, x, y));
+    return { element: painter || above[0], transparent: !painter };
   };
   const visibleCenter = (el, g) => {
     const bounds = [{ x: 0, y: 0, width: page.viewport.width, height: page.viewport.height }].concat(g.clip ? [g.clip] : []);
@@ -199,7 +210,7 @@ const LAYOUT_JS = `function (found, index, limit) {
       y += offset.y;
       cover = coverAt(view.frameElement, x, y);
     }
-    return cover ? { element: describe(cover), transparent: paintsNothing(cover) } : null;
+    return cover ? { element: describe(cover.element), transparent: cover.transparent } : null;
   };
   const elements = picked.map(([i, el]) => {
     const style = el.ownerDocument.defaultView.getComputedStyle(el);

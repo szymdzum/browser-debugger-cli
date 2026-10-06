@@ -55,6 +55,12 @@ void describe('classifyViewportPosition', () => {
     assert.deepEqual(classifyViewportPosition(at(10, 10), VIEWPORT), { inViewport: 'visible' });
   });
 
+  void it('reports a zero-area element in the viewport (an inline list around floated items) as visible', () => {
+    assert.deepEqual(classifyViewportPosition(at(100, 88, 0, 0), VIEWPORT), {
+      inViewport: 'visible',
+    });
+  });
+
   void it('reports an element below the fold with the scroll that centres it', () => {
     assert.deepEqual(classifyViewportPosition(at(20, 1180), VIEWPORT), {
       inViewport: 'below',

@@ -84,7 +84,8 @@ export function inspectHeader(data: InspectOutput): string {
     data.element,
     data.content !== undefined && `"${data.content}"`,
     data.placeholder !== undefined && `placeholder "${data.placeholder}"`,
-    data.rect && `${data.rect.w}x${data.rect.h} @${data.rect.x},${data.rect.y}`,
+    data.rect &&
+      `${data.rect.w}x${data.rect.h} @${data.rect.x},${data.rect.y}${data.rect.in ? ' in viewport' : ''}`,
     kind && `[${kind}]`,
     ...inspectVisibilityBadges(data.visibility),
     data.context && `in ${data.context}`,

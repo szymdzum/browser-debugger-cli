@@ -412,6 +412,10 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     }
     return 'not rendered';
   };
+  const shownChild = (node) => Array.from(node.children).slice(0, 50).some((c) => {
+    const r = c.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && styleOf(c).visibility === 'visible';
+  });
   const hiddenReason = (style, box) => {
     if (style.display === 'none') return 'display: none';
     if (style.display === 'contents') return 'display: contents (no box of its own)';
@@ -421,7 +425,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     const skipped = skippedReason(el);
     if (skipped) return skipped;
     if (style.visibility !== 'visible') return 'visibility: ' + style.visibility;
-    if (box.width === 0 || box.height === 0) return 'zero size';
+    if ((box.width === 0 || box.height === 0) && !shownChild(el)) return 'zero size';
     return null;
   };
   const isSticky = () => {
@@ -444,7 +448,8 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   let clipper = own.clipper;
   let fixed = own.fixed;
   let fixedBy = own.fixedBy;
-  let hidden = hiddenReason(styleOf(el), box) || own.collapsed;
+  const holdsShownChildren = (box.width === 0 || box.height === 0) && shownChild(el);
+  let hidden = hiddenReason(styleOf(el), box) || (holdsShownChildren ? null : own.collapsed);
   let x = 0;
   let y = 0;
   for (let view = el.ownerDocument.defaultView; view && view.frameElement; view = view.parent) {
@@ -594,6 +599,23 @@ function axisScroll(
 }
 
 /**
+ * Whether an edge box lies within another (for a zero-area box, whose
+ * overlap is always empty: an inline element around floated children).
+ *
+ * @param outer - Containing edges
+ * @param inner - Edges
+ * @returns True when inner is within outer
+ */
+function contains(outer: Edges, inner: Edges): boolean {
+  return (
+    inner.left >= outer.left &&
+    inner.right <= outer.right &&
+    inner.top >= outer.top &&
+    inner.bottom <= outer.bottom
+  );
+}
+
+/**
  * Classify where an element is relative to the top-level viewport.
  *
  * Visible parts are what lies inside the viewport and the element's clip
@@ -616,6 +638,8 @@ export function classifyViewportPosition(
   const screen = edgesOf({ x: 0, y: 0, ...viewport });
   const view = geometry.clip ? overlap(screen, edgesOf(geometry.clip)) : screen;
   const seen = view && overlap(rect, view);
+  const holder = geometry.rect.width === 0 || geometry.rect.height === 0;
+  if (holder && view && contains(view, rect)) return { inViewport: 'visible' };
   if (!seen) {
     const direction =
       directionOutside(rect, screen) ??

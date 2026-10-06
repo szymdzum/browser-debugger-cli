@@ -134,6 +134,10 @@ void describe('dom inspect', () => {
   void it('says why an element cannot be seen', async () => {
     assert.match(await bdg(['dom', 'inspect', '#ghost']), /\[not rendered: display: none\]/);
     assert.match(await bdg(['dom', 'inspect', '#behind']), /\[covered by div#cover\]/);
+    const underHeader = await bdg(['dom', 'inspect', '#under-header']);
+    assert.match(underHeader, /\[covered by header\]/);
+    assert.doesNotMatch(underHeader, /transparent/);
+    assert.doesNotMatch(await bdg(['dom', 'inspect', '#slot-button']), /covered|under /);
   });
 
   void it('reaches elements in open shadow roots and same-origin iframes', async () => {
