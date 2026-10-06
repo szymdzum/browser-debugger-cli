@@ -245,7 +245,8 @@ function buildRules(
     const winners = resolutions.map((resolution) => resolution?.winner);
     const grouped = group.shorthand !== undefined ? groupedRow(winners) : undefined;
     if (grouped) {
-      return [toRule(grouped.property, grouped, resolutions[0], input, group.longhands)];
+      const longhands = shorthandLonghands(grouped.property) ?? group.longhands;
+      return [toRule(grouped.property, grouped, resolutions[0], input, longhands)];
     }
     return group.longhands.flatMap((longhand, i) => {
       const winner = winners[i];
@@ -301,7 +302,8 @@ function sameSource(a: Declaration, b: Declaration): boolean {
 /**
  * The computed value of a row shown as a shorthand or logical property,
  * from its longhands: as `--all` writes it (`padding 4 8`), else the
- * longhands' values (one when they are equal).
+ * longhands' values with runs of equal ones written once (`border` →
+ * `2px solid red`).
  *
  * @param property - Shorthand or logical property
  * @param longhands - Its longhands
@@ -317,7 +319,7 @@ function shorthandValue(
   if (collapsed !== undefined) return collapsed;
   const values = longhands.map((longhand) => style[longhand]);
   if (values.some((value) => value === undefined)) return undefined;
-  return new Set(values).size === 1 ? values[0] : values.join(' ');
+  return values.filter((value, i) => i === 0 || value !== values[i - 1]).join(' ');
 }
 
 /**

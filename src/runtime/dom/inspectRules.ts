@@ -100,8 +100,8 @@ export function sourceLabel(declaration: Declaration, cdp: CDPConnection): strin
  * @param line - 0-based line within the stylesheet
  * @param column - 0-based column
  * @returns e.g. `app.css:12`, `bootstrap.min.css:5:52628`, `<style> in index.html:40`,
- *   `constructed stylesheet`, `<style> in index.html, inserted by a script` (rules a
- *   script added with `insertRule`: their lines are not in any file)
+ *   `constructed stylesheet`, `<style> added by a script` (a sheet a script created and
+ *   filled with `insertRule`: its lines are not in any file)
  */
 function fileLabel(
   header: Protocol.CSS.CSSStyleSheetHeader | undefined,
@@ -112,7 +112,7 @@ function fileLabel(
   if (header.isConstructed) return 'constructed stylesheet';
   const file = fileName(header.sourceURL) || 'page';
   const where = header.isInline ? `<style> in ${file}` : file;
-  if (header.isMutable) return `${where}, inserted by a script`;
+  if (header.isMutable && !header.sourceURL) return `<style> added by a script`;
   const absoluteLine = (line ?? 0) + (header.isInline ? header.startLine : 0) + 1;
   const firstLine = header.isInline && (line ?? 0) === 0;
   const absoluteColumn = (column ?? 0) + (firstLine ? header.startColumn : 0) + 1;
