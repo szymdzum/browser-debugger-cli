@@ -315,14 +315,14 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     automaticBehavior:
       'Answers "what does it look like" without a screenshot, grouped like Figma Dev Mode: header (element, text, size and page position, [flex]/[grid], [not rendered]/[hidden]/[offscreen]/[covered by …], prefers-color-scheme), box (margin, padding, border widths, box-sizing, overflow, scroll size), layout (display, position, flex/grid container and item settings), parent (its display and layout, distances to its content edges, gaps to the neighbouring siblings), text (first font family → the font Chrome rendered, (webfont) or local; weight size/line-height; color; WCAG contrast against the composited background; only for elements with text), fill, border (sides, radius, outline), fx (shadow, transform, filter, opacity, blend), state (cursor, pointer-events, user-select, appearance), pseudo (::before/::after with content, ::placeholder) and a child tree (depth 2, 20 rows, identical siblings grouped). Values that change nothing (0, none, transparent, normal) are left out; colors are hex (lab/oklch from Tailwind converted), lengths px without the unit, rounded to 0.1. Secrets are never shown. JSON uses Figma-aligned names (rect, box, layout.sizing hug/fill/fixed, text, fills, strokes, radius, effects, children). Also by default: hints, the element\'s own declarations that have no effect (justify-content on a block, width on an inline element, top on a static one, var() of an unset custom property) with the reason, the fix and the rule\'s file:line',
     tokenImpact:
-      'About 60–80 tokens for the styles and 30–70 more for the child tree (--tree 0 drops it), against about 1,500 for a screenshot or 3,000+ for raw computed styles',
+      'About 80–130 tokens for a button: 80–100 for the styles, up to 50 per hint (--no-hints drops them), and 30–70 more for a child tree (--tree 0 drops it), against about 1,500 for a screenshot or 3,000+ for raw computed styles',
   },
 
   'inspect:--all': {
     default: 'Shows the curated groups (the properties that define the look)',
     whenEnabled:
       'Lists every computed property that differs from the default of the same element type, longhands collapsed into shorthands, noise (logical duplicates, currentColor echoes, custom properties) dropped',
-    tokenImpact: 'About 80 tokens instead of 60–80',
+    tokenImpact: 'About as many tokens as the curated groups (about 90 for a button)',
   },
 
   'inspect:--props': {

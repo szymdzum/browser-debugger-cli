@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - with `--json`, print one compact object per line, and one error line per failed refresh.
 - **Chrome gets a window on macOS by default** (#382). Display detection only looked at the X11/Wayland variables, which macOS never sets, so every Mac started headless and it looked like nothing happened. A Mac now counts as having a display unless the shell came in over SSH or `CI` is set. Agents running unattended should pass `--headless`. `--headless` and `--no-headless` override either way.
 - **`dom query` on large pages** (#385): it describes only the first 1000 matches, in one page-side pass, and lists 50 of them (`--json`: 1000) with the total count. `--limit <n>` lists more (0 = all). On a page with 50 000 elements, `dom query "*"` took 23 s and printed 7 MB of JSON; it now takes about half a second, and the JSON is 190 KB. Indices past the indexed matches say so and how to index more. `--json` has `count` (all matches), `nodes`, `omitted` and `indexed`.
+- **`bdg --help --json` is compact** (#390): 29 KB instead of 173 KB (about 7k tokens instead of 40k). Its `command` tree has each command's name, first description line, arguments and flags with their descriptions; the top-level fields stay. `bdg <command> --help --json` describes one command in full (option behaviors, defaults, choices and, new, its help text with examples), with a group's subcommands compact and without the root-only fields (`taskMappings`, `runtimeState`, `decisionTrees`, `capabilities`): `dom query` 18 KB → 5 KB, `dom` 74 KB → 12 KB. `bdg --help --json --full` prints the previous full tree. Help JSON is no longer indented.
+- **`bdg cdp` prints text without `--json`** (#390): domain and method lists and search results one line each, `--describe` with parameters, return values and the example, a method's result as indented JSON (`<Method>: done (no result data)` for an empty one), errors on stderr. It printed the JSON envelope even without `--json`; scripts that parse its output need `--json` now.
 
 ### Fixed
 
@@ -49,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `dom audit animations` counts visible canvas elements, whose script-drawn animations it cannot list;
   - `dom click` and `dom hover` say when they scrolled the page to reach the element (`Scrolled: page down 1240px to reach it`, JSON `scrolledBy`);
   - `dom inspect --all` lists `-webkit-text-fill-color: transparent`, and the fill line of gradient text says `clipped to the text`.
+- **Argument parser errors suggest a fix** (#390). An unknown option, a missing argument or option value, an invalid choice or a conflicting option had no `suggestion` in the JSON envelope. Now a mistyped option gets the closest option of the command, the hidden `--session` and `--quiet` included (`--sesion` suggested `--json` before), and everything else `Run "bdg <command> --help" for usage`. Without `--json` the suggestion is printed under the error. Exit code stays 81.
+- **`bdg cdp --search` with a blank query exits 81** (#390): `--search " "` listed all 675 methods as matches. `--search`, `--list`, `--describe` and `--params` together exit 81 instead of silently ignoring all but one.
+- **`dom inspect` token estimate** (#390): a button takes about 80–130 tokens with the default hints (the browser-default form-control font hint alone is about 50), not 60–100; `--no-hints` drops the hints.
 
 ## [0.12.0] - 2026-10-06
 

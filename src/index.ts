@@ -2,8 +2,13 @@
 
 import { Command, CommanderError, Option } from 'commander';
 
-import { generateMachineReadableHelp, generateSubcommandHelp } from '@/commands/helpJson.js';
-import { assertKnownHelpTopic, helpTopicPath, splitCommanderHint } from '@/commands/helpTopic.js';
+import {
+  generateCommandHelp,
+  generateCompactHelp,
+  generateMachineReadableHelp,
+  resolveCommand,
+} from '@/commands/helpJson.js';
+import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
 import { assertNotGroupSubcommand } from '@/commands/start.js';
 import { commandRegistry } from '@/commands.js';
 import { CommandError } from '@/errors/index.js';
@@ -19,40 +24,10 @@ import { VERSION } from '@/utils/version.js';
 const CLI_NAME = 'bdg';
 const CLI_DESCRIPTION = 'Browser telemetry via Chrome DevTools Protocol';
 const SESSION_OPTION_FLAGS = '--session <name>';
+/** Asks `bdg --help --json` for every command's full metadata instead of the compact tree */
+const FULL_HELP_FLAG = '--full';
 const SESSION_OPTION_DESCRIPTION =
   'Use a named session (own daemon, Chrome and port) instead of the default one; env: BDG_SESSION';
-
-/**
- * Extract command path from argv for subcommand help routing.
- *
- * Parses argv to find command names before --help flag.
- * Stops at first flag (starts with -) or --help.
- *
- * @param argv - Process arguments array
- * @returns Array of command names (e.g., ['dom', 'query'])
- *
- * @example
- * ```typescript
- * extractCommandPath(['node', 'bdg', 'dom', 'query', '--help', '--json'])
- * // Returns: ['dom', 'query']
- *
- * extractCommandPath(['node', 'bdg', '--help', '--json'])
- * // Returns: []
- * ```
- */
-function extractCommandPath(argv: string[]): string[] {
-  const commandPath: string[] = [];
-  const args = argv.slice(2);
-
-  for (const arg of args) {
-    if (arg.startsWith('-')) {
-      break;
-    }
-    commandPath.push(arg);
-  }
-
-  return commandPath;
-}
 
 /**
  * CLI arguments that can be flags: everything before a literal `--`.
@@ -66,6 +41,16 @@ function flagArgs(): string[] {
   const args = process.argv.slice(2);
   const end = args.indexOf('--');
   return end === -1 ? args : args.slice(0, end);
+}
+
+/**
+ * The words of the command line that are not options (command names,
+ * arguments, option values), for finding the command addressed.
+ *
+ * @returns Non-option arguments before a literal `--`
+ */
+function commandWords(): string[] {
+  return flagArgs().filter((arg) => !arg.startsWith('-'));
 }
 
 /**
@@ -89,7 +74,7 @@ function wantsHelp(): boolean {
 }
 
 /** Flags that may accompany a bare `bdg --json` (anything else has its own meaning) */
-const BARE_JSON_FLAGS = new Set(['--json', '-j', '--debug']);
+const BARE_JSON_FLAGS = new Set(['--json', '-j', '--debug', FULL_HELP_FLAG]);
 
 /**
  * Whether `bdg --json` was run on its own (no command, URL or other option),
@@ -161,9 +146,7 @@ async function main(): Promise<void> {
       writeOut: (text) => {
         if (!jsonMode) process.stdout.write(text);
       },
-      outputError: (message, write) => {
-        if (!jsonMode) write(message);
-      },
+      outputError: () => undefined,
     });
 
   commandRegistry.forEach((register) => register(program));
@@ -174,21 +157,34 @@ async function main(): Promise<void> {
 
   if (jsonMode && (wantsHelp() || hasNoArguments())) {
     selectSession(sessionFromArgv(process.argv));
-    const commandPath = extractCommandPath(process.argv);
-    const help =
-      commandPath.length > 0
-        ? generateSubcommandHelp(program, commandPath)
-        : generateMachineReadableHelp(program);
-    console.log(JSON.stringify(help, null, 2));
+    console.log(JSON.stringify(helpJson(program)));
     process.exit(0);
   }
 
   try {
     await program.parseAsync();
   } catch (error) {
-    if (error instanceof CommanderError) handleUsageError(error, jsonMode);
+    if (error instanceof CommanderError) {
+      handleUsageError(error, resolveCommand(program, commandWords()), jsonMode);
+    }
     throw error;
   }
+}
+
+/**
+ * Machine-readable help for `--help --json`: the command's full help when the
+ * command line names one, otherwise the compact root help (the full one with
+ * `--full`).
+ *
+ * @param program - Root command with all commands registered
+ * @returns Help to print
+ */
+function helpJson(program: Command): object {
+  const command = resolveCommand(program, commandWords());
+  if (command !== program) return generateCommandHelp(program, command);
+  return flagArgs().includes(FULL_HELP_FLAG)
+    ? generateMachineReadableHelp(program)
+    : generateCompactHelp(program);
 }
 
 /**
@@ -269,15 +265,17 @@ function applyGlobalOptions(program: Command, actionCommand: Command): void {
 /**
  * Exit for a Commander parse error (unknown option, missing argument, ...).
  *
- * Commander's own message goes to stderr in human mode; with `--json` a
- * response envelope is printed instead. Usage errors (including a command
- * group invoked without a subcommand) exit with 81; `--version --json` prints
- * `{ data: { version } }`.
+ * Prints the message with a suggestion (a did-you-mean for a mistyped option
+ * or command, else the command's `--help`) to stderr, or as a response
+ * envelope with `--json`. Usage errors (including a command group invoked
+ * without a subcommand, whose help Commander already printed) exit with 81;
+ * `--version --json` prints `{ data: { version } }`.
  *
  * @param error - Commander error
+ * @param command - Command the error came from
  * @param jsonMode - Whether `--json` was requested
  */
-function handleUsageError(error: CommanderError, jsonMode: boolean): never {
+function handleUsageError(error: CommanderError, command: Command, jsonMode: boolean): never {
   if (error.code === 'commander.version') {
     if (jsonMode) console.log(JSON.stringify(buildSuccessResponse({ version: VERSION }), null, 2));
     process.exit(EXIT_CODES.SUCCESS);
@@ -289,18 +287,13 @@ function handleUsageError(error: CommanderError, jsonMode: boolean): never {
     process.exit(EXIT_CODES.SUCCESS);
   }
   const exitCode = EXIT_CODES.INVALID_ARGUMENTS;
+  const { message, suggestion } = usageErrorDetails(error, command);
   if (jsonMode) {
-    const { message, suggestion } =
-      error.code === 'commander.help'
-        ? { message: 'Missing subcommand (run the command with --help to list subcommands)' }
-        : splitCommanderHint(error.message);
     console.log(
-      JSON.stringify(
-        OutputBuilder.buildJsonError(message, { exitCode, ...(suggestion && { suggestion }) }),
-        null,
-        2
-      )
+      JSON.stringify(OutputBuilder.buildJsonError(message, { exitCode, suggestion }), null, 2)
     );
+  } else if (error.code !== 'commander.help') {
+    console.error(genericError(message, suggestion));
   }
   process.exit(exitCode);
 }

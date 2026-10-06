@@ -2,11 +2,14 @@
  * Machine-readable help generation using Commander.js introspection API.
  */
 
+import type { EventEmitter } from 'node:events';
+
 import type { Command, Option, Argument } from 'commander';
 
 import { getAllDomainSummaries } from '@/cdp/schema.js';
 import { getOptionBehavior } from '@/commands/optionBehaviors.js';
 import { readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
+import { helpJsonDetailsNote } from '@/ui/messages/commands.js';
 import { getAllDecisionTrees, type DecisionTree } from '@/utils/decisionTrees.js';
 import { EXIT_CODE_REGISTRY } from '@/utils/exitCodes.js';
 import { getAllTaskMappings, type TaskMapping } from '@/utils/taskMappings.js';
@@ -88,8 +91,30 @@ export interface CommandMetadata {
   arguments: ArgumentMetadata[];
   /** Command options */
   options: OptionMetadata[];
+  /** Text shown after the options in `--help` (examples, output legend) */
+  helpText?: string;
   /** Subcommands */
   subcommands: CommandMetadata[];
+}
+
+/**
+ * Command summary for the compact root help: one-line description, arguments
+ * and flags with their descriptions (behaviors, defaults and choices are in
+ * `bdg <command> --help --json`).
+ */
+export interface CompactCommand {
+  /** Command name */
+  name: string;
+  /** Command aliases (only when it has some) */
+  aliases?: readonly string[];
+  /** First line of the description */
+  description: string;
+  /** Arguments as in usage, e.g. "<selector> [index]" (only when it takes some) */
+  arguments?: string;
+  /** Visible options: flags to description */
+  options?: Record<string, string>;
+  /** Subcommands (only for command groups) */
+  subcommands?: CompactCommand[];
 }
 
 /**
@@ -125,7 +150,7 @@ export interface Capabilities {
 }
 
 /**
- * Root machine-readable help structure.
+ * Root machine-readable help structure (`bdg --help --json --full`).
  */
 export interface MachineReadableHelp {
   /** CLI name */
@@ -153,6 +178,32 @@ export interface MachineReadableHelp {
   decisionTrees: Record<string, DecisionTree>;
   /** Tool capabilities summary */
   capabilities: Capabilities;
+}
+
+/**
+ * Compact root help (`bdg --help --json`): the full help with a command tree
+ * of names, one-line descriptions and flags.
+ */
+export interface CompactHelp extends Omit<MachineReadableHelp, 'command'> {
+  /** Where the details are */
+  details: string;
+  /** Root command summary */
+  command: CompactCommand;
+}
+
+/**
+ * Help for one command (`bdg <command> --help --json`): its full metadata
+ * (option behaviors, defaults, choices, help text), its subcommands in compact
+ * form, and the exit codes.
+ */
+export interface CommandHelp extends Pick<
+  MachineReadableHelp,
+  'name' | 'version' | 'description' | 'exitCodes'
+> {
+  /** Full command path, e.g. "bdg dom query" */
+  path: string;
+  /** Command metadata; subcommands summarized (ask each for its details) */
+  command: Omit<CommandMetadata, 'subcommands'> & { subcommands: CompactCommand[] };
 }
 
 /**
@@ -221,6 +272,22 @@ function convertArgument(argument: Argument): ArgumentMetadata {
 }
 
 /**
+ * The text a command adds after its options in `--help` (examples, output
+ * legend), collected from its `afterHelp` listeners. Commander's Command is an
+ * EventEmitter at runtime; its typings leave that out.
+ *
+ * @param command - Commander command instance
+ * @returns The text, or undefined when the command adds none
+ */
+function afterHelpText(command: Command): string | undefined {
+  const chunks: string[] = [];
+  const emitter = command as unknown as EventEmitter;
+  emitter.emit('afterHelp', { error: false, command, write: (text: string) => chunks.push(text) });
+  const text = chunks.join('').trim();
+  return text || undefined;
+}
+
+/**
  * Recursively converts a Commander Command to CommandMetadata.
  *
  * Passes command name to option converter for behavioral metadata lookup.
@@ -230,6 +297,7 @@ function convertArgument(argument: Argument): ArgumentMetadata {
  */
 function convertCommand(command: Command): CommandMetadata {
   const commandName = command.name();
+  const helpText = afterHelpText(command);
   return {
     name: commandName,
     aliases: command.aliases(),
@@ -237,7 +305,45 @@ function convertCommand(command: Command): CommandMetadata {
     usage: command.usage(),
     arguments: command.registeredArguments.map(convertArgument),
     options: command.options.map((opt) => convertOption(opt, commandName)),
+    ...(helpText && { helpText }),
     subcommands: command.commands.map(convertCommand),
+  };
+}
+
+/**
+ * An argument as written in usage: `<name>`, `[name]`, `<name...>`.
+ *
+ * @param argument - Commander argument instance
+ * @returns Usage term
+ */
+function argumentTerm(argument: Argument): string {
+  const name = `${argument.name()}${argument.variadic ? '...' : ''}`;
+  return argument.required ? `<${name}>` : `[${name}]`;
+}
+
+/**
+ * Recursively converts a Commander Command to its compact summary: first
+ * description line, arguments, and visible options with their descriptions.
+ * Empty fields are left out.
+ *
+ * @param command - Commander command instance
+ * @returns Compact command summary
+ */
+function convertCompactCommand(command: Command): CompactCommand {
+  const aliases = command.aliases();
+  const args = command.registeredArguments.map(argumentTerm).join(' ');
+  const options = command.options.filter((option) => !option.hidden);
+  return {
+    name: command.name(),
+    ...(aliases.length > 0 && { aliases }),
+    description: command.description().split('\n')[0] ?? '',
+    ...(args && { arguments: args }),
+    ...(options.length > 0 && {
+      options: Object.fromEntries(options.map((option) => [option.flags, option.description])),
+    }),
+    ...(command.commands.length > 0 && {
+      subcommands: command.commands.map(convertCompactCommand),
+    }),
   };
 }
 
@@ -313,10 +419,11 @@ function generateCapabilities(): Capabilities {
 }
 
 /**
- * Generates machine-readable help from a Commander program.
+ * Generates the full machine-readable help from a Commander program
+ * (`bdg --help --json --full`).
  *
  * Includes comprehensive metadata for agent discovery:
- * - Command structure and options
+ * - Command structure and options with behaviors
  * - Exit codes with semantic meanings
  * - Task-to-command mappings with CDP alternatives
  * - Runtime state and command availability
@@ -325,15 +432,6 @@ function generateCapabilities(): Capabilities {
  *
  * @param program - Commander program instance
  * @returns Machine-readable help structure
- *
- * @example
- * ```typescript
- * import { program } from 'commander';
- * import { generateMachineReadableHelp } from './help/machineReadableHelp.js';
- *
- * const help = generateMachineReadableHelp(program);
- * console.log(JSON.stringify(help, null, 2));
- * ```
  */
 export function generateMachineReadableHelp(program: Command): MachineReadableHelp {
   return {
@@ -350,65 +448,84 @@ export function generateMachineReadableHelp(program: Command): MachineReadableHe
 }
 
 /**
- * Finds a subcommand by traversing the command path.
+ * Generates the compact root help (`bdg --help --json`): the full help with
+ * the command tree reduced to names, one-line descriptions and flags.
+ *
+ * @param program - Commander program instance
+ * @returns Compact help structure
+ */
+export function generateCompactHelp(program: Command): CompactHelp {
+  return {
+    ...generateMachineReadableHelp(program),
+    details: helpJsonDetailsNote(),
+    command: convertCompactCommand(program),
+  };
+}
+
+/**
+ * The command a command line addresses: follows the words that name
+ * subcommands and skips the others (option values, arguments), stopping at a
+ * command without subcommands.
  *
  * @param program - Root Commander program instance
- * @param commandPath - Array of command names to traverse (e.g., ['dom', 'query'])
- * @returns The target Command if found, null otherwise
+ * @param words - Command-line words, e.g. ['dom', 'query', '.item']
+ * @returns The addressed command (the program when no word names one)
+ *
+ * @example
+ * ```typescript
+ * resolveCommand(program, ['--session', 'a', 'dom', 'query', '.item']).name(); // 'query'
+ * ```
  */
-function findSubcommand(program: Command, commandPath: string[]): Command | null {
-  let current: Command = program;
-
-  for (const name of commandPath) {
+export function resolveCommand(program: Command, words: string[]): Command {
+  let current = program;
+  for (const word of words) {
+    if (current.commands.length === 0) break;
     const found = current.commands.find(
-      (cmd) => cmd.name() === name || cmd.aliases().includes(name)
+      (cmd) => cmd.name() === word || cmd.aliases().includes(word)
     );
-    if (!found) {
-      return null;
-    }
-    current = found;
+    if (found) current = found;
   }
-
   return current;
 }
 
 /**
- * Generates machine-readable help for a specific subcommand.
+ * Full command path, e.g. "bdg dom query".
  *
- * Returns the same structure as generateMachineReadableHelp but with
- * the command field focused on the requested subcommand. If the subcommand
- * is not found, falls back to full root help.
+ * @param command - Commander command instance
+ * @returns Names from the program down to the command
+ */
+export function commandPath(command: Command): string {
+  const names: string[] = [];
+  for (let level: Command | null = command; level; level = level.parent)
+    names.unshift(level.name());
+  return names.join(' ');
+}
+
+/**
+ * Generates machine-readable help for one command: its full metadata,
+ * compact subcommands (a group lists them like the root help does) and the
+ * exit codes.
  *
  * @param program - Root Commander program instance
- * @param commandPath - Array of command names (e.g., ['dom', 'query'])
- * @returns Machine-readable help structure for the subcommand
+ * @param command - The command (from {@link resolveCommand})
+ * @returns Help for the command
  *
  * @example
  * ```typescript
- * // Get help for 'bdg dom query'
- * const help = generateSubcommandHelp(program, ['dom', 'query']);
- * console.log(help.command.name); // 'query'
+ * const help = generateCommandHelp(program, resolveCommand(program, ['dom', 'query']));
+ * console.log(help.path); // 'bdg dom query'
  * ```
  */
-export function generateSubcommandHelp(
-  program: Command,
-  commandPath: string[]
-): MachineReadableHelp {
-  const targetCommand = findSubcommand(program, commandPath);
-
-  if (!targetCommand) {
-    return generateMachineReadableHelp(program);
-  }
-
+export function generateCommandHelp(program: Command, command: Command): CommandHelp {
   return {
     name: program.name(),
     version: program.version() ?? 'unknown',
     description: program.description(),
-    command: convertCommand(targetCommand),
+    path: commandPath(command),
+    command: {
+      ...convertCommand(command),
+      subcommands: command.commands.map(convertCompactCommand),
+    },
     exitCodes: [...EXIT_CODE_DOCS],
-    taskMappings: getAllTaskMappings(),
-    runtimeState: generateRuntimeState(),
-    decisionTrees: getAllDecisionTrees(),
-    capabilities: generateCapabilities(),
   };
 }

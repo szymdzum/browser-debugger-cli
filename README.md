@@ -81,6 +81,7 @@ No docs to paste into the prompt. The agent asks bdg:
 
 ```bash
 bdg --help --json                          # Every command, flag and exit code, plus "task → command" mappings
+bdg dom query --help --json                # One command in full: option behaviors, defaults, examples
 bdg cdp --search cookie                    # 13 matching methods across all CDP domains, each with an example call
 bdg cdp Network.getCookies --describe      # Parameters, return types, an example
 ```

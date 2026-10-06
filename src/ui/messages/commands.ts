@@ -1438,3 +1438,12 @@ Examples:
                                   bdg css search --limit 50 -- --brand)
   bdg css search "oklch("         Rules that use oklch colors
   bdg css search ".btn-primary"   Rules of a class, in every stylesheet`;
+
+/**
+ * `details` field of `bdg --help --json`: where the full help is.
+ *
+ * @returns Note
+ */
+export function helpJsonDetailsNote(): string {
+  return 'Option behaviors, defaults, choices and examples: bdg <command> --help --json (e.g. bdg dom query --help --json). Everything at once: bdg --help --json --full';
+}
