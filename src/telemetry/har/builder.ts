@@ -2,7 +2,6 @@
  * HAR (HTTP Archive) builder for transforming network telemetry to HAR 1.2 format.
  */
 
-import type * as Http from 'node:http';
 import { createRequire } from 'node:module';
 
 import type {
@@ -19,6 +18,7 @@ import type {
   PostData,
   WebSocketMessage,
 } from './types.js';
+import type * as Http from 'node:http';
 
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketFrame } from '@/types.js';

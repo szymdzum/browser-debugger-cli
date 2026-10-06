@@ -4,14 +4,14 @@ import { Command, CommanderError, Option } from 'commander';
 
 import { generateMachineReadableHelp, generateSubcommandHelp } from '@/commands/helpJson.js';
 import { assertKnownHelpTopic, helpTopicPath, splitCommanderHint } from '@/commands/helpTopic.js';
-import { commandRegistry } from '@/commands.js';
 import { assertNotGroupSubcommand } from '@/commands/start.js';
+import { commandRegistry } from '@/commands.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
 import { selectSession } from '@/session/sessionName.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
-import { enableDebugLogging } from '@/ui/logging/index.js';
 import { hideHints } from '@/ui/formatting.js';
+import { enableDebugLogging } from '@/ui/logging/index.js';
 import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';

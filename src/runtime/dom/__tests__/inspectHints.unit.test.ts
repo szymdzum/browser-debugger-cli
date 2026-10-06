@@ -5,8 +5,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
 import type { InspectHint } from '@/ipc/protocol/inspectTypes.js';
+import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
 import {
   explainUnsetVariables,
   formControlFontHints,
