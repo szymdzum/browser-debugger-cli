@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-06
+
 ### Added
 
 - **`bdg page emulate`** - Change the viewport (`--viewport 900x700`) or `prefers-color-scheme` (`--color-scheme light`) mid-session, or `--reset` both, to check responsive and themed styles without restarting or raw CDP calls (#353)
@@ -20,7 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`bdg cdp` errors from Chrome are user errors** - a missing node, target or frame exits 83 (with where node ids come from) and wrong parameters exit 81 (pointing to `--describe`), instead of 110 (#353)
 - **Selectors that try to cross a shadow root say so** - `my-modal form` finds nothing even when the form is in the modal's open shadow root; the error now names the host and the selector that works (`use "form"`) (#353)
-
 - **Element screenshots of centered content were shifted** - `dom screenshot <file> <selector>` captured with Chrome's "beyond viewport" mode, which lays the page out without its scrollbar and moved centered content by half its width (about 7 px: a card's left border cut off). An element that fits the viewport is scrolled into view and captured as the page shows it; only areas larger than the viewport still use that mode (#333)
 - **Stable `dom frames` indices** - Frames are listed in the document order of their `<iframe>` elements (open shadow roots included, out-of-process frames at their element's place) instead of in-process frames first in the order Chrome attached them, and `eval --frame <n>` exits 87 ("Frame index n is stale…", re-run `bdg dom frames`) when the frame at that index changed since the last listing instead of running in another frame (#346)
 - **No console error left by `dom eval` rejections** - `bdg dom eval 'Promise.reject(…)'` reports the rejection (exit 91) without leaving "Uncaught (in promise)" in `bdg console`: Chrome's report is revoked once bdg handles the promise, and revoked reports are dropped as in DevTools. Rejections nothing handles still show (#346)
