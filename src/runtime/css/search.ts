@@ -40,11 +40,12 @@ export async function searchStyleSheets(
   let total = 0;
   headers.forEach((header, i) => {
     const found = findInSheet(texts[i] ?? '', params.query, Number.POSITIVE_INFINITY);
-    total += found.total;
     const seen = new Set<string>();
     for (const match of found.matches) {
-      if (seen.has(match.rule) || matches.length >= limit) continue;
+      if (seen.has(match.rule)) continue;
       seen.add(match.rule);
+      total++;
+      if (matches.length >= limit) continue;
       matches.push({
         source: stylesheetPositionLabel(header, match.line, match.column),
         text: match.rule,

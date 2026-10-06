@@ -532,7 +532,8 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
   const formControl = /^(input|textarea|select|button)$/.test(el.localName);
   const textControl = (${TEXT_CONTROL_JS})(el);
   const holder = textControl ? null : (${TEXT_HOLDER_JS})(el, tree);
-  const textual = textControl || Boolean(holder && (holder.style === el || holder.share >= 0.9 || !tree.container(el)));
+  const textChildren = tree.children(el).filter((c) => tree.rendered(c) && (c.textContent || '').trim() !== '').length;
+  const textual = textControl || Boolean(holder && (holder.style === el || (holder.share >= 0.9 && textChildren <= 1) || !tree.container(el)));
   const textFrom = holder && holder.style !== el ? holder.style : el;
   const content = textOf(el);
   const parent = tree.layoutParent(el);
@@ -663,7 +664,7 @@ export const VARIABLE_SETTERS_JS = `function (names) {
   const matches = (selector) => {
     try { return closestAcross(selector); } catch (e) { return null; }
   };
-  const stateless = (selector) => selector.replace(/:(hover|focus|focus-visible|focus-within|active|visited|checked|target|open)\\b/g, '');
+  const stateless = (selector) => selector.replace(/:(focus-visible|focus-within|focus|hover|active|visited|checked|target|open)(?![\\w-])/g, '');
   const applies = (rule) => {
     if (rule.media && rule.media.mediaText && !view.matchMedia(rule.media.mediaText).matches) return '@media ' + rule.media.mediaText;
     if (typeof CSSSupportsRule !== 'undefined' && rule instanceof CSSSupportsRule && !CSS.supports(rule.conditionText)) return '@supports ' + rule.conditionText;

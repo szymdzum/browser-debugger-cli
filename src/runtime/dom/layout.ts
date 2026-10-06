@@ -124,7 +124,7 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
  * named is the first element above that paints there (a sticky header's
  * background, not the transparent logo on it; inside a shadow host, what its
  * shadow root paints), else the topmost one, marked transparent; named by
- * its outermost positioned ancestor that does not hold the element (the
+ * its outermost fixed or sticky ancestor that does not hold the element (the
  * fixed banner, not a span inside it).
  */
 const LAYOUT_JS = `function (found, index, limit) {
@@ -196,13 +196,13 @@ const LAYOUT_JS = `function (found, index, limit) {
     const s = node.ownerDocument.defaultView.getComputedStyle(node);
     const clearColor = (c) => c === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(c);
     const ownText = Array.from(node.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== '');
-    const replaced = /^(img|video|canvas|svg|iframe|embed|object|input|textarea|select)$/.test(node.localName);
+    const replaced = /^(img|video|canvas|iframe|embed|object|input|textarea|select)$/.test(node.localName);
     return !replaced && clearColor(s.backgroundColor) && s.backgroundImage === 'none' && s.boxShadow === 'none' && !ownText;
   };
   const overlayOf = (hit, node) => {
     let overlay = hit;
     for (let p = hit.parentElement || (hit.parentNode && hit.parentNode.host); p && p !== p.ownerDocument.body && !encloses(p, node); p = p.parentElement || (p.parentNode && p.parentNode.host)) {
-      if (/^(fixed|sticky|absolute)$/.test(p.ownerDocument.defaultView.getComputedStyle(p).position)) overlay = p;
+      if (/^(fixed|sticky)$/.test(p.ownerDocument.defaultView.getComputedStyle(p).position)) overlay = p;
     }
     return overlay;
   };
