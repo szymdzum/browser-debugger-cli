@@ -280,6 +280,7 @@ bdg dom get ".nav-link" --index 2             # Third match (0-based; --nth is a
 bdg dom get                                   # The body (default selector)
 bdg dom get "#content"                        # [Generic] <div> + a Text: line (up to 500 characters)
 bdg dom get "#content" --full                 # All of its text (not with --raw or --node-id)
+bdg dom get "#tinymce"                        # [Generic] "Rich Text Area…" + Text: Your content… (name differs from the text)
 
 # Raw HTML output
 bdg dom get "h1" --raw                        # Get full HTML with attributes
@@ -348,6 +349,7 @@ bdg dom query "div" --limit 0                 # Every match (slower on a large p
 - Matches outside the viewport or hidden get a hint: `(below fold)`, `(above viewport)`, `(left of viewport)`, `(right of viewport)`, `(hidden)`, or `(out of view in ul#list)` for one scrolled out of a container; `--json` has `inViewport` (and `clippedBy`) for the first 100 matches (see `dom layout`)
 - `<option>` elements show their `value` attribute and label: `[2] <option value="ca"> Canada (hidden)`
 - Text previews (here, in `dom get`, `dom layout` and action output) leave out close buttons (`.close`, `aria-label="Close"`/`"Dismiss"`, a button or link showing just `×`) and `aria-hidden` icons, so a flash message does not end in `×`
+- Text previews (here, in `dom get` and `dom layout`) of an element in a shadow root include the light-DOM content it shows through a `<slot>` (`<p><slot></slot></p>` reads as the slotted text, not empty)
 - No match exits 83. For a selector that is a single id or class, the error suggests up to 3 similar ones on the page (`Did you mean #remove-sauce-labs-backpack? (similar id on the page)`; near-typos first, then names sharing their end, then their start); it names cross-origin iframes and `<object>`/`<embed>` documents only when the page has them (selectors do not search them). The same applies to `dom click`, `fill` and the other actions
 - One `Next:` line follows (hidden with `-q`): `bdg dom get 0` (text), `bdg dom get 0 --raw` (HTML), `bdg dom layout 0` (position). They take the index, so they work for matches in shadow roots and iframes too
 

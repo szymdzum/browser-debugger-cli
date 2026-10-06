@@ -41,26 +41,68 @@ export const WITHOUT_DECORATIONS_JS = `(el, text) => {
 }`;
 
 /**
+ * Page-side text of an element that shows content through `<slot>`s (or of
+ * a slot itself), which `innerText` leaves out: each slot is replaced by
+ * what it shows, its assigned nodes flattened through nested slots (or its
+ * fallback content when nothing is assigned). Elements without slots are
+ * read with `innerText`; those that are not rendered are left out, and
+ * those that are not inline are set apart by line breaks. The text is cut
+ * at `limit` characters, and an element whose text alone passes the limit
+ * is read from its text nodes (`textContent`) instead of `innerText`, which
+ * would lay out all of it.
+ */
+export const SLOTTED_TEXT_JS = `(el, limit) => {
+  let text = '';
+  const read = (node) => {
+    if (text.length >= limit) return;
+    if (node.nodeType === 3) text += node.data;
+    if (node.nodeType !== 1) return;
+    if (node.localName === 'slot') {
+      node.assignedNodes({ flatten: true }).forEach(read);
+      return;
+    }
+    const display = node.ownerDocument.defaultView.getComputedStyle(node).display;
+    if (node.checkVisibility && !node.checkVisibility() && display !== 'contents') return;
+    const apart = display.startsWith('inline') || display === 'contents' ? '' : '\\n';
+    text += apart;
+    if (node.querySelector('slot')) Array.from(node.childNodes).forEach(read);
+    else if ((node.textContent || '').length > limit - text.length) text += (node.textContent || '').slice(0, limit - text.length);
+    else text += typeof node.innerText === 'string' ? node.innerText : node.textContent || '';
+    text += apart;
+  };
+  if (el.localName === 'slot') read(el);
+  else Array.from(el.childNodes).forEach(read);
+  return text.slice(0, limit);
+}`;
+
+/**
  * Page-side text of an element as a user sees it: `innerText` for a rendered
  * element (CSS-hidden parts left out, inline elements not split apart), none
  * for an element that is not rendered, `textContent` for SVG and other
  * elements without `innerText` and for `display: contents` wrappers (no box
  * of their own, but their children are shown), and the label of an
- * `<option>` (which its `<select>` renders). For large containers (more
- * than 2000 characters of text) only the start is read, from the text nodes
- * whose parent is rendered, so a preview never lays out a whole page's text,
- * unless `full` is set. Decorations are left out ({@link WITHOUT_DECORATIONS_JS}).
+ * `<option>` (which its `<select>` renders). An element in a shadow root
+ * that shows light-DOM content through a `<slot>` (and a slot itself) is
+ * read with that content ({@link SLOTTED_TEXT_JS}). For large containers
+ * (more than 2000 characters of text) only the start is read, from the text
+ * nodes whose parent is rendered, so a preview never lays out a whole page's
+ * text, unless `full` is set. Decorations are left out
+ * ({@link WITHOUT_DECORATIONS_JS}).
  */
 export const ELEMENT_TEXT_JS = `(el, full) => {
   const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
+  const slottedText = ${SLOTTED_TEXT_JS};
   const all = el.textContent || '';
   if (el.tagName === 'OPTION') return el.label;
   if (typeof el.innerText !== 'string') return full ? all : all.slice(0, 2000);
   const rendered = (node) => !node.checkVisibility || node.checkVisibility();
-  if (!rendered(el)) {
-    const boxless = el.ownerDocument.defaultView.getComputedStyle(el).display === 'contents';
-    return boxless ? withoutDecorations(el, full ? all : all.slice(0, 2000)) : '';
+  const shown = rendered(el);
+  const boxless = !shown && el.ownerDocument.defaultView.getComputedStyle(el).display === 'contents';
+  if (!shown && !boxless) return '';
+  if (el.localName === 'slot' || el.querySelector('slot')) {
+    return withoutDecorations(el, slottedText(el, full ? Infinity : 2000));
   }
+  if (boxless) return withoutDecorations(el, full ? all : all.slice(0, 2000));
   if (full || all.length <= 2000) return withoutDecorations(el, el.innerText);
   const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let start = '';
