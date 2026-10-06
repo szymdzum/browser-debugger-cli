@@ -14,10 +14,9 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
-  # Force kill any Chrome processes on port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
   bdg cleanup --force 2>/dev/null || true
+  remove_own_session_dir 2>/dev/null || true
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -73,10 +72,8 @@ log_step "Test 5: Valid URL formats should succeed"
 # Test various valid formats
 VALID_URLS=(
   "example.com"
-  "localhost:3000"
   "http://example.com"
   "https://example.com"
-  "http://localhost:8080"
 )
 
 for url in "${VALID_URLS[@]}"; do
@@ -94,6 +91,27 @@ for url in "${VALID_URLS[@]}"; do
   sleep 1
 
   log_success "Valid URL '$url' accepted"
+done
+
+# Local addresses are valid too; with nothing listening the start fails to
+# load them (exit 80), never rejects them as malformed (exit 81)
+LOCAL_URLS=(
+  "localhost:3000"
+  "http://localhost:8080"
+)
+
+for url in "${LOCAL_URLS[@]}"; do
+  log_info "Testing local URL: $url"
+  set +e
+  LOCAL_OUTPUT=$(run_bdg "$url" 2>&1)
+  LOCAL_EXIT=$?
+  set -e
+  if [ $LOCAL_EXIT -eq 0 ]; then
+    bdg stop > /dev/null 2>&1 || log_warn "Failed to stop session"
+  elif [ $LOCAL_EXIT -ne 80 ]; then
+    die "Local URL '$url' should be accepted (exit 0 or 80), got $LOCAL_EXIT: $LOCAL_OUTPUT"
+  fi
+  log_success "Local URL '$url' accepted (exit $LOCAL_EXIT)"
 done
 
 # Cleanup

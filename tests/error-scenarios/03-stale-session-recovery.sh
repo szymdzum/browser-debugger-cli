@@ -14,8 +14,6 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
-  # Force kill any Chrome processes on port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
   bdg cleanup --force 2>/dev/null || true
   exit "$exit_code"
@@ -39,8 +37,8 @@ cleanup_sessions
 
 # Test 1: Create stale PID file with invalid PID
 log_step "Test 1: Creating stale PID file"
-mkdir -p ~/.bdg
-echo "999999" > ~/.bdg/daemon.pid
+mkdir -p "$BDG_SESSION_DIR"
+echo "999999" > "$BDG_SESSION_DIR"/daemon.pid
 log_success "Created stale PID file with PID 999999"
 
 # Test 2: Status should detect stale session
@@ -61,8 +59,8 @@ bdg "https://example.com" --headless || die "Failed to start session (should aut
 sleep 2
 
 # Verify PID is now valid
-if [ -f ~/.bdg/daemon.pid ]; then
-  CURRENT_PID=$(cat ~/.bdg/daemon.pid)
+if [ -f "$BDG_SESSION_DIR"/daemon.pid ]; then
+  CURRENT_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid)
   kill -0 "$CURRENT_PID" 2>/dev/null || die "New PID is not valid"
   log_success "New session started with valid PID: $CURRENT_PID"
 else
@@ -75,8 +73,8 @@ sleep 1
 
 # Test 4: Create stale socket file
 log_step "Test 4: Creating stale socket file"
-mkdir -p ~/.bdg
-touch ~/.bdg/daemon.sock
+mkdir -p "$BDG_SESSION_DIR"
+touch "$BDG_SESSION_DIR"/daemon.sock
 log_success "Created stale socket file"
 
 # Test 5: New session should handle stale socket
@@ -96,18 +94,18 @@ sleep 1
 log_step "Test 6: Cleanup should remove all stale files"
 
 # Create various stale files
-mkdir -p ~/.bdg
-echo "999999" > ~/.bdg/daemon.pid
-touch ~/.bdg/daemon.sock
-touch ~/.bdg/session.meta.json
+mkdir -p "$BDG_SESSION_DIR"
+echo "999999" > "$BDG_SESSION_DIR"/daemon.pid
+touch "$BDG_SESSION_DIR"/daemon.sock
+touch "$BDG_SESSION_DIR"/session.meta.json
 
 # Run cleanup
 bdg cleanup || log_warn "Cleanup had issues (may be expected)"
 
 # Verify files are removed
 STALE_FILES_REMAINING=0
-[ -f ~/.bdg/daemon.pid ] && STALE_FILES_REMAINING=$((STALE_FILES_REMAINING + 1))
-[ -S ~/.bdg/daemon.sock ] && STALE_FILES_REMAINING=$((STALE_FILES_REMAINING + 1))
+[ -f "$BDG_SESSION_DIR"/daemon.pid ] && STALE_FILES_REMAINING=$((STALE_FILES_REMAINING + 1))
+[ -S "$BDG_SESSION_DIR"/daemon.sock ] && STALE_FILES_REMAINING=$((STALE_FILES_REMAINING + 1))
 
 if [ $STALE_FILES_REMAINING -gt 0 ]; then
   log_warn "Some stale files remain after cleanup"
@@ -117,7 +115,7 @@ fi
 
 # Test 7: Multiple stale PIDs
 log_step "Test 7: Testing with PID 1 (system process)"
-echo "1" > ~/.bdg/daemon.pid
+echo "1" > "$BDG_SESSION_DIR"/daemon.pid
 
 bdg "https://example.com" --headless || die "Failed to start session when PID 1 exists"
 sleep 2

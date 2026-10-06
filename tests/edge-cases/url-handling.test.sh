@@ -16,7 +16,7 @@ TESTS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib"
 source "$TESTS_LIB_DIR/cleanup.sh"
 
 # Cleanup trap to prevent cascade failures
-trap 'cleanup_with_polling 9222' EXIT INT TERM
+trap 'cleanup_with_polling' EXIT INT TERM
 
 # Add timeout for entire test (5 minutes)
 (sleep 300; kill -TERM $$) 2>/dev/null &
@@ -47,7 +47,7 @@ set -e
 # May fail if nothing running on port 3000, but should accept URL format
 if [ $LOCALHOST_EXIT -eq 0 ]; then
   log_success "localhost URL accepted"
-  cleanup_with_polling 9222
+  cleanup_with_polling
 else
   log_info "localhost URL failed (expected if nothing running on :3000)"
 fi
@@ -63,7 +63,7 @@ set -e
 
 if [ $IP_EXIT -eq 0 ]; then
   log_success "IP address URL accepted"
-  cleanup_with_polling 9222
+  cleanup_with_polling
 else
   log_info "IP address URL failed (expected if nothing running on :8080)"
 fi
@@ -78,7 +78,7 @@ sleep 2
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL with query parameters works"
 
-cleanup_with_polling 9222
+cleanup_with_polling
 
 log_success "Test 3 passed: Query parameters handled"
 
@@ -90,7 +90,7 @@ sleep 2
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL with fragment works"
 
-cleanup_with_polling 9222
+cleanup_with_polling
 
 log_success "Test 4 passed: Fragment handled"
 
@@ -102,7 +102,7 @@ sleep 2
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL with query and fragment works"
 
-cleanup_with_polling 9222
+cleanup_with_polling
 
 log_success "Test 5 passed: Query+fragment handled"
 
@@ -114,7 +114,7 @@ sleep 2
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "about:blank works"
 
-cleanup_with_polling 9222
+cleanup_with_polling
 
 log_success "Test 6 passed: about:blank handled"
 
@@ -126,7 +126,7 @@ sleep 2
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "http:// protocol works"
 
-cleanup_with_polling 9222
+cleanup_with_polling
 
 log_success "Test 7 passed: http:// handled"
 
@@ -138,7 +138,7 @@ sleep 2
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "https:// protocol works"
 
-cleanup_with_polling 9222
+cleanup_with_polling
 
 log_success "Test 8 passed: https:// handled"
 
@@ -150,7 +150,7 @@ sleep 2
 bdg status > /dev/null 2>&1 || die "Session not running"
 log_success "URL without protocol works (auto-added http://)"
 
-cleanup_with_polling 9222
+cleanup_with_polling
 
 log_success "Test 9 passed: Protocol auto-detection handled"
 
@@ -163,7 +163,7 @@ set -e
 
 if [ $PORT_EXIT -eq 0 ]; then
   log_success "URL with custom port accepted"
-  cleanup_with_polling 9222
+  cleanup_with_polling
 else
   log_info "URL with port may have failed (could be refused)"
 fi
@@ -172,7 +172,7 @@ log_success "Test 10 passed: Custom port handled"
 
 # Final cleanup and kill timeout watcher
 kill $TIMEOUT_PID 2>/dev/null || true
-cleanup_with_polling 9222
+cleanup_with_polling
 
 # Summary
 log_success "=== All URL handling tests passed ==="

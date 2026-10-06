@@ -112,10 +112,15 @@ run_test_suite() {
 
     echo -e "${BLUE}[$test_index/${#TESTS[@]}] Running: $test_name${NC}"
 
+    # Each test gets a session directory of its own: never the user's ~/.bdg,
+    # and never another test run's
+    local session_dir
+    session_dir="$(mktemp -d /tmp/bdg-it-XXXXXX)"
+
     # Run test with or without verbose output
     if [ "$VERBOSE" = true ]; then
       # Verbose mode: show output in real-time AND save to log
-      if bash "$test_script" 2>&1 | tee "$RESULTS_DIR/${test_name}.log"; then
+      if BDG_SESSION_DIR="$session_dir" bash "$test_script" 2>&1 | tee "$RESULTS_DIR/${test_name}.log"; then
         echo -e "${GREEN}       ✓ PASSED: $test_name${NC}"
         PASSED_TESTS=$((PASSED_TESTS + 1))
       else
@@ -126,7 +131,7 @@ run_test_suite() {
     else
       # Normal mode: save to log only, show summary with spinner
       {
-        bash "$test_script" > "$RESULTS_DIR/${test_name}.log" 2>&1
+        BDG_SESSION_DIR="$session_dir" bash "$test_script" > "$RESULTS_DIR/${test_name}.log" 2>&1
       } &
       TEST_PID=$!
       
@@ -156,6 +161,9 @@ run_test_suite() {
         tail -10 "$RESULTS_DIR/${test_name}.log" | sed 's/^/       /'
       fi
     fi
+
+    BDG_SESSION_DIR="$session_dir" bdg cleanup --force > /dev/null 2>&1 || true
+    command rm -rf "$session_dir"
 
     echo ""
 

@@ -2,7 +2,7 @@
 # Error Scenario Test: Port Already in Use
 #
 # Tests that bdg handles port conflicts gracefully:
-# - Default port 9222 already in use
+# - The port of a running session already in use
 # - Custom port already in use
 # - Suggests alternative ports
 # - Clean error messages
@@ -14,10 +14,9 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
-  # Force kill any Chrome processes on port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
   bdg cleanup --force 2>/dev/null || true
+  remove_own_session_dir 2>/dev/null || true
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -37,10 +36,11 @@ log_info "=== Testing: Port conflict error handling ==="
 # Cleanup before starting
 cleanup_sessions
 
-# Test 1: Start session on default port 9222
-log_step "Test 1: Starting first session on default port 9222"
+# Test 1: Start a session (bdg picks a free port)
+log_step "Test 1: Starting first session"
 bdg "https://example.com" --headless || die "Failed to start first session"
 sleep 2
+FIRST_PORT=$(jq -r '.port' "$BDG_SESSION_DIR/session.meta.json") || die "session.meta.json has no port"
 
 # Verify first session is running
 bdg status > /dev/null 2>&1 || die "First session not running"
@@ -71,9 +71,9 @@ else
 fi
 
 # Test 3: Try with explicit port that's already in use
-log_step "Test 3: Attempting to start session on occupied port 9222"
+log_step "Test 3: Attempting to start session on the occupied port $FIRST_PORT"
 set +e
-EXPLICIT_PORT_OUTPUT=$(bdg "https://example.com" --headless --port 9222 2>&1)
+EXPLICIT_PORT_OUTPUT=$(bdg "https://example.com" --headless --port "$FIRST_PORT" 2>&1)
 EXIT_CODE=$?
 set -e
 

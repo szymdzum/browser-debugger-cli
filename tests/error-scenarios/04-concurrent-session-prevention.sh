@@ -14,7 +14,7 @@ TESTS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/lib"
 source "$TESTS_LIB_DIR/cleanup.sh"
 
 # Cleanup trap to prevent cascade failures
-trap 'cleanup_with_polling 9222' EXIT INT TERM
+trap 'cleanup_with_polling' EXIT INT TERM
 
 # Test metadata
 TEST_NAME="concurrent-session-prevention"
@@ -38,7 +38,7 @@ sleep 2
 
 # Verify first session is running
 bdg status > /dev/null 2>&1 || die "First session not running"
-FIRST_PID=$(cat ~/.bdg/daemon.pid 2>/dev/null)
+FIRST_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null)
 log_success "First session running (PID: $FIRST_PID)"
 
 # Test 2: Attempt to start concurrent session
@@ -69,7 +69,7 @@ fi
 log_step "Test 4: Verifying first session unaffected"
 bdg status > /dev/null 2>&1 || die "First session was affected by concurrent attempt"
 
-CURRENT_PID=$(cat ~/.bdg/daemon.pid 2>/dev/null)
+CURRENT_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null)
 if [ "$CURRENT_PID" = "$FIRST_PID" ]; then
   log_success "First session still running with same PID"
 else
@@ -85,7 +85,7 @@ sleep 2
 bdg "https://example.com" --headless || die "Failed to start new session after stopping"
 sleep 2
 
-NEW_PID=$(cat ~/.bdg/daemon.pid 2>/dev/null)
+NEW_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null)
 log_success "New session started successfully (PID: $NEW_PID)"
 
 if [ "$NEW_PID" = "$FIRST_PID" ]; then
