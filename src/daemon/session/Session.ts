@@ -30,6 +30,7 @@ import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionPort } from '@/session/port.js';
+import { pageCrashedCommandError } from '@/telemetry/pageCrash.js';
 import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeNotice } from '@/ui/messages/chrome.js';
@@ -50,6 +51,29 @@ const CRASH_SETTLE_MS = 500;
 
 /** Ports tried when automatically chosen ports turn out to be taken */
 const PORT_ATTEMPTS = 3;
+
+/**
+ * Commands that still work after the page's renderer crashed: they read what
+ * the session collected, load the page again (`page reload`/`navigate`) or
+ * send raw CDP. Every other command needs the page and fails at once.
+ */
+const RUN_ON_CRASHED_PAGE: ReadonlySet<CommandName> = new Set<CommandName>([
+  'session_peek',
+  'session_details',
+  'session_status',
+  'session_har_data',
+  'session_network_headers',
+  'page_navigate',
+  'cdp_call',
+]);
+
+/**
+ * CDP methods `bdg cdp` may still send after a renderer crash: loading the
+ * page again, and domains the browser process answers. Others wait for the
+ * renderer, which never answers.
+ */
+const CRASH_SAFE_CDP =
+  /^(Page\.(navigate|reload|getNavigationHistory|navigateToHistoryEntry)|Target\.|Browser\.|Inspector\.|Network\.(?!getResponseBody|getRequestPostData)|Storage\.|SystemInfo\.)/;
 
 /**
  * Whether a launch failed because another process holds the port.
@@ -175,7 +199,10 @@ export class Session {
   }
 
   /**
-   * Execute a registered command against this session.
+   * Execute a registered command against this session. After a renderer
+   * crash only {@link RUN_ON_CRASHED_PAGE} commands run (`bdg cdp` only for
+   * {@link CRASH_SAFE_CDP} methods); others fail with exit 107 instead of
+   * waiting for a page that cannot answer.
    *
    * @param name - Command name
    * @param params - Command parameters
@@ -187,6 +214,14 @@ export class Session {
   ): Promise<CommandSchemas[K]['responseSchema']> {
     if (!this.cdp || !this.started || this.stopping) {
       return Promise.reject(new Error('No active session'));
+    }
+    const crashedAt = this.store.pageCrashedAt;
+    const cdpMethod = name === 'cdp_call' ? (params as { method: string }).method : undefined;
+    const needsPage =
+      !RUN_ON_CRASHED_PAGE.has(name) ||
+      (cdpMethod !== undefined && !CRASH_SAFE_CDP.test(cdpMethod));
+    if (crashedAt !== undefined && needsPage) {
+      return Promise.reject(pageCrashedCommandError(crashedAt));
     }
     return this.registry[name](this.cdp, params);
   }

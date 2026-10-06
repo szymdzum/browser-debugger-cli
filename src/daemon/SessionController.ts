@@ -302,6 +302,7 @@ export class SessionController {
               ...(data.droppedConsole && { consoleDropped: data.droppedConsole }),
             },
             currentNavigationId: data.currentNavigationId,
+            ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
             partial: true,
           },
         },

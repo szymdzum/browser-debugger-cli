@@ -54,6 +54,7 @@ export const EXIT_CODES = {
   UNHANDLED_EXCEPTION: 104,
   SIGNAL_HANDLER_ERROR: 105,
   SESSION_START_FAILURE: 106,
+  PAGE_CRASHED: 107,
   SOFTWARE_ERROR: 110,
   INTERRUPTED: 130,
   TERMINATED: 143,
@@ -176,6 +177,11 @@ export const EXIT_CODE_REGISTRY: readonly ExitCodeEntry[] = [
     code: EXIT_CODES.SESSION_START_FAILURE,
     name: 'SESSION_START_FAILURE',
     description: 'Session failed to start (Chrome launch or CDP connection)',
+  },
+  {
+    code: EXIT_CODES.PAGE_CRASHED,
+    name: 'PAGE_CRASHED',
+    description: 'The page crashed (its renderer is gone); bdg page reload brings it back',
   },
   {
     code: EXIT_CODES.SOFTWARE_ERROR,

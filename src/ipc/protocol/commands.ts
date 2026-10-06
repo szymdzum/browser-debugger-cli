@@ -76,6 +76,8 @@ export interface SessionPeekData {
   }>;
   /** Navigation id of the page currently loaded. */
   currentNavigationId: number;
+  /** When the page's renderer crashed (epoch ms), while it is not loaded again */
+  pageCrashedAt?: number;
   /** Total number of network requests (for pagination). */
   totalNetwork: number;
   /** Total number of console messages (for pagination). */

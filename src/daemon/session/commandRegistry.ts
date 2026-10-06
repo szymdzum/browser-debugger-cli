@@ -480,6 +480,7 @@ export function createCommandRegistry(
         },
         activeTelemetry: store.activeTelemetry,
         currentNavigationId: store.getCurrentNavigationId?.() ?? 0,
+        ...(store.pageCrashedAt !== undefined && { pageCrashedAt: store.pageCrashedAt }),
         network: recentNetwork,
         console: recentConsole,
         totalNetwork,
@@ -521,7 +522,9 @@ export function createCommandRegistry(
         target: {
           url: store.targetInfo?.url ?? '',
           title: store.targetInfo?.title ?? '',
-          ...(await pageAppearance(cdp)),
+          ...(store.pageCrashedAt === undefined
+            ? await pageAppearance(cdp)
+            : { crashedAt: store.pageCrashedAt }),
         },
         activeTelemetry: store.activeTelemetry,
         activity: filterDefined({

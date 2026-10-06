@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A crashed page is detected** (#384):
+  - After a renderer crash, `bdg status` and `bdg peek` say `⚠ The page crashed at … (renderer gone); bdg page reload brings it back` (JSON `pageState.crashedAt`, `pageCrashedAt`).
+  - Page commands fail at once with the new exit code 107 (`PAGE_CRASHED`), as do commands that were waiting on the page when it crashed. Before, the session looked active and `dom query` failed after 29 s with "The page was busy for 20s".
+  - `page reload` brings the page back.
 - **Session directory and Chrome profile are checked before use** (#387). `BDG_SESSION_DIR=/proc/x` used to spin at full CPU until it was killed (Node's recursive `mkdir` loops on Linux pseudo-filesystems). `--user-data-dir /proc/nope/x` wedged the session until `bdg cleanup --force`. Now a directory that cannot be created or written is refused at once, before a daemon or Chrome starts: exit 103 for the session directory, 81 for the profile, 82 when permission is denied.
 - **`console` on busy pages** (#383):
   - The session keeps the newest 10000 messages instead of the first 10000. A page that logged 10000 messages used to hide every later one: after navigating to a page that logs errors, `bdg console` said "No errors or warnings found".

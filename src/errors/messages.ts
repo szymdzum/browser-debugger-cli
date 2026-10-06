@@ -899,6 +899,19 @@ export function invalidChromeFlagError(flag: string): ErrorWithSuggestion {
 }
 
 /**
+ * A page command on a page whose renderer crashed.
+ *
+ * @param crashedAt - When it crashed (epoch ms)
+ * @returns Message and the way back
+ */
+export function pageCrashedError(crashedAt: number): ErrorWithSuggestion {
+  return {
+    message: `The page crashed at ${new Date(crashedAt).toLocaleTimeString()} (its renderer is gone), so page commands cannot run`,
+    suggestion: `Load it again with: ${sessionCommand('bdg page reload')} (or start a new session: ${sessionCommand('bdg <url>')})`,
+  };
+}
+
+/**
  * The session (its browser or daemon) went away while a command was running.
  */
 export function sessionEndedDuringCommandError(): ErrorWithSuggestion {

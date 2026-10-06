@@ -9,6 +9,7 @@ import {
   getRequestState,
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
+import { pageCrashedNote } from '@/ui/messages/commands.js';
 import {
   PREVIEW_EMPTY_STATES,
   PREVIEW_HEADERS,
@@ -103,6 +104,8 @@ export interface PreviewJsonData {
   target: BdgOutput['target'];
   partial?: boolean;
   totals?: BdgOutput['totals'];
+  /** When the page's renderer crashed (epoch ms), while it is not loaded again */
+  pageCrashedAt?: number;
   network?: BdgOutput['data']['network'];
   console?: BdgOutput['data']['console'];
 }
@@ -126,6 +129,7 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
     target: output.target,
     ...(output.partial !== undefined && { partial: output.partial }),
     ...(output.totals && { totals: output.totals }),
+    ...(output.pageCrashedAt !== undefined && { pageCrashedAt: output.pageCrashedAt }),
     ...(pick('network') && output.data.network && { network: last(output.data.network) }),
     ...(pick('console') && output.data.console && { console: last(output.data.console) }),
   };
@@ -143,13 +147,16 @@ function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string
 }
 
 /**
- * Format preview as human-readable output
+ * Format preview as human-readable output, after a warning when the page
+ * crashed (what is shown was collected before).
  */
 function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions): string {
-  if (options.verbose) {
-    return formatPreviewVerbose(output, options);
-  }
-  return formatPreviewCompact(output, options);
+  const body = options.verbose
+    ? formatPreviewVerbose(output, options)
+    : formatPreviewCompact(output, options);
+  return output.pageCrashedAt === undefined
+    ? body
+    : `${pageCrashedNote(output.pageCrashedAt)}\n\n${body}`;
 }
 
 /**
