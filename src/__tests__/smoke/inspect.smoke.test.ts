@@ -210,7 +210,7 @@ void describe('dom inspect', () => {
     );
     assert.match(
       await bdg(['dom', 'inspect', '#slotted']),
-      /\ntext\s+in slot\.label · Arial 500 14.*color #fff · contrast [\d.]+ fail on #0284c7/
+      /\ntext\s+in slot\.label · Arial( \(rendered "[^"]+"\))? 500 14.*color #fff · contrast [\d.]+ fail on #0284c7/
     );
     assert.doesNotMatch(await bdg(['dom', 'inspect', '#icon-only']), /\ntext |font-family/);
   });
