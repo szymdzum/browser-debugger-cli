@@ -203,17 +203,30 @@ const TEXT_HOLDER_JS = `(el, tree) => {
 }`;
 
 /**
- * Page-side: whether the first family of an element's `font-family` has a
- * loaded `@font-face` (or `FontFace`) in its document.
+ * Page-side: whether loaded `@font-face` (or `FontFace`) faces of the first
+ * family of an element's `font-family` cover the characters of its text
+ * (their `unicode-range`): then that web font draws the text, whatever
+ * name its file gives. A subset that lacks the text's characters (latin
+ * loaded, Cyrillic text) does not count.
  */
-const FAMILY_LOADED_JS = `(n, tree) => {
+const FAMILY_LOADED_JS = `(n, tree, text) => {
   const unquote = (name) => name.trim().replace(/^["']|["']$/g, '').toLowerCase();
-  const first = unquote(tree.style(n).fontFamily.split(',')[0] || '');
+  const match = /^\\s*("[^"]*"|'[^']*'|[^,]*)/.exec(tree.style(n).fontFamily);
+  const first = unquote(match ? match[1] : '');
   if (!first || !n.ownerDocument.fonts) return false;
+  const ranges = [];
   for (const face of n.ownerDocument.fonts) {
-    if (face.status === 'loaded' && unquote(face.family) === first) return true;
+    if (face.status !== 'loaded' || unquote(face.family) !== first) continue;
+    for (const part of face.unicodeRange.split(',')) {
+      const [from, to] = part.trim().replace(/^U\\+/i, '').split('-');
+      const low = parseInt(from.replace(/\\?/g, '0'), 16);
+      const high = parseInt((to || from).replace(/\\?/g, 'F'), 16);
+      if (!Number.isNaN(low) && !Number.isNaN(high)) ranges.push([low, high]);
+    }
   }
-  return false;
+  if (ranges.length === 0) return false;
+  const covered = (code) => ranges.some(([low, high]) => code >= low && code <= high);
+  return Array.from(text.replace(/\\s+/g, '')).every((char) => covered(char.codePointAt(0)));
 }`;
 
 /**
@@ -405,7 +418,7 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
     animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running').map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
   };
   if (textFrom !== el) result.textHolder = tree.label(textFrom);
-  if ((${FAMILY_LOADED_JS})(textFrom, tree)) result.familyLoaded = true;
+  if ((${FAMILY_LOADED_JS})(textFrom, tree, textOf(textFrom))) result.familyLoaded = true;
   if (/^(input|textarea)$/.test(el.localName) && el.placeholder && !el.value) {
     result.placeholder = el.placeholder.replace(/\\s+/g, ' ').trim();
     const placeholderStyle = tree.style(el, '::placeholder');

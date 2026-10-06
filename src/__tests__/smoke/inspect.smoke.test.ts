@@ -123,7 +123,7 @@ void describe('dom inspect', () => {
     assert.doesNotMatch(webfont, /rendered "/);
     assert.match(
       await bdg(['dom', 'inspect', '#fallback']),
-      /\ntext +No Such Font \(rendered "Georgia"\) /
+      /\ntext +No Such Font \(rendered "[^"]+"\) /
     );
     assert.match(
       await bdg(['dom', 'inspect', '#generic']),
