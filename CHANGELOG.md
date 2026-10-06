@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **No Chrome left behind after a second start** (#388). With the daemon's socket deleted, a second `bdg <url>` started another daemon next to the first. The first one then removed the new daemon's `chrome.pid`, and `cleanup --force` reported a clean directory while a Chrome kept running. Now:
+  - a start stops a daemon that lost its socket first;
+  - a daemon removes only its own `chrome.pid` and metadata;
+  - cleanup kills every Chrome launched for the session directory, found by its marker flag.
 - **Pages that replace built-ins no longer give wrong answers** (#386). bdg's page scripts used the page's own built-ins: with `querySelectorAll` patched to return `body`, `dom query ".a"` printed `<body>` with exit 0. With `JSON.stringify`, `Array.prototype.map` or `Object.keys` replaced, commands failed with cryptic errors. Now:
   - `dom query`, `get`, `inspect`, `layout`, `audit`, `wait`, `form`, `a11y` and `screenshot` run in bdg's isolated world, which keeps the browser's built-ins.
   - When the page replaced the selector search, actions find their element in that world and say so. When an action fails on a page with replaced built-ins, the suggestion names them as a possible cause.

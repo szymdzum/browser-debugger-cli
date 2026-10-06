@@ -312,7 +312,7 @@ export class Session {
       log.info(`Stopping session (reason: ${reason})`);
       await this.releaseResources();
       if (!this.started) return;
-      removeSessionFiles();
+      removeSessionFiles(process.pid);
       this.onEnded(reason);
     })();
     return this.stopping;

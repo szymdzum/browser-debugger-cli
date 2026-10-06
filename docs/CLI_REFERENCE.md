@@ -1319,6 +1319,8 @@ bdg cleanup --remove-output     # Also remove legacy session.json
 bdg cleanup --json              # JSON output
 ```
 
+Once no daemon of the session runs, cleanup kills every Chrome launched for its session directory (found by the `--bdg-session-dir` marker on its command line), also ones that `chrome.pid` no longer records. A daemon that still runs but lost its socket (`daemon.sock` deleted) is stopped by the next `bdg <url>` before it starts a new one, so the session never ends up with two daemons and two Chromes. A daemon removes only its own `chrome.pid` and metadata.
+
 ### Install the agent skill
 ```bash
 bdg install-skill               # Copy SKILL.md to ~/.claude/skills/bdg and ~/.agents/skills/bdg

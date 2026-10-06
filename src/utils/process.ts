@@ -123,3 +123,33 @@ export function getProcessCommand(pid: number): string | null {
   const command = result.stdout.trim();
   return command.length > 0 ? command : null;
 }
+
+/** A running process and its command line */
+export interface ProcessEntry {
+  pid: number;
+  command: string;
+}
+
+/**
+ * Every running process with its command line: from `/proc` on Linux
+ * (minimal containers' BusyBox `ps` lacks `-o`), else from `ps` (macOS).
+ *
+ * @returns Processes, empty when they cannot be listed (Windows)
+ */
+export function listProcesses(): ProcessEntry[] {
+  if (process.platform === 'win32') return [];
+  if (fs.existsSync('/proc/self/cmdline')) {
+    return fs
+      .readdirSync('/proc')
+      .filter((name) => /^\d+$/.test(name))
+      .map((name) => ({ pid: Number(name), command: getProcessCommand(Number(name)) ?? '' }))
+      .filter((entry) => entry.command !== '');
+  }
+  const result = spawnSync('ps', ['-A', '-ww', '-o', 'pid=,command='], { encoding: 'utf-8' });
+  if (result.error || result.status !== 0) return [];
+  return result.stdout
+    .split('\n')
+    .map((line) => /^\s*(\d+)\s+(.*)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map(([, pid, command]) => ({ pid: Number(pid), command: command ?? '' }));
+}

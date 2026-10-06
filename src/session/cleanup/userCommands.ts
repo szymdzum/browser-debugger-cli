@@ -6,6 +6,7 @@ import * as fs from 'fs';
 
 import {
   killOrphanedChrome,
+  killSessionChromes,
   readLiveDaemonPid,
   removeStaleDaemonFiles,
 } from '@/session/cleanup/staleSession.js';
@@ -47,7 +48,8 @@ export interface SessionCleanupResult {
  *
  * With `force`, a live daemon is killed first (after verifying its command
  * line). Then stale daemon files are removed and an orphaned bdg Chrome, if
- * any, is killed.
+ * any, is killed, and, once no daemon of the session runs, every other
+ * Chrome launched for this session directory (one chrome.pid lost track of).
  *
  * @param options - Cleanup options
  * @returns What was cleaned, plus warnings
@@ -59,7 +61,9 @@ export async function performSessionCleanup(
   const filesBefore = countSessionFiles();
   const daemonKilled = options.force ? await killLiveDaemon(warnings) : false;
   const session = await removeStaleDaemonFiles();
-  const chrome = killOrphanedChrome();
+  const orphan = killOrphanedChrome();
+  const unrecorded = readLiveDaemonPid() === null ? killSessionChromes() : [];
+  const chrome = orphan || unrecorded.length > 0;
   const output = options.removeOutput ? removeOutputFile(warnings) : false;
   const filesRemoved = countSessionFiles() < filesBefore;
   clearLastSessionEnd();

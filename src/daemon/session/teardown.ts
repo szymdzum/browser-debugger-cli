@@ -147,5 +147,5 @@ async function terminateChrome(chrome: LaunchedChrome, log: Logger): Promise<voi
     log.info(`Chrome (PID ${pid}) survived SIGKILL`);
     return;
   }
-  clearChromePid();
+  clearChromePid(pid);
 }

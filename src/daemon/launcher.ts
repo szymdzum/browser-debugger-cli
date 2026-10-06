@@ -17,7 +17,8 @@ import {
   sessionDirNotWritableError,
   socketPathTooLongError,
 } from '@/errors/messages.js';
-import { isDaemonAlive } from '@/session/daemonSocket.js';
+import { killSessionChromes, readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
+import { isDaemonAlive, isDaemonSocketGone } from '@/session/daemonSocket.js';
 import {
   MAX_DAEMON_SOCKET_PATH_BYTES,
   ensureSessionDir,
@@ -30,6 +31,7 @@ import { directoryProblem } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
+import { isProcessAlive } from '@/utils/process.js';
 
 const log = createLogger('launcher');
 
@@ -64,6 +66,7 @@ export async function launchDaemon(): Promise<SpawnedDaemon | undefined> {
   }
 
   assertUsableSessionDir();
+  await stopUnreachableDaemon();
   const logPath = join(getSessionDir(), 'daemon.log');
   rotateLog(logPath);
   const logFd = fs.openSync(logPath, 'a');
@@ -82,6 +85,38 @@ export async function launchDaemon(): Promise<SpawnedDaemon | undefined> {
 
   await waitForDaemonReady(() => exited);
   return { pid: daemon.pid, hasExited: () => exited };
+}
+
+/** How long a daemon that lost its socket gets to end its session before it is killed */
+const UNREACHABLE_DAEMON_EXIT_MS = 8000;
+
+/**
+ * Stop a daemon of this session directory that still runs but can no longer
+ * be reached (its socket was removed, or refuses connections; one that is
+ * only slow to answer is left alone), before a new one starts: two daemons
+ * would launch two Chromes and remove each other's files. It is asked to end
+ * its session (closing its Chrome), and killed with what it launched if it
+ * does not exit in time.
+ */
+async function stopUnreachableDaemon(): Promise<void> {
+  const pid = readLiveDaemonPid();
+  if (pid === null || !(await isDaemonSocketGone())) return;
+  log.info(`Stopping daemon ${pid}, which can no longer be reached (its socket is gone)`);
+  try {
+    process.kill(pid, 'SIGTERM');
+  } catch (error) {
+    log.debug(`Daemon ${pid} not signalled: ${getErrorMessage(error)}`);
+    return;
+  }
+  const deadline = Date.now() + UNREACHABLE_DAEMON_EXIT_MS;
+  while (isProcessAlive(pid) && Date.now() < deadline) await delay(100);
+  if (!isProcessAlive(pid)) return;
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch (error) {
+    log.debug(`Daemon ${pid} not killed: ${getErrorMessage(error)}`);
+  }
+  killSessionChromes();
 }
 
 /**
