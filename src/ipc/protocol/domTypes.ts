@@ -94,6 +94,8 @@ export interface ActionEffects {
   navigation?: PageNavigation;
   /** Messages that appeared or changed (at most 3; absent when none did) */
   messages?: NewMessage[];
+  /** How many more new messages there were than `messages` lists */
+  moreMessages?: number;
   /** Elements a hover or key press showed (at most 3, outermost first; absent when none) */
   shown?: ShownElement[];
   /** "none" when the action had no visible effect: no DOM change, request or navigation */

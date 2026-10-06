@@ -20,8 +20,9 @@ const ATTRIBUTES_BY_TAG: Record<string, readonly string[]> = {
 };
 
 /**
- * The key attributes of an element: the identifying attributes of its type
- * that are set (empty ones left out) and the live state of a form control
+ * The key attributes of an element: its shadow `part` name (how a page's CSS
+ * reaches it with `::part()`), the identifying attributes of its type that
+ * are set (empty ones left out) and the live state of a form control
  * (type, current value, checked, selected options). Values arrive masked
  * from the page (`ELEMENT_STATE_JS`); a hidden input's value is never read,
  * and a sensitive field's value is masked here again in case it was not.
@@ -37,8 +38,9 @@ export function keyAttributes(
   state: ElementState = {}
 ): KeyAttributes | undefined {
   const names = ATTRIBUTES_BY_TAG[tag];
-  if (!names) return undefined;
-  const result: KeyAttributes = {};
+  const part = attributes['part'];
+  if (!names) return part ? { part } : undefined;
+  const result: KeyAttributes = part ? { part } : {};
   const type = state.type ?? attributes['type'];
   if (type) result['type'] = type;
   for (const name of names) {

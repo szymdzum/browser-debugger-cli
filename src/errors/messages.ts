@@ -1292,6 +1292,7 @@ export function noNodesFoundError(
       joinLines(
         context.similar,
         context.shadowHost && shadowBoundaryLine(context.shadowHost),
+        shadowPseudoLine(selector),
         `${hidden}Verify the CSS selector is correct.`,
         note ? note : undefined
       ),
@@ -1299,6 +1300,23 @@ export function noNodesFoundError(
       selector
     ),
   };
+}
+
+/**
+ * Advice for a selector with `::part()` or `::slotted()`, which name
+ * pseudo-elements a page's stylesheet uses and never match an element.
+ *
+ * @param selector - Selector as given
+ * @returns Line, or undefined for other selectors
+ */
+function shadowPseudoLine(selector: string): string | undefined {
+  const part = /::part\(\s*([^)\s]+)\s*\)/.exec(selector)?.[1];
+  if (part) {
+    return `::part() styles a shadow part and selects nothing; bdg searches open shadow roots, so select the part itself: [part~="${part}"]`;
+  }
+  return /::slotted\(/.test(selector)
+    ? '::slotted() selects nothing; select the slotted element itself (it is in the light DOM)'
+    : undefined;
 }
 
 /**
@@ -1486,7 +1504,22 @@ export function elementZeroDimensionsError(): ErrorWithSuggestion {
 }
 
 /**
- * Missing required argument.
+ * `bdg dom hover --off` was given an element too.
+ *
+ * @returns Message and suggestion
+ */
+export function hoverOffWithTargetError(): ErrorWithSuggestion {
+  return {
+    message: '--off moves the mouse off the page; it takes no element',
+    suggestion: 'Use bdg dom hover --off alone, or bdg dom hover <selector> to hover an element',
+  };
+}
+
+/**
+ * A command was given neither its argument nor a flag that replaces it.
+ *
+ * @param usage - How to call it
+ * @returns Message and suggestion
  */
 export function missingArgumentError(usage: string): ErrorWithSuggestion {
   return {

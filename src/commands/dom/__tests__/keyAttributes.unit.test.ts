@@ -99,4 +99,12 @@ void describe('keyAttributes secrets', () => {
       selected: MASKED_VALUE,
     });
   });
+
+  void it('shows a shadow part name, on any element', () => {
+    assert.deepEqual(keyAttributes('div', { part: 'base' }), { part: 'base' });
+    assert.deepEqual(keyAttributes('input', { part: 'input', name: 'q' }), {
+      part: 'input',
+      name: 'q',
+    });
+  });
 });

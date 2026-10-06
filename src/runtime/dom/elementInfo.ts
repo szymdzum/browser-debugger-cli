@@ -236,7 +236,8 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
 
 /**
  * Page-side location of an element: the iframes it is in (outermost first)
- * and the shadow root holding it, e.g. `iframe#pay > shadow root of <x-card>`;
+ * and the shadow root holding it, with the host's first class and light-DOM
+ * text, e.g. `iframe#pay > shadow root of <sl-button.primary "Save">`;
  * empty for the main document.
  */
 export const ELEMENT_CONTEXT_JS = `(el) => {
@@ -248,7 +249,12 @@ export const ELEMENT_CONTEXT_JS = `(el) => {
     doc = frame.ownerDocument;
   }
   const root = el.getRootNode();
-  if (root.host) parts.push('shadow root of <' + describe(root.host) + '>');
+  if (root.host) {
+    const host = root.host;
+    const label = describe(host) + (!host.id && host.classList.length ? '.' + host.classList[0] : '');
+    const text = (host.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 30);
+    parts.push('shadow root of <' + label + (text ? ' "' + text + '"' : '') + '>');
+  }
   return parts.join(' > ');
 }`;
 

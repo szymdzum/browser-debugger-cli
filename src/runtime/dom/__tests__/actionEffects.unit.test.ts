@@ -75,21 +75,23 @@ void describe('newMessages', () => {
       seen(1, 'Welcome back'),
       seen(2, 'Your password is invalid!', 'div#flash.error'),
     ];
-    assert.deepEqual(newMessages(before, after, false), [
+    assert.deepEqual(newMessages(before, after, false).messages, [
       { text: 'Your password is invalid!', element: 'div#flash.error' },
     ]);
   });
 
   void it('reports an element whose text changed', () => {
-    assert.deepEqual(newMessages([seen(1, '1 item added')], [seen(1, '2 items added')], false), [
-      { text: '2 items added', element: 'div.flash' },
-    ]);
+    assert.deepEqual(
+      newMessages([seen(1, '1 item added')], [seen(1, '2 items added')], false).messages,
+      [{ text: '2 items added', element: 'div.flash' }]
+    );
   });
 
   void it('ignores a message re-rendered with the same text, but not a second copy', () => {
-    assert.deepEqual(newMessages([seen(1, 'Required')], [seen(5, 'Required')], false), []);
+    assert.deepEqual(newMessages([seen(1, 'Required')], [seen(5, 'Required')], false).messages, []);
     assert.deepEqual(
-      newMessages([seen(1, 'Required')], [seen(1, 'Required'), seen(2, 'Required')], false),
+      newMessages([seen(1, 'Required')], [seen(1, 'Required'), seen(2, 'Required')], false)
+        .messages,
       [{ text: 'Required', element: 'div.flash' }]
     );
   });
@@ -98,18 +100,18 @@ void describe('newMessages', () => {
     const before = [seen(1, '12:04:33'), seen(2, '57%'), seen(3, '3 s')];
     const after = [seen(1, '12:04:34'), seen(2, '58%'), seen(3, '2 s'), seen(4, 'Saved 2 items')];
     assert.deepEqual(
-      newMessages(before, after, false).map((message) => message.text),
+      newMessages(before, after, false).messages.map((message) => message.text),
       ['Saved 2 items']
     );
   });
 
   void it('counts every message of a new document as new', () => {
-    assert.deepEqual(newMessages([seen(1, 'Invalid')], [seen(1, 'Invalid')], true), [
+    assert.deepEqual(newMessages([seen(1, 'Invalid')], [seen(1, 'Invalid')], true).messages, [
       { text: 'Invalid', element: 'div.flash' },
     ]);
   });
 
-  void it('reports at most three texts, each once and at most 120 characters', () => {
+  void it('reports at most three texts and how many more, each once and at most 120 characters', () => {
     const after = [
       seen(1, 'a'),
       seen(2, 'a'),
@@ -119,10 +121,11 @@ void describe('newMessages', () => {
     ];
     const found = newMessages([], after, false);
     assert.deepEqual(
-      found.map((message) => message.text),
+      found.messages.map((message) => message.text),
       ['a', 'b', 'c']
     );
-    const long = newMessages([], [seen(1, 'x'.repeat(200))], false)[0]?.text ?? '';
+    assert.equal(found.more, 1);
+    const long = newMessages([], [seen(1, 'x'.repeat(200))], false).messages[0]?.text ?? '';
     assert.equal(Array.from(long).length, 120);
     assert.ok(long.endsWith('…'));
   });
