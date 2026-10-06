@@ -455,6 +455,20 @@ export async function domLayout(
   return sendCommand('dom_layout', params);
 }
 
+/** Page-wide checks: contrast, overflow, layers, animations. */
+export async function domAudit(
+  params: NoType<(typeof COMMANDS)['dom_audit']['requestSchema']>
+): Promise<ClientResponse<'dom_audit'>> {
+  return sendCommand('dom_audit', params);
+}
+
+/** Find text in the page's stylesheets. */
+export async function cssSearch(
+  params: NoType<(typeof COMMANDS)['css_search']['requestSchema']>
+): Promise<ClientResponse<'css_search'>> {
+  return sendCommand('css_search', params);
+}
+
 /** What one element looks like: styles, box, layout and child tree. */
 export async function domInspect(
   params: NoType<(typeof COMMANDS)['dom_inspect']['requestSchema']>

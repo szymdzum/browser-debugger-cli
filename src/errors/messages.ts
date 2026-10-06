@@ -2244,3 +2244,19 @@ export function intervalWithoutFollowError(): ErrorWithSuggestion {
     suggestion: 'Add --follow, e.g. bdg peek --follow --interval 500',
   };
 }
+
+/**
+ * An unknown `dom audit` check.
+ *
+ * @param value - Name given
+ * @param similar - Closest names
+ * @param checks - Every check
+ * @returns Message
+ */
+export function unknownAuditCheckMessage(
+  value: string,
+  similar: string[],
+  checks: readonly string[]
+): string {
+  return `Unknown check "${value}"${similar.length > 0 ? `; did you mean ${similar[0]}?` : ''} (checks: ${checks.join(', ')})`;
+}

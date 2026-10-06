@@ -38,6 +38,17 @@ export function trackStyleSheets(cdp: CDPConnection): void {
 }
 
 /**
+ * The stylesheet headers seen on a connection (after {@link trackStyleSheets}
+ * and `CSS.enable`).
+ *
+ * @param cdp - CDP connection
+ * @returns Headers
+ */
+export function styleSheetHeaders(cdp: CDPConnection): Iterable<Protocol.CSS.CSSStyleSheetHeader> {
+  return headersByConnection.get(cdp)?.values() ?? [];
+}
+
+/**
  * The rules that match an element, with its inline style and what its
  * ancestors pass down, or why they are missing.
  *
@@ -90,7 +101,7 @@ export function sourceLabel(declaration: Declaration, cdp: CDPConnection): strin
   const header = source.styleSheetId
     ? headersByConnection.get(cdp)?.get(source.styleSheetId)
     : undefined;
-  return `${source.selector ?? ''} (${fileLabel(header, source.line, source.column)})`;
+  return `${source.selector ?? ''} (${stylesheetPositionLabel(header, source.line, source.column)})`;
 }
 
 /**
@@ -103,7 +114,7 @@ export function sourceLabel(declaration: Declaration, cdp: CDPConnection): strin
  *   `constructed stylesheet`, `<style> added by a script` (a sheet a script created and
  *   filled with `insertRule`: its lines are not in any file)
  */
-function fileLabel(
+export function stylesheetPositionLabel(
   header: Protocol.CSS.CSSStyleSheetHeader | undefined,
   line: number | undefined,
   column: number | undefined

@@ -8,6 +8,7 @@ import { registerFormInteractionCommands } from '@/commands/dom/formInteraction.
 import { registerDomCommands } from '@/commands/dom/index.js';
 import { registerInstallSkillCommand } from '@/commands/installSkill.js';
 import { registerNetworkCommands } from '@/commands/network/index.js';
+import { registerCssCommands } from '@/commands/css.js';
 import { registerPageCommands } from '@/commands/page.js';
 import { registerPeekCommand } from '@/commands/peek.js';
 import { registerSessionsCommand } from '@/commands/sessions.js';
@@ -50,6 +51,7 @@ export const commandRegistry: CommandRegistrar[] = [
   registerDomCommands,
   registerFormInteractionCommands,
   registerPageCommands,
+  registerCssCommands,
 
   addCommandGroup('CDP Commands:'),
   registerCdpCommand,

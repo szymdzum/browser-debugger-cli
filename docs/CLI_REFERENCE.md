@@ -473,6 +473,29 @@ tree
 
 **JSON (`data`):** `{ selector, count, index, picked?, element, content?, placeholder?, context?, rect: { x, y, w, h }, visibility, colorScheme?, box?, layout? (incl. sizing: { w, h: hug|fill|fixed }, parent), text?, fills?, opacity?, blend?, strokes?, radius?, outline?, effects?, fx?, state?, pseudo?, children?: [{ element, x, y, w, h, layout?, text?, count?, children?, childCount?, hiddenChildren? }], hiddenChildren?, moreRows?, all?, props?, hints?: [{ kind: inactive|unset-variable|not-inherited, property, value, reason, fix, source }], rules?: [{ property, value, computed?, source, rule?, overrides?, inherited?, important?, layer?, condition? }], why?: [{ property, computed, chain: [{ value, via?, resolved?, unset?, source, rule?, specificity?, status: applied|overridden|inherited, important?, layer?, condition? }], variables?: [{ name, value, source, inherited? }] }], cascade?: 'timeout' | 'failed' }`. Names follow Figma (fills, strokes, effects, sizing), numbers are numbers, so the output can be compared field by field with a design from the Figma MCP server: see [Checking a page against a Figma design](FIGMA_DESIGN_QA.md). Tree rows have `x`/`y` relative to the parent's border box, like Figma's position in a frame.
 
+### Page-Wide Audits
+
+```bash
+bdg dom audit                          # Every check below
+bdg dom audit contrast                 # Text below WCAG AA, weakest first
+bdg dom audit contrast --level AAA     # ... below AAA
+bdg dom audit overflow                 # What scrolls sideways, cut-off text, scaled images
+bdg dom audit layers animations        # Fixed/sticky elements, running animations
+bdg dom audit --limit 50 --json        # More findings per check, as JSON
+bdg css search "oklch("                # Rules that use a text, in every stylesheet
+bdg css search -- --brand              # A text that starts with - goes after --
+```
+
+`dom audit` walks the rendered elements of the page once (open shadow roots included, at most 20000) and reports per check:
+- **contrast**: every element that draws text of its own, below the level (`--level AA`, the default, or `AAA`; large text — 24px, or 18.66px bold — needs less), weakest first with the ratio, the text and background colors (composited like `dom inspect`: translucent ancestors, the page canvas), the size, `(out of view)` and `(approximate: …)` for blend modes and filters. The header says how many of how many fail.
+- **overflow**: whether the page is wider than its viewport (it scrolls sideways) and the elements reaching past the right edge, farthest first (content inside a horizontal scroller is left out); text that is cut off (`ellipsis`, line `clamp`, `clip` by `overflow: hidden`; visually-hidden 1px text is left out); images drawn with fewer pixels than the screen needs (`upscaled 1.5x`, counting the pixel ratio) or with another aspect ratio (`distorted`, unless `object-fit` crops). Identical findings are grouped (`×5`).
+- **layers**: `position: fixed` and `sticky` elements with their `z-index`, viewport position and size.
+- **animations**: running CSS animations, transitions and Web Animations, with duration, iterations and whether scrolling drives them.
+
+`--limit <n>` lists that many findings per check (default 20; the rest are counted). Follow up on a finding with `bdg dom inspect <element>` (`--why color`, `--rules`). JSON: `{ checks, walked, capped?, contrast?: { level, checked, failing, items: [{ element, text, ratio, color, background, size, weight, inView, approximate? }] }, overflow?: { pageWidth, viewportWidth, scrollsSideways, wide, truncated, images }, layers?, animations? }`.
+
+`css search <text>` finds a text (case-insensitive) in every stylesheet of the page, cross-origin ones included (Chrome reads their text, which page scripts cannot), and prints each match's place (`app.css:12`, `bootstrap.min.css:5:52628`, `<style> in index.html:40`) and the rule around it. Use it for "where is `--brand` set", "which rules use `oklch(`" or a class's rules across files.
+
 ### Waiting for Elements
 
 `dom click` and the other actions wait for the requests they start, not for results a page shows later (timers, spinners, animations); `click` and `pressKey` say when the page was still changing as they returned (`⚠ Element Clicked (page still changing)`, see below). `bdg dom wait` waits for those instead of `sleep` loops:

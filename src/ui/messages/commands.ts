@@ -1283,3 +1283,21 @@ export function inspectAnimatingBadge(animating: readonly string[]): string {
 export function inspectMidTransitionNote(): string {
   return '(mid-transition: inspect again for the final value)';
 }
+
+/** Examples under `bdg dom audit --help` */
+export const AUDIT_HELP_EXAMPLES = `
+Examples:
+  bdg dom audit                       All checks
+  bdg dom audit contrast --level AAA  Text below WCAG AAA, weakest first
+  bdg dom audit overflow              What scrolls sideways, cut-off text, scaled images
+  bdg dom audit layers animations     Fixed/sticky elements and running animations
+
+Follow up on a finding with bdg dom inspect <element> (e.g. --why color).`;
+
+/** Examples under `bdg css search --help` */
+export const CSS_SEARCH_HELP_EXAMPLES = `
+Examples:
+  bdg css search -- --brand       Where a custom property is set and used (-- before a text
+                                  that starts with -)
+  bdg css search "oklch("         Rules that use oklch colors
+  bdg css search ".btn-primary"   Rules of a class, in every stylesheet`;

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`dom audit`** - Page-wide checks without screenshots or `dom eval`: text below WCAG AA/AAA (weakest first, composited like `dom inspect`), what makes the page scroll sideways, cut-off text, upscaled or distorted images, fixed/sticky layers and running animations. The review's agents wrote the same `dom eval` scans again and again for these (#378)
+- **`css search <text>`** - Finds a text in every stylesheet of the page, cross-origin ones included, with the rule and its `file:line` (#378)
 - **`dom inspect` shows the rule itself** - `--why` prints the winning rule as written under it (`.card .btn { background: #9db8ff; }`), and `--rules`/`--why` JSON have it as `rule`. A long minified rule is cut to its selector and that declaration (`.btn { … background-color:var(--bs-btn-bg); … }`), so `bootstrap.min.css:5:53709` comes with what is there (#364)
 - **`peek --follow --interval <ms>`** - Sets how often `--follow` refreshes (100-60000 ms, default 1000), as `tail --interval` did (#115)
 

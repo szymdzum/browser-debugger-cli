@@ -6,6 +6,7 @@
  */
 
 import type { HintDetails } from '@/errors/notices.js';
+import type { AuditCheck, AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
 import type {
   ClickResult,
   FillResult,
@@ -353,6 +354,30 @@ export interface DomLayoutCommand {
 export type DomLayoutData = LayoutResult;
 
 /**
+ * dom_audit: page-wide checks (contrast, overflow, layers, animations).
+ */
+export interface DomAuditCommand {
+  checks: AuditCheck[];
+  /** WCAG level text must reach (default AA) */
+  level?: 'AA' | 'AAA';
+  /** Findings listed per check */
+  limit?: number;
+}
+
+export type DomAuditData = AuditResult;
+
+/**
+ * css_search: find text in the page's stylesheets.
+ */
+export interface CssSearchCommand {
+  query: string;
+  /** Matches listed at most */
+  limit?: number;
+}
+
+export type CssSearchData = CssSearchResult;
+
+/**
  * dom_inspect: what one element looks like (styles, box, layout, child tree).
  */
 export interface DomInspectCommand {
@@ -411,6 +436,8 @@ export type RegistryShape = {
   dom_form_discover: CommandDef<DomFormDiscoverCommand, DomFormDiscoverData>;
   dom_listeners: CommandDef<DomListenersCommand, DomListenersData>;
   dom_layout: CommandDef<DomLayoutCommand, DomLayoutData>;
+  dom_audit: CommandDef<DomAuditCommand, DomAuditData>;
+  css_search: CommandDef<CssSearchCommand, CssSearchData>;
   dom_inspect: CommandDef<DomInspectCommand, DomInspectData>;
   dom_wait: CommandDef<DomWaitCommand, DomWaitData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
@@ -557,6 +584,8 @@ export const COMMANDS: RegistryShape = {
   dom_form_discover: defineCommand(),
   dom_listeners: defineCommand(),
   dom_layout: defineCommand(),
+  dom_audit: defineCommand(),
+  css_search: defineCommand(),
   dom_inspect: defineCommand(),
   dom_wait: defineCommand(),
 };
