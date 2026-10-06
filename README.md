@@ -14,6 +14,8 @@ npm install -g browser-debugger-cli
 bdg localhost:3000
 ```
 
+📖 **[Wiki](https://github.com/szymdzum/browser-debugger-cli/wiki)**: [Getting Started](https://github.com/szymdzum/browser-debugger-cli/wiki/Getting-Started) · [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) · [For AI Agents](https://github.com/szymdzum/browser-debugger-cli/wiki/For-AI-Agents) · [Recipes](https://github.com/szymdzum/browser-debugger-cli/wiki/Recipes) · [Quick Reference](https://github.com/szymdzum/browser-debugger-cli/wiki/Quick-Reference) · [Troubleshooting](https://github.com/szymdzum/browser-debugger-cli/wiki/Troubleshooting) · [CLI reference](docs/CLI_REFERENCE.md)
+
 ## See it work
 
 ### 1. Open a page and see what's wrong
@@ -108,6 +110,37 @@ $ bdg cdp Network.emulateNetworkConditions --params '{"offline":false,"latency":
 ```
 
 Accessibility, performance metrics, CPU profiling, heap snapshots, code coverage, throttling, storage, service workers: everything Chrome DevTools can do, bdg can do too, through raw CDP. Can't find the method you need? `bdg cdp --search heap`.
+
+## Agents learn it on their own
+
+No docs to paste into the prompt. The agent asks bdg:
+
+```bash
+bdg --help --json                          # Every command, flag and exit code, plus "task → command" mappings
+bdg cdp --search cookie                    # 13 matching methods across all CDP domains, each with an example call
+bdg cdp Network.getCookies --describe      # Parameters, return types, an example
+```
+
+And when it gets something wrong, bdg tells it what it meant:
+
+```console
+$ bdg dom clik "a"
+error: unknown command 'clik'
+(Did you mean click?)
+
+$ bdg network list --preset eror
+Error: Unknown preset: "eror"
+Did you mean: errors, slow?
+
+$ bdg cdp Network.getCookie
+  "error": "Method 'Network.getCookie' not found",
+  "suggestion": "... Did you mean: Network.getCookies, Network.setCookie, Network.setCookies"
+
+$ bdg cdp network.getcookies
+Hint: Consider using 'bdg network getCookies' instead of Network.getAllCookies or Network.getCookies
+```
+
+Each mistake exits with code 81 (invalid arguments), so the agent knows to fix the call rather than retry it. CDP method names are case-insensitive, and raw CDP calls point to the friendlier command when one exists. More in the [Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md) principles bdg follows.
 
 ## Why bdg
 
@@ -204,15 +237,9 @@ Firefox and Safari are not supported: bdg speaks the Chrome DevTools Protocol, w
 
 bdg is for when an agent or a developer needs to poke at a live page, step by step, and understand what is going on.
 
-## Documentation
-
-📖 **[Wiki](https://github.com/szymdzum/browser-debugger-cli/wiki)**: [Getting Started](https://github.com/szymdzum/browser-debugger-cli/wiki/Getting-Started) · [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) · [For AI Agents](https://github.com/szymdzum/browser-debugger-cli/wiki/For-AI-Agents) · [Recipes](https://github.com/szymdzum/browser-debugger-cli/wiki/Recipes) · [Quick Reference](https://github.com/szymdzum/browser-debugger-cli/wiki/Quick-Reference) · [Architecture](https://github.com/szymdzum/browser-debugger-cli/wiki/Architecture) · [Troubleshooting](https://github.com/szymdzum/browser-debugger-cli/wiki/Troubleshooting)
-
-bdg follows the [Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md) principles: self-documenting, semantic exit codes, structured errors and progressive disclosure.
-
 ## Contributing
 
-[Issues](https://github.com/szymdzum/browser-debugger-cli/issues) for bugs, [Discussions](https://github.com/szymdzum/browser-debugger-cli/discussions) for ideas. PRs welcome. See `docs/` for architecture and contributor guides.
+[Issues](https://github.com/szymdzum/browser-debugger-cli/issues) for bugs, [Discussions](https://github.com/szymdzum/browser-debugger-cli/discussions) for ideas. PRs welcome. See the [Architecture](https://github.com/szymdzum/browser-debugger-cli/wiki/Architecture) page and `docs/` for contributor guides.
 
 ## License
 
