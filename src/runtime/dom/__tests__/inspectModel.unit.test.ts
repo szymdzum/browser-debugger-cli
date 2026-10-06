@@ -304,6 +304,8 @@ void describe('css values', () => {
 void describe('child tree', () => {
   const row = (element: string, overrides: Partial<InspectTreeNode> = {}): InspectTreeNode => ({
     element,
+    x: 0,
+    y: 0,
     w: 266,
     h: 107,
     ...overrides,

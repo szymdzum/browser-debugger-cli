@@ -195,6 +195,9 @@ export interface InspectPseudo {
 export interface InspectTreeNode {
   /** `tag.firstClass` */
   element: string;
+  /** Position relative to the parent's border box (like Figma's x/y in a frame; a group's first member) */
+  x: number;
+  y: number;
   w: number;
   h: number;
   /** `flex` or `grid` container */

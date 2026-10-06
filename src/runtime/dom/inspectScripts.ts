@@ -27,6 +27,9 @@ export const TREE_NODE_CAP = 400;
 export interface RawTreeNode {
   /** `tag#id` or `tag.firstClass` */
   label: string;
+  /** Position of the border box relative to the parent's */
+  x: number;
+  y: number;
   w: number;
   h: number;
   display: string;
@@ -237,7 +240,8 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
 
 /**
  * Page-side child tree to `depth` levels: per element its label, size,
- * display, text (only for elements without block-level children), and its
+ * display, position relative to its parent's border box (like Figma's x/y
+ * in a frame), text (only for elements without block-level children), and its
  * rendered children (or their count at the depth limit) with a count of the
  * hidden ones. Stops after {@link TREE_NODE_CAP} elements and counts the
  * children it did not reach.
@@ -246,32 +250,32 @@ const TREE_JS = `(el, tree, textOf, depth) => {
   let budget = ${TREE_NODE_CAP};
   let skipped = 0;
   const labelOf = (n) => n.localName + (n.id ? '#' + n.id : n.classList && n.classList.length ? '.' + n.classList[0] : '');
-  const walk = (kids, level) => {
+  const walk = (kids, level, origin) => {
     const shown = kids.filter(tree.rendered);
     const nodes = [];
     for (const k of shown) {
       if (budget <= 0) { skipped++; continue; }
       budget--;
-      nodes.push(nodeOf(k, level));
+      nodes.push(nodeOf(k, level, origin));
     }
     return { nodes: nodes, hidden: kids.length - shown.length };
   };
-  const nodeOf = (n, level) => {
+  const nodeOf = (n, level, origin) => {
     const r = n.getBoundingClientRect();
-    const node = { label: labelOf(n), w: r.width, h: r.height, display: tree.style(n).display };
+    const node = { label: labelOf(n), x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height, display: tree.style(n).display };
     const kids = tree.children(n);
     if (!tree.container(n)) node.text = textOf(n).slice(0, 60);
     if (level >= depth) {
       node.childCount = kids.filter(tree.rendered).length;
       return node;
     }
-    const sub = walk(kids, level + 1);
+    const sub = walk(kids, level + 1, r);
     node.children = sub.nodes;
     node.hidden = sub.hidden;
     return node;
   };
   if (depth <= 0) return { hiddenChildren: 0, treeSkipped: 0 };
-  const top = walk(tree.children(el), 1);
+  const top = walk(tree.children(el), 1, el.getBoundingClientRect());
   return { tree: top.nodes, hiddenChildren: top.hidden, treeSkipped: skipped };
 }`;
 
