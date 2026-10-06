@@ -430,7 +430,8 @@ const OVERFLOW_SCAN_LIMIT = 2000;
  * paints reaches beyond its border box on each side: its rendered
  * descendants (uncleared floats, absolutely positioned and transformed
  * children), its text (descenders past a tight line height, read from its
- * scroll size), and its own outer box shadows and outline (a focus ring).
+ * scroll size beyond its client size, in transformed px, to the left on an
+ * RTL element), and its own outer box shadows and outline (a focus ring).
  * Descendants of an element that clips its overflow (`overflow` other than
  * `visible`) are cut off by it and not counted, nor are fixed ones (they
  * belong to the viewport) or what lies outside the document (skip links at
@@ -463,8 +464,13 @@ const CONTENT_OVERFLOW_JS = `function () {
   const ownStyle = view.getComputedStyle(this);
   if (!clips(ownStyle)) {
     walk(this);
-    reach.right = Math.max(reach.right, own.left + this.clientLeft + this.scrollWidth);
-    reach.bottom = Math.max(reach.bottom, own.top + this.clientTop + this.scrollHeight);
+    const scaleX = this.offsetWidth ? own.width / this.offsetWidth : 1;
+    const scaleY = this.offsetHeight ? own.height / this.offsetHeight : 1;
+    const wider = Math.max(0, this.scrollWidth - this.clientWidth) * scaleX;
+    const taller = Math.max(0, this.scrollHeight - this.clientHeight) * scaleY;
+    if (ownStyle.direction === 'rtl') reach.left = Math.min(reach.left, own.left - wider);
+    else reach.right = Math.max(reach.right, own.right + wider);
+    reach.bottom = Math.max(reach.bottom, own.bottom + taller);
   }
   const ink = { left: 0, top: 0, right: 0, bottom: 0 };
   const grow = (side, amount) => { ink[side] = Math.max(ink[side], amount); };
@@ -559,8 +565,13 @@ async function measureInView(
   const dx = bounds.x + bounds.width / 2 - view.width / 2;
   const dy = bounds.y + bounds.height / 2 - view.height / 2;
   await callCDP('Runtime.evaluate', { expression: `window.scrollBy(${dx}, ${dy})` });
-  box = await getElementBounds(ref);
-  bounds = await captureArea(ref, box, padding);
+  try {
+    box = await getElementBounds(ref);
+    bounds = await captureArea(ref, box, padding);
+  } catch (error) {
+    await restoreScrollPosition(scrolledFrom);
+    throw error;
+  }
   return { box, bounds, inView: insideView(bounds, view), scrolledFrom };
 }
 
