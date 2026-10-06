@@ -7,6 +7,9 @@
 
 import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
+import type { InspectHint } from '@/ipc/protocol/inspectTypes.js';
+import { isDefaultValue } from '@/runtime/dom/inspectAllStyles.js';
+import type { VariableSetter } from '@/runtime/dom/inspectScripts.js';
 import { unsetVariables } from '@/runtime/dom/inspectVariables.js';
 import { findSimilarNames } from '@/utils/suggestions.js';
 
@@ -21,6 +24,10 @@ export interface CssHint {
   reason: string;
   /** What would make it work */
   fix: string;
+  /** The longhands of a shorthand that have no effect, when the others do (`margin-top`, `margin-bottom`) */
+  only?: string[];
+  /** The custom properties that are not set (`unset-variable`) */
+  variables?: string[];
   /** The declaration */
   declaration: Declaration;
 }
@@ -29,6 +36,8 @@ export interface CssHint {
 interface HintContext {
   style: StyleMap;
   parentStyle: StyleMap | undefined;
+  /** `display` as the winning declaration wrote it, when it differs from the computed one (blockified) */
+  declaredDisplay?: string | undefined;
   /** The element is replaced (img, input, video…) */
   replaced: boolean;
   /** The element is a form control (input, textarea, select, button) */
@@ -45,6 +54,8 @@ const display = (style: StyleMap | undefined): string => style?.['display'] ?? '
 const isFlex = (value: string): boolean => /(^|-)flex$/.test(value);
 const isGrid = (value: string): boolean => /(^|-)grid$/.test(value);
 const isFlexOrGrid = (value: string): boolean => isFlex(value) || isGrid(value);
+const horizontal = (style: StyleMap): boolean =>
+  (style['writing-mode'] ?? 'horizontal-tb') === 'horizontal-tb';
 const isMulticol = (style: StyleMap): boolean =>
   (style['column-count'] ?? 'auto') !== 'auto' || (style['column-width'] ?? 'auto') !== 'auto';
 
@@ -161,14 +172,14 @@ const RULES: readonly Rule[] = [
   {
     properties: ['width', 'height', 'min-width', 'min-height', 'max-width', 'max-height'],
     inactive: ({ style, replaced }) =>
-      display(style) === 'inline' && !replaced
+      display(style) === 'inline' && !replaced && horizontal(style)
         ? { reason: 'display is inline', fix: 'use display: inline-block or block' }
         : undefined,
   },
   {
     properties: ['margin-top', 'margin-bottom'],
     inactive: ({ style, replaced }) =>
-      display(style) === 'inline' && !replaced
+      display(style) === 'inline' && !replaced && horizontal(style)
         ? {
             reason: 'display is inline (vertical margins do not move it)',
             fix: 'use display: inline-block or block',
@@ -177,11 +188,11 @@ const RULES: readonly Rule[] = [
   },
   {
     properties: ['vertical-align'],
-    inactive: ({ style }) =>
-      /^(inline|inline-block|inline-flex|inline-grid|table-cell)$/.test(display(style))
+    inactive: ({ style, parentStyle, declaredDisplay }) =>
+      /^(inline|table-cell|ruby)/.test(display(style))
         ? undefined
         : {
-            reason: `display is ${display(style)}`,
+            reason: `display is ${display(style)}${blockified(declaredDisplay, style, parentStyle)}`,
             fix: 'vertical-align works on inline and table-cell boxes; use flex alignment instead',
           },
   },
@@ -218,9 +229,65 @@ const RULES: readonly Rule[] = [
 ];
 
 /**
- * Declarations of the element that have no effect: every longhand a
- * declaration wins is inactive (`margin: 0 4px` on an inline element still
- * moves it sideways, `gap` on a multi-column block still spaces the columns).
+ * Why a declared inline-level display computes to a block-level one: the
+ * element is a flex or grid item, floated or positioned (CSS blockification).
+ *
+ * @param declared - `display` as written, when it differs from the computed one
+ * @param style - Computed styles
+ * @param parentStyle - Computed styles of the layout parent
+ * @returns ` (inline-flex blockified: a flex item)`, or empty
+ */
+function blockified(
+  declared: string | undefined,
+  style: StyleMap,
+  parentStyle: StyleMap | undefined
+): string {
+  if (!declared || declared === display(style) || !/^(inline|table-|ruby)/.test(declared))
+    return '';
+  const parent = display(parentStyle);
+  const cause = isFlex(parent)
+    ? 'a flex item'
+    : isGrid(parent)
+      ? 'a grid item'
+      : (style['float'] ?? 'none') !== 'none'
+        ? 'floated'
+        : /^(absolute|fixed)$/.test(style['position'] ?? '')
+          ? 'positioned'
+          : 'by its context';
+  return ` (${declared} blockified: ${cause})`;
+}
+
+/**
+ * Shorthands whose inactive longhands are worth a hint while the others
+ * work: vertical margins of an inline element are a common mistake, while
+ * `gap` in a multi-column block or `grid-template-areas: none` are not
+ */
+const PARTIAL_SHORTHANDS = new Set(['margin', 'margin-block']);
+
+/** Values that change nothing wherever they are written */
+const NO_OP_KEYWORDS = new Set(['initial', 'unset', 'revert', 'revert-layer']);
+
+/**
+ * Whether a declared longhand value is its default, so writing it has no
+ * effect in any case (`vertical-align: baseline`, `margin-top: 0` from a
+ * reset): such declarations are not worth a hint.
+ *
+ * @param declaration - Declaration of a longhand
+ * @returns True for a default value
+ */
+function isNoOp(declaration: Declaration): boolean {
+  const value = declaration.value.trim().toLowerCase();
+  if (NO_OP_KEYWORDS.has(value)) return true;
+  const zero = /^[+-]?0*\.?0+(px|em|rem|%|vh|vw)?$/.test(value) ? '0px' : value;
+  return isDefaultValue(declaration.property, zero);
+}
+
+/**
+ * Declarations of the element that have no effect: the longhands a
+ * declaration wins that are inactive, unless they only restate a default.
+ * When only some of a `margin` shorthand's longhands are inactive
+ * (`margin: 8px 12px` on an inline element: the sides still move it), the
+ * hint names those; other partly inactive shorthands are not hinted.
  *
  * @param cascade - Resolved properties (winning declarations are checked)
  * @param ctx - Computed styles of the element and its parent
@@ -231,15 +298,19 @@ export function inactiveHints(cascade: Map<string, Resolution>, ctx: HintContext
     const checks = winners.map((declaration) =>
       RULES.find((rule) => rule.properties.includes(declaration.property))?.inactive(ctx)
     );
+    const inactive = winners.filter((declaration, i) => checks[i] && !isNoOp(declaration));
     const [first] = winners;
-    const [inactive] = checks;
-    if (!first || !inactive || checks.some((check) => !check)) return [];
+    const reason = checks.find(Boolean);
+    const partial = checks.some((check) => !check);
+    if (!first || !reason || inactive.length === 0) return [];
+    if (partial && !PARTIAL_SHORTHANDS.has(first.via ?? '')) return [];
     return [
       {
         kind: 'inactive' as const,
         property: first.via ?? first.property,
         value: first.written ?? first.value,
-        ...inactive,
+        ...reason,
+        ...(partial && { only: inactive.map((declaration) => declaration.property) }),
         declaration: first,
       },
     ];
@@ -299,10 +370,62 @@ export function undefinedVariableHints(
       value,
       reason: `${missing.join(', ')} is not set`,
       fix: variableFix(missing[0] ?? '', style),
+      variables: missing,
       declaration,
     });
   }
   return hints;
+}
+
+/**
+ * Unset-variable hints told where the page does set the variable, when it
+ * does: only in a rule that does not match now (`.btn:hover`: expected in
+ * the other state), only in `@keyframes` (while the animation runs), or to
+ * `inherit`/`initial`/an empty value in a rule that matches (nothing above
+ * gives it a value). A set variable is not a typo, so the "did you mean"
+ * suggestion goes.
+ *
+ * @param hints - Hints of the result
+ * @param setters - Where each variable is set, by name ({@link VARIABLE_SETTERS_JS})
+ * @returns Hints
+ */
+export function explainUnsetVariables(
+  hints: readonly InspectHint[],
+  setters: Readonly<Record<string, VariableSetter>>
+): InspectHint[] {
+  return hints.map((hint) => {
+    const name = hint.variables?.find((variable) => setters[variable]);
+    const setter = name ? setters[name] : undefined;
+    if (!name || !setter) return hint;
+    return { ...hint, ...setterExplanation(name, setter) };
+  });
+}
+
+/**
+ * Why a variable that the page sets is unset here, and the fix.
+ *
+ * @param name - Variable
+ * @param setter - Where it is set
+ * @returns Reason and fix
+ */
+function setterExplanation(name: string, setter: VariableSetter): { reason: string; fix: string } {
+  const fallback = 'give var() a fallback';
+  if (setter.keyframes) {
+    return {
+      reason: `${name} is set only in @keyframes ${setter.keyframes} (while it runs)`,
+      fix: `${fallback} for when the animation is not running`,
+    };
+  }
+  if (setter.matches) {
+    return {
+      reason: `${name} is set to ${setter.value === '' ? 'an empty value' : setter.value} by ${setter.selector}, and nothing above gives it a value`,
+      fix: `set ${name} on an ancestor, or ${fallback}`,
+    };
+  }
+  return {
+    reason: `${name} is set only by ${setter.selector}, which does not match now`,
+    fix: `expected in that state; otherwise ${fallback}`,
+  };
 }
 
 /**

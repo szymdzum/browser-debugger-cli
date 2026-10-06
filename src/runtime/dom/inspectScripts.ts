@@ -131,7 +131,7 @@ export interface RawInspect {
   whyLonghands?: string[];
   /** Computed value of the `--why` shorthand (`getComputedStyle` writes it as one value) */
   whyComputed?: string;
-  /** Properties of running CSS transitions, and names of running animations */
+  /** Properties of running CSS transitions, and names of running animations (time-based: scroll-driven ones do not change on their own) */
   animating: string[];
 }
 
@@ -477,11 +477,11 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
       ? tree.style(textFrom).visibility !== 'hidden' && tree.rendered(tree.style(textFrom).display === 'contents' ? tree.layoutParent(textFrom) : textFrom)
       : tree.rendered(el),
     hasText: textControl || holder !== null,
-    replaced: el instanceof SVGElement || /^(img|video|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
+    replaced: el instanceof SVGElement || /^(img|video|audio|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
     svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
     typed: { width: typed('width'), height: typed('height') },
     parent: parent ? describe(parent) : undefined,
-    animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running').map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
+    animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running' && (!a.timeline || a.timeline === el.ownerDocument.timeline)).map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
   };
   if (textFrom !== el) result.textHolder = tree.label(textFrom);
   if ((${FAMILY_LOADED_JS})(textFrom, tree, textOf(textFrom))) result.familyLoaded = true;
@@ -538,4 +538,60 @@ export const RELATED_NODE_JS = `function (which) {
   const holder = (${TEXT_HOLDER_JS})(this, tree);
   if (!holder) return null;
   return which === 'textHolder' ? holder.style : holder.font;
+}`;
+
+/** Where a custom property is set, as {@link VARIABLE_SETTERS_JS} finds it */
+export interface VariableSetter {
+  /** Selector of the rule, or `@keyframes name` */
+  selector: string;
+  /** Value as written (`inherit`, `` for an empty one) */
+  value: string;
+  /** Set in a keyframe of this animation */
+  keyframes?: string;
+  /** The rule matches the element or an ancestor now */
+  matches: boolean;
+}
+
+/**
+ * Page-side function run on the element (`this`): for each custom property
+ * name, the first rule in the page's stylesheets (same-origin, constructed
+ * and the element's shadow root's) that sets it, keyframes included, and
+ * whether that rule matches the element or an ancestor now. At most 20000
+ * rules are read; cross-origin sheets are skipped.
+ */
+export const VARIABLE_SETTERS_JS = `function (names) {
+  const el = this;
+  const found = {};
+  let budget = 20000;
+  const matches = (selector) => {
+    try { return Boolean(el.closest(selector)); } catch (e) { return false; }
+  };
+  const visit = (rules, keyframes) => {
+    for (const rule of Array.from(rules)) {
+      if (budget-- <= 0 || names.every((name) => found[name])) return;
+      if (typeof CSSKeyframesRule !== 'undefined' && rule instanceof CSSKeyframesRule) {
+        visit(rule.cssRules, rule.name);
+        continue;
+      }
+      if (rule.style) {
+        for (const name of names) {
+          if (found[name] || !Array.from(rule.style).includes(name)) continue;
+          const selector = keyframes ? '@keyframes ' + keyframes : rule.selectorText || '';
+          found[name] = Object.assign(
+            { selector: selector, value: rule.style.getPropertyValue(name).trim(), matches: !keyframes && matches(selector) },
+            keyframes ? { keyframes: keyframes } : {}
+          );
+        }
+      }
+      if (rule.cssRules) visit(rule.cssRules, keyframes);
+    }
+  };
+  const sheets = [];
+  for (const scope of new Set([el.getRootNode(), el.ownerDocument])) {
+    sheets.push(...Array.from(scope.styleSheets || []), ...Array.from(scope.adoptedStyleSheets || []));
+  }
+  for (const sheet of sheets) {
+    try { visit(sheet.cssRules, null); } catch (e) { continue; }
+  }
+  return found;
 }`;

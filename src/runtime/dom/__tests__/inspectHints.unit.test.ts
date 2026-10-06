@@ -6,7 +6,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
+import type { InspectHint } from '@/ipc/protocol/inspectTypes.js';
 import {
+  explainUnsetVariables,
   formControlFontHints,
   inactiveHints,
   undefinedVariableHints,
@@ -131,6 +133,63 @@ void describe('inactive CSS hints', () => {
     assert.equal(inactiveHints(gap, ctx({ display: 'block', 'column-count': '3' })).length, 0);
   });
 
+  void it('names the vertical margins of an inline element that do nothing', () => {
+    const margin = { via: 'margin', written: '8px 12px' };
+    const hints = inactiveHints(
+      cascade({
+        'margin-top': { value: '8px', ...margin },
+        'margin-right': { value: '12px', ...margin },
+        'margin-bottom': { value: '8px', ...margin },
+        'margin-left': { value: '12px', ...margin },
+      }),
+      ctx({ display: 'inline' })
+    );
+    assert.equal(hints.length, 1);
+    assert.equal(hints[0]?.property, 'margin');
+    assert.deepEqual(hints[0]?.only, ['margin-top', 'margin-bottom']);
+  });
+
+  void it('leaves out declarations that restate a default (resets)', () => {
+    assert.equal(
+      inactiveHints(
+        cascade({ 'vertical-align': 'baseline', 'margin-top': '0' }),
+        ctx({ display: 'inline' })
+      ).length,
+      0
+    );
+    assert.equal(
+      inactiveHints(cascade({ 'vertical-align': 'baseline' }), ctx({ display: 'block' })).length,
+      0
+    );
+  });
+
+  void it('knows audio, inline tables and vertical writing modes', () => {
+    assert.equal(
+      inactiveHints(cascade({ width: '300px' }), ctx({ display: 'inline' }, undefined, true))
+        .length,
+      0
+    );
+    assert.equal(
+      inactiveHints(cascade({ 'vertical-align': 'top' }), ctx({ display: 'inline-table' })).length,
+      0
+    );
+    assert.equal(
+      inactiveHints(
+        cascade({ 'margin-top': '5px' }),
+        ctx({ display: 'inline', 'writing-mode': 'vertical-rl' })
+      ).length,
+      0
+    );
+  });
+
+  void it('says when a flex item blockified a declared inline display', () => {
+    const [hint] = inactiveHints(cascade({ 'vertical-align': 'middle' }), {
+      ...ctx({ display: 'flex' }, { display: 'flex' }),
+      declaredDisplay: 'inline-flex',
+    });
+    assert.equal(hint?.reason, 'display is flex (inline-flex blockified: a flex item)');
+  });
+
   void it('flags align-content on a single-line flex container', () => {
     const hints = inactiveHints(
       cascade({ 'align-content': 'center' }),
@@ -154,6 +213,41 @@ void describe('form control fonts', () => {
     assert.match(formControlFontHints(uaFont, control)[0]?.fix ?? '', /font: inherit/);
     const authored = cascade({ 'font-family': 'inherit' });
     assert.equal(formControlFontHints(authored, control).length, 0);
+  });
+});
+
+void describe('where an unset custom property is set', () => {
+  const hint: InspectHint = {
+    kind: 'unset-variable',
+    property: 'background-color',
+    value: 'var(--bg)',
+    reason: '--bg is not set',
+    fix: 'define --bg or give var() a fallback (did you mean --bg2? it is set)',
+    variables: ['--bg'],
+    source: '.btn',
+  };
+
+  void it('says a variable set in another state is expected, without a typo suggestion', () => {
+    const [explained] = explainUnsetVariables([hint], {
+      '--bg': { selector: '.btn:hover', value: '#eee', matches: false },
+    });
+    assert.equal(explained?.reason, '--bg is set only by .btn:hover, which does not match now');
+    assert.doesNotMatch(explained?.fix ?? '', /did you mean/);
+  });
+
+  void it('names keyframes and inherit values', () => {
+    const [frames] = explainUnsetVariables([hint], {
+      '--bg': { selector: '@keyframes pulse', value: '1', keyframes: 'pulse', matches: false },
+    });
+    assert.match(frames?.reason ?? '', /only in @keyframes pulse/);
+    const [inherit] = explainUnsetVariables([hint], {
+      '--bg': { selector: ':root', value: 'inherit', matches: true },
+    });
+    assert.match(inherit?.reason ?? '', /set to inherit by :root, and nothing above/);
+  });
+
+  void it('keeps the hint when the page sets the variable nowhere', () => {
+    assert.deepEqual(explainUnsetVariables([hint], {}), [hint]);
   });
 });
 
