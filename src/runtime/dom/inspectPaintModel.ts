@@ -109,9 +109,64 @@ export function renderedFont(
   return { ...(differs && { rendered: primary.familyName }), ...webfont };
 }
 
+/** Fully transparent */
+const CLEAR: Rgba = { r: 0, g: 0, b: 0, a: 0 };
+
+/**
+ * Paint the text color and the background behind it the way the browser
+ * composites them: from the element up to the root, each element's content
+ * over its own background, the result faded by its opacity (a translucent
+ * ancestor fades its background along with the text), then over the page
+ * canvas.
+ *
+ * @param text - Text color (undefined: the background alone)
+ * @param backgrounds - Backgrounds with their opacity, the element's own first
+ * @param canvasDark - The page canvas is dark
+ * @returns The text pixel, the background pixel and whether a background
+ *   image or gradient was in the way
+ */
+function paintOver(
+  text: Rgba | undefined,
+  backgrounds: readonly RawBackground[],
+  canvasDark: boolean
+): { text: Rgba; background: Rgba; overImage: boolean } {
+  let withText = text ?? CLEAR;
+  let without = CLEAR;
+  let overImage = false;
+  for (const layer of backgrounds) {
+    if (layer.image && without.a < 0.999) overImage = true;
+    const color = parseColor(layer.color);
+    if (color && color.a > 0) {
+      withText = composite(withText, color);
+      without = composite(without, color);
+    }
+    const opacity = layer.opacity ?? 1;
+    withText = { ...withText, a: withText.a * opacity };
+    without = { ...without, a: without.a * opacity };
+  }
+  const canvas = CANVAS[canvasDark ? 'dark' : 'light'];
+  return {
+    text: composite(withText, canvas),
+    background: composite(without, canvas),
+    overImage,
+  };
+}
+
+/**
+ * Whether the element's own background lets what is behind it through (the
+ * background behind its text comes from an ancestor or the canvas).
+ *
+ * @param backgrounds - Backgrounds, the element's own first
+ * @returns True when its own background is not opaque
+ */
+function ownBackgroundTranslucent(backgrounds: readonly RawBackground[]): boolean {
+  const own = parseColor(backgrounds[0]?.color ?? '');
+  return !own || own.a < 0.999;
+}
+
 /**
  * The background behind the element's text: its own and its ancestors'
- * backgrounds composited, from the nearest opaque one (or the page canvas).
+ * backgrounds composited with their opacity over the page canvas.
  *
  * @param backgrounds - Backgrounds, the element's own first
  * @param canvasDark - The page canvas is dark
@@ -121,49 +176,43 @@ export function effectiveBackground(
   backgrounds: readonly RawBackground[],
   canvasDark: boolean
 ): { color: Rgba; inherited: boolean; overImage: boolean } {
-  const layers: Rgba[] = [];
-  let overImage = false;
-  for (const background of backgrounds) {
-    if (background.image) overImage = true;
-    const color = parseColor(background.color);
-    if (!color || color.a === 0) continue;
-    layers.push(color);
-    if (color.a >= 0.999) break;
-  }
-  const base = layers[layers.length - 1];
-  let color = base && base.a >= 0.999 ? base : CANVAS[canvasDark ? 'dark' : 'light'];
-  const translucent = base && base.a >= 0.999 ? layers.slice(0, -1) : layers;
-  for (const layer of [...translucent].reverse()) color = composite(layer, color);
-  const own = parseColor(backgrounds[0]?.color ?? '');
-  return { color, inherited: !own || own.a < 0.999, overImage };
+  const painted = paintOver(undefined, backgrounds, canvasDark);
+  return {
+    color: painted.background,
+    inherited: ownBackgroundTranslucent(backgrounds),
+    overImage: painted.overImage,
+  };
 }
 
 /**
- * Contrast of the text color with the background behind it.
+ * Contrast of the text color with the background behind it, both painted
+ * as the browser composites them ({@link paintOver}), with what makes the
+ * number approximate (blend modes, filters, content behind or on top).
  *
  * @param style - Computed styles (color, font size and weight)
- * @param raw - Backgrounds and the page canvas
+ * @param raw - Backgrounds, the page canvas, opacity and paint risks
  * @returns Ratio (rounded down to 2 decimals), level and background
  */
 export function textContrast(
   style: StyleMap,
-  raw: Pick<RawInspect, 'backgrounds' | 'canvasDark' | 'opacity'>
+  raw: Pick<RawInspect, 'backgrounds' | 'canvasDark' | 'opacity' | 'paintRisks'>
 ): InspectContrast | undefined {
   const color = parseColor(style['color'] ?? '');
   if (!color) return undefined;
   const opacity = raw.opacity ?? 1;
-  const text = opacity < 1 ? { ...color, a: color.a * opacity } : color;
-  const background = effectiveBackground(raw.backgrounds, raw.canvasDark);
-  const ratio = Math.floor(contrastRatio(text, background.color) * 100) / 100;
+  const painted = paintOver(color, raw.backgrounds, raw.canvasDark);
+  const ratio = Math.floor(contrastRatio(painted.text, painted.background) * 100) / 100;
   const size = pxNumber(style['font-size']) ?? 16;
   const weight = Number(style['font-weight'] ?? 400);
+  const approximate = raw.paintRisks ?? [];
   return {
     ratio,
     level: contrastLevel(ratio, size, weight),
-    background: toHex(background.color),
-    ...(background.inherited && { inherited: true }),
-    ...(background.overImage && { overImage: true }),
+    background: toHex(painted.background),
+    ...(ownBackgroundTranslucent(raw.backgrounds) && { inherited: true }),
+    ...(painted.overImage && { overImage: true }),
     ...(opacity < 1 && { opacity: Math.round(opacity * 100) / 100 }),
+    ...(approximate.length > 0 && { approximate }),
   };
 }
 
@@ -302,6 +351,7 @@ export function buildText(
     | 'backgrounds'
     | 'canvasDark'
     | 'opacity'
+    | 'paintRisks'
   >,
   fonts: readonly PlatformFont[]
 ): InspectText | undefined {

@@ -97,11 +97,16 @@ export interface InspectContrast {
   /** A background image or gradient is behind the text: the ratio uses the colors only */
   overImage?: boolean;
   /**
-   * Opacity of the element and its ancestors (below 1): the text color is
-   * faded by it before the ratio is taken (backgrounds inside the faded
-   * subtree are not, so the ratio is approximate)
+   * Opacity of the element and its ancestors (below 1): each translucent
+   * element fades its background and the text over it before the ratio is
+   * taken
    */
   opacity?: number;
+  /**
+   * Why the ratio is approximate: `mix-blend-mode hard-light on h1`,
+   * `filter on div.skin-invert`, `canvas behind`, `div.overlay on top`
+   */
+  approximate?: string[];
 }
 
 /** Typography (for containers without text of their own: only what differs from the parent) */

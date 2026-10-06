@@ -185,10 +185,18 @@ void describe('dom inspect', () => {
     assert.match(outputs, /••••/);
   });
 
-  void it('fades contrast by ancestor opacity and lets a block image hug its size', async () => {
+  void it('fades contrast by ancestor opacity, flags blend modes and lets a block image hug its size', async () => {
     assert.match(
       await bdg(['dom', 'inspect', '#faded-text']),
       /contrast [\d.]+ (fail|AA large) .*\(faded: opacity 0\.4\)/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#on-faded']),
+      /contrast 3\.9\d fail on #808080 \(faded: opacity 0\.5\)/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#blended']),
+      /contrast [\d.]+ \w+.* \(approximate: mix-blend-mode multiply on h2#blended\)/
     );
     const pic = await inspectJson('#pic');
     assert.deepEqual((pic['layout'] as { sizing: unknown }).sizing, { w: 'hug', h: 'hug' });

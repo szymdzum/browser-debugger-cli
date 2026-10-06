@@ -207,16 +207,46 @@ void describe('text paint', () => {
   });
 
   void it('fades the text by the opacity of the element and its ancestors', () => {
+    const style = { color: 'rgb(0, 0, 0)', 'font-size': '16px', 'font-weight': '400' };
+    const faded = textContrast(style, {
+      backgrounds: [{ color: 'rgba(0, 0, 0, 0)', image: false, opacity: 0.25 }],
+      canvasDark: false,
+      opacity: 0.25,
+    });
+    assert.ok(faded && faded.ratio < 3, `ratio ${faded?.ratio}`);
+    assert.equal(faded?.level, 'fail');
+    assert.equal(faded?.opacity, 0.25);
     const onWhite = {
       backgrounds: [{ color: 'rgb(255, 255, 255)', image: false }],
       canvasDark: false,
     };
-    const style = { color: 'rgb(0, 0, 0)', 'font-size': '16px', 'font-weight': '400' };
-    const faded = textContrast(style, { ...onWhite, opacity: 0.25 });
-    assert.ok(faded && faded.ratio < 3, `ratio ${faded?.ratio}`);
-    assert.equal(faded?.level, 'fail');
-    assert.equal(faded?.opacity, 0.25);
     assert.equal(textContrast(style, { ...onWhite, opacity: 1 })?.opacity, undefined);
+  });
+
+  void it('fades the background of a translucent ancestor along with the text', () => {
+    const white = { color: 'rgb(255, 255, 255)', 'font-size': '16px', 'font-weight': '400' };
+    const contrast = textContrast(white, {
+      backgrounds: [
+        { color: 'rgba(0, 0, 0, 0)', image: false },
+        { color: 'rgb(0, 0, 0)', image: false, opacity: 0.5 },
+        { color: 'rgb(255, 255, 255)', image: false },
+      ],
+      canvasDark: false,
+      opacity: 0.5,
+    });
+    assert.equal(contrast?.background, '#808080');
+    assert.ok(contrast && contrast.ratio > 3.9 && contrast.ratio < 4, `ratio ${contrast?.ratio}`);
+    assert.equal(contrast?.level, 'fail');
+  });
+
+  void it('says why a ratio is approximate', () => {
+    const style = { color: 'rgb(0, 0, 0)', 'font-size': '16px', 'font-weight': '400' };
+    const contrast = textContrast(style, {
+      backgrounds: [{ color: 'rgb(255, 255, 255)', image: false }],
+      canvasDark: false,
+      paintRisks: ['mix-blend-mode hard-light on h1', 'canvas behind'],
+    });
+    assert.deepEqual(contrast?.approximate, ['mix-blend-mode hard-light on h1', 'canvas behind']);
   });
 
   void it('never calls a loaded web font a fallback, and names what a generic family resolved to', () => {
