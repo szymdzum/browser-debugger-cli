@@ -187,6 +187,44 @@ void describe('dom inspect', () => {
     assert.doesNotMatch(await bdg(['dom', 'inspect', '#buy']), /\[dark theme|\[prefers/);
   });
 
+  void it('hints at declarations that have no effect, by default', async () => {
+    const hero = await bdg(['dom', 'inspect', '#hero']);
+    assert.match(
+      hero,
+      /\nhints +justify-content: center has no effect: display is block → use display: flex or grid on this element · in #hero \(<style> in inspect:\d+\)/
+    );
+    assert.match(hero, /gap: 12px has no effect/);
+    assert.match(
+      await bdg(['dom', 'inspect', '#themed']),
+      /color: var\(--brand-color\) has no effect: --brand-color is not set/
+    );
+    assert.doesNotMatch(await bdg(['dom', 'inspect', '#hero', '--no-hints']), /\nhints/);
+  });
+
+  void it('names the rule that sets each property, and why a value wins', async () => {
+    const rules = await bdg(['dom', 'inspect', '#tag', '--rules', '--tree', '0']);
+    assert.match(
+      rules,
+      /\nrules +.*color #06c ← \.tag\.primary \(<style> in inspect:\d+\) over \.tag/s
+    );
+    assert.match(rules, /padding 4px 8px ← \.tag \(<style> in inspect:\d+\)/);
+
+    const why = await bdg(['dom', 'inspect', '#tag', '--why', 'color', '--tree', '0']);
+    assert.match(why, /\nwhy +color = #06c\n +✓ #06c +\.tag\.primary/);
+    assert.match(why, /\n +✗ #c00 +\.tag \(<style> in inspect:\d+\)/);
+
+    const json = await inspectJson('#tag', '--rules');
+    const colorRule = (json['rules'] as Array<{ property: string; overrides?: string[] }>).find(
+      (rule) => rule.property === 'color'
+    );
+    assert.deepEqual(colorRule?.overrides, ['.tag']);
+
+    const attribute = await bdg(['dom', 'inspect', '#sized', '--why', 'width', '--tree', '0']);
+    assert.match(attribute, /\n +✓ 120px +HTML attribute/);
+    const shorthand = await bdg(['dom', 'inspect', '#tag', '--why', 'padding'], 81);
+    assert.match(shorthand, /padding is a shorthand; ask for one of its longhands: padding-top/);
+  });
+
   void it('inspects the first rendered match and says so, and exits 83 when nothing matches', async () => {
     await bdg([
       'dom',

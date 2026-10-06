@@ -6,6 +6,7 @@
  * browser.
  */
 
+import type { Protocol } from '@/connection/typed-cdp.js';
 import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
 import type { InspectResult, InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import { allStyles } from '@/runtime/dom/inspectAllStyles.js';
@@ -44,6 +45,12 @@ export interface InspectSources {
   /** The element as `dom layout` measures it */
   layout?: ElementLayout;
   colorScheme?: 'light' | 'dark';
+  /** Matched rules for the cascade fields; `timeout` when Chrome took too long */
+  matched?: Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed';
+  /** `--rules` was asked for */
+  rules?: boolean;
+  /** `--why` property */
+  why?: string;
 }
 
 /** What the command asked for */

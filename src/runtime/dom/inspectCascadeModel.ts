@@ -1,0 +1,271 @@
+/**
+ * `dom inspect`'s cascade fields from the matched rules: hints (declarations
+ * that have no effect), `--rules` (which declaration sets each shown
+ * property, sides set by one declaration merged into the shorthand) and
+ * `--why` (every declaration of one property).
+ */
+
+import type { Protocol } from '@/connection/typed-cdp.js';
+import type {
+  InspectHint,
+  InspectResult,
+  InspectRule,
+  InspectWhy,
+  InspectWhyEntry,
+} from '@/ipc/protocol/inspectTypes.js';
+import { normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
+import {
+  physicalName,
+  ownProperties,
+  resolveCascade,
+  type Declaration,
+  type Resolution,
+} from '@/runtime/dom/inspectCascade.js';
+import { inactiveHints, undefinedVariableHints } from '@/runtime/dom/inspectHints.js';
+import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
+
+const SIDES = ['top', 'right', 'bottom', 'left'] as const;
+const sides = (pattern: string): string[] => SIDES.map((side) => pattern.replace('{side}', side));
+
+/** Properties `--rules` reports, grouped so a shorthand can stand for its sides */
+const RULE_GROUPS: ReadonlyArray<{ shorthand?: string; longhands: string[] }> = [
+  { longhands: ['display'] },
+  { longhands: ['position'] },
+  { shorthand: 'inset', longhands: sides('{side}') },
+  { longhands: ['z-index'] },
+  { longhands: ['width'] },
+  { longhands: ['height'] },
+  { longhands: ['min-width'] },
+  { longhands: ['max-width'] },
+  { longhands: ['min-height'] },
+  { longhands: ['max-height'] },
+  { shorthand: 'margin', longhands: sides('margin-{side}') },
+  { shorthand: 'padding', longhands: sides('padding-{side}') },
+  { shorthand: 'border-width', longhands: sides('border-{side}-width') },
+  { shorthand: 'border-style', longhands: sides('border-{side}-style') },
+  { shorthand: 'border-color', longhands: sides('border-{side}-color') },
+  {
+    shorthand: 'border-radius',
+    longhands: ['top-left', 'top-right', 'bottom-right', 'bottom-left'].map(
+      (c) => `border-${c}-radius`
+    ),
+  },
+  { longhands: ['background-color'] },
+  { longhands: ['background-image'] },
+  { longhands: ['color'] },
+  { longhands: ['font-family'] },
+  { longhands: ['font-size'] },
+  { longhands: ['font-weight'] },
+  { longhands: ['line-height'] },
+  { longhands: ['letter-spacing'] },
+  { longhands: ['text-align'] },
+  { longhands: ['text-transform'] },
+  { longhands: ['opacity'] },
+  { longhands: ['box-shadow'] },
+  { longhands: ['transform'] },
+  { longhands: ['flex-direction'] },
+  { longhands: ['flex-wrap'] },
+  { longhands: ['justify-content'] },
+  { longhands: ['align-items'] },
+  { shorthand: 'gap', longhands: ['row-gap', 'column-gap'] },
+  { longhands: ['grid-template-columns'] },
+  { longhands: ['grid-template-rows'] },
+  { shorthand: 'flex', longhands: ['flex-grow', 'flex-shrink', 'flex-basis'] },
+  { longhands: ['align-self'] },
+  { shorthand: 'overflow', longhands: ['overflow-x', 'overflow-y'] },
+  { longhands: ['cursor'] },
+];
+
+/** What the cascade fields are built from */
+export interface CascadeInput {
+  matched: Protocol.CSS.GetMatchedStylesForNodeResponse;
+  style: StyleMap;
+  parentStyle: StyleMap | undefined;
+  replaced: boolean;
+  /** Where a declaration comes from, for people */
+  label: (declaration: Declaration) => string;
+  rules?: boolean;
+  why?: string;
+}
+
+/**
+ * The cascade fields of the result.
+ *
+ * @param input - Matched rules, computed styles, options
+ * @returns `hints`, `rules` and `why`, each only when there is something to say
+ */
+export function buildCascadeFields(input: CascadeInput): Partial<InspectResult> {
+  const why = input.why ? physicalName(input.why) : undefined;
+  const wanted = [
+    ...new Set([
+      ...ownProperties(input.matched),
+      ...(input.rules ? RULE_GROUPS.flatMap((group) => group.longhands) : []),
+      ...(why ? [why] : []),
+    ]),
+  ];
+  const cascade = resolveCascade(input.matched, wanted);
+  const hints = buildHints(cascade, input);
+  const rules = input.rules ? buildRules(cascade, input) : [];
+  return {
+    ...(hints.length > 0 && { hints }),
+    ...(rules.length > 0 && { rules }),
+    ...(why && { why: buildWhy(why, cascade.get(why), input) }),
+  };
+}
+
+/**
+ * Hints: declarations with no effect, and var() of unset custom properties;
+ * none without the computed style to check them against.
+ *
+ * @param cascade - Resolved properties
+ * @param input - Styles and the label function
+ * @returns Hints
+ */
+function buildHints(cascade: Map<string, Resolution>, input: CascadeInput): InspectHint[] {
+  if (input.style['display'] === undefined) return [];
+  const ctx = { style: input.style, parentStyle: input.parentStyle, replaced: input.replaced };
+  return [...inactiveHints(cascade, ctx), ...undefinedVariableHints(cascade, input.style)].map(
+    (hint) => ({
+      property: hint.property,
+      value: hint.value,
+      reason: hint.reason,
+      fix: hint.fix,
+      source: input.label(hint.declaration),
+    })
+  );
+}
+
+/**
+ * `--rules`: one row per shown property set by an author declaration; one
+ * row for a group (`padding`, `border-width`) when a single declaration sets
+ * all of it.
+ *
+ * @param cascade - Resolved properties
+ * @param input - Computed style and the label function
+ * @returns Rules
+ */
+function buildRules(cascade: Map<string, Resolution>, input: CascadeInput): InspectRule[] {
+  return RULE_GROUPS.flatMap((group) => {
+    const resolutions = group.longhands.map((longhand) => cascade.get(longhand));
+    const winners = resolutions.map((resolution) => resolution?.winner);
+    const grouped =
+      group.shorthand !== undefined ? groupedRow(group.shorthand, winners) : undefined;
+    if (grouped) return [toRule(grouped.property, grouped, resolutions[0], input)];
+    return group.longhands.flatMap((longhand, i) => {
+      const winner = winners[i];
+      return winner && winner.source.origin !== 'user-agent'
+        ? [toRule(longhand, winner, resolutions[i], input)]
+        : [];
+    });
+  });
+}
+
+/**
+ * One row for a group of longhands that a single author declaration sets:
+ * the shorthand as written, or (set by a wider shorthand, like `border`
+ * for `border-width`) the values it gives the sides.
+ *
+ * @param shorthand - The group's shorthand
+ * @param winners - Winning declaration of each longhand
+ * @returns The row's declaration, or undefined when the sides differ in source
+ */
+function groupedRow(
+  shorthand: string,
+  winners: Array<Declaration | undefined>
+): Declaration | undefined {
+  const [first] = winners;
+  if (!first?.via || first.source.origin === 'user-agent') return undefined;
+  const same = winners.every((w) => w && w.via === first.via && sameSource(w, first));
+  if (!same) return undefined;
+  const values = winners.map((w) => w?.value ?? '');
+  const value =
+    first.via === shorthand
+      ? (first.written ?? first.value)
+      : values.every((v) => v === first.value)
+        ? first.value
+        : values.join(' ');
+  return { ...first, property: shorthand, value };
+}
+
+/**
+ * Whether two declarations come from the same place.
+ *
+ * @param a - Declaration
+ * @param b - Declaration
+ * @returns True for the same declaration (same rule and position)
+ */
+function sameSource(a: Declaration, b: Declaration): boolean {
+  return (
+    a.source.kind === b.source.kind &&
+    a.source.selector === b.source.selector &&
+    a.source.styleSheetId === b.source.styleSheetId &&
+    a.source.line === b.source.line &&
+    a.source.column === b.source.column
+  );
+}
+
+/**
+ * A `--rules` row.
+ *
+ * @param property - Property shown
+ * @param winner - Winning declaration
+ * @param resolution - Its resolution (for what it overrides)
+ * @param input - Computed style and the label function
+ * @returns Rule
+ */
+function toRule(
+  property: string,
+  winner: Declaration,
+  resolution: Resolution | undefined,
+  input: CascadeInput
+): InspectRule {
+  const computed = input.style[property];
+  const overrides = [
+    ...new Set(
+      (resolution?.overridden ?? [])
+        .filter((d) => d.source.origin !== 'user-agent')
+        .map((d) => d.source.selector ?? d.source.kind)
+    ),
+  ];
+  return {
+    property,
+    value: winner.value,
+    ...(winner.value.includes('var(') &&
+      computed !== undefined && { computed: normalizeProperty(property, computed) }),
+    source: input.label(winner),
+    ...(overrides.length > 0 && { overrides }),
+    ...(winner.ancestor !== undefined && { inherited: winner.ancestor }),
+    ...(winner.important && { important: true as const }),
+    ...(winner.source.layer && { layer: winner.source.layer }),
+    ...(winner.source.condition && { condition: winner.source.condition }),
+  };
+}
+
+/**
+ * `--why`: the winner and every declaration it beat.
+ *
+ * @param property - Longhand
+ * @param resolution - Its resolution
+ * @param input - Computed style and the label function
+ * @returns Why
+ */
+function buildWhy(
+  property: string,
+  resolution: Resolution | undefined,
+  input: CascadeInput
+): InspectWhy {
+  const entry = (declaration: Declaration, status: InspectWhyEntry['status']): InspectWhyEntry => ({
+    value: declaration.value,
+    source: input.label(declaration),
+    status,
+    ...(declaration.important && { important: true as const }),
+    ...(declaration.source.layer && { layer: declaration.source.layer }),
+    ...(declaration.source.condition && { condition: declaration.source.condition }),
+  });
+  const winner = resolution?.winner;
+  const chain = [
+    ...(winner ? [entry(winner, winner.ancestor !== undefined ? 'inherited' : 'applied')] : []),
+    ...(resolution?.overridden ?? []).map((d) => entry(d, 'overridden')),
+  ];
+  return { property, computed: normalizeProperty(property, input.style[property] ?? ''), chain };
+}

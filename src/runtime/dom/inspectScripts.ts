@@ -64,7 +64,7 @@ export interface RawInspect {
   /** Has text to describe: own text, only inline content with text, or a form control */
   textual: boolean;
   formControl: boolean;
-  /** Replaced element (img, svg, video, canvas, iframe, embed, object, form controls): sized by its content */
+  /** Replaced element (img, svg and its shapes, video, canvas, iframe, embed, object, form controls): sized by its content */
   replaced?: boolean;
   /** An SVG element (SVG properties are not noise for it) */
   svg?: boolean;
@@ -300,7 +300,7 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
     content: content,
     textual: formControl || (content !== '' && !tree.container(el)),
     formControl: formControl,
-    replaced: /^(img|svg|video|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
+    replaced: el instanceof SVGElement || /^(img|video|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
     svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
     ownText: Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== ''),
     typed: { width: typed('width'), height: typed('height') },

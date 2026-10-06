@@ -31,6 +31,7 @@ import { containerKind } from '@/runtime/dom/inspectLayoutModel.js';
 import type { IndexSource } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
+  inspectCascadeNote,
   inspectDarkThemeBadge,
   inspectedMatchAction,
   inspectVisibilityBadges,
@@ -452,6 +453,75 @@ function treeLines(
 }
 
 /**
+ * Lines under a label shown on the first only (`hints  a`, `       b`).
+ *
+ * @param label - Group label
+ * @param lines - Lines
+ * @returns Labelled lines
+ */
+function labelledLines(label: string, lines: string[]): string[] {
+  return lines.map((line, i) => `${i === 0 ? label.padEnd(6) : ''.padEnd(6)} ${line}`);
+}
+
+/**
+ * Where a rule applies when it is not always: its layer and condition.
+ *
+ * @param entry - Layer and media/container condition
+ * @returns e.g. ` @media (min-width: 80rem) layer utilities`, or empty
+ */
+function ruleScope(entry: { layer?: string | undefined; condition?: string | undefined }): string {
+  return [entry.condition && ` @${entry.condition}`, entry.layer && ` layer ${entry.layer}`]
+    .filter(Boolean)
+    .join('');
+}
+
+/**
+ * Hints, `--rules` and `--why` lines, and a note when the cascade was not read in time.
+ *
+ * @param data - Inspect result
+ * @returns Lines
+ */
+function cascadeBlock(data: InspectOutput): string[] {
+  const hints = (data.hints ?? []).map(
+    (hint) =>
+      `${hint.property}: ${hint.value} has no effect: ${hint.reason} → ${hint.fix} · in ${hint.source}`
+  );
+  const rules = (data.rules ?? []).map((rule) =>
+    [
+      `${rule.property} ${truncateByLength(rule.value, CASCADE_VALUE_WIDTH)}`,
+      rule.computed !== undefined && ` = ${truncateByLength(rule.computed, CASCADE_VALUE_WIDTH)}`,
+      `${rule.important ? ' !important' : ''} ← ${rule.source}`,
+      ruleScope(rule),
+      rule.inherited !== undefined && ` (inherited from ${rule.inherited} up)`,
+      rule.overrides && ` over ${rule.overrides.join(', ')}`,
+    ]
+      .filter(Boolean)
+      .join('')
+  );
+  const why = data.why
+    ? [
+        `${data.why.property} = ${data.why.computed}`,
+        ...data.why.chain.map(
+          (entry) =>
+            `  ${entry.status === 'overridden' ? '✗' : '✓'} ${truncateByLength(entry.value, CASCADE_VALUE_WIDTH)}${entry.important ? ' !important' : ''}  ${entry.source}${ruleScope(entry)}${entry.status === 'inherited' ? ' (inherited)' : ''}`
+        ),
+        ...(data.why.chain.length === 0
+          ? ['  no author declaration: the default or inherited value']
+          : []),
+      ]
+    : [];
+  return [
+    ...labelledLines('hints', hints),
+    ...labelledLines('rules', rules),
+    ...labelledLines('why', why),
+    ...(data.cascade ? [inspectCascadeNote(data.cascade)] : []),
+  ];
+}
+
+/** Longest declared value shown in `--rules` and `--why` lines (font stacks run long) */
+const CASCADE_VALUE_WIDTH = 60;
+
+/**
  * The tree block.
  *
  * @param data - Inspect result
@@ -487,7 +557,8 @@ function allLines(all: Record<string, string>): string[] {
 }
 
 /**
- * `--props` lines: the computed value, and the normalized one when it differs.
+ * `--props` lines: the computed value, and the normalized one when it differs;
+ * a custom property no rule sets is `(not set)`.
  *
  * @param props - Properties asked for
  * @returns Lines
@@ -495,7 +566,7 @@ function allLines(all: Record<string, string>): string[] {
 function propLines(props: NonNullable<InspectResult['props']>): string[] {
   return Object.entries(props).map(
     ([name, prop]) =>
-      `${name}: ${prop.computed || '(empty)'}${prop.value !== prop.computed ? ` = ${prop.value}` : ''}`
+      `${name}: ${prop.computed || (name.startsWith('--') ? '(not set)' : '(empty)')}${prop.value !== prop.computed ? ` = ${prop.value}` : ''}`
   );
 }
 
@@ -534,5 +605,5 @@ export function formatInspect(data: InspectOutput): string {
   const note = data.picked
     ? multipleMatchesWarning(data.count, inspectedMatchAction(data.picked, data.index))
     : undefined;
-  return joinLines(inspectHeader(data), ...body, ...treeBlock(data), note);
+  return joinLines(inspectHeader(data), ...body, ...cascadeBlock(data), ...treeBlock(data), note);
 }
