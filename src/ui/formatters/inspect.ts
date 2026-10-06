@@ -221,9 +221,10 @@ function parentLine(layout: InspectLayout): string | undefined {
  * @returns Fields
  */
 function fontParts(text: InspectText): string[] {
-  const loaded = [text.rendered && `rendered "${text.rendered}"`, text.webfont && 'webfont'].filter(
-    Boolean
-  );
+  const loaded = [
+    text.rendered && `rendered "${text.rendered}"`,
+    text.webfont && 'webfont loaded',
+  ].filter(Boolean);
   const family = text.family && [text.family, loaded.length > 0 && `(${loaded.join(', ')})`];
   const size =
     text.size !== undefined &&
@@ -385,6 +386,8 @@ function pseudoText(pseudo: InspectPseudo): string {
     pseudo.position,
     pseudo.size && `${pseudo.size.w}x${pseudo.size.h}`,
     pseudo.color && `color ${pseudo.color}`,
+    pseudo.fontStyle,
+    pseudo.fontWeight !== undefined && `weight ${pseudo.fontWeight}`,
     pseudo.contrast && `· ${contrastText(pseudo.contrast)}`,
     ...(pseudo.fills ?? []).map(fillText),
     pseudo.radius && `radius ${pseudo.radius}`,
@@ -445,7 +448,7 @@ function treeLines(
     `${indent}${treeRow(node)}`,
     ...treeLines(node.children ?? [], node.hiddenChildren, depth + 1),
   ]);
-  return hidden ? [...lines, `${indent}(+${hidden} hidden)`] : lines;
+  return hidden ? [...lines, `${indent}(+${hidden} not rendered)`] : lines;
 }
 
 /**

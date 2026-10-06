@@ -357,6 +357,22 @@ function collapse(kept: Map<string, string>, style: StyleMap): Record<string, st
 }
 
 /**
+ * Whether an inset side is only resolved, not set: Chrome computes `0px` for
+ * the sides of a `position: relative` element that sets none (and `auto`
+ * stays `auto` elsewhere).
+ *
+ * @param name - Property name
+ * @param value - Computed value
+ * @param style - All computed styles
+ * @returns True for a 0 offset of a relative element
+ */
+function isUnsetOffset(name: string, value: string, style: StyleMap): boolean {
+  return (
+    /^(top|right|bottom|left)$/.test(name) && value === '0px' && style['position'] === 'relative'
+  );
+}
+
+/**
  * Every computed longhand that is not noise and not a default, normalized
  * and collapsed into shorthands.
  *
@@ -373,6 +389,7 @@ export function allStyles(style: StyleMap, svg: boolean): Record<string, string>
       continue;
     }
     if (isNoise(name, style, svg) || isDefaultValue(name, value)) continue;
+    if (isUnsetOffset(name, value, style)) continue;
     kept.set(name, normalizeProperty(name, value));
   }
   return collapse(kept, style);

@@ -184,6 +184,9 @@ export interface InspectPseudo {
   effects?: InspectEffect[];
   transform?: string;
   opacity?: number;
+  /** `::placeholder`: font style and weight, when not the field's */
+  fontStyle?: string;
+  fontWeight?: number;
   /** `::placeholder`: contrast of the placeholder text with the field's background */
   contrast?: InspectContrast;
 }

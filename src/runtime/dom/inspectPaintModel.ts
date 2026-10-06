@@ -59,8 +59,9 @@ const CANVAS: Record<'light' | 'dark', Rgba> = {
 };
 
 /**
- * The font the text was rendered with, when it is not the first family (a
- * fallback, or the face's own name), and whether it is a web font. Names
+ * The font the text was rendered with, when it is not a face of the first
+ * family (a fallback: `DM Sans 9pt` is a face of `DM Sans`, `Liberation Sans`
+ * is not one of `Arial`), and whether it is a web font. Names
  * that are not readable (sites that scramble a web font's internal name)
  * are left out.
  *
@@ -75,7 +76,7 @@ export function renderedFont(
   const primary = [...fonts].sort((a, b) => b.glyphCount - a.glyphCount)[0];
   if (!primary) return {};
   const readable = /^[\p{L}\p{N}.][\p{L}\p{N} ._'-]+$/u.test(primary.familyName);
-  const differs = readable && primary.familyName.toLowerCase() !== family.toLowerCase();
+  const differs = readable && !primary.familyName.toLowerCase().startsWith(family.toLowerCase());
   return {
     ...(differs && { rendered: primary.familyName }),
     ...(primary.isCustomFont && { webfont: true }),
@@ -523,16 +524,27 @@ export function buildGeneratedPseudo(
 export function buildPseudo(
   generated: readonly PseudoSource[],
   hostStyle: StyleMap,
-  raw: Pick<RawInspect, 'placeholderColor' | 'backgrounds' | 'canvasDark' | 'opacity'>
+  raw: Pick<
+    RawInspect,
+    'placeholderColor' | 'placeholderFont' | 'backgrounds' | 'canvasDark' | 'opacity'
+  >
 ): InspectPseudo[] | undefined {
   const pseudo = generated
     .map((source) => buildGeneratedPseudo(source, hostStyle['color']))
     .filter((entry): entry is InspectPseudo => entry !== undefined);
   if (raw.placeholderColor) {
-    const contrast = textContrast({ ...hostStyle, color: raw.placeholderColor }, raw);
+    const font = raw.placeholderFont;
+    const weight = font?.weight ?? hostStyle['font-weight'] ?? '400';
+    const contrast = textContrast(
+      { ...hostStyle, color: raw.placeholderColor, 'font-weight': weight },
+      raw
+    );
     pseudo.push({
       type: '::placeholder',
       color: hexColor(raw.placeholderColor),
+      ...(font &&
+        font.style !== (hostStyle['font-style'] ?? 'normal') && { fontStyle: font.style }),
+      ...(weight !== (hostStyle['font-weight'] ?? '400') && { fontWeight: Number(weight) }),
       ...(contrast && { contrast }),
     });
   }

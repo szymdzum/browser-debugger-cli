@@ -59,6 +59,8 @@ export interface RawInspect {
   placeholder?: string;
   /** Computed color of its `::placeholder` */
   placeholderColor?: string;
+  /** Font style and weight of the placeholder (they decide whether it is large text) */
+  placeholderFont?: { style: string; weight: string };
   /** Has text to describe: own text, only inline content with text, or a form control */
   textual: boolean;
   formControl: boolean;
@@ -306,7 +308,9 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
   };
   if (/^(input|textarea)$/.test(el.localName) && el.placeholder && !el.value) {
     result.placeholder = el.placeholder.replace(/\\s+/g, ' ').trim();
-    result.placeholderColor = tree.style(el, '::placeholder').color;
+    const placeholderStyle = tree.style(el, '::placeholder');
+    result.placeholderColor = placeholderStyle.color;
+    result.placeholderFont = { style: placeholderStyle.fontStyle, weight: placeholderStyle.fontWeight };
   }
   if (el.clientWidth > 0 && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) {
     result.scroll = { w: el.scrollWidth, h: el.scrollHeight, clientW: el.clientWidth, clientH: el.clientHeight };

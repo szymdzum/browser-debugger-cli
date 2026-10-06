@@ -18,6 +18,7 @@ import type { DomInspectCommand } from '@/ipc/protocol/commands.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTree.js';
 import { formatInspect } from '@/ui/formatters/inspect.js';
+import { INSPECT_OUTPUT_LEGEND } from '@/ui/messages/commands.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -53,6 +54,7 @@ export function registerInspectCommand(dom: Command): void {
         'Every computed property that is not its default, collapsed into shorthands, instead of the groups'
       ).conflicts('props')
     )
+    .addHelpText('after', INSPECT_OUTPUT_LEGEND)
     .option(
       '--props <names>',
       'Only these properties, computed and normalized (comma-separated, e.g. padding,color,--brand)',

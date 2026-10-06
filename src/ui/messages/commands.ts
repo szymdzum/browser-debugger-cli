@@ -501,6 +501,19 @@ export function indexLayoutHeadline(target: string): string {
   return `Element at ${target} (page x,y and size in CSS px):`;
 }
 
+/** Help text explaining `bdg dom inspect`'s output notation */
+export const INSPECT_OUTPUT_LEGEND = `
+Output notation:
+  WxH @x,y        rendered border box size and page position (CSS px, no unit)
+  m / p / b       margin / padding / border widths, 1-4 values in CSS order (top right bottom left)
+  in-parent       distances to the parent's content edges (l t r b); sib: gaps to the sibling on each side
+  scroll WxH      the content (pseudo-elements too) is larger than the box
+  16/24           font size / line height; 'webfont loaded' = drawn with a downloaded font;
+                  (rendered "X") = drawn with another font than declared (a fallback)
+  contrast 4.47   WCAG ratio, rounded down, against the background behind the text
+  (+N not rendered)  children with display: none (or not in the layout)
+Sessions follow the system color scheme; start with --color-scheme light|dark to choose.`;
+
 /**
  * What covers an element: a cover that paints nothing at that point (a
  * transparent box over it) does not hide it, but takes its clicks.
