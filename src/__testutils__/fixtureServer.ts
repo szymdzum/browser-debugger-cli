@@ -124,7 +124,7 @@ const FRAME_ORIGINS_HTML = `<!doctype html><title>frame origins</title>
  * change handler submits its form (navigating away), a button that does
  * nothing (like saucedemo problem_user's Remove), one that changes its text,
  * one that shows an error text, a link changing the URL's hash, a mailto:
- * link, a button copying to the clipboard and one attaching a closed shadow
+ * link (its default action prevented, so the system mail app never opens), a button copying to the clipboard and one attaching a closed shadow
  * root.
  */
 const FORMS_HTML = `<!doctype html><title>forms</title>
@@ -158,7 +158,7 @@ const FORMS_HTML = `<!doctype html><title>forms</title>
 <button id="validate" type="button" onclick="document.getElementById('form-error').textContent = 'Zip is required'">Check</button>
 <p id="form-error" class="error"></p>
 <a id="filter-active" href="#/active">Active</a>
-<a id="mail" href="mailto:help@example.test">Mail us</a>
+<a id="mail" href="mailto:help@example.test" onclick="event.preventDefault()">Mail us</a>
 <button id="copy" type="button" onclick="document.execCommand('copy')">Copy</button>
 <div id="host"></div>
 <button id="attach" type="button" onclick="document.getElementById('host').attachShadow({ mode: 'closed' }).innerHTML = '<p>Inside</p>'">Attach</button>`;
