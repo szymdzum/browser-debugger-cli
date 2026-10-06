@@ -153,6 +153,18 @@ function paintOver(
 }
 
 /**
+ * Whether the element's own background lets what is behind it through (the
+ * background behind its text comes from an ancestor or the canvas).
+ *
+ * @param backgrounds - Backgrounds, the element's own first
+ * @returns True when its own background is not opaque
+ */
+function ownBackgroundTranslucent(backgrounds: readonly RawBackground[]): boolean {
+  const own = parseColor(backgrounds[0]?.color ?? '');
+  return !own || own.a < 0.999;
+}
+
+/**
  * The background behind the element's text: its own and its ancestors'
  * backgrounds composited with their opacity over the page canvas.
  *
@@ -165,10 +177,9 @@ export function effectiveBackground(
   canvasDark: boolean
 ): { color: Rgba; inherited: boolean; overImage: boolean } {
   const painted = paintOver(undefined, backgrounds, canvasDark);
-  const own = parseColor(backgrounds[0]?.color ?? '');
   return {
     color: painted.background,
-    inherited: !own || own.a < 0.999,
+    inherited: ownBackgroundTranslucent(backgrounds),
     overImage: painted.overImage,
   };
 }
@@ -193,13 +204,12 @@ export function textContrast(
   const ratio = Math.floor(contrastRatio(painted.text, painted.background) * 100) / 100;
   const size = pxNumber(style['font-size']) ?? 16;
   const weight = Number(style['font-weight'] ?? 400);
-  const own = parseColor(raw.backgrounds[0]?.color ?? '');
   const approximate = raw.paintRisks ?? [];
   return {
     ratio,
     level: contrastLevel(ratio, size, weight),
     background: toHex(painted.background),
-    ...((!own || own.a < 0.999) && { inherited: true }),
+    ...(ownBackgroundTranslucent(raw.backgrounds) && { inherited: true }),
     ...(painted.overImage && { overImage: true }),
     ...(opacity < 1 && { opacity: Math.round(opacity * 100) / 100 }),
     ...(approximate.length > 0 && { approximate }),

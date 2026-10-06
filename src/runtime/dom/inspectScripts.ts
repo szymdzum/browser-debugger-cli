@@ -351,8 +351,9 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
 /**
  * Page-side reasons the contrast of an element's text is approximate: a
  * blend mode or filter on it or an ancestor, and, hit-testing the middle of
- * its first line of text (else of its first box), the nearest element below
- * it that is not an ancestor and
+ * its first line of text (else of its first box; only in the viewport), the
+ * nearest element below it that is not an ancestor, above the first opaque
+ * background of its own chain, and
  * paints (a canvas, video, image, background) and the nearest one on top of
  * it that paints (an overlay).
  */
@@ -379,12 +380,24 @@ const PAINT_RISKS_JS = `(el, tree, textParent) => {
   const hits = (root.elementsFromPoint ? root : el.ownerDocument).elementsFromPoint(x, y);
   const at = hits.findIndex((h) => chain.includes(h));
   if (at < 0) return risks;
-  const clear = (color) => color === 'transparent' || /(,|\\/)\\s*0\\)$/.test(color);
+  const clear = (color) => color === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(color) || /\\/\\s*0\\)$/.test(color);
+  const opaque = (n) => {
+    const s = tree.style(n);
+    return /^rgb\\(/.test(s.backgroundColor) && s.backgroundImage === 'none' && Number(s.opacity) === 1;
+  };
   const paints = (n) => {
     const s = tree.style(n);
     return /^(canvas|video|img|iframe|embed|object|svg)$/.test(n.localName) || s.backgroundImage !== 'none' || !clear(s.backgroundColor);
   };
-  const behind = hits.slice(at + 1).find((h) => !chain.includes(h) && paints(h));
+  let behind = null;
+  for (const h of hits.slice(at)) {
+    if (chain.includes(h)) {
+      if (opaque(h)) break;
+    } else if (paints(h)) {
+      behind = h;
+      break;
+    }
+  }
   if (behind) risks.push(tree.label(behind) + ' behind');
   const onTop = hits.slice(0, at).find((h) => !el.contains(h) && paints(h));
   if (onTop) risks.push(tree.label(onTop) + ' on top');
