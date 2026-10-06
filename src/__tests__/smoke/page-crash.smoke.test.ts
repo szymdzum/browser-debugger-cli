@@ -1,10 +1,12 @@
 /**
- * Smoke test for a page whose renderer crashes mid-session (`chrome://crash`;
- * `Page.crash` hangs the renderer instead on Linux CI): the session says so,
- * page commands fail at once with 107, and a reload brings the page back.
+ * Smoke test for a page whose renderer crashes mid-session (its renderer
+ * process is killed: `Page.crash` and `chrome://crash` only hang it on Linux
+ * CI): the session says so, page commands fail at once with 107, and a
+ * reload brings the page back.
  */
 
 import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { after, before, describe, it } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -31,6 +33,34 @@ async function bdg(args: string[], expectedExit = 0): Promise<string> {
   return output;
 }
 
+/**
+ * Kill the renderer processes of a Chrome, as a renderer crash does.
+ *
+ * @param chromePid - Chrome's browser process
+ */
+function killRenderers(chromePid: number): void {
+  const processes = execFileSync('ps', ['-A', '-o', 'pid=,ppid=,args='], { encoding: 'utf8' })
+    .split('\n')
+    .map((line) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map(([, pid, ppid, args]) => ({ pid: Number(pid), ppid: Number(ppid), args: args ?? '' }));
+  const family = new Set([chromePid]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const proc of processes) {
+      if (family.has(proc.ppid) && !family.has(proc.pid)) {
+        family.add(proc.pid);
+        grew = true;
+      }
+    }
+  }
+  const renderers = processes.filter(
+    (proc) => family.has(proc.pid) && proc.args.includes('--type=renderer')
+  );
+  assert.ok(renderers.length > 0, 'Chrome has a renderer process');
+  for (const renderer of renderers) process.kill(renderer.pid, 'SIGKILL');
+}
+
 void describe('page crash', () => {
   let fixture: FixtureServer;
 
@@ -47,7 +77,10 @@ void describe('page crash', () => {
   });
 
   void it('reports a crashed page, fails page commands at once, and recovers on reload', async () => {
-    await bdg(['cdp', 'Page.navigate', '--params', '{"url":"chrome://crash"}']);
+    const status0 = JSON.parse(await bdg(['status', '--json'])) as {
+      data: { chromePid: number };
+    };
+    killRenderers(status0.data.chromePid);
     const crashed =
       /\n⚠ The page crashed at .+ \(renderer gone\); bdg page reload brings it back\n/;
     let status = '';
