@@ -11,13 +11,19 @@ import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import { clearChromePid, readChromePid } from '@/session/chrome.js';
 import { probeDaemonSocket } from '@/session/daemonSocket.js';
+import { readSessionMetadata } from '@/session/metadata.js';
 import { getSessionDir, getSessionFilePath, sessionFilePathIn } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
 import { safeRemoveFile } from '@/utils/file.js';
 import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
-import { getProcessCommand, isProcessAlive, killChromeProcess } from '@/utils/process.js';
+import {
+  getProcessCommand,
+  isProcessAlive,
+  killChromeProcess,
+  listProcesses,
+} from '@/utils/process.js';
 
 const log = createLogger('cleanup');
 
@@ -34,11 +40,37 @@ function hasArgument(command: string | null, arg: string): boolean {
 }
 
 /**
+ * Check whether a command line contains an exact argument, followed by the
+ * end or by another option: a session directory with a space in it
+ * (`/tmp/a b`) does not match the marker of `/tmp/a`.
+ *
+ * @param command - Full command line
+ * @param arg - Argument to look for
+ * @returns True if `arg` appears as a whole argument
+ */
+function hasWholeArgument(command: string, arg: string): boolean {
+  for (let at = command.indexOf(arg); at !== -1; at = command.indexOf(arg, at + 1)) {
+    const before = at === 0 || command[at - 1] === ' ';
+    const rest = command.slice(at + arg.length);
+    if (before && (rest === '' || rest.startsWith(' -'))) return true;
+  }
+  return false;
+}
+
+/**
  * Remove per-session files (metadata, query cache).
  *
- * Called by the daemon when its session ends, and by `bdg cleanup`.
+ * Called by the daemon when its session ends, and by `bdg cleanup`. A daemon
+ * passes its PID, so it never removes the files of another daemon that
+ * started in the same directory meanwhile.
+ *
+ * @param ownerPid - The daemon whose files these must be; omitted by cleanup
  */
-export function removeSessionFiles(): void {
+export function removeSessionFiles(ownerPid?: number): void {
+  if (ownerPid !== undefined) {
+    const owner = readSessionMetadata()?.bdgPid;
+    if (owner !== undefined && owner !== ownerPid) return;
+  }
   safeRemoveFile(getSessionFilePath('METADATA'), 'metadata file', log);
   void QueryCacheManager.getInstance()
     .clear()
@@ -104,6 +136,34 @@ export function killOrphanedChrome(): boolean {
   }
   clearChromePid();
   return true;
+}
+
+/**
+ * Kill every Chrome launched for a session directory (its marker flag on the
+ * command line), whatever chrome.pid says: a Chrome whose PID file another
+ * daemon removed, or that a second start left behind, is found too. Only
+ * browser processes are signalled; their helper processes exit with them.
+ *
+ * @param sessionDir - Session directory
+ * @returns PIDs of the processes killed
+ */
+export function killSessionChromes(sessionDir: string = getSessionDir()): number[] {
+  const marker = chromeSessionMarkerFlag(sessionDir);
+  const killed: number[] = [];
+  for (const { pid, command } of listProcesses()) {
+    if (pid === process.pid || !hasWholeArgument(command, marker) || / --type=/.test(command)) {
+      continue;
+    }
+    try {
+      killChromeProcess(pid, 'SIGKILL');
+      killed.push(pid);
+      log.info(`Killed Chrome of this session (PID ${pid})`);
+    } catch (error) {
+      logDebugError(log, `kill Chrome ${pid}`, error);
+    }
+  }
+  if (killed.length > 0) clearChromePid();
+  return killed;
 }
 
 /** How long to wait for a killed orphaned Chrome to exit (and free its port) */

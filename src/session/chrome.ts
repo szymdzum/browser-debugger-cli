@@ -13,6 +13,7 @@ import { getErrorMessage } from '@/utils/errors.js';
 import { getProcessCommand, isProcessAlive } from '@/utils/process.js';
 
 import { getSessionFilePath, ensureSessionDir } from './paths.js';
+import { readPidFromFile } from './pid.js';
 
 const log = createLogger('chrome');
 
@@ -111,9 +112,13 @@ export function readChromePid(): number | null {
  * Remove Chrome PID from persistent cache.
  *
  * Safe to call multiple times (idempotent).
+ *
+ * @param expectedPid - Remove it only while it still names this Chrome (a
+ *   daemon clearing its own, which another daemon may have replaced)
  */
-export function clearChromePid(): void {
+export function clearChromePid(expectedPid?: number): void {
   const cachePath = getSessionFilePath('CHROME_PID');
+  if (expectedPid !== undefined && readPidFromFile(cachePath) !== expectedPid) return;
 
   try {
     fs.rmSync(cachePath, { force: true });

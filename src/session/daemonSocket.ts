@@ -50,3 +50,31 @@ export function probeDaemonSocket(
 export async function isDaemonAlive(): Promise<boolean> {
   return (await probeDaemonSocket()) === 'alive';
 }
+
+/**
+ * Whether the daemon socket certainly cannot be reached: there is no socket
+ * file, or connecting is refused. A daemon that is only slow to accept (busy,
+ * a timeout) does not count, so it is never taken for a dead one.
+ *
+ * @param socketPath - Socket path (defaults to the session's daemon socket)
+ * @param timeoutMs - Connection timeout
+ * @returns True when the socket is missing or refuses connections
+ */
+export function isDaemonSocketGone(
+  socketPath: string = getSessionFilePath('DAEMON_SOCKET'),
+  timeoutMs: number = PROBE_TIMEOUT_MS
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.createConnection(socketPath);
+    const finish = (gone: boolean): void => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(gone);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    socket.once('connect', () => finish(false));
+    socket.once('error', (error: NodeJS.ErrnoException) =>
+      finish(error.code === 'ENOENT' || error.code === 'ECONNREFUSED')
+    );
+  });
+}
