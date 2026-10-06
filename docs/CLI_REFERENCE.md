@@ -13,6 +13,7 @@ bdg localhost:3000
 bdg https://example.com --chrome-flags "--ignore-certificate-errors"
 BDG_CHROME_FLAGS="--ignore-certificate-errors" bdg https://localhost:5173   # Same, via environment
 
+CHROME_PATH=/usr/bin/microsoft-edge bdg localhost:3000   # Launch another Chromium-based browser (Edge)
 bdg localhost:3000 --viewport 1280x800       # Exact viewport (CSS px) for the whole session
 bdg localhost:3000 --color-scheme dark       # Emulate prefers-color-scheme: light or dark
 ```
@@ -23,6 +24,7 @@ The start output is a few lines: the target, notices (session name, HTTP error, 
 - `--color-scheme light|dark` emulates `prefers-color-scheme` for the session (`Emulation.setEmulatedMedia`). Without it the page sees the system setting: headless Chrome follows the OS, so a dark OS renders dark pages. Other values exit 81 with a suggestion
 - `bdg page emulate --viewport <WxH> --color-scheme light|dark` changes either mid-session, the same way (no reload: the page re-lays out and media queries re-evaluate), and `--reset` goes back to the browser window and the system setting. It prints what is emulated and the layout viewport the page now has (`Layout: 885x700 (without scrollbars)`; JSON `{ emulated: { viewport?, colorScheme? }, viewport?, colorScheme? }`); screenshots and `bdg status` follow the change. Nothing to change, or an invalid value, exits 81
 - `bdg status` shows the viewport and color scheme the page renders with (`Viewport: 1265×800 (emulated 1280x800)`, the layout viewport without the scrollbar; `Color scheme: prefers-color-scheme: dark (from the system setting)`, the media preference the page sees, not the theme it renders); JSON has them in `pageState` (and the start options as `viewport` / `colorScheme`)
+- `CHROME_PATH` sets the browser binary bdg launches instead of the installed Chrome. Microsoft Edge is tested (on macOS: `/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge`); other Chromium-based browsers (Brave, Chromium) should work the same way. A path that does not exist, is a directory or is not executable exits 100 before anything is launched. Output still calls the browser "Chrome". Firefox and Safari do not implement CDP and are not supported
 
 A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
