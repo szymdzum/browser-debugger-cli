@@ -369,6 +369,12 @@ export interface DomInspectCommand {
   all?: boolean;
   /** Only these properties (lowercase names) */
   props?: string[];
+  /** Check for declarations that have no effect (default true) */
+  hints?: boolean;
+  /** Report which declaration sets each shown property */
+  rules?: boolean;
+  /** Report every declaration of this property */
+  why?: string;
 }
 
 export type DomInspectData = InspectResult;

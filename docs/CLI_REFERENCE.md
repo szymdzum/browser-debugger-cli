@@ -415,21 +415,25 @@ bdg dom inspect 0                            # Cached index
 bdg dom inspect "h1" --props font-size,color,--brand   # Only these properties
 bdg dom inspect "h1" --all                   # Every property that differs from the element's default
 bdg dom inspect "#save" --json               # Figma-aligned JSON
+bdg dom inspect ".btn-primary" --rules       # Which CSS rule sets each shown property
+bdg dom inspect "h1" --why font-size         # Every declaration of one property, the winner first
+bdg dom inspect ".btn" --props color --rules # Only these properties, with the rules that set them
+bdg dom inspect "#hero" --no-hints           # Skip the "has no effect" hints
 ```
 
 **Output** (saucedemo's username field and Bootstrap's card example):
 ```text
-input#user-name.input_error.form_input placeholder "Username" 292x39 @814,154 [prefers dark]
+input#user-name.input_error.form_input placeholder "Username" 292x39 @814,154
 box    p 10 0 · b 0 0 1 · sizing content-box · overflow clip
 layout inline-block
 parent div.form_group block · in-parent l0 t0 r0 b0
-text   DM Sans → DM Sans 9pt (webfont) 400 14/normal · color #484c55 · contrast 8.6 AAA
+text   DM Sans (webfont loaded) 400 14/normal · color #484c55 · contrast 8.6 AAA · align start
 fill   bg #fff
 border bottom 1 solid #ededed
 state  cursor text · appearance none
-pseudo ::placeholder color #6d7584
+pseudo ::placeholder color #6d7584 · contrast 4.63 AA
 
-div.card 288x372 @582,679 [flex] [prefers dark]
+div.card 288x372 @582,679 [flex] [dark theme from system; --color-scheme light for light]
 box    b 1
 layout flex column · position relative
 parent div.bd-example.m-0 block · in-parent l0 t0 r466.8 b0
@@ -455,12 +459,15 @@ tree
 - **tree**: children to depth 2 (`--tree`), one line each with size, `[flex]`/`[grid]` and text; identical siblings grouped (`li.item ×33 266x107`), children that are not rendered counted (`(+N not rendered)`), at most 20 rows (`--tree-limit`)
 - Sizes are the rendered border box (`292x39`); `--props height` gives the CSS value, which for `box-sizing: content-box` excludes padding and border (`height: 18px`). With `--viewport 1280x800`, a page with a vertical scrollbar has 1265 px of room: the scrollbar takes the rest
 - `--props` with a shorthand whose sides differ (`border` with only a bottom line) gives each side: `border: top 0px none … / bottom 1px solid …`
-- Values: colors as hex (`#rrggbb`, `#rrggbbaa`; `lab()`/`oklch()`/`color()` from Tailwind v4 converted), lengths in px without the unit, rounded to 0.1. Values that change nothing (0, `none`, `transparent`, `normal`) are left out; custom properties, logical duplicates and `currentColor` echoes are never listed (`--props --brand` reads one)
+- Values: colors as hex (`#rrggbb`, `#rrggbbaa`; `lab()`/`oklch()`/`color()` from Tailwind v4 converted), lengths in px without the unit, rounded to 0.1. Values that change nothing (0, `none`, `transparent`, `normal`) are left out; custom properties, logical duplicates and `currentColor` echoes are never listed (`--props --brand` reads one; `(not set)` when no rule sets it)
 - Secrets are never shown: hidden inputs and password, card and one-time-code fields have no value or placeholder text from their content
 - Elements in open shadow roots, same-origin iframes and same-process cross-origin frames work like with the other DOM commands. `display: none` elements are still inspected (`[not rendered]`, no box). Not found exits 83; a stale cached index exits 87; an unknown `--props` name exits 81 with a suggestion
-- Not reported (yet): which CSS rule set a value, and why a declaration has no effect
+- **hints** (by default): declarations on the element that have no effect, why, the fix and where they are: `justify-content: center has no effect: display is block → use display: flex or grid on this element · in #hero (app.css:24)`. Checked: flex/grid container properties without flex or grid, item properties (`flex-grow`, `align-self`, `order`, grid placement) when the parent is not flex or grid, offsets and `z-index` on static elements, sizes and vertical margins on inline elements, `vertical-align` on blocks, `text-overflow` without `overflow: hidden`, `float` in a flex or grid container, `object-fit` on non-replaced elements, `align-content` on single-line flex containers, and `var()` of a custom property that is not set (nor its fallback), naming a similar one that is (`set here: --brand`), and form controls drawn in the browser's font while the parent uses another (`font-family: Arial is the browser's: form controls do not inherit the font (the parent uses Inter) → add font: inherit`). `hints none` means the check ran and found nothing. A shorthand is flagged only when none of its parts has an effect (`margin: 0 4px` on a link still spaces it sideways; `gap` on a multi-column block spaces the columns). Only the element's own author declarations count (not the browser's, not inherited ones). `--no-hints` skips them
+- **rules** (`--rules`; with `--props`, for those properties only): for each shown property set by the page's CSS, the value as written (`= #0d6efd` adds the computed value when it uses `var()`), the selector and file position (`bootstrap.min.css:5:53709`: line, plus the column in minified one-line files; `<style> in page:12` for inline stylesheets, `style attribute`), the `@media`/`@container` condition, the cascade layer, `(inherited from N up)` and `over …` the rules it beats. Sides one declaration sets are one row (`padding 4px 8px`, `border-width 0px` from `* { border: 0 solid }`, `border 2px solid var(--line)`); browser defaults are not listed
+- **why** (`--why <property>`): the computed value, then every declaration of that property on the element, highest precedence first: `✓` the one that wins (or the ancestor's it inherits), `✗` the ones it beats, browser defaults included. Each rule shows its selector's specificity (`[0,2,0]`: ids, classes, types), which with order and layers decides between rules. A declaration with `var()` shows its substituted value (`✓ var(--bs-btn-bg) = #0d6efd  .btn (bootstrap.min.css:5:53709)`), or `invalid: --x not set` when a custom property it needs is missing; indented lines under the winner say where its custom properties are set, following ones set from others up to `:root` (`--bs-btn-bg: #0d6efd  .btn-primary (…)`). For an inherited value, the rules the ancestor's winner beat are listed too. A shorthand (`--why padding`) gives one answer when one declaration sets all its sides (`✓ padding: 6px 12px`), else one per side. The cascade is computed by bdg from Chrome's matched rules: origin, `!important`, the style attribute, layers (unlayered rules over layered ones, reversed for `!important`), then specificity and order; shorthands and logical properties count for their longhands
+- The matched rules are read within 1 s (5 s with `--rules`/`--why`); on pages with huge stylesheets that take longer, or when Chrome cannot report them, the output says the CSS rules were not read (`cascade: "timeout" | "failed"` in JSON) and the rest is shown
 
-**JSON (`data`):** `{ selector, count, index, picked?, element, content?, placeholder?, context?, rect: { x, y, w, h }, visibility, colorScheme?, box?, layout? (incl. sizing: { w, h: hug|fill|fixed }, parent), text?, fills?, opacity?, blend?, strokes?, radius?, outline?, effects?, fx?, state?, pseudo?, children?, hiddenChildren?, moreRows?, all?, props? }`. Names follow Figma (fills, strokes, effects, sizing), numbers are numbers, so the output can be compared field by field with a design from the Figma MCP server.
+**JSON (`data`):** `{ selector, count, index, picked?, element, content?, placeholder?, context?, rect: { x, y, w, h }, visibility, colorScheme?, box?, layout? (incl. sizing: { w, h: hug|fill|fixed }, parent), text?, fills?, opacity?, blend?, strokes?, radius?, outline?, effects?, fx?, state?, pseudo?, children?, hiddenChildren?, moreRows?, all?, props?, hints?: [{ kind: inactive|unset-variable|not-inherited, property, value, reason, fix, source }], rules?: [{ property, value, computed?, source, overrides?, inherited?, important?, layer?, condition? }], why?: [{ property, computed, chain: [{ value, via?, resolved?, unset?, source, specificity?, status: applied|overridden|inherited, important?, layer?, condition? }], variables?: [{ name, value, source, inherited? }] }], cascade?: 'timeout' | 'failed' }`. Names follow Figma (fills, strokes, effects, sizing), numbers are numbers, so the output can be compared field by field with a design from the Figma MCP server.
 
 ### Waiting for Elements
 

@@ -231,6 +231,80 @@ export interface InspectProp {
   value: string;
 }
 
+/** A declaration that has no effect, and why */
+export interface InspectHint {
+  /** `inactive` (has no effect), `unset-variable` (var() of an unset custom property), `not-inherited` (a form control in the browser's font) */
+  kind: 'inactive' | 'unset-variable' | 'not-inherited';
+  /** Property as written */
+  property: string;
+  value: string;
+  /** e.g. `display is block` */
+  reason: string;
+  /** e.g. `use display: flex or grid on this element` */
+  fix: string;
+  /** e.g. `.hero (app.css:12)` */
+  source: string;
+}
+
+/** Which declaration sets a property */
+export interface InspectRule {
+  /** Longhand, or the shorthand when one declaration sets all its sides */
+  property: string;
+  /** Value as written (custom properties visible) */
+  value: string;
+  /** Computed value, normalized (px as numbers, colors as hex), when the written one has `var()` */
+  computed?: string;
+  /** e.g. `.btn-primary (bootstrap.min.css:5:52628)`, `style attribute` */
+  source: string;
+  /** Selectors of the declarations it beats */
+  overrides?: string[];
+  /** Set on an ancestor this many levels up (inherited) */
+  inherited?: number;
+  important?: true;
+  layer?: string;
+  /** Media or container condition of the rule */
+  condition?: string;
+}
+
+/** One declaration in the cascade of a property (`--why`) */
+export interface InspectWhyEntry {
+  /** Value as written (a shorthand's whole value) */
+  value: string;
+  /** Shorthand or logical property it was written as */
+  via?: string;
+  /** The value with its custom properties substituted, when it has `var()` */
+  resolved?: string;
+  /** Custom properties it uses that are not set (the declaration is then invalid) */
+  unset?: string[];
+  source: string;
+  /** Specificity of the rule's selector (ids, classes, types) */
+  specificity?: [number, number, number];
+  /** `applied` (wins), `overridden`, or `inherited` (from an ancestor: the winner, or one it beat there) */
+  status: 'applied' | 'overridden' | 'inherited';
+  important?: true;
+  layer?: string;
+  condition?: string;
+}
+
+/** `--why`: every declaration of one property, winner first */
+export interface InspectWhy {
+  property: string;
+  /** Computed value, normalized (px as numbers, colors as hex) */
+  computed: string;
+  chain: InspectWhyEntry[];
+  /** Where the custom properties of the winning value are set */
+  variables?: InspectVariable[];
+}
+
+/** A custom property a winning value uses, and where it is set */
+export interface InspectVariable {
+  name: string;
+  value: string;
+  source: string;
+  /** Set on an ancestor this many levels up */
+  inherited?: number;
+}
+
 /** `bdg dom inspect` result */
 export interface InspectResult {
   success: true;
@@ -288,4 +362,12 @@ export interface InspectResult {
   all?: Record<string, string>;
   /** `--props`: the properties asked for */
   props?: Record<string, InspectProp>;
+  /** Declarations that have no effect (checked by default; empty when none) */
+  hints?: InspectHint[];
+  /** `--rules`: the declaration that sets each shown property */
+  rules?: InspectRule[];
+  /** `--why <property>`: one entry, or one per longhand of a shorthand whose sides differ */
+  why?: InspectWhy[];
+  /** The cascade was not read: Chrome took longer than the time allowed, or failed */
+  cascade?: 'timeout' | 'failed';
 }

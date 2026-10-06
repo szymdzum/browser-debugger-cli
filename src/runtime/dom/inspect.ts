@@ -21,9 +21,11 @@ import type { DomInspectCommand } from '@/ipc/protocol/commands.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { selectedProps } from '@/runtime/dom/inspectAllStyles.js';
+import { buildCascadeFields } from '@/runtime/dom/inspectCascadeModel.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import { buildInspectResult, type InspectSources } from '@/runtime/dom/inspectModel.js';
 import type { PlatformFont, PseudoSource } from '@/runtime/dom/inspectPaintModel.js';
+import { matchedStyles, sourceLabel, trackStyleSheets } from '@/runtime/dom/inspectRules.js';
 import { INSPECT_PAGE_JS, RELATED_NODE_JS, type RawInspect } from '@/runtime/dom/inspectScripts.js';
 import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTree.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
@@ -37,6 +39,12 @@ const log = createLogger('dom');
 
 /** Connections DOM and CSS were enabled on */
 const stylesEnabled = new WeakSet<CDPConnection>();
+
+/** Time allowed for the matched rules behind the default hints (large stylesheets take longer) */
+const HINTS_BUDGET_MS = 1000;
+
+/** Time allowed for them with --rules or --why */
+const RULES_BUDGET_MS = 5000;
 
 /** Distinguishes the object groups of concurrent calls */
 let groupCounter = 0;
@@ -93,7 +101,8 @@ export async function inspectElement(
       ...(params.all && { all: true }),
       ...(propValues && { propValues }),
     });
-    const result = found.picked ? { ...built, picked: found.picked } : built;
+    const withCascade = { ...built, ...cascadeFields(cdp, sources) };
+    const result = found.picked ? { ...withCascade, picked: found.picked } : withCascade;
     log.debug(`Inspected ${result.element} in ${Date.now() - started} ms`);
     return result;
   } finally {
@@ -124,6 +133,30 @@ function checkedProps(names: string[], sources: InspectSources): InspectResult['
   );
   const err = unknownCssPropertyError(unknown, suggestions);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * Hints, `--rules` and `--why` from the matched rules.
+ *
+ * @param cdp - CDP connection (stylesheet headers for the source labels)
+ * @param sources - What was read
+ * @returns Cascade fields, or `cascade: 'timeout' | 'failed'` when the rules were not read
+ */
+function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<InspectResult> {
+  if (!sources.matched) return {};
+  if (typeof sources.matched === 'string') return { cascade: sources.matched };
+  return buildCascadeFields({
+    matched: sources.matched,
+    style: sources.style,
+    parentStyle: sources.parentStyle,
+    replaced: sources.raw.replaced === true,
+    formControl: sources.raw.formControl,
+    ...(sources.hints === false && { hints: false }),
+    label: (declaration) => sourceLabel(declaration, cdp),
+    ...(sources.rules && { rules: true }),
+    ...(sources.why && { why: sources.why }),
+    ...(sources.props && { props: sources.props }),
+  });
 }
 
 /**
@@ -288,13 +321,17 @@ async function readSources(
   const [raw, measured, styles] = await Promise.all([
     readPage(cdp, objectId, params),
     measure(cdp, params.selector, related.node),
-    readStyles(cdp, related),
+    readStyles(cdp, related, params),
   ]);
   return {
     raw,
     ...styles,
     fonts: raw.ownText || raw.formControl ? styles.fonts.node : styles.fonts.textHolder,
     ...measured,
+    ...(params.rules && { rules: true }),
+    ...(params.why && { why: params.why }),
+    ...(params.props && { props: params.props }),
+    ...(params.hints === false && { hints: false }),
   };
 }
 
@@ -428,6 +465,8 @@ interface CdpStyles {
   pseudo: PseudoSource[];
   fonts: { node: PlatformFont[]; textHolder: PlatformFont[] };
   size?: { w: number; h: number };
+  /** Matched rules (absent when not asked for); `timeout` when Chrome took too long */
+  matched?: Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed';
 }
 
 /**
@@ -462,10 +501,15 @@ async function nodeIdLookup(
  * @param related - Backend node ids
  * @returns CDP styles
  */
-async function readStyles(cdp: CDPConnection, related: RelatedNodes): Promise<CdpStyles> {
+async function readStyles(
+  cdp: CDPConnection,
+  related: RelatedNodes,
+  params: DomInspectCommand
+): Promise<CdpStyles> {
   await enableStyleDomains(cdp);
   const nodeIdOf = await nodeIdLookup(cdp, related);
-  const [style, parentStyle, nodeFonts, holderFonts, size, pseudo] = await Promise.all([
+  const [matched, style, parentStyle, nodeFonts, holderFonts, size, pseudo] = await Promise.all([
+    readMatched(cdp, nodeIdOf(related.node), params),
     computedStyle(cdp, nodeIdOf(related.node)),
     related.parent === undefined ? undefined : computedStyle(cdp, nodeIdOf(related.parent)),
     platformFonts(cdp, nodeIdOf(related.node)),
@@ -483,7 +527,32 @@ async function readStyles(cdp: CDPConnection, related: RelatedNodes): Promise<Cd
     pseudo,
     fonts: { node: nodeFonts, textHolder: holderFonts },
     ...(size && { size }),
+    ...(matched && { matched }),
   };
+}
+
+/**
+ * The element's matched rules, when hints, `--rules` or `--why` need them:
+ * within {@link HINTS_BUDGET_MS} for the default hints (skipped on very
+ * large stylesheets), {@link RULES_BUDGET_MS} when asked for explicitly.
+ *
+ * @param cdp - CDP connection
+ * @param nodeId - Node id of the element
+ * @param params - Request
+ * @returns Matched styles, `timeout`, or undefined when not needed (or no node id)
+ */
+async function readMatched(
+  cdp: CDPConnection,
+  nodeId: number | undefined,
+  params: DomInspectCommand
+): Promise<CdpStyles['matched']> {
+  const explicit = params.rules === true || params.why !== undefined;
+  const skipped =
+    !explicit && (params.hints === false || params.props !== undefined || params.all === true);
+  if (nodeId === undefined || skipped) {
+    return undefined;
+  }
+  return matchedStyles(cdp, nodeId, explicit ? RULES_BUDGET_MS : HINTS_BUDGET_MS);
 }
 
 /**
@@ -516,6 +585,7 @@ async function pseudoSource(
  */
 async function enableStyleDomains(cdp: CDPConnection): Promise<void> {
   if (stylesEnabled.has(cdp)) return;
+  trackStyleSheets(cdp);
   await cdp.send('DOM.enable', {});
   await cdp.send('CSS.enable', {});
   stylesEnabled.add(cdp);

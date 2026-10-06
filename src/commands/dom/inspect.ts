@@ -60,10 +60,35 @@ export function registerInspectCommand(dom: Command): void {
       'Only these properties, computed and normalized (comma-separated, e.g. padding,color,--brand)',
       cssPropertiesOption
     )
+    .addOption(
+      new Option(
+        '--rules',
+        'Also show which CSS rule sets each shown property (selector, file:line, what it overrides); with --props, those properties'
+      ).conflicts('all')
+    )
+    .addOption(
+      new Option(
+        '--why <property>',
+        'Every declaration of one property: the one that applies and those it overrides (e.g. --why color)'
+      )
+        .conflicts('all')
+        .argParser(propertyOption)
+    )
+    .option('--no-hints', 'Skip the check for declarations that have no effect')
     .addOption(jsonOption())
     .action(async (selectorOrIndex: string, options: InspectCommandOptions) => {
       await runCommand(() => inspectTarget(selectorOrIndex, options), options, formatInspect);
     });
+}
+
+/**
+ * Parse `--why`: a property name, lowercased (custom properties as given).
+ *
+ * @param value - Property name
+ * @returns Name
+ */
+function propertyOption(value: string): string {
+  return value.startsWith('--') ? value.trim() : value.trim().toLowerCase();
 }
 
 /**
@@ -87,6 +112,9 @@ async function inspectTarget(
         treeLimit: options.treeLimit,
         all: options.all,
         props: options.props,
+        rules: options.rules,
+        why: options.why,
+        ...(options.hints === false && { hints: false }),
       }),
     }),
     call: domInspect,

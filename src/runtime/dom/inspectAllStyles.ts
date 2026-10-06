@@ -404,8 +404,8 @@ export function allStyles(style: StyleMap, svg: boolean): Record<string, string>
  * @param style - Computed longhands (CDP)
  * @param pageValues - Values the page read
  * @param pageUnknown - Names the page does not know as CSS properties
- * @returns Values by name, and the names that are not properties (or
- *   custom properties that are not set)
+ * @returns Values by name (an unset custom property is empty), and the
+ *   names that are not properties
  */
 export function selectedProps(
   names: readonly string[],
@@ -418,11 +418,7 @@ export function selectedProps(
   for (const name of names) {
     const computed = style[name] ?? pageValues?.[name] ?? '';
     const known = name in style || (pageValues !== undefined && name in pageValues);
-    if (
-      pageUnknown.includes(name) ||
-      (!known && computed === '') ||
-      (name.startsWith('--') && computed === '')
-    ) {
+    if (pageUnknown.includes(name) || (!known && computed === '' && !name.startsWith('--'))) {
       unknown.push(name);
     } else {
       props[name] = { computed, value: normalizeProperty(name, computed) };

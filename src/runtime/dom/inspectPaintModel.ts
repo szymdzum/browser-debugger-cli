@@ -241,8 +241,8 @@ function fontFields(style: StyleMap): InspectText {
 /**
  * The text group. Elements with text (or form controls) get the full group:
  * font with the rendered font, size, color, alignment, contrast (not for
- * text no one can see: `opacity: 0` on it or an ancestor, `visibility:
- * hidden`) and the non-default extras. Containers get only what differs from
+ * text no one can see: `opacity: 0` on it or an ancestor,
+ * `visibility: hidden`) and the non-default extras. Containers get only what differs from
  * their parent, with the font their text was rendered in when the family
  * differs.
  *

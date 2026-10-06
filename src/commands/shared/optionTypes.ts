@@ -280,6 +280,12 @@ export interface InspectCommandOptions extends BaseOptions, IndexOptions {
   all?: boolean;
   /** Only these properties */
   props?: string[];
+  /** Which declaration sets each shown property */
+  rules?: boolean;
+  /** Every declaration of this property */
+  why?: string;
+  /** `--no-hints` sets false */
+  hints?: boolean;
 }
 
 /** Options for `bdg dom wait` */

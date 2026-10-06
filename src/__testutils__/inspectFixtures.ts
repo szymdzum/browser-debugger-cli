@@ -4,7 +4,8 @@
  * identical items, a field with a placeholder, an element with a `::before`,
  * a hidden one, a covered one, a webfont (a data: URL copy of a system font,
  * so it loads offline), an element in an open shadow root and one in a
- * same-origin iframe, plus secrets (a password and a card expiry select that
+ * same-origin iframe, plus cascade cases (a rule overriding another, flex
+ * alignment on a block, an undefined custom property), secrets (a password and a card expiry select that
  * must never be shown), faded text and a block image with no size set (sized by itself).
  */
 
@@ -33,6 +34,10 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
   #cover { position: absolute; left: 0; top: 0; width: 200px; height: 40px; background: rgba(0, 0, 0, 0.5); }
   @font-face { font-family: "Fixture Sans"; src: local("Arial"), local("Helvetica"); }
   #webfont { font-family: "Fixture Sans", serif; }
+  .tag { color: #c00; padding: 4px 8px; }
+  .tag.primary { color: #06c; }
+  #hero { display: block; justify-content: center; gap: 12px; }
+  #themed { color: var(--brand-color); }
 </style>
 <button id="buy">Buy now</button>
 <div class="card"><h3>Card title</h3><p>Some text</p><a href="#go">Go</a></div>
@@ -43,6 +48,10 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <div id="under"><button id="behind">Behind</button><div id="cover"></div></div>
 <p id="webfont">Web font text</p>
 <div id="host"></div>
+<span id="tag" class="tag primary">Tag</span>
+<table id="sized" width="120"><tr><td>cell</td></tr></table>
+<div id="hero"><span>Hero</span></div>
+<p id="themed">Themed</p>
 <form id="secrets"><input id="pw" type="password" value="hunter2-secret">
 <select id="exp" autocomplete="cc-exp-month"><option>07</option><option selected>11</option></select></form>
 <div id="faded" style="opacity:0.4"><p id="faded-text" style="color:#000">Faded text</p></div>

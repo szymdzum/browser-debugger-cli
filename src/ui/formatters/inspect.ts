@@ -24,13 +24,16 @@ import type {
   InspectParent,
   InspectPseudo,
   InspectResult,
+  InspectRule,
   InspectText,
   InspectTreeNode,
+  InspectWhy,
 } from '@/ipc/protocol/inspectTypes.js';
 import { containerKind } from '@/runtime/dom/inspectLayoutModel.js';
 import type { IndexSource } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
+  inspectCascadeNote,
   inspectDarkThemeBadge,
   inspectedMatchAction,
   inspectVisibilityBadges,
@@ -452,6 +455,108 @@ function treeLines(
 }
 
 /**
+ * Lines under a label shown on the first only (`hints  a`, `       b`).
+ *
+ * @param label - Group label
+ * @param lines - Lines
+ * @returns Labelled lines
+ */
+function labelledLines(label: string, lines: string[]): string[] {
+  return lines.map((line, i) => `${i === 0 ? label.padEnd(6) : ''.padEnd(6)} ${line}`);
+}
+
+/**
+ * Where a rule applies when it is not always: its layer and condition.
+ *
+ * @param entry - Layer and media/container condition
+ * @returns e.g. ` @media (min-width: 80rem) layer utilities`, or empty
+ */
+function ruleScope(entry: { layer?: string | undefined; condition?: string | undefined }): string {
+  return [entry.condition && ` @${entry.condition}`, entry.layer && ` layer ${entry.layer}`]
+    .filter(Boolean)
+    .join('');
+}
+
+/**
+ * Hints, `--rules` and `--why` lines, and a note when the cascade was not read in time.
+ *
+ * @param data - Inspect result
+ * @returns Lines
+ */
+function cascadeBlock(data: InspectOutput): string[] {
+  const hints = (data.hints ?? []).map(
+    (hint) =>
+      `${hint.property}: ${hint.value} ${hint.kind === 'not-inherited' ? "is the browser's" : 'has no effect'}: ${hint.reason} → ${hint.fix} · in ${hint.source}`
+  );
+  return [
+    ...labelledLines('hints', data.hints?.length === 0 ? ['none'] : hints),
+    ...labelledLines('rules', (data.rules ?? []).map(ruleLine)),
+    ...labelledLines('why', (data.why ?? []).flatMap(whyLines)),
+    ...(data.cascade ? [inspectCascadeNote(data.cascade)] : []),
+  ];
+}
+
+/**
+ * A `--rules` line: property, value as written (= computed for `var()`),
+ * source, scope, inheritance and what it beats.
+ *
+ * @param rule - Rule
+ * @returns Line
+ */
+function ruleLine(rule: InspectRule): string {
+  return [
+    `${rule.property} ${truncateByLength(rule.value, CASCADE_VALUE_WIDTH)}`,
+    rule.computed !== undefined && ` = ${truncateByLength(rule.computed, CASCADE_VALUE_WIDTH)}`,
+    `${rule.important ? ' !important' : ''} ← ${rule.source}`,
+    ruleScope(rule),
+    rule.inherited !== undefined && ` (inherited from ${rule.inherited} up)`,
+    rule.overrides && ` over ${rule.overrides.join(', ')}`,
+  ]
+    .filter(Boolean)
+    .join('');
+}
+
+/**
+ * `--why` lines of one property: the computed value, each declaration
+ * (`✓` the winner, `✗` the ones it beats) and where the winner's custom
+ * properties are set.
+ *
+ * @param why - Why
+ * @returns Lines
+ */
+function whyLines(why: InspectWhy): string[] {
+  const entries = why.chain.map((entry) => {
+    const value = `${entry.via ? `${entry.via}: ` : ''}${entry.value}`;
+    const resolved = entry.unset
+      ? ` = invalid: ${entry.unset.join(', ')} not set`
+      : entry.resolved !== undefined
+        ? ` = ${truncateByLength(entry.resolved, CASCADE_VALUE_WIDTH)}`
+        : '';
+    return [
+      `  ${entry.status === 'overridden' ? '✗' : '✓'} `,
+      truncateByLength(value, CASCADE_VALUE_WIDTH) + resolved,
+      entry.important ? ' !important' : '',
+      `  ${entry.source}${entry.specificity ? ` [${entry.specificity.join(',')}]` : ''}${ruleScope(entry)}`,
+      entry.status === 'inherited' ? ' (inherited)' : '',
+    ].join('');
+  });
+  const variables = (why.variables ?? []).map(
+    (variable) =>
+      `    ${variable.name}: ${truncateByLength(variable.value, CASCADE_VALUE_WIDTH)}  ${variable.source}${variable.inherited !== undefined ? ` (inherited from ${variable.inherited} up)` : ''}`
+  );
+  return [
+    `${why.property} = ${why.computed}`,
+    ...entries.slice(0, 1),
+    ...variables,
+    ...entries.slice(1),
+    ...(why.chain.length === 0 ? ['  no author declaration: the default or inherited value'] : []),
+  ];
+}
+
+/** Longest declared value shown in `--rules` and `--why` lines (font stacks run long) */
+const CASCADE_VALUE_WIDTH = 60;
+
+/**
  * The tree block.
  *
  * @param data - Inspect result
@@ -487,7 +592,8 @@ function allLines(all: Record<string, string>): string[] {
 }
 
 /**
- * `--props` lines: the computed value, and the normalized one when it differs.
+ * `--props` lines: the computed value, and the normalized one when it differs;
+ * a custom property no rule sets is `(not set)`.
  *
  * @param props - Properties asked for
  * @returns Lines
@@ -495,7 +601,7 @@ function allLines(all: Record<string, string>): string[] {
 function propLines(props: NonNullable<InspectResult['props']>): string[] {
   return Object.entries(props).map(
     ([name, prop]) =>
-      `${name}: ${prop.computed || '(empty)'}${prop.value !== prop.computed ? ` = ${prop.value}` : ''}`
+      `${name}: ${prop.computed || (name.startsWith('--') ? '(not set)' : '(empty)')}${prop.value !== prop.computed ? ` = ${prop.value}` : ''}`
   );
 }
 
@@ -534,5 +640,5 @@ export function formatInspect(data: InspectOutput): string {
   const note = data.picked
     ? multipleMatchesWarning(data.count, inspectedMatchAction(data.picked, data.index))
     : undefined;
-  return joinLines(inspectHeader(data), ...body, ...treeBlock(data), note);
+  return joinLines(inspectHeader(data), ...body, ...cascadeBlock(data), ...treeBlock(data), note);
 }
