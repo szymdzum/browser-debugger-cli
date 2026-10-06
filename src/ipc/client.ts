@@ -334,6 +334,8 @@ export async function getNetworkHeaders(options?: {
  *
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
+ * @param options - `isolated`: a bdg page script, run in bdg's isolated world
+ *   (`Runtime.evaluate`, `DOM.resolveNode`)
  * @returns Response with CDP method result
  * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated, (107) when the page crashed
  *
@@ -347,9 +349,14 @@ export async function getNetworkHeaders(options?: {
  */
 export async function callCDP(
   method: string,
-  params?: Record<string, unknown>
+  params?: Record<string, unknown>,
+  options: { isolated?: boolean } = {}
 ): Promise<ClientResponse<'cdp_call'>> {
-  const response = await sendCommand('cdp_call', { method, ...(params && { params }) });
+  const response = await sendCommand('cdp_call', {
+    method,
+    ...(params && { params }),
+    ...(options.isolated && { isolated: true }),
+  });
   const fatal = [EXIT_CODES.CDP_TIMEOUT, EXIT_CODES.PAGE_CRASHED] as number[];
   if (response.status === 'error' && response.exitCode && fatal.includes(response.exitCode)) {
     throw new CommandError(
@@ -359,6 +366,24 @@ export async function callCDP(
     );
   }
   return response;
+}
+
+/**
+ * Send a CDP call for one of bdg's own page scripts: `Runtime.evaluate` and
+ * `DOM.resolveNode` run in bdg's isolated world, so a page that replaced
+ * built-ins (`querySelectorAll`, `JSON.stringify`) cannot change what they
+ * find or return.
+ *
+ * @param method - CDP method name
+ * @param params - Method parameters
+ * @returns Response with the CDP method result
+ * @throws Like {@link callCDP}
+ */
+export function callBdgScript(
+  method: string,
+  params?: Record<string, unknown>
+): Promise<ClientResponse<'cdp_call'>> {
+  return callCDP(method, params, { isolated: true });
 }
 
 /**

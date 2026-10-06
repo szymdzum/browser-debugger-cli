@@ -480,7 +480,8 @@ function pageWork(watch: Watch, snapshot?: ReadSnapshot, domChanging = false): P
 
 /**
  * Navigation, new messages and shown elements from the snapshots and CDP
- * events.
+ * events. Snapshots a page broke (it replaced the built-ins the snapshot
+ * script uses) give the navigation only.
  *
  * @param start - Snapshot before the action, if taken
  * @param snapshot - Read after the action, if taken
@@ -493,17 +494,24 @@ function effectsOf(
   events: NavigationEvents
 ): ActionEffects {
   const navigation = pageNavigation(start?.href, snapshot, events);
-  const { messages, more } =
-    start && snapshot
-      ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
-      : { messages: [], more: 0 };
-  const shown = shownElements(snapshot?.shown ?? [], messages);
-  return {
-    ...(navigation && { navigation }),
-    ...(messages.length > 0 && { messages }),
-    ...(more > 0 && { moreMessages: more }),
-    ...(shown.length > 0 && { shown }),
-  };
+  try {
+    const { messages, more } =
+      start && snapshot
+        ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
+        : { messages: [], more: 0 };
+    const shown = shownElements(snapshot?.shown ?? [], messages);
+    return {
+      ...(navigation && { navigation }),
+      ...(messages.length > 0 && { messages }),
+      ...(more > 0 && { moreMessages: more }),
+      ...(shown.length > 0 && { shown }),
+    };
+  } catch (error) {
+    log.debug(
+      `Page effects not readable (the page replaced built-ins?): ${getErrorMessage(error)}`
+    );
+    return { ...(navigation && { navigation }) };
+  }
 }
 
 /**

@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
+import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
 
 /** What the stub's page scripts evaluate to */
 interface PageReplies {
@@ -95,7 +96,7 @@ void describe('createInteractionRunner', () => {
     });
 
     assert.deepEqual(result.dialogs, [{ type: 'confirm', message: 'Sure?' }]);
-    assert.ok(cdp.expressions.includes('delete window.__bdgTarget'));
+    assert.ok(cdp.expressions.includes(UNBIND_TARGET_SCRIPT));
   });
 
   void it('adds the URL change and the messages that appeared', async () => {

@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Pages that replace built-ins no longer give wrong answers** (#386). bdg's page scripts used the page's own built-ins: with `querySelectorAll` patched to return `body`, `dom query ".a"` printed `<body>` with exit 0. With `JSON.stringify`, `Array.prototype.map` or `Object.keys` replaced, commands failed with cryptic errors. Now:
+  - `dom query`, `get`, `inspect`, `layout`, `audit`, `wait`, `form`, `a11y` and `screenshot` run in bdg's isolated world, which keeps the browser's built-ins.
+  - When the page replaced the selector search, actions find their element in that world and say so. When an action fails on a page with replaced built-ins, the suggestion names them as a possible cause.
+  - `dom eval`, `dom listeners` and `bdg cdp` stay in the page's world.
 - **A crashed page is detected** (#384):
   - After a renderer crash, `bdg status` and `bdg peek` say `⚠ The page crashed at … (renderer gone); bdg page reload brings it back` (JSON `pageState.crashedAt`, `pageCrashedAt`).
   - Page commands fail at once with the new exit code 107 (`PAGE_CRASHED`), as do commands that were waiting on the page when it crashed. Before, the session looked active and `dom query` failed after 29 s with "The page was busy for 20s".

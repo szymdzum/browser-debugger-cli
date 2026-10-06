@@ -1,7 +1,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { unknownQueryFieldError } from '@/errors/messages.js';
-import { callCDP } from '@/ipc/client.js';
+import { callBdgScript, callCDP } from '@/ipc/client.js';
 import { MASKED_VALUE, SENSITIVE_FIELD_JS } from '@/runtime/dom/elementInfo.js';
 import { childFrameIds } from '@/runtime/dom/frameLayout.js';
 import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
@@ -145,7 +145,7 @@ async function sensitiveNodeIds(tree: A11yTree): Promise<Set<string>> {
  */
 async function isSensitiveField(backendNodeId: number): Promise<boolean> {
   const objectGroup = 'bdg-a11y-secret';
-  const resolved = await callCDP('DOM.resolveNode', { backendNodeId, objectGroup });
+  const resolved = await callBdgScript('DOM.resolveNode', { backendNodeId, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     ?.objectId;
   if (!objectId) return true;

@@ -115,8 +115,27 @@ body { margin: 0; font: 16px Arial; background: #fff; }
 <button id="far">Far button</button>
 </body></html>`;
 
+/**
+ * A page that replaces built-ins bdg's scripts use, as polyfills, old
+ * frameworks and anti-bot scripts do: every `querySelectorAll` returns the
+ * body, and `JSON.stringify` and `Array.prototype.map` lie.
+ */
+const TAMPERED_HTML = `<!doctype html><html><head><title>Tampered</title></head><body>
+<h1 class="target">Heading</h1>
+<button id="go" onclick="this.textContent = 'Clicked'">Go</button>
+<iframe srcdoc="<p class='target'>In frame</p>"></iframe>
+<script>
+Element.prototype.querySelectorAll = function () { return [document.body]; };
+Document.prototype.querySelectorAll = function () { return [document.body]; };
+Element.prototype.querySelector = function () { return document.body; };
+Document.prototype.querySelector = function () { return document.body; };
+JSON.stringify = function () { return '"replaced"'; };
+</script>
+</body></html>`;
+
 /** Pages by path */
 export const INSPECT_ROUTES: Record<string, string> = {
+  '/tampered': TAMPERED_HTML,
   '/inspect': INSPECT_HTML,
   '/inspect-frame': INSPECT_FRAME_HTML,
   '/inspect-paint': PAINT_HTML,

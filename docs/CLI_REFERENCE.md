@@ -139,6 +139,13 @@ Binary response bodies (images, fonts) are only captured in sessions started wit
 
 ## DOM Commands
 
+### Pages that replace built-ins
+
+Some pages replace JavaScript built-ins, e.g. polyfills, old frameworks (Prototype.js, MooTools), analytics wrappers or anti-bot scripts: `Element.prototype.querySelectorAll`, `JSON.stringify`, `Array.prototype.map`. bdg's own page scripts therefore run in an isolated world of their own (`bdg` in DevTools' context menu). It shares the page's DOM but keeps the browser's built-ins.
+- `dom query`, `get`, `inspect`, `layout`, `audit`, `wait`, `form`, `a11y`, `screenshot` and the element lookup of actions find and describe the same elements as on any page. Same-origin iframes are searched from that world too.
+- Actions (`click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`) still act in the page's world, so the page's event handlers see them. When the page replaced the selector search, the element is found in bdg's world and handed over. The result then warns: `the page replaced built-ins bdg's scripts use (…); bdg found the element in its own world, but the action runs in the page's and may misbehave`. When an action fails on a page that replaced built-ins its script uses (`Array.prototype.map`, `JSON.stringify`, …), the suggestion adds that they may be the cause and points to `bdg dom eval`.
+- `dom eval`, `dom listeners` (which reads React and jQuery handlers) and `bdg cdp` run in the page's world, as before.
+
 ### Selectors
 
 DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `wait`, `listeners`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes (nested ones included). Closed shadow roots and cross-origin iframes cannot be searched: use `bdg dom eval --frame <frame>` for a cross-origin iframe (see `bdg dom frames`). A selector cannot cross into a shadow root (`my-modal form` matches nothing even when the form is in `my-modal`'s open shadow root), but none needs to: `form` finds it. A selector that finds nothing because of that says so (`my-modal hosts a shadow root, which a selector cannot cross into; bdg searches open shadow roots itself: use "form"`).

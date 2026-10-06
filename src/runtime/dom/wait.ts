@@ -24,6 +24,7 @@ import {
   type WaitCondition,
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
+import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
@@ -192,11 +193,11 @@ async function nextSnapshot(
     condition.selector === undefined ? 'null, null' : selectorArgsJS(condition.selector);
   const text = condition.text === undefined ? null : normalizeWaitText(condition.text);
   const args = `${selectorArgs}, ${JSON.stringify(text)}, ${JSON.stringify(previous)}, ${Math.min(remaining, WAIT_SLICE_MS)}`;
-  const evaluated = cdp.send('Runtime.evaluate', {
+  const evaluated = evaluateInBdgWorld(cdp, {
     expression: `(${WAIT_SNAPSHOT_JS})(${args})`,
     awaitPromise: true,
     returnByValue: true,
-  }) as Promise<Protocol.Runtime.EvaluateResponse>;
+  });
   evaluated.catch(() => undefined);
   const response = await raceTimeout(evaluated, remaining).catch((error: unknown) => {
     if (!isContextLostError(error)) throw error;

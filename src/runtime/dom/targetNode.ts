@@ -10,6 +10,7 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
   emptySelectorError,
@@ -17,8 +18,14 @@ import {
   noNodesFoundError,
   staleNodeError,
 } from '@/errors/messages.js';
+import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
+import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
+import {
+  brokenByReplacedBuiltinsSuggestion,
+  replacedBuiltinsWarning,
+} from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import {
@@ -30,8 +37,72 @@ import {
 /** Selector placeholder that makes page scripts use the bound node. */
 export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
 
-/** Removes the node bound for index-based commands from the window it was stored on */
-export const UNBIND_TARGET_SCRIPT = 'delete window.__bdgTarget';
+/** Removes the node bound for index-based commands, and matches bound for a selector, from the window they were stored on */
+export const UNBIND_TARGET_SCRIPT = 'delete window.__bdgTarget; delete window.__bdgMatches';
+
+/** Built-ins the selector search ({@link DEEP_QUERY_JS}) relies on */
+const SELECTION_BUILTINS = [
+  'Element.prototype.querySelectorAll',
+  'Element.prototype.querySelector',
+  'Document.prototype.querySelectorAll',
+  'Document.prototype.querySelector',
+  'DocumentFragment.prototype.querySelectorAll',
+  'Element.prototype.matches',
+  'Element.prototype.closest',
+  'Node.prototype.getRootNode',
+  'Node.prototype.compareDocumentPosition',
+  'Node.prototype.contains',
+];
+
+/** Other built-ins the interaction scripts use */
+const SCRIPT_BUILTINS = [
+  'Array.from',
+  'Array.prototype.map',
+  'Array.prototype.filter',
+  'Array.prototype.forEach',
+  'Array.prototype.some',
+  'Array.prototype.find',
+  'Array.prototype.includes',
+  'Object.keys',
+  'Object.assign',
+  'JSON.stringify',
+  'JSON.parse',
+  'Promise',
+];
+
+/** Matches bound for a selector when the page replaced the selector search built-ins (enough for --index) */
+const MATCH_BIND_LIMIT = 100;
+
+/**
+ * Page-side: which of the built-ins named the page replaced (their source is
+ * not native code). Written without the array and object helpers it checks.
+ *
+ * @param names - Dotted paths from `window`, e.g. `Array.prototype.map`
+ * @returns Expression evaluating to the replaced ones
+ */
+function replacedBuiltinsJS(names: readonly string[]): string {
+  return `(() => {
+  const names = ${JSON.stringify(names)};
+  const replaced = [];
+  for (let i = 0; i < names.length; i++) {
+    const path = names[i].split('.');
+    let value = window;
+    for (let j = 0; j < path.length && value != null; j++) value = value[path[j]];
+    let source = '';
+    try { source = Function.prototype.toString.call(value); } catch (e) { source = ''; }
+    if (!/\\{\\s*\\[native code\\]\\s*\\}\\s*$/.test(source)) replaced[replaced.length] = names[i];
+  }
+  return replaced;
+})()`;
+}
+
+/** Page-side: stores a node as match `i` of the selector being bound on the top window (runs on the node, in its frame; a cross-origin frame cannot reach the top window and fails) */
+const BIND_MATCH_FUNCTION = `function (selector, i) {
+  const w = window.top;
+  if (!w.__bdgMatches || w.__bdgMatches.selector !== selector) return false;
+  w.__bdgMatches.nodes[i] = this;
+  return true;
+}`;
 
 const log = createLogger('dom');
 
@@ -168,12 +239,22 @@ export const DEEP_QUERY_JS = `function (selector, parts) {
  * Page-side element lookup shared by the interaction scripts.
  *
  * Returns the bound node (if still in the page) for the placeholder selector,
- * otherwise all matches of the selector ({@link DEEP_QUERY_JS}).
+ * the matches bound for the selector when the page replaced the search
+ * built-ins ({@link bindMatches}), otherwise all matches of the selector
+ * ({@link DEEP_QUERY_JS}).
  */
 export const FIND_ELEMENTS_JS = `function (selector, parts) {
   if (selector === '${BOUND_TARGET_SELECTOR}') {
     const el = window.__bdgTarget;
     return el && el.isConnected ? [el] : [];
+  }
+  const bound = window.__bdgMatches;
+  if (bound && bound.selector === selector) {
+    const connected = [];
+    for (let i = 0; i < bound.nodes.length; i++) {
+      if (bound.nodes[i] && bound.nodes[i].isConnected) connected[connected.length] = bound.nodes[i];
+    }
+    return connected;
   }
   return (${DEEP_QUERY_JS})(selector, parts);
 }`;
@@ -260,6 +341,10 @@ export interface ScriptTarget {
   index?: number;
   /** Connection for the page scripts (scoped to the element's frame when the top page cannot reach it) */
   cdp: CDPConnection;
+  /** Built-ins the page replaced that the page scripts use (they run in the page's world) */
+  replacedBuiltins?: string[];
+  /** The page replaced the selector search, so the matches were found in bdg's world */
+  boundInBdgWorld?: boolean;
 }
 
 /**
@@ -312,13 +397,128 @@ async function resolveScriptTarget(
   params: { selector?: string; index?: number; backendNodeId?: number }
 ): Promise<ScriptTarget> {
   if (params.backendNodeId === undefined) {
+    const selector = params.selector ?? '';
+    const replaced = await replacedBuiltins(cdp);
+    const searchReplaced = replaced.some((name) => SELECTION_BUILTINS.includes(name));
+    const bound = searchReplaced && (await bindMatches(cdp, selector, params.index ?? 0));
     return {
-      selector: params.selector ?? '',
+      selector,
       ...(params.index !== undefined && { index: params.index }),
       cdp,
+      ...(replaced.length > 0 && { replacedBuiltins: replaced }),
+      ...(bound && { boundInBdgWorld: true }),
     };
   }
   return { selector: BOUND_TARGET_SELECTOR, cdp: await bindTargetNode(cdp, params.backendNodeId) };
+}
+
+/**
+ * The built-ins the interaction scripts use that the page replaced.
+ *
+ * @param cdp - CDP connection
+ * @returns Their dotted names (empty when all are the browser's, or the check failed)
+ */
+async function replacedBuiltins(cdp: CDPConnection): Promise<string[]> {
+  try {
+    const response = (await cdp.send('Runtime.evaluate', {
+      expression: replacedBuiltinsJS([...SELECTION_BUILTINS, ...SCRIPT_BUILTINS]),
+      returnByValue: true,
+    })) as Protocol.Runtime.EvaluateResponse;
+    const value: unknown = response.result.value;
+    return Array.isArray(value) ? value.filter((name) => typeof name === 'string') : [];
+  } catch (error) {
+    log.debug(`Built-ins not checked: ${getErrorMessage(error)}`);
+    return [];
+  }
+}
+
+/**
+ * Search the selector in bdg's own world, where the page's replacements do
+ * not apply, and hand the matches (the first {@link MATCH_BIND_LIMIT}, or up
+ * to the index asked for) to the page scripts, which run in the page's world.
+ * When a match cannot be handed over (or the search fails other than on an
+ * invalid selector), nothing is bound and the scripts search themselves.
+ *
+ * @param cdp - CDP connection
+ * @param selector - Selector as the user gave it
+ * @param index - Match the action is for
+ * @returns Whether the matches were bound
+ * @throws CommandError (81) for an invalid selector
+ */
+async function bindMatches(cdp: CDPConnection, selector: string, index: number): Promise<boolean> {
+  const objectGroup = `bdg-bind-${Date.now()}`;
+  const limit = Math.max(MATCH_BIND_LIMIT, index + 1);
+  try {
+    const found = await evaluateInBdgWorld(cdp, {
+      expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)}).slice(0, ${limit})`,
+      objectGroup,
+    });
+    if (found.exceptionDetails) throwIfInvalidSelector(found.exceptionDetails, selector);
+    const arrayId = found.result.objectId;
+    if (found.exceptionDetails || !arrayId) return false;
+    const { result } = (await cdp.send('Runtime.getProperties', {
+      objectId: arrayId,
+      ownProperties: true,
+    })) as Protocol.Runtime.GetPropertiesResponse;
+    const matches = result
+      .filter((property) => /^\d+$/.test(property.name))
+      .map((property) => ({ i: Number(property.name), objectId: property.value?.objectId }));
+    await cdp.send('Runtime.evaluate', {
+      expression: `window.__bdgMatches = { selector: ${JSON.stringify(selector)}, nodes: [] }`,
+    });
+    const bound = await Promise.all(
+      matches.map(({ i, objectId }) =>
+        objectId ? bindMatch(cdp, selector, i, objectId) : Promise.resolve(false)
+      )
+    );
+    if (bound.every(Boolean)) return true;
+    await cdp.send('Runtime.evaluate', { expression: 'delete window.__bdgMatches' });
+    return false;
+  } catch (error) {
+    if (error instanceof CommandError) throw error;
+    log.debug(`Matches not bound: ${getErrorMessage(error)}`);
+    return false;
+  } finally {
+    await cdp
+      .send('Runtime.releaseObjectGroup', { objectGroup })
+      .catch((error: unknown) => log.debug(`Matches not released: ${getErrorMessage(error)}`));
+  }
+}
+
+/**
+ * Hand one match from bdg's world to the page's world as match `i`.
+ *
+ * @param cdp - CDP connection
+ * @param selector - Selector the matches are for
+ * @param i - Its position among the matches
+ * @param objectId - The match in bdg's world
+ * @returns Whether it was handed over
+ */
+async function bindMatch(
+  cdp: CDPConnection,
+  selector: string,
+  i: number,
+  objectId: string
+): Promise<boolean> {
+  try {
+    const { node } = (await cdp.send('DOM.describeNode', {
+      objectId,
+    })) as Protocol.DOM.DescribeNodeResponse;
+    const resolved = (await cdp.send('DOM.resolveNode', {
+      backendNodeId: node.backendNodeId,
+    })) as Protocol.DOM.ResolveNodeResponse;
+    if (!resolved.object.objectId) return false;
+    const stored = (await cdp.send('Runtime.callFunctionOn', {
+      objectId: resolved.object.objectId,
+      functionDeclaration: BIND_MATCH_FUNCTION,
+      arguments: [{ value: selector }, { value: i }],
+      returnByValue: true,
+    })) as Protocol.Runtime.CallFunctionOnResponse;
+    return stored.result.value === true;
+  } catch (error) {
+    log.debug(`Match ${i} not bound: ${getErrorMessage(error)}`);
+    return false;
+  }
 }
 
 /**
@@ -336,6 +536,9 @@ function boundNodeMissing(text: string | undefined): boolean {
  * Run an interaction on the element a request targets. Results and errors
  * never show the internal placeholder: a bound node the page scripts could
  * not find is reported as stale (87), and results carry the user's selector.
+ * On a page that replaced the selector search, a result warns that the
+ * element was found in bdg's world; on a page that replaced built-ins the
+ * scripts use, a failure adds that they may be the cause.
  *
  * @param cdp - CDP connection
  * @param params - Request with a selector (and optional index) or a backend node id
@@ -344,7 +547,13 @@ function boundNodeMissing(text: string | undefined): boolean {
  * @throws CommandError (87) when the bound node left the page during the action
  */
 export async function onScriptTarget<
-  T extends { selector?: string; error?: string; suggestion?: string; exitCode?: number },
+  T extends {
+    selector?: string;
+    error?: string;
+    suggestion?: string;
+    exitCode?: number;
+    warning?: string;
+  },
 >(
   cdp: CDPConnection,
   params: { selector?: string; index?: number; backendNodeId?: number },
@@ -354,7 +563,14 @@ export async function onScriptTarget<
   let target: ScriptTarget | undefined;
   try {
     target = await resolveScriptTarget(cdp, params);
-    const result = withUserSelector(await work(target), params.selector);
+    const replaced = target.replacedBuiltins ?? [];
+    const result = withReplacedBuiltins(
+      withUserSelector(await work(target), params.selector),
+      target.boundInBdgWorld ? replaced : []
+    );
+    if (result.error && replaced.length > 0) {
+      return { ...result, suggestion: withBrokenHint(result.suggestion, replaced) };
+    }
     if (!boundNodeMissing(result.error)) return result;
     return {
       ...result,
@@ -363,6 +579,20 @@ export async function onScriptTarget<
       exitCode: EXIT_CODES.STALE_CACHE,
     };
   } catch (error) {
+    const replaced = target?.replacedBuiltins ?? [];
+    if (error instanceof CommandError && replaced.length > 0) {
+      const suggestion = error.metadata['suggestion'];
+      throw new CommandError(
+        error.message,
+        {
+          suggestion: withBrokenHint(
+            typeof suggestion === 'string' ? suggestion : undefined,
+            replaced
+          ),
+        },
+        error.exitCode
+      );
+    }
     if (!(error instanceof CommandError) || !boundNodeMissing(error.message)) throw error;
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
   } finally {
@@ -382,6 +612,37 @@ function unbindInFrame(frameConnection: CDPConnection): void {
   void frameConnection
     .send('Runtime.evaluate', { expression: UNBIND_TARGET_SCRIPT })
     .catch((error: unknown) => log.debug(`Frame target not unbound: ${getErrorMessage(error)}`));
+}
+
+/**
+ * A failed action's suggestion with the hint that the page's replaced
+ * built-ins may have broken it.
+ *
+ * @param suggestion - The action's own suggestion
+ * @param replaced - Built-ins the page replaced
+ * @returns Both, the action's first
+ */
+function withBrokenHint(suggestion: string | undefined, replaced: string[]): string {
+  const hint = brokenByReplacedBuiltinsSuggestion(replaced);
+  return suggestion ? `${suggestion}. ${hint}` : hint;
+}
+
+/**
+ * Warn that the page replaced built-ins the page scripts use: they run in
+ * the page's world, so the action may misbehave (the element itself was
+ * found in bdg's world).
+ *
+ * @param result - Script result
+ * @param replaced - Built-ins the page replaced
+ * @returns Result with the warning added to any it has
+ */
+function withReplacedBuiltins<T extends { warning?: string }>(
+  result: T,
+  replaced: string[] | undefined
+): T {
+  if (!replaced || replaced.length === 0) return result;
+  const warning = replacedBuiltinsWarning(replaced);
+  return { ...result, warning: result.warning ? `${result.warning}; ${warning}` : warning };
 }
 
 /**
