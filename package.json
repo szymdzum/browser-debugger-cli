@@ -1,7 +1,7 @@
 {
   "name": "browser-debugger-cli",
   "version": "0.15.0",
-  "description": "DevTools telemetry in your terminal. For humans and agents. Direct WebSocket to Chrome's debugging port.",
+  "description": "Let Claude Code and other coding agents drive and debug Chrome from the shell. DOM, network, console and raw CDP as short commands, no screenshots and no MCP needed.",
   "type": "module",
   "bin": {
     "bdg": "dist/index.js"
@@ -37,10 +37,24 @@
   "keywords": [
     "cdp",
     "chrome-devtools-protocol",
+    "chrome",
+    "devtools",
+    "debugging",
     "browser",
-    "telemetry",
+    "browser-automation",
+    "headless-chrome",
     "cli",
-    "devtools"
+    "claude",
+    "claude-code",
+    "coding-agent",
+    "ai-agent",
+    "agent-skill",
+    "codex",
+    "css",
+    "figma",
+    "telemetry",
+    "puppeteer-alternative",
+    "playwright-alternative"
   ],
   "license": "MIT",
   "dependencies": {
