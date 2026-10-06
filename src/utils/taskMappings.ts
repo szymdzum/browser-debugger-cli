@@ -149,7 +149,7 @@ export const TASK_MAPPINGS: Record<string, TaskMapping> = {
   },
 
   live_monitoring: {
-    commands: ['peek --follow', 'tail'],
+    commands: ['peek --follow'],
     description: 'Monitor data collection in real-time',
     cdpAlternative: 'CDP event subscriptions with custom handler',
   },

@@ -249,6 +249,8 @@ void describe('JSON contract', () => {
     const reset = await expectEnvelope(['page', 'emulate', '--reset', '--json'], 0);
     assert.deepEqual(reset.data?.['emulated'], {});
     await expectEnvelope(['page', 'emulate', '--json'], 81);
+    const interval = await expectEnvelope(['peek', '--interval', '500', '--json'], 81);
+    assert.match(String(interval.suggestion), /--follow/);
   });
 
   void it('returns large results intact through a pipe', async () => {

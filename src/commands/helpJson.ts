@@ -253,7 +253,7 @@ function convertCommand(command: Command): CommandMetadata {
 function generateRuntimeState(): RuntimeState {
   const sessionActive = readLiveDaemonPid() !== null;
   const availableCommands = sessionActive
-    ? ['peek', 'tail', 'details', 'dom', 'network', 'console', 'cdp', 'status', 'sessions', 'stop']
+    ? ['peek', 'details', 'dom', 'network', 'console', 'cdp', 'status', 'sessions', 'stop']
     : ['bdg <url>', 'sessions', 'cleanup', '--help', '--version'];
 
   return {
