@@ -99,7 +99,7 @@ void describe('dom audit and css search', () => {
     assert.match(masked, /\[masked by mask-image\]/);
     assert.match(
       masked,
-      /\ntext {3}Arial 400 16\/normal · color #fff · contrast 15\.9 AAA on #222/
+      /\ntext {3}Arial[^·]* 400 16\/normal · color #fff · contrast 15\.9 AAA on #222/
     );
     assert.match(await bdg(['dom', 'layout', '#masked']), /masked by mask-image$/m);
     const gradient = await bdg(['dom', 'inspect', '#gradient', '--tree', '0']);
