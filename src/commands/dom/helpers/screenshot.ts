@@ -579,14 +579,19 @@ async function measureInView(
  * Lay the page out at its current width without scrollbars: a capture
  * beyond the viewport hides them, and without this the page would widen by
  * the scrollbar and centered content move after it was measured. The
- * viewport is overridden at the visible width (CSS px, pixel ratio 1) until
+ * viewport is overridden at the visible width (CSS px, pixel ratio 1; still
+ * a phone in a `--mobile` session) until
  * {@link restoreViewport}.
  *
  * @param view - Visible viewport size
  */
 async function keepLayoutWithoutScrollbars(view: { width: number; height: number }): Promise<void> {
+  const phone = readSessionMetadata()?.viewport?.mobile;
   await callCDP('Emulation.setScrollbarsHidden', { hidden: true });
-  await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(view, 1));
+  await callCDP(
+    'Emulation.setDeviceMetricsOverride',
+    viewportOverride({ ...view, ...(phone && { mobile: true }) }, 1)
+  );
 }
 
 /**
