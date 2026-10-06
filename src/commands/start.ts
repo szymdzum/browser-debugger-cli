@@ -53,6 +53,8 @@ export interface CollectorOptions {
   chromeFlags?: string;
   /** Viewport size, e.g. `1280x800`. */
   viewport?: string;
+  /** Emulate a phone (`--mobile`) */
+  mobile?: boolean;
   /** `prefers-color-scheme` to emulate: light or dark. */
   colorScheme?: string;
 }
@@ -157,7 +159,31 @@ export function applyCollectorOptions(command: Command): Command {
     .option(
       '--color-scheme <scheme>',
       'Emulate prefers-color-scheme for the session: light or dark (default: the system setting)'
+    )
+    .option(
+      '--mobile',
+      `Emulate a phone for the session: mobile viewport (${MOBILE_VIEWPORT.width}x${MOBILE_VIEWPORT.height} unless --viewport), touch, mobile user agent`
     );
+}
+
+/** Viewport of `--mobile` without `--viewport` (a common phone, CSS px) */
+export const MOBILE_VIEWPORT: ViewportSize = { width: 390, height: 844 };
+
+/**
+ * The viewport to emulate from `--viewport` and `--mobile`.
+ *
+ * @param viewport - `--viewport` value
+ * @param mobile - `--mobile` was given
+ * @returns Viewport (a phone's with `--mobile`), or undefined for neither
+ * @throws CommandError (81) for an invalid size
+ */
+export function requestedViewport(
+  viewport: string | undefined,
+  mobile: boolean | undefined
+): ViewportSize | undefined {
+  const size = viewport !== undefined ? parseViewport(viewport) : undefined;
+  if (!mobile) return size;
+  return { ...(size ?? MOBILE_VIEWPORT), mobile: true };
 }
 
 /** Largest viewport side accepted by `--viewport` (CSS px) */
@@ -255,7 +281,7 @@ function buildSessionOptions(options: CollectorOptions): {
     quiet: options.quiet ?? false,
     json: options.json ?? false,
     chromeFlags,
-    viewport: options.viewport !== undefined ? parseViewport(options.viewport) : undefined,
+    viewport: requestedViewport(options.viewport, options.mobile),
     colorScheme:
       options.colorScheme !== undefined ? parseColorScheme(options.colorScheme) : undefined,
   };

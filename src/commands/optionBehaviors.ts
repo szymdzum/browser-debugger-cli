@@ -451,6 +451,14 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     automaticBehavior:
       'Works with --chrome-ws-url: the override belongs to the session, and Chrome drops it when the session ends, so the attached browser gets its own size back. bdg status shows the resulting layout viewport without the scrollbar (Viewport: 1265×800 (emulated 1280x800)). Invalid sizes (not WxH, a side outside 1-10000) exit 81',
   },
+  'bdg:--mobile': {
+    default:
+      'A desktop viewport: classic scrollbars take ~15px of the width, no touch, a desktop user agent',
+    whenEnabled:
+      'Emulates a phone for the whole session: a mobile viewport (390x844 unless --viewport) at pixel ratio 3 with mobile layout (meta viewport, overlay scrollbars, so 100vw fits), touch (pointer: coarse, maxTouchPoints 5) and an Android Chrome user agent with mobile client hints; bdg page emulate --mobile turns it on mid-session, --viewport WxH without --mobile or --reset turns it off',
+    automaticBehavior:
+      'Screenshots keep the mobile layout and are taken at pixel ratio 1 (CSS px = image px); bdg status shows "(emulated 390x844, phone)"',
+  },
   'bdg:--color-scheme': {
     default:
       'The page sees the system setting for prefers-color-scheme (headless Chrome follows the OS, so a dark OS renders dark pages); bdg status and dom layout show which one',

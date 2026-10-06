@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`--mobile`** - `bdg <url> --mobile` and `bdg page emulate --mobile` emulate a phone: a mobile viewport (390x844 unless `--viewport`) at pixel ratio 3 with mobile layout and overlay scrollbars, touch (`pointer: coarse`) and an Android Chrome user agent with mobile client hints. A narrow desktop viewport kept classic scrollbars (375 laid out at 360), a desktop user agent and no touch (#376)
 - **`dom audit`** - Page-wide checks without screenshots or `dom eval`: text below WCAG AA/AAA (weakest first, composited like `dom inspect`), what makes the page scroll sideways, cut-off text, upscaled or distorted images, fixed/sticky layers and running animations. The review's agents wrote the same `dom eval` scans again and again for these (#378)
 - **`css search <text>`** - Finds a text in every stylesheet of the page, cross-origin ones included, with the rule and its `file:line` (#378)
 - **`dom inspect` shows the rule itself** - `--why` prints the winning rule as written under it (`.card .btn { background: #9db8ff; }`), and `--rules`/`--why` JSON have it as `rule`. A long minified rule is cut to its selector and that declaration (`.btn { … background-color:var(--bs-btn-bg); … }`), so `bootstrap.min.css:5:53709` comes with what is there (#364)

@@ -8,7 +8,7 @@ import { Option, type Command } from 'commander';
 import { noActiveSessionError, runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
-import { parseColorScheme, parseViewport } from '@/commands/start.js';
+import { parseColorScheme, requestedViewport } from '@/commands/start.js';
 import { CommandError } from '@/errors/index.js';
 import { javascriptNavigationError } from '@/errors/messages.js';
 import { getStatus, pageEmulate, pageNavigate } from '@/ipc/client.js';
@@ -166,6 +166,7 @@ async function showPageInfo(options: BaseOptions): Promise<void> {
 interface PageEmulateOptions extends BaseOptions {
   viewport?: string;
   colorScheme?: string;
+  mobile?: boolean;
   reset?: boolean;
 }
 
@@ -178,7 +179,7 @@ interface PageEmulateOptions extends BaseOptions {
  */
 function emulationRequest(options: PageEmulateOptions): PageEmulateCommand {
   if (options.reset) return { reset: true };
-  if (options.viewport === undefined && options.colorScheme === undefined) {
+  if (options.viewport === undefined && options.colorScheme === undefined && !options.mobile) {
     const err = pageEmulateNothingError();
     throw new CommandError(
       err.message,
@@ -186,8 +187,9 @@ function emulationRequest(options: PageEmulateOptions): PageEmulateCommand {
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
+  const viewport = requestedViewport(options.viewport, options.mobile);
   return {
-    ...(options.viewport !== undefined && { viewport: parseViewport(options.viewport) }),
+    ...(viewport && { viewport }),
     ...(options.colorScheme !== undefined && {
       colorScheme: parseColorScheme(options.colorScheme),
     }),
@@ -259,12 +261,20 @@ export function registerPageCommands(program: Command): void {
   page
     .command('emulate')
     .description(PAGE_EMULATE_DESCRIPTION)
-    .option('--viewport <WxH>', 'Viewport size in CSS px, e.g. 900x700')
+    .option(
+      '--viewport <WxH>',
+      'Viewport size in CSS px, e.g. 900x700 (a desktop one unless --mobile)'
+    )
     .option('--color-scheme <scheme>', 'Emulate prefers-color-scheme: light or dark')
+    .option(
+      '--mobile',
+      'Emulate a phone: mobile viewport (390x844 unless --viewport), touch, mobile user agent'
+    )
     .addOption(
       new Option('--reset', 'Back to the browser window size and the system setting').conflicts([
         'viewport',
         'colorScheme',
+        'mobile',
       ])
     )
     .addOption(jsonOption())

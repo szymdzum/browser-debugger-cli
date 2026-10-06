@@ -6,10 +6,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { parseColorScheme, parseViewport } from '@/commands/start.js';
+import { parseColorScheme, parseViewport, requestedViewport } from '@/commands/start.js';
 import { windowSizeFlags } from '@/daemon/session/chromeConnection.js';
 import { CommandError } from '@/errors/index.js';
-import { viewportOverride } from '@/runtime/page/emulation.js';
+import { mobileUserAgent, viewportOverride } from '@/runtime/page/emulation.js';
 import { appearanceLines } from '@/ui/formatters/status.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -78,6 +78,31 @@ void describe('viewport emulation', () => {
       deviceScaleFactor: 0,
       mobile: false,
     });
+  });
+  void it('emulates a phone with --mobile: a phone viewport unless --viewport, pixel ratio 3', () => {
+    assert.deepEqual(requestedViewport(undefined, true), { width: 390, height: 844, mobile: true });
+    assert.deepEqual(requestedViewport('360x780', true), { width: 360, height: 780, mobile: true });
+    assert.deepEqual(requestedViewport('360x780', undefined), { width: 360, height: 780 });
+    assert.equal(requestedViewport(undefined, false), undefined);
+    assert.deepEqual(viewportOverride({ width: 390, height: 844, mobile: true }), {
+      width: 390,
+      height: 844,
+      deviceScaleFactor: 3,
+      mobile: true,
+    });
+    assert.equal(
+      viewportOverride({ width: 390, height: 844, mobile: true }, 1).deviceScaleFactor,
+      1
+    );
+  });
+
+  void it('derives a mobile user agent from the desktop one', () => {
+    assert.equal(
+      mobileUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36'
+      ),
+      'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36'
+    );
   });
 });
 

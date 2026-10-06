@@ -224,13 +224,23 @@ async function useUnitPixelRatio(
   const sessionViewport = readSessionMetadata()?.viewport;
   const size = sessionViewport ?? (await windowSize(viewport));
   await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(size, 1));
-  return async () => {
-    if (sessionViewport) {
-      await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
-    } else {
-      await callCDP('Emulation.clearDeviceMetricsOverride', {});
-    }
-  };
+  return restoreSessionMetrics;
+}
+
+/**
+ * Put back the session's device metrics: its `--viewport` (and a phone's
+ * touch input, which a capture beyond the viewport turns off), else none.
+ */
+async function restoreSessionMetrics(): Promise<void> {
+  const sessionViewport = readSessionMetadata()?.viewport;
+  if (!sessionViewport) {
+    await callCDP('Emulation.clearDeviceMetricsOverride', {});
+    return;
+  }
+  await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
+  if (sessionViewport.mobile) {
+    await callCDP('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  }
 }
 
 /**
@@ -579,14 +589,19 @@ async function measureInView(
  * Lay the page out at its current width without scrollbars: a capture
  * beyond the viewport hides them, and without this the page would widen by
  * the scrollbar and centered content move after it was measured. The
- * viewport is overridden at the visible width (CSS px, pixel ratio 1) until
+ * viewport is overridden at the visible width (CSS px, pixel ratio 1; still
+ * a phone in a `--mobile` session) until
  * {@link restoreViewport}.
  *
  * @param view - Visible viewport size
  */
 async function keepLayoutWithoutScrollbars(view: { width: number; height: number }): Promise<void> {
+  const phone = readSessionMetadata()?.viewport?.mobile;
   await callCDP('Emulation.setScrollbarsHidden', { hidden: true });
-  await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(view, 1));
+  await callCDP(
+    'Emulation.setDeviceMetricsOverride',
+    viewportOverride({ ...view, ...(phone && { mobile: true }) }, 1)
+  );
 }
 
 /**
@@ -595,12 +610,7 @@ async function keepLayoutWithoutScrollbars(view: { width: number; height: number
  */
 async function restoreViewport(): Promise<void> {
   await callCDP('Emulation.setScrollbarsHidden', { hidden: false });
-  const sessionViewport = readSessionMetadata()?.viewport;
-  if (sessionViewport) {
-    await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
-  } else {
-    await callCDP('Emulation.clearDeviceMetricsOverride', {});
-  }
+  await restoreSessionMetrics();
 }
 
 /**
