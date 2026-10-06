@@ -743,3 +743,13 @@ export interface FormDiscoveryResult {
   }>;
   brief?: boolean | undefined;
 }
+
+/** Agent whose skill directory receives the bdg skill (`bdg install-skill`). */
+export type SkillTarget = 'claude' | 'agents';
+
+/** What `bdg install-skill` did to the skill file in one agent's skill directory. */
+export interface InstalledSkill {
+  target: SkillTarget;
+  path: string;
+  status: 'installed' | 'updated' | 'unchanged';
+}

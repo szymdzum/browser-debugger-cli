@@ -90,6 +90,7 @@
   },
   "files": [
     "dist",
+    ".claude/skills/bdg/SKILL.md",
     "!dist/**/__tests__",
     "!dist/__testutils__",
     "!dist/__testfixtures__",

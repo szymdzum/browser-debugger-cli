@@ -43,6 +43,17 @@ npm install -g browser-debugger-cli
 - ✅ Windows via WSL
 - ❌ PowerShell/Git Bash (not yet)
 
+## Use with Claude Code and Other Agents
+
+bdg ships an agent skill (`SKILL.md`) that teaches the workflow: start once, act, read what the action changed, inspect without screenshots, check network and console.
+
+```bash
+bdg install-skill            # ~/.claude/skills/bdg (Claude Code) + ~/.agents/skills/bdg (Codex, Gemini CLI, ...)
+bdg install-skill --claude   # Claude Code only
+```
+
+Start a new agent session afterwards, and re-run `bdg install-skill` after upgrading bdg. In Claude Code the skill loads when a task needs a browser, or on demand with `/bdg`.
+
 ## Quick Start
 
 ```bash

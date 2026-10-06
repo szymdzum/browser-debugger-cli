@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`bdg install-skill`** - Installs the bdg agent skill for Claude Code (`~/.claude/skills/bdg`) and agents that read `~/.agents/skills` (Codex, Gemini CLI, ...); `--claude` / `--agents` pick one. The skill now ships in the npm package and covers action effects, `dom inspect`, `dom wait`, network and console, `--json` and the current exit codes.
+
 ## [0.10.0] - 2026-10-06
 
 ### Added

@@ -1268,6 +1268,15 @@ bdg cleanup --remove-output     # Also remove legacy session.json
 bdg cleanup --json              # JSON output
 ```
 
+### Install the agent skill
+```bash
+bdg install-skill               # Copy SKILL.md to ~/.claude/skills/bdg and ~/.agents/skills/bdg
+bdg install-skill --claude      # Only ~/.claude/skills (Claude Code)
+bdg install-skill --agents      # Only ~/.agents/skills (Codex, Gemini CLI and other agents)
+bdg install-skill --json        # JSON: data.skills[] with target, path, status (installed | updated | unchanged)
+```
+An older copy is overwritten; re-run after upgrading bdg. Exit 82 when a skill directory cannot be written.
+
 ## Collection Options
 
 **Note:** All three collectors (DOM, network, console) are enabled by default.
