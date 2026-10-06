@@ -22,7 +22,7 @@ import {
   whyAllPropertyError,
 } from '@/errors/messages.js';
 import type { DomInspectCommand } from '@/ipc/protocol/commands.js';
-import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
+import type { InspectHint, InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { selectedProps } from '@/runtime/dom/inspectAllStyles.js';
 import { buildCascadeFields } from '@/runtime/dom/inspectCascadeModel.js';
@@ -30,7 +30,14 @@ import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import { buildInspectResult, type InspectSources } from '@/runtime/dom/inspectModel.js';
 import type { PlatformFont, PseudoSource } from '@/runtime/dom/inspectPaintModel.js';
 import { matchedStyles, sourceLabel, trackStyleSheets } from '@/runtime/dom/inspectRules.js';
-import { INSPECT_PAGE_JS, RELATED_NODE_JS, type RawInspect } from '@/runtime/dom/inspectScripts.js';
+import { explainUnsetVariables } from '@/runtime/dom/inspectHints.js';
+import {
+  INSPECT_PAGE_JS,
+  RELATED_NODE_JS,
+  VARIABLE_SETTERS_JS,
+  type RawInspect,
+  type VariableSetter,
+} from '@/runtime/dom/inspectScripts.js';
 import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTree.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
@@ -121,7 +128,9 @@ export async function inspectElement(
       ...(params.all && { all: true }),
       ...(propValues && { propValues }),
     });
-    const withCascade = { ...built, ...cascadeFields(cdp, sources) };
+    const cascade = cascadeFields(cdp, sources);
+    const hints = cascade.hints && (await explainedHints(cdp, found.objectId, cascade.hints));
+    const withCascade = { ...built, ...cascade, ...(hints && { hints }) };
     const result = found.picked ? { ...withCascade, picked: found.picked } : withCascade;
     log.debug(`Inspected ${result.element} in ${Date.now() - started} ms`);
     return result;
@@ -130,6 +139,29 @@ export async function inspectElement(
       .send('Runtime.releaseObjectGroup', { objectGroup })
       .catch((error: unknown) => log.debug(`Object group not released: ${getErrorMessage(error)}`));
   }
+}
+
+/**
+ * Hints with unset variables told where the page sets them
+ * ({@link VARIABLE_SETTERS_JS}); unchanged when there are none or the
+ * search fails.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The element
+ * @param hints - Hints
+ * @returns Hints
+ */
+async function explainedHints(
+  cdp: CDPConnection,
+  objectId: string,
+  hints: InspectHint[]
+): Promise<InspectHint[]> {
+  const names = [...new Set(hints.flatMap((hint) => hint.variables ?? []))];
+  if (names.length === 0) return hints;
+  const setters = await callOn<Record<string, VariableSetter>>(cdp, objectId, VARIABLE_SETTERS_JS, [
+    names,
+  ]);
+  return setters ? explainUnsetVariables(hints, setters) : hints;
 }
 
 /**

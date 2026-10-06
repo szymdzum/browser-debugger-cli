@@ -39,6 +39,8 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
   #hero { display: block; justify-content: center; gap: 12px; }
   :root { --accent: #06c; --accent-dark: #036; }
   #themed { color: var(--brand-color); }
+  .hover-only:hover { --hover-bg: #eee; }
+  .hover-only { background-color: var(--hover-bg); vertical-align: baseline; }
 </style>
 <button id="buy">Buy now</button>
 <div class="card"><h3>Card title</h3><p>Some text</p><a href="#go">Go</a></div>
@@ -55,6 +57,7 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <table id="sized" width="120"><tr><td>cell</td></tr></table>
 <div id="hero"><span>Hero</span></div>
 <p id="themed">Themed</p>
+<div id="hover-only" class="hover-only">Hover me</div>
 <form id="secrets"><input id="pw" type="password" value="hunter2-secret">
 <select id="exp" autocomplete="cc-exp-month"><option>07</option><option selected>11</option></select></form>
 <div id="faded" style="opacity:0.4"><p id="faded-text" style="color:#000">Faded text</p></div>

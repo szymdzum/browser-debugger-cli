@@ -261,6 +261,13 @@ void describe('dom inspect', () => {
       /color: var\(--brand-color\) has no effect: --brand-color is not set/
     );
     assert.doesNotMatch(await bdg(['dom', 'inspect', '#hero', '--no-hints']), /\nhints/);
+    const hover = await bdg(['dom', 'inspect', '#hover-only']);
+    assert.match(hover, /--hover-bg is set only by \.hover-only:hover, which does not match now/);
+    assert.doesNotMatch(hover, /vertical-align/);
+    assert.match(
+      await bdg(['dom', 'inspect', '#hero', '--why', 'justify-content']),
+      /✓ center .*\(no effect: display is block\)/
+    );
   });
 
   void it('names the rule that sets each property, and why a value wins', async () => {

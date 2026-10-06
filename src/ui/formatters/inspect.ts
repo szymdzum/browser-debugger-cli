@@ -493,7 +493,7 @@ function ruleScope(entry: { layer?: string | undefined; condition?: string | und
 function cascadeBlock(data: InspectOutput): string[] {
   const hints = (data.hints ?? []).map(
     (hint) =>
-      `${hint.property}: ${hint.value} ${hint.kind === 'not-inherited' ? "is the browser's" : 'has no effect'}: ${hint.reason} → ${hint.fix} · in ${hint.source}`
+      `${hint.property}: ${hint.value} ${hint.kind === 'not-inherited' ? "is the browser's" : hint.only ? `has no effect on ${hint.only.join(', ')}` : 'has no effect'}: ${hint.reason} → ${hint.fix} · in ${hint.source}`
   );
   return [
     ...labelledLines('hints', data.hints?.length === 0 ? ['none'] : hints),
@@ -549,6 +549,7 @@ function whyLines(why: InspectWhy, data: InspectOutput): string[] {
       entry.important ? ' !important' : '',
       `  ${entry.source}${entry.specificity ? ` [${entry.specificity.join(',')}]` : ''}${ruleScope(entry)}`,
       entry.status === 'inherited' ? ' (inherited)' : '',
+      entry.note ? ` (${entry.note})` : '',
     ].join('');
   });
   const variables = (why.variables ?? []).map(

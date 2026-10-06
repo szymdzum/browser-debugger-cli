@@ -131,7 +131,7 @@ export interface RawInspect {
   whyLonghands?: string[];
   /** Computed value of the `--why` shorthand (`getComputedStyle` writes it as one value) */
   whyComputed?: string;
-  /** Properties of running CSS transitions, and names of running animations */
+  /** Properties of running CSS transitions, and names of running animations (time-based: scroll-driven ones do not change on their own) */
   animating: string[];
 }
 
@@ -477,11 +477,11 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
       ? tree.style(textFrom).visibility !== 'hidden' && tree.rendered(tree.style(textFrom).display === 'contents' ? tree.layoutParent(textFrom) : textFrom)
       : tree.rendered(el),
     hasText: textControl || holder !== null,
-    replaced: el instanceof SVGElement || /^(img|video|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
+    replaced: el instanceof SVGElement || /^(img|video|audio|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
     svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
     typed: { width: typed('width'), height: typed('height') },
     parent: parent ? describe(parent) : undefined,
-    animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running').map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
+    animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running' && (!a.timeline || a.timeline === el.ownerDocument.timeline)).map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
   };
   if (textFrom !== el) result.textHolder = tree.label(textFrom);
   if ((${FAMILY_LOADED_JS})(textFrom, tree, textOf(textFrom))) result.familyLoaded = true;
@@ -538,4 +538,81 @@ export const RELATED_NODE_JS = `function (which) {
   const holder = (${TEXT_HOLDER_JS})(this, tree);
   if (!holder) return null;
   return which === 'textHolder' ? holder.style : holder.font;
+}`;
+
+/** Where a custom property is set, as {@link VARIABLE_SETTERS_JS} finds it */
+export interface VariableSetter {
+  /** Selector of the rule, or `@keyframes name` */
+  selector: string;
+  /** Value as written (`inherit`, `` for an empty one) */
+  value: string;
+  /** Set in a keyframe of this animation */
+  keyframes?: string;
+  /** The rule matches the element or an ancestor now (null: bdg cannot test its selector) */
+  matches: boolean | null;
+  /** The `@media` or `@supports` condition it is under that does not apply now */
+  condition?: string;
+}
+
+/**
+ * Page-side function run on the element (`this`): for each custom property
+ * name, a rule in the page's stylesheets (same-origin, `@import`ed,
+ * constructed and the element's shadow root's) that sets it, keyframes
+ * included: the first one that matches the element or an ancestor now, else
+ * the first one, with the `@media`/`@supports` condition it is under when
+ * that does not apply. At most 20000 rules are read; cross-origin sheets are
+ * skipped.
+ */
+export const VARIABLE_SETTERS_JS = `function (names) {
+  const el = this;
+  const view = el.ownerDocument.defaultView;
+  const matching = {};
+  const other = {};
+  let budget = 20000;
+  const matches = (selector) => {
+    try { return Boolean(el.closest(selector)); } catch (e) { return null; }
+  };
+  const applies = (rule) => {
+    if (rule.media && rule.media.mediaText && !view.matchMedia(rule.media.mediaText).matches) return '@media ' + rule.media.mediaText;
+    if (typeof CSSSupportsRule !== 'undefined' && rule instanceof CSSSupportsRule && !CSS.supports(rule.conditionText)) return '@supports ' + rule.conditionText;
+    return null;
+  };
+  const record = (name, rule, keyframes, condition) => {
+    const selector = keyframes ? '@keyframes ' + keyframes : rule.selectorText || '';
+    const match = keyframes || condition ? false : matches(selector);
+    const setter = Object.assign(
+      { selector: selector, value: rule.style.getPropertyValue(name).trim(), matches: match },
+      keyframes ? { keyframes: keyframes } : {},
+      condition ? { condition: condition } : {}
+    );
+    if (match && !matching[name]) matching[name] = setter;
+    else if (!match && !other[name]) other[name] = setter;
+  };
+  const visit = (rules, keyframes, condition) => {
+    for (const rule of Array.from(rules)) {
+      if (budget-- <= 0 || names.every((name) => matching[name])) return;
+      if (typeof CSSImportRule !== 'undefined' && rule instanceof CSSImportRule) {
+        try { if (rule.styleSheet) visit(rule.styleSheet.cssRules, keyframes, condition); } catch (e) { continue; }
+        continue;
+      }
+      if (typeof CSSKeyframesRule !== 'undefined' && rule instanceof CSSKeyframesRule) {
+        visit(rule.cssRules, rule.name, condition);
+        continue;
+      }
+      if (rule.style) {
+        for (const name of names) {
+          if (!matching[name] && Array.from(rule.style).includes(name)) record(name, rule, keyframes, condition);
+        }
+      }
+      if (rule.cssRules) visit(rule.cssRules, keyframes, condition || applies(rule));
+    }
+  };
+  const sheets = [];
+  for (const scope of new Set([el.getRootNode(), el.ownerDocument])) {
+    sheets.push(...Array.from(scope.styleSheets || []), ...Array.from(scope.adoptedStyleSheets || []));
+  }
+  for (const sheet of sheets) {
+    try { visit(sheet.cssRules, null, null); } catch (e) { continue; }
+  }
+  return Object.assign({}, other, matching);
 }`;

@@ -9,12 +9,14 @@
 import type { InspectVariable, InspectWhy, InspectWhyEntry } from '@/ipc/protocol/inspectTypes.js';
 import { collapsedValue, normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
 import {
+  isInherited,
   resolveCascade,
   ruleField,
   type Declaration,
   type Resolution,
 } from '@/runtime/dom/inspectCascade.js';
 import type { CascadeInput, PropertyGroup } from '@/runtime/dom/inspectCascadeModel.js';
+import type { CssHint } from '@/runtime/dom/inspectHints.js';
 import {
   substituteVariables,
   unsetVariables,
@@ -32,9 +34,12 @@ import {
 export function buildWhy(
   group: PropertyGroup,
   cascade: Map<string, Resolution>,
-  input: CascadeInput
+  input: CascadeInput,
+  hints: readonly CssHint[] = []
 ): InspectWhy[] {
-  const whys = group.longhands.map((longhand) => whyOf(longhand, cascade.get(longhand), input));
+  const whys = group.longhands.map((longhand) =>
+    whyOf(longhand, cascade.get(longhand), input, hints)
+  );
   const [first] = whys;
   if (!first || group.shorthand === undefined) return whys;
   const winner = JSON.stringify(first.chain[0]);
@@ -59,18 +64,19 @@ export function buildWhy(
  * @param property - Longhand
  * @param resolution - Its resolution
  * @param input - Matched rules, computed style and the label function
+ * @param hints - Hints, for a winner that has no effect
  * @returns Why
  */
 function whyOf(
   property: string,
   resolution: Resolution | undefined,
-  input: CascadeInput
+  input: CascadeInput,
+  hints: readonly CssHint[]
 ): InspectWhy {
   const winner = resolution?.winner;
+  const status = winner?.ancestor !== undefined ? 'inherited' : 'applied';
   const chain = [
-    ...(winner
-      ? [whyEntry(winner, winner.ancestor !== undefined ? 'inherited' : 'applied', input)]
-      : []),
+    ...(winner ? [withNote(whyEntry(winner, status, input), winner, property, hints)] : []),
     ...(resolution?.overridden ?? []).map((d) => whyEntry(d, 'overridden', input)),
   ];
   const variables = winner ? variableSources(winner, input) : [];
@@ -113,6 +119,52 @@ function whyEntry(
     ...(layer && { layer }),
     ...(condition && { condition }),
   };
+}
+
+/**
+ * The winner's entry with why it changes nothing: the hint that says it has
+ * no effect, or what applies instead of an invalid `var()`.
+ *
+ * @param entry - Winner's entry
+ * @param winner - Winning declaration
+ * @param property - Longhand
+ * @param hints - Hints
+ * @returns Entry, with `note` when there is one
+ */
+function withNote(
+  entry: InspectWhyEntry,
+  winner: Declaration,
+  property: string,
+  hints: readonly CssHint[]
+): InspectWhyEntry {
+  if (entry.unset) {
+    const fallback = isInherited(property) ? 'the inherited value' : 'the initial value';
+    return { ...entry, note: `falls back to ${fallback}` };
+  }
+  const inactive = hints.find(
+    (hint) =>
+      hint.kind === 'inactive' &&
+      sameDeclaration(hint.declaration, winner) &&
+      (hint.only?.includes(property) ?? true)
+  );
+  return inactive ? { ...entry, note: `no effect: ${inactive.reason}` } : entry;
+}
+
+/**
+ * Whether two longhand declarations come from the same declaration as written.
+ *
+ * @param a - Declaration
+ * @param b - Declaration
+ * @returns True for the same place and property
+ */
+function sameDeclaration(a: Declaration, b: Declaration): boolean {
+  return (
+    a.source.kind === b.source.kind &&
+    a.source.styleSheetId === b.source.styleSheetId &&
+    a.source.line === b.source.line &&
+    a.source.column === b.source.column &&
+    (a.via ?? a.property) === (b.via ?? b.property)
+  );
 }
 
 /** How many levels of custom properties set from others are followed */

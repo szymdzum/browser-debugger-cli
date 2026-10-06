@@ -21,6 +21,7 @@ import {
   formControlFontHints,
   inactiveHints,
   undefinedVariableHints,
+  type CssHint,
 } from '@/runtime/dom/inspectHints.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import { buildWhy } from '@/runtime/dom/inspectWhyModel.js';
@@ -129,12 +130,13 @@ export function buildCascadeFields(input: CascadeInput): Partial<InspectResult> 
     ]),
   ];
   const cascade = resolveCascade(input.matched, wanted);
-  const hints = input.hints === false ? undefined : buildHints(cascade, input);
+  const found = collectHints(cascade, input);
+  const hints = input.hints === false ? undefined : found.map((hint) => toInspectHint(hint, input));
   const rules = buildRules(ruleGroups, cascade, input);
   return {
     ...(hints && { hints }),
     ...(rules.length > 0 && { rules }),
-    ...(whyGroup && { why: buildWhy(whyGroup, cascade, input) }),
+    ...(whyGroup && { why: buildWhy(whyGroup, cascade, input, found) }),
   };
 }
 
@@ -159,14 +161,16 @@ function propertyGroup(name: string, expanded?: readonly string[]): PropertyGrou
  * none without the computed style to check them against.
  *
  * @param cascade - Resolved properties
- * @param input - Styles and the label function
- * @returns Hints
+ * @param input - Styles
+ * @returns Hints with their declarations
  */
-function buildHints(cascade: Map<string, Resolution>, input: CascadeInput): InspectHint[] {
+function collectHints(cascade: Map<string, Resolution>, input: CascadeInput): CssHint[] {
   if (input.style['display'] === undefined) return [];
+  const declaredDisplay = cascade.get('display')?.winner?.value;
   const ctx = {
     style: input.style,
     parentStyle: input.parentStyle,
+    declaredDisplay: declaredDisplay === input.style['display'] ? undefined : declaredDisplay,
     replaced: input.replaced,
     formControl: input.formControl === true,
   };
@@ -174,14 +178,27 @@ function buildHints(cascade: Map<string, Resolution>, input: CascadeInput): Insp
     ...inactiveHints(cascade, ctx),
     ...undefinedVariableHints(cascade, input.style),
     ...formControlFontHints(cascade, ctx),
-  ].map((hint) => ({
+  ];
+}
+
+/**
+ * A hint as the result shows it, with where its declaration is.
+ *
+ * @param hint - Hint
+ * @param input - The label function
+ * @returns Result hint
+ */
+function toInspectHint(hint: CssHint, input: CascadeInput): InspectHint {
+  return {
     kind: hint.kind,
     property: hint.property,
     value: hint.value,
     reason: hint.reason,
     fix: hint.fix,
+    ...(hint.only && { only: hint.only }),
+    ...(hint.variables && { variables: hint.variables }),
     source: input.label(hint.declaration),
-  }));
+  };
 }
 
 /**
@@ -297,6 +314,10 @@ function toRule(
     value: winner.value,
     ...(winner.value.includes('var(') &&
       computed !== undefined && { computed: normalizeProperty(property, computed) }),
+    ...(property === 'display' &&
+      computed !== undefined &&
+      computed !== winner.value &&
+      /^(inline|table-|ruby)/.test(winner.value) && { computed: `${computed} (blockified)` }),
     source: input.label(winner),
     ...ruleField(winner),
     ...(overrides.length > 0 && { overrides }),

@@ -259,6 +259,10 @@ export interface InspectHint {
   reason: string;
   /** e.g. `use display: flex or grid on this element` */
   fix: string;
+  /** The longhands of a shorthand that have no effect, when the others do (`margin-top`, `margin-bottom`) */
+  only?: string[];
+  /** The custom properties that are not set (`unset-variable`) */
+  variables?: string[];
   /** e.g. `.hero (app.css:12)` */
   source: string;
 }
@@ -302,6 +306,11 @@ export interface InspectWhyEntry {
   rule?: string;
   /** `applied` (wins), `overridden`, or `inherited` (from an ancestor: the winner, or one it beat there) */
   status: 'applied' | 'overridden' | 'inherited';
+  /**
+   * Why the winner changes nothing: `no effect: position is static`, or for
+   * an invalid `var()`, what applies instead (`falls back to the initial value`)
+   */
+  note?: string;
   important?: true;
   layer?: string;
   condition?: string;
