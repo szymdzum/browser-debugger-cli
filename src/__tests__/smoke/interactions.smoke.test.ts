@@ -200,10 +200,10 @@ void describe('DOM interactions', () => {
   void it('fills the field inside a web component and moves the mouse off a hover menu', async () => {
     await evaluate(
       `customElements.get('x-field') || customElements.define('x-field', class extends HTMLElement { constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML = '<input part="input">'; } });
-      document.body.insertAdjacentHTML('beforeend', '<x-field id="xf"></x-field><div id="menu-trigger" style="width:100px;height:30px">Menu</div><p id="hover-log"></p>');
-      const trigger = document.getElementById('menu-trigger');
-      trigger.addEventListener('mouseenter', () => { document.getElementById('hover-log').textContent += 'enter '; });
-      trigger.addEventListener('mouseleave', () => { document.getElementById('hover-log').textContent += 'leave '; }); 1`
+      document.body.insertAdjacentHTML('beforeend', '<x-field id="xf"></x-field><div id="hover-off-trigger" style="width:100px;height:30px">Menu</div><p id="hover-off-log"></p>');
+      const trigger = document.getElementById('hover-off-trigger');
+      trigger.addEventListener('mouseenter', () => { document.getElementById('hover-off-log').textContent += 'enter '; });
+      trigger.addEventListener('mouseleave', () => { document.getElementById('hover-off-log').textContent += 'leave '; }); 1`
     );
     try {
       await bdg(['dom', 'fill', '#xf', 'typed']);
@@ -211,16 +211,16 @@ void describe('DOM interactions', () => {
         await evaluate("document.getElementById('xf').shadowRoot.querySelector('input').value"),
         'typed'
       );
-      await bdg(['dom', 'hover', '#menu-trigger']);
+      await bdg(['dom', 'hover', '#hover-off-trigger']);
       await bdg(['dom', 'hover', '--off']);
       assert.equal(
-        await evaluate("document.getElementById('hover-log').textContent"),
+        await evaluate("document.getElementById('hover-off-log').textContent"),
         'enter leave '
       );
-      await bdg(['dom', 'hover', '#menu-trigger', '--off'], 81);
+      await bdg(['dom', 'hover', '#hover-off-trigger', '--off'], 81);
     } finally {
       await evaluate(
-        "['xf', 'menu-trigger', 'hover-log'].forEach((id) => document.getElementById(id).remove()); 1"
+        "['xf', 'hover-off-trigger', 'hover-off-log'].forEach((id) => document.getElementById(id).remove()); 1"
       );
     }
   });
