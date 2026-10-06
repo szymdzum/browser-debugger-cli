@@ -88,4 +88,13 @@ void describe('outputPathError', () => {
     assert.equal(error.message, 'Cannot write /etc/out.har: permission denied');
     assert.match(String(error.metadata.suggestion), /output\.har/);
   });
+
+  void it('refuses a path on a pseudo-filesystem at once (81) instead of creating it', async () => {
+    const error = await writeOutputFile('/proc/bdg-x/shot.png', 'x', 'png').catch(
+      (thrown: unknown) => thrown
+    );
+    assert.ok(error instanceof CommandError);
+    assert.equal(error.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(error.message, /it is on a pseudo-filesystem/);
+  });
 });

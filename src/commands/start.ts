@@ -22,6 +22,7 @@ import {
 } from '@/errors/messages.js';
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
+import { directoryProblem } from '@/utils/directories.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { probeDevToolsEndpoint } from '@/utils/http.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -369,7 +370,9 @@ function validateStartInput(
       ...(process.env['BDG_CHROME_FLAGS']?.split(' ') ?? []),
       ...(options.chromeFlags?.split(' ') ?? []),
     ]);
-  return { url, sessionOptions: buildSessionOptions(options) };
+  const sessionOptions = buildSessionOptions(options);
+  if (sessionOptions.userDataDir !== undefined) assertUsableProfile(sessionOptions.userDataDir);
+  return { url, sessionOptions };
 }
 
 /**
@@ -478,6 +481,26 @@ function assertUserDataDir(value: string): void {
   if (reason === undefined) return;
   const err = invalidUserDataDirError(value, reason);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * Check that Chrome can create and write its profile directory (given with
+ * `-u` or in `--chrome-flags`), before a daemon is spawned: a profile under
+ * `/proc` spun the daemon at full CPU and wedged the session.
+ *
+ * @param dir - Profile directory, `~/` expanded
+ * @throws CommandError (81) for a path that cannot hold a directory, (82)
+ *   when its nearest existing directory is not writable
+ */
+function assertUsableProfile(dir: string): void {
+  const problem = directoryProblem(dir);
+  if (!problem) return;
+  const err = invalidUserDataDirError(dir, problem.reason);
+  throw new CommandError(
+    err.message,
+    { suggestion: err.suggestion },
+    problem.denied ? EXIT_CODES.PERMISSION_DENIED : EXIT_CODES.INVALID_ARGUMENTS
+  );
 }
 
 /**

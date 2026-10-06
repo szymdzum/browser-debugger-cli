@@ -19,12 +19,12 @@
 import { Option, type Command } from 'commander';
 
 import { registerA11yCommands } from '@/commands/dom/a11y.js';
+import { registerAuditCommand } from '@/commands/dom/audit.js';
 import { handleDomEval } from '@/commands/dom/eval.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import { handleDomFrames } from '@/commands/dom/frames.js';
 import { DOM_GET_DEFAULT_SELECTOR, handleDomGet } from '@/commands/dom/get.js';
 import { registerInspectCommand } from '@/commands/dom/inspect.js';
-import { registerAuditCommand } from '@/commands/dom/audit.js';
 import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';

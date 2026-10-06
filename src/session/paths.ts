@@ -11,6 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
+import { makeDirectory } from '@/utils/directories.js';
 
 const log = createLogger('session');
 
@@ -200,12 +201,11 @@ export function getDaemonSocketPath(): string {
  * Ensure the session directory exists.
  *
  * Creates ~/.bdg/ if it doesn't exist. Safe to call multiple times (idempotent).
+ * A path that cannot hold a directory is refused before `mkdir`, which
+ * would spin on a pseudo-filesystem ({@link makeDirectory}).
  *
- * @throws Error if directory creation fails due to permissions
+ * @throws Error if the directory cannot be created
  */
 export function ensureSessionDir(): void {
-  const dir = getSessionDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+  makeDirectory(getSessionDir());
 }
