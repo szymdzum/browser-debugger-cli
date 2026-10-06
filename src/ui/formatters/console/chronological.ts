@@ -5,7 +5,7 @@
 
 import type { ConsoleMessage } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { consoleIndexGapNote } from '@/ui/messages/consoleMessages.js';
+import { consoleDroppedNote, consoleIndexGapNote } from '@/ui/messages/consoleMessages.js';
 import { truncateByLength } from '@/utils/strings.js';
 
 import { formatSourceLocation, formatTimestamp, type ConsoleFormatOptions } from './shared.js';
@@ -34,6 +34,7 @@ export function formatConsoleChronological(
 
   fmt.text(header);
   fmt.separator('━', 50);
+  if (options.dropped) fmt.text(consoleDroppedNote(options.dropped));
 
   if (displayMessages.length === 0) {
     fmt.text('No console messages');

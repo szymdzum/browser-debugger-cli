@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Session directory and Chrome profile are checked before use** (#387). `BDG_SESSION_DIR=/proc/x` used to spin at full CPU until it was killed (Node's recursive `mkdir` loops on Linux pseudo-filesystems). `--user-data-dir /proc/nope/x` wedged the session until `bdg cleanup --force`. Now a directory that cannot be created or written is refused at once, before a daemon or Chrome starts: exit 103 for the session directory, 81 for the profile, 82 when permission is denied.
 
+- **`console` on busy pages** (#383):
+  - The session keeps the newest 10000 messages instead of the first 10000. A page that logged 10000 messages used to hide every later one: after navigating to a page that logs errors, `bdg console` said "No errors or warnings found".
+  - `console`, `peek` and their JSON say how many were dropped (`dropped`, `totals.consoleDropped`), and message indices stay stable.
+  - The summary and JSON list the newest 50 distinct errors and warnings, with a note for the rest. 10000 distinct errors printed 329 KB of text and 4.4 MB of JSON. `--last <n>` sets how many (0 = all).
 - **What `dom inspect`, `dom layout` and `dom audit` cannot see is said** (leftovers of the Stripe retest, #403):
   - the text line skips text inside an `opacity: 0` descendant (a measuring copy under a mask set the color and contrast);
   - an element under a `mask-image` (on it or an ancestor) is marked `[masked by mask-image on div.hero]` (`dom layout`: `masked by …`, JSON `masked`) instead of reading as fully visible;

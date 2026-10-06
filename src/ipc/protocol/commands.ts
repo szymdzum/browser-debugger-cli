@@ -80,6 +80,8 @@ export interface SessionPeekData {
   totalNetwork: number;
   /** Total number of console messages (for pagination). */
   totalConsole: number;
+  /** Console messages dropped at the limit (the oldest; indices start after them) */
+  droppedConsole?: number;
   /** Whether there are more network items available. */
   hasMoreNetwork?: boolean;
   /** Whether there are more console items available. */
