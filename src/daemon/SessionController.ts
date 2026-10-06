@@ -296,7 +296,11 @@ export class SessionController {
             duration: data.duration,
             target: data.target,
             data: { network: data.network, console: data.console },
-            totals: { network: data.totalNetwork, console: data.totalConsole },
+            totals: {
+              network: data.totalNetwork,
+              console: data.totalConsole,
+              ...(data.droppedConsole && { consoleDropped: data.droppedConsole }),
+            },
             currentNavigationId: data.currentNavigationId,
             partial: true,
           },

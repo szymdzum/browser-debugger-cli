@@ -41,5 +41,5 @@ export function formatConsole(messages: ConsoleMessage[], options: ConsoleFormat
     return formatConsoleChronological(messages, options);
   }
 
-  return formatConsoleSummary(messages);
+  return formatConsoleSummary(messages, options);
 }

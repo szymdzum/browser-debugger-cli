@@ -57,6 +57,30 @@ export interface ConsoleFormatOptions {
   level?: ConsoleLevel | undefined;
   /** Messages between the first and last listed index that the filters left out */
   skipped?: ConsoleSkipped | undefined;
+  /** Distinct errors and warnings listed, the newest (0 = all; default {@link DEFAULT_GROUP_LIMIT}) */
+  groupLimit?: number | undefined;
+  /** Oldest messages the session dropped at its limit */
+  dropped?: number | undefined;
+}
+
+/** Distinct errors and warnings the summary lists without `--last` */
+export const DEFAULT_GROUP_LIMIT = 50;
+
+/**
+ * The newest distinct messages of a level, and how many earlier ones are not
+ * listed.
+ *
+ * @param groups - Distinct messages, in order of first appearance
+ * @param limit - How many to keep (0 = all; undefined: {@link DEFAULT_GROUP_LIMIT})
+ * @returns Groups to list and the count left out
+ */
+export function newestGroups(
+  groups: DeduplicatedMessage[],
+  limit: number | undefined
+): { shown: DeduplicatedMessage[]; more: number } {
+  const keep = limit ?? DEFAULT_GROUP_LIMIT;
+  if (keep === 0 || groups.length <= keep) return { shown: groups, more: 0 };
+  return { shown: groups.slice(-keep), more: groups.length - keep };
 }
 
 /**
@@ -89,8 +113,16 @@ export interface JsonErrorEntry {
  */
 export interface ConsoleJsonOutput {
   summary: ConsoleSummary;
+  /** The newest distinct errors (see `moreErrors`) */
   errors: JsonErrorEntry[];
+  /** The newest distinct warnings (see `moreWarnings`) */
   warnings: Omit<JsonErrorEntry, 'stackTrace'>[];
+  /** Earlier distinct errors not in `errors` (`--last 0` lists all) */
+  moreErrors?: number;
+  /** Earlier distinct warnings not in `warnings` */
+  moreWarnings?: number;
+  /** Oldest messages the session dropped at its limit (10000 are kept) */
+  dropped?: number;
   messages?: ConsoleMessage[];
 }
 

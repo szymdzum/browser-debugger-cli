@@ -103,16 +103,30 @@ function createMessage(
   };
 }
 
+/** Adds a message to the session's list; false when it was dropped */
+type InsertMessage = (message: ConsoleMessage) => boolean;
+
 /**
- * Insert a message in timestamp order.
- * Messages are kept sorted by timestamp to handle async expansion delays.
+ * Insert a message in timestamp order (async expansion can deliver a message
+ * late). At {@link MAX_CONSOLE_MESSAGES} the oldest message is dropped to
+ * make room, so the newest are kept; a late message older than all kept ones
+ * is dropped itself.
  *
- * @returns False when the message limit is reached (the message is dropped)
+ * @param messages - Messages, oldest first (updated)
+ * @param message - Message to add
+ * @param onDropped - Called for each message dropped
+ * @returns False when the message itself was dropped
  */
-function insertMessageByTimestamp(messages: ConsoleMessage[], message: ConsoleMessage): boolean {
+function insertMessageByTimestamp(
+  messages: ConsoleMessage[],
+  message: ConsoleMessage,
+  onDropped: () => void
+): boolean {
   if (messages.length >= MAX_CONSOLE_MESSAGES) {
-    log.debug(`Warning: Console message limit reached (${MAX_CONSOLE_MESSAGES})`);
-    return false;
+    const oldest = messages[0];
+    onDropped();
+    if (oldest && message.timestamp < oldest.timestamp) return false;
+    messages.shift();
   }
 
   const insertIndex = findInsertIndex(messages, message.timestamp);
@@ -146,7 +160,7 @@ function findInsertIndex(messages: ConsoleMessage[], timestamp: number): number 
  */
 function handleConsoleAPICall(
   cdp: CDPSender,
-  messages: ConsoleMessage[],
+  insert: InsertMessage,
   params: ConsoleAPICalledEvent,
   context: MessageContext,
   includeAll: boolean
@@ -158,10 +172,9 @@ function handleConsoleAPICall(
   }
 
   if (hasArgsNeedingExpansion(params.args) && !usesFormatSpecifiers(params.args)) {
-    handleExpandableMessage(cdp, messages, params, context, basicText);
+    handleExpandableMessage(cdp, insert, params, context, basicText);
   } else {
-    const message = createMessage(params.type, basicText, params.timestamp, params.args, context);
-    insertMessageByTimestamp(messages, message);
+    insert(createMessage(params.type, basicText, params.timestamp, params.args, context));
   }
 }
 
@@ -170,7 +183,7 @@ function handleConsoleAPICall(
  */
 function handleExpandableMessage(
   cdp: CDPSender,
-  messages: ConsoleMessage[],
+  insert: InsertMessage,
   params: ConsoleAPICalledEvent,
   context: MessageContext,
   fallbackText: string
@@ -184,7 +197,7 @@ function handleExpandableMessage(
         params.args,
         context
       );
-      insertMessageByTimestamp(messages, message);
+      insert(message);
     })
     .catch((error) => {
       log.debug(`Object expansion failed, using basic text: ${String(error)}`);
@@ -195,7 +208,7 @@ function handleExpandableMessage(
         params.args,
         context
       );
-      insertMessageByTimestamp(messages, message);
+      insert(message);
     });
 }
 
@@ -240,7 +253,7 @@ export function formatExceptionText(details: Protocol.Runtime.ExceptionDetails):
  * @returns The message added, undefined when filtered out or over the limit
  */
 function handleExceptionThrown(
-  messages: ConsoleMessage[],
+  insert: InsertMessage,
   params: ExceptionThrownEvent,
   context: MessageContext,
   includeAll: boolean
@@ -253,7 +266,7 @@ function handleExceptionThrown(
   }
 
   const message = createMessage('error', text, params.timestamp, undefined, context);
-  return insertMessageByTimestamp(messages, message) ? message : undefined;
+  return insert(message) ? message : undefined;
 }
 
 /** CDP's text of an unhandled promise rejection (the only kind Chrome revokes) */
@@ -346,7 +359,7 @@ class RevocableRejections {
  * calls already arrive (with arguments) from the worker's own session.
  */
 function handleLogEntry(
-  messages: ConsoleMessage[],
+  insert: InsertMessage,
   entry: LogEntry,
   navigationId: number | undefined,
   includeAll: boolean
@@ -368,10 +381,7 @@ function handleLogEntry(
     stackTrace: convertStackTrace(entry.stackTrace) ?? location,
     source: entry.source,
   };
-  insertMessageByTimestamp(
-    messages,
-    createMessage(type, entry.text, entry.timestamp, undefined, context)
-  );
+  insert(createMessage(type, entry.text, entry.timestamp, undefined, context));
 }
 
 /**
@@ -414,23 +424,26 @@ async function startOptionalSources(
  * @param messages - Array to populate with console messages
  * @param includeAll - If true, disable default pattern filtering
  * @param getCurrentNavigationId - Function to get current navigation ID
+ * @param onDropped - Called for each message dropped at the limit (the oldest go first)
  * @returns Cleanup function to remove event handlers
  */
 export async function startConsoleCollection(
   cdp: CDPConnection,
   messages: ConsoleMessage[],
   includeAll: boolean = false,
-  getCurrentNavigationId?: () => number
+  getCurrentNavigationId?: () => number,
+  onDropped: () => void = () => undefined
 ): Promise<CleanupFunction> {
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
+  const insert: InsertMessage = (message) => insertMessageByTimestamp(messages, message, onDropped);
 
   registry.registerTyped(typed, 'Runtime.consoleAPICalled', (params, sessionId) => {
     const context: MessageContext = {
       navigationId: getCurrentNavigationId?.(),
       stackTrace: convertStackTrace(params.stackTrace),
     };
-    handleConsoleAPICall(senderFor(cdp, sessionId), messages, params, context, includeAll);
+    handleConsoleAPICall(senderFor(cdp, sessionId), insert, params, context, includeAll);
   });
 
   const rejections = new RevocableRejections();
@@ -439,7 +452,7 @@ export async function startConsoleCollection(
       navigationId: getCurrentNavigationId?.(),
       stackTrace: convertStackTrace(params.exceptionDetails.stackTrace),
     };
-    const message = handleExceptionThrown(messages, params, context, includeAll);
+    const message = handleExceptionThrown(insert, params, context, includeAll);
     if (message) rejections.track(params.exceptionDetails, message, sessionId);
   });
 
@@ -456,7 +469,7 @@ export async function startConsoleCollection(
   });
 
   registry.registerTyped(typed, 'Log.entryAdded', ({ entry }) => {
-    handleLogEntry(messages, entry, getCurrentNavigationId?.(), includeAll);
+    handleLogEntry(insert, entry, getCurrentNavigationId?.(), includeAll);
   });
 
   try {
