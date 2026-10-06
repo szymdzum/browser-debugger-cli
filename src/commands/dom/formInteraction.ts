@@ -368,7 +368,7 @@ async function hoverOff(
 ): Promise<void> {
   await runCommand(
     async () => {
-      if (!options.off || selectorOrIndex !== undefined) {
+      if (!options.off || selectorOrIndex !== undefined || options.index !== undefined) {
         const err = options.off ? hoverOffWithTargetError() : missingArgumentError(HOVER_USAGE);
         return {
           success: false,

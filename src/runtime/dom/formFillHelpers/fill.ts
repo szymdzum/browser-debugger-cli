@@ -33,6 +33,7 @@ import {
   FILL_READ_BACK_SCRIPT,
   REACT_FILL_SCRIPT,
   CLICK_ELEMENT_SCRIPT,
+  SHADOW_FIELD_JS,
   isFillResult,
   isClickResult,
   type FillOptions,
@@ -243,7 +244,7 @@ async function setFileInput(
   if (problem) return problem;
   try {
     const located = (await cdp.send('Runtime.evaluate', {
-      expression: `((el) => (${LABEL_CONTROL_JS})(el) || el)((${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}])`,
+      expression: `((el) => (${LABEL_CONTROL_JS})(el) || (${SHADOW_FIELD_JS})(el) || el)((${FIND_ELEMENTS_JS})(${selectorArgsJS(selector)})[${options.index ?? 0}])`,
       objectGroup: UPLOAD_OBJECT_GROUP,
     })) as { result?: { objectId?: string }; exceptionDetails?: Protocol.Runtime.ExceptionDetails };
     if (located.exceptionDetails) throwIfInvalidSelector(located.exceptionDetails, selector);

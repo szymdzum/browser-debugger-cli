@@ -104,6 +104,10 @@ export const FILL_REFUSAL_JS = `(el) => {
   if (el.closest('[inert]')) return refuse('inert', 'inside an inert element');
   if (el.getAttribute('aria-readonly') === 'true') return refuse('readOnly', 'aria-readonly="true"');
   if (el.getAttribute('aria-disabled') === 'true') return refuse('disabled', 'aria-disabled="true"');
+  if (el.shadowRoot) {
+    const fields = el.shadowRoot.querySelectorAll('input:not([type="hidden"]), textarea, select, [contenteditable]:not([contenteditable="false"])').length;
+    return refuse('notFillable', '<' + tag + '> has ' + (fields === 0 ? 'no field' : fields + ' fields') + ' in its shadow root; select the one to fill, e.g. its [part~=…] or class');
+  }
   return refuse('notFillable', '<' + tag + '> is not an input, textarea, select or contenteditable element');
 }`;
 
@@ -113,7 +117,7 @@ export const FILL_REFUSAL_JS = `(el) => {
  * input), which `dom fill` fills in its place; null when the element is a
  * field itself or its shadow root has none or several.
  */
-const SHADOW_FIELD_JS = `(el) => {
+export const SHADOW_FIELD_JS = `(el) => {
   if (!el.shadowRoot || /^(input|textarea|select)$/.test(el.localName) || el.isContentEditable) return null;
   const fields = el.shadowRoot.querySelectorAll('input:not([type="hidden"]), textarea, select, [contenteditable]:not([contenteditable="false"])');
   return fields.length === 1 ? fields[0] : null;
