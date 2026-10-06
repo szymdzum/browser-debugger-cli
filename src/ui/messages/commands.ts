@@ -1224,3 +1224,23 @@ export function pageEmulationLines(result: {
     ],
   ];
 }
+
+/**
+ * Header badge of `bdg dom inspect` while CSS transitions or animations run
+ * on the element: the values read are mid-way.
+ *
+ * @param animating - Transitioned properties and animation names
+ * @returns e.g. `[animating: background-color; values are mid-way, inspect again]`
+ */
+export function inspectAnimatingBadge(animating: readonly string[]): string {
+  return `[animating: ${animating.join(', ')}; values are mid-way, inspect again]`;
+}
+
+/**
+ * `--why` note on a computed value read during its transition.
+ *
+ * @returns Note
+ */
+export function inspectMidTransitionNote(): string {
+  return '(mid-transition: inspect again for the final value)';
+}

@@ -340,6 +340,11 @@ export interface InspectResult {
    * theme's
    */
   theme?: 'dark';
+  /**
+   * Running CSS transitions (their property) and animations (their name):
+   * the values read are mid-way and will still change
+   */
+  animating?: string[];
   /** `prefers-color-scheme` the page sees */
   colorScheme?: 'light' | 'dark';
   box?: InspectBox;

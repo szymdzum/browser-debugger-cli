@@ -101,6 +101,8 @@ export interface RawInspect {
   props?: Record<string, string>;
   /** `--props` names the browser does not know as CSS properties */
   unknownProps?: string[];
+  /** Properties of running CSS transitions, and names of running animations */
+  animating: string[];
 }
 
 /**
@@ -308,7 +310,8 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
     svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
     ownText: Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== ''),
     typed: { width: typed('width'), height: typed('height') },
-    parent: parent ? describe(parent) : undefined
+    parent: parent ? describe(parent) : undefined,
+    animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running').map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
   };
   if (/^(input|textarea)$/.test(el.localName) && el.placeholder && !el.value) {
     result.placeholder = el.placeholder.replace(/\\s+/g, ' ').trim();

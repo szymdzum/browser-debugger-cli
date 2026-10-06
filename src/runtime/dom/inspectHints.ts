@@ -317,7 +317,7 @@ function variableFix(name: string, style: StyleMap): string {
   const defined = Object.keys(style).filter((key) => key.startsWith('--'));
   const [similar] = findSimilarNames(name, defined);
   const fix = `define ${name} or give var() a fallback`;
-  return similar ? `${fix} (set here: ${similar})` : fix;
+  return similar ? `${fix} (did you mean ${similar}? it is set)` : fix;
 }
 
 /**

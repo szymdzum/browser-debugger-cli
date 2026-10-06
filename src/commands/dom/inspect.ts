@@ -57,7 +57,7 @@ export function registerInspectCommand(dom: Command): void {
     .addHelpText('after', INSPECT_OUTPUT_LEGEND)
     .option(
       '--props <names>',
-      'Only these properties, computed and normalized (comma-separated, e.g. padding,color,--brand)',
+      "Only these properties, computed and normalized (comma-separated, e.g. padding,color,--brand; '--*' or '--bs-btn-*' lists custom properties)",
       cssPropertiesOption
     )
     .addOption(
