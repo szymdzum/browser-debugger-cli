@@ -9,66 +9,30 @@
 
 📖 **[Wiki](https://github.com/szymdzum/browser-debugger-cli/wiki)**: [Getting Started](https://github.com/szymdzum/browser-debugger-cli/wiki/Getting-Started) · [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) · [For AI Agents](https://github.com/szymdzum/browser-debugger-cli/wiki/For-AI-Agents) · [Recipes](https://github.com/szymdzum/browser-debugger-cli/wiki/Recipes) · [Quick Reference](https://github.com/szymdzum/browser-debugger-cli/wiki/Quick-Reference) · [Troubleshooting](https://github.com/szymdzum/browser-debugger-cli/wiki/Troubleshooting) · [CLI reference](docs/CLI_REFERENCE.md)
 
-bdg keeps a browser session open in the background and lets you drive it one shell command at a time. Click, fill, navigate, then read what actually happened: requests, console errors, layout and styles. It is built for coding agents like Claude Code, Codex and Gemini CLI, and it's just as handy in your own terminal.
+bdg keeps a browser session open in the background and lets you drive it one shell command at a time. Click, fill, navigate, then read what actually happened: requests, console errors, layout and styles. It is built for coding agents like Claude Code, Codex and Gemini CLI, and it's just as handy in your own terminal. Every command is a plain process with compact output, so it pipes into `jq` and costs an agent few tokens.
 
 ```bash
 npm install -g browser-debugger-cli
 bdg localhost:3000
 ```
 
-## See it work
+## Two ways to use it
 
-### 1. Open a page and see what's wrong
+### Debug a page: browser telemetry on demand
 
-```console
-$ bdg localhost:3000
-Session Started
-Target: http://localhost:3000/
+![The cart button does nothing; bdg shows the 500 response, the console error and the missing cookie](https://raw.githubusercontent.com/szymdzum/browser-debugger-cli/main/docs/assets/demo-debug.gif)
 
-$ bdg console
-Errors (2)
-──────────────────────────────
-Failed to load resource: the server responded with a status of 404 (File not found)
-     → http://localhost:3000/api/user
+The cart button does nothing, and the page doesn't say why. Three commands later the agent knows: the click fired a POST that returned 500, the console says the `cart_id` cookie is missing, and the cookie jar confirms it. Network, console, cookies and the DOM are there whenever the agent asks, without a debugger UI.
 
-Failed to load user: Unexpected token '<', "<!DOCTYPE "... is not valid JSON
-     → :3:63
+### Automate without writing a script
 
-$ bdg network list --preset errors
-[ID]       START STS METH TYP     SIZE   TIME  URL
-[86615.3]  +0.0s 404 GET  IMG    460 B    7ms  localhost:3000/logo.png
-[86615.6]  +0.0s 404 GET  FET    645 B    1ms  localhost:3000/api/user
-```
+![An agent fills a form, clicks Subscribe, reads the confirmation and inspects the button](https://raw.githubusercontent.com/szymdzum/browser-debugger-cli/main/docs/assets/demo-automate.gif)
 
-Three commands, and the agent knows the API call is failing and why the page breaks. `bdg details network 86615.6` shows the full request and response.
+No Playwright script written up front. The agent runs one command, reads what the browser reports back, and picks the next step from that: the click says which text appeared, `dom inspect` says what the button looks like. When the page does something unexpected, the agent adapts on the spot instead of failing at line 40 of a test.
 
-### 2. Interact, and see what each action did
+## More examples
 
-```console
-$ bdg dom fill 'input[name=email]' ada@example.com
-✓ Element Filled
-
-$ bdg dom click "#pay"
-✓ Element Clicked
-
-Element:       button#pay.btn "Pay now"
-Requests during the action (1):
-  POST localhost:3000/api/pay → 501 (2ms)
-```
-
-The click reports the request it triggered, with no screenshot and no extra tool call.
-
-### 3. Inspect, without screenshots
-
-```console
-$ bdg dom inspect .note
-p.note "Secure payment" 1840x16 @40,154
-text   system-ui 400 13/normal · color #9ca3af · contrast 2.53 fail on #fff · align start
-```
-
-A few lines of text instead of an image: box, layout, fonts, colors and contrast. Here the contrast check fails. `--why color` shows which CSS rule set the color.
-
-### 4. Grab cookies and auth tokens
+### Reuse the browser's login from the shell
 
 ```console
 $ bdg network getCookies
@@ -92,7 +56,7 @@ COOKIES=$(bdg network getCookies --json | jq -r '[.data[] | "\(.name)=\(.value)"
 curl -H "Cookie: $COOKIES" localhost:3000/api/me
 ```
 
-### 5. The rest of DevTools is there too
+### The rest of DevTools
 
 ```console
 $ bdg dom a11y tree
@@ -128,29 +92,12 @@ $ bdg dom clik "a"
 error: unknown command 'clik'
 (Did you mean click?)
 
-$ bdg network list --preset eror
-Error: Unknown preset: "eror"
-Did you mean: errors, slow?
-
 $ bdg cdp Network.getCookie
   "error": "Method 'Network.getCookie' not found",
   "suggestion": "... Did you mean: Network.getCookies, Network.setCookie, Network.setCookies"
-
-$ bdg cdp network.getcookies
-Hint: Consider using 'bdg network getCookies' instead of Network.getAllCookies or Network.getCookies
 ```
 
 Each mistake exits with code 81 (invalid arguments), so the agent knows to fix the call rather than retry it. CDP method names are case-insensitive, and raw CDP calls point to the friendlier command when one exists. More in the [Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md) principles bdg follows.
-
-## Why bdg
-
-- **Actions report their effects.** Clicks, fills, key presses and submits tell you what they changed: navigation, network requests, new console messages, or nothing at all. The agent doesn't have to guess whether the click worked.
-- **Looks without screenshots.** `dom inspect` and `dom layout` report box, fonts, colors, contrast, visibility and what covers an element, as a few lines of text. `--why color` shows which CSS rule won and what it beat.
-- **All of DevTools.** All 59 Chrome DevTools Protocol domains and 675 methods are one command away: `bdg cdp <Method>`. Accessibility, performance, memory, coverage, emulation: when a high-level command doesn't cover something, you are never stuck.
-- **Self-documenting.** `bdg --help --json`, `bdg cdp --search cookie`, `bdg cdp Network.getCookies --describe`. The agent learns the tool from the tool, not from docs pasted into its context.
-- **Cheap on tokens.** There are no tool schemas loaded up front, and output is compact text, with `--json` when you need structure.
-- **Errors that help.** Every error comes with a suggestion and a semantic exit code (`83` not found, `87` stale index, ...), so an agent can recover by itself.
-- **Unix all the way.** Every command is a process, so pipes, `jq` and shell scripts just work.
 
 ## Benchmark: CLI vs MCP
 
@@ -211,10 +158,6 @@ Local dev servers with self-signed certificates: `bdg https://localhost:5173 --c
 The [CLI reference](docs/CLI_REFERENCE.md) documents every command. `bdg --help --json` gives agents the machine-readable version.
 
 ## Install
-
-```bash
-npm install -g browser-debugger-cli
-```
 
 **Requirements:** Node.js 22.12+ and a Chromium-based browser: Chrome, Chromium or Microsoft Edge.
 
