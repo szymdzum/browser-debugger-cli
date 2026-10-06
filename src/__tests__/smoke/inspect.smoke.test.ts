@@ -215,6 +215,21 @@ void describe('dom inspect', () => {
     assert.doesNotMatch(await bdg(['dom', 'inspect', '#icon-only']), /\ntext |font-family/);
   });
 
+  void it('answers --why for shorthands Chrome expands, and rejects a misspelled property', async () => {
+    assert.match(
+      await bdg(['dom', 'inspect', '#moving', '--why', 'transition']),
+      /why\s+transition = color 1s ease-in\n\s+✓ transition: color 1s ease-in/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#moving', '--why', 'outline']),
+      /✓ outline: 2px solid/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#moving', '--why', 'colour'], 81),
+      /Unknown CSS property: colour[\s\S]*Did you mean: color\?/
+    );
+  });
+
   void it('hints at declarations that have no effect, by default', async () => {
     const hero = await bdg(['dom', 'inspect', '#hero']);
     assert.match(
@@ -253,7 +268,7 @@ void describe('dom inspect', () => {
     const variables = await bdg(['dom', 'inspect', '#tag', '--props', '--accent*']);
     assert.match(variables, /\n--accent: #06c\n--accent-dark: #036/);
     const shorthand = await bdg(['dom', 'inspect', '#tag', '--why', 'padding', '--tree', '0']);
-    assert.match(shorthand, /\nwhy +padding = 4 8 4 8\n +✓ padding: 4px 8px +\.tag \(/);
+    assert.match(shorthand, /\nwhy +padding = 4 8\n +✓ padding: 4px 8px +\.tag \(/);
     const onlyColor = await bdg(['dom', 'inspect', '#tag', '--props', 'color', '--rules']);
     assert.match(onlyColor, /\nrules +color #06c ← \.tag\.primary/);
     assert.doesNotMatch(onlyColor, /padding/);

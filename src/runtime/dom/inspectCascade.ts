@@ -118,9 +118,37 @@ const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
       ['width', 'style', 'color'].map((part) => `border-${side}-${part}`),
     ])
   ),
-  background: ['background-color', 'background-image'],
+  background: [
+    'background-color',
+    'background-image',
+    'background-position-x',
+    'background-position-y',
+    'background-size',
+    'background-repeat',
+    'background-origin',
+    'background-clip',
+    'background-attachment',
+  ],
   font: ['font-style', 'font-weight', 'font-size', 'line-height', 'font-family'],
   flex: ['flex-grow', 'flex-shrink', 'flex-basis'],
+  'flex-flow': ['flex-direction', 'flex-wrap'],
+  outline: ['outline-width', 'outline-style', 'outline-color'],
+  'text-decoration': [
+    'text-decoration-line',
+    'text-decoration-style',
+    'text-decoration-color',
+    'text-decoration-thickness',
+  ],
+  transition: [
+    'transition-property',
+    'transition-duration',
+    'transition-timing-function',
+    'transition-delay',
+    'transition-behavior',
+  ],
+  'background-position': ['background-position-x', 'background-position-y'],
+  'list-style': ['list-style-position', 'list-style-image', 'list-style-type'],
+  columns: ['column-width', 'column-count'],
   'place-items': ['align-items', 'justify-items'],
   'place-content': ['align-content', 'justify-content'],
   'place-self': ['align-self', 'justify-self'],
@@ -148,35 +176,33 @@ const LOGICAL_SIDES: Readonly<Record<string, string>> = {
   'inline-end': 'right',
 };
 
-/** Properties that inherit (those `dom inspect` reports) */
-const INHERITED = new Set([
-  'color',
-  'font-family',
-  'font-size',
-  'font-style',
-  'font-weight',
-  'font-variant',
-  'font-feature-settings',
-  'font-variation-settings',
-  'line-height',
-  'letter-spacing',
-  'word-spacing',
-  'text-align',
-  'text-indent',
-  'text-transform',
-  'text-shadow',
-  'white-space-collapse',
-  'text-wrap-mode',
-  'visibility',
-  'cursor',
-  'direction',
-  'list-style-type',
-  'list-style-position',
-  'tab-size',
-  'pointer-events',
-  'user-select',
-  '-webkit-text-security',
-]);
+/** Longhands that inherit (CSS, SVG and the prefixed ones Chrome computes) */
+const INHERITED = new Set(
+  [
+    'color caret-color accent-color color-scheme forced-color-adjust print-color-adjust',
+    'font-family font-size font-style font-weight font-stretch font-size-adjust font-kerning',
+    'font-optical-sizing font-palette font-language-override font-feature-settings',
+    'font-variation-settings font-variant font-variant-caps font-variant-ligatures',
+    'font-variant-numeric font-variant-east-asian font-variant-alternates',
+    'font-variant-position font-variant-emoji font-synthesis-weight font-synthesis-style',
+    'font-synthesis-small-caps line-height letter-spacing word-spacing text-align',
+    'text-align-last text-indent text-justify text-transform text-shadow text-rendering',
+    'text-size-adjust text-underline-position text-underline-offset text-decoration-skip-ink',
+    'text-emphasis-style text-emphasis-color text-emphasis-position text-orientation',
+    'text-wrap-mode text-wrap-style text-spacing-trim text-autospace white-space-collapse',
+    'word-break overflow-wrap line-break hyphens hyphenate-character hyphenate-limit-chars',
+    'tab-size direction writing-mode ruby-position ruby-align visibility cursor',
+    'pointer-events user-select interpolate-size list-style-type list-style-position',
+    'list-style-image quotes border-collapse border-spacing caption-side empty-cells orphans',
+    'widows image-rendering fill fill-opacity fill-rule stroke stroke-width stroke-opacity',
+    'stroke-dasharray stroke-dashoffset stroke-linecap stroke-linejoin stroke-miterlimit',
+    'paint-order marker-start marker-mid marker-end clip-rule color-interpolation',
+    'color-interpolation-filters color-rendering shape-rendering text-anchor dominant-baseline',
+    'math-depth math-style math-shift scrollbar-color text-combine-upright',
+    '-webkit-text-security -webkit-text-fill-color',
+    '-webkit-text-stroke-color -webkit-text-stroke-width',
+  ].flatMap((names) => names.split(' '))
+);
 
 /**
  * The longhands of a shorthand.
@@ -192,10 +218,36 @@ export function shorthandLonghands(name: string): readonly string[] | undefined 
  * Whether a property inherits.
  *
  * @param property - Longhand
- * @returns True for inherited properties (custom properties inherit)
+ * @param notInherited - Custom properties registered with `inherits: false`
+ * @returns True for inherited properties (custom properties inherit unless
+ *   registered otherwise)
  */
-export function isInherited(property: string): boolean {
-  return INHERITED.has(property) || property.startsWith('--');
+export function isInherited(property: string, notInherited?: ReadonlySet<string>): boolean {
+  if (property.startsWith('--')) return !notInherited?.has(property);
+  return INHERITED.has(property);
+}
+
+/**
+ * Custom properties registered not to inherit, with `@property` or
+ * `CSS.registerProperty`.
+ *
+ * @param matched - `CSS.getMatchedStylesForNode` response
+ * @returns Their names
+ */
+function nonInheritingProperties(
+  matched: Protocol.CSS.GetMatchedStylesForNodeResponse
+): Set<string> {
+  const fromRules = (matched.cssPropertyRules ?? [])
+    .filter((rule) =>
+      rule.style.cssProperties.some(
+        (property) => property.name === 'inherits' && property.value.trim() === 'false'
+      )
+    )
+    .map((rule) => rule.propertyName.text);
+  const fromScript = (matched.cssPropertyRegistrations ?? [])
+    .filter((registration) => !registration.inherits)
+    .map((registration) => registration.propertyName);
+  return new Set([...fromRules, ...fromScript]);
 }
 
 /**
@@ -280,17 +332,37 @@ function declarationsOf(
 }
 
 /**
- * Source of a matched rule: its matching selector, origin, stylesheet,
- * layer (nested ones as `outer.inner`), the media or container condition
- * it is under (`not all and (…)`, as Chrome writes `not (…)`, shortened) and
- * the selector's specificity.
+ * The selector of a rule's list that matched with the highest specificity
+ * (the one the cascade uses: `.title` of `h1, .title`).
+ *
+ * @param match - CDP rule match
+ * @returns Selector
+ */
+function strongestMatchingSelector(match: Protocol.CSS.RuleMatch): Protocol.CSS.Value | undefined {
+  const weight = (value: Protocol.CSS.Value | undefined): number => {
+    const s = value?.specificity;
+    return s ? s.a * 1e6 + s.b * 1e3 + s.c : -1;
+  };
+  const selectors = match.rule.selectorList.selectors;
+  const matching = match.matchingSelectors.map((index) => selectors[index]);
+  return (
+    matching.reduce((best, value) => (weight(value) > weight(best) ? value : best), matching[0]) ??
+    selectors[0]
+  );
+}
+
+/**
+ * Source of a matched rule: its matching selector (the strongest of a list),
+ * origin, stylesheet, layer (nested ones as `outer.inner`), the media or
+ * container condition it is under (`not all and (…)`, as Chrome writes
+ * `not (…)`, shortened) and the selector's specificity.
  *
  * @param match - CDP rule match
  * @returns Declaration source
  */
 function ruleSource(match: Protocol.CSS.RuleMatch): DeclarationSource {
   const { rule } = match;
-  const matching = rule.selectorList.selectors[match.matchingSelectors[0] ?? 0];
+  const matching = strongestMatchingSelector(match);
   const selector = matching?.text ?? rule.selectorList.text;
   const layer = rule.layers?.map((l) => l.text || '(anonymous)').join('.');
   const condition = [...(rule.media ?? []), ...(rule.containerQueries ?? [])]
@@ -440,6 +512,7 @@ export function resolveCascade(
 ): Map<string, Resolution> {
   const own = orderedDeclarations(matched);
   const ancestors = (matched.inherited ?? []).map(orderedDeclarations);
+  const notInherited = nonInheritingProperties(matched);
   const resolved = new Map<string, Resolution>();
   for (const property of properties) {
     const ranked = byPrecedence(own.filter((d) => d.property === property));
@@ -448,7 +521,7 @@ export function resolveCascade(
       resolved.set(property, { winner, overridden });
       continue;
     }
-    resolved.set(property, inheritedWinner(property, ancestors));
+    resolved.set(property, inheritedWinner(property, ancestors, notInherited));
   }
   return resolved;
 }
@@ -458,11 +531,16 @@ export function resolveCascade(
  *
  * @param property - Longhand
  * @param ancestors - Declarations of each ancestor, nearest first
+ * @param notInherited - Custom properties registered not to inherit
  * @returns The winner and the declarations it beat on that ancestor (none for
  *   non-inherited properties or when no ancestor sets it)
  */
-function inheritedWinner(property: string, ancestors: Declaration[][]): Resolution {
-  if (!isInherited(property)) return { overridden: [] };
+function inheritedWinner(
+  property: string,
+  ancestors: Declaration[][],
+  notInherited: ReadonlySet<string>
+): Resolution {
+  if (!isInherited(property, notInherited)) return { overridden: [] };
   for (const [depth, declarations] of ancestors.entries()) {
     const ranked = byPrecedence(declarations.filter((d) => d.property === property)).map(
       (declaration) => ({ ...declaration, ancestor: depth + 1 })

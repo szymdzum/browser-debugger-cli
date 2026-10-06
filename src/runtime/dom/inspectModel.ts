@@ -226,7 +226,7 @@ function treeFields(raw: RawInspect, limit: number): Partial<InspectResult> {
  * @returns Properties and values
  */
 function allFields(sources: InspectSources): Record<string, string> {
-  const all = allStyles(sources.style, sources.raw.svg === true);
+  const all = allStyles(sources.style, sources.raw.svg === true, sources.raw.formControl);
   for (const pseudo of sources.pseudo) {
     const content = pseudo.style['content'];
     if (content && content !== 'none' && content !== 'normal') {

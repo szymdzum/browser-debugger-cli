@@ -233,6 +233,59 @@ void describe('cascade', () => {
     assert.equal(resolved.get('padding-top')?.winner, undefined);
   });
 
+  void it('inherits text longhands such as caret-color and overflow-wrap', () => {
+    const response = matched([], {
+      inherited: [
+        {
+          matchedCSSRules: [
+            rule('.par', [prop('caret-color', 'red'), prop('overflow-wrap', 'anywhere')]),
+          ],
+        },
+      ],
+    });
+    const resolved = resolveCascade(response, ['caret-color', 'overflow-wrap']);
+    assert.equal(resolved.get('caret-color')?.winner?.value, 'red');
+    assert.equal(resolved.get('overflow-wrap')?.winner?.ancestor, 1);
+  });
+
+  void it('does not inherit a custom property registered with inherits: false', () => {
+    const registered = matched([], {
+      inherited: [
+        { matchedCSSRules: [rule('.par', [prop('--reg', '5px'), prop('--free', '1px')])] },
+      ],
+      cssPropertyRules: [
+        {
+          origin: 'regular',
+          propertyName: { text: '--reg' },
+          style: {
+            cssProperties: [prop('syntax', "'<length>'"), prop('inherits', 'false')],
+            shorthandEntries: [],
+          },
+        },
+      ],
+    });
+    const resolved = resolveCascade(registered, ['--reg', '--free']);
+    assert.equal(resolved.get('--reg')?.winner, undefined);
+    assert.equal(resolved.get('--free')?.winner?.value, '1px');
+    const scripted = matched([], {
+      inherited: [{ matchedCSSRules: [rule('.par', [prop('--js', '2px')])] }],
+      cssPropertyRegistrations: [{ propertyName: '--js', inherits: false, syntax: '<length>' }],
+    });
+    assert.equal(resolveCascade(scripted, ['--js']).get('--js')?.winner, undefined);
+  });
+
+  void it('names the matching selector of a list with the highest specificity', () => {
+    const list = rule('h1, .title', [prop('color', 'red')]);
+    list.rule.selectorList.selectors = [
+      { text: 'h1', specificity: { a: 0, b: 0, c: 1 } },
+      { text: '.title', specificity: { a: 0, b: 1, c: 0 } },
+    ];
+    list.matchingSelectors = [0, 1];
+    const winner = resolveCascade(matched([list]), ['color']).get('color')?.winner;
+    assert.equal(winner?.source.selector, '.title');
+    assert.deepEqual(winner?.source.specificity, [0, 1, 0]);
+  });
+
   void it('keeps the media condition and layer of the winning rule', () => {
     const result = resolveCascade(
       matched([

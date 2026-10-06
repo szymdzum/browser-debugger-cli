@@ -2034,10 +2034,23 @@ export function operationFailedError(operation: string, errorMessage: string): E
 }
 
 /**
- * `dom inspect --props` named a property the element has no value for.
+ * `--why all`: `all` resets every property, so there is no one cascade to show.
  *
- * @param names - Unknown property names
- * @param suggestions - Similar computed property names
+ * @returns Message and suggestion
+ */
+export function whyAllPropertyError(): ErrorWithSuggestion {
+  return {
+    message: '--why takes one property; "all" resets every property',
+    suggestion:
+      'Name the property you are after (e.g. --why color), or use --all to list the set ones',
+  };
+}
+
+/**
+ * Names given to --props or --why that are not CSS properties.
+ *
+ * @param names - Unknown names
+ * @param suggestions - Closest known names
  * @returns Message and suggestion
  */
 export function unknownCssPropertyError(

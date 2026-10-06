@@ -112,6 +112,12 @@ export interface RawInspect {
   props?: Record<string, string>;
   /** `--props` names the browser does not know as CSS properties */
   unknownProps?: string[];
+  /** The `--why` property is not a CSS property */
+  unknownWhy?: boolean;
+  /** Longhands of the `--why` property when it is a shorthand (as the browser expands it) */
+  whyLonghands?: string[];
+  /** Computed value of the `--why` shorthand (`getComputedStyle` writes it as one value) */
+  whyComputed?: string;
   /** Properties of running CSS transitions, and names of running animations */
   animating: string[];
 }
@@ -342,10 +348,10 @@ const TREE_JS = `(el, tree, textOf, depth) => {
 
 /**
  * Page-side function run on the element (`this`), see {@link RawInspect}.
- * Arguments: tree depth, and the property names asked for with `--props`
- * (or null).
+ * Arguments: tree depth, the property names asked for with `--props` (or
+ * null) and the `--why` property (or null).
  */
-export const INSPECT_PAGE_JS = `function (depth, props) {
+export const INSPECT_PAGE_JS = `function (depth, props, why) {
   const el = this;
   const view = el.ownerDocument.defaultView;
   const tree = (${FLAT_TREE_JS})(view);
@@ -399,6 +405,17 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
     };
     result.props = Object.fromEntries(props.filter(known).map((name) => [name, valueOf(name)]));
     result.unknownProps = props.filter((name) => !known(name));
+  }
+  if (why && !why.startsWith('--')) {
+    if (!CSS.supports(why, 'inherit')) result.unknownWhy = true;
+    else {
+      const probe = el.ownerDocument.createElement('div').style;
+      probe.setProperty(why, 'inherit');
+      if (probe.length > 1) {
+        result.whyLonghands = Array.from(probe);
+        result.whyComputed = s.getPropertyValue(why).trim();
+      }
+    }
   }
   return Object.assign(result,
     (${PLACEMENT_JS})(el, tree),
