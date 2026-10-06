@@ -170,7 +170,7 @@ function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<Ins
     style: sources.style,
     parentStyle: sources.parentStyle,
     replaced: sources.raw.replaced === true,
-    formControl: sources.raw.formControl && sources.raw.textual,
+    formControl: sources.raw.formControl && sources.raw.hasText,
     ...(sources.hints === false && { hints: false }),
     label: (declaration) => sourceLabel(declaration, cdp),
     ...(sources.rules && { rules: true }),

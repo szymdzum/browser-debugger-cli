@@ -76,7 +76,7 @@ export interface RawInspect {
    * the text's
    */
   textHolder?: string;
-  /** The element has a box and is not `visibility: hidden` */
+  /** Its text (the element, or the descendant that draws it) has a box and is not `visibility: hidden` */
   rendered: boolean;
   /** Visible text is drawn in it (or it is a text field or select) */
   hasText: boolean;
@@ -174,6 +174,7 @@ const TEXT_HOLDER_JS = `(el, tree) => {
   const visit = (n) => {
     if (budget-- <= 0) return;
     for (const c of nodesOf(n)) {
+      if (budget <= 0) return;
       if (c.nodeType === 3) {
         const length = c.data.replace(/\\s+/g, '').length;
         if (length === 0) continue;
@@ -368,7 +369,9 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
     content: content,
     textual: textual,
     formControl: formControl,
-    rendered: tree.rendered(el),
+    rendered: textual && textFrom !== el
+      ? tree.style(textFrom).visibility !== 'hidden' && tree.rendered(tree.style(textFrom).display === 'contents' ? tree.layoutParent(textFrom) : textFrom)
+      : tree.rendered(el),
     hasText: textControl || holder !== null,
     replaced: el instanceof SVGElement || /^(img|video|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
     svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
