@@ -35,20 +35,19 @@ export async function searchStyleSheets(
   await enableStyleDomains(cdp);
   const headers = [...styleSheetHeaders(cdp)].filter((header) => header.origin !== 'user-agent');
   const limit = params.limit ?? DEFAULT_CSS_SEARCH_LIMIT;
+  const texts = await Promise.all(headers.map((header) => sheetText(cdp, header.styleSheetId)));
   const matches: CssSearchMatch[] = [];
   let total = 0;
-  for (const header of headers) {
-    const text = await sheetText(cdp, header.styleSheetId);
-    for (const match of findInSheet(text, params.query)) {
-      total++;
-      if (matches.length < limit) {
-        matches.push({
-          source: stylesheetPositionLabel(header, match.line, match.column),
-          text: match.rule,
-        });
-      }
+  headers.forEach((header, i) => {
+    const found = findInSheet(texts[i] ?? '', params.query, limit - matches.length);
+    total += found.total;
+    for (const match of found.matches) {
+      matches.push({
+        source: stylesheetPositionLabel(header, match.line, match.column),
+        text: match.rule,
+      });
     }
-  }
+  });
   return { query: params.query, sheets: headers.length, total, matches };
 }
 
@@ -72,34 +71,50 @@ async function sheetText(cdp: CDPConnection, styleSheetId: string): Promise<stri
 }
 
 /**
- * Where a text occurs in a stylesheet (case-insensitive), each with the
- * rule around it: from the end of the previous rule to the end of this one,
- * whitespace collapsed and cut to {@link RULE_CONTEXT} characters.
+ * Where a text occurs in a stylesheet (case-insensitive): how many times,
+ * and for the first `limit` matches the 0-based line and column and the
+ * rule around it (from the end of the previous rule to the end of this one,
+ * whitespace collapsed, at most {@link RULE_CONTEXT} characters each side).
+ * Lines are counted as the search moves on, so a big sheet is read once.
  *
  * @param text - Stylesheet text
  * @param query - Text to find
- * @returns 0-based line and column of each match, and its rule
+ * @param limit - Matches described at most
+ * @returns Match count and the described matches
  */
 export function findInSheet(
   text: string,
-  query: string
-): Array<{ line: number; column: number; rule: string }> {
-  const found: Array<{ line: number; column: number; rule: string }> = [];
+  query: string,
+  limit = Number.POSITIVE_INFINITY
+): { total: number; matches: Array<{ line: number; column: number; rule: string }> } {
+  const matches: Array<{ line: number; column: number; rule: string }> = [];
   const haystack = text.toLowerCase();
   const needle = query.toLowerCase();
-  if (needle === '') return found;
+  if (needle === '') return { total: 0, matches };
+  let total = 0;
+  let line = 0;
+  let lineStart = 0;
+  let scanned = 0;
   for (
     let at = haystack.indexOf(needle);
     at >= 0;
     at = haystack.indexOf(needle, at + needle.length)
   ) {
-    const before = text.slice(0, at);
-    const line = before.split('\n').length - 1;
-    const column = at - (before.lastIndexOf('\n') + 1);
+    total++;
+    if (matches.length >= limit) continue;
+    for (let i = text.indexOf('\n', scanned); i >= 0 && i < at; i = text.indexOf('\n', i + 1)) {
+      line++;
+      lineStart = i + 1;
+    }
+    scanned = at;
     const start = Math.max(text.lastIndexOf('}', at) + 1, at - RULE_CONTEXT);
     const close = text.indexOf('}', at);
     const end = Math.min(close < 0 ? text.length : close + 1, at + RULE_CONTEXT);
-    found.push({ line, column, rule: text.slice(start, end).replace(/\s+/g, ' ').trim() });
+    matches.push({
+      line,
+      column: at - lineStart,
+      rule: text.slice(start, end).replace(/\s+/g, ' ').trim(),
+    });
   }
-  return found;
+  return { total, matches };
 }

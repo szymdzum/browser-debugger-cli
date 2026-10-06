@@ -1,6 +1,8 @@
 /**
  * Page-side part of `bdg dom audit`: one walk over the rendered elements of
- * the page (open shadow roots included, at most {@link AUDIT_ELEMENT_CAP})
+ * the page (open shadow roots and the light DOM slotted into them, at most
+ * {@link AUDIT_ELEMENT_CAP}; nothing inside a fixed element counts as making
+ * the page wider; SVG images and placeholders of 2px or less are skipped)
  * that collects what each check needs. Colors and contrast are computed in
  * the daemon ({@link buildAudit}), the same way `dom inspect` computes them.
  */
@@ -124,42 +126,45 @@ export const AUDIT_PAGE_JS = `function (checks) {
     }
     return { backgrounds: backgrounds, risks: risks, opacity: opacity };
   };
-  const visit = (n) => {
+  const visit = (n, fixed) => {
     if (result.walked >= ${AUDIT_ELEMENT_CAP}) { result.capped = true; return; }
     if (/^(script|style|template|noscript|head|meta|link|title)$/.test(n.localName)) return;
     const s = style(n);
     if (s.display === 'none') return;
     result.walked++;
+    const inFixed = fixed || s.position === 'fixed';
+    const kids = n.shadowRoot ? [...Array.from(n.shadowRoot.children), ...Array.from(n.children)] : Array.from(n.children);
     const r = n.getBoundingClientRect();
     const shown = r.width > 0 && r.height > 0 && s.visibility === 'visible';
     if (shown && want('contrast')) {
       const text = ownText(n);
-      if (text && Number(s.opacity) > 0) {
+      if (text && Number(s.opacity) > 0 && r.width > 2 && r.height > 2) {
         const chain = chainOf(n);
         if (chain.opacity > 0) texts.push(Object.assign({ label: label(n), text: short(text), color: s.color, fontSize: s.fontSize, fontWeight: s.fontWeight, inView: inView(r) }, chain));
       }
     }
     if (shown && want('overflow')) {
-      if (r.right > viewport.width + 1 && s.position !== 'fixed') wide.push({ label: label(n), right: r.right + view.scrollX, width: r.width });
+      if (r.right > viewport.width + 1 && !inFixed) wide.push({ label: label(n), right: r.right + view.scrollX, width: r.width });
       const cut = s.overflowX !== 'visible' && n.scrollWidth > n.clientWidth + 1 ? (s.textOverflow === 'ellipsis' ? 'ellipsis' : 'clip')
         : s.webkitLineClamp !== 'none' && n.scrollHeight > n.clientHeight + 1 ? 'clamp' : null;
       const textContent = cut && short(n.innerText || '');
       const visuallyHidden = r.width <= 2 || r.height <= 2;
       if (cut && textContent && n.children.length === 0 && !visuallyHidden) truncated.push({ label: label(n), text: textContent, kind: cut });
-      if (n.localName === 'img' && n.naturalWidth > 0 && n.complete) images.push({ label: label(n), natural: { w: n.naturalWidth, h: n.naturalHeight }, rendered: { w: r.width, h: r.height }, objectFit: s.objectFit });
+      const vector = /\\.svg([?#]|$)|^data:image\\/svg/i.test(n.currentSrc || '');
+      if (n.localName === 'img' && n.naturalWidth > 2 && n.naturalHeight > 2 && n.complete && !vector) images.push({ label: label(n), natural: { w: n.naturalWidth, h: n.naturalHeight }, rendered: { w: r.width, h: r.height }, objectFit: s.objectFit });
     }
     if (want('layers') && (s.position === 'fixed' || s.position === 'sticky') && r.width > 0 && r.height > 0) {
       layers.push({ label: label(n), position: s.position, zIndex: s.zIndex, rect: { x: r.left, y: r.top, w: r.width, h: r.height }, inView: inView(r) });
     }
     if (s.overflowX !== 'visible' && s.overflowX !== 'clip' && n !== doc.documentElement && n !== doc.body) {
       const wideBefore = wide.length;
-      for (const c of Array.from((n.shadowRoot || n).children)) visit(c);
+      for (const c of kids) visit(c, inFixed);
       wide.length = wideBefore;
       return;
     }
-    for (const c of Array.from((n.shadowRoot || n).children)) visit(c);
+    for (const c of kids) visit(c, inFixed);
   };
-  visit(doc.documentElement);
+  visit(doc.documentElement, false);
   if (want('contrast')) result.texts = texts;
   if (want('overflow')) Object.assign(result, { wide: wide, truncated: truncated, images: images });
   if (want('layers')) result.layers = layers;

@@ -177,6 +177,24 @@ function overflowFindings(raw: RawAudit, limit: number): NonNullable<AuditResult
 }
 
 /**
+ * How much an image's pixels are stretched on screen, by its `object-fit`:
+ * `fill` and `cover` stretch to the larger ratio, `contain` to the smaller,
+ * `none` not at all, `scale-down` at most to its own size.
+ *
+ * @param image - Page-side image
+ * @param pixelRatio - Device pixel ratio
+ * @returns Screen pixels per image pixel
+ */
+function drawnScale(image: RawImage, pixelRatio: number): number {
+  const across = (image.rendered.w * pixelRatio) / image.natural.w;
+  const down = (image.rendered.h * pixelRatio) / image.natural.h;
+  if (image.objectFit === 'none') return pixelRatio;
+  if (image.objectFit === 'contain') return Math.min(across, down);
+  if (image.objectFit === 'scale-down') return Math.min(pixelRatio, Math.min(across, down));
+  return Math.max(across, down);
+}
+
+/**
  * Findings with identical ones merged into the first, with a `count`.
  *
  * @param findings - Findings in page order
@@ -203,10 +221,7 @@ function grouped<T extends object>(findings: readonly T[]): Array<T & { count?: 
  * @returns Finding, or undefined when it is sharp and keeps its ratio
  */
 export function imageFinding(image: RawImage, pixelRatio = 1): AuditImage | undefined {
-  const scale = Math.max(
-    (image.rendered.w * pixelRatio) / image.natural.w,
-    (image.rendered.h * pixelRatio) / image.natural.h
-  );
+  const scale = drawnScale(image, pixelRatio);
   const naturalRatio = image.natural.w / image.natural.h;
   const renderedRatio = image.rendered.w / image.rendered.h;
   const distorted =

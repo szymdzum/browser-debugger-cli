@@ -94,5 +94,7 @@ void describe('dom audit', () => {
     assert.equal(imageFinding(image(200, 100), 2)?.scale, 2);
     assert.equal(imageFinding(image(100, 100))?.distorted, true);
     assert.equal(imageFinding(image(100, 100, 'cover')), undefined);
+    assert.equal(imageFinding(image(400, 100, 'contain')), undefined);
+    assert.equal(imageFinding(image(800, 800, 'none')), undefined);
   });
 });
