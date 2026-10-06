@@ -15,6 +15,7 @@ import {
   compactTipsMessage,
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
+import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 
 /**
@@ -216,6 +217,8 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       const totalCount = output.totals?.console ?? output.data.console.length;
       const limitHint = formatLimitHint(showingCount, totalCount);
       fmt.text(`CONSOLE (${showingCount}/${totalCount})${limitHint}:`);
+      if (output.totals?.consoleDropped)
+        fmt.text(`  ${consoleDroppedNote(output.totals.consoleDropped)}`);
       if (messages.length === 0) {
         fmt.text(`  ${PREVIEW_EMPTY_STATES.NO_DATA}`);
       } else {
@@ -322,6 +325,7 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           ? `Console Messages (all ${messages.length})`
           : `Console Messages (last ${messages.length} of ${output.totals?.console ?? output.data.console.length})`;
       fmt.text(title).separator('━', 50);
+      if (output.totals?.consoleDropped) fmt.text(consoleDroppedNote(output.totals.consoleDropped));
       if (messages.length === 0) {
         fmt.text(PREVIEW_EMPTY_STATES.NO_CONSOLE_MESSAGES);
       } else {

@@ -9,6 +9,7 @@ import type { ConsoleMessage } from '@/types.js';
 import { lastMessages } from './chronological.js';
 import {
   analyzeMessages,
+  newestGroups,
   type ConsoleFormatOptions,
   type ConsoleJsonOutput,
   type DeduplicatedMessage,
@@ -36,8 +37,8 @@ function toJsonError(dedup: DeduplicatedMessage, includeStackTrace: boolean): Js
 }
 
 /**
- * Build the rich JSON output shape (summary + deduped errors/warnings, plus
- * the full message list when --list is requested).
+ * Build the rich JSON output shape (summary + the newest deduped
+ * errors/warnings, plus the message list when --list is requested).
  *
  * Returns a plain object so callers (e.g. runCommand's JSON envelope) can
  * embed it without re-parsing a stringified payload.
@@ -47,11 +48,16 @@ export function buildConsoleJsonOutput(
   options: ConsoleFormatOptions
 ): ConsoleJsonOutput {
   const { grouped, summary } = analyzeMessages(messages);
+  const errors = newestGroups(grouped.errors, options.groupLimit);
+  const warnings = newestGroups(grouped.warnings, options.groupLimit);
 
   const output: ConsoleJsonOutput = {
     summary,
-    errors: grouped.errors.map((d) => toJsonError(d, true)),
-    warnings: grouped.warnings.map((d) => toJsonError(d, false)),
+    errors: errors.shown.map((d) => toJsonError(d, true)),
+    warnings: warnings.shown.map((d) => toJsonError(d, false)),
+    ...(errors.more > 0 && { moreErrors: errors.more }),
+    ...(warnings.more > 0 && { moreWarnings: warnings.more }),
+    ...(options.dropped && { dropped: options.dropped }),
   };
 
   if (options.list) output.messages = lastMessages(messages, options.last);

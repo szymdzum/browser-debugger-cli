@@ -246,4 +246,18 @@ void describe('preview totals', () => {
     };
     assert.equal(json.data.totals.network, 25);
   });
+
+  void test('notes dropped console messages under the console section, compact and verbose', () => {
+    const dropped = {
+      ...output,
+      data: { network: [], console: [{ type: 'log', text: 'newest', timestamp: 1, index: 12 }] },
+      totals: { network: 0, console: 1, consoleDropped: 12 },
+    };
+    const note = /⚠ 12 older console messages were dropped: bdg keeps the newest 10000/;
+    for (const verbose of [false, true]) {
+      const text = formatPreview(dropped as never, { last: 10, console: true, verbose });
+      assert.match(text, note);
+      assert.ok(text.search(note) > text.search(/console/i), 'below the console heading');
+    }
+  });
 });
