@@ -15,6 +15,9 @@
 
 set -euo pipefail
 
+# Sessions start headless, as in CI (on a Mac desktop Chrome would open windows)
+export CI="${CI:-1}"
+
 # Configuration
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="$TESTS_DIR/results"

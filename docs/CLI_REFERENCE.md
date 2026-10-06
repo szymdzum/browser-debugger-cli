@@ -1335,12 +1335,15 @@ bdg localhost:3000 --all                    # Include all data (disable filterin
 bdg localhost:3000 --user-data-dir ~/custom # Custom Chrome profile directory
 ```
 
+Without `--headless`/`--no-headless`, Chrome gets a window when there is a display: on macOS unless the shell came in over SSH (`SSH_CONNECTION`, `SSH_TTY`) or `CI` is set; on Linux when `DISPLAY` or `WAYLAND_DISPLAY` is set (desktops, WSLg). Servers, containers and CI run headless. An agent running bdg unattended on a Mac should pass `--headless`.
+
 Profiles bdg manages (`~/.bdg/chrome-profile`, a named session's profile) have the password manager and its leak check turned off, because their bubbles capture clicks in headless Chrome. A profile given with `-u`/`--user-data-dir` (or in `--chrome-flags`) is checked before Chrome starts: a path through a file or under `/proc`/`/sys` exits 81, an unwritable parent 82. bdg leaves such a profile as it is; turn them off there yourself (Settings > Passwords) if clicks stop reaching the page after a login.
 
 ### Advanced Options
 ```bash
 # Chrome Options
 bdg localhost:3000 --headless                   # Launch Chrome in headless mode
+bdg localhost:3000 --no-headless                # Launch Chrome with a window
 bdg localhost:3000 --chrome-ws-url 9222        # Connect to existing Chrome instance
 
 # --chrome-ws-url takes the DevTools port of a running Chrome (9222, host:port or

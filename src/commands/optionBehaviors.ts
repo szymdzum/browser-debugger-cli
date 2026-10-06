@@ -409,6 +409,16 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Compact output (truncated URLs, no resource types)',
     whenEnabled: 'Verbose output with full URLs and resource types',
   },
+  'start:--headless': {
+    default:
+      'A window when there is a display: on macOS unless over SSH (SSH_CONNECTION, SSH_TTY) or CI is set; on Linux when DISPLAY or WAYLAND_DISPLAY is set. Servers, containers and CI run headless',
+    whenEnabled: 'Chrome runs without a window (pass it when running unattended on a Mac)',
+  },
+  'start:--no-headless': {
+    default:
+      'A window when there is a display: on macOS unless over SSH (SSH_CONNECTION, SSH_TTY) or CI is set; on Linux when DISPLAY or WAYLAND_DISPLAY is set',
+    whenEnabled: 'Chrome shows its window even without a detected display (it fails without one)',
+  },
   'start:--all': {
     default:
       'Tracking/analytics requests and console noise are filtered; bodies of binary responses (images, fonts) are not captured',
