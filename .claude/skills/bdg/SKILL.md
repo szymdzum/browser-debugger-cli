@@ -16,8 +16,8 @@ bdg stop                         # End session
 ## Session Management
 
 ```bash
-bdg <url>                  # Start session (1920x1080, headless if no display)
-bdg <url> --headless       # Force headless mode
+bdg <url>                  # Start session (a window on a Mac or Linux desktop; headless over SSH, with CI set, on servers)
+bdg <url> --headless       # Force headless mode (do this when running unattended)
 bdg <url> --no-headless    # Force visible browser window
 bdg status                 # Check session status
 bdg peek                   # Preview collected telemetry

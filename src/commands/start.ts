@@ -23,6 +23,7 @@ import {
 import type { ColorScheme, TelemetryType, ViewportSize } from '@/types.js';
 import { startCommandHelpMessage } from '@/ui/messages/commands.js';
 import { directoryProblem } from '@/utils/directories.js';
+import { hasDisplay } from '@/utils/display.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { probeDevToolsEndpoint } from '@/utils/http.js';
 import { findSimilar } from '@/utils/suggestions.js';
@@ -58,16 +59,6 @@ export interface CollectorOptions {
   mobile?: boolean;
   /** `prefers-color-scheme` to emulate: light or dark. */
   colorScheme?: string;
-}
-
-/**
- * Check if a display server (X11 or Wayland) is available.
- * Used to determine default headless mode.
- */
-function hasDisplay(): boolean {
-  const display = process.env['DISPLAY'];
-  const wayland = process.env['WAYLAND_DISPLAY'];
-  return (display !== undefined && display !== '') || (wayland !== undefined && wayland !== '');
 }
 
 /**
@@ -139,7 +130,7 @@ export function applyCollectorOptions(command: Command): Command {
     .addOption(new Option('--compact', 'No effect; kept for compatibility').hideHelp())
     .option(
       '--headless',
-      'Run Chrome without a window (default unless DISPLAY or WAYLAND_DISPLAY is set)',
+      'Run Chrome without a window (default without a display: Linux without DISPLAY or WAYLAND_DISPLAY, macOS over SSH or in CI)',
       defaultHeadless
     )
     .option('--no-headless', 'Show browser window')

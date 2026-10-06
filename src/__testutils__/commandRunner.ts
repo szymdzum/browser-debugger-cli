@@ -63,6 +63,7 @@ export async function runCommand(
         ...process.env,
         BDG_SESSION_DIR: testSessionDir,
         HOME: testHomeDir,
+        CI: '1',
         ...env,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
