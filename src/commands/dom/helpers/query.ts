@@ -290,30 +290,47 @@ export async function documentReadyState(): Promise<string | undefined> {
 const VIEWPORT_HINT_LIMIT = 100;
 
 /**
- * Where each element of a page-side array lives (an iframe and/or a shadow
- * root), its text, its form control state ({@link ELEMENT_STATE_JS}) and, for
- * the first {@link VIEWPORT_HINT_LIMIT}, its position
- * relative to the viewport, plus the viewport size. An element that cannot be
- * read gets empty details instead of failing the whole query.
+ * Matches `dom query` describes and caches for use by index at least, beyond
+ * those it lists: describing costs a round trip per element, so a page with
+ * 50000 matches is not described whole unless `--limit 0` asks for it.
  */
-const ELEMENT_DETAILS_FUNCTION = `function () {
+export const QUERY_CACHE_LIMIT = 1000;
+
+/**
+ * For the first `count` elements of a page-side array: the tag and
+ * attributes, where it lives (an iframe and/or a shadow root), its text, its
+ * form control state ({@link ELEMENT_STATE_JS}) and, for the first
+ * {@link VIEWPORT_HINT_LIMIT}, its position relative to the viewport; plus
+ * the viewport size and how many elements the array has. An element that
+ * cannot be read gets empty details instead of failing the whole query.
+ */
+const ELEMENT_DETAILS_FUNCTION = `function (count) {
   const contextOf = ${ELEMENT_CONTEXT_JS};
   const textOf = ${ELEMENT_TEXT_JS};
   const geometryOf = ${ELEMENT_GEOMETRY_JS};
   const stateOf = ${ELEMENT_STATE_JS};
   const read = (el, index) => {
     try {
-      return { context: contextOf(el), text: textOf(el), state: stateOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
+      const attributes = [];
+      for (const attribute of Array.from(el.attributes || [])) attributes.push(attribute.name, attribute.value);
+      return { tag: el.nodeName, attributes: attributes, context: contextOf(el), text: textOf(el), state: stateOf(el), geometry: index < ${VIEWPORT_HINT_LIMIT} ? geometryOf(el) : null };
     } catch (e) {
       return {};
     }
   };
-  return { viewport: (${VIEWPORT_SIZE_JS})(window), elements: Array.from(this, read) };
+  return { total: this.length, viewport: (${VIEWPORT_SIZE_JS})(window), elements: Array.from(Array.prototype.slice.call(this, 0, count), read) };
 }`;
+
+/** Page-side: the first `count` elements of the array, as a new array */
+const SLICE_FUNCTION = `function (count) { return Array.prototype.slice.call(this, 0, count); }`;
 
 /** One element of a selection with what `dom query` shows about it. */
 interface ElementDetails {
   backendNodeId: number;
+  /** Node name as CDP reports it (`DIV`, `svg`) */
+  tag: string;
+  /** Attributes as `[name, value, name, value, ...]` */
+  attributes: string[];
   context: string;
   text: string;
   state: ElementState;
@@ -323,6 +340,8 @@ interface ElementDetails {
 
 /** What {@link ELEMENT_DETAILS_FUNCTION} returns for one element. */
 interface PageElementDetails {
+  tag?: string;
+  attributes?: string[];
   context?: string;
   text?: string;
   state?: ElementState;
@@ -331,27 +350,40 @@ interface PageElementDetails {
 
 /** What {@link ELEMENT_DETAILS_FUNCTION} returns. */
 interface PageDetails {
+  /** Elements in the array (all matches) */
+  total?: number;
   viewport?: LayoutSize;
   elements?: PageElementDetails[];
 }
 
 /**
- * Backend node ids of the elements in a page-side array, each with where it
- * lives (empty for the main document), its text and its viewport position.
+ * The first `count` elements of a page-side array with their backend node
+ * ids, tag and attributes, where each lives (empty for the main document),
+ * its text and its viewport position, and how many elements the array has.
  *
  * @param arrayObjectId - Remote object id of the array
- * @returns Elements in array order (ones that cannot be described are left out)
+ * @param count - Elements to describe (0 = all)
+ * @returns Elements in array order (ones that cannot be described are left
+ *   out) and the array's length
  * @throws CommandError (91) when the page could not describe the matches
  */
-async function elementsWithDetails(arrayObjectId: string): Promise<ElementDetails[]> {
-  const { viewport, elements = [] } = await readPageDetails(arrayObjectId);
-  const ids = await elementBackendNodeIds(arrayObjectId);
-  return ids.flatMap((backendNodeId, index) => {
+async function elementsWithDetails(
+  arrayObjectId: string,
+  count: number
+): Promise<{ total: number; elements: ElementDetails[] }> {
+  const limit = count === 0 ? Number.MAX_SAFE_INTEGER : count;
+  const { total = 0, viewport, elements = [] } = await readPageDetails(arrayObjectId, limit);
+  const ids = await elementBackendNodeIds(
+    total > limit ? await sliceArray(arrayObjectId, limit) : arrayObjectId
+  );
+  const described = ids.flatMap((backendNodeId, index) => {
     if (backendNodeId === undefined) return [];
     const details = elements[index];
     return [
       {
         backendNodeId,
+        tag: details?.tag ?? '',
+        attributes: details?.attributes ?? [],
         context: details?.context ?? '',
         text: details?.text ?? '',
         state: details?.state ?? {},
@@ -359,19 +391,46 @@ async function elementsWithDetails(arrayObjectId: string): Promise<ElementDetail
       },
     ];
   });
+  return { total, elements: described };
+}
+
+/**
+ * A page-side array of the first elements of another (in the same object
+ * group), so only those are described.
+ *
+ * @param arrayObjectId - Remote object id of the array
+ * @param count - Elements to keep
+ * @returns Remote object id of the shorter array
+ * @throws CommandError (91) when the page could not slice it
+ */
+async function sliceArray(arrayObjectId: string, count: number): Promise<string> {
+  const response = await callCDP('Runtime.callFunctionOn', {
+    objectId: arrayObjectId,
+    functionDeclaration: SLICE_FUNCTION,
+    arguments: [{ value: count }],
+  });
+  const objectId = (response.data?.result as Partial<Protocol.Runtime.CallFunctionOnResponse>)
+    ?.result?.objectId;
+  if (!objectId) {
+    const err = operationFailedError('describe the matches', response.error ?? 'no result');
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
+  }
+  return objectId;
 }
 
 /**
  * Run {@link ELEMENT_DETAILS_FUNCTION} on a page-side array.
  *
  * @param arrayObjectId - Remote object id of the array
- * @returns Details of each element and the viewport size
+ * @param count - Elements to describe, from the start
+ * @returns Details of those elements, the array's length and the viewport size
  * @throws CommandError (91) when the script failed
  */
-async function readPageDetails(arrayObjectId: string): Promise<PageDetails> {
+async function readPageDetails(arrayObjectId: string, count: number): Promise<PageDetails> {
   const response = await callCDP('Runtime.callFunctionOn', {
     objectId: arrayObjectId,
     functionDeclaration: ELEMENT_DETAILS_FUNCTION,
+    arguments: [{ value: count }],
     returnByValue: true,
   });
   const result = response.data?.result as
@@ -483,41 +542,51 @@ function mapConcurrently<T, R>(
 }
 
 /**
- * Query elements by selector for `bdg dom query`.
+ * Query elements by selector for `bdg dom query`: all matches are counted,
+ * and the first `limit` (at least {@link QUERY_CACHE_LIMIT}, so indices past
+ * the listed ones still work) are described in one page-side pass plus one
+ * `DOM.describeNode` each for their backend node id.
  *
  * @param selector - CSS selector
- * @returns Matches with backend node ids, tags, classes and text previews
+ * @param limit - Matches the caller lists (0 = all, so all are described)
+ * @returns The match count, and the described matches with backend node
+ *   ids, tags, key attributes, classes and text previews
  */
-export async function queryDOMElements(selector: string): Promise<DomQueryResult> {
-  const elements = await withSelection(selector, elementsWithDetails);
-  if (elements.length > 20) {
-    log.debug(`Querying ${elements.length} elements with selector: ${selector}`);
-  }
+export async function queryDOMElements(selector: string, limit = 0): Promise<DomQueryResult> {
+  const described = limit === 0 ? 0 : Math.max(limit, QUERY_CACHE_LIMIT);
+  const { total, elements } = await withSelection(selector, (arrayObjectId) =>
+    elementsWithDetails(arrayObjectId, described)
+  );
+  if (total > 20) log.debug(`Queried ${total} elements with selector: ${selector}`);
+  return { selector, count: total, nodes: elements.map(queryNode) };
+}
 
-  const nodes = await mapConcurrently(elements, async (element, index) => {
-    const { backendNodeId, context, text, state, inViewport, clippedBy } = element;
-    const desc = await describeNode({ backendNodeId });
-    if (!desc) return { index, nodeId: 0 };
-    const attributes = unpackAttributes(desc.attributes);
-    const classes = attributes['class']?.split(/\s+/).filter(Boolean);
-    const preview = textPreview(text);
-    const tag = desc.nodeName.toLowerCase();
-    const keys = keyAttributes(tag, attributes, state);
-    return {
-      index,
-      nodeId: desc.backendNodeId,
-      tag,
-      ...identifyingAttributes(attributes, desc.nodeName),
-      ...(keys && { attributes: keys }),
-      ...(classes && { classes }),
-      ...(preview && { preview }),
-      ...(context && { context }),
-      ...(inViewport && { inViewport }),
-      ...(clippedBy && { clippedBy }),
-    };
-  });
-
-  return { selector, count: nodes.length, nodes };
+/**
+ * One described match as `dom query` reports it.
+ *
+ * @param element - Match with its page-side details
+ * @param index - Its position among the matches
+ * @returns Query node
+ */
+function queryNode(element: ElementDetails, index: number): DomQueryResult['nodes'][number] {
+  const { backendNodeId, context, text, state, inViewport, clippedBy } = element;
+  const attributes = unpackAttributes(element.attributes);
+  const classes = attributes['class']?.split(/\s+/).filter(Boolean);
+  const preview = textPreview(text);
+  const tag = element.tag.toLowerCase();
+  const keys = keyAttributes(tag, attributes, state);
+  return {
+    index,
+    nodeId: backendNodeId,
+    tag,
+    ...identifyingAttributes(attributes, element.tag),
+    ...(keys && { attributes: keys }),
+    ...(classes && { classes }),
+    ...(preview && { preview }),
+    ...(context && { context }),
+    ...(inViewport && { inViewport }),
+    ...(clippedBy && { clippedBy }),
+  };
 }
 
 /**

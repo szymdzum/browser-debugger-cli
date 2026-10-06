@@ -475,6 +475,10 @@ export interface DomQueryResult {
     /** Unique selector for this node (set by form discovery) */
     selector?: string;
   }>;
+  /** Matches not listed (`--limit`); `count` is all of them */
+  omitted?: number;
+  /** Matches usable by index (described and cached), when fewer than `count` */
+  indexed?: number;
 }
 
 /**

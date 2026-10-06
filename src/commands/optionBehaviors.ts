@@ -112,11 +112,11 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'query:--limit': {
     default:
-      'dom a11y query lists the first 50 matches and says how many more there are; --json returns all of them',
+      'dom query and dom a11y query list the first 50 matches and say how many more there are; --json returns 1000 (dom query) or all of them (dom a11y query)',
     whenEnabled:
       'Lists that many matches (0 = all), in human and JSON output; count is always the total, JSON omitted the rest',
     automaticBehavior:
-      'All matches are cached for index-based access (bdg dom click 55 works even when 50 are listed); an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame',
+      'Matches are cached for index-based access (bdg dom click 55 works even when 50 are listed): all of them for dom a11y query, the first 1000 (or --limit, if higher) for dom query, which describes only those, so a page with 50000 matches answers in under a second; an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame',
     tokenImpact: 'About one line per match; a page can have hundreds of links',
   },
   'eval:--frame': {

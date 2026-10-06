@@ -23,13 +23,22 @@ void describe('formatDomQuery', () => {
     assert.doesNotMatch(output, /undefined/);
   });
 
-  void it('lists at most 50 matches and says how many more there are', () => {
-    const nodes = Array.from({ length: 60 }, (_, index) => ({ index, nodeId: index, tag: 'li' }));
-    const output = formatDomQuery({ selector: 'li', count: 60, nodes });
+  void it('lists the matches given and says how many more there are, and how many are indexed', () => {
+    const nodes = Array.from({ length: 50 }, (_, index) => ({ index, nodeId: index, tag: 'li' }));
+    const output = formatDomQuery({
+      selector: 'li',
+      count: 50003,
+      nodes,
+      omitted: 49953,
+      indexed: 1000,
+    });
 
+    assert.match(output, /^Found 50003 nodes matching "li":/);
     assert.match(output, /\[49\] <li>$/m);
-    assert.doesNotMatch(output, /\[50\]/);
-    assert.match(output, /\.\.\. and 10 more \(use --json for all\)/);
+    assert.match(
+      output,
+      /\.\.\. and 49953 more \(--limit 0 lists all; indices 0-999 work with other commands\)/
+    );
   });
 });
 
