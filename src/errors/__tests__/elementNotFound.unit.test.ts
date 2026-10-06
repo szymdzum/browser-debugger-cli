@@ -73,4 +73,12 @@ void describe('elementNotFoundError', () => {
       /^Did you mean #remove-backpack/
     );
   });
+
+  void it('explains that ::part() and ::slotted() select nothing', () => {
+    assert.match(
+      noNodesFoundError('sl-input::part(input)').suggestion,
+      /select the part itself: \[part~="input"\]/
+    );
+    assert.match(noNodesFoundError('::slotted(span)').suggestion, /in the light DOM/);
+  });
 });

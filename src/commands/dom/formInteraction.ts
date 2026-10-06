@@ -24,11 +24,13 @@ import { CommandError } from '@/errors/index.js';
 import {
   VIA_LABEL_SUFFIX,
   conflictingOptionsMessage,
+  hoverOffWithTargetError,
+  missingArgumentError,
   indexSourceText,
   internalError,
   scrollOptionsError,
 } from '@/errors/messages.js';
-import { domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
+import { callCDP, domClick, domFill, domPressKey, domScroll, domSubmit } from '@/ipc/client.js';
 import type { ActionEffects, DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { type PressKeyResult, type ScrollResult } from '@/runtime/dom/formFillHelpers/index.js';
 import type { SubmitResult } from '@/runtime/dom/formSubmitHelpers.js';
@@ -42,10 +44,13 @@ import {
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   CLICK_RESULT_WAIT_HELP,
+  HOVER_OFF_DONE,
+  HOVER_USAGE,
   POINTER_ACTION_DONE,
   POINTER_ACTION_NOUN,
   actionStatusLine,
   dialogConsoleText,
+  moreMessagesText,
   newMessageText,
   pageNavigationText,
   shownElementText,
@@ -143,15 +148,27 @@ export function registerFormInteractionCommands(program: Command): void {
 
   domCommand
     .command('hover')
-    .description('Move the mouse over an element (shows hover menus and tooltips)')
-    .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
+    .description(
+      'Move the mouse over an element (shows hover menus and tooltips); --off moves it off the page'
+    )
+    .argument('[selectorOrIndex]', SELECTOR_OR_INDEX_ARGUMENT)
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
+    .option('--off', 'Move the mouse off the page instead (closes menus that open on hover)')
     .option('--strict', STRICT_OPTION_HELP)
     .option('--no-wait', 'Skip waiting for network stability after hovering')
     .addOption(jsonOption())
-    .action(async (selectorOrIndex: string, options: ClickCommandOptions) => {
-      await runPointerCommand(selectorOrIndex, options, 'hover');
-    });
+    .action(
+      async (
+        selectorOrIndex: string | undefined,
+        options: ClickCommandOptions & { off?: boolean }
+      ) => {
+        if (options.off || selectorOrIndex === undefined) {
+          await hoverOff(selectorOrIndex, options);
+          return;
+        }
+        await runPointerCommand(selectorOrIndex, options, 'hover');
+      }
+    );
 
   domCommand
     .command('submit')
@@ -338,6 +355,36 @@ function scrollOptionsProblem(
  * @param options - Command options
  * @param action - Pointer action
  */
+/**
+ * `bdg dom hover --off`: move the mouse off the page, so `mouseleave` and
+ * `:hover` end and menus that open on hover close.
+ *
+ * @param selectorOrIndex - Must be absent with --off
+ * @param options - Command options
+ */
+async function hoverOff(
+  selectorOrIndex: string | undefined,
+  options: ClickCommandOptions & { off?: boolean }
+): Promise<void> {
+  await runCommand(
+    async () => {
+      if (!options.off || selectorOrIndex !== undefined || options.index !== undefined) {
+        const err = options.off ? hoverOffWithTargetError() : missingArgumentError(HOVER_USAGE);
+        return {
+          success: false,
+          error: err.message,
+          exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+          errorContext: { suggestion: err.suggestion },
+        };
+      }
+      await callCDP('Input.dispatchMouseEvent', { type: 'mouseMoved', x: -1, y: -1 });
+      return { success: true, data: { pointer: 'off' } };
+    },
+    options,
+    () => HOVER_OFF_DONE
+  );
+}
+
 async function runPointerCommand(
   selectorOrIndex: string,
   options: ClickCommandOptions,
@@ -423,7 +470,15 @@ function formatActionOutput(
   fmt.blank();
   fmt.keyValueList(details, keyWidth);
   if (result.navigation) fmt.keyValue('Page', pageNavigationText(result.navigation), keyWidth);
-  listRows(fmt, 'New text', (result.messages ?? []).map(newMessageText), keyWidth);
+  listRows(
+    fmt,
+    'New text',
+    [
+      ...(result.messages ?? []).map(newMessageText),
+      ...(result.moreMessages ? [moreMessagesText(result.moreMessages)] : []),
+    ],
+    keyWidth
+  );
   listRows(fmt, 'Shown', (result.shown ?? []).map(shownElementText), keyWidth);
 
   const omitted = result.triggeredRequestsOmitted;

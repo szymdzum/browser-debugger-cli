@@ -178,6 +178,24 @@ export function pageNavigationText(navigation: PageNavigation): string {
 }
 
 /**
+ * Last `New text:` row when an action made more messages appear than are listed.
+ *
+ * @param count - Messages not listed
+ * @returns e.g. `(+4 more)`
+ */
+export function moreMessagesText(count: number): string {
+  return `(+${count} more)`;
+}
+
+/** Result line of `bdg dom hover --off` */
+export const HOVER_OFF_DONE =
+  '✓ Mouse moved off the page (hover styles and menus that close on mouseleave are gone)';
+
+/** How `bdg dom hover` is called */
+export const HOVER_USAGE =
+  'bdg dom hover <selector|index>, or bdg dom hover --off to move the mouse away';
+
+/**
  * A message an action made appear, for its `New text:` rows.
  *
  * @param message - New message

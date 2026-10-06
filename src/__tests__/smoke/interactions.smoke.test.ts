@@ -197,6 +197,34 @@ void describe('DOM interactions', () => {
     assert.equal(fs.existsSync(path.join(dir, 'mismatch.png')), false);
   });
 
+  void it('fills the field inside a web component and moves the mouse off a hover menu', async () => {
+    await evaluate(
+      `customElements.get('x-field') || customElements.define('x-field', class extends HTMLElement { constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML = '<input part="input">'; } });
+      document.body.insertAdjacentHTML('beforeend', '<x-field id="xf"></x-field><div id="hover-off-trigger" style="width:100px;height:30px">Menu</div><p id="hover-off-log"></p>');
+      const trigger = document.getElementById('hover-off-trigger');
+      trigger.addEventListener('mouseenter', () => { document.getElementById('hover-off-log').textContent += 'enter '; });
+      trigger.addEventListener('mouseleave', () => { document.getElementById('hover-off-log').textContent += 'leave '; }); 1`
+    );
+    try {
+      await bdg(['dom', 'fill', '#xf', 'typed']);
+      assert.equal(
+        await evaluate("document.getElementById('xf').shadowRoot.querySelector('input').value"),
+        'typed'
+      );
+      await bdg(['dom', 'hover', '#hover-off-trigger']);
+      await bdg(['dom', 'hover', '--off']);
+      assert.equal(
+        await evaluate("document.getElementById('hover-off-log').textContent"),
+        'enter leave '
+      );
+      await bdg(['dom', 'hover', '#hover-off-trigger', '--off'], 81);
+    } finally {
+      await evaluate(
+        "['xf', 'hover-off-trigger', 'hover-off-log'].forEach((id) => document.getElementById(id).remove()); 1"
+      );
+    }
+  });
+
   void it('takes the element as an argument and includes floated content', async () => {
     const dir = makeTempDir('bdg-shot-');
     const file = path.join(dir, 'floats.png');

@@ -160,7 +160,7 @@ export function newMessages(
   before: SeenMessage[],
   after: SeenMessage[],
   newDocument: boolean
-): NewMessage[] {
+): { messages: NewMessage[]; more: number } {
   const countTexts = (messages: SeenMessage[]): Map<string, number> => {
     const counts = new Map<string, number>();
     messages.forEach(({ text }) => counts.set(text, (counts.get(text) ?? 0) + 1));
@@ -179,13 +179,15 @@ export function newMessages(
   const reported = new Set<string>();
   const result: NewMessage[] = [];
   for (const message of after) {
-    if (result.length >= MAX_NEW_MESSAGES) break;
     if (reported.has(message.text) || TICKING_TEXT.test(message.text)) continue;
     if (!isNew(message)) continue;
     reported.add(message.text);
     result.push({ text: cutText(message.text), element: message.element });
   }
-  return result;
+  return {
+    messages: result.slice(0, MAX_NEW_MESSAGES),
+    more: Math.max(0, result.length - MAX_NEW_MESSAGES),
+  };
 }
 
 /**
@@ -491,12 +493,15 @@ function effectsOf(
   events: NavigationEvents
 ): ActionEffects {
   const navigation = pageNavigation(start?.href, snapshot, events);
-  const messages =
-    start && snapshot ? newMessages(start.messages, snapshot.messages, snapshot.fresh) : [];
+  const { messages, more } =
+    start && snapshot
+      ? newMessages(start.messages, snapshot.messages, snapshot.fresh)
+      : { messages: [], more: 0 };
   const shown = shownElements(snapshot?.shown ?? [], messages);
   return {
     ...(navigation && { navigation }),
     ...(messages.length > 0 && { messages }),
+    ...(more > 0 && { moreMessages: more }),
     ...(shown.length > 0 && { shown }),
   };
 }

@@ -104,7 +104,23 @@ export const FILL_REFUSAL_JS = `(el) => {
   if (el.closest('[inert]')) return refuse('inert', 'inside an inert element');
   if (el.getAttribute('aria-readonly') === 'true') return refuse('readOnly', 'aria-readonly="true"');
   if (el.getAttribute('aria-disabled') === 'true') return refuse('disabled', 'aria-disabled="true"');
+  if (el.shadowRoot) {
+    const fields = el.shadowRoot.querySelectorAll('input:not([type="hidden"]), textarea, select, [contenteditable]:not([contenteditable="false"])').length;
+    return refuse('notFillable', '<' + tag + '> has ' + (fields === 0 ? 'no field' : fields + ' fields') + ' in its shadow root; select the one to fill, e.g. its [part~=…] or class');
+  }
   return refuse('notFillable', '<' + tag + '> is not an input, textarea, select or contenteditable element');
+}`;
+
+/**
+ * Page-side: the one text field, select or editable element in an element's
+ * open shadow root (a web component such as `<sl-input>` wrapping a native
+ * input), which `dom fill` fills in its place; null when the element is a
+ * field itself or its shadow root has none or several.
+ */
+export const SHADOW_FIELD_JS = `(el) => {
+  if (!el.shadowRoot || /^(input|textarea|select)$/.test(el.localName) || el.isContentEditable) return null;
+  const fields = el.shadowRoot.querySelectorAll('input:not([type="hidden"]), textarea, select, [contenteditable]:not([contenteditable="false"])');
+  return fields.length === 1 ? fields[0] : null;
 }`;
 
 /**
@@ -210,6 +226,9 @@ export const REACT_FILL_SCRIPT = `
   }
   const viaLabel = labelControl ? ${JSON.stringify(VIA_LABEL_SUFFIX)} : '';
   if (labelControl) el = labelControl;
+  const shadowField = (${SHADOW_FIELD_JS})(el);
+  const viaShadow = shadowField ? ' in the shadow root of <' + el.localName + '>' : '';
+  if (shadowField) el = shadowField;
 
   const tagName = el.tagName.toLowerCase();
   const inputType = el.type?.toLowerCase();
@@ -219,7 +238,7 @@ export const REACT_FILL_SCRIPT = `
     return {
       success: false,
       error: refusal.error,
-      elementType: tagName + viaLabel,
+      elementType: tagName + viaLabel + viaShadow,
       suggestion: refusal.suggestion,
       unsuitableElement: refusal.kind === 'notFillable'
     };
@@ -248,7 +267,7 @@ export const REACT_FILL_SCRIPT = `
         success: false,
         error: 'Option not found: ' + missing,
         exitCode: 81,
-        elementType: tagName + viaLabel,
+        elementType: tagName + viaLabel + viaShadow,
         suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
       };
     }
@@ -267,7 +286,7 @@ export const REACT_FILL_SCRIPT = `
         success: false,
         error: 'Option not found: ' + value,
         exitCode: 81,
-        elementType: tagName + viaLabel,
+        elementType: tagName + viaLabel + viaShadow,
         suggestion: 'Available options: ' + options.slice(0, 10).map((o) => o.value || o.text.trim()).join(', ')
       };
     }
@@ -285,7 +304,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: 'Expected true or false for a ' + inputType + ', got "' + value + '"',
-        elementType: tagName + viaLabel,
+        elementType: tagName + viaLabel + viaShadow,
         inputType: inputType,
         suggestion: 'Use true/false (also yes/no, on/off, 1/0)'
       };
@@ -295,7 +314,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: 'A radio button cannot be unchecked',
-        elementType: tagName + viaLabel,
+        elementType: tagName + viaLabel + viaShadow,
         inputType: inputType,
         suggestion: 'Select another option in the same group instead'
       };
@@ -308,7 +327,7 @@ export const REACT_FILL_SCRIPT = `
     return {
       success: false,
       fileInput: true,
-      elementType: tagName + viaLabel,
+      elementType: tagName + viaLabel + viaShadow,
       inputType: inputType,
       error: 'File input'
     };
@@ -334,7 +353,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: 'Value is ' + value.length + ' characters; the field accepts at most ' + el.maxLength,
-        elementType: tagName + viaLabel,
+        elementType: tagName + viaLabel + viaShadow,
         inputType: inputType || null,
         suggestion: 'Shorten the value (a user could not type more than maxlength characters)'
       };
@@ -350,7 +369,7 @@ export const REACT_FILL_SCRIPT = `
       return {
         success: false,
         error: rejection.error,
-        elementType: tagName + viaLabel,
+        elementType: tagName + viaLabel + viaShadow,
         inputType: inputType,
         suggestion: rejection.suggestion
       };
@@ -379,7 +398,7 @@ export const REACT_FILL_SCRIPT = `
           ? Array.from(el.selectedOptions).map((o) => o.value).join(', ')
           : el.value,
     element: (${ELEMENT_IDENTITY_JS})(el),
-    elementType: tagName + viaLabel,
+    elementType: tagName + viaLabel + viaShadow,
     inputType: inputType || null,
     checked: inputType === 'checkbox' || inputType === 'radio' ? el.checked : undefined,
     matchCount: allMatches.length,
