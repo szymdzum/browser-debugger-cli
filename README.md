@@ -14,8 +14,6 @@ npm install -g browser-debugger-cli
 bdg localhost:3000
 ```
 
-📖 **[Wiki](https://github.com/szymdzum/browser-debugger-cli/wiki)**: [Getting Started](https://github.com/szymdzum/browser-debugger-cli/wiki/Getting-Started) · [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) · [For AI Agents](https://github.com/szymdzum/browser-debugger-cli/wiki/For-AI-Agents) · [Recipes](https://github.com/szymdzum/browser-debugger-cli/wiki/Recipes) · [Quick Reference](https://github.com/szymdzum/browser-debugger-cli/wiki/Quick-Reference) · [Troubleshooting](https://github.com/szymdzum/browser-debugger-cli/wiki/Troubleshooting) · [CLI reference](docs/CLI_REFERENCE.md)
-
 ## See it work
 
 ### 1. Open a page and see what's wrong
@@ -141,6 +139,9 @@ Hint: Consider using 'bdg network getCookies' instead of Network.getAllCookies o
 ```
 
 Each mistake exits with code 81 (invalid arguments), so the agent knows to fix the call rather than retry it. CDP method names are case-insensitive, and raw CDP calls point to the friendlier command when one exists. More in the [Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md) principles bdg follows.
+
+
+📖 **[Wiki](https://github.com/szymdzum/browser-debugger-cli/wiki)**: [Getting Started](https://github.com/szymdzum/browser-debugger-cli/wiki/Getting-Started) · [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) · [For AI Agents](https://github.com/szymdzum/browser-debugger-cli/wiki/For-AI-Agents) · [Recipes](https://github.com/szymdzum/browser-debugger-cli/wiki/Recipes) · [Quick Reference](https://github.com/szymdzum/browser-debugger-cli/wiki/Quick-Reference) · [Troubleshooting](https://github.com/szymdzum/browser-debugger-cli/wiki/Troubleshooting) · [CLI reference](docs/CLI_REFERENCE.md)
 
 ## Why bdg
 
