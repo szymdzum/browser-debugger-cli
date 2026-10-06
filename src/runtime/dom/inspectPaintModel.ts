@@ -60,7 +60,9 @@ const CANVAS: Record<'light' | 'dark', Rgba> = {
 
 /**
  * The font the text was rendered with, when it is not the first family (a
- * fallback), and whether it is a web font.
+ * fallback, or the face's own name), and whether it is a web font. Names
+ * that are not readable (sites that scramble a web font's internal name)
+ * are left out.
  *
  * @param family - First family of `font-family`
  * @param fonts - Platform fonts of the text
@@ -72,7 +74,8 @@ export function renderedFont(
 ): Pick<InspectText, 'rendered' | 'webfont'> {
   const primary = [...fonts].sort((a, b) => b.glyphCount - a.glyphCount)[0];
   if (!primary) return {};
-  const differs = primary.familyName.toLowerCase() !== family.toLowerCase();
+  const readable = /^[\p{L}\p{N}.][\p{L}\p{N} ._'-]+$/u.test(primary.familyName);
+  const differs = readable && primary.familyName.toLowerCase() !== family.toLowerCase();
   return {
     ...(differs && { rendered: primary.familyName }),
     ...(primary.isCustomFont && { webfont: true }),
@@ -205,6 +208,18 @@ function textExtras(style: StyleMap): InspectText {
 }
 
 /**
+ * Horizontal text alignment, the default (`start`, older `-webkit-auto`)
+ * included, so "is it centered?" is answered without asking.
+ *
+ * @param style - Computed styles
+ * @returns e.g. `start`, `center`, `right`
+ */
+function alignOf(style: StyleMap): string {
+  const align = style['text-align'] ?? 'start';
+  return align === '-webkit-auto' ? 'start' : align;
+}
+
+/**
  * Font, size and color fields.
  *
  * @param style - Computed styles
@@ -224,8 +239,11 @@ function fontFields(style: StyleMap): InspectText {
 
 /**
  * The text group. Elements with text (or form controls) get the full group:
- * font with the rendered font, size, color, contrast and the non-default
- * extras. Containers get only what differs from their parent.
+ * font with the rendered font, size, color, alignment, contrast (not for
+ * text no one can see: `opacity: 0` on it or an ancestor, `visibility:
+ * hidden`) and the non-default extras. Containers get only what differs from
+ * their parent, with the font their text was rendered in when the family
+ * differs.
  *
  * @param style - Computed styles
  * @param parentStyle - Computed styles of the layout parent
@@ -241,21 +259,24 @@ export function buildText(
 ): InspectText | undefined {
   const fields = fontFields(style);
   if (raw.textual) {
-    const contrast = textContrast(style, raw);
+    const seen = (raw.opacity ?? 1) > 0 && style['visibility'] !== 'hidden';
+    const contrast = seen ? textContrast(style, raw) : undefined;
     return {
       ...fields,
       ...renderedFont(fields.family ?? '', fonts),
       ...(contrast && { contrast }),
       ...textExtras(style),
+      align: alignOf(style),
     };
   }
   if (!parentStyle) return undefined;
   const parentFields = { ...fontFields(parentStyle), ...textExtras(parentStyle) };
   const own = { ...fields, ...textExtras(style) };
-  const differing = Object.entries(own).filter(
-    ([key, value]) => parentFields[key as keyof InspectText] !== value
+  const differing: InspectText = Object.fromEntries(
+    Object.entries(own).filter(([key, value]) => parentFields[key as keyof InspectText] !== value)
   );
-  return differing.length > 0 ? Object.fromEntries(differing) : undefined;
+  if (Object.keys(differing).length === 0) return undefined;
+  return differing.family ? { ...differing, ...renderedFont(differing.family, fonts) } : differing;
 }
 
 /**
@@ -494,20 +515,26 @@ export function buildGeneratedPseudo(
  * The pseudo group: generated `::before`/`::after` and the placeholder color.
  *
  * @param generated - Pseudo-elements CDP found
- * @param hostColor - Text color of the element
- * @param raw - Placeholder color of an empty field
+ * @param hostStyle - Computed styles of the element (text color, and the font
+ *   size and weight the placeholder's contrast level depends on)
+ * @param raw - Placeholder color of an empty field, and the backgrounds behind it
  * @returns Pseudo-elements, or undefined when there are none
  */
 export function buildPseudo(
   generated: readonly PseudoSource[],
-  hostColor: string | undefined,
-  raw: Pick<RawInspect, 'placeholderColor'>
+  hostStyle: StyleMap,
+  raw: Pick<RawInspect, 'placeholderColor' | 'backgrounds' | 'canvasDark' | 'opacity'>
 ): InspectPseudo[] | undefined {
   const pseudo = generated
-    .map((source) => buildGeneratedPseudo(source, hostColor))
+    .map((source) => buildGeneratedPseudo(source, hostStyle['color']))
     .filter((entry): entry is InspectPseudo => entry !== undefined);
   if (raw.placeholderColor) {
-    pseudo.push({ type: '::placeholder', color: hexColor(raw.placeholderColor) });
+    const contrast = textContrast({ ...hostStyle, color: raw.placeholderColor }, raw);
+    pseudo.push({
+      type: '::placeholder',
+      color: hexColor(raw.placeholderColor),
+      ...(contrast && { contrast }),
+    });
   }
   return pseudo.length > 0 ? pseudo : undefined;
 }

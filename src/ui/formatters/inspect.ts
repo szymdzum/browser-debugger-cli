@@ -16,6 +16,7 @@
  */
 
 import type {
+  InspectContrast,
   InspectBox,
   InspectContainer,
   InspectFill,
@@ -30,6 +31,7 @@ import { containerKind } from '@/runtime/dom/inspectLayoutModel.js';
 import type { IndexSource } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
+  inspectDarkThemeBadge,
   inspectedMatchAction,
   inspectVisibilityBadges,
   multipleMatchesWarning,
@@ -81,7 +83,7 @@ export function inspectHeader(data: InspectOutput): string {
     kind && `[${kind}]`,
     ...inspectVisibilityBadges(data.visibility),
     data.context && `in ${data.context}`,
-    data.colorScheme && `[prefers ${data.colorScheme}]`,
+    data.theme === 'dark' && inspectDarkThemeBadge(),
   ]
     .filter(Boolean)
     .join(' ');
@@ -211,17 +213,18 @@ function parentLine(layout: InspectLayout): string | undefined {
 
 /**
  * Font, weight and size as one phrase, e.g. `Inter (webfont) 600 italic 16/24`
- * or `Inter → Helvetica 400 14/normal`; for a container only the fields it has.
+ * or `Inter (rendered "Helvetica") 400 14/normal` when the text was drawn in
+ * another font (a fallback, or the face's own name); for a container only
+ * the fields it has.
  *
  * @param text - Text group
  * @returns Fields
  */
 function fontParts(text: InspectText): string[] {
-  const family = text.family && [
-    text.family,
-    text.rendered && `→ ${text.rendered}`,
-    text.webfont && '(webfont)',
-  ];
+  const loaded = [text.rendered && `rendered "${text.rendered}"`, text.webfont && 'webfont'].filter(
+    Boolean
+  );
+  const family = text.family && [text.family, loaded.length > 0 && `(${loaded.join(', ')})`];
   const size =
     text.size !== undefined &&
     (text.lineHeight !== undefined ? `${text.size}/${text.lineHeight}` : `${text.size}`);
@@ -242,27 +245,34 @@ function fontParts(text: InspectText): string[] {
 }
 
 /**
+ * A contrast as words, e.g. `contrast 4.47 fail on #fff (faded: opacity 0.4)`.
+ *
+ * @param contrast - Contrast
+ * @returns Words, or undefined
+ */
+function contrastText(contrast: InspectContrast | undefined): string | undefined {
+  if (!contrast) return undefined;
+  return [
+    `contrast ${contrast.ratio} ${contrast.level}`,
+    contrast.inherited && `on ${contrast.background}`,
+    contrast.overImage && '(over image)',
+    contrast.opacity !== undefined && `(faded: opacity ${contrast.opacity})`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
  * The text line: font, color, contrast and the non-default extras.
  *
  * @param text - Text group
  * @returns Line
  */
 function textLine(text: InspectText): string | undefined {
-  const contrast = text.contrast;
-  const contrastText =
-    contrast &&
-    [
-      `contrast ${contrast.ratio} ${contrast.level}`,
-      contrast.inherited && `on ${contrast.background}`,
-      contrast.overImage && '(over image)',
-      contrast.opacity !== undefined && `(faded: opacity ${contrast.opacity})`,
-    ]
-      .filter(Boolean)
-      .join(' ');
   return groupLine('text', [
     ...fontParts(text),
     text.color && `color ${text.color}`,
-    contrastText,
+    contrastText(text.contrast),
     text.align && `align ${text.align}`,
     text.transform && `transform ${text.transform}`,
     text.tracking !== undefined && `tracking ${text.tracking}`,
@@ -375,6 +385,7 @@ function pseudoText(pseudo: InspectPseudo): string {
     pseudo.position,
     pseudo.size && `${pseudo.size.w}x${pseudo.size.h}`,
     pseudo.color && `color ${pseudo.color}`,
+    pseudo.contrast && `· ${contrastText(pseudo.contrast)}`,
     ...(pseudo.fills ?? []).map(fillText),
     pseudo.radius && `radius ${pseudo.radius}`,
     shadows.length > 0 && `shadow ${shadows.join(', ')}`,

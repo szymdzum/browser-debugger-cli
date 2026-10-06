@@ -88,8 +88,14 @@ export interface RawInspect {
   hiddenChildren: number;
   /** Children the walk did not reach ({@link TREE_NODE_CAP}) */
   treeSkipped: number;
-  /** `--props` values from `getComputedStyle` (shorthands and custom properties too) */
+  /**
+   * `--props` values from `getComputedStyle` (shorthands and custom
+   * properties too); a shorthand whose sides differ (no single value) is
+   * given per side, e.g. `top 1px solid … / right 0px none …`
+   */
   props?: Record<string, string>;
+  /** `--props` names the browser does not know as CSS properties */
+  unknownProps?: string[];
 }
 
 /**
@@ -305,7 +311,17 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
   if (el.clientWidth > 0 && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) {
     result.scroll = { w: el.scrollWidth, h: el.scrollHeight, clientW: el.clientWidth, clientH: el.clientHeight };
   }
-  if (props) result.props = Object.fromEntries(props.map((name) => [name, s.getPropertyValue(name).trim()]));
+  if (props) {
+    const known = (name) => name.startsWith('--') || CSS.supports(name, 'inherit');
+    const valueOf = (name) => {
+      const value = s.getPropertyValue(name).trim();
+      if (value !== '' || name.startsWith('--')) return value;
+      const sides = ['top', 'right', 'bottom', 'left'].map((side) => name + '-' + side).filter(known);
+      return sides.map((side) => side.slice(name.length + 1) + ' ' + s.getPropertyValue(side).trim()).join(' / ');
+    };
+    result.props = Object.fromEntries(props.filter(known).map((name) => [name, valueOf(name)]));
+    result.unknownProps = props.filter((name) => !known(name));
+  }
   return Object.assign(result,
     (${PLACEMENT_JS})(el, tree),
     (${BACKGROUNDS_JS})(el, tree, view),

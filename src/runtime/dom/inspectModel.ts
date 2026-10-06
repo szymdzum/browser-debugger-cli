@@ -20,12 +20,13 @@ import {
   buildState,
   buildStrokes,
   buildText,
+  effectiveBackground,
   type PlatformFont,
   type PseudoSource,
 } from '@/runtime/dom/inspectPaintModel.js';
 import type { RawInspect } from '@/runtime/dom/inspectScripts.js';
 import { buildTree, rowText } from '@/runtime/dom/inspectTree.js';
-import { hexColor } from '@/utils/color.js';
+import { hexColor, relativeLuminance } from '@/utils/color.js';
 import { normalizeCssValue, round1 } from '@/utils/cssValues.js';
 
 /** Classes shown in the label (the rest are counted) */
@@ -94,8 +95,12 @@ export function visibilityOf(
     ...(hidden && { hidden }),
     ...(offscreen && { offscreen }),
     ...(layout.coveredBy && { coveredBy: layout.coveredBy }),
+    ...(layout.coverTransparent && { coverTransparent: true }),
   };
 }
+
+/** Below this relative luminance a page background counts as dark */
+const DARK_LUMINANCE = 0.18;
 
 /**
  * Header fields: label, text, placeholder, context, rect, visibility and
@@ -123,7 +128,21 @@ function header(sources: InspectSources, request: InspectRequest): InspectResult
       }),
     visibility: visibilityOf(layout, size !== undefined),
     ...(sources.colorScheme && { colorScheme: sources.colorScheme }),
+    ...(sources.colorScheme === 'dark' && pageLooksDark(raw) && { theme: 'dark' }),
   };
+}
+
+/**
+ * Whether the page renders dark: a dark canvas (its color-scheme), or a dark
+ * background on the page's root (the backgrounds of body and html).
+ *
+ * @param raw - Backgrounds from the element up to the root, and the canvas
+ * @returns True for a dark page
+ */
+function pageLooksDark(raw: Pick<RawInspect, 'backgrounds' | 'canvasDark'>): boolean {
+  if (raw.canvasDark) return true;
+  const root = effectiveBackground(raw.backgrounds.slice(-2), false).color;
+  return relativeLuminance(root) < DARK_LUMINANCE;
 }
 
 /**
@@ -143,7 +162,7 @@ function groups(sources: InspectSources): Partial<InspectResult> {
   const effects = buildEffects(style);
   const fx = buildFx(style);
   const state = buildState(style, raw);
-  const pseudo = buildPseudo(sources.pseudo, style['color'], raw);
+  const pseudo = buildPseudo(sources.pseudo, style, raw);
   const opacity = Number(style['opacity'] ?? 1);
   const blend = style['mix-blend-mode'];
   return {

@@ -63,7 +63,10 @@ void describe('dom inspect', () => {
     const output = await bdg(['dom', 'inspect', '#buy']);
     assert.match(output, /^button#buy "Buy now" [\d.]+x50 @16,16/);
     assert.match(output, /\nbox +m 0 0 16 · p 12 24 · b 1\n/);
-    assert.match(output, /\ntext +Arial 600 16\/24 · color #fff · contrast [\d.]+ fail/);
+    assert.match(
+      output,
+      /\ntext +Arial( \(rendered "[^"]+"\))? 600 16\/24 · color #fff · contrast [\d.]+ fail · align center/
+    );
     assert.match(output, /\nfill +bg #0a7cff\n/);
     assert.match(output, /\nborder +1 solid #0a7cff · radius 8\n/);
     assert.match(output, /\nfx +shadow #00000033 0 1 2 0\n/);
@@ -94,13 +97,19 @@ void describe('dom inspect', () => {
     const field = await bdg(['dom', 'inspect', '#email']);
     assert.match(field, /placeholder "E-mail"/);
     assert.match(field, /\nborder +bottom 1 solid #ededed\n/);
-    assert.match(field, /\npseudo +::placeholder color #6d7584/);
+    assert.match(
+      field,
+      /\npseudo +::placeholder color #6d7584 · contrast [\d.]+ (fail|AA|AAA|AA large)/
+    );
 
     assert.match(
       await bdg(['dom', 'inspect', '#badge']),
       /\npseudo +::before content "★" block absolute [\d.]+x[\d.]+ color #f5a623/
     );
-    assert.match(await bdg(['dom', 'inspect', '#webfont']), /\ntext +Fixture Sans → Arial /);
+    assert.match(
+      await bdg(['dom', 'inspect', '#webfont']),
+      /\ntext +Fixture Sans \(rendered "(?!Fixture Sans")[^"]+"\) /
+    );
   });
 
   void it('says why an element cannot be seen', async () => {
@@ -111,7 +120,7 @@ void describe('dom inspect', () => {
   void it('reaches elements in open shadow roots and same-origin iframes', async () => {
     assert.match(
       await bdg(['dom', 'inspect', '#shadowed']),
-      /^span#shadowed "In shadow" .* in shadow root of <div#host>.*\ntext +Arial 700 16\/normal · color #c00/s
+      /^span#shadowed "In shadow" .* in shadow root of <div#host>.*\ntext +Arial( \(rendered "[^"]+"\))? 700 16\/normal · color #c00/s
     );
     assert.match(await bdg(['dom', 'inspect', '#in-frame']), /in iframe#frame.*\nfill +bg #222\n/s);
   });
@@ -164,6 +173,18 @@ void describe('dom inspect', () => {
     );
     const pic = await inspectJson('#pic');
     assert.deepEqual((pic['layout'] as { sizing: unknown }).sizing, { w: 'hug', h: 'hug' });
+  });
+
+  void it('reads a shorthand whose sides differ, skips contrast no one sees, and badges only dark pages', async () => {
+    const border = await bdg(['dom', 'inspect', '#email', '--props', 'border']);
+    assert.match(border, /\nborder: top .* \/ bottom 1px solid/);
+    await bdg([
+      'dom',
+      'eval',
+      'document.body.insertAdjacentHTML(\'beforeend\', \'<label id="invisible" style="opacity:0">Hidden label</label>\'); 1',
+    ]);
+    assert.doesNotMatch(await bdg(['dom', 'inspect', '#invisible']), /contrast/);
+    assert.doesNotMatch(await bdg(['dom', 'inspect', '#buy']), /\[dark theme|\[prefers/);
   });
 
   void it('inspects the first rendered match and says so, and exits 83 when nothing matches', async () => {

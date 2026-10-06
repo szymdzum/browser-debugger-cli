@@ -502,6 +502,29 @@ export function indexLayoutHeadline(target: string): string {
 }
 
 /**
+ * What covers an element: a cover that paints nothing at that point (a
+ * transparent box over it) does not hide it, but takes its clicks.
+ *
+ * @param cover - Description of the covering element
+ * @param transparent - The cover paints nothing there
+ * @returns e.g. `covered by div#modal`, `under transparent ul.filters (clicks land on it)`
+ */
+export function coverText(cover: string, transparent: boolean | undefined): string {
+  return transparent ? `under transparent ${cover} (clicks land on it)` : `covered by ${cover}`;
+}
+
+/**
+ * Header badge of `bdg dom inspect` when the page is shown in its dark theme
+ * because the session follows the system's dark preference: the colors are
+ * the dark theme's, not what a light-mode visitor sees.
+ *
+ * @returns Badge
+ */
+export function inspectDarkThemeBadge(): string {
+  return '[dark theme from system; --color-scheme light for light]';
+}
+
+/**
  * Header badges of `bdg dom inspect` for what keeps an element from being seen.
  *
  * @param visibility - Not rendered, hidden, offscreen, covered
@@ -515,7 +538,7 @@ export function inspectVisibilityBadges(visibility: InspectVisibility): string[]
   return [
     visibility.hidden && `[hidden: ${visibility.hidden}]`,
     visibility.offscreen && `[offscreen: ${visibility.offscreen}]`,
-    visibility.coveredBy && `[covered by ${visibility.coveredBy}]`,
+    visibility.coveredBy && `[${coverText(visibility.coveredBy, visibility.coverTransparent)}]`,
   ].filter((badge): badge is string => Boolean(badge));
 }
 

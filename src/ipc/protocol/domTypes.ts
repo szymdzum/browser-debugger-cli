@@ -422,6 +422,12 @@ export interface ElementLayout {
   /** Topmost element at the center of its visible part, when that is another element */
   coveredBy?: string;
   /**
+   * The covering element paints nothing at that point (no background, image,
+   * shadow or text of its own): the element still shows, but clicks land on
+   * the cover
+   */
+  coverTransparent?: true;
+  /**
    * Why it cannot be seen although it is rendered: `opacity: 0` on it or an
    * ancestor, or a `clip-path`/`clip` that cuts it away entirely, e.g.
    * `opacity: 0 on div#menu` (`inViewport` still says where it is)

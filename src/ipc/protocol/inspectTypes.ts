@@ -184,6 +184,8 @@ export interface InspectPseudo {
   effects?: InspectEffect[];
   transform?: string;
   opacity?: number;
+  /** `::placeholder`: contrast of the placeholder text with the field's background */
+  contrast?: InspectContrast;
 }
 
 /** A row of the child tree; identical siblings are one row with a count */
@@ -214,6 +216,8 @@ export interface InspectVisibility {
   offscreen?: string;
   /** Topmost element at the center of its visible part, when another one */
   coveredBy?: string;
+  /** The cover paints nothing there: the element shows, but clicks land on the cover */
+  coverTransparent?: true;
 }
 
 /** A property asked for with `--props` */
@@ -250,6 +254,12 @@ export interface InspectResult {
   /** Absent when not rendered */
   rect?: InspectRect;
   visibility: InspectVisibility;
+  /**
+   * `dark` when the page renders a dark theme (dark canvas or dark page
+   * background) while the session prefers dark; colors are then the dark
+   * theme's
+   */
+  theme?: 'dark';
   /** `prefers-color-scheme` the page sees */
   colorScheme?: 'light' | 'dark';
   box?: InspectBox;

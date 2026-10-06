@@ -179,6 +179,12 @@ const LAYOUT_JS = `function (found, index, limit) {
     }
     return best;
   };
+  const paintsNothing = (node) => {
+    const s = node.ownerDocument.defaultView.getComputedStyle(node);
+    const clearColor = (c) => c === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(c);
+    const ownText = Array.from(node.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== '');
+    return clearColor(s.backgroundColor) && s.backgroundImage === 'none' && s.boxShadow === 'none' && !ownText;
+  };
   const hitTestable = (node) => node.ownerDocument.defaultView.getComputedStyle(node).pointerEvents !== 'none';
   const coveredBy = (el, g) => {
     const center = hitTestable(el) && visibleCenter(el, g);
@@ -193,7 +199,7 @@ const LAYOUT_JS = `function (found, index, limit) {
       y += offset.y;
       cover = coverAt(view.frameElement, x, y);
     }
-    return cover ? describe(cover) : null;
+    return cover ? { element: describe(cover), transparent: paintsNothing(cover) } : null;
   };
   const elements = picked.map(([i, el]) => {
     const style = el.ownerDocument.defaultView.getComputedStyle(el);
@@ -205,7 +211,7 @@ const LAYOUT_JS = `function (found, index, limit) {
       text: String(textOf(el)).replace(/\\s+/g, ' ').trim().slice(0, 1000),
       context: contextOf(el),
       geometry: geometry,
-      coveredBy: geometry.hidden ? null : coveredBy(el, geometry),
+      cover: geometry.hidden ? null : coveredBy(el, geometry),
       computed: { display: style.display, visibility: style.visibility, position: style.position, opacity: style.opacity, zIndex: style.zIndex }
     };
   });
@@ -220,7 +226,8 @@ export interface RawElementLayout {
   text: string;
   context: string;
   geometry: ElementGeometry;
-  coveredBy: string | null;
+  /** The element on top at its visible center, and whether it paints nothing there */
+  cover: { element: string; transparent: boolean } | null;
   computed: LayoutComputedStyle;
 }
 
@@ -389,7 +396,8 @@ function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
     },
     viewport: { x: Math.round(rect.x), y: Math.round(rect.y) },
     ...placement,
-    ...(inView && raw.coveredBy && { coveredBy: raw.coveredBy }),
+    ...(inView && raw.cover && { coveredBy: raw.cover.element }),
+    ...(inView && raw.cover?.transparent && { coverTransparent: true }),
     ...(raw.geometry.invisible && { invisible: raw.geometry.invisible }),
     ...(raw.geometry.inert && { inert: true }),
     computed: raw.computed,

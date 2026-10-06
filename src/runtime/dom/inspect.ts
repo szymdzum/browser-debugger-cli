@@ -112,7 +112,12 @@ export async function inspectElement(
  * @throws CommandError (81) for a name no value was found for
  */
 function checkedProps(names: string[], sources: InspectSources): InspectResult['props'] {
-  const { props, unknown } = selectedProps(names, sources.style, sources.raw.props);
+  const { props, unknown } = selectedProps(
+    names,
+    sources.style,
+    sources.raw.props,
+    sources.raw.unknownProps
+  );
   if (unknown.length === 0) return props;
   const suggestions = unknown.flatMap((name) =>
     findSimilar(name, Object.keys(sources.style), { maxSuggestions: 1 })
