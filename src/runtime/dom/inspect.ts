@@ -62,12 +62,18 @@ interface FoundElement {
   picked?: InspectResult['picked'];
 }
 
-/** Page-side choice of a match: the index asked for, else the first rendered one (the first when none is) */
+/**
+ * Page-side choice of a match: the index asked for, else the first visible
+ * one (rendered, not `visibility: hidden`, not `opacity: 0`), else the first
+ * rendered one, else the first
+ */
 const PICK_MATCH_JS = `function (i) {
   if (i !== null) return i;
-  const shown = (el) => (el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0);
-  const first = Array.prototype.findIndex.call(this, shown);
-  return first < 0 ? 0 : first;
+  const check = (el, options) => (el.checkVisibility ? el.checkVisibility(options) : el.getClientRects().length > 0);
+  const visible = Array.prototype.findIndex.call(this, (el) => check(el, { visibilityProperty: true, opacityProperty: true }));
+  if (visible >= 0) return visible;
+  const rendered = Array.prototype.findIndex.call(this, (el) => check(el, {}));
+  return rendered < 0 ? 0 : rendered;
 }`;
 
 /** Nodes whose styles are read, as CDP describes them */

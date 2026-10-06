@@ -16,6 +16,8 @@ export interface InspectRect {
   y: number;
   w: number;
   h: number;
+  /** `viewport`: x and y are in the viewport (a fixed element stays there however the page scrolls) */
+  in?: 'viewport';
 }
 
 /** Sides top, right, bottom, left */

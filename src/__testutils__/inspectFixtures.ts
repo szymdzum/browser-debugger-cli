@@ -60,6 +60,8 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <div id="faded" style="opacity:0.4"><p id="faded-text" style="color:#000">Faded text</p></div>
 <div style="opacity:0.5;background:#000"><p id="on-faded" style="color:#fff;margin:0">On a faded background</p></div>
 <h2 id="blended" style="mix-blend-mode:multiply">Blended</h2>
+<div style="position:relative;height:40px"><p id="under-header" style="margin:0">Under the header</p>
+<header style="position:absolute;inset:0;background:#fff"><svg id="logo" width="100%" height="100%"></svg></header></div>
 <img id="pic" style="display:block" alt="pic" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
 <iframe id="frame" src="/inspect-frame" style="width:200px;height:60px;border:0"></iframe>
 <p style="background:#ddd"><a id="via-child" href="#v" style="color:#c00"><b style="color:#eaecf0">Child text</b></a></p>
@@ -74,7 +76,7 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
     constructor() {
       super();
       this.attachShadow({ mode: 'open' }).innerHTML =
-        '<button style="background:#0284c7;color:#fff;font:500 14px Arial;border:0"><slot class="label"></slot></button>';
+        '<button id="slot-button" style="background:#0284c7;color:#fff;font:500 14px Arial;border:0"><slot class="label"></slot></button>';
     }
   });
 </script>`;

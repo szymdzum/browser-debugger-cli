@@ -55,6 +55,15 @@ void describe('classifyViewportPosition', () => {
     assert.deepEqual(classifyViewportPosition(at(10, 10), VIEWPORT), { inViewport: 'visible' });
   });
 
+  void it('places a zero-size element around shown children (an inline list of floated items) by them', () => {
+    const holder = (x: number): ElementGeometry => ({
+      ...at(100, 88, 0, 0),
+      content: { x, y: 88, width: 200, height: 30 },
+    });
+    assert.deepEqual(classifyViewportPosition(holder(100), VIEWPORT), { inViewport: 'visible' });
+    assert.equal(classifyViewportPosition(holder(5000), VIEWPORT).inViewport, 'right');
+  });
+
   void it('reports an element below the fold with the scroll that centres it', () => {
     assert.deepEqual(classifyViewportPosition(at(20, 1180), VIEWPORT), {
       inViewport: 'below',

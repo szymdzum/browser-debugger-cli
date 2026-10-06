@@ -8,7 +8,7 @@
 
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
-import type { InspectResult, InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
+import type { InspectRect, InspectResult, InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import { allStyles } from '@/runtime/dom/inspectAllStyles.js';
 import { buildBox, buildLayout, type StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import {
@@ -113,6 +113,22 @@ export function visibilityOf(
   };
 }
 
+/**
+ * The header rectangle: border box size, and the page position, or the
+ * viewport position of an element fixed to the viewport (it or a container
+ * is `position: fixed`: its page position changes with the scroll).
+ *
+ * @param layout - Layout measurements
+ * @param size - Border box size
+ * @returns Rectangle
+ */
+function headerRect(layout: ElementLayout, size: { w: number; h: number }): InspectRect {
+  const box = { w: round1(size.w), h: round1(size.h) };
+  return layout.fixed
+    ? { x: layout.viewport.x, y: layout.viewport.y, ...box, in: 'viewport' }
+    : { x: layout.bounds.x, y: layout.bounds.y, ...box };
+}
+
 /** Below this relative luminance a page background counts as dark */
 const DARK_LUMINANCE = 0.18;
 
@@ -136,10 +152,7 @@ function header(sources: InspectSources, request: InspectRequest): InspectResult
     ...(content && { content }),
     ...(raw.placeholder && { placeholder: rowText(raw.placeholder) }),
     ...(raw.context && { context: raw.context }),
-    ...(size &&
-      layout && {
-        rect: { x: layout.bounds.x, y: layout.bounds.y, w: round1(size.w), h: round1(size.h) },
-      }),
+    ...(size && layout && { rect: headerRect(layout, size) }),
     visibility: visibilityOf(layout, size !== undefined),
     ...(sources.colorScheme && { colorScheme: sources.colorScheme }),
     ...(sources.colorScheme === 'dark' && pageLooksDark(raw) && { theme: 'dark' }),

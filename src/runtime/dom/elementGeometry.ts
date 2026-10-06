@@ -18,6 +18,12 @@ import { LAYOUT_REASONS, scrollLockedReason } from '@/ui/messages/commands.js';
 export interface ElementGeometry {
   /** Border box in top-level viewport coordinates */
   rect: LayoutBox;
+  /**
+   * For a zero-size element whose children show (an inline list around
+   * floated items): the box around those children, which is what can be
+   * seen of it
+   */
+  content?: LayoutBox | null;
   /** Area its iframes and overflow-clipping ancestors leave visible, in the same coordinates */
   clip: LayoutBox | null;
   /** Whether overlay scrollbars of the clipping containers show along the clip's right and bottom edges */
@@ -412,7 +418,20 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     }
     return 'not rendered';
   };
-  const hiddenReason = (style, box) => {
+  const shownChildren = (node) => {
+    const s = styleOf(node);
+    if (s.overflowX !== 'visible' || s.overflowY !== 'visible') return null;
+    let union = null;
+    for (const c of Array.from(node.children).slice(0, 50)) {
+      const r = c.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0 || styleOf(c).visibility !== 'visible') continue;
+      union = union
+        ? { left: Math.min(union.left, r.left), top: Math.min(union.top, r.top), right: Math.max(union.right, r.right), bottom: Math.max(union.bottom, r.bottom) }
+        : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    }
+    return union;
+  };
+  const hiddenReason = (style, box, content) => {
     if (style.display === 'none') return 'display: none';
     if (style.display === 'contents') return 'display: contents (no box of its own)';
     if (el.getClientRects().length === 0) {
@@ -421,7 +440,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     const skipped = skippedReason(el);
     if (skipped) return skipped;
     if (style.visibility !== 'visible') return 'visibility: ' + style.visibility;
-    if (box.width === 0 || box.height === 0) return 'zero size';
+    if ((box.width === 0 || box.height === 0) && !content) return 'zero size';
     return null;
   };
   const isSticky = () => {
@@ -444,7 +463,8 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   let clipper = own.clipper;
   let fixed = own.fixed;
   let fixedBy = own.fixedBy;
-  let hidden = hiddenReason(styleOf(el), box) || own.collapsed;
+  let content = box.width === 0 || box.height === 0 ? shownChildren(el) : null;
+  let hidden = hiddenReason(styleOf(el), box, content) || own.collapsed;
   let x = 0;
   let y = 0;
   for (let view = el.ownerDocument.defaultView; view && view.frameElement; view = view.parent) {
@@ -456,6 +476,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     overlay = { right: !!unframed && unframed.right <= clip.right && overlay.right, bottom: !!unframed && unframed.bottom <= clip.bottom && overlay.bottom };
     const offset = frameOffset(frame);
     rect = shift(rect, offset.x, offset.y);
+    content = shift(content, offset.x, offset.y);
     const outer = ancestorClip(frame, rect, describe);
     const inner = shift(clip, offset.x, offset.y);
     clip = intersect(inner, outer.clip);
@@ -474,7 +495,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const invisible = hidden ? null : invisibleReason(el, describe);
   const lock = scrollLock(top, describe);
   if (lock && fixedBy === top.document.body) fixed = false;
-  return { rect: toBox(rect), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, sticky: !fixed && isSticky(), pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
+  return { rect: toBox(rect), content: toBox(content), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, sticky: !fixed && isSticky(), pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
 }`;
 
 /**
@@ -602,16 +623,17 @@ function axisScroll(
  * out of a list), and `hidden` when it is not rendered at all. Being inert
  * does not change the position: inert elements are shown.
  *
- * @param geometry - Page-side measurements
+ * @param measured - Page-side measurements (a zero-size holder is placed by its children)
  * @param viewport - Top-level viewport size
  * @returns Position, with the visible share, hidden reason, clipping
  *   ancestor or page scroll when relevant
  */
 export function classifyViewportPosition(
-  geometry: ElementGeometry,
+  measured: ElementGeometry,
   viewport: LayoutSize
 ): ViewportPlacement {
-  if (geometry.hidden) return { inViewport: 'hidden', hiddenReason: geometry.hidden };
+  if (measured.hidden) return { inViewport: 'hidden', hiddenReason: measured.hidden };
+  const geometry = measured.content ? { ...measured, rect: measured.content } : measured;
   const rect = edgesOf(geometry.rect);
   const screen = edgesOf({ x: 0, y: 0, ...viewport });
   const view = geometry.clip ? overlap(screen, edgesOf(geometry.clip)) : screen;
