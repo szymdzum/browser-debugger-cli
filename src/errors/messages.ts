@@ -2157,3 +2157,32 @@ export function cdpCallError(
     notFound: false,
   };
 }
+
+/**
+ * The skill file is not where the package should have it (a broken or
+ * partial install).
+ *
+ * @param source - Expected SKILL.md path
+ * @returns Message and suggestion
+ */
+export function skillSourceMissingError(source: string): ErrorWithSuggestion {
+  return {
+    message: `The bdg skill is missing from the installed package (${source})`,
+    suggestion: 'Reinstall bdg: npm install -g browser-debugger-cli',
+  };
+}
+
+/**
+ * The skill could not be written to an agent's skill directory.
+ *
+ * @param path - Destination SKILL.md
+ * @param reason - The file system error
+ * @returns Message and suggestion
+ */
+export function skillWriteFailedError(path: string, reason: string): ErrorWithSuggestion {
+  return {
+    message: `Could not write ${path}: ${reason}`,
+    suggestion:
+      'Check the permissions of that directory, or install for the other agent only (--claude or --agents)',
+  };
+}

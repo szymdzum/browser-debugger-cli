@@ -1,6 +1,6 @@
 ---
 name: bdg
-description: Use bdg CLI for browser automation via Chrome DevTools Protocol. Provides direct access to every CDP domain and method for DOM queries, navigation, screenshots, network control, and JavaScript execution. Use this skill when you need to automate browsers, scrape dynamic content, or interact with web pages programmatically.
+description: Use bdg CLI to drive and debug a real Chrome via Chrome DevTools Protocol - navigate, click, fill and submit forms, check what an action changed (navigation, new messages, pending requests), inspect elements without screenshots (box, layout, fonts, colors, a11y), read network requests and console errors, and call any CDP method. Use this skill when you need to verify a UI change in a running app, debug a page, automate a browser flow, or scrape dynamic content.
 ---
 
 # bdg - Browser Automation CLI
@@ -49,6 +49,20 @@ bdg dom screenshot /tmp/el.png --selector "#main"   # Element only
 bdg dom screenshot /tmp/scroll.png --scroll "#target" # Scroll to element first
 ```
 
+## Actions Report What Changed
+
+`dom click`, `fill`, `submit`, `pressKey`, `hover` and `scroll` wait for the requests the action starts, then say what happened. Read this before reaching for a screenshot:
+
+```text
+✓ Element Clicked
+Page: navigated to https://app.test/secure (200)    # navigation (or "URL changed ... (same document)")
+New text: "Your password is invalid!" (div#flash)   # alert/status/aria-live messages that appeared
+⚠ Element Clicked (no visible effect observed ...)  # nothing changed - wrong element or a broken handler
+```
+
+- In `--json`: `navigation`, `messages`, `effect: "none"` and pending work (timers, spinners) are fields on `data`.
+- Results the page shows later are not waited for: follow up with `bdg dom wait` (below).
+
 ## Form Interaction
 
 ```bash
@@ -72,10 +86,43 @@ bdg dom pressKey "input" Enter                 # Press Enter key
 ## DOM Inspection
 
 ```bash
-bdg dom query "selector"     # Find elements, returns [0], [1], [2]...
+bdg dom query "selector"     # Find elements, returns [0], [1], [2]... (0-based)
 bdg dom get "selector"       # Get semantic a11y info (token-efficient)
 bdg dom get "selector" --raw # Get full HTML
 bdg dom eval "js expression" # Run JavaScript
+bdg dom a11y "role:button"   # Query by accessibility role/name
+```
+
+Selectors search open shadow roots and same-origin iframes, and accept `:has-text("...")` and `:visible`.
+
+### Look Without a Screenshot
+
+```bash
+bdg dom inspect "button.primary"   # Box, layout, rendered font, colors + WCAG contrast, borders, state (~60-100 tokens)
+bdg dom inspect ".card" --why color  # Which CSS rule set a property, and what it overrode
+bdg dom layout ".card"             # Positions/sizes of every match: above/below the fold, hidden, covered
+bdg dom listeners "#save"          # Event listeners that run for an element (incl. delegated, React/Preact)
+bdg page emulate --viewport 390x844 --color-scheme dark   # Responsive/theme check mid-session
+```
+
+### Wait for Something
+
+```bash
+bdg dom wait '#result' --visible       # Appears and is visible
+bdg dom wait '.toast' --text 'Saved'   # Contains text
+bdg dom wait '#loading' --gone         # Spinner went away
+bdg dom wait --load                    # Page finished loading
+```
+
+## Network and Console
+
+```bash
+bdg network list                              # Requests (DevTools-style)
+bdg network list --filter "status-code:>=400" # Failed requests
+bdg details network <id>                      # Headers, timing, body of one request
+bdg console --level error                     # Console errors on the current page
+bdg console --follow                          # Stream messages live
+bdg network har /tmp/session.har              # Export HAR 1.2
 ```
 
 ## CDP Access
@@ -110,16 +157,13 @@ bdg dom screenshot /tmp/result.png
 bdg stop
 ```
 
-### Wait for Element
+### Verify a UI Change (dev server with HMR)
 ```bash
-for i in {1..20}; do
-  EXISTS=$(bdg cdp Runtime.evaluate --params '{
-    "expression": "document.querySelector(\"#target\") !== null",
-    "returnByValue": true
-  }' | jq -r '.data.result.result.value')
-  [ "$EXISTS" = "true" ] && break
-  sleep 0.5
-done
+bdg http://localhost:5173                 # Once; keep the session running
+bdg dom click "button.save"               # Read the reported effect
+bdg dom wait '.toast' --text 'Saved'
+bdg console --level error                 # Anything thrown?
+bdg dom inspect ".toast"                  # Looks right? (no screenshot needed)
 ```
 
 ### Extract Data
@@ -130,16 +174,20 @@ bdg cdp Runtime.evaluate --params '{
 }' | jq '.data.result.result.value'
 ```
 
-## Exit Codes
+## JSON Output and Exit Codes
+
+Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`). `bdg --help --json` lists every command, flag and exit code.
 
 | Code | Meaning | Action |
 |------|---------|--------|
 | 0 | Success | - |
-| 1 | Blocked command | Read error message, use suggested alternative |
-| 81 | Invalid arguments | Check command syntax |
+| 81 | Invalid arguments (incl. blocked raw CDP methods) | Read the suggestion, use the alternative |
 | 83 | Resource not found | Element/session doesn't exist |
+| 85 | Session busy (still starting/stopping) | Retry shortly |
+| 87 | Stale index (page changed since `dom query`) | Re-run the query |
+| 91 | `dom eval` script threw | Fix the JavaScript |
 | 101 | CDP connection failure | Run `bdg cleanup --force` and retry |
-| 102 | CDP timeout | Increase timeout or check page load |
+| 102 | Timeout (CDP, or `dom wait --timeout`) | Increase timeout or check page load |
 
 ## Troubleshooting
 

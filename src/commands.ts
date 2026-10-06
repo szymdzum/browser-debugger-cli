@@ -6,6 +6,7 @@ import { registerConsoleCommand } from '@/commands/console.js';
 import { registerDetailsCommand } from '@/commands/details.js';
 import { registerFormInteractionCommands } from '@/commands/dom/formInteraction.js';
 import { registerDomCommands } from '@/commands/dom/index.js';
+import { registerInstallSkillCommand } from '@/commands/installSkill.js';
 import { registerNetworkCommands } from '@/commands/network/index.js';
 import { registerPageCommands } from '@/commands/page.js';
 import { registerPeekCommand } from '@/commands/peek.js';
@@ -58,4 +59,7 @@ export const commandRegistry: CommandRegistrar[] = [
 
   addCommandGroup('Console Commands:'),
   registerConsoleCommand,
+
+  addCommandGroup('Agent Setup:'),
+  registerInstallSkillCommand,
 ];
