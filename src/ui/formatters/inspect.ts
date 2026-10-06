@@ -24,8 +24,10 @@ import type {
   InspectParent,
   InspectPseudo,
   InspectResult,
+  InspectRule,
   InspectText,
   InspectTreeNode,
+  InspectWhy,
 } from '@/ipc/protocol/inspectTypes.js';
 import { containerKind } from '@/runtime/dom/inspectLayoutModel.js';
 import type { IndexSource } from '@/types.js';
@@ -486,35 +488,67 @@ function cascadeBlock(data: InspectOutput): string[] {
     (hint) =>
       `${hint.property}: ${hint.value} has no effect: ${hint.reason} → ${hint.fix} · in ${hint.source}`
   );
-  const rules = (data.rules ?? []).map((rule) =>
-    [
-      `${rule.property} ${truncateByLength(rule.value, CASCADE_VALUE_WIDTH)}`,
-      rule.computed !== undefined && ` = ${truncateByLength(rule.computed, CASCADE_VALUE_WIDTH)}`,
-      `${rule.important ? ' !important' : ''} ← ${rule.source}`,
-      ruleScope(rule),
-      rule.inherited !== undefined && ` (inherited from ${rule.inherited} up)`,
-      rule.overrides && ` over ${rule.overrides.join(', ')}`,
-    ]
-      .filter(Boolean)
-      .join('')
-  );
-  const why = data.why
-    ? [
-        `${data.why.property} = ${data.why.computed}`,
-        ...data.why.chain.map(
-          (entry) =>
-            `  ${entry.status === 'overridden' ? '✗' : '✓'} ${truncateByLength(entry.value, CASCADE_VALUE_WIDTH)}${entry.important ? ' !important' : ''}  ${entry.source}${ruleScope(entry)}${entry.status === 'inherited' ? ' (inherited)' : ''}`
-        ),
-        ...(data.why.chain.length === 0
-          ? ['  no author declaration: the default or inherited value']
-          : []),
-      ]
-    : [];
   return [
     ...labelledLines('hints', hints),
-    ...labelledLines('rules', rules),
-    ...labelledLines('why', why),
+    ...labelledLines('rules', (data.rules ?? []).map(ruleLine)),
+    ...labelledLines('why', (data.why ?? []).flatMap(whyLines)),
     ...(data.cascade ? [inspectCascadeNote(data.cascade)] : []),
+  ];
+}
+
+/**
+ * A `--rules` line: property, value as written (= computed for `var()`),
+ * source, scope, inheritance and what it beats.
+ *
+ * @param rule - Rule
+ * @returns Line
+ */
+function ruleLine(rule: InspectRule): string {
+  return [
+    `${rule.property} ${truncateByLength(rule.value, CASCADE_VALUE_WIDTH)}`,
+    rule.computed !== undefined && ` = ${truncateByLength(rule.computed, CASCADE_VALUE_WIDTH)}`,
+    `${rule.important ? ' !important' : ''} ← ${rule.source}`,
+    ruleScope(rule),
+    rule.inherited !== undefined && ` (inherited from ${rule.inherited} up)`,
+    rule.overrides && ` over ${rule.overrides.join(', ')}`,
+  ]
+    .filter(Boolean)
+    .join('');
+}
+
+/**
+ * `--why` lines of one property: the computed value, each declaration
+ * (`✓` the winner, `✗` the ones it beats) and where the winner's custom
+ * properties are set.
+ *
+ * @param why - Why
+ * @returns Lines
+ */
+function whyLines(why: InspectWhy): string[] {
+  const entries = why.chain.map((entry) => {
+    const value = `${entry.via ? `${entry.via}: ` : ''}${entry.value}`;
+    const resolved =
+      entry.resolved !== undefined
+        ? ` = ${truncateByLength(entry.resolved, CASCADE_VALUE_WIDTH)}`
+        : '';
+    return [
+      `  ${entry.status === 'overridden' ? '✗' : '✓'} `,
+      truncateByLength(value, CASCADE_VALUE_WIDTH) + resolved,
+      entry.important ? ' !important' : '',
+      `  ${entry.source}${ruleScope(entry)}`,
+      entry.status === 'inherited' ? ' (inherited)' : '',
+    ].join('');
+  });
+  const variables = (why.variables ?? []).map(
+    (variable) =>
+      `    ${variable.name}: ${truncateByLength(variable.value, CASCADE_VALUE_WIDTH)}  ${variable.source}${variable.inherited !== undefined ? ` (inherited from ${variable.inherited} up)` : ''}`
+  );
+  return [
+    `${why.property} = ${why.computed}`,
+    ...entries.slice(0, 1),
+    ...variables,
+    ...entries.slice(1),
+    ...(why.chain.length === 0 ? ['  no author declaration: the default or inherited value'] : []),
   ];
 }
 

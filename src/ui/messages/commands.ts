@@ -513,8 +513,10 @@ Output notation:
   contrast 4.47   WCAG ratio, rounded down, against the background behind the text
   (+N not rendered)  children with display: none (or not in the layout)
   hints           declarations on this element that have no effect, why, the fix and where they are
-  ← sel (file:N)  --rules: the declaration that sets the value; 'over X': rules it beats
-  ✓ / ✗           --why: the winning declaration / ones it beats, highest precedence first
+  ← sel (file:N)  --rules: the declaration that sets the value (file:line, or file:line:column in
+                  minified files); 'over X': rules it beats; '= v': the value of a var() expression
+  ✓ / ✗           --why: the winning declaration / ones it beats, highest precedence first;
+                  indented --name lines: where the winner's custom properties are set
 Sessions follow the system color scheme; start with --color-scheme light|dark to choose.`;
 
 /**
@@ -540,17 +542,6 @@ export function inspectCascadeNote(reason: 'timeout' | 'failed'): string {
   return reason === 'timeout'
     ? "CSS rules not read: the page's stylesheets took too long (hints wait 1 s; --rules and --why 5 s)"
     : 'CSS rules not read: Chrome could not report the rules matching this element';
-}
-
-/**
- * `--why` with a shorthand: the cascade is per longhand.
- *
- * @param name - Shorthand given
- * @param longhands - Its longhands
- * @returns Message
- */
-export function inspectWhyShorthandMessage(name: string, longhands: readonly string[]): string {
-  return `${name} is a shorthand; ask for one of its longhands: ${longhands.join(', ')}`;
 }
 
 /**

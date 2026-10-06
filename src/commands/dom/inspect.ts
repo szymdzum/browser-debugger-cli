@@ -6,7 +6,7 @@
  * Figma-aligned fields).
  */
 
-import { InvalidArgumentError, Option, type Command } from 'commander';
+import { Option, type Command } from 'commander';
 
 import { runElementCommand } from '@/commands/dom/helpers/runElementCommand.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
@@ -16,10 +16,9 @@ import { cssPropertiesOption, integerOption } from '@/commands/shared/validation
 import { domInspect } from '@/ipc/client.js';
 import type { DomInspectCommand } from '@/ipc/protocol/commands.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
-import { shorthandLonghands } from '@/runtime/dom/inspectCascade.js';
 import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTree.js';
 import { formatInspect } from '@/ui/formatters/inspect.js';
-import { INSPECT_OUTPUT_LEGEND, inspectWhyShorthandMessage } from '@/ui/messages/commands.js';
+import { INSPECT_OUTPUT_LEGEND } from '@/ui/messages/commands.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -64,16 +63,16 @@ export function registerInspectCommand(dom: Command): void {
     .addOption(
       new Option(
         '--rules',
-        'Also show which CSS rule sets each shown property (selector, file:line, what it overrides)'
-      ).conflicts(['props', 'all'])
+        'Also show which CSS rule sets each shown property (selector, file:line, what it overrides); with --props, those properties'
+      ).conflicts('all')
     )
     .addOption(
       new Option(
         '--why <property>',
         'Every declaration of one property: the one that applies and those it overrides (e.g. --why color)'
       )
-        .conflicts(['props', 'all'])
-        .argParser(longhandOption)
+        .conflicts('all')
+        .argParser(propertyOption)
     )
     .option('--no-hints', 'Skip the check for declarations that have no effect')
     .addOption(jsonOption())
@@ -83,17 +82,13 @@ export function registerInspectCommand(dom: Command): void {
 }
 
 /**
- * Parse `--why`: one longhand (a shorthand like `margin` is set side by side).
+ * Parse `--why`: a property name, lowercased (custom properties as given).
  *
  * @param value - Property name
- * @returns Lowercased name (custom properties as given)
- * @throws InvalidArgumentError for a shorthand, naming its longhands
+ * @returns Name
  */
-function longhandOption(value: string): string {
-  const name = value.startsWith('--') ? value.trim() : value.trim().toLowerCase();
-  const longhands = shorthandLonghands(name);
-  if (longhands) throw new InvalidArgumentError(inspectWhyShorthandMessage(name, longhands));
-  return name;
+function propertyOption(value: string): string {
+  return value.startsWith('--') ? value.trim() : value.trim().toLowerCase();
 }
 
 /**

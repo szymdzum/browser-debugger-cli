@@ -6,11 +6,8 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
-import {
-  inactiveHints,
-  undefinedVariableHints,
-  unsetVariables,
-} from '@/runtime/dom/inspectHints.js';
+import { inactiveHints, undefinedVariableHints } from '@/runtime/dom/inspectHints.js';
+import { substituteVariables, unsetVariables } from '@/runtime/dom/inspectVariables.js';
 
 /**
  * A cascade where each property is set by one rule.
@@ -154,5 +151,20 @@ void describe('undefined custom properties', () => {
     assert.deepEqual(unsetVariables('var(--a, var(--b))', {}), ['--b']);
     assert.deepEqual(unsetVariables('var(--a, red)', {}), []);
     assert.deepEqual(unsetVariables('calc(var(--x) * 2) var(--y)', { '--y': '1' }), ['--x']);
+  });
+
+  void it('substitutes custom properties, fallbacks when unset', () => {
+    assert.equal(
+      substituteVariables('var(--y) var(--x, 4px)', { '--y': ' .375rem' }),
+      '.375rem 4px'
+    );
+    assert.equal(substituteVariables('var(--nope)', {}), 'var(--nope)');
+  });
+
+  void it('names a similar custom property that is set', () => {
+    const hints = undefinedVariableHints(cascade({ background: 'var(--brand-accent)' }), {
+      '--brand': '#5b3df5',
+    });
+    assert.match(hints[0]?.fix ?? '', /set here: --brand/);
   });
 });

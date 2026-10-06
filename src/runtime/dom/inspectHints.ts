@@ -7,6 +7,8 @@
 
 import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
+import { unsetVariables } from '@/runtime/dom/inspectVariables.js';
+import { findSimilarNames } from '@/utils/suggestions.js';
 
 /** A declaration that has no effect */
 export interface CssHint {
@@ -285,7 +287,7 @@ export function undefinedVariableHints(
       property: written,
       value,
       reason: `${missing.join(', ')} is not set`,
-      fix: `define ${missing[0]} or give var() a fallback`,
+      fix: variableFix(missing[0] ?? '', style),
       declaration,
     });
   }
@@ -293,43 +295,16 @@ export function undefinedVariableHints(
 }
 
 /**
- * The custom properties a value uses that are not set and have no fallback:
- * the fallback of an unset one is used instead (and checked in turn), the
- * fallback of a set one never.
+ * How to fix a `var()` of an unset custom property, naming a similar one
+ * that is set (a typo or a renamed token).
  *
- * @param value - Value as written
+ * @param name - The unset custom property
  * @param style - Computed styles (custom properties included)
- * @returns Names of the unset custom properties
+ * @returns Fix
  */
-export function unsetVariables(value: string, style: StyleMap): string[] {
-  const missing: string[] = [];
-  let rest = value;
-  for (let start = rest.indexOf('var('); start !== -1; start = rest.indexOf('var(')) {
-    const end = closingParen(rest, start + 3);
-    const [name = '', ...fallback] = rest.slice(start + 4, end).split(',');
-    const variable = name.trim();
-    if (style[variable] === undefined) {
-      missing.push(
-        ...(fallback.length > 0 ? unsetVariables(fallback.join(','), style) : [variable])
-      );
-    }
-    rest = rest.slice(end + 1);
-  }
-  return missing;
-}
-
-/**
- * Index of the parenthesis that closes the one at `open`.
- *
- * @param text - Text
- * @param open - Index of `(`
- * @returns Index of the matching `)` (the end of the text when unbalanced)
- */
-function closingParen(text: string, open: number): number {
-  let depth = 0;
-  for (let i = open; i < text.length; i++) {
-    if (text[i] === '(') depth++;
-    if (text[i] === ')' && --depth === 0) return i;
-  }
-  return text.length;
+function variableFix(name: string, style: StyleMap): string {
+  const defined = Object.keys(style).filter((key) => key.startsWith('--'));
+  const [similar] = findSimilarNames(name, defined);
+  const fix = `define ${name} or give var() a fallback`;
+  return similar ? `${fix} (set here: ${similar})` : fix;
 }

@@ -45,12 +45,14 @@ export interface InspectSources {
   /** The element as `dom layout` measures it */
   layout?: ElementLayout;
   colorScheme?: 'light' | 'dark';
-  /** Matched rules for the cascade fields; `timeout` when Chrome took too long */
+  /** Matched rules for the cascade fields; `timeout` or `failed` when they were not read */
   matched?: Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed';
   /** `--rules` was asked for */
   rules?: boolean;
   /** `--why` property */
   why?: string;
+  /** `--props` names (`--rules` covers only these) */
+  props?: string[];
 }
 
 /** What the command asked for */

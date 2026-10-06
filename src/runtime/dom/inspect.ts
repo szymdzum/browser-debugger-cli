@@ -153,6 +153,7 @@ function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<Ins
     label: (declaration) => sourceLabel(declaration, cdp),
     ...(sources.rules && { rules: true }),
     ...(sources.why && { why: sources.why }),
+    ...(sources.props && { props: sources.props }),
   });
 }
 
@@ -327,6 +328,7 @@ async function readSources(
     ...measured,
     ...(params.rules && { rules: true }),
     ...(params.why && { why: params.why }),
+    ...(params.props && { props: params.props }),
   };
 }
 
@@ -542,7 +544,9 @@ async function readMatched(
   params: DomInspectCommand
 ): Promise<CdpStyles['matched']> {
   const explicit = params.rules === true || params.why !== undefined;
-  if (nodeId === undefined || (!explicit && params.hints === false) || params.props || params.all) {
+  const skipped =
+    !explicit && (params.hints === false || params.props !== undefined || params.all === true);
+  if (nodeId === undefined || skipped) {
     return undefined;
   }
   return matchedStyles(cdp, nodeId, explicit ? RULES_BUDGET_MS : HINTS_BUDGET_MS);

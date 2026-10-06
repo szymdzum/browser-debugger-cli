@@ -314,7 +314,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'inspect:--rules': {
     default: 'Shows the values, not where they come from',
     whenEnabled:
-      "Adds a rules group: for each shown property the page's CSS sets, the value as written (with the computed value when it uses var()), selector, file:line (column for minified files), @media/@container condition, cascade layer, how many ancestors up it is inherited from, and the rules it beats. Sides one declaration sets are one row; browser defaults are left out",
+      "Adds a rules group: for each shown property the page's CSS sets, the value as written (with the computed value when it uses var()), selector, file:line (column for minified files), @media/@container condition, cascade layer, how many ancestors up it is inherited from, and the rules it beats. Sides one declaration sets are one row; browser defaults are left out. With --props, only those properties",
     automaticBehavior:
       'The cascade is computed by bdg from CSS.getMatchedStylesForNode (origin, !important, style attribute, layers, specificity and order); reading it waits up to 5 s, then the output notes the cascade was not read',
     tokenImpact: 'About 15–25 tokens per row, 5–20 rows',
@@ -323,7 +323,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'inspect:--why': {
     default: 'Not shown',
     whenEnabled:
-      "Adds why <property> = computed value, then every declaration of it on the element, highest precedence first: ✓ the winner (or the inherited ancestor's), ✗ the ones it beats, browser defaults included. Logical names map to physical ones (margin-inline-start → margin-left); a shorthand (margin, padding, border) exits 81 naming its longhands",
+      "Adds why <property> = computed value, then every declaration of it on the element, highest precedence first: ✓ the winner (or the inherited ancestor's), ✗ the ones it beats, browser defaults included. var() values are shown substituted, with where the winner's custom properties are set. Logical names map to physical ones (margin-inline-start → margin-left); a shorthand (padding, border) gives one answer when one declaration sets all its sides, else one per side",
   },
 
   'inspect:--no-hints': {

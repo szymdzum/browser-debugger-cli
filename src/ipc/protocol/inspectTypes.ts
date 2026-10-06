@@ -266,7 +266,12 @@ export interface InspectRule {
 
 /** One declaration in the cascade of a property (`--why`) */
 export interface InspectWhyEntry {
+  /** Value as written (a shorthand's whole value) */
   value: string;
+  /** Shorthand or logical property it was written as */
+  via?: string;
+  /** The value with its custom properties substituted, when it has `var()` */
+  resolved?: string;
   source: string;
   /** `applied` (wins), `overridden`, or `inherited` (the winner comes from an ancestor) */
   status: 'applied' | 'overridden' | 'inherited';
@@ -281,6 +286,17 @@ export interface InspectWhy {
   /** Computed value, normalized (px as numbers, colors as hex) */
   computed: string;
   chain: InspectWhyEntry[];
+  /** Where the custom properties of the winning value are set */
+  variables?: InspectVariable[];
+}
+
+/** A custom property a winning value uses, and where it is set */
+export interface InspectVariable {
+  name: string;
+  value: string;
+  source: string;
+  /** Set on an ancestor this many levels up */
+  inherited?: number;
 }
 
 /** `bdg dom inspect` result */
@@ -344,8 +360,8 @@ export interface InspectResult {
   hints?: InspectHint[];
   /** `--rules`: the declaration that sets each shown property */
   rules?: InspectRule[];
-  /** `--why <property>` */
-  why?: InspectWhy;
+  /** `--why <property>`: one entry, or one per longhand of a shorthand whose sides differ */
+  why?: InspectWhy[];
   /** The cascade was not read: Chrome took longer than the time allowed, or failed */
   cascade?: 'timeout' | 'failed';
 }

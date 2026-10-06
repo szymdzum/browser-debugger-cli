@@ -186,10 +186,10 @@ export function shorthandLonghands(name: string): readonly string[] | undefined 
  * Whether a property inherits.
  *
  * @param property - Longhand
- * @returns True for inherited properties
+ * @returns True for inherited properties (custom properties inherit)
  */
 export function isInherited(property: string): boolean {
-  return INHERITED.has(property);
+  return INHERITED.has(property) || property.startsWith('--');
 }
 
 /**
@@ -231,7 +231,9 @@ function longhandsOf(property: Protocol.CSS.CSSProperty): Array<{ name: string; 
 /**
  * The declarations a CSS style block sets, longhand by longhand. Only
  * declarations as written count (CDP adds unranged duplicates); disabled
- * and invalid ones do not.
+ * and invalid ones do not. A shorthand with `var()` gives each longhand the
+ * value as written: Chrome cannot expand it before substitution and reports
+ * the initial values (`currentcolor` for `border: 2px solid var(--c)`).
  *
  * @param style - CDP style
  * @param source - Where the block comes from
@@ -254,7 +256,10 @@ function declarationsOf(
       const written = property.value.replace(/\s*!important\s*$/, '');
       return longhandsOf(property).map(({ name, value }) => ({
         property: name,
-        value: property.longhandProperties ? value : written,
+        value:
+          property.longhandProperties && value !== '' && !written.includes('var(')
+            ? value
+            : written,
         ...(name !== property.name && { via: property.name, written }),
         important: property.important === true,
         source: {

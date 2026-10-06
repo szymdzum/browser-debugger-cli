@@ -221,8 +221,11 @@ void describe('dom inspect', () => {
 
     const attribute = await bdg(['dom', 'inspect', '#sized', '--why', 'width', '--tree', '0']);
     assert.match(attribute, /\n +✓ 120px +HTML attribute/);
-    const shorthand = await bdg(['dom', 'inspect', '#tag', '--why', 'padding'], 81);
-    assert.match(shorthand, /padding is a shorthand; ask for one of its longhands: padding-top/);
+    const shorthand = await bdg(['dom', 'inspect', '#tag', '--why', 'padding', '--tree', '0']);
+    assert.match(shorthand, /\nwhy +padding = 4 8 4 8\n +✓ padding: 4px 8px +\.tag \(/);
+    const onlyColor = await bdg(['dom', 'inspect', '#tag', '--props', 'color', '--rules']);
+    assert.match(onlyColor, /\nrules +color #06c ← \.tag\.primary/);
+    assert.doesNotMatch(onlyColor, /padding/);
   });
 
   void it('inspects the first rendered match and says so, and exits 83 when nothing matches', async () => {

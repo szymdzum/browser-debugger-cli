@@ -111,10 +111,81 @@ void describe('cascade fields', () => {
     const color = result.rules?.find((r) => r.property === 'color');
     assert.equal(color?.computed, '#06c');
     assert.deepEqual(color?.overrides, ['.btn']);
-    assert.equal(result.why?.computed, '#06c');
+    const [why] = result.why ?? [];
+    assert.equal(why?.computed, '#06c');
     assert.deepEqual(
-      result.why?.chain.map((e) => `${e.status} ${e.value}`),
-      ['applied var(--brand)', 'overridden red']
+      why?.chain.map((e) => `${e.status} ${e.value} ${e.resolved ?? ''}`),
+      ['applied var(--brand) #06c', 'overridden red ']
+    );
+  });
+
+  void it("takes a var() shorthand as written, not Chrome's initial values", () => {
+    const sides = ['top', 'right', 'bottom', 'left'];
+    const longhands = Object.fromEntries(
+      sides.flatMap((side) => [
+        [`border-${side}-width`, '2px'],
+        [`border-${side}-style`, 'solid'],
+        [`border-${side}-color`, 'currentcolor'],
+      ])
+    );
+    const result = fields(
+      [rule('.search', [['border', '2px solid var(--line)', longhands]])],
+      { 'border-top-color': 'rgb(81, 86, 93)', '--line': '#51565d' },
+      'border-top-color'
+    );
+    assert.deepEqual(
+      result.rules?.map((r) => `${r.property} ${r.value}`),
+      ['border 2px solid var(--line)']
+    );
+    const [why] = result.why ?? [];
+    assert.equal(why?.chain[0]?.value, '2px solid var(--line)');
+    assert.equal(why?.chain[0]?.via, 'border');
+    assert.equal(why?.chain[0]?.resolved, '2px solid #51565d');
+  });
+
+  void it('answers --why for a shorthand once when one declaration sets it, and names where its variables are set', () => {
+    const padding = rule('.btn', [
+      ['--py', '.375rem'],
+      ['padding', 'var(--py) 12px'],
+    ]);
+    const result = fields(
+      [padding],
+      {
+        '--py': '.375rem',
+        'padding-top': '6px',
+        'padding-right': '12px',
+        'padding-bottom': '6px',
+        'padding-left': '12px',
+      },
+      'padding'
+    );
+    assert.equal(result.why?.length, 1);
+    const [why] = result.why ?? [];
+    assert.equal(why?.property, 'padding');
+    assert.equal(why?.computed, '6 12 6 12');
+    assert.deepEqual(why?.variables, [{ name: '--py', value: '.375rem', source: '.btn' }]);
+  });
+
+  void it('limits --rules to the --props names', () => {
+    const result = buildCascadeFields({
+      matched: {
+        matchedCSSRules: [
+          rule('.a', [
+            ['color', 'red'],
+            ['width', '10px'],
+          ]),
+        ],
+      },
+      style: { display: 'block' },
+      parentStyle: { display: 'block' },
+      replaced: false,
+      label: (d) => d.source.selector ?? d.source.kind,
+      rules: true,
+      props: ['width'],
+    });
+    assert.deepEqual(
+      result.rules?.map((r) => r.property),
+      ['width']
     );
   });
 
