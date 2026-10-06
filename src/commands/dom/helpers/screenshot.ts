@@ -224,13 +224,23 @@ async function useUnitPixelRatio(
   const sessionViewport = readSessionMetadata()?.viewport;
   const size = sessionViewport ?? (await windowSize(viewport));
   await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(size, 1));
-  return async () => {
-    if (sessionViewport) {
-      await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
-    } else {
-      await callCDP('Emulation.clearDeviceMetricsOverride', {});
-    }
-  };
+  return restoreSessionMetrics;
+}
+
+/**
+ * Put back the session's device metrics: its `--viewport` (and a phone's
+ * touch input, which a capture beyond the viewport turns off), else none.
+ */
+async function restoreSessionMetrics(): Promise<void> {
+  const sessionViewport = readSessionMetadata()?.viewport;
+  if (!sessionViewport) {
+    await callCDP('Emulation.clearDeviceMetricsOverride', {});
+    return;
+  }
+  await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
+  if (sessionViewport.mobile) {
+    await callCDP('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  }
 }
 
 /**
@@ -600,12 +610,7 @@ async function keepLayoutWithoutScrollbars(view: { width: number; height: number
  */
 async function restoreViewport(): Promise<void> {
   await callCDP('Emulation.setScrollbarsHidden', { hidden: false });
-  const sessionViewport = readSessionMetadata()?.viewport;
-  if (sessionViewport) {
-    await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
-  } else {
-    await callCDP('Emulation.clearDeviceMetricsOverride', {});
-  }
+  await restoreSessionMetrics();
 }
 
 /**
