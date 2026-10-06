@@ -71,6 +71,28 @@ void describe('Error Handling Smoke Tests', () => {
     assert.ok(/chrome|browser|launch|binary/i.test(result.stderr));
   });
 
+  void it('refuses a session dir or profile that cannot hold a directory, at once', async () => {
+    const started = Date.now();
+    const sessionDir = await runCommand('http://127.0.0.1:9/', ['--headless'], {
+      env: { BDG_SESSION_DIR: '/proc/bdg-smoke' },
+    });
+    assert.equal(sessionDir.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
+    assert.match(sessionDir.stderr, /\/proc is a pseudo-filesystem/);
+    const profile = await runCommand('http://127.0.0.1:9/', [
+      '--headless',
+      '--user-data-dir',
+      '/proc/bdg-smoke/profile',
+    ]);
+    assert.equal(profile.exitCode, EXIT_CODES.INVALID_ARGUMENTS);
+    assert.match(
+      profile.stderr,
+      /Invalid --user-data-dir "\/proc\/bdg-smoke\/profile": \/proc is a pseudo-filesystem/
+    );
+    assert.ok(Date.now() - started < 15000, 'both fail before anything is spawned');
+    const status = await runCommand('status', []);
+    assert.equal(status.exitCode, 0, 'no daemon was left behind');
+  });
+
   // REMOVED: Flaky test "should cleanup stale sessions automatically"
   // Reason: Intermittent failures in CI due to timing/race conditions
   // The test passes locally but fails in CI when processes don't fully terminate

@@ -2,6 +2,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
@@ -10,7 +11,6 @@ import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/ne
 import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
-import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /** Delay before reading the title after a same-document navigation */

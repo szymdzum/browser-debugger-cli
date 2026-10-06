@@ -26,11 +26,11 @@ import type { InspectHint, InspectResult } from '@/ipc/protocol/inspectTypes.js'
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { selectedProps } from '@/runtime/dom/inspectAllStyles.js';
 import { buildCascadeFields } from '@/runtime/dom/inspectCascadeModel.js';
+import { explainUnsetVariables } from '@/runtime/dom/inspectHints.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import { buildInspectResult, type InspectSources } from '@/runtime/dom/inspectModel.js';
 import type { PlatformFont, PseudoSource } from '@/runtime/dom/inspectPaintModel.js';
 import { matchedStyles, sourceLabel, trackStyleSheets } from '@/runtime/dom/inspectRules.js';
-import { explainUnsetVariables } from '@/runtime/dom/inspectHints.js';
 import {
   INSPECT_PAGE_JS,
   RELATED_NODE_JS,

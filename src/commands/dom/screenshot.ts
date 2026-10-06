@@ -25,6 +25,7 @@ import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
+import { makeDirectory } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -167,7 +168,7 @@ function ensureDirectory(dirPath: string, fs: typeof FsModule): void {
     );
   }
   try {
-    fs.mkdirSync(dirPath, { recursive: true });
+    makeDirectory(dirPath);
   } catch (error) {
     throw outputPathError(dirPath, error);
   }
