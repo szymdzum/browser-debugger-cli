@@ -133,8 +133,10 @@ bdg network list --preset errors             # Failed requests
 bdg console                                  # Console messages
 bdg dom layout "#save"                       # Where is it? Visible? Covered?
 bdg dom inspect "#save" --why color          # Which CSS rule sets the color
+bdg dom audit contrast                       # Page-wide: text below WCAG AA, weakest first
+bdg css search -- --brand                    # Where a token is set, in every stylesheet
 bdg dom listeners "#save"                    # Which event listeners run
-bdg page emulate --viewport 900x700          # Responsive check mid-session
+bdg page emulate --viewport 900x700          # Responsive check mid-session (--mobile for a phone)
 bdg eval "document.title"                    # Run JavaScript (--frame for iframes)
 bdg cdp Network.getCookies                   # Any CDP method
 bdg stop                                     # End the session
@@ -146,9 +148,9 @@ Local dev servers with self-signed certificates: `bdg https://localhost:5173 --c
 
 | Area | Commands |
 |---|---|
-| **Page** | navigate, reload, back/forward, viewport and color-scheme emulation |
+| **Page** | navigate, reload, back/forward, viewport, phone (`--mobile`) and color-scheme emulation |
 | **Interaction** | click (double, right), fill (React-compatible, file inputs), hover, keys, forms, scroll, wait; shadow DOM and iframes included |
-| **Inspection** | element styles with the CSS cascade, layout and visibility, accessibility tree, event listeners, screenshots |
+| **Inspection** | element styles with the CSS cascade, layout and visibility, page-wide audits (contrast, overflow, layers, animations), stylesheet search, accessibility tree, event listeners, screenshots |
 | **Telemetry** | network requests and headers (incl. `Authorization`), HAR export, cookies (incl. `HttpOnly`), console messages, live `peek --follow` |
 | **Accessibility** | accessibility tree, semantic queries (`role:button name:Submit`), contrast checks |
 | **Performance** | metrics, CPU and heap profiling, tracing, CPU and network throttling (raw CDP) |

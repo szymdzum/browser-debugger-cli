@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-06
+
 ### Added
 
 - **`--mobile`** - `bdg <url> --mobile` and `bdg page emulate --mobile` emulate a phone: a mobile viewport (390x844 unless `--viewport`) at pixel ratio 3 with mobile layout and overlay scrollbars, touch (`pointer: coarse`) and an Android Chrome user agent with mobile client hints. A narrow desktop viewport kept classic scrollbars (375 laid out at 360), a desktop user agent and no touch (#376)
