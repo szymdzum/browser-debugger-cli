@@ -7,6 +7,7 @@ import type { ElementLayout, LayoutResult, LayoutSize } from '@/ipc/protocol/dom
 import type { IndexSource } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
+  coverText,
   indexLayoutHeadline,
   layoutHeadline,
   layoutPositionLabel,
@@ -37,7 +38,7 @@ export function layoutLine(element: ElementLayout, viewport?: LayoutSize): strin
     `[${element.index}] ${element.element}${element.text ? ` "${element.text}"` : ''}`,
     element.inViewport !== 'hidden' && `${bounds.x},${bounds.y} ${bounds.width}×${bounds.height}`,
     layoutPositionLabel(element, viewport),
-    element.coveredBy && `covered by ${element.coveredBy}`,
+    element.coveredBy && coverText(element.coveredBy, element.coverTransparent),
     element.inert && 'inert',
     element.invisible,
     element.context && element.context !== element.clippedBy && `in ${element.context}`,

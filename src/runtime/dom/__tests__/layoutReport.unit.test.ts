@@ -49,7 +49,7 @@ function element(index: number, y: number, coveredBy: string | null = null): Raw
       pageScroll: { left: 0, up: 300, right: 0, down: 2200 },
       offset: { x: 0, y: 0 },
     },
-    coveredBy,
+    cover: coveredBy ? { element: coveredBy, transparent: false } : null,
     computed: COMPUTED,
   };
 }

@@ -17,6 +17,7 @@ import type {
   PendingChanges,
   ShownElement,
 } from '@/ipc/protocol/domTypes.js';
+import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { DocumentRequestState, ViewportPosition } from '@/types.js';
@@ -498,6 +499,73 @@ export function layoutHeadline(count: number, listed: number, selector: string):
  */
 export function indexLayoutHeadline(target: string): string {
   return `Element at ${target} (page x,y and size in CSS px):`;
+}
+
+/** Help text explaining `bdg dom inspect`'s output notation */
+export const INSPECT_OUTPUT_LEGEND = `
+Output notation:
+  WxH @x,y        rendered border box size and page position (CSS px, no unit)
+  m / p / b       margin / padding / border widths, 1-4 values in CSS order (top right bottom left)
+  in-parent       distances to the parent's content edges (l t r b); sib: gaps to the sibling on each side
+  scroll WxH      the content (pseudo-elements too) is larger than the box
+  16/24           font size / line height; 'webfont loaded' = drawn with a downloaded font;
+                  (rendered "X") = drawn with another font than declared (a fallback)
+  contrast 4.47   WCAG ratio, rounded down, against the background behind the text
+  (+N not rendered)  children with display: none (or not in the layout)
+Sessions follow the system color scheme; start with --color-scheme light|dark to choose.`;
+
+/**
+ * What covers an element: a cover that paints nothing at that point (a
+ * transparent box over it) does not hide it, but takes its clicks.
+ *
+ * @param cover - Description of the covering element
+ * @param transparent - The cover paints nothing there
+ * @returns e.g. `covered by div#modal`, `under transparent ul.filters (clicks land on it)`
+ */
+export function coverText(cover: string, transparent: boolean | undefined): string {
+  return transparent ? `under transparent ${cover} (clicks land on it)` : `covered by ${cover}`;
+}
+
+/**
+ * Header badge of `bdg dom inspect` when the page is shown in its dark theme
+ * because the session follows the system's dark preference: the colors are
+ * the dark theme's, not what a light-mode visitor sees.
+ *
+ * @returns Badge
+ */
+export function inspectDarkThemeBadge(): string {
+  return '[dark theme from system; --color-scheme light for light]';
+}
+
+/**
+ * Header badges of `bdg dom inspect` for what keeps an element from being seen.
+ *
+ * @param visibility - Not rendered, hidden, offscreen, covered
+ * @returns e.g. `[not rendered: display: none]`, `[offscreen: below]`, `[covered by div#modal]`
+ */
+export function inspectVisibilityBadges(visibility: InspectVisibility): string[] {
+  const reason = (text: string | undefined): string => (text ? `: ${text}` : '');
+  if (visibility.notRendered) {
+    return [`[not rendered${reason(visibility.hidden?.replace(/^not rendered \((.*)\)$/, '$1'))}]`];
+  }
+  return [
+    visibility.hidden && `[hidden: ${visibility.hidden}]`,
+    visibility.offscreen && `[offscreen: ${visibility.offscreen}]`,
+    visibility.coveredBy && `[${coverText(visibility.coveredBy, visibility.coverTransparent)}]`,
+  ].filter((badge): badge is string => Boolean(badge));
+}
+
+/**
+ * What `bdg dom inspect` did when several elements matched and no --index was given.
+ *
+ * @param picked - How the match was chosen
+ * @param index - Index of the inspected match
+ * @returns e.g. "inspected the first visible one ([2])"
+ */
+export function inspectedMatchAction(picked: 'first-visible' | 'first', index: number): string {
+  return picked === 'first-visible'
+    ? `inspected the first visible one ([${index}])`
+    : 'inspected the first';
 }
 
 /**

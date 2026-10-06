@@ -9,6 +9,7 @@
  * - `frames.ts` — list the page's iframes
  * - `listeners.ts` — list event listeners that run for an element
  * - `layout.ts` — positions, sizes and visibility of elements
+ * - `inspect.ts` — what one element looks like (styles, box, layout, child tree)
  * - `wait.ts` — wait for elements to appear, show, contain a text or go away
  *
  * Form-related commands register via `form.ts` and `formInteraction.ts`.
@@ -22,6 +23,7 @@ import { handleDomEval } from '@/commands/dom/eval.js';
 import { registerFormCommand } from '@/commands/dom/form.js';
 import { handleDomFrames } from '@/commands/dom/frames.js';
 import { DOM_GET_DEFAULT_SELECTOR, handleDomGet } from '@/commands/dom/get.js';
+import { registerInspectCommand } from '@/commands/dom/inspect.js';
 import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
@@ -53,6 +55,7 @@ export function registerDomCommands(program: Command): void {
   registerFormCommand(dom);
   registerListenersCommand(dom);
   registerLayoutCommand(dom);
+  registerInspectCommand(dom);
   registerWaitCommand(dom);
 
   dom

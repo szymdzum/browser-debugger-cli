@@ -2020,6 +2020,27 @@ export function operationFailedError(operation: string, errorMessage: string): E
 }
 
 /**
+ * `dom inspect --props` named a property the element has no value for.
+ *
+ * @param names - Unknown property names
+ * @param suggestions - Similar computed property names
+ * @returns Message and suggestion
+ */
+export function unknownCssPropertyError(
+  names: string[],
+  suggestions: string[]
+): ErrorWithSuggestion {
+  const plural = names.length > 1;
+  return {
+    message: `Unknown CSS ${plural ? 'properties' : 'property'}: ${names.join(', ')}`,
+    suggestion:
+      suggestions.length > 0
+        ? `Did you mean: ${suggestions.join(', ')}?`
+        : 'Use CSS property names as in a stylesheet (e.g. --props padding-top,color,--brand); bdg dom inspect <selector> --all lists the set ones',
+  };
+}
+
+/**
  * The browser does not offer `DOMDebugger.getEventListeners` (non-Chrome
  * targets, or browsers that disable the DOMDebugger domain).
  *

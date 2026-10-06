@@ -16,6 +16,7 @@ import type {
   ScrollResult,
   SubmitResult,
 } from '@/ipc/protocol/domTypes.js';
+import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
 import type { NetworkRequest } from '@/types.js';
 
@@ -352,6 +353,27 @@ export interface DomLayoutCommand {
 export type DomLayoutData = LayoutResult;
 
 /**
+ * dom_inspect: what one element looks like (styles, box, layout, child tree).
+ */
+export interface DomInspectCommand {
+  selector: string;
+  /** Which match (default: the first rendered one, else the first) */
+  index?: number;
+  /** Exact element from the query cache (overrides selector/index) */
+  backendNodeId?: number;
+  /** Child tree depth (default 2; 0 for none) */
+  tree?: number;
+  /** Child tree rows at most (default 20) */
+  treeLimit?: number;
+  /** Every non-default longhand instead of the groups */
+  all?: boolean;
+  /** Only these properties (lowercase names) */
+  props?: string[];
+}
+
+export type DomInspectData = InspectResult;
+
+/**
  * dom_form_discover: run the form discovery script and return raw form data.
  */
 export type DomFormDiscoverCommand = Record<string, never>;
@@ -383,6 +405,7 @@ export type RegistryShape = {
   dom_form_discover: CommandDef<DomFormDiscoverCommand, DomFormDiscoverData>;
   dom_listeners: CommandDef<DomListenersCommand, DomListenersData>;
   dom_layout: CommandDef<DomLayoutCommand, DomLayoutData>;
+  dom_inspect: CommandDef<DomInspectCommand, DomInspectData>;
   dom_wait: CommandDef<DomWaitCommand, DomWaitData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
 };
@@ -506,6 +529,7 @@ export const COMMANDS: RegistryShape = {
   dom_form_discover: defineCommand(),
   dom_listeners: defineCommand(),
   dom_layout: defineCommand(),
+  dom_inspect: defineCommand(),
   dom_wait: defineCommand(),
 };
 

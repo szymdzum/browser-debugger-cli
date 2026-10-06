@@ -76,7 +76,7 @@ function layoutOf(
         text: '',
         context: '',
         geometry: measured,
-        coveredBy: null,
+        cover: null,
         computed: {
           display: 'block',
           visibility: 'visible',

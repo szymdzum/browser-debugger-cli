@@ -443,6 +443,13 @@ export async function domLayout(
   return sendCommand('dom_layout', params);
 }
 
+/** What one element looks like: styles, box, layout and child tree. */
+export async function domInspect(
+  params: NoType<(typeof COMMANDS)['dom_inspect']['requestSchema']>
+): Promise<ClientResponse<'dom_inspect'>> {
+  return sendCommand('dom_inspect', params);
+}
+
 /** Time the client gives `dom wait` beyond its --timeout (the daemon reports the timeout first) */
 const WAIT_IPC_MARGIN_MS = 10_000;
 

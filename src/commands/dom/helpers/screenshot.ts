@@ -182,10 +182,35 @@ async function restoreScrollPosition(position: ScrollPosition): Promise<void> {
 }
 
 /**
+ * The window's size with its scrollbars (`innerWidth`/`innerHeight`): an
+ * override at this size keeps the page's layout, where the visible size
+ * (without scrollbars) would narrow it and move centered content.
+ *
+ * @param viewport - Visible viewport size, used when the page does not answer
+ * @returns Width and height in CSS px
+ */
+async function windowSize(viewport: {
+  clientWidth: number;
+  clientHeight: number;
+}): Promise<{ width: number; height: number }> {
+  const response = await callCDP('Runtime.evaluate', {
+    expression: '[window.innerWidth, window.innerHeight]',
+    returnByValue: true,
+  });
+  const value = (response.data?.result as { result?: { value?: unknown } })?.result?.value;
+  const [width, height] = Array.isArray(value) ? (value as number[]) : [];
+  return {
+    width: Math.round(width ?? viewport.clientWidth),
+    height: Math.round(height ?? viewport.clientHeight),
+  };
+}
+
+/**
  * Capture at a pixel ratio of 1 (CSS px = image px) on a high-DPI display:
- * the viewport is overridden at its size (the session's `--viewport`, else
- * the visible one) until the returned function puts back what was there
- * before, the session's viewport or none.
+ * the viewport is overridden at the window's size (the session's
+ * `--viewport`, else the window with its scrollbars, so the layout does not
+ * change) until the returned function puts back what was there before, the
+ * session's viewport or none.
  *
  * @param devicePixelRatio - Page's pixel ratio
  * @param viewport - Visible viewport size
@@ -197,10 +222,7 @@ async function useUnitPixelRatio(
 ): Promise<() => Promise<void>> {
   if (devicePixelRatio === 1) return () => Promise.resolve();
   const sessionViewport = readSessionMetadata()?.viewport;
-  const size = sessionViewport ?? {
-    width: Math.round(viewport.clientWidth),
-    height: Math.round(viewport.clientHeight),
-  };
+  const size = sessionViewport ?? (await windowSize(viewport));
   await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(size, 1));
   return async () => {
     if (sessionViewport) {
@@ -439,6 +461,61 @@ const CONTENT_OVERFLOW_JS = `function () {
   return { left: own.left - reach.left, top: own.top - reach.top, right: reach.right - own.right, bottom: reach.bottom - own.bottom };
 }`;
 
+/**
+ * The visible viewport (without scrollbars) in CSS px.
+ *
+ * @returns Width and height
+ */
+async function visibleViewport(): Promise<{ width: number; height: number }> {
+  const metrics = (await callCDP('Page.getLayoutMetrics', {})).data?.result as
+    Protocol.Page.GetLayoutMetricsResponse | undefined;
+  const view = metrics?.cssVisualViewport ?? metrics?.visualViewport;
+  return { width: view?.clientWidth ?? 0, height: view?.clientHeight ?? 0 };
+}
+
+/**
+ * Whether an area (viewport coordinates) lies inside the viewport.
+ *
+ * @param area - Area
+ * @param view - Viewport size
+ * @returns True when fully inside
+ */
+function insideView(area: ElementBounds, view: { width: number; height: number }): boolean {
+  return (
+    area.x >= 0 &&
+    area.y >= 0 &&
+    area.x + area.width <= view.width &&
+    area.y + area.height <= view.height
+  );
+}
+
+/**
+ * Measure the area to capture and, when it fits in the viewport but is not
+ * in view, scroll it to the middle first. A capture inside the viewport
+ * keeps the page as it is; one beyond it makes Chrome lay the page out
+ * without its scrollbar, which moves centered content by half the
+ * scrollbar's width, so it is used only for areas larger than the viewport.
+ *
+ * @param ref - Node reference
+ * @returns Border box, area to capture (viewport coordinates) and whether it is in view
+ */
+async function measureInView(
+  ref: NodeRef
+): Promise<{ box: ElementBounds; bounds: ElementBounds; inView: boolean }> {
+  const view = await visibleViewport();
+  let box = await getElementBounds(ref);
+  let bounds = await captureArea(ref, box);
+  const fits = bounds.width <= view.width && bounds.height <= view.height;
+  if (fits && !insideView(bounds, view)) {
+    const dx = bounds.x + bounds.width / 2 - view.width / 2;
+    const dy = bounds.y + bounds.height / 2 - view.height / 2;
+    await callCDP('Runtime.evaluate', { expression: `window.scrollBy(${dx}, ${dy})` });
+    box = await getElementBounds(ref);
+    bounds = await captureArea(ref, box);
+  }
+  return { box, bounds, inView: insideView(bounds, view) };
+}
+
 /** Overflow (px) below which the capture keeps to the border box (subpixel rounding) */
 const OVERFLOW_SLACK = 1;
 
@@ -495,9 +572,6 @@ export async function captureElementScreenshot(
   ref: NodeRef,
   options: { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean } = {}
 ): Promise<ScreenshotResult> {
-  const box = await getElementBounds(ref);
-  const bounds = await captureArea(ref, box);
-
   const format = options.format ?? 'png';
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
   const noResize = options.noResize ?? false;
@@ -508,6 +582,22 @@ export async function captureElementScreenshot(
   });
   const devicePixelRatio =
     (dprResponse.data?.result as { result?: { value?: number } })?.result?.value ?? 1;
+  const before = (await callCDP('Page.getLayoutMetrics', {})).data?.result as
+    Protocol.Page.GetLayoutMetricsResponse | undefined;
+  const restoreMetrics = await useUnitPixelRatio(
+    devicePixelRatio,
+    before?.visualViewport ?? { clientWidth: 800, clientHeight: 600 }
+  );
+
+  let box: ElementBounds;
+  let bounds: ElementBounds;
+  let inView: boolean;
+  try {
+    ({ box, bounds, inView } = await measureInView(ref));
+  } catch (error) {
+    await restoreMetrics();
+    throw error;
+  }
 
   const originalWidth = bounds.width;
   const originalHeight = bounds.height;
@@ -520,7 +610,6 @@ export async function captureElementScreenshot(
   const metricsResponse = await callCDP('Page.getLayoutMetrics', {});
   const metricsResult = metricsResponse.data?.result as
     Protocol.Page.GetLayoutMetricsResponse | undefined;
-  const viewport = metricsResult?.visualViewport ?? { clientWidth: 800, clientHeight: 600 };
   const scroll = metricsResult?.cssLayoutViewport ?? { pageX: 0, pageY: 0 };
   const onPage = (area: ElementBounds): ElementBounds => ({
     ...area,
@@ -529,15 +618,13 @@ export async function captureElementScreenshot(
   });
   const clip = onPage(bounds);
 
-  const restoreMetrics = await useUnitPixelRatio(devicePixelRatio, viewport);
-
   let screenshotResult: Protocol.Page.CaptureScreenshotResponse | undefined;
   try {
     const screenshotResponse = await callCDP('Page.captureScreenshot', {
       format,
       ...(quality !== undefined && { quality }),
       clip: { ...clip, scale },
-      captureBeyondViewport: true,
+      captureBeyondViewport: !inView,
     });
     screenshotResult = screenshotResponse.data?.result as
       Protocol.Page.CaptureScreenshotResponse | undefined;
