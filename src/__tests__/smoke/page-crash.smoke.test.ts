@@ -1,11 +1,12 @@
 /**
- * Smoke test for a page whose renderer crashes mid-session: the session
- * says so, page commands fail at once with 107, and a reload brings the page
- * back.
+ * Smoke test for a page whose renderer crashes mid-session (`chrome://crash`;
+ * `Page.crash` hangs the renderer instead on Linux CI): the session says so,
+ * page commands fail at once with 107, and a reload brings the page back.
  */
 
 import * as assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import { runCommand } from '@/__testutils__/commandRunner.js';
 import { cleanupAllSessions } from '@/__testutils__/daemonHelpers.js';
@@ -46,11 +47,15 @@ void describe('page crash', () => {
   });
 
   void it('reports a crashed page, fails page commands at once, and recovers on reload', async () => {
-    await bdg(['cdp', 'Page.crash'], 107);
-    assert.match(
-      await bdg(['status']),
-      /\n⚠ The page crashed at .+ \(renderer gone\); bdg page reload brings it back\n/
-    );
+    await bdg(['cdp', 'Page.navigate', '--params', '{"url":"chrome://crash"}']);
+    const crashed =
+      /\n⚠ The page crashed at .+ \(renderer gone\); bdg page reload brings it back\n/;
+    let status = '';
+    for (let attempt = 0; attempt < 20 && !crashed.test(status); attempt++) {
+      if (attempt > 0) await delay(250);
+      status = await bdg(['status']);
+    }
+    assert.match(status, crashed);
     assert.match(await bdg(['peek']), /^⚠ The page crashed at /);
     const started = Date.now();
     assert.match(
