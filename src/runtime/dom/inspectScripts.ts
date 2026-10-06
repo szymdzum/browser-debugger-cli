@@ -548,42 +548,63 @@ export interface VariableSetter {
   value: string;
   /** Set in a keyframe of this animation */
   keyframes?: string;
-  /** The rule matches the element or an ancestor now */
-  matches: boolean;
+  /** The rule matches the element or an ancestor now (null: bdg cannot test its selector) */
+  matches: boolean | null;
+  /** The `@media` or `@supports` condition it is under that does not apply now */
+  condition?: string;
 }
 
 /**
  * Page-side function run on the element (`this`): for each custom property
- * name, the first rule in the page's stylesheets (same-origin, constructed
- * and the element's shadow root's) that sets it, keyframes included, and
- * whether that rule matches the element or an ancestor now. At most 20000
- * rules are read; cross-origin sheets are skipped.
+ * name, a rule in the page's stylesheets (same-origin, `@import`ed,
+ * constructed and the element's shadow root's) that sets it, keyframes
+ * included: the first one that matches the element or an ancestor now, else
+ * the first one, with the `@media`/`@supports` condition it is under when
+ * that does not apply. At most 20000 rules are read; cross-origin sheets are
+ * skipped.
  */
 export const VARIABLE_SETTERS_JS = `function (names) {
   const el = this;
-  const found = {};
+  const view = el.ownerDocument.defaultView;
+  const matching = {};
+  const other = {};
   let budget = 20000;
   const matches = (selector) => {
-    try { return Boolean(el.closest(selector)); } catch (e) { return false; }
+    try { return Boolean(el.closest(selector)); } catch (e) { return null; }
   };
-  const visit = (rules, keyframes) => {
+  const applies = (rule) => {
+    if (rule.media && rule.media.mediaText && !view.matchMedia(rule.media.mediaText).matches) return '@media ' + rule.media.mediaText;
+    if (typeof CSSSupportsRule !== 'undefined' && rule instanceof CSSSupportsRule && !CSS.supports(rule.conditionText)) return '@supports ' + rule.conditionText;
+    return null;
+  };
+  const record = (name, rule, keyframes, condition) => {
+    const selector = keyframes ? '@keyframes ' + keyframes : rule.selectorText || '';
+    const match = keyframes || condition ? false : matches(selector);
+    const setter = Object.assign(
+      { selector: selector, value: rule.style.getPropertyValue(name).trim(), matches: match },
+      keyframes ? { keyframes: keyframes } : {},
+      condition ? { condition: condition } : {}
+    );
+    if (match && !matching[name]) matching[name] = setter;
+    else if (!match && !other[name]) other[name] = setter;
+  };
+  const visit = (rules, keyframes, condition) => {
     for (const rule of Array.from(rules)) {
-      if (budget-- <= 0 || names.every((name) => found[name])) return;
+      if (budget-- <= 0 || names.every((name) => matching[name])) return;
+      if (typeof CSSImportRule !== 'undefined' && rule instanceof CSSImportRule) {
+        try { if (rule.styleSheet) visit(rule.styleSheet.cssRules, keyframes, condition); } catch (e) { continue; }
+        continue;
+      }
       if (typeof CSSKeyframesRule !== 'undefined' && rule instanceof CSSKeyframesRule) {
-        visit(rule.cssRules, rule.name);
+        visit(rule.cssRules, rule.name, condition);
         continue;
       }
       if (rule.style) {
         for (const name of names) {
-          if (found[name] || !Array.from(rule.style).includes(name)) continue;
-          const selector = keyframes ? '@keyframes ' + keyframes : rule.selectorText || '';
-          found[name] = Object.assign(
-            { selector: selector, value: rule.style.getPropertyValue(name).trim(), matches: !keyframes && matches(selector) },
-            keyframes ? { keyframes: keyframes } : {}
-          );
+          if (!matching[name] && Array.from(rule.style).includes(name)) record(name, rule, keyframes, condition);
         }
       }
-      if (rule.cssRules) visit(rule.cssRules, keyframes);
+      if (rule.cssRules) visit(rule.cssRules, keyframes, condition || applies(rule));
     }
   };
   const sheets = [];
@@ -591,7 +612,7 @@ export const VARIABLE_SETTERS_JS = `function (names) {
     sheets.push(...Array.from(scope.styleSheets || []), ...Array.from(scope.adoptedStyleSheets || []));
   }
   for (const sheet of sheets) {
-    try { visit(sheet.cssRules, null); } catch (e) { continue; }
+    try { visit(sheet.cssRules, null, null); } catch (e) { continue; }
   }
-  return found;
+  return Object.assign({}, other, matching);
 }`;

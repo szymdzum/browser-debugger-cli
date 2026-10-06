@@ -172,7 +172,7 @@ const RULES: readonly Rule[] = [
   {
     properties: ['width', 'height', 'min-width', 'min-height', 'max-width', 'max-height'],
     inactive: ({ style, replaced }) =>
-      display(style) === 'inline' && !replaced && horizontal(style)
+      display(style) === 'inline' && !replaced
         ? { reason: 'display is inline', fix: 'use display: inline-block or block' }
         : undefined,
   },
@@ -278,8 +278,8 @@ const NO_OP_KEYWORDS = new Set(['initial', 'unset', 'revert', 'revert-layer']);
 function isNoOp(declaration: Declaration): boolean {
   const value = declaration.value.trim().toLowerCase();
   if (NO_OP_KEYWORDS.has(value)) return true;
-  const zero = /^[+-]?0*\.?0+(px|em|rem|%|vh|vw)?$/.test(value) ? '0px' : value;
-  return isDefaultValue(declaration.property, zero);
+  const zero = /^[+-]?0*\.?0+([a-z]+|%)?$/.test(value) ? '0px' : value;
+  return isDefaultValue(declaration.property, value) || isDefaultValue(declaration.property, zero);
 }
 
 /**
@@ -394,10 +394,13 @@ export function explainUnsetVariables(
   setters: Readonly<Record<string, VariableSetter>>
 ): InspectHint[] {
   return hints.map((hint) => {
-    const name = hint.variables?.find((variable) => setters[variable]);
+    const variables = hint.variables ?? [];
+    const name = variables.find((variable) => setters[variable]);
     const setter = name ? setters[name] : undefined;
     if (!name || !setter) return hint;
-    return { ...hint, ...setterExplanation(name, setter) };
+    const explained = setterExplanation(name, setter);
+    if (variables.every((variable) => setters[variable])) return { ...hint, ...explained };
+    return { ...hint, reason: `${hint.reason}; ${explained.reason}` };
   });
 }
 
@@ -416,6 +419,12 @@ function setterExplanation(name: string, setter: VariableSetter): { reason: stri
       fix: `${fallback} for when the animation is not running`,
     };
   }
+  if (setter.condition) {
+    return {
+      reason: `${name} is set only by ${setter.selector} under ${setter.condition}, which does not apply now`,
+      fix: `expected under other conditions; otherwise ${fallback}`,
+    };
+  }
   if (setter.matches) {
     return {
       reason: `${name} is set to ${setter.value === '' ? 'an empty value' : setter.value} by ${setter.selector}, and nothing above gives it a value`,
@@ -423,7 +432,10 @@ function setterExplanation(name: string, setter: VariableSetter): { reason: stri
     };
   }
   return {
-    reason: `${name} is set only by ${setter.selector}, which does not match now`,
+    reason:
+      setter.matches === null
+        ? `${name} is set only by ${setter.selector} (whether it applies here is not known)`
+        : `${name} is set only by ${setter.selector}, which does not match now`,
     fix: `expected in that state; otherwise ${fallback}`,
   };
 }

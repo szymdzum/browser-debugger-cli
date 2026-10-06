@@ -161,6 +161,10 @@ void describe('inactive CSS hints', () => {
       inactiveHints(cascade({ 'vertical-align': 'baseline' }), ctx({ display: 'block' })).length,
       0
     );
+    assert.equal(
+      inactiveHints(cascade({ 'flex-grow': '0', order: '0' }), ctx({ display: 'block' })).length,
+      0
+    );
   });
 
   void it('knows audio, inline tables and vertical writing modes', () => {
@@ -244,6 +248,26 @@ void describe('where an unset custom property is set', () => {
       '--bg': { selector: ':root', value: 'inherit', matches: true },
     });
     assert.match(inherit?.reason ?? '', /set to inherit by :root, and nothing above/);
+  });
+
+  void it('says when the rule is under a condition that does not apply, and keeps other typos', () => {
+    const [media] = explainUnsetVariables([hint], {
+      '--bg': {
+        selector: ':root',
+        value: '1',
+        matches: false,
+        condition: '@media (min-width: 99999px)',
+      },
+    });
+    assert.match(
+      media?.reason ?? '',
+      /under @media \(min-width: 99999px\), which does not apply now/
+    );
+    const [both] = explainUnsetVariables([{ ...hint, variables: ['--bg', '--typo'] }], {
+      '--bg': { selector: '.btn:hover', value: '#eee', matches: false },
+    });
+    assert.match(both?.reason ?? '', /^--bg is not set; --bg is set only by \.btn:hover/);
+    assert.match(both?.fix ?? '', /did you mean/);
   });
 
   void it('keeps the hint when the page sets the variable nowhere', () => {
