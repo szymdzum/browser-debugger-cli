@@ -298,6 +298,7 @@ export class SessionController {
             data: { network: data.network, console: data.console },
             totals: { network: data.totalNetwork, console: data.totalConsole },
             currentNavigationId: data.currentNavigationId,
+            ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
             partial: true,
           },
         },

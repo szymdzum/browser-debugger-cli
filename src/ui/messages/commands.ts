@@ -496,12 +496,29 @@ export function colorSchemeLabel(scheme: string, emulated: boolean): string {
 /**
  * First line of `bdg status` for a running session.
  *
- * @param page - URL and title of the page, when the session reported them
- * @returns e.g. `Session active: https://example.com/ — Example Domain`
+ * @param page - URL and title of the page, when the session reported them,
+ *   and when it crashed
+ * @returns e.g. `Session active: https://example.com/ — Example Domain`, with
+ *   a crash warning on a second line
  */
-export function sessionActiveLine(page?: { url: string; title: string }): string {
+export function sessionActiveLine(page?: {
+  url: string;
+  title: string;
+  crashedAt?: number | undefined;
+}): string {
   if (!page) return 'Session active';
-  return `Session active: ${page.url}${page.title ? ` — ${page.title}` : ''}`;
+  const line = `Session active: ${page.url}${page.title ? ` — ${page.title}` : ''}`;
+  return page.crashedAt === undefined ? line : `${line}\n${pageCrashedNote(page.crashedAt)}`;
+}
+
+/**
+ * Warning that the session's page crashed, for `bdg status` and `bdg peek`.
+ *
+ * @param crashedAt - When it crashed (epoch ms)
+ * @returns e.g. `⚠ The page crashed at 18:42:10 (renderer gone); bdg page reload brings it back`
+ */
+export function pageCrashedNote(crashedAt: number): string {
+  return `⚠ The page crashed at ${new Date(crashedAt).toLocaleTimeString()} (renderer gone); ${sessionCommand('bdg page reload')} brings it back`;
 }
 
 /**

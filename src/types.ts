@@ -247,6 +247,8 @@ export interface BdgOutput {
   };
   /** Navigation id of the page currently loaded (live previews) */
   currentNavigationId?: number;
+  /** When the page's renderer crashed (epoch ms), while it is not loaded again */
+  pageCrashedAt?: number;
   /** Counts of all captured items matching the request (e.g. `peek --type`), when `data` holds only the most recent ones */
   totals?: { network: number; console: number };
   error?: string;

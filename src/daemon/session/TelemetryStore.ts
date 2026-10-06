@@ -21,6 +21,8 @@ export class TelemetryStore {
   readonly dialogs: DialogInfo[] = [];
 
   activeTelemetry: TelemetryType[] = [];
+  /** When the page's renderer crashed (epoch ms); undefined while the page is alive */
+  pageCrashedAt: number | undefined;
   getCurrentNavigationId: (() => number) | null = null;
   sessionStartTime = Date.now();
   targetInfo: CDPTarget | null = null;

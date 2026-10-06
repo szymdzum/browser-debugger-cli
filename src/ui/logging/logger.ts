@@ -54,6 +54,7 @@ export type LogContext =
   | 'http'
   | 'dialogs'
   | 'navigation'
+  | 'page-crash'
   | 'console'
   | 'dom'
   | 'network'

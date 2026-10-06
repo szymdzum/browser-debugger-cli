@@ -490,6 +490,16 @@ export class CDPConnection implements CDPEventSource {
   }
 
   /**
+   * Fail every command still waiting for an answer, e.g. after the page's
+   * renderer crashed: commands it was running are never answered.
+   *
+   * @param error - Error the waiting commands fail with
+   */
+  rejectPending(error: Error): void {
+    this.clearPendingMessages(error);
+  }
+
+  /**
    * Clear all pending command promises with the given error.
    *
    * We reject pending messages rather than letting them hang indefinitely

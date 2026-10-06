@@ -2,15 +2,16 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
 import { startNavigationTracking } from '@/telemetry/navigation.js';
 import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
+import { pageCrashedCommandError, startCrashTracking } from '@/telemetry/pageCrash.js';
 import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
-import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /** Delay before reading the title after a same-document navigation */
@@ -123,6 +124,16 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
         await emulatePageFocus(cdp, logger);
         if (!config.viewport?.mobile) await hideHeadlessUserAgent(cdp, logger);
         return () => undefined;
+      },
+    },
+    {
+      name: 'page-crash',
+      runAlways: true,
+      async start({ cdp, store }) {
+        return startCrashTracking(cdp, (crashedAt) => {
+          store.pageCrashedAt = crashedAt;
+          if (crashedAt !== undefined) cdp.rejectPending(pageCrashedCommandError(crashedAt));
+        });
       },
     },
     {

@@ -32,4 +32,6 @@ export interface PageState {
   viewport?: ViewportSize;
   /** `prefers-color-scheme` the page sees (left out when the page did not answer in time). */
   colorScheme?: ColorScheme;
+  /** When the page's renderer crashed (epoch ms); `bdg page reload` brings it back */
+  crashedAt?: number;
 }

@@ -335,7 +335,7 @@ export async function getNetworkHeaders(options?: {
  * @param method - CDP method name (e.g., 'Network.getCookies')
  * @param params - Optional method parameters
  * @returns Response with CDP method result
- * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated
+ * @throws Error if connection fails; CommandError (102) when the page was busy and its scripts were terminated, (107) when the page crashed
  *
  * @example
  * ```typescript
@@ -350,11 +350,12 @@ export async function callCDP(
   params?: Record<string, unknown>
 ): Promise<ClientResponse<'cdp_call'>> {
   const response = await sendCommand('cdp_call', { method, ...(params && { params }) });
-  if (response.status === 'error' && response.exitCode === EXIT_CODES.CDP_TIMEOUT) {
+  const fatal = [EXIT_CODES.CDP_TIMEOUT, EXIT_CODES.PAGE_CRASHED] as number[];
+  if (response.status === 'error' && response.exitCode && fatal.includes(response.exitCode)) {
     throw new CommandError(
-      response.error ?? `${method} timed out`,
+      response.error ?? `${method} failed`,
       response.suggestion ? { suggestion: response.suggestion } : {},
-      EXIT_CODES.CDP_TIMEOUT
+      response.exitCode
     );
   }
   return response;

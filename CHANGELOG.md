@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A crashed page is detected** (#384):
+  - After a renderer crash, `bdg status` and `bdg peek` say `⚠ The page crashed at … (renderer gone); bdg page reload brings it back` (JSON `pageState.crashedAt`, `pageCrashedAt`).
+  - Page commands fail at once with the new exit code 107 (`PAGE_CRASHED`), as do commands that were waiting on the page when it crashed. Before, the session looked active and `dom query` failed after 29 s with "The page was busy for 20s".
+  - `page reload` brings the page back.
 - **What `dom inspect`, `dom layout` and `dom audit` cannot see is said** (leftovers of the Stripe retest, #403):
   - the text line skips text inside an `opacity: 0` descendant (a measuring copy under a mask set the color and contrast);
   - an element under a `mask-image` (on it or an ancestor) is marked `[masked by mask-image on div.hero]` (`dom layout`: `masked by …`, JSON `masked`) instead of reading as fully visible;
