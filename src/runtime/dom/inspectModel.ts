@@ -51,7 +51,7 @@ export interface InspectSources {
   rules?: boolean;
   /** `--why` property */
   why?: string;
-  /** `--props` names (`--rules` covers only these) */
+  /** `--props` names, custom property patterns expanded (`--rules` covers only these) */
   props?: string[];
   /** `--no-hints` */
   hints?: false;

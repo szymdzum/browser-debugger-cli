@@ -22,7 +22,7 @@ void describe('CommandRegistry', () => {
 
   beforeEach(() => {
     store = new TelemetryStore();
-    registry = createCommandRegistry(store);
+    registry = createCommandRegistry(store, { get: () => ({}), set: () => undefined });
 
     // Minimal CDP mock (we don't test CDP interaction here)
     mockCdp = {

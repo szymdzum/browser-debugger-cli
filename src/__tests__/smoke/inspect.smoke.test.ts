@@ -233,6 +233,8 @@ void describe('dom inspect', () => {
 
     const attribute = await bdg(['dom', 'inspect', '#sized', '--why', 'width', '--tree', '0']);
     assert.match(attribute, /\n +✓ 120px +HTML attribute/);
+    const variables = await bdg(['dom', 'inspect', '#tag', '--props', '--accent*']);
+    assert.match(variables, /\n--accent: #06c\n--accent-dark: #036/);
     const shorthand = await bdg(['dom', 'inspect', '#tag', '--why', 'padding', '--tree', '0']);
     assert.match(shorthand, /\nwhy +padding = 4 8 4 8\n +✓ padding: 4px 8px +\.tag \(/);
     const onlyColor = await bdg(['dom', 'inspect', '#tag', '--props', 'color', '--rules']);

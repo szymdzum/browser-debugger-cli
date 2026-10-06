@@ -11,6 +11,7 @@ import { invalidSelectorError } from '@/errors/messages.js';
 import { selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import {
+  leadingCompounds,
   parseSelectorFilters,
   splitSelectorList,
   withoutVisibleFilters,
@@ -393,5 +394,23 @@ void describe('selectorArgsJS', () => {
 
   void it('passes plain CSS unchanged', () => {
     assert.equal(selectorArgsJS('a.b'), '"a.b", null');
+  });
+});
+
+void describe('leadingCompounds', () => {
+  void it('lists the ancestors a selector goes through, with the rest after each', () => {
+    assert.deepEqual(leadingCompounds('mdn-search-modal form'), [
+      { compound: 'mdn-search-modal', rest: 'form' },
+    ]);
+    assert.deepEqual(leadingCompounds('app-shell > nav  a.link'), [
+      { compound: 'app-shell', rest: 'nav  a.link' },
+      { compound: 'nav', rest: 'a.link' },
+    ]);
+  });
+
+  void it('ignores combinators inside brackets and parentheses, and selector lists', () => {
+    assert.deepEqual(leadingCompounds('a[title="x y"]'), []);
+    assert.deepEqual(leadingCompounds('li:has(> a) b'), [{ compound: 'li:has(> a)', rest: 'b' }]);
+    assert.deepEqual(leadingCompounds('a b, c d'), []);
   });
 });

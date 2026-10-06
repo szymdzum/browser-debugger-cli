@@ -1243,6 +1243,17 @@ export function similarSelectorsLine(kind: 'id' | 'class', names: string[]): str
   return `Did you mean ${names.map((name) => sigil + name).join(', ')}? (similar ${plural} on the page)`;
 }
 
+/**
+ * A selector that would have to cross into a shadow root: selectors cannot,
+ * but bdg searches open shadow roots on its own.
+ *
+ * @param host - The compound matching the host, and the selector after it
+ * @returns e.g. `mdn-search-modal hosts a shadow root, which a selector cannot cross into; bdg searches open shadow roots itself: use "form"`
+ */
+export function shadowBoundaryLine(host: { compound: string; rest: string }): string {
+  return `${host.compound} hosts a shadow root, which a selector cannot cross into; bdg searches open shadow roots itself: use "${host.rest}"`;
+}
+
 /** What the page says about a selector that matched nothing */
 export interface NoMatchContext {
   /** Elements only its `:visible` filters excluded */
@@ -1253,6 +1264,8 @@ export interface NoMatchContext {
   unsearched?: UnsearchedContent;
   /** "Did you mean" line for a single id or class ({@link similarSelectorsLine}) */
   similar?: string;
+  /** A leading compound that matches a shadow host, and the selector after it */
+  shadowHost?: { compound: string; rest: string };
 }
 
 /**
@@ -1278,6 +1291,7 @@ export function noNodesFoundError(
     suggestion: withLoadingHint(
       joinLines(
         context.similar,
+        context.shadowHost && shadowBoundaryLine(context.shadowHost),
         `${hidden}Verify the CSS selector is correct.`,
         note ? note : undefined
       ),
@@ -2108,5 +2122,38 @@ export function formInIframeError(iframeUrl: string, crossOrigin: boolean): Erro
     suggestion: crossOrigin
       ? 'Cross-origin iframes cannot be read or controlled; open the iframe URL directly: bdg <iframe url>'
       : 'dom form lists forms of the main document only; its fields are reachable directly: bdg dom query "input, select, textarea", then bdg dom fill <index> <value>',
+  };
+}
+
+/** CDP error messages that name something that does not exist (a node, target, frame…) */
+const CDP_NOT_FOUND_PATTERN =
+  /could not find|cannot find|not found|no \w+ (with|for) (the )?given|does not exist|no such/i;
+
+/**
+ * `bdg cdp` when Chrome rejected the call: a missing node, target or
+ * frame, or wrong parameters.
+ *
+ * @param method - CDP method
+ * @param message - Chrome's error
+ * @returns Message, suggestion, and whether something named was not found
+ */
+export function cdpCallError(
+  method: string,
+  message: string
+): ErrorWithSuggestion & { notFound: boolean } {
+  if (CDP_NOT_FOUND_PATTERN.test(message)) {
+    const ids = /node/i.test(message)
+      ? 'Node ids come from DOM.getDocument (the root) or DOM.querySelector, and a new DOM.getDocument or a navigation replaces them; '
+      : '';
+    return {
+      message: `${method}: ${message}`,
+      suggestion: `${ids}check the ids with ${sessionCommand(`bdg cdp ${method} --describe`)}`,
+      notFound: true,
+    };
+  }
+  return {
+    message: `${method}: ${message}`,
+    suggestion: `See the parameters with ${sessionCommand(`bdg cdp ${method} --describe`)}`,
+    notFound: false,
   };
 }

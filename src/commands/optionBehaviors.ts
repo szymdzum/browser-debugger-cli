@@ -308,7 +308,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'inspect:--props': {
     default: 'Shows the curated groups',
     whenEnabled:
-      'Shows only the named properties (custom properties like --brand included, "(not set)" when no rule sets one), each computed and normalized; an unknown name exits 81 with a suggestion',
+      'Shows only the named properties (custom properties like --brand included, "(not set)" when no rule sets one; --* lists every custom property the element has, --bs-btn-* those with a prefix), each computed and normalized; an unknown name exits 81 with a suggestion',
   },
 
   'inspect:--rules': {
@@ -433,7 +433,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'The page gets exactly that viewport (CSS px, e.g. 1280x800) for the whole session, through navigations and reloads (Emulation.setDeviceMetricsOverride at the display pixel ratio); a launched Chrome also opens its window at that size, so tabs the page opens get it too',
     automaticBehavior:
-      'Works with --chrome-ws-url: the override belongs to the session, and Chrome drops it when the session ends, so the attached browser gets its own size back. bdg status shows the resulting layout viewport without the scrollbar (Viewport: 1265×800 (--viewport 1280x800)). Invalid sizes (not WxH, a side outside 1-10000) exit 81',
+      'Works with --chrome-ws-url: the override belongs to the session, and Chrome drops it when the session ends, so the attached browser gets its own size back. bdg status shows the resulting layout viewport without the scrollbar (Viewport: 1265×800 (emulated 1280x800)). Invalid sizes (not WxH, a side outside 1-10000) exit 81',
   },
   'bdg:--color-scheme': {
     default:

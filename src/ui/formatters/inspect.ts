@@ -599,6 +599,7 @@ function allLines(all: Record<string, string>): string[] {
  * @returns Lines
  */
 function propLines(props: NonNullable<InspectResult['props']>): string[] {
+  if (Object.keys(props).length === 0) return ['(no matching custom properties)'];
   return Object.entries(props).map(
     ([name, prop]) =>
       `${name}: ${prop.computed || (name.startsWith('--') ? '(not set)' : '(empty)')}${prop.value !== prop.computed ? ` = ${prop.value}` : ''}`

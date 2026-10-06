@@ -25,7 +25,7 @@ import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
 import type { SessionOptions } from '@/ipc/session/lifecycle.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
-import { applySessionEmulation } from '@/runtime/page/emulation.js';
+import { applySessionEmulation, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readPageLoadingState } from '@/runtime/page/loadingState.js';
 import { reapOrphanedChrome, removeSessionFiles } from '@/session/cleanup/staleSession.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
@@ -34,6 +34,7 @@ import type { CleanupFunction, LaunchedChrome } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { formatChromeNotice } from '@/ui/messages/chrome.js';
 import { delay } from '@/utils/async.js';
+import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -91,7 +92,11 @@ export class StartCancelledError extends Error {
  */
 export class Session {
   private readonly store = new TelemetryStore();
-  private readonly registry: CommandRegistry = createCommandRegistry(this.store);
+  private readonly registry: CommandRegistry = createCommandRegistry(this.store, {
+    get: () =>
+      filterDefined({ viewport: this.config.viewport, colorScheme: this.config.colorScheme }),
+    set: (emulation) => this.setEmulation(emulation),
+  });
   private readonly notify: NoticeSink<ChromeNoticeCode> = (notice) =>
     log.info(formatChromeNotice(notice));
   private chrome: LaunchedChrome | null = null;
@@ -227,6 +232,23 @@ export class Session {
         colorScheme: this.config.colorScheme,
       }),
     };
+  }
+
+  /**
+   * Record a page emulation changed mid-session, so screenshots restore it
+   * and `bdg status` reports it.
+   *
+   * @param emulation - Viewport and color scheme now emulated
+   */
+  private setEmulation(emulation: SessionEmulation): void {
+    const { viewport: _viewport, colorScheme: _colorScheme, ...rest } = this.config;
+    this.config = { ...rest, ...emulation };
+    if (!this.started) return;
+    try {
+      writeSessionMetadata(this.metadata());
+    } catch (error) {
+      log.debug(`Session metadata not updated: ${getErrorMessage(error)}`);
+    }
   }
 
   /**

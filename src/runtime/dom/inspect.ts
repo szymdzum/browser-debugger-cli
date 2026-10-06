@@ -92,7 +92,7 @@ export async function inspectElement(
   try {
     const found = await findElement(cdp, params, objectGroup);
     const sources = await readSources(cdp, found.objectId, params, objectGroup);
-    const propValues = params.props ? checkedProps(params.props, sources) : undefined;
+    const propValues = sources.props ? checkedProps(sources.props, sources) : undefined;
     const built = buildInspectResult(sources, {
       selector: params.selector,
       index: found.index,
@@ -115,7 +115,7 @@ export async function inspectElement(
 /**
  * The properties asked for with `--props`.
  *
- * @param names - Property names
+ * @param names - Property names (custom property patterns expanded)
  * @param sources - What was read
  * @returns Values by name
  * @throws CommandError (81) for a name no value was found for
@@ -133,6 +133,25 @@ function checkedProps(names: string[], sources: InspectSources): InspectResult['
   );
   const err = unknownCssPropertyError(unknown, suggestions);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * `--props` names with custom property patterns expanded: `--*` gives every
+ * custom property the element has (its own and inherited), `--bs-btn-*`
+ * those with that prefix, sorted.
+ *
+ * @param names - Names asked for
+ * @param style - Computed styles (custom properties included)
+ * @returns Names
+ */
+function expandCustomPropertyPatterns(names: string[], style: StyleMap): string[] {
+  return names.flatMap((name) => {
+    if (!name.startsWith('--') || !name.endsWith('*')) return [name];
+    const prefix = name.slice(0, -1);
+    return Object.keys(style)
+      .filter((key) => key.startsWith('--') && key.startsWith(prefix))
+      .sort();
+  });
 }
 
 /**
@@ -330,7 +349,7 @@ async function readSources(
     ...measured,
     ...(params.rules && { rules: true }),
     ...(params.why && { why: params.why }),
-    ...(params.props && { props: params.props }),
+    ...(params.props && { props: expandCustomPropertyPatterns(params.props, styles.style) }),
     ...(params.hints === false && { hints: false }),
   };
 }

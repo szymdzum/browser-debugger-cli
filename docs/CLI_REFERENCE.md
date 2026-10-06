@@ -21,7 +21,8 @@ The start output is a few lines: the target, notices (session name, HTTP error, 
 
 - `--viewport <WxH>` (e.g. `1280x800`; `X`, `×` and `,` work too, each side 1-10000) gives the page exactly that viewport for the session, through navigations and reloads (`Emulation.setDeviceMetricsOverride` at the display's pixel ratio). A launched Chrome also opens its window at that size, so tabs the page opens get it too. It works with `--chrome-ws-url`: the override belongs to the session's connection and Chrome drops it when the session ends. Without it, a launched Chrome opens a 1920×1080 window (the viewport is smaller by the scrollbar, and by the browser UI in a visible window). Invalid values exit 81
 - `--color-scheme light|dark` emulates `prefers-color-scheme` for the session (`Emulation.setEmulatedMedia`). Without it the page sees the system setting: headless Chrome follows the OS, so a dark OS renders dark pages. Other values exit 81 with a suggestion
-- `bdg status` shows the viewport and color scheme the page renders with (`Viewport: 1265×800 (--viewport 1280x800)`, the layout viewport without the scrollbar; `Color scheme: prefers-color-scheme: dark (from the system setting)`, the media preference the page sees, not the theme it renders); JSON has them in `pageState` (and the start options as `viewport` / `colorScheme`)
+- `bdg page emulate --viewport <WxH> --color-scheme light|dark` changes either mid-session, the same way (no reload: the page re-lays out and media queries re-evaluate), and `--reset` goes back to the browser window and the system setting. It prints what is emulated and the layout viewport the page now has (`Layout: 885x700 (without scrollbars)`; JSON `{ emulated: { viewport?, colorScheme? }, viewport?, colorScheme? }`); screenshots and `bdg status` follow the change. Nothing to change, or an invalid value, exits 81
+- `bdg status` shows the viewport and color scheme the page renders with (`Viewport: 1265×800 (emulated 1280x800)`, the layout viewport without the scrollbar; `Color scheme: prefers-color-scheme: dark (from the system setting)`, the media preference the page sees, not the theme it renders); JSON has them in `pageState` (and the start options as `viewport` / `colorScheme`)
 
 A URL that cannot be loaded at all (DNS failure, connection refused, missing file) fails with exit code 80; a page that loads with an HTTP error still starts the session and warns about the status.
 
@@ -135,7 +136,7 @@ Binary response bodies (images, fonts) are only captured in sessions started wit
 
 ### Selectors
 
-DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `wait`, `listeners`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes (nested ones included). Closed shadow roots and cross-origin iframes cannot be searched: use `bdg dom eval --frame <frame>` for a cross-origin iframe (see `bdg dom frames`).
+DOM commands (`query`, `get`, `click`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `wait`, `listeners`, `screenshot --selector/--scroll`, `a11y describe`) take CSS selectors and search the page like a user sees it: the document, open shadow roots and same-origin iframes (nested ones included). Closed shadow roots and cross-origin iframes cannot be searched: use `bdg dom eval --frame <frame>` for a cross-origin iframe (see `bdg dom frames`). A selector cannot cross into a shadow root (`my-modal form` matches nothing even when the form is in `my-modal`'s open shadow root), but none needs to: `form` finds it. A selector that finds nothing because of that says so (`my-modal hosts a shadow root, which a selector cannot cross into; bdg searches open shadow roots itself: use "form"`).
 
 Three Playwright-style filters can be added to an element of a selector (of each selector in a list), alone or combined:
 
@@ -459,7 +460,7 @@ tree
 - **tree**: children to depth 2 (`--tree`), one line each with size, `[flex]`/`[grid]` and text; identical siblings grouped (`li.item ×33 266x107`), children that are not rendered counted (`(+N not rendered)`), at most 20 rows (`--tree-limit`)
 - Sizes are the rendered border box (`292x39`); `--props height` gives the CSS value, which for `box-sizing: content-box` excludes padding and border (`height: 18px`). With `--viewport 1280x800`, a page with a vertical scrollbar has 1265 px of room: the scrollbar takes the rest
 - `--props` with a shorthand whose sides differ (`border` with only a bottom line) gives each side: `border: top 0px none … / bottom 1px solid …`
-- Values: colors as hex (`#rrggbb`, `#rrggbbaa`; `lab()`/`oklch()`/`color()` from Tailwind v4 converted), lengths in px without the unit, rounded to 0.1. Values that change nothing (0, `none`, `transparent`, `normal`) are left out; custom properties, logical duplicates and `currentColor` echoes are never listed (`--props --brand` reads one; `(not set)` when no rule sets it)
+- Values: colors as hex (`#rrggbb`, `#rrggbbaa`; `lab()`/`oklch()`/`color()` from Tailwind v4 converted), lengths in px without the unit, rounded to 0.1. Values that change nothing (0, `none`, `transparent`, `normal`) are left out; custom properties, logical duplicates and `currentColor` echoes are never listed (`--props --brand` reads one; `(not set)` when no rule sets it; `--props '--*'` lists every custom property the element has, its own and inherited, and `--props '--bs-btn-*'` those with a prefix)
 - Secrets are never shown: hidden inputs and password, card and one-time-code fields have no value or placeholder text from their content
 - Elements in open shadow roots, same-origin iframes and same-process cross-origin frames work like with the other DOM commands. `display: none` elements are still inspected (`[not rendered]`, no box). Not found exits 83; a stale cached index exits 87; an unknown `--props` name exits 81 with a suggestion
 - **hints** (by default): declarations on the element that have no effect, why, the fix and where they are: `justify-content: center has no effect: display is block → use display: flex or grid on this element · in #hero (app.css:24)`. Checked: flex/grid container properties without flex or grid, item properties (`flex-grow`, `align-self`, `order`, grid placement) when the parent is not flex or grid, offsets and `z-index` on static elements, sizes and vertical margins on inline elements, `vertical-align` on blocks, `text-overflow` without `overflow: hidden`, `float` in a flex or grid container, `object-fit` on non-replaced elements, `align-content` on single-line flex containers, and `var()` of a custom property that is not set (nor its fallback), naming a similar one that is (`set here: --brand`), and form controls drawn in the browser's font while the parent uses another (`font-family: Arial is the browser's: form controls do not inherit the font (the parent uses Inter) → add font: inherit`). `hints none` means the check ran and found nothing. A shorthand is flagged only when none of its parts has an effect (`margin: 0 4px` on a link still spaces it sideways; `gap` on a multi-column block spaces the columns). Only the element's own author declarations count (not the browser's, not inherited ones). `--no-hints` skips them
@@ -787,6 +788,8 @@ bdg page info                                     # URL and title of the session
 bdg page navigate https://example.com/next        # Load a URL and wait for it
 bdg page back                                     # History back / forward
 bdg page reload
+bdg page emulate --viewport 900x700               # Change the viewport mid-session (responsive checks)
+bdg page emulate --color-scheme light             # ...or prefers-color-scheme; --reset clears both
 
 # Press keys (for Enter-to-submit, keyboard navigation)
 bdg dom pressKey ".new-todo" Enter                # TodoMVC pattern: submit with Enter
@@ -1217,6 +1220,8 @@ bdg cdp Network.getCookies --describe
 bdg cdp Network.getCookies
 bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 ```
+
+When Chrome rejects a call, the exit code says whose mistake it was: a node, target or frame that does not exist exits 83 (`DOM.getBoxModel: Could not find node with given id`, with a reminder that node ids come from `DOM.getDocument` or `DOM.querySelector` and are replaced by a new `DOM.getDocument` or a navigation); wrong or missing parameters exit 81 and point to `--describe`. To change the viewport or color scheme, use `bdg page emulate` rather than `Emulation.*` calls (screenshots and `bdg status` follow it).
 
 **Event-Based Domains:**
 

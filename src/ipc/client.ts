@@ -424,6 +424,18 @@ export async function pageNavigate(
   return sendCommand('page_navigate', params);
 }
 
+/**
+ * Change the page emulation (viewport, color scheme) or clear it.
+ *
+ * @param params - What to set, or reset
+ * @returns Emulation and what the page now has
+ */
+export async function pageEmulate(
+  params: NoType<(typeof COMMANDS)['page_emulate']['requestSchema']>
+): Promise<ClientResponse<'page_emulate'>> {
+  return sendCommand('page_emulate', params);
+}
+
 /** Run form discovery and return the raw structured form data. */
 export async function domFormDiscover(): Promise<ClientResponse<'dom_form_discover'>> {
   return sendCommand('dom_form_discover', {});
