@@ -58,9 +58,20 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <div id="faded" style="opacity:0.4"><p id="faded-text" style="color:#000">Faded text</p></div>
 <img id="pic" style="display:block" alt="pic" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
 <iframe id="frame" src="/inspect-frame" style="width:200px;height:60px;border:0"></iframe>
+<p style="background:#ddd"><a id="via-child" href="#v" style="color:#c00"><b style="color:#eaecf0">Child text</b></a></p>
+<a id="own-svg" href="#o" style="color:#fff;background:#222;font-family:Georgia">Own text<svg width="8" height="8"></svg></a>
+<button id="icon-only"><svg width="8" height="8"></svg></button>
+<x-slotted id="slotted">Slotted</x-slotted>
 <script>
   document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML =
     '<span id="shadowed" style="color:#c00;font-weight:700">In shadow</span>';
+  customElements.define('x-slotted', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML =
+        '<button style="background:#0284c7;color:#fff;font:500 14px Arial;border:0"><slot class="label"></slot></button>';
+    }
+  });
 </script>`;
 
 /** Pages by path */

@@ -238,46 +238,68 @@ function fontFields(style: StyleMap): InspectText {
   };
 }
 
+/** Computed styles the text group reads */
+export interface TextStyles {
+  /** The element's */
+  style: StyleMap;
+  /** Its layout parent's */
+  parentStyle?: StyleMap | undefined;
+  /** The descendant's that draws most of its text, when it is not the element */
+  holderStyle?: StyleMap | undefined;
+}
+
 /**
- * The text group. Elements with text (or form controls) get the full group:
- * font with the rendered font, size, color, alignment, contrast (not for
- * text no one can see: `opacity: 0` on it or an ancestor,
- * `visibility: hidden`) and the non-default extras. Containers get only what differs from
- * their parent, with the font their text was rendered in when the family
- * differs.
+ * The text group. Elements with text (or text fields) get the full group,
+ * read from whatever draws the text (the element, or the descendant with
+ * most of it, named in `holder`): font with the rendered font, size, color,
+ * alignment, contrast (not for text no one can see: not rendered,
+ * `opacity: 0` on it or an ancestor, `visibility: hidden`) and the
+ * non-default extras. Containers get only what differs from their parent,
+ * with the font their text was rendered in when that text has the
+ * container's family. Nothing for an element without text (an icon button,
+ * a checkbox).
  *
- * @param style - Computed styles
- * @param parentStyle - Computed styles of the layout parent
+ * @param styles - Computed styles of the element, its parent and its text holder
  * @param raw - Page-side measurements
  * @param fonts - Platform fonts of the text
  * @returns Text group, or undefined when there is nothing to say
  */
 export function buildText(
-  style: StyleMap,
-  parentStyle: StyleMap | undefined,
-  raw: Pick<RawInspect, 'textual' | 'backgrounds' | 'canvasDark' | 'opacity'>,
+  styles: TextStyles,
+  raw: Pick<
+    RawInspect,
+    'textual' | 'textHolder' | 'rendered' | 'hasText' | 'backgrounds' | 'canvasDark' | 'opacity'
+  >,
   fonts: readonly PlatformFont[]
 ): InspectText | undefined {
-  const fields = fontFields(style);
+  const { style, parentStyle, holderStyle } = styles;
   if (raw.textual) {
-    const seen = (raw.opacity ?? 1) > 0 && style['visibility'] !== 'hidden';
-    const contrast = seen ? textContrast(style, raw) : undefined;
+    const textStyle = raw.textHolder && holderStyle ? holderStyle : style;
+    const fields = fontFields(textStyle);
+    const seen =
+      raw.rendered !== false && (raw.opacity ?? 1) > 0 && textStyle['visibility'] !== 'hidden';
+    const contrast = seen ? textContrast(textStyle, raw) : undefined;
     return {
+      ...(textStyle !== style && raw.textHolder && { holder: raw.textHolder }),
       ...fields,
       ...renderedFont(fields.family ?? '', fonts),
       ...(contrast && { contrast }),
-      ...textExtras(style),
-      align: alignOf(style),
+      ...textExtras(textStyle),
+      align: alignOf(textStyle),
     };
   }
-  if (!parentStyle) return undefined;
+  if (!parentStyle || raw.hasText === false) return undefined;
+  const fields = fontFields(style);
   const parentFields = { ...fontFields(parentStyle), ...textExtras(parentStyle) };
   const own = { ...fields, ...textExtras(style) };
   const differing: InspectText = Object.fromEntries(
     Object.entries(own).filter(([key, value]) => parentFields[key as keyof InspectText] !== value)
   );
   if (Object.keys(differing).length === 0) return undefined;
-  return differing.family ? { ...differing, ...renderedFont(differing.family, fonts) } : differing;
+  const sameFamily = !holderStyle || holderStyle['font-family'] === style['font-family'];
+  return differing.family && sameFamily
+    ? { ...differing, ...renderedFont(differing.family, fonts) }
+    : differing;
 }
 
 /**

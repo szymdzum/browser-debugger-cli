@@ -64,15 +64,26 @@ export interface RawInspect {
   placeholderColor?: string;
   /** Font style and weight of the placeholder (they decide whether it is large text) */
   placeholderFont?: { style: string; weight: string };
-  /** Has text to describe: own text, only inline content with text, or a form control */
+  /**
+   * Has text to describe: a text field or select, its own text where most
+   * of its text is, or only inline content with text
+   */
   textual: boolean;
   formControl: boolean;
+  /**
+   * Label of the descendant that draws most of the text (`abbr`,
+   * `slot.button__label`) when it is not the element itself; its styles are
+   * the text's
+   */
+  textHolder?: string;
+  /** The element has a box and is not `visibility: hidden` */
+  rendered: boolean;
+  /** Visible text is drawn in it (or it is a text field or select) */
+  hasText: boolean;
   /** Replaced element (img, svg and its shapes, video, canvas, iframe, embed, object, form controls): sized by its content */
   replaced?: boolean;
   /** An SVG element (SVG properties are not noise for it) */
   svg?: boolean;
-  /** A text node is a direct child (the rendered font is read from the element itself) */
-  ownText: boolean;
   /** Computed (not resolved) width and height: `auto`, `200px`, `50%`, … */
   typed: { width: string; height: string };
   /** Short description of the parent that lays it out */
@@ -138,7 +149,55 @@ const FLAT_TREE_JS = `(view) => {
   const rendered = (n) => n.getClientRects().length > 0 &&
     (!n.checkVisibility || n.checkVisibility({ visibilityProperty: true }));
   const container = (n) => children(n).some((c) => rendered(c) && !/^inline/.test(style(c).display));
-  return { style, flatParent, layoutParent, children, rendered, container };
+  const label = (n) => n.localName + (n.id ? '#' + n.id : n.classList && n.classList.length ? '.' + n.classList[0] : '');
+  return { style, skipped, flatParent, layoutParent, children, rendered, container, label };
+}`;
+
+/**
+ * Page-side holder of an element's text: the element whose styles draw most
+ * of the visible text in its flat tree (characters, whitespace aside), and
+ * the element whose child text nodes those are (for the rendered font).
+ * Text slotted into a shadow root is drawn with the slot's styles, and text
+ * of an element with a shadow root that is not slotted is not drawn. Null
+ * when there is no visible text.
+ */
+const TEXT_HOLDER_JS = `(el, tree) => {
+  const counts = new Map();
+  const parents = new Map();
+  let budget = 2000;
+  const shown = (n) => tree.style(n).display === 'contents' || tree.rendered(n);
+  const nodesOf = (n) => {
+    if (n.localName !== 'slot') return Array.from((n.shadowRoot || n).childNodes);
+    const assigned = n.assignedNodes({ flatten: true });
+    return assigned.length ? assigned : Array.from(n.childNodes);
+  };
+  const visit = (n) => {
+    if (budget-- <= 0) return;
+    for (const c of nodesOf(n)) {
+      if (c.nodeType === 3) {
+        const length = c.data.replace(/\\s+/g, '').length;
+        if (length === 0) continue;
+        counts.set(n, (counts.get(n) || 0) + length);
+        if (!parents.has(n)) parents.set(n, c.parentElement || n);
+      } else if (c.nodeType === 1 && !tree.skipped.test(c.localName) && shown(c)) {
+        visit(c);
+      }
+    }
+  };
+  visit(el);
+  let best = null;
+  for (const [holder, length] of counts) if (!best || length > counts.get(best)) best = holder;
+  return best && { style: best, font: parents.get(best) };
+}`;
+
+/**
+ * Page-side: whether a form control draws text of its own (a text field,
+ * a select, a button-like input); checkboxes, radios, ranges and color
+ * inputs do not. Buttons are not covered: their text is their content.
+ */
+const TEXT_CONTROL_JS = `(el) => {
+  if (el.localName === 'textarea' || el.localName === 'select') return true;
+  return el.localName === 'input' && !/^(checkbox|radio|range|color|hidden|image)$/.test(el.type);
 }`;
 
 /**
@@ -251,7 +310,6 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
 const TREE_JS = `(el, tree, textOf, depth) => {
   let budget = ${TREE_NODE_CAP};
   let skipped = 0;
-  const labelOf = (n) => n.localName + (n.id ? '#' + n.id : n.classList && n.classList.length ? '.' + n.classList[0] : '');
   const walk = (kids, level, origin) => {
     const shown = kids.filter(tree.rendered);
     const nodes = [];
@@ -264,7 +322,7 @@ const TREE_JS = `(el, tree, textOf, depth) => {
   };
   const nodeOf = (n, level, origin) => {
     const r = n.getBoundingClientRect();
-    const node = { label: labelOf(n), x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height, display: tree.style(n).display };
+    const node = { label: tree.label(n), x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height, display: tree.style(n).display };
     const kids = tree.children(n);
     if (!tree.container(n)) node.text = textOf(n).slice(0, 60);
     if (level >= depth) {
@@ -294,6 +352,10 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const s = tree.style(el);
   const formControl = /^(input|textarea|select|button)$/.test(el.localName);
+  const textControl = (${TEXT_CONTROL_JS})(el);
+  const holder = textControl ? null : (${TEXT_HOLDER_JS})(el, tree);
+  const textual = textControl || Boolean(holder && (holder.style === el || !tree.container(el)));
+  const textFrom = holder && holder.style !== el ? holder.style : el;
   const content = textOf(el);
   const parent = tree.layoutParent(el);
   const typedMap = el.computedStyleMap ? el.computedStyleMap() : null;
@@ -304,15 +366,17 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
     classes: el.classList ? Array.from(el.classList) : [],
     context: (${ELEMENT_CONTEXT_JS})(el),
     content: content,
-    textual: formControl || (content !== '' && !tree.container(el)),
+    textual: textual,
     formControl: formControl,
+    rendered: tree.rendered(el),
+    hasText: textControl || holder !== null,
     replaced: el instanceof SVGElement || /^(img|video|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
     svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
-    ownText: Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== ''),
     typed: { width: typed('width'), height: typed('height') },
     parent: parent ? describe(parent) : undefined,
     animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running').map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
   };
+  if (textFrom !== el) result.textHolder = tree.label(textFrom);
   if (/^(input|textarea)$/.test(el.localName) && el.placeholder && !el.value) {
     result.placeholder = el.placeholder.replace(/\\s+/g, ' ').trim();
     const placeholderStyle = tree.style(el, '::placeholder');
@@ -335,24 +399,23 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
   }
   return Object.assign(result,
     (${PLACEMENT_JS})(el, tree),
-    (${BACKGROUNDS_JS})(el, tree, view),
+    (${BACKGROUNDS_JS})(textual ? textFrom : el, tree, view),
     (${TREE_JS})(el, tree, textOf, depth));
 }`;
 
 /**
  * Page-side function run on the element (`this`) that returns another
  * element whose styles CDP reads: `"parent"`, the parent that lays it out
- * (`display: contents` skipped, through shadow roots and slots), or
- * `"textHolder"`, for an element whose text is in a descendant
- * (`<button><span>Buy</span></button>`), the first element holding text,
- * whose rendered font is the one shown. Null when there is none.
+ * (`display: contents` skipped, through shadow roots and slots),
+ * `"textHolder"`, the element whose styles draw most of its text
+ * ({@link TEXT_HOLDER_JS}; the element itself when that is its own text), or
+ * `"fontHolder"`, the parent of that text's nodes (for the rendered font: a
+ * slot's text nodes belong to the host's light DOM). Null when there is none.
  */
 export const RELATED_NODE_JS = `function (which) {
   const tree = (${FLAT_TREE_JS})(this.ownerDocument.defaultView);
   if (which === 'parent') return tree.layoutParent(this);
-  const walker = this.ownerDocument.createTreeWalker(this, NodeFilter.SHOW_TEXT);
-  while (walker.nextNode()) {
-    if (walker.currentNode.data.trim() !== '') return walker.currentNode.parentElement;
-  }
-  return null;
+  const holder = (${TEXT_HOLDER_JS})(this, tree);
+  if (!holder) return null;
+  return which === 'textHolder' ? holder.style : holder.font;
 }`;

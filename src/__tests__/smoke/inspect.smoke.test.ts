@@ -199,6 +199,22 @@ void describe('dom inspect', () => {
     assert.doesNotMatch(await bdg(['dom', 'inspect', '#buy']), /\[dark theme|\[prefers/);
   });
 
+  void it('describes the text a user sees: the drawing descendant, slotted text, none for icons', async () => {
+    assert.match(
+      await bdg(['dom', 'inspect', '#via-child']),
+      /\ntext\s+in b · .*color #eaecf0 · contrast [\d.]+ fail on #ddd/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#own-svg']),
+      /\ntext\s+Georgia .*color #fff · contrast/
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#slotted']),
+      /\ntext\s+in slot\.label · Arial 500 14.*color #fff · contrast [\d.]+ fail on #0284c7/
+    );
+    assert.doesNotMatch(await bdg(['dom', 'inspect', '#icon-only']), /\ntext |font-family/);
+  });
+
   void it('hints at declarations that have no effect, by default', async () => {
     const hero = await bdg(['dom', 'inspect', '#hero']);
     assert.match(
