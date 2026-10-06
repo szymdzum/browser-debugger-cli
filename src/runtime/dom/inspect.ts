@@ -16,7 +16,11 @@
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { operationFailedError, unknownCssPropertyError } from '@/errors/messages.js';
+import {
+  operationFailedError,
+  unknownCssPropertyError,
+  whyAllPropertyError,
+} from '@/errors/messages.js';
 import type { DomInspectCommand } from '@/ipc/protocol/commands.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
@@ -89,10 +93,19 @@ export async function inspectElement(
   params: DomInspectCommand
 ): Promise<InspectResult> {
   const started = Date.now();
+  if (params.why === 'all') {
+    const err = whyAllPropertyError();
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
   const objectGroup = `bdg-inspect-${++groupCounter}`;
   try {
     const found = await findElement(cdp, params, objectGroup);
     const sources = await readSources(cdp, found.objectId, params, objectGroup);
+    if (sources.raw.unknownWhy) throwUnknownProperties([params.why ?? ''], sources);
     const propValues = sources.props ? checkedProps(sources.props, sources) : undefined;
     const built = buildInspectResult(sources, {
       selector: params.selector,
@@ -129,6 +142,17 @@ function checkedProps(names: string[], sources: InspectSources): InspectResult['
     sources.raw.unknownProps
   );
   if (unknown.length === 0) return props;
+  return throwUnknownProperties(unknown, sources);
+}
+
+/**
+ * Reject names that are not CSS properties, with the closest computed ones.
+ *
+ * @param unknown - Names
+ * @param sources - What was read (computed property names)
+ * @throws CommandError (81) always
+ */
+function throwUnknownProperties(unknown: string[], sources: InspectSources): never {
   const suggestions = unknown.flatMap((name) =>
     findSimilar(name, Object.keys(sources.style), { maxSuggestions: 1 })
   );
@@ -175,6 +199,8 @@ function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<Ins
     label: (declaration) => sourceLabel(declaration, cdp),
     ...(sources.rules && { rules: true }),
     ...(sources.why && { why: sources.why }),
+    ...(sources.raw.whyLonghands && { whyLonghands: sources.raw.whyLonghands }),
+    ...(sources.raw.whyComputed && { whyComputed: sources.raw.whyComputed }),
     ...(sources.props && { props: sources.props }),
   });
 }
@@ -372,6 +398,7 @@ async function readPage(
   const raw = await callOn<RawInspect>(cdp, objectId, INSPECT_PAGE_JS, [
     params.props || params.all ? 0 : (params.tree ?? DEFAULT_TREE_DEPTH),
     params.props ?? null,
+    params.why ?? null,
   ]);
   if (raw) return raw;
   const err = operationFailedError('inspect the element', 'the page script failed');

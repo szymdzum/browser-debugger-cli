@@ -62,6 +62,7 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <a id="own-svg" href="#o" style="color:#fff;background:#222;font-family:Georgia">Own text<svg width="8" height="8"></svg></a>
 <button id="icon-only"><svg width="8" height="8"></svg></button>
 <x-slotted id="slotted">Slotted</x-slotted>
+<p id="moving" style="transition: color 1s ease-in; outline: 2px solid #c00">Moving</p>
 <script>
   document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML =
     '<span id="shadowed" style="color:#c00;font-weight:700">In shadow</span>';

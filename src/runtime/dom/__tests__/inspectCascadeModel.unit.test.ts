@@ -53,7 +53,8 @@ function rule(
 function fields(
   rules: Protocol.CSS.RuleMatch[],
   style: Record<string, string>,
-  why?: string
+  why?: string,
+  page: { whyLonghands?: string[]; whyComputed?: string } = {}
 ): ReturnType<typeof buildCascadeFields> {
   return buildCascadeFields({
     matched: { matchedCSSRules: rules },
@@ -63,6 +64,7 @@ function fields(
     label: (d) => d.source.selector ?? d.source.kind,
     rules: true,
     ...(why && { why }),
+    ...page,
   });
 }
 
@@ -162,8 +164,44 @@ void describe('cascade fields', () => {
     assert.equal(result.why?.length, 1);
     const [why] = result.why ?? [];
     assert.equal(why?.property, 'padding');
-    assert.equal(why?.computed, '6 12 6 12');
+    assert.equal(why?.computed, '6 12');
     assert.deepEqual(why?.variables, [{ name: '--py', value: '.375rem', source: '.btn' }]);
+  });
+
+  void it('answers --why for a shorthand bdg does not list, from the longhands the page expands it into', () => {
+    const longhands = {
+      'grid-template-rows': '10px',
+      'grid-template-columns': '1fr 2fr',
+      'grid-template-areas': 'none',
+    };
+    const result = fields(
+      [rule('.grid', [['grid-template', '10px / 1fr 2fr', longhands]])],
+      longhands,
+      'grid-template',
+      { whyLonghands: Object.keys(longhands), whyComputed: '10px / 1fr 2fr' }
+    );
+    assert.equal(result.why?.length, 1);
+    assert.equal(result.why?.[0]?.property, 'grid-template');
+    assert.equal(result.why?.[0]?.computed, '10 / 1fr 2fr');
+    assert.equal(result.why?.[0]?.chain[0]?.value, '10px / 1fr 2fr');
+  });
+
+  void it('answers --why transition and outline, which Chrome expands into longhands', () => {
+    const transition = {
+      'transition-property': 'color',
+      'transition-duration': '1s',
+      'transition-timing-function': 'ease-in',
+      'transition-delay': '0s',
+      'transition-behavior': 'normal',
+    };
+    const result = fields(
+      [rule('.btn', [['transition', 'color 1s ease-in', transition]])],
+      transition,
+      'transition',
+      { whyComputed: 'color 1s ease-in' }
+    );
+    assert.equal(result.why?.[0]?.computed, 'color 1s ease-in');
+    assert.equal(result.why?.[0]?.chain[0]?.status, 'applied');
   });
 
   void it('marks a var() of an unset custom property invalid in --why, and follows variables set from others', () => {

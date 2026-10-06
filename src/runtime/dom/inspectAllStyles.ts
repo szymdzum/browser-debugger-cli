@@ -3,13 +3,13 @@
  *
  * `--all` lists every computed longhand that is not noise and not its
  * default, collapsed into shorthands (margin, padding, inset, border,
- * radius, overflow, gap, flex, grid area, outline, animation). Defaults are
+ * radius, overflow, gap, flex, grid area, outline, animation, transition). Defaults are
  * the CSS initial values as Chrome computes them; the UA stylesheet's
  * per-tag values (a `<p>`'s margins, a button's padding) are real values and
  * are listed. Display, font, size, line height and color are always listed.
  *
  * Noise: custom properties, logical duplicates of physical properties,
- * width/height (in the header), transitions, origins without a transform,
+ * width/height (in the header), origins without a transform,
  * colors that only repeat `color` (currentColor), properties of borders,
  * outlines and rules that are not drawn, SVG paint properties on HTML
  * elements, and vendor-prefixed internals.
@@ -107,6 +107,28 @@ const INITIAL_BY_VALUE: ReadonlyArray<readonly [string, string]> = [
   ['collapse', 'white-space-collapse'],
   ['horizontal-tb', 'writing-mode'],
   ['isolate', 'unicode-bidi'],
+  ['rgb(0, 0, 0)', 'fill flood-color stop-color'],
+  ['1', 'fill-opacity flood-opacity stop-opacity stroke-opacity'],
+  ['rgb(255, 255, 255)', 'lighting-color'],
+  ['1px', 'stroke-width'],
+  ['4', 'stroke-miterlimit'],
+  ['butt', 'stroke-linecap'],
+  ['miter', 'stroke-linejoin'],
+  ['nonzero', 'fill-rule clip-rule'],
+  ['none', 'stroke stroke-dasharray marker-start marker-mid marker-end vector-effect'],
+  ['0px', 'stroke-dashoffset baseline-shift'],
+  [
+    'auto',
+    'shape-rendering dominant-baseline alignment-baseline buffered-rendering color-rendering',
+  ],
+  ['srgb', 'color-interpolation'],
+  ['linearrgb', 'color-interpolation-filters'],
+  ['all', 'transition-property'],
+  ['0s', 'transition-duration transition-delay'],
+  ['ease', 'transition-timing-function'],
+  ['normal', 'transition-behavior paint-order'],
+  ['start', 'text-anchor'],
+  ['rgba(0, 0, 0, 0.18)', '-webkit-tap-highlight-color'],
 ];
 
 /** Initial value per property ({@link INITIAL_BY_VALUE}) */
@@ -165,6 +187,7 @@ const LOGICAL =
 
 /** Vendor-prefixed properties worth listing */
 const PREFIXED_KEPT = new Set([
+  '-webkit-tap-highlight-color',
   '-webkit-line-clamp',
   '-webkit-text-stroke-width',
   '-webkit-text-security',
@@ -187,7 +210,8 @@ const CURRENT_COLOR_ECHOES =
  * @returns True when it is left out
  */
 function isNoise(name: string, style: StyleMap, svg: boolean): boolean {
-  if (name.startsWith('--') || NOISE.has(name) || name.startsWith('transition')) return true;
+  if (name.startsWith('--') || NOISE.has(name)) return true;
+  if (name.startsWith('transition') && style['transition-duration'] === '0s') return true;
   if (LOGICAL.test(name) && !name.endsWith('-axis')) return true;
   if (name.startsWith('-webkit-') && !PREFIXED_KEPT.has(name)) return true;
   if (!svg && SVG_ONLY.test(name)) return true;
@@ -297,7 +321,60 @@ const COLLAPSES: readonly Collapse[] = [
     ],
     write: (v) => v.join(' '),
   },
+  {
+    shorthand: 'transition',
+    longhands: [
+      'transition-property',
+      'transition-duration',
+      'transition-timing-function',
+      'transition-delay',
+      'transition-behavior',
+    ],
+    write: transitionList,
+  },
 ];
+
+/**
+ * A transition list from its longhands' comma lists, one transition per
+ * property, defaults left out (`background-color 0.25s ease-in, opacity 0.2s`).
+ *
+ * @param values - Property, duration, timing function, delay and behavior lists
+ * @returns Transition shorthand
+ */
+function transitionList(values: string[]): string {
+  const lists = values.map((value) => value.split(/,\s*(?![^(]*\))/));
+  const [properties = []] = lists;
+  return properties
+    .map((property, i) => {
+      const at = (list: string[] | undefined): string => list?.[i % list.length] ?? '';
+      const [duration, timing, delay, behavior] = lists.slice(1).map(at);
+      return [
+        property,
+        duration,
+        timing === 'ease' ? '' : timing,
+        delay === '0s' ? '' : delay,
+        behavior === 'normal' ? '' : behavior,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    })
+    .join(', ');
+}
+
+/**
+ * A shorthand's computed value as `--all` writes it (`margin 0 8`,
+ * `outline 2 solid #f00`, `transition color 1s ease-in`).
+ *
+ * @param shorthand - Shorthand name
+ * @param style - Computed longhands
+ * @returns Value, or undefined for a shorthand `--all` does not collapse
+ */
+export function collapsedValue(shorthand: string, style: StyleMap): string | undefined {
+  const group = COLLAPSES.find((entry) => entry.shorthand === shorthand);
+  return group?.write(
+    group.longhands.map((longhand) => normalizeProperty(longhand, style[longhand] ?? ''))
+  );
+}
 
 /**
  * Border longhands collapsed: one `border` when the four drawn sides are
@@ -378,13 +455,20 @@ function isUnsetOffset(name: string, value: string, style: StyleMap): boolean {
  *
  * @param style - Computed styles
  * @param svg - The element is an SVG element (SVG properties are listed)
+ * @param formControl - A form control (`appearance: none` is not its default)
  * @returns Properties and values
  */
-export function allStyles(style: StyleMap, svg: boolean): Record<string, string> {
+export function allStyles(
+  style: StyleMap,
+  svg: boolean,
+  formControl = false
+): Record<string, string> {
   const kept = new Map<string, string>();
   const transformed = (style['transform'] ?? 'none') !== 'none';
   for (const [name, value] of Object.entries(style)) {
-    if (name === 'transform-origin' && transformed) {
+    const set =
+      (name === 'transform-origin' && transformed) || (name === 'appearance' && formControl);
+    if (set) {
       kept.set(name, normalizeProperty(name, value));
       continue;
     }

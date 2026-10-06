@@ -7,7 +7,7 @@
  */
 
 import type { InspectVariable, InspectWhy, InspectWhyEntry } from '@/ipc/protocol/inspectTypes.js';
-import { normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
+import { collapsedValue, normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
 import {
   resolveCascade,
   ruleField,
@@ -40,9 +40,13 @@ export function buildWhy(
   const winner = JSON.stringify(first.chain[0]);
   if (!whys.every((why) => JSON.stringify(why.chain[0]) === winner)) return whys;
   const values = whys.map((why) => why.computed);
-  const computed = values.every((value) => value === first.computed)
+  const joined = values.every((value) => value === first.computed)
     ? first.computed
     : values.join(' ');
+  const fromPage = input.whyComputed
+    ? normalizeProperty(group.shorthand, input.whyComputed)
+    : undefined;
+  const computed = collapsedValue(group.shorthand, input.style) ?? fromPage ?? joined;
   const beaten = whys.flatMap((why) => why.chain.slice(1));
   const overridden = [...new Map(beaten.map((entry) => [JSON.stringify(entry), entry])).values()];
   const chain = [...first.chain.slice(0, 1), ...overridden];

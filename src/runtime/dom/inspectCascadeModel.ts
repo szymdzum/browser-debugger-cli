@@ -59,6 +59,11 @@ const RULE_GROUPS: readonly PropertyGroup[] = [
   },
   { longhands: ['background-color'] },
   { longhands: ['background-image'] },
+  { longhands: ['background-size'] },
+  {
+    shorthand: 'background-position',
+    longhands: ['background-position-x', 'background-position-y'],
+  },
   { longhands: ['color'] },
   { longhands: ['font-family'] },
   { longhands: ['font-size'] },
@@ -95,6 +100,10 @@ export interface CascadeInput {
   why?: string;
   /** `--props` names: `--rules` then covers only these */
   props?: string[];
+  /** Longhands of the `--why` shorthand as the browser expands it */
+  whyLonghands?: string[];
+  /** Computed value of the `--why` shorthand, as the page writes it */
+  whyComputed?: string;
   /** Check for declarations that have no effect (default true) */
   hints?: boolean;
   /** A form control that draws text (its font is checked against the parent's) */
@@ -108,8 +117,10 @@ export interface CascadeInput {
  * @returns `hints` (empty when checked and nothing found), `rules` and `why`
  */
 export function buildCascadeFields(input: CascadeInput): Partial<InspectResult> {
-  const ruleGroups = input.rules ? (input.props?.map(propertyGroup) ?? RULE_GROUPS) : [];
-  const whyGroup = input.why ? propertyGroup(input.why) : undefined;
+  const ruleGroups = input.rules
+    ? (input.props?.map((name) => propertyGroup(name)) ?? RULE_GROUPS)
+    : [];
+  const whyGroup = input.why ? propertyGroup(input.why, input.whyLonghands) : undefined;
   const wanted = [
     ...new Set([
       ...ownProperties(input.matched),
@@ -131,10 +142,13 @@ export function buildCascadeFields(input: CascadeInput): Partial<InspectResult> 
  * The longhands a property name stands for.
  *
  * @param name - Shorthand, longhand, logical or custom property
+ * @param expanded - Its longhands as the browser expands it, for a
+ *   shorthand bdg does not list (`transition`, `grid-template`)
  * @returns Group (a shorthand with its longhands, or one physical longhand)
  */
-function propertyGroup(name: string): PropertyGroup {
-  const longhands = shorthandLonghands(name);
+function propertyGroup(name: string, expanded?: readonly string[]): PropertyGroup {
+  const longhands =
+    shorthandLonghands(name) ?? (expanded && [...new Set(expanded.map(physicalName))]);
   return longhands
     ? { shorthand: name, longhands: [...longhands] }
     : { longhands: [physicalName(name)] };
