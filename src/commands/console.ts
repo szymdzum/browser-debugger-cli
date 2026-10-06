@@ -116,14 +116,18 @@ export function skippedMessages(all: ConsoleMessage[], listed: ConsoleMessage[])
  * @param options - Command options
  * @param lastN - `--last` value
  * @param skipped - Messages the filters left out between the listed ones
+ * @param dropped - Oldest messages the session dropped at its limit
  * @returns Formatting options
  */
 function buildFormatOptions(
   options: ConsoleCommandOptions,
   lastN: number,
-  skipped?: ConsoleSkipped
+  skipped?: ConsoleSkipped,
+  dropped?: number
 ): ConsoleFormatOptions {
   return {
+    ...(options.last !== undefined && { groupLimit: lastN }),
+    ...(dropped && { dropped }),
     json: options.json,
     list: listsMessages(options),
     follow: options.follow,
@@ -206,6 +210,7 @@ export function messageKeys(messages: ConsoleMessage[]): string[] {
 interface ConsoleResult {
   messages: ConsoleMessage[];
   filtered: ConsoleMessage[];
+  dropped: number;
 }
 
 export function registerConsoleCommand(program: Command): void {
@@ -253,21 +258,24 @@ export function registerConsoleCommand(program: Command): void {
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
-          const { messages, currentNavigationId } = result.data;
+          const { messages, currentNavigationId, dropped } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
           if (options.json) {
             return {
               success: true,
-              data: buildConsoleJsonOutput(filtered, buildFormatOptions(options, lastN)),
+              data: buildConsoleJsonOutput(
+                filtered,
+                buildFormatOptions(options, lastN, undefined, dropped)
+              ),
             };
           }
-          return { success: true, data: { messages, filtered } };
+          return { success: true, data: { messages, filtered, dropped } };
         },
         options,
         (data) => {
-          const { messages, filtered } = data as ConsoleResult;
+          const { messages, filtered, dropped } = data as ConsoleResult;
           const skipped = skippedMessages(messages, lastMessages(filtered, lastN));
-          return formatConsole(filtered, buildFormatOptions(options, lastN, skipped));
+          return formatConsole(filtered, buildFormatOptions(options, lastN, skipped, dropped));
         }
       );
     });

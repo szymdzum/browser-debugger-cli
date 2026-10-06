@@ -145,11 +145,16 @@ export async function fetchNetworkRequests(
 /**
  * Fetch all console messages from daemon.
  *
- * @returns Messages (with their session-wide index) and the navigation id of
- *   the page currently loaded
+ * @returns Messages (with their session-wide index), the navigation id of
+ *   the page currently loaded and how many of the oldest messages the
+ *   session dropped at its limit
  */
 export async function fetchConsoleMessages(): Promise<
-  FetchResult<{ messages: ConsoleMessage[]; currentNavigationId: number | undefined }>
+  FetchResult<{
+    messages: ConsoleMessage[];
+    currentNavigationId: number | undefined;
+    dropped: number;
+  }>
 > {
   const result = await fetchPreviewData({ lastN: 0, only: 'console' });
   if (!result.success) return result;
@@ -158,6 +163,7 @@ export async function fetchConsoleMessages(): Promise<
     data: {
       messages: result.data.console,
       currentNavigationId: result.data.output.currentNavigationId,
+      dropped: result.data.output.totals?.consoleDropped ?? 0,
     },
   };
 }

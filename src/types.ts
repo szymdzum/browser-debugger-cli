@@ -250,7 +250,12 @@ export interface BdgOutput {
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
   /** Counts of all captured items matching the request (e.g. `peek --type`), when `data` holds only the most recent ones */
-  totals?: { network: number; console: number };
+  totals?: {
+    network: number;
+    console: number;
+    /** Console messages dropped at the limit, oldest first (indices start after them) */
+    consoleDropped?: number;
+  };
   error?: string;
   partial?: boolean; // Flag to indicate this is partial/incomplete data (live preview)
 }

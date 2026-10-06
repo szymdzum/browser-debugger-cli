@@ -1206,8 +1206,9 @@ bdg console --json
 - `--last <n>` lists the last N messages (like `--list`; without it the summary is shown)
 - `[n]` in a list is the message's position in the session (what `bdg details console <n>` takes); when the page or level filter left messages out between listed ones, a note under the list says how many and why (`not listed in between: 1 message from another page load (-H lists all)`)
 - Shows messages from **current page load only** (most recent navigation)
-- Errors deduplicated with occurrence count and source location
+- Errors deduplicated with occurrence count and source location; the newest 50 distinct errors and warnings are listed, with a note for the earlier ones (`(+70 earlier distinct errors; bdg console --level error --last 0 lists every one)`). JSON has the same 50 and `moreErrors`/`moreWarnings`; `--last <n>` sets how many (0 = all)
 - Warnings listed with source location
+- The session keeps the newest 10000 messages: past that the oldest are dropped, and `console`, `peek` and their JSON (`dropped`, `totals.consoleDropped`) say how many (`⚠ 2001 older console messages were dropped: bdg keeps the newest 10000`). Indices stay the same: `bdg details console <n>` with a dropped index says so
 - Summary count of info/debug messages
 - **Objects automatically expanded** with nested structure visible
 

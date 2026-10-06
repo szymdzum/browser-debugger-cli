@@ -183,7 +183,10 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
           cdp,
           store.consoleMessages,
           config.includeAll ?? false,
-          store.getCurrentNavigationId ?? undefined
+          store.getCurrentNavigationId ?? undefined,
+          () => {
+            store.consoleDropped++;
+          }
         );
       },
     },

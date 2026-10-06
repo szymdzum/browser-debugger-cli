@@ -1,3 +1,4 @@
+import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { NavigationEvent } from '@/telemetry/navigation.js';
 import type { PendingRequest } from '@/telemetry/network.js';
@@ -15,6 +16,11 @@ export class TelemetryStore {
   /** Requests still in flight, keyed by CDP requestId */
   readonly pendingNetworkRequests = new Map<string, PendingRequest>();
   readonly consoleMessages: ConsoleMessage[] = [];
+  /**
+   * Console messages dropped at the limit, oldest first: the index of
+   * `consoleMessages[i]` in the session is `consoleDropped + i`
+   */
+  consoleDropped = 0;
   readonly navigationEvents: NavigationEvent[] = [];
   readonly websocketConnections: WebSocketConnection[] = [];
   /** JavaScript dialogs accepted during the session */
@@ -42,13 +48,17 @@ export class TelemetryStore {
   /**
    * Record an accepted dialog, and show it among the console messages when
    * console telemetry is collected (it is otherwise invisible: bdg accepts it
-   * before anyone could see it).
+   * before anyone could see it), dropping the oldest message at the limit.
    *
    * @param dialog - Dialog type and text
    */
   recordDialog(dialog: DialogInfo): void {
     this.dialogs.push(dialog);
     if (!this.activeTelemetry.includes('console')) return;
+    if (this.consoleMessages.length >= MAX_CONSOLE_MESSAGES) {
+      this.consoleMessages.shift();
+      this.consoleDropped++;
+    }
     this.consoleMessages.push({
       type: 'info',
       text: dialogConsoleText(dialog),
