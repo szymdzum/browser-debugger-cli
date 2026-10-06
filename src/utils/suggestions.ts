@@ -105,8 +105,10 @@ function commonSuffixLength(a: string, b: string): number {
 /**
  * Names (ids or classes) similar to one that matched nothing, best first, at
  * most three: near-typos first (Levenshtein distance up to a fifth of the
- * length, at least 2), then names sharing a long end, then names sharing a
- * long start (at least a third of the name, at least 4 characters). The end
+ * length, at least 2), then names sharing a long end (at least a third of
+ * the name, at least 4 characters), then names sharing a long start (at
+ * least half: `--color-btn-inset-shadow` and `--color-bg-discussions-…` share
+ * only a namespace). The end
  * ranks before the start because ids tend to name an action before the item
  * (`add-to-cart-backpack` becomes `remove-backpack` once clicked).
  *
@@ -119,16 +121,19 @@ export function findSimilarNames(name: string, candidates: readonly string[]): s
   const maxDistance = Math.max(2, Math.floor(name.length / 5));
   const minAffix = Math.max(4, Math.ceil(name.length / 3));
   const typos = findMatches(name, others, maxDistance, false).map((match) => match.value);
-  const byAffix = (length: (candidate: string) => number): string[] =>
+  const byAffix = (length: (candidate: string) => number, min = minAffix): string[] =>
     others
       .map((candidate) => ({ candidate, length: length(candidate) }))
-      .filter((entry) => entry.length >= minAffix)
+      .filter((entry) => entry.length >= min)
       .sort((a, b) => b.length - a.length)
       .map((entry) => entry.candidate);
   const ranked = [
     ...typos,
     ...byAffix((candidate) => commonSuffixLength(name, candidate)),
-    ...byAffix((candidate) => commonPrefixLength(name, candidate)),
+    ...byAffix(
+      (candidate) => commonPrefixLength(name, candidate),
+      Math.max(minAffix, Math.ceil(name.length / 2))
+    ),
   ];
   return [...new Set(ranked)].slice(0, MAX_SIMILAR_NAMES);
 }

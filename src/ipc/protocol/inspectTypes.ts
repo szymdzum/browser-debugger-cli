@@ -144,6 +144,8 @@ export interface InspectText {
   features?: string;
   /** The text is cut off (clipped by overflow, with or without an ellipsis, or by a line clamp) */
   truncated?: true;
+  /** The text is painted with its background (`background-clip: text`, transparent fill): no single color, so no contrast */
+  gradientFill?: true;
 }
 
 /** A background layer */

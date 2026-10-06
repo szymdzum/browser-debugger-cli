@@ -518,6 +518,8 @@ export interface ScreenshotResult {
      * descendants) made it larger than the border box
      */
     captured?: ElementBounds;
+    /** `--padding` given: CSS px of page added around the captured area */
+    padding?: number;
   };
   /** Capture mode used */
   captureMode?: 'full_page' | 'viewport';

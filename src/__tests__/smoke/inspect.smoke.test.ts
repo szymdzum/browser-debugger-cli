@@ -65,7 +65,7 @@ void describe('dom inspect', () => {
     assert.match(output, /\nbox +m 0 0 16 · p 12 24 · b 1\n/);
     assert.match(
       output,
-      /\ntext +Arial( \(rendered "[^"]+"\))? 600 16\/24 · color #fff · contrast [\d.]+ fail · align center/
+      /\ntext +Arial( \(rendered "[^"]+"\))? 600 16\/24 · color #fff · contrast [\d.]+ fail on #0a7cff · align center/
     );
     assert.match(output, /\nfill +bg #0a7cff\n/);
     assert.match(output, /\nborder +1 solid #0a7cff · radius 8\n/);
@@ -212,7 +212,7 @@ void describe('dom inspect', () => {
     );
     assert.match(
       await bdg(['dom', 'inspect', '#blended']),
-      /contrast [\d.]+ \w+.* \(approximate: mix-blend-mode multiply on h2#blended\)/
+      /contrast ≈[\d.]+ \w+.* \(approximate: mix-blend-mode multiply on h2#blended\)/
     );
     const pic = await inspectJson('#pic');
     assert.deepEqual((pic['layout'] as { sizing: unknown }).sizing, { w: 'hug', h: 'hug' });
@@ -244,6 +244,12 @@ void describe('dom inspect', () => {
       /\ntext\s+in slot\.label · Arial( \(rendered "[^"]+"\))? 500 14.*color #fff · contrast [\d.]+ fail on #0284c7/
     );
     assert.doesNotMatch(await bdg(['dom', 'inspect', '#icon-only']), /\ntext |font-family/);
+    assert.doesNotMatch(await bdg(['dom', 'inspect', '#own-svg', '--tree', '1']), /shadow root/);
+    assert.match(
+      await bdg(['dom', 'inspect', '#partly', '--rules']),
+      /border 1px solid var\(--accent\) = 1 solid #06c \(partly overridden\)/
+    );
+    await bdg(['dom', 'wait']);
   });
 
   void it('answers --why for shorthands Chrome expands, and rejects a misspelled property', async () => {

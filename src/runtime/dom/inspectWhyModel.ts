@@ -103,7 +103,11 @@ function whyEntry(
   status: InspectWhyEntry['status'],
   input: CascadeInput
 ): InspectWhyEntry {
-  const value = declaration.via ? (declaration.written ?? declaration.value) : declaration.value;
+  const written = declaration.via ? (declaration.written ?? declaration.value) : declaration.value;
+  const value =
+    written === ''
+      ? `${input.style[declaration.property] ?? ''} (set by the browser)`.trim()
+      : written;
   const unset = value.includes('var(') ? unsetVariables(value, input.style) : [];
   const resolved = value.includes('var(') ? resolvedValue(declaration, value, input) : value;
   const { specificity, layer, condition } = declaration.source;

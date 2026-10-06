@@ -85,6 +85,8 @@ export interface RawAudit {
   wide?: RawWideElement[];
   truncated?: RawTruncated[];
   images?: RawImage[];
+  /** Elements whose content scrolls sideways inside them (carousels, tab strips) */
+  scrollers?: Array<{ label: string; scrollWidth: number; width: number }>;
   layers?: RawLayer[];
   animations?: RawAnimation[];
 }
@@ -110,7 +112,7 @@ export const AUDIT_PAGE_JS = `function (checks) {
   const scheme = rootScheme && rootScheme !== 'normal' ? rootScheme : (meta && meta.content) || '';
   const canvasDark = /dark/.test(scheme) && (!/light/.test(scheme) || view.matchMedia('(prefers-color-scheme: dark)').matches);
   const result = { viewport: viewport, pixelRatio: view.devicePixelRatio || 1, pageWidth: scroller.scrollWidth, canvasDark: canvasDark, walked: 0, capped: false };
-  const texts = [], wide = [], truncated = [], images = [], layers = [];
+  const texts = [], wide = [], truncated = [], images = [], layers = [], scrollers = [];
   const chainOf = (n) => {
     const backgrounds = [];
     const risks = [];
@@ -134,10 +136,13 @@ export const AUDIT_PAGE_JS = `function (checks) {
     result.walked++;
     const inFixed = fixed || s.position === 'fixed';
     const kids = n.shadowRoot ? [...Array.from(n.shadowRoot.children), ...Array.from(n.children)] : Array.from(n.children);
-    const r = n.getBoundingClientRect();
+    const slot = n.localName === 'slot';
+    const box = slot && parentOf(n) ? parentOf(n) : n;
+    const r = box.getBoundingClientRect();
     const shown = r.width > 0 && r.height > 0 && s.visibility === 'visible';
-    if (shown && want('contrast')) {
-      const text = ownText(n);
+    const gradientText = s.backgroundClip === 'text' && /rgba\\(0, 0, 0, 0\\)|transparent/.test(s.webkitTextFillColor);
+    if (shown && want('contrast') && !gradientText) {
+      const text = slot ? short(n.assignedNodes({ flatten: true }).filter((c) => c.nodeType === 3).map((c) => c.data).join(' ')) : n.shadowRoot ? '' : ownText(n);
       if (text && Number(s.opacity) > 0 && r.width > 2 && r.height > 2) {
         const chain = chainOf(n);
         if (chain.opacity > 0) texts.push(Object.assign({ label: label(n), text: short(text), color: s.color, fontSize: s.fontSize, fontWeight: s.fontWeight, inView: inView(r) }, chain));
@@ -149,11 +154,14 @@ export const AUDIT_PAGE_JS = `function (checks) {
         : s.webkitLineClamp !== 'none' && n.scrollHeight > n.clientHeight + 1 ? 'clamp' : null;
       const textContent = cut && short(n.innerText || '');
       const visuallyHidden = r.width <= 2 || r.height <= 2;
-      if (cut && textContent && n.children.length === 0 && !visuallyHidden) truncated.push({ label: label(n), text: textContent, kind: cut });
+      if (cut && textContent && !visuallyHidden) truncated.push({ label: label(n), text: textContent, kind: cut });
       const vector = /\\.svg([?#]|$)|^data:image\\/svg/i.test(n.currentSrc || '');
       if (n.localName === 'img' && n.naturalWidth > 2 && n.naturalHeight > 2 && n.complete && !vector) images.push({ label: label(n), natural: { w: n.naturalWidth, h: n.naturalHeight }, rendered: { w: r.width, h: r.height }, objectFit: s.objectFit });
     }
-    if (want('layers') && (s.position === 'fixed' || s.position === 'sticky') && r.width > 0 && r.height > 0) {
+    if (shown && want('overflow') && /^(auto|scroll)$/.test(s.overflowX) && n !== doc.documentElement && n !== doc.body && n.scrollWidth > n.clientWidth + 1) {
+      scrollers.push({ label: label(n), scrollWidth: n.scrollWidth, width: n.clientWidth });
+    }
+    if (want('layers') && shown && (s.position === 'fixed' || s.position === 'sticky')) {
       layers.push({ label: label(n), position: s.position, zIndex: s.zIndex, rect: { x: r.left, y: r.top, w: r.width, h: r.height }, inView: inView(r) });
     }
     if (s.overflowX !== 'visible' && s.overflowX !== 'clip' && n !== doc.documentElement && n !== doc.body) {
@@ -166,7 +174,7 @@ export const AUDIT_PAGE_JS = `function (checks) {
   };
   visit(doc.documentElement, false);
   if (want('contrast')) result.texts = texts;
-  if (want('overflow')) Object.assign(result, { wide: wide, truncated: truncated, images: images });
+  if (want('overflow')) Object.assign(result, { wide: wide, truncated: truncated, images: images, scrollers: scrollers });
   if (want('layers')) result.layers = layers;
   if (want('animations')) {
     result.animations = doc.getAnimations().filter((a) => a.playState === 'running').slice(0, 200).map((a) => {

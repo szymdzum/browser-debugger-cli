@@ -233,7 +233,7 @@ export function formatDomFrames(data: { frames: DomFrame[]; readyState?: string 
  * // Output: Screenshot saved to ./page.png (viewport only - page too tall)
  *
  * // An element whose floated children overflow it
- * // Output: Screenshot saved to ./el.png (grown from 940×37 to 940×285 to include content overflowing the element)
+ * // Output: Screenshot saved to ./el.png (grown from 940×37 to 940×285 to include what it paints outside its box (…))
  * ```
  */
 export function formatDomScreenshot(data: ScreenshotResult): string {
@@ -244,7 +244,7 @@ export function formatDomScreenshot(data: ScreenshotResult): string {
   }
 
   if (data.element?.captured) {
-    output += ` (${screenshotGrownNote(data.element.bounds, data.element.captured)})`;
+    output += ` (${screenshotGrownNote(data.element.bounds, data.element.captured, data.element.padding)})`;
   }
 
   if (data.resized && data.originalWidth !== undefined && data.originalHeight !== undefined) {
