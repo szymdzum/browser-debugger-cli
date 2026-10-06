@@ -635,15 +635,38 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   };
 }
 
+/** Ports tests pick from: below the ephemeral ranges (Linux 32768+, macOS 49152+) */
+const TEST_PORT_RANGE = { from: 20000, to: 32000 };
+
 /**
- * Get a currently free TCP port on 127.0.0.1.
+ * Whether a TCP port on 127.0.0.1 can be listened on now.
+ *
+ * @param port - Port
+ * @returns True when it is free
+ */
+async function portIsFree(port: number): Promise<boolean> {
+  const server = net.createServer();
+  return new Promise<boolean>((resolve) => {
+    server.once('error', () => resolve(false));
+    server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)));
+  });
+}
+
+/**
+ * Get a free TCP port on 127.0.0.1 for a test session's Chrome. Picked at
+ * random below the ephemeral ranges: a port the system hands out for
+ * outgoing connections (Chrome's, the fixture server's) can be taken again
+ * between this check and Chrome binding it, which made starts fail with
+ * "Port … is already in use" on CI.
  *
  * @returns Free port number
  */
 export async function getFreePort(): Promise<number> {
-  const server = net.createServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as net.AddressInfo;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  return port;
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const port =
+      TEST_PORT_RANGE.from +
+      Math.floor(Math.random() * (TEST_PORT_RANGE.to - TEST_PORT_RANGE.from));
+    if (await portIsFree(port)) return port;
+  }
+  throw new Error('No free test port found');
 }
