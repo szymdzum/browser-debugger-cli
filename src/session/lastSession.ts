@@ -5,7 +5,7 @@
 
 import * as fs from 'fs';
 
-import { getSessionFilePath } from '@/session/paths.js';
+import { getSessionDir, getSessionFilePath, sessionFilePathIn } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -46,14 +46,15 @@ export function clearLastSessionEnd(): void {
 }
 
 /**
- * How the last session ended, if it ended unexpectedly.
+ * How the last session of a directory ended, if it ended unexpectedly.
  *
+ * @param dir - Session directory (default: the selected session's)
  * @returns The record, or null
  */
-export function readLastSessionEnd(): LastSessionEnd | null {
+export function readLastSessionEnd(dir: string = getSessionDir()): LastSessionEnd | null {
   try {
     const data = JSON.parse(
-      fs.readFileSync(getSessionFilePath('LAST_SESSION'), 'utf8')
+      fs.readFileSync(sessionFilePathIn(dir, 'LAST_SESSION'), 'utf8')
     ) as LastSessionEnd;
     return typeof data.endedAt === 'number' ? data : null;
   } catch (error) {

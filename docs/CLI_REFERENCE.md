@@ -56,6 +56,7 @@ When the page's renderer crashes (out of memory, a Chrome bug, a killed renderer
 bdg stop                        # Stop session (closes Chrome launched by bdg)
 bdg stop --kill-chrome          # Kept for compatibility (no additional effect)
 ```
+`bdg stop` returns once the session's daemon has exited (waiting up to 3 s), so a `bdg sessions` or a new start right after it no longer sees the session. When the daemon is still running after the wait, a warning says so (`The daemon (PID 4242) was still shutting down after 3s; check with bdg sessions, or end it with bdg cleanup --force`; JSON `data.warnings`), and the exit code stays 0.
 
 ### Multiple sessions
 Several agents on one machine can each run their own session: a named session has its own daemon, Chrome, profile, CDP port and files.
@@ -79,7 +80,7 @@ bdg cleanup --session agent-2 --purge       # ... and deletes its directory (Chr
 - **Removing a session**: a stopped named session keeps its directory (Chrome profile of ~60 MB, logs, `port.txt`) for its next start. `bdg cleanup --session <name> --purge` deletes it (add `--force` to stop a running one first); `--purge` needs `--session`, and keeps the directory (exit 90) if the daemon still answers, cleanup reported a problem, or the session's Chrome has not exited after cleanup
 - **Ports**: without `--port`, a named session takes the first free port from 9223 upwards that no other running session has claimed (9222 is left to the default session), and keeps it in its `port.txt` for the next start. Sessions starting at the same time never pick the same port, also across different `BDG_SESSION_DIR`s (claims and the selection lock live in a per-user directory under the OS temp directory). bdg only connects to the Chrome it launched: if another process answers on the port, an automatically chosen port is replaced (up to 3 tries) and an explicit `--port` fails with exit 100. The default session keeps choosing from 9222
 - **Independence**: `stop`, `cleanup` and every other command act on the selected session only; `bdg cleanup` without `--session` cleans the default session, as before
-- **Crashed sessions**: `bdg sessions` also lists sessions whose daemon died: `crashed` while the Chrome bdg launched for them still runs (JSON has its `chromePid`), `stale` when only their files are left (a daemon that runs but has not opened its socket yet is `starting`). Both come with the command that cleans them up (`cleanup` in JSON, e.g. `bdg cleanup --session p3`). A directory made by an earlier build whose name differs only in case (`ALPHA`) is listed as the session `--session alpha` reaches when that is the same directory (case-insensitive file systems), with the usual `bdg cleanup --session alpha`; directories `--session` cannot reach (`--json`, or `ALPHA` on a case-sensitive file system) are listed as `stale` with an `rm -rf <path>` to remove them by hand
+- **Crashed sessions**: `bdg sessions` also lists sessions whose daemon died: `crashed` while the Chrome bdg launched for them still runs (JSON has its `chromePid`), `stale` when only their files are left (a daemon that still runs after closing its socket is `ending`). Both come with the command that cleans them up (`cleanup` in JSON, e.g. `bdg cleanup --session p3`). A session that ended without `bdg stop` (its Chrome crashed or was closed, its page was closed, or `--timeout` was reached) is listed as `ended`, with why and when under the table (`p3 ended at 18:42:10: Chrome crashed or was closed`; JSON `endReason`: `crash`, `closed` or `timeout`, and `endedAt` in epoch ms), until the session starts again or `bdg cleanup` clears it. A directory made by an earlier build whose name differs only in case (`ALPHA`) is listed as the session `--session alpha` reaches when that is the same directory (case-insensitive file systems), with the usual `bdg cleanup --session alpha`; directories `--session` cannot reach (`--json`, or `ALPHA` on a case-sensitive file system) are listed as `stale` with an `rm -rf <path>` to remove them by hand
 - **Attaching**: `--chrome-ws-url` refuses (exit 90) a Chrome that another running bdg session launched (stopping that session would close it), and a tab another session is attached to; another tab of a shared Chrome can be attached with its page URL from `/json/list`. Sessions of this base directory are checked, and sessions of other `BDG_SESSION_DIR`s that claimed a port
 
 ## Live Monitoring
@@ -1326,9 +1327,9 @@ Once no daemon of the session runs, cleanup kills every Chrome launched for its 
 bdg install-skill               # Copy SKILL.md to ~/.claude/skills/bdg and ~/.agents/skills/bdg
 bdg install-skill --claude      # Only ~/.claude/skills (Claude Code)
 bdg install-skill --agents      # Only ~/.agents/skills (Codex, Gemini CLI and other agents)
-bdg install-skill --json        # JSON: data.skills[] with target, path, status (installed | updated | unchanged)
+bdg install-skill --json        # JSON: data.skills[] with target, path, status (installed | updated | unchanged), backup
 ```
-An older copy is overwritten; re-run after upgrading bdg. Exit 82 when a skill directory cannot be written.
+A copy that differs (an older version, or one you edited) is kept as `SKILL.md.bak` next to it before it is overwritten (replacing an earlier backup): the output says `previous copy kept in ~/.claude/skills/bdg/SKILL.md.bak`, JSON has its path in `backup`. Re-run after upgrading bdg. Exit 82 when a skill directory cannot be written.
 
 ## Collection Options
 

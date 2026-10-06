@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Session list and skill install leftovers** (#390):
+  - `bdg install-skill` keeps a copy that differs from the one it installs as `SKILL.md.bak` and says so (JSON `backup`). An edited skill was overwritten without a trace.
+  - `bdg stop` returns once the daemon has exited (up to 3 s, then a warning). A `bdg sessions` right after it listed the session as `starting`; a daemon still running without its socket is now `ending`.
+  - `bdg sessions` lists a session that ended without `bdg stop` (Chrome killed or crashed, page closed, `--timeout`) as `ended`, with why and when (JSON `endReason`, `endedAt`), until it starts again or `bdg cleanup` runs. Before, it vanished from the list.
 - **No Chrome left behind after a second start** (#388). With the daemon's socket deleted, a second `bdg <url>` started another daemon next to the first. The first one then removed the new daemon's `chrome.pid`, and `cleanup --force` reported a clean directory while a Chrome kept running. Now:
   - a start stops a daemon that lost its socket first;
   - a daemon removes only its own `chrome.pid` and metadata;

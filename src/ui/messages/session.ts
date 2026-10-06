@@ -120,17 +120,38 @@ export function stopFailedError(reason: string): string {
  * @returns One line
  */
 export function lastSessionEndText(end: { reason: string; endedAt: number }): string {
+  return `The last session ended ${sessionEndText(end)}`;
+}
+
+/**
+ * A session that ended without `bdg stop`, for `bdg sessions`.
+ *
+ * @param label - Session name as listed
+ * @param end - How and when it ended
+ * @returns One line
+ */
+export function endedSessionText(label: string, end: { reason: string; endedAt: number }): string {
+  return `${label} ended ${sessionEndText(end)}`;
+}
+
+/**
+ * When and why a session ended without `bdg stop`.
+ *
+ * @param end - How and when it ended
+ * @returns `at <time>: <why>`
+ */
+function sessionEndText(end: { reason: string; endedAt: number }): string {
   const why: Record<string, string> = {
     crash: 'Chrome crashed or was closed',
     closed: 'its page was closed',
     timeout: 'the --timeout was reached',
   };
   const at = new Date(end.endedAt).toLocaleTimeString();
-  return `The last session ended at ${at}: ${why[end.reason] ?? end.reason}`;
+  return `at ${at}: ${why[end.reason] ?? end.reason}`;
 }
 
 /**
- * Note after a failed start whose daemon had not exited when bdg stopped waiting.
+ * Note after a failed start or a stop whose daemon had not exited when bdg stopped waiting.
  *
  * @param pid - Daemon PID, when known
  * @param waitedMs - How long bdg waited
@@ -142,7 +163,7 @@ export function daemonStillExitingHint(pid: number | undefined, waitedMs: number
 }
 
 /**
- * What to do about a daemon still shutting down after a failed start.
+ * What to do about a daemon still shutting down after a failed start or a stop.
  *
  * @returns Suggestion
  */

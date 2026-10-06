@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 
@@ -30,8 +30,9 @@ interface InstallSkillOptions extends BaseOptions {
 }
 
 /**
- * Copy the bdg skill into each target's skill directory, overwriting an
- * older copy.
+ * Copy the bdg skill into each target's skill directory. A copy that differs
+ * (an older version, or one the user edited) is kept as `SKILL.md.bak`
+ * before it is overwritten.
  *
  * @param targets - Agents to install for
  * @param home - Home directory the skill roots are relative to
@@ -59,31 +60,39 @@ export function installSkill(
 }
 
 /**
- * Write the skill to one path unless it already holds the same content.
+ * Write the skill to one path unless it already holds the same content; a
+ * different copy is first kept next to it as `SKILL.md.bak` (replacing an
+ * earlier backup), so edits to it are not lost.
  *
  * @param target - Agent the path belongs to
  * @param path - Destination SKILL.md
  * @param content - Skill text
- * @returns What happened to the file
- * @throws CommandError (82) when the directory or file cannot be written
+ * @returns What happened to the file, with the backup path when one was made
+ * @throws CommandError (82) when the directory, backup or file cannot be written
+ *   (naming the backup when that failed; the old copy is then left as it was)
  */
 function writeSkill(target: SkillTarget, path: string, content: string): InstalledSkill {
   const existing = existsSync(path) ? readFileSync(path, 'utf-8') : undefined;
   if (existing === content) {
     return { target, path, status: 'unchanged' };
   }
+  const backup = existing === undefined ? undefined : `${path}.bak`;
+  let writing = backup ?? path;
   try {
     mkdirSync(dirname(path), { recursive: true });
+    if (backup !== undefined) copyFileSync(path, backup);
+    writing = path;
     writeFileSync(path, content);
   } catch (caught) {
-    const err = skillWriteFailedError(path, getErrorMessage(caught));
+    const err = skillWriteFailedError(writing, getErrorMessage(caught));
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },
       EXIT_CODES.PERMISSION_DENIED
     );
   }
-  return { target, path, status: existing === undefined ? 'installed' : 'updated' };
+  if (backup === undefined) return { target, path, status: 'installed' };
+  return { target, path, status: 'updated', backup };
 }
 
 /**

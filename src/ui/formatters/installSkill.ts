@@ -2,6 +2,10 @@ import { homedir } from 'os';
 
 import type { InstalledSkill } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { skillBackupMessage } from '@/ui/messages/commands.js';
+
+/** Indent of the path column, so a backup line sits under the path it belongs to */
+const PATH_INDENT = ' '.repeat(2 + 6 + 2 + 9 + 2);
 
 /**
  * Shorten a path under the home directory to `~/...`.
@@ -15,7 +19,8 @@ function tildePath(path: string): string {
 }
 
 /**
- * Format where the skill was installed, one line per agent.
+ * Format where the skill was installed, one line per agent, plus where a
+ * replaced copy was kept.
  *
  * @param data - Install results
  * @returns Human-readable summary
@@ -24,6 +29,7 @@ export function formatInstalledSkills(data: { skills: InstalledSkill[] }): strin
   const fmt = new OutputFormatter().text('bdg skill:');
   for (const skill of data.skills) {
     fmt.text(`  ${skill.target.padEnd(6)}  ${skill.status.padEnd(9)}  ${tildePath(skill.path)}`);
+    if (skill.backup) fmt.text(`${PATH_INDENT}${skillBackupMessage(tildePath(skill.backup))}`);
   }
   return fmt
     .hints('Next:', [

@@ -52,6 +52,16 @@ export function orphanedDaemonsCleanedMessage(count: number): string {
 }
 
 /**
+ * Where `bdg install-skill` kept the copy it replaced.
+ *
+ * @param path - Backup path, as the user would type it
+ * @returns One line
+ */
+export function skillBackupMessage(path: string): string {
+  return `previous copy kept in ${path}`;
+}
+
+/**
  * Warning shown when a click falls back from mouse events to `el.click()`.
  *
  * @param reason - Why the mouse could not reach the element (e.g. "covered by another element")

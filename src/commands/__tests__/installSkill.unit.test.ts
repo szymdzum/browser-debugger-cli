@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import { installSkill } from '@/commands/installSkill.js';
 import { CommandError } from '@/errors/index.js';
+import { formatInstalledSkills } from '@/ui/formatters/installSkill.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 describe('installSkill', () => {
@@ -42,19 +43,33 @@ describe('installSkill', () => {
     );
   });
 
-  test('overwrites an older copy and leaves an identical one alone', () => {
+  test('replaces a different copy, keeping it as SKILL.md.bak, and leaves an identical one alone', () => {
     const claudePath = join(home, '.claude/skills/bdg/SKILL.md');
     mkdirSync(join(home, '.claude/skills/bdg'), { recursive: true });
-    writeFileSync(claudePath, 'v1\n');
+    writeFileSync(claudePath, 'v1 with my edits\n');
     installSkill(['agents'], home, source);
 
     const result = installSkill(['claude', 'agents'], home, source);
 
-    assert.deepStrictEqual(
-      result.map((skill) => skill.status),
-      ['updated', 'unchanged']
-    );
+    assert.deepStrictEqual(result, [
+      { target: 'claude', path: claudePath, status: 'updated', backup: `${claudePath}.bak` },
+      { target: 'agents', path: join(home, '.agents/skills/bdg/SKILL.md'), status: 'unchanged' },
+    ]);
     assert.strictEqual(readFileSync(claudePath, 'utf-8'), '---\nname: bdg\n---\nv2\n');
+    assert.strictEqual(readFileSync(`${claudePath}.bak`, 'utf-8'), 'v1 with my edits\n');
+  });
+
+  test('names the backup under the path it belongs to', () => {
+    const text = formatInstalledSkills({
+      skills: [
+        { target: 'claude', path: '/h/SKILL.md', status: 'updated', backup: '/h/SKILL.md.bak' },
+      ],
+    });
+
+    assert.match(
+      text,
+      /^ {2}claude {2}updated {4}\/h\/SKILL\.md\n {21}previous copy kept in \/h\/SKILL\.md\.bak$/m
+    );
   });
 
   test('a missing source is a not-found error (83)', () => {

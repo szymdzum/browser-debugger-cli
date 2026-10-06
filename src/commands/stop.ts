@@ -7,21 +7,51 @@ import type { StopResult } from '@/commands/types.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { IPCTimeoutError } from '@/ipc/transport/index.js';
+import { readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   chromeClosedMessage,
   orphanedDaemonsCleanedMessage,
   warningMessage,
 } from '@/ui/messages/commands.js';
-import { sessionStopped, STOP_MESSAGES, stopFailedError } from '@/ui/messages/session.js';
+import {
+  daemonStillExitingHint,
+  daemonStillExitingSuggestion,
+  sessionStopped,
+  STOP_MESSAGES,
+  stopFailedError,
+} from '@/ui/messages/session.js';
 import {
   noActiveSessionMessage,
   sessionCommand,
   startSessionSuggestion,
 } from '@/ui/messages/sessionCommand.js';
+import { waitUntil } from '@/utils/async.js';
 import { getExitCodeForIPCError, isDaemonNotRunningError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { isProcessAlive } from '@/utils/process.js';
+
+/** How long `bdg stop` waits for the session's daemon to exit */
+const DAEMON_EXIT_WAIT_MS = 3000;
+
+/**
+ * Wait until the stopped session's daemon has exited: it removes the
+ * session's files on the way out, and a command run right after (`bdg
+ * sessions`, a new start) would otherwise still see the session. The wait is
+ * bounded, as after a failed start.
+ *
+ * @param pid - Daemon PID read before the stop, or null when unknown
+ * @param waitMs - Milliseconds to wait at most
+ * @returns Warning when the daemon still runs after the wait
+ */
+export async function waitForDaemonExit(
+  pid: number | null,
+  waitMs = DAEMON_EXIT_WAIT_MS
+): Promise<string | undefined> {
+  if (pid === null || (await waitUntil(() => !isProcessAlive(pid), waitMs))) return undefined;
+  return `${daemonStillExitingHint(pid, waitMs)}; ${daemonStillExitingSuggestion()}`;
+}
 
 /**
  * Format stop result for human-readable output.
@@ -62,9 +92,11 @@ export function registerStopCommand(program: Command): void {
       await runCommand<StopCommandOptions, StopResult>(
         async () => {
           try {
+            const daemonPid = readLiveDaemonPid();
             const response = await stopSession();
 
             if (response.status === 'ok') {
+              const warning = await waitForDaemonExit(daemonPid);
               return {
                 success: true,
                 data: {
@@ -75,6 +107,7 @@ export function registerStopCommand(program: Command): void {
                   },
                   orphanedDaemonsCount: 0,
                   message: response.message ?? STOP_MESSAGES.SUCCESS,
+                  ...(warning && { warnings: [warning] }),
                 },
               };
             } else {

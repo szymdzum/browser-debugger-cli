@@ -1,12 +1,13 @@
 import type { RunningSessionInfo } from '@/session/sessionList.js';
 import { OutputFormatter } from '@/ui/formatting.js';
+import { endedSessionText } from '@/ui/messages/session.js';
 
 /** Label of the default session in the list */
 const DEFAULT_SESSION_LABEL = '(default)';
 
 /**
- * Format the sessions as a table, followed by the cleanup commands of
- * crashed and stale sessions.
+ * Format the sessions as a table, followed by why ended sessions ended and
+ * the cleanup commands of crashed and stale sessions.
  *
  * @param data - Sessions
  * @returns Human-readable list
@@ -37,6 +38,14 @@ export function formatSessionList(data: { sessions: RunningSessionInfo[] }): str
         .join('  ')
         .trimEnd()
     );
+  }
+  const ended = data.sessions.flatMap(({ name, endReason, endedAt }) =>
+    endReason && endedAt !== undefined
+      ? [endedSessionText(name ?? DEFAULT_SESSION_LABEL, { reason: endReason, endedAt })]
+      : []
+  );
+  if (ended.length > 0) {
+    fmt.blank().section('Ended without bdg stop:', ended);
   }
   const cleanups = data.sessions.flatMap((session) => (session.cleanup ? [session.cleanup] : []));
   if (cleanups.length > 0) {

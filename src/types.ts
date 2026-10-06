@@ -767,4 +767,6 @@ export interface InstalledSkill {
   target: SkillTarget;
   path: string;
   status: 'installed' | 'updated' | 'unchanged';
+  /** Where the replaced copy was kept (`updated` only) */
+  backup?: string;
 }
