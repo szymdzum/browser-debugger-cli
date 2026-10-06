@@ -48,6 +48,8 @@ export interface RawBackground {
   color: string;
   /** Has a background image or gradient */
   image: boolean;
+  /** Its own opacity, below 1 (it fades its background and everything inside it) */
+  opacity?: number;
 }
 
 /** What {@link INSPECT_PAGE_JS} returns */
@@ -105,6 +107,12 @@ export interface RawInspect {
   canvasDark: boolean;
   /** Opacity of the element times that of its ancestors */
   opacity?: number;
+  /**
+   * What makes the text's contrast approximate: blend modes and filters on
+   * it or its ancestors, painted content behind it that is not an ancestor
+   * (a canvas, a positioned layer) or on top of it
+   */
+  paintRisks?: string[];
   tree?: RawTreeNode[];
   hiddenChildren: number;
   /** Children the walk did not reach ({@link TREE_NODE_CAP}) */
@@ -326,8 +334,10 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
   let opacity = 1;
   for (let n = el; n && backgrounds.length < 60; n = tree.flatParent(n)) {
     const s = tree.style(n);
-    backgrounds.push({ color: s.backgroundColor, image: s.backgroundImage !== 'none' });
-    opacity *= Number(s.opacity) || 0;
+    const own = Number(s.opacity) || 0;
+    const background = { color: s.backgroundColor, image: s.backgroundImage !== 'none' };
+    backgrounds.push(own < 1 ? Object.assign(background, { opacity: own }) : background);
+    opacity *= own;
   }
   const doc = el.ownerDocument;
   const meta = doc.querySelector('meta[name="color-scheme"]');
@@ -336,6 +346,49 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
   const prefersDark = view.matchMedia('(prefers-color-scheme: dark)').matches;
   const canvasDark = /dark/.test(scheme) && (!/light/.test(scheme) || prefersDark);
   return { backgrounds: backgrounds, canvasDark: canvasDark, opacity: opacity };
+}`;
+
+/**
+ * Page-side reasons the contrast of an element's text is approximate: a
+ * blend mode or filter on it or an ancestor, and, hit-testing the middle of
+ * its first line of text (else of its first box), the nearest element below
+ * it that is not an ancestor and
+ * paints (a canvas, video, image, background) and the nearest one on top of
+ * it that paints (an overlay).
+ */
+const PAINT_RISKS_JS = `(el, tree, textParent) => {
+  const risks = [];
+  const chain = [];
+  for (let n = el; n && chain.length < 60; n = tree.flatParent(n)) chain.push(n);
+  for (const n of chain) {
+    const s = tree.style(n);
+    if (s.mixBlendMode !== 'normal') risks.push('mix-blend-mode ' + s.mixBlendMode + ' on ' + tree.label(n));
+    if (s.filter !== 'none') risks.push('filter on ' + tree.label(n));
+  }
+  const textNode = Array.from(textParent.childNodes).find((c) => c.nodeType === 3 && c.data.trim() !== '');
+  const range = el.ownerDocument.createRange();
+  if (textNode) range.selectNodeContents(textNode);
+  const box = tree.style(el).display === 'contents' ? tree.layoutParent(el) : el;
+  const rect = (textNode && range.getClientRects()[0]) || (box && box.getClientRects()[0]);
+  const view = el.ownerDocument.defaultView;
+  if (!rect) return risks;
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  if (x < 0 || y < 0 || x >= view.innerWidth || y >= view.innerHeight) return risks;
+  const root = el.getRootNode();
+  const hits = (root.elementsFromPoint ? root : el.ownerDocument).elementsFromPoint(x, y);
+  const at = hits.findIndex((h) => chain.includes(h));
+  if (at < 0) return risks;
+  const clear = (color) => color === 'transparent' || /(,|\\/)\\s*0\\)$/.test(color);
+  const paints = (n) => {
+    const s = tree.style(n);
+    return /^(canvas|video|img|iframe|embed|object|svg)$/.test(n.localName) || s.backgroundImage !== 'none' || !clear(s.backgroundColor);
+  };
+  const behind = hits.slice(at + 1).find((h) => !chain.includes(h) && paints(h));
+  if (behind) risks.push(tree.label(behind) + ' behind');
+  const onTop = hits.slice(0, at).find((h) => !el.contains(h) && paints(h));
+  if (onTop) risks.push(tree.label(onTop) + ' on top');
+  return risks;
 }`;
 
 /**
@@ -453,6 +506,7 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
   return Object.assign(result,
     (${PLACEMENT_JS})(el, tree),
     (${BACKGROUNDS_JS})(textual ? textFrom : el, tree, view),
+    textual ? { paintRisks: (${PAINT_RISKS_JS})(textFrom, tree, holder ? holder.font : el) } : {},
     (${TREE_JS})(el, tree, textOf, depth));
 }`;
 

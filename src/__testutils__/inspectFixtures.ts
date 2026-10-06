@@ -58,6 +58,8 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <form id="secrets"><input id="pw" type="password" value="hunter2-secret">
 <select id="exp" autocomplete="cc-exp-month"><option>07</option><option selected>11</option></select></form>
 <div id="faded" style="opacity:0.4"><p id="faded-text" style="color:#000">Faded text</p></div>
+<div style="opacity:0.5;background:#000"><p id="on-faded" style="color:#fff;margin:0">On a faded background</p></div>
+<h2 id="blended" style="mix-blend-mode:multiply">Blended</h2>
 <img id="pic" style="display:block" alt="pic" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
 <iframe id="frame" src="/inspect-frame" style="width:200px;height:60px;border:0"></iframe>
 <p style="background:#ddd"><a id="via-child" href="#v" style="color:#c00"><b style="color:#eaecf0">Child text</b></a></p>

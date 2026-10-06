@@ -265,6 +265,7 @@ function contrastText(contrast: InspectContrast | undefined): string | undefined
     contrast.inherited && `on ${contrast.background}`,
     contrast.overImage && '(over image)',
     contrast.opacity !== undefined && `(faded: opacity ${contrast.opacity})`,
+    contrast.approximate && `(approximate: ${contrast.approximate.join(', ')})`,
   ]
     .filter(Boolean)
     .join(' ');
