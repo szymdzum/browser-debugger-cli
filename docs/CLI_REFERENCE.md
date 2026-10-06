@@ -127,6 +127,12 @@ bdg peek --follow --verbose           # Verbose output (full URLs, resource and 
 
 `bdg tail` still works with the same options but is deprecated: it prints a note and runs `peek --follow`. `--interval` without `--follow` exits 81.
 
+Follow modes (`peek --follow`, `console --follow`, `network list --follow`):
+- Ctrl-C exits 130 and SIGTERM 143, as shells expect.
+- With `--json` they print one compact object per line (NDJSON), so a script can parse each line as it comes.
+- They stop with exit 83 when the session they follow ends (`The session ended; stopped following`), so a follower running in the background finds out.
+- Other failures (a busy page, a timeout) are retried: reported once in text, and as one error line per refresh with `--json`.
+
 ### Get full details
 ```bash
 bdg details network <requestId>     # Full request/response with bodies
@@ -1425,8 +1431,9 @@ for `dom a11y tree`, and `data.targetUrl` / `data.port` / `data.chromePid` for `
 `exitCode` always equals the process exit code (see `bdg --help --json` for the full list).
 Usage errors such as unknown options or missing arguments are reported the same way, with exit code 81.
 
-In follow mode (`-f --json`), every refresh prints one complete envelope. If the session goes
-away while following, an error envelope is printed on each retry until you stop the command.
+In follow mode (`-f --json`), every refresh prints one complete envelope on one line (NDJSON).
+When the session ends, it prints one error envelope and stops with exit 83; other failures (a busy
+page, a timeout) print an error envelope per refresh and are retried.
 
 Put `--json` after the command (`bdg peek --json`); `bdg --json peek` also works.
 

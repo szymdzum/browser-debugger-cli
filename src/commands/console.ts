@@ -168,7 +168,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
     if (options.json) {
       if (!started || backlog.length > 0) {
         const data = buildConsoleJsonOutput(backlog, { list: true, last: 0 });
-        console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
+        console.log(JSON.stringify(buildSuccessResponse(data)));
       }
     } else {
       const text = formatConsoleFollowLines(backlog, {

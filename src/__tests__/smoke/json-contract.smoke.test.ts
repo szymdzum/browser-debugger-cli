@@ -314,11 +314,14 @@ void describe('JSON contract', () => {
     assert.equal(value.data?.['result'], '--debug');
   });
 
-  void it('streams whole envelopes without terminal codes in follow mode', async () => {
+  void it('streams one whole envelope per line, without terminal codes, in follow mode', async () => {
     const result = await runCommand('peek', ['-f', '--json'], { timeout: 2500 });
-    assert.ok(result.stdout.trimStart().startsWith('{'), `stdout: ${result.stdout.slice(0, 200)}`);
     assert.ok(!result.stdout.includes('\u001b'), 'no ANSI escape codes in JSON stream');
-    assert.match(result.stdout, /"success": true/);
+    const lines = result.stdout.split('\n').filter((line) => line.trim() !== '');
+    assert.ok(lines.length > 0, `stdout: ${result.stdout.slice(0, 200)}`);
+    for (const line of lines) {
+      assert.equal((JSON.parse(line) as { success: boolean }).success, true, line);
+    }
   });
 
   void it('stops the session with a JSON result', async () => {

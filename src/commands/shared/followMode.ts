@@ -56,7 +56,7 @@ export interface FollowModeOptions {
  * - Initial display of start message
  * - First refresh call (awaited)
  * - Periodic interval-based refresh
- * - SIGINT handler for graceful shutdown
+ * - SIGINT/SIGTERM handlers that stop with 130/143, as shells expect
  * - Stopping with the exit code a refresh returns (e.g. the session is gone)
  *
  * @param refreshFn - Async function to call on each refresh cycle
@@ -97,9 +97,11 @@ export async function setupFollowMode(
       });
   }, intervalMs);
 
-  process.on('SIGINT', () => {
+  const stop = (exitCode: number): void => {
     clearInterval(intervalId);
     console.error(stopMessage());
-    process.exit(EXIT_CODES.SUCCESS);
-  });
+    process.exit(exitCode);
+  };
+  process.on('SIGINT', () => stop(EXIT_CODES.INTERRUPTED));
+  process.on('SIGTERM', () => stop(EXIT_CODES.TERMINATED));
 }

@@ -140,10 +140,12 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
  *
  * @param output - Preview output
  * @param options - Preview options
- * @returns Pretty-printed `{ version, success, data }` envelope
+ * @returns `{ version, success, data }` envelope, pretty-printed, or on one
+ *   line in follow mode (one object per line, NDJSON)
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
-  return JSON.stringify(buildSuccessResponse(buildPreviewJsonData(output, options)), null, 2);
+  const envelope = buildSuccessResponse(buildPreviewJsonData(output, options));
+  return options.follow ? JSON.stringify(envelope) : JSON.stringify(envelope, null, 2);
 }
 
 /**
