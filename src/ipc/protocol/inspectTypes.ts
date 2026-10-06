@@ -233,6 +233,8 @@ export interface InspectProp {
 
 /** A declaration that has no effect, and why */
 export interface InspectHint {
+  /** `inactive` (has no effect), `unset-variable` (var() of an unset custom property), `not-inherited` (a form control in the browser's font) */
+  kind: 'inactive' | 'unset-variable' | 'not-inherited';
   /** Property as written */
   property: string;
   value: string;
@@ -272,8 +274,12 @@ export interface InspectWhyEntry {
   via?: string;
   /** The value with its custom properties substituted, when it has `var()` */
   resolved?: string;
+  /** Custom properties it uses that are not set (the declaration is then invalid) */
+  unset?: string[];
   source: string;
-  /** `applied` (wins), `overridden`, or `inherited` (the winner comes from an ancestor) */
+  /** Specificity of the rule's selector (ids, classes, types) */
+  specificity?: [number, number, number];
+  /** `applied` (wins), `overridden`, or `inherited` (from an ancestor: the winner, or one it beat there) */
   status: 'applied' | 'overridden' | 'inherited';
   important?: true;
   layer?: string;
@@ -356,7 +362,7 @@ export interface InspectResult {
   all?: Record<string, string>;
   /** `--props`: the properties asked for */
   props?: Record<string, InspectProp>;
-  /** Declarations that have no effect (checked by default) */
+  /** Declarations that have no effect (checked by default; empty when none) */
   hints?: InspectHint[];
   /** `--rules`: the declaration that sets each shown property */
   rules?: InspectRule[];

@@ -6,7 +6,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
-import { inactiveHints, undefinedVariableHints } from '@/runtime/dom/inspectHints.js';
+import {
+  formControlFontHints,
+  inactiveHints,
+  undefinedVariableHints,
+} from '@/runtime/dom/inspectHints.js';
 import { substituteVariables, unsetVariables } from '@/runtime/dom/inspectVariables.js';
 
 /**
@@ -133,6 +137,23 @@ void describe('inactive CSS hints', () => {
       ctx({ display: 'flex', 'flex-wrap': 'nowrap' })
     );
     assert.match(hints[0]?.fix ?? '', /flex-wrap: wrap/);
+  });
+});
+
+void describe('form control fonts', () => {
+  void it('flags a control drawn in the browser font while its parent uses another', () => {
+    const uaFont = cascade({
+      'font-family': { value: 'system-ui', source: { kind: 'rule', origin: 'user-agent' } },
+    });
+    const control = {
+      style: { display: 'inline-block', 'font-family': 'Arial' },
+      parentStyle: { display: 'block', 'font-family': 'Inter, sans-serif' },
+      replaced: true,
+      formControl: true,
+    };
+    assert.match(formControlFontHints(uaFont, control)[0]?.fix ?? '', /font: inherit/);
+    const authored = cascade({ 'font-family': 'inherit' });
+    assert.equal(formControlFontHints(authored, control).length, 0);
   });
 });
 

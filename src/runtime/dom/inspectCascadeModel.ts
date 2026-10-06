@@ -16,7 +16,11 @@ import {
   type Declaration,
   type Resolution,
 } from '@/runtime/dom/inspectCascade.js';
-import { inactiveHints, undefinedVariableHints } from '@/runtime/dom/inspectHints.js';
+import {
+  formControlFontHints,
+  inactiveHints,
+  undefinedVariableHints,
+} from '@/runtime/dom/inspectHints.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import { buildWhy } from '@/runtime/dom/inspectWhyModel.js';
 
@@ -90,13 +94,16 @@ export interface CascadeInput {
   why?: string;
   /** `--props` names: `--rules` then covers only these */
   props?: string[];
+  /** Check for declarations that have no effect (default true) */
+  hints?: boolean;
+  formControl?: boolean;
 }
 
 /**
  * The cascade fields of the result.
  *
  * @param input - Matched rules, computed styles, options
- * @returns `hints`, `rules` and `why`, each only when there is something to say
+ * @returns `hints` (empty when checked and nothing found), `rules` and `why`
  */
 export function buildCascadeFields(input: CascadeInput): Partial<InspectResult> {
   const ruleGroups = input.rules ? (input.props?.map(propertyGroup) ?? RULE_GROUPS) : [];
@@ -109,10 +116,10 @@ export function buildCascadeFields(input: CascadeInput): Partial<InspectResult> 
     ]),
   ];
   const cascade = resolveCascade(input.matched, wanted);
-  const hints = buildHints(cascade, input);
+  const hints = input.hints === false ? undefined : buildHints(cascade, input);
   const rules = buildRules(ruleGroups, cascade, input);
   return {
-    ...(hints.length > 0 && { hints }),
+    ...(hints && { hints }),
     ...(rules.length > 0 && { rules }),
     ...(whyGroup && { why: buildWhy(whyGroup, cascade, input) }),
   };
@@ -141,16 +148,24 @@ function propertyGroup(name: string): PropertyGroup {
  */
 function buildHints(cascade: Map<string, Resolution>, input: CascadeInput): InspectHint[] {
   if (input.style['display'] === undefined) return [];
-  const ctx = { style: input.style, parentStyle: input.parentStyle, replaced: input.replaced };
-  return [...inactiveHints(cascade, ctx), ...undefinedVariableHints(cascade, input.style)].map(
-    (hint) => ({
-      property: hint.property,
-      value: hint.value,
-      reason: hint.reason,
-      fix: hint.fix,
-      source: input.label(hint.declaration),
-    })
-  );
+  const ctx = {
+    style: input.style,
+    parentStyle: input.parentStyle,
+    replaced: input.replaced,
+    formControl: input.formControl === true,
+  };
+  return [
+    ...inactiveHints(cascade, ctx),
+    ...undefinedVariableHints(cascade, input.style),
+    ...formControlFontHints(cascade, ctx),
+  ].map((hint) => ({
+    kind: hint.kind,
+    property: hint.property,
+    value: hint.value,
+    reason: hint.reason,
+    fix: hint.fix,
+    source: input.label(hint.declaration),
+  }));
 }
 
 /**

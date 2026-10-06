@@ -150,6 +150,8 @@ function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<Ins
     style: sources.style,
     parentStyle: sources.parentStyle,
     replaced: sources.raw.replaced === true,
+    formControl: sources.raw.formControl,
+    ...(sources.hints === false && { hints: false }),
     label: (declaration) => sourceLabel(declaration, cdp),
     ...(sources.rules && { rules: true }),
     ...(sources.why && { why: sources.why }),
@@ -329,6 +331,7 @@ async function readSources(
     ...(params.rules && { rules: true }),
     ...(params.why && { why: params.why }),
     ...(params.props && { props: params.props }),
+    ...(params.hints === false && { hints: false }),
   };
 }
 

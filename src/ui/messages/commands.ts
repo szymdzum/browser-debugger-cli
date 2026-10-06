@@ -513,10 +513,12 @@ Output notation:
   contrast 4.47   WCAG ratio, rounded down, against the background behind the text
   (+N not rendered)  children with display: none (or not in the layout)
   hints           declarations on this element that have no effect, why, the fix and where they are
+                  ('none': checked, nothing found)
   ← sel (file:N)  --rules: the declaration that sets the value (file:line, or file:line:column in
                   minified files); 'over X': rules it beats; '= v': the value of a var() expression
   ✓ / ✗           --why: the winning declaration / ones it beats, highest precedence first;
-                  indented --name lines: where the winner's custom properties are set
+                  [0,2,0]: selector specificity (ids, classes, types); indented --name lines: where
+                  the winner's custom properties are set
 Sessions follow the system color scheme; start with --color-scheme light|dark to choose.`;
 
 /**

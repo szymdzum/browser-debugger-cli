@@ -12,6 +12,7 @@ import { findSimilarNames } from '@/utils/suggestions.js';
 
 /** A declaration that has no effect */
 export interface CssHint {
+  kind: 'inactive' | 'unset-variable' | 'not-inherited';
   /** Property as written */
   property: string;
   /** Its value */
@@ -30,6 +31,8 @@ interface HintContext {
   parentStyle: StyleMap | undefined;
   /** The element is replaced (img, input, video…) */
   replaced: boolean;
+  /** The element is a form control (input, textarea, select, button) */
+  formControl?: boolean;
 }
 
 /** A check: when it applies, why the declaration has no effect and the fix */
@@ -139,14 +142,20 @@ const RULES: readonly Rule[] = [
     properties: ['top', 'right', 'bottom', 'left', 'inset'],
     inactive: ({ style }) =>
       (style['position'] ?? 'static') === 'static'
-        ? { reason: 'position is static', fix: 'use position: relative, absolute, fixed or sticky' }
+        ? {
+            reason: 'position is static',
+            fix: 'use position: absolute (out of the flow) or relative (shifted in place)',
+          }
         : undefined,
   },
   {
     properties: ['z-index'],
     inactive: ({ style, parentStyle }) =>
       (style['position'] ?? 'static') === 'static' && !isFlexOrGrid(display(parentStyle))
-        ? { reason: 'position is static', fix: 'use position: relative (or another than static)' }
+        ? {
+            reason: 'position is static',
+            fix: 'use position: relative, or absolute to take it out of the flow',
+          }
         : undefined,
   },
   {
@@ -227,6 +236,7 @@ export function inactiveHints(cascade: Map<string, Resolution>, ctx: HintContext
     if (!first || !inactive || checks.some((check) => !check)) return [];
     return [
       {
+        kind: 'inactive' as const,
         property: first.via ?? first.property,
         value: first.written ?? first.value,
         ...inactive,
@@ -284,6 +294,7 @@ export function undefinedVariableHints(
     if (missing.length === 0 || seen.has(written)) continue;
     seen.add(written);
     hints.push({
+      kind: 'unset-variable',
       property: written,
       value,
       reason: `${missing.join(', ')} is not set`,
@@ -307,4 +318,47 @@ function variableFix(name: string, style: StyleMap): string {
   const [similar] = findSimilarNames(name, defined);
   const fix = `define ${name} or give var() a fallback`;
   return similar ? `${fix} (set here: ${similar})` : fix;
+}
+
+/**
+ * A form control drawn in the browser's font while its parent uses another:
+ * controls do not inherit the font unless told to (a common oversight).
+ *
+ * @param cascade - Resolved properties
+ * @param ctx - Computed styles of the element and its parent
+ * @returns The hint, when the browser's own font-family wins
+ */
+export function formControlFontHints(
+  cascade: Map<string, Resolution>,
+  ctx: HintContext
+): CssHint[] {
+  const declaration = cascade.get('font-family')?.winner;
+  if (!ctx.formControl || declaration?.source.origin !== 'user-agent') return [];
+  const own = firstFamily(ctx.style['font-family']);
+  const parent = firstFamily(ctx.parentStyle?.['font-family']);
+  if (!own || !parent || own.toLowerCase() === parent.toLowerCase()) return [];
+  return [
+    {
+      kind: 'not-inherited',
+      property: 'font-family',
+      value: own,
+      reason: `form controls do not inherit the font (the parent uses ${parent})`,
+      fix: 'add font: inherit (or font-family: inherit) to the control',
+      declaration,
+    },
+  ];
+}
+
+/**
+ * The first family of a font-family list, unquoted.
+ *
+ * @param value - font-family value
+ * @returns First family, or undefined
+ */
+function firstFamily(value: string | undefined): string | undefined {
+  const family = value
+    ?.split(',')[0]
+    ?.trim()
+    .replace(/^["']|["']$/g, '');
+  return family === '' ? undefined : family;
 }

@@ -32,6 +32,8 @@ export interface DeclarationSource {
   layer?: string;
   /** Media or container condition the rule is under, e.g. `(min-width: 80rem)` */
   condition?: string;
+  /** Specificity of the matching selector (ids, classes, types) */
+  specificity?: [number, number, number];
 }
 
 /** One declaration of a longhand */
@@ -54,7 +56,7 @@ export interface Declaration {
 export interface Resolution {
   /** The winning declaration, absent when nothing authored sets it (initial or inherited default) */
   winner?: Declaration;
-  /** Declarations of the element that lost, highest precedence first */
+  /** Declarations that lost (of the element, or of the ancestor it inherits from), highest precedence first */
   overridden: Declaration[];
 }
 
@@ -275,24 +277,27 @@ function declarationsOf(
 
 /**
  * Source of a matched rule: its matching selector, origin, stylesheet,
- * layer (nested ones as `outer.inner`) and the media or container condition
- * it is under.
+ * layer (nested ones as `outer.inner`), the media or container condition
+ * it is under (`not all and (…)`, as Chrome writes `not (…)`, shortened) and
+ * the selector's specificity.
  *
  * @param match - CDP rule match
  * @returns Declaration source
  */
 function ruleSource(match: Protocol.CSS.RuleMatch): DeclarationSource {
   const { rule } = match;
-  const selector =
-    rule.selectorList.selectors[match.matchingSelectors[0] ?? 0]?.text ?? rule.selectorList.text;
+  const matching = rule.selectorList.selectors[match.matchingSelectors[0] ?? 0];
+  const selector = matching?.text ?? rule.selectorList.text;
   const layer = rule.layers?.map((l) => l.text || '(anonymous)').join('.');
   const condition = [...(rule.media ?? []), ...(rule.containerQueries ?? [])]
-    .map((c) => c.text)
+    .map((c) => c.text.replace(/^not all and /, 'not '))
     .join(' and ');
+  const specificity = matching?.specificity;
   return {
     kind: 'rule',
     selector,
     origin: rule.origin,
+    ...(specificity && { specificity: [specificity.a, specificity.b, specificity.c] }),
     ...(rule.styleSheetId && { styleSheetId: rule.styleSheetId }),
     ...(layer && { layer }),
     ...(condition && { condition }),
@@ -420,7 +425,7 @@ export function resolveCascade(
       resolved.set(property, { winner, overridden });
       continue;
     }
-    resolved.set(property, { ...inheritedWinner(property, ancestors), overridden: [] });
+    resolved.set(property, inheritedWinner(property, ancestors));
   }
   return resolved;
 }
@@ -430,13 +435,17 @@ export function resolveCascade(
  *
  * @param property - Longhand
  * @param ancestors - Declarations of each ancestor, nearest first
- * @returns The winner, or nothing for non-inherited properties or when no ancestor sets it
+ * @returns The winner and the declarations it beat on that ancestor (none for
+ *   non-inherited properties or when no ancestor sets it)
  */
-function inheritedWinner(property: string, ancestors: Declaration[][]): { winner?: Declaration } {
-  if (!isInherited(property)) return {};
+function inheritedWinner(property: string, ancestors: Declaration[][]): Resolution {
+  if (!isInherited(property)) return { overridden: [] };
   for (const [depth, declarations] of ancestors.entries()) {
-    const [winner] = byPrecedence(declarations.filter((d) => d.property === property));
-    if (winner) return { winner: { ...winner, ancestor: depth + 1 } };
+    const ranked = byPrecedence(declarations.filter((d) => d.property === property)).map(
+      (declaration) => ({ ...declaration, ancestor: depth + 1 })
+    );
+    const [winner, ...overridden] = ranked;
+    if (winner) return { winner, overridden };
   }
-  return {};
+  return { overridden: [] };
 }

@@ -323,12 +323,12 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'inspect:--why': {
     default: 'Not shown',
     whenEnabled:
-      "Adds why <property> = computed value, then every declaration of it on the element, highest precedence first: ✓ the winner (or the inherited ancestor's), ✗ the ones it beats, browser defaults included. var() values are shown substituted, with where the winner's custom properties are set. Logical names map to physical ones (margin-inline-start → margin-left); a shorthand (padding, border) gives one answer when one declaration sets all its sides, else one per side",
+      "Adds why <property> = computed value, then every declaration of it on the element, highest precedence first: ✓ the winner (or the inherited ancestor's), ✗ the ones it beats, browser defaults included. Each rule shows its selector specificity [ids,classes,types]. var() values are shown substituted (or invalid: --x not set), with where the winner's custom properties are set, followed up to :root. Logical names map to physical ones (margin-inline-start → margin-left); a shorthand (padding, border) gives one answer when one declaration sets all its sides, else one per side",
   },
 
   'inspect:--no-hints': {
     default:
-      "Hints at the element's own author declarations that have no effect (flex/grid properties without flex or grid, item properties without a flex or grid parent, offsets on static elements, sizes on inline ones, var() of an unset custom property), within a 1 s budget",
+      "Hints at the element's own author declarations that have no effect (flex/grid properties without flex or grid, item properties without a flex or grid parent, offsets on static elements, sizes on inline ones, var() of an unset custom property, form controls in the browser's font), within a 1 s budget; hints none when nothing was found",
     whenEnabled: 'Skips the hints and does not read the matched rules',
   },
 

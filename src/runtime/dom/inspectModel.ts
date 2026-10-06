@@ -53,6 +53,8 @@ export interface InspectSources {
   why?: string;
   /** `--props` names (`--rules` covers only these) */
   props?: string[];
+  /** `--no-hints` */
+  hints?: false;
 }
 
 /** What the command asked for */

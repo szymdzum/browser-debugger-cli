@@ -229,6 +229,7 @@ void describe('cascade', () => {
     });
     const resolved = resolveCascade(response, ['color', 'padding-top']);
     assert.equal(resolved.get('color')?.winner?.ancestor, 2);
+    assert.equal(resolved.get('color')?.overridden.length, 0);
     assert.equal(resolved.get('padding-top')?.winner, undefined);
   });
 
@@ -244,6 +245,17 @@ void describe('cascade', () => {
     ).get('font-size');
     assert.equal(result?.winner?.source.condition, '(min-width: 80rem)');
     assert.equal(result?.winner?.source.layer, 'utilities');
+  });
+
+  void it('keeps the specificity and shortens not-all media conditions', () => {
+    const match = rule('.card .btn', [prop('color', 'red')], {
+      media: [{ text: 'not all and (min-width: 64rem)', source: 'mediaRule' }],
+    });
+    const selector = match.rule.selectorList.selectors[0];
+    if (selector) selector.specificity = { a: 0, b: 2, c: 0 };
+    const result = resolveCascade(matched([match]), ['color']).get('color');
+    assert.deepEqual(result?.winner?.source.specificity, [0, 2, 0]);
+    assert.equal(result?.winner?.source.condition, 'not (min-width: 64rem)');
   });
 
   void it('names nested layers outermost first, as CDP lists them', () => {

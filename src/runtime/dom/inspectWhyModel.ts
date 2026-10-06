@@ -10,7 +10,11 @@ import type { InspectVariable, InspectWhy, InspectWhyEntry } from '@/ipc/protoco
 import { normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
 import { resolveCascade, type Declaration, type Resolution } from '@/runtime/dom/inspectCascade.js';
 import type { CascadeInput, PropertyGroup } from '@/runtime/dom/inspectCascadeModel.js';
-import { substituteVariables, usedVariables } from '@/runtime/dom/inspectVariables.js';
+import {
+  substituteVariables,
+  unsetVariables,
+  usedVariables,
+} from '@/runtime/dom/inspectVariables.js';
 
 /**
  * `--why` for a property.
@@ -71,7 +75,8 @@ function whyOf(
 
 /**
  * One declaration in a `--why` chain: a shorthand's as written, `var()`
- * substituted.
+ * substituted (or the custom properties that are not set), with the
+ * selector's specificity.
  *
  * @param declaration - Declaration
  * @param status - Applied, overridden or inherited
@@ -84,40 +89,67 @@ function whyEntry(
   input: CascadeInput
 ): InspectWhyEntry {
   const value = declaration.via ? (declaration.written ?? declaration.value) : declaration.value;
-  const resolved = value.includes('var(') ? substituteVariables(value, input.style) : value;
+  const unset = value.includes('var(') ? unsetVariables(value, input.style) : [];
+  const resolved = value.includes('var(') ? resolvedValue(declaration, value, input) : value;
+  const { specificity, layer, condition } = declaration.source;
   return {
     value,
     ...(declaration.via && { via: declaration.via }),
-    ...(resolved !== value && { resolved }),
+    ...(unset.length > 0 ? { unset } : resolved !== value && { resolved }),
     source: input.label(declaration),
+    ...(specificity && { specificity }),
     status,
     ...(declaration.important && { important: true as const }),
-    ...(declaration.source.layer && { layer: declaration.source.layer }),
-    ...(declaration.source.condition && { condition: declaration.source.condition }),
+    ...(layer && { layer }),
+    ...(condition && { condition }),
   };
 }
 
+/** How many levels of custom properties set from others are followed */
+const MAX_VARIABLE_DEPTH = 5;
+
 /**
- * Where the custom properties the winning value uses are set.
+ * Where the custom properties the winning value uses are set, and those
+ * their values use in turn (`--bs-btn-border-width: var(--bs-border-width)`).
  *
  * @param winner - Winning declaration
  * @param input - Matched rules, computed style and the label function
  * @returns The variables with a declaration (on the element or an ancestor)
  */
 function variableSources(winner: Declaration, input: CascadeInput): InspectVariable[] {
-  const names = usedVariables(winner.written ?? winner.value, input.style);
-  if (names.length === 0) return [];
-  const cascade = resolveCascade(input.matched, names);
-  return names.flatMap((name) => {
-    const declaration = cascade.get(name)?.winner;
-    if (!declaration) return [];
-    return [
-      {
+  const found: InspectVariable[] = [];
+  let names = usedVariables(winner.written ?? winner.value, input.style);
+  for (let depth = 0; names.length > 0 && depth < MAX_VARIABLE_DEPTH; depth++) {
+    const cascade = resolveCascade(input.matched, names);
+    const next = names.flatMap((name) => {
+      const declaration = cascade.get(name)?.winner;
+      if (!declaration || found.some((variable) => variable.name === name)) return [];
+      found.push({
         name,
         value: declaration.value,
         source: input.label(declaration),
         ...(declaration.ancestor !== undefined && { inherited: declaration.ancestor }),
-      },
-    ];
-  });
+      });
+      return usedVariables(declaration.value, input.style);
+    });
+    names = [...new Set(next)];
+  }
+  return found;
+}
+
+/**
+ * A `var()` value substituted; a color longhand's in hex (Tailwind's
+ * `lab()` and `oklch()` tokens are unreadable).
+ *
+ * @param declaration - Declaration
+ * @param value - Its value as shown
+ * @param input - Computed style
+ * @returns Substituted value
+ */
+function resolvedValue(declaration: Declaration, value: string, input: CascadeInput): string {
+  const substituted = substituteVariables(value, input.style);
+  const isColor = declaration.via === undefined && declaration.property.endsWith('color');
+  return isColor && !substituted.includes('var(')
+    ? normalizeProperty(declaration.property, substituted)
+    : substituted;
 }

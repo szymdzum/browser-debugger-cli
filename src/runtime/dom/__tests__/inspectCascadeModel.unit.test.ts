@@ -166,6 +166,37 @@ void describe('cascade fields', () => {
     assert.deepEqual(why?.variables, [{ name: '--py', value: '.375rem', source: '.btn' }]);
   });
 
+  void it('marks a var() of an unset custom property invalid in --why, and follows variables set from others', () => {
+    const result = fields(
+      [
+        rule('.badge', [
+          ['--size', 'var(--base)'],
+          ['--base', '12px'],
+          ['background-color', 'var(--accent)'],
+          ['font-size', 'var(--size)'],
+        ]),
+      ],
+      { '--size': '12px', '--base': '12px' },
+      'background-color'
+    );
+    assert.deepEqual(result.why?.[0]?.chain[0]?.unset, ['--accent']);
+    const font = fields(
+      [
+        rule('.badge', [
+          ['--size', 'var(--base)'],
+          ['--base', '12px'],
+          ['font-size', 'var(--size)'],
+        ]),
+      ],
+      { '--size': '12px', '--base': '12px', 'font-size': '12px' },
+      'font-size'
+    );
+    assert.deepEqual(
+      font.why?.[0]?.variables?.map((v) => `${v.name}: ${v.value}`),
+      ['--size: var(--base)', '--base: 12px']
+    );
+  });
+
   void it('limits --rules to the --props names', () => {
     const result = buildCascadeFields({
       matched: {

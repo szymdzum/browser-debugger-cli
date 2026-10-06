@@ -486,10 +486,10 @@ function ruleScope(entry: { layer?: string | undefined; condition?: string | und
 function cascadeBlock(data: InspectOutput): string[] {
   const hints = (data.hints ?? []).map(
     (hint) =>
-      `${hint.property}: ${hint.value} has no effect: ${hint.reason} → ${hint.fix} · in ${hint.source}`
+      `${hint.property}: ${hint.value} ${hint.kind === 'not-inherited' ? "is the browser's" : 'has no effect'}: ${hint.reason} → ${hint.fix} · in ${hint.source}`
   );
   return [
-    ...labelledLines('hints', hints),
+    ...labelledLines('hints', data.hints?.length === 0 ? ['none'] : hints),
     ...labelledLines('rules', (data.rules ?? []).map(ruleLine)),
     ...labelledLines('why', (data.why ?? []).flatMap(whyLines)),
     ...(data.cascade ? [inspectCascadeNote(data.cascade)] : []),
@@ -527,15 +527,16 @@ function ruleLine(rule: InspectRule): string {
 function whyLines(why: InspectWhy): string[] {
   const entries = why.chain.map((entry) => {
     const value = `${entry.via ? `${entry.via}: ` : ''}${entry.value}`;
-    const resolved =
-      entry.resolved !== undefined
+    const resolved = entry.unset
+      ? ` = invalid: ${entry.unset.join(', ')} not set`
+      : entry.resolved !== undefined
         ? ` = ${truncateByLength(entry.resolved, CASCADE_VALUE_WIDTH)}`
         : '';
     return [
       `  ${entry.status === 'overridden' ? '✗' : '✓'} `,
       truncateByLength(value, CASCADE_VALUE_WIDTH) + resolved,
       entry.important ? ' !important' : '',
-      `  ${entry.source}${ruleScope(entry)}`,
+      `  ${entry.source}${entry.specificity ? ` [${entry.specificity.join(',')}]` : ''}${ruleScope(entry)}`,
       entry.status === 'inherited' ? ' (inherited)' : '',
     ].join('');
   });
