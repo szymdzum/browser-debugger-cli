@@ -417,6 +417,8 @@ export interface ElementLayout {
   scrollBy?: LayoutPoint;
   /** Ancestor or iframe cutting it off (scroll that container instead of the page) */
   clippedBy?: string;
+  /** It or a container is `position: fixed`: page scroll does not move it */
+  fixed?: true;
   /** Why page scroll cannot bring it fully into view: it is fixed, or beyond the page's scroll range */
   offScreenReason?: string;
   /** Topmost element at the center of its visible part, when that is another element */

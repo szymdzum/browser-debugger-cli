@@ -115,21 +115,16 @@ export function visibilityOf(
 
 /**
  * The header rectangle: border box size, and the page position, or the
- * viewport position of a fixed element (its page position changes with the
- * scroll).
+ * viewport position of an element fixed to the viewport (it or a container
+ * is `position: fixed`: its page position changes with the scroll).
  *
- * @param style - Computed styles (position)
  * @param layout - Layout measurements
  * @param size - Border box size
  * @returns Rectangle
  */
-function headerRect(
-  style: StyleMap,
-  layout: ElementLayout,
-  size: { w: number; h: number }
-): InspectRect {
+function headerRect(layout: ElementLayout, size: { w: number; h: number }): InspectRect {
   const box = { w: round1(size.w), h: round1(size.h) };
-  return style['position'] === 'fixed'
+  return layout.fixed
     ? { x: layout.viewport.x, y: layout.viewport.y, ...box, in: 'viewport' }
     : { x: layout.bounds.x, y: layout.bounds.y, ...box };
 }
@@ -157,7 +152,7 @@ function header(sources: InspectSources, request: InspectRequest): InspectResult
     ...(content && { content }),
     ...(raw.placeholder && { placeholder: rowText(raw.placeholder) }),
     ...(raw.context && { context: raw.context }),
-    ...(size && layout && { rect: headerRect(sources.style, layout, size) }),
+    ...(size && layout && { rect: headerRect(layout, size) }),
     visibility: visibilityOf(layout, size !== undefined),
     ...(sources.colorScheme && { colorScheme: sources.colorScheme }),
     ...(sources.colorScheme === 'dark' && pageLooksDark(raw) && { theme: 'dark' }),
