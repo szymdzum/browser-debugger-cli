@@ -11,6 +11,7 @@ import { normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
 import {
   physicalName,
   ownProperties,
+  ruleField,
   resolveCascade,
   shorthandLonghands,
   type Declaration,
@@ -282,6 +283,7 @@ function toRule(
     ...(winner.value.includes('var(') &&
       computed !== undefined && { computed: normalizeProperty(property, computed) }),
     source: input.label(winner),
+    ...ruleField(winner),
     ...(overrides.length > 0 && { overrides }),
     ...(winner.ancestor !== undefined && { inherited: winner.ancestor }),
     ...(winner.important && { important: true as const }),

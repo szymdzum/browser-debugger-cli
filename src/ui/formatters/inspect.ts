@@ -554,6 +554,9 @@ function whyLines(why: InspectWhy, data: InspectOutput): string[] {
   return [
     `${why.property} = ${why.computed}${midTransition(why.property, data.animating) ? ` ${inspectMidTransitionNote()}` : ''}`,
     ...entries.slice(0, 1),
+    ...(why.chain[0]?.rule
+      ? [`    in ${truncateByLength(why.chain[0].rule, RULE_LINE_WIDTH)}`]
+      : []),
     ...variables,
     ...entries.slice(1),
     ...(why.chain.length === 0 ? ['  no author declaration: the default or inherited value'] : []),
@@ -586,6 +589,9 @@ function midTransition(property: string, animating: string[] | undefined): boole
 function levelsUp(levels: number): string {
   return levels === 1 ? 'the parent' : `${levels} levels up`;
 }
+
+/** Longest rule text shown under the winner in `--why` (JSON has up to 300 characters) */
+const RULE_LINE_WIDTH = 120;
 
 /** Longest declared value shown in `--rules` and `--why` lines (font stacks run long) */
 const CASCADE_VALUE_WIDTH = 60;

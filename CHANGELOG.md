@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`dom inspect` shows the rule itself** - `--why` prints the winning rule as written under it (`.card .btn { background: #9db8ff; }`), and `--rules`/`--why` JSON have it as `rule`. A long minified rule is cut to its selector and that declaration (`.btn { … background-color:var(--bs-btn-bg); … }`), so `bootstrap.min.css:5:53709` comes with what is there (#364)
+
 ## [0.11.0] - 2026-10-06
 
 ### Added
