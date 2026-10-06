@@ -196,7 +196,7 @@ const MAX_HOST_COMPOUNDS = 4;
  */
 function withoutFilters(selector: string): string {
   return (
-    selector.replace(/:visible\b|:(has-text|text-is)\((?:"[^"]*"|'[^']*'|[^)])*\)/g, '').trim() ||
+    selector.replace(/:visible\b|:(has-text|text-is)\((?:"[^"]*"|'[^']*'|[^)"'])*\)/g, '').trim() ||
     '*'
   );
 }
