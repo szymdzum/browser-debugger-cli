@@ -588,6 +588,44 @@ void describe('Element layout', () => {
   });
 });
 
+void describe('Reading text in dom get and dom query', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    await bdg([`${fixture.url}reading-text`, '--port', String(port), '--headless']);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('reads the content a shadow root shows through a slot', async () => {
+    assert.match(
+      await bdg(['dom', 'get', '#note-text']),
+      /^\[Paragraph\] <p> "Note: Slotted note text"$/m
+    );
+    assert.deepEqual(await queryPreviews('#note-text'), ['Note: Slotted note text']);
+  });
+
+  void it('shows the visible text next to an accessible name that differs', async () => {
+    assert.match(
+      await bdg(['dom', 'get', '#editor']),
+      /^\[Generic\] "Rich Text Area\. Press ALT-0 for help\."\nText: Your content goes here\.$/m
+    );
+    const json = JSON.parse(await bdg(['dom', 'get', '#editor', '--json'])) as {
+      data: { node: { name: string }; domContext: { preview: string } };
+    };
+    assert.equal(json.data.node.name, 'Rich Text Area. Press ALT-0 for help.');
+    assert.equal(json.data.domContext.preview, 'Your content goes here.');
+    assert.doesNotMatch(await bdg(['dom', 'get', '#editable']), /^Text:/m);
+    assert.doesNotMatch(await bdg(['dom', 'get', '#save']), /^Text:/m);
+  });
+});
+
 void describe('Key attributes in dom query and dom get', () => {
   let fixture: FixtureServer;
 

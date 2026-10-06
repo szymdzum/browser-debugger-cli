@@ -98,10 +98,11 @@ function buildPropertiesText(node: A11yNode): string {
  * link's href, a field's type and name), like `dom query` does, and is
  * followed by up to 500 characters of the element's text
  * (all of it with `dom get --full`) when it is longer than the one-line
- * preview, or, for an element without text or name, what it holds.
+ * preview or the role line shows an accessible name other than the text,
+ * or, for an element without text or name, what it holds.
  *
  * @param data - Accessibility node and optional DOM context
- * @returns Role line, plus a text line for elements with longer text
+ * @returns Role line, plus a text line for elements with longer or differently named text
  */
 export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): string {
   const { node, domContext } = data;
@@ -111,11 +112,42 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   const propsText = buildPropertiesText(node);
   const inferredText = node.inferred ? ' (inferred from DOM)' : '';
   const line = `${roleText}${contextText}${keysText}${propsText}${inferredText}`;
-  if (domContext?.text) return joinLines(line, elementTextLine(domContext.text));
+  const text = textNotOnRoleLine(node, domContext);
+  if (text) return joinLines(line, elementTextLine(text));
   if (domContext?.childCount !== undefined && !node.name) {
     return joinLines(line, emptyElementLine(domContext.children ?? [], domContext.childCount));
   }
   return line;
+}
+
+/**
+ * The element's text when the role line does not show it: text longer than
+ * the one-line preview, or the visible text of an element whose accessible
+ * name is something else (an editor named by its aria-label), unless its
+ * value shows that text. Texts are compared ignoring case and whitespace.
+ * A sensitive field's text is never shown.
+ *
+ * @param node - Accessibility node
+ * @param domContext - DOM context with the text
+ * @returns Text for the text line, or undefined
+ */
+function textNotOnRoleLine(node: A11yNode, domContext: DomContext | null): string | undefined {
+  if (domContext?.sensitive) return undefined;
+  if (domContext?.text) return domContext.text;
+  const preview = domContext?.preview;
+  if (!preview || !node.name) return undefined;
+  const shown = [node.name, node.value].map((text) => comparableText(text ?? ''));
+  return shown.includes(comparableText(preview)) ? undefined : preview;
+}
+
+/**
+ * Text in the form texts are compared in.
+ *
+ * @param text - Text
+ * @returns Lowercased text with whitespace collapsed
+ */
+function comparableText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 /**

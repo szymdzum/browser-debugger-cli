@@ -133,10 +133,32 @@ JSON.stringify = function () { return '"replaced"'; };
 </script>
 </body></html>`;
 
+/**
+ * Text read from where the page shows it: a custom element whose shadow root
+ * shows its light-DOM text through `<p>Note: <slot></slot></p>`, a
+ * read-only editor whose accessible name (its aria-label, as TinyMCE's body
+ * has) differs from its visible text, an editable one (whose value is its
+ * text) and a button whose name is its text.
+ */
+const READING_TEXT_HTML = `<!doctype html><meta charset="utf-8"><title>reading text</title>
+<x-note id="note">Slotted <b>note</b> text</x-note>
+<div id="editor" contenteditable="false" aria-label="Rich Text Area. Press ALT-0 for help."><p>Your content goes here.</p></div>
+<div id="editable" contenteditable="true" aria-label="Notes"><p>Typed notes</p></div>
+<button id="save">Save</button>
+<script>
+  customElements.define('x-note', class extends HTMLElement {
+    constructor() {
+      super();
+      this.attachShadow({ mode: 'open' }).innerHTML = '<p id="note-text">Note: <slot></slot></p>';
+    }
+  });
+</script>`;
+
 /** Pages by path */
 export const INSPECT_ROUTES: Record<string, string> = {
   '/tampered': TAMPERED_HTML,
   '/inspect': INSPECT_HTML,
   '/inspect-frame': INSPECT_FRAME_HTML,
   '/inspect-paint': PAINT_HTML,
+  '/reading-text': READING_TEXT_HTML,
 };

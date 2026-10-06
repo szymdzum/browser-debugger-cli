@@ -1,6 +1,7 @@
 /**
  * `dom get` (semantic mode) shows up to 500 characters of an element's text
- * instead of one truncated line (#332), and what an element without text holds.
+ * instead of one truncated line (#332), what an element without text holds,
+ * and the visible text of an element whose accessible name differs from it.
  */
 
 import assert from 'node:assert/strict';
@@ -80,6 +81,35 @@ void describe('formatSemanticNodeWithContext key attributes', () => {
   });
 });
 
+void describe('formatSemanticNodeWithContext text next to the accessible name', () => {
+  void it('shows the visible text of an element named by something else (TinyMCE body)', () => {
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '1', role: 'generic', name: 'Rich Text Area. Press ALT-0 for help.' },
+        domContext: { tag: 'body', preview: 'Your content goes here.' },
+      }),
+      '[Generic] "Rich Text Area. Press ALT-0 for help."\nText: Your content goes here.'
+    );
+  });
+
+  void it('shows no text line when the name or value is the text', () => {
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '1', role: 'button', name: 'Add to cart', focusable: true },
+        domContext: { tag: 'button', preview: 'ADD  TO CART' },
+      }),
+      '[Button] "Add to cart" (focusable)'
+    );
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '2', role: 'generic', name: 'Notes', value: 'Typed notes' },
+        domContext: { tag: 'div', preview: 'Typed notes' },
+      }),
+      '[Generic] "Notes" (value: "Typed notes")'
+    );
+  });
+});
+
 void describe('withSecretMasked', () => {
   void it('masks the accessibility value of a secret field (dom get, a11y describe)', () => {
     const node = { nodeId: '1', role: 'textbox', name: 'Password', value: 'hunter2' };
@@ -98,5 +128,13 @@ void describe('withSecretMasked', () => {
       }),
       /value: "••••"/
     );
+  });
+
+  void it('never shows the text of a secret field on a text line', () => {
+    const output = formatSemanticNodeWithContext({
+      node: { nodeId: '3', role: 'textbox', name: 'Password' },
+      domContext: { tag: 'div', sensitive: true, preview: 'hunter2' },
+    });
+    assert.doesNotMatch(output, /hunter2/);
   });
 });
