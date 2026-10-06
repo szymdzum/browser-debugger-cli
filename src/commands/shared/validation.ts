@@ -199,6 +199,26 @@ export function eventTypesOption(value: string, previous: string[] = []): string
   throw new InvalidArgumentError('Give at least one event type, e.g. click or click,keydown.');
 }
 
+/**
+ * Commander parser for `dom inspect --props`: comma-separated CSS property
+ * names, lowercased except custom properties (`--brand`), which are
+ * case-sensitive; repeated options add up.
+ *
+ * @param value - Raw option value, e.g. "padding-top,color"
+ * @param previous - Names from earlier `--props` options
+ * @returns Property names
+ * @throws InvalidArgumentError (exit 81) when no name is given
+ */
+export function cssPropertiesOption(value: string, previous: string[] = []): string[] {
+  const names = parseCommaSeparated(value).map((name) =>
+    name.startsWith('--') ? name : name.toLowerCase()
+  );
+  if (names.length > 0) return [...new Set([...previous, ...names])];
+  throw new InvalidArgumentError(
+    'Give at least one CSS property, e.g. color or padding-top,color.'
+  );
+}
+
 function parseCommaSeparated(value: string): string[] {
   return value
     .split(',')

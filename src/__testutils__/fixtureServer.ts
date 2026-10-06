@@ -27,7 +27,7 @@
  * has an image, a link, a form with fields and an iframe for `dom query`'s key
  * attributes; `/repeated-headers` sends the same header value twice. Pages for
  * frame order, rejections and framework listeners come from
- * `knownLimitFixtures.ts`.
+ * `knownLimitFixtures.ts`; the `dom inspect` pages from `inspectFixtures.ts`.
  */
 
 import * as fs from 'fs';
@@ -38,6 +38,7 @@ import { fileURLToPath } from 'url';
 
 import { WebSocketServer } from 'ws';
 
+import { INSPECT_ROUTES } from '@/__testutils__/inspectFixtures.js';
 import { KNOWN_LIMIT_ROUTES } from '@/__testutils__/knownLimitFixtures.js';
 
 const FIXTURES_DIR = path.resolve(
@@ -554,7 +555,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
       res.end(LAYOUT_HTML);
       return;
     }
-    const knownLimitPage = KNOWN_LIMIT_ROUTES[req.url ?? ''];
+    const knownLimitPage = KNOWN_LIMIT_ROUTES[req.url ?? ''] ?? INSPECT_ROUTES[req.url ?? ''];
     if (knownLimitPage !== undefined) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(knownLimitPage);

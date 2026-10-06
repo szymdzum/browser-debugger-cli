@@ -1,0 +1,582 @@
+/**
+ * `bdg dom inspect`: what one element looks like, read in the daemon.
+ *
+ * The element is found like the other element commands find it (selector
+ * with filters through open shadow roots and same-origin iframes, or the
+ * exact cached node). Then, in parallel: one page-side walk on the element
+ * ({@link INSPECT_PAGE_JS}: text, placement in the parent, backgrounds, child
+ * tree), `dom layout`'s measurement (page position, hidden, covered,
+ * offscreen) and, once the nodes are pushed to CDP, `CSS.getComputedStyleForNode`
+ * for the element, its layout parent and its `::before`/`::after`,
+ * `CSS.getPlatformFontsForNode` for its text and `DOM.getBoxModel`. DOM and
+ * CSS are enabled on the first inspect and kept on. Matched rules are not
+ * read (no cascade).
+ */
+
+import type { CDPConnection } from '@/connection/cdp.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
+import { operationFailedError, unknownCssPropertyError } from '@/errors/messages.js';
+import type { DomInspectCommand } from '@/ipc/protocol/commands.js';
+import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
+import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
+import { selectedProps } from '@/runtime/dom/inspectAllStyles.js';
+import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
+import { buildInspectResult, type InspectSources } from '@/runtime/dom/inspectModel.js';
+import type { PlatformFont, PseudoSource } from '@/runtime/dom/inspectPaintModel.js';
+import { INSPECT_PAGE_JS, RELATED_NODE_JS, type RawInspect } from '@/runtime/dom/inspectScripts.js';
+import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTree.js';
+import { inspectLayout } from '@/runtime/dom/layout.js';
+import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { findSimilar } from '@/utils/suggestions.js';
+
+const log = createLogger('dom');
+
+/** Connections DOM and CSS were enabled on */
+const stylesEnabled = new WeakSet<CDPConnection>();
+
+/** Distinguishes the object groups of concurrent calls */
+let groupCounter = 0;
+
+/** The element found, with how many matched */
+interface FoundElement {
+  objectId: string;
+  count: number;
+  index: number;
+  /** How the match was chosen when no index was given and several matched */
+  picked?: InspectResult['picked'];
+}
+
+/** Page-side choice of a match: the index asked for, else the first rendered one (the first when none is) */
+const PICK_MATCH_JS = `function (i) {
+  if (i !== null) return i;
+  const shown = (el) => (el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0);
+  const first = Array.prototype.findIndex.call(this, shown);
+  return first < 0 ? 0 : first;
+}`;
+
+/** Nodes whose styles are read, as CDP describes them */
+interface RelatedNodes {
+  node: number;
+  parent?: number;
+  textHolder?: number;
+  pseudo: Array<{ type: PseudoSource['type']; backendNodeId: number }>;
+}
+
+/**
+ * Inspect one element.
+ *
+ * @param cdp - CDP connection
+ * @param params - Selector (and index) or backend node id, and options
+ * @returns Inspect result
+ * @throws CommandError (83) no match, (81) index out of range, invalid
+ *   selector or unknown property, (87) the cached element left the page
+ */
+export async function inspectElement(
+  cdp: CDPConnection,
+  params: DomInspectCommand
+): Promise<InspectResult> {
+  const started = Date.now();
+  const objectGroup = `bdg-inspect-${++groupCounter}`;
+  try {
+    const found = await findElement(cdp, params, objectGroup);
+    const sources = await readSources(cdp, found.objectId, params, objectGroup);
+    const propValues = params.props ? checkedProps(params.props, sources) : undefined;
+    const built = buildInspectResult(sources, {
+      selector: params.selector,
+      index: found.index,
+      count: found.count,
+      treeLimit: params.treeLimit ?? DEFAULT_TREE_LIMIT,
+      ...(params.all && { all: true }),
+      ...(propValues && { propValues }),
+    });
+    const result = found.picked ? { ...built, picked: found.picked } : built;
+    log.debug(`Inspected ${result.element} in ${Date.now() - started} ms`);
+    return result;
+  } finally {
+    void cdp
+      .send('Runtime.releaseObjectGroup', { objectGroup })
+      .catch((error: unknown) => log.debug(`Object group not released: ${getErrorMessage(error)}`));
+  }
+}
+
+/**
+ * The properties asked for with `--props`.
+ *
+ * @param names - Property names
+ * @param sources - What was read
+ * @returns Values by name
+ * @throws CommandError (81) for a name no value was found for
+ */
+function checkedProps(names: string[], sources: InspectSources): InspectResult['props'] {
+  const { props, unknown } = selectedProps(names, sources.style, sources.raw.props);
+  if (unknown.length === 0) return props;
+  const suggestions = unknown.flatMap((name) =>
+    findSimilar(name, Object.keys(sources.style), { maxSuggestions: 1 })
+  );
+  const err = unknownCssPropertyError(unknown, suggestions);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * Find the element: the cached node, or the match at the index (default 0)
+ * among the selector's matches.
+ *
+ * @param cdp - CDP connection
+ * @param params - Selector (and index) or backend node id
+ * @param objectGroup - Object group for the handles
+ * @returns The element's remote object and the match count
+ * @throws CommandError when there is no such element
+ */
+async function findElement(
+  cdp: CDPConnection,
+  params: DomInspectCommand,
+  objectGroup: string
+): Promise<FoundElement> {
+  if (params.backendNodeId !== undefined) {
+    const objectId = await resolveCachedNode(cdp, params.backendNodeId, objectGroup);
+    if (!objectId) throw missingElementError(params, 0);
+    return { objectId, count: 1, index: 0 };
+  }
+  const matches = await querySelector(cdp, params.selector, objectGroup);
+  const [count, index] = await Promise.all([
+    callOn<number>(cdp, matches, 'function () { return this.length; }', []),
+    callOn<number>(cdp, matches, PICK_MATCH_JS, [params.index ?? null]),
+  ]);
+  const element = (await cdp.send('Runtime.callFunctionOn', {
+    objectId: matches,
+    functionDeclaration: 'function (i) { return this[i] || null; }',
+    arguments: [{ value: index ?? 0 }],
+    objectGroup,
+  })) as Protocol.Runtime.CallFunctionOnResponse;
+  const objectId = element.result.objectId;
+  if (!objectId) throw missingElementError(params, count ?? 0);
+  return { objectId, count: count ?? 0, index: index ?? 0, ...pickedHow(params, count, index) };
+}
+
+/**
+ * How a match was chosen, for the note on several matches.
+ *
+ * @param params - Command parameters (an explicit --index needs no note)
+ * @param count - Number of matches
+ * @param index - Index chosen
+ * @returns `picked` when no index was given and several elements matched
+ */
+function pickedHow(
+  params: DomInspectCommand,
+  count: number | undefined,
+  index: number | undefined
+): Pick<FoundElement, 'picked'> {
+  if (params.index !== undefined || (count ?? 0) < 2) return {};
+  return { picked: (index ?? 0) > 0 ? 'first-visible' : 'first' };
+}
+
+/**
+ * Resolve a cached node that is still in the page.
+ *
+ * @param cdp - CDP connection
+ * @param backendNodeId - Backend node id from the query cache
+ * @param objectGroup - Object group for the handle
+ * @returns Remote object id, or undefined when the node left the page
+ */
+async function resolveCachedNode(
+  cdp: CDPConnection,
+  backendNodeId: number,
+  objectGroup: string
+): Promise<string | undefined> {
+  const resolved = (await cdp
+    .send('DOM.resolveNode', { backendNodeId, objectGroup })
+    .catch((error: unknown) => {
+      log.debug(`Node ${backendNodeId} not resolved: ${getErrorMessage(error)}`);
+      return {};
+    })) as Partial<Protocol.DOM.ResolveNodeResponse>;
+  const objectId = resolved.object?.objectId;
+  if (!objectId) return undefined;
+  const connected = await callOn<boolean>(
+    cdp,
+    objectId,
+    'function () { return this.isConnected; }',
+    []
+  );
+  return connected ? objectId : undefined;
+}
+
+/**
+ * Run the selector search ({@link DEEP_QUERY_JS}) and keep the array of matches.
+ *
+ * @param cdp - CDP connection
+ * @param selector - Selector (filters allowed)
+ * @param objectGroup - Object group for the array
+ * @returns Remote object id of the array
+ * @throws CommandError (81) invalid selector, (91) page script failure
+ */
+async function querySelector(
+  cdp: CDPConnection,
+  selector: string,
+  objectGroup: string
+): Promise<string> {
+  const response = (await cdp.send('Runtime.evaluate', {
+    expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)})`,
+    objectGroup,
+  })) as Protocol.Runtime.EvaluateResponse;
+  if (response.exceptionDetails || !response.result.objectId) {
+    if (response.exceptionDetails) throwIfInvalidSelector(response.exceptionDetails, selector);
+    const err = operationFailedError(
+      'find the element',
+      response.exceptionDetails?.text ?? 'no result'
+    );
+    throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
+  }
+  return response.result.objectId;
+}
+
+/**
+ * Call a function on a remote object and return its value.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - Remote object (`this`)
+ * @param functionDeclaration - Function source
+ * @param args - Arguments (JSON values)
+ * @returns The value, or undefined when the call threw
+ */
+async function callOn<T>(
+  cdp: CDPConnection,
+  objectId: string,
+  functionDeclaration: string,
+  args: unknown[]
+): Promise<T | undefined> {
+  const response = (await cdp.send('Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration,
+    arguments: args.map((value) => ({ value })),
+    returnByValue: true,
+  })) as Protocol.Runtime.CallFunctionOnResponse;
+  if (response.exceptionDetails) {
+    log.debug(
+      `Page function failed: ${response.exceptionDetails.exception?.description ?? response.exceptionDetails.text}`
+    );
+    return undefined;
+  }
+  return response.result.value as T;
+}
+
+/**
+ * Read everything about the element: the page-side walk, `dom layout`'s
+ * measurement and the CDP styles, fonts and box.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The element
+ * @param params - Request
+ * @param objectGroup - Object group for handles
+ * @returns Inputs of {@link buildInspectResult}
+ */
+async function readSources(
+  cdp: CDPConnection,
+  objectId: string,
+  params: DomInspectCommand,
+  objectGroup: string
+): Promise<InspectSources> {
+  const related = await relatedNodes(cdp, objectId, objectGroup);
+  const [raw, measured, styles] = await Promise.all([
+    readPage(cdp, objectId, params),
+    measure(cdp, params.selector, related.node),
+    readStyles(cdp, related),
+  ]);
+  return {
+    raw,
+    ...styles,
+    fonts: raw.ownText || raw.formControl ? styles.fonts.node : styles.fonts.textHolder,
+    ...measured,
+  };
+}
+
+/**
+ * The page-side walk on the element.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The element
+ * @param params - Tree depth and `--props`
+ * @returns Page-side measurements
+ * @throws CommandError (91) when the walk fails
+ */
+async function readPage(
+  cdp: CDPConnection,
+  objectId: string,
+  params: DomInspectCommand
+): Promise<RawInspect> {
+  const raw = await callOn<RawInspect>(cdp, objectId, INSPECT_PAGE_JS, [
+    params.props || params.all ? 0 : (params.tree ?? DEFAULT_TREE_DEPTH),
+    params.props ?? null,
+  ]);
+  if (raw) return raw;
+  const err = operationFailedError('inspect the element', 'the page script failed');
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SCRIPT_ERROR);
+}
+
+/**
+ * The backend node ids of the element, its layout parent, its first text
+ * holder and its generated pseudo-elements.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The element
+ * @param objectGroup - Object group for handles
+ * @returns Backend node ids
+ */
+async function relatedNodes(
+  cdp: CDPConnection,
+  objectId: string,
+  objectGroup: string
+): Promise<RelatedNodes> {
+  const related = async (which: 'parent' | 'textHolder'): Promise<number | undefined> => {
+    const response = (await cdp.send('Runtime.callFunctionOn', {
+      objectId,
+      functionDeclaration: RELATED_NODE_JS,
+      arguments: [{ value: which }],
+      objectGroup,
+    })) as Protocol.Runtime.CallFunctionOnResponse;
+    const id = response.result.objectId;
+    return id ? (await describe(cdp, id)).backendNodeId : undefined;
+  };
+  const [node, parent, textHolder] = await Promise.all([
+    describe(cdp, objectId),
+    related('parent'),
+    related('textHolder'),
+  ]);
+  const pseudo = (node.pseudoElements ?? [])
+    .filter((p) => p.pseudoType === 'before' || p.pseudoType === 'after')
+    .map((p) => ({
+      type: `::${p.pseudoType}` as PseudoSource['type'],
+      backendNodeId: p.backendNodeId,
+    }));
+  return {
+    node: node.backendNodeId,
+    ...(parent && { parent }),
+    ...(textHolder && { textHolder }),
+    pseudo,
+  };
+}
+
+/**
+ * Describe a node (no tracking needed).
+ *
+ * @param cdp - CDP connection
+ * @param objectId - Remote object of the node
+ * @returns CDP node description
+ */
+async function describe(cdp: CDPConnection, objectId: string): Promise<Protocol.DOM.Node> {
+  const { node } = (await cdp.send('DOM.describeNode', {
+    objectId,
+  })) as Protocol.DOM.DescribeNodeResponse;
+  return node;
+}
+
+/**
+ * The element as `dom layout` measures it (page position, visibility, cover)
+ * and the color scheme the page sees. Not fatal: without it the header has
+ * no position.
+ *
+ * @param cdp - CDP connection
+ * @param selector - Selector of the request
+ * @param backendNodeId - The element
+ * @returns Layout and color scheme
+ */
+async function measure(
+  cdp: CDPConnection,
+  selector: string,
+  backendNodeId: number
+): Promise<Pick<InspectSources, 'layout' | 'colorScheme'>> {
+  try {
+    const result = await inspectLayout(cdp, { selector, backendNodeId });
+    const [layout] = result.elements;
+    return {
+      ...(layout && { layout }),
+      ...(result.page.colorScheme && { colorScheme: result.page.colorScheme }),
+    };
+  } catch (error) {
+    log.debug(`Layout not measured: ${getErrorMessage(error)}`);
+    return {};
+  }
+}
+
+/** Styles, fonts and size read through CDP */
+interface CdpStyles {
+  style: StyleMap;
+  parentStyle?: StyleMap;
+  pseudo: PseudoSource[];
+  fonts: { node: PlatformFont[]; textHolder: PlatformFont[] };
+  size?: { w: number; h: number };
+}
+
+/**
+ * Computed styles of the element, its parent and pseudo-elements, the
+ * platform fonts of its text and its border box size.
+ *
+ * @param cdp - CDP connection
+ * @param related - Backend node ids
+ * @returns CDP styles
+ */
+async function readStyles(cdp: CDPConnection, related: RelatedNodes): Promise<CdpStyles> {
+  await enableStyleDomains(cdp);
+  const order = [
+    related.node,
+    related.parent,
+    related.textHolder,
+    ...related.pseudo.map((p) => p.backendNodeId),
+  ];
+  const ids = await pushNodes(
+    cdp,
+    order.filter((id): id is number => id !== undefined)
+  );
+  const nodeIdOf = (backendNodeId: number | undefined): number | undefined =>
+    backendNodeId === undefined ? undefined : ids.get(backendNodeId);
+  const [style, parentStyle, nodeFonts, holderFonts, size, pseudo] = await Promise.all([
+    computedStyle(cdp, nodeIdOf(related.node)),
+    related.parent === undefined ? undefined : computedStyle(cdp, nodeIdOf(related.parent)),
+    platformFonts(cdp, nodeIdOf(related.node)),
+    platformFonts(cdp, nodeIdOf(related.textHolder)),
+    borderBoxSize(cdp, related.node),
+    Promise.all(
+      related.pseudo.map((p) =>
+        pseudoSource(cdp, p.type, p.backendNodeId, nodeIdOf(p.backendNodeId))
+      )
+    ),
+  ]);
+  return {
+    style,
+    ...(parentStyle && { parentStyle }),
+    pseudo,
+    fonts: { node: nodeFonts, textHolder: holderFonts },
+    ...(size && { size }),
+  };
+}
+
+/**
+ * A pseudo-element's computed styles and size.
+ *
+ * @param cdp - CDP connection
+ * @param type - `::before` or `::after`
+ * @param backendNodeId - Its backend node id
+ * @param nodeId - Its node id
+ * @returns Pseudo source
+ */
+async function pseudoSource(
+  cdp: CDPConnection,
+  type: PseudoSource['type'],
+  backendNodeId: number,
+  nodeId: number | undefined
+): Promise<PseudoSource> {
+  const [style, size] = await Promise.all([
+    computedStyle(cdp, nodeId),
+    borderBoxSize(cdp, backendNodeId),
+  ]);
+  return { type, style, ...(size && { size: { w: Math.round(size.w), h: Math.round(size.h) } }) };
+}
+
+/**
+ * Enable DOM and CSS once per connection (kept on: CSS.enable replays every
+ * stylesheet, which costs up to a few hundred ms on large sites the first time).
+ *
+ * @param cdp - CDP connection
+ */
+async function enableStyleDomains(cdp: CDPConnection): Promise<void> {
+  if (stylesEnabled.has(cdp)) return;
+  await cdp.send('DOM.enable', {});
+  await cdp.send('CSS.enable', {});
+  stylesEnabled.add(cdp);
+}
+
+/**
+ * Node ids for backend node ids (CSS methods take node ids). When the
+ * document was never requested on this connection (or was replaced by a
+ * navigation), it is requested first, shallowly.
+ *
+ * @param cdp - CDP connection
+ * @param backendNodeIds - Backend node ids
+ * @returns Node id per backend node id (missing when CDP cannot track it)
+ */
+async function pushNodes(
+  cdp: CDPConnection,
+  backendNodeIds: number[]
+): Promise<Map<number, number>> {
+  const push = async (): Promise<number[]> => {
+    const response = (await cdp.send('DOM.pushNodesByBackendIdsToFrontend', {
+      backendNodeIds,
+    })) as Protocol.DOM.PushNodesByBackendIdsToFrontendResponse;
+    return response.nodeIds;
+  };
+  let nodeIds = await push().catch(() => [] as number[]);
+  if (nodeIds.length !== backendNodeIds.length || nodeIds.some((id) => id === 0)) {
+    await cdp.send('DOM.getDocument', { depth: 0 });
+    nodeIds = await push();
+  }
+  return new Map(
+    backendNodeIds.flatMap((backendNodeId, i) =>
+      nodeIds[i] ? [[backendNodeId, nodeIds[i]] as const] : []
+    )
+  );
+}
+
+/**
+ * Computed styles of a node.
+ *
+ * @param cdp - CDP connection
+ * @param nodeId - Node id (none: empty)
+ * @returns Styles by property name
+ */
+async function computedStyle(cdp: CDPConnection, nodeId: number | undefined): Promise<StyleMap> {
+  if (!nodeId) return {};
+  const response = (await cdp
+    .send('CSS.getComputedStyleForNode', { nodeId })
+    .catch((error: unknown) => {
+      log.debug(`Computed style not read: ${getErrorMessage(error)}`);
+      return { computedStyle: [] };
+    })) as Protocol.CSS.GetComputedStyleForNodeResponse;
+  return Object.fromEntries(response.computedStyle.map((entry) => [entry.name, entry.value]));
+}
+
+/**
+ * Fonts Chrome rendered a node's own text with.
+ *
+ * @param cdp - CDP connection
+ * @param nodeId - Node id (none: no fonts)
+ * @returns Platform fonts
+ */
+async function platformFonts(
+  cdp: CDPConnection,
+  nodeId: number | undefined
+): Promise<PlatformFont[]> {
+  if (!nodeId) return [];
+  const response = (await cdp
+    .send('CSS.getPlatformFontsForNode', { nodeId })
+    .catch((error: unknown) => {
+      log.debug(`Platform fonts not read: ${getErrorMessage(error)}`);
+      return { fonts: [] };
+    })) as Protocol.CSS.GetPlatformFontsForNodeResponse;
+  return response.fonts;
+}
+
+/**
+ * Border box size of a node.
+ *
+ * @param cdp - CDP connection
+ * @param backendNodeId - Backend node id
+ * @returns Width and height, or undefined when it has no box (not rendered)
+ */
+async function borderBoxSize(
+  cdp: CDPConnection,
+  backendNodeId: number
+): Promise<{ w: number; h: number } | undefined> {
+  try {
+    const { model } = (await cdp.send('DOM.getBoxModel', {
+      backendNodeId,
+    })) as Protocol.DOM.GetBoxModelResponse;
+    const [x1 = 0, y1 = 0, x2 = 0, y2 = 0, , , x4 = 0, y4 = 0] = model.border;
+    return { w: Math.hypot(x2 - x1, y2 - y1), h: Math.hypot(x4 - x1, y4 - y1) };
+  } catch (error) {
+    log.debug(`No box model: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}

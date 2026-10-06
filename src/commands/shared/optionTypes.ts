@@ -268,6 +268,20 @@ export interface ListenersCommandOptions extends BaseOptions, IndexOptions {
  */
 export type LayoutCommandOptions = BaseOptions & IndexOptions;
 
+/**
+ * Options for `dom inspect`.
+ */
+export interface InspectCommandOptions extends BaseOptions, IndexOptions {
+  /** Child tree depth (0 for none) */
+  tree?: number;
+  /** Child tree rows at most */
+  treeLimit?: number;
+  /** Every non-default property instead of the groups */
+  all?: boolean;
+  /** Only these properties */
+  props?: string[];
+}
+
 /** Options for `bdg dom wait` */
 export interface WaitCommandOptions extends BaseOptions {
   /** Text a match must contain */

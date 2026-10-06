@@ -404,6 +404,62 @@ Page: viewport 1280×720, scrolled to 0,0, document 1280×2500
 
 **JSON (`data`):** `{ selector, count, omitted?, page: { viewport: { width, height }, scroll: { x, y }, document: { width, height }, colorScheme? }, elements: [{ index, tag, element, text?, context?, bounds: { x, y, width, height }, viewport: { x, y }, inViewport, percentVisible?, hiddenReason?, scrollBy?: { x, y }, clippedBy?, offScreenReason?, coveredBy?, invisible?, inert?, computed: { display, visibility, position, opacity, zIndex } }] }`
 
+### Element Styles
+
+What one element looks like, without a screenshot: the facts Figma's Dev Mode or the DevTools Computed pane show, grouped and with values that change nothing left out. Takes a selector (the first rendered match, or one with `--index`) or a cached index (`dom query`, `dom form`, `dom a11y query`).
+
+```bash
+bdg dom inspect "#login-button"              # Styles and child tree
+bdg dom inspect ".card" --tree 3             # Deeper child tree (--tree 0 for none, --tree-limit n rows)
+bdg dom inspect 0                            # Cached index
+bdg dom inspect "h1" --props font-size,color,--brand   # Only these properties
+bdg dom inspect "h1" --all                   # Every property that differs from the element's default
+bdg dom inspect "#save" --json               # Figma-aligned JSON
+```
+
+**Output** (saucedemo's username field and Bootstrap's card example):
+```text
+input#user-name.input_error.form_input placeholder "Username" 292x39 @814,154 [prefers dark]
+box    p 10 0 · b 0 0 1 · sizing content-box · overflow clip
+layout inline-block
+parent div.form_group block · in-parent l0 t0 r0 b0
+text   DM Sans → DM Sans 9pt (webfont) 400 14/normal · color #484c55 · contrast 8.6 AAA
+fill   bg #fff
+border bottom 1 solid #ededed
+state  cursor text · appearance none
+pseudo ::placeholder color #6d7584
+
+div.card 288x372 @582,679 [flex] [prefers dark]
+box    b 1
+layout flex column · position relative
+parent div.bd-example.m-0 block · in-parent l0 t0 r466.8 b0
+fill   bg #212529
+border 1 solid #ffffff26 · radius 6
+tree
+  svg.bd-placeholder-img 286x180
+    rect 286x180
+    text 83x21 "Image cap"
+  div.card-body 286x190
+    h5.card-title 254x24 "Card title"
+    p.card-text 254x72 "Some quick example text to bui…"
+    a.btn 135x38 "Go somewhere"
+```
+
+- **Header**: element (`tag#id.c1.c2(+N)`), its text or placeholder, size and page position (`WxH @x,y`), `[flex]`/`[grid]`, then why a user might not see it (`[not rendered: display: none]`, `[hidden: …]`, `[offscreen: below]`, `[covered by div#modal]`, as `dom layout` decides), and the `prefers-color-scheme` the page sees. When several elements match and no `--index` is given, the first rendered one is inspected and a note says so
+- **box**: margin `m`, padding `p`, border widths `b` (1–4 values like CSS shorthands), `sizing` when not the default, min/max sizes, `overflow`, and `scroll WxH` when the content is larger than the box
+- **layout**: `display` (always), `position` and insets, `z`; flex/grid container settings (direction, wrap, columns/rows, justify, align, gap) and item settings when the parent is flex or grid (flex, self, order, area)
+- **parent**: the element that lays it out, its display and layout, `in-parent` distances to its content edges (left, top, right, bottom) and `sib` gaps to the neighbouring siblings: answers "why isn't it centered?" and "what's the spacing?"
+- **text** (elements with text and form controls): the first font family and the font Chrome actually rendered (`→ DM Sans 9pt (webfont)`, or a local fallback, which catches a font that failed to load), weight and size/line-height, color, the WCAG contrast ratio against the background behind the text (ancestors composited) with `AA`/`AAA`/`fail`, alignment, transform, letter spacing, decoration, white-space, text-overflow and line clamp, font features. A container shows only what it sets differently from its parent
+- **fill**: background color, image (file name), size, opacity, blend mode. **border**: one line when all sides match, else per side; radius; outline. **fx**: shadows (transparent layers dropped), transform, filter, backdrop, clip-path, mask, animation. **state**: cursor, `pointer-events: none`, visibility, `user-select: none`, `appearance: none`
+- **pseudo**: `::before`/`::after` with content (position, size, background, shadow, transform) and a field's `::placeholder` color
+- **tree**: children to depth 2 (`--tree`), one line each with size, `[flex]`/`[grid]` and text; identical siblings grouped (`li.item ×33 266x107`), hidden ones counted (`(+N hidden)`), at most 20 rows (`--tree-limit`)
+- Values: colors as hex (`#rrggbb`, `#rrggbbaa`; `lab()`/`oklch()`/`color()` from Tailwind v4 converted), lengths in px without the unit, rounded to 0.1. Values that change nothing (0, `none`, `transparent`, `normal`) are left out; custom properties, logical duplicates and `currentColor` echoes are never listed (`--props --brand` reads one)
+- Secrets are never shown: hidden inputs and password, card and one-time-code fields have no value or placeholder text from their content
+- Elements in open shadow roots, same-origin iframes and same-process cross-origin frames work like with the other DOM commands. `display: none` elements are still inspected (`[not rendered]`, no box). Not found exits 83; a stale cached index exits 87; an unknown `--props` name exits 81 with a suggestion
+- Not reported (yet): which CSS rule set a value, and why a declaration has no effect
+
+**JSON (`data`):** `{ selector, count, index, picked?, element, content?, placeholder?, context?, rect: { x, y, w, h }, visibility, colorScheme?, box?, layout? (incl. sizing: { w, h: hug|fill|fixed }, parent), text?, fills?, opacity?, blend?, strokes?, radius?, outline?, effects?, fx?, state?, pseudo?, children?, hiddenChildren?, moreRows?, all?, props? }`. Names follow Figma (fills, strokes, effects, sizing), numbers are numbers, so the output can be compared field by field with a design from the Figma MCP server.
+
 ### Waiting for Elements
 
 `dom click` and the other actions wait for the requests they start, not for results a page shows later (timers, spinners, animations); `click` and `pressKey` say when the page was still changing as they returned (`⚠ Element Clicked (page still changing)`, see below). `bdg dom wait` waits for those instead of `sleep` loops:

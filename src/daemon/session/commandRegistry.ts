@@ -24,6 +24,7 @@ import { exceptionSummary } from '@/runtime/dom/formFillHelpers/shared.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 import { evaluateInFrame, listFrames } from '@/runtime/dom/frames.js';
+import { inspectElement } from '@/runtime/dom/inspect.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { onScriptTarget } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
@@ -647,6 +648,8 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
       withBusyPageRecovery(cdp, inspectEventListeners(cdp, params)),
 
     dom_layout: async (cdp, params) => withBusyPageRecovery(cdp, inspectLayout(cdp, params)),
+
+    dom_inspect: async (cdp, params) => withBusyPageRecovery(cdp, inspectElement(cdp, params)),
 
     dom_wait: async (cdp, params) => waitForCondition(cdp, params),
 

@@ -17,6 +17,7 @@ import type {
   PendingChanges,
   ShownElement,
 } from '@/ipc/protocol/domTypes.js';
+import type { InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import type { DelegationNote } from '@/runtime/dom/listenerSummary.js';
 import type { WaitCondition, WaitSnapshot } from '@/runtime/dom/waitCondition.js';
 import type { DocumentRequestState, ViewportPosition } from '@/types.js';
@@ -498,6 +499,37 @@ export function layoutHeadline(count: number, listed: number, selector: string):
  */
 export function indexLayoutHeadline(target: string): string {
   return `Element at ${target} (page x,y and size in CSS px):`;
+}
+
+/**
+ * Header badges of `bdg dom inspect` for what keeps an element from being seen.
+ *
+ * @param visibility - Not rendered, hidden, offscreen, covered
+ * @returns e.g. `[not rendered: display: none]`, `[offscreen: below]`, `[covered by div#modal]`
+ */
+export function inspectVisibilityBadges(visibility: InspectVisibility): string[] {
+  const reason = (text: string | undefined): string => (text ? `: ${text}` : '');
+  if (visibility.notRendered) {
+    return [`[not rendered${reason(visibility.hidden?.replace(/^not rendered \((.*)\)$/, '$1'))}]`];
+  }
+  return [
+    visibility.hidden && `[hidden: ${visibility.hidden}]`,
+    visibility.offscreen && `[offscreen: ${visibility.offscreen}]`,
+    visibility.coveredBy && `[covered by ${visibility.coveredBy}]`,
+  ].filter((badge): badge is string => Boolean(badge));
+}
+
+/**
+ * What `bdg dom inspect` did when several elements matched and no --index was given.
+ *
+ * @param picked - How the match was chosen
+ * @param index - Index of the inspected match
+ * @returns e.g. "inspected the first visible one ([2])"
+ */
+export function inspectedMatchAction(picked: 'first-visible' | 'first', index: number): string {
+  return picked === 'first-visible'
+    ? `inspected the first visible one ([${index}])`
+    : 'inspected the first';
 }
 
 /**
