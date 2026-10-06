@@ -24,6 +24,7 @@ import { registerFormCommand } from '@/commands/dom/form.js';
 import { handleDomFrames } from '@/commands/dom/frames.js';
 import { DOM_GET_DEFAULT_SELECTOR, handleDomGet } from '@/commands/dom/get.js';
 import { registerInspectCommand } from '@/commands/dom/inspect.js';
+import { registerAuditCommand } from '@/commands/dom/audit.js';
 import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
 import { handleDomQuery } from '@/commands/dom/query.js';
@@ -55,6 +56,7 @@ export function registerDomCommands(program: Command): void {
   registerFormCommand(dom);
   registerListenersCommand(dom);
   registerLayoutCommand(dom);
+  registerAuditCommand(dom);
   registerInspectCommand(dom);
   registerWaitCommand(dom);
 

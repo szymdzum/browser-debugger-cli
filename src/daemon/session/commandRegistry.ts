@@ -10,6 +10,8 @@ import { CommandError } from '@/errors/index.js';
 import { cdpCallError, formDiscoveryFailedError } from '@/errors/messages.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
+import { searchStyleSheets } from '@/runtime/css/search.js';
+import { auditPage } from '@/runtime/dom/audit.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
 import { inspectEventListeners } from '@/runtime/dom/eventListeners.js';
 import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
@@ -711,6 +713,10 @@ export function createCommandRegistry(
       withBusyPageRecovery(cdp, inspectEventListeners(cdp, params)),
 
     dom_layout: async (cdp, params) => withBusyPageRecovery(cdp, inspectLayout(cdp, params)),
+
+    dom_audit: async (cdp, params) => withBusyPageRecovery(cdp, auditPage(cdp, params)),
+
+    css_search: async (cdp, params) => searchStyleSheets(cdp, params),
 
     dom_inspect: async (cdp, params) =>
       withBusyPageRecovery(

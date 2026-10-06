@@ -692,7 +692,7 @@ async function pseudoSource(
  *
  * @param cdp - CDP connection
  */
-async function enableStyleDomains(cdp: CDPConnection): Promise<void> {
+export async function enableStyleDomains(cdp: CDPConnection): Promise<void> {
   if (stylesEnabled.has(cdp)) return;
   trackStyleSheets(cdp);
   await cdp.send('DOM.enable', {});
