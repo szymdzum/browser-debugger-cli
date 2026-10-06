@@ -65,8 +65,8 @@ export async function applySessionEmulation(
 /**
  * Turn the rest of a phone's emulation on or off: touch input (and
  * `pointer: coarse`) and a mobile user agent derived from the browser's own
- * (an Android one), or the browser's own back (with headless Chrome's
- * hidden, {@link hideHeadlessUserAgent}).
+ * (an Android one), or the browser's own back: the override cleared, or in
+ * headless Chrome its regular-Chrome identity ({@link hideHeadlessUserAgent}).
  *
  * @param cdp - Session connection
  * @param on - Emulate a phone
@@ -75,8 +75,9 @@ async function emulatePhone(cdp: CDPConnection, on: boolean): Promise<void> {
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: on, maxTouchPoints: on ? 5 : 1 });
   const { userAgent } = (await cdp.send('Browser.getVersion', {})) as { userAgent: string };
   if (!on) {
-    await cdp.send('Emulation.setUserAgentOverride', { userAgent });
-    await hideHeadlessUserAgent(cdp, log);
+    const headless = userAgent.includes('HeadlessChrome');
+    await cdp.send('Emulation.setUserAgentOverride', { userAgent: headless ? userAgent : '' });
+    if (headless) await hideHeadlessUserAgent(cdp, log);
     return;
   }
   const major = /Chrome\/(\d+)/.exec(userAgent)?.[1] ?? '';
@@ -146,18 +147,17 @@ export async function emulatePage(
     const wasPhone = current.viewport?.mobile === true;
     const isPhone = change.viewport?.mobile === true;
     await step(
-      async () => {
-        await (change.viewport
+      () =>
+        change.viewport
           ? cdp.send('Emulation.setDeviceMetricsOverride', viewportOverride(change.viewport))
-          : cdp.send('Emulation.clearDeviceMetricsOverride', {}));
-        if (wasPhone !== isPhone) await emulatePhone(cdp, isPhone);
-      },
+          : cdp.send('Emulation.clearDeviceMetricsOverride', {}),
       {
         ...rest,
         ...(colorScheme && { colorScheme }),
         ...(change.viewport && { viewport: change.viewport }),
       }
     );
+    if (wasPhone !== isPhone) await step(() => emulatePhone(cdp, isPhone), state);
   }
   if (change.reset || change.colorScheme) {
     const { colorScheme: _scheme, ...withoutScheme } = state;
