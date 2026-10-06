@@ -11,17 +11,14 @@ import {
   capturePageScreenshot,
   captureElementScreenshot,
   resolveSelector,
+  selectMatch,
 } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
 import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
-import {
-  conflictingOptionsMessage,
-  conflictingTargetError,
-  genericError,
-} from '@/errors/messages.js';
+import { conflictingTargetError, genericError } from '@/errors/messages.js';
 import { missingArgumentError } from '@/errors/messages.js';
 import type { ScreenshotResult, ElementBounds, NodeRef } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
@@ -80,7 +77,12 @@ type FilteredScreenshotOptions = {
   scroll?: string;
 };
 
-type FilteredElementOptions = { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean };
+type FilteredElementOptions = {
+  format?: 'png' | 'jpeg';
+  quality?: number;
+  noResize?: boolean;
+  padding?: number;
+};
 
 function buildPageScreenshotOptions(
   options: DomScreenshotCommandOptions
@@ -101,6 +103,7 @@ function buildElementScreenshotOptions(
     format: options.format,
     quality: options.quality,
     noResize: options.resize === false,
+    padding: options.padding,
   });
 }
 
@@ -109,6 +112,9 @@ function hasElementTarget(options: DomScreenshotCommandOptions): boolean {
 }
 
 async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<NodeRef> {
+  if (options.selector !== undefined && options.index !== undefined) {
+    return { backendNodeId: await selectMatch(options.selector, options.index) };
+  }
   if (options.index !== undefined) {
     const resolver = DomElementResolver.getInstance();
     const node = await resolver.getNodeIdForIndex(options.index);
@@ -292,8 +298,8 @@ function reportSequenceError(error: unknown, captured: number, json: boolean): n
 }
 
 /**
- * Reject options that would be ignored: `--selector` with `--index` (the
- * index already names an element), and `--quality` for a PNG.
+ * Reject options that would be ignored: `--quality` for a PNG, and
+ * `--padding` without an element.
  *
  * @param outputPath - File to write
  * @param options - Command options
@@ -301,8 +307,8 @@ function reportSequenceError(error: unknown, captured: number, json: boolean): n
  */
 function assertScreenshotOptions(outputPath: string, options: DomScreenshotCommandOptions): void {
   let message: string | undefined;
-  if (options.selector !== undefined && options.index !== undefined) {
-    message = conflictingOptionsMessage('--selector', '--index');
+  if (options.padding !== undefined && !hasElementTarget(options)) {
+    message = '--padding applies to element captures; name an element (selector or index)';
   } else if (
     options.quality !== undefined &&
     !options.follow &&

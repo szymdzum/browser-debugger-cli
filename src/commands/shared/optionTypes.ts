@@ -101,8 +101,10 @@ export interface ScreenshotOptions {
   fullPage?: boolean;
   /** CSS selector for element capture */
   selector?: string;
-  /** Cached element index (0-based) from previous query */
+  /** Cached element index (0-based) from previous query, or with `selector`, which of its matches */
   index?: number;
+  /** Extra space (CSS px) around an element capture */
+  padding?: number;
   /** Continuous capture mode to directory */
   follow?: boolean;
   /** Capture interval in ms for follow mode (string from CLI) */
