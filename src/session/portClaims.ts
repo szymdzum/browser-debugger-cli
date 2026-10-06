@@ -27,6 +27,7 @@ import {
 } from '@/session/paths.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
+import { makeDirectory } from '@/utils/directories.js';
 
 const log = createLogger('session');
 
@@ -111,8 +112,8 @@ function trustedRegistryDir(create: boolean): string | null {
   const dir = getPortRegistryDir();
   try {
     if (create) {
-      fs.mkdirSync(path.dirname(dir), { recursive: true });
-      fs.mkdirSync(path.join(dir, CLAIMS_DIR), { recursive: true, mode: 0o700 });
+      makeDirectory(path.dirname(dir));
+      makeDirectory(path.join(dir, CLAIMS_DIR), 0o700);
     }
     if (!fs.existsSync(dir)) return null;
     const reason = untrustedDirReason(dir) ?? untrustedDirReason(path.join(dir, CLAIMS_DIR));
@@ -282,7 +283,7 @@ export async function withPortLock(
 ): Promise<number> {
   const registryDir = trustedRegistryDir(true);
   const lockDir = registryDir ?? getSessionBaseDir();
-  fs.mkdirSync(lockDir, { recursive: true });
+  makeDirectory(lockDir);
   const lockPath = path.join(lockDir, PORT_LOCK_FILE);
   const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const locked = await acquireLock(lockPath, token);

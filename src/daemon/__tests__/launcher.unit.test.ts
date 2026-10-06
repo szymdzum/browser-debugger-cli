@@ -71,4 +71,20 @@ void describe('assertUsableSessionDir', () => {
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
+
+  void it('refuses a pseudo-filesystem or a path through a file at once (103), before mkdir', () => {
+    const proc = checkDir('/proc/bdg-x');
+    assert.equal(proc?.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
+    assert.match(proc?.message ?? '', /\/proc is a pseudo-filesystem/);
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-dir-'));
+    try {
+      const file = path.join(base, 'file');
+      fs.writeFileSync(file, '');
+      const through = checkDir(path.join(file, 'sub'));
+      assert.equal(through?.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
+      assert.match(through?.message ?? '', /is a file/);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
 });

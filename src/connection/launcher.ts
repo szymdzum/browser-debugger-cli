@@ -15,6 +15,7 @@ import {
   DEFAULT_CHROME_LOG_LEVEL,
   DEFAULT_CHROME_HANDLE_SIGINT,
 } from '@/constants.js';
+import { makeDirectory } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -125,7 +126,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
 
   if (!fs.existsSync(userDataDir)) {
     try {
-      fs.mkdirSync(userDataDir, { recursive: true });
+      makeDirectory(userDataDir);
     } catch (error) {
       throw new ChromeLaunchError(`Failed to create user data directory`, {
         cause: error as Error,
@@ -243,7 +244,7 @@ function getPersistentUserDataDir(baseDir?: string): string {
 
   if (!fs.existsSync(userDataDir)) {
     try {
-      fs.mkdirSync(userDataDir, { recursive: true });
+      makeDirectory(userDataDir);
     } catch (error) {
       throw new ChromeLaunchError(`Failed to create user data directory`, {
         cause: error as Error,

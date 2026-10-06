@@ -26,6 +26,7 @@ import {
 } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
+import { directoryProblem } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
@@ -87,8 +88,9 @@ export async function launchDaemon(): Promise<SpawnedDaemon | undefined> {
  * Check that the session directory can hold the daemon's files before
  * spawning it (otherwise the daemon dies and only its log says why).
  *
- * @throws SessionDirError (103) for a file, (81) for a too-long path like a
- *   named session's, (82) when not writable
+ * @throws SessionDirError (103) for a file or a path that cannot hold a
+ *   directory (a pseudo-filesystem like `/proc`), (81) for a too-long path
+ *   like a named session's, (82) when not writable
  */
 export function assertUsableSessionDir(): void {
   const dir = getSessionDir();
@@ -101,6 +103,13 @@ export function assertUsableSessionDir(): void {
     fail(
       socketPathTooLongError(socketPath, MAX_DAEMON_SOCKET_PATH_BYTES),
       EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  const problem = directoryProblem(dir);
+  if (problem) {
+    fail(
+      sessionDirNotWritableError(dir, problem.reason),
+      problem.denied ? EXIT_CODES.PERMISSION_DENIED : EXIT_CODES.SESSION_FILE_ERROR
     );
   }
   try {

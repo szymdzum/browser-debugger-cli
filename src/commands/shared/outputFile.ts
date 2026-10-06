@@ -9,6 +9,7 @@ import * as path from 'path';
 import { CommandError } from '@/errors/index.js';
 import { emptyOutputPathError, outputFileError } from '@/errors/messages.js';
 import { AtomicFileWriter } from '@/utils/atomicFile.js';
+import { makeDirectory } from '@/utils/directories.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** What went wrong with a path, by error code */
@@ -22,6 +23,10 @@ const PATH_PROBLEMS: Record<string, { reason: string; exitCode: number }> = {
   ENAMETOOLONG: { reason: 'the name is too long', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
   ENOENT: { reason: 'the directory cannot be created', exitCode: EXIT_CODES.INVALID_ARGUMENTS },
   ENOSPC: { reason: 'no space left on the device', exitCode: EXIT_CODES.SESSION_FILE_ERROR },
+  EPSEUDOFS: {
+    reason: 'it is on a pseudo-filesystem (/proc, /sys)',
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+  },
 };
 
 /**
@@ -90,7 +95,7 @@ export async function writeOutputFile(
   assertFilePath(filePath, extension);
   const absolutePath = path.resolve(filePath);
   try {
-    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    makeDirectory(path.dirname(absolutePath));
     if (typeof data === 'string') await AtomicFileWriter.writeAsync(absolutePath, data);
     else await AtomicFileWriter.writeBufferAsync(absolutePath, data);
   } catch (error) {

@@ -5,10 +5,10 @@
  * styles), and `var()` references to custom properties that are not set.
  */
 
-import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
-import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import type { InspectHint } from '@/ipc/protocol/inspectTypes.js';
 import { isDefaultValue } from '@/runtime/dom/inspectAllStyles.js';
+import type { Declaration, Resolution } from '@/runtime/dom/inspectCascade.js';
+import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import type { VariableSetter } from '@/runtime/dom/inspectScripts.js';
 import { unsetVariables } from '@/runtime/dom/inspectVariables.js';
 import { findSimilarNames } from '@/utils/suggestions.js';
