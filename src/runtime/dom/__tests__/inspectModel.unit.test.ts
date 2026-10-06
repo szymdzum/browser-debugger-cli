@@ -17,7 +17,9 @@ import {
 import {
   buildEffects,
   buildRadius,
+  buildFills,
   buildStrokes,
+  buildSvgPaint,
   buildText,
   effectiveBackground,
   renderedFont,
@@ -28,7 +30,9 @@ import { toHex } from '@/utils/color.js';
 import {
   compressTracks,
   firstFontFamily,
+  normalizeCssValue,
   parseShadows,
+  readableTransform,
   shadowText,
   sidesShorthand,
 } from '@/utils/cssValues.js';
@@ -410,6 +414,46 @@ void describe('css values', () => {
     assert.equal(compressTracks('none'), 'none');
     assert.equal(compressTracks('248px 1220px'), '248 1220');
   });
+
+  void it('keeps px inside calc() and url(), and drops it elsewhere', () => {
+    assert.equal(normalizeCssValue('calc(100% - 9px) 50%'), 'calc(100% - 9px) 50%');
+    assert.equal(normalizeCssValue('url(img/hero-1920px.jpg) 10px'), 'url(img/hero-1920px.jpg) 10');
+    assert.equal(normalizeCssValue('min(10px, 2vw) 3px'), 'min(10px, 2vw) 3');
+  });
+
+  void it('writes a mirrored transform as a negative scale, not a rotation', () => {
+    assert.equal(readableTransform('matrix(-1, 0, 0, 1, 0, 0)'), 'scale(-1,1)');
+    assert.equal(readableTransform('matrix(1, 0, 0, -1, 0, 0)'), 'scale(1,-1)');
+    assert.equal(readableTransform('matrix(0, 1, -1, 0, 0, 0)'), 'rotate(90deg)');
+  });
+});
+
+void describe('fills and SVG paint', () => {
+  void it('gives each background layer its own size and position', () => {
+    const fills = buildFills({
+      'background-image': 'url("a.png"), url("b.png")',
+      'background-size': '16px 12px, 18px 18px',
+      'background-position-x': 'calc(100% - 12px), calc(100% - 36px)',
+      'background-position-y': '50%, 50%',
+      'background-color': 'rgb(255, 255, 255)',
+    });
+    assert.deepEqual(fills, [
+      { type: 'image', value: 'url(a.png)', size: '16 12', position: 'calc(100% - 12px) 50%' },
+      { type: 'image', value: 'url(b.png)', size: '18 18', position: 'calc(100% - 36px) 50%' },
+      { type: 'solid', color: '#fff' },
+    ]);
+  });
+
+  void it('paints SVG elements with fill and stroke only', () => {
+    assert.deepEqual(
+      buildSvgPaint(
+        { fill: 'rgb(255, 0, 0)', stroke: 'rgb(0, 0, 0)', 'stroke-width': '2px' },
+        { svg: true }
+      ),
+      { fill: '#f00', stroke: '#000', strokeWidth: 2 }
+    );
+    assert.equal(buildSvgPaint({ fill: 'rgb(0, 0, 0)' }, { svg: false }), undefined);
+  });
 });
 
 void describe('child tree', () => {
@@ -420,6 +464,11 @@ void describe('child tree', () => {
     w: 266,
     h: 107,
     ...overrides,
+  });
+
+  void it('keeps rows reached through different slots or wrappers apart', () => {
+    const rows = groupSiblings([row('p', { via: 'div.wrap (contents)' }), row('p')]);
+    assert.equal(rows.length, 2);
   });
 
   void it('groups runs of identical siblings with a count', () => {

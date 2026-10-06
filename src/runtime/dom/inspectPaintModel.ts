@@ -16,6 +16,7 @@ import type {
   InspectPseudo,
   InspectState,
   InspectStroke,
+  InspectSvgPaint,
   InspectText,
   Sides,
 } from '@/ipc/protocol/inspectTypes.js';
@@ -39,6 +40,7 @@ import {
   readableTransform,
   shadowText,
   shortUrls,
+  sidesShorthand,
   splitTopLevel,
 } from '@/utils/cssValues.js';
 
@@ -348,6 +350,7 @@ export function buildText(
     | 'rendered'
     | 'hasText'
     | 'familyLoaded'
+    | 'truncated'
     | 'backgrounds'
     | 'canvasDark'
     | 'opacity'
@@ -369,6 +372,7 @@ export function buildText(
       ...(contrast && { contrast }),
       ...textExtras(textStyle),
       align: alignOf(textStyle),
+      ...(raw.truncated && { truncated: true }),
     };
   }
   if (!parentStyle || raw.hasText === false) return undefined;
@@ -396,7 +400,8 @@ function cut(text: string): string {
 }
 
 /**
- * Background layers: images and gradients (top first), then the color.
+ * Background layers: images and gradients (top first), each with its own
+ * size and position when they are not the defaults, then the color.
  *
  * @param style - Computed styles
  * @returns Fills
@@ -404,22 +409,48 @@ function cut(text: string): string {
 export function buildFills(style: StyleMap): InspectFill[] {
   const fills: InspectFill[] = [];
   const image = style['background-image'];
-  const size = style['background-size'];
   if (image && image !== 'none') {
-    for (const layer of splitTopLevel(image)) {
+    const sizes = splitTopLevel(style['background-size'] ?? 'auto');
+    const xs = splitTopLevel(style['background-position-x'] ?? '0%');
+    const ys = splitTopLevel(style['background-position-y'] ?? '0%');
+    const positions = xs.map((x, i) => `${x} ${ys[i % ys.length] ?? '0%'}`);
+    splitTopLevel(image).forEach((layer, i) => {
+      const size = sizes[i % sizes.length] ?? 'auto';
+      const position = positions[i % positions.length] ?? '0% 0%';
       const value = cut(normalizeCssValue(shortUrls(layer)));
-      if (layer.includes('gradient(')) fills.push({ type: 'gradient', value });
-      else
-        fills.push({
-          type: 'image',
-          value,
-          ...(size && size !== 'auto' && { size: normalizeCssValue(size) }),
-        });
-    }
+      fills.push({
+        type: layer.includes('gradient(') ? 'gradient' : 'image',
+        value,
+        ...(size !== 'auto' && size !== 'auto auto' && { size: normalizeCssValue(size) }),
+        ...(position !== '0% 0%' && { position: normalizeCssValue(position) }),
+      });
+    });
   }
   const color = hexColor(style['background-color'] ?? 'transparent');
   if (color !== 'transparent') fills.push({ type: 'solid', color });
   return fills;
+}
+
+/**
+ * How an SVG element is painted: its `fill` and `stroke` (with the width).
+ *
+ * @param style - Computed styles
+ * @param raw - Whether it is an SVG element
+ * @returns Paint, or undefined for an HTML element
+ */
+export function buildSvgPaint(
+  style: StyleMap,
+  raw: Pick<RawInspect, 'svg'>
+): InspectSvgPaint | undefined {
+  if (!raw.svg) return undefined;
+  const paint = (value: string | undefined): string =>
+    normalizeCssValue(shortUrls(hexColor(value ?? 'none')));
+  const stroke = paint(style['stroke']);
+  return {
+    fill: paint(style['fill']),
+    stroke,
+    ...(stroke !== 'none' && { strokeWidth: cssLength(style['stroke-width'] ?? '1px') }),
+  };
 }
 
 /**
@@ -607,6 +638,7 @@ export function buildGeneratedPseudo(
     content: shortUrls(content),
     ...(display && display !== 'inline' && { display }),
     ...(position && position !== 'static' && { position }),
+    ...(position && position !== 'static' && { inset: insetOf(style) }),
     ...(pseudo.size && { size: pseudo.size }),
     ...(style['color'] && style['color'] !== hostColor && { color: hexColor(style['color']) }),
     ...(fills.length > 0 && { fills }),
@@ -615,6 +647,20 @@ export function buildGeneratedPseudo(
     ...(transform && { transform }),
     ...(opacity !== 1 && { opacity }),
   };
+}
+
+/**
+ * Offsets of a positioned box, as one 1-4 value shorthand.
+ *
+ * @param style - Computed styles
+ * @returns e.g. `auto 50% -9 0`
+ */
+function insetOf(style: StyleMap): string {
+  return sidesShorthand(
+    (['top', 'right', 'bottom', 'left'] as const).map((side) =>
+      normalizeCssValue(style[side] ?? 'auto')
+    )
+  );
 }
 
 /**

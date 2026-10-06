@@ -116,7 +116,7 @@ void describe('dom inspect', () => {
 
     assert.match(
       await bdg(['dom', 'inspect', '#badge']),
-      /\npseudo +::before content "★" block absolute [\d.]+x[\d.]+ color #f5a623/
+      /\npseudo +::before content "★" block absolute inset [-\d. ]+ [\d.]+x[\d.]+ color #f5a623/
     );
     const webfont = await bdg(['dom', 'inspect', '#webfont']);
     assert.match(webfont, /\ntext +Fixture Sans /);
@@ -129,6 +129,18 @@ void describe('dom inspect', () => {
       await bdg(['dom', 'inspect', '#generic']),
       /\ntext +monospace \(resolves to "[^"]+"\) /
     );
+  });
+
+  void it('inspects the element of a pseudo-element, flags cut text and paints SVG', async () => {
+    const before = await bdg(['dom', 'inspect', '#badge::before']);
+    assert.match(before, /^p#badge/);
+    assert.match(before, /\npseudo +::before content "★" .*inset /);
+    assert.match(before, /Inspected the element of ::before/);
+    assert.match(
+      await bdg(['dom', 'inspect', '#cut']),
+      /\ntext .*text-overflow ellipsis · truncated/
+    );
+    assert.match(await bdg(['dom', 'inspect', '#rect']), /\nfill +fill #c00 · stroke none/);
   });
 
   void it('says why an element cannot be seen', async () => {

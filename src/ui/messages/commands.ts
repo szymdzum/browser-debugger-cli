@@ -513,6 +513,10 @@ Output notation:
                   (resolves to "X") = the font a generic family (sans-serif, system-ui) became
   contrast 4.47   WCAG ratio, rounded down, against the background behind the text
   text in X       the text is drawn by descendant X (the one with most of it): its font, color, contrast
+  truncated       the text is cut off (overflow clip, ellipsis or line clamp); a "…" in the header is
+                  only bdg shortening the text
+  .a.b(+3)        the first two classes and how many more the element has
+  sizing content-box  padding and border add to the CSS size (shown only then; border-box is not)
   (+N not rendered)  children with display: none (or not in the layout)
   hints           declarations on this element that have no effect, why, the fix and where they are
                   ('none': checked, nothing found)
@@ -549,14 +553,29 @@ export function inspectCascadeNote(reason: 'timeout' | 'failed'): string {
 }
 
 /**
- * Header badge of `bdg dom inspect` when the page is shown in its dark theme
- * because the session follows the system's dark preference: the colors are
- * the dark theme's, not what a light-mode visitor sees.
+ * Note of `bdg dom inspect` when the selector named a pseudo-element: its
+ * element is inspected and the pseudo-element is on the `pseudo` line.
  *
+ * @param pseudo - `::before` or `::after`
+ * @returns Note
+ */
+export function inspectPseudoOfNote(pseudo: string): string {
+  return `Inspected the element of ${pseudo}: pseudo-elements cannot be selected; ${pseudo} is on the pseudo line (content, size, position, inset, colors)`;
+}
+
+/**
+ * Header badge of `bdg dom inspect` when the page is shown in its dark theme
+ * because the session follows the system's dark preference, or because
+ * `page emulate` asked for dark: the colors are the dark theme's, not what a
+ * light-mode visitor sees.
+ *
+ * @param emulated - The dark preference comes from `page emulate --color-scheme dark`
  * @returns Badge
  */
-export function inspectDarkThemeBadge(): string {
-  return '[dark theme from system; --color-scheme light for light]';
+export function inspectDarkThemeBadge(emulated = false): string {
+  return emulated
+    ? '[dark theme, emulated; bdg page emulate --color-scheme light for light]'
+    : '[dark theme from system; --color-scheme light for light]';
 }
 
 /**

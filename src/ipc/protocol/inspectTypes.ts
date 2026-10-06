@@ -18,6 +18,8 @@ export interface InspectRect {
   h: number;
   /** `viewport`: x and y are in the viewport (a fixed element stays there however the page scrolls) */
   in?: 'viewport';
+  /** Size of the box it covers on screen when a transform (rotation, skew) makes that differ; x and y are its corner */
+  screen?: { w: number; h: number };
 }
 
 /** Sides top, right, bottom, left */
@@ -140,13 +142,24 @@ export interface InspectText {
   clamp?: string;
   shadow?: string;
   features?: string;
+  /** The text is cut off (clipped by overflow, with or without an ellipsis, or by a line clamp) */
+  truncated?: true;
 }
 
 /** A background layer */
 export type InspectFill =
   | { type: 'solid'; color: string }
-  | { type: 'gradient'; value: string }
-  | { type: 'image'; value: string; size?: string };
+  | { type: 'gradient' | 'image'; value: string; size?: string; position?: string };
+
+/** How an SVG element is painted */
+export interface InspectSvgPaint {
+  /** Fill color (hex), `none` or a paint server (`url(#grad)`) */
+  fill: string;
+  /** Stroke color, `none` or a paint server */
+  stroke: string;
+  /** Stroke width (px), when there is a stroke */
+  strokeWidth?: CssLength;
+}
 
 /** A border side (or all four) */
 export interface InspectStroke {
@@ -191,6 +204,8 @@ export interface InspectPseudo {
   content?: string;
   display?: string;
   position?: string;
+  /** Offsets of a positioned one (top right bottom left) */
+  inset?: string;
   size?: { w: number; h: number };
   color?: string;
   fills?: InspectFill[];
@@ -217,6 +232,12 @@ export interface InspectTreeNode {
   /** `flex` or `grid` container */
   layout?: 'flex' | 'grid';
   text?: string;
+  /** `display: contents` (a text-only slot): no box of its own */
+  contents?: true;
+  /** Reached through a slot or a `display: contents` wrapper (`slot.label`, `div.row (contents)`) */
+  via?: string;
+  /** In the shadow root of its parent */
+  shadow?: true;
   /** Identical siblings this row stands for (2 or more) */
   count?: number;
   children?: InspectTreeNode[];
@@ -324,6 +345,8 @@ export interface InspectWhy {
   chain: InspectWhyEntry[];
   /** Where the custom properties of the winning value are set */
   variables?: InspectVariable[];
+  /** Rules for the element that set it under a `@media`/`@supports` condition that does not apply now */
+  inactive?: Array<{ value: string; selector: string; condition: string }>;
 }
 
 /** A custom property a winning value uses, and where it is set */
@@ -350,6 +373,8 @@ export interface InspectResult {
    * rendered) or the first
    */
   picked?: 'first-visible' | 'first';
+  /** The selector named a pseudo-element (`a::after`): its element was inspected, the pseudo-element is under `pseudo` */
+  pseudoOf?: '::before' | '::after';
   /** `tag#id.c1.c2(+N)` */
   element: string;
   /** Its text (innerText) or form value, at most 30 characters; not for containers */
@@ -367,6 +392,8 @@ export interface InspectResult {
    * theme's
    */
   theme?: 'dark';
+  /** The dark preference behind `theme` comes from `page emulate`, not the system */
+  themeFrom?: 'emulation';
   /**
    * Running CSS transitions (their property) and animations (their name):
    * the values read are mid-way and will still change
@@ -378,6 +405,8 @@ export interface InspectResult {
   layout?: InspectLayout;
   text?: InspectText;
   fills?: InspectFill[];
+  /** SVG paint: `fill` and `stroke` (with its width) of an SVG element */
+  paint?: InspectSvgPaint;
   opacity?: number;
   blend?: string;
   strokes?: InspectStroke[];

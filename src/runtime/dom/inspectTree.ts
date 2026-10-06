@@ -48,6 +48,9 @@ function toNode(raw: RawTreeNode): InspectTreeNode {
     h: Math.round(raw.h),
     ...(layout && { layout }),
     ...(raw.text && { text: rowText(raw.text) }),
+    ...(raw.display === 'contents' && { contents: true as const }),
+    ...(raw.via && { via: raw.via }),
+    ...(raw.shadow && { shadow: true as const }),
     ...(children && children.length > 0 && { children }),
     ...(raw.childCount && { childCount: raw.childCount }),
     ...(raw.hidden && { hiddenChildren: raw.hidden }),
@@ -59,10 +62,17 @@ function toNode(raw: RawTreeNode): InspectTreeNode {
  *
  * @param a - Row
  * @param b - Row
- * @returns True for the same label, size and layout
+ * @returns True for the same label, size, layout and path (slot, shadow root)
  */
 function identical(a: InspectTreeNode, b: InspectTreeNode): boolean {
-  return a.element === b.element && a.w === b.w && a.h === b.h && a.layout === b.layout;
+  return (
+    a.element === b.element &&
+    a.w === b.w &&
+    a.h === b.h &&
+    a.layout === b.layout &&
+    a.via === b.via &&
+    a.shadow === b.shadow
+  );
 }
 
 /**

@@ -114,10 +114,15 @@ export async function inspectElement(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }
+  const pseudoOf = /::?(before|after)\s*$/i.exec(params.selector)?.[1]?.toLowerCase() as
+    'before' | 'after' | undefined;
+  const request = pseudoOf
+    ? { ...params, selector: params.selector.replace(/::?(before|after)\s*$/i, '') }
+    : params;
   const objectGroup = `bdg-inspect-${++groupCounter}`;
   try {
-    const found = await findElement(cdp, params, objectGroup);
-    const sources = await readSources(cdp, found.objectId, params, objectGroup);
+    const found = await findElement(cdp, request, objectGroup);
+    const sources = await readSources(cdp, found.objectId, request, objectGroup);
     if (sources.raw.unknownWhy) throwUnknownProperties([params.why ?? ''], sources);
     const propValues = sources.props ? checkedProps(sources.props, sources) : undefined;
     const built = buildInspectResult(sources, {
@@ -131,7 +136,11 @@ export async function inspectElement(
     const cascade = cascadeFields(cdp, sources);
     const hints = cascade.hints && (await explainedHints(cdp, found.objectId, cascade.hints));
     const withCascade = { ...built, ...cascade, ...(hints && { hints }) };
-    const result = found.picked ? { ...withCascade, picked: found.picked } : withCascade;
+    const result = {
+      ...withCascade,
+      ...(found.picked && { picked: found.picked }),
+      ...(pseudoOf && { pseudoOf: `::${pseudoOf}` as const }),
+    };
     log.debug(`Inspected ${result.element} in ${Date.now() - started} ms`);
     return result;
   } finally {
@@ -177,7 +186,8 @@ function checkedProps(names: string[], sources: InspectSources): InspectResult['
     names,
     sources.style,
     sources.raw.props,
-    sources.raw.unknownProps
+    sources.raw.unknownProps,
+    sources.raw.rootFontSize
   );
   if (unknown.length === 0) return props;
   return throwUnknownProperties(unknown, sources);
@@ -239,6 +249,7 @@ function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<Ins
     ...(sources.why && { why: sources.why }),
     ...(sources.raw.whyLonghands && { whyLonghands: sources.raw.whyLonghands }),
     ...(sources.raw.whyComputed && { whyComputed: sources.raw.whyComputed }),
+    ...(sources.raw.whyInactive && { whyInactive: sources.raw.whyInactive }),
     ...(sources.props && { props: sources.props }),
   });
 }

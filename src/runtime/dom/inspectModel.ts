@@ -14,6 +14,7 @@ import { buildBox, buildLayout, type StyleMap } from '@/runtime/dom/inspectLayou
 import {
   buildEffects,
   buildFills,
+  buildSvgPaint,
   buildFx,
   buildOutline,
   buildPseudo,
@@ -114,16 +115,31 @@ export function visibilityOf(
 }
 
 /**
- * The header rectangle: border box size, and the page position, or the
+ * The header rectangle: border box size (and the box it covers on screen
+ * when a transform turns it), and the page position, or the
  * viewport position of an element fixed to the viewport (it or a container
  * is `position: fixed`: its page position changes with the scroll).
  *
  * @param layout - Layout measurements
  * @param size - Border box size
+ * @param style - Computed styles (transforms)
  * @returns Rectangle
  */
-function headerRect(layout: ElementLayout, size: { w: number; h: number }): InspectRect {
-  const box = { w: round1(size.w), h: round1(size.h) };
+function headerRect(
+  layout: ElementLayout,
+  size: { w: number; h: number },
+  style: StyleMap
+): InspectRect {
+  const { width, height } = layout.bounds;
+  const transformed = ['transform', 'rotate', 'scale'].some(
+    (name) => (style[name] ?? 'none') !== 'none'
+  );
+  const turned = transformed && (Math.abs(width - size.w) > 1 || Math.abs(height - size.h) > 1);
+  const box = {
+    w: round1(size.w),
+    h: round1(size.h),
+    ...(turned && { screen: { w: width, h: height } }),
+  };
   return layout.fixed
     ? { x: layout.viewport.x, y: layout.viewport.y, ...box, in: 'viewport' }
     : { x: layout.bounds.x, y: layout.bounds.y, ...box };
@@ -152,7 +168,7 @@ function header(sources: InspectSources, request: InspectRequest): InspectResult
     ...(content && { content }),
     ...(raw.placeholder && { placeholder: rowText(raw.placeholder) }),
     ...(raw.context && { context: raw.context }),
-    ...(size && layout && { rect: headerRect(layout, size) }),
+    ...(size && layout && { rect: headerRect(layout, size, sources.style) }),
     visibility: visibilityOf(layout, size !== undefined),
     ...(sources.colorScheme && { colorScheme: sources.colorScheme }),
     ...(sources.colorScheme === 'dark' && pageLooksDark(raw) && { theme: 'dark' }),
@@ -188,6 +204,7 @@ function groups(sources: InspectSources): Partial<InspectResult> {
     sources.fonts
   );
   const fills = buildFills(style);
+  const paint = buildSvgPaint(style, raw);
   const strokes = buildStrokes(style);
   const radius = buildRadius(style);
   const outline = buildOutline(style);
@@ -202,6 +219,7 @@ function groups(sources: InspectSources): Partial<InspectResult> {
     layout: buildLayout(style, parentStyle, raw),
     ...(text && { text }),
     ...(fills.length > 0 && { fills }),
+    ...(paint && { paint }),
     ...(opacity !== 1 && { opacity }),
     ...(blend && blend !== 'normal' && { blend }),
     ...(strokes.length > 0 && { strokes }),

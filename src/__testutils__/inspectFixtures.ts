@@ -58,6 +58,8 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <div id="hero"><span>Hero</span></div>
 <p id="themed">Themed</p>
 <div id="hover-only" class="hover-only">Hover me</div>
+<div id="cut" style="width:60px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">A long text that is cut</div>
+<svg width="20" height="20"><rect id="rect" width="10" height="10" fill="#c00"/></svg>
 <form id="secrets"><input id="pw" type="password" value="hunter2-secret">
 <select id="exp" autocomplete="cc-exp-month"><option>07</option><option selected>11</option></select></form>
 <div id="faded" style="opacity:0.4"><p id="faded-text" style="color:#000">Faded text</p></div>

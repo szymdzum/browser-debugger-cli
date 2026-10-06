@@ -89,7 +89,7 @@ void describe('cascade fields', () => {
     );
   });
 
-  void it('folds the sides a wider shorthand sets into one row', () => {
+  void it('shows a wider shorthand that sets several groups once, as written', () => {
     const sides = ['top', 'right', 'bottom', 'left'];
     const longhands = Object.fromEntries(
       sides.flatMap((side) => [
@@ -100,7 +100,7 @@ void describe('cascade fields', () => {
     const rows = fields([rule('*', [['border', '0 solid', longhands]])], {}).rules ?? [];
     assert.deepEqual(
       rows.map((r) => `${r.property} ${r.value}`),
-      ['border-width 0px', 'border-style solid']
+      ['border 0 solid']
     );
   });
 

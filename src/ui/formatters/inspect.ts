@@ -37,6 +37,7 @@ import {
   inspectAnimatingBadge,
   inspectMidTransitionNote,
   inspectDarkThemeBadge,
+  inspectPseudoOfNote,
   inspectedMatchAction,
   inspectVisibilityBadges,
   multipleMatchesWarning,
@@ -85,11 +86,11 @@ export function inspectHeader(data: InspectOutput): string {
     data.content !== undefined && `"${data.content}"`,
     data.placeholder !== undefined && `placeholder "${data.placeholder}"`,
     data.rect &&
-      `${data.rect.w}x${data.rect.h} @${data.rect.x},${data.rect.y}${data.rect.in ? ' in viewport' : ''}`,
+      `${data.rect.w}x${data.rect.h}${data.rect.screen ? ` (${data.rect.screen.w}x${data.rect.screen.h} on screen)` : ''} @${data.rect.x},${data.rect.y}${data.rect.in ? ' in viewport' : ''}`,
     kind && `[${kind}]`,
     ...inspectVisibilityBadges(data.visibility),
     data.context && `in ${data.context}`,
-    data.theme === 'dark' && inspectDarkThemeBadge(),
+    data.theme === 'dark' && inspectDarkThemeBadge(data.themeFrom === 'emulation'),
     data.animating && inspectAnimatingBadge(data.animating),
   ]
     .filter(Boolean)
@@ -291,6 +292,7 @@ function textLine(text: InspectText): string | undefined {
     text.whiteSpace && `ws ${text.whiteSpace}`,
     text.overflow && `text-overflow ${text.overflow}`,
     text.clamp && `clamp ${text.clamp}`,
+    text.truncated && 'truncated',
     text.shadow && `shadow ${text.shadow}`,
     text.features && `features ${text.features}`,
   ]);
@@ -304,8 +306,13 @@ function textLine(text: InspectText): string | undefined {
  */
 function fillText(fill: InspectFill): string {
   if (fill.type === 'solid') return `bg ${fill.color}`;
-  if (fill.type === 'gradient') return `bg-image ${fill.value}`;
-  return `bg-image ${fill.value}${fill.size ? ` size ${fill.size}` : ''}`;
+  return [
+    `bg-image ${fill.value}`,
+    fill.size && `size ${fill.size}`,
+    fill.position && `at ${fill.position}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 /**
@@ -315,7 +322,11 @@ function fillText(fill: InspectFill): string {
  * @returns Line
  */
 function fillLine(data: InspectOutput): string | undefined {
+  const paint = data.paint;
   return groupLine('fill', [
+    paint && `fill ${paint.fill}`,
+    paint &&
+      `stroke ${paint.stroke}${paint.strokeWidth !== undefined ? ` ${paint.strokeWidth}` : ''}`,
     ...(data.fills ?? []).map(fillText),
     data.opacity !== undefined && `opacity ${data.opacity}`,
     data.blend && `blend ${data.blend}`,
@@ -394,6 +405,7 @@ function pseudoText(pseudo: InspectPseudo): string {
     pseudo.content !== undefined && `content ${pseudo.content}`,
     pseudo.display,
     pseudo.position,
+    pseudo.inset && `inset ${pseudo.inset}`,
     pseudo.size && `${pseudo.size.w}x${pseudo.size.h}`,
     pseudo.color && `color ${pseudo.color}`,
     pseudo.fontStyle,
@@ -431,7 +443,9 @@ function treeRow(node: InspectTreeNode): string {
   return [
     node.element,
     node.count !== undefined && `×${node.count}`,
-    `${node.w}x${node.h}`,
+    node.contents ? '(contents)' : `${node.w}x${node.h}`,
+    node.shadow && '(shadow root)',
+    node.via && `via ${node.via}`,
     node.layout && `[${node.layout}]`,
     node.text && `"${node.text}"`,
     node.childCount !== undefined && `(${node.childCount})`,
@@ -564,6 +578,10 @@ function whyLines(why: InspectWhy, data: InspectOutput): string[] {
       : []),
     ...variables,
     ...entries.slice(1),
+    ...(why.inactive ?? []).map(
+      (rule) =>
+        `  - ${truncateByLength(rule.value, CASCADE_VALUE_WIDTH)}  ${rule.selector} ${rule.condition} (does not apply now)`
+    ),
     ...(why.chain.length === 0 ? ['  no author declaration: the default or inherited value'] : []),
   ];
 }
@@ -687,6 +705,14 @@ export function formatInspect(data: InspectOutput): string {
   const note = data.picked
     ? multipleMatchesWarning(data.count, inspectedMatchAction(data.picked, data.index))
     : undefined;
-  if (data.why) return joinLines(inspectHeader(data), ...cascadeBlock(data), note);
-  return joinLines(inspectHeader(data), ...body, ...cascadeBlock(data), ...treeBlock(data), note);
+  const pseudoNote = data.pseudoOf && inspectPseudoOfNote(data.pseudoOf);
+  if (data.why) return joinLines(inspectHeader(data), ...cascadeBlock(data), note, pseudoNote);
+  return joinLines(
+    inspectHeader(data),
+    ...body,
+    ...cascadeBlock(data),
+    ...treeBlock(data),
+    note,
+    pseudoNote
+  );
 }
