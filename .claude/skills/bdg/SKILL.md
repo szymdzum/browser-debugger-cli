@@ -98,7 +98,7 @@ Selectors search open shadow roots and same-origin iframes, and accept `:has-tex
 ### Look Without a Screenshot
 
 ```bash
-bdg dom inspect "button.primary"   # Box, layout, rendered font, colors + WCAG contrast, borders, state (~60-100 tokens)
+bdg dom inspect "button.primary"   # Box, layout, rendered font, colors + WCAG contrast, borders, state (~80-130 tokens; --no-hints drops the hints)
 bdg dom inspect ".card" --why color  # Which CSS rule set a property, and what it overrode
 bdg dom layout ".card"             # Positions/sizes of every match: above/below the fold, hidden, covered
 bdg dom listeners "#save"          # Event listeners that run for an element (incl. delegated, React/Preact)
@@ -176,7 +176,7 @@ bdg cdp Runtime.evaluate --params '{
 
 ## JSON Output and Exit Codes
 
-Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`). `bdg --help --json` lists every command, flag and exit code.
+Add `--json` (`-j`) to any command for `{ version, success, data }` (or `{ success: false, error, exitCode, suggestion }`). `bdg --help --json` lists every command, flag and exit code; `bdg <command> --help --json` describes one command in full (option behaviors, defaults, examples).
 
 | Code | Meaning | Action |
 |------|---------|--------|

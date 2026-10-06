@@ -1,4 +1,4 @@
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 
 import { normalizeMethod } from '@/cdp/protocol.js';
 import {
@@ -8,12 +8,27 @@ import {
   getDomainSummary,
   getMethodSchema,
 } from '@/cdp/schema.js';
-import { runCommand } from '@/commands/shared/CommandRunner.js';
+import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
+import { emptyCdpSearchError, missingArgumentError } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import {
+  formatCdpDescription,
+  formatCdpDomainMethods,
+  formatCdpDomains,
+  formatCdpResult,
+  formatCdpSearch,
+  isEmptyCdpResult,
+  type CdpDomainDescription,
+  type CdpDomainListData,
+  type CdpDomainMethodsData,
+  type CdpExecuteData,
+  type CdpMethodDescription,
+  type CdpSearchData,
+} from '@/ui/formatters/cdp.js';
 import { formatHint } from '@/ui/messages/hints.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -42,6 +57,10 @@ const DOMAIN_NOTES: Record<string, string> = {
     'Data arrives via Tracing.dataCollected events.',
 };
 
+/** Usage of `bdg cdp`, suggested when it gets neither a method nor a flag */
+const CDP_USAGE =
+  'Usage: bdg cdp [method] [--params <json>] [--list] [--describe] [--search <query>]';
+
 /**
  * Domain and method counts of the bundled protocol, for the help text.
  *
@@ -65,19 +84,6 @@ const METHOD_NOTES: Record<string, string> = {
 };
 
 /**
- * Check if a CDP result is empty (null, undefined, or empty object).
- */
-function isEmptyResult(result: unknown): boolean {
-  if (result === null || result === undefined) {
-    return true;
-  }
-  if (typeof result === 'object' && Object.keys(result).length === 0) {
-    return true;
-  }
-  return false;
-}
-
-/**
  * Get contextual hint for a method based on domain notes and result.
  */
 function getMethodHint(methodName: string, result: unknown): string | undefined {
@@ -86,7 +92,7 @@ function getMethodHint(methodName: string, result: unknown): string | undefined 
   }
 
   const domain = methodName.split('.')[0];
-  if (domain && DOMAIN_NOTES[domain] && isEmptyResult(result)) {
+  if (domain && DOMAIN_NOTES[domain] && isEmptyCdpResult(result)) {
     return DOMAIN_NOTES[domain];
   }
 
@@ -116,47 +122,65 @@ export function registerCdpCommand(program: Command): void {
         '  Execution: case-insensitive (network.getcookies works)'
     )
     .argument('[method]', 'CDP method name (e.g., Network.getCookies, network.getcookies)')
-    .option('--params <json>', 'Method parameters as JSON')
-    .option('--list', 'List all domains or methods in a domain')
-    .option('--describe', 'Show method signature and parameters')
-    .option('--search <query>', 'Search methods by keyword')
-    .addOption(jsonOption().hideHelp())
+    .addOption(new Option('--params <json>', 'Method parameters as JSON'))
+    .addOption(
+      new Option('--list', 'List all domains or methods in a domain').conflicts([
+        'describe',
+        'params',
+      ])
+    )
+    .addOption(new Option('--describe', 'Show method signature and parameters').conflicts('params'))
+    .addOption(
+      new Option('--search <query>', 'Search methods by keyword').conflicts([
+        'list',
+        'describe',
+        'params',
+      ])
+    )
+    .addOption(jsonOption())
     .addHelpText('after', () => `\nBundled protocol: ${cdpCountsText()}`)
     .action(async (method: string | undefined, options: CdpCommandOptions) => {
-      await runCommand(
-        async (opts) => {
-          if (opts.search) {
-            return await handleSearch(opts.search, method);
-          }
-
-          if (opts.list && !method) {
-            return handleListDomains();
-          }
-
-          if (opts.list && method) {
-            return handleListDomainMethods(method);
-          }
-
-          if (opts.describe && method) {
-            return handleDescribeMethod(method);
-          }
-
-          if (method) {
-            return await handleExecuteMethod(method, opts.params);
-          }
-
-          throw new CommandError(
-            'Missing required argument or flag',
-            {
-              suggestion:
-                'Usage: bdg cdp [method] [--params <json>] [--list] [--describe] [--search <query>]',
-            },
-            EXIT_CODES.INVALID_ARGUMENTS
-          );
-        },
-        { ...options, json: true }
-      );
+      await runCdpCommand(method, options);
     });
+}
+
+/**
+ * Run the `bdg cdp` mode the options select, with its human-readable output.
+ *
+ * @param method - Method or domain argument
+ * @param options - Command options (exits 81 when neither a method nor a
+ *   discovery flag is given)
+ */
+async function runCdpCommand(
+  method: string | undefined,
+  options: CdpCommandOptions
+): Promise<void> {
+  if (options.search !== undefined) {
+    const query = options.search;
+    return runCommand(async () => handleSearch(query, method), options, formatCdpSearch);
+  }
+  if (options.list && method) {
+    return runCommand(async () => handleListDomainMethods(method), options, formatCdpDomainMethods);
+  }
+  if (options.list) return runCommand(async () => handleListDomains(), options, formatCdpDomains);
+  if (options.describe && method) {
+    return runCommand(async () => handleDescribeMethod(method), options, formatCdpDescription);
+  }
+  if (method) {
+    return runCommand(
+      async () => handleExecuteMethod(method, options.params),
+      options,
+      formatCdpResult
+    );
+  }
+  return runCommand(async () => {
+    const err = missingArgumentError(CDP_USAGE);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }, options);
 }
 
 /**
@@ -225,16 +249,16 @@ function blockedAlternative(methodName: string): string | undefined {
  * @param domain - Domain to search in (`bdg cdp Network --search cookie`)
  * @returns Success result with matching methods
  */
-async function handleSearch(
-  query: string,
-  domain?: string
-): Promise<{
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  exitCode?: number;
-  errorContext?: Record<string, unknown>;
-}> {
+async function handleSearch(query: string, domain?: string): Promise<CommandResult<CdpSearchData>> {
+  if (!query.trim()) {
+    const err = emptyCdpSearchError();
+    return {
+      success: false,
+      error: err.message,
+      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+      errorContext: { suggestion: err.suggestion },
+    };
+  }
   if (domain !== undefined && !getDomainSummary(domain)) {
     return {
       success: false,
@@ -244,14 +268,14 @@ async function handleSearch(
     };
   }
   const { searchMethods } = await import('@/cdp/schema.js');
-  const results = searchMethods(query).filter(
+  const results = searchMethods(query.trim()).filter(
     (m) => domain === undefined || m.domain.toLowerCase() === domain.toLowerCase()
   );
 
   return {
     success: true,
     data: {
-      query,
+      query: query.trim(),
       count: results.length,
       methods: results.map((m) => ({
         name: m.name,
@@ -272,7 +296,7 @@ async function handleSearch(
  *
  * @returns Success result with domain summaries
  */
-function handleListDomains(): { success: true; data: unknown } {
+function handleListDomains(): CommandResult<CdpDomainListData> {
   const summaries = getAllDomainSummaries();
 
   return {
@@ -298,13 +322,7 @@ function handleListDomains(): { success: true; data: unknown } {
  * @param domainName - Domain name (case-insensitive)
  * @returns Success result with method summaries
  */
-function handleListDomainMethods(domainName: string): {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  exitCode?: number;
-  errorContext?: Record<string, unknown>;
-} {
+function handleListDomainMethods(domainName: string): CommandResult<CdpDomainMethodsData> {
   const summary = getDomainSummary(domainName);
   if (!summary) {
     return {
@@ -353,13 +371,9 @@ function handleListDomainMethods(domainName: string): {
  * @param methodName - Method name (case-insensitive, with or without domain)
  * @returns Success result with method schema
  */
-function handleDescribeMethod(methodName: string): {
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  exitCode?: number;
-  errorContext?: Record<string, unknown>;
-} {
+function handleDescribeMethod(
+  methodName: string
+): CommandResult<CdpMethodDescription | CdpDomainDescription> {
   const [domainName, method] = methodName.includes('.')
     ? methodName.split('.')
     : [methodName, undefined];
@@ -423,6 +437,7 @@ function handleDescribeMethod(methodName: string): {
   }
 
   const methodNote = METHOD_NOTES[schema.name] ?? DOMAIN_NOTES[schema.domain];
+  const alternative = blockedAlternative(schema.name);
   return {
     success: true,
     data: {
@@ -450,9 +465,7 @@ function handleDescribeMethod(methodName: string): {
         description: r.description,
         items: r.items,
       })),
-      example: blockedAlternative(schema.name)
-        ? { command: blockedAlternative(schema.name) }
-        : schema.example,
+      example: alternative ? { command: alternative } : schema.example,
     },
   };
 }
@@ -486,14 +499,7 @@ const BLOCKED_CDP_METHODS: Record<string, { alternative: string; reason: string 
 async function handleExecuteMethod(
   methodName: string,
   paramsJson?: string
-): Promise<{
-  success: boolean;
-  data?: unknown;
-  error?: string;
-  exitCode?: number;
-  errorContext?: Record<string, unknown>;
-  hint?: string;
-}> {
+): Promise<CommandResult<CdpExecuteData>> {
   const normalized = normalizeMethod(methodName);
 
   if (normalized && BLOCKED_CDP_METHODS[normalized]) {
@@ -546,11 +552,7 @@ async function handleExecuteMethod(
 
   const cdpResult = response.data?.result;
 
-  const result: {
-    success: boolean;
-    data: { method: string; result: unknown };
-    hint?: string;
-  } = {
+  const result: CommandResult<CdpExecuteData> = {
     success: true,
     data: {
       method: normalized,

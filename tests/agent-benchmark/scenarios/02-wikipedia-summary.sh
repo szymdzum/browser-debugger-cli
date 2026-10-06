@@ -100,7 +100,7 @@ RESULT=$(bdg cdp Runtime.evaluate --params "{\"expression\": $(printf '%s' "$EXT
 log_step "Validating extracted data"
 
 # Parse result using jq
-ARTICLE=$(echo "$RESULT" | jq -r '.result.result.value')
+ARTICLE=$(echo "$RESULT" | jq -r '.result.value')
 
 TITLE=$(echo "$ARTICLE" | jq -r '.title')
 SUMMARY=$(echo "$ARTICLE" | jq -r '.summary')

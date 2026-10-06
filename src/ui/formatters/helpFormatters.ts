@@ -19,7 +19,7 @@ import { section } from '@/ui/formatting.js';
 export function buildAgentDiscoveryHelp(): string {
   const counts = getProtocolCounts();
   return section('For AI Agents:', [
-    'bdg --help --json          Machine-readable command schema',
+    'bdg --help --json          Commands, flags, exit codes (bdg <cmd> --help --json: details)',
     `bdg cdp --list             List all ${counts.domains} CDP domains`,
     `bdg cdp --search <term>    Search ${counts.methods} CDP methods`,
   ]);

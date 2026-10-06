@@ -507,6 +507,33 @@ export function unknownHelpTopicError(topic: string, closest?: string): ErrorWit
 }
 
 /**
+ * Suggestion for a command-line usage error (missing argument, invalid value,
+ * unknown option without a close match).
+ *
+ * @param path - Command path, e.g. "bdg dom query"
+ */
+export function usageHelpSuggestion(path: string): string {
+  return `Run "${path} --help" for usage`;
+}
+
+/**
+ * A command group was run without one of its subcommands.
+ */
+export function missingSubcommandMessage(): string {
+  return 'Missing subcommand';
+}
+
+/**
+ * `bdg cdp --search` with an empty or blank query (which would match every method).
+ */
+export function emptyCdpSearchError(): ErrorWithSuggestion {
+  return {
+    message: 'Empty search query',
+    suggestion: 'Search for a keyword, e.g. bdg cdp --search cookie; list domains: bdg cdp --list',
+  };
+}
+
+/**
  * Chrome rejected a CDP method or its parameters.
  *
  * @param detail - Chrome's error message

@@ -147,15 +147,57 @@ void describe('JSON contract', () => {
     for (const url of ['', 'javascript:alert(1)']) await expectEnvelope([url, '--json'], 80);
   });
 
+  void it('suggests a fix for every argument parser error', async () => {
+    const cases: [string[], RegExp][] = [
+      [['peek', '--lsat', '--json'], /^Did you mean: --last\?$/],
+      [['dom', 'query', 'p', '--sesion', 'a', '--json'], /^Did you mean: --session\?$/],
+      [['dom', 'query', 'p', '--frobnicate', '--json'], /^Run "bdg dom query --help"/],
+      [['dom', 'query', '--json'], /^Run "bdg dom query --help"/],
+      [['network', 'list', '--json', '--last'], /^Run "bdg network list --help"/],
+      [['console', '--level', 'foo', '--json'], /^Run "bdg console --help"/],
+      [['dom', '--json'], /^Run "bdg dom --help"/],
+      [['cdp', '--search', 'cookie', '--list', '--json'], /^Run "bdg cdp --help"/],
+    ];
+    for (const [args, suggestion] of cases) {
+      const envelope = await expectEnvelope(args, 81);
+      assert.match(String(envelope.suggestion), suggestion, `bdg ${args.join(' ')}`);
+    }
+    const human = await runCommand('peek', ['--lsat']);
+    assert.equal(human.exitCode, 81);
+    assert.match(human.stderr, /^Error: unknown option '--lsat'\nDid you mean: --last\?$/m);
+  });
+
+  void it('prints compact help, per-command details and the full help on request', async () => {
+    const compact = await runCommand('--help', ['--json']);
+    const full = await runCommand('--help', ['--json', '--full']);
+    const query = await runCommand('dom', ['query', '--help', '--json']);
+    assert.ok(compact.stdout.length * 3 < full.stdout.length, 'compact help is much smaller');
+    assert.doesNotMatch(compact.stdout, /\n {2}"/, 'help JSON is not indented');
+    const queryHelp = JSON.parse(query.stdout) as { path: string; command: { options: object[] } };
+    assert.equal(queryHelp.path, 'bdg dom query');
+    assert.ok(JSON.stringify(queryHelp.command.options).includes('"behavior"'));
+  });
+
+  void it('prints cdp discovery as text and rejects an empty search', async () => {
+    const search = await runCommand('cdp', ['--search', 'cookie']);
+    assert.equal(search.exitCode, 0, search.stderr);
+    assert.match(search.stdout, /^\d+ methods match "cookie":\n {2}\S/);
+    assert.match(search.stdout, /Network\.getCookies +Returns all browser cookies/);
+    const none = await runCommand('cdp', ['--search', 'zzzqqq']);
+    assert.match(none.stdout, /No CDP method matches "zzzqqq"/);
+    const empty = await expectEnvelope(['cdp', '--search', ' ', '--json'], 81);
+    assert.equal(empty.error, 'Empty search query');
+  });
+
   void it('delivers output larger than a pipe buffer to a slow reader', async () => {
-    const result = await runCommand('--help', ['--json'], { readDelay: 500 });
+    const result = await runCommand('--help', ['--json', '--full'], { readDelay: 500 });
     assert.equal(result.exitCode, 0, result.stderr);
     assert.ok(result.stdout.length > 65536, `help JSON is ${result.stdout.length} bytes`);
     assert.doesNotThrow(() => JSON.parse(result.stdout), 'help JSON is complete');
   });
 
   void it('exits quietly when the reader closes the pipe early', async () => {
-    const child = spawn('node', [CLI_PATH, '--help', '--json'], {
+    const child = spawn('node', [CLI_PATH, '--help', '--json', '--full'], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stderr = '';
@@ -228,13 +270,20 @@ void describe('JSON contract', () => {
     const cdp = await expectEnvelope(['cdp', 'Browser.getVersion', '--json'], 0);
     assert.equal(typeof cdp.data?.['result'], 'object', 'cdp accepts --json');
 
-    const badParams = await expectEnvelope(['cdp', 'DOM.getBoxModel', '--params', '{}'], 81);
+    const badParams = await expectEnvelope(
+      ['cdp', 'DOM.getBoxModel', '--params', '{}', '--json'],
+      81
+    );
     assert.match(String(badParams.suggestion), /bdg cdp DOM\.getBoxModel --describe/);
     const noNode = await expectEnvelope(
-      ['cdp', 'DOM.getBoxModel', '--params', '{"nodeId":999999}'],
+      ['cdp', 'DOM.getBoxModel', '--params', '{"nodeId":999999}', '--json'],
       83
     );
     assert.match(String(noNode.suggestion), /DOM\.getDocument/);
+    const cdpHuman = await runCommand('cdp', ['Browser.getVersion']);
+    assert.equal(cdpHuman.exitCode, 0, cdpHuman.stderr);
+    assert.match(cdpHuman.stdout, /"product":/, 'cdp prints the result without --json');
+    assert.doesNotMatch(cdpHuman.stdout, /"success"/, 'cdp prints no envelope without --json');
 
     const emulated = await expectEnvelope(
       ['page', 'emulate', '--viewport', '900x700', '--color-scheme', 'dark', '--json'],

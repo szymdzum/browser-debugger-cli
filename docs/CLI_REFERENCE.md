@@ -1275,6 +1275,8 @@ bdg cdp Network.getCookies
 bdg cdp Page.navigate --params '{"url": "https://example.com"}'
 ```
 
+Without `--json`, discovery prints text (one line per domain or method, with the first sentence of its description; `--describe` lists parameters with `?` for optional ones) and a method call prints its result as indented JSON, or `<Method>: done (no result data)`. `--json` prints the response envelope (`data.methods`, `data.domains`, `data.result`, ...). A search with no match exits 0 (`count: 0`); an empty query exits 81, and `--search`, `--list`, `--describe` and `--params` cannot be combined (exit 81).
+
 When Chrome rejects a call, the exit code says whose mistake it was: a node, target or frame that does not exist exits 83 (`DOM.getBoxModel: Could not find node with given id`, with a reminder that node ids come from `DOM.getDocument` or `DOM.querySelector` and are replaced by a new `DOM.getDocument` or a navigation); wrong or missing parameters exit 81 and point to `--describe`. To change the viewport or color scheme, use `bdg page emulate` rather than `Emulation.*` calls (screenshots and `bdg status` follow it).
 
 **Event-Based Domains:**
@@ -1283,22 +1285,18 @@ Some CDP domains use event-based reporting rather than synchronous responses. Wh
 
 ```bash
 bdg cdp Audits.enable
-# Issues are reported through Audits.issueAdded events, so the result is empty:
-# {
-#   "method": "Audits.enable",
-#   "result": {}
-# }
+# Audits.enable: done (no result data)
+# (stderr) Enables the Audits domain. Issues will arrive via Audits.issueAdded events.
 ```
 
 The `--describe` output includes domain notes for event-based APIs:
 
 ```bash
 bdg cdp Audits --describe
-# {
-#   "type": "domain",
-#   "domain": "Audits",
-#   "note": "Event-based domain. Results arrive via events (e.g., Audits.issueAdded)..."
-# }
+# Audits: 4 methods, 1 event (experimental)
+# Audits domain allows investigation of page violations and possible improvements.
+# Event-based domain. Results arrive via events (e.g., Audits.issueAdded), not method responses. ...
+# Use: bdg cdp Audits --list (to see all methods)
 ```
 
 **Domains with Event-Based Patterns:**
@@ -1434,13 +1432,31 @@ for `dom a11y tree`, and `data.targetUrl` / `data.port` / `data.chromePid` for `
 ```
 
 `exitCode` always equals the process exit code (see `bdg --help --json` for the full list).
-Usage errors such as unknown options or missing arguments are reported the same way, with exit code 81.
+Usage errors such as unknown options or missing arguments are reported the same way, with exit code 81
+and a `suggestion`: the closest option of the command for a mistyped one (`--sesion` → `Did you mean: --session?`),
+otherwise `Run "bdg <command> --help" for usage`. Without `--json` the same two lines go to stderr.
 
 In follow mode (`-f --json`), every refresh prints one complete envelope on one line (NDJSON).
 When the session ends, it prints one error envelope and stops with exit 83; other failures (a busy
 page, a timeout) print an error envelope per refresh and are retried.
 
 Put `--json` after the command (`bdg peek --json`); `bdg --json peek` also works.
+
+### Machine-readable help
+
+```bash
+bdg --help --json                # Compact: every command with its one-line description, arguments and flags, plus exit codes (~29 KB)
+bdg dom query --help --json      # One command in full: option behaviors, defaults, choices, help text (examples), exit codes
+bdg dom --help --json            # A group: its own options in full, its subcommands compact
+bdg --help --json --full         # Every command in full at once (~120 KB)
+```
+
+The compact form has the same top-level fields as the full one (`command`, `exitCodes`, `taskMappings`,
+`runtimeState`, `decisionTrees`, `capabilities`) plus `details`; its `command` tree has `name`,
+`description` (first line), `arguments` (`"<selector> [index]"`), `options` (flags → description) and
+`subcommands`, leaving out empty fields and the hidden global options (`--debug`, `-q`, `--session`, valid on
+every command). Per-command help has `name`, `version`, `description`, `path` (`"bdg dom query"`),
+`command` and `exitCodes`. Help JSON is printed without indentation.
 
 See [`src/types.ts`](../src/types.ts) for complete type definitions.
 

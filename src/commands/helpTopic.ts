@@ -2,10 +2,15 @@
  * `bdg help <command...>` topics and Commander usage-error hints.
  */
 
-import type { Command } from 'commander';
+import type { Command, CommanderError } from 'commander';
 
+import { commandPath } from '@/commands/helpJson.js';
 import { CommandError } from '@/errors/index.js';
-import { unknownHelpTopicError } from '@/errors/messages.js';
+import {
+  missingSubcommandMessage,
+  unknownHelpTopicError,
+  usageHelpSuggestion,
+} from '@/errors/messages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
 
@@ -69,4 +74,45 @@ export function splitCommanderHint(text: string): { message: string; suggestion?
   const hint = COMMANDER_HINT.exec(message);
   if (!hint) return { message };
   return { message: message.slice(0, hint.index).trim(), suggestion: `Did you mean: ${hint[1]}?` };
+}
+
+/** The option named in Commander's "unknown option '--x'" message, without an `=value` */
+const UNKNOWN_OPTION = /unknown option '([^'=]+)/;
+
+/**
+ * The long option of a command closest to a mistyped one, hidden global
+ * options (`--session`, `--quiet`) included. Up to one edit per three letters
+ * of the name counts as a typo, so `--frob` does not suggest `--json`.
+ *
+ * @param flag - Option as typed, e.g. "--sesion"
+ * @param command - Command it was given to
+ * @returns Closest long option, if any is similar
+ */
+function closestOption(flag: string, command: Command): string | undefined {
+  const longs = command.options.flatMap((option) => (option.long ? [option.long] : []));
+  const maxDistance = Math.ceil(flag.replace(/^-+/, '').length / 3);
+  return findSimilar(flag, longs, { maxDistance })[0];
+}
+
+/**
+ * Message and suggestion for a Commander usage error: a did-you-mean for an
+ * unknown option or command, otherwise a pointer to the command's `--help`.
+ *
+ * @param error - Commander error (not a help or version display)
+ * @param command - Command the error came from (see resolveCommand)
+ * @returns Message and suggestion
+ */
+export function usageErrorDetails(
+  error: CommanderError,
+  command: Command
+): { message: string; suggestion: string } {
+  const help = usageHelpSuggestion(commandPath(command));
+  if (error.code === 'commander.help') {
+    return { message: missingSubcommandMessage(), suggestion: help };
+  }
+  const { message, suggestion } = splitCommanderHint(error.message);
+  const flag = error.code === 'commander.unknownOption' && UNKNOWN_OPTION.exec(message)?.[1];
+  if (!flag) return { message, suggestion: suggestion ?? help };
+  const closest = closestOption(flag, command);
+  return { message, suggestion: closest ? `Did you mean: ${closest}?` : help };
 }

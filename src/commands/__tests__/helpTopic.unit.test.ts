@@ -5,9 +5,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Command } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 
-import { assertKnownHelpTopic, helpTopicPath, splitCommanderHint } from '@/commands/helpTopic.js';
+import {
+  assertKnownHelpTopic,
+  helpTopicPath,
+  splitCommanderHint,
+  usageErrorDetails,
+} from '@/commands/helpTopic.js';
 import { CommandError } from '@/errors/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -86,6 +91,79 @@ void describe('splitCommanderHint', () => {
   void it('leaves other messages alone', () => {
     assert.deepEqual(splitCommanderHint("error: unknown option '--zzz'"), {
       message: "unknown option '--zzz'",
+    });
+  });
+});
+
+/**
+ * `bdg peek` with `--last <n>`, `--json` and a hidden `--session <name>`.
+ *
+ * @returns The peek command
+ */
+function peek(): Command {
+  const root = new Command('bdg');
+  return root
+    .command('peek')
+    .option('--last <n>')
+    .option('-j, --json')
+    .addOption(new Option('--session <name>').hideHelp());
+}
+
+/**
+ * A Commander error as the parser throws it.
+ *
+ * @param code - Commander error code
+ * @param message - Commander message
+ * @returns The error
+ */
+function commanderError(code: string, message: string): CommanderError {
+  return new CommanderError(81, code, message);
+}
+
+void describe('usageErrorDetails', () => {
+  void it('suggests the closest option of the command, hidden ones included', () => {
+    for (const [typed, closest] of [
+      ['--lsat', '--last'],
+      ['--sesion', '--session'],
+      ['--sesion=a', '--session'],
+    ]) {
+      const error = commanderError(
+        'commander.unknownOption',
+        `error: unknown option '${typed}'\n(Did you mean --json?)`
+      );
+      assert.deepEqual(usageErrorDetails(error, peek()), {
+        message: `unknown option '${typed}'`,
+        suggestion: `Did you mean: ${closest}?`,
+      });
+    }
+  });
+
+  void it('points to the command help without a close option', () => {
+    const error = commanderError('commander.unknownOption', "error: unknown option '--frob'");
+    assert.equal(usageErrorDetails(error, peek()).suggestion, 'Run "bdg peek --help" for usage');
+  });
+
+  void it("keeps Commander's hint, else points to the help, for other errors", () => {
+    const missing = commanderError(
+      'commander.missingArgument',
+      "error: missing required argument 'selector'"
+    );
+    assert.deepEqual(usageErrorDetails(missing, peek()), {
+      message: "missing required argument 'selector'",
+      suggestion: 'Run "bdg peek --help" for usage',
+    });
+    const unknown = commanderError(
+      'commander.unknownCommand',
+      "error: unknown command 'quer'\n(Did you mean query?)"
+    );
+    assert.equal(usageErrorDetails(unknown, peek()).suggestion, 'Did you mean: query?');
+  });
+
+  void it('reports a group run without a subcommand', () => {
+    const error = commanderError('commander.help', '(outputHelp)');
+    assert.deepEqual(usageErrorDetails(error, peek()), {
+      message: 'Missing subcommand',
+      suggestion: 'Run "bdg peek --help" for usage',
     });
   });
 });
