@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`dom query` on large pages** (#385): it describes only the first 1000 matches, in one page-side pass, and lists 50 of them (`--json`: 1000) with the total count. `--limit <n>` lists more (0 = all). On a page with 50 000 elements, `dom query "*"` took 23 s and printed 7 MB of JSON; it now takes about half a second, and the JSON is 190 KB. Indices past the indexed matches say so and how to index more. `--json` has `count` (all matches), `nodes`, `omitted` and `indexed`.
+
 ### Fixed
 
 - **Session directory and Chrome profile are checked before use** (#387). `BDG_SESSION_DIR=/proc/x` used to spin at full CPU until it was killed (Node's recursive `mkdir` loops on Linux pseudo-filesystems). `--user-data-dir /proc/nope/x` wedged the session until `bdg cleanup --force`. Now a directory that cannot be created or written is refused at once, before a daemon or Chrome starts: exit 103 for the session directory, 81 for the profile, 82 when permission is denied.

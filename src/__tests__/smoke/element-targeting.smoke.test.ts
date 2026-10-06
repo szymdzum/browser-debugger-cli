@@ -674,4 +674,21 @@ void describe('Key attributes in dom query and dom get', () => {
     assert.match(output, /open shadow roots and same-origin iframes/);
     assert.match(output, /closed shadow roots or cross-origin iframes/);
   });
+
+  void it('lists --limit matches with the total, and indexes more than it lists', async () => {
+    const listed = await bdg(['dom', 'query', '*', '--limit', '2']);
+    const total = Number(/^Found (\d+) nodes matching "\*":/m.exec(listed)?.[1]);
+    assert.ok(total > 3, listed);
+    assert.match(listed, /\[1\] </);
+    assert.doesNotMatch(listed, /\[2\] </);
+    assert.match(listed, new RegExp(`\\.\\.\\. and ${total - 2} more \\(--limit 0 lists all\\)`));
+    const json = JSON.parse(await bdg(['dom', 'query', '*', '--limit', '2', '--json'])) as {
+      data: { count: number; nodes: unknown[]; omitted: number };
+    };
+    assert.deepEqual(
+      [json.data.count, json.data.nodes.length, json.data.omitted],
+      [total, 2, total - 2]
+    );
+    assert.match(await bdg(['dom', 'get', '3']), /\S/);
+  });
 });

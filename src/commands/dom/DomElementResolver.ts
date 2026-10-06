@@ -209,11 +209,11 @@ export class DomElementResolver {
         EXIT_CODES.INVALID_ARGUMENTS
       );
     }
-    const { nodes, selector } = validation.cache;
+    const { nodes, selector, count } = validation.cache;
     const source = indexSourceOf(index, selector);
     const node = nodes.find((n) => n.index === index);
     if (!node) {
-      const err = cachedIndexOutOfRangeError(source, nodes.length);
+      const err = cachedIndexOutOfRangeError(source, nodes.length, count);
       throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
     }
     return { node, selector, source };
