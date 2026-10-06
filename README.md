@@ -1,5 +1,8 @@
 # bdg - Browser Debugger CLI
 
+
+📖 **[Wiki](https://github.com/szymdzum/browser-debugger-cli/wiki)**: [Getting Started](https://github.com/szymdzum/browser-debugger-cli/wiki/Getting-Started) · [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) · [For AI Agents](https://github.com/szymdzum/browser-debugger-cli/wiki/For-AI-Agents) · [Recipes](https://github.com/szymdzum/browser-debugger-cli/wiki/Recipes) · [Quick Reference](https://github.com/szymdzum/browser-debugger-cli/wiki/Quick-Reference) · [Troubleshooting](https://github.com/szymdzum/browser-debugger-cli/wiki/Troubleshooting) · [CLI reference](docs/CLI_REFERENCE.md)
+
 [![npm downloads](https://img.shields.io/npm/dt/browser-debugger-cli?color=blue)](https://www.npmjs.com/package/browser-debugger-cli)
 [![CI](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/ci.yml)
 [![Security](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml/badge.svg)](https://github.com/szymdzum/browser-debugger-cli/actions/workflows/security.yml)
@@ -139,9 +142,6 @@ Hint: Consider using 'bdg network getCookies' instead of Network.getAllCookies o
 ```
 
 Each mistake exits with code 81 (invalid arguments), so the agent knows to fix the call rather than retry it. CDP method names are case-insensitive, and raw CDP calls point to the friendlier command when one exists. More in the [Agent-Friendly Tools](docs/principles/AGENT_FRIENDLY_TOOLS.md) principles bdg follows.
-
-
-📖 **[Wiki](https://github.com/szymdzum/browser-debugger-cli/wiki)**: [Getting Started](https://github.com/szymdzum/browser-debugger-cli/wiki/Getting-Started) · [Commands](https://github.com/szymdzum/browser-debugger-cli/wiki/Commands) · [For AI Agents](https://github.com/szymdzum/browser-debugger-cli/wiki/For-AI-Agents) · [Recipes](https://github.com/szymdzum/browser-debugger-cli/wiki/Recipes) · [Quick Reference](https://github.com/szymdzum/browser-debugger-cli/wiki/Quick-Reference) · [Troubleshooting](https://github.com/szymdzum/browser-debugger-cli/wiki/Troubleshooting) · [CLI reference](docs/CLI_REFERENCE.md)
 
 ## Why bdg
 
