@@ -22,9 +22,9 @@ cleanup() {
   bdg cleanup --aggressive 2>/dev/null || true
   sleep 1
   
-  # Final fallback: force kill port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
-  sleep 0.5
+  
+  remove_own_session_dir 2>/dev/null || true
+  
   
   exit "$exit_code"
 }

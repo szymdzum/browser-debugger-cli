@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 # Recovery and retry patterns for agent benchmarks
 
+# Tests run in a session directory of their own, never the user's ~/.bdg:
+# run-all-tests.sh gives each test one; a test run on its own creates one
+# here (removed by remove_own_session_dir in its cleanup).
+if [ -z "${BDG_SESSION_DIR:-}" ]; then
+  BDG_SESSION_DIR="$(mktemp -d /tmp/bdg-it-XXXXXX)"
+  export BDG_SESSION_DIR
+  BDG_OWN_SESSION_DIR="$BDG_SESSION_DIR"
+fi
+
+# Remove the session directory this file created (nothing when run-all-tests.sh gave it)
+remove_own_session_dir() {
+  if [ -n "${BDG_OWN_SESSION_DIR:-}" ]; then
+    command rm -rf "$BDG_OWN_SESSION_DIR"
+  fi
+}
+
 # Retry a command with exponential backoff
 # Usage: retry_with_backoff <max_attempts> <command>
 retry_with_backoff() {
@@ -73,36 +89,6 @@ cleanup_sessions() {
   fi
 }
 
-# Ensure Chrome processes are killed
-kill_chrome_processes() {
-  log_step "Killing Chrome processes"
-  
-  # Kill Chrome processes gracefully first
-  if pkill -TERM "Google Chrome" 2>/dev/null; then
-    sleep 2
-  fi
-  
-  # Force kill if still running
-  if pkill -KILL "Google Chrome" 2>/dev/null; then
-    log_warn "Force killed Chrome processes"
-  else
-    log_info "No Chrome processes to kill"
-  fi
-}
-
-# Full environment reset
-reset_environment() {
-  log_step "Resetting environment"
-  
-  cleanup_sessions
-  kill_chrome_processes
-  
-  # Wait for cleanup to settle
-  sleep 1
-  
-  log_success "Environment reset complete"
-}
-
 # Graceful session stop with retry
 stop_session_gracefully() {
   local max_attempts=3
@@ -173,11 +159,13 @@ capture_error_context() {
     echo "=== Chrome Processes ==="
     ps aux | grep -i chrome | grep -v grep || echo "No Chrome processes"
     echo ""
-    echo "=== Port 9222 ==="
-    lsof -i :9222 || echo "Port 9222 not in use"
+    echo "=== Session port ==="
+    local port
+    port=$(jq -r '.port // empty' "$BDG_SESSION_DIR/session.meta.json" 2>/dev/null)
+    if [ -n "$port" ]; then lsof -i :"$port" || echo "Port $port not in use"; else echo "No session port"; fi
     echo ""
     echo "=== Session Files ==="
-    ls -la ~/.bdg/ 2>&1 || echo "No session directory"
+    ls -la "$BDG_SESSION_DIR"/ 2>&1 || echo "No session directory"
   } > "$context_file"
   
   log_info "Error context saved to: $context_file"
@@ -204,7 +192,7 @@ fallback_wait() {
 # Usage: wait_for_session_json <timeout_seconds>
 wait_for_session_json() {
   local timeout="${1:-10}"
-  local session_json="$HOME/.bdg/session.json"
+  local session_json="$BDG_SESSION_DIR/session.json"
 
   log_step "Waiting for session.json to be created and valid (timeout: ${timeout}s)"
 

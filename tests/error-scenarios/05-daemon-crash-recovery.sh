@@ -14,8 +14,6 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
-  # Force kill any Chrome processes on port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
   bdg cleanup --force 2>/dev/null || true
   exit "$exit_code"
@@ -42,7 +40,7 @@ log_step "Test 1: Starting session"
 bdg "https://example.com" --headless || die "Failed to start session"
 sleep 2
 
-DAEMON_PID=$(cat ~/.bdg/daemon.pid 2>/dev/null) || die "daemon.pid not found"
+DAEMON_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null) || die "daemon.pid not found"
 log_info "Daemon PID: $DAEMON_PID"
 
 # Verify daemon is running
@@ -91,8 +89,8 @@ bdg cleanup || log_warn "Cleanup had issues (may be expected)"
 
 # Verify stale files are removed
 STALE_FILES=0
-[ -f ~/.bdg/daemon.pid ] && STALE_FILES=$((STALE_FILES + 1))
-[ -S ~/.bdg/daemon.sock ] && STALE_FILES=$((STALE_FILES + 1))
+[ -f "$BDG_SESSION_DIR"/daemon.pid ] && STALE_FILES=$((STALE_FILES + 1))
+[ -S "$BDG_SESSION_DIR"/daemon.sock ] && STALE_FILES=$((STALE_FILES + 1))
 
 if [ $STALE_FILES -gt 0 ]; then
   log_warn "$STALE_FILES stale file(s) remain after cleanup"
@@ -107,7 +105,7 @@ log_step "Test 6: Starting new session after crash recovery"
 bdg "https://example.com" --headless || die "Failed to start session after crash"
 sleep 2
 
-NEW_DAEMON_PID=$(cat ~/.bdg/daemon.pid 2>/dev/null) || die "daemon.pid not found after recovery"
+NEW_DAEMON_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid 2>/dev/null) || die "daemon.pid not found after recovery"
 log_info "New daemon PID: $NEW_DAEMON_PID"
 
 # Verify new daemon is running

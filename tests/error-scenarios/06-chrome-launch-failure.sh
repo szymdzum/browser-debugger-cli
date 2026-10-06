@@ -14,10 +14,9 @@ cleanup() {
   local exit_code=$?
   bdg stop 2>/dev/null || true
   sleep 0.5
-  # Force kill any Chrome processes on port 9222
-  lsof -ti:9222 | xargs kill -9 2>/dev/null || true
   sleep 0.5
   bdg cleanup --force 2>/dev/null || true
+  remove_own_session_dir 2>/dev/null || true
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM
@@ -95,8 +94,8 @@ fi
 log_step "Test 5: Checking cleanup after Chrome launch failure"
 
 # After a failure, session files should not persist
-if [ -f ~/.bdg/daemon.pid ]; then
-  STALE_PID=$(cat ~/.bdg/daemon.pid)
+if [ -f "$BDG_SESSION_DIR"/daemon.pid ]; then
+  STALE_PID=$(cat "$BDG_SESSION_DIR"/daemon.pid)
   if kill -0 "$STALE_PID" 2>/dev/null; then
     log_warn "Daemon still running after Chrome launch failure"
     kill -9 "$STALE_PID" 2>/dev/null || true

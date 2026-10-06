@@ -80,6 +80,14 @@ tests/
 ./tests/error-scenarios/01-port-conflict.sh
 ```
 
+## Isolation
+
+Every test runs in a session directory of its own, never your `~/.bdg`, so tests do not touch a session you have open, and two test runs can share a machine (two agents, a checkout and a worktree):
+
+- **Smoke and unit tests:** each test process uses `/tmp/bdg-test-XXXXXX`, removed when it exits after ending any daemon or Chrome left in it. `BDG_TEST_SESSION_DIR` overrides it.
+- **Shell tests:** `run-all-tests.sh` gives each test `/tmp/bdg-it-XXXXXX` through `BDG_SESSION_DIR`. A test run on its own creates one in `recovery.sh` and removes it in its cleanup.
+- **Cleanup:** `bdg cleanup --force` acts on the test's own session only. Tests never kill processes by port or by name.
+
 ## Test Categories
 
 ### 1. Agent Benchmarks (E2E)
@@ -304,24 +312,11 @@ bdg status --verbose
 
 **Port already in use:**
 ```bash
-# Find process using port 9222
-lsof -i :9222
-
-# Kill process
-kill -9 <PID>
-
-# Or use cleanup
-bdg cleanup --force
+lsof -i :<port>                         # See what holds it (it may be your own browser)
+BDG_SESSION_DIR=<dir> bdg cleanup --force   # End a test session left running
 ```
 
-**Stale session files:**
-```bash
-# Remove manually
-rm -rf ~/.bdg/
-
-# Or use aggressive cleanup
-bdg cleanup --aggressive
-```
+**Stale session files:** a test's session directory is in `/tmp` (`bdg-test-*`, `bdg-it-*`); `BDG_SESSION_DIR=<dir> bdg cleanup` removes what a crashed session left.
 
 **Chrome won't launch:**
 ```bash
