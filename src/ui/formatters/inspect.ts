@@ -34,6 +34,8 @@ import type { IndexSource } from '@/types.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
   inspectCascadeNote,
+  inspectAnimatingBadge,
+  inspectMidTransitionNote,
   inspectDarkThemeBadge,
   inspectedMatchAction,
   inspectVisibilityBadges,
@@ -87,6 +89,7 @@ export function inspectHeader(data: InspectOutput): string {
     ...inspectVisibilityBadges(data.visibility),
     data.context && `in ${data.context}`,
     data.theme === 'dark' && inspectDarkThemeBadge(),
+    data.animating && inspectAnimatingBadge(data.animating),
   ]
     .filter(Boolean)
     .join(' ');
@@ -491,7 +494,10 @@ function cascadeBlock(data: InspectOutput): string[] {
   return [
     ...labelledLines('hints', data.hints?.length === 0 ? ['none'] : hints),
     ...labelledLines('rules', (data.rules ?? []).map(ruleLine)),
-    ...labelledLines('why', (data.why ?? []).flatMap(whyLines)),
+    ...labelledLines(
+      'why',
+      (data.why ?? []).flatMap((why) => whyLines(why, data))
+    ),
     ...(data.cascade ? [inspectCascadeNote(data.cascade)] : []),
   ];
 }
@@ -509,7 +515,7 @@ function ruleLine(rule: InspectRule): string {
     rule.computed !== undefined && ` = ${truncateByLength(rule.computed, CASCADE_VALUE_WIDTH)}`,
     `${rule.important ? ' !important' : ''} ← ${rule.source}`,
     ruleScope(rule),
-    rule.inherited !== undefined && ` (inherited from ${rule.inherited} up)`,
+    rule.inherited !== undefined && ` (inherited from ${levelsUp(rule.inherited)})`,
     rule.overrides && ` over ${rule.overrides.join(', ')}`,
   ]
     .filter(Boolean)
@@ -522,9 +528,10 @@ function ruleLine(rule: InspectRule): string {
  * properties are set.
  *
  * @param why - Why
+ * @param data - Inspect result (for running transitions)
  * @returns Lines
  */
-function whyLines(why: InspectWhy): string[] {
+function whyLines(why: InspectWhy, data: InspectOutput): string[] {
   const entries = why.chain.map((entry) => {
     const value = `${entry.via ? `${entry.via}: ` : ''}${entry.value}`;
     const resolved = entry.unset
@@ -542,15 +549,42 @@ function whyLines(why: InspectWhy): string[] {
   });
   const variables = (why.variables ?? []).map(
     (variable) =>
-      `    ${variable.name}: ${truncateByLength(variable.value, CASCADE_VALUE_WIDTH)}  ${variable.source}${variable.inherited !== undefined ? ` (inherited from ${variable.inherited} up)` : ''}`
+      `    ${variable.name}: ${truncateByLength(variable.value, CASCADE_VALUE_WIDTH)}  ${variable.source}${variable.inherited !== undefined ? ` (inherited from ${levelsUp(variable.inherited)})` : ''}`
   );
   return [
-    `${why.property} = ${why.computed}`,
+    `${why.property} = ${why.computed}${midTransition(why.property, data.animating) ? ` ${inspectMidTransitionNote()}` : ''}`,
     ...entries.slice(0, 1),
     ...variables,
     ...entries.slice(1),
     ...(why.chain.length === 0 ? ['  no author declaration: the default or inherited value'] : []),
   ];
+}
+
+/**
+ * Whether a property is being transitioned (or animated) right now.
+ *
+ * @param property - Longhand or shorthand asked about
+ * @param animating - Running transitions' properties and animations' names
+ * @returns True when its value is mid-way
+ */
+function midTransition(property: string, animating: string[] | undefined): boolean {
+  return (animating ?? []).some(
+    (name) =>
+      name === 'all' ||
+      name === property ||
+      property.startsWith(`${name}-`) ||
+      name.startsWith(`${property}-`)
+  );
+}
+
+/**
+ * How far up the ancestor an inherited value comes from is.
+ *
+ * @param levels - Ancestor levels
+ * @returns e.g. `the parent`, `3 levels up`
+ */
+function levelsUp(levels: number): string {
+  return levels === 1 ? 'the parent' : `${levels} levels up`;
 }
 
 /** Longest declared value shown in `--rules` and `--why` lines (font stacks run long) */
@@ -599,6 +633,7 @@ function allLines(all: Record<string, string>): string[] {
  * @returns Lines
  */
 function propLines(props: NonNullable<InspectResult['props']>): string[] {
+  if (Object.keys(props).length === 0) return ['(no matching custom properties)'];
   return Object.entries(props).map(
     ([name, prop]) =>
       `${name}: ${prop.computed || (name.startsWith('--') ? '(not set)' : '(empty)')}${prop.value !== prop.computed ? ` = ${prop.value}` : ''}`
@@ -626,7 +661,8 @@ function groupLines(data: InspectOutput): Array<string | undefined> {
 }
 
 /**
- * Format `bdg dom inspect` output.
+ * Format `bdg dom inspect` output (`--why` answers only its question:
+ * the header, hints and the declarations, no style groups or tree).
  *
  * @param data - Inspect result
  * @returns Formatted output
@@ -640,5 +676,6 @@ export function formatInspect(data: InspectOutput): string {
   const note = data.picked
     ? multipleMatchesWarning(data.count, inspectedMatchAction(data.picked, data.index))
     : undefined;
+  if (data.why) return joinLines(inspectHeader(data), ...cascadeBlock(data), note);
   return joinLines(inspectHeader(data), ...body, ...cascadeBlock(data), ...treeBlock(data), note);
 }

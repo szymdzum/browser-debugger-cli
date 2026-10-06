@@ -3,20 +3,30 @@
  * `bdg page info` — where it is.
  */
 
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 
 import { noActiveSessionError, runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { BaseOptions } from '@/commands/shared/optionTypes.js';
+import { parseColorScheme, parseViewport } from '@/commands/start.js';
+import { CommandError } from '@/errors/index.js';
 import { javascriptNavigationError } from '@/errors/messages.js';
-import { getStatus, pageNavigate } from '@/ipc/client.js';
+import { getStatus, pageEmulate, pageNavigate } from '@/ipc/client.js';
 import type { PageState } from '@/ipc/index.js';
-import type { PageAction, PageNavigationResult } from '@/ipc/protocol/commands.js';
+import type {
+  PageAction,
+  PageEmulateCommand,
+  PageEmulationResult,
+  PageNavigationResult,
+} from '@/ipc/protocol/commands.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   PAGE_ACTION_DESCRIPTIONS,
   PAGE_ACTION_DONE,
+  PAGE_EMULATE_DESCRIPTION,
   PAGE_INFO_DESCRIPTION,
+  pageEmulateNothingError,
+  pageEmulationLines,
   pageLoadingWarning,
 } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -152,6 +162,66 @@ async function showPageInfo(options: BaseOptions): Promise<void> {
   );
 }
 
+/** Options of `bdg page emulate` */
+interface PageEmulateOptions extends BaseOptions {
+  viewport?: string;
+  colorScheme?: string;
+  reset?: boolean;
+}
+
+/**
+ * The emulation request from the options.
+ *
+ * @param options - Command options
+ * @returns Request
+ * @throws CommandError (81) for nothing to change or an invalid value
+ */
+function emulationRequest(options: PageEmulateOptions): PageEmulateCommand {
+  if (options.reset) return { reset: true };
+  if (options.viewport === undefined && options.colorScheme === undefined) {
+    const err = pageEmulateNothingError();
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  return {
+    ...(options.viewport !== undefined && { viewport: parseViewport(options.viewport) }),
+    ...(options.colorScheme !== undefined && {
+      colorScheme: parseColorScheme(options.colorScheme),
+    }),
+  };
+}
+
+/**
+ * `bdg page emulate`: change the viewport or color scheme mid-session.
+ *
+ * @param options - Command options
+ */
+async function emulate(options: PageEmulateOptions): Promise<void> {
+  await runCommand(
+    async () => {
+      const response = await pageEmulate(emulationRequest(options));
+      if (response.status === 'error' || !response.data) {
+        return {
+          success: false,
+          error: response.error ?? 'Failed to change the emulation',
+          exitCode: response.exitCode ?? EXIT_CODES.SOFTWARE_ERROR,
+          ...(response.suggestion && { errorContext: { suggestion: response.suggestion } }),
+        };
+      }
+      return { success: true, data: response.data };
+    },
+    options,
+    (result: PageEmulationResult) =>
+      new OutputFormatter()
+        .text('✓ Page emulation changed')
+        .keyValueList(pageEmulationLines(result), 10)
+        .build()
+  );
+}
+
 /**
  * Register the `page` command group.
  *
@@ -160,7 +230,9 @@ async function showPageInfo(options: BaseOptions): Promise<void> {
 export function registerPageCommands(program: Command): void {
   const page = program
     .command('page')
-    .description('The session page: info (URL and title), navigate <url>, reload, back, forward');
+    .description(
+      'The session page: info (URL and title), navigate <url>, reload, back, forward, emulate (viewport, color scheme)'
+    );
 
   page
     .command('info')
@@ -183,6 +255,22 @@ export function registerPageCommands(program: Command): void {
   ).action(async (url: string, options: PageCommandOptions) => {
     await runPageAction('navigate', options, url);
   });
+
+  page
+    .command('emulate')
+    .description(PAGE_EMULATE_DESCRIPTION)
+    .option('--viewport <WxH>', 'Viewport size in CSS px, e.g. 900x700')
+    .option('--color-scheme <scheme>', 'Emulate prefers-color-scheme: light or dark')
+    .addOption(
+      new Option('--reset', 'Back to the browser window size and the system setting').conflicts([
+        'viewport',
+        'colorScheme',
+      ])
+    )
+    .addOption(jsonOption())
+    .action(async (options: PageEmulateOptions) => {
+      await emulate(options);
+    });
 
   for (const action of ['reload', 'back', 'forward'] as const) {
     withCommon(page.command(action).description(PAGE_ACTION_DESCRIPTIONS[action])).action(

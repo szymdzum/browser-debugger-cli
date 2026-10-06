@@ -98,15 +98,15 @@ void describe('status appearance lines', () => {
         { ...page, viewport: { width: 1265, height: 800 }, colorScheme: 'light' }
       ),
       [
-        ['Viewport', '1265×800 (--viewport 1280x800)'],
-        ['Color scheme', 'prefers-color-scheme: light (emulated with --color-scheme)'],
+        ['Viewport', '1265×800 (emulated 1280x800)'],
+        ['Color scheme', 'prefers-color-scheme: light (emulated)'],
       ]
     );
   });
 
   void it('falls back to the start options when the page did not answer', () => {
     assert.deepEqual(appearanceLines({ colorScheme: 'dark' }, page), [
-      ['Color scheme', 'prefers-color-scheme: dark (emulated with --color-scheme)'],
+      ['Color scheme', 'prefers-color-scheme: dark (emulated)'],
     ]);
     assert.deepEqual(appearanceLines({}, page), []);
   });

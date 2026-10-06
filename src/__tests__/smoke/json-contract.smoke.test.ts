@@ -33,6 +33,7 @@ interface Envelope {
   data?: Record<string, unknown>;
   error?: string;
   exitCode?: number;
+  suggestion?: string;
 }
 
 /**
@@ -226,6 +227,28 @@ void describe('JSON contract', () => {
     await expectEnvelope(['dom', 'eval', '1+1', '--json'], 0);
     const cdp = await expectEnvelope(['cdp', 'Browser.getVersion', '--json'], 0);
     assert.equal(typeof cdp.data?.['result'], 'object', 'cdp accepts --json');
+
+    const badParams = await expectEnvelope(['cdp', 'DOM.getBoxModel', '--params', '{}'], 81);
+    assert.match(String(badParams.suggestion), /bdg cdp DOM\.getBoxModel --describe/);
+    const noNode = await expectEnvelope(
+      ['cdp', 'DOM.getBoxModel', '--params', '{"nodeId":999999}'],
+      83
+    );
+    assert.match(String(noNode.suggestion), /DOM\.getDocument/);
+
+    const emulated = await expectEnvelope(
+      ['page', 'emulate', '--viewport', '900x700', '--color-scheme', 'dark', '--json'],
+      0
+    );
+    assert.deepEqual(emulated.data?.['emulated'], {
+      viewport: { width: 900, height: 700 },
+      colorScheme: 'dark',
+    });
+    const width = await expectEnvelope(['dom', 'eval', 'innerWidth', '--json'], 0);
+    assert.equal(width.data?.['result'], 900);
+    const reset = await expectEnvelope(['page', 'emulate', '--reset', '--json'], 0);
+    assert.deepEqual(reset.data?.['emulated'], {});
+    await expectEnvelope(['page', 'emulate', '--json'], 81);
   });
 
   void it('returns large results intact through a pipe', async () => {

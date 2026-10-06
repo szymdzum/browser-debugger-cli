@@ -186,6 +186,6 @@ void describe('undefined custom properties', () => {
     const hints = undefinedVariableHints(cascade({ background: 'var(--brand-accent)' }), {
       '--brand': '#5b3df5',
     });
-    assert.match(hints[0]?.fix ?? '', /set here: --brand/);
+    assert.match(hints[0]?.fix ?? '', /did you mean --brand\? it is set/);
   });
 });

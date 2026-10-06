@@ -50,6 +50,63 @@ export async function applySessionEmulation(
   }
 }
 
+/** Page emulation of a session: what `--viewport` and `--color-scheme` set */
+export interface SessionEmulation {
+  viewport?: ViewportSize;
+  colorScheme?: ColorScheme;
+}
+
+/**
+ * Change the page emulation mid-session (`bdg page emulate`): set the
+ * viewport or the color scheme, or clear both (back to the browser window
+ * and the system setting).
+ *
+ * @param cdp - Session connection
+ * @param current - Emulation now in effect
+ * @param change - What to set, or `reset`
+ * @param record - Called after each change Chrome accepted (so a later
+ *   failure leaves the recorded emulation true)
+ * @returns Emulation in effect afterwards
+ */
+export async function emulatePage(
+  cdp: CDPConnection,
+  current: SessionEmulation,
+  change: SessionEmulation & { reset?: boolean },
+  record: (emulation: SessionEmulation) => void
+): Promise<SessionEmulation> {
+  let state = current;
+  const step = async (send: () => Promise<unknown>, next: SessionEmulation): Promise<void> => {
+    await send();
+    state = next;
+    record(state);
+  };
+  const { viewport: _viewport, colorScheme, ...rest } = state;
+  if (change.reset || change.viewport) {
+    await step(
+      () =>
+        change.viewport
+          ? cdp.send('Emulation.setDeviceMetricsOverride', viewportOverride(change.viewport))
+          : cdp.send('Emulation.clearDeviceMetricsOverride', {}),
+      {
+        ...rest,
+        ...(colorScheme && { colorScheme }),
+        ...(change.viewport && { viewport: change.viewport }),
+      }
+    );
+  }
+  if (change.reset || change.colorScheme) {
+    const { colorScheme: _scheme, ...withoutScheme } = state;
+    await step(
+      () =>
+        cdp.send('Emulation.setEmulatedMedia', {
+          features: [{ name: 'prefers-color-scheme', value: change.colorScheme ?? '' }],
+        }),
+      { ...withoutScheme, ...(change.colorScheme && { colorScheme: change.colorScheme }) }
+    );
+  }
+  return state;
+}
+
 /** How long `bdg status` waits for the page to report its appearance */
 const APPEARANCE_TIMEOUT_MS = 1000;
 

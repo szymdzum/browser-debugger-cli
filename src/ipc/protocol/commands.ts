@@ -18,7 +18,7 @@ import type {
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
-import type { NetworkRequest } from '@/types.js';
+import type { ColorScheme, NetworkRequest, ViewportSize } from '@/types.js';
 
 /**
  * Session peek command request schema.
@@ -414,6 +414,7 @@ export type RegistryShape = {
   dom_inspect: CommandDef<DomInspectCommand, DomInspectData>;
   dom_wait: CommandDef<DomWaitCommand, DomWaitData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
+  page_emulate: CommandDef<PageEmulateCommand, PageEmulationResult>;
 };
 
 /** What `bdg page` does */
@@ -505,6 +506,26 @@ export interface PageNavigateCommand {
 }
 
 /**
+ * page_emulate: change the viewport or color scheme mid-session, or clear both.
+ */
+export interface PageEmulateCommand {
+  viewport?: ViewportSize;
+  colorScheme?: ColorScheme;
+  /** Clear both: back to the browser window and the system setting */
+  reset?: boolean;
+}
+
+/** The page after `page emulate` */
+export interface PageEmulationResult {
+  /** What bdg emulates now (empty after a reset) */
+  emulated: { viewport?: ViewportSize; colorScheme?: ColorScheme };
+  /** Layout viewport the page has, without scrollbars */
+  viewport?: ViewportSize;
+  /** `prefers-color-scheme` the page sees */
+  colorScheme?: ColorScheme;
+}
+
+/**
  * Creates a phantom command definition that carries request/response types only.
  *
  * @returns Empty schema objects typed as the inferred request and response
@@ -532,6 +553,7 @@ export const COMMANDS: RegistryShape = {
   dom_press_key: defineCommand(),
   dom_scroll: defineCommand(),
   page_navigate: defineCommand(),
+  page_emulate: defineCommand(),
   dom_form_discover: defineCommand(),
   dom_listeners: defineCommand(),
   dom_layout: defineCommand(),

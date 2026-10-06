@@ -443,11 +443,11 @@ export function layoutPositionLabel(element: LabelledLayout, viewport?: LayoutSi
  * comes from.
  *
  * @param scheme - Light or dark
- * @param emulated - Set with `--color-scheme` (otherwise the system setting)
+ * @param emulated - Set with `--color-scheme` or `page emulate` (otherwise the system setting)
  * @returns e.g. `prefers-color-scheme: dark (from the system setting)`
  */
 export function colorSchemeLabel(scheme: string, emulated: boolean): string {
-  const source = emulated ? 'emulated with --color-scheme' : 'from the system setting';
+  const source = emulated ? 'emulated' : 'from the system setting';
   return `prefers-color-scheme: ${scheme} (${source})`;
 }
 
@@ -781,10 +781,14 @@ export const PAGE_ACTION_DONE = {
   forward: 'Went forward',
 } as const;
 
-/** Help text of the `bdg page` history commands */
 /** Description of `bdg page info` */
 export const PAGE_INFO_DESCRIPTION = 'Show the URL and title of the session page';
 
+/** Description of `bdg page emulate` */
+export const PAGE_EMULATE_DESCRIPTION =
+  'Change the viewport or color scheme mid-session (like --viewport and --color-scheme at start), or --reset both';
+
+/** Help text of the `bdg page` history commands */
 export const PAGE_ACTION_DESCRIPTIONS = {
   reload: 'Reload the page',
   back: 'Go back one page (like the browser button)',
@@ -1180,4 +1184,63 @@ export function startCommandHelpMessage(): string {
     '  bdg <url>',
     ''
   );
+}
+
+/**
+ * `bdg page emulate` without anything to change.
+ *
+ * @returns Message and suggestion
+ */
+export function pageEmulateNothingError(): { message: string; suggestion: string } {
+  return {
+    message: 'Nothing to emulate',
+    suggestion:
+      'Give --viewport <WxH>, --color-scheme light|dark, or --reset, e.g. bdg page emulate --viewport 900x700',
+  };
+}
+
+/**
+ * Lines of `bdg page emulate`: what is emulated and what the page now has.
+ *
+ * @param result - Emulation and page appearance
+ * @returns Label/value pairs
+ */
+export function pageEmulationLines(result: {
+  emulated: { viewport?: { width: number; height: number }; colorScheme?: string };
+  viewport?: { width: number; height: number };
+  colorScheme?: string;
+}): Array<[string, string]> {
+  const size = (v: { width: number; height: number }): string => `${v.width}x${v.height}`;
+  const { emulated } = result;
+  return [
+    ['Viewport', emulated.viewport ? size(emulated.viewport) : 'the browser window'],
+    ...(result.viewport
+      ? [['Layout', `${size(result.viewport)} (without scrollbars)`] as [string, string]]
+      : []),
+    [
+      'Scheme',
+      emulated.colorScheme ??
+        `system setting${result.colorScheme ? ` (${result.colorScheme})` : ''}`,
+    ],
+  ];
+}
+
+/**
+ * Header badge of `bdg dom inspect` while CSS transitions or animations run
+ * on the element: the values read are mid-way.
+ *
+ * @param animating - Transitioned properties and animation names
+ * @returns e.g. `[animating: background-color; values are mid-way, inspect again]`
+ */
+export function inspectAnimatingBadge(animating: readonly string[]): string {
+  return `[animating: ${animating.join(', ')}; values are mid-way, inspect again]`;
+}
+
+/**
+ * `--why` note on a computed value read during its transition.
+ *
+ * @returns Note
+ */
+export function inspectMidTransitionNote(): string {
+  return '(mid-transition: inspect again for the final value)';
 }

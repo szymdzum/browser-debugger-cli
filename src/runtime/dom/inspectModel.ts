@@ -51,7 +51,7 @@ export interface InspectSources {
   rules?: boolean;
   /** `--why` property */
   why?: string;
-  /** `--props` names (`--rules` covers only these) */
+  /** `--props` names, custom property patterns expanded (`--rules` covers only these) */
   props?: string[];
   /** `--no-hints` */
   hints?: false;
@@ -140,6 +140,7 @@ function header(sources: InspectSources, request: InspectRequest): InspectResult
     visibility: visibilityOf(layout, size !== undefined),
     ...(sources.colorScheme && { colorScheme: sources.colorScheme }),
     ...(sources.colorScheme === 'dark' && pageLooksDark(raw) && { theme: 'dark' }),
+    ...(raw.animating.length > 0 && { animating: raw.animating }),
   };
 }
 

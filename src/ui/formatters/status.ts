@@ -180,7 +180,7 @@ export function appearanceLines(
       ? [
           [
             'Viewport',
-            `${viewport.width}×${viewport.height}${metadata.viewport ? ` (--viewport ${metadata.viewport.width}x${metadata.viewport.height})` : ''}`,
+            `${viewport.width}×${viewport.height}${metadata.viewport ? ` (emulated ${metadata.viewport.width}x${metadata.viewport.height})` : ''}`,
           ] as [string, string],
         ]
       : []),

@@ -1,13 +1,13 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import { CDPConnectionError } from '@/connection/errors.js';
+import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
 import { CommandError } from '@/errors/index.js';
-import { formDiscoveryFailedError } from '@/errors/messages.js';
+import { cdpCallError, formDiscoveryFailedError } from '@/errors/messages.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
@@ -28,7 +28,7 @@ import { inspectElement } from '@/runtime/dom/inspect.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { onScriptTarget } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
-import { pageAppearance } from '@/runtime/page/emulation.js';
+import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
@@ -367,7 +367,65 @@ function pageWebSocketUrl(store: TelemetryStore): string {
   return url;
 }
 
-export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
+/** Chrome's "server error" code, used for failures on the page's state (a missing node, a bad id…) */
+const CDP_SERVER_ERROR = -32000;
+
+/**
+ * A `bdg cdp` failure that is the caller's: wrong parameters (81), or an
+ * id of a node, target or frame that does not exist (83). Other failures
+ * (internal errors, a detached page) stay software errors.
+ *
+ * @param method - CDP method
+ * @param error - What the call threw
+ * @returns The error to report, or undefined to keep the original
+ */
+function callerError(method: string, error: unknown): CommandError | undefined {
+  if (!(error instanceof CDPProtocolError)) return undefined;
+  const err = cdpCallError(method, error.message);
+  if (error.isRequestError()) {
+    return new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  if (error.code === CDP_SERVER_ERROR && err.notFound) {
+    return new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+  if (
+    error.code === CDP_SERVER_ERROR &&
+    /must be specified|invalid|expected|missing/i.test(error.message)
+  ) {
+    return new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  return undefined;
+}
+
+/** The session's page emulation, which `page emulate` reads and changes */
+export interface EmulationState {
+  get: () => SessionEmulation;
+  set: (emulation: SessionEmulation) => void;
+}
+
+/**
+ * The handlers of the session commands.
+ *
+ * @param store - Telemetry of the session
+ * @param emulation - The session's page emulation
+ * @returns Command registry
+ */
+export function createCommandRegistry(
+  store: TelemetryStore,
+  emulation: EmulationState
+): CommandRegistry {
   const patternDetector = new PatternDetector();
   const interact = createInteractionRunner(store);
   /** Frame id behind each index of the last `dom frames` listing */
@@ -496,7 +554,12 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
     },
 
     cdp_call: async (cdp, params) => {
-      const result = await withBusyPageRecovery(cdp, cdp.send(params.method, params.params ?? {}));
+      const result = await withBusyPageRecovery(
+        cdp,
+        cdp.send(params.method, params.params ?? {}).catch((error: unknown) => {
+          throw callerError(params.method, error) ?? error;
+        })
+      );
 
       const detectionResult = patternDetector.trackCommand(params.method);
       let hint: HintDetails | undefined;
@@ -663,6 +726,11 @@ export function createCommandRegistry(store: TelemetryStore): CommandRegistry {
           }),
         { reportRequests: false, reportEffects: false }
       ),
+
+    page_emulate: async (cdp, params) => {
+      const emulated = await emulatePage(cdp, emulation.get(), params, emulation.set);
+      return { emulated, ...(await pageAppearance(cdp)) };
+    },
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {
       const response = await withBusyPageRecovery(

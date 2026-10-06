@@ -37,6 +37,7 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
   .tag { color: #c00; padding: 4px 8px; }
   .tag.primary { color: #06c; }
   #hero { display: block; justify-content: center; gap: 12px; }
+  :root { --accent: #06c; --accent-dark: #036; }
   #themed { color: var(--brand-color); }
 </style>
 <button id="buy">Buy now</button>

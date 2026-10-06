@@ -171,8 +171,9 @@ function buildHints(cascade: Map<string, Resolution>, input: CascadeInput): Insp
 /**
  * `--rules`: one row per property set by an author declaration; one row for
  * a group (`padding`, `border-width`) when a single declaration sets all of
- * it, and one for a wider shorthand with `var()` (such as
- * `border: 2px solid var(--c)`) however many groups it sets.
+ * it, and one for a shorthand Chrome could not expand (`var()`, such as
+ * `border: 2px solid var(--c)` or `background: var(--bg)`) however many
+ * properties it sets.
  *
  * @param groups - Properties to report
  * @param cascade - Resolved properties
@@ -192,9 +193,11 @@ function buildRules(
     if (grouped) return [toRule(grouped.property, grouped, resolutions[0], input)];
     return group.longhands.flatMap((longhand, i) => {
       const winner = winners[i];
-      return winner && winner.source.origin !== 'user-agent'
-        ? [toRule(longhand, winner, resolutions[i], input)]
-        : [];
+      if (!winner || winner.source.origin === 'user-agent') return [];
+      const unexpanded = winner.via !== undefined && winner.value === winner.written;
+      return unexpanded && winner.via
+        ? [toRule(winner.via, winner, resolutions[i], input)]
+        : [toRule(longhand, winner, resolutions[i], input)];
     });
   });
   const seen = new Set<string>();

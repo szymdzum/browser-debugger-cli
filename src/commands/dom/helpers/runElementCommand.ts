@@ -10,6 +10,7 @@ import { noMatchContext } from '@/commands/dom/helpers/query.js';
 import {
   otherIndexSourceNote,
   staleNodeError,
+  shadowBoundaryLine,
   unreachableElementsNote,
   withLoadingHint,
 } from '@/errors/messages.js';
@@ -185,7 +186,8 @@ function failedResultFailure<Req, Res extends ResultPayload>(
 
 /**
  * Add what the page says to a "not found" failure (one page evaluation, on
- * this failure path only, {@link noMatchContext}): similar ids or classes,
+ * this failure path only, {@link noMatchContext}): similar ids or classes, a
+ * shadow host the selector tries to cross,
  * the places selectors do not search (for a page script that found nothing)
  * and the still-loading hint while the page loads.
  *
@@ -203,7 +205,12 @@ async function withNotFoundContext(
   const context = await noMatchContext(selector);
   const note = searched ? unreachableElementsNote(selector, context.unsearched) : '';
   const suggestion = withLoadingHint(
-    joinLines(context.similar, failure.errorContext?.suggestion, note ? note : undefined),
+    joinLines(
+      context.similar,
+      context.shadowHost && shadowBoundaryLine(context.shadowHost),
+      failure.errorContext?.suggestion,
+      note ? note : undefined
+    ),
     context.readyState,
     selector
   );

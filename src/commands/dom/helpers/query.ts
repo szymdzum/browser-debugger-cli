@@ -61,7 +61,11 @@ import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { parseSelectorFilters, withoutVisibleFilters } from '@/utils/selectorFilters.js';
+import {
+  leadingCompounds,
+  parseSelectorFilters,
+  withoutVisibleFilters,
+} from '@/utils/selectorFilters.js';
 import { findSimilarNames, parseSingleNameSelector } from '@/utils/suggestions.js';
 
 const log = createLogger('dom');
@@ -164,12 +168,46 @@ export async function noMatchesError(selector: string): Promise<ErrorWithSuggest
   return noNodesFoundError(selector, await noMatchContext(selector));
 }
 
+/**
+ * Page-side index of the first leading compound that matches a shadow host
+ * (an element with an open shadow root, anywhere a selector reaches) while
+ * the selector after it finds something: then the selector only failed by
+ * crossing into the shadow root.
+ *
+ * @param compounds - Leading compounds of the selector
+ * @returns Expression evaluating to the index, or -1
+ */
+function shadowHostJS(compounds: ReadonlyArray<{ compound: string; rest: string }>): string {
+  const plain = compounds
+    .slice(0, MAX_HOST_COMPOUNDS)
+    .map((entry) => [withoutFilters(entry.compound), withoutFilters(entry.rest)]);
+  return `${JSON.stringify(plain)}.findIndex(([host, rest]) => { try { const deep = ${DEEP_QUERY_JS}; return deep(host, null).some((el) => el.shadowRoot) && deep(rest, null).length > 0; } catch (e) { return false; } })`;
+}
+
+/** Leading compounds checked for a shadow host (each check walks the page) */
+const MAX_HOST_COMPOUNDS = 4;
+
+/**
+ * A selector without bdg's filters (`:visible`, `:has-text()`, `:text-is()`),
+ * which plain CSS does not know.
+ *
+ * @param selector - Selector
+ * @returns Plain CSS
+ */
+function withoutFilters(selector: string): string {
+  return (
+    selector.replace(/:visible\b|:(has-text|text-is)\((?:"[^"]*"|'[^']*'|[^)"'])*\)/g, '').trim() ||
+    '*'
+  );
+}
+
 /** What {@link noMatchContext} reads from the page */
 interface NoMatchPageValue {
   hidden?: unknown;
   readyState?: unknown;
   unsearched?: { crossOriginFrames?: unknown; embeds?: unknown };
   names?: unknown;
+  shadowHost?: unknown;
 }
 
 /**
@@ -190,9 +228,11 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
     ? `(() => { try { return (${DEEP_QUERY_JS})(${JSON.stringify(selector)}, ${JSON.stringify(unfiltered)}).length; } catch (e) { return 0; } })()`
     : '0';
   const names = single ? pageNamesJS(single.kind) : '[]';
+  const compounds = leadingCompounds(selector);
+  const shadowHost = compounds.length > 0 ? shadowHostJS(compounds) : '-1';
   try {
     const evaluated = await callCDP('Runtime.evaluate', {
-      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names} })`,
+      expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names}, shadowHost: ${shadowHost} })`,
       returnByValue: true,
     });
     const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
@@ -217,6 +257,8 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
         },
       }),
       ...(similar && { similar }),
+      ...(typeof value.shadowHost === 'number' &&
+        compounds[value.shadowHost] && { shadowHost: compounds[value.shadowHost] }),
     };
   } catch (error) {
     log.debug(`Could not read the page after no match: ${getErrorMessage(error)}`);

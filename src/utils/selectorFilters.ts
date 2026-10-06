@@ -135,6 +135,32 @@ export function splitSelectorList(selector: string): string[] {
 }
 
 /**
+ * The compounds of a complex selector before its last one, with the rest
+ * after each (`mdn-search-modal form` gives `mdn-search-modal` with `form`):
+ * the ancestors a selector would have to cross shadow roots through.
+ *
+ * @param selector - One selector (a list gives nothing)
+ * @returns Leading compounds and the selector after each
+ */
+export function leadingCompounds(selector: string): Array<{ compound: string; rest: string }> {
+  if (splitSelectorList(selector).length > 1) return [];
+  const text = selector.trim();
+  const found: Array<{ compound: string; rest: string }> = [];
+  let start = 0;
+  scan(text, (index, depth) => {
+    const char = text[index] ?? '';
+    if (depth > 0 || !/[\s>+~]/.test(char)) return index;
+    const compound = text.slice(start, index).trim();
+    let next = index;
+    while (next + 1 < text.length && /[\s>+~]/.test(text[next + 1] ?? '')) next++;
+    if (compound) found.push({ compound, rest: text.slice(next + 1).trim() });
+    start = next + 1;
+    return next;
+  });
+  return found;
+}
+
+/**
  * Walk a selector, calling `visit` at every token start outside quoted
  * strings, escapes and attribute brackets (whose insides are skipped), with
  * the parenthesis depth (for `)`, the depth inside it).
