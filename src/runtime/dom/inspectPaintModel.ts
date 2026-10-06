@@ -117,10 +117,12 @@ export function effectiveBackground(
  */
 export function textContrast(
   style: StyleMap,
-  raw: Pick<RawInspect, 'backgrounds' | 'canvasDark'>
+  raw: Pick<RawInspect, 'backgrounds' | 'canvasDark' | 'opacity'>
 ): InspectContrast | undefined {
-  const text = parseColor(style['color'] ?? '');
-  if (!text) return undefined;
+  const color = parseColor(style['color'] ?? '');
+  if (!color) return undefined;
+  const opacity = raw.opacity ?? 1;
+  const text = opacity < 1 ? { ...color, a: color.a * opacity } : color;
   const background = effectiveBackground(raw.backgrounds, raw.canvasDark);
   const ratio = Math.floor(contrastRatio(text, background.color) * 100) / 100;
   const size = pxNumber(style['font-size']) ?? 16;
@@ -131,6 +133,7 @@ export function textContrast(
     background: toHex(background.color),
     ...(background.inherited && { inherited: true }),
     ...(background.overImage && { overImage: true }),
+    ...(opacity < 1 && { opacity: Math.round(opacity * 100) / 100 }),
   };
 }
 
@@ -233,7 +236,7 @@ function fontFields(style: StyleMap): InspectText {
 export function buildText(
   style: StyleMap,
   parentStyle: StyleMap | undefined,
-  raw: Pick<RawInspect, 'textual' | 'backgrounds' | 'canvasDark'>,
+  raw: Pick<RawInspect, 'textual' | 'backgrounds' | 'canvasDark' | 'opacity'>,
   fonts: readonly PlatformFont[]
 ): InspectText | undefined {
   const fields = fontFields(style);

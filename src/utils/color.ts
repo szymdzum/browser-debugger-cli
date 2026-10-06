@@ -276,7 +276,9 @@ function parseFunction(name: string, body: string): Rgba | null {
 }
 
 /**
- * A color from sRGB channels and an alpha, or null when a value is not a number.
+ * A color from sRGB channels and an alpha, or null when a value is not a
+ * number. Channels outside sRGB (wide-gamut lab/oklch/color()) are clipped
+ * here, before any compositing, as Chrome paints them.
  *
  * @param rgb - sRGB channels
  * @param a - Alpha
@@ -284,7 +286,8 @@ function parseFunction(name: string, body: string): Rgba | null {
  */
 function withAlpha(rgb: Vector, a: number): Rgba | null {
   if ([...rgb, a].some((value) => Number.isNaN(value))) return null;
-  return { r: rgb[0], g: rgb[1], b: rgb[2], a: Math.min(1, Math.max(0, a)) };
+  const clamp = (value: number): number => Math.min(1, Math.max(0, value));
+  return { r: clamp(rgb[0]), g: clamp(rgb[1]), b: clamp(rgb[2]), a: clamp(a) };
 }
 
 /**

@@ -170,4 +170,10 @@ void describe('contrast', () => {
     assert.equal(contrastLevel(3.2, 18.67, 700), 'AA large');
     assert.equal(contrastLevel(3.2, 18.67, 400), 'fail');
   });
+
+  void it('clips wide-gamut channels before compositing', () => {
+    const wide = parseColor('color(display-p3 0 1 0 / 0.5)');
+    assert.ok(wide);
+    assert.ok([wide.r, wide.g, wide.b].every((channel) => channel >= 0 && channel <= 1));
+  });
 });

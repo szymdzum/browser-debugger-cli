@@ -96,6 +96,12 @@ export interface InspectContrast {
   inherited?: boolean;
   /** A background image or gradient is behind the text: the ratio uses the colors only */
   overImage?: boolean;
+  /**
+   * Opacity of the element and its ancestors (below 1): the text color is
+   * faded by it before the ratio is taken (backgrounds inside the faded
+   * subtree are not, so the ratio is approximate)
+   */
+  opacity?: number;
 }
 
 /** Typography (for containers without text of their own: only what differs from the parent) */

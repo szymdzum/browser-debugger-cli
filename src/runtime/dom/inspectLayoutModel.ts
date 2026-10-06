@@ -233,6 +233,8 @@ export interface SizingInput {
   parentDirection?: string;
   parentAlignItems?: string;
   parentJustifyItems?: string;
+  /** A replaced element (img, video, canvas, iframe, form control…): sized by its intrinsic content */
+  replaced?: boolean;
 }
 
 /**
@@ -268,6 +270,22 @@ function flexItemSizing(input: SizingInput, automatic: boolean): SizingMode {
 }
 
 /**
+ * Sizing of a replaced element with an automatic size: its intrinsic size
+ * (hug), unless it grows along a flex main axis or is stretched explicitly
+ * (`normal` alignment does not stretch replaced elements).
+ *
+ * @param input - Computed size, display and the parent's layout
+ * @returns Sizing mode
+ */
+function replacedSizing(input: SizingInput): SizingMode {
+  const kind = containerKind(input.parentDisplay);
+  const mainAxis = (input.parentDirection ?? 'row').startsWith('row') ? 'w' : 'h';
+  if (kind === 'flex' && input.axis === mainAxis && input.flexGrow > 0) return 'fill';
+  const self = input.axis === 'w' && kind === 'grid' ? input.justifySelf : input.alignSelf;
+  return kind && self === 'stretch' ? 'fill' : 'hug';
+}
+
+/**
  * How the element is sized along an axis: `fill` when its parent stretches
  * it (a flex item that grows, a stretched cross axis or grid cell, a block's
  * width in normal flow, 100%), `hug` when its content sizes it (`auto` and
@@ -280,6 +298,7 @@ export function deriveSizing(input: SizingInput): SizingMode {
   const automatic =
     /^(auto|fit-content|max-content|min-content)$/.test(input.size) || input.size === '';
   if (input.display === 'inline') return 'hug';
+  if (input.replaced && automatic) return replacedSizing(input);
   if (input.position === 'absolute' || input.position === 'fixed')
     return automatic ? 'hug' : 'fixed';
   const parentKind = containerKind(input.parentDisplay);
@@ -302,15 +321,17 @@ export function deriveSizing(input: SizingInput): SizingMode {
  *
  * @param style - Computed styles
  * @param parentStyle - Computed styles of the layout parent
- * @param typed - Computed (not resolved) width and height
+ * @param raw - Computed (not resolved) width and height, and whether the element is replaced
  * @returns Width and height sizing
  */
 function sizingOf(
   style: StyleMap,
   parentStyle: StyleMap | undefined,
-  typed: RawInspect['typed']
+  raw: Pick<RawInspect, 'typed' | 'replaced'>
 ): { w: SizingMode; h: SizingMode } {
+  const typed = raw.typed;
   const base = {
+    ...(raw.replaced && { replaced: true }),
     display: style['display'] ?? 'inline',
     position: style['position'] ?? 'static',
     float: style['float'] ?? 'none',
@@ -356,7 +377,7 @@ function rounded<T extends Record<string, number>>(distances: T): T {
 export function buildLayout(
   style: StyleMap,
   parentStyle: StyleMap | undefined,
-  raw: Pick<RawInspect, 'typed' | 'parent' | 'inParent' | 'siblings'>
+  raw: Pick<RawInspect, 'typed' | 'replaced' | 'parent' | 'inParent' | 'siblings'>
 ): InspectLayout {
   const display = style['display'] ?? 'inline';
   const valign = style['vertical-align'];
@@ -369,7 +390,7 @@ export function buildLayout(
     ...itemFields(style, parentStyle?.['display']),
     ...(/^inline|table-cell/.test(display) && valign && valign !== 'baseline' && { valign }),
     ...(float && float !== 'none' && { float }),
-    ...(display !== 'none' && { sizing: sizingOf(style, parentStyle, raw.typed) }),
+    ...(display !== 'none' && { sizing: sizingOf(style, parentStyle, raw) }),
     ...(parentStyle && raw.parent && { parent: buildParent(parentStyle, raw.parent) }),
     ...(raw.inParent && { inParent: rounded(raw.inParent) }),
     ...(siblings && { siblings: rounded(siblings) }),

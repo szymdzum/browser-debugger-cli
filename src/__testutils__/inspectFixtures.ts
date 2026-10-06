@@ -4,7 +4,8 @@
  * identical items, a field with a placeholder, an element with a `::before`,
  * a hidden one, a covered one, a webfont (a data: URL copy of a system font,
  * so it loads offline), an element in an open shadow root and one in a
- * same-origin iframe.
+ * same-origin iframe, plus secrets (a password and a card expiry select that
+ * must never be shown), faded text and a block image with no size set (sized by itself).
  */
 
 /** Same-origin iframe content of `/inspect` */
@@ -42,6 +43,10 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <div id="under"><button id="behind">Behind</button><div id="cover"></div></div>
 <p id="webfont">Web font text</p>
 <div id="host"></div>
+<form id="secrets"><input id="pw" type="password" value="hunter2-secret">
+<select id="exp" autocomplete="cc-exp-month"><option>07</option><option selected>11</option></select></form>
+<div id="faded" style="opacity:0.4"><p id="faded-text" style="color:#000">Faded text</p></div>
+<img id="pic" style="display:block" alt="pic" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
 <iframe id="frame" src="/inspect-frame" style="width:200px;height:60px;border:0"></iframe>
 <script>
   document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML =

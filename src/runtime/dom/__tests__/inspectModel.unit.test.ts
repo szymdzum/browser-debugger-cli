@@ -150,6 +150,19 @@ void describe('sizing (Figma hug/fill/fixed)', () => {
     assert.equal(deriveSizing(sizing({ ...flex, axis: 'h', parentAlignItems: 'center' })), 'hug');
   });
 
+  void it('hugs replaced elements with an automatic size, also when display is block', () => {
+    assert.equal(deriveSizing(sizing({ replaced: true })), 'hug');
+    assert.equal(deriveSizing(sizing({ replaced: true, axis: 'h' })), 'hug');
+    const flexItem = { replaced: true, parentDisplay: 'flex', parentDirection: 'row' };
+    assert.equal(
+      deriveSizing(sizing({ ...flexItem, axis: 'h', parentAlignItems: 'normal' })),
+      'hug'
+    );
+    assert.equal(deriveSizing(sizing({ ...flexItem, flexGrow: 1 })), 'fill');
+    assert.equal(deriveSizing(sizing({ ...flexItem, axis: 'h', alignSelf: 'stretch' })), 'fill');
+    assert.equal(deriveSizing(sizing({ replaced: true, size: '100%' })), 'fill');
+  });
+
   void it('hugs absolutely positioned elements with an automatic size', () => {
     assert.equal(deriveSizing(sizing({ position: 'absolute' })), 'hug');
   });
@@ -190,6 +203,19 @@ void describe('text paint', () => {
       onWhite
     );
     assert.equal(large?.level, 'AA large');
+  });
+
+  void it('fades the text by the opacity of the element and its ancestors', () => {
+    const onWhite = {
+      backgrounds: [{ color: 'rgb(255, 255, 255)', image: false }],
+      canvasDark: false,
+    };
+    const style = { color: 'rgb(0, 0, 0)', 'font-size': '16px', 'font-weight': '400' };
+    const faded = textContrast(style, { ...onWhite, opacity: 0.25 });
+    assert.ok(faded && faded.ratio < 3, `ratio ${faded?.ratio}`);
+    assert.equal(faded?.level, 'fail');
+    assert.equal(faded?.opacity, 0.25);
+    assert.equal(textContrast(style, { ...onWhite, opacity: 1 })?.opacity, undefined);
   });
 
   void it('names the rendered font only when it is not the first family', () => {

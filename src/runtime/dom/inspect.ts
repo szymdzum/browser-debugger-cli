@@ -317,6 +317,31 @@ async function readPage(
 }
 
 /**
+ * The backend node id of the element's layout parent or first text holder.
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The element
+ * @param which - `parent` or `textHolder`
+ * @param objectGroup - Object group for handles
+ * @returns Backend node id, or undefined when there is none
+ */
+async function relatedNode(
+  cdp: CDPConnection,
+  objectId: string,
+  which: 'parent' | 'textHolder',
+  objectGroup: string
+): Promise<number | undefined> {
+  const response = (await cdp.send('Runtime.callFunctionOn', {
+    objectId,
+    functionDeclaration: RELATED_NODE_JS,
+    arguments: [{ value: which }],
+    objectGroup,
+  })) as Protocol.Runtime.CallFunctionOnResponse;
+  const id = response.result.objectId;
+  return id ? (await describe(cdp, id)).backendNodeId : undefined;
+}
+
+/**
  * The backend node ids of the element, its layout parent, its first text
  * holder and its generated pseudo-elements.
  *
@@ -330,20 +355,10 @@ async function relatedNodes(
   objectId: string,
   objectGroup: string
 ): Promise<RelatedNodes> {
-  const related = async (which: 'parent' | 'textHolder'): Promise<number | undefined> => {
-    const response = (await cdp.send('Runtime.callFunctionOn', {
-      objectId,
-      functionDeclaration: RELATED_NODE_JS,
-      arguments: [{ value: which }],
-      objectGroup,
-    })) as Protocol.Runtime.CallFunctionOnResponse;
-    const id = response.result.objectId;
-    return id ? (await describe(cdp, id)).backendNodeId : undefined;
-  };
   const [node, parent, textHolder] = await Promise.all([
     describe(cdp, objectId),
-    related('parent'),
-    related('textHolder'),
+    relatedNode(cdp, objectId, 'parent', objectGroup),
+    relatedNode(cdp, objectId, 'textHolder', objectGroup),
   ]);
   const pseudo = (node.pseudoElements ?? [])
     .filter((p) => p.pseudoType === 'before' || p.pseudoType === 'after')
@@ -411,15 +426,16 @@ interface CdpStyles {
 }
 
 /**
- * Computed styles of the element, its parent and pseudo-elements, the
- * platform fonts of its text and its border box size.
+ * Node ids of the related nodes, for the CSS methods.
  *
  * @param cdp - CDP connection
  * @param related - Backend node ids
- * @returns CDP styles
+ * @returns Node id for a backend node id (undefined when it cannot be tracked)
  */
-async function readStyles(cdp: CDPConnection, related: RelatedNodes): Promise<CdpStyles> {
-  await enableStyleDomains(cdp);
+async function nodeIdLookup(
+  cdp: CDPConnection,
+  related: RelatedNodes
+): Promise<(backendNodeId: number | undefined) => number | undefined> {
   const order = [
     related.node,
     related.parent,
@@ -430,8 +446,20 @@ async function readStyles(cdp: CDPConnection, related: RelatedNodes): Promise<Cd
     cdp,
     order.filter((id): id is number => id !== undefined)
   );
-  const nodeIdOf = (backendNodeId: number | undefined): number | undefined =>
-    backendNodeId === undefined ? undefined : ids.get(backendNodeId);
+  return (backendNodeId) => (backendNodeId === undefined ? undefined : ids.get(backendNodeId));
+}
+
+/**
+ * Computed styles of the element, its parent and pseudo-elements, the
+ * platform fonts of its text and its border box size.
+ *
+ * @param cdp - CDP connection
+ * @param related - Backend node ids
+ * @returns CDP styles
+ */
+async function readStyles(cdp: CDPConnection, related: RelatedNodes): Promise<CdpStyles> {
+  await enableStyleDomains(cdp);
+  const nodeIdOf = await nodeIdLookup(cdp, related);
   const [style, parentStyle, nodeFonts, holderFonts, size, pseudo] = await Promise.all([
     computedStyle(cdp, nodeIdOf(related.node)),
     related.parent === undefined ? undefined : computedStyle(cdp, nodeIdOf(related.parent)),
@@ -489,9 +517,10 @@ async function enableStyleDomains(cdp: CDPConnection): Promise<void> {
 }
 
 /**
- * Node ids for backend node ids (CSS methods take node ids). When the
- * document was never requested on this connection (or was replaced by a
- * navigation), it is requested first, shallowly.
+ * Node ids for backend node ids (CSS methods take node ids). When none can
+ * be tracked, the document was never requested on this connection (or was
+ * replaced by a navigation): it is requested, shallowly, and the push tried
+ * again. A node that left the page meanwhile is simply missing.
  *
  * @param cdp - CDP connection
  * @param backendNodeIds - Backend node ids
@@ -508,9 +537,9 @@ async function pushNodes(
     return response.nodeIds;
   };
   let nodeIds = await push().catch(() => [] as number[]);
-  if (nodeIds.length !== backendNodeIds.length || nodeIds.some((id) => id === 0)) {
+  if (nodeIds.every((id) => id === 0)) {
     await cdp.send('DOM.getDocument', { depth: 0 });
-    nodeIds = await push();
+    nodeIds = await push().catch(() => [] as number[]);
   }
   return new Map(
     backendNodeIds.flatMap((backendNodeId, i) =>

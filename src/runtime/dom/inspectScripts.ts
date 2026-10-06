@@ -62,6 +62,8 @@ export interface RawInspect {
   /** Has text to describe: own text, only inline content with text, or a form control */
   textual: boolean;
   formControl: boolean;
+  /** Replaced element (img, svg, video, canvas, iframe, embed, object, form controls): sized by its content */
+  replaced?: boolean;
   /** An SVG element (SVG properties are not noise for it) */
   svg?: boolean;
   /** A text node is a direct child (the rendered font is read from the element itself) */
@@ -80,6 +82,8 @@ export interface RawInspect {
   backgrounds: RawBackground[];
   /** The page canvas behind everything is dark (color-scheme) */
   canvasDark: boolean;
+  /** Opacity of the element times that of its ancestors */
+  opacity?: number;
   tree?: RawTreeNode[];
   hiddenChildren: number;
   /** Children the walk did not reach ({@link TREE_NODE_CAP}) */
@@ -125,9 +129,12 @@ const FLAT_TREE_JS = `(view) => {
 }`;
 
 /**
- * Page-side text of an element: a form control's value (masked for secrets,
- * {@link SENSITIVE_FIELD_JS}), a select's chosen options, a button input's
- * label, else its `innerText` (`textContent` for SVG), whitespace collapsed.
+ * Page-side text of an element: a form control's value or a select's chosen
+ * options (masked for secrets, {@link SENSITIVE_FIELD_JS}), else its
+ * `innerText` (`textContent` for SVG), masked when CSS hides it as a secret
+ * (`-webkit-text-security`), whitespace collapsed. A container holding a
+ * select or textarea gets its visible text without theirs, so a form's text
+ * never carries a chosen option or typed text.
  */
 const TEXT_JS = `(el) => {
   const isSensitive = ${SENSITIVE_FIELD_JS};
@@ -136,8 +143,27 @@ const TEXT_JS = `(el) => {
   if (el.localName === 'input' || el.localName === 'textarea') {
     return el.value && isSensitive(el) ? '${MASKED_VALUE}' : clean(el.value);
   }
-  if (el.localName === 'select') return clean(Array.from(el.selectedOptions || [], (o) => o.label).join(', '));
-  return clean(typeof el.innerText === 'string' ? el.innerText : el.textContent);
+  if (el.localName === 'select') {
+    const chosen = clean(Array.from(el.selectedOptions || [], (o) => o.label).join(', '));
+    return chosen && isSensitive(el) ? '${MASKED_VALUE}' : chosen;
+  }
+  const outsideControls = () => {
+    const parts = [];
+    const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n && parts.length < 400; n = walker.nextNode()) {
+      const holder = n.parentElement;
+      if (!holder || holder.closest('select, textarea, script, style, template, noscript')) continue;
+      if (holder.checkVisibility && !holder.checkVisibility({ visibilityProperty: true })) continue;
+      parts.push(n.data);
+    }
+    return parts.join(' ');
+  };
+  const holdsControls = Boolean(el.querySelector && el.querySelector('select, textarea'));
+  const raw = holdsControls ? outsideControls() : typeof el.innerText === 'string' ? el.innerText : el.textContent;
+  const text = clean(raw);
+  const view = el.ownerDocument.defaultView;
+  const security = view ? view.getComputedStyle(el).getPropertyValue('-webkit-text-security') : '';
+  return text && security && security !== 'none' ? '${MASKED_VALUE}' : text;
 }`;
 
 /**
@@ -179,15 +205,18 @@ const PLACEMENT_JS = `(el, tree) => {
 
 /**
  * Page-side backgrounds behind the element (its own first, then its flat-tree
- * ancestors up to the root) and whether the page canvas is dark: the root's
+ * ancestors up to the root), the product of its and their opacity, and
+ * whether the page canvas is dark: the root's
  * `color-scheme` (or the `color-scheme` meta tag) allows dark and either
  * only dark or the page prefers dark.
  */
 const BACKGROUNDS_JS = `(el, tree, view) => {
   const backgrounds = [];
+  let opacity = 1;
   for (let n = el; n && backgrounds.length < 60; n = tree.flatParent(n)) {
     const s = tree.style(n);
     backgrounds.push({ color: s.backgroundColor, image: s.backgroundImage !== 'none' });
+    opacity *= Number(s.opacity) || 0;
   }
   const doc = el.ownerDocument;
   const meta = doc.querySelector('meta[name="color-scheme"]');
@@ -195,7 +224,7 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
   const scheme = rootScheme && rootScheme !== 'normal' ? rootScheme : (meta && meta.content) || '';
   const prefersDark = view.matchMedia('(prefers-color-scheme: dark)').matches;
   const canvasDark = /dark/.test(scheme) && (!/light/.test(scheme) || prefersDark);
-  return { backgrounds: backgrounds, canvasDark: canvasDark };
+  return { backgrounds: backgrounds, canvasDark: canvasDark, opacity: opacity };
 }`;
 
 /**
@@ -263,6 +292,7 @@ export const INSPECT_PAGE_JS = `function (depth, props) {
     content: content,
     textual: formControl || (content !== '' && !tree.container(el)),
     formControl: formControl,
+    replaced: /^(img|svg|video|canvas|iframe|embed|object|input|textarea|select|button|meter|progress)$/.test(el.localName),
     svg: el.namespaceURI === 'http://www.w3.org/2000/svg',
     ownText: Array.from(el.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== ''),
     typed: { width: typed('width'), height: typed('height') },

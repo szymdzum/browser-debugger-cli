@@ -144,6 +144,28 @@ void describe('dom inspect', () => {
     assert.doesNotMatch(all, /block-size|inline-size|timeline-trigger| · {2}/);
   });
 
+  void it('never shows secret values, in text, the tree or JSON', async () => {
+    const outputs = [
+      await bdg(['dom', 'inspect', '#pw']),
+      await bdg(['dom', 'inspect', '#exp']),
+      await bdg(['dom', 'inspect', '#secrets']),
+      await bdg(['dom', 'inspect', '#pw', '--json']),
+      await bdg(['dom', 'inspect', '#exp', '--json']),
+    ].join('\n');
+    assert.doesNotMatch(outputs, /hunter2/);
+    assert.doesNotMatch(outputs, /"11"|\b11\b(?!\.)/);
+    assert.match(outputs, /••••/);
+  });
+
+  void it('fades contrast by ancestor opacity and lets a block image hug its size', async () => {
+    assert.match(
+      await bdg(['dom', 'inspect', '#faded-text']),
+      /contrast [\d.]+ (fail|AA large) .*\(faded: opacity 0\.4\)/
+    );
+    const pic = await inspectJson('#pic');
+    assert.deepEqual((pic['layout'] as { sizing: unknown }).sizing, { w: 'hug', h: 'hug' });
+  });
+
   void it('inspects the first rendered match and says so, and exits 83 when nothing matches', async () => {
     await bdg([
       'dom',

@@ -255,6 +255,7 @@ function textLine(text: InspectText): string | undefined {
       `contrast ${contrast.ratio} ${contrast.level}`,
       contrast.inherited && `on ${contrast.background}`,
       contrast.overImage && '(over image)',
+      contrast.opacity !== undefined && `(faded: opacity ${contrast.opacity})`,
     ]
       .filter(Boolean)
       .join(' ');
