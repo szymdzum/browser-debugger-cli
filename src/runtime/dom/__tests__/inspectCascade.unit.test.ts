@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 
 import type { Protocol } from 'devtools-protocol';
 
-import { physicalName, resolveCascade } from '@/runtime/dom/inspectCascade.js';
+import { physicalName, resolveCascade, ruleField } from '@/runtime/dom/inspectCascade.js';
 
 const RANGE = { startLine: 0, startColumn: 0, endLine: 0, endColumn: 1 };
 
@@ -256,6 +256,49 @@ void describe('cascade', () => {
     const result = resolveCascade(matched([match]), ['color']).get('color');
     assert.deepEqual(result?.winner?.source.specificity, [0, 2, 0]);
     assert.equal(result?.winner?.source.condition, 'not (min-width: 64rem)');
+  });
+
+  void it('keeps the rule as written, cutting a long one to the declaration', () => {
+    const short = rule('.tag', [prop('color', 'red')]);
+    short.rule.style.cssText = 'color: red;';
+    const shortWinner = resolveCascade(matched([short]), ['color']).get('color')?.winner;
+    assert.deepEqual(shortWinner && ruleField(shortWinner), { rule: '.tag { color: red; }' });
+
+    const long = rule('.btn', [prop('background-color', 'var(--bg)')]);
+    long.rule.style.cssText = `${'--x:1;'.repeat(80)}background-color:var(--bg);display:block`;
+    const longWinner = resolveCascade(matched([long]), ['background-color']).get(
+      'background-color'
+    )?.winner;
+    assert.deepEqual(longWinner && ruleField(longWinner), {
+      rule: '.btn { … background-color:var(--bg); … }',
+    });
+  });
+
+  void it('cuts a long rule to the last declaration, keeping semicolons inside values', () => {
+    const excerpt = (cssText: string, name: string): string | undefined => {
+      const match = rule('.x', [prop(name, 'v')]);
+      match.rule.style.cssText = `${'--pad:1;'.repeat(60)}${cssText}`;
+      const winner = resolveCascade(matched([match]), [name]).get(name)?.winner;
+      return winner ? ruleField(winner).rule : undefined;
+    };
+    assert.equal(
+      excerpt('display:-webkit-box;display:flex', 'display'),
+      '.x { … display:flex; … }'
+    );
+    assert.equal(
+      excerpt('background-image:url(data:image/png;base64,AAAA);color:red', 'background-image'),
+      '.x { … background-image:url(data:image/png;base64,AAAA); … }'
+    );
+    assert.equal(excerpt('--Brand:red;--brand:blue', '--Brand'), '.x { … --Brand:red; … }');
+  });
+
+  void it('leaves out the rules of the browser and of extensions', () => {
+    for (const origin of ['user-agent', 'injected'] as const) {
+      const match = rule('p', [prop('color', 'red')], { origin });
+      match.rule.style.cssText = 'color: red;';
+      const winner = resolveCascade(matched([match]), ['color']).get('color')?.winner;
+      assert.deepEqual(winner && ruleField(winner), {});
+    }
   });
 
   void it('names nested layers outermost first, as CDP lists them', () => {

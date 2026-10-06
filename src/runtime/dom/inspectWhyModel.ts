@@ -8,7 +8,12 @@
 
 import type { InspectVariable, InspectWhy, InspectWhyEntry } from '@/ipc/protocol/inspectTypes.js';
 import { normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
-import { resolveCascade, type Declaration, type Resolution } from '@/runtime/dom/inspectCascade.js';
+import {
+  resolveCascade,
+  ruleField,
+  type Declaration,
+  type Resolution,
+} from '@/runtime/dom/inspectCascade.js';
 import type { CascadeInput, PropertyGroup } from '@/runtime/dom/inspectCascadeModel.js';
 import {
   substituteVariables,
@@ -97,6 +102,7 @@ function whyEntry(
     ...(declaration.via && { via: declaration.via }),
     ...(unset.length > 0 ? { unset } : resolved !== value && { resolved }),
     source: input.label(declaration),
+    ...ruleField(declaration),
     ...(specificity && { specificity }),
     status,
     ...(declaration.important && { important: true as const }),

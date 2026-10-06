@@ -224,6 +224,7 @@ void describe('dom inspect', () => {
     const why = await bdg(['dom', 'inspect', '#tag', '--why', 'color', '--tree', '0']);
     assert.match(why, /\nwhy +color = #06c\n +✓ #06c +\.tag\.primary/);
     assert.match(why, /\n +✗ #c00 +\.tag \(<style> in inspect:\d+\)/);
+    assert.match(why, /\n +in \.tag\.primary \{ color: #06c; \}\n/, 'the winning rule as written');
 
     const json = await inspectJson('#tag', '--rules');
     const colorRule = (json['rules'] as Array<{ property: string; overrides?: string[] }>).find(

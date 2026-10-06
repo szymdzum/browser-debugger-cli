@@ -259,6 +259,8 @@ export interface InspectRule {
   computed?: string;
   /** e.g. `.btn-primary (bootstrap.min.css:5:52628)`, `style attribute` */
   source: string;
+  /** The rule as written (selector and declarations); a rule over 300 characters is cut to its selector and this declaration */
+  rule?: string;
   /** Selectors of the declarations it beats */
   overrides?: string[];
   /** Set on an ancestor this many levels up (inherited) */
@@ -282,6 +284,8 @@ export interface InspectWhyEntry {
   source: string;
   /** Specificity of the rule's selector (ids, classes, types) */
   specificity?: [number, number, number];
+  /** The rule as written (selector and declarations); a rule over 300 characters is cut to its selector and this declaration */
+  rule?: string;
   /** `applied` (wins), `overridden`, or `inherited` (from an ancestor: the winner, or one it beat there) */
   status: 'applied' | 'overridden' | 'inherited';
   important?: true;

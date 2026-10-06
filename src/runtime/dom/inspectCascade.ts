@@ -16,6 +16,8 @@
 
 import type { Protocol } from 'devtools-protocol';
 
+import { truncateByLength } from '@/utils/strings.js';
+
 /** Where a declaration comes from */
 export interface DeclarationSource {
   /** `rule` (a stylesheet rule), `inline` (style attribute), `attribute` (presentational HTML attribute) */
@@ -34,6 +36,8 @@ export interface DeclarationSource {
   condition?: string;
   /** Specificity of the matching selector (ids, classes, types) */
   specificity?: [number, number, number];
+  /** The rule as written, whitespace collapsed (no selector: the style attribute) */
+  rule?: { selector?: string; declarations: string };
 }
 
 /** One declaration of a longhand */
@@ -293,6 +297,7 @@ function ruleSource(match: Protocol.CSS.RuleMatch): DeclarationSource {
     .map((c) => c.text.replace(/^not all and /, 'not '))
     .join(' and ');
   const specificity = matching?.specificity;
+  const declarations = rule.style.cssText;
   return {
     kind: 'rule',
     selector,
@@ -301,6 +306,9 @@ function ruleSource(match: Protocol.CSS.RuleMatch): DeclarationSource {
     ...(rule.styleSheetId && { styleSheetId: rule.styleSheetId }),
     ...(layer && { layer }),
     ...(condition && { condition }),
+    ...(declarations && {
+      rule: { selector: collapse(rule.selectorList.text), declarations: collapse(declarations) },
+    }),
   };
 }
 
@@ -320,8 +328,23 @@ function orderedDeclarations(entry: {
     ...(entry.matchedCSSRules ?? []).flatMap((match) =>
       declarationsOf(match.rule.style, ruleSource(match))
     ),
-    ...declarationsOf(entry.inlineStyle, { kind: 'inline' }),
+    ...declarationsOf(entry.inlineStyle, {
+      kind: 'inline',
+      ...(entry.inlineStyle?.cssText && {
+        rule: { declarations: collapse(entry.inlineStyle.cssText) },
+      }),
+    }),
   ];
+}
+
+/**
+ * Text with runs of whitespace collapsed to one space.
+ *
+ * @param text - CSS text
+ * @returns Collapsed, trimmed
+ */
+function collapse(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -448,4 +471,86 @@ function inheritedWinner(property: string, ancestors: Declaration[][]): Resoluti
     if (winner) return { winner, overridden };
   }
   return { overridden: [] };
+}
+
+/** Longest rule given whole; a longer one (minified CSS) is cut to the declaration */
+const RULE_TEXT_LENGTH = 300;
+
+/**
+ * The rule a declaration is in, as written: whole when short, else its
+ * selector and that declaration (`.btn { … background-color:var(--bs-btn-bg); … }`).
+ *
+ * @param declaration - Declaration
+ * @returns `{ rule }`, or nothing for a browser, extension or attribute style
+ */
+export function ruleField(declaration: Declaration): { rule?: string } {
+  const { rule } = declaration.source;
+  if (!rule || !isAuthor(declaration)) return {};
+  const whole = ruleText(rule.selector, rule.declarations);
+  if (whole.length <= RULE_TEXT_LENGTH) return { rule: whole };
+  const own = lastDeclarationOf(rule.declarations, declaration.via ?? declaration.property);
+  if (!own) return { rule: truncateByLength(whole, RULE_TEXT_LENGTH) };
+  const selector = rule.selector === undefined ? undefined : truncateByLength(rule.selector, 80);
+  return { rule: ruleText(selector, `… ${truncateByLength(own, RULE_TEXT_LENGTH - 100)}; …`) };
+}
+
+/**
+ * A rule's text: `selector { declarations }`, or `style="declarations"`.
+ *
+ * @param selector - Selector (absent: the style attribute)
+ * @param declarations - Declarations
+ * @returns Text
+ */
+function ruleText(selector: string | undefined, declarations: string): string {
+  return selector === undefined
+    ? `style="${declarations.replaceAll('"', '\\"')}"`
+    : `${selector} { ${declarations} }`;
+}
+
+/**
+ * The last declaration of a property in a declaration block (the one that
+ * counts when it is repeated), split at semicolons outside strings and
+ * parentheses (`url(data:image/png;base64,…)` stays whole).
+ *
+ * @param declarations - Declaration block
+ * @param property - Property as written (custom properties are case-sensitive)
+ * @returns The declaration, without its semicolon
+ */
+function lastDeclarationOf(declarations: string, property: string): string | undefined {
+  const name = (part: string): string => {
+    const raw = part.slice(0, part.indexOf(':')).trim();
+    return raw.startsWith('--') ? raw : raw.toLowerCase();
+  };
+  const wanted = property.startsWith('--') ? property : property.toLowerCase();
+  return splitDeclarations(declarations)
+    .filter((part) => part.includes(':') && name(part) === wanted)
+    .at(-1);
+}
+
+/**
+ * Split a declaration block at its top-level semicolons.
+ *
+ * @param block - Declarations
+ * @returns Declarations, trimmed, empty ones dropped
+ */
+function splitDeclarations(block: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | undefined;
+  let start = 0;
+  for (let i = 0; i < block.length; i++) {
+    const char = block[i];
+    if (quote) {
+      if (char === '\\') i++;
+      else if (char === quote) quote = undefined;
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === '(') depth++;
+    else if (char === ')') depth = Math.max(0, depth - 1);
+    else if (char === ';' && depth === 0) {
+      parts.push(block.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(block.slice(start));
+  return parts.map((part) => part.trim()).filter(Boolean);
 }
