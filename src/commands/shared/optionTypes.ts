@@ -157,7 +157,10 @@ export type DetailsCommandOptions = BaseOptions & {
 };
 
 /** Options for DOM query command */
-export type DomQueryCommandOptions = BaseOptions;
+export type DomQueryCommandOptions = BaseOptions & {
+  /** Matches listed (0 = all); default 50, or 1000 with --json */
+  limit?: number;
+};
 
 /** Options for DOM get command */
 export type DomGetCommandOptions = BaseOptions &

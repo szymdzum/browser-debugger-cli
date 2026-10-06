@@ -249,6 +249,19 @@ export function moreMatchesNote(hidden: number, jsonLimit?: number): string {
 }
 
 /**
+ * Note under `dom query` matches cut by `--limit`.
+ *
+ * @param omitted - Matches not listed
+ * @param indexed - Matches usable by index, when not all of them
+ * @returns e.g. `... and 49953 more (--limit 0 lists all; indices 0-999 work with other commands)`
+ */
+export function queryMoreMatchesNote(omitted: number, indexed?: number): string {
+  const indices =
+    indexed === undefined ? '' : `; indices 0-${indexed - 1} work with other commands`;
+  return `... and ${omitted} more (--limit 0 lists all${indices})`;
+}
+
+/**
  * Note under a list of a11y query matches cut by `--limit`.
  *
  * @param omitted - Matches not listed

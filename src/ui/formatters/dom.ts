@@ -4,17 +4,14 @@ import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   frameLabel,
-  moreMatchesNote,
   framesStillLoadingNote,
   noFramesMessage,
+  queryMoreMatchesNote,
   queryNextSteps,
   screenshotGrownNote,
   screenshotScaledNote,
   viewportPositionHint,
 } from '@/ui/messages/commands.js';
-
-/** Matches listed in human output (JSON has all of them) */
-const QUERY_DISPLAY_LIMIT = 50;
 
 /**
  * Format DOM query results for human-readable output.
@@ -22,7 +19,7 @@ const QUERY_DISPLAY_LIMIT = 50;
  * Displays found nodes with their index, tag, identifying attributes
  * ({@link queryTagAttributes}), classes, and preview text
  * (plus where they are when outside the viewport or hidden, e.g.
- * `(below fold)`), up to {@link QUERY_DISPLAY_LIMIT} of them (no match is an error, exit 83).
+ * `(below fold)`), as many as `--limit` listed, with a note for the rest (no match is an error, exit 83).
  * One line of next commands follows; they take the match's index, so they
  * work for matches in shadow roots and iframes too.
  *
@@ -49,7 +46,7 @@ export function formatDomQuery(data: DomQueryResult): string {
   const { count, nodes, selector } = data;
   const fmt = new OutputFormatter();
 
-  const nodeLines = nodes.slice(0, QUERY_DISPLAY_LIMIT).map((node) => {
+  const nodeLines = nodes.map((node) => {
     const attributes = queryTagAttributes(node)
       .map((item) => ` ${item}`)
       .join('');
@@ -65,7 +62,7 @@ export function formatDomQuery(data: DomQueryResult): string {
   return fmt
     .text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`)
     .list(nodeLines)
-    .list(count > QUERY_DISPLAY_LIMIT ? [moreMatchesNote(count - QUERY_DISPLAY_LIMIT)] : [])
+    .list(data.omitted ? [queryMoreMatchesNote(data.omitted, data.indexed)] : [])
     .tip(queryNextSteps(exampleIndex))
     .build();
 }

@@ -1159,12 +1159,20 @@ export function staleNodeError(index?: number, source?: IndexSource): ErrorWithS
  *
  * @param source - The index and the list it refers to
  * @param count - Number of cached results
+ * @param total - Matches the query found, when more than it cached (`dom query` caches the first 1000)
  * @returns Message and suggestion
  */
 export function cachedIndexOutOfRangeError(
   source: IndexSource,
-  count: number
+  count: number,
+  total?: number
 ): ErrorWithSuggestion {
+  if (total !== undefined && total > count && source.index < total) {
+    return {
+      message: `Index ${source.index} is past the ${count} matches of ${cachedListText(source)} that can be used by index (${total} in all)`,
+      suggestion: `Re-run it with --limit ${source.index + 1} (or --limit 0) to index that many`,
+    };
+  }
   const results = count === 1 ? '1 result' : `${count} results`;
   return {
     message: `Index ${source.index} is out of range for ${cachedListText(source)} (${results})`,
