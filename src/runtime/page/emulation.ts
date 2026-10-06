@@ -9,25 +9,36 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { VIEWPORT_SIZE_JS } from '@/runtime/dom/elementGeometry.js';
+import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
 
+/** Pixel ratio of an emulated phone (a common one) */
+const MOBILE_PIXEL_RATIO = 3;
+
 /**
  * `Emulation.setDeviceMetricsOverride` parameters for a session viewport: a
- * desktop viewport of that size at the display's own pixel ratio.
+ * desktop viewport of that size at the display's own pixel ratio, or a
+ * phone's (mobile layout: meta viewport, overlay scrollbars; pixel ratio 3).
  *
- * @param viewport - Viewport size in CSS px
- * @param deviceScaleFactor - Pixel ratio (0 keeps the display's)
+ * @param viewport - Viewport size in CSS px, `mobile` for a phone
+ * @param deviceScaleFactor - Pixel ratio (0 keeps the display's, or a phone's)
  * @returns CDP parameters
  */
 export function viewportOverride(
   viewport: ViewportSize,
   deviceScaleFactor = 0
-): { width: number; height: number; deviceScaleFactor: number; mobile: false } {
-  return { width: viewport.width, height: viewport.height, deviceScaleFactor, mobile: false };
+): { width: number; height: number; deviceScaleFactor: number; mobile: boolean } {
+  const mobile = viewport.mobile === true;
+  return {
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: deviceScaleFactor || (mobile ? MOBILE_PIXEL_RATIO : 0),
+    mobile,
+  };
 }
 
 /**
@@ -42,12 +53,62 @@ export async function applySessionEmulation(
 ): Promise<void> {
   if (emulation.viewport) {
     await cdp.send('Emulation.setDeviceMetricsOverride', viewportOverride(emulation.viewport));
+    if (emulation.viewport.mobile) await emulatePhone(cdp, true);
   }
   if (emulation.colorScheme) {
     await cdp.send('Emulation.setEmulatedMedia', {
       features: [{ name: 'prefers-color-scheme', value: emulation.colorScheme }],
     });
   }
+}
+
+/**
+ * Turn the rest of a phone's emulation on or off: touch input (and
+ * `pointer: coarse`) and a mobile user agent derived from the browser's own
+ * (an Android one), or the browser's own back (with headless Chrome's
+ * hidden, {@link hideHeadlessUserAgent}).
+ *
+ * @param cdp - Session connection
+ * @param on - Emulate a phone
+ */
+async function emulatePhone(cdp: CDPConnection, on: boolean): Promise<void> {
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: on, maxTouchPoints: on ? 5 : 1 });
+  const { userAgent } = (await cdp.send('Browser.getVersion', {})) as { userAgent: string };
+  if (!on) {
+    await cdp.send('Emulation.setUserAgentOverride', { userAgent });
+    await hideHeadlessUserAgent(cdp, log);
+    return;
+  }
+  const major = /Chrome\/(\d+)/.exec(userAgent)?.[1] ?? '';
+  await cdp.send('Emulation.setUserAgentOverride', {
+    userAgent: mobileUserAgent(userAgent.replace('HeadlessChrome/', 'Chrome/')),
+    platform: 'Android',
+    userAgentMetadata: {
+      brands: [
+        { brand: 'Google Chrome', version: major },
+        { brand: 'Chromium', version: major },
+      ],
+      platform: 'Android',
+      platformVersion: '10.0.0',
+      architecture: '',
+      model: 'K',
+      mobile: true,
+    },
+  });
+}
+
+/**
+ * A mobile user agent from a desktop one: an Android platform, `Mobile`
+ * before `Safari`, and `Chrome` for `HeadlessChrome`.
+ *
+ * @param desktop - The browser's user agent
+ * @returns Mobile user agent
+ */
+export function mobileUserAgent(desktop: string): string {
+  return desktop
+    .replace(/\([^)]*\)/, '(Linux; Android 10; K)')
+    .replace('HeadlessChrome/', 'Chrome/')
+    .replace(/ (Mobile )?Safari\//, ' Mobile Safari/');
 }
 
 /** Page emulation of a session: what `--viewport` and `--color-scheme` set */
@@ -82,11 +143,15 @@ export async function emulatePage(
   };
   const { viewport: _viewport, colorScheme, ...rest } = state;
   if (change.reset || change.viewport) {
+    const wasPhone = current.viewport?.mobile === true;
+    const isPhone = change.viewport?.mobile === true;
     await step(
-      () =>
-        change.viewport
+      async () => {
+        await (change.viewport
           ? cdp.send('Emulation.setDeviceMetricsOverride', viewportOverride(change.viewport))
-          : cdp.send('Emulation.clearDeviceMetricsOverride', {}),
+          : cdp.send('Emulation.clearDeviceMetricsOverride', {}));
+        if (wasPhone !== isPhone) await emulatePhone(cdp, isPhone);
+      },
       {
         ...rest,
         ...(colorScheme && { colorScheme }),

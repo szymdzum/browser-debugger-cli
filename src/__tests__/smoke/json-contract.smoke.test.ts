@@ -246,8 +246,28 @@ void describe('JSON contract', () => {
     });
     const width = await expectEnvelope(['dom', 'eval', 'innerWidth', '--json'], 0);
     assert.equal(width.data?.['result'], 900);
+    const phone = await expectEnvelope(['page', 'emulate', '--mobile', '--json'], 0);
+    assert.deepEqual(phone.data?.['emulated'], {
+      viewport: { width: 390, height: 844, mobile: true },
+      colorScheme: 'dark',
+    });
+    const device = await expectEnvelope(
+      [
+        'dom',
+        'eval',
+        '[innerWidth, navigator.maxTouchPoints, /Mobile/.test(navigator.userAgent)]',
+        '--json',
+      ],
+      0
+    );
+    assert.deepEqual(device.data?.['result'], [390, 5, true]);
     const reset = await expectEnvelope(['page', 'emulate', '--reset', '--json'], 0);
     assert.deepEqual(reset.data?.['emulated'], {});
+    const desktop = await expectEnvelope(
+      ['dom', 'eval', '[navigator.maxTouchPoints, /Mobile/.test(navigator.userAgent)]', '--json'],
+      0
+    );
+    assert.deepEqual(desktop.data?.['result'], [0, false]);
     await expectEnvelope(['page', 'emulate', '--json'], 81);
     const interval = await expectEnvelope(['peek', '--interval', '500', '--json'], 81);
     assert.match(String(interval.suggestion), /--follow/);

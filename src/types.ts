@@ -395,6 +395,8 @@ export type ColorScheme = 'light' | 'dark';
 export interface ViewportSize {
   width: number;
   height: number;
+  /** A phone: mobile viewport (meta viewport, overlay scrollbars), touch and a mobile user agent */
+  mobile?: true;
 }
 
 /**

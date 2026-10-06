@@ -1252,7 +1252,7 @@ export function pageEmulateNothingError(): { message: string; suggestion: string
   return {
     message: 'Nothing to emulate',
     suggestion:
-      'Give --viewport <WxH>, --color-scheme light|dark, or --reset, e.g. bdg page emulate --viewport 900x700',
+      'Give --viewport <WxH>, --mobile, --color-scheme light|dark, or --reset, e.g. bdg page emulate --viewport 900x700',
   };
 }
 
@@ -1263,14 +1263,20 @@ export function pageEmulateNothingError(): { message: string; suggestion: string
  * @returns Label/value pairs
  */
 export function pageEmulationLines(result: {
-  emulated: { viewport?: { width: number; height: number }; colorScheme?: string };
+  emulated: {
+    viewport?: { width: number; height: number; mobile?: boolean };
+    colorScheme?: string;
+  };
   viewport?: { width: number; height: number };
   colorScheme?: string;
 }): Array<[string, string]> {
   const size = (v: { width: number; height: number }): string => `${v.width}x${v.height}`;
   const { emulated } = result;
+  const phone = emulated.viewport?.mobile
+    ? ' (phone: mobile layout, touch, mobile user agent)'
+    : '';
   return [
-    ['Viewport', emulated.viewport ? size(emulated.viewport) : 'the browser window'],
+    ['Viewport', emulated.viewport ? `${size(emulated.viewport)}${phone}` : 'the browser window'],
     ...(result.viewport
       ? [['Layout', `${size(result.viewport)} (without scrollbars)`] as [string, string]]
       : []),

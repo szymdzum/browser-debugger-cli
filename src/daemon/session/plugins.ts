@@ -10,6 +10,7 @@ import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/ne
 import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /** Delay before reading the title after a same-document navigation */
@@ -92,56 +93,6 @@ async function emulatePageFocus(cdp: CDPConnection, logger: Logger): Promise<voi
     .catch((error: unknown) => logger.debug(`No focus emulation: ${getErrorMessage(error)}`));
 }
 
-/** Reads the client hints Chrome reports, renaming the HeadlessChrome brand */
-const USER_AGENT_METADATA_SCRIPT = `(async () => {
-  const data = navigator.userAgentData;
-  if (!data) return null;
-  const values = await data.getHighEntropyValues(
-    ['architecture', 'bitness', 'model', 'platformVersion', 'fullVersionList', 'wow64']
-  );
-  const rename = (list) => (list || []).map((entry) => ({
-    brand: entry.brand.replace('HeadlessChrome', 'Google Chrome'),
-    version: entry.version,
-  }));
-  return {
-    brands: rename(values.brands),
-    fullVersionList: rename(values.fullVersionList),
-    platform: values.platform,
-    platformVersion: values.platformVersion,
-    architecture: values.architecture,
-    model: values.model,
-    mobile: values.mobile,
-    bitness: values.bitness,
-    wow64: values.wow64,
-  };
-})()`;
-
-/**
- * Send the user agent and client hints of regular Chrome from headless
- * Chrome: sites serve "HeadlessChrome" a different page (or a bot
- * challenge), so the page would not be the one a user sees.
- *
- * @param cdp - CDP connection
- * @param logger - Logger for failures (the session works without it)
- */
-async function hideHeadlessUserAgent(cdp: CDPConnection, logger: Logger): Promise<void> {
-  try {
-    const { userAgent } = (await cdp.send('Browser.getVersion')) as { userAgent: string };
-    if (!userAgent.includes('HeadlessChrome')) return;
-    const metadata = (await cdp.send('Runtime.evaluate', {
-      expression: USER_AGENT_METADATA_SCRIPT,
-      awaitPromise: true,
-      returnByValue: true,
-    })) as { result?: { value?: unknown } };
-    await cdp.send('Emulation.setUserAgentOverride', {
-      userAgent: userAgent.replace('HeadlessChrome', 'Chrome'),
-      ...(metadata.result?.value ? { userAgentMetadata: metadata.result.value } : {}),
-    });
-  } catch (error) {
-    logger.debug(`User agent left as is: ${getErrorMessage(error)}`);
-  }
-}
-
 export interface TelemetryPlugin {
   name: string;
   runAlways?: boolean;
@@ -168,9 +119,9 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
     {
       name: 'page-identity',
       runAlways: true,
-      async start({ cdp, logger }) {
+      async start({ cdp, logger, config }) {
         await emulatePageFocus(cdp, logger);
-        await hideHeadlessUserAgent(cdp, logger);
+        if (!config.viewport?.mobile) await hideHeadlessUserAgent(cdp, logger);
         return () => undefined;
       },
     },
