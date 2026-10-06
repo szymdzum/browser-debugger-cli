@@ -112,8 +112,10 @@ export interface InspectText {
    */
   holder?: string;
   family?: string;
-  /** Font Chrome rendered the text with, when it is not the first family */
+  /** Font Chrome rendered the text with, when it is a fallback for the first family */
   rendered?: string;
+  /** Font a generic first family (`sans-serif`, `system-ui`) resolved to */
+  resolved?: string;
   /** The rendered font is a web font */
   webfont?: boolean;
   weight?: number;

@@ -80,6 +80,11 @@ export interface RawInspect {
   rendered: boolean;
   /** Visible text is drawn in it (or it is a text field or select) */
   hasText: boolean;
+  /**
+   * The first family of the text's `font-family` is a web font (`@font-face`)
+   * the page loaded: whatever name the font file gives, it is not a fallback
+   */
+  familyLoaded?: boolean;
   /** Replaced element (img, svg and its shapes, video, canvas, iframe, embed, object, form controls): sized by its content */
   replaced?: boolean;
   /** An SVG element (SVG properties are not noise for it) */
@@ -195,6 +200,20 @@ const TEXT_HOLDER_JS = `(el, tree) => {
   let best = null;
   for (const [holder, length] of counts) if (!best || length > counts.get(best)) best = holder;
   return best && { style: best, font: parents.get(best) };
+}`;
+
+/**
+ * Page-side: whether the first family of an element's `font-family` has a
+ * loaded `@font-face` (or `FontFace`) in its document.
+ */
+const FAMILY_LOADED_JS = `(n, tree) => {
+  const unquote = (name) => name.trim().replace(/^["']|["']$/g, '').toLowerCase();
+  const first = unquote(tree.style(n).fontFamily.split(',')[0] || '');
+  if (!first || !n.ownerDocument.fonts) return false;
+  for (const face of n.ownerDocument.fonts) {
+    if (face.status === 'loaded' && unquote(face.family) === first) return true;
+  }
+  return false;
 }`;
 
 /**
@@ -386,6 +405,7 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
     animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running').map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
   };
   if (textFrom !== el) result.textHolder = tree.label(textFrom);
+  if ((${FAMILY_LOADED_JS})(textFrom, tree)) result.familyLoaded = true;
   if (/^(input|textarea)$/.test(el.localName) && el.placeholder && !el.value) {
     result.placeholder = el.placeholder.replace(/\\s+/g, ' ').trim();
     const placeholderStyle = tree.style(el, '::placeholder');

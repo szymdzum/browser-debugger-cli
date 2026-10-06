@@ -219,6 +219,16 @@ void describe('text paint', () => {
     assert.equal(textContrast(style, { ...onWhite, opacity: 1 })?.opacity, undefined);
   });
 
+  void it('never calls a loaded web font a fallback, and names what a generic family resolved to', () => {
+    const klim = [{ familyName: 'Copyright Klim Type Foundry', isCustomFont: true, glyphCount: 9 }];
+    assert.deepEqual(renderedFont('sohne-var', klim, true), { webfont: true });
+    const local = [{ familyName: 'Menlo', isCustomFont: false, glyphCount: 9 }];
+    assert.deepEqual(renderedFont('Brand Sans', local, true), {});
+    const system = [{ familyName: 'Helvetica', isCustomFont: false, glyphCount: 9 }];
+    assert.deepEqual(renderedFont('sans-serif', system), { resolved: 'Helvetica' });
+    assert.deepEqual(renderedFont('Brand Sans', system), { rendered: 'Helvetica' });
+  });
+
   void it('names the rendered font only when it is not the first family', () => {
     assert.deepEqual(
       renderedFont('Inter', [{ familyName: 'Inter', isCustomFont: true, glyphCount: 5 }]),

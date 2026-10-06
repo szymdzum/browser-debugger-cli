@@ -58,29 +58,55 @@ const CANVAS: Record<'light' | 'dark', Rgba> = {
   dark: { r: 0x12 / 255, g: 0x12 / 255, b: 0x12 / 255, a: 1 },
 };
 
+/** CSS generic font families: the browser picks a font for them */
+const GENERIC_FAMILIES = new Set([
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'math',
+  'emoji',
+  'fangsong',
+  '-apple-system',
+  'blinkmacsystemfont',
+]);
+
 /**
- * The font the text was rendered with, when it is not a face of the first
- * family (a fallback: `DM Sans 9pt` is a face of `DM Sans`, `Liberation Sans`
- * is not one of `Arial`), and whether it is a web font. Names
- * that are not readable (sites that scramble a web font's internal name)
- * are left out.
+ * The font the text was rendered with and whether it is a web font. For a
+ * generic first family, the font it resolved to (`resolved`). Otherwise
+ * `rendered` only when it is a fallback: not a face of the first family
+ * (`DM Sans 9pt` is a face of `DM Sans`, `Liberation Sans` is not one of
+ * `Arial`), and the first family is not a web font the page loaded (whose
+ * file may give any internal name: `Copyright Klim Type Foundry`, or the
+ * local font a `src: local()` points at). Names that are not readable
+ * (sites that scramble a web font's internal name) are left out.
  *
  * @param family - First family of `font-family`
  * @param fonts - Platform fonts of the text
- * @returns `rendered` and `webfont` fields
+ * @param familyLoaded - The first family is a loaded web font
+ * @returns `rendered`, `resolved` and `webfont` fields
  */
 export function renderedFont(
   family: string,
-  fonts: readonly PlatformFont[]
-): Pick<InspectText, 'rendered' | 'webfont'> {
+  fonts: readonly PlatformFont[],
+  familyLoaded = false
+): Pick<InspectText, 'rendered' | 'resolved' | 'webfont'> {
   const primary = [...fonts].sort((a, b) => b.glyphCount - a.glyphCount)[0];
   if (!primary) return {};
+  const webfont = primary.isCustomFont ? { webfont: true as const } : {};
   const readable = /^[\p{L}\p{N}.][\p{L}\p{N} ._'-]+$/u.test(primary.familyName);
-  const differs = readable && !primary.familyName.toLowerCase().startsWith(family.toLowerCase());
-  return {
-    ...(differs && { rendered: primary.familyName }),
-    ...(primary.isCustomFont && { webfont: true }),
-  };
+  if (!readable || familyLoaded) return webfont;
+  if (GENERIC_FAMILIES.has(family.toLowerCase())) {
+    return { resolved: primary.familyName, ...webfont };
+  }
+  const differs = !primary.familyName.toLowerCase().startsWith(family.toLowerCase());
+  return { ...(differs && { rendered: primary.familyName }), ...webfont };
 }
 
 /**
@@ -268,7 +294,14 @@ export function buildText(
   styles: TextStyles,
   raw: Pick<
     RawInspect,
-    'textual' | 'textHolder' | 'rendered' | 'hasText' | 'backgrounds' | 'canvasDark' | 'opacity'
+    | 'textual'
+    | 'textHolder'
+    | 'rendered'
+    | 'hasText'
+    | 'familyLoaded'
+    | 'backgrounds'
+    | 'canvasDark'
+    | 'opacity'
   >,
   fonts: readonly PlatformFont[]
 ): InspectText | undefined {
@@ -282,7 +315,7 @@ export function buildText(
     return {
       ...(textStyle !== style && raw.textHolder && { holder: raw.textHolder }),
       ...fields,
-      ...renderedFont(fields.family ?? '', fonts),
+      ...renderedFont(fields.family ?? '', fonts, raw.familyLoaded),
       ...(contrast && { contrast }),
       ...textExtras(textStyle),
       align: alignOf(textStyle),
@@ -298,7 +331,7 @@ export function buildText(
   if (Object.keys(differing).length === 0) return undefined;
   const sameFamily = !holderStyle || holderStyle['font-family'] === style['font-family'];
   return differing.family && sameFamily
-    ? { ...differing, ...renderedFont(differing.family, fonts) }
+    ? { ...differing, ...renderedFont(differing.family, fonts, raw.familyLoaded) }
     : differing;
 }
 

@@ -105,7 +105,7 @@ void describe('dom inspect', () => {
     );
   });
 
-  void it('shows a placeholder, a ::before and a fallback font', async () => {
+  void it('shows a placeholder, a ::before, a fallback font and none for a loaded web font', async () => {
     const field = await bdg(['dom', 'inspect', '#email']);
     assert.match(field, /placeholder "E-mail"/);
     assert.match(field, /\nborder +bottom 1 solid #ededed\n/);
@@ -118,9 +118,16 @@ void describe('dom inspect', () => {
       await bdg(['dom', 'inspect', '#badge']),
       /\npseudo +::before content "★" block absolute [\d.]+x[\d.]+ color #f5a623/
     );
+    const webfont = await bdg(['dom', 'inspect', '#webfont']);
+    assert.match(webfont, /\ntext +Fixture Sans /);
+    assert.doesNotMatch(webfont, /rendered "/);
     assert.match(
-      await bdg(['dom', 'inspect', '#webfont']),
-      /\ntext +Fixture Sans \(rendered "(?!Fixture Sans")[^"]+"\) /
+      await bdg(['dom', 'inspect', '#fallback']),
+      /\ntext +No Such Font \(rendered "Georgia"\) /
+    );
+    assert.match(
+      await bdg(['dom', 'inspect', '#generic']),
+      /\ntext +monospace \(resolves to "[^"]+"\) /
     );
   });
 

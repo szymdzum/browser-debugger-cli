@@ -48,6 +48,8 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <p id="ghost">Hidden text</p>
 <div id="under"><button id="behind">Behind</button><div id="cover"></div></div>
 <p id="webfont">Web font text</p>
+<p id="fallback" style="font-family: 'No Such Font', Georgia">Fallback text</p>
+<p id="generic" style="font-family: monospace">Generic text</p>
 <div id="host"></div>
 <span id="tag" class="tag primary">Tag</span>
 <table id="sized" width="120"><tr><td>cell</td></tr></table>

@@ -509,7 +509,8 @@ Output notation:
   in-parent       distances to the parent's content edges (l t r b); sib: gaps to the sibling on each side
   scroll WxH      the content (pseudo-elements too) is larger than the box
   16/24           font size / line height; 'webfont loaded' = drawn with a downloaded font;
-                  (rendered "X") = drawn with another font than declared (a fallback)
+                  (rendered "X") = drawn with another font than declared (a fallback);
+                  (resolves to "X") = the font a generic family (sans-serif, system-ui) became
   contrast 4.47   WCAG ratio, rounded down, against the background behind the text
   text in X       the text is drawn by descendant X (the one with most of it): its font, color, contrast
   (+N not rendered)  children with display: none (or not in the layout)
