@@ -218,9 +218,9 @@ function parentLine(layout: InspectLayout): string | undefined {
 }
 
 /**
- * Font, weight and size as one phrase, e.g. `Inter (webfont) 600 italic 16/24`
- * or `Inter (rendered "Helvetica") 400 14/normal` when the text was drawn in
- * another font (a fallback, or the face's own name); for a container only
+ * Font, weight and size as one phrase, e.g. `Inter (webfont) 600 italic 16/24`,
+ * `Inter (rendered "Helvetica") 400 14/normal` when the text was drawn in a
+ * fallback, or `sans-serif (resolves to "Helvetica")`; for a container only
  * the fields it has.
  *
  * @param text - Text group
@@ -229,6 +229,7 @@ function parentLine(layout: InspectLayout): string | undefined {
 function fontParts(text: InspectText): string[] {
   const loaded = [
     text.rendered && `rendered "${text.rendered}"`,
+    text.resolved && `resolves to "${text.resolved}"`,
     text.webfont && 'webfont loaded',
   ].filter(Boolean);
   const family = text.family && [text.family, loaded.length > 0 && `(${loaded.join(', ')})`];

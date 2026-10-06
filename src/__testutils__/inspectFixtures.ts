@@ -32,7 +32,7 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
   #ghost { display: none; }
   #under { position: relative; }
   #cover { position: absolute; left: 0; top: 0; width: 200px; height: 40px; background: rgba(0, 0, 0, 0.5); }
-  @font-face { font-family: "Fixture Sans"; src: local("Arial"), local("Helvetica"); }
+  @font-face { font-family: "Fixture Sans"; src: local("Arial"), local("Helvetica"), local("Liberation Sans"), local("DejaVu Sans"); }
   #webfont { font-family: "Fixture Sans", serif; }
   .tag { color: #c00; padding: 4px 8px; }
   .tag.primary { color: #06c; }
@@ -48,6 +48,8 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <p id="ghost">Hidden text</p>
 <div id="under"><button id="behind">Behind</button><div id="cover"></div></div>
 <p id="webfont">Web font text</p>
+<p id="fallback" style="font-family: 'No Such Font', Georgia">Fallback text</p>
+<p id="generic" style="font-family: monospace">Generic text</p>
 <div id="host"></div>
 <span id="tag" class="tag primary">Tag</span>
 <table id="sized" width="120"><tr><td>cell</td></tr></table>
