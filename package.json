@@ -1,6 +1,6 @@
 {
   "name": "browser-debugger-cli",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "DevTools telemetry in your terminal. For humans and agents. Direct WebSocket to Chrome's debugging port.",
   "type": "module",
   "bin": {
@@ -128,6 +128,7 @@
   "overrides": {
     "eslint-plugin-tsdoc": {
       "@typescript-eslint/utils": "^8.71.0"
-    }
+    },
+    "shell-quote": "^1.12.0"
   }
 }
