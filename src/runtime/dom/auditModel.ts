@@ -69,6 +69,7 @@ export function buildAudit(raw: RawAudit, options: AuditOptions): AuditResult {
         }))
       ).slice(0, options.limit),
     }),
+    ...(raw.canvases && { canvases: raw.canvases }),
   };
 }
 

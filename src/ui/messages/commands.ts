@@ -311,6 +311,30 @@ export const LAYOUT_REASONS = {
   on: ' on ',
 } as const;
 
+/** Why an out-of-view text's contrast in `dom audit` is approximate: none of its ancestors paints a background */
+export const AUDIT_OUT_OF_VIEW_RISK = 'only its ancestors were checked';
+
+/**
+ * `dom audit animations` note for canvas elements, whose script-drawn
+ * animations it cannot see.
+ *
+ * @param count - Visible canvas elements
+ * @returns e.g. `(+ 2 canvas elements: animations drawn by scripts on them are not listed)`
+ */
+export function auditCanvasNote(count: number): string {
+  return `(+ ${count} canvas ${count === 1 ? 'element' : 'elements'}: animations drawn by scripts on ${count === 1 ? 'it are' : 'them are'} not listed)`;
+}
+
+/**
+ * A mask over an element, for `dom layout` and `dom inspect`.
+ *
+ * @param masked - The mask, e.g. `mask-image on div.hero`
+ * @returns e.g. `masked by mask-image on div.hero`
+ */
+export function maskedText(masked: string): string {
+  return `masked by ${masked}`;
+}
+
 /** Start of the off-screen reason of an element a scroll-locked page hides ({@link scrollLockedReason}) */
 const SCROLL_LOCKED_PREFIX = 'page scrolling is locked';
 
@@ -611,6 +635,7 @@ export function inspectVisibilityBadges(visibility: InspectVisibility): string[]
     visibility.hidden && `[hidden: ${visibility.hidden}]`,
     visibility.offscreen && `[offscreen: ${visibility.offscreen}]`,
     visibility.coveredBy && `[${coverText(visibility.coveredBy, visibility.coverTransparent)}]`,
+    visibility.masked && `[${maskedText(visibility.masked)}]`,
   ].filter((badge): badge is string => Boolean(badge));
 }
 
@@ -794,6 +819,20 @@ export function reactHandlersSkippedNote(count: number): string {
 export function dialogConsoleText(dialog: { type: string; message: string }): string {
   const kind = dialog.type === 'beforeunload' ? 'beforeunload' : `${dialog.type}()`;
   return `${kind} dialog accepted${dialog.message ? `: "${dialog.message}"` : ''}`;
+}
+
+/**
+ * How far a pointer action scrolled the page to reach its element.
+ *
+ * @param scrolledBy - Page scroll (CSS px)
+ * @returns e.g. `page down 1240px to reach it`, `page right 300px, up 80px to reach it`
+ */
+export function pointerScrollText(scrolledBy: { x: number; y: number }): string {
+  const parts = [
+    scrolledBy.y !== 0 && `${scrolledBy.y > 0 ? 'down' : 'up'} ${Math.abs(scrolledBy.y)}px`,
+    scrolledBy.x !== 0 && `${scrolledBy.x > 0 ? 'right' : 'left'} ${Math.abs(scrolledBy.x)}px`,
+  ].filter(Boolean);
+  return `page ${parts.join(', ')} to reach it`;
 }
 
 /** Headline of each pointer action, e.g. "Element Double-clicked" */

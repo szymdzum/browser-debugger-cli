@@ -22,7 +22,7 @@ export interface AuditContrastItem {
   size: number;
   weight: number;
   inView: boolean;
-  /** Why the ratio is approximate (blend modes, filters) */
+  /** Why the ratio is approximate (blend modes, filters, an element behind or on top, out of view) */
   approximate?: string[];
 }
 
@@ -90,6 +90,8 @@ export interface AuditResult {
     /** Identical animations this one stands for (2 or more) */
     count?: number;
   }>;
+  /** Visible `<canvas>` elements: scripts may animate them, which `animations` cannot see */
+  canvases?: number;
 }
 
 /** A stylesheet line where `css search` found the text */

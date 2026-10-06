@@ -121,6 +121,13 @@ void describe('layoutLine', () => {
     );
   });
 
+  void it('notes a mask over the element, which may hide part of it', () => {
+    assert.match(
+      layoutLine(layout({ inViewport: 'visible', masked: 'mask-image on div.hero' })),
+      /visible {2}masked by mask-image on div\.hero$/
+    );
+  });
+
   void it('says why page scroll cannot bring an off-screen element into view', () => {
     const { scrollBy: _scrollBy, ...rest } = layout();
     assert.equal(

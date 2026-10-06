@@ -45,6 +45,13 @@ void describe('--all', () => {
     assert.equal(all['transition-property'], undefined);
   });
 
+  void it('lists a transparent text fill (gradient text), not one that repeats color', () => {
+    const gradient = { ...BASE, '-webkit-text-fill-color': 'rgba(0, 0, 0, 0)' };
+    assert.equal(allStyles(gradient, false)['-webkit-text-fill-color'], 'transparent');
+    const plain = { ...BASE, '-webkit-text-fill-color': 'rgb(0, 0, 0)' };
+    assert.equal(allStyles(plain, false)['-webkit-text-fill-color'], undefined);
+  });
+
   void it('lists appearance: none on form controls only, and a cleared tap highlight', () => {
     const style = {
       ...BASE,

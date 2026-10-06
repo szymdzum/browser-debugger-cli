@@ -319,7 +319,7 @@ function fillText(fill: InspectFill): string {
 }
 
 /**
- * The fill line: backgrounds, opacity and blend mode.
+ * The fill line: backgrounds (and that they are clipped to gradient text), opacity and blend mode.
  *
  * @param data - Inspect result
  * @returns Line
@@ -331,6 +331,10 @@ function fillLine(data: InspectOutput): string | undefined {
     paint &&
       `stroke ${paint.stroke}${paint.strokeWidth !== undefined ? ` ${paint.strokeWidth}` : ''}`,
     ...(data.fills ?? []).map(fillText),
+    data.text?.gradientFill &&
+      !data.text.holder &&
+      (data.fills ?? []).length > 0 &&
+      'clipped to the text',
     data.opacity !== undefined && `opacity ${data.opacity}`,
     data.blend && `blend ${data.blend}`,
   ]);

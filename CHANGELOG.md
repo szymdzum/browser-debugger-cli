@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **What `dom inspect`, `dom layout` and `dom audit` cannot see is said** (leftovers of the Stripe retest, #403):
+  - the text line skips text inside an `opacity: 0` descendant (a measuring copy under a mask set the color and contrast);
+  - an element under a `mask-image` (on it or an ancestor) is marked `[masked by mask-image on div.hero]` (`dom layout`: `masked by …`, JSON `masked`) instead of reading as fully visible;
+  - `dom audit contrast` checks what is painted behind or on top of text in view, as `dom inspect` does (`approximate: img behind`), and marks text out of view whose ancestors paint nothing `approximate: only its ancestors were checked` (white text over an image read `1.00 #fff on #fff`);
+  - `dom audit animations` counts visible canvas elements, whose script-drawn animations it cannot list;
+  - `dom click` and `dom hover` say when they scrolled the page to reach the element (`Scrolled: page down 1240px to reach it`, JSON `scrolledBy`);
+  - `dom inspect --all` lists `-webkit-text-fill-color: transparent`, and the fill line of gradient text says `clipped to the text`.
+
 ## [0.12.0] - 2026-10-06
 
 ### Added

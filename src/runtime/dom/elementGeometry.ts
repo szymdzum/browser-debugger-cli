@@ -37,6 +37,11 @@ export interface ElementGeometry {
    * e.g. `opacity: 0 on div#menu`
    */
   invisible: string | null;
+  /**
+   * Masked by `mask-image` on it or an ancestor ({@link MASKED_BY_JS}), e.g.
+   * `mask-image on div.hero`: part or all of it may not show
+   */
+  masked?: string | null;
   /** Inside an `inert` element: shown, but not interactive */
   inert: boolean;
   /** Fixed to the top-level viewport (it or a container is `position: fixed`): page scroll does not move it */
@@ -376,6 +381,22 @@ const INVISIBLE_REASON_JS = `(el, describe) => {
 }`;
 
 /**
+ * Page-side mask over an element: the nearest of it and its ancestors in the
+ * flat tree (slots, shadow hosts, iframes) with a `mask-image`. How much the
+ * mask hides is not evaluated. Null without one.
+ */
+const MASKED_BY_JS = `(el, describe) => {
+  const flatParent = ${FLAT_PARENT_JS};
+  const parentOf = (n) => flatParent(n) || n.ownerDocument.defaultView.frameElement || null;
+  for (let n = el; n; n = parentOf(n)) {
+    const style = n.ownerDocument.defaultView.getComputedStyle(n);
+    const mask = style.maskImage || style.webkitMaskImage;
+    if (mask && mask !== 'none') return n === el ? 'mask-image' : 'mask-image on ' + describe(n);
+  }
+  return null;
+}`;
+
+/**
  * Page-side measurement of an element ({@link ElementGeometry}): its box in
  * top-level viewport coordinates, its clip by ancestors
  * ({@link ANCESTOR_CLIP_JS}) and by the viewports of its iframes, why it
@@ -399,6 +420,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   const scrollRange = ${SCROLL_RANGE_JS};
   const scrollLock = ${SCROLL_LOCK_JS};
   const invisibleReason = ${INVISIBLE_REASON_JS};
+  const maskedBy = ${MASKED_BY_JS};
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const reasons = ${JSON.stringify(LAYOUT_REASONS)};
   const styleOf = (node) => node.ownerDocument.defaultView.getComputedStyle(node);
@@ -493,9 +515,10 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   while (top.frameElement) top = top.parent;
   const toBox = (r) => r && { x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top };
   const invisible = hidden ? null : invisibleReason(el, describe);
+  const masked = hidden || invisible ? null : maskedBy(el, describe);
   const lock = scrollLock(top, describe);
   if (lock && fixedBy === top.document.body) fixed = false;
-  return { rect: toBox(rect), content: toBox(content), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, inert: isInert(), fixed: fixed, sticky: !fixed && isSticky(), pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
+  return { rect: toBox(rect), content: toBox(content), clip: toBox(clip), clipOverlay: overlay, clipper: clipper, hidden: hidden, invisible: invisible, masked: masked, inert: isInert(), fixed: fixed, sticky: !fixed && isSticky(), pageScroll: scrollRange(top), scrollLock: lock, offset: { x: x, y: y } };
 }`;
 
 /**

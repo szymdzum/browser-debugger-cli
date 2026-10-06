@@ -111,6 +111,7 @@ export function visibilityOf(
     ...(offscreen && { offscreen }),
     ...(layout.coveredBy && { coveredBy: layout.coveredBy }),
     ...(layout.coverTransparent && { coverTransparent: true }),
+    ...(layout.masked && { masked: layout.masked }),
   };
 }
 

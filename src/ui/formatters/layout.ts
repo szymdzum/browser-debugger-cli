@@ -11,6 +11,7 @@ import {
   indexLayoutHeadline,
   layoutHeadline,
   layoutPositionLabel,
+  maskedText,
   moreMatchesNote,
   pageLayoutLine,
 } from '@/ui/messages/commands.js';
@@ -41,6 +42,7 @@ export function layoutLine(element: ElementLayout, viewport?: LayoutSize): strin
     element.coveredBy && coverText(element.coveredBy, element.coverTransparent),
     element.inert && 'inert',
     element.invisible,
+    element.masked && maskedText(element.masked),
     element.context && element.context !== element.clippedBy && `in ${element.context}`,
   ]
     .filter(Boolean)

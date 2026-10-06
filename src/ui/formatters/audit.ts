@@ -3,6 +3,7 @@
  */
 
 import type { AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
+import { auditCanvasNote } from '@/ui/messages/commands.js';
 import { truncateByLength } from '@/utils/strings.js';
 
 /** Width of the text quoted in a finding */
@@ -19,7 +20,7 @@ export function formatAudit(data: AuditResult): string {
     data.contrast && contrastSection(data.contrast),
     data.overflow && overflowSection(data.overflow),
     data.layers && layersSection(data.layers),
-    data.animations && animationsSection(data.animations),
+    data.animations && animationsSection(data.animations, data.canvases),
   ].filter((section): section is string[] => section !== undefined);
   const capped = data.capped ? [`(stopped after ${data.walked} elements; the page has more)`] : [];
   return [...sections.flatMap((lines) => [...lines, '']), ...capped].join('\n').trimEnd();
@@ -102,16 +103,22 @@ function layersSection(layers: NonNullable<AuditResult['layers']>): string[] {
  * The animations section.
  *
  * @param animations - Running animations
+ * @param canvases - Visible canvas elements
  * @returns Lines
  */
-function animationsSection(animations: NonNullable<AuditResult['animations']>): string[] {
-  if (animations.length === 0) return ['Animations: none running'];
+function animationsSection(
+  animations: NonNullable<AuditResult['animations']>,
+  canvases: number | undefined
+): string[] {
+  const note = canvases ? [`  ${auditCanvasNote(canvases)}`] : [];
+  if (animations.length === 0) return ['Animations: none running', ...note];
   return [
     `Animations: ${animations.length} running`,
     ...animations.map(
       (animation) =>
         `  ${animation.name} on ${animation.element}${times(animation.count)} (${animation.type}, ${typeof animation.duration === 'number' ? `${animation.duration}ms` : animation.duration}, ${animation.iterations === 'infinite' ? 'infinite' : `${animation.iterations}x`}${animation.scrollDriven ? ', scroll-driven' : ''})`
     ),
+    ...note,
   ];
 }
 

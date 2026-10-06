@@ -197,7 +197,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'hover:--no-wait': {
     default: 'Waits for network stability after moving the mouse (menus may load content)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `The mouse stays over the element afterwards, so hover menus stay open until the next mouse action. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}. ${SHOWN_BEHAVIOR}; for a hover also elements around it (its parent's subtree) and tooltips, menus, listboxes, dialogs and popovers anywhere that were hidden before, so captions shown by CSS :hover count (hidden elements noted by identity right before the mouse moves: up to 1500, within 8 ms). A hover never claims "no visible effect" and does not check whether the page was still changing`,
+    automaticBehavior: `The element is scrolled into view first; when the page moved, Scrolled (JSON scrolledBy) says how far. The mouse stays over the element afterwards, so hover menus stay open until the next mouse action. ${TRIGGERED_REQUESTS_BEHAVIOR}. ${ACTION_EFFECTS_BEHAVIOR}. ${SHOWN_BEHAVIOR}; for a hover also elements around it (its parent's subtree) and tooltips, menus, listboxes, dialogs and popovers anywhere that were hidden before, so captions shown by CSS :hover count (hidden elements noted by identity right before the mouse moves: up to 1500, within 8 ms). A hover never claims "no visible effect" and does not check whether the page was still changing`,
   },
   'hover:--strict': {
     default:
@@ -289,7 +289,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Text must reach WCAG AA: 4.5, or 3 for large text (24px, or 18.66px bold); every text-drawing element is checked, composited like dom inspect',
     whenEnabled: '--level AAA asks 7, or 4.5 for large text',
     automaticBehavior:
-      'One walk over the rendered elements (open shadow roots included, at most 20000; capped says when it stopped). Findings are sorted weakest first; --limit (default 20) lists that many per check and the rest are counted. Overflow leaves out content inside horizontal scrollers and visually-hidden 1px text; identical findings are grouped (×N)',
+      'One walk over the rendered elements (open shadow roots included, at most 20000; capped says when it stopped). Findings are sorted weakest first; --limit (default 20) lists that many per check and the rest are counted. Overflow leaves out content inside horizontal scrollers and visually-hidden 1px text; identical findings are grouped (×N). Contrast is approximate (approximate: …) when something is painted behind or on top of text in view (hit-tested), or for text out of view whose ancestors paint nothing below body (only its ancestors were checked). Canvas animations cannot be listed; visible canvas elements are counted (canvases)',
     tokenImpact: 'About one line per finding; --limit bounds it',
   },
   'layout:--index': {

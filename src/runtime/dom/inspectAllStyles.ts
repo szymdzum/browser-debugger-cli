@@ -191,6 +191,7 @@ const PREFIXED_KEPT = new Set([
   '-webkit-line-clamp',
   '-webkit-text-stroke-width',
   '-webkit-text-security',
+  '-webkit-text-fill-color',
 ]);
 
 /** SVG paint and geometry properties (noise on HTML elements) */
