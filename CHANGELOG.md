@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Follow modes end with their session, and print NDJSON** (#389). `peek --follow`, `console --follow` and `network list --follow`:
+  - stop with exit 83 when the session they follow ends, instead of retrying silently forever;
+  - exit 130 on Ctrl-C and 143 on SIGTERM (it was 0);
+  - with `--json`, print one compact object per line, and one error line per failed refresh.
 - **Chrome gets a window on macOS by default** (#382). Display detection only looked at the X11/Wayland variables, which macOS never sets, so every Mac started headless and it looked like nothing happened. A Mac now counts as having a display unless the shell came in over SSH or `CI` is set. Agents running unattended should pass `--headless`. `--headless` and `--no-headless` override either way.
 - **`dom query` on large pages** (#385): it describes only the first 1000 matches, in one page-side pass, and lists 50 of them (`--json`: 1000) with the total count. `--limit <n>` lists more (0 = all). On a page with 50 000 elements, `dom query "*"` took 23 s and printed 7 MB of JSON; it now takes about half a second, and the JSON is 190 KB. Indices past the indexed matches say so and how to index more. `--json` has `count` (all matches), `nodes`, `omitted` and `indexed`.
 

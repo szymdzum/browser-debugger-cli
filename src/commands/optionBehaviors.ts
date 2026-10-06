@@ -39,6 +39,10 @@ const NO_WAIT_TRIGGERED_REQUESTS =
  */
 type BehaviorKey = string;
 
+/** How every follow mode (peek, console, network list) runs and ends */
+const FOLLOW_BEHAVIOR =
+  'Stops with exit 83 when the session it follows ends, 130 on Ctrl-C, 143 on SIGTERM; with --json prints one compact object per line (NDJSON). Other failures (a busy page, a timeout) are retried: reported once in text, as one error line per refresh in JSON';
+
 /**
  * Behavioral metadata registry.
  *
@@ -399,11 +403,23 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     default: 'Shows snapshot of current data',
     whenEnabled:
       'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000). Replaces the deprecated bdg tail',
+    automaticBehavior: FOLLOW_BEHAVIOR,
   },
   'peek:--follow': {
     default: 'Shows snapshot of current data',
     whenEnabled:
       'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000). Replaces the deprecated bdg tail',
+    automaticBehavior: FOLLOW_BEHAVIOR,
+  },
+  'console:-f': {
+    default: 'Prints the messages logged so far and exits',
+    whenEnabled: 'Streams new messages as they come (the last --last at start)',
+    automaticBehavior: FOLLOW_BEHAVIOR,
+  },
+  'list:-f': {
+    default: 'Lists the requests captured so far and exits',
+    whenEnabled: 'Streams requests as they finish',
+    automaticBehavior: FOLLOW_BEHAVIOR,
   },
   'peek:-v': {
     default: 'Compact output (truncated URLs, no resource types)',

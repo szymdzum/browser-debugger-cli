@@ -8,6 +8,7 @@ import { OutputBuilder } from '@/ui/OutputBuilder.js';
 import {
   connectionLostRetryMessage,
   connectionLostStopHintMessage,
+  followedSessionEndedMessage,
 } from '@/ui/messages/preview.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -47,8 +48,11 @@ export function noteFollowConnected(): void {
  * Handle daemon connection errors with consistent formatting and behavior.
  *
  * Outside follow mode the command exits. In follow mode, a session that never
- * answered exits too (there is nothing to follow, exit 83); a session that
- * goes away is reported once and retried until a new one starts.
+ * answered exits too (there is nothing to follow, exit 83), and so does one
+ * that ends while followed (no session any more, exit 83), so a follower
+ * running in the background finds out. Other failures (a busy page, a
+ * timeout) are retried: reported once in text, and on every failed refresh
+ * in JSON, one object per line.
  *
  * @param error - Error message to display
  * @param options - Error handling options
@@ -64,20 +68,21 @@ export function handleDaemonConnectionError(
     retryIntervalMs = 1000,
     exitCode = EXIT_CODES.RESOURCE_NOT_FOUND,
   } = options;
-  const exits = !follow || !followState.connected;
+  const sessionGone = exitCode === EXIT_CODES.RESOURCE_NOT_FOUND;
+  const exits = !follow || !followState.connected || sessionGone;
+  const message =
+    follow && followState.connected && sessionGone ? followedSessionEndedMessage() : error;
 
-  if (exits || !followState.lossReported) {
+  if (exits || json || !followState.lossReported) {
     if (json) {
       const suggestion = exits ? sessionUnavailableSuggestion(exitCode) : undefined;
-      console.log(
-        JSON.stringify(
-          OutputBuilder.buildJsonError(error, { exitCode, ...(suggestion && { suggestion }) }),
-          null,
-          2
-        )
-      );
+      const envelope = OutputBuilder.buildJsonError(message, {
+        exitCode,
+        ...(suggestion && { suggestion }),
+      });
+      console.log(follow ? JSON.stringify(envelope) : JSON.stringify(envelope, null, 2));
     } else {
-      console.error(genericError(error));
+      console.error(genericError(message));
     }
   }
   if (exits) return { shouldExit: true, exitCode };
@@ -85,8 +90,10 @@ export function handleDaemonConnectionError(
   if (!followState.lossReported) {
     const retryMessage =
       retryIntervalMs >= 1000 ? `${retryIntervalMs / 1000}s` : `${retryIntervalMs}ms`;
-    console.error(connectionLostRetryMessage(new Date().toISOString(), retryMessage));
-    console.error(connectionLostStopHintMessage());
+    if (!json) {
+      console.error(connectionLostRetryMessage(new Date().toISOString(), retryMessage));
+      console.error(connectionLostStopHintMessage());
+    }
     followState.lossReported = true;
   }
   return { shouldExit: false };

@@ -3,7 +3,7 @@
  *
  * `bdg stop` must shut Chrome down cleanly so a `--user-data-dir` keeps
  * cookies and storage written just before stopping, and follow modes must
- * survive the session ending (no crash, no stack trace).
+ * stop with 83 when the session ends (no crash, no stack trace).
  */
 
 import * as assert from 'node:assert/strict';
@@ -89,7 +89,7 @@ void describe('Session end', () => {
     }
   });
 
-  void it('keeps a follow mode running when the session ends', async () => {
+  void it('stops a follow mode with 83 when the session ends, without a stack trace', async () => {
     const port = await getFreePort();
     await bdg([fixture.url, '--port', String(port), '--headless']);
 
@@ -101,14 +101,13 @@ void describe('Session end', () => {
     follower.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     follower.stdout.resume();
 
+    const closed = once(follower, 'close') as Promise<[number | null]>;
     await new Promise((resolve) => setTimeout(resolve, 1500));
     await bdg(['stop']);
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const [exitCode] = await closed;
 
-    assert.equal(follower.exitCode, null, `follow mode exited early: ${stderr}`);
-    follower.kill('SIGINT');
-    await once(follower, 'close');
+    assert.equal(exitCode, 83, stderr);
     assert.doesNotMatch(stderr, /\n\s+at |IPCConnectionError/, stderr);
-    assert.match(stderr, /No active session/);
+    assert.match(stderr, /The session ended; stopped following/);
   });
 });

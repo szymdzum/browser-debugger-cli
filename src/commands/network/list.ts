@@ -200,7 +200,7 @@ async function runFollowMode(
           totalCount: result.data.length,
           filteredCount: fresh.length,
         };
-        console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
+        console.log(JSON.stringify(buildSuccessResponse(data)));
       }
     } else {
       const pageStart = pageStartOf(result.data);

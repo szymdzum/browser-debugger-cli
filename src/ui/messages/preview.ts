@@ -81,6 +81,15 @@ export function connectionLostRetryMessage(timestamp: string, retryLabel: string
 }
 
 /**
+ * Follow mode stops because the session it followed ended.
+ *
+ * @returns Message
+ */
+export function followedSessionEndedMessage(): string {
+  return 'The session ended; stopped following';
+}
+
+/**
  * Generate follow-mode stop hint.
  *
  * @returns Message instructing the user how to stop follow mode
