@@ -270,6 +270,43 @@ void describe('DOM interactions', () => {
     }
   });
 
+  void it('includes shadows, outlines and text overflow, pads on request and leaves the scroll alone', async () => {
+    const dir = makeTempDir('bdg-shot-');
+    const file = path.join(dir, 'ink.png');
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', '<div id="spacer" style="height: 3000px"></div>' +
+        '<button id="ringed" style="margin: 20px; box-shadow: 0 0 0 4px #c00; outline: 2px solid #00f; outline-offset: 2px">Ring</button>' +
+        '<p id="tight" style="font-size: 60px; line-height: 40px; margin: 40px 0">gyp</p>' +
+        '<p class="pick">a</p><p class="pick" style="width: 50px">b</p>'); 1`
+    );
+    try {
+      type Shot = {
+        data: {
+          width: number;
+          element: {
+            bounds: { width: number; height: number };
+            captured?: { width: number; height: number };
+          };
+        };
+      };
+      const shot = async (...args: string[]): Promise<Shot['data']> =>
+        (JSON.parse(await bdg(['dom', 'screenshot', file, ...args, '--json'])) as Shot).data;
+      const ringed = await shot('#ringed');
+      assert.equal((ringed.element.captured?.width ?? 0) - ringed.element.bounds.width, 8);
+      const padded = await shot('#ringed', '--padding', '10');
+      assert.equal((padded.element.captured?.width ?? 0) - padded.element.bounds.width, 28);
+      const tight = await shot('#tight');
+      assert.ok((tight.element.captured?.height ?? 0) > tight.element.bounds.height);
+      assert.equal((await shot('--selector', '.pick', '--index', '1')).element.bounds.width, 50);
+      assert.equal(await evaluate('scrollY'), 0);
+      await bdg(['dom', 'screenshot', file, '--padding', '4'], 81);
+    } finally {
+      await evaluate(
+        "document.querySelectorAll('#spacer, #ringed, #tight, .pick').forEach((e) => e.remove()); 1"
+      );
+    }
+  });
+
   void it('captures the scrolled-to part of the page in a viewport screenshot', async () => {
     const dir = makeTempDir('bdg-shot-');
     await evaluate(

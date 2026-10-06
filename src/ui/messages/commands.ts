@@ -1083,8 +1083,26 @@ export function emptyElementLine(children: string[], count: number): string {
 }
 
 /**
+ * Note on a screenshot scaled down to keep its image token cost bounded.
+ *
+ * @param originalWidth - Captured width (CSS px)
+ * @param originalHeight - Captured height
+ * @param width - Image width
+ * @param height - Image height
+ * @returns e.g. `scaled from 1920×993 to 1568×811; --no-resize for full size`
+ */
+export function screenshotScaledNote(
+  originalWidth: number,
+  originalHeight: number,
+  width: number,
+  height: number
+): string {
+  return `scaled from ${originalWidth}×${originalHeight} to ${width}×${height}; --no-resize for full size`;
+}
+
+/**
  * Note on an element screenshot that captured more than the element's border
- * box, because content (floats, positioned children) overflows it.
+ * box, because content (floats, positioned children, text, shadows) overflows it.
  *
  * @param box - Border box
  * @param captured - Area captured

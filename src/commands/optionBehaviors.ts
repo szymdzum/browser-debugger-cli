@@ -48,9 +48,15 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'screenshot:--selector': {
     default: 'Captures the page (full page unless --no-full-page)',
     whenEnabled:
-      'Captures one element; the selector (or a query index) can also be given as the second argument: bdg dom screenshot out.png "#sel". Both given and naming different elements exits 81',
+      'Captures one element; the selector (or a query index) can also be given as the second argument: bdg dom screenshot out.png "#sel". With --index it picks that match of the selector (--selector ".item" --index 2). A positional and an option naming different elements exits 81',
     automaticBehavior:
-      'The capture covers the border box plus content overflowing it (uncleared floats, positioned children; not what an overflow: hidden ancestor cuts off, nor fixed descendants); JSON element.bounds is the border box and element.captured the larger area when it grew, which human output notes',
+      "The capture covers the border box plus what overflows it: uncleared floats, positioned children, text past a tight line height, and the element's own box shadows and outline (a focus ring); not what an overflow: hidden ancestor cuts off, nor fixed descendants. JSON element.bounds is the border box and element.captured the larger area when it grew, which human output notes. An element smaller than the viewport is scrolled into view for the capture and the page scroll put back afterwards; a larger one is captured with the page laid out at its width without scrollbars, so it does not shift",
+  },
+  'screenshot:--padding': {
+    default:
+      'The element capture is its painted area (border box, overflowing content, shadows, outline)',
+    whenEnabled:
+      'Adds that many CSS px of the page around the element capture on every side (0-500); without an element it exits 81',
   },
   'screenshot:--no-resize': {
     default: `Images auto-resized to max ${MAX_EDGE_PX}px longest edge for Claude Vision optimization (~1,600 tokens)`,

@@ -426,13 +426,16 @@ export async function capturePageScreenshot(
 const OVERFLOW_SCAN_LIMIT = 2000;
 
 /**
- * Page-side distances (CSS px, never negative) by which an element's rendered
- * descendants reach beyond its border box on each side: uncleared floats,
- * absolutely positioned and transformed children. Descendants of an element
- * that clips its overflow (`overflow` other than `visible`) are cut off by it
- * and not counted, nor are fixed ones (they belong to the viewport) or what
- * lies outside the document (skip links at -9999px). Zero everywhere when the
- * element clips its own overflow.
+ * Page-side distances (CSS px, never negative) by which what an element
+ * paints reaches beyond its border box on each side: its rendered
+ * descendants (uncleared floats, absolutely positioned and transformed
+ * children), its text (descenders past a tight line height, read from its
+ * scroll size), and its own outer box shadows and outline (a focus ring).
+ * Descendants of an element that clips its overflow (`overflow` other than
+ * `visible`) are cut off by it and not counted, nor are fixed ones (they
+ * belong to the viewport) or what lies outside the document (skip links at
+ * -9999px). Only the shadows and outline count when the element clips its
+ * own overflow.
  */
 const CONTENT_OVERFLOW_JS = `function () {
   const view = this.ownerDocument.defaultView;
@@ -457,8 +460,32 @@ const CONTENT_OVERFLOW_JS = `function () {
       if (!clips(style)) walk(child);
     }
   };
-  if (!clips(view.getComputedStyle(this))) walk(this);
-  return { left: own.left - reach.left, top: own.top - reach.top, right: reach.right - own.right, bottom: reach.bottom - own.bottom };
+  const ownStyle = view.getComputedStyle(this);
+  if (!clips(ownStyle)) {
+    walk(this);
+    reach.right = Math.max(reach.right, own.left + this.clientLeft + this.scrollWidth);
+    reach.bottom = Math.max(reach.bottom, own.top + this.clientTop + this.scrollHeight);
+  }
+  const ink = { left: 0, top: 0, right: 0, bottom: 0 };
+  const grow = (side, amount) => { ink[side] = Math.max(ink[side], amount); };
+  for (const layer of ownStyle.boxShadow === 'none' ? [] : ownStyle.boxShadow.split(/,(?![^(]*\\))/)) {
+    if (/\\binset\\b/.test(layer)) continue;
+    const [x = 0, y = 0, blur = 0, spread = 0] = (layer.replace(/(rgba?|hsla?|color|oklch|lab|lch)\\([^)]*\\)/g, '').match(/-?[\\d.]+px/g) || []).map(parseFloat);
+    grow('left', blur + spread - x);
+    grow('right', blur + spread + x);
+    grow('top', blur + spread - y);
+    grow('bottom', blur + spread + y);
+  }
+  if (ownStyle.outlineStyle !== 'none') {
+    const outline = parseFloat(ownStyle.outlineWidth) + parseFloat(ownStyle.outlineOffset);
+    ['left', 'top', 'right', 'bottom'].forEach((side) => grow(side, outline));
+  }
+  return {
+    left: Math.max(own.left - reach.left, ink.left),
+    top: Math.max(own.top - reach.top, ink.top),
+    right: Math.max(reach.right - own.right, ink.right),
+    bottom: Math.max(reach.bottom - own.bottom, ink.bottom)
+  };
 }`;
 
 /**
@@ -489,31 +516,95 @@ function insideView(area: ElementBounds, view: { width: number; height: number }
   );
 }
 
+/** Where the page was scrolled before a capture moved it */
+interface ScrollBefore {
+  x: number;
+  y: number;
+}
+
 /**
  * Measure the area to capture and, when it fits in the viewport but is not
- * in view, scroll it to the middle first. A capture inside the viewport
- * keeps the page as it is; one beyond it makes Chrome lay the page out
- * without its scrollbar, which moves centered content by half the
- * scrollbar's width, so it is used only for areas larger than the viewport.
+ * in view, scroll it to the middle first (the returned position puts the
+ * page back). A capture inside the viewport keeps the page as it is; one
+ * beyond it makes Chrome lay the page out without its scrollbar, so for an
+ * area larger than the viewport the scrollbars are hidden first and the
+ * area measured in that layout (centered content would else move by half
+ * the scrollbar's width).
  *
  * @param ref - Node reference
- * @returns Border box, area to capture (viewport coordinates) and whether it is in view
+ * @param padding - Extra space around the area (CSS px)
+ * @returns Border box, area to capture (viewport coordinates), whether it is
+ *   in view, and the scroll position to restore when it scrolled
  */
 async function measureInView(
-  ref: NodeRef
-): Promise<{ box: ElementBounds; bounds: ElementBounds; inView: boolean }> {
+  ref: NodeRef,
+  padding: number
+): Promise<{
+  box: ElementBounds;
+  bounds: ElementBounds;
+  inView: boolean;
+  scrolledFrom?: ScrollBefore;
+}> {
   const view = await visibleViewport();
   let box = await getElementBounds(ref);
-  let bounds = await captureArea(ref, box);
+  let bounds = await captureArea(ref, box, padding);
   const fits = bounds.width <= view.width && bounds.height <= view.height;
-  if (fits && !insideView(bounds, view)) {
-    const dx = bounds.x + bounds.width / 2 - view.width / 2;
-    const dy = bounds.y + bounds.height / 2 - view.height / 2;
-    await callCDP('Runtime.evaluate', { expression: `window.scrollBy(${dx}, ${dy})` });
+  if (!fits) {
+    await keepLayoutWithoutScrollbars(view);
     box = await getElementBounds(ref);
-    bounds = await captureArea(ref, box);
+    return { box, bounds: await captureArea(ref, box, padding), inView: false };
   }
-  return { box, bounds, inView: insideView(bounds, view) };
+  if (insideView(bounds, view)) return { box, bounds, inView: true };
+  const scrolledFrom = await scrollPosition();
+  const dx = bounds.x + bounds.width / 2 - view.width / 2;
+  const dy = bounds.y + bounds.height / 2 - view.height / 2;
+  await callCDP('Runtime.evaluate', { expression: `window.scrollBy(${dx}, ${dy})` });
+  box = await getElementBounds(ref);
+  bounds = await captureArea(ref, box, padding);
+  return { box, bounds, inView: insideView(bounds, view), scrolledFrom };
+}
+
+/**
+ * Lay the page out at its current width without scrollbars: a capture
+ * beyond the viewport hides them, and without this the page would widen by
+ * the scrollbar and centered content move after it was measured. The
+ * viewport is overridden at the visible width (CSS px, pixel ratio 1) until
+ * {@link restoreViewport}.
+ *
+ * @param view - Visible viewport size
+ */
+async function keepLayoutWithoutScrollbars(view: { width: number; height: number }): Promise<void> {
+  await callCDP('Emulation.setScrollbarsHidden', { hidden: true });
+  await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(view, 1));
+}
+
+/**
+ * Put back the viewport a capture changed: the session's `--viewport`, else
+ * none, with scrollbars shown.
+ */
+async function restoreViewport(): Promise<void> {
+  await callCDP('Emulation.setScrollbarsHidden', { hidden: false });
+  const sessionViewport = readSessionMetadata()?.viewport;
+  if (sessionViewport) {
+    await callCDP('Emulation.setDeviceMetricsOverride', viewportOverride(sessionViewport));
+  } else {
+    await callCDP('Emulation.clearDeviceMetricsOverride', {});
+  }
+}
+
+/**
+ * The page's scroll position.
+ *
+ * @returns Scroll offsets in CSS px
+ */
+async function scrollPosition(): Promise<ScrollBefore> {
+  const response = await callCDP('Runtime.evaluate', {
+    expression: '[window.scrollX, window.scrollY]',
+    returnByValue: true,
+  });
+  const value = (response.data?.result as { result?: { value?: unknown } })?.result?.value;
+  const [x, y] = Array.isArray(value) ? (value as number[]) : [];
+  return { x: x ?? 0, y: y ?? 0 };
 }
 
 /** Overflow (px) below which the capture keeps to the border box (subpixel rounding) */
@@ -526,9 +617,35 @@ const OVERFLOW_SLACK = 1;
  *
  * @param ref - Node reference
  * @param bounds - Border box (DOM.getBoxModel coordinates)
- * @returns The area, or the border box when nothing overflows (or the page cannot be asked)
+ * @param padding - Extra space around it (CSS px)
+ * @returns The area, or the border box (with the padding) when nothing
+ *   overflows (or the page cannot be asked)
  */
-async function captureArea(ref: NodeRef, bounds: ElementBounds): Promise<ElementBounds> {
+async function captureArea(
+  ref: NodeRef,
+  bounds: ElementBounds,
+  padding: number
+): Promise<ElementBounds> {
+  const area = await paintedArea(ref, bounds);
+  return padding > 0
+    ? {
+        x: area.x - padding,
+        y: area.y - padding,
+        width: area.width + 2 * padding,
+        height: area.height + 2 * padding,
+      }
+    : area;
+}
+
+/**
+ * The border box grown to what the element paints beyond it
+ * ({@link CONTENT_OVERFLOW_JS}).
+ *
+ * @param ref - Node reference
+ * @param bounds - Border box
+ * @returns The area
+ */
+async function paintedArea(ref: NodeRef, bounds: ElementBounds): Promise<ElementBounds> {
   const objectGroup = `bdg-shot-${process.pid}`;
   try {
     const resolved = await callCDP('DOM.resolveNode', { ...ref, objectGroup });
@@ -570,7 +687,7 @@ async function captureArea(ref: NodeRef, bounds: ElementBounds): Promise<Element
 export async function captureElementScreenshot(
   outputPath: string,
   ref: NodeRef,
-  options: { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean } = {}
+  options: { format?: 'png' | 'jpeg'; quality?: number; noResize?: boolean; padding?: number } = {}
 ): Promise<ScreenshotResult> {
   const format = options.format ?? 'png';
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
@@ -589,15 +706,18 @@ export async function captureElementScreenshot(
     before?.visualViewport ?? { clientWidth: 800, clientHeight: 600 }
   );
 
-  let box: ElementBounds;
-  let bounds: ElementBounds;
-  let inView: boolean;
+  const restore = async (wide: boolean, scrolledFrom?: ScrollBefore): Promise<void> => {
+    await (wide ? restoreViewport() : restoreMetrics());
+    if (scrolledFrom) await restoreScrollPosition(scrolledFrom);
+  };
+  let measured: Awaited<ReturnType<typeof measureInView>>;
   try {
-    ({ box, bounds, inView } = await measureInView(ref));
+    measured = await measureInView(ref, options.padding ?? 0);
   } catch (error) {
-    await restoreMetrics();
+    await restoreViewport();
     throw error;
   }
+  const { box, bounds, inView, scrolledFrom } = measured;
 
   const originalWidth = bounds.width;
   const originalHeight = bounds.height;
@@ -629,7 +749,7 @@ export async function captureElementScreenshot(
     screenshotResult = screenshotResponse.data?.result as
       Protocol.Page.CaptureScreenshotResponse | undefined;
   } finally {
-    await restoreMetrics();
+    await restore(!inView, scrolledFrom);
   }
 
   if (!screenshotResult?.data) {

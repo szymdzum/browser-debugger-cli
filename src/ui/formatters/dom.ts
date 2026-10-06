@@ -9,6 +9,7 @@ import {
   noFramesMessage,
   queryNextSteps,
   screenshotGrownNote,
+  screenshotScaledNote,
   viewportPositionHint,
 } from '@/ui/messages/commands.js';
 
@@ -244,6 +245,10 @@ export function formatDomScreenshot(data: ScreenshotResult): string {
 
   if (data.element?.captured) {
     output += ` (${screenshotGrownNote(data.element.bounds, data.element.captured)})`;
+  }
+
+  if (data.resized && data.originalWidth !== undefined && data.originalHeight !== undefined) {
+    output += ` (${screenshotScaledNote(data.originalWidth, data.originalHeight, data.width, data.height)})`;
   }
 
   return output;

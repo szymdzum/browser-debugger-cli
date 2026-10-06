@@ -860,17 +860,19 @@ bdg dom screenshot footer.png --scroll "footer"
 bdg dom screenshot card.png ".card"
 bdg dom screenshot card.png --selector ".card"
 bdg dom screenshot card.png 2
+bdg dom screenshot item.png --selector ".item" --index 2   # The third match
+bdg dom screenshot btn.png "#submit" --padding 16         # 16px of page around it
 
 # Custom quality
 bdg dom screenshot high-res.jpg --quality 100
 ```
 
-**Element screenshots:** the capture covers the element's border box plus content that overflows it (uncleared floats, absolutely positioned or transformed children), so a container whose floated content hangs out of it is not cropped to its heading; content an `overflow: hidden` ancestor cuts off and fixed descendants are left out. Human output then says `(grown from 940×37 to 940×285 to include content overflowing the element)`; JSON keeps the border box in `element.bounds` (page coordinates, like `dom layout`) and adds `element.captured`. Elements of a scrolled page are captured where they are (the page scroll is taken into account). An element given both as an argument and with `--selector`/`--index` must be the same one (exit 81 otherwise).
+**Element screenshots:** the capture covers the element's border box plus what it paints beyond it: content that overflows (uncleared floats, absolutely positioned or transformed children, text such as descenders past a tight line height) and its own box shadows and outline, so a focus ring is not cropped; `--padding <px>` adds page around it. A container whose floated content hangs out of it is not cropped to its heading; content an `overflow: hidden` ancestor cuts off and fixed descendants are left out. Human output then says `(grown from 940×37 to 940×285 to include content overflowing the element)`; JSON keeps the border box in `element.bounds` (page coordinates, like `dom layout`) and adds `element.captured`. Elements of a scrolled page are captured where they are (the page scroll is taken into account); an element scrolled into view for the capture is scrolled back afterwards. An element larger than the viewport is captured with the page laid out at its current width without scrollbars, so centered content does not shift by half a scrollbar. An element given both as an argument and with `--selector`/`--index` must be the same one (exit 81 otherwise); `--selector` with `--index` picks that match of the selector.
 
 **Auto-resize behavior:**
 - Images exceeding 1568px on longest edge are scaled down
 - Tall pages (aspect ratio > 3:1) automatically capture viewport only
-- Use `--no-resize` for full resolution when needed
+- Use `--no-resize` for full resolution when needed; human output says when an image was scaled (`scaled from 1280×2777 to 723×1568; --no-resize for full size`)
 - Token estimates account for device pixel ratio (Retina displays)
 
 ## Network Commands

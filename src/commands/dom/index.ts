@@ -134,8 +134,13 @@ export function registerDomCommands(program: Command): void {
     .option('--selector <selector>', 'CSS selector for element capture')
     .option(
       '--index <number>',
-      'Cached element index (0-based) from previous query',
+      'Cached element index (0-based) from a previous query; with --selector, which match',
       integerOption(0)
+    )
+    .option(
+      '--padding <px>',
+      'Element capture: extra space around it (shadows and focus rings are included anyway)',
+      integerOption(0, 500)
     )
     .option(
       '--format <format>',
