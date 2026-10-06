@@ -12,7 +12,6 @@ import type {
   InspectRule,
   InspectWhy,
 } from '@/ipc/protocol/inspectTypes.js';
-import type { InactiveRule } from '@/runtime/dom/inspectScripts.js';
 import { collapsedValue, normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
 import {
   physicalName,
@@ -30,6 +29,8 @@ import {
   type CssHint,
 } from '@/runtime/dom/inspectHints.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
+import type { InactiveRule } from '@/runtime/dom/inspectScripts.js';
+import { substituteVariables } from '@/runtime/dom/inspectVariables.js';
 import { buildWhy } from '@/runtime/dom/inspectWhyModel.js';
 
 const SIDES = ['top', 'right', 'bottom', 'left'] as const;
@@ -246,7 +247,13 @@ function buildRules(
     const grouped = group.shorthand !== undefined ? groupedRow(winners) : undefined;
     if (grouped) {
       const longhands = shorthandLonghands(grouped.property) ?? group.longhands;
-      return [toRule(grouped.property, grouped, resolutions[0], input, longhands)];
+      const partly = longhands.some((longhand) => {
+        const owner = cascade.get(longhand)?.winner;
+        return (
+          owner !== undefined && !(sameSource(owner, grouped) && owner.via === grouped.property)
+        );
+      });
+      return [toRule(grouped.property, grouped, resolutions[0], input, longhands, partly)];
     }
     return group.longhands.flatMap((longhand, i) => {
       const winner = winners[i];
@@ -330,6 +337,8 @@ function shorthandValue(
  * @param resolution - Its resolution (for what it overrides)
  * @param input - Computed style and the label function
  * @param longhands - The longhands the row stands for (a shorthand's value comes from them)
+ * @param partly - Other declarations win some of its longhands: the value shown is
+ *   the declaration's own, `var()` substituted, not the computed one
  * @returns Rule
  */
 function toRule(
@@ -337,9 +346,15 @@ function toRule(
   winner: Declaration,
   resolution: Resolution | undefined,
   input: CascadeInput,
-  longhands: readonly string[] = [property]
+  longhands: readonly string[] = [property],
+  partly = false
 ): InspectRule {
-  const computed = input.style[property] ?? shorthandValue(property, longhands, input.style);
+  const substituted = substituteVariables(winner.value, input.style);
+  const computed = partly
+    ? substituted.includes('var(')
+      ? undefined
+      : substituted
+    : (input.style[property] ?? shorthandValue(property, longhands, input.style));
   const overrides = [
     ...new Set(
       (resolution?.overridden ?? [])
@@ -355,7 +370,9 @@ function toRule(
     property,
     value: winner.value,
     ...(winner.value.includes('var(') &&
-      computed !== undefined && { computed: normalizeProperty(property, computed) }),
+      computed !== undefined && {
+        computed: `${normalizeProperty(property, computed)}${partly ? ' (partly overridden)' : ''}`,
+      }),
     ...(property === 'display' &&
       computed !== undefined &&
       computed !== winner.value &&

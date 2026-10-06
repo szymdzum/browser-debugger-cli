@@ -39,9 +39,12 @@ export async function searchStyleSheets(
   const matches: CssSearchMatch[] = [];
   let total = 0;
   headers.forEach((header, i) => {
-    const found = findInSheet(texts[i] ?? '', params.query, limit - matches.length);
+    const found = findInSheet(texts[i] ?? '', params.query, Number.POSITIVE_INFINITY);
     total += found.total;
+    const seen = new Set<string>();
     for (const match of found.matches) {
+      if (seen.has(match.rule) || matches.length >= limit) continue;
+      seen.add(match.rule);
       matches.push({
         source: stylesheetPositionLabel(header, match.line, match.column),
         text: match.rule,
@@ -107,14 +110,36 @@ export function findInSheet(
       lineStart = i + 1;
     }
     scanned = at;
-    const start = Math.max(text.lastIndexOf('}', at) + 1, at - RULE_CONTEXT);
-    const close = text.indexOf('}', at);
-    const end = Math.min(close < 0 ? text.length : close + 1, at + RULE_CONTEXT);
-    matches.push({
-      line,
-      column: at - lineStart,
-      rule: text.slice(start, end).replace(/\s+/g, ' ').trim(),
-    });
+    matches.push({ line, column: at - lineStart, rule: ruleAround(text, at) });
   }
   return { total, matches };
+}
+
+/**
+ * The rule around a position: whole when short, else its selector and the
+ * declarations near the position (`.btn { … color: var(--brand); … }`),
+ * whitespace collapsed.
+ *
+ * @param text - Stylesheet text
+ * @param at - Position of the match
+ * @returns Rule text
+ */
+function ruleAround(text: string, at: number): string {
+  const ruleStart = text.lastIndexOf('}', at) + 1;
+  const open = text.indexOf('{', ruleStart);
+  const close = text.indexOf('}', at);
+  const ruleEnd = close < 0 ? text.length : close + 1;
+  const collapse = (part: string): string => part.replace(/\s+/g, ' ').trim();
+  if (ruleEnd - ruleStart <= 2 * RULE_CONTEXT || open < 0 || open > at) {
+    return collapse(
+      text.slice(Math.max(ruleStart, at - RULE_CONTEXT), Math.min(ruleEnd, at + RULE_CONTEXT))
+    );
+  }
+  const near = collapse(
+    text.slice(
+      Math.max(open + 1, at - RULE_CONTEXT / 2),
+      Math.min(ruleEnd - 1, at + RULE_CONTEXT / 2)
+    )
+  );
+  return `${collapse(text.slice(ruleStart, open))} { … ${near} … }`;
 }

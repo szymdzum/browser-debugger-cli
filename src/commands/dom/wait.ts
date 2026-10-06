@@ -36,7 +36,7 @@ export function registerWaitCommand(dom: Command): void {
     )
     .argument(
       '[selector]',
-      'CSS selector (:has-text, :visible allowed; shadow DOM and same-origin iframes searched); optional with --load'
+      'CSS selector (:has-text, :visible allowed; shadow DOM and same-origin iframes searched); without one, waits for the page to load (--load)'
     )
     .option('--text <text>', 'A match must contain this text (case-insensitive)')
     .option('--visible', 'Only count visible matches')
@@ -72,7 +72,10 @@ async function waitFor(
   exitCode?: number;
   errorContext?: { suggestion: string };
 }> {
-  const needsSelector = options.text !== undefined || options.gone === true || !options.load;
+  const load =
+    options.load === true ||
+    (selector === undefined && options.text === undefined && !options.gone && !options.visible);
+  const needsSelector = options.text !== undefined || options.gone === true || !load;
   if (selector === undefined && needsSelector) {
     const err = waitTargetRequiredError();
     return {
@@ -86,7 +89,7 @@ async function waitFor(
     ...filterDefined({ selector, text: options.text }),
     ...(options.gone && { gone: true }),
     ...(options.visible && { visible: true }),
-    ...(options.load && { load: true }),
+    ...(load && { load: true }),
     timeout: options.timeout,
   });
   if (response.status === 'error' || !response.data) {

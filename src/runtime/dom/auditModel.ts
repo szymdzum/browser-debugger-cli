@@ -58,14 +58,16 @@ export function buildAudit(raw: RawAudit, options: AuditOptions): AuditResult {
       })),
     }),
     ...(raw.animations && {
-      animations: raw.animations.slice(0, options.limit).map((animation) => ({
-        element: animation.label,
-        name: animation.name,
-        type: animation.type,
-        duration: animation.duration,
-        iterations: animation.iterations,
-        ...(animation.scrollDriven && { scrollDriven: true }),
-      })),
+      animations: grouped(
+        raw.animations.map((animation) => ({
+          element: animation.label,
+          name: animation.name,
+          type: animation.type,
+          duration: animation.duration,
+          iterations: animation.iterations,
+          ...(animation.scrollDriven && { scrollDriven: true as const }),
+        }))
+      ).slice(0, options.limit),
     }),
   };
 }
@@ -173,6 +175,12 @@ function overflowFindings(raw: RawAudit, limit: number): NonNullable<AuditResult
       }))
     ).slice(0, limit),
     images: images.slice(0, limit),
+    pixelRatio: raw.pixelRatio,
+    scrollers: (raw.scrollers ?? []).slice(0, limit).map((scroller) => ({
+      element: scroller.label,
+      scrollWidth: scroller.scrollWidth,
+      width: scroller.width,
+    })),
   };
 }
 

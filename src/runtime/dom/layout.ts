@@ -123,7 +123,9 @@ const SAME_CLICK_TARGET_JS = `(node, hit) => {
  * (`pointer-events: none`, also through an iframe) get no cover. The cover
  * named is the first element above that paints there (a sticky header's
  * background, not the transparent logo on it; inside a shadow host, what its
- * shadow root paints), else the topmost one, marked transparent.
+ * shadow root paints), else the topmost one, marked transparent; named by
+ * its outermost positioned ancestor that does not hold the element (the
+ * fixed banner, not a span inside it).
  */
 const LAYOUT_JS = `function (found, index, limit) {
   const geometryOf = ${ELEMENT_GEOMETRY_JS};
@@ -167,7 +169,7 @@ const LAYOUT_JS = `function (found, index, limit) {
       !encloses(node, hit) && !sameTarget(node, hit) && (at >= 0 || !encloses(hit, node)));
     if (above.length === 0) return null;
     const painter = above.find((hit) => paintsAt(hit, x, y));
-    return { element: painter || above[0], transparent: !painter };
+    return { element: overlayOf(painter || above[0], node), transparent: !painter };
   };
   const visibleCenter = (el, g) => {
     const bounds = [{ x: 0, y: 0, width: page.viewport.width, height: page.viewport.height }].concat(g.clip ? [g.clip] : []);
@@ -194,7 +196,15 @@ const LAYOUT_JS = `function (found, index, limit) {
     const s = node.ownerDocument.defaultView.getComputedStyle(node);
     const clearColor = (c) => c === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(c);
     const ownText = Array.from(node.childNodes).some((n) => n.nodeType === 3 && n.data.trim() !== '');
-    return clearColor(s.backgroundColor) && s.backgroundImage === 'none' && s.boxShadow === 'none' && !ownText;
+    const replaced = /^(img|video|canvas|svg|iframe|embed|object|input|textarea|select)$/.test(node.localName);
+    return !replaced && clearColor(s.backgroundColor) && s.backgroundImage === 'none' && s.boxShadow === 'none' && !ownText;
+  };
+  const overlayOf = (hit, node) => {
+    let overlay = hit;
+    for (let p = hit.parentElement || (hit.parentNode && hit.parentNode.host); p && p !== p.ownerDocument.body && !encloses(p, node); p = p.parentElement || (p.parentNode && p.parentNode.host)) {
+      if (/^(fixed|sticky|absolute)$/.test(p.ownerDocument.defaultView.getComputedStyle(p).position)) overlay = p;
+    }
+    return overlay;
   };
   const hitTestable = (node) => node.ownerDocument.defaultView.getComputedStyle(node).pointerEvents !== 'none';
   const coveredBy = (el, g) => {

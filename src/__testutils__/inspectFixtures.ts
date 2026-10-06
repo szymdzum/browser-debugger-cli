@@ -39,6 +39,7 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
   #hero { display: block; justify-content: center; gap: 12px; }
   :root { --accent: #06c; --accent-dark: #036; }
   #themed { color: var(--brand-color); }
+  #partly { border: 1px solid var(--accent); border-color: #c00; }
   .hover-only:hover { --hover-bg: #eee; }
   .hover-only { background-color: var(--hover-bg); vertical-align: baseline; }
 </style>
@@ -58,6 +59,7 @@ const INSPECT_HTML = `<!doctype html><meta charset="utf-8"><title>inspect</title
 <div id="hero"><span>Hero</span></div>
 <p id="themed">Themed</p>
 <div id="hover-only" class="hover-only">Hover me</div>
+<p id="partly">Partly overridden border</p>
 <div id="cut" style="width:60px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">A long text that is cut</div>
 <svg width="20" height="20"><rect id="rect" width="10" height="10" fill="#c00"/></svg>
 <form id="secrets"><input id="pw" type="password" value="hunter2-secret">

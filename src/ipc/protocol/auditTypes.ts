@@ -65,6 +65,10 @@ export interface AuditResult {
     /** Text cut off: `ellipsis`, `clamp` or `clip` */
     truncated: Array<{ element: string; text: string; kind: string; count?: number }>;
     images: AuditImage[];
+    /** Device pixel ratio the image scale counts in (an image needs that many pixels per CSS px) */
+    pixelRatio: number;
+    /** Elements whose content scrolls sideways inside them (carousels, tab strips): fine, but cut off at first sight */
+    scrollers: Array<{ element: string; scrollWidth: number; width: number }>;
   };
   layers?: Array<{
     element: string;
@@ -83,6 +87,8 @@ export interface AuditResult {
     iterations: number | string;
     /** Driven by scrolling, not time */
     scrollDriven?: true;
+    /** Identical animations this one stands for (2 or more) */
+    count?: number;
   }>;
 }
 

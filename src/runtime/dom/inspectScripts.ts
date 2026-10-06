@@ -229,7 +229,9 @@ const TEXT_HOLDER_JS = `(el, tree) => {
   visit(el);
   let best = null;
   for (const [holder, length] of counts) if (!best || length > counts.get(best)) best = holder;
-  return best && { style: best, font: parents.get(best) };
+  let total = 0;
+  for (const length of counts.values()) total += length;
+  return best && { style: best, font: parents.get(best), share: counts.get(best) / total };
 }`;
 
 /**
@@ -456,7 +458,7 @@ const TREE_JS = `(el, tree, textOf, depth) => {
     const r = n.getBoundingClientRect();
     const node = { label: tree.label(n), x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height, display: tree.style(n).display };
     if (tree.via.has(n)) node.via = tree.via.get(n);
-    if (n.parentNode && n.parentNode.host) node.shadow = true;
+    if (n.parentNode && n.parentNode.nodeType === 11 && n.parentNode.host) node.shadow = true;
     if (n.localName === 'slot') {
       node.text = n.assignedNodes({ flatten: true }).map((t) => t.textContent).join(' ').replace(/\\s+/g, ' ').trim().slice(0, 60);
       return node;
@@ -530,7 +532,7 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
   const formControl = /^(input|textarea|select|button)$/.test(el.localName);
   const textControl = (${TEXT_CONTROL_JS})(el);
   const holder = textControl ? null : (${TEXT_HOLDER_JS})(el, tree);
-  const textual = textControl || Boolean(holder && (holder.style === el || !tree.container(el)));
+  const textual = textControl || Boolean(holder && (holder.style === el || holder.share >= 0.9 || !tree.container(el)));
   const textFrom = holder && holder.style !== el ? holder.style : el;
   const content = textOf(el);
   const parent = tree.layoutParent(el);
@@ -638,20 +640,30 @@ export interface VariableSetter {
  * Page-side function run on the element (`this`): for each custom property
  * name, a rule in the page's stylesheets (same-origin, `@import`ed,
  * constructed and the element's shadow root's) that sets it, keyframes
- * included: the first one that matches the element or an ancestor now, else
- * the first one, with the `@media`/`@supports` condition it is under when
- * that does not apply. At most 20000 rules are read; cross-origin sheets are
+ * included: the first one that matches the element or an ancestor now
+ * (across shadow roots, so `:root` matches inside a component), else the
+ * first that would match without its state (`.btn:hover` for this `.btn`),
+ * else the first one, with the `@media`/`@supports` condition it is under
+ * when that does not apply. At most 20000 rules are read; cross-origin sheets are
  * skipped.
  */
 export const VARIABLE_SETTERS_JS = `function (names) {
   const el = this;
   const view = el.ownerDocument.defaultView;
   const matching = {};
+  const related = {};
   const other = {};
   let budget = 20000;
-  const matches = (selector) => {
-    try { return Boolean(el.closest(selector)); } catch (e) { return null; }
+  const closestAcross = (selector) => {
+    for (let n = el; n; n = n.getRootNode().host || null) {
+      if (n.closest(selector)) return true;
+    }
+    return false;
   };
+  const matches = (selector) => {
+    try { return closestAcross(selector); } catch (e) { return null; }
+  };
+  const stateless = (selector) => selector.replace(/:(hover|focus|focus-visible|focus-within|active|visited|checked|target|open)\\b/g, '');
   const applies = (rule) => {
     if (rule.media && rule.media.mediaText && !view.matchMedia(rule.media.mediaText).matches) return '@media ' + rule.media.mediaText;
     if (typeof CSSSupportsRule !== 'undefined' && rule instanceof CSSSupportsRule && !CSS.supports(rule.conditionText)) return '@supports ' + rule.conditionText;
@@ -666,6 +678,7 @@ export const VARIABLE_SETTERS_JS = `function (names) {
       condition ? { condition: condition } : {}
     );
     if (match && !matching[name]) matching[name] = setter;
+    else if (!match && !keyframes && !related[name] && matches(stateless(selector))) related[name] = setter;
     else if (!match && !other[name]) other[name] = setter;
   };
   const visit = (rules, keyframes, condition) => {
@@ -694,5 +707,5 @@ export const VARIABLE_SETTERS_JS = `function (names) {
   for (const sheet of sheets) {
     try { visit(sheet.cssRules, null, null); } catch (e) { continue; }
   }
-  return Object.assign({}, other, matching);
+  return Object.assign({}, other, related, matching);
 }`;

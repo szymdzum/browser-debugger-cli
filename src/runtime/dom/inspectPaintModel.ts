@@ -362,8 +362,14 @@ export function buildText(
   if (raw.textual) {
     const textStyle = raw.textHolder && holderStyle ? holderStyle : style;
     const fields = fontFields(textStyle);
+    const gradientFill =
+      (textStyle['background-clip'] ?? '').includes('text') &&
+      (parseColor(textStyle['-webkit-text-fill-color'] ?? '')?.a ?? 1) === 0;
     const seen =
-      raw.rendered !== false && (raw.opacity ?? 1) > 0 && textStyle['visibility'] !== 'hidden';
+      raw.rendered !== false &&
+      (raw.opacity ?? 1) > 0 &&
+      textStyle['visibility'] !== 'hidden' &&
+      !gradientFill;
     const contrast = seen ? textContrast(textStyle, raw) : undefined;
     return {
       ...(textStyle !== style && raw.textHolder && { holder: raw.textHolder }),
@@ -373,6 +379,7 @@ export function buildText(
       ...textExtras(textStyle),
       align: alignOf(textStyle),
       ...(raw.truncated && { truncated: true }),
+      ...(gradientFill && { gradientFill: true }),
     };
   }
   if (!parentStyle || raw.hasText === false) return undefined;

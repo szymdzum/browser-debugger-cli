@@ -791,6 +791,7 @@ export async function captureElementScreenshot(
     element: {
       bounds: roundBounds(onPage(box)),
       ...(bounds !== box && { captured: roundBounds(clip) }),
+      ...(options.padding && { padding: options.padding }),
     },
   };
 

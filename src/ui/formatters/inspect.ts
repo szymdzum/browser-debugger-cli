@@ -86,7 +86,7 @@ export function inspectHeader(data: InspectOutput): string {
     data.content !== undefined && `"${data.content}"`,
     data.placeholder !== undefined && `placeholder "${data.placeholder}"`,
     data.rect &&
-      `${data.rect.w}x${data.rect.h}${data.rect.screen ? ` (${data.rect.screen.w}x${data.rect.screen.h} on screen)` : ''} @${data.rect.x},${data.rect.y}${data.rect.in ? ' in viewport' : ''}`,
+      `${data.rect.w}x${data.rect.h}${data.rect.screen ? ` (${data.rect.screen.w}x${data.rect.screen.h} on screen)` : ''} @${data.rect.x},${data.rect.y}${data.rect.in ? ' (fixed: viewport position)' : ''}`,
     kind && `[${kind}]`,
     ...inspectVisibilityBadges(data.visibility),
     data.context && `in ${data.context}`,
@@ -263,8 +263,10 @@ function fontParts(text: InspectText): string[] {
 function contrastText(contrast: InspectContrast | undefined): string | undefined {
   if (!contrast) return undefined;
   return [
-    `contrast ${contrast.ratio} ${contrast.level}`,
-    contrast.inherited && `on ${contrast.background}`,
+    contrast.approximate
+      ? `contrast ≈${contrast.ratio} ${contrast.level}`
+      : `contrast ${contrast.ratio} ${contrast.level}`,
+    `on ${contrast.background}`,
     contrast.overImage && '(over image)',
     contrast.opacity !== undefined && `(faded: opacity ${contrast.opacity})`,
     contrast.approximate && `(approximate: ${contrast.approximate.join(', ')})`,
@@ -293,6 +295,7 @@ function textLine(text: InspectText): string | undefined {
     text.overflow && `text-overflow ${text.overflow}`,
     text.clamp && `clamp ${text.clamp}`,
     text.truncated && 'truncated',
+    text.gradientFill && 'filled by its background (background-clip: text; no contrast)',
     text.shadow && `shadow ${text.shadow}`,
     text.features && `features ${text.features}`,
   ]);
