@@ -140,17 +140,19 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Page navigations create new "navigation contexts" - default filters to latest context',
   },
   'console:-l': {
-    default: 'Smart summary with errors deduplicated and warnings grouped',
+    default:
+      'Smart summary with errors deduplicated and warnings grouped: the newest 50 distinct errors and warnings, with a note for the earlier ones. The session keeps the newest 10000 messages; dropped ones are counted (dropped in JSON)',
     whenEnabled: 'Lists all messages chronologically without deduplication',
   },
   'console:--list': {
-    default: 'Smart summary with errors deduplicated and warnings grouped',
+    default:
+      'Smart summary with errors deduplicated and warnings grouped: the newest 50 distinct errors and warnings, with a note for the earlier ones. The session keeps the newest 10000 messages; dropped ones are counted (dropped in JSON)',
     whenEnabled: 'Lists all messages chronologically without deduplication',
   },
   'console:--last': {
     default: 'Smart summary (without --list); a list shows the last 100 messages',
     whenEnabled:
-      'Lists the last N messages (0 = all) chronologically, also without --list; JSON gets messages',
+      'Lists the last N messages (0 = all) chronologically, also without --list; JSON gets messages and N distinct errors and warnings (0 = all; default 50)',
     automaticBehavior:
       'The [n] shown are positions in the session message list (what bdg details console <n> takes); when the page or level filter left messages out between the listed ones, a note says how many and why',
   },

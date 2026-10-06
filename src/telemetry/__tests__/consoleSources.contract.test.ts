@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { CleanupFunction } from '@/connection/types.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import type { ConsoleMessage } from '@/types.js';
@@ -287,5 +288,35 @@ void describe('Console sources', () => {
 
     assert.deepEqual(cdp.sessionsOf('Runtime.getProperties'), ['frame-1']);
     assert.equal(messages.length, 1);
+  });
+
+  void it('keeps the newest messages at the limit and counts the dropped ones', async () => {
+    const full = new MockSessionCDP();
+    const kept: ConsoleMessage[] = [];
+    let dropped = 0;
+    const stop = await startConsoleCollection(
+      full as unknown as CDPConnection,
+      kept,
+      false,
+      undefined,
+      () => {
+        dropped++;
+      }
+    );
+    const log = (text: string, timestamp: number): void =>
+      full.emit('Runtime.consoleAPICalled', {
+        type: 'log',
+        args: [{ type: 'string', value: text }],
+        executionContextId: 1,
+        timestamp,
+      });
+    for (let i = 0; i < MAX_CONSOLE_MESSAGES + 2; i++) log(`msg ${i}`, 1000 + i);
+    log('late and older than all kept', 1);
+    await stop();
+
+    assert.equal(kept.length, MAX_CONSOLE_MESSAGES);
+    assert.equal(kept[0]?.text, 'msg 2');
+    assert.equal(kept.at(-1)?.text, `msg ${MAX_CONSOLE_MESSAGES + 1}`);
+    assert.equal(dropped, 3);
   });
 });

@@ -35,6 +35,7 @@ import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { skippedBodyReason } from '@/telemetry/network.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
+import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
@@ -262,14 +263,15 @@ function findNetworkRequestOrThrow(store: TelemetryStore, id: string): NetworkRe
 }
 
 /**
- * Find console message by index or throw.
+ * Find console message by its session index or throw.
  *
- * @param messages - Array of console messages
+ * @param messages - Console messages kept
  * @param indexStr - Index as string
+ * @param dropped - Messages dropped before the first kept one (its index)
  * @returns Found message
- * @throws Error if invalid index or not found
+ * @throws CommandError if the index is invalid, dropped or not found
  */
-function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
+function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string, dropped: number): T {
   if (!/^\d+$/.test(indexStr)) {
     throw new CommandError(
       `Invalid console message index: ${indexStr}`,
@@ -278,16 +280,23 @@ function findConsoleMessageOrThrow<T>(messages: T[], indexStr: string): T {
     );
   }
   const index = parseInt(indexStr, 10);
-  if (index >= messages.length) {
+  if (index < dropped) {
     throw new CommandError(
-      messages.length === 0
-        ? `Console message not found at index: ${indexStr} (no messages captured yet)`
-        : `Console message not found at index: ${indexStr} (available: 0-${messages.length - 1})`,
+      consoleMessageDroppedError(index, dropped),
       { suggestion: `List messages with: ${sessionCommand('bdg console --list')}` },
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
-  const message = messages[index];
+  if (index - dropped >= messages.length) {
+    throw new CommandError(
+      messages.length === 0
+        ? `Console message not found at index: ${indexStr} (no messages captured yet)`
+        : `Console message not found at index: ${indexStr} (available: ${dropped}-${dropped + messages.length - 1})`,
+      { suggestion: `List messages with: ${sessionCommand('bdg console --list')}` },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
+  const message = messages[index - dropped];
   if (!message) {
     throw new CommandError(
       `Console message not found at index: ${indexStr}`,
@@ -442,6 +451,7 @@ export function createCommandRegistry(
       const allNetwork = allNetworkRequests(store);
       const totalNetwork = allNetwork.length;
       const totalConsole = store.consoleMessages.length;
+      const dropped = store.consoleDropped;
 
       const networkBounds = calculateSliceBounds(totalNetwork, lastN, offset);
       const consoleBounds = calculateSliceBounds(totalConsole, lastN, offset);
@@ -458,7 +468,7 @@ export function createCommandRegistry(
           ? []
           : store.consoleMessages
               .slice(consoleBounds.start, consoleBounds.end)
-              .map((msg, i) => mapConsoleMessageToPreview(msg, consoleBounds.start + i));
+              .map((msg, i) => mapConsoleMessageToPreview(msg, dropped + consoleBounds.start + i));
 
       return Promise.resolve({
         version: VERSION,
@@ -474,6 +484,7 @@ export function createCommandRegistry(
         console: recentConsole,
         totalNetwork,
         totalConsole,
+        ...(dropped > 0 && { droppedConsole: dropped }),
         hasMoreNetwork: networkBounds.start > 0,
         hasMoreConsole: consoleBounds.start > 0,
       });
@@ -486,7 +497,11 @@ export function createCommandRegistry(
       }
 
       if (params.itemType === 'console') {
-        const message = findConsoleMessageOrThrow(store.consoleMessages, params.id);
+        const message = findConsoleMessageOrThrow(
+          store.consoleMessages,
+          params.id,
+          store.consoleDropped
+        );
         return Promise.resolve({ item: message });
       }
 
