@@ -381,11 +381,13 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'peek:-f': {
     default: 'Shows snapshot of current data',
-    whenEnabled: 'Continuous monitoring - refreshes every second (like tail -f)',
+    whenEnabled:
+      'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000). Replaces the deprecated bdg tail',
   },
   'peek:--follow': {
     default: 'Shows snapshot of current data',
-    whenEnabled: 'Continuous monitoring - refreshes every second (like tail -f)',
+    whenEnabled:
+      'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000). Replaces the deprecated bdg tail',
   },
   'peek:-v': {
     default: 'Compact output (truncated URLs, no resource types)',

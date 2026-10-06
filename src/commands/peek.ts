@@ -21,6 +21,8 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
 import { MAX_LAST_ITEMS, positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { CommandError } from '@/errors/index.js';
+import { intervalWithoutFollowError } from '@/errors/messages.js';
 import type { PeekSection } from '@/ipc/protocol/commands.js';
 import { filterByResourceType } from '@/telemetry/filters.js';
 import type { BdgOutput } from '@/types.js';
@@ -31,6 +33,7 @@ import {
   type PreviewOptions,
 } from '@/ui/formatters/preview.js';
 import { followingPreviewMessage, stoppedFollowingPreviewMessage } from '@/ui/messages/preview.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 interface ProcessedPreview {
   output: BdgOutput;
@@ -40,6 +43,8 @@ interface ProcessedPreview {
 interface ParsedOptions {
   lastN: number;
   resourceTypes: Protocol.Network.ResourceType[];
+  /** Refresh interval of --follow (ms) */
+  interval: number;
 }
 
 function parseOptions(options: PeekCommandOptions): ParsedOptions {
@@ -51,7 +56,21 @@ function parseOptions(options: PeekCommandOptions): ParsedOptions {
     allowZeroForAll: true,
   }).validate(options.last);
   const resourceTypes = resourceTypeRule().validate(options.type);
-  return { lastN, resourceTypes };
+  if (options.interval !== undefined && !options.follow) {
+    const err = intervalWithoutFollowError();
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
+  }
+  const interval = positiveIntRule({
+    name: '--interval',
+    min: 100,
+    max: 60000,
+    default: 1000,
+  }).validate(options.interval);
+  return { lastN, resourceTypes, interval };
 }
 
 /**
@@ -119,15 +138,15 @@ function createPreviewOptions(
 
 async function runFollowMode(
   options: PeekCommandOptions,
-  lastN: number,
-  resourceTypes: Protocol.Network.ResourceType[],
+  parsed: ParsedOptions,
   baseOptions: PreviewOptions
 ): Promise<void> {
+  const { lastN, resourceTypes, interval } = parsed;
   const showPreview = async (): Promise<FollowPoll> => {
     const result = await fetchAndFilterPreview(lastN, resourceTypes, peekSection(options));
 
     if (!result.success) {
-      return followFetchFailure(result, { json: options.json, retryIntervalMs: 1000 });
+      return followFetchFailure(result, { json: options.json, retryIntervalMs: interval });
     }
     noteFollowConnected();
 
@@ -144,8 +163,52 @@ async function runFollowMode(
   await setupFollowMode(showPreview, {
     startMessage: followingPreviewMessage,
     stopMessage: stoppedFollowingPreviewMessage,
-    intervalMs: 1000,
+    intervalMs: interval,
   });
+}
+
+/**
+ * Parse the options, reporting an invalid one and exiting.
+ *
+ * @param options - Peek options
+ * @returns Parsed options
+ */
+function parsePeekOptions(options: PeekCommandOptions): ParsedOptions {
+  try {
+    return parseOptions(options);
+  } catch (error) {
+    handleValidationError(error, options.json ?? false);
+  }
+}
+
+/**
+ * How the preview is shown.
+ *
+ * @param options - Peek options
+ * @param lastN - Items to show
+ * @returns Preview options
+ */
+function previewDisplayOptions(options: PeekCommandOptions, lastN: number): PreviewOptions {
+  return {
+    json: options.json,
+    network: options.network,
+    console: options.console,
+    last: lastN,
+    verbose: options.verbose,
+    follow: options.follow,
+  };
+}
+
+/**
+ * Watch the session data (`peek --follow`, and the deprecated `tail`).
+ *
+ * @param options - Peek options (follow implied)
+ */
+export async function followPreview(options: PeekCommandOptions): Promise<void> {
+  const following = { ...options, follow: true };
+  showBothSectionsWhenBothRequested(following);
+  const parsed = parsePeekOptions(following);
+  await runFollowMode(following, parsed, previewDisplayOptions(following, parsed.lastN));
 }
 
 export function registerPeekCommand(program: Command): void {
@@ -157,6 +220,7 @@ export function registerPeekCommand(program: Command): void {
     .option('-n, --network', 'Show only network requests', false)
     .option('-c, --console', 'Show only console messages', false)
     .option('-f, --follow', 'Watch for updates (like tail -f)', false)
+    .option('--interval <ms>', 'Refresh interval of --follow in ms, 100-60000 (default: 1000)')
     .option('--last <count>', 'Show last N items, 0 for all', '10')
     .option(
       '--type <types>',
@@ -169,29 +233,12 @@ export function registerPeekCommand(program: Command): void {
           'Note: "bdg peek --network" is deprecated. Use "bdg network list" for enhanced filtering.'
         );
       }
-
-      let lastN: number;
-      let resourceTypes: Protocol.Network.ResourceType[];
-
-      try {
-        const parsed = parseOptions(options);
-        lastN = parsed.lastN;
-        resourceTypes = parsed.resourceTypes;
-      } catch (error) {
-        handleValidationError(error, options.json ?? false);
-      }
-
-      const baseOptions: PreviewOptions = {
-        json: options.json,
-        network: options.network,
-        console: options.console,
-        last: lastN,
-        verbose: options.verbose,
-        follow: options.follow,
-      };
+      const parsed = parsePeekOptions(options);
+      const { lastN, resourceTypes } = parsed;
+      const baseOptions = previewDisplayOptions(options, lastN);
 
       if (options.follow) {
-        await runFollowMode(options, lastN, resourceTypes, baseOptions);
+        await runFollowMode(options, parsed, baseOptions);
         return;
       }
 

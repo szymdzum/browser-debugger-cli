@@ -414,6 +414,8 @@ export interface PeekCommandOptions extends BaseOptions, PreviewDisplayOptions {
   last?: string;
   /** Filter network requests by resource type (comma-separated) */
   type?: string;
+  /** Refresh interval of --follow in ms (string from CLI, default: 1000) */
+  interval?: string;
 }
 
 /**

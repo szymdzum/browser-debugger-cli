@@ -148,11 +148,6 @@ export const DECISION_TREES: Record<string, DecisionTree> = {
         noAction: 'next',
       },
       {
-        question: 'Need continuous monitoring (like tail -f)?',
-        yesCommand: 'tail',
-        noAction: 'next',
-      },
-      {
         question: 'Need quick preview of recent data?',
         yesCommand: 'peek',
         noAction: 'next',

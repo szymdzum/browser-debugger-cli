@@ -2186,3 +2186,15 @@ export function skillWriteFailedError(path: string, reason: string): ErrorWithSu
       'Check the permissions of that directory, or install for the other agent only (--claude or --agents)',
   };
 }
+
+/**
+ * `bdg peek --interval` without `--follow`.
+ *
+ * @returns Message and suggestion
+ */
+export function intervalWithoutFollowError(): ErrorWithSuggestion {
+  return {
+    message: '--interval sets how often --follow refreshes',
+    suggestion: 'Add --follow, e.g. bdg peek --follow --interval 500',
+  };
+}

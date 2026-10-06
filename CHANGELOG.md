@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`dom inspect` shows the rule itself** - `--why` prints the winning rule as written under it (`.card .btn { background: #9db8ff; }`), and `--rules`/`--why` JSON have it as `rule`. A long minified rule is cut to its selector and that declaration (`.btn { … background-color:var(--bs-btn-bg); … }`), so `bootstrap.min.css:5:53709` comes with what is there (#364)
+- **`peek --follow --interval <ms>`** - Sets how often `--follow` refreshes (100-60000 ms, default 1000), as `tail --interval` did (#115)
+
+### Deprecated
+
+- **`bdg tail`** - Use `bdg peek --follow`, which has the same options plus `--type`. `tail` still works and prints a note; it will be removed in a later release (#115)
 
 ## [0.11.0] - 2026-10-06
 

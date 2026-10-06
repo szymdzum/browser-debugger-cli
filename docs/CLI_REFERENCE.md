@@ -114,15 +114,15 @@ bdg peek --type Script --last 100
 
 ### Continuous monitoring
 ```bash
-bdg tail                        # Live updates every second (like tail -f)
-bdg tail --last 50              # Show last 50 items
-bdg tail --network              # Show only network requests
-bdg tail --console              # Show only console messages
-bdg tail --interval 2000        # Custom update interval (2 seconds)
-bdg tail --verbose              # Verbose output (full URLs, resource and MIME types)
-
-# Note: 'bdg peek --follow' also works, but 'tail' has better semantics
+bdg peek --follow                     # Live updates every second (like tail -f)
+bdg peek --follow --last 50           # Show last 50 items
+bdg peek --follow --console           # Show only console messages
+bdg peek --follow --type XHR,Fetch    # Only API requests
+bdg peek --follow --interval 2000     # Custom update interval (100-60000 ms)
+bdg peek --follow --verbose           # Verbose output (full URLs, resource and MIME types)
 ```
+
+`bdg tail` still works with the same options but is deprecated: it prints a note and runs `peek --follow`. `--interval` without `--follow` exits 81.
 
 ### Get full details
 ```bash

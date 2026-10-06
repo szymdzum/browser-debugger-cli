@@ -35,7 +35,7 @@ export function verboseCommandsMessage(): string {
   return [
     'Commands:',
     `  Full preview:    ${sessionCommand('bdg peek --last 50')}`,
-    `  Watch live:      ${sessionCommand('bdg tail')}`,
+    `  Watch live:      ${sessionCommand('bdg peek --follow')}`,
     `  End session:     ${sessionCommand('bdg stop')}`,
   ].join('\n');
 }
@@ -87,4 +87,13 @@ export function connectionLostRetryMessage(timestamp: string, retryLabel: string
  */
 export function connectionLostStopHintMessage(): string {
   return 'Press Ctrl+C to stop';
+}
+
+/**
+ * Notice that `bdg tail` is deprecated (it still runs).
+ *
+ * @returns Notice for stderr
+ */
+export function tailDeprecatedNotice(): string {
+  return 'Note: "bdg tail" is deprecated and will be removed; use "bdg peek --follow" (same options: --last, --network, --console, --interval, --verbose)';
 }
