@@ -20,7 +20,7 @@ import {
   elementNotVisibleError,
   elementZeroDimensionsError,
 } from '@/errors/messages.js';
-import { callCDP } from '@/ipc/client.js';
+import { callBdgScript, callCDP } from '@/ipc/client.js';
 import { DEEP_QUERY_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { viewportOverride } from '@/runtime/page/emulation.js';
 import { readSessionMetadata } from '@/session/metadata.js';
@@ -47,7 +47,7 @@ const STABILITY_CHECK_INTERVAL_MS = 50;
 async function waitForPostScrollStability(): Promise<void> {
   const deadline = Date.now() + POST_SCROLL_MAX_WAIT_MS;
 
-  await callCDP('Runtime.evaluate', {
+  await callBdgScript('Runtime.evaluate', {
     expression: `
       (() => {
         window.__bdg_scrollStability = {
@@ -88,7 +88,7 @@ async function waitForPostScrollStability(): Promise<void> {
 
   try {
     while (Date.now() < deadline) {
-      const checkResult = await callCDP('Runtime.evaluate', {
+      const checkResult = await callBdgScript('Runtime.evaluate', {
         expression: `
           (() => {
             const state = window.__bdg_scrollStability;
@@ -120,7 +120,7 @@ async function waitForPostScrollStability(): Promise<void> {
 
     log.debug('Post-scroll stability timeout, proceeding anyway');
   } finally {
-    await callCDP('Runtime.evaluate', {
+    await callBdgScript('Runtime.evaluate', {
       expression: `
         (() => {
           const state = window.__bdg_scrollStability;
@@ -141,7 +141,7 @@ async function waitForPostScrollStability(): Promise<void> {
  * position so it can be restored afterwards.
  */
 async function scrollToElement(selector: string): Promise<ScrollPosition> {
-  const result = await callCDP('Runtime.evaluate', {
+  const result = await callBdgScript('Runtime.evaluate', {
     expression: `
       (() => {
         const el = (${DEEP_QUERY_JS})(${selectorArgsJS(selector)})[0];
@@ -175,7 +175,7 @@ async function scrollToElement(selector: string): Promise<ScrollPosition> {
 }
 
 async function restoreScrollPosition(position: ScrollPosition): Promise<void> {
-  await callCDP('Runtime.evaluate', {
+  await callBdgScript('Runtime.evaluate', {
     expression: `window.scrollTo(${position.x}, ${position.y})`,
     returnByValue: true,
   });
@@ -193,7 +193,7 @@ async function windowSize(viewport: {
   clientWidth: number;
   clientHeight: number;
 }): Promise<{ width: number; height: number }> {
-  const response = await callCDP('Runtime.evaluate', {
+  const response = await callBdgScript('Runtime.evaluate', {
     expression: '[window.innerWidth, window.innerHeight]',
     returnByValue: true,
   });
@@ -315,7 +315,7 @@ export async function capturePageScreenshot(
     originalScrollPosition = await scrollToElement(options.scroll);
   }
 
-  const dprResponse = await callCDP('Runtime.evaluate', {
+  const dprResponse = await callBdgScript('Runtime.evaluate', {
     expression: 'window.devicePixelRatio',
     returnByValue: true,
   });
@@ -346,7 +346,7 @@ export async function capturePageScreenshot(
   const restoreMetrics = await useUnitPixelRatio(devicePixelRatio, viewport);
   if (devicePixelRatio !== 1) {
     if (options.scroll) {
-      await callCDP('Runtime.evaluate', {
+      await callBdgScript('Runtime.evaluate', {
         expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(options.scroll)})[0]?.scrollIntoView({ block: 'center', behavior: 'instant' })`,
         returnByValue: true,
       });
@@ -574,7 +574,7 @@ async function measureInView(
   const scrolledFrom = await scrollPosition();
   const dx = bounds.x + bounds.width / 2 - view.width / 2;
   const dy = bounds.y + bounds.height / 2 - view.height / 2;
-  await callCDP('Runtime.evaluate', { expression: `window.scrollBy(${dx}, ${dy})` });
+  await callBdgScript('Runtime.evaluate', { expression: `window.scrollBy(${dx}, ${dy})` });
   try {
     box = await getElementBounds(ref);
     bounds = await captureArea(ref, box, padding);
@@ -619,7 +619,7 @@ async function restoreViewport(): Promise<void> {
  * @returns Scroll offsets in CSS px
  */
 async function scrollPosition(): Promise<ScrollBefore> {
-  const response = await callCDP('Runtime.evaluate', {
+  const response = await callBdgScript('Runtime.evaluate', {
     expression: '[window.scrollX, window.scrollY]',
     returnByValue: true,
   });
@@ -669,7 +669,7 @@ async function captureArea(
 async function paintedArea(ref: NodeRef, bounds: ElementBounds): Promise<ElementBounds> {
   const objectGroup = `bdg-shot-${process.pid}`;
   try {
-    const resolved = await callCDP('DOM.resolveNode', { ...ref, objectGroup });
+    const resolved = await callBdgScript('DOM.resolveNode', { ...ref, objectGroup });
     const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
       .objectId;
     if (!objectId) return bounds;
@@ -714,7 +714,7 @@ export async function captureElementScreenshot(
   const quality = format === 'jpeg' ? (options.quality ?? 90) : undefined;
   const noResize = options.noResize ?? false;
 
-  const dprResponse = await callCDP('Runtime.evaluate', {
+  const dprResponse = await callBdgScript('Runtime.evaluate', {
     expression: 'window.devicePixelRatio',
     returnByValue: true,
   });

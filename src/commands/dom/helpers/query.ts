@@ -25,7 +25,7 @@ import {
   type ErrorWithSuggestion,
   type NoMatchContext,
 } from '@/errors/messages.js';
-import { callCDP } from '@/ipc/client.js';
+import { callBdgScript, callCDP } from '@/ipc/client.js';
 import type { LayoutSize } from '@/ipc/protocol/domTypes.js';
 import {
   ELEMENT_GEOMETRY_JS,
@@ -145,7 +145,7 @@ async function withSelection<T>(
 ): Promise<T> {
   await callCDP('DOM.enable', {});
   const objectGroup = `bdg-query-${process.pid}-${++queryCount}`;
-  const evaluated = await callCDP('Runtime.evaluate', {
+  const evaluated = await callBdgScript('Runtime.evaluate', {
     expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)})`,
     objectGroup,
   });
@@ -231,7 +231,7 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
   const compounds = leadingCompounds(selector);
   const shadowHost = compounds.length > 0 ? shadowHostJS(compounds) : '-1';
   try {
-    const evaluated = await callCDP('Runtime.evaluate', {
+    const evaluated = await callBdgScript('Runtime.evaluate', {
       expression: `({ hidden: ${hidden}, readyState: document.readyState, unsearched: ${UNSEARCHED_CONTENT_JS}, names: ${names}, shadowHost: ${shadowHost} })`,
       returnByValue: true,
     });
@@ -274,7 +274,7 @@ export async function noMatchContext(selector: string): Promise<NoMatchContext> 
  */
 export async function documentReadyState(): Promise<string | undefined> {
   try {
-    const evaluated = await callCDP('Runtime.evaluate', {
+    const evaluated = await callBdgScript('Runtime.evaluate', {
       expression: 'document.readyState',
       returnByValue: true,
     });
@@ -625,7 +625,7 @@ interface TextAndState {
  */
 async function elementTextAndState(ref: NodeRef, full: boolean): Promise<TextAndState> {
   const objectGroup = `bdg-text-${process.pid}-${++queryCount}`;
-  const resolved = await callCDP('DOM.resolveNode', { ...ref, objectGroup });
+  const resolved = await callBdgScript('DOM.resolveNode', { ...ref, objectGroup });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     .objectId;
   if (!objectId) return { text: '', state: {} };
@@ -873,7 +873,10 @@ export async function assertNodeAttached(
   backendNodeId: number,
   source?: IndexSource
 ): Promise<void> {
-  const resolved = await callCDP('DOM.resolveNode', { backendNodeId, objectGroup: 'bdg-check' });
+  const resolved = await callBdgScript('DOM.resolveNode', {
+    backendNodeId,
+    objectGroup: 'bdg-check',
+  });
   const objectId = (resolved.data?.result as Protocol.DOM.ResolveNodeResponse | undefined)?.object
     .objectId;
   let attached = false;

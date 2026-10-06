@@ -30,6 +30,7 @@ import { inspectElement } from '@/runtime/dom/inspect.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { onScriptTarget } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
+import { evaluateInBdgWorld, sendForBdgScript } from '@/runtime/page/bdgWorld.js';
 import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
@@ -574,14 +575,19 @@ export function createCommandRegistry(
     },
 
     cdp_call: async (cdp, params) => {
+      const send = params.isolated
+        ? sendForBdgScript(cdp, params.method, params.params ?? {})
+        : cdp.send(params.method, params.params ?? {});
       const result = await withBusyPageRecovery(
         cdp,
-        cdp.send(params.method, params.params ?? {}).catch((error: unknown) => {
+        send.catch((error: unknown) => {
           throw callerError(params.method, error) ?? error;
         })
       );
 
-      const detectionResult = patternDetector.trackCommand(params.method);
+      const detectionResult = params.isolated
+        ? { shouldShow: false, pattern: undefined }
+        : patternDetector.trackCommand(params.method);
       let hint: HintDetails | undefined;
 
       if (detectionResult.shouldShow && detectionResult.pattern) {
@@ -767,7 +773,7 @@ export function createCommandRegistry(
     dom_form_discover: async (cdp): Promise<RawFormData> => {
       const response = await withBusyPageRecovery(
         cdp,
-        cdp.send('Runtime.evaluate', {
+        evaluateInBdgWorld(cdp, {
           expression: FORM_DISCOVERY_SCRIPT,
           returnByValue: true,
         })

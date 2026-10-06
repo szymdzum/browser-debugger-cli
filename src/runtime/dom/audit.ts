@@ -4,13 +4,13 @@
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import { operationFailedError } from '@/errors/messages.js';
 import type { AuditResult } from '@/ipc/protocol/auditTypes.js';
 import type { DomAuditCommand } from '@/ipc/protocol/commands.js';
 import { buildAudit } from '@/runtime/dom/auditModel.js';
 import { AUDIT_PAGE_JS, type RawAudit } from '@/runtime/dom/auditScripts.js';
+import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** Findings listed per check without `--limit` */
@@ -25,10 +25,10 @@ export const DEFAULT_AUDIT_LIMIT = 20;
  * @throws CommandError (91) when the page script fails
  */
 export async function auditPage(cdp: CDPConnection, params: DomAuditCommand): Promise<AuditResult> {
-  const response = (await cdp.send('Runtime.evaluate', {
+  const response = await evaluateInBdgWorld(cdp, {
     expression: `(${AUDIT_PAGE_JS})(${JSON.stringify(params.checks)})`,
     returnByValue: true,
-  })) as Protocol.Runtime.EvaluateResponse;
+  });
   const raw = response.result.value as RawAudit | undefined;
   if (response.exceptionDetails || !raw) {
     const err = operationFailedError(

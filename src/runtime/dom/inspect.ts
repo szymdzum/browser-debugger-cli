@@ -41,6 +41,7 @@ import {
 import { DEFAULT_TREE_DEPTH, DEFAULT_TREE_LIMIT } from '@/runtime/dom/inspectTree.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { evaluateInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -320,12 +321,12 @@ async function resolveCachedNode(
   backendNodeId: number,
   objectGroup: string
 ): Promise<string | undefined> {
-  const resolved = (await cdp
-    .send('DOM.resolveNode', { backendNodeId, objectGroup })
-    .catch((error: unknown) => {
+  const resolved = (await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup }).catch(
+    (error: unknown) => {
       log.debug(`Node ${backendNodeId} not resolved: ${getErrorMessage(error)}`);
       return {};
-    })) as Partial<Protocol.DOM.ResolveNodeResponse>;
+    }
+  )) as Partial<Protocol.DOM.ResolveNodeResponse>;
   const objectId = resolved.object?.objectId;
   if (!objectId) return undefined;
   const connected = await callOn<boolean>(
@@ -351,10 +352,10 @@ async function querySelector(
   selector: string,
   objectGroup: string
 ): Promise<string> {
-  const response = (await cdp.send('Runtime.evaluate', {
+  const response = await evaluateInBdgWorld(cdp, {
     expression: `(${DEEP_QUERY_JS})(${selectorArgsJS(selector)})`,
     objectGroup,
-  })) as Protocol.Runtime.EvaluateResponse;
+  });
   if (response.exceptionDetails || !response.result.objectId) {
     if (response.exceptionDetails) throwIfInvalidSelector(response.exceptionDetails, selector);
     const err = operationFailedError(

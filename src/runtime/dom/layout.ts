@@ -36,6 +36,7 @@ import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js'
 import { findFrameOwner, placeInOwnerFrame } from '@/runtime/dom/frameLayout.js';
 import { measureFrameMapping } from '@/runtime/dom/frameScopedConnection.js';
 import { DEEP_QUERY_JS, missingElementError, selectorArgsJS } from '@/runtime/dom/targetNode.js';
+import { evaluateInBdgWorld, resolveNodeInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -305,10 +306,10 @@ export async function inspectLayout(
  */
 async function measureSelector(cdp: CDPConnection, params: DomLayoutCommand): Promise<RawLayout> {
   const found = `(${DEEP_QUERY_JS})(${selectorArgsJS(params.selector)})`;
-  const response = (await cdp.send('Runtime.evaluate', {
+  const response = await evaluateInBdgWorld(cdp, {
     expression: `(${LAYOUT_JS})(${found}, ${params.index ?? null}, ${LAYOUT_ELEMENT_LIMIT})`,
     returnByValue: true,
-  })) as Protocol.Runtime.EvaluateResponse;
+  });
   if (response.exceptionDetails) {
     throwIfInvalidSelector(response.exceptionDetails, params.selector);
     const err = operationFailedError('measure the elements', response.exceptionDetails.text);
@@ -332,12 +333,12 @@ async function measureNode(
   backendNodeId: number,
   objectGroup: string
 ): Promise<RawLayout> {
-  const resolved = (await cdp
-    .send('DOM.resolveNode', { backendNodeId, objectGroup })
-    .catch((error: unknown) => {
+  const resolved = (await resolveNodeInBdgWorld(cdp, { backendNodeId, objectGroup }).catch(
+    (error: unknown) => {
       log.debug(`Node ${backendNodeId} not resolved: ${getErrorMessage(error)}`);
       return {};
-    })) as Partial<Protocol.DOM.ResolveNodeResponse>;
+    }
+  )) as Partial<Protocol.DOM.ResolveNodeResponse>;
   const objectId = resolved.object?.objectId;
   if (!objectId) return { count: 0, elements: [] };
   const response = (await cdp.send('Runtime.callFunctionOn', {

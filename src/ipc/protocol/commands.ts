@@ -116,6 +116,12 @@ export interface CdpCallCommand {
   method: string;
   /** Optional parameters for the CDP method. */
   params?: Record<string, unknown>;
+  /**
+   * A bdg page script: `Runtime.evaluate` and `DOM.resolveNode` run in bdg's
+   * isolated world, out of reach of built-ins the page replaced (not for
+   * `bdg cdp`, whose calls stay in the page's world)
+   */
+  isolated?: boolean;
 }
 
 /**

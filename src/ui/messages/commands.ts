@@ -507,6 +507,32 @@ export function colorSchemeLabel(scheme: string, emulated: boolean): string {
 }
 
 /**
+ * Suggestion for an action that failed on a page that replaced built-ins
+ * bdg's page scripts use.
+ *
+ * @param replaced - Their dotted names
+ * @returns Suggestion naming them and a way around
+ */
+export function brokenByReplacedBuiltinsSuggestion(replaced: readonly string[]): string {
+  const shown =
+    replaced.slice(0, 4).join(', ') + (replaced.length > 4 ? `, +${replaced.length - 4} more` : '');
+  return `The page replaced built-ins bdg's action script uses (${shown}), which may have broken it; if so, act on the element with ${sessionCommand("bdg dom eval '…'")} instead`;
+}
+
+/**
+ * Warning on an action when the page replaced built-ins bdg's page scripts
+ * use (polyfills, old frameworks, anti-bot scripts).
+ *
+ * @param replaced - Their dotted names
+ * @returns e.g. `the page replaced built-ins bdg's scripts use (Element.prototype.querySelectorAll); bdg found the element in its own world, but the action runs in the page's and may misbehave`
+ */
+export function replacedBuiltinsWarning(replaced: readonly string[]): string {
+  const shown =
+    replaced.slice(0, 4).join(', ') + (replaced.length > 4 ? `, +${replaced.length - 4} more` : '');
+  return `the page replaced built-ins bdg's scripts use (${shown}); bdg found the element in its own world, but the action runs in the page's and may misbehave`;
+}
+
+/**
  * First line of `bdg status` for a running session.
  *
  * @param page - URL and title of the page, when the session reported them,
