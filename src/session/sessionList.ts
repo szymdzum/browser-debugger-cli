@@ -9,6 +9,7 @@ import { getStatus } from '@/ipc/client.js';
 import type { StatusResponseData } from '@/ipc/session/queries.js';
 import { isSessionChrome, readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
 import { probeDaemonSocket, type SocketProbeResult } from '@/session/daemonSocket.js';
+import { readLastSessionEnd, type UnexpectedEndReason } from '@/session/lastSession.js';
 import {
   SESSION_STATE_FILES,
   getNamedSessionDir,
@@ -27,11 +28,12 @@ const log = createLogger('session');
 
 /**
  * State of a session: its daemon runs (`active`, `starting`, `ending`,
- * `unresponsive`), or died and left its Chrome running (`crashed`) or only
- * files (`stale`).
+ * `unresponsive`), died and left its Chrome running (`crashed`) or only
+ * files (`stale`), or exited after the session ended without `bdg stop`
+ * (`ended`: Chrome crashed or was closed, the page was closed, `--timeout`).
  */
 export type RunningSessionState =
-  'active' | 'starting' | 'ending' | 'unresponsive' | 'crashed' | 'stale';
+  'active' | 'starting' | 'ending' | 'unresponsive' | 'crashed' | 'stale' | 'ended';
 
 /**
  * One session in the list.
@@ -49,6 +51,10 @@ export interface RunningSessionInfo {
   chromePid?: number;
   /** Command that cleans up a crashed or stale session */
   cleanup?: string;
+  /** Why an `ended` session ended */
+  endReason?: UnexpectedEndReason;
+  /** When an `ended` session ended (epoch ms) */
+  endedAt?: number;
 }
 
 /**
@@ -97,9 +103,10 @@ async function describeSession(entry: SessionDirEntry): Promise<RunningSessionIn
 }
 
 /**
- * A session whose daemon socket does not answer: `starting` while its daemon
- * (from daemon.pid, verified by command line) runs but has not bound the
- * socket yet, otherwise see {@link describeLeftovers}.
+ * A session whose daemon socket does not answer: `ending` while its daemon
+ * (from daemon.pid, verified by command line) still runs, since a daemon
+ * writes daemon.pid only after it opened its socket and removes the socket
+ * first when it shuts down; otherwise see {@link describeLeftovers}.
  *
  * @param entry - Session directory
  * @param probe - Result of probing its daemon socket
@@ -110,14 +117,16 @@ function describeWithoutSocket(
   probe: SocketProbeResult
 ): RunningSessionInfo | null {
   const daemonPid = readLiveDaemonPid(entry.dir);
-  if (daemonPid !== null) return { name: entry.name, state: 'starting', daemonPid };
+  if (daemonPid !== null) return { name: entry.name, state: 'ending', daemonPid };
   return describeLeftovers(entry, probe);
 }
 
 /**
  * A session whose daemon is gone: `crashed` while the Chrome bdg launched for
- * it still runs, `stale` when only its files are left. Nothing is changed on
- * disk; `cleanup` names the command that removes them.
+ * it still runs, `stale` when only its files are left, `ended` when it left
+ * only the record of an end without `bdg stop` ({@link describeEnded}).
+ * Nothing is changed on disk; `cleanup` names the command that removes
+ * leftover files.
  *
  * @param entry - Session directory
  * @param probe - Result of probing its daemon socket
@@ -132,13 +141,33 @@ export function describeLeftovers(
   const leftover =
     probe === 'stale' ||
     SESSION_STATE_FILES.some((type) => fs.existsSync(sessionFilePathIn(dir, type)));
-  if (!orphan && !leftover) return null;
+  if (!orphan && !leftover) return describeEnded({ name, dir });
   const port = leftoverPort(dir);
   return {
     name,
     state: orphan ? 'crashed' : 'stale',
     ...(port !== null && { port }),
     ...(orphan && { chromePid }),
+    cleanup: sessionCommand('bdg cleanup', name),
+  };
+}
+
+/**
+ * A session that ended without `bdg stop` and whose daemon exited cleanly:
+ * `ended`, with why and when, until the session starts again or
+ * `bdg cleanup` clears the record.
+ *
+ * @param entry - Session directory
+ * @returns Session info, or null when the directory holds no such record
+ */
+function describeEnded({ name, dir }: SessionDirEntry): RunningSessionInfo | null {
+  const end = readLastSessionEnd(dir);
+  if (end === null) return null;
+  return {
+    name,
+    state: 'ended',
+    endReason: end.reason,
+    endedAt: end.endedAt,
     cleanup: sessionCommand('bdg cleanup', name),
   };
 }

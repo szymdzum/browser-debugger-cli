@@ -464,7 +464,7 @@ void describe('session list', () => {
     ]);
   });
 
-  void it('lists a session whose daemon runs but has no socket yet as starting', async () => {
+  void it('lists a session whose daemon runs without its socket as ending', async () => {
     const dir = path.join(base, 'sessions', 'p5');
     fs.mkdirSync(dir, { recursive: true });
     const fakeDaemon = spawn(
@@ -478,11 +478,35 @@ void describe('session list', () => {
       fs.writeFileSync(path.join(dir, 'port.txt'), '9228');
       await waitUntil(() => isProcessAlive(pid));
       assert.deepEqual(await listRunningSessions(), [
-        { name: 'p5', state: 'starting', daemonPid: pid },
+        { name: 'p5', state: 'ending', daemonPid: pid },
       ]);
     } finally {
       fakeDaemon.kill('SIGKILL');
     }
+  });
+
+  void it('lists a session that ended without bdg stop as ended, with why and when', async () => {
+    const dir = path.join(base, 'sessions', 'p6');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'port.txt'), '9229');
+    fs.writeFileSync(
+      path.join(dir, 'last-session.json'),
+      JSON.stringify({ reason: 'crash', endedAt: 1000 })
+    );
+    const sessions = await listRunningSessions();
+    assert.deepEqual(sessions, [
+      {
+        name: 'p6',
+        state: 'ended',
+        endReason: 'crash',
+        endedAt: 1000,
+        cleanup: 'bdg cleanup --session p6',
+      },
+    ]);
+    assert.match(
+      formatSessionList({ sessions }),
+      /p6\s+ended\s+-\s+-\s+-\n\nEnded without bdg stop:\n\s+p6 ended at .*: Chrome crashed or was closed/
+    );
   });
 
   void it('lists a session whose daemon died while its Chrome runs as crashed', async () => {

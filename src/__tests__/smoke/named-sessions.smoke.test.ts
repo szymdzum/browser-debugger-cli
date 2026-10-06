@@ -36,6 +36,8 @@ interface SessionsData {
     port?: number;
     chromePid?: number;
     cleanup?: string;
+    endReason?: string;
+    endedAt?: number;
   }[];
 }
 
@@ -93,7 +95,7 @@ async function runJsonError(command: string, args: string[]): Promise<ErrorEnvel
 
 void describe('named sessions', () => {
   const names = ['smoke-a', 'smoke-b'];
-  const otherNames = ['spy', 'smoke-c'];
+  const otherNames = ['spy', 'smoke-c', 'smoke-d'];
   const pids: number[] = [];
   let fixture: FixtureServer;
   let started: StartData[];
@@ -242,6 +244,10 @@ void describe('named sessions', () => {
         .exitCode,
       0
     );
+    assert.deepEqual(
+      (await runJson<SessionsData>('sessions', [])).data.sessions.map(({ name }) => name),
+      ['smoke-b']
+    );
     assert.equal(await waitForProcessExit(a.chromePid), true);
     assert.equal(await waitForProcessExit(a.daemonPid), true);
     assert.equal(isProcessAlive(b.chromePid), true);
@@ -291,6 +297,33 @@ void describe('named sessions', () => {
     assert.equal(purge.exitCode, 0, purge.stdout + purge.stderr);
     assert.equal(await waitForProcessExit(start.data.chromePid), true);
     assert.equal(fs.existsSync(`${sessionBaseDir}/sessions/smoke-c`), false);
+    assert.deepEqual((await runJson<SessionsData>('sessions', [])).data.sessions, []);
+  });
+
+  void it('lists a session whose Chrome was killed as ended until cleanup', async () => {
+    const start = await runJson<StartData>(`${fixture.url}deep`, [
+      '--session',
+      'smoke-d',
+      '--headless',
+    ]);
+    assert.equal(start.exitCode, 0, start.raw);
+    pids.push(start.data.daemonPid, start.data.chromePid);
+    process.kill(start.data.chromePid, 'SIGKILL');
+    assert.equal(await waitForProcessExit(start.data.daemonPid), true);
+
+    const [ended] = (await runJson<SessionsData>('sessions', [])).data.sessions;
+    assert.equal(ended?.name, 'smoke-d');
+    assert.equal(ended?.state, 'ended');
+    assert.equal(ended?.endReason, 'crash');
+    assert.equal(typeof ended?.endedAt, 'number');
+    const human = await runCommand('sessions', [], { timeout: 30000, env: sessionEnv });
+    assert.match(human.stdout + human.stderr, /smoke-d ended at .*: Chrome crashed or was closed/);
+
+    const cleanup = await runCommand('cleanup', ['--session', 'smoke-d'], {
+      timeout: 30000,
+      env: sessionEnv,
+    });
+    assert.equal(cleanup.exitCode, 0, cleanup.stdout + cleanup.stderr);
     assert.deepEqual((await runJson<SessionsData>('sessions', [])).data.sessions, []);
   });
 });
