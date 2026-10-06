@@ -91,6 +91,18 @@ void describe('dom inspect', () => {
     assert.match(grid, /\n {2}li\.tile ×6 100x40/);
 
     assert.doesNotMatch(await bdg(['dom', 'inspect', '.card', '--tree', '0']), /\ntree\n/);
+
+    const children = (await inspectJson('.card'))['children'] as Array<{
+      x: number;
+      y: number;
+      h: number;
+    }>;
+    const [title, text] = children;
+    assert.deepEqual([title?.x, title?.y], [17, 17], 'inside the 1px border and 16px padding');
+    assert.ok(
+      Math.abs((text?.y ?? 0) - (17 + (title?.h ?? 0) + 16)) <= 1,
+      'the next child sits one gap lower'
+    );
   });
 
   void it('shows a placeholder, a ::before and a fallback font', async () => {

@@ -42,6 +42,8 @@ function toNode(raw: RawTreeNode): InspectTreeNode {
   const children = raw.children ? groupSiblings(raw.children.map(toNode)) : undefined;
   return {
     element: raw.label,
+    x: Math.round(raw.x * 10) / 10,
+    y: Math.round(raw.y * 10) / 10,
     w: Math.round(raw.w),
     h: Math.round(raw.h),
     ...(layout && { layout }),
