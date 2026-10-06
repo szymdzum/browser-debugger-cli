@@ -53,10 +53,46 @@ export function cssLength(value: string | undefined): CssLength {
  * @returns Normalized value
  */
 export function normalizeCssValue(value: string): string {
-  return hexColorsIn(value)
-    .replace(PX_IN_VALUE, (_match, number: string) => String(round1(Number(number))))
+  return mapOutsideFunctions(hexColorsIn(value), UNIT_KEEPING_FUNCTIONS, (part) =>
+    part.replace(PX_IN_VALUE, (_match, number: string) => String(round1(Number(number))))
+  )
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Functions whose px stay written: math mixes units, URLs are names */
+const UNIT_KEEPING_FUNCTIONS = new Set(['calc', 'min', 'max', 'clamp', 'url']);
+
+/**
+ * Change the parts of a value that are not inside the given functions.
+ *
+ * @param value - CSS value
+ * @param functions - Function names whose arguments are kept as written
+ * @param change - Change for the other parts
+ * @returns Value
+ */
+function mapOutsideFunctions(
+  value: string,
+  functions: ReadonlySet<string>,
+  change: (part: string) => string
+): string {
+  let result = '';
+  let start = 0;
+  let depth = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '(') {
+      const name = /([\w-]+)$/.exec(value.slice(start, i))?.[1]?.toLowerCase() ?? '';
+      if (depth === 0 && functions.has(name)) {
+        result += change(value.slice(start, i));
+        start = i;
+        depth = 1;
+      } else if (depth > 0) depth++;
+    } else if (value[i] === ')' && depth > 0 && --depth === 0) {
+      result += value.slice(start, i + 1);
+      start = i + 1;
+    }
+  }
+  return result + (depth > 0 ? value.slice(start) : change(value.slice(start)));
 }
 
 /**
@@ -212,9 +248,10 @@ function round3(value: number): number {
  */
 function decomposeMatrix([a = 1, b = 0, c = 0, d = 1, e = 0, f = 0]: number[]): string | undefined {
   if (Math.abs(a * c + b * d) > 1e-6) return undefined;
-  const scaleX = Math.hypot(a, b);
+  const mirrored = a * d - b * c < 0 && a < 0;
+  const scaleX = mirrored ? -Math.hypot(a, b) : Math.hypot(a, b);
   const scaleY = scaleX === 0 ? 0 : (a * d - b * c) / scaleX;
-  const angle = round3((Math.atan2(b, a) * 180) / Math.PI);
+  const angle = round3((Math.atan2(mirrored ? -b : b, mirrored ? -a : a) * 180) / Math.PI);
   const parts: string[] = [];
   if (e !== 0 || f !== 0) parts.push(`translate(${round1(e)},${round1(f)})`);
   if (angle !== 0) parts.push(`rotate(${angle}deg)`);

@@ -712,7 +712,15 @@ export function createCommandRegistry(
 
     dom_layout: async (cdp, params) => withBusyPageRecovery(cdp, inspectLayout(cdp, params)),
 
-    dom_inspect: async (cdp, params) => withBusyPageRecovery(cdp, inspectElement(cdp, params)),
+    dom_inspect: async (cdp, params) =>
+      withBusyPageRecovery(
+        cdp,
+        inspectElement(cdp, params).then((result) =>
+          result.theme === 'dark' && emulation.get().colorScheme === 'dark'
+            ? { ...result, themeFrom: 'emulation' as const }
+            : result
+        )
+      ),
 
     dom_wait: async (cdp, params) => waitForCondition(cdp, params),
 

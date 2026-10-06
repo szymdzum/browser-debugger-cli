@@ -6,8 +6,14 @@
  */
 
 import type { Protocol } from '@/connection/typed-cdp.js';
-import type { InspectHint, InspectResult, InspectRule } from '@/ipc/protocol/inspectTypes.js';
-import { normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
+import type {
+  InspectHint,
+  InspectResult,
+  InspectRule,
+  InspectWhy,
+} from '@/ipc/protocol/inspectTypes.js';
+import type { InactiveRule } from '@/runtime/dom/inspectScripts.js';
+import { collapsedValue, normalizeProperty } from '@/runtime/dom/inspectAllStyles.js';
 import {
   physicalName,
   ownProperties,
@@ -105,6 +111,8 @@ export interface CascadeInput {
   whyLonghands?: string[];
   /** Computed value of the `--why` shorthand, as the page writes it */
   whyComputed?: string;
+  /** Rules that set the `--why` property under a condition that does not apply now */
+  whyInactive?: InactiveRule[];
   /** Check for declarations that have no effect (default true) */
   hints?: boolean;
   /** A form control that draws text (its font is checked against the parent's) */
@@ -136,7 +144,7 @@ export function buildCascadeFields(input: CascadeInput): Partial<InspectResult> 
   return {
     ...(hints && { hints }),
     ...(rules.length > 0 && { rules }),
-    ...(whyGroup && { why: buildWhy(whyGroup, cascade, input, found) }),
+    ...(whyGroup && { why: withInactive(buildWhy(whyGroup, cascade, input, found), input) }),
   };
 }
 
@@ -154,6 +162,20 @@ function propertyGroup(name: string, expanded?: readonly string[]): PropertyGrou
   return longhands
     ? { shorthand: name, longhands: [...longhands] }
     : { longhands: [physicalName(name)] };
+}
+
+/**
+ * The `--why` answer with the rules that would set the property under a
+ * condition that does not apply now (on its first entry).
+ *
+ * @param whys - `--why` entries
+ * @param input - Page-side findings
+ * @returns Entries
+ */
+function withInactive(whys: InspectWhy[], input: CascadeInput): InspectWhy[] {
+  const [first, ...rest] = whys;
+  if (!first || !input.whyInactive?.length) return whys;
+  return [{ ...first, inactive: input.whyInactive }, ...rest];
 }
 
 /**
@@ -221,15 +243,17 @@ function buildRules(
   const rows = groups.flatMap((group) => {
     const resolutions = group.longhands.map((longhand) => cascade.get(longhand));
     const winners = resolutions.map((resolution) => resolution?.winner);
-    const grouped =
-      group.shorthand !== undefined ? groupedRow(group.shorthand, winners) : undefined;
-    if (grouped) return [toRule(grouped.property, grouped, resolutions[0], input)];
+    const grouped = group.shorthand !== undefined ? groupedRow(winners) : undefined;
+    if (grouped) {
+      const longhands = shorthandLonghands(grouped.property) ?? group.longhands;
+      return [toRule(grouped.property, grouped, resolutions[0], input, longhands)];
+    }
     return group.longhands.flatMap((longhand, i) => {
       const winner = winners[i];
-      if (!winner || winner.source.origin === 'user-agent') return [];
+      if (!winner || (winner.source.origin === 'user-agent' && !input.props)) return [];
       const unexpanded = winner.via !== undefined && winner.value === winner.written;
       return unexpanded && winner.via
-        ? [toRule(winner.via, winner, resolutions[i], input)]
+        ? [toRule(winner.via, winner, resolutions[i], input, [longhand])]
         : [toRule(longhand, winner, resolutions[i], input)];
     });
   });
@@ -244,29 +268,18 @@ function buildRules(
 
 /**
  * One row for a group of longhands that a single author declaration sets:
- * the shorthand as written, or (set by a wider shorthand, like `border`
- * for `border-width`) the values it gives the sides; a wider shorthand
- * Chrome could not expand (`var()`) as written.
+ * that declaration as written (`padding: 4px 8px`; a wider shorthand like
+ * `border: none` once, not once per `border-width`/`-style`/`-color` group).
  *
- * @param shorthand - The group's shorthand
  * @param winners - Winning declaration of each longhand
  * @returns The row's declaration, or undefined when the sides differ in source
  */
-function groupedRow(
-  shorthand: string,
-  winners: Array<Declaration | undefined>
-): Declaration | undefined {
+function groupedRow(winners: Array<Declaration | undefined>): Declaration | undefined {
   const [first] = winners;
   if (!first?.via || first.source.origin === 'user-agent') return undefined;
   const same = winners.every((w) => w && w.via === first.via && sameSource(w, first));
   if (!same) return undefined;
-  const written = first.written ?? first.value;
-  if (first.via === shorthand || first.value === written) {
-    return { ...first, property: first.via, value: written };
-  }
-  const values = winners.map((w) => w?.value ?? '');
-  const value = values.every((v) => v === first.value) ? first.value : values.join(' ');
-  return { ...first, property: shorthand, value };
+  return { ...first, property: first.via, value: first.written ?? first.value };
 }
 
 /**
@@ -287,26 +300,55 @@ function sameSource(a: Declaration, b: Declaration): boolean {
 }
 
 /**
+ * The computed value of a row shown as a shorthand or logical property,
+ * from its longhands: as `--all` writes it (`padding 4 8`), else the
+ * longhands' values with runs of equal ones written once (`border` →
+ * `2px solid red`).
+ *
+ * @param property - Shorthand or logical property
+ * @param longhands - Its longhands
+ * @param style - Computed longhands
+ * @returns Value, or undefined when no longhand has one
+ */
+function shorthandValue(
+  property: string,
+  longhands: readonly string[],
+  style: StyleMap
+): string | undefined {
+  const collapsed = collapsedValue(property, style);
+  if (collapsed !== undefined) return collapsed;
+  const values = longhands.map((longhand) => style[longhand]);
+  if (values.some((value) => value === undefined)) return undefined;
+  return values.filter((value, i) => i === 0 || value !== values[i - 1]).join(' ');
+}
+
+/**
  * A `--rules` row.
  *
  * @param property - Property shown
  * @param winner - Winning declaration
  * @param resolution - Its resolution (for what it overrides)
  * @param input - Computed style and the label function
+ * @param longhands - The longhands the row stands for (a shorthand's value comes from them)
  * @returns Rule
  */
 function toRule(
   property: string,
   winner: Declaration,
   resolution: Resolution | undefined,
-  input: CascadeInput
+  input: CascadeInput,
+  longhands: readonly string[] = [property]
 ): InspectRule {
-  const computed = input.style[property];
+  const computed = input.style[property] ?? shorthandValue(property, longhands, input.style);
   const overrides = [
     ...new Set(
       (resolution?.overridden ?? [])
         .filter((d) => d.source.origin !== 'user-agent')
-        .map((d) => d.source.selector ?? d.source.kind)
+        .map((d) =>
+          d.source.selector !== undefined && d.source.selector === winner.source.selector
+            ? input.label(d)
+            : (d.source.selector ?? d.source.kind)
+        )
     ),
   ];
   return {

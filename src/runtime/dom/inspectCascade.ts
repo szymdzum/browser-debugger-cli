@@ -353,9 +353,9 @@ function strongestMatchingSelector(match: Protocol.CSS.RuleMatch): Protocol.CSS.
 
 /**
  * Source of a matched rule: its matching selector (the strongest of a list),
- * origin, stylesheet, layer (nested ones as `outer.inner`), the media or
- * container condition it is under (`not all and (…)`, as Chrome writes
- * `not (…)`, shortened) and the selector's specificity.
+ * origin, stylesheet, layer (nested ones as `outer.inner`), the media,
+ * container, `@supports` and `@scope` conditions it is under (`not all and
+ * (…)`, as Chrome writes `not (…)`, shortened) and the selector's specificity.
  *
  * @param match - CDP rule match
  * @returns Declaration source
@@ -365,9 +365,13 @@ function ruleSource(match: Protocol.CSS.RuleMatch): DeclarationSource {
   const matching = strongestMatchingSelector(match);
   const selector = matching?.text ?? rule.selectorList.text;
   const layer = rule.layers?.map((l) => l.text || '(anonymous)').join('.');
-  const condition = [...(rule.media ?? []), ...(rule.containerQueries ?? [])]
-    .map((c) => c.text.replace(/^not all and /, 'not '))
-    .join(' and ');
+  const condition = [
+    ...[...(rule.media ?? []), ...(rule.containerQueries ?? [])].map((c) =>
+      c.text.replace(/^not all and /, 'not ')
+    ),
+    ...(rule.supports ?? []).map((c) => `supports ${c.text}`),
+    ...(rule.scopes ?? []).map((c) => `scope ${c.text}`),
+  ].join(' and ');
   const specificity = matching?.specificity;
   const declarations = rule.style.cssText;
   return {

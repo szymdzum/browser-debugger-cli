@@ -35,6 +35,10 @@ export interface RawTreeNode {
   display: string;
   /** Text of an element without block-level children */
   text?: string;
+  /** Reached through a slot or a `display: contents` wrapper (`slot.label`, `div.row (contents)`) */
+  via?: string;
+  /** In the shadow root of its parent */
+  shadow?: boolean;
   children?: RawTreeNode[];
   /** Rendered element children (at the depth limit) */
   childCount?: number;
@@ -50,6 +54,14 @@ export interface RawBackground {
   image: boolean;
   /** Its own opacity, below 1 (it fades its background and everything inside it) */
   opacity?: number;
+}
+
+/** A rule that would set a property if its `@media`/`@supports` condition applied */
+export interface InactiveRule {
+  selector: string;
+  /** e.g. `@media (max-width: 600px)` */
+  condition: string;
+  value: string;
 }
 
 /** What {@link INSPECT_PAGE_JS} returns */
@@ -99,6 +111,8 @@ export interface RawInspect {
   inParent?: { left: number; top: number; right: number; bottom: number };
   /** Gaps to the previous and next rendered in-flow siblings, by the side they are on */
   siblings?: { top?: number; bottom?: number; left?: number; right?: number };
+  /** Its text is cut off: clipped by `overflow` (ellipsis or not) or by a line clamp, on it or its text holder */
+  truncated?: boolean;
   /** Content size when it overflows the box */
   scroll?: { w: number; h: number; clientW: number; clientH: number };
   /** Backgrounds from the element up to the root */
@@ -123,6 +137,8 @@ export interface RawInspect {
    * given per side, e.g. `top 1px solid … / right 0px none …`
    */
   props?: Record<string, string>;
+  /** Font size of the root element (px), for rem custom properties in `--props` */
+  rootFontSize?: number;
   /** `--props` names the browser does not know as CSS properties */
   unknownProps?: string[];
   /** The `--why` property is not a CSS property */
@@ -131,6 +147,8 @@ export interface RawInspect {
   whyLonghands?: string[];
   /** Computed value of the `--why` shorthand (`getComputedStyle` writes it as one value) */
   whyComputed?: string;
+  /** Rules for the element that set the `--why` property under a condition that does not apply now */
+  whyInactive?: InactiveRule[];
   /** Properties of running CSS transitions, and names of running animations (time-based: scroll-driven ones do not change on their own) */
   animating: string[];
 }
@@ -149,27 +167,31 @@ const FLAT_TREE_JS = `(view) => {
     while (p && style(p).display === 'contents') p = flatParent(p);
     return p;
   };
+  const via = new WeakMap();
+  const label = (n) => n.localName + (n.id ? '#' + n.id : n.classList && n.classList.length ? '.' + n.classList[0] : '');
+  const slotText = (slot) => slot.assignedNodes({ flatten: true }).some((t) => t.nodeType === 3 && t.data.trim() !== '');
   const children = (n) => {
     const out = [];
-    const add = (c) => {
+    const add = (c, through) => {
       if (skipped.test(c.localName)) return;
       if (c.localName === 'slot') {
         const assigned = c.assignedElements({ flatten: true });
-        (assigned.length ? assigned : Array.from(c.children)).forEach(add);
+        if (assigned.length === 0 && slotText(c)) out.push(c);
+        else (assigned.length ? assigned : Array.from(c.children)).forEach((a) => add(a, label(c)));
       } else if (style(c).display === 'contents') {
-        Array.from((c.shadowRoot || c).children).forEach(add);
+        Array.from((c.shadowRoot || c).children).forEach((a) => add(a, label(c) + ' (contents)'));
       } else {
+        if (through) via.set(c, through);
         out.push(c);
       }
     };
-    Array.from((n.shadowRoot || n).children).forEach(add);
+    Array.from((n.shadowRoot || n).children).forEach((c) => add(c, null));
     return out;
   };
   const rendered = (n) => n.getClientRects().length > 0 &&
     (!n.checkVisibility || n.checkVisibility({ visibilityProperty: true }));
   const container = (n) => children(n).some((c) => rendered(c) && !/^inline/.test(style(c).display));
-  const label = (n) => n.localName + (n.id ? '#' + n.id : n.classList && n.classList.length ? '.' + n.classList[0] : '');
-  return { style, skipped, flatParent, layoutParent, children, rendered, container, label };
+  return { style, skipped, flatParent, layoutParent, children, rendered, container, label, via, slotText };
 }`;
 
 /**
@@ -298,14 +320,19 @@ const PLACEMENT_JS = `(el, tree) => {
   const r = el.getBoundingClientRect();
   const p = parent.getBoundingClientRect();
   const ps = tree.style(parent);
-  const edge = (side) => parseFloat(ps['border-' + side + '-width']) + parseFloat(ps['padding-' + side]);
+  const zoom = parent.currentCSSZoom || 1;
+  const edge = (side) => (parseFloat(ps['border-' + side + '-width']) + parseFloat(ps['padding-' + side])) * zoom;
   const inParent = {
     left: r.left - (p.left + edge('left')),
     top: r.top - (p.top + edge('top')),
     right: (p.right - edge('right')) - r.right,
     bottom: (p.bottom - edge('bottom')) - r.bottom
   };
-  const inFlow = (n) => n !== el && tree.rendered(n) && !/^(absolute|fixed)$/.test(tree.style(n).position);
+  const inFlow = (n) => {
+    if (n === el || !tree.rendered(n) || /^(absolute|fixed)$/.test(tree.style(n).position)) return false;
+    const box = n.getBoundingClientRect();
+    return box.width > 0 || box.height > 0;
+  };
   const siblings = tree.children(parent);
   const at = siblings.indexOf(el);
   const before = siblings.slice(0, Math.max(at, 0)).reverse().find(inFlow);
@@ -416,7 +443,7 @@ const TREE_JS = `(el, tree, textOf, depth) => {
   let budget = ${TREE_NODE_CAP};
   let skipped = 0;
   const walk = (kids, level, origin) => {
-    const shown = kids.filter(tree.rendered);
+    const shown = kids.filter((k) => tree.rendered(k) || k.localName === 'slot');
     const nodes = [];
     for (const k of shown) {
       if (budget <= 0) { skipped++; continue; }
@@ -428,6 +455,12 @@ const TREE_JS = `(el, tree, textOf, depth) => {
   const nodeOf = (n, level, origin) => {
     const r = n.getBoundingClientRect();
     const node = { label: tree.label(n), x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height, display: tree.style(n).display };
+    if (tree.via.has(n)) node.via = tree.via.get(n);
+    if (n.parentNode && n.parentNode.host) node.shadow = true;
+    if (n.localName === 'slot') {
+      node.text = n.assignedNodes({ flatten: true }).map((t) => t.textContent).join(' ').replace(/\\s+/g, ' ').trim().slice(0, 60);
+      return node;
+    }
     const kids = tree.children(n);
     if (!tree.container(n)) node.text = textOf(n).slice(0, 60);
     if (level >= depth) {
@@ -442,6 +475,44 @@ const TREE_JS = `(el, tree, textOf, depth) => {
   if (depth <= 0) return { hiddenChildren: 0, treeSkipped: 0 };
   const top = walk(tree.children(el), 1, el.getBoundingClientRect());
   return { tree: top.nodes, hiddenChildren: top.hidden, treeSkipped: skipped };
+}`;
+
+/**
+ * Page-side: rules for the element that set a property but sit under a
+ * `@media` or `@supports` condition that does not apply now (at most 5),
+ * from same-origin, `@import`ed, constructed and shadow-root stylesheets.
+ */
+const INACTIVE_RULES_JS = `(el, names) => {
+  const view = el.ownerDocument.defaultView;
+  const found = [];
+  let budget = 20000;
+  const unmet = (rule) => {
+    if (rule.media && rule.media.mediaText && !view.matchMedia(rule.media.mediaText).matches) return '@media ' + rule.media.mediaText;
+    if (typeof CSSSupportsRule !== 'undefined' && rule instanceof CSSSupportsRule && !CSS.supports(rule.conditionText)) return '@supports ' + rule.conditionText;
+    return null;
+  };
+  const sets = (rule) => names.map((name) => rule.style.getPropertyValue(name).trim()).find((value) => value !== '');
+  const matches = (selector) => {
+    try { return el.matches(selector); } catch (e) { return false; }
+  };
+  const visit = (rules, condition) => {
+    for (const rule of Array.from(rules)) {
+      if (budget-- <= 0 || found.length >= 5) return;
+      if (typeof CSSImportRule !== 'undefined' && rule instanceof CSSImportRule) {
+        try { if (rule.styleSheet) visit(rule.styleSheet.cssRules, condition); } catch (e) { continue; }
+        continue;
+      }
+      const value = condition && rule.style && rule.selectorText ? sets(rule) : undefined;
+      if (value !== undefined && matches(rule.selectorText)) found.push({ selector: rule.selectorText, condition: condition, value: value });
+      if (rule.cssRules) visit(rule.cssRules, condition || unmet(rule));
+    }
+  };
+  for (const scope of new Set([el.getRootNode(), el.ownerDocument])) {
+    for (const sheet of [...Array.from(scope.styleSheets || []), ...Array.from(scope.adoptedStyleSheets || [])]) {
+      try { visit(sheet.cssRules, null); } catch (e) { continue; }
+    }
+  }
+  return found;
 }`;
 
 /**
@@ -484,6 +555,12 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
     animating: el.getAnimations ? [...new Set(el.getAnimations().filter((a) => a.playState === 'running' && (!a.timeline || a.timeline === el.ownerDocument.timeline)).map((a) => a.transitionProperty || a.animationName || 'animation'))] : []
   };
   if (textFrom !== el) result.textHolder = tree.label(textFrom);
+  const clipped = (n) => {
+    const cs = tree.style(n);
+    if (cs.overflowX !== 'visible' && n.scrollWidth > n.clientWidth + 1) return true;
+    return cs.webkitLineClamp !== 'none' && cs.overflowY !== 'visible' && n.scrollHeight > n.clientHeight + 1;
+  };
+  if (textual && !textControl && (clipped(el) || (textFrom !== el && clipped(textFrom)))) result.truncated = true;
   if ((${FAMILY_LOADED_JS})(textFrom, tree, textOf(textFrom))) result.familyLoaded = true;
   if (/^(input|textarea)$/.test(el.localName) && el.placeholder && !el.value) {
     result.placeholder = el.placeholder.replace(/\\s+/g, ' ').trim();
@@ -503,6 +580,7 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
       return sides.map((side) => side.slice(name.length + 1) + ' ' + s.getPropertyValue(side).trim()).join(' / ');
     };
     result.props = Object.fromEntries(props.filter(known).map((name) => [name, valueOf(name)]));
+    result.rootFontSize = parseFloat(tree.style(el.ownerDocument.documentElement).fontSize) || 16;
     result.unknownProps = props.filter((name) => !known(name));
   }
   if (why && !why.startsWith('--')) {
@@ -514,6 +592,8 @@ export const INSPECT_PAGE_JS = `function (depth, props, why) {
         result.whyLonghands = Array.from(probe);
         result.whyComputed = s.getPropertyValue(why).trim();
       }
+      const inactive = (${INACTIVE_RULES_JS})(el, [why].concat(result.whyLonghands || []));
+      if (inactive.length > 0) result.whyInactive = inactive;
     }
   }
   return Object.assign(result,

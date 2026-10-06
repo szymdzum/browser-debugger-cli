@@ -488,6 +488,8 @@ export function allStyles(
  * @param style - Computed longhands (CDP)
  * @param pageValues - Values the page read
  * @param pageUnknown - Names the page does not know as CSS properties
+ * @param rootFontSize - Root font size (px): a custom property that is one
+ *   rem length is also given in px
  * @returns Values by name (an unset custom property is empty), and the
  *   names that are not properties
  */
@@ -495,7 +497,8 @@ export function selectedProps(
   names: readonly string[],
   style: StyleMap,
   pageValues: Record<string, string> | undefined,
-  pageUnknown: readonly string[] = []
+  pageUnknown: readonly string[] = [],
+  rootFontSize = 16
 ): { props: Record<string, InspectProp>; unknown: string[] } {
   const props: Record<string, InspectProp> = {};
   const unknown: string[] = [];
@@ -505,7 +508,11 @@ export function selectedProps(
     if (pageUnknown.includes(name) || (!known && computed === '' && !name.startsWith('--'))) {
       unknown.push(name);
     } else {
-      props[name] = { computed, value: normalizeProperty(name, computed) };
+      const rem = name.startsWith('--') ? /^(-?\d*\.?\d+)rem$/.exec(computed.trim()) : null;
+      const value = rem
+        ? String(Math.round(Number(rem[1]) * rootFontSize * 10) / 10)
+        : normalizeProperty(name, computed);
+      props[name] = { computed, value };
     }
   }
   return { props, unknown };
