@@ -103,7 +103,10 @@ export function registerFormInteractionCommands(program: Command): void {
     .command('fill')
     .description('Fill a form field with a value (React-compatible, waits for stability)')
     .argument('<selectorOrIndex>', SELECTOR_OR_INDEX_ARGUMENT)
-    .argument('<value>', 'Value to fill (file inputs: paths separated by commas, "" clears)')
+    .argument(
+      '<value>',
+      'Value to fill (file inputs: local file paths, separated by commas, that are uploaded to the page; "" clears)'
+    )
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .option('--no-blur', 'Do not blur after filling (keeps focus on element)')
     .option('--no-wait', 'Skip waiting for network stability after fill')
