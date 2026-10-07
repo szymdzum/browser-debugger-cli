@@ -365,11 +365,17 @@ export function portInUseError(port: number, reason?: string): string {
 /**
  * Why a launched Chrome is not the one answering on 127.0.0.1:<port>.
  *
- * @param answeredBy - What answers there: a different browser or another process
+ * @param answeredBy - What answers there: a different browser, another
+ *   process, or nothing (the address is held but does not answer)
  * @param chromeHost - Address the launched Chrome listens on
  * @returns Reason for the PORT_IN_USE issue
  */
-export function portTakenByReason(answeredBy: 'browser' | 'process', chromeHost: string): string {
+export function portTakenByReason(
+  answeredBy: 'browser' | 'process' | 'nothing',
+  chromeHost: string
+): string {
+  if (answeredBy === 'nothing')
+    return `something holds 127.0.0.1 (Chrome fell back to ${chromeHost})`;
   const other = answeredBy === 'browser' ? 'another browser' : 'another process';
   return `${other} answers on 127.0.0.1 (Chrome listens on ${chromeHost})`;
 }
@@ -379,11 +385,11 @@ export function portTakenByReason(answeredBy: 'browser' | 'process', chromeHost:
  * it in time (a slow start, not a port conflict).
  *
  * @param port - Port Chrome announced
- * @param timeoutMs - How long bdg waited
+ * @param waitedMs - How long bdg waited
  * @returns Reason for the CHROME_LAUNCH_FAILED issue
  */
-export function chromeNotAnsweringReason(port: number, timeoutMs: number): string {
-  return `Chrome announced port ${port} but did not answer on 127.0.0.1 within ${timeoutMs / 1000}s (slow start)`;
+export function chromeNotAnsweringReason(port: number, waitedMs: number): string {
+  return `Chrome announced port ${port} but did not answer on 127.0.0.1 within ${(waitedMs / 1000).toFixed(1)}s (slow start)`;
 }
 
 /**

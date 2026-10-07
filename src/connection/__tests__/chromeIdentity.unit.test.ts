@@ -4,7 +4,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as net from 'node:net';
@@ -228,6 +228,39 @@ void describe('verifyLaunchedChrome', () => {
     answeredPath = BROWSER_PATH;
     const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${port + 1}${BROWSER_PATH}`);
     await assertIssue(verifyLaunchedChrome({ logs, port, pid: alivePid }), 'PORT_IN_USE');
+  });
+
+  void it('reports a Chrome that dies while bdg waits for its answer as died, at once', async () => {
+    const slowPort = await closedPort();
+    const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${slowPort}${BROWSER_PATH}`);
+    const chrome = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 300)']);
+    const exited = new Promise((resolve) => chrome.once('exit', resolve));
+    const started = Date.now();
+    await assertIssue(
+      verifyLaunchedChrome({ logs, port: slowPort, pid: chrome.pid ?? 0, timeoutMs: 5000 }),
+      'CHROME_DIED_AFTER_LAUNCH'
+    );
+    assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
+    await exited;
+  });
+
+  void it('reports a port conflict at once when Chrome fell back to [::1] and 127.0.0.1 does not answer', async () => {
+    const slowPort = await closedPort();
+    const logs = chromeSays(`DevTools listening on ws://[::1]:${slowPort}${BROWSER_PATH}`);
+    const started = Date.now();
+    await assert.rejects(
+      verifyLaunchedChrome({ logs, port: slowPort, pid: alivePid, timeoutMs: 5000 }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChromeLaunchError && error.issue);
+        assert.equal(error.issue.code, 'PORT_IN_USE');
+        assert.match(
+          String(error.issue.context?.['reason']),
+          /something holds 127\.0\.0\.1 \(Chrome fell back to \[::1\]\)/
+        );
+        return true;
+      }
+    );
+    assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
   });
 
   void it('accepts a silent Chrome answering on 127.0.0.1 alone, without a port conflict', async () => {
