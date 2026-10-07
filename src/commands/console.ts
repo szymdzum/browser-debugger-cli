@@ -169,7 +169,6 @@ function buildFormatOptions(
     ...(options.last !== undefined && { groupLimit: lastN }),
     ...(dropped && { dropped }),
     ...(pageCrashedAt !== undefined && { pageCrashedAt }),
-    json: options.json,
     list: listsMessages(options),
     follow: options.follow,
     last: lastN,

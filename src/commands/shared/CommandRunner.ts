@@ -10,7 +10,7 @@ import {
   sessionEndedDuringCommandError,
 } from '@/errors/messages.js';
 import { IPCEarlyCloseError, IPCTimeoutError } from '@/ipc/transport/IPCError.js';
-import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { escapeControlChars } from '@/ui/formatting.js';
 import { noActiveSessionMessage, startSessionSuggestion } from '@/ui/messages/sessionCommand.js';
 import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
@@ -52,7 +52,7 @@ export function noActiveSessionError(): CommandError {
 export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
   try {
     const data = await fn();
-    console.log(JSON.stringify(buildSuccessResponse(data), null, 2));
+    console.log(stringifyEnvelope(buildSuccessResponse(data)));
     process.exit(EXIT_CODES.SUCCESS);
   } catch (caught) {
     const error = isDaemonConnectionError(caught)
@@ -66,13 +66,11 @@ export async function runJsonCommand<T>(fn: () => Promise<T>): Promise<never> {
         ? error.metadata['suggestion']
         : undefined;
     console.log(
-      JSON.stringify(
+      stringifyEnvelope(
         OutputBuilder.buildJsonError(getErrorMessage(error), {
           exitCode,
           ...(suggestion && { suggestion }),
-        }),
-        null,
-        2
+        })
       )
     );
     process.exit(exitCode);
@@ -183,13 +181,11 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
       const exitCode = result.exitCode ?? EXIT_CODES.UNHANDLED_EXCEPTION;
       if (options.json) {
         console.log(
-          JSON.stringify(
+          stringifyEnvelope(
             OutputBuilder.buildJsonError(result.error ?? 'Unknown error', {
               ...result.errorContext,
               exitCode,
-            }),
-            null,
-            2
+            })
           )
         );
       } else {
@@ -212,12 +208,12 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     }
 
     if (options.json) {
-      console.log(JSON.stringify(buildSuccessResponse(result.data), null, 2));
+      console.log(stringifyEnvelope(buildSuccessResponse(result.data)));
     } else if (formatter) {
       const formattedOutput = formatter(result.data as TResult);
       console.log(escapeControlChars(formattedOutput));
     } else {
-      console.log(JSON.stringify(buildSuccessResponse(result.data), null, 2));
+      console.log(stringifyEnvelope(buildSuccessResponse(result.data)));
     }
 
     process.exit(EXIT_CODES.SUCCESS);
@@ -231,13 +227,11 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     if (error instanceof CommandError) {
       if (options.json) {
         console.log(
-          JSON.stringify(
+          stringifyEnvelope(
             OutputBuilder.buildJsonError(error.message, {
               ...error.metadata,
               exitCode: error.exitCode,
-            }),
-            null,
-            2
+            })
           )
         );
       } else {
@@ -254,13 +248,11 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
     if (isDaemonConnectionError(error)) {
       if (options.json) {
         console.log(
-          JSON.stringify(
+          stringifyEnvelope(
             OutputBuilder.buildJsonError(noActiveSessionMessage(), {
               suggestion: startSessionSuggestion(),
               exitCode: EXIT_CODES.RESOURCE_NOT_FOUND,
-            }),
-            null,
-            2
+            })
           )
         );
       } else {
@@ -271,9 +263,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
 
     const exitCode = getErrorExitCode(error, EXIT_CODES.UNHANDLED_EXCEPTION);
     if (options.json) {
-      console.log(
-        JSON.stringify(OutputBuilder.buildJsonError(errorMessage, { exitCode }), null, 2)
-      );
+      console.log(stringifyEnvelope(OutputBuilder.buildJsonError(errorMessage, { exitCode })));
     } else {
       console.error(genericError(errorMessage));
     }

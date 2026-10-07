@@ -65,14 +65,3 @@ export function buildConsoleJsonOutput(
 
   return output;
 }
-
-/**
- * Format console output as a JSON string. Thin wrapper around
- * buildConsoleJsonOutput for callers that want a serialized payload.
- */
-export function formatConsoleJson(
-  messages: ConsoleMessage[],
-  options: ConsoleFormatOptions
-): string {
-  return JSON.stringify(buildConsoleJsonOutput(messages, options), null, 2);
-}

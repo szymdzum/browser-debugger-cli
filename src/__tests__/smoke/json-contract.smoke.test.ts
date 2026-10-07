@@ -1,7 +1,8 @@
 /**
  * JSON contract smoke test.
  *
- * Every `--json` invocation must print exactly one response envelope:
+ * Every `--json` invocation must print exactly one response envelope, on one
+ * line when stdout is piped:
  * `{ version, success: true, data }` or `{ version, success: false, error, exitCode }`,
  * with `exitCode` equal to the process exit code and no envelope fields nested
  * inside `data`. Covers success and failure paths with and without a session.
@@ -54,6 +55,7 @@ async function expectEnvelope(args: string[], expectedExit: number): Promise<Env
     assert.fail(`${label}: stdout is not one JSON document:\n${result.stdout}\n${result.stderr}`);
   }
   assert.equal(result.exitCode, expectedExit, `${label}: exit code (stderr: ${result.stderr})`);
+  assert.doesNotMatch(result.stdout.trimEnd(), /\n/, `${label}: piped envelope on one line`);
   assert.equal(typeof envelope.version, 'string', `${label}: version`);
   if (envelope.success) {
     assert.ok('data' in envelope, `${label}: success without data`);

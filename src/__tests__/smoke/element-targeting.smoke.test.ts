@@ -681,8 +681,8 @@ void describe('Key attributes in dom query and dom get', () => {
       );
     }
     const query = await bdg(['dom', 'a11y', 'query', 'role:textbox', '--json']);
-    assert.match(query, /"value": "ada"/);
-    assert.match(query, /"value": "••••"/);
+    assert.match(query, /"value": ?"ada"/);
+    assert.match(query, /"value": ?"••••"/);
     const human = await bdg(['dom', 'query', '#csrf, #card, #shown']);
     assert.match(human, /<input id="csrf" name="csrf" type="hidden">/);
     assert.match(human, /<input id="card" name="card" type="text" value="••••">/);

@@ -1,7 +1,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
 import type { BdgOutput } from '@/types.js';
-import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { formatTimestamp } from '@/ui/formatters/console/shared.js';
 import {
   failureReason,
@@ -140,12 +140,12 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
  *
  * @param output - Preview output
  * @param options - Preview options
- * @returns `{ version, success, data }` envelope, pretty-printed, or on one
- *   line in follow mode (one object per line, NDJSON)
+ * @returns `{ version, success, data }` envelope, indented on a terminal, and
+ *   always on one line in follow mode (one object per line, NDJSON)
  */
 function formatPreviewAsJson(output: BdgOutput, options: PreviewOptions): string {
   const envelope = buildSuccessResponse(buildPreviewJsonData(output, options));
-  return options.follow ? JSON.stringify(envelope) : JSON.stringify(envelope, null, 2);
+  return options.follow ? JSON.stringify(envelope) : stringifyEnvelope(envelope);
 }
 
 /**

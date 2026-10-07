@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`--json` output is compact when piped** (#441): the envelope is on one line unless stdout is a terminal, which still gets it indented. Agents and scripts capture stdout, so the indentation was overhead: measured on a fixture page with 500 links, `dom query a --json` 137 KB → 73 KB (−47%), `network list --json` −34%, `status --json` −26%. `--follow` streams, HAR files and session metadata are unchanged.
+
 ### Fixed
 
 - **`bdg --help --json --full` documents `--headless`, `--no-headless` and `-a, --all`** (#442). Their behaviors were registered under a `start` command that does not exist; option behaviors are now looked up by the long flag (five dead duplicates removed), and a test fails when a behavior names no real option.

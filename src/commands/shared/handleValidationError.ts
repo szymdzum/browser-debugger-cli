@@ -1,6 +1,6 @@
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
-import { OutputBuilder } from '@/ui/OutputBuilder.js';
+import { OutputBuilder, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { escapeControlChars } from '@/ui/formatting.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -25,9 +25,7 @@ export function handleValidationError(error: unknown, json: boolean): never {
       if (error.metadata.suggestion) {
         errorOptions.suggestion = error.metadata.suggestion;
       }
-      console.log(
-        JSON.stringify(OutputBuilder.buildJsonError(error.message, errorOptions), null, 2)
-      );
+      console.log(stringifyEnvelope(OutputBuilder.buildJsonError(error.message, errorOptions)));
     } else {
       console.error(genericError(error.message));
       if (error.metadata.suggestion) console.error(escapeControlChars(error.metadata.suggestion));
@@ -39,7 +37,7 @@ export function handleValidationError(error: unknown, json: boolean): never {
     const envelope = OutputBuilder.buildJsonError(message, {
       exitCode: EXIT_CODES.INVALID_ARGUMENTS,
     });
-    console.log(JSON.stringify(envelope, null, 2));
+    console.log(stringifyEnvelope(envelope));
   } else {
     console.error(genericError(message));
   }

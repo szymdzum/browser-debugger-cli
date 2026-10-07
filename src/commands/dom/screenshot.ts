@@ -272,6 +272,7 @@ async function handleSequenceCapture(
 /**
  * End a capture sequence on an error (e.g. the element disappeared): print
  * it (one JSON line with `--json`, like the frames) and exit with its code.
+ * It stays compact on a terminal too, since it ends the NDJSON frame stream.
  *
  * @param error - Capture error
  * @param captured - Frames captured before it

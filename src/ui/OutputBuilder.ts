@@ -15,6 +15,19 @@ export function buildSuccessResponse<T>(data: T): BdgResponse<T> {
   return { version: VERSION, success: true, data };
 }
 
+/**
+ * Serialize a `--json` response envelope for stdout.
+ *
+ * Indented by two spaces when stdout is a terminal, so a person can read it;
+ * on one line otherwise, since agents and pipes only pay for the whitespace.
+ *
+ * @param envelope - Response envelope (or other `--json` payload)
+ * @returns JSON text
+ */
+export function stringifyEnvelope(envelope: unknown): string {
+  return process.stdout.isTTY ? JSON.stringify(envelope, null, 2) : JSON.stringify(envelope);
+}
+
 /** Builders for JSON error envelopes. */
 export class OutputBuilder {
   /**

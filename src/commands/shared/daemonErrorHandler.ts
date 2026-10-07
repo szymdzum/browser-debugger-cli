@@ -4,7 +4,7 @@
 
 import { sessionUnavailableSuggestion } from '@/errors/messages.js';
 import { genericError } from '@/errors/messages.js';
-import { OutputBuilder } from '@/ui/OutputBuilder.js';
+import { OutputBuilder, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import {
   connectionLostRetryMessage,
   connectionLostStopHintMessage,
@@ -80,7 +80,7 @@ export function handleDaemonConnectionError(
         exitCode,
         ...(suggestion && { suggestion }),
       });
-      console.log(follow ? JSON.stringify(envelope) : JSON.stringify(envelope, null, 2));
+      console.log(follow ? JSON.stringify(envelope) : stringifyEnvelope(envelope));
     } else {
       console.error(genericError(message));
     }
