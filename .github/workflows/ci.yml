@@ -49,21 +49,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    outputs:
-      dependencies-changed: ${{ steps.changes.outputs.dependencies }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-
-      - name: Detect changed files
-        id: changes
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            dependencies:
-              - 'package.json'
-              - 'package-lock.json'
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -170,11 +159,14 @@ jobs:
         run: npm test
 
   # Smoke tests with Chrome: Node 22 on PRs, 22/24/26 on main and nightly.
-  # The shell integration suite runs only on main (on PRs once #446 makes it hermetic).
+  # The shell integration suite runs on main pushes and the nightly run
+  # (on PRs once #446 makes it hermetic).
   smoke:
     name: Smoke Tests (Chrome) (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     needs: build
+    env:
+      BDG_TEST_KEEP_DIRS: '1'
     strategy:
       fail-fast: false
       matrix:
@@ -235,7 +227,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: smoke-logs-linux-node${{ matrix.node }}
-          path: /tmp/bdg-test-*/**/*.log
+          path: |
+            /tmp/bdg-test-*/**/daemon.log*
+            /tmp/bdg-test-*/**/chrome-err.log
+            /tmp/bdg-test-*/**/chrome-out.log
+            tests/results/*.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -246,6 +242,8 @@ jobs:
     runs-on: macos-latest
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
+    env:
+      BDG_TEST_KEEP_DIRS: '1'
 
     steps:
       - name: Checkout code
@@ -297,7 +295,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: smoke-logs-macos
-          path: /tmp/bdg-test-*/**/*.log
+          path: |
+            /tmp/bdg-test-*/**/daemon.log*
+            /tmp/bdg-test-*/**/chrome-err.log
+            /tmp/bdg-test-*/**/chrome-out.log
+            tests/results/*.log
           if-no-files-found: ignore
           retention-days: 7
 

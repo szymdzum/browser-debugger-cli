@@ -24,9 +24,20 @@ let cachedHomeDir: string | null = null;
 const SESSION_DIR_PARENT = os.platform() === 'win32' ? os.tmpdir() : '/tmp';
 
 /**
+ * Whether session directories are kept when the test process exits
+ * (`BDG_TEST_KEEP_DIRS=1`), so CI can upload their logs after a failure.
+ *
+ * @returns True when the directories should be kept
+ */
+function keepSessionDirs(): boolean {
+  return process.env['BDG_TEST_KEEP_DIRS'] === '1';
+}
+
+/**
  * A session directory for this process, removed when it exits (after
  * ending a session a test left running in it, which would otherwise be
- * orphaned without its files).
+ * orphaned without its files). With `BDG_TEST_KEEP_DIRS=1` the session is
+ * still ended but the directory and its logs stay.
  *
  * @returns Absolute path
  */
@@ -36,7 +47,9 @@ function ownSessionDir(): string {
     try {
       endLeftoverSession(dir);
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      if (!keepSessionDirs()) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
     }
   });
   return dir;
