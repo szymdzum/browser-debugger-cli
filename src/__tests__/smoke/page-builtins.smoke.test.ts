@@ -1,8 +1,11 @@
 /**
- * Smoke test for a page that replaces built-ins bdg's scripts use: bdg's
+ * Smoke test for pages that replace built-ins bdg's scripts use: bdg's
  * own scripts run in its isolated world and still find and describe the
  * right elements, actions find their element there too and warn, and
- * `dom eval` keeps running in the page's world.
+ * `dom eval` keeps running in the page's world. Actions avoid the built-ins
+ * pages commonly replace, a script that still breaks says which built-ins
+ * the page replaced and what they threw, and `dom eval` results are copied
+ * without the page's `Object.keys`.
  */
 
 import * as assert from 'node:assert/strict';
@@ -71,5 +74,56 @@ void describe('page that replaces built-ins', () => {
 
   void it('keeps dom eval in the page world', async () => {
     assert.match(await bdg(['dom', 'eval', 'JSON.stringify({ a: 1 })']), /replaced/);
+  });
+});
+
+void describe('page whose replaced built-ins break action scripts', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    const port = await getFreePort();
+    await bdg([`${fixture.url}tampered-actions`, '--port', String(port), '--headless']);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('fills and clicks although matches() matches everything and Event is replaced', async () => {
+    const fill = await bdg(['dom', 'fill', '#name', 'Alice']);
+    assert.match(fill, /Value: +Alice/);
+    assert.match(fill, /Element\.prototype\.matches/);
+    assert.match(
+      await bdg(['dom', 'eval', 'document.getElementById("log").textContent']),
+      /input;change;/
+    );
+    await bdg(['dom', 'click', '#go']);
+    assert.match(
+      await bdg(['dom', 'eval', 'document.getElementById("go").textContent']),
+      /Clicked/
+    );
+  });
+
+  void it('names the replaced built-ins and the error when a page API throws', async () => {
+    assert.match(
+      await bdg(['dom', 'fill', '#guarded-field', 'x'], 90),
+      /The page replaced built-ins bdg's fill script uses \(.*EventTarget\.prototype\.dispatchEvent.*\), and the script failed: Error: anti-bot: dispatchEvent/
+    );
+    assert.match(
+      await bdg(['dom', 'click', '#guarded'], 90),
+      /The page replaced built-ins bdg's click script uses \(.*Element\.prototype\.getBoundingClientRect.*\), and the script failed: Error: anti-bot: getBoundingClientRect/
+    );
+  });
+
+  void it("copies eval results without the page's Object.keys", async () => {
+    const result = await runCommand('dom', ['eval', '--json', '({ a: 1, b: [1, 2] })'], {
+      timeout: 60000,
+    });
+    const response = JSON.parse(result.stdout) as { data: { result: unknown; warning?: string } };
+    assert.deepEqual(response.data.result, { a: 1, b: [1, 2] });
+    assert.match(response.data.warning ?? '', /the page replaced Object\.keys/);
   });
 });

@@ -24,28 +24,30 @@ interface FakeElement {
   classList: string[];
   attributes: Record<string, string>;
   parent: FakeElement | null;
+  /** Child elements (set by {@link element} from each child's parent) */
+  children: FakeElement[];
   disabled?: boolean;
   readOnly?: boolean;
   isContentEditable?: boolean;
-  /** Matches `:disabled` (inside a disabled fieldset) */
-  fieldsetDisabled?: boolean;
+  readonly parentElement: FakeElement | null;
+  readonly firstElementChild: FakeElement | null;
+  readonly nextElementSibling: FakeElement | null;
   getAttribute: (name: string) => string | null;
   hasAttribute: (name: string) => boolean;
+  contains: (other: FakeElement) => boolean;
   matches: (selector: string) => boolean;
   closest: (selector: string) => FakeElement | null;
 }
 
 /**
- * Whether a fake element matches one of the simple selectors the script uses.
+ * Whether a fake element has the attribute of a `[attr]` selector (the only
+ * kind the script still matches).
  *
  * @param el - Element
- * @param selector - `[attr]`, `fieldset[disabled]` or `:disabled`
+ * @param selector - `[attr]`
  * @returns Whether it matches
  */
 function matchesSimple(el: FakeElement, selector: string): boolean {
-  if (selector === ':disabled') return el.disabled === true || el.fieldsetDisabled === true;
-  if (selector === 'fieldset[disabled]')
-    return el.localName === 'fieldset' && 'disabled' in el.attributes;
   const attribute = /^\[([\w-]+)\]$/.exec(selector)?.[1];
   return attribute !== undefined && attribute in el.attributes;
 }
@@ -65,9 +67,26 @@ function element(tag: string, fields: Partial<FakeElement> = {}): FakeElement {
     classList: [],
     attributes: {},
     parent: null,
+    children: [],
     ...fields,
+    get parentElement() {
+      return el.parent;
+    },
+    get firstElementChild() {
+      return el.children[0] ?? null;
+    },
+    get nextElementSibling() {
+      const siblings = el.parent?.children ?? [];
+      return siblings[siblings.indexOf(el) + 1] ?? null;
+    },
     getAttribute: (name) => el.attributes[name] ?? null,
     hasAttribute: (name) => name in el.attributes,
+    contains: (other) => {
+      for (let node: FakeElement | null = other; node; node = node.parent) {
+        if (node === el) return true;
+      }
+      return false;
+    },
     matches: (selector) => matchesSimple(el, selector),
     closest: (selector) => {
       for (let node: FakeElement | null = el; node; node = node.parent) {
@@ -76,6 +95,7 @@ function element(tag: string, fields: Partial<FakeElement> = {}): FakeElement {
       return null;
     },
   };
+  el.parent?.children.push(el);
   return el;
 }
 
@@ -103,15 +123,23 @@ void describe('FILL_REFUSAL_JS', () => {
       refusal(element('input', { disabled: true, attributes: { disabled: '' } }))?.error,
       'The element is disabled (disabled attribute)'
     );
-    assert.equal(
-      refusal(element('select', { fieldsetDisabled: true }))?.error,
-      'The element is disabled'
-    );
     const fieldset = element('fieldset', { attributes: { disabled: '' } });
     assert.equal(
-      refusal(element('input', { fieldsetDisabled: true, parent: fieldset }))?.error,
+      refusal(element('input', { parent: fieldset }))?.error,
       'The element is disabled (inside a disabled <fieldset>)'
     );
+  });
+
+  void it("keeps a field in a disabled fieldset's first legend enabled", () => {
+    const fieldset = element('fieldset', { attributes: { disabled: '' } });
+    const legend = element('legend', { parent: fieldset });
+    assert.equal(refusal(element('input', { parent: legend })), null);
+  });
+
+  void it('reads the element itself, not the page-replaceable matches()', () => {
+    const lying = element('input');
+    lying.matches = () => true;
+    assert.equal(refusal(lying), null);
   });
 
   void it('calls a readonly field read-only', () => {

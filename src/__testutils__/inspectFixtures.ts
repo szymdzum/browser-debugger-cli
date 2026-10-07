@@ -134,6 +134,39 @@ JSON.stringify = function () { return '"replaced"'; };
 </body></html>`;
 
 /**
+ * A page whose replaced built-ins break bdg's action scripts unless they
+ * avoid them: `Element.prototype.matches` always matches (so everything
+ * would look `:disabled`), `Event` is a MooTools-1.2-like wrapper that
+ * builds no event, `Object.keys` lies, and, as anti-bot scripts do,
+ * `dispatchEvent` throws for `#guarded-field` and `getBoundingClientRect`
+ * for `#guarded`. Input and change events on `#name` are logged in `#log`.
+ */
+const TAMPERED_ACTIONS_HTML = `<!doctype html><html><head><title>Tampered actions</title></head><body>
+<input id="name"> <input id="guarded-field">
+<button type="button" id="go" onclick="this.textContent = 'Clicked'">Go</button>
+<button type="button" id="guarded">Guarded</button>
+<div id="log"></div>
+<script>
+const log = (entry) => { document.getElementById('log').textContent += entry + ';'; };
+document.getElementById('name').addEventListener('input', () => log('input'));
+document.getElementById('name').addEventListener('change', () => log('change'));
+Element.prototype.matches = function () { return true; };
+window.Event = function (event) { this.event = event; };
+const dispatch = EventTarget.prototype.dispatchEvent;
+EventTarget.prototype.dispatchEvent = function (event) {
+  if (this.id === 'guarded-field') throw new Error('anti-bot: dispatchEvent');
+  return dispatch.call(this, event);
+};
+const rect = Element.prototype.getBoundingClientRect;
+Element.prototype.getBoundingClientRect = function () {
+  if (this.id === 'guarded') throw new Error('anti-bot: getBoundingClientRect');
+  return rect.call(this);
+};
+Object.keys = function () { return ['bogus']; };
+</script>
+</body></html>`;
+
+/**
  * Text read from where the page shows it: a custom element whose shadow root
  * shows its light-DOM text through `<p>Note: <slot></slot></p>`, a
  * read-only editor whose accessible name (its aria-label, as TinyMCE's body
@@ -195,6 +228,7 @@ const COMPONENTS_HTML = `<!doctype html><meta charset="utf-8"><title>components<
 /** Pages by path */
 export const INSPECT_ROUTES: Record<string, string> = {
   '/tampered': TAMPERED_HTML,
+  '/tampered-actions': TAMPERED_ACTIONS_HTML,
   '/inspect': INSPECT_HTML,
   '/inspect-frame': INSPECT_FRAME_HTML,
   '/inspect-paint': PAINT_HTML,

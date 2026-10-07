@@ -14,7 +14,7 @@ import {
   unknownKeyError,
 } from '@/errors/messages.js';
 import type { PressKeyResult } from '@/ipc/protocol/domTypes.js';
-import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
+import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import {
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
@@ -93,7 +93,7 @@ const FOCUS_ELEMENT_SCRIPT = `
       return {
         success: false,
         reason: 'not-focusable',
-        error: 'Element <' + el.tagName.toLowerCase() + '> cannot receive keyboard focus' + (el.matches(':disabled') ? ' (it is disabled)' : '')
+        error: 'Element <' + el.tagName.toLowerCase() + '> cannot receive keyboard focus' + ((${DISABLED_CAUSE_JS})(el) !== null ? ' (it is disabled)' : '')
       };
     }
   }

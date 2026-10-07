@@ -208,7 +208,34 @@ export const ELEMENT_STATE_JS = `(el) => {
  */
 export const ELEMENT_DESCRIPTION_JS = `(node) => node.tagName.toLowerCase() +
   (node.id ? '#' + node.id : '') +
-  (node.classList && node.classList.length ? '.' + Array.from(node.classList).slice(0, 2).join('.') : '')`;
+  (node.classList && node.classList.length ? '.' + node.classList[0] : '') +
+  (node.classList && node.classList.length > 1 ? '.' + node.classList[1] : '')`;
+
+/**
+ * Page-side reason an element is disabled, or null when it is not. A native
+ * control (`button`, `input`, `select`, `textarea`, `fieldset`, `optgroup`,
+ * `option`) is disabled by its `disabled attribute` or by being `inside a
+ * disabled <fieldset>` (not in its first `<legend>`), an `<option>` by
+ * being `inside a disabled <optgroup>`; any other element
+ * (e.g. a custom element) when its `disabled` property is set (empty
+ * reason). Reads the element's own attributes rather than
+ * `matches(':disabled')`, which pages replace.
+ */
+export const DISABLED_CAUSE_JS = `(el) => {
+  if (!/^(button|input|select|textarea|fieldset|optgroup|option)$/.test(el.localName)) return el.disabled ? '' : null;
+  if (el.hasAttribute('disabled')) return 'disabled attribute';
+  if (el.localName === 'option') {
+    const group = el.parentElement;
+    return group && group.localName === 'optgroup' && group.hasAttribute('disabled') ? 'inside a disabled <optgroup>' : null;
+  }
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    if (node.localName !== 'fieldset' || !node.hasAttribute('disabled')) continue;
+    let legend = node.firstElementChild;
+    while (legend && legend.localName !== 'legend') legend = legend.nextElementSibling;
+    if (!legend || !legend.contains(el)) return 'inside a disabled <fieldset>';
+  }
+  return null;
+}`;
 
 /**
  * Page-side position of an element among its parent's children with the

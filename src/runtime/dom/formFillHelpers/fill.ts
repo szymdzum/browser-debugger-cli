@@ -14,7 +14,6 @@ import {
   uploadDirectoryError,
   singleFileInputError,
   fillableElementNotFoundError,
-  clickableElementNotFoundError,
   clickTargetDetachedError,
   unexpectedResponseFormatError,
   operationFailedError,
@@ -23,14 +22,16 @@ import {
 } from '@/errors/messages.js';
 import type { FillValueMismatch } from '@/ipc/protocol/domTypes.js';
 import {
+  ActionScriptError,
   escapeValueForJS,
-  formatScriptExecutionError,
+  exceptionSummary,
   throwIfInvalidSelector,
   withMultipleMatchesWarning,
   withValueMismatchWarning,
 } from '@/runtime/dom/formFillHelpers/shared.js';
 import {
   FILL_READ_BACK_SCRIPT,
+  FIRE_EVENT_JS,
   REACT_FILL_SCRIPT,
   CLICK_ELEMENT_SCRIPT,
   SHADOW_FIELD_JS,
@@ -83,18 +84,7 @@ export async function fillElement(
 
     if (cdpResponse.exceptionDetails) {
       throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
-      const errorMessage = formatScriptExecutionError(
-        cdpResponse.exceptionDetails,
-        selector,
-        'fill',
-        expression
-      );
-      const err = fillableElementNotFoundError(selector);
-      throw new CommandError(
-        errorMessage,
-        { suggestion: err.suggestion },
-        EXIT_CODES.SOFTWARE_ERROR
-      );
+      throw new ActionScriptError('fill', exceptionSummary(cdpResponse.exceptionDetails), selector);
     }
 
     if (cdpResponse.result?.value && isFillResult(cdpResponse.result.value)) {
@@ -168,8 +158,8 @@ function isValueMismatch(value: unknown): value is FillValueMismatch {
 /** Empties a file input as a user removing the selection would (with events). */
 const CLEAR_FILE_INPUT_FUNCTION = `function () {
   this.value = '';
-  this.dispatchEvent(new Event('input', { bubbles: true }));
-  this.dispatchEvent(new Event('change', { bubbles: true }));
+  (${FIRE_EVENT_JS})(this, 'input');
+  (${FIRE_EVENT_JS})(this, 'change');
 }`;
 
 /** Object group for remote objects created while selecting files. */
@@ -572,17 +562,10 @@ export async function clickElement(
 
     if (cdpResponse.exceptionDetails) {
       throwIfInvalidSelector(cdpResponse.exceptionDetails, selector);
-      const errorMessage = formatScriptExecutionError(
-        cdpResponse.exceptionDetails,
-        selector,
-        'click',
-        expression
-      );
-      const err = clickableElementNotFoundError(selector);
-      throw new CommandError(
-        errorMessage,
-        { suggestion: err.suggestion },
-        EXIT_CODES.SOFTWARE_ERROR
+      throw new ActionScriptError(
+        POINTER_ACTION_NOUN[action],
+        exceptionSummary(cdpResponse.exceptionDetails),
+        selector
       );
     }
 

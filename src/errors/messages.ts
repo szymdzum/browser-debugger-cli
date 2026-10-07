@@ -1738,22 +1738,61 @@ export const FILL_REFUSALS = {
 } as const satisfies Record<string, ErrorWithSuggestion>;
 
 /**
- * Clickable element not found.
- */
-export function clickableElementNotFoundError(selector: string): ErrorWithSuggestion {
-  return {
-    message: `Element not found: ${selector}`,
-    suggestion: 'Verify the selector matches a clickable element',
-  };
-}
-
-/**
  * Click target disappeared between locating and clicking it.
  */
 export function clickTargetDetachedError(selector: string): ErrorWithSuggestion {
   return {
     message: `Element was removed before it could be clicked: ${selector}`,
     suggestion: 'The page changed during the click; wait for it to settle and retry',
+  };
+}
+
+/**
+ * An action's page script threw (on a page whose built-ins all look like the
+ * browser's).
+ *
+ * @param action - The action, e.g. `fill`
+ * @param exception - What the script threw, e.g. `TypeError: x is not a function`
+ * @param selector - Selector the action was for
+ * @returns Error naming the exception
+ */
+export function actionScriptFailedError(
+  action: string,
+  exception: string,
+  selector: string
+): ErrorWithSuggestion {
+  const damage = detectSelectorQuoteDamage(selector);
+  return {
+    message: `The ${action} script failed in the page: ${exception}`,
+    suggestion: damage.damaged
+      ? `The selector looks damaged by shell quoting${damage.details ? ` (${damage.details})` : ''}; query it first with ${sessionCommand(`bdg dom query ${JSON.stringify(selector)}`)}, then act on the index`
+      : `Check the element with ${sessionCommand(`bdg dom get ${JSON.stringify(selector)}`)}, or act on it with ${sessionCommand("bdg dom eval '…'")}`,
+  };
+}
+
+/**
+ * An action's page script threw on a page that replaced built-ins it uses
+ * (anti-bot scripts make `getBoundingClientRect`, `focus` or
+ * `dispatchEvent` throw; old libraries such as MooTools 1.2 replace
+ * `Event`). All replaced built-ins are named.
+ *
+ * @param action - The action, e.g. `fill`
+ * @param exception - What the script threw, e.g. `Error: anti-bot: focus`
+ * @param replaced - Dotted names of the replaced built-ins
+ * @returns Error naming the replaced built-ins and the exception
+ */
+export function actionBrokenByPageError(
+  action: string,
+  exception: string,
+  replaced: readonly string[]
+): ErrorWithSuggestion {
+  const fill =
+    action === 'fill'
+      ? ' The field may already hold the value without the page having seen input or change events.'
+      : '';
+  return {
+    message: `The page replaced built-ins bdg's ${action} script uses (${replaced.join(', ')}), and the script failed: ${exception}`,
+    suggestion: `The page blocks or changes these APIs (an anti-bot script or an old library).${fill} If the page still lets scripts act, use ${sessionCommand("bdg dom eval '…'")}`,
   };
 }
 

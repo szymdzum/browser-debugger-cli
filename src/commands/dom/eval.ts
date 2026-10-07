@@ -12,13 +12,14 @@ import type { DomEvalCommandOptions } from '@/commands/shared/optionTypes.js';
 import { emptyScriptError, withLoadingHint } from '@/errors/messages.js';
 import { domEval } from '@/ipc/client.js';
 import { formatDomEval } from '@/ui/formatters/dom.js';
-import { evalFrameLine } from '@/ui/messages/commands.js';
+import { evalFrameLine, warningMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /**
  * Handle `bdg dom eval <script> [--frame <frame>]`. With `--frame`, the
- * frame the script ran in is a `Frame:` line on stderr (JSON: `frame`), so
- * stdout stays the bare value for pipes.
+ * frame the script ran in is a `Frame:` line on stderr (JSON: `frame`), and
+ * a warning about how the result was copied goes there too (JSON:
+ * `warning`), so stdout stays the bare value for pipes.
  */
 export async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
@@ -42,7 +43,11 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
           ...(suggestion && { errorContext: { suggestion } }),
         };
       }
-      const { value, type, subtype, frame } = response.data;
+      const { value, type, subtype, frame, warning } = response.data;
+      const hint = [
+        ...(frame !== undefined ? [evalFrameLine(frame)] : []),
+        ...(warning ? [warningMessage(warning)] : []),
+      ].join('\n');
       return {
         success: true,
         data: {
@@ -50,8 +55,9 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
           type,
           ...(subtype && { subtype }),
           ...(frame !== undefined && { frame }),
+          ...(warning && { warning }),
         },
-        ...(frame !== undefined && !options.json && { hint: evalFrameLine(frame) }),
+        ...(hint && !options.json && { hint }),
       };
     },
     options,
