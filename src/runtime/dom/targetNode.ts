@@ -20,6 +20,7 @@ import {
   noNodesFoundError,
   staleNodeError,
 } from '@/errors/messages.js';
+import { COMPOSED_JS, FLAT_TEXT_JS } from '@/runtime/dom/elementInfo.js';
 import { ActionScriptError, throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
 import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
@@ -129,7 +130,10 @@ const log = createLogger('dom');
  * the text nodes of hidden ones (display or visibility; not those of
  * `<script>`, `<style>` or `<noscript>`), so text filters match hidden
  * elements like Playwright's and `:visible` decides visibility; button inputs
- * use their value. Whitespace is collapsed; filter texts arrive normalized
+ * use their value. A visible web component, slot or element holding either
+ * ({@link COMPOSED_JS}) is read through the flat tree ({@link FLAT_TEXT_JS}),
+ * as `bdg dom query` shows it: the text its shadow root renders, slotted
+ * content in place of its slots. Whitespace is collapsed; filter texts arrive normalized
  * (`has-text` lowercased). `:visible` is checked before the text filters,
  * which read the text.
  *
@@ -139,6 +143,8 @@ const log = createLogger('dom');
  * element's own tree.
  */
 export const FILTER_MATCHING_JS = `(shadowRoots) => {
+  const composed = ${COMPOSED_JS};
+  const flatText = ${FLAT_TEXT_JS};
   const skipped = /^(script|style|noscript|template)$/;
   const hiddenText = (el) => {
     const walker = el.ownerDocument.createTreeWalker(el, 5, {
@@ -154,7 +160,8 @@ export const FILTER_MATCHING_JS = `(shadowRoots) => {
     if (el.localName === 'input' && /^(submit|button|reset)$/i.test(el.type)) return el.value;
     const rendered = typeof el.innerText === 'string' &&
       (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));
-    return (rendered ? el.innerText : hiddenText(el)).replace(/\\s+/g, ' ').trim();
+    const text = !rendered ? hiddenText(el) : composed(el) ? flatText(el, Infinity) : el.innerText;
+    return text.replace(/\\s+/g, ' ').trim();
   };
   const passes = (el, filter) => {
     if (filter.kind === 'visible') {

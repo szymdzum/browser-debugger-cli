@@ -14,6 +14,7 @@ import {
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
 import { REVEAL_SNAPSHOT_JS } from '@/runtime/dom/actionEffectsScripts.js';
+import { ANCESTOR_CLIP_JS } from '@/runtime/dom/elementGeometry.js';
 import {
   DISABLED_CAUSE_JS,
   ELEMENT_DESCRIPTION_JS,
@@ -505,7 +506,10 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * dialog or bubble can swallow input while the page looks normal.
  * Slotted text hit-tests as its shadow host, so an element in a shadow root
  * that shows slotted content (a button labelled through a `<slot>`) is
- * topmost where its host is hit.
+ * topmost where its host is hit. An element that is not topmost because an
+ * ancestor in the flat tree clips it away (a collapsed
+ * `height: 0; overflow: hidden` accordion, {@link ANCESTOR_CLIP_JS}) is
+ * reported as hidden by it, not as covered.
  */
 export const CLICK_ELEMENT_SCRIPT = `
 (function(selector, parts, index, action) {
@@ -660,7 +664,10 @@ export const CLICK_ELEMENT_SCRIPT = `
   else if (el.closest('[inert]')) obstruction = 'inert (the page made it non-interactive)';
   else if (style.pointerEvents === 'none') obstruction = 'not clickable (pointer-events: none)';
   else if (!hasSize) obstruction = 'zero-size';
-  else if (!hittable) obstruction = 'covered by another element' + coveredBy();
+  else if (!hittable) {
+    const collapsed = (${ANCESTOR_CLIP_JS})(el, rect, describe).collapsed;
+    obstruction = collapsed ? 'hidden (' + collapsed + ')' : 'covered by another element' + coveredBy();
+  }
 
   if (action === 'hover') (${REVEAL_SNAPSHOT_JS})(el);
 

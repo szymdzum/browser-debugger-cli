@@ -210,7 +210,7 @@ function fakeConnection(quads: () => number[][]): {
       typeof params['functionDeclaration'] === 'string' ? params['functionDeclaration'] : '';
     if (method === 'DOM.getContentQuads') return { quads: quads() };
     if (method !== 'Runtime.callFunctionOn') return {};
-    if (declaration.includes('ownerDocument.documentElement')) {
+    if (declaration.includes('this : this.ownerDocument.documentElement')) {
       return { result: { objectId: 'reference' } };
     }
     if (declaration.includes('return { x: r.left, y: r.top, width')) {

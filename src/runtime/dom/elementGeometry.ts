@@ -260,11 +260,12 @@ const HOLDS_FIXED_JS = `(style) =>
 
 /**
  * Page-side test of whether a `position: fixed` node is fixed to its
- * document's viewport (no ancestor holds it, {@link HOLDS_FIXED_JS}).
+ * document's viewport (no ancestor in the flat tree holds it,
+ * {@link HOLDS_FIXED_JS}).
  */
 const FIXED_TO_VIEWPORT_JS = `(n) => {
   const holdsFixed = ${HOLDS_FIXED_JS};
-  const parentOf = (node) => node.parentElement || (node.parentNode && node.parentNode.host) || null;
+  const parentOf = ${FLAT_PARENT_JS};
   for (let p = parentOf(n); p && p !== n.ownerDocument.documentElement; p = parentOf(p)) {
     if (holdsFixed(p.ownerDocument.defaultView.getComputedStyle(p))) return false;
   }
@@ -272,8 +273,8 @@ const FIXED_TO_VIEWPORT_JS = `(n) => {
 }`;
 
 /**
- * Page-side clip of a node by its ancestors (looked up through open shadow
- * roots): the padding boxes ({@link CLIP_BOX_JS}) of those that cut off
+ * Page-side clip of a node by its ancestors in the flat tree (through the
+ * slots it is shown in and open shadow roots): the padding boxes ({@link CLIP_BOX_JS}) of those that cut off
  * overflowing content and hold the node in their containing-block chain. An
  * absolutely positioned node skips static ancestors (that are not
  * transformed) up to its containing block, a fixed one is not clipped at all
@@ -292,14 +293,14 @@ const FIXED_TO_VIEWPORT_JS = `(n) => {
  * node is fixed to the viewport (it or a container in its containing-block
  * chain is `position: fixed`; `fixedBy` is that node).
  */
-const ANCESTOR_CLIP_JS = `(node, rect, describe) => {
+export const ANCESTOR_CLIP_JS = `(node, rect, describe) => {
   const clipBox = ${CLIP_BOX_JS};
   const overlayScrollbars = ${OVERLAY_SCROLLBARS_JS};
   const holdsFixed = ${HOLDS_FIXED_JS};
   const fixedToViewport = ${FIXED_TO_VIEWPORT_JS};
   const reasons = ${JSON.stringify(LAYOUT_REASONS)};
   const styleOf = (n) => n.ownerDocument.defaultView.getComputedStyle(n);
-  const parentOf = (n) => n.parentElement || (n.parentNode && n.parentNode.host) || null;
+  const parentOf = ${FLAT_PARENT_JS};
   const doc = node.ownerDocument;
   const rootStyle = styleOf(doc.documentElement);
   const bodyClips = rootStyle.overflowX !== 'visible' || rootStyle.overflowY !== 'visible';

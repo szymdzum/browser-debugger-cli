@@ -2,8 +2,10 @@
  * Smoke tests for text web components render themselves, against a real
  * Chrome and the `/components` fixture page: `dom get`, `dom query` and
  * `dom layout` read a component through its shadow root (fallback content,
- * internal labels, slotted content in place, blocks set apart), and action
- * results name the element a user sees.
+ * internal labels, slotted content in place, blocks set apart), text filters
+ * and `dom wait --text` match the text they show, `dom layout` and
+ * `dom click` see clipping through a slot, and action results name the
+ * element a user sees.
  */
 
 import * as assert from 'node:assert/strict';
@@ -98,5 +100,39 @@ void describe('Text web components render themselves', () => {
       await bdg(['dom', 'fill', 'input#input', 'Ada']),
       /Element: +input#input "What is your name\?"/
     );
+  });
+
+  void it('matches text filters against the text a component shows', async () => {
+    assert.match(await bdg(['dom', 'query', 'x-btn']), /<x-btn id="draft"> Save draft\n/);
+    assert.match(
+      await bdg(['dom', 'query', 'x-btn:has-text("Save")']),
+      /<x-btn id="draft"> Save draft\n/
+    );
+    assert.match(
+      await bdg(['dom', 'query', 'x-btn:text-is("Save draft")']),
+      /<x-btn id="draft"> Save draft\n/
+    );
+    await bdg(['dom', 'wait', 'x-btn', '--text', 'Save draft', '--timeout', '3000']);
+  });
+
+  void it('measures an element slotted into a collapsed container as clipped', async () => {
+    assert.match(
+      await bdg(['dom', 'layout', '#light-hidden']),
+      /button#light-hidden "Hidden" +hidden \(clipped by div#light-acc: zero height\)/
+    );
+    assert.match(
+      await bdg(['dom', 'layout', '#slotted-hidden']),
+      /button#slotted-hidden "Hidden" +hidden \(clipped by div: zero height\)/
+    );
+  });
+
+  void it('says a click hit an element clipped away, through a slot or not', async () => {
+    assert.match(
+      await bdg(['dom', 'click', '#light-hidden']),
+      /Element is hidden \(clipped by div#light-acc: zero height\)/
+    );
+    const slotted = await bdg(['dom', 'click', '#slotted-hidden']);
+    assert.match(slotted, /Element is hidden \(clipped by div: zero height\)/);
+    assert.doesNotMatch(slotted, /covered by another element/);
   });
 });
