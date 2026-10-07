@@ -6,6 +6,7 @@ import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { colorSchemeLabel, sessionActiveLine } from '@/ui/messages/commands.js';
+import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -117,6 +118,11 @@ export function formatSessionStatus(
     if (activity.lastNetworkRequestAt) {
       fmt.keyValue('  Last Request', formatTimeAgo(activity.lastNetworkRequestAt), 18);
     }
+    const evictedNote = networkEvictedNote({
+      requestsDropped: activity.networkRequestsDropped ?? 0,
+      bodiesEvicted: activity.networkBodiesEvicted ?? 0,
+    });
+    if (evictedNote) fmt.text(`  ${evictedNote}`);
     fmt.keyValue('Console Messages', `${activity.consoleMessagesCaptured} captured`, 18);
     if (activity.lastConsoleMessageAt) {
       fmt.keyValue('  Last Message', formatTimeAgo(activity.lastConsoleMessageAt), 18);

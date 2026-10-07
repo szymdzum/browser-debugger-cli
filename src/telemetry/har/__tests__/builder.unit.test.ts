@@ -11,6 +11,7 @@ import { describe, test } from 'node:test';
 import type { HARMetadata } from '@/telemetry/har/builder.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import type { Entry, Timings } from '@/telemetry/har/types.js';
+import { RequestRetention } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest } from '@/types.js';
 
 describe('HAR Builder', () => {
@@ -874,6 +875,32 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
     assert.equal(entry.response.content.text, undefined);
     assert.equal(entry.response.content.encoding, undefined);
     assert.match(entry.response.content.comment ?? '', /non-text/);
+  });
+
+  test('exports a body evicted at the body budget with its original size and why', () => {
+    const request: NetworkRequest = {
+      requestId: 'r',
+      url: 'https://example.com/a',
+      method: 'GET',
+      timestamp: 0,
+      mimeType: 'application/json',
+    };
+    const evictions = { requestsDropped: 0, bodiesEvicted: 0 };
+    const retention = new RequestRetention(
+      [],
+      { maxRequests: 10, maxTotalBodyBytes: 4 },
+      evictions
+    );
+    retention.storeBody(request, '{"big":true}', false);
+    assert.equal(evictions.bodiesEvicted, 1);
+
+    const entry = entryFor(request);
+    assert.equal(entry.response.content.size, 12);
+    assert.equal(entry.response.content.text, undefined);
+    assert.match(
+      entry.response.content.comment ?? '',
+      /^Body not captured: evicted: total body budget/
+    );
   });
 
   test('postData carries text only (params and text are mutually exclusive)', () => {

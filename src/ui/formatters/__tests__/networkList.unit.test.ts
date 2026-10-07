@@ -6,7 +6,12 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NetworkRequest } from '@/types.js';
-import { formatNetworkList, formatStartOffset, pageStartOf } from '@/ui/formatters/networkList.js';
+import {
+  formatNetworkFollowRows,
+  formatNetworkList,
+  formatStartOffset,
+  pageStartOf,
+} from '@/ui/formatters/networkList.js';
 import { truncateUrl } from '@/ui/formatting.js';
 
 void describe('truncateUrl', () => {
@@ -178,5 +183,35 @@ void describe('START column', () => {
     const urlColumn = (line: string): number => line.indexOf('a.test');
     assert.equal(urlColumn(rows[0] ?? ''), urlColumn(rows[1] ?? ''));
     assert.equal(header.indexOf('URL'), urlColumn(rows[0] ?? ''));
+  });
+});
+
+void describe('formatNetworkList eviction note', () => {
+  void it('says how many older requests the session dropped, and nothing when none were', () => {
+    const evictions = { requestsDropped: 1, bodiesEvicted: 0 };
+    assert.match(
+      formatNetworkList([], { evictions }),
+      /⚠ 1 older network request was dropped: bdg keeps the newest 10000/
+    );
+    const bodies = { requestsDropped: 0, bodiesEvicted: 5 };
+    assert.match(
+      formatNetworkList([], { evictions: bodies }),
+      /⚠ 5 older response bodies were evicted: bdg keeps the newest 100 MB of bodies/
+    );
+    assert.doesNotMatch(
+      formatNetworkList([], { evictions: { requestsDropped: 0, bodiesEvicted: 0 } }),
+      /⚠/
+    );
+  });
+});
+
+void describe('formatNetworkFollowRows eviction note', () => {
+  void it('prints the note when given counts, and nothing extra otherwise', () => {
+    const evictions = { requestsDropped: 7, bodiesEvicted: 0 };
+    assert.equal(
+      formatNetworkFollowRows([], { evictions }),
+      '⚠ 7 older network requests were dropped: bdg keeps the newest 10000'
+    );
+    assert.equal(formatNetworkFollowRows([]), '');
   });
 });

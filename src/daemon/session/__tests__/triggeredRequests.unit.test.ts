@@ -119,6 +119,18 @@ void describe('watchTriggeredRequests', () => {
     );
   });
 
+  void it('still lists requests once the session drops its oldest at the request cap', () => {
+    const store = networkStore();
+    const collect = watchTriggeredRequests(store);
+    store.networkRequests.shift();
+    store.networkEvictions.requestsDropped++;
+    store.networkRequests.push(request('after', { status: 200 }));
+    assert.deepEqual(
+      collect()?.triggeredRequests.map((r) => r.requestId),
+      ['after']
+    );
+  });
+
   void it('returns an empty list when nothing started, and nothing when network telemetry is off', () => {
     assert.deepEqual(watchTriggeredRequests(networkStore())(), { triggeredRequests: [] });
     const store = new TelemetryStore();

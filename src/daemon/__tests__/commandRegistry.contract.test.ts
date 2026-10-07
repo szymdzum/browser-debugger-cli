@@ -45,6 +45,19 @@ void describe('CommandRegistry', () => {
       );
     });
 
+    void it('reports requests dropped and bodies evicted at the capture limits', async () => {
+      const quiet = await registry.session_peek(mockCdp, { lastN: 0 });
+      assert.equal('droppedNetwork' in quiet, false);
+      assert.equal('evictedNetworkBodies' in quiet, false);
+
+      store.networkEvictions.requestsDropped = 3;
+      store.networkEvictions.bodiesEvicted = 2;
+      const result = await registry.session_peek(mockCdp, { lastN: 0 });
+
+      assert.equal(result.droppedNetwork, 3);
+      assert.equal(result.evictedNetworkBodies, 2);
+    });
+
     void it('returns recent network and console data', async () => {
       store.networkRequests.push(
         {
@@ -440,6 +453,19 @@ void describe('CommandRegistry', () => {
       assert.equal(result.activity.consoleMessagesCaptured, 1);
       assert.equal(result.activity.lastNetworkRequestAt, 5000);
       assert.equal(result.activity.lastConsoleMessageAt, 7000);
+    });
+
+    void it('reports requests dropped and bodies evicted, only when there were some', async () => {
+      const quiet = await registry.session_status(mockCdp, {});
+      assert.equal('networkRequestsDropped' in quiet.activity, false);
+      assert.equal('networkBodiesEvicted' in quiet.activity, false);
+
+      store.networkEvictions.requestsDropped = 4;
+      store.networkEvictions.bodiesEvicted = 1;
+      const result = await registry.session_status(mockCdp, {});
+
+      assert.equal(result.activity.networkRequestsDropped, 4);
+      assert.equal(result.activity.networkBodiesEvicted, 1);
     });
 
     void it('omits last activity timestamps when no data captured', async () => {

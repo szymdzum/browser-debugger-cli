@@ -257,6 +257,10 @@ export interface BdgOutput {
     console: number;
     /** Console messages dropped at the limit, oldest first (indices start after them) */
     consoleDropped?: number;
+    /** Finished network requests dropped at the request cap, oldest first */
+    networkDropped?: number;
+    /** Response bodies evicted at the total body budget, oldest first */
+    networkBodiesEvicted?: number;
   };
   error?: string;
   partial?: boolean; // Flag to indicate this is partial/incomplete data (live preview)

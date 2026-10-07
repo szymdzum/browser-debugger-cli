@@ -300,6 +300,8 @@ export class SessionController {
               network: data.totalNetwork,
               console: data.totalConsole,
               ...(data.droppedConsole && { consoleDropped: data.droppedConsole }),
+              ...(data.droppedNetwork && { networkDropped: data.droppedNetwork }),
+              ...(data.evictedNetworkBodies && { networkBodiesEvicted: data.evictedNetworkBodies }),
             },
             currentNavigationId: data.currentNavigationId,
             ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),

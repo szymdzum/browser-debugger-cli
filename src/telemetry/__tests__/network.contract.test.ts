@@ -764,7 +764,7 @@ void describe('Network telemetry contract', () => {
   });
 
   void describe('Request limit enforcement', () => {
-    void it('should enforce MAX_NETWORK_REQUESTS limit', async () => {
+    void it('keeps the newest MAX_NETWORK_REQUESTS requests', async () => {
       const cleanup = await startNetworkCollection(
         mockCDP as unknown as CDPConnection,
         requests,
@@ -795,10 +795,9 @@ void describe('Network telemetry contract', () => {
         });
       }
 
-      assert.ok(
-        requests.length <= MAX_REQUESTS,
-        `Should not exceed ${MAX_REQUESTS} requests, got ${requests.length}`
-      );
+      assert.equal(requests.length, MAX_REQUESTS);
+      assert.equal(requests[0]?.requestId, 'req-101', 'the oldest are dropped');
+      assert.equal(requests.at(-1)?.requestId, `req-${MAX_REQUESTS + 100}`, 'the newest are kept');
 
       void cleanup();
     });

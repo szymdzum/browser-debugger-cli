@@ -9,7 +9,12 @@ import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js
 import { CommandError } from '@/errors/index.js';
 import { cdpCallError, formDiscoveryFailedError } from '@/errors/messages.js';
 import type { HintDetails } from '@/errors/notices.js';
-import type { CommandName, CommandSchemas, SessionStatusData } from '@/ipc/index.js';
+import type {
+  CommandName,
+  CommandSchemas,
+  SessionActivity,
+  SessionStatusData,
+} from '@/ipc/index.js';
 import { searchStyleSheets } from '@/runtime/css/search.js';
 import { auditPage } from '@/runtime/dom/audit.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
@@ -34,7 +39,7 @@ import { evaluateInBdgWorld, sendForBdgScript } from '@/runtime/page/bdgWorld.js
 import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
-import { skippedBodyReason } from '@/telemetry/network.js';
+import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -205,6 +210,23 @@ function webSocketAsRequest(connection: WebSocketConnection): NetworkRequest {
     ...(responseHeaders && { responseHeaders }),
     ...(errorMessage !== undefined && { errorText: errorMessage }),
     webSocket: { frames: connection.frames, ...(closedTime !== undefined && { closedTime }) },
+  };
+}
+
+/**
+ * Status activity counts of what the network capture let go at its limits,
+ * left out when nothing was.
+ *
+ * @param store - Telemetry store
+ * @returns `networkRequestsDropped` and `networkBodiesEvicted` when non-zero
+ */
+function networkEvictionActivity(
+  store: TelemetryStore
+): Pick<SessionActivity, 'networkRequestsDropped' | 'networkBodiesEvicted'> {
+  const { requestsDropped, bodiesEvicted } = store.networkEvictions;
+  return {
+    ...(requestsDropped > 0 && { networkRequestsDropped: requestsDropped }),
+    ...(bodiesEvicted > 0 && { networkBodiesEvicted: bodiesEvicted }),
   };
 }
 
@@ -453,6 +475,7 @@ export function createCommandRegistry(
       const totalNetwork = allNetwork.length;
       const totalConsole = store.consoleMessages.length;
       const dropped = store.consoleDropped;
+      const { requestsDropped, bodiesEvicted } = store.networkEvictions;
 
       const networkBounds = calculateSliceBounds(totalNetwork, lastN, offset);
       const consoleBounds = calculateSliceBounds(totalConsole, lastN, offset);
@@ -487,6 +510,8 @@ export function createCommandRegistry(
         totalNetwork,
         totalConsole,
         ...(dropped > 0 && { droppedConsole: dropped }),
+        ...(requestsDropped > 0 && { droppedNetwork: requestsDropped }),
+        ...(bodiesEvicted > 0 && { evictedNetworkBodies: bodiesEvicted }),
         hasMoreNetwork: networkBounds.start > 0,
         hasMoreConsole: consoleBounds.start > 0,
       });
@@ -528,16 +553,12 @@ export function createCommandRegistry(
             : { crashedAt: store.pageCrashedAt }),
         },
         activeTelemetry: store.activeTelemetry,
-        activity: filterDefined({
+        activity: {
           networkRequestsCaptured: store.networkRequests.length,
           consoleMessagesCaptured: store.consoleMessages.length,
-          lastNetworkRequestAt: lastNetworkRequest?.timestamp,
-          lastConsoleMessageAt: lastConsoleMessage?.timestamp,
-        }) as {
-          networkRequestsCaptured: number;
-          consoleMessagesCaptured: number;
-          lastNetworkRequestAt?: number;
-          lastConsoleMessageAt?: number;
+          ...(lastNetworkRequest && { lastNetworkRequestAt: lastNetworkRequest.timestamp }),
+          ...(lastConsoleMessage && { lastConsoleMessageAt: lastConsoleMessage.timestamp }),
+          ...networkEvictionActivity(store),
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
       };

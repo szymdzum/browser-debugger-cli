@@ -34,6 +34,7 @@ import { pageCrashedNote, withPageCrashedNote } from '@/ui/messages/commands.js'
 import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,
+  type NetworkEvictionCounts,
 } from '@/ui/messages/networkMessages.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
@@ -162,6 +163,45 @@ function buildFormatOptions(
     totalCount: result.totalCount,
     filteredCount: result.filteredCount,
     ...(result.pageStart && { pageStart: result.pageStart }),
+    evictions: {
+      requestsDropped: result.dropped ?? 0,
+      bodiesEvicted: result.bodiesEvicted ?? 0,
+    },
+  };
+}
+
+/**
+ * Watch the session's dropped/evicted counts across follow polls, so the
+ * stream notes them once per kind instead of on every poll.
+ *
+ * @returns Function giving the counts when requests or bodies were let go
+ *   for the first time since the stream started, otherwise undefined
+ */
+function newEvictionKinds(): (counts: NetworkEvictionCounts) => NetworkEvictionCounts | undefined {
+  let requestsNoted = false;
+  let bodiesNoted = false;
+  return (counts) => {
+    const newRequests = !requestsNoted && counts.requestsDropped > 0;
+    const newBodies = !bodiesNoted && counts.bodiesEvicted > 0;
+    requestsNoted ||= newRequests;
+    bodiesNoted ||= newBodies;
+    return newRequests || newBodies ? counts : undefined;
+  };
+}
+
+/**
+ * JSON fields of the dropped/evicted counts (the non-zero ones).
+ *
+ * @param counts - Counts to report, if any
+ * @returns `dropped` and `bodiesEvicted` when non-zero
+ */
+function evictionFields(
+  counts: NetworkEvictionCounts | undefined
+): Pick<NetworkListResult, 'dropped' | 'bodiesEvicted'> {
+  if (!counts) return {};
+  return {
+    ...(counts.requestsDropped > 0 && { dropped: counts.requestsDropped }),
+    ...(counts.bodiesEvicted > 0 && { bodiesEvicted: counts.bodiesEvicted }),
   };
 }
 
@@ -169,7 +209,9 @@ function buildFormatOptions(
  * Stream network requests: the last `lastN` finished ones at start, then
  * each request once, when it has finished loading or failed (a request whose
  * headers arrived but whose body is still loading waits), like `tail -f`,
- * with a warning (JSON `pageCrashedAt`) once when the page crashes.
+ * with a warning (JSON `pageCrashedAt`) once when the page crashes, and a
+ * note (JSON `dropped`, `bodiesEvicted`) the first time the session drops
+ * requests or evicts bodies at its limits.
  *
  * @param options - Command options
  * @param resourceTypes - Validated resource types
@@ -182,6 +224,7 @@ async function runFollowMode(
 ): Promise<void> {
   const shown = new Set<string>();
   const newCrash = newPageCrashes();
+  const newEviction = newEvictionKinds();
   let started = false;
   const showNetwork = async (): Promise<FollowPoll> => {
     const result = await fetchNetworkRequests(filtersNeedHeaders(options));
@@ -192,6 +235,7 @@ async function runFollowMode(
 
     const { requests } = result.data;
     const crashedAt = newCrash(result.data.pageCrashedAt);
+    const evictions = newEviction(result.data.evictions);
     const finished = filterRequests(requests, options, resourceTypes).filter(
       (request) => request.duration !== undefined && !shown.has(request.requestId)
     );
@@ -200,12 +244,13 @@ async function runFollowMode(
     finished.forEach((request) => shown.add(request.requestId));
     const fresh = started || lastN === 0 ? finished : finished.slice(-lastN);
     if (options.json) {
-      if (!started || fresh.length > 0 || crashedAt !== undefined) {
+      if (!started || fresh.length > 0 || crashedAt !== undefined || evictions) {
         const data: NetworkListResult = {
           requests: fresh,
           totalCount: requests.length,
           filteredCount: fresh.length,
           ...(crashedAt !== undefined && { pageCrashedAt: crashedAt }),
+          ...evictionFields(evictions),
         };
         console.log(JSON.stringify(buildSuccessResponse(data)));
       }
@@ -215,6 +260,7 @@ async function runFollowMode(
         header: !started,
         verbose: options.verbose ?? false,
         ...(pageStart && { pageStart }),
+        ...(evictions && { evictions }),
       });
       if (text) console.log(text);
       if (crashedAt !== undefined) console.log(pageCrashedNote(crashedAt));
@@ -261,6 +307,10 @@ interface NetworkListResult {
   pageStart?: PageStart;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** Oldest finished requests the session dropped at its cap (left out when none) */
+  dropped?: number;
+  /** Oldest response bodies the session evicted at its body budget (left out when none) */
+  bodiesEvicted?: number;
 }
 
 export function registerListCommand(networkCmd: Command): void {
@@ -327,7 +377,7 @@ export function registerListCommand(networkCmd: Command): void {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
 
-          const { requests, pageCrashedAt } = result.data;
+          const { requests, pageCrashedAt, evictions } = result.data;
           const filtered = filterRequests(requests, options, resourceTypes);
           const pageStart = pageStartOf(requests);
           return {
@@ -338,6 +388,7 @@ export function registerListCommand(networkCmd: Command): void {
               filteredCount: filtered.length,
               ...(pageStart && { pageStart }),
               ...(pageCrashedAt !== undefined && { pageCrashedAt }),
+              ...evictionFields(evictions),
             },
           };
         },

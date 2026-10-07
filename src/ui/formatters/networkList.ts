@@ -9,6 +9,7 @@ import type { NetworkRequest } from '@/types.js';
 import { getResourceTypeAbbr } from '@/ui/formatters/preview.js';
 import { getRequestState } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl } from '@/ui/formatting.js';
+import { networkEvictedNote, type NetworkEvictionCounts } from '@/ui/messages/networkMessages.js';
 
 export interface NetworkListOptions {
   verbose?: boolean;
@@ -18,6 +19,8 @@ export interface NetworkListOptions {
   totalCount?: number;
   /** Requests matching the filters, before --last (defaults to totalCount) */
   filteredCount?: number;
+  /** Requests dropped and bodies evicted at the session's capture limits */
+  evictions?: NetworkEvictionCounts;
 }
 
 /**
@@ -206,6 +209,8 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
 
   fmt.text(header);
   fmt.separator('─', SEPARATOR_WIDTH);
+  const evictedNote = options.evictions && networkEvictedNote(options.evictions);
+  if (evictedNote) fmt.text(evictedNote);
 
   if (requests.length === 0) {
     fmt.text('No matching requests found.');
@@ -228,18 +233,27 @@ const FOLLOW_ID_WIDTH = 14;
 
 /**
  * Rows of the network stream: requests that finished since the last poll,
- * with the column header the first time (the stream banner is on stderr).
+ * with the column header the first time (the stream banner is on stderr),
+ * after the dropped/evicted note when the counts changed.
  *
  * @param requests - Newly finished requests
- * @param options - `header` the first time; `verbose` for full URLs; the page start for START
+ * @param options - `header` the first time; `verbose` for full URLs; the page start for
+ *   START; `evictions` only when the session's counts changed since the last poll
  * @returns Text to print (empty when there is nothing new)
  */
 export function formatNetworkFollowRows(
   requests: NetworkRequest[],
-  options: { header?: boolean; verbose?: boolean; pageStart?: PageStart } = {}
+  options: {
+    header?: boolean;
+    verbose?: boolean;
+    pageStart?: PageStart;
+    evictions?: NetworkEvictionCounts;
+  } = {}
 ): string {
   const fmt = new OutputFormatter();
   const widths = columnWidths(requests, FOLLOW_ID_WIDTH);
+  const evictedNote = options.evictions && networkEvictedNote(options.evictions);
+  if (evictedNote) fmt.text(evictedNote);
   if (options.header) {
     fmt.text(formatColumnHeader(widths));
     fmt.separator('─', SEPARATOR_WIDTH);

@@ -99,7 +99,8 @@ export const BDG_CHROME_PREFS: Record<string, unknown> = {
 // ============================================================================
 
 /**
- * Maximum network requests to collect before dropping new requests
+ * Finished network requests kept: past this the oldest are dropped, so the
+ * newest are kept (requests in flight are never dropped)
  * Prevents memory issues in long-running sessions with high network activity
  */
 export const MAX_NETWORK_REQUESTS = 10000;
@@ -138,6 +139,12 @@ export const OBJECT_EXPANSION_FAILURE_THRESHOLD = 5;
  * Can be overridden with --max-body-size flag
  */
 export const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
+
+/**
+ * Total size of the response bodies a session keeps (100MB)
+ * Past this the oldest bodies are replaced by a placeholder; their requests stay
+ */
+export const MAX_TOTAL_BODY_BYTES = 100 * 1024 * 1024;
 
 // ============================================================================
 // OUTPUT VALUE LIMITS (lifted by --full)

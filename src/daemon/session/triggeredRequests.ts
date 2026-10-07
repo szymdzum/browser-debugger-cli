@@ -45,11 +45,12 @@ export type TriggeredRequestsCollector = () => CollectedRequests | undefined;
 export function watchTriggeredRequests(store: TelemetryStore): TriggeredRequestsCollector {
   if (!store.activeTelemetry.includes('network')) return () => undefined;
   const startedAt = Date.now();
-  const firstFinished = store.networkRequests.length;
+  const firstFinished = requestsFinished(store);
   const firstWebSocket = store.websocketConnections.length;
   return () => {
+    const firstKept = Math.max(0, firstFinished - store.networkEvictions.requestsDropped);
     const started: StartedRequest[] = [
-      ...store.networkRequests.slice(firstFinished).map((request) => ({ request })),
+      ...store.networkRequests.slice(firstKept).map((request) => ({ request })),
       ...[...store.pendingNetworkRequests.values()].map((pending) => ({
         request: pending.request,
         inFlight: true,
@@ -68,6 +69,16 @@ export function watchTriggeredRequests(store: TelemetryStore): TriggeredRequests
       ...(omitted > 0 && { triggeredRequestsOmitted: omitted }),
     };
   };
+}
+
+/**
+ * Requests the session has finished, dropped ones included.
+ *
+ * @param store - Session store
+ * @returns Count that only grows
+ */
+function requestsFinished(store: TelemetryStore): number {
+  return store.networkEvictions.requestsDropped + store.networkRequests.length;
 }
 
 /**

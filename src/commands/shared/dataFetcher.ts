@@ -14,6 +14,7 @@ import {
 import { isConnectionError } from '@/ipc/utils/errors.js';
 import type { BdgOutput, ConsoleMessage, NetworkRequest } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import type { NetworkEvictionCounts } from '@/ui/messages/networkMessages.js';
 import { noActiveSessionMessage } from '@/ui/messages/sessionCommand.js';
 import { getExitCodeForConnectionError } from '@/utils/errorMapping.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -132,20 +133,29 @@ export async function fetchPreviewData(
  * Fetch all captured network requests from daemon.
  *
  * @param withHeaders - Include request/response headers (needed by header filters)
- * @returns Requests, and when the page crashed (while it is not loaded
- *   again), or a fetch error
+ * @returns Requests, when the page crashed (while it is not loaded again)
+ *   and what the session let go at its capture limits, or a fetch error
  */
 export async function fetchNetworkRequests(withHeaders = false): Promise<
   FetchResult<{
     requests: NetworkRequest[];
     pageCrashedAt: number | undefined;
+    evictions: NetworkEvictionCounts;
   }>
 > {
   const result = await fetchPreviewData({ lastN: 0, only: 'network', withHeaders });
   if (!result.success) return result;
+  const { totals, pageCrashedAt } = result.data.output;
   return {
     success: true,
-    data: { requests: result.data.network, pageCrashedAt: result.data.output.pageCrashedAt },
+    data: {
+      requests: result.data.network,
+      pageCrashedAt,
+      evictions: {
+        requestsDropped: totals?.networkDropped ?? 0,
+        bodiesEvicted: totals?.networkBodiesEvicted ?? 0,
+      },
+    },
   };
 }
 

@@ -5,6 +5,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import {
   MAX_NETWORK_REQUESTS,
   MAX_RESPONSE_SIZE,
+  MAX_TOTAL_BODY_BYTES,
   CHROME_NETWORK_BUFFER_TOTAL,
   CHROME_NETWORK_BUFFER_PER_RESOURCE,
   CHROME_POST_DATA_LIMIT,
@@ -22,6 +23,11 @@ import { filterDefined } from '@/utils/objects.js';
 
 import { shouldExcludeDomain, shouldExcludeUrl, shouldFetchBodyWithReason } from './filters.js';
 import { ExtraInfoTracker } from './networkExtraInfo.js';
+import {
+  RequestRetention,
+  skippedBodyPlaceholder,
+  type NetworkEvictions,
+} from './networkRetention.js';
 
 const log = createLogger('network');
 
@@ -44,18 +50,23 @@ function shouldFilterRequest(
 }
 
 /**
- * Fetch response body for a request with cancellation support.
+ * Fetch response body for a request with cancellation support: a body that
+ * arrives after its fetch was cancelled (removed from `pendingFetches`: the
+ * collector stopped, or the request was dropped) is discarded.
  *
  * @param cdp - CDP connection instance
  * @param requestId - Request ID to fetch body for
- * @param request - Network request object to populate with body
+ * @param request - Network request the body belongs to
  * @param pendingFetches - Set to track pending fetch operations for cleanup
+ * @param retention - Stores the body within the session's body budget
+ * @param sessionId - Session of the iframe or worker that made the request
  */
 function fetchResponseBody(
   cdp: CDPConnection,
   requestId: string,
   request: NetworkRequest,
   pendingFetches: Set<string>,
+  retention: RequestRetention,
   sessionId?: string
 ): void {
   pendingFetches.add(requestId);
@@ -64,16 +75,8 @@ function fetchResponseBody(
     .send('Network.getResponseBody', { requestId }, sessionId)
     .then((response) => {
       if (!pendingFetches.has(requestId)) return;
-
-      const typedResponse = response as Protocol.Network.GetResponseBodyResponse;
-      request.responseBody = typedResponse.body;
-      if (typedResponse.base64Encoded) request.responseBodyBase64 = true;
-      if (typedResponse.body) {
-        request.decodedBodyLength = Buffer.byteLength(
-          typedResponse.body,
-          typedResponse.base64Encoded ? 'base64' : 'utf-8'
-        );
-      }
+      const { body, base64Encoded } = response as Protocol.Network.GetResponseBodyResponse;
+      retention.storeBody(request, body, base64Encoded);
     })
     .catch((error) => {
       log.debug(
@@ -121,28 +124,6 @@ function createNetworkRequest(
     ...(navigationId !== undefined && { navigationId }),
     ...(params.type !== undefined && { resourceType: params.type }),
   };
-}
-
-const SKIPPED_BODY_PATTERN = /^\[SKIPPED: (.*)\]$/s;
-
-/**
- * Placeholder stored instead of a response body that was not fetched.
- *
- * @param reason - Why the body was skipped
- * @returns Placeholder text shown by `bdg details`
- */
-export function skippedBodyPlaceholder(reason: string): string {
-  return `[SKIPPED: ${reason}]`;
-}
-
-/**
- * Extract the reason from a skipped-body placeholder.
- *
- * @param body - Stored response body
- * @returns Reason if `body` is a placeholder, otherwise undefined
- */
-export function skippedBodyReason(body: string | undefined): string | undefined {
-  return body === undefined ? undefined : SKIPPED_BODY_PATTERN.exec(body)?.[1];
 }
 
 /**
@@ -353,6 +334,12 @@ export interface NetworkCollectionOptions {
   networkInclude?: string[];
   networkExclude?: string[];
   maxBodySize?: number;
+  /** Finished requests kept at most; past it the oldest are dropped (default {@link MAX_NETWORK_REQUESTS}) */
+  maxRequests?: number;
+  /** Total size of stored response bodies; past it the oldest are evicted (default {@link MAX_TOTAL_BODY_BYTES}) */
+  maxTotalBodyBytes?: number;
+  /** Counters of dropped requests and evicted bodies; otherwise the collector keeps private ones */
+  evictions?: NetworkEvictions | undefined;
   getCurrentNavigationId?: (() => number) | undefined;
 }
 
@@ -369,8 +356,12 @@ export interface NetworkCollectionOptions {
  *
  * @remarks
  * - Chrome buffer limits: 50MB total, 10MB per resource, 1MB POST data (with fallback)
- * - Stale requests (incomplete after 60s) are removed from tracking but NOT added to output
- * - Request limit of 10,000 prevents memory issues in long-running sessions
+ * - The newest 10,000 finished requests are kept: past that the oldest finished
+ *   ones are dropped (counted in `evictions.requestsDropped`); requests in flight
+ *   are tracked separately and never dropped mid-flight
+ * - Stored response bodies total at most 100MB: past that the oldest bodies are
+ *   replaced by a placeholder (counted in `evictions.bodiesEvicted`), their
+ *   request metadata stays
  * - Response bodies are automatically skipped for images, fonts, CSS, and source maps (see DEFAULT_SKIP_BODY_PATTERNS)
  * - Response bodies larger than 5MB are skipped with a placeholder message
  * - By default, common tracking/analytics domains are filtered out (use includeAll to disable)
@@ -389,6 +380,9 @@ export async function startNetworkCollection(
     networkInclude = [],
     networkExclude = [],
     maxBodySize = MAX_RESPONSE_SIZE,
+    maxRequests = MAX_NETWORK_REQUESTS,
+    maxTotalBodyBytes = MAX_TOTAL_BODY_BYTES,
+    evictions = { requestsDropped: 0, bodiesEvicted: 0 },
     getCurrentNavigationId,
   } = options;
   const requestMap = options.pendingRequests ?? new Map<string, PendingRequest>();
@@ -397,6 +391,11 @@ export async function startNetworkCollection(
   const extraInfo = new ExtraInfoTracker((requestId) => requestMap.get(requestId)?.request);
   const registry = new CDPHandlerRegistry();
   const typed = new TypedCDPConnection(cdp);
+  const retention = new RequestRetention(requests, { maxRequests, maxTotalBodyBytes }, evictions);
+  const record = (request: NetworkRequest): void => {
+    const dropped = retention.add(request);
+    if (dropped) pendingFetches.delete(dropped.requestId);
+  };
 
   let bodiesFetched = 0;
   let bodiesSkipped = 0;
@@ -416,11 +415,9 @@ export async function startNetworkCollection(
   const failRequest = (requestId: string, failure: RequestFailure): void => {
     const entry = requestMap.get(requestId);
     if (!entry) return;
-    if (requests.length < MAX_NETWORK_REQUESTS) {
-      applyFailure(entry.request, failure);
-      requests.push(entry.request);
-      extraInfo.complete(requestId, entry.request);
-    }
+    applyFailure(entry.request, failure);
+    record(entry.request);
+    extraInfo.complete(requestId, entry.request);
     requestMap.delete(requestId);
     redirectHops.delete(requestId);
   };
@@ -462,19 +459,12 @@ export async function startNetworkCollection(
       const hop = completeRedirectHop(previous.request, params, redirectHops);
       extraInfo.applyResponse(params.requestId, hop);
       extraInfo.recordRedirectHop(params.requestId, hop);
-      if (requests.length < MAX_NETWORK_REQUESTS) requests.push(hop);
+      record(hop);
     }
 
     if (shouldFilterRequest(params.request.url, includeAll, networkInclude, networkExclude)) {
       return;
     }
-    if (requestMap.size >= MAX_NETWORK_REQUESTS) {
-      log.debug(
-        `Warning: Network request limit reached (${MAX_NETWORK_REQUESTS}), dropping new requests`
-      );
-      return;
-    }
-
     const request = createNetworkRequest(params, getCurrentNavigationId);
     extraInfo.applyRequest(params.requestId, request);
     if (params.type === 'Document' && params.loaderId) {
@@ -517,13 +507,6 @@ export async function startNetworkCollection(
     const entry = requestMap.get(params.requestId);
     if (!entry) return;
 
-    if (requests.length >= MAX_NETWORK_REQUESTS) {
-      log.debug(`Warning: Network request limit reached (${MAX_NETWORK_REQUESTS})`);
-      requestMap.delete(params.requestId);
-      redirectHops.delete(params.requestId);
-      return;
-    }
-
     const request = entry.request;
 
     if (params.encodedDataLength !== undefined) {
@@ -547,13 +530,13 @@ export async function startNetworkCollection(
 
     if (decision.should) {
       bodiesFetched++;
-      fetchResponseBody(cdp, params.requestId, request, pendingFetches, entry.sessionId);
+      fetchResponseBody(cdp, params.requestId, request, pendingFetches, retention, entry.sessionId);
     } else {
       bodiesSkipped++;
       request.responseBody = skippedBodyPlaceholder(decision.reason ?? 'not captured');
     }
 
-    requests.push(request);
+    record(request);
     extraInfo.complete(params.requestId, request);
     requestMap.delete(params.requestId);
     redirectHops.delete(params.requestId);
