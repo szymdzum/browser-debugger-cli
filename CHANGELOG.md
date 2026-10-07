@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+
+- **CI merge gate** (#434): one required check, `CI OK`, aggregates build, quality, contract and smoke jobs; docs-only PRs skip them and still pass. PR smoke runs on Node 22 only (22/24/26 on `main`); macOS smoke runs on `main` and nightly. The Release workflow refuses a tag whose commit has no green CI run on `main`.
+
 ## [0.13.0] - 2026-10-07
 
 ### Changed

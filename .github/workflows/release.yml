@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # read the CI runs of the tagged commit
   id-token: write # OIDC token for npm Trusted Publishing (and provenance)
 
 jobs:
@@ -52,6 +53,19 @@ jobs:
             exit 1
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Check CI passed on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          GREEN="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" \
+            --json conclusion,event \
+            --jq '[.[] | select(.event=="push" and .conclusion=="success")] | length')"
+          if [[ "$GREEN" -eq 0 ]]; then
+            echo "::error::No successful CI run on main for $SHA"
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
