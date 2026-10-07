@@ -20,6 +20,7 @@ import {
   noNodesFoundError,
   staleNodeError,
 } from '@/errors/messages.js';
+import { COMPOSED_JS, FLAT_TEXT_JS } from '@/runtime/dom/elementInfo.js';
 import { ActionScriptError, throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
 import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
@@ -129,9 +130,13 @@ const log = createLogger('dom');
  * the text nodes of hidden ones (display or visibility; not those of
  * `<script>`, `<style>` or `<noscript>`), so text filters match hidden
  * elements like Playwright's and `:visible` decides visibility; button inputs
- * use their value. Whitespace is collapsed; filter texts arrive normalized
- * (`has-text` lowercased). `:visible` is checked before the text filters,
- * which read the text.
+ * use their value. Text is read in the flat tree, as `bdg dom query` shows
+ * it: the text a web component's open shadow root renders, slotted content
+ * in place of its slots. A visible component, slot or element holding either
+ * ({@link COMPOSED_JS}) is read with {@link FLAT_TEXT_JS}, including the
+ * selects and editable regions `innerText` reads. Whitespace is collapsed;
+ * filter texts arrive normalized (`has-text` lowercased). `:visible` is
+ * checked before the text filters, which read the text.
  *
  * Steps and `:has()` match CSS relative to an element (`:scope > css`). A
  * descendant step also searches the open shadow roots under the element (the
@@ -139,14 +144,15 @@ const log = createLogger('dom');
  * element's own tree.
  */
 export const FILTER_MATCHING_JS = `(shadowRoots) => {
+  const composed = ${COMPOSED_JS};
+  const flatText = ${FLAT_TEXT_JS};
   const skipped = /^(script|style|noscript|template)$/;
   const hiddenText = (el) => {
-    const walker = el.ownerDocument.createTreeWalker(el, 5, {
-      acceptNode: (node) => (node.nodeType === 1 && skipped.test(node.localName) ? 2 : 1)
-    });
+    const nodes = el.localName === 'slot' ? el.assignedNodes({ flatten: true }) : (el.shadowRoot || el).childNodes;
     let text = '';
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    for (const node of nodes) {
       if (node.nodeType === 3) text += node.data;
+      else if (node.nodeType === 1 && !skipped.test(node.localName)) text += hiddenText(node);
     }
     return text;
   };
@@ -154,7 +160,8 @@ export const FILTER_MATCHING_JS = `(shadowRoots) => {
     if (el.localName === 'input' && /^(submit|button|reset)$/i.test(el.type)) return el.value;
     const rendered = typeof el.innerText === 'string' &&
       (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true }));
-    return (rendered ? el.innerText : hiddenText(el)).replace(/\\s+/g, ' ').trim();
+    const text = !rendered ? hiddenText(el) : composed(el) ? flatText(el, Infinity, true) : el.innerText;
+    return text.replace(/\\s+/g, ' ').trim();
   };
   const passes = (el, filter) => {
     if (filter.kind === 'visible') {

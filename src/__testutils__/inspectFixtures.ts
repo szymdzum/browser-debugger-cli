@@ -193,8 +193,10 @@ const READING_TEXT_HTML = `<!doctype html><meta charset="utf-8"><title>reading t
  * slotted title), a component whose shadow root has text and no slot, a
  * field whose label lives in its shadow root, an icon button named only
  * inside its shadow root, a button whose text is slotted, an open
- * `display: contents` dialog host, an image link and an input inside a
- * label.
+ * `display: contents` dialog host, an image link, an input inside a
+ * label, a button rendered only by its shadow root, and a button slotted
+ * into a collapsed `height: 0; overflow: hidden` shadow container next to
+ * the same markup without shadow DOM.
  */
 const COMPONENTS_HTML = `<!doctype html><meta charset="utf-8"><title>components</title>
 <style>x-card { display: block; margin: 4px; }</style>
@@ -208,6 +210,9 @@ const COMPONENTS_HTML = `<!doctype html><meta charset="utf-8"><title>components<
 <x-dialog id="dialog"><p>Dialog body</p></x-dialog>
 <a id="logo" href="#home"><img alt="Company logo" width="40" height="20" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a>
 <label>User <input id="user" value="alice"></label>
+<x-btn id="draft"></x-btn>
+<x-acc id="acc"><button id="slotted-hidden">Hidden</button></x-acc>
+<div id="light-acc" style="height:0;overflow:hidden"><button id="light-hidden">Hidden</button></div>
 <script>
   const define = (name, html, style) =>
     customElements.define(name, class extends HTMLElement {
@@ -223,6 +228,8 @@ const COMPONENTS_HTML = `<!doctype html><meta charset="utf-8"><title>components<
   define('x-icon-button', '<button id="icon" aria-label="Close"><svg width="12" height="12"></svg></button>');
   define('x-button', '<button class="root"><slot></slot></button>');
   define('x-dialog', '<div class="panel" style="position:fixed;right:0;bottom:0;width:240px;height:100px;background:#fff"><h2>Dialog title</h2><slot></slot></div>', 'contents');
+  define('x-btn', '<button>Save draft</button>');
+  define('x-acc', '<div style="height:0;overflow:hidden"><slot></slot></div>');
 </script>`;
 
 /** Pages by path */

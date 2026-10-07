@@ -13,6 +13,7 @@ import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
 import { COMPOSED_JS, FLAT_TEXT_JS } from '@/runtime/dom/elementInfo.js';
+import { FILTER_MATCHING_JS } from '@/runtime/dom/targetNode.js';
 
 /** Computed style the page script reads */
 interface FakeStyle {
@@ -137,6 +138,9 @@ const flatText = vm.runInNewContext(`(${FLAT_TEXT_JS})`, context) as (
   limit: number
 ) => string;
 const composed = vm.runInNewContext(`(${COMPOSED_JS})`, context) as (el: FakeNode) => boolean;
+const { passesAll } = vm.runInNewContext(`(${FILTER_MATCHING_JS})([])`, context) as {
+  passesAll: (el: FakeNode, filters: { kind: string; text: string }[]) => boolean;
+};
 
 /**
  * Text with whitespace collapsed, as previews show it.
@@ -249,5 +253,57 @@ void describe('COMPOSED_JS', () => {
   void it('collapses the whitespace of raw text as innerText does', () => {
     const host = element('x-card', [], { shadow: [text('  Two\n    words  ')] });
     assert.equal(flatText(host, 2000), ' Two words ');
+  });
+});
+
+void describe('FILTER_MATCHING_JS text filters', () => {
+  void it('match the text a component shows from its shadow root, not the light DOM it hides', () => {
+    const host = element('x-btn', [text('Light text never shown')], {
+      shadow: [element('button', [text('Save draft')], { display: 'inline-block' })],
+    });
+    assert.equal(passesAll(host, [{ kind: 'has-text', text: 'save' }]), true);
+    assert.equal(passesAll(host, [{ kind: 'text-is', text: 'Save draft' }]), true);
+    assert.equal(passesAll(host, [{ kind: 'has-text', text: 'light' }]), false);
+  });
+
+  void it('match slotted content in place of its slot', () => {
+    const host = element('x-button', [text('Ok, got it')], {
+      shadow: [element('button', [slot([text('Ok, got it')])], { display: 'inline-block' })],
+    });
+    assert.equal(passesAll(host, [{ kind: 'text-is', text: 'Ok, got it' }]), true);
+  });
+
+  void it('read the selects and editable regions innerText reads beside a component', () => {
+    const chip = element('x-chip', [], { display: 'inline', shadow: [text('Chip')] });
+    const select = element(
+      'select',
+      [element('option', [text('France')]), element('option', [text('Germany')])],
+      {
+        display: 'inline-block',
+      }
+    );
+    select.innerText = 'France\nGermany';
+    const form = element('form', [select, chip]);
+    assert.equal(passesAll(form, [{ kind: 'has-text', text: 'germany' }]), true);
+
+    const note = element('p', [text('Note text')]);
+    (note as FakeNode & { isContentEditable: boolean }).isContentEditable = true;
+    const editor = element('div', [note, slot([text('Slotted')])]);
+    assert.equal(passesAll(editor, [{ kind: 'has-text', text: 'note text' }]), true);
+    assert.equal(passesAll(editor, [{ kind: 'has-text', text: 'slotted' }]), true);
+  });
+
+  void it('match a hidden component by its shadow text, slotted content in place', () => {
+    const host = element(
+      'x-tab',
+      [text('Light text never shown'), element('b', [text('Slotted')])],
+      {
+        hidden: true,
+        shadow: [element('h2', [text('Tab title ')]), element('script', [text('code')])],
+      }
+    );
+    host.shadowRoot?.childNodes.push(slot([host.childNodes[1] as FakeNode]));
+    assert.equal(passesAll(host, [{ kind: 'text-is', text: 'Tab title Slotted' }]), true);
+    assert.equal(passesAll(host, [{ kind: 'has-text', text: 'light' }]), false);
   });
 });

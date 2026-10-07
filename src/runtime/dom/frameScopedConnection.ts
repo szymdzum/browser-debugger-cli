@@ -200,13 +200,13 @@ export function mapBox(mapping: FrameMapping, box: LayoutBox): LayoutBox {
  * Page-side choice of the box to measure: the element's, or its document's
  * root element when the element has no size (hidden, collapsed).
  */
-const REFERENCE_NODE_FUNCTION = `function () {
+export const REFERENCE_NODE_FUNCTION = `function () {
   const r = this.getBoundingClientRect();
   return r.width > 0 && r.height > 0 ? this : this.ownerDocument.documentElement;
 }`;
 
 /** Page-side `getBoundingClientRect()` as a plain box */
-const CLIENT_RECT_FUNCTION =
+export const CLIENT_RECT_FUNCTION =
   'function () { const r = this.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }';
 
 /**
