@@ -18,10 +18,12 @@ import { scrollPage } from '@/runtime/dom/formFillHelpers/scroll.js';
 import { submitForm } from '@/runtime/dom/formSubmitHelpers.js';
 import { inside, intersection, placeInOwnerFrame } from '@/runtime/dom/frameLayout.js';
 import {
+  CLIENT_RECT_FUNCTION,
   evaluateOnNodeParams,
   frameMappingFrom,
   frameScopedConnection,
   mapPoint,
+  REFERENCE_NODE_FUNCTION,
 } from '@/runtime/dom/frameScopedConnection.js';
 import type { RawLayout } from '@/runtime/dom/layout.js';
 import { CLICK_ELEMENT_SCRIPT, REACT_FILL_SCRIPT } from '@/runtime/dom/reactEventHelpers.js';
@@ -206,14 +208,13 @@ function fakeConnection(quads: () => number[][]): {
 } {
   const sent: Array<{ method: string; params: Record<string, unknown> }> = [];
   const answer = (method: string, params: Record<string, unknown>): unknown => {
-    const declaration =
-      typeof params['functionDeclaration'] === 'string' ? params['functionDeclaration'] : '';
+    const declaration = params['functionDeclaration'];
     if (method === 'DOM.getContentQuads') return { quads: quads() };
     if (method !== 'Runtime.callFunctionOn') return {};
-    if (declaration.includes('this : this.ownerDocument.documentElement')) {
+    if (declaration === REFERENCE_NODE_FUNCTION) {
       return { result: { objectId: 'reference' } };
     }
-    if (declaration.includes('return { x: r.left, y: r.top, width')) {
+    if (declaration === CLIENT_RECT_FUNCTION) {
       return { result: { value: { x: 0, y: 0, width: 10, height: 10 } } };
     }
     return {

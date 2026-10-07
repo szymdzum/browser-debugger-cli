@@ -272,4 +272,38 @@ void describe('FILTER_MATCHING_JS text filters', () => {
     });
     assert.equal(passesAll(host, [{ kind: 'text-is', text: 'Ok, got it' }]), true);
   });
+
+  void it('read the selects and editable regions innerText reads beside a component', () => {
+    const chip = element('x-chip', [], { display: 'inline', shadow: [text('Chip')] });
+    const select = element(
+      'select',
+      [element('option', [text('France')]), element('option', [text('Germany')])],
+      {
+        display: 'inline-block',
+      }
+    );
+    select.innerText = 'France\nGermany';
+    const form = element('form', [select, chip]);
+    assert.equal(passesAll(form, [{ kind: 'has-text', text: 'germany' }]), true);
+
+    const note = element('p', [text('Note text')]);
+    (note as FakeNode & { isContentEditable: boolean }).isContentEditable = true;
+    const editor = element('div', [note, slot([text('Slotted')])]);
+    assert.equal(passesAll(editor, [{ kind: 'has-text', text: 'note text' }]), true);
+    assert.equal(passesAll(editor, [{ kind: 'has-text', text: 'slotted' }]), true);
+  });
+
+  void it('match a hidden component by its shadow text, slotted content in place', () => {
+    const host = element(
+      'x-tab',
+      [text('Light text never shown'), element('b', [text('Slotted')])],
+      {
+        hidden: true,
+        shadow: [element('h2', [text('Tab title ')]), element('script', [text('code')])],
+      }
+    );
+    host.shadowRoot?.childNodes.push(slot([host.childNodes[1] as FakeNode]));
+    assert.equal(passesAll(host, [{ kind: 'text-is', text: 'Tab title Slotted' }]), true);
+    assert.equal(passesAll(host, [{ kind: 'has-text', text: 'light' }]), false);
+  });
 });

@@ -274,16 +274,17 @@ const FIXED_TO_VIEWPORT_JS = `(n) => {
 
 /**
  * Page-side clip of a node by its ancestors in the flat tree (through the
- * slots it is shown in and open shadow roots): the padding boxes ({@link CLIP_BOX_JS}) of those that cut off
- * overflowing content and hold the node in their containing-block chain. An
- * absolutely positioned node skips static ancestors (that are not
- * transformed) up to its containing block, a fixed one is not clipped at all
- * unless a transformed (or filtered, contained, …) ancestor holds it like an
- * absolute one, and inline ancestors and `display: contents` ones have no box
- * to clip with. The root element is left out (its overflow belongs to the
- * viewport), and so is the body's overflow unless the root element's
- * overflow is not `visible` (then the body keeps its own overflow and, e.g.
- * as the page's scroller, clips like any container).
+ * slots it is shown in and open shadow roots): the padding boxes
+ * ({@link CLIP_BOX_JS}) of those that cut off overflowing content and hold
+ * the node in their containing-block chain. An absolutely positioned node
+ * skips static ancestors (that are not transformed) up to its containing
+ * block, a fixed one is not clipped at all unless a transformed (or
+ * filtered, contained, …) ancestor holds it like an absolute one, and
+ * inline ancestors and `display: contents` ones have no box to clip with.
+ * The root element is left out (its overflow belongs to the viewport), and
+ * so is the body's overflow unless the root element's overflow is not
+ * `visible` (then the body keeps its own overflow and, e.g. as the page's
+ * scroller, clips like any container).
  * Returns the clip, whether overlay scrollbars of the containers show along
  * its right and bottom edges ({@link OVERLAY_SCROLLBARS_JS}), the innermost
  * ancestor cutting off part of `rect` (null when none does), why the

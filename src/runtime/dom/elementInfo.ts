@@ -92,12 +92,14 @@ export const COMPOSED_JS = `(node) => {
  * `visibility: hidden` are left out, elements that are not inline are set
  * apart by line breaks, as is a `<br>`. Fields and editable regions inside
  * it (inputs, textareas, selects, a contenteditable editor) are skipped, so
- * what a user typed is never read; raw text keeps `innerText`'s collapsed
- * whitespace. The text is cut at `limit` characters, and a
+ * what a user typed is never read, unless `fields` is set: then selects
+ * (all their options) and editable regions are read as `innerText` reads
+ * them (inputs and textareas it leaves out too). Raw text keeps
+ * `innerText`'s collapsed whitespace. The text is cut at `limit` characters, and a
  * part whose text alone passes the limit is read from its text nodes
  * (`textContent`) instead of `innerText`, which would lay out all of it.
  */
-export const FLAT_TEXT_JS = `(el, limit) => {
+export const FLAT_TEXT_JS = `(el, limit, fields) => {
   const composed = ${COMPOSED_JS};
   const view = el.ownerDocument.defaultView;
   let text = '';
@@ -107,7 +109,8 @@ export const FLAT_TEXT_JS = `(el, limit) => {
     if (text.length >= limit) return;
     if (node.nodeType === 3 && visible) text += node.data.replace(/\\s+/g, ' ');
     if (node.nodeType !== 1) return;
-    if (/^(input|textarea|select)$/.test(node.localName) || node.isContentEditable) return;
+    if (/^(input|textarea)$/.test(node.localName)) return;
+    if (!fields && (node.localName === 'select' || node.isContentEditable)) return;
     const style = view.getComputedStyle(node);
     if (node.checkVisibility && !node.checkVisibility() && style.display !== 'contents') return;
     if (node.localName === 'br') text += '\\n';
