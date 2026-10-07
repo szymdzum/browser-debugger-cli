@@ -8,7 +8,11 @@ import { describe, it } from 'node:test';
 import { droppedInView, messageKeys } from '@/commands/console.js';
 import { newPageCrashes } from '@/commands/shared/followMode.js';
 import type { ConsoleMessage, NetworkRequest } from '@/types.js';
-import { formatConsole, formatConsoleFollowLines } from '@/ui/formatters/console.js';
+import {
+  buildConsoleJsonOutput,
+  formatConsole,
+  formatConsoleFollowLines,
+} from '@/ui/formatters/console.js';
 import { formatNetworkFollowRows } from '@/ui/formatters/networkList.js';
 import { failureReason } from '@/ui/formatters/requestStatus.js';
 
@@ -58,7 +62,7 @@ void describe('page crash in follow modes', () => {
     const messages: ConsoleMessage[] = [{ type: 'error', text: 'boom', timestamp: 1 }];
     assert.match(formatConsole(messages, { pageCrashedAt: 5 }), /^⚠ The page crashed at /);
     assert.doesNotMatch(formatConsole(messages, {}), /crashed/);
-    assert.match(formatConsole(messages, { json: true, pageCrashedAt: 5 }), /"pageCrashedAt": ?5/);
+    assert.equal(buildConsoleJsonOutput(messages, { pageCrashedAt: 5 }).pageCrashedAt, 5);
   });
 });
 

@@ -43,8 +43,6 @@ export interface ConsoleSummary {
  * Options for console formatting.
  */
 export interface ConsoleFormatOptions {
-  /** Output as JSON */
-  json?: boolean | undefined;
   /** List all messages chronologically (--list flag) */
   list?: boolean | undefined;
   /** Follow mode (live streaming) */

@@ -5,7 +5,6 @@
  */
 
 import type { ConsoleMessage } from '@/types.js';
-import { stringifyEnvelope } from '@/ui/OutputBuilder.js';
 
 import { lastMessages } from './chronological.js';
 import {
@@ -65,15 +64,4 @@ export function buildConsoleJsonOutput(
   if (options.list) output.messages = lastMessages(messages, options.last);
 
   return output;
-}
-
-/**
- * Format console output as a JSON string. Thin wrapper around
- * buildConsoleJsonOutput for callers that want a serialized payload.
- */
-export function formatConsoleJson(
-  messages: ConsoleMessage[],
-  options: ConsoleFormatOptions
-): string {
-  return stringifyEnvelope(buildConsoleJsonOutput(messages, options));
 }

@@ -10,7 +10,6 @@ import type { ConsoleMessage } from '@/types.js';
 import { withPageCrashedNote } from '@/ui/messages/commands.js';
 
 import { formatConsoleChronological } from './console/chronological.js';
-import { formatConsoleJson } from './console/json.js';
 import { type ConsoleFormatOptions } from './console/shared.js';
 import { formatConsoleSummary } from './console/summarize.js';
 
@@ -25,7 +24,7 @@ export type {
 export { LEVEL_MAP } from './console/shared.js';
 export { formatConsoleChronological, lastMessages } from './console/chronological.js';
 export { formatConsoleFollowLines } from './console/follow.js';
-export { buildConsoleJsonOutput, formatConsoleJson } from './console/json.js';
+export { buildConsoleJsonOutput } from './console/json.js';
 export { formatConsoleSummary } from './console/summarize.js';
 
 /**
@@ -35,10 +34,6 @@ export { formatConsoleSummary } from './console/summarize.js';
  * starts with a warning when the page crashed.
  */
 export function formatConsole(messages: ConsoleMessage[], options: ConsoleFormatOptions): string {
-  if (options.json) {
-    return formatConsoleJson(messages, options);
-  }
-
   const body =
     options.list || options.level
       ? formatConsoleChronological(messages, options)
