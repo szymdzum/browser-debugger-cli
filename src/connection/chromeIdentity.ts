@@ -19,8 +19,9 @@
  */
 
 import { createLogger } from '@/ui/logging/index.js';
+import { chromeNotAnsweringReason, portTakenByReason } from '@/ui/messages/chrome.js';
 import { delay } from '@/utils/async.js';
-import { fetchBrowserWsUrl } from '@/utils/http.js';
+import { fetchBrowserWsUrl, probeDevToolsEndpoint, type DevToolsProbe } from '@/utils/http.js';
 import { isProcessAlive } from '@/utils/process.js';
 
 import { ChromeLaunchError } from './errors.js';
@@ -96,12 +97,17 @@ export async function waitForDevToolsEndpoint(
  * Check that the Chrome answering on 127.0.0.1:<port> is the one just
  * launched, so bdg never drives another session's browser.
  *
+ * A Chrome that announced the requested port but does not answer yet (a slow
+ * start, its `/json/version` request timing out) is asked again until the
+ * deadline; only an answer from something else is a port conflict.
+ *
  * @param options - Chrome's log positions from before the launch, requested
  *   port (free on 127.0.0.1 and ::1 right before the launch), Chrome's PID and
- *   longest wait for its announcement
+ *   longest wait for its announcement and its answer
  * @throws ChromeLaunchError: CHROME_DIED_AFTER_LAUNCH if Chrome exits first;
  *   PORT_IN_USE if another browser or process answers on the port;
- *   CHROME_LAUNCH_FAILED if Chrome announced nothing and nothing answers
+ *   CHROME_LAUNCH_FAILED if Chrome announced nothing and nothing answers, or
+ *   announced the port but did not answer on it in time
  */
 export async function verifyLaunchedChrome(options: {
   logs: StartupLogs;
@@ -109,7 +115,8 @@ export async function verifyLaunchedChrome(options: {
   pid: number;
   timeoutMs?: number;
 }): Promise<void> {
-  const { logs, port, pid, timeoutMs } = options;
+  const { logs, port, pid, timeoutMs = ENDPOINT_WAIT_MS } = options;
+  const deadline = Date.now() + timeoutMs;
   const isRunning = (): boolean => isProcessAlive(pid);
   const endpoint = await waitForDevToolsEndpoint(logs, isRunning, timeoutMs);
   if (!endpoint && !isRunning()) {
@@ -121,14 +128,32 @@ export async function verifyLaunchedChrome(options: {
   if (endpoint.port !== port) {
     throw portTakenError(port, `Chrome listens on port ${endpoint.port} instead`);
   }
-  const answering = await fetchBrowserWsUrl(port, log);
-  if (!answering || new URL(answering).pathname !== endpoint.browserPath) {
-    throw portTakenError(
-      port,
-      `another process answers on 127.0.0.1 (Chrome listens on ${endpoint.host})`
-    );
+  const answer = await waitForAnswer(port, deadline);
+  if (answer.kind === 'devtools' && new URL(answer.wsUrl).pathname === endpoint.browserPath) {
+    log.debug(`Chrome on port ${port} is the launched one (${endpoint.browserPath})`);
+    return;
   }
-  log.debug(`Chrome on port ${port} is the launched one (${endpoint.browserPath})`);
+  if (answer.kind === 'unreachable' && endpoint.host === '127.0.0.1') {
+    throw slowStartError(port, timeoutMs);
+  }
+  const answeredBy = answer.kind === 'devtools' ? 'browser' : 'process';
+  throw portTakenError(port, portTakenByReason(answeredBy, endpoint.host));
+}
+
+/**
+ * Ask 127.0.0.1:<port> for its DevTools version until something answers or
+ * the deadline passes (at least once).
+ *
+ * @param port - Requested port
+ * @param deadline - Time (ms since epoch) to stop asking
+ * @returns The first answer, or the last `unreachable` result at the deadline
+ */
+async function waitForAnswer(port: number, deadline: number): Promise<DevToolsProbe> {
+  for (;;) {
+    const answer = await probeDevToolsEndpoint(port);
+    if (answer.kind !== 'unreachable' || Date.now() >= deadline) return answer;
+    await delay(ENDPOINT_POLL_MS);
+  }
 }
 
 /**
@@ -158,6 +183,21 @@ async function acceptUnannouncedChrome(logs: StartupLogs, port: number): Promise
   log.info(
     `Warning: ${missing}; using the browser on 127.0.0.1:${port}, which was free before the launch`
   );
+}
+
+/**
+ * The error for a Chrome that announced the port but did not answer on it in
+ * time.
+ *
+ * @param port - Requested port
+ * @param timeoutMs - How long bdg waited
+ * @returns Launch error with the CHROME_LAUNCH_FAILED issue
+ */
+function slowStartError(port: number, timeoutMs: number): ChromeLaunchError {
+  const reason = chromeNotAnsweringReason(port, timeoutMs);
+  return new ChromeLaunchError(reason, {
+    issue: { code: 'CHROME_LAUNCH_FAILED', context: { port, reason } },
+  });
 }
 
 /**

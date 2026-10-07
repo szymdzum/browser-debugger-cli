@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A slow Chrome start is no longer reported as "Port N is already in use"** (#435). When Chrome announced its port but `/json/version` did not answer within 5 s (a cold or busy machine), bdg took it for another process on the port. It now asks again until the launch deadline and reports a slow start if Chrome never answers. A real port conflict says what was found on the port.
+
 - **`bdg --help --json --full` documents `--headless`, `--no-headless` and `-a, --all`** (#442). Their behaviors were registered under a `start` command that does not exist; option behaviors are now looked up by the long flag (five dead duplicates removed), and a test fails when a behavior names no real option.
 
 ### Internal
