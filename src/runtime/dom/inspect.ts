@@ -8,9 +8,10 @@
  * tree), `dom layout`'s measurement (page position, hidden, covered,
  * offscreen) and, once the nodes are pushed to CDP, `CSS.getComputedStyleForNode`
  * for the element, its layout parent and its `::before`/`::after`,
- * `CSS.getPlatformFontsForNode` for its text and `DOM.getBoxModel`. DOM and
- * CSS are enabled on the first inspect and kept on. Matched rules are not
- * read (no cascade).
+ * `CSS.getPlatformFontsForNode` for its text and `DOM.getBoxModel`. After
+ * those, for the hints, `--rules` and `--why`, the matched rules
+ * (`CSS.getMatchedStylesForNode`, see {@link matchedStyles}). DOM and CSS are
+ * enabled on the first inspect and kept on.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -30,7 +31,14 @@ import { explainUnsetVariables } from '@/runtime/dom/inspectHints.js';
 import type { StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import { buildInspectResult, type InspectSources } from '@/runtime/dom/inspectModel.js';
 import type { PlatformFont, PseudoSource } from '@/runtime/dom/inspectPaintModel.js';
-import { matchedStyles, sourceLabel, trackStyleSheets } from '@/runtime/dom/inspectRules.js';
+import {
+  HINTS_BUDGET_MS,
+  matchedStyles,
+  RULES_BUDGET_MS,
+  sourceLabel,
+  trackStyleSheets,
+  type MatchedStyles,
+} from '@/runtime/dom/inspectRules.js';
 import {
   INSPECT_PAGE_JS,
   RELATED_NODE_JS,
@@ -51,12 +59,6 @@ const log = createLogger('dom');
 
 /** Connections DOM and CSS were enabled on */
 const stylesEnabled = new WeakSet<CDPConnection>();
-
-/** Time allowed for the matched rules behind the default hints (large stylesheets take longer) */
-const HINTS_BUDGET_MS = 1000;
-
-/** Time allowed for them with --rules or --why */
-const RULES_BUDGET_MS = 5000;
 
 /** Distinguishes the object groups of concurrent calls */
 let groupCounter = 0;
@@ -233,7 +235,7 @@ function expandCustomPropertyPatterns(names: string[], style: StyleMap): string[
  *
  * @param cdp - CDP connection (stylesheet headers for the source labels)
  * @param sources - What was read
- * @returns Cascade fields, or `cascade: 'timeout' | 'failed'` when the rules were not read
+ * @returns Cascade fields, or `cascade: 'timeout' | 'failed' | 'skipped'` when the rules were not read
  */
 function cascadeFields(cdp: CDPConnection, sources: InspectSources): Partial<InspectResult> {
   if (!sources.matched) return {};
@@ -399,7 +401,10 @@ async function callOn<T>(
 
 /**
  * Read everything about the element: the page-side walk, `dom layout`'s
- * measurement and the CDP styles, fonts and box.
+ * measurement and the CDP styles, fonts and box, then the matched rules.
+ * Chrome answers one request at a time and the rules can take seconds on
+ * CSS-heavy pages, so they are asked for last: the other reads do not wait
+ * behind them, only their own budget does.
  *
  * @param cdp - CDP connection
  * @param objectId - The element
@@ -414,14 +419,16 @@ async function readSources(
   objectGroup: string
 ): Promise<InspectSources> {
   const related = await relatedNodes(cdp, objectId, objectGroup);
-  const [raw, measured, styles] = await Promise.all([
+  const [raw, measured, { nodeId, ...styles }] = await Promise.all([
     readPage(cdp, objectId, params),
     measure(cdp, params.selector, related.node),
-    readStyles(cdp, related, params),
+    readStyles(cdp, related),
   ]);
+  const matched = await readMatched(cdp, nodeId, params);
   return {
     raw,
     ...styles,
+    ...(matched && { matched }),
     fonts: raw.textHolder ? styles.fonts.textHolder : styles.fonts.node,
     ...measured,
     ...(params.rules && { rules: true }),
@@ -567,8 +574,8 @@ interface CdpStyles {
   pseudo: PseudoSource[];
   fonts: { node: PlatformFont[]; textHolder: PlatformFont[] };
   size?: { w: number; h: number };
-  /** Matched rules (absent when not asked for); `timeout` when Chrome took too long */
-  matched?: Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed';
+  /** Node id of the element, for the matched rules (absent when CDP cannot track it) */
+  nodeId?: number | undefined;
 }
 
 /**
@@ -598,26 +605,21 @@ async function nodeIdLookup(
 
 /**
  * Computed styles of the element, its parent and pseudo-elements, the
- * platform fonts of its text and its border box size.
+ * platform fonts of its text, its border box size and its node id.
  *
  * @param cdp - CDP connection
  * @param related - Backend node ids
  * @returns CDP styles
  */
-async function readStyles(
-  cdp: CDPConnection,
-  related: RelatedNodes,
-  params: DomInspectCommand
-): Promise<CdpStyles> {
+async function readStyles(cdp: CDPConnection, related: RelatedNodes): Promise<CdpStyles> {
   await enableStyleDomains(cdp);
   const nodeIdOf = await nodeIdLookup(cdp, related);
   const optionalStyle = (backendNodeId: number | undefined): Promise<StyleMap | undefined> =>
     backendNodeId === undefined
       ? Promise.resolve(undefined)
       : computedStyle(cdp, nodeIdOf(backendNodeId));
-  const [matched, style, parentStyle, holderStyle, nodeFonts, holderFonts, size, pseudo] =
-    await Promise.all([
-      readMatched(cdp, nodeIdOf(related.node), params),
+  const [style, parentStyle, holderStyle, nodeFonts, holderFonts, size, pseudo] = await Promise.all(
+    [
       computedStyle(cdp, nodeIdOf(related.node)),
       optionalStyle(related.parent),
       optionalStyle(related.textHolder),
@@ -629,7 +631,8 @@ async function readStyles(
           pseudoSource(cdp, p.type, p.backendNodeId, nodeIdOf(p.backendNodeId))
         )
       ),
-    ]);
+    ]
+  );
   return {
     style,
     ...(parentStyle && { parentStyle }),
@@ -637,32 +640,45 @@ async function readStyles(
     pseudo,
     fonts: { node: nodeFonts, textHolder: holderFonts },
     ...(size && { size }),
-    ...(matched && { matched }),
+    nodeId: nodeIdOf(related.node),
   };
 }
 
 /**
- * The element's matched rules, when hints, `--rules` or `--why` need them:
- * within {@link HINTS_BUDGET_MS} for the default hints (skipped on very
- * large stylesheets), {@link RULES_BUDGET_MS} when asked for explicitly.
+ * How a request reads the element's matched rules, when hints, `--rules` or
+ * `--why` need them: within {@link HINTS_BUDGET_MS} for the default hints,
+ * not waited for at all on a document marked slow; within
+ * {@link RULES_BUDGET_MS} when asked for explicitly.
+ *
+ * @param params - Request
+ * @returns Budget and whether to skip on a slow document, or undefined when not needed
+ */
+export function matchedStylesRead(
+  params: DomInspectCommand
+): { budgetMs: number; skipWhenSlow: boolean } | undefined {
+  if (params.rules === true || params.why !== undefined) {
+    return { budgetMs: RULES_BUDGET_MS, skipWhenSlow: false };
+  }
+  if (params.hints === false || params.props !== undefined || params.all === true) return undefined;
+  return { budgetMs: HINTS_BUDGET_MS, skipWhenSlow: true };
+}
+
+/**
+ * The element's matched rules, read as {@link matchedStylesRead} says.
  *
  * @param cdp - CDP connection
  * @param nodeId - Node id of the element
  * @param params - Request
- * @returns Matched styles, `timeout`, or undefined when not needed (or no node id)
+ * @returns Matched styles or why they are missing, or undefined when not needed (or no node id)
  */
 async function readMatched(
   cdp: CDPConnection,
   nodeId: number | undefined,
   params: DomInspectCommand
-): Promise<CdpStyles['matched']> {
-  const explicit = params.rules === true || params.why !== undefined;
-  const skipped =
-    !explicit && (params.hints === false || params.props !== undefined || params.all === true);
-  if (nodeId === undefined || skipped) {
-    return undefined;
-  }
-  return matchedStyles(cdp, nodeId, explicit ? RULES_BUDGET_MS : HINTS_BUDGET_MS);
+): Promise<MatchedStyles | undefined> {
+  const read = matchedStylesRead(params);
+  if (nodeId === undefined || !read) return undefined;
+  return matchedStyles(cdp, nodeId, read.budgetMs, { skipWhenSlow: read.skipWhenSlow });
 }
 
 /**

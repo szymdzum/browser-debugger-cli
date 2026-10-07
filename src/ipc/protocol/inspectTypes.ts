@@ -436,6 +436,9 @@ export interface InspectResult {
   rules?: InspectRule[];
   /** `--why <property>`: one entry, or one per longhand of a shorthand whose sides differ */
   why?: InspectWhy[];
-  /** The cascade was not read: Chrome took longer than the time allowed, or failed */
-  cascade?: 'timeout' | 'failed';
+  /**
+   * The cascade was not read: Chrome took longer than the time allowed, failed,
+   * or (hints only) was not asked because it was too slow earlier on this page
+   */
+  cascade?: 'timeout' | 'failed' | 'skipped';
 }

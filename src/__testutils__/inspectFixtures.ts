@@ -7,6 +7,7 @@
  * same-origin iframe, plus cascade cases (a rule overriding another, flex
  * alignment on a block, an undefined custom property), secrets (a password and a card expiry select that
  * must never be shown), faded text and a block image with no size set (sized by itself).
+ * `/inspect-state` has a checkbox styled by `:checked`.
  */
 
 /** Same-origin iframe content of `/inspect` */
@@ -232,6 +233,11 @@ const COMPONENTS_HTML = `<!doctype html><meta charset="utf-8"><title>components<
   define('x-acc', '<div style="height:0;overflow:hidden"><slot></slot></div>');
 </script>`;
 
+/** `/inspect-state`: a checkbox whose color comes from a `:checked` rule once clicked */
+const STATE_HTML = `<!doctype html><meta charset="utf-8"><title>inspect state</title>
+<style>#c { color: red; } #c:checked { color: blue; }</style>
+<input type="checkbox" id="c">`;
+
 /** Pages by path */
 export const INSPECT_ROUTES: Record<string, string> = {
   '/tampered': TAMPERED_HTML,
@@ -239,6 +245,7 @@ export const INSPECT_ROUTES: Record<string, string> = {
   '/inspect': INSPECT_HTML,
   '/inspect-frame': INSPECT_FRAME_HTML,
   '/inspect-paint': PAINT_HTML,
+  '/inspect-state': STATE_HTML,
   '/reading-text': READING_TEXT_HTML,
   '/components': COMPONENTS_HTML,
 };

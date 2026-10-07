@@ -976,6 +976,17 @@ export function javascriptNavigationError(): ErrorWithSuggestion {
 }
 
 /**
+ * A daemon request named a command the session does not have (the IPC
+ * server validates names, so this guards direct callers).
+ *
+ * @param name - Requested command name
+ * @returns Error message
+ */
+export function unknownSessionCommandMessage(name: string): string {
+  return `Unknown session command: "${name}"`;
+}
+
+/**
  * A bare word given where a URL is expected, most likely a mistyped command.
  *
  * @param word - The argument
