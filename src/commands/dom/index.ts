@@ -28,7 +28,7 @@ import { QUERY_CACHE_LIMIT } from '@/commands/dom/helpers/query.js';
 import { registerInspectCommand } from '@/commands/dom/inspect.js';
 import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
-import { handleDomQuery, QUERY_JSON_LIST_LIMIT, QUERY_LIST_LIMIT } from '@/commands/dom/query.js';
+import { handleDomQuery, QUERY_LIST_LIMIT } from '@/commands/dom/query.js';
 import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import { registerWaitCommand } from '@/commands/dom/wait.js';
 import {
@@ -43,6 +43,7 @@ import type {
   DomFramesCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { integerOption, screenshotFormatOption } from '@/commands/shared/validation.js';
+import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 
 /**
  * Register DOM telemetry commands on the root Commander program.

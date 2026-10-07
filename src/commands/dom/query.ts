@@ -6,6 +6,7 @@ import { noMatchesError, pageDocumentId, queryDOMElements } from '@/commands/dom
 import { QUERY_CACHE_LIMIT, VIEWPORT_HINT_LIMIT } from '@/commands/dom/helpers/query.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomQueryCommandOptions } from '@/commands/shared/optionTypes.js';
+import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import type { DomQueryResult } from '@/types.js';
 import { formatDomQuery } from '@/ui/formatters/dom.js';
@@ -13,9 +14,6 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 /** Matches `dom query` lists without `--limit` (human output) */
 export const QUERY_LIST_LIMIT = 50;
-
-/** Matches `dom query` and `dom a11y query` list with `--json` and no `--limit` */
-export const QUERY_JSON_LIST_LIMIT = 100;
 
 /**
  * Handle `bdg dom query <selector>`.

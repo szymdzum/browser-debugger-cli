@@ -18,7 +18,6 @@ import {
   resolveBackendNodeIds,
 } from '@/commands/dom/helpers/index.js';
 import type { DomContext } from '@/commands/dom/helpers/index.js';
-import { QUERY_JSON_LIST_LIMIT } from '@/commands/dom/query.js';
 import { withSecretMasked } from '@/commands/dom/semanticUtils.js';
 import { runCommand, runJsonCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -28,6 +27,7 @@ import type {
   A11yDescribeCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
+import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
   elementNotFoundError,
@@ -63,7 +63,8 @@ const A11Y_TREE_LIMIT = 50;
  *
  * Lists the accessibility tree depth-first, the first `--limit` meaningful
  * nodes (default {@link A11Y_TREE_LIMIT}, 0 = all) down to `--depth`, in
- * human and JSON output; `count` is the whole tree and `omitted` the nodes cut.
+ * human and JSON output; `count` is the whole tree, `omitted` the nodes cut
+ * and `skipped` the noise never listed.
  *
  * JSON output returns nodes as an array (each with its `depth`) for jq:
  *   bdg dom a11y tree --json --limit 0 | jq '.data.nodes[] | select(.role == "checkbox")'
@@ -305,7 +306,7 @@ export function registerA11yCommands(domCmd: Command): void {
     )
     .option(
       '--limit <n>',
-      `Nodes to list (default: ${A11Y_TREE_LIMIT}, also with --json; 0 = all)`,
+      `Nodes to list (default: ${A11Y_TREE_LIMIT}, also with --json; 0 = all listed nodes (text boxes and empty wrappers are always skipped))`,
       integerOption(0)
     )
     .option(

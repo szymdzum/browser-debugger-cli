@@ -10,6 +10,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { LAYOUT_ELEMENT_LIMIT } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { operationFailedError } from '@/errors/messages.js';
 import type { DomLayoutCommand } from '@/ipc/protocol/commands.js';
@@ -42,9 +43,6 @@ import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const log = createLogger('dom');
-
-/** Matches measured per command (the rest are counted as omitted) */
-export const LAYOUT_ELEMENT_LIMIT = 100;
 
 /**
  * Page-side end of a visible span kept clear of an overlay scrollbar along

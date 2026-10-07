@@ -90,19 +90,21 @@ function isTreeNoise(node: A11yNode, parentName: string | undefined): boolean {
 /**
  * The nodes `dom a11y tree` lists, depth-first from the root (then nodes not
  * under it, such as frame content): the first `limit` (0 = all) no deeper
- * than `maxDepth`. Noise ({@link isTreeNoise}) is left out and its children
- * move up a level, so the budget goes to meaningful nodes; nodes cut by the
- * limit or depth are counted as omitted.
+ * than `maxDepth`. Noise ({@link isTreeNoise}) is counted as skipped and its
+ * children move up a level, so the budget goes to meaningful nodes; nodes cut
+ * by the limit or depth are counted as omitted. Every node of the tree is
+ * listed, omitted or skipped.
  *
  * @param tree - Accessibility tree
- * @param limit - Nodes to list (0 = all)
+ * @param limit - Nodes to list (0 = all listable ones)
  * @param maxDepth - Deepest level to list (0 = root only; undefined = all)
- * @returns Listed nodes with their depth, the tree size, and how many were cut
+ * @returns Listed nodes with their depth, the tree size, and how many were cut or skipped
  */
 export function listA11yTree(tree: A11yTree, limit: number, maxDepth?: number): ListedA11yTree {
   const nodes: ListedA11yNode[] = [];
   const visited = new Set<string>();
   let omitted = 0;
+  let skipped = 0;
   const visit = (node: A11yNode, depth: number, parentName: string | undefined): void => {
     if (visited.has(node.nodeId)) return;
     visited.add(node.nodeId);
@@ -111,6 +113,8 @@ export function listA11yTree(tree: A11yTree, limit: number, maxDepth?: number): 
       const fits = (limit === 0 || nodes.length < limit) && (maxDepth ?? depth) >= depth;
       if (fits) nodes.push(listedNode(node, depth));
       else omitted++;
+    } else {
+      skipped++;
     }
     for (const childId of node.childIds ?? []) {
       const child = tree.nodes.get(childId);
@@ -119,7 +123,12 @@ export function listA11yTree(tree: A11yTree, limit: number, maxDepth?: number): 
   };
   visit(tree.root, 0, undefined);
   for (const node of tree.nodes.values()) visit(node, 0, undefined);
-  return { nodes, count: tree.count, ...(omitted > 0 && { omitted }) };
+  return {
+    nodes,
+    count: tree.count,
+    ...(omitted > 0 && { omitted }),
+    ...(skipped > 0 && { skipped }),
+  };
 }
 
 /**

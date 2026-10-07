@@ -208,7 +208,7 @@ Inspect the accessibility tree exposed by Chrome DevTools Protocol.
 bdg dom a11y tree               # The first 50 nodes, depth-first, indented
 bdg dom a11y tree --json        # The same 50 nodes as JSON, with count and omitted
 bdg dom a11y tree --depth 3     # Only the top levels (0 = root only)
-bdg dom a11y tree --limit 0     # Every node (megabytes of JSON on a long page)
+bdg dom a11y tree --limit 0     # Every listed node (megabytes of JSON on a long page)
 
 # Query nodes by role, name, or description
 bdg dom a11y query role=button                    # Find all buttons
@@ -238,7 +238,7 @@ bdg dom a11y describe --json                      # JSON output
 - Tree view shows role, name, description, and key properties
 - Ignored nodes are automatically filtered out
 - Text boxes, blank text, text repeating its parent's name and nameless layout wrappers (`generic`, `none`, `presentation`, layout tables) are left out; their children move up a level
-- `a11y tree` lists the first 50 nodes depth-first, in human and JSON output (`--limit <n>`, `0` for all; `--depth <n>` lists only the top levels, `0` the root). A cut tree ends with `Showing the first 50 nodes` and `20067 more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query "role:<role>"`. JSON has `count` (every node of the tree, text boxes included), `nodes` (each with its `depth`, 0 = the root, instead of `childIds`) and `omitted` (nodes cut by `--limit` or `--depth`). On Wikipedia "United States" the default JSON is 12 KB; `--limit 0` is 4.1 MB
+- `a11y tree` lists the first 50 nodes depth-first, in human and JSON output (`--limit <n>`, `0` for all; `--depth <n>` lists only the top levels, `0` the root). A cut tree ends with `Showing the first 50 nodes` and `20067 more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query "role:<role>"`. JSON has `count` (every node of the tree), `nodes` (each with its `depth`, 0 = the root, instead of `childIds`), `omitted` (nodes cut by `--limit` or `--depth`) and `skipped` (text boxes, blank or repeated text, nameless wrappers: never listed, also not with `--limit 0`), so `count` = listed + `omitted` + `skipped`. For the raw tree with every node: `bdg cdp Accessibility.getFullAXTree --json`. On Wikipedia "United States" the default JSON is 7 KB; `--limit 0` is 2.6 MB
 - `a11y query` lists each element once (an element the page and its frame's tree both report is not repeated) and the first 50 matches in human output, 100 with `--json` (`--limit <n>`, `0` for all; `... and 213 more` says how many it left out; `count` is the total and `omitted` the rest). All matches are indexed: `bdg dom click 55`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `get` and `listeners` take them, also for an element of a cross-origin iframe of the same site, such as a consent dialog served from a subdomain (its scripts then run in that iframe, mouse events land on it through the iframe's position and scale, including its border, padding, `transform: scale()` and `zoom`, and `layout` places it in the top-level page; a rotated or skewed iframe, or one that cannot be measured, exits 83 rather than clicking somewhere else)
 
 **JSON Output (jq-friendly):**

@@ -125,16 +125,17 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     automaticBehavior:
       'Matches are cached for index-based access (bdg dom click 55 works even when 50 are listed): all of them for dom a11y query, the first 1000 (or --limit, if higher) for dom query, which describes only those, so a page with 50000 matches answers in under a second; an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame',
     tokenImpact:
-      'About one line per match (JSON about 270 bytes per dom query match, 380 per a11y match); a page can have thousands of links: on Wikipedia "United States" --limit 0 --json is 1.7 MB (dom query a) and 2.1 MB (dom a11y query role:link), the default 27 KB and 38 KB',
+      'About one line per match (piped JSON about 160 bytes per dom query match, 230 per a11y match); a page can have thousands of links: on Wikipedia "United States" --limit 0 --json is 1.0 MB (dom query a) and 1.3 MB (dom a11y query role:link), the default 16 KB and 23 KB',
   },
   'tree:--limit': {
     default:
-      'dom a11y tree lists the first 50 meaningful nodes depth-first, in human and JSON output; count is the whole tree, JSON omitted the nodes cut',
-    whenEnabled: 'Lists that many nodes (0 = all)',
+      'dom a11y tree lists the first 50 meaningful nodes depth-first, in human and JSON output; JSON count is the whole tree = nodes listed + omitted (cut by --limit/--depth) + skipped (never listed)',
+    whenEnabled:
+      'Lists that many nodes; 0 = all listed nodes (text boxes and empty wrappers are always skipped)',
     automaticBehavior:
-      'Ignored nodes, text boxes, blank text, text repeating its parent name and nameless layout wrappers (generic, none, presentation, layout tables) are never listed; their children move up a level. JSON nodes carry depth (0 = root) instead of childIds; nodes outside the root (frame content) follow the root tree',
+      'Ignored nodes, text boxes, blank text, text repeating its parent name and nameless layout wrappers (generic, none, presentation, layout tables) are never listed (JSON skipped counts them); their children move up a level. For the raw tree with every node use bdg cdp Accessibility.getFullAXTree --json. JSON nodes carry depth (0 = root) instead of childIds; nodes outside the root (frame content) follow the root tree',
     tokenImpact:
-      'About 200 bytes per JSON node (12 KB by default); the whole tree of a long page is megabytes (Wikipedia "United States": 51k nodes, 20k listed, 4.1 MB with --limit 0 --json), so prefer --depth or dom a11y query "role:<role>"',
+      'About 140 bytes per piped JSON node (7 KB by default); the whole tree of a long page is megabytes (Wikipedia "United States": 51k nodes, 20k listed, 2.6 MB with --limit 0 --json), so prefer --depth or dom a11y query "role:<role>"',
   },
   'tree:--depth': {
     default: 'dom a11y tree lists every level (up to --limit nodes)',

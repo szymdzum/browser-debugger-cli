@@ -245,17 +245,14 @@ export const CLICK_NOT_RECEIVED_WARNING =
   'The click may not have reached the element: the page saw no mouse press (the browser may be showing a dialog or bubble that captures input)';
 
 /**
- * Note under a shortened list of matches.
+ * Note under a shortened human list whose JSON output lists more, up to a cap.
  *
- * @param hidden - Matches not listed
- * @param jsonLimit - How many JSON output lists, when it leaves some out too
- * @returns e.g. "... and 1174 more (use --json for all)",
- *   "... and 8980 more (--json lists the first 100)"
+ * @param hidden - Items not listed
+ * @param jsonLimit - Most items the JSON output lists
+ * @returns e.g. "... and 8980 more (--json lists up to 100)"
  */
-export function moreMatchesNote(hidden: number, jsonLimit?: number): string {
-  const where =
-    jsonLimit === undefined ? 'use --json for all' : `--json lists the first ${jsonLimit}`;
-  return `... and ${hidden} more (${where})`;
+export function moreMatchesNote(hidden: number, jsonLimit: number): string {
+  return `... and ${hidden} more (--json lists up to ${jsonLimit})`;
 }
 
 /**

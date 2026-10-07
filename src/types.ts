@@ -323,10 +323,12 @@ export type ListedA11yNode = Omit<A11yNode, 'childIds'> & {
 export interface ListedA11yTree {
   /** Listed nodes, depth-first from the root */
   nodes: ListedA11yNode[];
-  /** Nodes in the whole tree */
+  /** Nodes in the whole tree (listed + omitted + skipped) */
   count: number;
   /** Nodes left out by `--limit` or `--depth` */
   omitted?: number;
+  /** Nodes never listed: text boxes, blank or repeated text, nameless layout wrappers */
+  skipped?: number;
 }
 
 /**

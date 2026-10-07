@@ -97,4 +97,26 @@ void describe('formatA11yTree', () => {
     assert.equal(shallow.omitted, 2);
     assert.equal(listA11yTree(tree, 2).omitted, 3);
   });
+
+  void it('accounts for every node: count = listed + omitted + skipped', () => {
+    const tree = treeOf([
+      { nodeId: '1', role: 'RootWebArea', name: 'Page', childIds: ['2', '6'] },
+      { nodeId: '2', role: 'generic', childIds: ['3'] },
+      { nodeId: '3', role: 'button', name: 'Save', childIds: ['4', '5'] },
+      { nodeId: '4', role: 'StaticText', name: 'Save', childIds: ['7'] },
+      { nodeId: '5', role: 'StaticText', name: ' ' },
+      { nodeId: '6', role: 'checkbox', name: 'Agree' },
+      { nodeId: '7', role: 'InlineTextBox', name: 'Save' },
+    ]);
+    for (const [limit, depth] of [[0], [1], [2, 0], [0, 1]] as Array<[number, number?]>) {
+      const listed = listA11yTree(tree, limit, depth);
+      assert.equal(listed.skipped, 4);
+      assert.equal(
+        listed.nodes.length + (listed.omitted ?? 0) + (listed.skipped ?? 0),
+        listed.count,
+        `limit ${limit}, depth ${depth}`
+      );
+    }
+    assert.equal(listA11yTree(tree, 0).omitted, undefined);
+  });
 });

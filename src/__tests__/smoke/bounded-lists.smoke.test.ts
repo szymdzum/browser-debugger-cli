@@ -30,6 +30,7 @@ interface ListData {
   count: number;
   nodes: Array<{ index?: number; depth?: number; childIds?: unknown }>;
   omitted?: number;
+  skipped?: number;
 }
 
 /**
@@ -119,6 +120,8 @@ void describe('Bounded list output', () => {
     const all = await listJson(['dom', 'a11y', 'tree', '--limit', '0']);
     assert.ok(all.nodes.length > LINK_COUNT, `--limit 0 lists all: ${all.nodes.length}`);
     assert.equal(all.omitted, undefined);
+    assert.equal(all.nodes.length + (all.skipped ?? 0), all.count);
+    assert.equal(listed.nodes.length + (listed.omitted ?? 0) + (listed.skipped ?? 0), listed.count);
 
     const shallow = await listJson(['dom', 'a11y', 'tree', '--depth', '0', '--limit', '0']);
     assert.equal(shallow.nodes.length, 1);
