@@ -9,6 +9,7 @@ import type { NetworkRequest } from '@/types.js';
 import { getResourceTypeAbbr } from '@/ui/formatters/preview.js';
 import { getRequestState } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl } from '@/ui/formatting.js';
+import { networkEvictedNote, type NetworkEvictionCounts } from '@/ui/messages/networkMessages.js';
 
 export interface NetworkListOptions {
   verbose?: boolean;
@@ -18,6 +19,8 @@ export interface NetworkListOptions {
   totalCount?: number;
   /** Requests matching the filters, before --last (defaults to totalCount) */
   filteredCount?: number;
+  /** Requests dropped and bodies evicted at the session's capture limits */
+  evictions?: NetworkEvictionCounts;
 }
 
 /**
@@ -206,6 +209,8 @@ function formatNetworkListHuman(requests: NetworkRequest[], options: NetworkList
 
   fmt.text(header);
   fmt.separator('─', SEPARATOR_WIDTH);
+  const evictedNote = options.evictions && networkEvictedNote(options.evictions);
+  if (evictedNote) fmt.text(evictedNote);
 
   if (requests.length === 0) {
     fmt.text('No matching requests found.');

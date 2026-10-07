@@ -2,6 +2,7 @@ import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
 import type { NavigationEvent } from '@/telemetry/navigation.js';
 import type { PendingRequest } from '@/telemetry/network.js';
+import type { NetworkEvictions } from '@/telemetry/networkRetention.js';
 import type {
   CDPTarget,
   ConsoleMessage,
@@ -12,7 +13,13 @@ import type {
 import { dialogConsoleText } from '@/ui/messages/commands.js';
 
 export class TelemetryStore {
+  /**
+   * Finished requests, oldest first: the newest are kept, so the session's
+   * `networkEvictions.requestsDropped` oldest ones are gone
+   */
   readonly networkRequests: NetworkRequest[] = [];
+  /** Requests dropped and response bodies evicted at the capture limits */
+  readonly networkEvictions: NetworkEvictions = { requestsDropped: 0, bodiesEvicted: 0 };
   /** Requests still in flight, keyed by CDP requestId */
   readonly pendingNetworkRequests = new Map<string, PendingRequest>();
   readonly consoleMessages: ConsoleMessage[] = [];

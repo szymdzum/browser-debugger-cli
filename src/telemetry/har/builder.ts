@@ -20,7 +20,7 @@ import type {
 } from './types.js';
 import type * as Http from 'node:http';
 
-import { skippedBodyReason } from '@/telemetry/network.js';
+import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, WebSocketFrame } from '@/types.js';
 
 /**

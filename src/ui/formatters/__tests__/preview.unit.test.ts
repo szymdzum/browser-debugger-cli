@@ -260,4 +260,19 @@ void describe('preview totals', () => {
       assert.ok(text.search(note) > text.search(/console/i), 'below the console heading');
     }
   });
+
+  void test('notes dropped requests and evicted bodies under the network section', () => {
+    const evicted = {
+      ...output,
+      data: { network: [], console: [] },
+      totals: { network: 0, console: 0, networkDropped: 2000, networkBodiesEvicted: 3 },
+    };
+    const note =
+      /⚠ 2000 older network requests dropped, 3 older response bodies evicted: bdg keeps the newest 10000 requests and 100 MB of bodies/;
+    for (const verbose of [false, true]) {
+      const text = formatPreview(evicted, { last: 10, network: true, verbose });
+      assert.match(text, note);
+      assert.ok(text.search(note) > text.search(/network/i), 'below the network heading');
+    }
+  });
 });

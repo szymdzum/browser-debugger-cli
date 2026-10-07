@@ -162,6 +162,10 @@ function buildFormatOptions(
     totalCount: result.totalCount,
     filteredCount: result.filteredCount,
     ...(result.pageStart && { pageStart: result.pageStart }),
+    evictions: {
+      requestsDropped: result.dropped ?? 0,
+      bodiesEvicted: result.bodiesEvicted ?? 0,
+    },
   };
 }
 
@@ -261,6 +265,10 @@ interface NetworkListResult {
   pageStart?: PageStart;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** Oldest finished requests the session dropped at its cap (left out when none) */
+  dropped?: number;
+  /** Oldest response bodies the session evicted at its body budget (left out when none) */
+  bodiesEvicted?: number;
 }
 
 export function registerListCommand(networkCmd: Command): void {
@@ -327,7 +335,7 @@ export function registerListCommand(networkCmd: Command): void {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
 
-          const { requests, pageCrashedAt } = result.data;
+          const { requests, pageCrashedAt, evictions } = result.data;
           const filtered = filterRequests(requests, options, resourceTypes);
           const pageStart = pageStartOf(requests);
           return {
@@ -338,6 +346,8 @@ export function registerListCommand(networkCmd: Command): void {
               filteredCount: filtered.length,
               ...(pageStart && { pageStart }),
               ...(pageCrashedAt !== undefined && { pageCrashedAt }),
+              ...(evictions.requestsDropped > 0 && { dropped: evictions.requestsDropped }),
+              ...(evictions.bodiesEvicted > 0 && { bodiesEvicted: evictions.bodiesEvicted }),
             },
           };
         },

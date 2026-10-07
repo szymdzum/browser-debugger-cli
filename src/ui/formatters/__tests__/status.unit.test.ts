@@ -44,6 +44,22 @@ void describe('status of an external Chrome', () => {
   });
 });
 
+void describe('status activity at the capture limits', () => {
+  void it('says how many requests were dropped under the network count', () => {
+    const activity = {
+      networkRequestsCaptured: 10000,
+      consoleMessagesCaptured: 0,
+      networkRequestsDropped: 2000,
+    };
+    const output = formatSessionStatus(external, process.pid, activity);
+
+    assert.match(
+      output,
+      /Network Requests:\s+10000 captured\n\s+⚠ 2000 older network requests were dropped: bdg keeps the newest 10000/
+    );
+  });
+});
+
 void describe('formatNoSessionMessage', () => {
   void it('shows a start in progress instead of "no session"', () => {
     const text = formatNoSessionMessage({

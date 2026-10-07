@@ -161,6 +161,7 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
           fetchAllBodies: config.includeAll ?? false,
           getCurrentNavigationId: store.getCurrentNavigationId ?? undefined,
           pendingRequests: store.pendingNetworkRequests,
+          evictions: store.networkEvictions,
           ...filterDefined({
             maxBodySize: config.maxBodySize,
           }),

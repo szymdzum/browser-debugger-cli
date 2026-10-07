@@ -15,13 +15,14 @@ import {
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
 import { moreCharsNote, withPageCrashedNote } from '@/ui/messages/commands.js';
+import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
+import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import {
   PREVIEW_EMPTY_STATES,
   PREVIEW_HEADERS,
   compactTipsMessage,
   verboseCommandsMessage,
 } from '@/ui/messages/preview.js';
-import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { capLength } from '@/utils/strings.js';
 
@@ -218,6 +219,8 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       const totalCount = output.totals?.network ?? output.data.network.length;
       const limitHint = formatLimitHint(showingCount, totalCount);
       fmt.text(`NETWORK (${showingCount}/${totalCount})${limitHint}:`);
+      const evictedNote = previewEvictedNote(output);
+      if (evictedNote) fmt.text(`  ${evictedNote}`);
       if (requests.length === 0) {
         if (
           options.filteredTypes &&
@@ -277,6 +280,19 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
 }
 
 /**
+ * Note that the session dropped requests or evicted bodies at its capture limits.
+ *
+ * @param output - Preview output with its totals
+ * @returns Note text, or undefined when nothing was let go
+ */
+function previewEvictedNote(output: BdgOutput): string | undefined {
+  return networkEvictedNote({
+    requestsDropped: output.totals?.networkDropped ?? 0,
+    bodiesEvicted: output.totals?.networkBodiesEvicted ?? 0,
+  });
+}
+
+/**
  * Format preview in verbose format (opt-in with --verbose)
  * Original human-friendly output with Unicode formatting
  */
@@ -312,6 +328,8 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
           ? `Network Requests (all ${requests.length})`
           : `Network Requests (last ${requests.length} of ${output.totals?.network ?? output.data.network.length})`;
       fmt.text(title).separator('━', 50);
+      const evictedNote = previewEvictedNote(output);
+      if (evictedNote) fmt.text(evictedNote);
       if (requests.length === 0) {
         if (
           options.filteredTypes &&

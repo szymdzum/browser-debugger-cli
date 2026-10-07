@@ -180,3 +180,22 @@ void describe('START column', () => {
     assert.equal(header.indexOf('URL'), urlColumn(rows[0] ?? ''));
   });
 });
+
+void describe('formatNetworkList eviction note', () => {
+  void it('says how many older requests the session dropped, and nothing when none were', () => {
+    const evictions = { requestsDropped: 1, bodiesEvicted: 0 };
+    assert.match(
+      formatNetworkList([], { evictions }),
+      /⚠ 1 older network request was dropped: bdg keeps the newest 10000/
+    );
+    const bodies = { requestsDropped: 0, bodiesEvicted: 5 };
+    assert.match(
+      formatNetworkList([], { evictions: bodies }),
+      /⚠ 5 older response bodies were evicted: bdg keeps the newest 100 MB of bodies/
+    );
+    assert.doesNotMatch(
+      formatNetworkList([], { evictions: { requestsDropped: 0, bodiesEvicted: 0 } }),
+      /⚠/
+    );
+  });
+});

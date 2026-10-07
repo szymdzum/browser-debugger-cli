@@ -84,6 +84,10 @@ export interface SessionPeekData {
   totalConsole: number;
   /** Console messages dropped at the limit (the oldest; indices start after them) */
   droppedConsole?: number;
+  /** Finished network requests dropped at the request cap (the oldest) */
+  droppedNetwork?: number;
+  /** Response bodies evicted at the total body budget (the oldest) */
+  evictedNetworkBodies?: number;
   /** Whether there are more network items available. */
   hasMoreNetwork?: boolean;
   /** Whether there are more console items available. */

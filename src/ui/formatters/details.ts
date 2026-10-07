@@ -1,4 +1,4 @@
-import { skippedBodyReason } from '@/telemetry/network.js';
+import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js';
 import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { headerValueLines } from '@/ui/formatters/networkHeaders.js';

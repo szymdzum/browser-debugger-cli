@@ -10,8 +10,12 @@ import type { ColorScheme, ViewportSize } from '@/types.js';
  * Session activity metrics.
  */
 export interface SessionActivity {
-  /** Total network requests captured. */
+  /** Network requests kept (finished ones; the newest at the cap). */
   networkRequestsCaptured: number;
+  /** Oldest finished requests dropped at the request cap (left out when none). */
+  networkRequestsDropped?: number;
+  /** Oldest response bodies evicted at the total body budget (left out when none). */
+  networkBodiesEvicted?: number;
   /** Total console messages captured. */
   consoleMessagesCaptured: number;
   /** Timestamp of last network request. */

@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Network capture keeps the newest requests at its cap and bounds stored bodies** (#437). At 10,000 requests bdg dropped every new one, silently: after a flood, later page loads recorded nothing, including the request being debugged. Now the oldest finished requests are dropped instead (requests in flight never are), like console messages. Response bodies had only a per-body limit (5 MB): 60 polls of a 4 MB endpoint grew the daemon to 427 MB. Stored bodies now total at most 100 MB; past that the oldest bodies are replaced by a placeholder (`details network <id>` says `evicted: total body budget`) while their requests stay. `network list`, `peek` and `status` say how many were dropped or evicted (`⚠ 2000 older network requests were dropped: bdg keeps the newest 10000`); JSON has the counts (`dropped`/`bodiesEvicted` in `network list`, `totals.networkDropped`/`totals.networkBodiesEvicted` in `peek`, `activity.networkRequestsDropped`/`activity.networkBodiesEvicted` in `status`).
+
 - **A slow Chrome start is no longer reported as "Port N is already in use"** (#435). When Chrome announced its port but `/json/version` did not answer within 5 s (a cold or busy machine), bdg took it for another process on the port. It now asks again until the launch deadline and reports a slow start (CHROME_LAUNCH_FAILED) if Chrome never answers. A real port conflict says what was found on the port.
 
 - **Long values are cut, with `--full` to get them whole** (#440). `dom get --raw` and `dom eval` printed a value whatever its length, and `peek` and the `console` summary printed console messages that `console --list` cuts. Now:
