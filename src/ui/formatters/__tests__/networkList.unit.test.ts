@@ -6,7 +6,12 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NetworkRequest } from '@/types.js';
-import { formatNetworkList, formatStartOffset, pageStartOf } from '@/ui/formatters/networkList.js';
+import {
+  formatNetworkFollowRows,
+  formatNetworkList,
+  formatStartOffset,
+  pageStartOf,
+} from '@/ui/formatters/networkList.js';
 import { truncateUrl } from '@/ui/formatting.js';
 
 void describe('truncateUrl', () => {
@@ -197,5 +202,16 @@ void describe('formatNetworkList eviction note', () => {
       formatNetworkList([], { evictions: { requestsDropped: 0, bodiesEvicted: 0 } }),
       /⚠/
     );
+  });
+});
+
+void describe('formatNetworkFollowRows eviction note', () => {
+  void it('prints the note when given counts, and nothing extra otherwise', () => {
+    const evictions = { requestsDropped: 7, bodiesEvicted: 0 };
+    assert.equal(
+      formatNetworkFollowRows([], { evictions }),
+      '⚠ 7 older network requests were dropped: bdg keeps the newest 10000'
+    );
+    assert.equal(formatNetworkFollowRows([]), '');
   });
 });

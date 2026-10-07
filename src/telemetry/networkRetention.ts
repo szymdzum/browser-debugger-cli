@@ -67,13 +67,14 @@ export class RequestRetention {
   /**
    * Store a fetched response body on a kept request, then evict the oldest
    * bodies until the total fits the budget (a body larger than the whole
-   * budget is evicted itself).
+   * budget is evicted itself). Storing a body again replaces the earlier one.
    *
    * @param request - Request the body belongs to
    * @param body - Body as Chrome returned it
    * @param base64Encoded - Whether `body` is base64
    */
   storeBody(request: NetworkRequest, body: string, base64Encoded: boolean): void {
+    this.forgetBody(request);
     request.responseBody = body;
     if (base64Encoded) request.responseBodyBase64 = true;
     if (body) {

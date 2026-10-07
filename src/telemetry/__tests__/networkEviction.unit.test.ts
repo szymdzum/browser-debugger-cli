@@ -9,7 +9,11 @@ import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { startNetworkCollection } from '@/telemetry/network.js';
-import { skippedBodyReason, type NetworkEvictions } from '@/telemetry/networkRetention.js';
+import {
+  RequestRetention,
+  skippedBodyReason,
+  type NetworkEvictions,
+} from '@/telemetry/networkRetention.js';
 import type { NetworkRequest } from '@/types.js';
 
 type Handler = (params: unknown, sessionId?: string) => void;
@@ -196,5 +200,36 @@ void describe('network body budget', () => {
     assert.deepEqual(ids(requests), ['b3']);
     assert.equal(requests[0]?.responseBody, 'xxxx');
     assert.equal(evictions.bodiesEvicted, 0);
+  });
+
+  void it('counts a body stored twice for the same request once', () => {
+    const requests: NetworkRequest[] = [];
+    const evictions: NetworkEvictions = { requestsDropped: 0, bodiesEvicted: 0 };
+    const retention = new RequestRetention(
+      requests,
+      { maxRequests: 10, maxTotalBodyBytes: 10 },
+      evictions
+    );
+    const first: NetworkRequest = {
+      requestId: 'a',
+      url: 'http://x/a',
+      method: 'GET',
+      timestamp: 0,
+    };
+    const second: NetworkRequest = {
+      requestId: 'b',
+      url: 'http://x/b',
+      method: 'GET',
+      timestamp: 0,
+    };
+    retention.add(first);
+    retention.add(second);
+
+    retention.storeBody(first, 'xxxx', false);
+    retention.storeBody(first, 'xxxx', false);
+    retention.storeBody(second, 'xxxx', false);
+
+    assert.equal(evictions.bodiesEvicted, 0);
+    assert.equal(first.responseBody, 'xxxx');
   });
 });
