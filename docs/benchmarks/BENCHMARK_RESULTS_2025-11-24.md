@@ -3,6 +3,8 @@
 **Date:** 2025-11-24  
 **Test Order:** Alternating per benchmark specification
 
+> **Note (2026-10):** raw results of one run, bdg 0.6.x against chrome-devtools-mcp as of November 2025. chrome-devtools-mcp had `evaluate_script` and performance traces with insights then, and its [current tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md) also lists heap snapshot tools, `lighthouse_audit` and `get_css_styles`. Statements below that MCP cannot run JavaScript or profile memory are corrected; it still has no HAR export and no raw CDP access. See [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428) for a refreshed benchmark.
+
 ## Timing Summary
 
 | Test | Tool | Start | End | Duration (s) |
@@ -164,7 +166,7 @@ bdg used JavaScript to click all 17 buttons at once with timeouts, captured 18 e
 **Why MCP struggled:**
 - **Manual clicking limitation**: Made 11 individual click calls instead of batch operation, missing 6 buttons
 - **Console clearing issue**: Some errors may have been cleared or not captured between clicks
-- **No batching capability**: Cannot execute arbitrary JavaScript for batch operations like bdg can
+- **Did not batch**: The agent did not use `evaluate_script` to click all buttons in one call, as it did with bdg
 - **Limited error persistence**: Only showed 3 errors in final console snapshot, suggesting errors were not accumulated
 
 **Token Analysis:**
@@ -172,7 +174,7 @@ bdg used JavaScript to click all 17 buttons at once with timeouts, captured 18 e
 - MCP used fewer tokens (~9.3K) because it captured fewer errors and had minimal detail per error
 - Despite higher token usage, bdg's Token Efficiency Score is still superior due to much higher score
 
-**Key takeaway**: bdg's JavaScript evaluation capability enables efficient batch operations that are impossible with MCP's click-by-click approach. This is critical for comprehensive testing scenarios.
+**Key takeaway**: Batching through JavaScript evaluation (which both tools offer; the agent only used it with bdg) beats a click-by-click approach. This is critical for comprehensive testing scenarios.
 
 ---
 
@@ -397,11 +399,11 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
 - **CDP method discovery**: Used `bdg cdp --search heap` to discover available memory profiling methods
 
 **Why MCP failed:**
-- **No profiling capability**: MCP has no access to heap profiling, memory snapshots, or any memory measurement tools
+- **No profiling tools at the time**: The MCP server tested had no heap profiling or memory snapshot tools (it has since added them)
 - **Visual observation only**: Could only see messages appearing in DOM but couldn't measure actual memory consumption
 - **No quantification**: No way to prove memory was leaking vs just DOM growing (which could be expected behavior)
 - **Cannot access CDP**: MCP cannot invoke Chrome DevTools Protocol methods directly
-- **Fundamentally limited**: This task requires capabilities MCP simply doesn't have
+- **Limited at the time**: This task required capabilities the MCP server tested didn't have
 
 **Why the point gap was only 4:**
 - bdg didn't use advanced profiling beyond basic heap measurements
@@ -414,7 +416,7 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
 - MCP: ~3.5K tokens (fewer interactions, no profiling output, smaller snapshots after stopping traffic)
 - bdg's higher token usage reflects the additional profiling data and CDP exploration
 
-**Key takeaway**: This test highlights the fundamental architectural difference between the tools. Memory leak detection requires CDP access, which is bdg's core strength and MCP's complete blind spot. For any performance or memory debugging, bdg is the only viable option.
+**Key takeaway**: This test highlights the fundamental architectural difference between the tools. Memory leak detection needed heap measurement, which the MCP server tested did not offer. It has since added heap snapshot tools, so this would likely play out differently today.
 
 ---
 
@@ -435,7 +437,7 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
 - **Console-focused**: Primarily focuses on console/network, less on UI state
 
 ### MCP Strengths:
-- **Speed**: Faster execution on most tests (average 65s vs 88s)
+- **Speed (at the time)**: Faster execution on most tests (average 65s vs 88s)
 - **Visual feedback**: Accessibility tree snapshots provide UI context
 - **User-friendly output**: Clear text-based responses
 - **Direct element interaction**: Straightforward click/fill operations
@@ -443,8 +445,8 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
 
 ### MCP Weaknesses:
 - **Limited error detail**: Basic error messages without full stack traces
-- **No advanced profiling**: Cannot access heap profiling or memory tools
-- **Incomplete batch operations**: Manually clicked buttons vs batch execution
+- **No advanced profiling (at the time)**: No heap profiling or memory tools then; heap snapshot tools added since
+- **Incomplete batch operations**: The agent clicked buttons manually instead of batching with `evaluate_script`
 - **Less structured data**: Text output vs JSON for programmatic analysis
 - **No network export**: Cannot export HAR files for detailed analysis
 - **No CDP access**: Cannot use advanced Chrome DevTools Protocol features
@@ -457,7 +459,7 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
   - Automated testing requiring structured JSON output
   - Network analysis requiring HAR export
   - Scenarios needing direct CDP protocol access
-  - Batch operations and JavaScript evaluation
+  - Batch operations through JavaScript evaluation (as used in this run)
 
 - **Use MCP for:**
   - Quick exploratory testing and debugging
