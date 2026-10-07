@@ -57,6 +57,22 @@ void describe('formatSemanticNodeWithContext', () => {
       '[Generic] <body>\nNo text; holds 2 elements: iframe#app, script (see its HTML with --raw)'
     );
   });
+
+  void it("says what a web component's shadow root holds (an icon button named there)", () => {
+    const output = formatSemanticNodeWithContext({
+      node: NODE,
+      domContext: {
+        tag: 'x-icon-button',
+        children: ['button.icon "Close"'],
+        childCount: 1,
+        shadowChildren: true,
+      },
+    });
+    assert.equal(
+      output,
+      '[Generic] <x-icon-button>\nNo text; its shadow root holds 1 element: button.icon "Close" (see it with bdg dom inspect)'
+    );
+  });
 });
 
 void describe('formatSemanticNodeWithContext key attributes', () => {

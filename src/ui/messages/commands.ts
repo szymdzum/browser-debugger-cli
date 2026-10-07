@@ -1190,12 +1190,17 @@ export function elementTextLine(text: string): string {
  *
  * @param children - First child elements, e.g. `iframe#app`
  * @param count - Number of child elements
- * @returns e.g. `No text; holds 1 element: iframe (see its HTML with --raw)`
+ * @param inShadowRoot - The children are those of its shadow root (`--raw` does not show them)
+ * @returns e.g. `No text; holds 1 element: iframe (see its HTML with --raw)`,
+ *   `No text; its shadow root holds 1 element: button "Close" (see it with bdg dom inspect)`
  */
-export function emptyElementLine(children: string[], count: number): string {
-  if (count === 0) return 'No text and no child elements';
+export function emptyElementLine(children: string[], count: number, inShadowRoot = false): string {
+  const holder = inShadowRoot ? 'its shadow root holds' : 'holds';
+  if (count === 0)
+    return `No text and no child elements${inShadowRoot ? ' in its shadow root' : ''}`;
   const more = count > children.length ? `, … ${count - children.length} more` : '';
-  return `No text; holds ${pluralize(count, 'element')}: ${children.join(', ')}${more} (see its HTML with --raw)`;
+  const hint = inShadowRoot ? 'see it with bdg dom inspect' : 'see its HTML with --raw';
+  return `No text; ${holder} ${pluralize(count, 'element')}: ${children.join(', ')}${more} (${hint})`;
 }
 
 /**

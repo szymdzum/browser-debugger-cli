@@ -358,6 +358,8 @@ export interface DomContext {
   children?: string[];
   /** Number of child elements, for an element without text */
   childCount?: number;
+  /** The children listed are those of its shadow root (a web component) */
+  shadowChildren?: boolean;
   /** Attributes that identify it by its type (see {@link KeyAttributes}) */
   attributes?: KeyAttributes;
   /** A field holding a secret (password, card, one-time code): its value is shown masked */

@@ -14,8 +14,10 @@
  */
 
 import {
+  COMPOSED_JS,
   ELEMENT_CONTEXT_JS,
   ELEMENT_DESCRIPTION_JS,
+  FLAT_TEXT_JS,
   MASKED_VALUE,
   SENSITIVE_FIELD_JS,
 } from '@/runtime/dom/elementInfo.js';
@@ -275,13 +277,16 @@ const TEXT_CONTROL_JS = `(el) => {
 /**
  * Page-side text of an element: a form control's value or a select's chosen
  * options (masked for secrets, {@link SENSITIVE_FIELD_JS}), else its
- * `innerText` (`textContent` for SVG), masked when CSS hides it as a secret
+ * `innerText` (`textContent` for SVG; the flat tree's text for web
+ * components and slots, {@link FLAT_TEXT_JS}), masked when CSS hides it as a secret
  * (`-webkit-text-security`), whitespace collapsed. A container holding a
  * select or textarea gets its visible text without theirs, so a form's text
  * never carries a chosen option or typed text.
  */
 const TEXT_JS = `(el) => {
   const isSensitive = ${SENSITIVE_FIELD_JS};
+  const composed = ${COMPOSED_JS};
+  const flatText = ${FLAT_TEXT_JS};
   const clean = (text) => String(text || '').replace(/\\s+/g, ' ').trim().slice(0, 200);
   if (el.localName === 'input' && el.type === 'hidden') return '';
   if (el.localName === 'input' || el.localName === 'textarea') {
@@ -303,7 +308,8 @@ const TEXT_JS = `(el) => {
     return parts.join(' ');
   };
   const holdsControls = Boolean(el.querySelector && el.querySelector('select, textarea'));
-  const raw = holdsControls ? outsideControls() : typeof el.innerText === 'string' ? el.innerText : el.textContent;
+  const ownText = () => (typeof el.innerText === 'string' ? el.innerText : el.textContent);
+  const raw = holdsControls ? outsideControls() : composed(el) ? flatText(el, 2000) : ownText();
   const text = clean(raw);
   const view = el.ownerDocument.defaultView;
   const security = view ? view.getComputedStyle(el).getPropertyValue('-webkit-text-security') : '';

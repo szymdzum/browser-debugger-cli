@@ -155,7 +155,7 @@ void describe('dom inspect', () => {
   void it('reaches elements in open shadow roots and same-origin iframes', async () => {
     assert.match(
       await bdg(['dom', 'inspect', '#shadowed']),
-      /^span#shadowed "In shadow" .* in shadow root of <div#host>.*\ntext +Arial( \(rendered "[^"]+"\))? 700 16\/normal · color #c00/s
+      /^span#shadowed "In shadow" .* in shadow root of <div#host "In shadow">.*\ntext +Arial( \(rendered "[^"]+"\))? 700 16\/normal · color #c00/s
     );
     assert.match(await bdg(['dom', 'inspect', '#in-frame']), /in iframe#frame.*\nfill +bg #222\n/s);
   });

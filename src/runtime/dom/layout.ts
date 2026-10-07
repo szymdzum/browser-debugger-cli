@@ -393,14 +393,16 @@ function roundPage(page: PageLayout): PageLayout {
 }
 
 /**
- * Layout of one element.
+ * Layout of one element. A `display: contents` element (no box of its own)
+ * is placed by the box around its shown children.
  *
  * @param raw - Element measurements
  * @param page - Page layout (viewport size and scroll position)
  * @returns Element layout; `coveredBy` only for elements that are in view
  */
 function elementLayout(raw: RawElementLayout, page: PageLayout): ElementLayout {
-  const { rect } = raw.geometry;
+  const { content } = raw.geometry;
+  const rect = raw.computed.display === 'contents' && content ? content : raw.geometry.rect;
   const placement = classifyViewportPosition(raw.geometry, page.viewport);
   const inView = placement.inViewport === 'visible' || placement.inViewport === 'partly';
   const text = textPreview(raw.text);
