@@ -37,7 +37,8 @@ const NO_WAIT_TRIGGERED_REQUESTS =
   'Returns immediately without waiting for network; triggeredRequests lists only requests bdg saw start before returning (often none yet; check bdg network list later)';
 
 /**
- * Registry key format: "command:flag" (e.g., "screenshot:--no-resize")
+ * Registry key format: last command name, colon, long flag (the short flag
+ * when there is no long one), e.g. "screenshot:--no-resize", "bdg:--headless"
  */
 type BehaviorKey = string;
 
