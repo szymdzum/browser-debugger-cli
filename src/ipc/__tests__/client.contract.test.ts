@@ -26,6 +26,9 @@ const FAST_TEST_TIMEOUT_MS = 10_000;
 /** Per-test budget for cases that wait out the 5 s IPC timeout */
 const SLOW_TEST_TIMEOUT_MS = 20_000;
 
+/** Delay of the slow mock daemon's reply, longer than the 5 s client timeout */
+const SLOW_REPLY_DELAY_MS = 10_000;
+
 /** Budget for starting or closing a test server */
 const SERVER_LIFECYCLE_TIMEOUT_MS = 3_000;
 
@@ -171,7 +174,7 @@ class MockDaemonServer {
       switch (this.mode) {
         case 'slow':
           // Delay response (useful for timeout testing)
-          this.delayReply(() => this.sendNormalResponse(socket, request), 10000); // longer than 5s client timeout
+          this.delayReply(() => this.sendNormalResponse(socket, request), SLOW_REPLY_DELAY_MS);
           break;
 
         case 'malformed':
@@ -312,15 +315,6 @@ void describe('IPC Client Contract Tests', () => {
     await mockDaemon.start();
   }, FAST);
 
-  afterEach(async () => {
-    try {
-      await mockDaemon.stop();
-      await closeAllServers();
-    } finally {
-      restoreEnvironment();
-    }
-  }, FAST);
-
   /**
    * Restore HOME, USERPROFILE and the IPC timeout, then remove the temp directory
    */
@@ -348,6 +342,15 @@ void describe('IPC Client Contract Tests', () => {
       // Ignore cleanup errors
     }
   }
+
+  afterEach(async () => {
+    try {
+      await mockDaemon.stop();
+      await closeAllServers();
+    } finally {
+      restoreEnvironment();
+    }
+  }, FAST);
 
   void describe('connectToDaemon()', () => {
     void it('connects to daemon and receives handshake response', FAST, async () => {
