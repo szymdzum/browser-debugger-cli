@@ -7,7 +7,12 @@
  * the daemon ({@link buildAudit}), the same way `dom inspect` computes them.
  */
 
-import { FLAT_TREE_JS, PAINT_RISKS_JS, type RawBackground } from '@/runtime/dom/inspectScripts.js';
+import {
+  FLAT_TREE_JS,
+  HIT_EVERYTHING_JS,
+  PAINT_RISKS_JS,
+  type RawBackground,
+} from '@/runtime/dom/inspectScripts.js';
 import { AUDIT_OUT_OF_VIEW_RISK } from '@/ui/messages/commands.js';
 
 /** Elements the walk looks at, at most */
@@ -129,6 +134,7 @@ export const AUDIT_PAGE_JS = `function (checks) {
     const risks = [];
     let opacity = 1;
     let painted = false;
+    let solid = false;
     for (let p = n; p && backgrounds.length < 60; p = parentOf(p)) {
       const s = style(p);
       const own = Number(s.opacity) || 0;
@@ -136,10 +142,20 @@ export const AUDIT_PAGE_JS = `function (checks) {
       backgrounds.push(own < 1 ? Object.assign(background, { opacity: own }) : background);
       opacity *= own;
       if (p !== doc.documentElement && p !== doc.body && (background.image || !clear(s.backgroundColor))) painted = true;
+      if (p !== doc.documentElement && p !== doc.body && !background.image && /^rgb\\(/.test(s.backgroundColor)) solid = true;
       if (s.mixBlendMode !== 'normal') risks.push('mix-blend-mode ' + s.mixBlendMode + ' on ' + label(p));
       if (s.filter !== 'none') risks.push('filter on ' + label(p));
     }
-    return { backgrounds: backgrounds, risks: risks, opacity: opacity, painted: painted };
+    return { backgrounds: backgrounds, risks: risks, opacity: opacity, painted: painted, solid: solid };
+  };
+  const unhit = [];
+  const painters = [];
+  const markPaintedBehind = () => {
+    for (const text of unhit) {
+      const painter = painters.find((p) => p.el !== text.el && !p.el.contains(text.el) && !text.el.contains(p.el) &&
+        text.x >= p.left && text.x <= p.right && text.y >= p.top && text.y <= p.bottom);
+      if (painter && !text.entry.risks.includes(${JSON.stringify(AUDIT_OUT_OF_VIEW_RISK)})) text.entry.risks.push(label(painter.el) + ' under or over it (out of view, not hit-tested)');
+    }
   };
   const risksOf = (n, slot, chain, shown) => {
     if (!shown) return chain.painted ? chain.risks : chain.risks.concat(${JSON.stringify(AUDIT_OUT_OF_VIEW_RISK)});
@@ -158,14 +174,20 @@ export const AUDIT_PAGE_JS = `function (checks) {
     const box = slot && parentOf(n) ? parentOf(n) : n;
     const r = box.getBoundingClientRect();
     const shown = r.width > 0 && r.height > 0 && s.visibility === 'visible';
-    const gradientText = s.backgroundClip === 'text' && /rgba\\(0, 0, 0, 0\\)|transparent/.test(s.webkitTextFillColor);
+    const gradientText = /rgba\\(0, 0, 0, 0\\)|transparent/.test(s.webkitTextFillColor);
     if (shown && want('contrast') && !gradientText) {
       const text = slot ? short(n.assignedNodes({ flatten: true }).filter((c) => c.nodeType === 3).map((c) => c.data).join(' ')) : n.shadowRoot ? '' : ownText(n);
       if (text && Number(s.opacity) > 0 && r.width > 2 && r.height > 2) {
         const chain = chainOf(n);
         const seen = inView(r);
-        if (chain.opacity > 0) texts.push({ label: label(n), text: short(text), color: s.color, fontSize: s.fontSize, fontWeight: s.fontWeight, inView: seen, backgrounds: chain.backgrounds, opacity: chain.opacity, risks: risksOf(n, slot, chain, seen) });
+        if (chain.opacity > 0) {
+          texts.push({ label: label(n), text: short(text), color: s.color, fontSize: s.fontSize, fontWeight: s.fontWeight, inView: seen, backgrounds: chain.backgrounds, opacity: chain.opacity, risks: risksOf(n, slot, chain, seen) });
+          if (!seen && !chain.solid) unhit.push({ entry: texts[texts.length - 1], el: box, x: (r.left + r.right) / 2 + view.scrollX, y: (r.top + r.bottom) / 2 + view.scrollY });
+        }
       }
+    }
+    if (shown && want('contrast') && (/^(img|video|canvas|picture|iframe)$/.test(n.localName) || s.backgroundImage !== 'none')) {
+      painters.push({ el: n, left: r.left + view.scrollX, top: r.top + view.scrollY, right: r.right + view.scrollX, bottom: r.bottom + view.scrollY });
     }
     if (shown && want('overflow')) {
       if (r.right > viewport.width + 1 && !inFixed) wide.push({ label: label(n), right: r.right + view.scrollX, width: r.width });
@@ -192,7 +214,8 @@ export const AUDIT_PAGE_JS = `function (checks) {
     }
     for (const c of kids) visit(c, inFixed);
   };
-  visit(doc.documentElement, false);
+  (${HIT_EVERYTHING_JS})([doc], () => visit(doc.documentElement, false));
+  markPaintedBehind();
   if (want('contrast')) result.texts = texts;
   if (want('overflow')) Object.assign(result, { wide: wide, truncated: truncated, images: images, scrollers: scrollers });
   if (want('layers')) result.layers = layers;

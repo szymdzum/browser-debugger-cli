@@ -82,14 +82,25 @@ void describe('dom audit and css search', () => {
 
   void it('says what it cannot see: paint behind text, masks, canvas, and the scroll a hover made', async () => {
     await bdg(['page', 'navigate', `${fixture.url}inspect-paint`]);
+    await bdg([
+      'dom',
+      'eval',
+      "document.querySelectorAll('.hero img').forEach((img) => (img.style.pointerEvents = 'none')); 1",
+    ]);
     const audit = await bdg(['dom', 'audit', 'contrast', 'animations']);
-    assert.match(
+    assert.doesNotMatch(
       audit,
-      /p#over-image "White over an image in view" 16px \(approximate: img behind\)/
+      /White over an image/,
+      'text over an image is not listed as failing'
     );
+    assert.match(audit, /\(\+2 more may be below it but cannot be measured/);
+    const json = JSON.parse(await bdg(['dom', 'audit', 'contrast', '--json'])) as {
+      data: { contrast: { uncertain?: number } };
+    };
+    assert.equal(json.data.contrast.uncertain, 2);
     assert.match(
-      audit,
-      /p#low "White over an image out of view" 16px \(out of view\) \(approximate: only its ancestors were checked\)/
+      await bdg(['dom', 'inspect', '#over-image', '--tree', '0']),
+      /contrast ≈[\d.]+ on #\w+ \(approximate: img behind\)/
     );
     assert.match(
       audit,

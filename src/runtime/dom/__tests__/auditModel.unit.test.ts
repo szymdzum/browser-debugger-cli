@@ -98,7 +98,7 @@ void describe('dom audit', () => {
     assert.equal(imageFinding(image(800, 800, 'none')), undefined);
   });
 
-  void it('keeps why a ratio is approximate, and counts canvas elements', () => {
+  void it('counts text it cannot measure apart from the failing list, and counts canvas elements', () => {
     const result = buildAudit(
       {
         ...BASE,
@@ -108,13 +108,19 @@ void describe('dom audit', () => {
             inView: false,
             risks: ['only its ancestors were checked'],
           },
+          text('p.pale', 'rgb(220, 220, 220)'),
         ],
         animations: [],
         canvases: 2,
       },
       { checks: ['contrast', 'animations'], level: 'AA', limit: 20 }
     );
-    assert.deepEqual(result.contrast?.items[0]?.approximate, ['only its ancestors were checked']);
+    assert.deepEqual(
+      result.contrast?.items.map((item) => item.element),
+      ['p.pale']
+    );
+    assert.equal(result.contrast?.failing, 1);
+    assert.equal(result.contrast?.uncertain, 1);
     assert.equal(result.canvases, 2);
     assert.equal(
       buildAudit(

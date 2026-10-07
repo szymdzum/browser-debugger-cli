@@ -85,15 +85,18 @@ function contrastFindings(
   options: AuditOptions
 ): NonNullable<AuditResult['contrast']> {
   const checked = (raw.texts ?? []).map((text) => contrastItem(text, raw.canvasDark));
-  const failing = checked
+  const below = checked
     .filter((item): item is AuditContrastItem => item !== undefined)
     .filter((item) => item.ratio < requiredRatio(item, options.level))
     .sort((a, b) => a.ratio - b.ratio);
+  const failing = below.filter((item) => !item.approximate);
+  const uncertain = below.length - failing.length;
   return {
     level: options.level,
     checked: checked.length,
     failing: failing.length,
     items: failing.slice(0, options.limit),
+    ...(uncertain > 0 && { uncertain }),
   };
 }
 
@@ -124,6 +127,7 @@ function contrastItem(text: RawAuditText, canvasDark: boolean): AuditContrastIte
     size: pxNumber(text.fontSize) ?? 16,
     weight: Number(text.fontWeight) || 400,
     inView: text.inView,
+    ...(contrast.opacity !== undefined && { opacity: contrast.opacity }),
     ...(contrast.approximate && { approximate: contrast.approximate }),
   };
 }

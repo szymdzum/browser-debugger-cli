@@ -379,6 +379,40 @@ const BACKGROUNDS_JS = `(el, tree, view) => {
 }`;
 
 /**
+ * Page-side hit test that also sees elements with `pointer-events: none`
+ * (hero images, decorative layers and blended duplicates often have it, and
+ * `elementsFromPoint` skips them): for the duration of `test`, a constructed
+ * stylesheet makes every element of the given roots (documents and shadow
+ * roots) hittable. It is added and removed within one script turn, so nothing
+ * is painted with it and no DOM mutation is recorded. A root that already has
+ * it (an outer call covering a whole page walk) is left as it is, so nested
+ * calls cost no extra style recalculation.
+ */
+export const HIT_EVERYTHING_JS = `(roots, test) => {
+  const added = [];
+  for (const root of roots) {
+    if (!root || !root.adoptedStyleSheets) continue;
+    const view = (root.ownerDocument || root).defaultView;
+    try {
+      if (!view.__bdgHitSheet) {
+        view.__bdgHitSheet = new view.CSSStyleSheet();
+        view.__bdgHitSheet.replaceSync('* { pointer-events: auto !important; }');
+      }
+      if (root.adoptedStyleSheets.includes(view.__bdgHitSheet)) continue;
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, view.__bdgHitSheet];
+      added.push([root, view.__bdgHitSheet]);
+    } catch (e) {
+      continue;
+    }
+  }
+  try {
+    return test();
+  } finally {
+    for (const [root, sheet] of added) root.adoptedStyleSheets = root.adoptedStyleSheets.filter((s) => s !== sheet);
+  }
+}`;
+
+/**
  * Page-side reasons the contrast of an element's text is approximate: a
  * blend mode or filter on it or an ancestor, and, hit-testing the middle of
  * its first line of text (else of its first box; only in the viewport), the
@@ -407,7 +441,7 @@ export const PAINT_RISKS_JS = `(el, tree, textParent) => {
   const y = rect.top + rect.height / 2;
   if (x < 0 || y < 0 || x >= view.innerWidth || y >= view.innerHeight) return risks;
   const root = el.getRootNode();
-  const hits = (root.elementsFromPoint ? root : el.ownerDocument).elementsFromPoint(x, y);
+  const hits = (${HIT_EVERYTHING_JS})([el.ownerDocument, root], () => (root.elementsFromPoint ? root : el.ownerDocument).elementsFromPoint(x, y));
   const at = hits.findIndex((h) => chain.includes(h));
   if (at < 0) return risks;
   const clear = (color) => color === 'transparent' || /^rgba\\(.*,\\s*0\\)$/.test(color) || /\\/\\s*0\\)$/.test(color);

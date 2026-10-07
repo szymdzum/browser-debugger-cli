@@ -338,6 +338,17 @@ export const LAYOUT_REASONS = {
 export const AUDIT_OUT_OF_VIEW_RISK = 'only its ancestors were checked';
 
 /**
+ * `dom audit contrast` note for text that looks below the level but cannot
+ * be measured exactly (over an image, blended, under or over another layer).
+ *
+ * @param count - How many such texts
+ * @returns e.g. `(+12 more may be below it but cannot be measured: text over images or blended layers; check them with bdg dom inspect)`
+ */
+export function auditUncertainContrastNote(count: number): string {
+  return `(+${count} more may be below it but cannot be measured: text over images or blended layers; check them with ${sessionCommand('bdg dom inspect <element>')})`;
+}
+
+/**
  * `dom audit animations` note for canvas elements, whose script-drawn
  * animations it cannot see.
  *

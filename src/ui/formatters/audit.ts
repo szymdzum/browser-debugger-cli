@@ -3,7 +3,7 @@
  */
 
 import type { AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
-import { auditCanvasNote } from '@/ui/messages/commands.js';
+import { auditCanvasNote, auditUncertainContrastNote } from '@/ui/messages/commands.js';
 import { truncateByLength } from '@/utils/strings.js';
 
 /** Width of the text quoted in a finding */
@@ -36,10 +36,15 @@ function contrastSection(contrast: NonNullable<AuditResult['contrast']>): string
   const head = `Contrast (${contrast.level}): ${contrast.failing} of ${contrast.checked} text elements below`;
   const rows = contrast.items.map(
     (item) =>
-      `  ${item.ratio.toFixed(2).padStart(5)}  ${item.color} on ${item.background}  ${item.element} "${truncateByLength(item.text, TEXT_WIDTH)}" ${item.size}px${item.weight >= 700 ? ' bold' : ''}${item.inView ? '' : ' (out of view)'}${item.approximate ? ` (approximate: ${item.approximate.join(', ')})` : ''}`
+      `  ${item.ratio.toFixed(2).padStart(5)}  ${item.color} on ${item.background}  ${item.element} "${truncateByLength(item.text, TEXT_WIDTH)}" ${item.size}px${item.weight >= 700 ? ' bold' : ''}${item.opacity !== undefined ? ` (faded: opacity ${item.opacity})` : ''}${item.inView ? '' : ' (out of view)'}`
   );
   const more = contrast.failing - contrast.items.length;
-  return [head, ...rows, ...(more > 0 ? [`  (+${more} more; --limit to list them)`] : [])];
+  return [
+    head,
+    ...rows,
+    ...(more > 0 ? [`  (+${more} more; --limit to list them)`] : []),
+    ...(contrast.uncertain ? [`  ${auditUncertainContrastNote(contrast.uncertain)}`] : []),
+  ];
 }
 
 /**
