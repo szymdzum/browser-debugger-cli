@@ -1,15 +1,20 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { RESOURCE_TYPE_ABBREVIATIONS, MIME_TYPE_RULES } from '@/constants.js';
+import {
+  MAX_CONSOLE_TEXT_LENGTH,
+  MIME_TYPE_RULES,
+  RESOURCE_TYPE_ABBREVIATIONS,
+} from '@/constants.js';
 import type { BdgOutput } from '@/types.js';
 import { buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
-import { formatTimestamp } from '@/ui/formatters/console/shared.js';
+import { capMessageText, formatTimestamp } from '@/ui/formatters/console/shared.js';
+import { capForDisplay } from '@/ui/formatters/longValues.js';
 import {
   failureReason,
   formatRequestStatus,
   getRequestState,
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
-import { withPageCrashedNote } from '@/ui/messages/commands.js';
+import { moreCharsNote, withPageCrashedNote } from '@/ui/messages/commands.js';
 import {
   PREVIEW_EMPTY_STATES,
   PREVIEW_HEADERS,
@@ -18,6 +23,7 @@ import {
 } from '@/ui/messages/preview.js';
 import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { capLength } from '@/utils/strings.js';
 
 /**
  * Infer resource type from MIME type when CDP doesn't provide it.
@@ -82,6 +88,8 @@ export interface PreviewOptions {
   filteredTypes?: string[] | undefined;
   /** Total network requests before filtering (for showing feedback when no matches). */
   unfilteredNetworkCount?: number | undefined;
+  /** Console message texts whole instead of cut (`--full`). */
+  full?: boolean | undefined;
 }
 
 /**
@@ -111,7 +119,8 @@ export interface PreviewJsonData {
 }
 
 /**
- * Build the JSON payload for a preview, honoring the section and `--last` filters.
+ * Build the JSON payload for a preview, honoring the section and `--last`
+ * filters; console texts are cut with `truncatedFrom` unless `--full`.
  *
  * @param output - Preview output from the daemon
  * @param options - Preview options (section filters, last N)
@@ -131,7 +140,10 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
     ...(output.totals && { totals: output.totals }),
     ...(output.pageCrashedAt !== undefined && { pageCrashedAt: output.pageCrashedAt }),
     ...(pick('network') && output.data.network && { network: last(output.data.network) }),
-    ...(pick('console') && output.data.console && { console: last(output.data.console) }),
+    ...(pick('console') &&
+      output.data.console && {
+        console: last(output.data.console)?.map((message) => capMessageText(message, options.full)),
+      }),
   };
 }
 
@@ -157,6 +169,24 @@ function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions):
     ? formatPreviewVerbose(output, options)
     : formatPreviewCompact(output, options);
   return withPageCrashedNote(body, output.pageCrashedAt);
+}
+
+/**
+ * A console message text in the compact preview: cut like `console --list`
+ * cuts it and to its first two lines, or whole with `--full`. The pointer
+ * naming `--full` comes after the line cut, so it is always shown.
+ *
+ * @param text - Message text
+ * @param full - `--full`
+ * @returns Text to print
+ */
+function compactConsoleText(text: string, full: boolean | undefined): string {
+  if (full) return text;
+  const capped = capLength(text, MAX_CONSOLE_TEXT_LENGTH);
+  const shown = truncateText(capped.text, 2);
+  return capped.truncatedFrom === undefined
+    ? shown
+    : `${shown}${moreCharsNote(capped.truncatedFrom - capped.text.length)}`;
 }
 
 /**
@@ -231,8 +261,7 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
       } else {
         const consoleLines = messages.map((msg) => {
           const prefix = msg.type.toUpperCase().padEnd(5);
-          const text = truncateText(msg.text, 2);
-          return `${prefix} ${text}`;
+          return `${prefix} ${compactConsoleText(msg.text, options.full)}`;
         });
         fmt.list(consoleLines, 2);
       }
@@ -338,7 +367,9 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       } else {
         messages.forEach((msg) => {
           const icon = msg.type === 'error' ? 'ERR' : msg.type === 'warning' ? 'WARN' : 'INFO';
-          fmt.text(`${icon} [${msg.type}] ${msg.text}`);
+          fmt.text(
+            `${icon} [${msg.type}] ${capForDisplay(msg.text, MAX_CONSOLE_TEXT_LENGTH, options.full)}`
+          );
         });
       }
       fmt.blank();

@@ -140,6 +140,26 @@ export const OBJECT_EXPANSION_FAILURE_THRESHOLD = 5;
 export const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
 
 // ============================================================================
+// OUTPUT VALUE LIMITS (lifted by --full)
+// ============================================================================
+
+/**
+ * Characters of one value `dom get --raw` and `dom eval` print (human output,
+ * and eval string results and outer HTML in JSON)
+ */
+export const MAX_VALUE_LENGTH = 20_000;
+
+/**
+ * Characters of a console message text in human output (`console`, `peek`)
+ */
+export const MAX_CONSOLE_TEXT_LENGTH = 200;
+
+/**
+ * Characters of a console message text in JSON output (`console`, `peek`)
+ */
+export const MAX_CONSOLE_JSON_TEXT_LENGTH = 10_000;
+
+// ============================================================================
 // CHROME CDP BUFFER LIMITS
 // ============================================================================
 

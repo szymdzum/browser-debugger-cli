@@ -223,6 +223,8 @@ export interface ConsoleMessage {
   stackTrace?: StackFrame[];
   /** Browser subsystem of a browser message (`network`, `security`, ...); absent for page console calls */
   source?: Protocol.Log.LogEntry['source'];
+  /** Original length of `text` when JSON output cut it (`--full` keeps it whole) */
+  truncatedFrom?: number;
 }
 
 /**
@@ -517,6 +519,8 @@ export interface DomGetResult {
     attributes?: Record<string, unknown>;
     classes?: string[];
     outerHTML?: string;
+    /** Original length of `outerHTML` when JSON output cut it (`--full` keeps it whole) */
+    truncatedFrom?: number;
   }>;
 }
 

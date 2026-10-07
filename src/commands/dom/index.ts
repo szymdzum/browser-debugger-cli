@@ -43,7 +43,10 @@ import type {
   DomFramesCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { integerOption, screenshotFormatOption } from '@/commands/shared/validation.js';
-import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
+import { MAX_VALUE_LENGTH, QUERY_JSON_LIST_LIMIT } from '@/constants.js';
+
+/** Help of `--full` on `dom eval` and the `eval` shortcut */
+const EVAL_FULL_HELP = `Print the whole value (default: the first ${MAX_VALUE_LENGTH} characters; a string result in JSON too)`;
 
 /**
  * Register DOM telemetry commands on the root Commander program.
@@ -85,6 +88,7 @@ export function registerDomCommands(program: Command): void {
       '--frame <frame>',
       'Evaluate in an iframe, cross-origin ones included: index (from dom frames; 87 when stale), name/id attribute, or part of the name, id or URL'
     )
+    .option('--full', EVAL_FULL_HELP)
     .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);
@@ -95,6 +99,7 @@ export function registerDomCommands(program: Command): void {
     .description('Shortcut for: bdg dom eval')
     .argument('<script>', 'JavaScript to execute')
     .option('--frame <frame>', 'Evaluate in an iframe (see dom frames)')
+    .option('--full', EVAL_FULL_HELP)
     .option('-j, --json', 'Output as JSON')
     .action(async (script: string, options: DomEvalCommandOptions) => {
       await handleDomEval(script, options);
@@ -118,7 +123,10 @@ export function registerDomCommands(program: Command): void {
       `${SELECTOR_OR_INDEX_ARGUMENT} (e.g. ".error", "#app", 0); default: ${DOM_GET_DEFAULT_SELECTOR}`
     )
     .option('--raw', 'Output raw HTML with all filtering options')
-    .option('--full', 'Show all of the element text (default: the first 500 characters)')
+    .option(
+      '--full',
+      `Show all of the element text (default: the first 500 characters); with --raw, all of the HTML (default: the first ${MAX_VALUE_LENGTH} characters)`
+    )
     .option('--all', 'Get all matches (only with --raw)')
     .option('--index <n>', 'Element index if selector matches multiple (0-based)', integerOption(0))
     .addOption(new Option('--nth <n>', 'Alias of --index').argParser(integerOption(0)).hideHelp())

@@ -245,7 +245,7 @@ void describe('Element targeting', () => {
     const full = await bdg(['dom', 'get', '#long-text', '--full']);
     assert.match(full, /The end\.$/m);
     assert.doesNotMatch(full, /cut at 500/);
-    await bdg(['dom', 'get', '#long-text', '--full', '--raw'], 81);
+    assert.match(await bdg(['dom', 'get', '#long-text', '--full', '--raw']), /The end\.<\/div>/);
   });
 
   void it('fails with 87 after the page navigated', async () => {

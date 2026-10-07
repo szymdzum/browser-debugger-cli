@@ -1,6 +1,8 @@
+import { MAX_VALUE_LENGTH } from '@/constants.js';
 import type { DomFrame } from '@/ipc/protocol/commands.js';
 import type { DomQueryResult, DomGetResult, ScreenshotResult } from '@/types.js';
 import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
+import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import {
   frameLabel,
@@ -93,10 +95,13 @@ function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
 /**
  * Format DOM get results for human-readable output.
  *
- * Displays full outerHTML for matched elements. For single elements, shows HTML directly.
- * For multiple elements, shows numbered list with HTML for each.
+ * Displays the outerHTML of matched elements, each cut to its first
+ * {@link MAX_VALUE_LENGTH} characters with a pointer naming `--full`. For
+ * single elements, shows HTML directly. For multiple elements, shows
+ * numbered list with HTML for each.
  *
  * @param data - DOM get result containing array of nodes with outerHTML
+ * @param options - `full` to print the HTML whole
  * @returns Formatted output string
  *
  * @example
@@ -119,17 +124,22 @@ function queryTagAttributes(node: DomQueryResult['nodes'][number]): string[] {
  * // [1] <span class="error">Error 2</span>
  * ```
  */
-export function formatDomGet(data: DomGetResult): string {
+export function formatDomGet(
+  data: DomGetResult,
+  options: { full?: boolean | undefined } = {}
+): string {
   const { nodes } = data;
+  const html = (node: DomGetResult['nodes'][number]): string =>
+    capForDisplay(node.outerHTML ?? '', MAX_VALUE_LENGTH, options.full);
 
   if (nodes.length === 1) {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    return nodes[0]!.outerHTML ?? '';
+    return html(nodes[0]!);
   }
 
   const fmt = new OutputFormatter();
   nodes.forEach((node, i) => {
-    fmt.text(`[${i}] ${node.outerHTML}`);
+    fmt.text(`[${i}] ${html(node)}`);
   });
 
   return fmt.build();
@@ -144,9 +154,11 @@ export function formatDomGet(data: DomGetResult): string {
  * JSON-quoted. Other values are formatted JSON, and values Chrome only
  * describes (functions, DOM nodes) their description. The iframe it ran in
  * (`--frame`) is reported on stderr, so stdout stays the bare value. `--json`
- * output is unchanged (the value in `data.result`).
+ * output is unchanged (the value in `data.result`). The text is cut to its
+ * first {@link MAX_VALUE_LENGTH} characters with a pointer naming `--full`.
  *
  * @param data - DOM eval result containing the evaluated value
+ * @param options - `full` to print the value whole
  * @returns The string, or formatted JSON
  *
  * @example
@@ -162,7 +174,21 @@ export function formatDomGet(data: DomGetResult): string {
  * // }
  * ```
  */
-export function formatDomEval(data: { result: unknown; type?: string }): string {
+export function formatDomEval(
+  data: { result: unknown; type?: string },
+  options: { full?: boolean | undefined } = {}
+): string {
+  return capForDisplay(evalResultText(data), MAX_VALUE_LENGTH, options.full);
+}
+
+/**
+ * An eval result as text: a string as is unless it would read as another
+ * value, else formatted JSON.
+ *
+ * @param data - DOM eval result
+ * @returns Text of the value
+ */
+function evalResultText(data: { result: unknown; type?: string }): string {
   if (data.type === 'undefined') return 'undefined';
   const { result } = data;
   if (typeof result === 'string' && (data.type !== 'string' || !looksLikeOtherValue(result))) {
