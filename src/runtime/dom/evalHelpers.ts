@@ -12,8 +12,10 @@ import {
   scriptTimeoutError,
 } from '@/errors/messages.js';
 import { pendingNavigationUrl } from '@/runtime/page/navigation.js';
+import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
 import { senderFor, type CDPSender } from '@/telemetry/objectExpander.js';
 import { formatRemoteObject } from '@/telemetry/remoteObject.js';
+import { evalCopiedByBrowserWarning, evalPreviewWarning } from '@/ui/messages/commands.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
@@ -187,6 +189,8 @@ export interface EvalResult {
   type: string;
   /** Object subtype (`node`, `date`, `map`, `array`, ...) */
   subtype?: string;
+  /** Set when the page replaced built-ins bdg's copy of the result uses, so the browser copied it */
+  warning?: string;
 }
 
 /** Object subtypes shown as a description rather than as JSON. */
@@ -216,7 +220,8 @@ const BRIEF_SUBTYPES = new Set(['node', 'arraybuffer', 'dataview']);
  * `12n`, functions `function name()`, and cycles `[Circular]` (an object
  * shared by two properties is copied twice). Works for objects of iframes
  * (other realms); lists and objects are cut after 1000 entries, and a
- * throwing getter becomes `[Error: …]`.
+ * throwing getter becomes `[Error: …]`. It uses the page's built-ins
+ * ({@link COPY_BUILTINS}), so it only runs when the page left them alone.
  */
 export const JSON_SAFE_COPY_FUNCTION = `function () {
   const MAX_ITEMS = 1000;
@@ -230,6 +235,13 @@ export const JSON_SAFE_COPY_FUNCTION = `function () {
   };
   const items = (list, next) => {
     const result = [];
+    if (typeof list.length === 'number') {
+      for (let i = 0; i < list.length; i++) {
+        if (i === MAX_ITEMS) { result.push('…'); break; }
+        result.push(next(list[i]));
+      }
+      return result;
+    }
     let count = 0;
     for (const item of list) {
       if (count++ === MAX_ITEMS) { result.push('…'); break; }
@@ -279,6 +291,35 @@ export const JSON_SAFE_COPY_FUNCTION = `function () {
   return copy(this, 0);
 }`;
 
+/** Built-ins {@link JSON_SAFE_COPY_FUNCTION} uses (it runs in the page's world, next to the result) */
+const COPY_BUILTINS = [
+  'Object.keys',
+  'Object.is',
+  'Object.prototype.toString',
+  'Function.prototype.call',
+  'Array.from',
+  'Array.isArray',
+  'Array.prototype.push',
+  'Array.prototype.slice',
+  'Array.prototype.join',
+  'ArrayBuffer.isView',
+  'Number.isNaN',
+  'Number.isFinite',
+  'String',
+  'String.prototype.slice',
+  'String.prototype.toLowerCase',
+  'Set',
+  'Set.prototype.add',
+  'Set.prototype.has',
+  'Set.prototype.delete',
+  'Set.prototype.values',
+  'Map.prototype.entries',
+  'Date.prototype.toISOString',
+];
+
+/** Returns the object it is called on (for the browser to copy it by value) */
+const SELF_FUNCTION = 'function () { return this; }';
+
 /**
  * Whether an exception is V8 terminating a script that ran too long.
  *
@@ -294,7 +335,10 @@ function isTerminated(details: Protocol.Runtime.ExceptionDetails): boolean {
  *
  * Plain objects and arrays are copied by value; values JSON cannot represent
  * (NaN, -0, BigInt, functions, symbols, DOM nodes, dates, maps, errors, the
- * window, cyclic objects) are given as their readable description.
+ * window, cyclic objects) are given as their readable description. On a
+ * page that replaced built-ins that copy uses, the browser copies the
+ * object (JSON-like values exactly, the others as null or `{}`), or else
+ * its preview is given, with a warning naming them.
  *
  * @param cdp - CDP connection
  * @param remote - Remote object returned by Runtime.evaluate
@@ -316,17 +360,45 @@ async function toEvalResult(
   if (remote.type !== 'object' || DESCRIBED_SUBTYPES.has(remote.subtype ?? '')) {
     return { value: formatRemoteObject(remote), ...kind };
   }
+  const replaced = await findReplacedBuiltins(cdp, COPY_BUILTINS, remote.objectId);
+  const copy = await copyByValue(
+    cdp,
+    remote.objectId,
+    replaced.length === 0 ? JSON_SAFE_COPY_FUNCTION : SELF_FUNCTION
+  );
+  const value = copy ? copy.value : formatRemoteObject(remote);
+  if (replaced.length === 0) return { value, ...kind };
+  const warning = copy ? evalCopiedByBrowserWarning(replaced) : evalPreviewWarning(replaced);
+  return { value, ...kind, warning };
+}
+
+/**
+ * Copy a result by value: what a function called on it returns, which the
+ * browser serialises itself (without the page's built-ins).
+ *
+ * @param cdp - CDP connection
+ * @param objectId - The result
+ * @param functionDeclaration - {@link JSON_SAFE_COPY_FUNCTION}, or
+ *   {@link SELF_FUNCTION} for the browser's plain copy (it fails on cycles
+ *   and BigInts)
+ * @returns The copy, or undefined when it failed
+ */
+async function copyByValue(
+  cdp: CDPSender,
+  objectId: string,
+  functionDeclaration: string
+): Promise<{ value: unknown } | undefined> {
   try {
     const copy = (await cdp.send('Runtime.callFunctionOn', {
-      objectId: remote.objectId,
-      functionDeclaration: JSON_SAFE_COPY_FUNCTION,
+      objectId,
+      functionDeclaration,
       returnByValue: true,
     })) as { result?: { value?: unknown }; exceptionDetails?: unknown };
-    if (!copy.exceptionDetails) return { value: copy.result?.value, ...kind };
+    if (!copy.exceptionDetails) return { value: copy.result?.value };
   } catch (error) {
     log.debug(`Could not copy eval result by value: ${getErrorMessage(error)}`);
   }
-  return { value: formatRemoteObject(remote), ...kind };
+  return undefined;
 }
 
 /**

@@ -13,14 +13,18 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  actionBrokenByPageError,
+  actionScriptFailedError,
   emptySelectorError,
   indexOutOfRangeError,
   noNodesFoundError,
   staleNodeError,
 } from '@/errors/messages.js';
-import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
+import { ActionScriptError, throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { frameScopedConnection } from '@/runtime/dom/frameScopedConnection.js';
 import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { findReplacedBuiltins } from '@/runtime/page/replacedBuiltins.js';
+import type { CDPSender } from '@/telemetry/objectExpander.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
   brokenByReplacedBuiltinsSuggestion,
@@ -40,7 +44,12 @@ export const BOUND_TARGET_SELECTOR = '__bdg_bound_target__';
 /** Removes the node bound for index-based commands, and matches bound for a selector, from the window they were stored on */
 export const UNBIND_TARGET_SCRIPT = 'delete window.__bdgTarget; delete window.__bdgMatches';
 
-/** Built-ins the selector search ({@link DEEP_QUERY_JS}) relies on */
+/**
+ * Built-ins the selector search ({@link DEEP_QUERY_JS}) cannot do without:
+ * when the page replaced one, the search runs in bdg's world instead.
+ * Helpers that libraries replace with working versions (Prototype.js's
+ * `Array.prototype.map`) are left to {@link SCRIPT_BUILTINS}.
+ */
 const SELECTION_BUILTINS = [
   'Element.prototype.querySelectorAll',
   'Element.prototype.querySelector',
@@ -52,6 +61,11 @@ const SELECTION_BUILTINS = [
   'Node.prototype.getRootNode',
   'Node.prototype.compareDocumentPosition',
   'Node.prototype.contains',
+  'NodeList.prototype[Symbol.iterator]',
+  'Array.prototype[Symbol.iterator]',
+  'Array.prototype.push',
+  'Set',
+  'Map',
 ];
 
 /** Other built-ins the interaction scripts use */
@@ -65,36 +79,33 @@ const SCRIPT_BUILTINS = [
   'Array.prototype.includes',
   'Object.keys',
   'Object.assign',
+  'Object.getOwnPropertyDescriptor',
+  'Function.prototype.call',
   'JSON.stringify',
   'JSON.parse',
-  'Promise',
+];
+
+/** DOM built-ins the interaction scripts act through (anti-bot scripts often make them throw) */
+const DOM_ACTION_BUILTINS = [
+  'Element.prototype.getBoundingClientRect',
+  'Element.prototype.getClientRects',
+  'Element.prototype.scrollIntoView',
+  'window.getComputedStyle',
+  'Document.prototype.elementFromPoint',
+  'Document.prototype.createEvent',
+  'EventTarget.prototype.dispatchEvent',
+  'HTMLElement.prototype.focus',
+  'HTMLElement.prototype.blur',
+  'HTMLElement.prototype.click',
+  'Event',
+  'MouseEvent',
+  'HTMLInputElement.prototype.value',
+  'HTMLTextAreaElement.prototype.value',
+  'HTMLSelectElement.prototype.value',
 ];
 
 /** Matches bound for a selector when the page replaced the selector search built-ins (enough for --index) */
 const MATCH_BIND_LIMIT = 100;
-
-/**
- * Page-side: which of the built-ins named the page replaced (their source is
- * not native code). Written without the array and object helpers it checks.
- *
- * @param names - Dotted paths from `window`, e.g. `Array.prototype.map`
- * @returns Expression evaluating to the replaced ones
- */
-function replacedBuiltinsJS(names: readonly string[]): string {
-  return `(() => {
-  const names = ${JSON.stringify(names)};
-  const replaced = [];
-  for (let i = 0; i < names.length; i++) {
-    const path = names[i].split('.');
-    let value = window;
-    for (let j = 0; j < path.length && value != null; j++) value = value[path[j]];
-    let source = '';
-    try { source = Function.prototype.toString.call(value); } catch (e) { source = ''; }
-    if (!/\\{\\s*\\[native code\\]\\s*\\}\\s*$/.test(source)) replaced[replaced.length] = names[i];
-  }
-  return replaced;
-})()`;
-}
 
 /** Page-side: stores a node as match `i` of the selector being bound on the top window (runs on the node, in its frame; a cross-origin frame cannot reach the top window and fails) */
 const BIND_MATCH_FUNCTION = `function (selector, i) {
@@ -409,7 +420,13 @@ async function resolveScriptTarget(
       ...(bound && { boundInBdgWorld: true }),
     };
   }
-  return { selector: BOUND_TARGET_SELECTOR, cdp: await bindTargetNode(cdp, params.backendNodeId) };
+  const scriptCdp = await bindTargetNode(cdp, params.backendNodeId);
+  const replaced = await replacedBuiltins(scriptCdp);
+  return {
+    selector: BOUND_TARGET_SELECTOR,
+    cdp: scriptCdp,
+    ...(replaced.length > 0 && { replacedBuiltins: replaced }),
+  };
 }
 
 /**
@@ -418,18 +435,12 @@ async function resolveScriptTarget(
  * @param cdp - CDP connection
  * @returns Their dotted names (empty when all are the browser's, or the check failed)
  */
-async function replacedBuiltins(cdp: CDPConnection): Promise<string[]> {
-  try {
-    const response = (await cdp.send('Runtime.evaluate', {
-      expression: replacedBuiltinsJS([...SELECTION_BUILTINS, ...SCRIPT_BUILTINS]),
-      returnByValue: true,
-    })) as Protocol.Runtime.EvaluateResponse;
-    const value: unknown = response.result.value;
-    return Array.isArray(value) ? value.filter((name) => typeof name === 'string') : [];
-  } catch (error) {
-    log.debug(`Built-ins not checked: ${getErrorMessage(error)}`);
-    return [];
-  }
+function replacedBuiltins(cdp: CDPSender): Promise<string[]> {
+  return findReplacedBuiltins(cdp, [
+    ...SELECTION_BUILTINS,
+    ...SCRIPT_BUILTINS,
+    ...DOM_ACTION_BUILTINS,
+  ]);
 }
 
 /**
@@ -538,13 +549,15 @@ function boundNodeMissing(text: string | undefined): boolean {
  * not find is reported as stale (87), and results carry the user's selector.
  * On a page that replaced the selector search, a result warns that the
  * element was found in bdg's world; on a page that replaced built-ins the
- * scripts use, a failure adds that they may be the cause.
+ * scripts use, a failure adds that they may be the cause, and a script that
+ * threw is reported as broken by the page (90), naming them.
  *
  * @param cdp - CDP connection
  * @param params - Request with a selector (and optional index) or a backend node id
  * @param work - The interaction, given the script target
  * @returns The interaction's result
- * @throws CommandError (87) when the bound node left the page during the action
+ * @throws CommandError (87) when the bound node left the page during the
+ *   action, (90) when its script threw on a page that replaced built-ins
  */
 export async function onScriptTarget<
   T extends {
@@ -553,6 +566,7 @@ export async function onScriptTarget<
     suggestion?: string;
     exitCode?: number;
     warning?: string;
+    replacedBuiltins?: string[];
   },
 >(
   cdp: CDPConnection,
@@ -580,6 +594,9 @@ export async function onScriptTarget<
     };
   } catch (error) {
     const replaced = target?.replacedBuiltins ?? [];
+    if (error instanceof ActionScriptError) {
+      throw actionScriptFailure(error, replaced, params.selector ?? '');
+    }
     if (error instanceof CommandError && replaced.length > 0) {
       const suggestion = error.metadata['suggestion'];
       throw new CommandError(
@@ -598,6 +615,33 @@ export async function onScriptTarget<
   } finally {
     if (target && target.cdp !== cdp) unbindInFrame(target.cdp);
   }
+}
+
+/**
+ * The error for an action script that threw: on a page that replaced
+ * built-ins the scripts use, that the page broke it (90, naming them);
+ * otherwise what it threw (110), with the user's selector.
+ *
+ * @param error - What the action reported
+ * @param replaced - Built-ins the page replaced
+ * @param selector - Selector the user gave (or the cached query's selector)
+ * @returns Error to throw
+ */
+function actionScriptFailure(
+  error: ActionScriptError,
+  replaced: string[],
+  selector: string
+): CommandError {
+  if (replaced.length > 0) {
+    const err = actionBrokenByPageError(error.action, error.exception, replaced);
+    return new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.RESOURCE_CONFLICT
+    );
+  }
+  const err = actionScriptFailedError(error.action, error.exception, selector);
+  return new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.SOFTWARE_ERROR);
 }
 
 /**
@@ -630,19 +674,24 @@ function withBrokenHint(suggestion: string | undefined, replaced: string[]): str
 /**
  * Warn that the page replaced built-ins the page scripts use: they run in
  * the page's world, so the action may misbehave (the element itself was
- * found in bdg's world).
+ * found in bdg's world). The warning names the first few; `replacedBuiltins`
+ * lists them all.
  *
  * @param result - Script result
  * @param replaced - Built-ins the page replaced
  * @returns Result with the warning added to any it has
  */
-function withReplacedBuiltins<T extends { warning?: string }>(
+function withReplacedBuiltins<T extends { warning?: string; replacedBuiltins?: string[] }>(
   result: T,
   replaced: string[] | undefined
 ): T {
   if (!replaced || replaced.length === 0) return result;
   const warning = replacedBuiltinsWarning(replaced);
-  return { ...result, warning: result.warning ? `${result.warning}; ${warning}` : warning };
+  return {
+    ...result,
+    warning: result.warning ? `${result.warning}; ${warning}` : warning,
+    replacedBuiltins: replaced,
+  };
 }
 
 /**

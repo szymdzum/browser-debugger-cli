@@ -46,6 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `dom query`, `get`, `inspect`, `layout`, `audit`, `wait`, `form`, `a11y` and `screenshot` run in bdg's isolated world, which keeps the browser's built-ins.
   - When the page replaced the selector search, actions find their element in that world and say so. When an action fails on a page with replaced built-ins, the suggestion names them as a possible cause.
   - `dom eval`, `dom listeners` and `bdg cdp` stay in the page's world.
+- **Actions and `dom eval` on pages that replace built-ins** (#419):
+  - With `Element.prototype.matches` replaced, every `fill` and `click` said "Element is disabled". The disabled check now reads the element's own attributes.
+  - With MooTools 1.2 (or a replaced `Event`), `fill` wrote the value without firing input or change events and said "The element is no longer in the page" (87). Events now come from `document.createEvent`, and a failing action script is no longer mistaken for a removed element.
+  - When an action's script throws because the page made an API throw (`getBoundingClientRect`, `getComputedStyle`, `scrollIntoView`, `focus`, `dispatchEvent`, the `value` setter), the error names the replaced built-ins and what was thrown, exit 90. It said "Script execution failed: Uncaught at line 33, column 60", with bdg's own script source and generic troubleshooting. These DOM APIs are now in the replaced-built-ins check.
+  - The check reads CDP's description of each function, so a replaced `Function.prototype.toString` no longer hides tampering, and a broken `Function.prototype.call` no longer makes every built-in look replaced. Failures name all replaced built-ins; the warning names four, and `--json` lists all in `replacedBuiltins`.
+  - With the NodeList or Array iterator, `Array.prototype.push` or `Set` replaced, the selector search runs in bdg's world.
+  - `dom eval "({a:1,b:2})"` with `Object.keys` replaced printed `{"bogus": null}`, and with `Function.prototype.call` replaced, a lossy preview string. When the page replaced built-ins bdg's copy uses, the browser copies the result now, with a warning (JSON `warning`).
+  - With `Array.prototype.forEach` replaced, `click` warned that the page saw no mouse press; with `Array.from` replaced, select `fill` listed no options and the element description lost its classes.
 - **A crashed page is detected** (#384):
   - After a renderer crash, `bdg status` and `bdg peek` say `⚠ The page crashed at … (renderer gone); bdg page reload brings it back` (JSON `pageState.crashedAt`, `pageCrashedAt`).
   - Page commands fail at once with the new exit code 107 (`PAGE_CRASHED`), as do commands that were waiting on the page when it crashed. Before, the session looked active and `dom query` failed after 29 s with "The page was busy for 20s".

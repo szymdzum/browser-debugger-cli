@@ -9,7 +9,7 @@ import type { Protocol } from '@/connection/typed-cdp.js';
 import { submitNetworkBusyWarning, submitTimeoutError } from '@/errors/messages.js';
 import type { PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type { SubmitResult } from '@/ipc/protocol/domTypes.js';
-import { ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
+import { DISABLED_CAUSE_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
 import { throwIfInvalidSelector } from '@/runtime/dom/formFillHelpers/shared.js';
 import { FIND_ELEMENTS_JS, selectorArgsJS } from '@/runtime/dom/targetNode.js';
 import { summarizePendingRequests } from '@/runtime/page/loadingState.js';
@@ -76,7 +76,8 @@ const PREPARE_SUBMIT_SCRIPT = `
         f.matches('button:not([type]), button[type=submit], input[type=submit], input[type=image]')
       )
     : [];
-  if (submitters.length > 0 && submitters.every((f) => f.matches(':disabled'))) {
+  const disabled = (f) => (${DISABLED_CAUSE_JS})(f) !== null;
+  if (submitters.length > 0 && submitters.every(disabled)) {
     // A user could not submit: Enter does nothing while the default button is disabled
     return { action: 'fail', reason: 'disabled', error: 'The form\\'s submit button is disabled' };
   }
@@ -89,7 +90,7 @@ const PREPARE_SUBMIT_SCRIPT = `
   if (isForm) {
     // Like pressing Enter: the form's default button is the submitter, so its
     // name=value is sent too
-    const submitter = submitters.find((f) => !f.matches(':disabled'));
+    const submitter = submitters.find((f) => !disabled(f));
     const element = (${ELEMENT_IDENTITY_JS})(submitter || el);
     if (submitter) el.requestSubmit(submitter);
     else el.requestSubmit();

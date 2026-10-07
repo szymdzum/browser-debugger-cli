@@ -215,6 +215,8 @@ export interface DomEvalData {
   subtype?: string;
   /** URL of the iframe the script ran in (with `frame`; empty when it has none) */
   frame?: string;
+  /** Set when the page replaced built-ins bdg's copy of the result uses */
+  warning?: string;
 }
 
 /** An iframe of the page, as listed by `bdg dom frames` */

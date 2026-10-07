@@ -104,6 +104,8 @@ export interface ActionEffects {
   settled?: false;
   /** What the page was still working on (with `settled: false`) */
   pending?: PendingChanges;
+  /** All built-ins the page replaced that bdg's action scripts use (when the warning mentions them) */
+  replacedBuiltins?: string[];
 }
 
 /** A filled field's value differing from the one given */

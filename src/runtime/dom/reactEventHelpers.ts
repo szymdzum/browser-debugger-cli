@@ -14,8 +14,22 @@ import {
 } from '@/errors/messages.js';
 import type { FillResult, ClickResult } from '@/ipc/protocol/domTypes.js';
 import { REVEAL_SNAPSHOT_JS } from '@/runtime/dom/actionEffectsScripts.js';
-import { ELEMENT_DESCRIPTION_JS, ELEMENT_IDENTITY_JS } from '@/runtime/dom/elementInfo.js';
+import {
+  DISABLED_CAUSE_JS,
+  ELEMENT_DESCRIPTION_JS,
+  ELEMENT_IDENTITY_JS,
+} from '@/runtime/dom/elementInfo.js';
 import { FIND_ELEMENTS_JS, LABEL_CONTROL_JS } from '@/runtime/dom/targetNode.js';
+
+/**
+ * Page-side copy of a list (`select.options`, a NodeList) as an array,
+ * without `Array.from`, which pages replace.
+ */
+const LIST_JS = `(list) => {
+  const items = [];
+  for (let i = 0; i < list.length; i++) items[items.length] = list[i];
+  return items;
+}`;
 
 /**
  * Page-side read-back of a filled field: a mismatch when its value is not
@@ -36,7 +50,7 @@ export const FILL_VALUE_MISMATCH_JS = `(field, expected) => {
     : type === 'checkbox' || type === 'radio'
       ? (field.checked ? 'checked' : 'unchecked')
       : field.localName === 'select' && field.multiple
-        ? Array.from(field.selectedOptions).map((o) => o.value).join(', ')
+        ? (${LIST_JS})(field.selectedOptions).map((o) => o.value).join(', ')
         : String(field.value);
   const time = (text) => text.trim().replace(' ', 'T').replace(/(\\d\\d:\\d\\d):00(\\.0+)?$/, '$1');
   const normalize = (text) => {
@@ -91,9 +105,8 @@ export const FILL_REFUSAL_JS = `(el) => {
   });
   const tag = el.localName;
   if (tag === 'input' || tag === 'textarea' || tag === 'select') {
-    if (el.disabled || el.matches(':disabled')) {
-      return refuse('disabled', el.hasAttribute('disabled') ? 'disabled attribute' : el.closest('fieldset[disabled]') ? 'inside a disabled <fieldset>' : '');
-    }
+    const disabled = (${DISABLED_CAUSE_JS})(el);
+    if (disabled !== null) return refuse('disabled', disabled);
     return el.readOnly ? refuse('readOnly', 'readonly attribute') : null;
   }
   if (el.isContentEditable) return null;
@@ -124,6 +137,18 @@ export const SHADOW_FIELD_JS = `(el) => {
 }`;
 
 /**
+ * Page-side: fire a bubbling, non-cancelable event of a type on an element,
+ * like `new Event(type, { bubbles: true })`. The event comes from
+ * `document.createEvent`, which keeps working on pages that replace the
+ * `Event` constructor (MooTools 1.2 does).
+ */
+export const FIRE_EVENT_JS = `(target, type) => {
+  const event = target.ownerDocument.createEvent('Event');
+  event.initEvent(type, true, false);
+  return target.dispatchEvent(event);
+}`;
+
+/**
  * JavaScript function to fill an input element in a React-compatible way.
  *
  * This approach:
@@ -144,6 +169,8 @@ export const SHADOW_FIELD_JS = `(el) => {
 export const REACT_FILL_SCRIPT = `
 (function(selector, parts, value, options) {
   const allMatches = (${FIND_ELEMENTS_JS})(selector, parts);
+  const fire = ${FIRE_EVENT_JS};
+  const listOf = ${LIST_JS};
   const warnings = [];
   let expected = value;
   // Why a user could not reach the field (the value is still set, so scripted
@@ -255,7 +282,7 @@ export const REACT_FILL_SCRIPT = `
   if (tagName === 'select' && el.multiple) {
     // Several options, separated by commas (an option whose value contains a
     // comma matches as a whole); "" selects none
-    const options = Array.from(el.options);
+    const options = listOf(el.options);
     const whole = options.some((o) => o.value === value || o.text.trim() === value);
     const wanted = whole ? [value] : value.split(',').map((part) => part.trim()).filter(Boolean);
     const chosen = wanted.map((part) =>
@@ -273,11 +300,11 @@ export const REACT_FILL_SCRIPT = `
     }
     options.forEach((o) => { o.selected = chosen.includes(o); });
     expected = chosen.map((o) => o.value).join(', ');
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    fire(el, 'input');
+    fire(el, 'change');
   } else if (tagName === 'select') {
     // Match by option value first, then by visible label
-    const options = Array.from(el.options);
+    const options = listOf(el.options);
     const option =
       options.find((o) => o.value === value) ||
       options.find((o) => o.text.trim() === value);
@@ -292,8 +319,8 @@ export const REACT_FILL_SCRIPT = `
     }
     el.value = option.value;
     expected = option.value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    fire(el, 'input');
+    fire(el, 'change');
   } else if (inputType === 'checkbox' || inputType === 'radio') {
     // Toggle through a click, like a user: frameworks (React) track checkable
     // state via click events and revert a programmatic \`checked\` assignment
@@ -333,7 +360,7 @@ export const REACT_FILL_SCRIPT = `
     };
   } else if (el.isContentEditable) {
     el.textContent = value;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    fire(el, 'input');
   } else {
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
       el.ownerDocument.defaultView.HTMLInputElement.prototype,
@@ -375,8 +402,8 @@ export const REACT_FILL_SCRIPT = `
       };
     }
 
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    fire(el, 'input');
+    fire(el, 'change');
     if (el.validity && (el.validity.rangeOverflow || el.validity.rangeUnderflow)) {
       warnings.push('The value is outside the allowed range (' + (el.min || 'no minimum') + ' to ' + (el.max || 'no maximum') + '); the form will not submit until it is fixed');
     }
@@ -395,7 +422,7 @@ export const REACT_FILL_SCRIPT = `
       : inputType === 'password'
         ? '********'
         : tagName === 'select' && el.multiple
-          ? Array.from(el.selectedOptions).map((o) => o.value).join(', ')
+          ? listOf(el.selectedOptions).map((o) => o.value).join(', ')
           : el.value,
     element: (${ELEMENT_IDENTITY_JS})(el),
     elementType: tagName + viaLabel + viaShadow,
@@ -558,7 +585,7 @@ export const CLICK_ELEMENT_SCRIPT = `
     };
   }
   // Disabled elements still get hover (tooltips often explain why)
-  if (action !== 'hover' && (el.disabled || el.matches(':disabled'))) {
+  if (action !== 'hover' && (${DISABLED_CAUSE_JS})(el) !== null) {
     return {
       success: false,
       error: 'Element is disabled',
@@ -610,16 +637,16 @@ export const CLICK_ELEMENT_SCRIPT = `
   const fractions = [[0.5, 0.5], [0.5, 0.25], [0.5, 0.75], [0.25, 0.5], [0.75, 0.5], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
   const hasSize = rect.width > 0 && rect.height > 0;
   let point = null;
-  for (const [fx, fy] of hasSize ? fractions : [[0.5, 0.5]]) {
-    const candidate = toTopPage(area.left + area.width * fx, area.top + area.height * fy);
+  const tried = hasSize ? fractions : [[0.5, 0.5]];
+  for (let i = 0; i < tried.length; i++) {
+    const candidate = toTopPage(area.left + area.width * tried[i][0], area.top + area.height * tried[i][1]);
     point = point || candidate;
     if (hasSize && candidate.hittable) { point = candidate; break; }
   }
   const x = point.x;
   const y = point.y;
   const hittable = hasSize && point.hittable;
-  const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') +
-    (node.classList && node.classList.length ? '.' + Array.from(node.classList).slice(0, 2).join('.') : '');
+  const describe = ${ELEMENT_DESCRIPTION_JS};
   const coveredBy = () => {
     const root = el.getRootNode();
     const hit = (typeof root.elementFromPoint === 'function' ? root : el.ownerDocument)
@@ -641,11 +668,17 @@ export const CLICK_ELEMENT_SCRIPT = `
     const probe = { reached: false, landedOn: null };
     const markReached = (event) => {
       const path = event.composedPath();
-      if (path.includes(el)) probe.reached = true;
+      let reached = false;
+      for (let i = 0; i < path.length; i++) reached = reached || path[i] === el;
+      if (reached) probe.reached = true;
       else if (!probe.landedOn && path[0] && path[0].nodeType === 1) probe.landedOn = describe(path[0]);
     };
-    ['pointerdown', 'mousedown'].forEach((type) => view.addEventListener(type, markReached, true));
-    probe.stop = () => ['pointerdown', 'mousedown'].forEach((type) => view.removeEventListener(type, markReached, true));
+    view.addEventListener('pointerdown', markReached, true);
+    view.addEventListener('mousedown', markReached, true);
+    probe.stop = () => {
+      view.removeEventListener('pointerdown', markReached, true);
+      view.removeEventListener('mousedown', markReached, true);
+    };
     window.__bdgPressProbe = probe;
   }
 
