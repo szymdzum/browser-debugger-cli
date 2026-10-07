@@ -1527,3 +1527,13 @@ Examples:
 export function helpJsonDetailsNote(): string {
   return 'Option behaviors, defaults, choices and examples: bdg <command> --help --json (e.g. bdg dom query --help --json). Everything at once: bdg --help --json --full';
 }
+
+/**
+ * Pointer after a value cut for human output.
+ *
+ * @param count - Characters left out
+ * @returns e.g. `… 299800 more chars (use --full)`
+ */
+export function moreCharsNote(count: number): string {
+  return `… ${count} more chars (use --full)`;
+}

@@ -9,6 +9,7 @@ import type { ConsoleMessage } from '@/types.js';
 import { lastMessages } from './chronological.js';
 import {
   analyzeMessages,
+  capMessageText,
   newestGroups,
   type ConsoleFormatOptions,
   type ConsoleJsonOutput,
@@ -38,7 +39,9 @@ function toJsonError(dedup: DeduplicatedMessage, includeStackTrace: boolean): Js
 
 /**
  * Build the rich JSON output shape (summary + the newest deduped
- * errors/warnings, plus the message list when --list is requested).
+ * errors/warnings, plus the message list when --list is requested). Texts
+ * longer than 10000 characters are cut with
+ * `truncatedFrom`, unless `--full`.
  *
  * Returns a plain object so callers (e.g. runCommand's JSON envelope) can
  * embed it without re-parsing a stringified payload.
@@ -53,15 +56,19 @@ export function buildConsoleJsonOutput(
 
   const output: ConsoleJsonOutput = {
     summary,
-    errors: errors.shown.map((d) => toJsonError(d, true)),
-    warnings: warnings.shown.map((d) => toJsonError(d, false)),
+    errors: errors.shown.map((d) => capMessageText(toJsonError(d, true), options.full)),
+    warnings: warnings.shown.map((d) => capMessageText(toJsonError(d, false), options.full)),
     ...(errors.more > 0 && { moreErrors: errors.more }),
     ...(warnings.more > 0 && { moreWarnings: warnings.more }),
     ...(options.dropped && { dropped: options.dropped }),
     ...(options.pageCrashedAt !== undefined && { pageCrashedAt: options.pageCrashedAt }),
   };
 
-  if (options.list) output.messages = lastMessages(messages, options.last);
+  if (options.list) {
+    output.messages = lastMessages(messages, options.last).map((message) =>
+      capMessageText(message, options.full)
+    );
+  }
 
   return output;
 }

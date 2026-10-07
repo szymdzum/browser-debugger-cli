@@ -3,14 +3,13 @@
  * level prefixes, and navigation reload markers.
  */
 
+import { MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import type { ConsoleMessage } from '@/types.js';
+import { capForDisplay } from '@/ui/formatters/longValues.js';
 import { OutputFormatter } from '@/ui/formatting.js';
 import { consoleDroppedNote, consoleIndexGapNote } from '@/ui/messages/consoleMessages.js';
-import { truncateByLength } from '@/utils/strings.js';
 
 import { formatSourceLocation, formatTimestamp, type ConsoleFormatOptions } from './shared.js';
-
-const MAX_LIST_TEXT_LENGTH = 200;
 
 /**
  * Format console output as chronological list (--list mode).
@@ -62,8 +61,8 @@ export function formatConsoleChronological(
       lastNavigationId = msg.navigationId;
     }
 
-    const truncatedText = truncateByLength(msg.text, MAX_LIST_TEXT_LENGTH);
-    fmt.text(`${index}  ${level} ${time}  ${truncatedText}`);
+    const text = capForDisplay(msg.text, MAX_CONSOLE_TEXT_LENGTH, options.full);
+    fmt.text(`${index}  ${level} ${time}  ${text}`);
 
     const source = formatSourceLocation(msg.stackTrace);
     if (source) {

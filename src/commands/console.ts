@@ -17,6 +17,7 @@ import {
 import { handleValidationError } from '@/commands/shared/handleValidationError.js';
 import type { ConsoleCommandOptions } from '@/commands/shared/optionTypes.js';
 import { consoleLevelOption, positiveIntRule } from '@/commands/shared/validation.js';
+import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import type { ConsoleMessage } from '@/types.js';
 import { buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import {
@@ -174,6 +175,7 @@ function buildFormatOptions(
     last: lastN,
     history: options.history,
     level: options.level,
+    full: options.full,
     skipped,
   };
 }
@@ -214,12 +216,14 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
           list: true,
           last: 0,
           pageCrashedAt: crashedAt,
+          full: options.full,
         });
         console.log(JSON.stringify(buildSuccessResponse(data)));
       }
     } else {
       const text = formatConsoleFollowLines(backlog, {
         header: !started,
+        full: options.full,
         ...(navigated &&
           currentNavigationId !== undefined && { navigationId: currentNavigationId }),
       });
@@ -282,6 +286,12 @@ export function registerConsoleCommand(program: Command): void {
       ).argParser(consoleLevelOption)
     )
     .addOption(consoleLastOption)
+    .addOption(
+      new Option(
+        '--full',
+        `Print message texts whole (default: the first ${MAX_CONSOLE_TEXT_LENGTH} characters, ${MAX_CONSOLE_JSON_TEXT_LENGTH} in JSON)`
+      ).default(false)
+    )
     .addOption(jsonOption())
     .action(async (options: ConsoleCommandOptions) => {
       let lastN: number;

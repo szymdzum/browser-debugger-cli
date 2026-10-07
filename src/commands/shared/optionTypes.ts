@@ -166,7 +166,7 @@ export type DomQueryCommandOptions = BaseOptions & {
 export type DomGetCommandOptions = BaseOptions &
   RawOptions &
   SelectionOptions & {
-    /** All of the element's text instead of its first 500 characters (semantic output) */
+    /** All of the element's text (semantic output) or HTML (`--raw`), instead of its start */
     full?: boolean;
     /** Which match of the selector (0-based); `--nth` is its alias */
     index?: number;
@@ -179,6 +179,8 @@ export type DomScreenshotCommandOptions = BaseOptions & ScreenshotOptions;
 export interface DomEvalCommandOptions extends BaseOptions {
   /** Iframe to evaluate in: index, name/id attribute, or part of the name, id or URL */
   frame?: string;
+  /** The whole value instead of its first 20000 characters */
+  full?: boolean;
 }
 
 /** Options for DOM frames command */
@@ -398,6 +400,8 @@ export interface ConsoleCommandOptions extends BaseOptions {
   history?: boolean;
   /** Filter by message level (error, warning, info, debug) */
   level?: ConsoleLevel;
+  /** Message texts whole instead of cut */
+  full?: boolean;
 }
 
 /**
@@ -426,6 +430,8 @@ export interface PeekCommandOptions extends BaseOptions, PreviewDisplayOptions {
   type?: string;
   /** Refresh interval of --follow in ms (string from CLI, default: 1000) */
   interval?: string;
+  /** Console message texts whole instead of cut */
+  full?: boolean;
 }
 
 /**

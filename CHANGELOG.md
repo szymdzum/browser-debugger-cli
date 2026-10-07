@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **A slow Chrome start is no longer reported as "Port N is already in use"** (#435). When Chrome announced its port but `/json/version` did not answer within 5 s (a cold or busy machine), bdg took it for another process on the port. It now asks again until the launch deadline and reports a slow start (CHROME_LAUNCH_FAILED) if Chrome never answers. A real port conflict says what was found on the port.
 
+- **Long values are cut, with `--full` to get them whole** (#440). `dom get --raw` and `dom eval` printed a value whatever its length, and `peek` and the `console` summary printed console messages that `console --list` cuts. Now:
+  - `dom get --raw` (each element's HTML) and `dom eval` print the first 20000 characters followed by `… N more chars (use --full)`; in `--json` an `outerHTML` or a string eval result over 20000 characters is cut with `truncatedFrom` (its original length).
+  - `peek` and `console` (summary, `--list`, `--follow`) cut console message texts at 200 characters like `console --list` did, with the same pointer; in `--json` a text over 10000 characters is cut with `truncatedFrom`.
+  - `--full` on `dom get` (with `--raw` or `--node-id`; no longer rejected), `dom eval` (and `bdg eval`), `console` and `peek` prints the values whole, byte for byte.
+
+  On Wikipedia "United States": `dom get body --raw` 3.39 MB → 20 KB (`--json` 3.52 MB → 23 KB), `dom eval document.documentElement.outerHTML` 3.56 MB → 20 KB (`--json` 3.69 MB → 21 KB). On a page that logs a 500 KB string and throws a 100 KB Error: `peek` 600 KB → 0.8 KB (`--json` 601 KB → 21 KB), `console` 101 KB → 0.8 KB, `console --list --json` 701 KB → 31 KB.
+
 - **`bdg --help --json --full` documents `--headless`, `--no-headless` and `-a, --all`** (#442). Their behaviors were registered under a `start` command that does not exist; option behaviors are now looked up by the long flag (five dead duplicates removed), and a test fails when a behavior names no real option.
 
 ### Internal

@@ -21,6 +21,7 @@ import { handleValidationError } from '@/commands/shared/handleValidationError.j
 import type { PeekCommandOptions } from '@/commands/shared/optionTypes.js';
 import { MAX_LAST_ITEMS, positiveIntRule, resourceTypeRule } from '@/commands/shared/validation.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
+import { MAX_CONSOLE_JSON_TEXT_LENGTH, MAX_CONSOLE_TEXT_LENGTH } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import { intervalWithoutFollowError } from '@/errors/messages.js';
 import type { PeekSection } from '@/ipc/protocol/commands.js';
@@ -196,6 +197,7 @@ function previewDisplayOptions(options: PeekCommandOptions, lastN: number): Prev
     last: lastN,
     verbose: options.verbose,
     follow: options.follow,
+    full: options.full,
   };
 }
 
@@ -225,6 +227,11 @@ export function registerPeekCommand(program: Command): void {
     .option(
       '--type <types>',
       'Filter network requests by resource type (comma-separated: Document,XHR,Fetch,etc.)'
+    )
+    .option(
+      '--full',
+      `Print console message texts whole (default: the first ${MAX_CONSOLE_TEXT_LENGTH} characters, ${MAX_CONSOLE_JSON_TEXT_LENGTH} in JSON)`,
+      false
     )
     .action(async (options: PeekCommandOptions) => {
       showBothSectionsWhenBothRequested(options);

@@ -2,7 +2,9 @@
  * Shared types, constants, and helpers used by every console formatter.
  */
 
+import { MAX_CONSOLE_JSON_TEXT_LENGTH } from '@/constants.js';
 import type { ConsoleLevel, ConsoleMessage, StackFrame } from '@/types.js';
+import { capLength } from '@/utils/strings.js';
 
 export type { ConsoleLevel } from '@/types.js';
 
@@ -61,6 +63,8 @@ export interface ConsoleFormatOptions {
   dropped?: number | undefined;
   /** When the page crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number | undefined;
+  /** Print message texts whole (`--full`) */
+  full?: boolean | undefined;
 }
 
 /** Distinct errors and warnings the summary lists without `--last` */
@@ -101,6 +105,8 @@ export interface JsonErrorEntry {
   count: number;
   level: string;
   text: string;
+  /** Original length of `text` when it was cut (`--full` keeps it whole) */
+  truncatedFrom?: number;
   /** Position in the session's message list (what `details console <n>` takes) */
   index?: number;
   /** Where it came from; no line/column for a resource URL (e.g. a failed load) */
@@ -316,4 +322,22 @@ export function formatFramePosition(frame: StackFrame): string {
   return frame.lineNumber < 0
     ? frame.url
     : `${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1}`;
+}
+
+/**
+ * A console message (or error entry) for JSON output: its text cut to
+ * {@link MAX_CONSOLE_JSON_TEXT_LENGTH} characters with `truncatedFrom`, or
+ * whole with `--full`.
+ *
+ * @param message - Message with a text
+ * @param full - `--full`: keep the text whole
+ * @returns The message, with the text cut when too long
+ */
+export function capMessageText<T extends { text: string; truncatedFrom?: number }>(
+  message: T,
+  full: boolean | undefined
+): T {
+  if (full) return message;
+  const { text, truncatedFrom } = capLength(message.text, MAX_CONSOLE_JSON_TEXT_LENGTH);
+  return truncatedFrom === undefined ? message : { ...message, text, truncatedFrom };
 }

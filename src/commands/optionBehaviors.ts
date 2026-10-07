@@ -103,8 +103,12 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'get:--full': {
     default:
       'Semantic output shows the element text up to 500 characters (whitespace collapsed; close buttons such as "×" and aria-hidden icons left out)',
-    whenEnabled: 'Shows all of the element text; cannot be combined with --raw or --node-id',
-    tokenImpact: 'A page-sized container can add thousands of tokens; target the element you need',
+    whenEnabled:
+      'Shows all of the element text; with --raw (or --node-id) prints the whole outer HTML instead of its first 20000 characters, and JSON outerHTML is whole too (else cut to 20000 with truncatedFrom, the original length)',
+    automaticBehavior:
+      'Without --full, --raw output cuts each element\'s HTML at 20000 characters and ends it with "… N more chars (use --full)"',
+    tokenImpact:
+      'A page-sized container can add thousands of tokens; dom get body --raw --full on Wikipedia is about 3.4 MB. Target the element you need',
   },
   'get:--all': {
     default: 'Returns first matching element only',
@@ -150,7 +154,21 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     automaticBehavior:
       'The value is matched as: a 0-based index (bdg dom frames order: document order of the <iframe> elements, nested ones depth-first, main page not counted), else an exact name/id attribute, else a case-insensitive part of the name, id or URL. Several matches fail with 81 listing them; none fails with 83 listing all frames. Frames are looked up on every call (a reloaded iframe is found again). An index that names another frame than in the last bdg dom frames listing (iframes added, removed or moved, or the page navigated) fails with 87 STALE_CACHE: re-run bdg dom frames or pick the frame by name.',
   },
+  'eval:--full': {
+    default:
+      'Human output prints the first 20000 characters of the value followed by "… N more chars (use --full)"; in JSON a string result is cut to 20000 characters with truncatedFrom (the original length). Objects and arrays in JSON are not cut',
+    whenEnabled: 'Prints the whole value, byte for byte',
+    tokenImpact:
+      'dom eval document.documentElement.outerHTML on Wikipedia is about 3.6 MB with --full; select what you need in the expression instead',
+  },
 
+  'console:--full': {
+    default:
+      'Message texts are cut: human output (summary, --list, --follow) at 200 characters followed by "… N more chars (use --full)"; JSON text at 10000 characters with truncatedFrom (the original length)',
+    whenEnabled: 'Message texts are printed whole, in human and JSON output',
+    tokenImpact:
+      'A page that logs a large payload or throws a long error can add megabytes; bdg details console <n> shows one message whole',
+  },
   'console:--history': {
     default: 'Shows messages from current page load only (most recent navigation)',
     whenEnabled: 'Shows messages from ALL page loads during the session',
@@ -404,6 +422,12 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     tokenImpact: 'Reduces output ~50% for initial discovery',
   },
 
+  'peek:--full': {
+    default:
+      'Console message texts are cut: human output at 200 characters (compact output also at 2 lines) followed by "… N more chars (use --full)"; JSON text at 10000 characters with truncatedFrom (the original length)',
+    whenEnabled: 'Console message texts are printed whole, in human and JSON output',
+    tokenImpact: 'A page that logs a large payload can add megabytes per peek',
+  },
   'peek:--type': {
     whenEnabled:
       'Filters network requests by CDP resource type. Case-insensitive, comma-separated. Valid: Document, Stylesheet, Image, Media, Font, Script, XHR, Fetch, WebSocket, etc.',

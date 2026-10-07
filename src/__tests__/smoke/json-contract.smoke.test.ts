@@ -325,7 +325,7 @@ void describe('JSON contract', () => {
   });
 
   void it('returns large results intact through a pipe', async () => {
-    const result = await runCommand('dom', ['eval', "'x'.repeat(200000)", '--json'], {
+    const result = await runCommand('dom', ['eval', "'x'.repeat(200000)", '--json', '--full'], {
       readDelay: 500,
       timeout: 60000,
     });

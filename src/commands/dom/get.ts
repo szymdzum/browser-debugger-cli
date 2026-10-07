@@ -20,6 +20,7 @@ import {
 } from '@/commands/dom/semanticUtils.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomGetCommandOptions } from '@/commands/shared/optionTypes.js';
+import { MAX_VALUE_LENGTH } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
   conflictingOptionsError,
@@ -29,9 +30,11 @@ import {
   type ErrorWithSuggestion,
 } from '@/errors/messages.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
+import type { DomGetResult } from '@/types.js';
 import { formatDomGet } from '@/ui/formatters/dom.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { filterDefined } from '@/utils/objects.js';
+import { capLength } from '@/utils/strings.js';
 
 /** What `bdg dom get` reads without a selector */
 export const DOM_GET_DEFAULT_SELECTOR = 'body';
@@ -86,7 +89,7 @@ async function semanticElement(
  * Raw view: the element(s) with attributes and outer HTML.
  *
  * @param selectorOrIndex - CSS selector or cached index
- * @param options - Command options (`--all`, `--index`)
+ * @param options - Command options (`--all`, `--index`, `--full`)
  */
 async function handleRawGet(selectorOrIndex: string, options: DomGetCommandOptions): Promise<void> {
   await runCommand(
@@ -99,11 +102,30 @@ async function handleRawGet(selectorOrIndex: string, options: DomGetCommandOptio
             all: options.all,
             nth: matchIndex(options),
           }) as DomGetHelperOptions);
-      return { success: true, data: await getDOMElements(getOptions) };
+      return { success: true, data: rawGetData(await getDOMElements(getOptions), options) };
     },
     options,
-    formatDomGet
+    (data) => formatDomGet(data, { full: options.full })
   );
+}
+
+/**
+ * Raw elements for the output: in JSON each outer HTML is cut to
+ * {@link MAX_VALUE_LENGTH} characters with `truncatedFrom`, unless `--full`
+ * (human output is cut when formatted).
+ *
+ * @param result - Elements read
+ * @param options - `--json`, `--full`
+ * @returns Elements to output
+ */
+function rawGetData(result: DomGetResult, options: DomGetCommandOptions): DomGetResult {
+  if (!options.json || options.full) return result;
+  return {
+    nodes: result.nodes.map((node) => {
+      const { text, truncatedFrom } = capLength(node.outerHTML ?? '', MAX_VALUE_LENGTH);
+      return truncatedFrom === undefined ? node : { ...node, outerHTML: text, truncatedFrom };
+    }),
+  };
 }
 
 /**
@@ -150,9 +172,6 @@ function getOptionsConflict(
   if (options.nodeId !== undefined && selectorOrIndex !== undefined) {
     return conflictingOptionsError('--node-id', 'a selector or index');
   }
-  if (options.full && (options.raw || options.nodeId !== undefined)) {
-    return conflictingOptionsError('--full', options.raw ? '--raw' : '--node-id');
-  }
   if (options.index !== undefined && options.nth !== undefined) {
     return conflictingOptionsError('--index', '--nth');
   }
@@ -187,9 +206,9 @@ export async function handleDomGet(
   const { nodeId } = options;
   if (nodeId !== undefined) {
     await runCommand(
-      async () => ({ success: true, data: await getDOMElements({ nodeId }) }),
+      async () => ({ success: true, data: rawGetData(await getDOMElements({ nodeId }), options) }),
       options,
-      formatDomGet
+      (data) => formatDomGet(data, { full: options.full })
     );
     return;
   }

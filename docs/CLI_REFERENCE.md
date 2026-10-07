@@ -95,7 +95,10 @@ bdg peek --type Document        # Filter by resource type (Document requests onl
 bdg peek --type XHR,Fetch       # Multiple types (XHR or Fetch requests)
 bdg peek --json                 # JSON output
 bdg peek --verbose              # Verbose output (full URLs, resource types)
+bdg peek --full                 # Console message texts whole
 ```
+
+Console message texts are cut like `bdg console --list` cuts them: at 200 characters followed by `… N more chars (use --full)` (the compact view also at 2 lines). In `--json` a text over 10000 characters is cut with `truncatedFrom` (its original length). `--full` prints them whole.
 
 **Resource Type Filtering:**
 The `--type` flag filters network requests by CDP resource type. Case-insensitive, comma-separated.
@@ -285,7 +288,7 @@ bdg dom get ".nav-link"                       # First matching element
 bdg dom get ".nav-link" --index 2             # Third match (0-based; --nth is an alias)
 bdg dom get                                   # The body (default selector)
 bdg dom get "#content"                        # [Generic] <div> + a Text: line (up to 500 characters)
-bdg dom get "#content" --full                 # All of its text (not with --raw or --node-id)
+bdg dom get "#content" --full                 # All of its text
 bdg dom get "#tinymce"                        # [Generic] "Rich Text Area…" + Text: Your content… (name differs from the text)
 
 # Raw HTML output
@@ -293,11 +296,14 @@ bdg dom get "h1" --raw                        # Get full HTML with attributes
 bdg dom get "button" --raw --all             # Get all matching elements
 bdg dom get "button" --raw --index 2         # Get 3rd matching element (0-based)
 bdg dom get --node-id 123                    # Get by node id (from query/get --raw or a11y describe)
+bdg dom get body --raw --full                # All of the HTML (default: the first 20000 characters)
 
 # JSON output
 bdg dom get "h1" --json                       # A11y node structure as JSON
 bdg dom get "h1" --raw --json                # HTML as JSON
 ```
+
+`--raw` prints the first 20000 characters of each element's HTML followed by `… N more chars (use --full)`; in `--json` an `outerHTML` over 20000 characters is cut with `truncatedFrom` (its original length). `--full` prints it whole.
 
 **Semantic vs Raw HTML:**
 
@@ -565,6 +571,8 @@ bdg dom eval --json                               # JSON output with full Runtim
 Human output prints a string result as is (`My Page`, not `"My Page"`) unless that would read as
 another value: the empty string, `undefined` and strings that are valid JSON (`"42"`, `"[1,2]"`) stay
 JSON-quoted. Other values are printed as formatted JSON (`undefined` for no value). `--json` keeps the value in `data.result`.
+
+Long values are cut: human output prints the first 20000 characters followed by `… N more chars (use --full)`; in `--json` a string result over 20000 characters is cut with `truncatedFrom` (its original length; objects and arrays are not cut). `--full` prints the whole value (`bdg dom eval document.documentElement.outerHTML --full` is about 3.6 MB on Wikipedia).
 
 **Shell Quote Handling:**
 
@@ -1227,6 +1235,9 @@ bdg console -f
 
 # JSON output with summary statistics
 bdg console --json
+
+# Message texts whole
+bdg console --list --full
 ```
 
 **Default behavior:**
@@ -1237,6 +1248,7 @@ bdg console --json
 - Warnings listed with source location
 - The session keeps the newest 10000 messages: past that the oldest are dropped, and `console`, `peek` and their JSON (`dropped`, `totals.consoleDropped`) say how many (`⚠ 2001 older console messages were dropped: bdg keeps the newest 10000`). `console` without `--history` warns only while the oldest kept message is the current page's: otherwise the dropped ones came from earlier pages. Indices stay the same: `bdg details console <n>` with a dropped index says so
 - Summary count of info/debug messages
+- Message texts are cut at 200 characters followed by `… N more chars (use --full)`, in the summary, `--list` and `--follow`; in `--json` a text over 10000 characters is cut with `truncatedFrom` (its original length). `--full` prints them whole; `bdg details console <n>` shows one message whole
 - **Objects automatically expanded** with nested structure visible
 
 Use `--history` to see messages from all page loads during the session.

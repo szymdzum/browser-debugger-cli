@@ -9,17 +9,20 @@
 import { documentReadyState } from '@/commands/dom/helpers/query.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomEvalCommandOptions } from '@/commands/shared/optionTypes.js';
+import { MAX_VALUE_LENGTH } from '@/constants.js';
 import { emptyScriptError, withLoadingHint } from '@/errors/messages.js';
 import { domEval } from '@/ipc/client.js';
 import { formatDomEval } from '@/ui/formatters/dom.js';
 import { evalFrameLine, warningMessage } from '@/ui/messages/commands.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
+import { capLength } from '@/utils/strings.js';
 
 /**
  * Handle `bdg dom eval <script> [--frame <frame>]`. With `--frame`, the
  * frame the script ran in is a `Frame:` line on stderr (JSON: `frame`), and
  * a warning about how the result was copied goes there too (JSON:
- * `warning`), so stdout stays the bare value for pipes.
+ * `warning`), so stdout stays the bare value for pipes. Long values are cut
+ * (a string result in JSON with `truncatedFrom`) unless `--full`.
  */
 export async function handleDomEval(script: string, options: DomEvalCommandOptions): Promise<void> {
   await runCommand(
@@ -51,7 +54,7 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
       return {
         success: true,
         data: {
-          result: value,
+          ...jsonResult(value, options),
           type,
           ...(subtype && { subtype }),
           ...(frame !== undefined && { frame }),
@@ -61,8 +64,26 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
       };
     },
     options,
-    formatDomEval
+    (data) => formatDomEval(data, { full: options.full })
   );
+}
+
+/**
+ * The result field of the output: a string result in JSON cut to
+ * {@link MAX_VALUE_LENGTH} characters with `truncatedFrom`, unless `--full`
+ * (human output is cut when formatted).
+ *
+ * @param value - Evaluated value
+ * @param options - `--json`, `--full`
+ * @returns `result`, and `truncatedFrom` when cut
+ */
+function jsonResult(
+  value: unknown,
+  options: DomEvalCommandOptions
+): { result: unknown; truncatedFrom?: number } {
+  if (!options.json || options.full || typeof value !== 'string') return { result: value };
+  const { text, truncatedFrom } = capLength(value, MAX_VALUE_LENGTH);
+  return { result: text, ...(truncatedFrom !== undefined && { truncatedFrom }) };
 }
 
 /**
