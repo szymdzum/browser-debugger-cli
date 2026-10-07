@@ -17,6 +17,7 @@ import {
 } from '@/daemon/session/chromeConnection.js';
 import { startTelemetryCollectors } from '@/daemon/session/collectors.js';
 import { createCommandRegistry, type CommandRegistry } from '@/daemon/session/commandRegistry.js';
+import { withMatchedStylesReset } from '@/daemon/session/matchedStylesReset.js';
 import { teardownSession, type TeardownContext } from '@/daemon/session/teardown.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
@@ -202,7 +203,8 @@ export class Session {
    * Execute a registered command against this session. After a renderer
    * crash only {@link RUN_ON_CRASHED_PAGE} commands run (`bdg cdp` only for
    * {@link CRASH_SAFE_CDP} methods); others fail with exit 107 instead of
-   * waiting for a page that cannot answer.
+   * waiting for a page that cannot answer. Commands that may change the page
+   * drop `dom inspect`'s kept matched rules ({@link withMatchedStylesReset}).
    *
    * @param name - Command name
    * @param params - Command parameters
@@ -223,7 +225,8 @@ export class Session {
     if (crashedAt !== undefined && needsPage) {
       return Promise.reject(pageCrashedCommandError(crashedAt));
     }
-    return this.registry[name](this.cdp, params);
+    const cdp = this.cdp;
+    return withMatchedStylesReset(cdp, name, () => this.registry[name](cdp, params));
   }
 
   /**

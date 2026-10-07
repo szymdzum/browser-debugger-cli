@@ -329,4 +329,13 @@ void describe('dom inspect', () => {
     assert.match(output, /2 elements match; inspected the first visible one \(\[1\]\)/);
     await bdg(['dom', 'inspect', '#nope'], 83);
   });
+
+  void it('reads the rules again after a click changes :checked', async () => {
+    await bdg(['page', 'navigate', `${fixture.url}inspect-state`]);
+    const before = await bdg(['dom', 'inspect', '#c', '--rules', '--props', 'color']);
+    assert.match(before, /\nrules +color red ← #c /);
+    await bdg(['dom', 'click', '#c']);
+    const after = await bdg(['dom', 'inspect', '#c', '--rules', '--props', 'color']);
+    assert.match(after, /\nrules +color blue ← #c:checked .* over #c/);
+  });
 });

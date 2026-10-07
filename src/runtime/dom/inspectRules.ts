@@ -48,6 +48,25 @@ export function styleSheetHeaders(cdp: CDPConnection): Iterable<Protocol.CSS.CSS
   return headersByConnection.get(cdp)?.values() ?? [];
 }
 
+/** Time allowed for the matched rules behind the default hints; a read within it clears the slow mark */
+export const HINTS_BUDGET_MS = 1000;
+
+/** Time allowed for them with --rules or --why */
+export const RULES_BUDGET_MS = 5000;
+
+/** Answers that came faster are not kept: reading again is cheap and always current */
+const KEEP_ANSWERS_SLOWER_THAN_MS = 300;
+
+/**
+ * How long a kept answer is reused. Page state such as `:checked`, `:hover`
+ * or `:focus` changes without any CDP event, so answers are kept only briefly
+ * (and dropped by every command that may change the page, see {@link resetMatchedStyles}).
+ */
+const KEPT_ANSWER_TTL_MS = 5000;
+
+/** Answers kept per document (one can be several MB on CSS-heavy pages) */
+const MAX_KEPT_ANSWERS = 4;
+
 /** Matched styles of an element, or why they are missing */
 export type MatchedStyles =
   Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed' | 'skipped';
@@ -56,26 +75,29 @@ export type MatchedStyles =
 interface MatchedRequest {
   promise: Promise<Protocol.CSS.GetMatchedStylesForNodeResponse | 'failed'>;
   answer?: Protocol.CSS.GetMatchedStylesForNodeResponse | 'failed';
+  /** The document it was sent for ({@link DocumentStyles.document}) */
+  document: number;
+  /** When a kept answer stops being reused */
+  expiresAt?: number;
 }
 
 /** What is known about the matched styles of the current document */
 interface DocumentStyles {
-  /** Requests by node id, least recently used first */
+  /** Requests running, and kept answers, by node id, least recently used first */
   requests: Map<number, MatchedRequest>;
   /** The request Chrome is working on */
   running?: Promise<unknown> | undefined;
-  /** A read took longer than its budget on this document */
+  /** A request took longer than its caller's budget on this document */
   slow: boolean;
+  /** Counts documents, so a late answer for an earlier one changes nothing */
+  document: number;
 }
 
-/** Answers kept per document (one can be several MB on CSS-heavy pages) */
-const MAX_KEPT_ANSWERS = 4;
+/** Stylesheet events: kept answers are dropped and the slow mark cleared */
+const STYLESHEET_EVENTS = ['CSS.styleSheetAdded', 'CSS.styleSheetChanged', 'CSS.styleSheetRemoved'];
 
-/** Events after which kept answers may be stale (a navigation resets everything) */
+/** Other events after which kept answers may be stale */
 const STYLE_CHANGE_EVENTS = [
-  'CSS.styleSheetAdded',
-  'CSS.styleSheetChanged',
-  'CSS.styleSheetRemoved',
   'CSS.mediaQueryResultChanged',
   'DOM.attributeModified',
   'DOM.attributeRemoved',
@@ -92,8 +114,10 @@ const documentStylesByConnection = new WeakMap<CDPConnection, DocumentStyles>();
 
 /**
  * The matched-styles state of a connection, tracked from its first use: a
- * new document (`DOM.documentUpdated`) starts afresh, style and DOM changes
- * drop the kept answers. Events of other sessions (iframes) are ignored.
+ * new document (`DOM.documentUpdated`) starts afresh (a request still running
+ * for the old one no longer holds back new ones), stylesheet changes drop the
+ * kept answers and the slow mark, style and DOM changes the kept answers.
+ * Events of other sessions (iframes) are ignored.
  *
  * @param cdp - CDP connection
  * @returns State
@@ -101,13 +125,22 @@ const documentStylesByConnection = new WeakMap<CDPConnection, DocumentStyles>();
 function documentStyles(cdp: CDPConnection): DocumentStyles {
   const existing = documentStylesByConnection.get(cdp);
   if (existing) return existing;
-  const state: DocumentStyles = { requests: new Map(), slow: false };
+  const state: DocumentStyles = { requests: new Map(), slow: false, document: 0 };
   documentStylesByConnection.set(cdp, state);
   cdp.on('DOM.documentUpdated', (_params, sessionId) => {
     if (sessionId) return;
+    state.document++;
     state.requests.clear();
+    state.running = undefined;
     state.slow = false;
   });
+  for (const event of STYLESHEET_EVENTS) {
+    cdp.on(event, (_params, sessionId) => {
+      if (sessionId) return;
+      state.requests.clear();
+      state.slow = false;
+    });
+  }
   for (const event of STYLE_CHANGE_EVENTS) {
     cdp.on(event, (_params, sessionId) => {
       if (!sessionId) state.requests.clear();
@@ -117,8 +150,45 @@ function documentStyles(cdp: CDPConnection): DocumentStyles {
 }
 
 /**
- * Send a matched-styles request and keep it, dropping the least recently
- * used answers beyond {@link MAX_KEPT_ANSWERS}. A failed one is not kept.
+ * Forget the kept answers of a connection (requests still running stay
+ * shared). For commands that may change the page in ways CDP reports no
+ * event for: clicks, typing, hovering, scripts, emulation.
+ *
+ * @param cdp - CDP connection
+ */
+export function resetMatchedStyles(cdp: CDPConnection): void {
+  documentStylesByConnection.get(cdp)?.requests.clear();
+}
+
+/**
+ * Record an answer: a fast one clears the slow mark and is dropped, a slow
+ * one is kept for {@link KEPT_ANSWER_TTL_MS}, a failed one is dropped.
+ *
+ * @param state - Document state
+ * @param nodeId - Node id of the element
+ * @param request - The request
+ * @param tookMs - How long Chrome took
+ */
+function settleRequest(
+  state: DocumentStyles,
+  nodeId: number,
+  request: MatchedRequest,
+  tookMs: number
+): void {
+  if (state.running === request.promise) state.running = undefined;
+  if (request.document !== state.document) return;
+  const answered = request.answer !== 'failed';
+  if (answered && tookMs <= HINTS_BUDGET_MS) state.slow = false;
+  if (answered && tookMs > KEEP_ANSWERS_SLOWER_THAN_MS) {
+    request.expiresAt = Date.now() + KEPT_ANSWER_TTL_MS;
+  } else if (state.requests.get(nodeId) === request) {
+    state.requests.delete(nodeId);
+  }
+}
+
+/**
+ * Send a matched-styles request and share it while it runs, dropping the
+ * least recently used entries beyond {@link MAX_KEPT_ANSWERS}.
  *
  * @param cdp - CDP connection
  * @param state - Document state
@@ -130,7 +200,9 @@ function sendMatchedRequest(
   state: DocumentStyles,
   nodeId: number
 ): MatchedRequest {
+  const sentAt = Date.now();
   const request: MatchedRequest = {
+    document: state.document,
     promise: cdp
       .send('CSS.getMatchedStylesForNode', { nodeId })
       .then((response) => response as Protocol.CSS.GetMatchedStylesForNodeResponse)
@@ -142,10 +214,7 @@ function sendMatchedRequest(
   state.running = request.promise;
   void request.promise.then((answer) => {
     request.answer = answer;
-    if (state.running === request.promise) state.running = undefined;
-    if (answer === 'failed' && state.requests.get(nodeId) === request) {
-      state.requests.delete(nodeId);
-    }
+    settleRequest(state, nodeId, request, Date.now() - sentAt);
   });
   state.requests.set(nodeId, request);
   for (const oldest of state.requests.keys()) {
@@ -153,6 +222,23 @@ function sendMatchedRequest(
     state.requests.delete(oldest);
   }
   return request;
+}
+
+/**
+ * The element's request still running or kept answer, unless expired;
+ * marked as the most recently used.
+ *
+ * @param state - Document state
+ * @param nodeId - Node id of the element
+ * @returns The request, or undefined
+ */
+function keptRequest(state: DocumentStyles, nodeId: number): MatchedRequest | undefined {
+  const kept = state.requests.get(nodeId);
+  if (!kept) return undefined;
+  state.requests.delete(nodeId);
+  if (kept.expiresAt !== undefined && kept.expiresAt <= Date.now()) return undefined;
+  state.requests.set(nodeId, kept);
+  return kept;
 }
 
 /**
@@ -181,17 +267,20 @@ async function requestWhenFree(
 
 /**
  * The rules that match an element, with its inline style and what its
- * ancestors pass down, or why they are missing. An answer (or a request
- * still running) for the element is reused until the document, its
- * stylesheets or its DOM change; another element's request is sent only
- * after the one Chrome is working on, within the budget. Once a read took
- * longer than its budget, `skipWhenSlow` reads on the same document return
- * `skipped` at once unless the answer is already there.
+ * ancestors pass down, or why they are missing. A request still running for
+ * the element is shared; a slow answer (over {@link KEEP_ANSWERS_SLOWER_THAN_MS})
+ * is reused for {@link KEPT_ANSWER_TTL_MS} unless the document, its
+ * stylesheets or its DOM change or a command may have changed the page.
+ * Another element's request is sent only after the one Chrome is working on,
+ * within the budget. When the request this call sent or shared outlasts the
+ * budget, the document is marked slow: `skipWhenSlow` reads then return
+ * `skipped` at once (unless the answer is kept) until a read is fast again,
+ * a stylesheet changes or the page navigates.
  *
  * @param cdp - CDP connection
  * @param nodeId - Node id of the element
  * @param budgetMs - Time allowed
- * @param options - `skipWhenSlow`: do not wait on a document known to be slow (the default hints)
+ * @param options - `skipWhenSlow`: do not wait on a document marked slow (the default hints)
  * @returns Matched styles, `timeout` (longer than the budget), `failed` (CDP error)
  *   or `skipped` (slow document)
  */
@@ -202,18 +291,15 @@ export async function matchedStyles(
   options: { skipWhenSlow?: boolean } = {}
 ): Promise<MatchedStyles> {
   const state = documentStyles(cdp);
-  const kept = state.requests.get(nodeId);
-  if (kept) {
-    state.requests.delete(nodeId);
-    state.requests.set(nodeId, kept);
-  }
+  const kept = keptRequest(state, nodeId);
   if (kept?.answer) return kept.answer;
   if (options.skipWhenSlow && state.slow) return 'skipped';
   const deadline = Date.now() + budgetMs;
   const request = kept ?? (await requestWhenFree(cdp, state, nodeId, deadline));
-  const answer = request && (await raceTimeout(request.promise, deadline - Date.now()));
+  if (!request) return 'timeout';
+  const answer = await raceTimeout(request.promise, deadline - Date.now());
   if (answer) return answer;
-  state.slow = true;
+  if (request.document === state.document) state.slow = true;
   return 'timeout';
 }
 
