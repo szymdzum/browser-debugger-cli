@@ -817,6 +817,8 @@ After `dom fill` the field's value is read back. When it is not the value given 
 
 Failed requests have `failed: true` and `errorText` (no `status`).
 
+A file input takes local file paths (relative to the current directory) and uploads those files to the page: only pass files the task needs.
+
 Interactions run one at a time per session (concurrent `pressKey` calls no longer interleave). Values the browser would not take as given (a color that is not `#rrggbb`, a range value outside min/max or off-step, an unparseable number or date) fail with exit 81 and leave the field's previous value; a number outside min/max is filled with a warning.
 
 ```bash
