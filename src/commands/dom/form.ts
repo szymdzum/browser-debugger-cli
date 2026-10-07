@@ -8,12 +8,13 @@
 import type { Command } from 'commander';
 
 import { calculateSummary, orderForms, primaryButtonIndex } from '@/commands/dom/formSummary.js';
-import { resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
+import { pageDocumentId, resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { FormCommandOptions } from '@/commands/shared/optionTypes.js';
 import { noFormsFoundError, formInIframeError } from '@/errors/messages.js';
 import { domFormDiscover } from '@/ipc/client.js';
+import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
 import type {
   FormDiscoveryResult,
   DiscoveredForm,
@@ -113,16 +114,14 @@ function buildFieldState(raw: RawField): FieldState {
 }
 
 /**
- * Build masked value for password fields.
+ * The masked value of a sensitive field (the page script never sends its
+ * real value).
  *
  * @param raw - Raw field data
  * @returns Masked value string
  */
 function buildMaskedValue(raw: RawField): string | undefined {
-  if (raw.inputType === 'password' && typeof raw.value === 'string' && raw.value.length > 0) {
-    return '•'.repeat(Math.min(raw.value.length, 8));
-  }
-  return undefined;
+  return raw.value === MASKED_VALUE ? MASKED_VALUE : undefined;
 }
 
 /**
@@ -292,8 +291,12 @@ function transformForm(raw: RawForm): DiscoveredForm {
  * the selector later.
  *
  * @param forms - Discovered forms
+ * @param document - Identity of the page document they were found in, read before discovery
  */
-async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
+async function cacheFormElements(
+  forms: DiscoveredForm[],
+  document: string | undefined
+): Promise<void> {
   const elements = forms.flatMap((form) => [...form.fields, ...form.buttons]);
   const backendNodeIds = await resolveBackendNodeIds(elements.map((el) => el.selector)).catch(
     (error: unknown) => {
@@ -302,15 +305,18 @@ async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
     }
   );
 
-  await QueryCacheManager.getInstance().set({
-    selector: FORM_DISCOVERY_CACHE_SELECTOR,
-    count: elements.length,
-    nodes: elements.map((el, i) => ({
-      index: el.index,
-      nodeId: backendNodeIds[i] ?? 0,
-      selector: el.selector,
-    })),
-  });
+  await QueryCacheManager.getInstance().set(
+    {
+      selector: FORM_DISCOVERY_CACHE_SELECTOR,
+      count: elements.length,
+      nodes: elements.map((el, i) => ({
+        index: el.index,
+        nodeId: backendNodeIds[i] ?? 0,
+        selector: el.selector,
+      })),
+    },
+    document
+  );
 
   log.debug(`Cached ${elements.length} form elements`);
 }
@@ -323,6 +329,7 @@ async function cacheFormElements(forms: DiscoveredForm[]): Promise<void> {
 async function handleFormCommand(options: FormCommandOptions): Promise<void> {
   await runCommand(
     async () => {
+      const document = await pageDocumentId();
       const response = await domFormDiscover();
       if (response.status === 'error' || !response.data) {
         return {
@@ -373,7 +380,7 @@ async function handleFormCommand(options: FormCommandOptions): Promise<void> {
       const forms = options.all ? allForms : [allForms[0] as DiscoveredForm];
 
       // Cache ALL forms so global indices work with bdg dom fill/click
-      await cacheFormElements(allForms);
+      await cacheFormElements(allForms, document);
 
       const result: FormDiscoveryResult = {
         formCount: rawData.forms.length,

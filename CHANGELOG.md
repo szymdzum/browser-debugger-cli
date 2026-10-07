@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`dom form --json` no longer contains passwords** (#416). It printed a password field's plaintext value in `fields[].value`, next to the masked one. Now the value of a sensitive field (password, card or one-time code, a field named like one) never leaves the page: it reads `••••` when filled, and a hidden input's value is left out, as everywhere else in bdg.
+- **A cached index is never used on another page's element** (#416). After a query on one site and a navigation to another (a new renderer process), the new page reuses the old backend node ids, so `dom click 500` clicked an unrelated element on the new page with exit 0. Cached results now record the document they came from, and an index of an earlier document exits 87 (`no longer in the page`).
 - **Session list and skill install leftovers** (#390):
   - `bdg install-skill` keeps a copy that differs from the one it installs as `SKILL.md.bak` and says so (JSON `backup`). An edited skill was overwritten without a trace.
   - `bdg stop` returns once the daemon has exited (up to 3 s, then a warning). A `bdg sessions` right after it listed the session as `starting`; a daemon still running without its socket is now `ending`.

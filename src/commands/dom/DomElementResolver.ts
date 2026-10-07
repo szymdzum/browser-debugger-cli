@@ -19,6 +19,7 @@
  * ```
  */
 
+import { pageDocumentId } from '@/commands/dom/helpers/query.js';
 import { noActiveSessionError } from '@/commands/shared/CommandRunner.js';
 import { CommandError } from '@/errors/index.js';
 import {
@@ -195,7 +196,9 @@ export class DomElementResolver {
    *
    * @param index - Zero-based index
    * @returns Cached node and the query's selector
-   * @throws CommandError (83) without a session, (81) without a usable cache, (87) for an index outside the cached results
+   * @throws CommandError (83) without a session, (81) without a usable cache,
+   *   (87) for an index outside the cached results or of a page document
+   *   that has since been replaced (another page's elements reuse its node ids)
    */
   private async lookup(
     index: number
@@ -209,8 +212,12 @@ export class DomElementResolver {
         EXIT_CODES.INVALID_ARGUMENTS
       );
     }
-    const { nodes, selector, count } = validation.cache;
+    const { nodes, selector, count, document } = validation.cache;
     const source = indexSourceOf(index, selector);
+    if (document !== undefined && (await pageDocumentId()) !== document) {
+      const err = staleNodeError(index, source);
+      throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
+    }
     const node = nodes.find((n) => n.index === index);
     if (!node) {
       const err = cachedIndexOutOfRangeError(source, nodes.length, count);

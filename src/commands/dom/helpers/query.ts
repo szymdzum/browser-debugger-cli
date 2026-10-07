@@ -895,3 +895,28 @@ export async function assertNodeAttached(
     throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.STALE_CACHE);
   }
 }
+
+/**
+ * Identity of the page's current document: its time origin, which every
+ * document load gets anew. Cached backend node ids belong to one document; a
+ * page loaded in a new renderer process reuses the same ids for other
+ * elements, so an index of an older document must not be used.
+ *
+ * @returns The identity, or undefined when the page cannot be asked
+ * @throws CommandError when the page is busy (102) or crashed (107), as the
+ *   command itself would
+ */
+export async function pageDocumentId(): Promise<string | undefined> {
+  try {
+    const evaluated = await callBdgScript('Runtime.evaluate', {
+      expression: 'String(performance.timeOrigin)',
+      returnByValue: true,
+    });
+    const { result } = (evaluated.data?.result ?? {}) as Partial<Protocol.Runtime.EvaluateResponse>;
+    return typeof result?.value === 'string' ? result.value : undefined;
+  } catch (error) {
+    if (error instanceof CommandError) throw error;
+    log.debug(`Page document not identified: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+}

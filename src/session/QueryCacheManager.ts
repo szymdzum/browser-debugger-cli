@@ -114,11 +114,18 @@ export class QueryCacheManager {
    * Store a query result.
    *
    * @param result - Query result whose nodes carry backend node ids
+   * @param document - Identity of the page document queried
+   *   ({@link pageDocumentId}): backend node ids are only meaningful in it, and
+   *   a page in a new renderer process reuses them for other elements
    */
-  async set(result: DomQueryResult): Promise<void> {
+  async set(result: DomQueryResult, document?: string): Promise<void> {
     try {
       const cachePath = this.getCachePath();
-      await writeFile(cachePath, JSON.stringify({ version: CACHE_VERSION, ...result }), 'utf-8');
+      await writeFile(
+        cachePath,
+        JSON.stringify({ version: CACHE_VERSION, ...result, ...(document && { document }) }),
+        'utf-8'
+      );
       log.debug(`Cached ${result.nodes.length} query results to ${cachePath}`);
     } catch (error) {
       log.debug(`Failed to write query cache: ${getErrorMessage(error)}`);
