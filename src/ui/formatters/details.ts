@@ -198,13 +198,14 @@ function requestSummaryRows(request: NetworkRequest): Array<[string, string]> {
 
 /**
  * Add a header block, a header sent several times one value per line
- * ({@link headerValueLines}).
+ * ({@link headerValueLines}); nothing when there are no headers.
  *
  * @param fmt - Formatter
  * @param title - Block title
  * @param headers - Headers to list
  */
 function addHeaders(fmt: OutputFormatter, title: string, headers: Record<string, string>): void {
+  if (Object.keys(headers).length === 0) return;
   fmt.text(title).separator('━', 70);
   Object.entries(headers).forEach(([key, value]) =>
     headerValueLines(key, value).forEach((line) => fmt.text(`  ${key}: ${line}`))

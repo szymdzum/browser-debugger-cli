@@ -9,7 +9,7 @@ import {
   getRequestState,
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
-import { pageCrashedNote } from '@/ui/messages/commands.js';
+import { withPageCrashedNote } from '@/ui/messages/commands.js';
 import {
   PREVIEW_EMPTY_STATES,
   PREVIEW_HEADERS,
@@ -156,9 +156,7 @@ function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions):
   const body = options.verbose
     ? formatPreviewVerbose(output, options)
     : formatPreviewCompact(output, options);
-  return output.pageCrashedAt === undefined
-    ? body
-    : `${pageCrashedNote(output.pageCrashedAt)}\n\n${body}`;
+  return withPageCrashedNote(body, output.pageCrashedAt);
 }
 
 /**

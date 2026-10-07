@@ -95,16 +95,36 @@ function closestOption(flag: string, command: Command): string | undefined {
 }
 
 /**
+ * The option as typed, for one Commander split: it reads `-josn` as `-j`
+ * (`--json`) followed by `-osn`, and reports `-osn` as unknown.
+ *
+ * @param flag - Option Commander reported, e.g. "-osn"
+ * @param argv - Process arguments
+ * @returns The argument it came from, e.g. "-josn", else the option itself
+ */
+function typedOption(flag: string, argv: string[]): string {
+  if (flag.startsWith('--')) return flag;
+  const rest = flag.slice(1);
+  return (
+    argv.find((arg) => /^-[^-]/.test(arg) && arg.length > flag.length && arg.endsWith(rest)) ?? flag
+  );
+}
+
+/**
  * Message and suggestion for a Commander usage error: a did-you-mean for an
  * unknown option or command, otherwise a pointer to the command's `--help`.
+ * A word typed after a single dash (`-josn`) is matched against the long
+ * options.
  *
  * @param error - Commander error (not a help or version display)
  * @param command - Command the error came from (see resolveCommand)
+ * @param argv - Process arguments (to name an option as typed)
  * @returns Message and suggestion
  */
 export function usageErrorDetails(
   error: CommanderError,
-  command: Command
+  command: Command,
+  argv: string[] = process.argv
 ): { message: string; suggestion: string } {
   const help = usageHelpSuggestion(commandPath(command));
   if (error.code === 'commander.help') {
@@ -113,6 +133,10 @@ export function usageErrorDetails(
   const { message, suggestion } = splitCommanderHint(error.message);
   const flag = error.code === 'commander.unknownOption' && UNKNOWN_OPTION.exec(message)?.[1];
   if (!flag) return { message, suggestion: suggestion ?? help };
-  const closest = closestOption(flag, command);
-  return { message, suggestion: closest ? `Did you mean: ${closest}?` : help };
+  const typed = typedOption(flag, argv);
+  const closest = closestOption(/^-[^-]../.test(typed) ? `-${typed}` : typed, command);
+  return {
+    message: message.replace(`'${flag}'`, `'${typed}'`),
+    suggestion: closest ? `Did you mean: ${closest}?` : help,
+  };
 }

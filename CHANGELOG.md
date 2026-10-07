@@ -20,6 +20,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Leftovers of the 0.13 retest** (#420):
+  - `bdg <url>` after a daemon crash that also lost `chrome.pid` failed with exit 100 (`profile in use`): the start now kills the session's leftover Chrome by its `--bdg-session-dir` marker, as `bdg cleanup` does, unless another daemon of the session still runs.
+  - `bdg cleanup` said `already clean` after it removed the record of a session that ended without `bdg stop`; that now counts as cleaned (JSON `cleaned.session`).
+  - `bdg install-skill`: when one target cannot be written, the other is still installed and the error lists it with its backup (JSON `skills`); a failed write no longer replaces `SKILL.md.bak` first; a backup of a read-only copy gets the normal file mode; a file in the path is reported as such, not as a permission problem.
+  - `CI=false` and `CI=0` no longer count as CI (Chrome kept its window).
+  - `console --follow` and `network list --follow` report a page crash once (JSON: a line with `pageCrashedAt`); `bdg console` and `bdg network list` start with the crash warning, like `status` and `peek`.
+  - A click that only logged console messages is no longer reported as having no visible effect.
+  - `details network` leaves out an empty header section; it printed a bare `Request Headers:`.
+  - Element labels leave out class fragments like `brush:` (from `class="brush: html"`); a shadow host read `<mdn-code-example.brush:>`.
+  - `bdg console` warns about dropped messages only when they could be of the page shown (always with `--history`).
+  - The peek tip reads `bdg peek --last 50 or bdg peek --verbose` (it read like a pipe); follow modes print their banner once (on stderr).
+  - `bdg netwrk list` suggests `bdg network` (it said `too many arguments`); `-josn` suggests `--json` (it said `unknown option '-osn'`).
+  - `dom get` on a long heading with inline children printed its text twice (name and `Text:`).
+  - `bdg cdp Network` lists the domain's methods, as `--list` does; a method whose result reports a page exception (`exceptionDetails`, e.g. `Runtime.evaluate` of a throwing script) exits 91 with the exception, as `dom eval` does.
+  - Conflicting options (`dom get --raw --full`, `dom click --double --right`, `dom get --all` without `--raw`) have a `suggestion`.
+  - `dom get --help --json` said a cached index past the end exits 81; it exits 87.
+  - `dom query` says when it lists more matches than it checked visibility for (the first 100; JSON `viewportChecked`), and an index past the last match names the total (`1144 results`), not the 1000 indexed.
+
 - **Web components read as they render** (#418). `dom get`, `dom query` and `dom layout` showed only light-DOM text, so a component often read `No text and no child elements` where a user sees text. Now:
   - previews, `dom get` text, `dom inspect` text and the `(in shadow root of <host "…">)` label read a component through its shadow root: its own labels (a field label, a dialog title), the fallback content of an empty slot, slotted content in place of its slot. Light-DOM text that no slot shows is left out.
   - block-level parts are set apart: `Named Title One Default body one` and `Blue Widget $19.99` were glued as `Named Title OneDefault body one` and `Blue Widget$19.99`.

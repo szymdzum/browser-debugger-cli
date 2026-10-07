@@ -66,7 +66,7 @@ function read(fields: Partial<ReadSnapshot> = {}): ReadSnapshot {
   return { href: 'https://shop.test/cart', fresh: false, changes: 0, messages: [], ...fields };
 }
 
-const NOTHING_ELSE = { requests: 0, dialogs: 0, opened: false };
+const NOTHING_ELSE = { requests: 0, dialogs: 0, opened: false, consoleMessages: 0 };
 
 void describe('newMessages', () => {
   void it('reports a message that appeared, but not one that was already shown', () => {
@@ -192,8 +192,9 @@ void describe('hadNoEffect', () => {
     assert.equal(hadNoEffect(read(), {}, NOTHING_ELSE), true);
   });
 
-  void it('does not claim it after a change, request, dialog, window or navigation', () => {
+  void it('does not claim it after a change, request, dialog, window, console message or navigation', () => {
     assert.equal(hadNoEffect(read({ changes: 1 }), {}, NOTHING_ELSE), false);
+    assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, consoleMessages: 3005 }), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, requests: 1 }), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, dialogs: 1 }), false);
     assert.equal(hadNoEffect(read(), {}, { ...NOTHING_ELSE, opened: true }), false);

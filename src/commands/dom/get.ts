@@ -22,10 +22,11 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomGetCommandOptions } from '@/commands/shared/optionTypes.js';
 import { CommandError } from '@/errors/index.js';
 import {
-  conflictingOptionsMessage,
+  conflictingOptionsError,
   indexWithIndexOptionError,
   nodeIdNotFoundError,
-  optionRequiresMessage,
+  optionRequiresError,
+  type ErrorWithSuggestion,
 } from '@/errors/messages.js';
 import { resolveA11yNode } from '@/telemetry/a11y.js';
 import { formatDomGet } from '@/ui/formatters/dom.js';
@@ -140,25 +141,25 @@ function matchIndex(options: DomGetCommandOptions): number | undefined {
  *
  * @param selectorOrIndex - Selector or index argument
  * @param options - Command options
- * @returns What conflicts, or null
+ * @returns What conflicts and how to fix it, or null
  */
 function getOptionsConflict(
   selectorOrIndex: string | undefined,
   options: DomGetCommandOptions
-): string | null {
+): ErrorWithSuggestion | null {
   if (options.nodeId !== undefined && selectorOrIndex !== undefined) {
-    return conflictingOptionsMessage('--node-id', 'a selector or index');
+    return conflictingOptionsError('--node-id', 'a selector or index');
   }
   if (options.full && (options.raw || options.nodeId !== undefined)) {
-    return conflictingOptionsMessage('--full', options.raw ? '--raw' : '--node-id');
+    return conflictingOptionsError('--full', options.raw ? '--raw' : '--node-id');
   }
   if (options.index !== undefined && options.nth !== undefined) {
-    return conflictingOptionsMessage('--index', '--nth');
+    return conflictingOptionsError('--index', '--nth');
   }
   if (options.all && matchIndex(options) !== undefined) {
-    return conflictingOptionsMessage('--all', '--index');
+    return conflictingOptionsError('--all', '--index');
   }
-  if (options.all && !options.raw) return optionRequiresMessage('--all', '--raw');
+  if (options.all && !options.raw) return optionRequiresError('--all', '--raw');
   return null;
 }
 
@@ -177,7 +178,11 @@ export async function handleDomGet(
 ): Promise<void> {
   const conflict = getOptionsConflict(selectorOrIndex, options);
   if (conflict) {
-    throw new CommandError(conflict, {}, EXIT_CODES.INVALID_ARGUMENTS);
+    throw new CommandError(
+      conflict.message,
+      { suggestion: conflict.suggestion },
+      EXIT_CODES.INVALID_ARGUMENTS
+    );
   }
   const { nodeId } = options;
   if (nodeId !== undefined) {

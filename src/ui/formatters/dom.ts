@@ -7,6 +7,7 @@ import {
   framesStillLoadingNote,
   noFramesMessage,
   queryMoreMatchesNote,
+  queryViewportCheckedNote,
   queryNextSteps,
   screenshotGrownNote,
   screenshotScaledNote,
@@ -63,6 +64,7 @@ export function formatDomQuery(data: DomQueryResult): string {
     .text(`Found ${count} node${count === 1 ? '' : 's'} matching "${selector}":`)
     .list(nodeLines)
     .list(data.omitted ? [queryMoreMatchesNote(data.omitted, data.indexed)] : [])
+    .list(data.viewportChecked ? [queryViewportCheckedNote(data.viewportChecked)] : [])
     .tip(queryNextSteps(exampleIndex))
     .build();
 }

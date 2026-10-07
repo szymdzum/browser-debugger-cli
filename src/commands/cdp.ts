@@ -11,10 +11,16 @@ import {
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
+import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
-import { emptyCdpSearchError, missingArgumentError } from '@/errors/messages.js';
+import {
+  emptyCdpSearchError,
+  missingArgumentError,
+  scriptExecutionError,
+} from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
+import { describeException } from '@/runtime/dom/evalHelpers.js';
 import {
   formatCdpDescription,
   formatCdpDomainMethods,
@@ -159,7 +165,7 @@ async function runCdpCommand(
     const query = options.search;
     return runCommand(async () => handleSearch(query, method), options, formatCdpSearch);
   }
-  if (options.list && method) {
+  if (method && (options.list || isBareDomain(method, options))) {
     return runCommand(async () => handleListDomainMethods(method), options, formatCdpDomainMethods);
   }
   if (options.list) return runCommand(async () => handleListDomains(), options, formatCdpDomains);
@@ -181,6 +187,46 @@ async function runCdpCommand(
       EXIT_CODES.INVALID_ARGUMENTS
     );
   }, options);
+}
+
+/**
+ * Whether the argument names a domain without a method and nothing asks to
+ * run it (`bdg cdp Network`): its methods are listed, as with `--list`.
+ *
+ * @param method - Method or domain argument
+ * @param options - Command options
+ * @returns True for a bare domain name
+ */
+export function isBareDomain(method: string, options: CdpCommandOptions): boolean {
+  return (
+    !method.includes('.') &&
+    options.params === undefined &&
+    !options.describe &&
+    getDomainSummary(method) !== undefined
+  );
+}
+
+/**
+ * The page exception a method reported in its result (`Runtime.evaluate`,
+ * `Runtime.callFunctionOn`, ... answer a script that threw with
+ * `exceptionDetails`), as an error result like `dom eval`'s (exit 91).
+ *
+ * @param result - Method result
+ * @returns Error result, or undefined when the result has no exception
+ */
+export function pageExceptionResult(result: unknown): CommandResult<CdpExecuteData> | undefined {
+  if (typeof result !== 'object' || result === null || !('exceptionDetails' in result)) {
+    return undefined;
+  }
+  const details = (result as { exceptionDetails: Protocol.Runtime.ExceptionDetails })
+    .exceptionDetails;
+  const err = scriptExecutionError(describeException(details));
+  return {
+    success: false,
+    error: err.message,
+    exitCode: EXIT_CODES.SCRIPT_ERROR,
+    errorContext: { suggestion: err.suggestion },
+  };
 }
 
 /**
@@ -551,6 +597,8 @@ async function handleExecuteMethod(
   validateIPCResponse(response);
 
   const cdpResult = response.data?.result;
+  const exception = pageExceptionResult(cdpResult);
+  if (exception) return exception;
 
   const result: CommandResult<CdpExecuteData> = {
     success: true,

@@ -160,7 +160,7 @@ async function settlePromise(
  * @param details - Exception details
  * @returns Readable message
  */
-function describeException(details: Protocol.Runtime.ExceptionDetails): string {
+export function describeException(details: Protocol.Runtime.ExceptionDetails): string {
   const exception = details.exception;
   if (exception?.type === 'object' && exception.subtype !== 'error' && exception.preview) {
     return `Uncaught ${formatRemoteObject(exception)}`;

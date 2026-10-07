@@ -282,6 +282,9 @@ function buildSessionOptions(options: CollectorOptions): {
 /** Telemetry collected by every session. */
 const SESSION_TELEMETRY: TelemetryType[] = ['dom', 'network', 'console'];
 
+/** A word that cannot be a URL: no dot, colon or slash */
+const BARE_WORD = /^[a-z][a-z0-9_-]*$/i;
+
 /** Flags users type as commands (`bdg version`). */
 const FLAG_WORDS: Record<string, string> = { version: '--version', help: '--help' };
 
@@ -297,29 +300,59 @@ const FLAG_WORDS: Record<string, string> = { version: '--version', help: '--help
  * @throws CommandError (81) for a bare word other than `localhost`
  */
 function assertNotCommandTypo(arg: string, commandNames: string[]): void {
-  if (!/^[a-z][a-z0-9_-]*$/i.test(arg) || arg.toLowerCase() === 'localhost') return;
+  if (!BARE_WORD.test(arg) || arg.toLowerCase() === 'localhost') return;
   const flag = FLAG_WORDS[arg.toLowerCase()];
   const err = unknownCommandError(arg, flag ? [flag] : findSimilar(arg, commandNames));
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 
 /**
- * Reject a subcommand typed without its group (`bdg query x` for
- * `bdg dom query x`) before Commander reads it as a start URL with extra
- * arguments.
+ * The words of the command line that are not options or option values of
+ * the root command (`bdg --session a netwrk list` gives `netwrk`, `list`).
+ *
+ * @param program - Root command
+ * @param args - Arguments after the executable and script
+ * @returns Positional words, in order
+ */
+function positionalWords(program: Command, args: string[]): string[] {
+  const words: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] ?? '';
+    if (!arg.startsWith('-')) {
+      words.push(arg);
+      continue;
+    }
+    const option = program.options.find((o) => o.long === arg || o.short === arg);
+    if (option && (option.required || option.optional)) i++;
+  }
+  return words;
+}
+
+/**
+ * Reject a mistyped command before Commander reads it as a start URL with
+ * extra arguments (`too many arguments`): a subcommand typed without its
+ * group (`bdg query x` for `bdg dom query x`), or a word close to a command
+ * followed by more words (`bdg netwrk list`). A single word is left to the
+ * start command, which checks it the same way.
  *
  * @param program - Root command with all commands registered
  * @param argv - Process arguments
- * @throws CommandError (81) naming the full command
+ * @throws CommandError (81) naming the command meant
  */
-export function assertNotGroupSubcommand(program: Command, argv: string[]): void {
-  const [first] = argv.slice(2).filter((arg) => !arg.startsWith('-'));
-  if (first === undefined || program.commands.some((command) => command.name() === first)) return;
+export function assertNotMistypedCommand(program: Command, argv: string[]): void {
+  const [first, ...rest] = positionalWords(program, argv.slice(2));
+  const commandNames = program.commands.map((command) => command.name());
+  if (first === undefined || commandNames.includes(first)) return;
   const group = program.commands.find((command) =>
     command.commands.some((sub) => sub.name() === first)
   );
-  if (!group) return;
-  const err = unknownCommandError(first, [`${group.name()} ${first}`]);
+  const similar = group
+    ? [`${group.name()} ${first}`]
+    : rest.length > 0 && BARE_WORD.test(first)
+      ? findSimilar(first, commandNames)
+      : [];
+  if (similar.length === 0) return;
+  const err = unknownCommandError(first, similar);
   throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
 }
 

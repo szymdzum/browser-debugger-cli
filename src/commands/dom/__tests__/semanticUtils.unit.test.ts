@@ -124,6 +124,22 @@ void describe('formatSemanticNodeWithContext text next to the accessible name', 
       '[Generic] "Notes" (value: "Typed notes")'
     );
   });
+
+  void it('shows no text line for a long heading named by all of its text', () => {
+    const text =
+      'This is where you can log into the secure area. Enter tomsmith for the username and SuperSecretPassword! for the password.';
+    assert.equal(
+      formatSemanticNodeWithContext({
+        node: { nodeId: '1', role: 'heading', name: text, properties: { level: 4 } },
+        domContext: {
+          tag: 'h4',
+          preview: textPreview(text),
+          text: text.replace(' tomsmith ', '  tomsmith\n'),
+        },
+      }),
+      `[Heading L4] "${text}"`
+    );
+  });
 });
 
 void describe('withSecretMasked', () => {

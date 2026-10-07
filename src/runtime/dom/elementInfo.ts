@@ -4,6 +4,34 @@
  * it and where they live (iframes, shadow roots).
  */
 
+/**
+ * A class that is a fragment of a declaration-like class attribute
+ * (`class="brush: html"` has the class `brush:`), left out of labels.
+ */
+const CLASS_FRAGMENT = /[:;,]$/;
+
+/**
+ * Whether a class name is shown in element labels: not empty and not a
+ * fragment of a declaration-like class attribute ({@link CLASS_FRAGMENT}).
+ *
+ * @param name - Class name
+ * @returns True to show it
+ */
+export function isLabelClass(name: string): boolean {
+  return name !== '' && !CLASS_FRAGMENT.test(name);
+}
+
+/**
+ * Page-side `(node) => string[]`: the element's classes shown in labels
+ * ({@link isLabelClass}), read without array helpers a page may replace
+ */
+export const LABEL_CLASSES_JS = `(node) => {
+  const shown = [];
+  const list = node.classList || [];
+  for (let i = 0; i < list.length; i++) if (!${CLASS_FRAGMENT}.test(list[i])) shown[shown.length] = list[i];
+  return shown;
+}`;
+
 /** Length of the text preview shown for elements. */
 const PREVIEW_LENGTH = 80;
 
@@ -203,13 +231,13 @@ export const ELEMENT_STATE_JS = `(el) => {
 }`;
 
 /**
- * Page-side short description of an element: tag, id and up to two classes,
- * e.g. `button#save.primary.large`.
+ * Page-side short description of an element: tag, id and up to two classes
+ * ({@link LABEL_CLASSES_JS}), e.g. `button#save.primary.large`.
  */
-export const ELEMENT_DESCRIPTION_JS = `(node) => node.tagName.toLowerCase() +
-  (node.id ? '#' + node.id : '') +
-  (node.classList && node.classList.length ? '.' + node.classList[0] : '') +
-  (node.classList && node.classList.length > 1 ? '.' + node.classList[1] : '')`;
+export const ELEMENT_DESCRIPTION_JS = `(node) => {
+  const classes = (${LABEL_CLASSES_JS})(node);
+  return node.tagName.toLowerCase() + (node.id ? '#' + node.id : '') + (classes[0] ? '.' + classes[0] : '') + (classes[1] ? '.' + classes[1] : '');
+}`;
 
 /**
  * Page-side reason an element is disabled, or null when it is not. A native
@@ -363,6 +391,7 @@ export const ELEMENT_CONTEXT_JS = `(() => {
     return hostTexts.get(host);
   };
   const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '');
+  const labelClasses = ${LABEL_CLASSES_JS};
   return (el) => {
     const parts = [];
     for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
@@ -373,7 +402,8 @@ export const ELEMENT_CONTEXT_JS = `(() => {
     const root = el.getRootNode();
     if (root.host) {
       const host = root.host;
-      const label = describe(host) + (!host.id && host.classList.length ? '.' + host.classList[0] : '');
+      const firstClass = labelClasses(host)[0];
+      const label = describe(host) + (!host.id && firstClass ? '.' + firstClass : '');
       const text = hostText(host);
       parts.push('shadow root of <' + label + (text ? ' "' + text + '"' : '') + '>');
     }

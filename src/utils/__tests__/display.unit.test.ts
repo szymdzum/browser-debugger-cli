@@ -14,6 +14,10 @@ void describe('hasDisplay', () => {
     assert.equal(hasDisplay({ SSH_TTY: '/dev/ttys001' }, 'darwin'), false);
     assert.equal(hasDisplay({ CI: 'true' }, 'darwin'), false);
     assert.equal(hasDisplay({ CI: '' }, 'darwin'), true);
+    assert.equal(hasDisplay({ CI: 'false' }, 'darwin'), true);
+    assert.equal(hasDisplay({ CI: 'FALSE' }, 'darwin'), true);
+    assert.equal(hasDisplay({ CI: '0' }, 'darwin'), true);
+    assert.equal(hasDisplay({ CI: '1' }, 'darwin'), false);
   });
 
   void it('needs an X11 or Wayland display on Linux', () => {

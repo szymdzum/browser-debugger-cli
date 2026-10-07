@@ -10,6 +10,7 @@ import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchConsoleMessages, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import {
   followFetchFailure,
+  newPageCrashes,
   setupFollowMode,
   type FollowPoll,
 } from '@/commands/shared/followMode.js';
@@ -28,6 +29,7 @@ import {
   type ConsoleLevel,
   type ConsoleSkipped,
 } from '@/ui/formatters/console.js';
+import { pageCrashedNote } from '@/ui/messages/commands.js';
 import {
   followingConsoleMessage,
   stoppedFollowingConsoleMessage,
@@ -66,8 +68,44 @@ export function filterByCurrentNavigation(
   currentNavigationId?: number
 ): ConsoleMessage[] {
   if (messages.length === 0) return messages;
-  const navId = currentNavigationId ?? Math.max(...messages.map((m) => m.navigationId ?? 0));
+  const navId = shownNavigationId(messages, currentNavigationId);
   return messages.filter((m) => (m.navigationId ?? 0) === navId);
+}
+
+/**
+ * Navigation id of the page whose messages are shown without `--history`.
+ *
+ * @param messages - All captured messages
+ * @param currentNavigationId - Navigation id of the current page, if known
+ * @returns That id, else the newest navigation id among the messages
+ */
+function shownNavigationId(messages: ConsoleMessage[], currentNavigationId?: number): number {
+  return currentNavigationId ?? Math.max(...messages.map((m) => m.navigationId ?? 0));
+}
+
+/**
+ * Dropped messages that could have been in the view: all of them with
+ * `--history`; for the current page only while the oldest kept message is
+ * that page's (else every dropped one came from an earlier page).
+ *
+ * @param messages - All kept messages, oldest first
+ * @param dropped - Oldest messages the session dropped at its limit
+ * @param options - `--history`
+ * @param currentNavigationId - Navigation id of the current page, if known
+ * @returns Dropped count to warn about (0: none of the view's)
+ */
+export function droppedInView(
+  messages: ConsoleMessage[],
+  dropped: number,
+  options: Pick<ConsoleCommandOptions, 'history'>,
+  currentNavigationId?: number
+): number {
+  if (dropped === 0 || options.history) return dropped;
+  const oldest = messages[0];
+  if (!oldest) return dropped;
+  return (oldest.navigationId ?? 0) === shownNavigationId(messages, currentNavigationId)
+    ? dropped
+    : 0;
 }
 
 export function filterByLevel(messages: ConsoleMessage[], level: ConsoleLevel): ConsoleMessage[] {
@@ -117,17 +155,20 @@ export function skippedMessages(all: ConsoleMessage[], listed: ConsoleMessage[])
  * @param lastN - `--last` value
  * @param skipped - Messages the filters left out between the listed ones
  * @param dropped - Oldest messages the session dropped at its limit
+ * @param pageCrashedAt - When the page crashed, while it is not loaded again
  * @returns Formatting options
  */
 function buildFormatOptions(
   options: ConsoleCommandOptions,
   lastN: number,
   skipped?: ConsoleSkipped,
-  dropped?: number
+  dropped?: number,
+  pageCrashedAt?: number
 ): ConsoleFormatOptions {
   return {
     ...(options.last !== undefined && { groupLimit: lastN }),
     ...(dropped && { dropped }),
+    ...(pageCrashedAt !== undefined && { pageCrashedAt }),
     json: options.json,
     list: listsMessages(options),
     follow: options.follow,
@@ -140,13 +181,15 @@ function buildFormatOptions(
 
 /**
  * Stream console messages: the last `lastN` at start, then each new message
- * once (like `tail -f`), with a separator when the page navigates.
+ * once (like `tail -f`), with a separator when the page navigates and a
+ * warning (JSON `pageCrashedAt`) once when the page crashes.
  *
  * @param options - Command options
  * @param lastN - Messages to show at start (0 = all)
  */
 async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Promise<void> {
   const shown = new Set<string>();
+  const newCrash = newPageCrashes();
   let navigationId: number | undefined;
   let started = false;
   const showConsole = async (): Promise<FollowPoll> => {
@@ -157,6 +200,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
     noteFollowConnected();
 
     const { messages, currentNavigationId } = result.data;
+    const crashedAt = newCrash(result.data.pageCrashedAt);
     const matching = applyFilters(messages, options, currentNavigationId);
     const keys = messageKeys(matching);
     const fresh = matching.filter((_message, i) => !shown.has(keys[i] as string));
@@ -166,8 +210,12 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
     const navigated = started && navigationId !== currentNavigationId;
     navigationId = currentNavigationId;
     if (options.json) {
-      if (!started || backlog.length > 0) {
-        const data = buildConsoleJsonOutput(backlog, { list: true, last: 0 });
+      if (!started || backlog.length > 0 || crashedAt !== undefined) {
+        const data = buildConsoleJsonOutput(backlog, {
+          list: true,
+          last: 0,
+          pageCrashedAt: crashedAt,
+        });
         console.log(JSON.stringify(buildSuccessResponse(data)));
       }
     } else {
@@ -177,6 +225,7 @@ async function runFollowMode(options: ConsoleCommandOptions, lastN: number): Pro
           currentNavigationId !== undefined && { navigationId: currentNavigationId }),
       });
       if (text) console.log(text);
+      if (crashedAt !== undefined) console.log(pageCrashedNote(crashedAt));
     }
     started = true;
     return undefined;
@@ -210,7 +259,9 @@ export function messageKeys(messages: ConsoleMessage[]): string[] {
 interface ConsoleResult {
   messages: ConsoleMessage[];
   filtered: ConsoleMessage[];
+  /** Dropped messages that could have been in the view (see {@link droppedInView}) */
   dropped: number;
+  pageCrashedAt: number | undefined;
 }
 
 export function registerConsoleCommand(program: Command): void {
@@ -258,24 +309,31 @@ export function registerConsoleCommand(program: Command): void {
           if (!result.success) {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
-          const { messages, currentNavigationId, dropped } = result.data;
+          const { messages, currentNavigationId, dropped, pageCrashedAt } = result.data;
           const filtered = applyFilters(messages, options, currentNavigationId);
           if (options.json) {
             return {
               success: true,
               data: buildConsoleJsonOutput(
                 filtered,
-                buildFormatOptions(options, lastN, undefined, dropped)
+                buildFormatOptions(options, lastN, undefined, dropped, pageCrashedAt)
               ),
             };
           }
-          return { success: true, data: { messages, filtered, dropped } };
+          const droppedShown = droppedInView(messages, dropped, options, currentNavigationId);
+          return {
+            success: true,
+            data: { messages, filtered, dropped: droppedShown, pageCrashedAt },
+          };
         },
         options,
         (data) => {
-          const { messages, filtered, dropped } = data as ConsoleResult;
+          const { messages, filtered, dropped, pageCrashedAt } = data as ConsoleResult;
           const skipped = skippedMessages(messages, lastMessages(filtered, lastN));
-          return formatConsole(filtered, buildFormatOptions(options, lastN, skipped, dropped));
+          return formatConsole(
+            filtered,
+            buildFormatOptions(options, lastN, skipped, dropped, pageCrashedAt)
+          );
         }
       );
     });

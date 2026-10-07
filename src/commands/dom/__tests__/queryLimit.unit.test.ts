@@ -19,6 +19,17 @@ void describe('listedMatches', () => {
     assert.equal(listed.indexed, 1000);
   });
 
+  void it('says when more matches are listed than had their viewport position checked', () => {
+    assert.equal(
+      listedMatches({ selector: 'li', count: 1000, nodes: described }, 0).viewportChecked,
+      100
+    );
+    assert.equal(
+      listedMatches({ selector: 'li', count: 1000, nodes: described }, 50).viewportChecked,
+      undefined
+    );
+  });
+
   void it('lists all with 0, and adds nothing when every match is listed and indexed', () => {
     const all = listedMatches({ selector: 'li', count: 60, nodes: described.slice(0, 60) }, 0);
     assert.equal(all.nodes.length, 60);
@@ -32,5 +43,15 @@ void describe('listedMatches', () => {
     assert.match(err.message, /Index 1500 is past the 1000 matches of .+ \(50003 in all\)/);
     assert.match(err.suggestion, /--limit 1501 \(or --limit 0\)/);
     assert.match(cachedIndexOutOfRangeError(source, 1000, 1000).message, /out of range/);
+  });
+
+  void it('counts all matches for an index past the last one', () => {
+    const source = { index: 1144, command: 'dom query' as const, query: 'a' };
+    const err = cachedIndexOutOfRangeError(source, 1000, 1144);
+    assert.match(err.message, /out of range for .+ \(1144 results\)/);
+    assert.equal(
+      err.suggestion,
+      'Use an index between 0 and 999, or up to 1143 after re-running it with --limit 0'
+    );
   });
 });

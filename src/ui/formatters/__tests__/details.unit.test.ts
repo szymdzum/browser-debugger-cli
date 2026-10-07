@@ -203,4 +203,17 @@ void describe('repeated headers', () => {
     assert.match(output, /^ {2}Set-Cookie: b=2$/m);
     assert.doesNotMatch(output, /^max-age/m);
   });
+
+  void it('leaves out a header block without headers', () => {
+    const output = formatNetworkDetails({
+      requestId: '1',
+      url: 'https://events.test/',
+      method: 'POST',
+      timestamp: 0,
+      requestHeaders: {},
+      responseHeaders: { 'Content-Type': 'application/json' },
+    });
+    assert.doesNotMatch(output, /Request Headers:/);
+    assert.match(output, /Response Headers:/);
+  });
 });

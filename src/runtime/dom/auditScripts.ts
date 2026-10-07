@@ -7,6 +7,7 @@
  * the daemon ({@link buildAudit}), the same way `dom inspect` computes them.
  */
 
+import { LABEL_CLASSES_JS } from '@/runtime/dom/elementInfo.js';
 import {
   FLAT_TREE_JS,
   HIT_EVERYTHING_JS,
@@ -114,7 +115,8 @@ export const AUDIT_PAGE_JS = `function (checks) {
   const style = (n) => view.getComputedStyle(n);
   const scroller = doc.scrollingElement || doc.documentElement;
   const viewport = { width: doc.documentElement.clientWidth, height: view.innerHeight };
-  const label = (n) => n.localName + (n.id ? '#' + n.id : n.classList && n.classList.length ? '.' + n.classList[0] : '');
+  const firstClass = (n) => (${LABEL_CLASSES_JS})(n)[0];
+  const label = (n) => n.localName + (n.id ? '#' + n.id : firstClass(n) ? '.' + firstClass(n) : '');
   const parentOf = (n) => n.assignedSlot || n.parentElement || (n.parentNode && n.parentNode.host) || null;
   const short = (text) => text.replace(/\\s+/g, ' ').trim().slice(0, 60);
   const ownText = (n) => Array.from(n.childNodes).filter((c) => c.nodeType === 3).map((c) => c.data).join(' ').replace(/\\s+/g, ' ').trim();

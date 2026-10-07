@@ -19,11 +19,12 @@ import type {
   PressKeyCommandOptions,
   ScrollCommandOptions,
 } from '@/commands/shared/optionTypes.js';
+import { createErrorResult } from '@/commands/shared/dataFetcher.js';
 import { integerOption } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import {
   VIA_LABEL_SUFFIX,
-  conflictingOptionsMessage,
+  conflictingOptionsError,
   hoverOffWithTargetError,
   missingArgumentError,
   indexSourceText,
@@ -391,14 +392,13 @@ async function runPointerCommand(
   options: ClickCommandOptions,
   action: NonNullable<ClickResult['action']>
 ): Promise<void> {
+  const conflict = conflictingOptionsError('--double', '--right');
   await runCommand(
     () =>
       options.double && options.right
-        ? Promise.resolve({
-            success: false,
-            error: conflictingOptionsMessage('--double', '--right'),
-            exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-          })
+        ? Promise.resolve(
+            createErrorResult(conflict.message, EXIT_CODES.INVALID_ARGUMENTS, conflict.suggestion)
+          )
         : runElementCommand<Parameters<typeof domClick>[0], ClickResult>({
             selectorOrIndex,
             index: options.index,

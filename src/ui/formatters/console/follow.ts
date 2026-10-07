@@ -10,7 +10,8 @@ import { formatSourceLocation, formatTimestamp } from './shared.js';
 
 /**
  * Lines of the console stream: the new messages since the last poll, with
- * the stream header the first time and a separator after a navigation.
+ * a rule the first time (the stream banner is on stderr) and a separator
+ * after a navigation.
  *
  * @param messages - New messages
  * @param options - `header` the first time; `navigationId` when the page changed
@@ -22,7 +23,6 @@ export function formatConsoleFollowLines(
 ): string {
   const fmt = new OutputFormatter();
   if (options.header) {
-    fmt.text('Streaming console... (Ctrl+C to stop)');
     fmt.separator('━', 40);
     if (messages.length === 0) fmt.text('Waiting for messages...');
   }

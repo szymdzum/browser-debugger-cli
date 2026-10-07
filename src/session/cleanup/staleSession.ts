@@ -170,17 +170,33 @@ export function killSessionChromes(sessionDir: string = getSessionDir()): number
 const ORPHAN_EXIT_WAIT_MS = 5000;
 
 /**
- * Kill an orphaned Chrome (see {@link killOrphanedChrome}) and wait until it
- * has exited, so its debugging port is free for the next launch.
+ * Kill the Chromes this session left behind and wait until they have exited,
+ * so their profile and debugging port are free for the next launch. The
+ * Chrome recorded in chrome.pid is killed (see {@link killOrphanedChrome});
+ * without a record (chrome.pid lost with its daemon), every Chrome carrying
+ * the session's marker is, unless another daemon of the session still runs.
  *
  * @returns True if a Chrome process was killed
  */
 export async function reapOrphanedChrome(): Promise<boolean> {
   const chromePid = findOrphanedChrome();
-  if (!killOrphanedChrome() || chromePid === null) return false;
+  const killed =
+    chromePid !== null ? (killOrphanedChrome() ? [chromePid] : []) : killUnrecordedChromes();
   const deadline = Date.now() + ORPHAN_EXIT_WAIT_MS;
-  while (isProcessAlive(chromePid) && Date.now() < deadline) await delay(50);
-  return true;
+  while (killed.some(isProcessAlive) && Date.now() < deadline) await delay(50);
+  return killed.length > 0;
+}
+
+/**
+ * Kill the session's Chromes found by their marker (see
+ * {@link killSessionChromes}), unless a daemon of the session other than
+ * this process still runs: they could be its Chrome.
+ *
+ * @returns PIDs of the processes killed
+ */
+function killUnrecordedChromes(): number[] {
+  const daemonPid = readLiveDaemonPid();
+  return daemonPid === null || daemonPid === process.pid ? killSessionChromes() : [];
 }
 
 /**

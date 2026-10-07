@@ -23,7 +23,7 @@ export const PREVIEW_HEADERS = {
  * @returns Single-line tip for basic peek usage
  */
 export function compactTipsMessage(): string {
-  return `Tip: ${sessionCommand('bdg peek --last 50')} | ${sessionCommand('bdg peek --verbose')}`;
+  return `Tip: ${sessionCommand('bdg peek --last 50')} or ${sessionCommand('bdg peek --verbose')}`;
 }
 
 /**

@@ -228,7 +228,7 @@ const FOLLOW_ID_WIDTH = 14;
 
 /**
  * Rows of the network stream: requests that finished since the last poll,
- * with the column header the first time.
+ * with the column header the first time (the stream banner is on stderr).
  *
  * @param requests - Newly finished requests
  * @param options - `header` the first time; `verbose` for full URLs; the page start for START
@@ -241,7 +241,6 @@ export function formatNetworkFollowRows(
   const fmt = new OutputFormatter();
   const widths = columnWidths(requests, FOLLOW_ID_WIDTH);
   if (options.header) {
-    fmt.text('Streaming network requests... (Ctrl+C to stop)');
     fmt.text(formatColumnHeader(widths));
     fmt.separator('─', SEPARATOR_WIDTH);
   }

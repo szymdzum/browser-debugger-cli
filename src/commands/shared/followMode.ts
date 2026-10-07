@@ -37,6 +37,22 @@ export function followFetchFailure(
 }
 
 /**
+ * Report each page crash of a stream once: a page loaded again that crashes
+ * again is a new crash.
+ *
+ * @returns Function taking the crash time a refresh fetched, returning it
+ *   when that crash was not reported yet
+ */
+export function newPageCrashes(): (crashedAt: number | undefined) => number | undefined {
+  let reported: number | undefined;
+  return (crashedAt) => {
+    if (crashedAt === undefined || crashedAt === reported) return undefined;
+    reported = crashedAt;
+    return crashedAt;
+  };
+}
+
+/**
  * Options for configuring follow mode behavior.
  */
 export interface FollowModeOptions {

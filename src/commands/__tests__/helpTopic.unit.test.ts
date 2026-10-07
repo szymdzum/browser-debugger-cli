@@ -138,6 +138,14 @@ void describe('usageErrorDetails', () => {
     }
   });
 
+  void it('names a word typed after one dash as typed, and matches it to the long options', () => {
+    const error = commanderError('commander.unknownOption', "error: unknown option '-osn'");
+    assert.deepEqual(usageErrorDetails(error, peek(), ['node', 'bdg', 'peek', '-josn']), {
+      message: "unknown option '-josn'",
+      suggestion: 'Did you mean: --json?',
+    });
+  });
+
   void it('points to the command help without a close option', () => {
     const error = commanderError('commander.unknownOption', "error: unknown option '--frob'");
     assert.equal(usageErrorDetails(error, peek()).suggestion, 'Run "bdg peek --help" for usage');

@@ -13,6 +13,7 @@ import { describe, it } from 'node:test';
 import * as vm from 'node:vm';
 
 import {
+  ELEMENT_DESCRIPTION_JS,
   ELEMENT_IDENTITY_JS,
   SIBLING_POSITION_JS,
   WITHOUT_DECORATIONS_JS,
@@ -232,5 +233,22 @@ void describe('WITHOUT_DECORATIONS_JS', () => {
     const close = node('button', { text: ' × ' });
     const alert = node('div', { text: 'Saved ×' }, [close]);
     assert.equal(withoutDecorations(alert, alert.innerText).trim(), 'Saved');
+  });
+});
+
+void describe('ELEMENT_DESCRIPTION_JS', () => {
+  const describeElement = vm.runInNewContext(`(${ELEMENT_DESCRIPTION_JS})`) as (
+    el: FakeNode
+  ) => string;
+
+  void it('leaves out class fragments of a declaration-like class attribute', () => {
+    assert.equal(
+      describeElement(node('pre', { classes: ['brush:', 'html', 'notranslate'] })),
+      'pre.html.notranslate'
+    );
+    assert.equal(
+      describeElement(node('div', { classes: ['md:flex', 'card'] })),
+      'div.md:flex.card'
+    );
   });
 });

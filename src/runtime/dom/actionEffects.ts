@@ -139,6 +139,8 @@ export interface OtherActivity {
   dialogs: number;
   /** A window, tab or download was opened */
   opened: boolean;
+  /** Console messages logged during the action */
+  consoleMessages: number;
 }
 
 /**
@@ -315,7 +317,7 @@ export function pageNavigation(
  * Whether an action had no visible effect: the page was read before and
  * after in the same document, it counted no DOM change, nothing made the
  * check uncertain, and no navigation, message, shown element, request,
- * dialog or new window happened.
+ * dialog, new window or console message happened.
  *
  * @param read - Page read after the action
  * @param effects - Navigation and messages found
@@ -337,7 +339,8 @@ export function hadNoEffect(
     (effects.shown ?? []).length === 0 &&
     activity.requests === 0 &&
     activity.dialogs === 0 &&
-    !activity.opened
+    !activity.opened &&
+    activity.consoleMessages === 0
   );
 }
 
@@ -345,6 +348,8 @@ export function hadNoEffect(
 export interface CollectOptions {
   /** Dialogs the action opened */
   dialogs: number;
+  /** Console messages logged since the action started, so far */
+  consoleMessages: () => number;
   /** Decide "no effect" (with a second look when nothing seemed to happen) */
   detectNoEffect: boolean;
   /** List the elements the action showed */
@@ -416,7 +421,11 @@ async function collectEffects(watch: Watch, options: CollectOptions): Promise<Co
   let snapshot = await readPage(watch, { stop: false, reportShown });
   let effects = effectsOf(start, snapshot, watch.listener.events);
   const quiet = (): boolean =>
-    hadNoEffect(snapshot, effects, { ...watch.listener.activity(), dialogs: options.dialogs });
+    hadNoEffect(snapshot, effects, {
+      ...watch.listener.activity(),
+      dialogs: options.dialogs,
+      consoleMessages: options.consoleMessages(),
+    });
   if (options.detectNoEffect && quiet()) {
     await delay(NO_EFFECT_RECHECK_MS);
     snapshot = await readPage(watch, { stop: true, reportShown });
