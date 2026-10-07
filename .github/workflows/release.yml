@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # read the CI runs of the tagged commit
   id-token: write # OIDC token for npm Trusted Publishing (and provenance)
 
 jobs:
@@ -52,6 +53,17 @@ jobs:
             exit 1
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      # Only the CI OK job counts: the security audit and macOS smoke are
+      # report-only and must not block a release.
+      - name: Check CI OK passed on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="$(git rev-parse HEAD)"
+          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$SHA" --event push --json databaseId --jq '.[].databaseId'); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs" --paginate --jq '.jobs[] | select(.name=="CI OK" and .conclusion=="success") | .id'
+          done | grep -q . || { echo "::error::CI OK has not passed on a push to main for $SHA. If CI is still running, wait and re-run this workflow (workflow_dispatch with the tag)."; exit 1; }
 
       - name: Install dependencies
         run: npm ci

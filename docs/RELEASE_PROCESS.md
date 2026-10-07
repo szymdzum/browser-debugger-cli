@@ -5,6 +5,7 @@ How to release `browser-debugger-cli`. The version bump and CHANGELOG go through
 ## Table of Contents
 
 - [One-Time Setup](#one-time-setup)
+- [CI Gate](#ci-gate)
 - [Release Types](#release-types)
 - [Step-by-Step Process](#step-by-step-process)
 - [Prereleases](#prereleases)
@@ -23,6 +24,16 @@ How to release `browser-debugger-cli`. The version bump and CHANGELOG go through
 3. GitHub CLI authenticated locally (`gh auth status`).
 
 No `NPM_TOKEN` secret is needed.
+
+## CI Gate
+
+Branch protection on `main` requires one status check, exactly `CI OK` (job `ci-ok` in [ci.yml](../.github/workflows/ci.yml)), with "Do not allow bypassing the above settings" on, so admins can't merge past it either (`enforce_admins`). The setting is applied by hand, and only once a `ci.yml` with the `CI OK` job is on `main`; before that, PRs would wait for a check that never reports.
+
+- **CI OK** passes when Build, Code Quality, Contract Tests (Node 22/24/26) and Smoke Tests all succeeded or were skipped, and fails when any of them failed or was cancelled. Matrix changes don't touch the protection settings.
+- A docs-only PR (only `*.md`, `docs/**`, `.gitignore`, `LICENSE`) skips those jobs and still gets a green **CI OK**.
+- PRs run smoke on Node 22; `main` and the nightly run use Node 22/24/26, plus macOS smoke (Node 22, Google Chrome), which is not part of **CI OK**.
+- The security audit (`npm audit`) is report-only: it is not part of **CI OK**, so a new advisory doesn't block unrelated merges.
+- The Release workflow refuses a tag unless the `CI OK` job passed in a CI run from a push to `main` for the tagged commit (the audit and macOS smoke don't count). Two merges in quick succession can leave the middle commit without a push run (a queued run is replaced by the newer one), so tag the head of `main`.
 
 ## Release Types
 
@@ -60,7 +71,7 @@ Release notes: an overview, highlights, **breaking changes with what to do**, th
 
 ### 3. npm publish (automatic)
 
-Publishing the release starts the **Release** workflow. It checks out the tag, verifies the tag matches `package.json`, runs the quality checks, contract tests and build, then runs `npm publish --provenance`. Follow it with:
+Publishing the release starts the **Release** workflow. It checks out the tag, verifies the tag matches `package.json` and that `CI OK` passed on the tagged commit (a push run on `main`), runs the quality checks, contract tests and build, then runs `npm publish --provenance`. Follow it with:
 
 ```bash
 gh run list --workflow release.yml --limit 1

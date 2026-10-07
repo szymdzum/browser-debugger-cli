@@ -5,37 +5,54 @@ on:
     branches: [main]
   pull_request:
     branches: ['**']
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+  schedule:
+    - cron: '17 3 * * *'
 
-# Cancel in-progress runs when new commits are pushed
+# Cancel superseded PR runs. Runs on main are never cancelled: a release needs
+# a successful CI run of its commit, and a nightly run must not cancel a push run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Whether a PR changes anything besides docs. Pushes to main and nightly runs
+  # always count as code changes. Every job below depends on this (directly or
+  # through build), so a docs-only PR skips them and still reports CI OK.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+
+    steps:
+      - name: Checkout code
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+
+      - name: Detect code changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!.gitignore'
+              - '!LICENSE'
+
   # Single job to install deps and build - share artifacts with other jobs
   build:
     name: Build
     runs-on: ubuntu-latest
-    outputs:
-      dependencies-changed: ${{ steps.changes.outputs.dependencies }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
-
-      - name: Detect changed files
-        id: changes
-        uses: dorny/paths-filter@v4
-        with:
-          filters: |
-            dependencies:
-              - 'package.json'
-              - 'package-lock.json'
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -141,15 +158,19 @@ jobs:
       - name: Run contract tests
         run: npm test
 
-  # Smoke tests with Chrome - run on every PR; shell integration suite only on main
+  # Smoke tests with Chrome: Node 22 on PRs, 22/24/26 on main and nightly.
+  # The shell integration suite runs on main pushes and the nightly run
+  # (on PRs once #446 makes it hermetic).
   smoke:
     name: Smoke Tests (Chrome) (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     needs: build
+    env:
+      BDG_TEST_KEEP_DIRS: '1'
     strategy:
       fail-fast: false
       matrix:
-        node: ['22', '24', '26']
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '["22"]' || '["22","24","26"]') }}
 
     steps:
       - name: Checkout code
@@ -185,9 +206,9 @@ jobs:
       - name: Make bdg executable and link to PATH
         run: |
           chmod +x dist/index.js
-          mkdir -p $HOME/.local/bin
-          ln -sf $PWD/dist/index.js $HOME/.local/bin/bdg
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/index.js" "$HOME/.local/bin/bdg"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Verify bdg installation
         run: |
@@ -200,6 +221,87 @@ jobs:
       - name: Run integration tests
         if: github.ref == 'refs/heads/main' && matrix.node == '22'
         run: ./tests/run-all-tests.sh --integration
+
+      - name: Upload session logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-logs-linux-node${{ matrix.node }}
+          path: |
+            /tmp/bdg-test-*/**/daemon.log*
+            /tmp/bdg-test-*/**/chrome-err.log
+            /tmp/bdg-test-*/**/chrome-out.log
+            tests/results/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # macOS smoke (the platform bdg is mostly used on), with the runner's Google
+  # Chrome. Only on main and nightly; not part of CI OK.
+  smoke-macos:
+    name: Smoke Tests (macOS, Chrome) (Node 22)
+    runs-on: macos-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
+    env:
+      BDG_TEST_KEEP_DIRS: '1'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Restore node_modules cache
+        id: cache
+        uses: actions/cache/restore@v6
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (cache miss fallback)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Cache node_modules
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json') }}
+
+      - name: Build package
+        run: npm run build
+
+      - name: Make bdg executable and link to PATH
+        run: |
+          chmod +x dist/index.js
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$PWD/dist/index.js" "$HOME/.local/bin/bdg"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify bdg installation
+        run: |
+          which bdg
+          bdg --version
+
+      - name: Run smoke tests
+        run: npm run test:smoke
+
+      - name: Upload session logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-logs-macos
+          path: |
+            /tmp/bdg-test-*/**/daemon.log*
+            /tmp/bdg-test-*/**/chrome-err.log
+            /tmp/bdg-test-*/**/chrome-out.log
+            tests/results/*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
   security:
     name: Security Audit
@@ -221,3 +323,26 @@ jobs:
 
       - name: Run security audit
         run: npm audit --audit-level=high
+
+  # The only required check on main. Passes when every job it needs succeeded
+  # or was skipped (docs-only PR); fails when one failed or was cancelled.
+  # security (npm audit) is left out on purpose: a new external advisory must
+  # not block unrelated merges. It still runs and reports.
+  ci-ok:
+    name: CI OK
+    runs-on: ubuntu-latest
+    needs: [changes, build, quality, test, smoke]
+    if: always()
+
+    steps:
+      - name: Check results of required jobs
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "::error::A required job ended with: $result"
+              exit 1
+            fi
+          done
