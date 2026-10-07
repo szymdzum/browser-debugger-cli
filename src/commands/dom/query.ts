@@ -14,12 +14,16 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 /** Matches `dom query` lists without `--limit` (human output) */
 export const QUERY_LIST_LIMIT = 50;
 
+/** Matches `dom query` and `dom a11y query` list with `--json` and no `--limit` */
+export const QUERY_JSON_LIST_LIMIT = 100;
+
 /**
  * Handle `bdg dom query <selector>`.
  *
  * Runs the selector, caches the described matches so later commands can
  * reference elements by index, and lists the first `--limit` of them (50,
- * or {@link QUERY_CACHE_LIMIT} with `--json`; 0 = all) with the total count.
+ * or {@link QUERY_JSON_LIST_LIMIT} with `--json`; 0 = all) with the total
+ * count. The first {@link QUERY_CACHE_LIMIT} are indexed whatever is listed.
  * No match exits 83, like `dom get` and `dom a11y`, and clears the cache so
  * indices of an earlier query are not used by mistake.
  */
@@ -27,7 +31,7 @@ export async function handleDomQuery(
   selector: string,
   options: DomQueryCommandOptions
 ): Promise<void> {
-  const limit = options.limit ?? (options.json ? QUERY_CACHE_LIMIT : QUERY_LIST_LIMIT);
+  const limit = options.limit ?? (options.json ? QUERY_JSON_LIST_LIMIT : QUERY_LIST_LIMIT);
   await runCommand(
     async () => {
       const document = await pageDocumentId();

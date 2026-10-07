@@ -28,7 +28,7 @@ import { QUERY_CACHE_LIMIT } from '@/commands/dom/helpers/query.js';
 import { registerInspectCommand } from '@/commands/dom/inspect.js';
 import { registerLayoutCommand } from '@/commands/dom/layout.js';
 import { registerListenersCommand } from '@/commands/dom/listeners.js';
-import { handleDomQuery, QUERY_LIST_LIMIT } from '@/commands/dom/query.js';
+import { handleDomQuery, QUERY_JSON_LIST_LIMIT, QUERY_LIST_LIMIT } from '@/commands/dom/query.js';
 import { handleDomScreenshot } from '@/commands/dom/screenshot.js';
 import { registerWaitCommand } from '@/commands/dom/wait.js';
 import {
@@ -67,7 +67,7 @@ export function registerDomCommands(program: Command): void {
     .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option(
       '--limit <n>',
-      `Matches to list (default: ${QUERY_LIST_LIMIT}, ${QUERY_CACHE_LIMIT} with --json; 0 = all); the first ${QUERY_CACHE_LIMIT} (or more with a higher limit) are indexed`,
+      `Matches to list (default: ${QUERY_LIST_LIMIT}, ${QUERY_JSON_LIST_LIMIT} with --json; 0 = all); the first ${QUERY_CACHE_LIMIT} (or more with a higher limit) are indexed`,
       integerOption(0)
     )
     .option('-j, --json', 'Output as JSON')

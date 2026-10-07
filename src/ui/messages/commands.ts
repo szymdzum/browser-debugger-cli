@@ -283,6 +283,26 @@ export function queryViewportCheckedNote(checked: number): string {
 }
 
 /**
+ * First line under an accessibility tree cut by `--limit` or `--depth`.
+ *
+ * @param listed - Nodes listed
+ * @returns e.g. "Showing the first 50 nodes (text boxes and repeated text left out)"
+ */
+export function a11yTreeShownNote(listed: number): string {
+  return `Showing the first ${listed} nodes (text boxes and repeated text left out)`;
+}
+
+/**
+ * How to see the rest of an accessibility tree cut by `--limit` or `--depth`.
+ *
+ * @param omitted - Nodes left out
+ * @returns e.g. "51391 more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query \"role:<role>\""
+ */
+export function a11yTreeMoreNote(omitted: number): string {
+  return `${omitted} more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query "role:<role>"`;
+}
+
+/**
  * Note under a list of a11y query matches cut by `--limit`.
  *
  * @param omitted - Matches not listed

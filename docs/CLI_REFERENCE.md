@@ -205,8 +205,10 @@ Inspect the accessibility tree exposed by Chrome DevTools Protocol.
 
 ```bash
 # View full accessibility tree
-bdg dom a11y tree               # Display tree (first 50 nodes, human-readable)
-bdg dom a11y tree --json        # Full tree in JSON format
+bdg dom a11y tree               # The first 50 nodes, depth-first, indented
+bdg dom a11y tree --json        # The same 50 nodes as JSON, with count and omitted
+bdg dom a11y tree --depth 3     # Only the top levels (0 = root only)
+bdg dom a11y tree --limit 0     # Every node (megabytes of JSON on a long page)
 
 # Query nodes by role, name, or description
 bdg dom a11y query role=button                    # Find all buttons
@@ -215,7 +217,7 @@ bdg dom a11y query 'name=E-mail address:'         # A name with spaces or colons
 bdg dom a11y query 'role=textbox name=E-mail address:'  # Combine criteria (AND logic)
 bdg dom a11y query 'description=Click to submit'  # Find by description
 bdg dom a11y query role=button --json             # JSON output
-bdg dom a11y query role=link --limit 0            # List all matches (default: the first 50; --json: all)
+bdg dom a11y query role=link --limit 0            # List all matches (default: the first 50; --json: 100)
 bdg dom click 0                                   # Act on a match by its index
 
 # Describe specific element by CSS selector
@@ -235,25 +237,26 @@ bdg dom a11y describe --json                      # JSON output
 **Output:**
 - Tree view shows role, name, description, and key properties
 - Ignored nodes are automatically filtered out
-- Human-readable format limited to 50 nodes (use `--json` for complete output)
-- `a11y query` lists each element once (an element the page and its frame's tree both report is not repeated) and the first 50 matches in human output (`--limit <n>`, `0` for all; `... and 213 more` says how many it left out); `--json` returns all of them unless `--limit` is given (then `count` is the total and `omitted` the rest). All matches are indexed: `bdg dom click 55`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `get` and `listeners` take them, also for an element of a cross-origin iframe of the same site, such as a consent dialog served from a subdomain (its scripts then run in that iframe, mouse events land on it through the iframe's position and scale, including its border, padding, `transform: scale()` and `zoom`, and `layout` places it in the top-level page; a rotated or skewed iframe, or one that cannot be measured, exits 83 rather than clicking somewhere else)
+- Text boxes, blank text, text repeating its parent's name and nameless layout wrappers (`generic`, `none`, `presentation`, layout tables) are left out; their children move up a level
+- `a11y tree` lists the first 50 nodes depth-first, in human and JSON output (`--limit <n>`, `0` for all; `--depth <n>` lists only the top levels, `0` the root). A cut tree ends with `Showing the first 50 nodes` and `20067 more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query "role:<role>"`. JSON has `count` (every node of the tree, text boxes included), `nodes` (each with its `depth`, 0 = the root, instead of `childIds`) and `omitted` (nodes cut by `--limit` or `--depth`). On Wikipedia "United States" the default JSON is 12 KB; `--limit 0` is 4.1 MB
+- `a11y query` lists each element once (an element the page and its frame's tree both report is not repeated) and the first 50 matches in human output, 100 with `--json` (`--limit <n>`, `0` for all; `... and 213 more` says how many it left out; `count` is the total and `omitted` the rest). All matches are indexed: `bdg dom click 55`, `fill`, `hover`, `pressKey`, `scroll`, `submit`, `layout`, `get` and `listeners` take them, also for an element of a cross-origin iframe of the same site, such as a consent dialog served from a subdomain (its scripts then run in that iframe, mouse events land on it through the iframe's position and scale, including its border, padding, `transform: scale()` and `zoom`, and `layout` places it in the top-level page; a rotated or skewed iframe, or one that cannot be measured, exits 83 rather than clicking somewhere else)
 
 **JSON Output (jq-friendly):**
 
-The `--json` output returns nodes as an array for natural jq filtering:
+The `--json` output returns nodes as an array for natural jq filtering. To search the whole tree, `bdg dom a11y query` is cheaper; `--limit 0` filters every node:
 
 ```bash
 # Get first node
 bdg dom a11y tree --json | jq '.data.nodes[0]'
 
-# Find all checkboxes
-bdg dom a11y tree --json | jq '[.data.nodes[] | select(.role == "checkbox")]'
+# Find all checkboxes (or: bdg dom a11y query role=checkbox)
+bdg dom a11y tree --json --limit 0 | jq '[.data.nodes[] | select(.role == "checkbox")]'
 
 # Find by name pattern
-bdg dom a11y tree --json | jq '[.data.nodes[] | select(.name | test("submit"; "i"))]'
+bdg dom a11y tree --json --limit 0 | jq '[.data.nodes[] | select(.name | test("submit"; "i"))]'
 
-# Get roles and names only
-bdg dom a11y tree --json | jq '.data.nodes[] | {role, name}'
+# Outline: roles and names of the top levels
+bdg dom a11y tree --json --depth 2 --limit 0 | jq '.data.nodes[] | {depth, role, name}'
 ```
 
 **Shell Quote Handling:**
@@ -342,7 +345,7 @@ bdg dom query "div" --limit 0                 # Every match (slower on a large p
 ```
 
 **Output:**
-- Shows the count of all matches and a preview of the first 50 (`--json`: 1000), with `... and 49953 more (--limit 0 lists all; indices 0-999 work with other commands)`; `--limit <n>` lists that many (0 = all). JSON has `count` (all matches), `nodes` (the listed ones), `omitted` and, when not every match can be used by index, `indexed`
+- Shows the count of all matches and a preview of the first 50 (`--json`: 100), with `... and 49953 more (--limit 0 lists all; indices 0-999 work with other commands)`; `--limit <n>` lists that many (0 = all). JSON has `count` (all matches), `nodes` (the listed ones), `omitted` and, when not every match can be used by index, `indexed`
 - The first 1000 matches (or `--limit` of them, if more) are described and cached, so indices past the listed ones work with other commands; an index past them says so and how to index more. A page with 50000 matches answers in about half a second instead of 20 s
 - Lists nodeId, tag, classes, and text preview (the text as rendered: hidden parts left out)
 - Each match shows the attributes that identify it by its type, in its tag: id, name and type, then for `img` the file name of `src` and `alt`, for `a` its `href`, for `input` its placeholder and current value (checkboxes and radios their `value` attribute and `checked`), for `textarea` its name, placeholder and value, for `button` its type (in a form also without a type attribute: `submit`), for `select` its name and the selected option (`selected="Price (low to high)"`), for `iframe` the host of `src`, and for `form` its `action` and `method`, e.g. `[0] <img src="…/sl-404-Cq1a9k9X.jpg" alt="Sauce Labs Backpack" class="inventory_item_img">`. Absolute URLs keep `//` before the host (`href="//saucelabs.com"`) so they do not read as relative paths; values over 40 characters are cut in the middle. `--json` has the full values in `attributes` on each node (an object; keys by element type as above, all strings except `checked`, a boolean; absent for other elements), e.g. `{ "src": "/assets/sl-404-Cq1a9k9X.jpg", "alt": "…" }`; `dom get` shows the same attributes after the role (`[Image] "Sauce Labs Backpack" src="…/sl-404-Cq1a9k9X.jpg"`, `domContext.attributes` in JSON, also in `dom a11y describe`), leaving out values equal to the accessible name
