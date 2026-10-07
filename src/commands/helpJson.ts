@@ -236,7 +236,7 @@ function convertOption(option: Option, commandName: string): OptionMetadata {
     metadata.choices = option.argChoices;
   }
 
-  const behavior = getOptionBehavior(commandName, option.flags);
+  const behavior = getOptionBehavior(commandName, option);
   if (behavior) {
     metadata.behavior = behavior;
   }

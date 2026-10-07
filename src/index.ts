@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Command, CommanderError, Option } from 'commander';
+import { CommanderError, type Command } from 'commander';
 
 import {
   generateCommandHelp,
@@ -10,9 +10,9 @@ import {
 } from '@/commands/helpJson.js';
 import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
 import { assertNotMistypedCommand } from '@/commands/start.js';
-import { commandRegistry } from '@/commands.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
+import { buildProgram } from '@/program.js';
 import { selectSession } from '@/session/sessionName.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { hideHints } from '@/ui/formatting.js';
@@ -21,13 +21,8 @@ import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { VERSION } from '@/utils/version.js';
 
-const CLI_NAME = 'bdg';
-const CLI_DESCRIPTION = 'Browser telemetry via Chrome DevTools Protocol';
-const SESSION_OPTION_FLAGS = '--session <name>';
 /** Asks `bdg --help --json` for every command's full metadata instead of the compact tree */
 const FULL_HELP_FLAG = '--full';
-const SESSION_OPTION_DESCRIPTION =
-  'Use a named session (own daemon, Chrome and port) instead of the default one; env: BDG_SESSION';
 
 /**
  * CLI arguments that can be flags: everything before a literal `--`.
@@ -134,23 +129,12 @@ async function main(): Promise<void> {
   configureStdio();
   const helpTopic = rewriteHelpCommand();
   const jsonMode = isJsonMode();
-  const program = new Command()
-    .name(CLI_NAME)
-    .description(CLI_DESCRIPTION)
-    .version(VERSION)
-    .option('--debug', 'Enable debug logging (verbose output)')
-    .option(SESSION_OPTION_FLAGS, SESSION_OPTION_DESCRIPTION)
-    .enablePositionalOptions()
-    .exitOverride()
-    .configureOutput({
-      writeOut: (text) => {
-        if (!jsonMode) process.stdout.write(text);
-      },
-      outputError: () => undefined,
-    });
-
-  commandRegistry.forEach((register) => register(program));
-  addGlobalOptions(program);
+  const program = buildProgram({
+    writeOut: (text) => {
+      if (!jsonMode) process.stdout.write(text);
+    },
+    outputError: () => undefined,
+  });
   program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));
   assertKnownHelpTopic(program, helpTopic);
   assertNotMistypedCommand(program, process.argv);
@@ -185,27 +169,6 @@ function helpJson(program: Command): object {
   return flagArgs().includes(FULL_HELP_FLAG)
     ? generateMachineReadableHelp(program)
     : generateCompactHelp(program);
-}
-
-/**
- * Make `--debug`, `-q` and `--session` accepted after any subcommand (program
- * options are positional).
- *
- * @param command - Command whose subcommands get the hidden global options
- */
-function addGlobalOptions(command: Command): void {
-  for (const sub of command.commands) {
-    if (!sub.options.some((option) => option.long === '--debug')) {
-      sub.addOption(new Option('--debug', 'Enable debug logging').hideHelp());
-    }
-    if (!sub.options.some((option) => option.long === '--quiet')) {
-      sub.addOption(new Option('-q, --quiet', 'Hide tips and hints').hideHelp());
-    }
-    if (!sub.options.some((option) => option.long === '--session')) {
-      sub.addOption(new Option(SESSION_OPTION_FLAGS, SESSION_OPTION_DESCRIPTION).hideHelp());
-    }
-    addGlobalOptions(sub);
-  }
 }
 
 /**
