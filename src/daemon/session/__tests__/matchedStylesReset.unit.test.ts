@@ -130,4 +130,14 @@ void describe('Session.execute', () => {
     await readAround(cdp, () => session.execute('dom_inspect', { selector: '#c' }));
     assert.equal(sent(), 1);
   });
+
+  void it('rejects a name that is not a registered command, such as a prototype key', async () => {
+    const { cdp } = slowCdp();
+    const session = launchedSession(cdp);
+    const execute = session.execute.bind(session) as (
+      name: string,
+      params: unknown
+    ) => Promise<unknown>;
+    await assert.rejects(execute('constructor', {}), /Unknown session command: "constructor"/);
+  });
 });

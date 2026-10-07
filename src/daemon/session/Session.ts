@@ -21,6 +21,7 @@ import { withMatchedStylesReset } from '@/daemon/session/matchedStylesReset.js';
 import { teardownSession, type TeardownContext } from '@/daemon/session/teardown.js';
 import type { SessionConfig } from '@/daemon/session/types.js';
 import { CommandError } from '@/errors/index.js';
+import { unknownSessionCommandMessage } from '@/errors/messages.js';
 import type { ChromeNoticeCode, NoticeSink } from '@/errors/notices.js';
 import type { CommandName, CommandSchemas } from '@/ipc/index.js';
 import type { PageLoadingState } from '@/ipc/protocol/commands.js';
@@ -225,8 +226,14 @@ export class Session {
     if (crashedAt !== undefined && needsPage) {
       return Promise.reject(pageCrashedCommandError(crashedAt));
     }
+    if (!Object.hasOwn(this.registry, name)) {
+      return Promise.reject(
+        new CommandError(unknownSessionCommandMessage(name), {}, EXIT_CODES.INVALID_ARGUMENTS)
+      );
+    }
+    const handler = this.registry[name];
     const cdp = this.cdp;
-    return withMatchedStylesReset(cdp, name, () => this.registry[name](cdp, params));
+    return withMatchedStylesReset(cdp, name, () => handler(cdp, params));
   }
 
   /**
