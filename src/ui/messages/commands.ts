@@ -245,17 +245,14 @@ export const CLICK_NOT_RECEIVED_WARNING =
   'The click may not have reached the element: the page saw no mouse press (the browser may be showing a dialog or bubble that captures input)';
 
 /**
- * Note under a shortened list of matches.
+ * Note under a shortened human list whose JSON output lists more, up to a cap.
  *
- * @param hidden - Matches not listed
- * @param jsonLimit - How many JSON output lists, when it leaves some out too
- * @returns e.g. "... and 1174 more (use --json for all)",
- *   "... and 8980 more (--json lists the first 100)"
+ * @param hidden - Items not listed
+ * @param jsonLimit - Most items the JSON output lists
+ * @returns e.g. "... and 8980 more (--json lists up to 100)"
  */
-export function moreMatchesNote(hidden: number, jsonLimit?: number): string {
-  const where =
-    jsonLimit === undefined ? 'use --json for all' : `--json lists the first ${jsonLimit}`;
-  return `... and ${hidden} more (${where})`;
+export function moreMatchesNote(hidden: number, jsonLimit: number): string {
+  return `... and ${hidden} more (--json lists up to ${jsonLimit})`;
 }
 
 /**
@@ -280,6 +277,26 @@ export function queryMoreMatchesNote(omitted: number, indexed?: number): string 
  */
 export function queryViewportCheckedNote(checked: number): string {
   return `Visibility is checked for the first ${checked} matches only; ${sessionCommand('bdg dom layout <index>')} checks any of them`;
+}
+
+/**
+ * First line under an accessibility tree cut by `--limit` or `--depth`.
+ *
+ * @param listed - Nodes listed
+ * @returns e.g. "Showing the first 50 nodes (text boxes and repeated text left out)"
+ */
+export function a11yTreeShownNote(listed: number): string {
+  return `Showing the first ${listed} nodes (text boxes and repeated text left out)`;
+}
+
+/**
+ * How to see the rest of an accessibility tree cut by `--limit` or `--depth`.
+ *
+ * @param omitted - Nodes left out
+ * @returns e.g. "51391 more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query \"role:<role>\""
+ */
+export function a11yTreeMoreNote(omitted: number): string {
+  return `${omitted} more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query "role:<role>"`;
 }
 
 /**

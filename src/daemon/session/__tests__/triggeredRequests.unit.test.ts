@@ -6,10 +6,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { MAX_TRIGGERED_REQUESTS } from '@/constants.js';
 import { TelemetryStore } from '@/daemon/session/TelemetryStore.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import {
-  MAX_TRIGGERED_REQUESTS,
   toTriggeredRequest,
   watchTriggeredRequests,
   withTriggeredRequestCount,

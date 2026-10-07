@@ -5,6 +5,7 @@
 
 import type { TelemetryStore } from './TelemetryStore.js';
 
+import { MAX_TRIGGERED_REQUESTS } from '@/constants.js';
 import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { isNotableRequest } from '@/telemetry/requestKinds.js';
 import { failureReason, getRequestState } from '@/telemetry/requestState.js';
@@ -12,12 +13,6 @@ import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 
 /** URLs that never reach the network (inline data, in-page objects) */
 const LOCAL_URL_PATTERN = /^(data|blob):/i;
-
-/**
- * Requests listed in a result (a click that loads a page triggers its whole
- * load); notable ones ({@link isNotableRequest}) are kept before assets
- */
-export const MAX_TRIGGERED_REQUESTS = 50;
 
 /** Requests started since the watch began: the first ones, and how many more there were */
 export interface CollectedRequests {

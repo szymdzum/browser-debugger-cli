@@ -158,7 +158,7 @@ export type DetailsCommandOptions = BaseOptions & {
 
 /** Options for DOM query command */
 export type DomQueryCommandOptions = BaseOptions & {
-  /** Matches listed (0 = all); default 50, or 1000 with --json */
+  /** Matches listed (0 = all); default 50, or 100 with --json */
   limit?: number;
 };
 
@@ -308,7 +308,12 @@ export interface WaitCommandOptions extends BaseOptions {
 }
 
 /** Options for A11y tree command */
-export type A11yTreeCommandOptions = BaseOptions;
+export interface A11yTreeCommandOptions extends BaseOptions {
+  /** Nodes to list (0 = all); default 50, also with --json */
+  limit?: number;
+  /** Levels below the root to list (0 = root only) */
+  depth?: number;
+}
 
 /** Options for A11y query command */
 export interface A11yQueryCommandOptions extends BaseOptions {

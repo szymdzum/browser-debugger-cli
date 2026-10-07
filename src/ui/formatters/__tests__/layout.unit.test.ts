@@ -188,7 +188,7 @@ void describe('formatLayout', () => {
     assert.match(output, /^130 elements match "li" \(page x,y and size in CSS px\):$/m);
     assert.match(output, /\[19\] button#save/);
     assert.doesNotMatch(output, /\[20\]/);
-    assert.match(output, /\.\.\. and 110 more \(--json lists the first 25\)$/m);
+    assert.match(output, /\.\.\. and 110 more \(--json lists up to 100\)$/m);
   });
 
   void it('names the color scheme the page sees when known', () => {
@@ -201,10 +201,10 @@ void describe('formatLayout', () => {
     assert.match(output, /document 1280×2400, prefers-color-scheme: dark$/m);
   });
 
-  void it('points to --json for the rest when JSON lists every match', () => {
+  void it('says how many more --json lists when it lists every match', () => {
     const elements = Array.from({ length: 25 }, (_, index) => layout({ index }));
     const output = formatLayout({ selector: 'li', count: 25, page: PAGE, elements });
-    assert.match(output, /\.\.\. and 5 more \(use --json for all\)$/m);
+    assert.match(output, /\.\.\. and 5 more \(--json lists up to 100\)$/m);
   });
 
   void it('says which share of the matches --index picked', () => {

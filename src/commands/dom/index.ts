@@ -43,6 +43,7 @@ import type {
   DomFramesCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { integerOption, screenshotFormatOption } from '@/commands/shared/validation.js';
+import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 
 /**
  * Register DOM telemetry commands on the root Commander program.
@@ -67,7 +68,7 @@ export function registerDomCommands(program: Command): void {
     .argument('<selector>', 'CSS selector (e.g., ".error", "#app", "button")')
     .option(
       '--limit <n>',
-      `Matches to list (default: ${QUERY_LIST_LIMIT}, ${QUERY_CACHE_LIMIT} with --json; 0 = all); the first ${QUERY_CACHE_LIMIT} (or more with a higher limit) are indexed`,
+      `Matches to list (default: ${QUERY_LIST_LIMIT}, ${QUERY_JSON_LIST_LIMIT} with --json; 0 = all); the first ${QUERY_CACHE_LIMIT} (or more with a higher limit) are indexed`,
       integerOption(0)
     )
     .option('-j, --json', 'Output as JSON')

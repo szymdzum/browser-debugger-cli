@@ -2,7 +2,7 @@
  * Accessibility tree inspection commands for semantic element queries.
  *
  * Provides three core commands:
- * - tree: Dump full accessibility tree
+ * - tree: List the accessibility tree (bounded by --limit / --depth)
  * - query: Search by role/name/description patterns
  * - describe: Get A11y properties for CSS selector
  *
@@ -27,6 +27,7 @@ import type {
   A11yDescribeCommandOptions,
 } from '@/commands/shared/optionTypes.js';
 import { integerOption } from '@/commands/shared/validation.js';
+import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 import { CommandError } from '@/errors/index.js';
 import {
   elementNotFoundError,
@@ -38,11 +39,12 @@ import { A11Y_CACHE_SELECTOR_PREFIX, QueryCacheManager } from '@/session/QueryCa
 import {
   a11yIgnoredReasons,
   collectA11yTree,
+  listA11yTree,
   queryA11yTree,
   parseQueryPattern,
   resolveA11yNode,
 } from '@/telemetry/a11y.js';
-import type { A11yNode, A11yQueryResult } from '@/types.js';
+import type { A11yNode, A11yQueryResult, ListedA11yTree } from '@/types.js';
 import {
   formatA11yTree,
   formatA11yQueryResult,
@@ -50,35 +52,35 @@ import {
 } from '@/ui/formatters/a11y.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
-/** Matches `dom a11y query` lists by default in human output (a page can have hundreds of links; JSON lists all) */
+/** Matches `dom a11y query` lists by default in human output (a page can have hundreds of links) */
 const A11Y_QUERY_LIMIT = 50;
+
+/** Nodes `dom a11y tree` lists by default, in human and JSON output */
+const A11Y_TREE_LIMIT = 50;
 
 /**
  * Handle bdg dom a11y tree command
  *
- * Dumps the full accessibility tree for the current page via IPC.
- * Filters out ignored nodes for cleaner output.
+ * Lists the accessibility tree depth-first, the first `--limit` meaningful
+ * nodes (default {@link A11Y_TREE_LIMIT}, 0 = all) down to `--depth`, in
+ * human and JSON output; `count` is the whole tree, `omitted` the nodes cut
+ * and `skipped` the noise never listed.
  *
- * JSON output returns nodes as an array for natural jq filtering:
- *   bdg dom a11y tree --json | jq '.data.nodes[] | select(.role == "checkbox")'
- *   bdg dom a11y tree --json | jq '.data.nodes[0]'
+ * JSON output returns nodes as an array (each with its `depth`) for jq:
+ *   bdg dom a11y tree --json --limit 0 | jq '.data.nodes[] | select(.role == "checkbox")'
  *
  * @param options - Command options
  */
 async function handleA11yTree(options: A11yTreeCommandOptions): Promise<void> {
+  const listTree = async (): Promise<ListedA11yTree> =>
+    listA11yTree(await collectA11yTree(), options.limit ?? A11Y_TREE_LIMIT, options.depth);
+
   if (options.json) {
-    await runJsonCommand(async () => {
-      const tree = await collectA11yTree();
-      return {
-        root: tree.root,
-        nodes: Array.from(tree.nodes.values()),
-        count: tree.count,
-      };
-    });
+    await runJsonCommand(listTree);
   }
 
   await runCommand(
-    async () => ({ success: true, data: await collectA11yTree() }),
+    async () => ({ success: true, data: await listTree() }),
     options,
     formatA11yTree
   );
@@ -157,7 +159,10 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
       );
       return {
         success: true,
-        data: limitMatches(indexed, options.limit ?? (options.json ? 0 : A11Y_QUERY_LIMIT)),
+        data: limitMatches(
+          indexed,
+          options.limit ?? (options.json ? QUERY_JSON_LIST_LIMIT : A11Y_QUERY_LIMIT)
+        ),
       };
     },
     options,
@@ -296,7 +301,19 @@ export function registerA11yCommands(domCmd: Command): void {
 
   a11y
     .command('tree')
-    .description('Dump full accessibility tree (filters ignored nodes)')
+    .description(
+      'List the accessibility tree depth-first (ignored nodes, text boxes, repeated text and nameless wrappers left out)'
+    )
+    .option(
+      '--limit <n>',
+      `Nodes to list (default: ${A11Y_TREE_LIMIT}, also with --json; 0 = all listed nodes (text boxes and empty wrappers are always skipped))`,
+      integerOption(0)
+    )
+    .option(
+      '--depth <n>',
+      'Levels below the root to list (0 = root only; default: all)',
+      integerOption(0)
+    )
     .addOption(jsonOption())
     .action(async (options: A11yTreeCommandOptions) => {
       await handleA11yTree(options);
@@ -311,7 +328,7 @@ export function registerA11yCommands(domCmd: Command): void {
     )
     .option(
       '--limit <n>',
-      `Matches to list (default: ${A11Y_QUERY_LIMIT}, all with --json; 0 = all); all are indexed`,
+      `Matches to list (default: ${A11Y_QUERY_LIMIT}, ${QUERY_JSON_LIST_LIMIT} with --json; 0 = all); all are indexed`,
       integerOption(0)
     )
     .addOption(jsonOption())

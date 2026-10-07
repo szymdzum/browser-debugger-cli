@@ -162,6 +162,22 @@ export const CHROME_NETWORK_BUFFER_PER_RESOURCE = 10 * 1024 * 1024; // 10MB
 export const CHROME_POST_DATA_LIMIT = 1 * 1024 * 1024; // 1MB
 
 // ============================================================================
+// JSON LIST LIMITS
+// ============================================================================
+
+/** Matches `dom query` and `dom a11y query` list with `--json` and no `--limit` */
+export const QUERY_JSON_LIST_LIMIT = 100;
+
+/** Matches `dom layout` measures per command (the rest are counted as omitted) */
+export const LAYOUT_ELEMENT_LIMIT = 100;
+
+/**
+ * Requests listed in an action's result (a click that loads a page triggers
+ * its whole load); notable ones are kept before assets
+ */
+export const MAX_TRIGGERED_REQUESTS = 50;
+
+// ============================================================================
 // TIMEOUTS & INTERVALS
 // ============================================================================
 

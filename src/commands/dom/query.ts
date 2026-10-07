@@ -6,6 +6,7 @@ import { noMatchesError, pageDocumentId, queryDOMElements } from '@/commands/dom
 import { QUERY_CACHE_LIMIT, VIEWPORT_HINT_LIMIT } from '@/commands/dom/helpers/query.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomQueryCommandOptions } from '@/commands/shared/optionTypes.js';
+import { QUERY_JSON_LIST_LIMIT } from '@/constants.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
 import type { DomQueryResult } from '@/types.js';
 import { formatDomQuery } from '@/ui/formatters/dom.js';
@@ -19,7 +20,8 @@ export const QUERY_LIST_LIMIT = 50;
  *
  * Runs the selector, caches the described matches so later commands can
  * reference elements by index, and lists the first `--limit` of them (50,
- * or {@link QUERY_CACHE_LIMIT} with `--json`; 0 = all) with the total count.
+ * or {@link QUERY_JSON_LIST_LIMIT} with `--json`; 0 = all) with the total
+ * count. The first {@link QUERY_CACHE_LIMIT} are indexed whatever is listed.
  * No match exits 83, like `dom get` and `dom a11y`, and clears the cache so
  * indices of an earlier query are not used by mistake.
  */
@@ -27,7 +29,7 @@ export async function handleDomQuery(
   selector: string,
   options: DomQueryCommandOptions
 ): Promise<void> {
-  const limit = options.limit ?? (options.json ? QUERY_CACHE_LIMIT : QUERY_LIST_LIMIT);
+  const limit = options.limit ?? (options.json ? QUERY_JSON_LIST_LIMIT : QUERY_LIST_LIMIT);
   await runCommand(
     async () => {
       const document = await pageDocumentId();

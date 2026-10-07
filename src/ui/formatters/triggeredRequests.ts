@@ -2,6 +2,7 @@
  * Human output of the network requests a DOM action triggered.
  */
 
+import { MAX_TRIGGERED_REQUESTS } from '@/constants.js';
 import type { TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { assetTypeNames, isNotableRequest } from '@/telemetry/requestKinds.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
@@ -68,7 +69,10 @@ export function formatTriggeredRequestLines(requests: TriggeredRequest[], omitte
   const assets = requests.filter((request) => !isNotableRequest(request));
   const lines = notable.slice(0, MAX_TRIGGERED_REQUESTS_SHOWN).map(formatTriggeredRequest);
   const hidden = notable.length - lines.length + omitted;
-  if (hidden > 0) lines.push(omitted > 0 ? moreRequestsNote(hidden) : moreMatchesNote(hidden));
+  if (hidden > 0)
+    lines.push(
+      omitted > 0 ? moreRequestsNote(hidden) : moreMatchesNote(hidden, MAX_TRIGGERED_REQUESTS)
+    );
   if (assets.length > 0) lines.push(assetRequestsNote(assets.length, assetTypeNames(assets)));
   return lines;
 }

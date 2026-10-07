@@ -119,12 +119,29 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'query:--limit': {
     default:
-      'dom query and dom a11y query list the first 50 matches and say how many more there are; --json returns 1000 (dom query) or all of them (dom a11y query)',
+      'dom query and dom a11y query list the first 50 matches and say how many more there are; --json lists the first 100 with count (all matches) and omitted (the rest)',
     whenEnabled:
       'Lists that many matches (0 = all), in human and JSON output; count is always the total, JSON omitted the rest',
     automaticBehavior:
       'Matches are cached for index-based access (bdg dom click 55 works even when 50 are listed): all of them for dom a11y query, the first 1000 (or --limit, if higher) for dom query, which describes only those, so a page with 50000 matches answers in under a second; an element the page and frame trees both report is listed once. Indices work with click, fill, hover, pressKey, scroll, submit, layout, get and listeners, also for elements of a cross-origin iframe of the same site (a consent dialog), whose scripts then run in that frame',
-    tokenImpact: 'About one line per match; a page can have hundreds of links',
+    tokenImpact:
+      'About one line per match (piped JSON about 160 bytes per dom query match, 230 per a11y match); a page can have thousands of links: on Wikipedia "United States" --limit 0 --json is 1.0 MB (dom query a) and 1.3 MB (dom a11y query role:link), the default 16 KB and 23 KB',
+  },
+  'tree:--limit': {
+    default:
+      'dom a11y tree lists the first 50 meaningful nodes depth-first, in human and JSON output; JSON count is the whole tree = nodes listed + omitted (cut by --limit/--depth) + skipped (never listed)',
+    whenEnabled:
+      'Lists that many nodes; 0 = all listed nodes (text boxes and empty wrappers are always skipped)',
+    automaticBehavior:
+      'Ignored nodes, text boxes, blank text, text repeating its parent name and nameless layout wrappers (generic, none, presentation, layout tables) are never listed (JSON skipped counts them); their children move up a level. For the raw tree with every node use bdg cdp Accessibility.getFullAXTree --json. JSON nodes carry depth (0 = root) instead of childIds; nodes outside the root (frame content) follow the root tree',
+    tokenImpact:
+      'About 140 bytes per piped JSON node (7 KB by default); the whole tree of a long page is megabytes (Wikipedia "United States": 51k nodes, 20k listed, 2.6 MB with --limit 0 --json), so prefer --depth or dom a11y query "role:<role>"',
+  },
+  'tree:--depth': {
+    default: 'dom a11y tree lists every level (up to --limit nodes)',
+    whenEnabled:
+      'Lists nodes down to that level (0 = root only); deeper nodes are counted in omitted',
+    tokenImpact: 'An outline of a page (landmarks, headings) in a few levels',
   },
   'eval:--frame': {
     default: "Evaluates in the page's main frame",

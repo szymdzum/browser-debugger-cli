@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **`--json` output is compact when piped** (#441): the envelope is on one line unless stdout is a terminal, which still gets it indented. Agents and scripts capture stdout, so the indentation was overhead: measured on a fixture page with 500 links, `dom query a --json` 137 KB → 73 KB (−47%), `network list --json` −34%, `status --json` −26%. `--follow` streams, HAR files and session metadata are unchanged.
+- **`--json` lists are bounded** (#436). One routine `--json` call could fill an agent's context; now JSON lists about as much as the default human output, and `--limit 0` still lists everything listable. On Wikipedia "United States" (piped, so compact JSON, #441, on both sides):
+
+  | Command | Before | After |
+  |---|---|---|
+  | `dom a11y tree --json` | 5.82 MB (51,441 nodes) | 7 KB (50 nodes, `omitted: 20067`, `skipped: 31324`) |
+  | `dom a11y query role:link --json` | 1.33 MB (5,606 matches) | 23 KB (100, `omitted: 5506`) |
+  | `dom query a --json` | 163 KB (1,000 matches) | 16 KB (100, `omitted: 6518`) |
+
+  - **Breaking:** `dom a11y tree --json` is a flat, bounded list. `data.root` and each node's `childIds` are gone; `nodes` lists the same nodes as the human output, depth-first, each with its `depth` (0 = the root, `nodes[0]`), plus `count` (the whole tree), `omitted` (nodes cut by `--limit` or `--depth`) and `skipped` (text boxes, blank or repeated text, nameless layout wrappers: never listed), so `count` = listed + `omitted` + `skipped`. The raw tree is `bdg cdp Accessibility.getFullAXTree --json`.
+  - `dom a11y tree` takes `--limit <n>` (default 50, also with `--json`; 0 = all listed nodes) and `--depth <n>` (0 = root only). `--limit 0 --json` is 2.6 MB. A cut tree no longer ends with `Use --json flag for complete output` but with `20067 more: --limit 0 lists all, --depth <n> limits the levels, or search with bdg dom a11y query "role:<role>"`.
+  - `dom a11y query --json` (and `dom a11y <search> --json`) lists the first 100 matches instead of all of them, `dom query --json` 100 instead of 1000, with `count` and `omitted`. Indexing is unchanged: every a11y match and the first 1000 `dom query` matches still work as indices (`bdg dom click 250`).
+  - `dom layout` and action request lists no longer say `use --json for all` under a shortened list; JSON is capped there too: `... and 5 more (--json lists up to 100)` (layout) and `(--json lists up to 50)` (triggered requests).
 
 ### Fixed
 

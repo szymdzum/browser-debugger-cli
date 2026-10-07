@@ -311,6 +311,26 @@ export interface A11yTree {
   count: number;
 }
 
+/** An accessibility node as `dom a11y tree` lists it */
+export type ListedA11yNode = Omit<A11yNode, 'childIds'> & {
+  /** Indentation level (0 = root; left-out wrappers add none) */
+  depth: number;
+};
+
+/**
+ * The part of an accessibility tree `dom a11y tree` lists (`--limit`, `--depth`).
+ */
+export interface ListedA11yTree {
+  /** Listed nodes, depth-first from the root */
+  nodes: ListedA11yNode[];
+  /** Nodes in the whole tree (listed + omitted + skipped) */
+  count: number;
+  /** Nodes left out by `--limit` or `--depth` */
+  omitted?: number;
+  /** Nodes never listed: text boxes, blank or repeated text, nameless layout wrappers */
+  skipped?: number;
+}
+
 /**
  * Query pattern for searching accessibility tree.
  *

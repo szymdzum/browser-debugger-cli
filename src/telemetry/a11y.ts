@@ -4,7 +4,15 @@ import { unknownQueryFieldError } from '@/errors/messages.js';
 import { callBdgScript, callCDP } from '@/ipc/client.js';
 import { MASKED_VALUE, SENSITIVE_FIELD_JS } from '@/runtime/dom/elementInfo.js';
 import { childFrameIds } from '@/runtime/dom/frameLayout.js';
-import type { A11yNode, A11yTree, A11yQueryPattern, A11yQueryResult, NodeRef } from '@/types.js';
+import type {
+  A11yNode,
+  A11yTree,
+  A11yQueryPattern,
+  A11yQueryResult,
+  ListedA11yNode,
+  ListedA11yTree,
+  NodeRef,
+} from '@/types.js';
 import { ConcurrencyLimiter } from '@/utils/concurrency.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { levenshteinDistance } from '@/utils/levenshtein.js';
@@ -51,6 +59,89 @@ export function buildTreeFromRawNodes(rawNodes: Protocol.Accessibility.AXNode[])
 
   const root = nodes.get(rootRaw.nodeId) as A11yNode;
   return { root, nodes, count: nodes.size };
+}
+
+/** Roles that only lay out their children and say nothing themselves */
+const LAYOUT_ROLES = new Set([
+  'generic',
+  'none',
+  'presentation',
+  'LayoutTable',
+  'LayoutTableRow',
+  'LayoutTableCell',
+]);
+
+/**
+ * Whether a node is left out of `dom a11y tree`: text boxes, blank text,
+ * text that repeats its parent's name, and nameless layout wrappers.
+ *
+ * @param node - Accessibility node
+ * @param parentName - Name of the nearest named ancestor
+ * @returns True when the node says nothing of its own
+ */
+function isTreeNoise(node: A11yNode, parentName: string | undefined): boolean {
+  return (
+    node.role === 'InlineTextBox' ||
+    (node.role === 'StaticText' && (node.name === parentName || !node.name?.trim())) ||
+    (LAYOUT_ROLES.has(node.role) && !node.name)
+  );
+}
+
+/**
+ * The nodes `dom a11y tree` lists, depth-first from the root (then nodes not
+ * under it, such as frame content): the first `limit` (0 = all) no deeper
+ * than `maxDepth`. Noise ({@link isTreeNoise}) is counted as skipped and its
+ * children move up a level, so the budget goes to meaningful nodes; nodes cut
+ * by the limit or depth are counted as omitted. Every node of the tree is
+ * listed, omitted or skipped.
+ *
+ * @param tree - Accessibility tree
+ * @param limit - Nodes to list (0 = all listable ones)
+ * @param maxDepth - Deepest level to list (0 = root only; undefined = all)
+ * @returns Listed nodes with their depth, the tree size, and how many were cut or skipped
+ */
+export function listA11yTree(tree: A11yTree, limit: number, maxDepth?: number): ListedA11yTree {
+  const nodes: ListedA11yNode[] = [];
+  const visited = new Set<string>();
+  let omitted = 0;
+  let skipped = 0;
+  const visit = (node: A11yNode, depth: number, parentName: string | undefined): void => {
+    if (visited.has(node.nodeId)) return;
+    visited.add(node.nodeId);
+    const listable = !isTreeNoise(node, parentName);
+    if (listable) {
+      const fits = (limit === 0 || nodes.length < limit) && (maxDepth ?? depth) >= depth;
+      if (fits) nodes.push(listedNode(node, depth));
+      else omitted++;
+    } else {
+      skipped++;
+    }
+    for (const childId of node.childIds ?? []) {
+      const child = tree.nodes.get(childId);
+      if (child) visit(child, listable ? depth + 1 : depth, node.name ?? parentName);
+    }
+  };
+  visit(tree.root, 0, undefined);
+  for (const node of tree.nodes.values()) visit(node, 0, undefined);
+  return {
+    nodes,
+    count: tree.count,
+    ...(omitted > 0 && { omitted }),
+    ...(skipped > 0 && { skipped }),
+  };
+}
+
+/**
+ * A node as the tree lists it: its depth instead of child ids (its children
+ * follow it, one level deeper).
+ *
+ * @param node - Accessibility node
+ * @param depth - Its level in the listing
+ * @returns Listed node
+ */
+function listedNode(node: A11yNode, depth: number): ListedA11yNode {
+  const { childIds: _childIds, ...rest } = node;
+  return { ...rest, depth };
 }
 
 /**

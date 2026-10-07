@@ -1,7 +1,11 @@
 import type { DomContext } from '@/types.js';
-import type { A11yTree, A11yQueryResult, A11yNode } from '@/types.js';
+import type { A11yQueryResult, A11yNode, ListedA11yNode, ListedA11yTree } from '@/types.js';
 import { OutputFormatter, areHintsHidden } from '@/ui/formatting.js';
-import { a11yMoreMatchesNote } from '@/ui/messages/commands.js';
+import {
+  a11yMoreMatchesNote,
+  a11yTreeMoreNote,
+  a11yTreeShownNote,
+} from '@/ui/messages/commands.js';
 
 /**
  * Data structure for a11y node with DOM context.
@@ -12,86 +16,29 @@ interface A11yNodeWithContext {
 }
 
 /**
- * Maximum number of nodes to display in tree output before truncating.
- * Prevents overwhelming terminal output for large accessibility trees.
- */
-const MAX_TREE_NODES_DISPLAY = 50;
-
-/**
  * Separator width for section dividers in formatted output.
  */
 const SEPARATOR_WIDTH = 50;
 
 /**
- * Format accessibility tree for human-readable output.
+ * Format the listed part of an accessibility tree for human-readable output:
+ * one indented line per node, and when nodes were cut, how to see more.
  *
- * Displays the tree structure with role, name, and key properties.
- * Shows up to 50 nodes by default for manageable output.
- *
- * @param tree - Accessibility tree data
+ * @param tree - Listed accessibility tree
  * @returns Formatted output string
  */
-export function formatA11yTree(tree: A11yTree): string {
+export function formatA11yTree(tree: ListedA11yTree): string {
   const fmt = new OutputFormatter();
 
   fmt.text(`Accessibility Tree (${tree.count} nodes)`).separator('─', SEPARATOR_WIDTH).blank();
 
-  const { lines, truncated } = treeLines(tree);
-  lines.forEach((line) => fmt.text(line));
+  tree.nodes.forEach((node) => fmt.text('  '.repeat(node.depth) + formatA11yNodeOneLine(node)));
 
-  if (truncated) {
-    fmt
-      .blank()
-      .text(
-        `Showing the first ${MAX_TREE_NODES_DISPLAY} nodes (text boxes and repeated text left out)`
-      )
-      .text('Use --json flag for complete output, or bdg dom a11y query "role:<role>" to search');
+  if (tree.omitted) {
+    fmt.blank().text(a11yTreeShownNote(tree.nodes.length)).text(a11yTreeMoreNote(tree.omitted));
   }
 
   return fmt.build();
-}
-
-/** Roles that only lay out their children and say nothing themselves */
-const LAYOUT_ROLES = new Set([
-  'generic',
-  'none',
-  'presentation',
-  'LayoutTable',
-  'LayoutTableRow',
-  'LayoutTableCell',
-]);
-
-/**
- * The tree as indented lines, depth-first from the root. Text boxes, blank
- * text, text that repeats its parent's name, and nameless layout wrappers are left out
- * (their children move up a level), so the budget goes to meaningful nodes.
- *
- * @param tree - Accessibility tree
- * @returns Up to {@link MAX_TREE_NODES_DISPLAY} lines, and whether nodes were left
- */
-function treeLines(tree: A11yTree): { lines: string[]; truncated: boolean } {
-  const lines: string[] = [];
-  const visited = new Set<string>();
-  let truncated = false;
-  const visit = (node: A11yNode, depth: number, parentName: string | undefined): void => {
-    if (visited.has(node.nodeId)) return;
-    visited.add(node.nodeId);
-    if (lines.length >= MAX_TREE_NODES_DISPLAY) {
-      truncated = true;
-      return;
-    }
-    const skip =
-      node.role === 'InlineTextBox' ||
-      (node.role === 'StaticText' && (node.name === parentName || !node.name?.trim())) ||
-      (LAYOUT_ROLES.has(node.role) && !node.name);
-    if (!skip) lines.push('  '.repeat(depth) + formatA11yNodeOneLine(node));
-    for (const childId of node.childIds ?? []) {
-      const child = tree.nodes.get(childId);
-      if (child) visit(child, skip ? depth : depth + 1, node.name ?? parentName);
-    }
-  };
-  visit(tree.root, 0, undefined);
-  return { lines, truncated };
 }
 
 /** Roles whose elements take a value (the next step is fill, not click) */
@@ -241,7 +188,7 @@ export function formatA11yNodeWithContext(data: A11yNodeWithContext): string {
  * // => '[Button] "Submit" (focusable)'
  * ```
  */
-function formatA11yNodeOneLine(node: A11yNode): string {
+function formatA11yNodeOneLine(node: A11yNode | ListedA11yNode): string {
   const parts: string[] = [];
 
   parts.push(`[${capitalize(node.role)}]`);

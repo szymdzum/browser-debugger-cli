@@ -68,7 +68,7 @@ void describe('formatTriggeredRequestLines', () => {
     );
     const lines = formatTriggeredRequestLines(requests);
     assert.equal(lines.length, MAX_TRIGGERED_REQUESTS_SHOWN + 1);
-    assert.equal(lines.at(-1), '... and 3 more (use --json for all)');
+    assert.equal(lines.at(-1), '... and 3 more (--json lists up to 50)');
   });
 
   void it('points to the network list when JSON left requests out too', () => {

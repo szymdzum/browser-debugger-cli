@@ -2,6 +2,7 @@
  * Human-readable output of `bdg dom layout`.
  */
 
+import { LAYOUT_ELEMENT_LIMIT } from '@/constants.js';
 import { indexSourceText } from '@/errors/messages.js';
 import type { ElementLayout, LayoutResult, LayoutSize } from '@/ipc/protocol/domTypes.js';
 import type { IndexSource } from '@/types.js';
@@ -67,6 +68,6 @@ export function formatLayout(data: LayoutOutput): string {
         : layoutHeadline(data.count, data.elements.length + (data.omitted ?? 0), data.selector)
     )
     .list(shown.map((element) => layoutLine(element, data.page.viewport)))
-    .list(more > 0 ? [moreMatchesNote(more, data.omitted ? data.elements.length : undefined)] : [])
+    .list(more > 0 ? [moreMatchesNote(more, LAYOUT_ELEMENT_LIMIT)] : [])
     .build();
 }
