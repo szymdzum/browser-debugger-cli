@@ -48,28 +48,173 @@ export function styleSheetHeaders(cdp: CDPConnection): Iterable<Protocol.CSS.CSS
   return headersByConnection.get(cdp)?.values() ?? [];
 }
 
+/** Matched styles of an element, or why they are missing */
+export type MatchedStyles =
+  Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed' | 'skipped';
+
+/** A matched-styles request, with its answer once it came */
+interface MatchedRequest {
+  promise: Promise<Protocol.CSS.GetMatchedStylesForNodeResponse | 'failed'>;
+  answer?: Protocol.CSS.GetMatchedStylesForNodeResponse | 'failed';
+}
+
+/** What is known about the matched styles of the current document */
+interface DocumentStyles {
+  /** Requests by node id, least recently used first */
+  requests: Map<number, MatchedRequest>;
+  /** The request Chrome is working on */
+  running?: Promise<unknown> | undefined;
+  /** A read took longer than its budget on this document */
+  slow: boolean;
+}
+
+/** Answers kept per document (one can be several MB on CSS-heavy pages) */
+const MAX_KEPT_ANSWERS = 4;
+
+/** Events after which kept answers may be stale (a navigation resets everything) */
+const STYLE_CHANGE_EVENTS = [
+  'CSS.styleSheetAdded',
+  'CSS.styleSheetChanged',
+  'CSS.styleSheetRemoved',
+  'CSS.mediaQueryResultChanged',
+  'DOM.attributeModified',
+  'DOM.attributeRemoved',
+  'DOM.inlineStyleInvalidated',
+  'DOM.childNodeInserted',
+  'DOM.childNodeRemoved',
+  'DOM.childNodeCountUpdated',
+  'DOM.pseudoElementAdded',
+  'DOM.pseudoElementRemoved',
+];
+
+/** Matched-styles state per connection */
+const documentStylesByConnection = new WeakMap<CDPConnection, DocumentStyles>();
+
+/**
+ * The matched-styles state of a connection, tracked from its first use: a
+ * new document (`DOM.documentUpdated`) starts afresh, style and DOM changes
+ * drop the kept answers. Events of other sessions (iframes) are ignored.
+ *
+ * @param cdp - CDP connection
+ * @returns State
+ */
+function documentStyles(cdp: CDPConnection): DocumentStyles {
+  const existing = documentStylesByConnection.get(cdp);
+  if (existing) return existing;
+  const state: DocumentStyles = { requests: new Map(), slow: false };
+  documentStylesByConnection.set(cdp, state);
+  cdp.on('DOM.documentUpdated', (_params, sessionId) => {
+    if (sessionId) return;
+    state.requests.clear();
+    state.slow = false;
+  });
+  for (const event of STYLE_CHANGE_EVENTS) {
+    cdp.on(event, (_params, sessionId) => {
+      if (!sessionId) state.requests.clear();
+    });
+  }
+  return state;
+}
+
+/**
+ * Send a matched-styles request and keep it, dropping the least recently
+ * used answers beyond {@link MAX_KEPT_ANSWERS}. A failed one is not kept.
+ *
+ * @param cdp - CDP connection
+ * @param state - Document state
+ * @param nodeId - Node id of the element
+ * @returns The request
+ */
+function sendMatchedRequest(
+  cdp: CDPConnection,
+  state: DocumentStyles,
+  nodeId: number
+): MatchedRequest {
+  const request: MatchedRequest = {
+    promise: cdp
+      .send('CSS.getMatchedStylesForNode', { nodeId })
+      .then((response) => response as Protocol.CSS.GetMatchedStylesForNodeResponse)
+      .catch((error: unknown) => {
+        log.debug(`CSS.getMatchedStylesForNode failed: ${String(error)}`);
+        return 'failed' as const;
+      }),
+  };
+  state.running = request.promise;
+  void request.promise.then((answer) => {
+    request.answer = answer;
+    if (state.running === request.promise) state.running = undefined;
+    if (answer === 'failed' && state.requests.get(nodeId) === request) {
+      state.requests.delete(nodeId);
+    }
+  });
+  state.requests.set(nodeId, request);
+  for (const oldest of state.requests.keys()) {
+    if (state.requests.size <= MAX_KEPT_ANSWERS) break;
+    state.requests.delete(oldest);
+  }
+  return request;
+}
+
+/**
+ * The element's request, sent once Chrome has answered the one it is
+ * working on (another element's, or this one's sent by a concurrent call).
+ *
+ * @param cdp - CDP connection
+ * @param state - Document state
+ * @param nodeId - Node id of the element
+ * @param deadline - When to give up waiting
+ * @returns The request, or undefined when the running one outlasted the deadline
+ */
+async function requestWhenFree(
+  cdp: CDPConnection,
+  state: DocumentStyles,
+  nodeId: number,
+  deadline: number
+): Promise<MatchedRequest | undefined> {
+  while (state.running) {
+    const kept = state.requests.get(nodeId);
+    if (kept) return kept;
+    if ((await raceTimeout(state.running, deadline - Date.now())) === undefined) return undefined;
+  }
+  return state.requests.get(nodeId) ?? sendMatchedRequest(cdp, state, nodeId);
+}
+
 /**
  * The rules that match an element, with its inline style and what its
- * ancestors pass down, or why they are missing.
+ * ancestors pass down, or why they are missing. An answer (or a request
+ * still running) for the element is reused until the document, its
+ * stylesheets or its DOM change; another element's request is sent only
+ * after the one Chrome is working on, within the budget. Once a read took
+ * longer than its budget, `skipWhenSlow` reads on the same document return
+ * `skipped` at once unless the answer is already there.
  *
  * @param cdp - CDP connection
  * @param nodeId - Node id of the element
  * @param budgetMs - Time allowed
- * @returns Matched styles, `timeout` (longer than the budget) or `failed` (CDP error)
+ * @param options - `skipWhenSlow`: do not wait on a document known to be slow (the default hints)
+ * @returns Matched styles, `timeout` (longer than the budget), `failed` (CDP error)
+ *   or `skipped` (slow document)
  */
 export async function matchedStyles(
   cdp: CDPConnection,
   nodeId: number,
-  budgetMs: number
-): Promise<Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed'> {
-  const request = cdp
-    .send('CSS.getMatchedStylesForNode', { nodeId })
-    .then((response) => response as Protocol.CSS.GetMatchedStylesForNodeResponse)
-    .catch((error: unknown) => {
-      log.debug(`CSS.getMatchedStylesForNode failed: ${String(error)}`);
-      return 'failed' as const;
-    });
-  return (await raceTimeout(request, budgetMs)) ?? 'timeout';
+  budgetMs: number,
+  options: { skipWhenSlow?: boolean } = {}
+): Promise<MatchedStyles> {
+  const state = documentStyles(cdp);
+  const kept = state.requests.get(nodeId);
+  if (kept) {
+    state.requests.delete(nodeId);
+    state.requests.set(nodeId, kept);
+  }
+  if (kept?.answer) return kept.answer;
+  if (options.skipWhenSlow && state.slow) return 'skipped';
+  const deadline = Date.now() + budgetMs;
+  const request = kept ?? (await requestWhenFree(cdp, state, nodeId, deadline));
+  const answer = request && (await raceTimeout(request.promise, deadline - Date.now()));
+  if (answer) return answer;
+  state.slow = true;
+  return 'timeout';
 }
 
 /**

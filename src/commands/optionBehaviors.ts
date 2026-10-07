@@ -376,6 +376,8 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'inspect:--no-hints': {
     default:
       "Hints at the element's own author declarations that have no effect (flex/grid properties without flex or grid, item properties without a flex or grid parent, offsets on static elements, sizes on inline ones, var() of an unset custom property, form controls in the browser's font), within a 1 s budget; hints none when nothing was found",
+    automaticBehavior:
+      "After a hint read times out, later inspects on the same page skip the hints without waiting (hints skipped: this page's stylesheets are slow to read) until it navigates; --rules and --why still wait up to 5 s. An element's matched rules are reused until the page's stylesheets or DOM change",
     whenEnabled: 'Skips the hints and does not read the matched rules',
   },
 

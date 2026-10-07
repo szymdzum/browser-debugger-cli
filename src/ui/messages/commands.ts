@@ -703,10 +703,13 @@ export function coverText(cover: string, transparent: boolean | undefined): stri
  * Note when `bdg dom inspect` could not read the element's matched rules, so
  * no hints, rules or why were computed.
  *
- * @param reason - `timeout` (very large stylesheets) or `failed` (Chrome reported an error)
+ * @param reason - `timeout` (very large stylesheets), `failed` (Chrome reported
+ *   an error) or `skipped` (hints not read: an earlier read on this page timed out)
  * @returns Note
  */
-export function inspectCascadeNote(reason: 'timeout' | 'failed'): string {
+export function inspectCascadeNote(reason: 'timeout' | 'failed' | 'skipped'): string {
+  if (reason === 'skipped')
+    return "hints skipped: this page's stylesheets are slow to read (--rules waits 5 s)";
   return reason === 'timeout'
     ? "CSS rules not read: the page's stylesheets took too long (hints wait 1 s; --rules and --why 5 s)"
     : 'CSS rules not read: Chrome could not report the rules matching this element';

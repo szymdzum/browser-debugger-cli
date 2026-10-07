@@ -6,7 +6,6 @@
  * browser.
  */
 
-import type { Protocol } from '@/connection/typed-cdp.js';
 import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
 import type { InspectRect, InspectResult, InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
 import { isLabelClass } from '@/runtime/dom/elementInfo.js';
@@ -27,6 +26,7 @@ import {
   type PlatformFont,
   type PseudoSource,
 } from '@/runtime/dom/inspectPaintModel.js';
+import type { MatchedStyles } from '@/runtime/dom/inspectRules.js';
 import type { RawInspect } from '@/runtime/dom/inspectScripts.js';
 import { buildTree, rowText } from '@/runtime/dom/inspectTree.js';
 import { hexColor, relativeLuminance } from '@/utils/color.js';
@@ -50,8 +50,8 @@ export interface InspectSources {
   /** The element as `dom layout` measures it */
   layout?: ElementLayout;
   colorScheme?: 'light' | 'dark';
-  /** Matched rules for the cascade fields; `timeout` or `failed` when they were not read */
-  matched?: Protocol.CSS.GetMatchedStylesForNodeResponse | 'timeout' | 'failed';
+  /** Matched rules for the cascade fields; `timeout`, `failed` or `skipped` when they were not read */
+  matched?: MatchedStyles;
   /** `--rules` was asked for */
   rules?: boolean;
   /** `--why` property */
