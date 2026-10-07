@@ -14,7 +14,7 @@ import {
   getRequestState,
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
-import { withPageCrashedNote } from '@/ui/messages/commands.js';
+import { moreCharsNote, withPageCrashedNote } from '@/ui/messages/commands.js';
 import {
   PREVIEW_EMPTY_STATES,
   PREVIEW_HEADERS,
@@ -23,6 +23,7 @@ import {
 } from '@/ui/messages/preview.js';
 import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
+import { capLength } from '@/utils/strings.js';
 
 /**
  * Infer resource type from MIME type when CDP doesn't provide it.
@@ -172,14 +173,20 @@ function formatPreviewHumanReadable(output: BdgOutput, options: PreviewOptions):
 
 /**
  * A console message text in the compact preview: cut like `console --list`
- * cuts it and to its first two lines, or whole with `--full`.
+ * cuts it and to its first two lines, or whole with `--full`. The pointer
+ * naming `--full` comes after the line cut, so it is always shown.
  *
  * @param text - Message text
  * @param full - `--full`
  * @returns Text to print
  */
 function compactConsoleText(text: string, full: boolean | undefined): string {
-  return full ? text : truncateText(capForDisplay(text, MAX_CONSOLE_TEXT_LENGTH), 2);
+  if (full) return text;
+  const capped = capLength(text, MAX_CONSOLE_TEXT_LENGTH);
+  const shown = truncateText(capped.text, 2);
+  return capped.truncatedFrom === undefined
+    ? shown
+    : `${shown}${moreCharsNote(capped.truncatedFrom - capped.text.length)}`;
 }
 
 /**

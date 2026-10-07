@@ -173,3 +173,52 @@ void describe('dom get --raw and dom eval human output', () => {
     assert.equal(formatDomEval({ result: html, type: 'string' }, { full: true }), html);
   });
 });
+
+/** A high surrogate not followed by a low one, or a low one not preceded by a high one */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
+void describe('a cut never splits an emoji', () => {
+  const straddling = (cap: number): string => `${'a'.repeat(cap - 1)}😀${'b'.repeat(500)}`;
+
+  void it('capLength ends before a surrogate pair at the cap', () => {
+    const capped = capLength(straddling(10), 10);
+    assert.equal(capped.text, 'a'.repeat(9));
+    assert.equal(capped.truncatedFrom, straddling(10).length);
+  });
+
+  void it('in human output', () => {
+    const message: ConsoleMessage = {
+      type: 'log',
+      text: straddling(MAX_CONSOLE_TEXT_LENGTH),
+      timestamp: 1,
+    };
+    const listed = formatConsole([message], { list: true, last: 0 });
+    assert.doesNotMatch(listed, LONE_SURROGATE);
+    assert.match(listed, /a… 502 more chars \(use --full\)/);
+    const evaluated = formatDomEval({ result: straddling(MAX_VALUE_LENGTH), type: 'string' });
+    assert.doesNotMatch(evaluated, LONE_SURROGATE);
+  });
+
+  void it('in JSON output', () => {
+    const message: ConsoleMessage = {
+      type: 'log',
+      text: straddling(MAX_CONSOLE_JSON_TEXT_LENGTH),
+      timestamp: 1,
+    };
+    const output = buildConsoleJsonOutput([message], { list: true, last: 0 });
+    assert.doesNotMatch(JSON.stringify(output), /\\ud83d(?!\\ude00)/);
+    assert.doesNotMatch(output.messages?.[0]?.text ?? '', LONE_SURROGATE);
+  });
+});
+
+void describe('compact peek of a long multi-line message', () => {
+  void it('keeps the pointer naming --full after cutting to two lines', () => {
+    const text = Array.from({ length: 20 }, (_, i) => `line ${i} ${'x'.repeat(40)}`).join('\n');
+    const output = formatPreview(
+      { ...preview(), data: { console: [{ type: 'log', text, timestamp: 1 }] } },
+      { last: 0 }
+    );
+    assert.match(output, /\(\d+ more lines\)… \d+ more chars \(use --full\)/);
+    assert.doesNotMatch(output, /line 2 /);
+  });
+});

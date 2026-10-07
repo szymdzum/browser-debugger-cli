@@ -19,5 +19,5 @@ export function capForDisplay(text: string, maxLength: number, full?: boolean): 
   const capped = capLength(text, maxLength);
   return capped.truncatedFrom === undefined
     ? text
-    : `${capped.text}${moreCharsNote(capped.truncatedFrom - maxLength)}`;
+    : `${capped.text}${moreCharsNote(capped.truncatedFrom - capped.text.length)}`;
 }

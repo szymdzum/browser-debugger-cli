@@ -34,15 +34,17 @@ export interface CappedText {
 }
 
 /**
- * Cut a text to its first `maxLength` characters, keeping the original
- * length (the `truncatedFrom` of JSON output).
+ * Cut a text to its first `maxLength` characters (UTF-16 code units),
+ * keeping the original length (the `truncatedFrom` of JSON output). A
+ * surrogate pair (an emoji) is never split: the cut ends before it.
  *
  * @param text - Text to cut
- * @param maxLength - Characters kept
+ * @param maxLength - Characters kept (at most)
  * @returns The text, with `truncatedFrom` when it was cut
  */
 export function capLength(text: string, maxLength: number): CappedText {
-  return text.length > maxLength
-    ? { text: text.slice(0, maxLength), truncatedFrom: text.length }
-    : { text };
+  if (text.length <= maxLength) return { text };
+  const lastKept = text.charCodeAt(maxLength - 1);
+  const end = lastKept >= 0xd800 && lastKept <= 0xdbff ? maxLength - 1 : maxLength;
+  return { text: text.slice(0, end), truncatedFrom: text.length };
 }
