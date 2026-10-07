@@ -3,7 +3,7 @@
  */
 
 import { noMatchesError, pageDocumentId, queryDOMElements } from '@/commands/dom/helpers/index.js';
-import { QUERY_CACHE_LIMIT } from '@/commands/dom/helpers/query.js';
+import { QUERY_CACHE_LIMIT, VIEWPORT_HINT_LIMIT } from '@/commands/dom/helpers/query.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomQueryCommandOptions } from '@/commands/shared/optionTypes.js';
 import { QueryCacheManager } from '@/session/QueryCacheManager.js';
@@ -55,18 +55,25 @@ export async function handleDomQuery(
  * The matches to list: the first `limit` (all with 0), with how many were
  * left out and, when not every match was described, how many can be used by
  * index. Nothing is added when the limit cut nothing (a match that could not
- * be described is just missing, as before).
+ * be described is just missing, as before). When more than
+ * {@link VIEWPORT_HINT_LIMIT} are listed, `viewportChecked` says that only
+ * the first ones have a viewport position.
  *
  * @param result - Query result with every described match
  * @param limit - Matches to list (0 = all)
  * @returns Result to output
  */
 export function listedMatches(result: DomQueryResult, limit: number): DomQueryResult {
-  if (limit === 0 || result.count <= limit) return result;
-  return {
-    ...result,
-    nodes: result.nodes.slice(0, limit),
-    omitted: result.count - Math.min(limit, result.nodes.length),
-    ...(result.nodes.length < result.count && { indexed: result.nodes.length }),
-  };
+  const listed =
+    limit === 0 || result.count <= limit
+      ? result
+      : {
+          ...result,
+          nodes: result.nodes.slice(0, limit),
+          omitted: result.count - Math.min(limit, result.nodes.length),
+          ...(result.nodes.length < result.count && { indexed: result.nodes.length }),
+        };
+  return listed.nodes.length > VIEWPORT_HINT_LIMIT
+    ? { ...listed, viewportChecked: VIEWPORT_HINT_LIMIT }
+    : listed;
 }

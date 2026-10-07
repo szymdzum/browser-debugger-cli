@@ -61,6 +61,8 @@ export interface ConsoleFormatOptions {
   groupLimit?: number | undefined;
   /** Oldest messages the session dropped at its limit */
   dropped?: number | undefined;
+  /** When the page crashed (epoch ms), while it is not loaded again */
+  pageCrashedAt?: number | undefined;
 }
 
 /** Distinct errors and warnings the summary lists without `--last` */
@@ -123,6 +125,8 @@ export interface ConsoleJsonOutput {
   moreWarnings?: number;
   /** Oldest messages the session dropped at its limit (10000 are kept) */
   dropped?: number;
+  /** When the page crashed (epoch ms), while it is not loaded again */
+  pageCrashedAt?: number;
   messages?: ConsoleMessage[];
 }
 

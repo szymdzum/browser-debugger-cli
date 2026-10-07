@@ -901,10 +901,13 @@ export function conflictingTargetError(option: string, positional: string): Erro
  *
  * @param first - First option
  * @param second - Option it conflicts with
- * @returns Message
+ * @returns Message and suggestion
  */
-export function conflictingOptionsMessage(first: string, second: string): string {
-  return `${first} cannot be combined with ${second}; use one of them`;
+export function conflictingOptionsError(first: string, second: string): ErrorWithSuggestion {
+  return {
+    message: `${first} cannot be combined with ${second}`,
+    suggestion: `Use one of them: drop ${first} or ${second}`,
+  };
 }
 
 /**
@@ -953,10 +956,13 @@ export function sessionEndedDuringCommandError(): ErrorWithSuggestion {
  *
  * @param option - Option given
  * @param required - Option it needs
- * @returns Message
+ * @returns Message and suggestion
  */
-export function optionRequiresMessage(option: string, required: string): string {
-  return `${option} only works with ${required}; add ${required} or drop ${option}`;
+export function optionRequiresError(option: string, required: string): ErrorWithSuggestion {
+  return {
+    message: `${option} only works with ${required}`,
+    suggestion: `Add ${required}, or drop ${option}`,
+  };
 }
 
 /**
@@ -1213,13 +1219,15 @@ export function cachedIndexOutOfRangeError(
       suggestion: `Re-run it with --limit ${source.index + 1} (or --limit 0) to index that many`,
     };
   }
-  const results = count === 1 ? '1 result' : `${count} results`;
+  const all = total !== undefined && total > count ? total : count;
+  const results = all === 1 ? '1 result' : `${all} results`;
+  const range =
+    all > count
+      ? `between 0 and ${count - 1}, or up to ${all - 1} after re-running it with --limit 0`
+      : `between 0 and ${count - 1}, or re-run "${refreshCommand(source)}"`;
   return {
     message: `Index ${source.index} is out of range for ${cachedListText(source)} (${results})`,
-    suggestion:
-      count > 0
-        ? `Use an index between 0 and ${count - 1}, or re-run "${refreshCommand(source)}"`
-        : `Re-run "${refreshCommand(source)}"`,
+    suggestion: count > 0 ? `Use an index ${range}` : `Re-run "${refreshCommand(source)}"`,
   };
 }
 
@@ -2308,15 +2316,26 @@ export function skillSourceMissingError(source: string): ErrorWithSuggestion {
 /**
  * The skill could not be written to an agent's skill directory.
  *
- * @param path - Destination SKILL.md
+ * @param path - File that could not be written
  * @param reason - The file system error
+ * @param pathIsFile - Whether a part of the path is a file (ENOTDIR, EEXIST)
+ * @param otherTargetFlag - Flag installing for the other agent only, when both were picked
  * @returns Message and suggestion
  */
-export function skillWriteFailedError(path: string, reason: string): ErrorWithSuggestion {
+export function skillWriteFailedError(
+  path: string,
+  reason: string,
+  pathIsFile: boolean,
+  otherTargetFlag?: string
+): ErrorWithSuggestion {
+  const fix = pathIsFile
+    ? 'A part of that path is a file, not a directory: move it away'
+    : 'Check the permissions of that directory';
   return {
     message: `Could not write ${path}: ${reason}`,
-    suggestion:
-      'Check the permissions of that directory, or install for the other agent only (--claude or --agents)',
+    suggestion: otherTargetFlag
+      ? `${fix}, or install for the other agent only (${otherTargetFlag})`
+      : fix,
   };
 }
 

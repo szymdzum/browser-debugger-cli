@@ -9,6 +9,7 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
 import type { ElementLayout } from '@/ipc/protocol/domTypes.js';
 import type { InspectRect, InspectResult, InspectVisibility } from '@/ipc/protocol/inspectTypes.js';
+import { isLabelClass } from '@/runtime/dom/elementInfo.js';
 import { allStyles } from '@/runtime/dom/inspectAllStyles.js';
 import { buildBox, buildLayout, type StyleMap } from '@/runtime/dom/inspectLayoutModel.js';
 import {
@@ -74,17 +75,19 @@ export interface InspectRequest {
 }
 
 /**
- * The element's label: tag, id and the first classes, with a count of the rest.
+ * The element's label: tag, id and the first classes ({@link isLabelClass}),
+ * with a count of the rest.
  *
  * @param raw - Tag, id and classes
  * @returns e.g. `a.z-1.max-sm:hidden(+11)`, `input#user-name`
  */
 export function elementLabel(raw: Pick<RawInspect, 'tag' | 'id' | 'classes'>): string {
-  const shown = raw.classes
+  const classes = raw.classes.filter(isLabelClass);
+  const shown = classes
     .slice(0, LABEL_CLASSES)
     .map((name) => `.${name}`)
     .join('');
-  const more = raw.classes.length - LABEL_CLASSES;
+  const more = classes.length - LABEL_CLASSES;
   return `${raw.tag}${raw.id ? `#${raw.id}` : ''}${shown}${more > 0 ? `(+${more})` : ''}`;
 }
 

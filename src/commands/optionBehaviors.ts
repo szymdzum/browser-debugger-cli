@@ -112,7 +112,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'Returns that match of the selector (0-based), in semantic and --raw output; --nth is an alias',
     automaticBehavior:
-      'Out of range exits 81; with a numeric index argument (a cached query index) it exits 81',
+      'Past the last match exits 81; a numeric index argument (a cached query index) past the indexed matches, or from an earlier page, exits 87 (re-run dom query)',
   },
   'query:--limit': {
     default:
@@ -179,7 +179,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   'click:--no-wait': {
     default: 'Waits for network stability after click (150ms idle, up to 2s)',
     whenDisabled: NO_WAIT_TRIGGERED_REQUESTS,
-    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning; --strict refuses instead). Results the page shows later (timers, spinners, slow renders) are not waited for but reported as pending work: use bdg dom wait <selector> --visible. ${ACTION_EFFECTS_BEHAVIOR}. ${STILL_CHANGING_BEHAVIOR}. A click with no DOM change, no request and no navigation (checked again 300 ms later, which adds 300 ms plus at most 250 ms for the read) is reported as ⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms) and effect: "none" in JSON (exit code stays 0); not claimed with --no-wait, for hover or right-click, after a copy or cut, or when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, or moved focus to an element that is not a button or link. Effects outside the DOM (CSS :hover/:focus-within styles, canvas, clipboard without a copy event) are not seen`,
+    automaticBehavior: `Network wait helps ensure AJAX requests triggered by click complete. ${TRIGGERED_REQUESTS_BEHAVIOR}. The click itself uses real mouse events in the visible part of the element (method "mouse"); if the element is covered or has no size it falls back to DOM events (method "dom", with a warning; --strict refuses instead). Results the page shows later (timers, spinners, slow renders) are not waited for but reported as pending work: use bdg dom wait <selector> --visible. ${ACTION_EFFECTS_BEHAVIOR}. ${STILL_CHANGING_BEHAVIOR}. A click with no DOM change, no request, no navigation and no console message (checked again 300 ms later, which adds 300 ms plus at most 250 ms for the read) is reported as ⚠ Element Clicked (no visible effect observed: no DOM change, requests or navigation within 300 ms) and effect: "none" in JSON (exit code stays 0); not claimed with --no-wait, for hover or right-click, after a copy or cut, or when the click hit a form control, label, media, iframe, popover button, a mailto:/tel:/javascript: or other non-http link, a link to another window or a custom element with a closed shadow root, or moved focus to an element that is not a button or link. Effects outside the DOM (CSS :hover/:focus-within styles, canvas, clipboard without a copy event) are not seen`,
     tokenImpact: 'A click that navigates lists the whole page load in JSON triggeredRequests',
   },
   'click:--double': {

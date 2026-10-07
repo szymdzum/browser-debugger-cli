@@ -14,6 +14,7 @@ import {
   deriveSizing,
   type SizingInput,
 } from '@/runtime/dom/inspectLayoutModel.js';
+import { elementLabel } from '@/runtime/dom/inspectModel.js';
 import {
   buildEffects,
   buildRadius,
@@ -494,5 +495,18 @@ void describe('child tree', () => {
     const cut = rowText('Some quick example text to build on the card title');
     assert.ok(cut.endsWith('…'));
     assert.ok(cut.length <= 31);
+  });
+});
+
+void describe('elementLabel', () => {
+  void it('keeps utility classes, and leaves out fragments like "brush:"', () => {
+    assert.equal(
+      elementLabel({ tag: 'a', id: '', classes: ['z-1', 'max-sm:hidden', 'x', 'y'] }),
+      'a.z-1.max-sm:hidden(+2)'
+    );
+    assert.equal(
+      elementLabel({ tag: 'mdn-code-example', id: '', classes: ['brush:', 'html'] }),
+      'mdn-code-example.html'
+    );
   });
 });

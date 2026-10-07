@@ -10,6 +10,7 @@ import { noteFollowConnected } from '@/commands/shared/daemonErrorHandler.js';
 import { fetchNetworkRequests, createErrorResult } from '@/commands/shared/dataFetcher.js';
 import {
   followFetchFailure,
+  newPageCrashes,
   setupFollowMode,
   type FollowPoll,
 } from '@/commands/shared/followMode.js';
@@ -29,6 +30,7 @@ import {
   type NetworkListOptions,
   type PageStart,
 } from '@/ui/formatters/networkList.js';
+import { pageCrashedNote, withPageCrashedNote } from '@/ui/messages/commands.js';
 import {
   followingNetworkMessage,
   stoppedFollowingNetworkMessage,
@@ -166,7 +168,8 @@ function buildFormatOptions(
 /**
  * Stream network requests: the last `lastN` finished ones at start, then
  * each request once, when it has finished loading or failed (a request whose
- * headers arrived but whose body is still loading waits), like `tail -f`.
+ * headers arrived but whose body is still loading waits), like `tail -f`,
+ * with a warning (JSON `pageCrashedAt`) once when the page crashes.
  *
  * @param options - Command options
  * @param resourceTypes - Validated resource types
@@ -178,6 +181,7 @@ async function runFollowMode(
   lastN: number
 ): Promise<void> {
   const shown = new Set<string>();
+  const newCrash = newPageCrashes();
   let started = false;
   const showNetwork = async (): Promise<FollowPoll> => {
     const result = await fetchNetworkRequests(filtersNeedHeaders(options));
@@ -186,30 +190,34 @@ async function runFollowMode(
     }
     noteFollowConnected();
 
-    const finished = filterRequests(result.data, options, resourceTypes).filter(
+    const { requests } = result.data;
+    const crashedAt = newCrash(result.data.pageCrashedAt);
+    const finished = filterRequests(requests, options, resourceTypes).filter(
       (request) => request.duration !== undefined && !shown.has(request.requestId)
     );
-    const present = new Set(result.data.map((request) => request.requestId));
+    const present = new Set(requests.map((request) => request.requestId));
     for (const id of shown) if (!present.has(id)) shown.delete(id);
     finished.forEach((request) => shown.add(request.requestId));
     const fresh = started || lastN === 0 ? finished : finished.slice(-lastN);
     if (options.json) {
-      if (!started || fresh.length > 0) {
+      if (!started || fresh.length > 0 || crashedAt !== undefined) {
         const data: NetworkListResult = {
           requests: fresh,
-          totalCount: result.data.length,
+          totalCount: requests.length,
           filteredCount: fresh.length,
+          ...(crashedAt !== undefined && { pageCrashedAt: crashedAt }),
         };
         console.log(JSON.stringify(buildSuccessResponse(data)));
       }
     } else {
-      const pageStart = pageStartOf(result.data);
+      const pageStart = pageStartOf(requests);
       const text = formatNetworkFollowRows(fresh, {
         header: !started,
         verbose: options.verbose ?? false,
         ...(pageStart && { pageStart }),
       });
       if (text) console.log(text);
+      if (crashedAt !== undefined) console.log(pageCrashedNote(crashedAt));
     }
     started = true;
     return undefined;
@@ -251,6 +259,8 @@ interface NetworkListResult {
    * time, seconds), like the requests' own
    */
   pageStart?: PageStart;
+  /** When the page crashed (epoch ms), while it is not loaded again */
+  pageCrashedAt?: number;
 }
 
 export function registerListCommand(networkCmd: Command): void {
@@ -317,21 +327,26 @@ export function registerListCommand(networkCmd: Command): void {
             return createErrorResult(result.error, result.exitCode, result.suggestion);
           }
 
-          const filtered = filterRequests(result.data, options, resourceTypes);
-          const pageStart = pageStartOf(result.data);
+          const { requests, pageCrashedAt } = result.data;
+          const filtered = filterRequests(requests, options, resourceTypes);
+          const pageStart = pageStartOf(requests);
           return {
             success: true,
             data: {
               requests: lastN === 0 ? filtered : filtered.slice(-lastN),
-              totalCount: result.data.length,
+              totalCount: requests.length,
               filteredCount: filtered.length,
               ...(pageStart && { pageStart }),
+              ...(pageCrashedAt !== undefined && { pageCrashedAt }),
             },
           };
         },
         options,
         (data: NetworkListResult) =>
-          formatNetworkList(data.requests, buildFormatOptions(options, data, lastN))
+          withPageCrashedNote(
+            formatNetworkList(data.requests, buildFormatOptions(options, data, lastN)),
+            data.pageCrashedAt
+          )
       );
     });
 }

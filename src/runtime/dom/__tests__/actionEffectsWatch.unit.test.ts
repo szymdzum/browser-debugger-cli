@@ -117,7 +117,12 @@ void describe('watchActionEffects', () => {
       frame: { ...MAIN_FRAME, id: 'child', parentId: 'main' },
     });
     ignored.emit('Page.frameNavigated', { frame: MAIN_FRAME }, 'oopif-session');
-    assert.deepEqual(effectsOnly(await quiet.collect({ dialogs: 0, detectNoEffect: false })), {});
+    assert.deepEqual(
+      effectsOnly(
+        await quiet.collect({ dialogs: 0, consoleMessages: () => 0, detectNoEffect: false })
+      ),
+      {}
+    );
     quiet.dispose();
 
     const fresh = { ...QUIET, href: 'https://a.test/next', fresh: true };
@@ -126,7 +131,11 @@ void describe('watchActionEffects', () => {
     const response = { type: 'Document', loaderId: 'L2', response: { status: 200 } };
     cdp.emit('Network.responseReceived', response);
     cdp.emit('Page.frameNavigated', { frame: MAIN_FRAME });
-    const effects = await watch.collect({ dialogs: 0, detectNoEffect: false });
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+    });
     assert.deepEqual(effects.navigation, {
       url: 'https://a.test/next',
       sameDocument: false,
@@ -139,7 +148,11 @@ void describe('watchActionEffects', () => {
     const cdp = new FakeCdp(new Promise(() => undefined));
     const watch = watchActionEffects(cdp.connection);
     cdp.emit('Page.frameNavigated', { frame: MAIN_FRAME });
-    const effects = await watch.collect({ dialogs: 0, detectNoEffect: true });
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: true,
+    });
     assert.deepEqual(effectsOnly(effects), {
       navigation: { url: 'https://a.test/next', sameDocument: false },
     });
@@ -154,7 +167,11 @@ void describe('watchActionEffects', () => {
     const watch = watchActionEffects(cdp.connection);
     await tick();
     cdp.emit('Page.frameStartedLoading', { frameId: 'main' });
-    const effects = await watch.collect({ dialogs: 0, detectNoEffect: true });
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: true,
+    });
     assert.deepEqual(effectsOnly(effects), {});
     assert.equal(effects.work?.navigating, true);
     assert.equal(effects.work?.unresponsive, false);
@@ -165,27 +182,47 @@ void describe('watchActionEffects', () => {
   void it('claims no effect only when the second look is still quiet', async () => {
     const quiet = new FakeCdp(Promise.resolve(START), [QUIET, QUIET]);
     const none = watchActionEffects(quiet.connection);
-    assert.deepEqual(effectsOnly(await none.collect({ dialogs: 0, detectNoEffect: true })), {
-      effect: 'none',
-    });
+    assert.deepEqual(
+      effectsOnly(
+        await none.collect({ dialogs: 0, consoleMessages: () => 0, detectNoEffect: true })
+      ),
+      {
+        effect: 'none',
+      }
+    );
     assert.deepEqual(quiet.readsSent, [false, true]);
 
     const late = new FakeCdp(Promise.resolve(START), [QUIET, { ...QUIET, changes: 1 }]);
     const changed = watchActionEffects(late.connection);
-    assert.deepEqual(effectsOnly(await changed.collect({ dialogs: 0, detectNoEffect: true })), {});
+    assert.deepEqual(
+      effectsOnly(
+        await changed.collect({ dialogs: 0, consoleMessages: () => 0, detectNoEffect: true })
+      ),
+      {}
+    );
+
+    const logging = new FakeCdp(Promise.resolve(START), [QUIET, QUIET]);
+    const logged = watchActionEffects(logging.connection);
+    assert.deepEqual(
+      effectsOnly(
+        await logged.collect({ dialogs: 0, consoleMessages: () => 2, detectNoEffect: true })
+      ),
+      {},
+      'console messages logged by the action are an effect'
+    );
   });
 
   void it('stops listening on dispose, and stops the page watch unless a read did', async () => {
     const stopped = new FakeCdp(Promise.resolve(START), [QUIET, QUIET]);
     const watch = watchActionEffects(stopped.connection);
-    await watch.collect({ dialogs: 0, detectNoEffect: true });
+    await watch.collect({ dialogs: 0, consoleMessages: () => 0, detectNoEffect: true });
     watch.dispose();
     assert.equal(stopped.listening, 0);
     assert.equal(stopped.stopSent, false);
 
     const unread = new FakeCdp(Promise.resolve(START), [{ ...QUIET, changes: 2 }]);
     const other = watchActionEffects(unread.connection);
-    await other.collect({ dialogs: 0, detectNoEffect: true });
+    await other.collect({ dialogs: 0, consoleMessages: () => 0, detectNoEffect: true });
     other.dispose();
     assert.equal(unread.listening, 0);
     assert.equal(unread.stopSent, true);
@@ -195,7 +232,12 @@ void describe('watchActionEffects', () => {
     const shown = [{ text: 'Saves a draft', element: 'div#tip' }];
     const cdp = new FakeCdp(Promise.resolve(START), [{ ...QUIET, changes: 1, shown }]);
     const watch = watchActionEffects(cdp.connection);
-    const effects = await watch.collect({ dialogs: 0, detectNoEffect: false, reportShown: true });
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+      reportShown: true,
+    });
     assert.deepEqual(effects.shown, shown);
     assert.ok(cdp.expressions.some((e) => e.endsWith('(false, true)')));
     watch.dispose();
@@ -204,7 +246,11 @@ void describe('watchActionEffects', () => {
   void it('marks a page whose read got no answer as busy', async () => {
     const cdp = new FakeCdp(Promise.resolve(START), [NO_ANSWER]);
     const watch = watchActionEffects(cdp.connection);
-    const effects = await watch.collect({ dialogs: 0, detectNoEffect: true });
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: true,
+    });
     assert.equal(effects.work?.unresponsive, true);
     assert.equal(effects.effect, undefined);
     watch.dispose();
@@ -226,6 +272,7 @@ void describe('watchActionEffects', () => {
       const watch = watchActionEffects(cdp.connection);
       const effects = await watch.collect({
         dialogs: 0,
+        consoleMessages: () => 0,
         detectNoEffect: true,
         detectUnsettled: true,
       });
@@ -238,7 +285,12 @@ void describe('watchActionEffects', () => {
       { ...busy, settle: { ...busy.settle, burstAges: [30] } },
     ]);
     const single = watchActionEffects(once.connection);
-    await single.collect({ dialogs: 0, detectNoEffect: false, detectUnsettled: true });
+    await single.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+      detectUnsettled: true,
+    });
     assert.deepEqual(once.readsSent, [false], 'one render needs no second look');
     single.dispose();
   });

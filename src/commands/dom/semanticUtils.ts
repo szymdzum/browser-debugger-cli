@@ -7,7 +7,7 @@
  */
 
 import type { DomContext } from '@/commands/dom/helpers/index.js';
-import { MASKED_VALUE } from '@/runtime/dom/elementInfo.js';
+import { MASKED_VALUE, isLabelClass } from '@/runtime/dom/elementInfo.js';
 import { synthesizeA11yNode } from '@/telemetry/roleInference.js';
 import type { A11yNode } from '@/types.js';
 import { keyAttributeItems } from '@/ui/formatters/keyAttributes.js';
@@ -44,10 +44,8 @@ function buildContextText(node: A11yNode, domContext: DomContext | null): string
 
   if (domContext) {
     const tagPart = `<${domContext.tag}`;
-    const classPart =
-      domContext.classes && domContext.classes.length > 0
-        ? `.${domContext.classes.slice(0, 3).join('.')}`
-        : '';
+    const classes = (domContext.classes ?? []).filter(isLabelClass).slice(0, 3);
+    const classPart = classes.length > 0 ? `.${classes.join('.')}` : '';
     const previewPart = domContext.preview && !domContext.text ? ` "${domContext.preview}"` : '';
     return ` ${tagPart}${classPart}>${previewPart}`;
   }
@@ -127,7 +125,8 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
  * The element's text when the role line does not show it: text longer than
  * the one-line preview, or the visible text of an element whose accessible
  * name is something else (an editor named by its aria-label), unless its
- * value shows that text. Texts are compared ignoring case and whitespace.
+ * name or value shows that text (a long heading with inline children is
+ * named by all of it). Texts are compared ignoring case and whitespace.
  * A sensitive field's text is never shown.
  *
  * @param node - Accessibility node
@@ -136,11 +135,10 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
  */
 function textNotOnRoleLine(node: A11yNode, domContext: DomContext | null): string | undefined {
   if (domContext?.sensitive) return undefined;
-  if (domContext?.text) return domContext.text;
-  const preview = domContext?.preview;
-  if (!preview || !node.name) return undefined;
-  const shown = [node.name, node.value].map((text) => comparableText(text ?? ''));
-  return shown.includes(comparableText(preview)) ? undefined : preview;
+  const text = domContext?.text ?? (node.name ? domContext?.preview : undefined);
+  if (!text) return undefined;
+  const shown = [node.name, node.value].map((value) => comparableText(value ?? ''));
+  return shown.includes(comparableText(text)) ? undefined : text;
 }
 
 /**

@@ -9,7 +9,7 @@ import {
   resolveCommand,
 } from '@/commands/helpJson.js';
 import { assertKnownHelpTopic, helpTopicPath, usageErrorDetails } from '@/commands/helpTopic.js';
-import { assertNotGroupSubcommand } from '@/commands/start.js';
+import { assertNotMistypedCommand } from '@/commands/start.js';
 import { commandRegistry } from '@/commands.js';
 import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
@@ -153,7 +153,7 @@ async function main(): Promise<void> {
   addGlobalOptions(program);
   program.hook('preAction', (_root, actionCommand) => applyGlobalOptions(program, actionCommand));
   assertKnownHelpTopic(program, helpTopic);
-  assertNotGroupSubcommand(program, process.argv);
+  assertNotMistypedCommand(program, process.argv);
 
   if (jsonMode && (wantsHelp() || hasNoArguments())) {
     selectSession(sessionFromArgv(process.argv));

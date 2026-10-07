@@ -72,6 +72,16 @@ function succeeded(result: object): boolean {
 }
 
 /**
+ * Console messages the session has logged, dropped ones included.
+ *
+ * @param store - Session store
+ * @returns Count that only grows
+ */
+function consoleMessagesLogged(store: TelemetryStore): number {
+  return store.consoleDropped + store.consoleMessages.length;
+}
+
+/**
  * Create the runner for a session's interactions.
  *
  * Interactions share the page's focus and keyboard: two concurrent `pressKey`
@@ -79,7 +89,8 @@ function succeeded(result: object): boolean {
  * queued. After each one, the bound target (`window.__bdgTarget`) is removed
  * from the page (without waiting: during a pending navigation that takes until
  * the new page commits), and the dialogs it opened, what it changed on the
- * page (see {@link watchActionEffects}) and the network requests it
+ * page (see {@link watchActionEffects}; a console message logged meanwhile
+ * counts as an effect) and the network requests it
  * triggered (see {@link watchTriggeredRequests}) are added to its result,
  * and, when asked, what the page was still working on (see
  * {@link pendingChanges}). They are attributed by time: a dialog or request
@@ -98,6 +109,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
   ) => {
     const run = queue.then(async (): Promise<T & InteractionReport> => {
       const firstDialog = store.dialogs.length;
+      const firstConsoleMessage = consoleMessagesLogged(store);
       const collectRequests =
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
       const effects = options.reportEffects === false ? undefined : watchActionEffects(cdp);
@@ -107,6 +119,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
         if (!succeeded(result)) return { ...result, ...(dialogs.length > 0 && { dialogs }) };
         const collected = await effects?.collect({
           dialogs: dialogs.length,
+          consoleMessages: () => consoleMessagesLogged(store) - firstConsoleMessage,
           detectNoEffect: options.detectNoEffect === true,
           reportShown: options.reportShown === true,
           detectUnsettled: options.detectUnsettled === true,

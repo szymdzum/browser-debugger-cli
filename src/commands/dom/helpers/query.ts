@@ -39,6 +39,7 @@ import {
   ELEMENT_TEXT_JS,
   ELEMENT_TEXT_LENGTH,
   textPreview,
+  isLabelClass,
 } from '@/runtime/dom/elementInfo.js';
 import {
   DEEP_QUERY_JS,
@@ -287,7 +288,7 @@ export async function documentReadyState(): Promise<string | undefined> {
 }
 
 /** Matches whose viewport position `dom query` reports (measuring is not free) */
-const VIEWPORT_HINT_LIMIT = 100;
+export const VIEWPORT_HINT_LIMIT = 100;
 
 /**
  * Matches `dom query` describes and caches for use by index at least, beyond
@@ -726,7 +727,7 @@ async function childElements(
 function childLabel(node: Protocol.DOM.Node): string {
   const attributes = unpackAttributes(node.attributes);
   const id = attributes['id'] ? `#${attributes['id']}` : '';
-  const classes = (attributes['class'] ?? '').split(/\s+/).filter(Boolean).slice(0, 2);
+  const classes = (attributes['class'] ?? '').split(/\s+/).filter(isLabelClass).slice(0, 2);
   const label = attributes['aria-label']?.trim();
   return `${node.nodeName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join('')}${label ? ` "${label}"` : ''}`;
 }

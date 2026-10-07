@@ -272,6 +272,17 @@ export function queryMoreMatchesNote(omitted: number, indexed?: number): string 
 }
 
 /**
+ * Note under `dom query` matches listed past those whose viewport position
+ * was checked.
+ *
+ * @param checked - First matches checked
+ * @returns e.g. `Visibility is checked for the first 100 matches only; bdg dom layout <index> checks any of them`
+ */
+export function queryViewportCheckedNote(checked: number): string {
+  return `Visibility is checked for the first ${checked} matches only; ${sessionCommand('bdg dom layout <index>')} checks any of them`;
+}
+
+/**
  * Note under a list of a11y query matches cut by `--limit`.
  *
  * @param omitted - Matches not listed
@@ -572,13 +583,26 @@ export function sessionActiveLine(page?: {
 }
 
 /**
- * Warning that the session's page crashed, for `bdg status` and `bdg peek`.
+ * Warning that the session's page crashed, for `bdg status`, `bdg peek`,
+ * `bdg console` and `bdg network list`.
  *
  * @param crashedAt - When it crashed (epoch ms)
  * @returns e.g. `⚠ The page crashed at 18:42:10 (renderer gone); bdg page reload brings it back`
  */
 export function pageCrashedNote(crashedAt: number): string {
   return `⚠ The page crashed at ${new Date(crashedAt).toLocaleTimeString()} (renderer gone); ${sessionCommand('bdg page reload')} brings it back`;
+}
+
+/**
+ * Put the page-crashed warning before a view of collected data, when the
+ * page crashed (what is shown was collected before).
+ *
+ * @param body - The view
+ * @param crashedAt - When the page crashed (epoch ms), if it did
+ * @returns The view, after the warning when the page crashed
+ */
+export function withPageCrashedNote(body: string, crashedAt: number | undefined): string {
+  return crashedAt === undefined ? body : `${pageCrashedNote(crashedAt)}\n\n${body}`;
 }
 
 /**

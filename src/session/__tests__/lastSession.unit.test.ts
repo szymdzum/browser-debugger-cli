@@ -8,6 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 
+import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import {
   clearLastSessionEnd,
   readLastSessionEnd,
@@ -37,6 +38,14 @@ void describe('last session end', () => {
     );
     clearLastSessionEnd();
     assert.equal(readLastSessionEnd(), null);
+  });
+
+  void it('counts the removed record of an ended session as cleaned', async () => {
+    writeLastSessionEnd('crash');
+    const { cleaned } = await performSessionCleanup({});
+    assert.equal(cleaned.session, true);
+    assert.equal(readLastSessionEnd(), null);
+    assert.equal((await performSessionCleanup({})).cleaned.session, false);
   });
 
   void it('says a session is ending instead of pointing at its Chrome', () => {

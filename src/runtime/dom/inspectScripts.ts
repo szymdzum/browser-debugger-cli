@@ -18,6 +18,7 @@ import {
   ELEMENT_CONTEXT_JS,
   ELEMENT_DESCRIPTION_JS,
   FLAT_TEXT_JS,
+  LABEL_CLASSES_JS,
   MASKED_VALUE,
   SENSITIVE_FIELD_JS,
 } from '@/runtime/dom/elementInfo.js';
@@ -170,7 +171,8 @@ export const FLAT_TREE_JS = `(view) => {
     return p;
   };
   const via = new WeakMap();
-  const label = (n) => n.localName + (n.id ? '#' + n.id : n.classList && n.classList.length ? '.' + n.classList[0] : '');
+  const firstClass = (n) => (${LABEL_CLASSES_JS})(n)[0];
+  const label = (n) => n.localName + (n.id ? '#' + n.id : firstClass(n) ? '.' + firstClass(n) : '');
   const slotText = (slot) => slot.assignedNodes({ flatten: true }).some((t) => t.nodeType === 3 && t.data.trim() !== '');
   const children = (n) => {
     const out = [];

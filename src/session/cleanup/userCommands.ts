@@ -50,6 +50,8 @@ export interface SessionCleanupResult {
  * line). Then stale daemon files are removed and an orphaned bdg Chrome, if
  * any, is killed, and, once no daemon of the session runs, every other
  * Chrome launched for this session directory (one chrome.pid lost track of).
+ * The record of a session that ended without `bdg stop` is removed too, and
+ * counts as cleaned session files.
  *
  * @param options - Cleanup options
  * @returns What was cleaned, plus warnings
@@ -66,11 +68,11 @@ export async function performSessionCleanup(
   const chrome = orphan || unrecorded.length > 0;
   const output = options.removeOutput ? removeOutputFile(warnings) : false;
   const filesRemoved = countSessionFiles() < filesBefore;
-  clearLastSessionEnd();
+  const endedRecordRemoved = clearLastSessionEnd();
 
   return {
     cleaned: {
-      session: session || daemonKilled || filesRemoved,
+      session: session || daemonKilled || filesRemoved || endedRecordRemoved,
       chrome,
       daemons: daemonKilled,
       output,

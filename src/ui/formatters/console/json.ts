@@ -58,6 +58,7 @@ export function buildConsoleJsonOutput(
     ...(errors.more > 0 && { moreErrors: errors.more }),
     ...(warnings.more > 0 && { moreWarnings: warnings.more }),
     ...(options.dropped && { dropped: options.dropped }),
+    ...(options.pageCrashedAt !== undefined && { pageCrashedAt: options.pageCrashedAt }),
   };
 
   if (options.list) output.messages = lastMessages(messages, options.last);

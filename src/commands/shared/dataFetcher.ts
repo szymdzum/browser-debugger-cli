@@ -132,28 +132,37 @@ export async function fetchPreviewData(
  * Fetch all captured network requests from daemon.
  *
  * @param withHeaders - Include request/response headers (needed by header filters)
- * @returns Requests or a fetch error
+ * @returns Requests, and when the page crashed (while it is not loaded
+ *   again), or a fetch error
  */
-export async function fetchNetworkRequests(
-  withHeaders = false
-): Promise<FetchResult<NetworkRequest[]>> {
+export async function fetchNetworkRequests(withHeaders = false): Promise<
+  FetchResult<{
+    requests: NetworkRequest[];
+    pageCrashedAt: number | undefined;
+  }>
+> {
   const result = await fetchPreviewData({ lastN: 0, only: 'network', withHeaders });
   if (!result.success) return result;
-  return { success: true, data: result.data.network };
+  return {
+    success: true,
+    data: { requests: result.data.network, pageCrashedAt: result.data.output.pageCrashedAt },
+  };
 }
 
 /**
  * Fetch all console messages from daemon.
  *
  * @returns Messages (with their session-wide index), the navigation id of
- *   the page currently loaded and how many of the oldest messages the
- *   session dropped at its limit
+ *   the page currently loaded, how many of the oldest messages the session
+ *   dropped at its limit and when the page crashed (while it is not loaded
+ *   again)
  */
 export async function fetchConsoleMessages(): Promise<
   FetchResult<{
     messages: ConsoleMessage[];
     currentNavigationId: number | undefined;
     dropped: number;
+    pageCrashedAt: number | undefined;
   }>
 > {
   const result = await fetchPreviewData({ lastN: 0, only: 'console' });
@@ -164,6 +173,7 @@ export async function fetchConsoleMessages(): Promise<
       messages: result.data.console,
       currentNavigationId: result.data.output.currentNavigationId,
       dropped: result.data.output.totals?.consoleDropped ?? 0,
+      pageCrashedAt: result.data.output.pageCrashedAt,
     },
   };
 }

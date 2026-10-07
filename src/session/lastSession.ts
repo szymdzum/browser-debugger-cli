@@ -40,9 +40,14 @@ export function writeLastSessionEnd(reason: UnexpectedEndReason): void {
 
 /**
  * Forget the last session's end (a new session is starting, or `cleanup` ran).
+ *
+ * @returns True if there was a record to remove
  */
-export function clearLastSessionEnd(): void {
-  fs.rmSync(getSessionFilePath('LAST_SESSION'), { force: true });
+export function clearLastSessionEnd(): boolean {
+  const file = getSessionFilePath('LAST_SESSION');
+  const existed = fs.existsSync(file);
+  fs.rmSync(file, { force: true });
+  return existed;
 }
 
 /**

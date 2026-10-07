@@ -7,6 +7,7 @@
  */
 
 import type { ConsoleMessage } from '@/types.js';
+import { withPageCrashedNote } from '@/ui/messages/commands.js';
 
 import { formatConsoleChronological } from './console/chronological.js';
 import { formatConsoleJson } from './console/json.js';
@@ -30,16 +31,17 @@ export { formatConsoleSummary } from './console/summarize.js';
 /**
  * Format console output based on options. Routes to the per-mode formatter:
  * a `--level` filter lists the matching messages (the summary only shows
- * errors and warnings, so it would hide e.g. `--level info`).
+ * errors and warnings, so it would hide e.g. `--level info`). The text
+ * starts with a warning when the page crashed.
  */
 export function formatConsole(messages: ConsoleMessage[], options: ConsoleFormatOptions): string {
   if (options.json) {
     return formatConsoleJson(messages, options);
   }
 
-  if (options.list || options.level) {
-    return formatConsoleChronological(messages, options);
-  }
-
-  return formatConsoleSummary(messages, options);
+  const body =
+    options.list || options.level
+      ? formatConsoleChronological(messages, options)
+      : formatConsoleSummary(messages, options);
+  return withPageCrashedNote(body, options.pageCrashedAt);
 }

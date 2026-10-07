@@ -481,6 +481,8 @@ export interface DomQueryResult {
   omitted?: number;
   /** Matches usable by index (described and cached), when fewer than `count` */
   indexed?: number;
+  /** First matches whose viewport position was checked (`inViewport`), when more are listed */
+  viewportChecked?: number;
   /** Identity of the page document the matches belong to (cached results only) */
   document?: string;
 }

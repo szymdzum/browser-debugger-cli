@@ -12,7 +12,11 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { chromeSessionMarkerFlag } from '@/connection/launcher/flagsBuilder.js';
-import { killSessionChromes, removeSessionFiles } from '@/session/cleanup/staleSession.js';
+import {
+  killSessionChromes,
+  reapOrphanedChrome,
+  removeSessionFiles,
+} from '@/session/cleanup/staleSession.js';
 import { clearChromePid, writeChromePid } from '@/session/chrome.js';
 import { writeSessionMetadata } from '@/session/metadata.js';
 import { getSessionFilePath } from '@/session/paths.js';
@@ -75,6 +79,25 @@ void describe('session files of two daemons', () => {
       } finally {
         stray.kill('SIGKILL');
         other.kill('SIGKILL');
+      }
+    }
+  );
+
+  void it(
+    'reaps the Chrome of a crashed daemon by its marker when chrome.pid is lost',
+    { skip: process.platform === 'win32' },
+    async () => {
+      const stray = spawn(
+        process.execPath,
+        ['-e', 'setInterval(() => {}, 1000)', '--', chromeSessionMarkerFlag(dir), '--headless=new'],
+        { detached: true, stdio: 'ignore' }
+      );
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        assert.equal(await reapOrphanedChrome(), true);
+        assert.equal(isProcessAlive(stray.pid ?? 0), false, 'it waits until the Chrome exited');
+      } finally {
+        stray.kill('SIGKILL');
       }
     }
   );
