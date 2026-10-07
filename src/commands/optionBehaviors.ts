@@ -7,6 +7,8 @@
  * @see docs/principles/SELF_DOCUMENTING_SYSTEMS.md
  */
 
+import type { Option } from 'commander';
+
 import {
   MAX_EDGE_PX,
   PIXELS_PER_TOKEN,
@@ -131,22 +133,11 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'The value is matched as: a 0-based index (bdg dom frames order: document order of the <iframe> elements, nested ones depth-first, main page not counted), else an exact name/id attribute, else a case-insensitive part of the name, id or URL. Several matches fail with 81 listing them; none fails with 83 listing all frames. Frames are looked up on every call (a reloaded iframe is found again). An index that names another frame than in the last bdg dom frames listing (iframes added, removed or moved, or the page navigated) fails with 87 STALE_CACHE: re-run bdg dom frames or pick the frame by name.',
   },
 
-  'console:-H': {
-    default: 'Shows messages from current page load only (most recent navigation)',
-    whenEnabled: 'Shows messages from ALL page loads during the session',
-    automaticBehavior:
-      'Page navigations create new "navigation contexts" - default filters to latest context',
-  },
   'console:--history': {
     default: 'Shows messages from current page load only (most recent navigation)',
     whenEnabled: 'Shows messages from ALL page loads during the session',
     automaticBehavior:
       'Page navigations create new "navigation contexts" - default filters to latest context',
-  },
-  'console:-l': {
-    default:
-      'Smart summary with errors deduplicated and warnings grouped: the newest 50 distinct errors and warnings, with a note for the earlier ones. The session keeps the newest 10000 messages; dropped ones are counted (dropped in JSON)',
-    whenEnabled: 'Lists all messages chronologically without deduplication',
   },
   'console:--list': {
     default:
@@ -399,53 +390,43 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled:
       'Filters network requests by CDP resource type. Case-insensitive, comma-separated. Valid: Document, Stylesheet, Image, Media, Font, Script, XHR, Fetch, WebSocket, etc.',
   },
-  'peek:-f': {
-    default: 'Shows snapshot of current data',
-    whenEnabled:
-      'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000). Replaces the deprecated bdg tail',
-    automaticBehavior: FOLLOW_BEHAVIOR,
-  },
   'peek:--follow': {
     default: 'Shows snapshot of current data',
     whenEnabled:
       'Continuous monitoring (like tail -f): refreshes every second, or every --interval ms (100-60000). Replaces the deprecated bdg tail',
     automaticBehavior: FOLLOW_BEHAVIOR,
   },
-  'console:-f': {
+  'console:--follow': {
     default: 'Prints the messages logged so far and exits',
     whenEnabled: 'Streams new messages as they come (the last --last at start)',
     automaticBehavior: FOLLOW_BEHAVIOR,
   },
-  'list:-f': {
+  'list:--follow': {
     default: 'Lists the requests captured so far and exits',
     whenEnabled: 'Streams requests as they finish',
     automaticBehavior: FOLLOW_BEHAVIOR,
   },
-  'peek:-v': {
+  'peek:--verbose': {
     default: 'Compact output (truncated URLs, no resource types)',
     whenEnabled: 'Verbose output with full URLs and resource types',
   },
-  'start:--headless': {
+  'bdg:--headless': {
     default:
       'A window when there is a display: on macOS unless over SSH (SSH_CONNECTION, SSH_TTY) or CI is set; on Linux when DISPLAY or WAYLAND_DISPLAY is set. Servers, containers and CI run headless',
     whenEnabled: 'Chrome runs without a window (pass it when running unattended on a Mac)',
   },
-  'start:--no-headless': {
+  'bdg:--no-headless': {
     default:
       'A window when there is a display: on macOS unless over SSH (SSH_CONNECTION, SSH_TTY) or CI is set; on Linux when DISPLAY or WAYLAND_DISPLAY is set',
     whenEnabled: 'Chrome shows its window even without a detected display (it fails without one)',
   },
-  'start:--all': {
+  'bdg:--all': {
     default:
       'Tracking/analytics requests and console noise are filtered; bodies of binary responses (images, fonts) are not captured',
     whenEnabled:
       'Everything is captured, including binary response bodies (base64, flagged by responseBodyBase64, within --max-body-size)',
     tokenImpact:
       'details network --json and HAR exports can grow considerably on media-heavy pages',
-  },
-  'peek:--verbose': {
-    default: 'Compact output (truncated URLs, no resource types)',
-    whenEnabled: 'Verbose output with full URLs and resource types',
   },
 
   'bdg:--session': {
@@ -457,7 +438,7 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
       'Accepted before or after any subcommand; --session wins over BDG_SESSION. Names are case-insensitive (lower-cased: ALPHA is alpha). Without --port a named session takes the first free port above 9222 not claimed by another running session, and keeps it in port.txt. Names: 1-40 letters, digits, "-" or "_", starting with a letter or digit (exit 81 otherwise, also when the socket path would be too long). Hints and suggestions in its output carry --session <name>',
   },
 
-  'cleanup:-f': {
+  'cleanup:--force': {
     default: 'Refuses to run while a session is active; removes files left by a crashed session',
     whenEnabled: 'Kills the running daemon and its Chrome first (use when a session is stuck)',
   },
@@ -510,10 +491,6 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'No additional effect; kept for compatibility',
   },
 
-  'status:-v': {
-    default: 'Basic session status (daemon running, session active, URL)',
-    whenEnabled: 'Includes Chrome diagnostics and CDP connection details',
-  },
   'status:--verbose': {
     default: 'Basic session status (daemon running, session active, URL)',
     whenEnabled: 'Includes Chrome diagnostics and CDP connection details',
@@ -521,26 +498,34 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
 };
 
 /**
- * Build behavior registry key from command and flag.
+ * Build behavior registry key from command and option: the command's own
+ * name (`bdg` for the root) and the option's long flag, or its short flag
+ * when it has no long one.
  *
  * @param commandName - Command name (e.g., "screenshot")
- * @param flags - Option flags string (e.g., "--no-resize")
+ * @param option - Commander option
  * @returns Registry key
  */
-function buildKey(commandName: string, flags: string): BehaviorKey {
-  const firstFlag = flags.split(',')[0] ?? flags;
-  const flagName = firstFlag.trim().split(' ')[0] ?? firstFlag.trim();
-  return `${commandName}:${flagName}`;
+export function behaviorKey(commandName: string, option: Option): BehaviorKey {
+  return `${commandName}:${option.long ?? option.short ?? option.flags}`;
+}
+
+/**
+ * Every key in the behavior registry.
+ *
+ * @returns Registry keys
+ */
+export function listBehaviorKeys(): BehaviorKey[] {
+  return Object.keys(OPTION_BEHAVIORS);
 }
 
 /**
  * Look up behavioral metadata for an option.
  *
  * @param commandName - Name of the command containing the option
- * @param flags - Option flags string from Commander
+ * @param option - Commander option
  * @returns Behavioral metadata if registered, undefined otherwise
  */
-export function getOptionBehavior(commandName: string, flags: string): OptionBehavior | undefined {
-  const key = buildKey(commandName, flags);
-  return OPTION_BEHAVIORS[key];
+export function getOptionBehavior(commandName: string, option: Option): OptionBehavior | undefined {
+  return OPTION_BEHAVIORS[behaviorKey(commandName, option)];
 }
