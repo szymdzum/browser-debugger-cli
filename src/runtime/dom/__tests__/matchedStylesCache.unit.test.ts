@@ -2,8 +2,8 @@
  * `dom inspect` reads an element's matched rules sparingly: a request still
  * running is shared, a slow answer is reused briefly, one request runs at a
  * time, a document whose rules outlast the hint budget is remembered, and
- * navigations, stylesheet and DOM changes and page-changing commands drop
- * what was kept.
+ * navigations, stylesheet and DOM changes drop what was kept (page-changing
+ * commands: `matchedStylesReset.unit.test.ts`).
  */
 
 import assert from 'node:assert/strict';
@@ -11,7 +11,6 @@ import { describe, it, mock } from 'node:test';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
-import { withMatchedStylesReset } from '@/daemon/session/matchedStylesReset.js';
 import { matchedStylesRead } from '@/runtime/dom/inspect.js';
 import { matchedStyles, resetMatchedStyles } from '@/runtime/dom/inspectRules.js';
 import { formatInspect } from '@/ui/formatters/inspect.js';
@@ -269,36 +268,6 @@ void describe('matchedStyles', () => {
     await matchedStyles(fake.cdp, 5, 2000);
     await matchedStyles(fake.cdp, 1, 2000);
     assert.deepEqual(fake.sent, [1, 2, 3, 4, 5, 1]);
-  });
-});
-
-void describe('withMatchedStylesReset', () => {
-  void it('drops kept answers around a command that may change the page (a click)', async () => {
-    const fake = fakeCdp(SLOW_MS);
-    await matchedStyles(fake.cdp, 7, 2000);
-    await withMatchedStylesReset(fake.cdp, 'dom_click', () => Promise.resolve());
-    await matchedStyles(fake.cdp, 7, 2000);
-    assert.deepEqual(fake.sent, [7, 7]);
-  });
-
-  void it('drops them when the command fails too, and passes the failure on', async () => {
-    const fake = fakeCdp(SLOW_MS);
-    await matchedStyles(fake.cdp, 7, 2000);
-    await assert.rejects(
-      withMatchedStylesReset(fake.cdp, 'cdp_call', () => Promise.reject(new Error('boom'))),
-      /boom/
-    );
-    await matchedStyles(fake.cdp, 7, 2000);
-    assert.deepEqual(fake.sent, [7, 7]);
-  });
-
-  void it('keeps them across commands that only read the page', async () => {
-    const fake = fakeCdp(SLOW_MS);
-    await matchedStyles(fake.cdp, 7, 2000);
-    await withMatchedStylesReset(fake.cdp, 'dom_inspect', () => Promise.resolve());
-    await withMatchedStylesReset(fake.cdp, 'session_peek', () => Promise.resolve());
-    await matchedStyles(fake.cdp, 7, 2000);
-    assert.deepEqual(fake.sent, [7]);
   });
 });
 

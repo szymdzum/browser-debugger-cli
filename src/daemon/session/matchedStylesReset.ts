@@ -11,8 +11,11 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { CommandName } from '@/ipc/index.js';
 import { resetMatchedStyles } from '@/runtime/dom/inspectRules.js';
 
-/** Commands that leave the page as it is: they read it, or only the telemetry */
-const KEEPS_MATCHED_STYLES: ReadonlySet<CommandName> = new Set<CommandName>([
+/**
+ * Commands that leave the page as it is: they read it, or only the telemetry.
+ * Any command not listed (new ones included) resets by default.
+ */
+export const KEEPS_MATCHED_STYLES: ReadonlySet<CommandName> = new Set<CommandName>([
   'session_peek',
   'session_details',
   'session_status',
