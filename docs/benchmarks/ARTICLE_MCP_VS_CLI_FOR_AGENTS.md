@@ -2,6 +2,8 @@
 
 **A Benchmark-Driven Comparison of Browser Automation Paradigms**
 
+> **Note (2026-10):** this comparison is one run of five tasks from November 2025, bdg 0.6.x against chrome-devtools-mcp as it was then. Both tools have changed since. The current [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md) lists `evaluate_script`, 14 heap snapshot tools (`take_heapsnapshot`, `compare_heapsnapshots`, `get_heapsnapshot_retainers`, ...), performance traces with insights (`performance_start_trace`, `performance_analyze_insight`), `lighthouse_audit` and `get_css_styles`; it has no HAR export and no raw CDP access. Capability cells that said MCP lacked these are corrected below and marked ¹. "Token efficiency" (TES) is score per token: total tokens were about equal, so the +33% reflects the score gap, not a token saving. A refreshed benchmark is tracked in [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428).
+
 ---
 
 ## Introduction
@@ -73,7 +75,7 @@ Full benchmark specification: [BENCHMARK_DEVTOOLS_DEBUGGING_V3.1.md](./BENCHMARK
 | **Total Tokens** | ~38.1K | ~39.4K |
 | **Token Efficiency (TES)** | 202.1 | 152.3 |
 
-**Winner: CLI (+17 points, +33% token efficiency)**
+**Winner: CLI (+17 points on about the same tokens; TES +33% is the score gap, not fewer tokens)**
 
 ---
 
@@ -107,7 +109,7 @@ MCP was faster but provided less actionable debugging information. For a develop
 - **bdg**: Used JavaScript evaluation to click all 17 buttons with timeouts in a single command. Captured 18 errors (14 unique) with full stack traces.
 - **MCP**: Made 11 individual click calls, missing 6 buttons. Captured only 3 errors.
 
-This test revealed a fundamental capability gap. bdg's `Runtime.evaluate` access enables batch operations:
+This test showed what batching through JavaScript buys. bdg's `Runtime.evaluate` access enables batch operations:
 
 ```bash
 bdg cdp Runtime.evaluate --params '{
@@ -115,7 +117,7 @@ bdg cdp Runtime.evaluate --params '{
 }'
 ```
 
-MCP doesn't expose arbitrary JavaScript execution—each interaction requires a separate tool call. For comprehensive testing, this limitation compounds.
+MCP has `evaluate_script`, which could have run the same batch click; in this run the agent clicked the buttons one tool call at a time instead and missed six. The gap was in how the agent used the tool, not in what MCP could do.
 
 ---
 
@@ -168,9 +170,9 @@ bdg cdp Runtime.getHeapUsage
 # After: 790KB used, 3MB embedder heap (+44% growth)
 ```
 
-MCP has no access to profiling APIs. It could observe DOM growth visually but couldn't measure actual memory consumption. Without quantification, it couldn't prove a leak existed—only that more elements appeared on screen.
+The MCP server tested had no memory profiling tools. The agent could observe DOM growth visually but couldn't measure actual memory consumption. Without quantification, it couldn't prove a leak existed—only that more elements appeared on screen.
 
-This isn't MCP being "bad"—it's MCP not exposing the capability. For memory debugging, that's a dealbreaker.
+This was a gap in the version tested, not in MCP as a protocol. chrome-devtools-mcp has since added heap snapshot tools (`take_heapsnapshot`, `compare_heapsnapshots`, `get_heapsnapshot_retainers`, ...), so this test would likely play out differently today.
 
 ---
 
@@ -223,11 +225,13 @@ That's 43x more efficient. In a context window, that difference determines wheth
 | Capability | bdg | MCP |
 |------------|-----|-----|
 | Console errors with stack traces | ✓ | Partial |
-| Memory profiling | ✓ | ✗ |
+| Memory profiling | ✓ | ✓ heap snapshot tools¹ |
 | Network HAR export | ✓ | ✗ |
-| Batch JavaScript execution | ✓ | ✗ |
-| Selective DOM queries | ✓ | ✗ |
+| Batch JavaScript execution | ✓ | ✓ `evaluate_script`¹ |
+| Selective DOM queries | ✓ | Via `evaluate_script`¹ |
 | Direct CDP method access | ✓ (300+ methods) | ✗ |
+
+¹ Corrected 2026-10 from the [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md); the original table marked these ✗.
 
 For developer debugging tasks, these aren't edge features—they're core workflows.
 
@@ -264,7 +268,7 @@ MCP is a protocol, not a tool. The same MCP server works with Claude Desktop, VS
 
 ### Sandboxed Environments
 
-MCP's restricted capabilities (no arbitrary JS eval, no profiling) can be features in contexts requiring safety guarantees. If you're building a user-facing automation tool where arbitrary code execution is a risk, MCP's constraints are appropriate.
+MCP's narrower surface can be a feature in contexts requiring safety guarantees: there is no raw CDP access, and its JavaScript evaluation tools can be switched off ([`--no-javascript-evaluation`, v1.9.0](https://github.com/ChromeDevTools/chrome-devtools-mcp/releases)). If you're building a user-facing automation tool where arbitrary code execution is a risk, those constraints are appropriate.
 
 ### Accessibility-First Testing
 
@@ -298,7 +302,7 @@ For **ecosystem integration and sandboxing**: MCP has structural advantages that
 
 We set out to compare MCP and CLI as interfaces for AI agents doing browser automation. The benchmark results are clear: for developer debugging workflows, CLI provides more capability with better efficiency.
 
-The margin wasn't close—77 vs 60 points, 33% better token efficiency. CLI completed tasks that MCP structurally couldn't (memory profiling), and did shared tasks with less overhead (selective queries vs full dumps).
+In this one run the margin was 77 vs 60 points on about the same tokens. CLI completed a task the MCP server of the time had no tools for (memory profiling; it has heap snapshot tools now), and did shared tasks with less overhead (selective queries vs full dumps).
 
 This doesn't mean MCP is "bad." It means MCP optimizes for different constraints than an AI agent debugging a web application. Protocol standardization and sandboxed execution matter in some contexts. They just aren't the contexts we tested.
 
@@ -332,6 +336,8 @@ MCP: (60 × 100) / 39.4 = 152.3
 Advantage: +33% for CLI
 ```
 
+TES is score per token. Total tokens were about equal (38.1K vs 39.4K), so the +33% is mostly the score gap, not a token saving.
+
 ### Capability Matrix
 
 | CDP Domain | bdg Access | MCP Access |
@@ -340,10 +346,13 @@ Advantage: +33% for CLI
 | DOM | Full | Via accessibility tree |
 | Network | Full + HAR export | list_network_requests |
 | Console | Full + streaming | list_console_messages |
-| HeapProfiler | Full | None |
+| HeapProfiler | Full | Heap snapshot tools¹ |
 | Debugger | Full | None |
-| Performance | Full | None |
+| Performance | Full | Traces + insights¹ |
 | Accessibility | Selective queries | Full tree dumps |
+| CSS | Full | `get_css_styles`¹ |
+
+¹ Corrected 2026-10 from the [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md); the original matrix said None. It also lists `lighthouse_audit`.
 
 ---
 

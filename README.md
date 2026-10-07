@@ -102,15 +102,15 @@ Each mistake exits with code 81 (invalid arguments), so the agent knows to fix t
 
 ## Benchmark: CLI vs MCP
 
-We gave an AI agent five real debugging tasks, from a single JS error up to a memory leak, and ran each one with bdg and with the official Chrome DevTools MCP server (November 2025).
+One run of five debugging tasks, from a single JS error up to a memory leak, each done by an AI agent with bdg 0.6.x and with the official [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) server as it was in November 2025.
 
 | | bdg | Chrome DevTools MCP |
 |---|---|---|
 | **Score** | **77 / 100** | 60 / 100 |
-| **Token efficiency** | **202** | 152 |
 | Tokens used | ~38.1K | ~39.4K |
+| Time | 441 s | 323 s |
 
-bdg scored 17 points higher on about the same token budget, so its token efficiency was 33% better. Part of the gap is reach: memory profiling, HAR export and batch JS execution have no MCP equivalent. [Read the full analysis →](docs/benchmarks/ARTICLE_MCP_VS_CLI_FOR_AGENTS.md)
+Token use was about the same and MCP was faster; bdg scored higher on all five tasks, most on the multi-error one (+6). Both tools have changed since: Chrome DevTools MCP now has heap snapshots, performance traces with insights, Lighthouse and CSS styles, so the memory task would play out differently today. It still has no HAR export. A refreshed benchmark is tracked in [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428). [Read the full analysis →](docs/benchmarks/ARTICLE_MCP_VS_CLI_FOR_AGENTS.md)
 
 ## Use it with your agent
 
@@ -179,7 +179,7 @@ Firefox and Safari are not supported: bdg speaks the Chrome DevTools Protocol, w
 ## When to use something else
 
 - **Playwright / Puppeteer**: long scripted test suites and a mature testing ecosystem.
-- **Chrome DevTools MCP**: if your setup is already built around MCP servers.
+- **Chrome DevTools MCP**: if your setup is built around MCP servers, or you want its Lighthouse audits, performance trace insights and heap snapshot analysis tools.
 
 bdg is for when an agent or a developer needs to poke at a live page, step by step, and understand what is going on.
 
