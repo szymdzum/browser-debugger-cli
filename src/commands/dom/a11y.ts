@@ -12,7 +12,11 @@
 import type { Command } from 'commander';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import { getDomContext, resolveBackendNodeIds } from '@/commands/dom/helpers/index.js';
+import {
+  getDomContext,
+  pageDocumentId,
+  resolveBackendNodeIds,
+} from '@/commands/dom/helpers/index.js';
 import type { DomContext } from '@/commands/dom/helpers/index.js';
 import { withSecretMasked } from '@/commands/dom/semanticUtils.js';
 import { runCommand, runJsonCommand } from '@/commands/shared/CommandRunner.js';
@@ -124,6 +128,7 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
         );
       }
 
+      const document = await pageDocumentId();
       const tree = await collectA11yTree();
       const result = queryA11yTree(tree, queryPattern);
 
@@ -137,16 +142,19 @@ async function handleA11yQuery(pattern: string, options: A11yQueryCommandOptions
       }
 
       const indexed = { ...result, nodes: result.nodes.map((node, index) => ({ ...node, index })) };
-      await QueryCacheManager.getInstance().set({
-        selector: `${A11Y_CACHE_SELECTOR_PREFIX}${pattern}`,
-        count: indexed.count,
-        nodes: indexed.nodes.map((node) => ({
-          index: node.index,
-          nodeId: node.backendDOMNodeId ?? 0,
-          tag: node.role,
-          ...(node.name && { preview: node.name }),
-        })),
-      });
+      await QueryCacheManager.getInstance().set(
+        {
+          selector: `${A11Y_CACHE_SELECTOR_PREFIX}${pattern}`,
+          count: indexed.count,
+          nodes: indexed.nodes.map((node) => ({
+            index: node.index,
+            nodeId: node.backendDOMNodeId ?? 0,
+            tag: node.role,
+            ...(node.name && { preview: node.name }),
+          })),
+        },
+        document
+      );
       return {
         success: true,
         data: limitMatches(indexed, options.limit ?? (options.json ? 0 : A11Y_QUERY_LIMIT)),

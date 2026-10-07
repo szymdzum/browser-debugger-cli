@@ -16,6 +16,7 @@ export {
   resolveBackendNodeIds,
   selectMatch,
   assertNodeAttached,
+  pageDocumentId,
 } from '@/commands/dom/helpers/query.js';
 
 export {

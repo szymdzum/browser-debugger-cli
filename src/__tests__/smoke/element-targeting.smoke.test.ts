@@ -730,3 +730,54 @@ void describe('Key attributes in dom query and dom get', () => {
     assert.match(await bdg(['dom', 'get', '3']), /\S/);
   });
 });
+
+void describe('Indices and secrets across pages', () => {
+  let fixture: FixtureServer;
+
+  before(async () => {
+    await cleanupAllSessions();
+    fixture = await startFixtureServer();
+    await bdg([`${fixture.url}interactions`, '--port', String(await getFreePort()), '--headless']);
+  });
+
+  after(async () => {
+    await cleanupAllSessions();
+    await fixture.close();
+  });
+
+  void it('never puts a password or hidden value in dom form JSON', async () => {
+    await evaluate(
+      `document.body.insertAdjacentHTML('beforeend', '<form id="secret-form"><input type="password" name="pw" value="TypedSecret77"><input type="hidden" name="csrf" value="tok123"><input name="who" value="bob"><input type="checkbox" name="remember_password" checked><select name="pwd-hint"><option>a</option><option selected>secret-choice</option></select></form>'); 1`
+    );
+    const output = await bdg(['dom', 'form', '--all', '--json']);
+    assert.doesNotMatch(output, /TypedSecret77|tok123/);
+    const fields = (
+      JSON.parse(output) as {
+        data: {
+          forms: Array<{
+            fields: Array<{ name: string; value: unknown; options?: Array<{ selected: boolean }> }>;
+          }>;
+        };
+      }
+    ).data.forms.flatMap((form) => form.fields);
+    assert.equal(fields.find((field) => field.name === 'remember_password')?.value, true);
+    const hint = fields.find((field) => field.name === 'pwd-hint');
+    assert.equal(hint?.value, '••••');
+    assert.ok(
+      hint?.options?.every((option) => !option.selected),
+      'the chosen option is not given away'
+    );
+    assert.match(output, /"value":\s*"••••"/);
+    assert.match(output, /"value":\s*"bob"/);
+  });
+
+  void it('refuses an index of the page before a navigation, even when the new page reuses its node ids', async () => {
+    await bdg(['dom', 'query', 'body *']);
+    const other = fixture.url.replace('127.0.0.1', 'localhost');
+    await bdg(['page', 'navigate', `${other}layout`]);
+    assert.match(await bdg(['dom', 'get', '2'], 87), /no longer in the page/);
+    assert.match(await bdg(['dom', 'click', '2'], 87), /no longer in the page/);
+    await bdg(['dom', 'query', 'body *']);
+    await bdg(['dom', 'get', '2']);
+  });
+});

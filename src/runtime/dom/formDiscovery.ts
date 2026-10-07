@@ -5,6 +5,7 @@
  * and returns structured data for agent consumption.
  */
 
+import { MASKED_VALUE, SENSITIVE_FIELD_JS } from '@/runtime/dom/elementInfo.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
 
 /**
@@ -14,7 +15,11 @@ import type { RawFormData } from '@/runtime/dom/formTypes.js';
  * - Native form elements and inputs
  * - Custom components with ARIA roles
  * - Labels via priority chain (label[for], aria-label, placeholder, etc.)
- * - Current values and validation state
+ * - Current values and validation state (never a secret: a hidden input's
+ *   value is left out, a sensitive text field's or select's
+ *   ({@link SENSITIVE_FIELD_JS}; checkboxes and radios named like one keep
+ *   their checked state) is {@link MASKED_VALUE} when filled, and a
+ *   sensitive select's options do not say which is chosen)
  * - Form relevance scoring for multi-form pages
  */
 export const FORM_DISCOVERY_SCRIPT = `
@@ -209,6 +214,10 @@ export const FORM_DISCOVERY_SCRIPT = `
   function getFieldValue(element) {
     const tag = element.tagName.toLowerCase();
     const type = element.type?.toLowerCase() || 'text';
+    if (type === 'hidden') return '';
+    if (isSecret(element)) {
+      return (element.isContentEditable ? element.textContent : element.value) ? '${MASKED_VALUE}' : '';
+    }
     if (tag === 'select') {
       if (element.multiple) {
         return Array.from(element.selectedOptions).map(o => o.value);
@@ -268,12 +277,20 @@ export const FORM_DISCOVERY_SCRIPT = `
     return tag === 'input' || tag === 'textarea' || tag === 'select';
   }
 
+  function isSecret(element) {
+    const type = element.type?.toLowerCase() || 'text';
+    if (type === 'checkbox' || type === 'radio') return false;
+    if (element.getAttribute('role') === 'checkbox' || element.getAttribute('role') === 'switch') return false;
+    return (${SENSITIVE_FIELD_JS})(element);
+  }
+
   function getSelectOptions(element) {
     if (element.tagName.toLowerCase() !== 'select') return undefined;
+    const secret = isSecret(element);
     return Array.from(element.options).map(opt => ({
-      value: opt.value,
+      value: secret ? '' : opt.value,
       label: opt.textContent.trim(),
-      selected: opt.selected
+      selected: secret ? false : opt.selected
     }));
   }
 
