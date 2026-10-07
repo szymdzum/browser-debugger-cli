@@ -58,7 +58,7 @@ void describe('page crash in follow modes', () => {
     const messages: ConsoleMessage[] = [{ type: 'error', text: 'boom', timestamp: 1 }];
     assert.match(formatConsole(messages, { pageCrashedAt: 5 }), /^⚠ The page crashed at /);
     assert.doesNotMatch(formatConsole(messages, {}), /crashed/);
-    assert.match(formatConsole(messages, { json: true, pageCrashedAt: 5 }), /"pageCrashedAt": 5/);
+    assert.match(formatConsole(messages, { json: true, pageCrashedAt: 5 }), /"pageCrashedAt": ?5/);
   });
 });
 

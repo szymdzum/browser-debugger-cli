@@ -1410,6 +1410,7 @@ bdg stores session data in `~/.bdg/` (override with `BDG_SESSION_DIR`); a named 
 ## Output Format
 
 Every command that accepts `--json` (`-j`) prints exactly one response envelope to stdout.
+It is indented when stdout is a terminal and on one line when it is piped or captured (agents, `| jq`), which saves the whitespace.
 Human-readable logs and hints go to stderr.
 
 ### Success

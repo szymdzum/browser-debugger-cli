@@ -5,6 +5,7 @@
  */
 
 import type { ConsoleMessage } from '@/types.js';
+import { stringifyEnvelope } from '@/ui/OutputBuilder.js';
 
 import { lastMessages } from './chronological.js';
 import {
@@ -74,5 +75,5 @@ export function formatConsoleJson(
   messages: ConsoleMessage[],
   options: ConsoleFormatOptions
 ): string {
-  return JSON.stringify(buildConsoleJsonOutput(messages, options), null, 2);
+  return stringifyEnvelope(buildConsoleJsonOutput(messages, options));
 }

@@ -14,7 +14,7 @@ import { CommandError } from '@/errors/index.js';
 import { genericError } from '@/errors/messages.js';
 import { buildProgram } from '@/program.js';
 import { selectSession } from '@/session/sessionName.js';
-import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { hideHints } from '@/ui/formatting.js';
 import { enableDebugLogging } from '@/ui/logging/index.js';
 import { getErrorExitCode, getErrorMessage } from '@/utils/errors.js';
@@ -240,7 +240,7 @@ function applyGlobalOptions(program: Command, actionCommand: Command): void {
  */
 function handleUsageError(error: CommanderError, command: Command, jsonMode: boolean): never {
   if (error.code === 'commander.version') {
-    if (jsonMode) console.log(JSON.stringify(buildSuccessResponse({ version: VERSION }), null, 2));
+    if (jsonMode) console.log(stringifyEnvelope(buildSuccessResponse({ version: VERSION })));
     process.exit(EXIT_CODES.SUCCESS);
   }
   if (
@@ -252,9 +252,7 @@ function handleUsageError(error: CommanderError, command: Command, jsonMode: boo
   const exitCode = EXIT_CODES.INVALID_ARGUMENTS;
   const { message, suggestion } = usageErrorDetails(error, command);
   if (jsonMode) {
-    console.log(
-      JSON.stringify(OutputBuilder.buildJsonError(message, { exitCode, suggestion }), null, 2)
-    );
+    console.log(stringifyEnvelope(OutputBuilder.buildJsonError(message, { exitCode, suggestion })));
   } else if (error.code !== 'commander.help') {
     console.error(genericError(message, suggestion));
   }
@@ -275,7 +273,7 @@ function handleFatalError(error: unknown): never {
   const metadata = error instanceof CommandError ? error.metadata : {};
   if (isJsonMode()) {
     console.log(
-      JSON.stringify(OutputBuilder.buildJsonError(message, { ...metadata, exitCode }), null, 2)
+      stringifyEnvelope(OutputBuilder.buildJsonError(message, { ...metadata, exitCode }))
     );
   } else {
     console.error(genericError(message));

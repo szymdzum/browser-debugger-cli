@@ -29,7 +29,7 @@ import { IPCTimeoutError } from '@/ipc/transport/index.js';
 import { isConnectionError } from '@/ipc/utils/errors.js';
 import { getSessionName } from '@/session/paths.js';
 import type { TelemetryType } from '@/types.js';
-import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
+import { OutputBuilder, buildSuccessResponse, stringifyEnvelope } from '@/ui/OutputBuilder.js';
 import { escapeControlChars, joinLines } from '@/ui/formatting.js';
 import { createLogger } from '@/ui/logging/index.js';
 import {
@@ -422,7 +422,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
         exitCode: outcome.exitCode,
         ...outcome.details,
       });
-      console.log(JSON.stringify(envelope, null, 2));
+      console.log(stringifyEnvelope(envelope));
     } else {
       console.error(escapeControlChars(outcome.human));
     }
@@ -445,7 +445,7 @@ function reportStartOutcome(outcome: StartOutcome, options: SessionStartOptions)
       daemonPid: data.daemonPid,
       ...(autoStopAt && { autoStopAt: autoStopAt.toISOString() }),
     };
-    console.log(JSON.stringify(buildSuccessResponse(result), null, 2));
+    console.log(stringifyEnvelope(buildSuccessResponse(result)));
   } else {
     const page = {
       url: data.targetUrl,
