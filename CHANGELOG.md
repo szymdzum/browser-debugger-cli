@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Contrast over images is no longer a definite fail** (#417). White text over a dark photo read `#fff on #fff 1.00 fail` on stripe.com: the photo had `pointer-events: none`, which hit-testing skipped, and text over a background image still got a verdict.
+  - Hit-testing now also sees `pointer-events: none` layers (hero images, blended duplicate headings).
+  - Text over a background image or gradient is approximate (`contrast ≈1.16 on #fff (approximate: background image or gradient behind)`, without a pass/fail level).
+  - `dom audit contrast` lists and counts in `failing` only text it can measure exactly, and counts the rest separately (`+14 more may be below it but cannot be measured`, JSON `uncertain`). For text out of view, it checks for an image under the text, unless the text sits on a solid ancestor background. The extra hit-testing costs nothing on dense pages: the audit adds its stylesheet once.
+  - Audit rows show `(faded: opacity 0.4)`, and gradient text inherited from a parent is skipped as `dom inspect` does. On stripe.com, 123 failing rows that were mostly false became 0 failing and 14 uncertain.
 - **`dom form --json` no longer contains passwords** (#416). It printed a password field's plaintext value in `fields[].value`, next to the masked one. Now the value of a sensitive field (password, card or one-time code, a field named like one) never leaves the page: it reads `••••` when filled, and a hidden input's value is left out, as everywhere else in bdg.
 - **A cached index is never used on another page's element** (#416). After a query on one site and a navigation to another (a new renderer process), the new page reuses the old backend node ids, so `dom click 500` clicked an unrelated element on the new page with exit 0. Cached results now record the document they came from, and an index of an earlier document exits 87 (`no longer in the page`).
 - **Session list and skill install leftovers** (#390):

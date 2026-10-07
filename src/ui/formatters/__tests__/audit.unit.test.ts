@@ -6,35 +6,36 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { formatAudit } from '@/ui/formatters/audit.js';
-import { AUDIT_OUT_OF_VIEW_RISK } from '@/ui/messages/commands.js';
 
 void describe('formatAudit', () => {
-  void it('marks out-of-view text whose ancestors paint nothing as approximate', () => {
+  void it('lists faded text with its opacity, and counts text it cannot measure', () => {
     const output = formatAudit({
       checks: ['contrast'],
       walked: 10,
       contrast: {
         level: 'AA',
-        checked: 1,
+        checked: 3,
         failing: 1,
+        uncertain: 2,
         items: [
           {
-            element: 'p#low',
-            text: 'White on an image',
-            ratio: 1,
-            color: '#fff',
-            background: '#fff',
+            element: 'p.note',
+            text: 'Faded note',
+            ratio: 1.87,
+            color: '#8a8f98',
+            background: '#08090a',
             size: 16,
             weight: 400,
-            inView: false,
-            approximate: [AUDIT_OUT_OF_VIEW_RISK],
+            inView: true,
+            opacity: 0.4,
           },
         ],
       },
     });
+    assert.match(output, /p\.note "Faded note" 16px \(faded: opacity 0\.4\)$/m);
     assert.match(
       output,
-      /p#low "White on an image" 16px \(out of view\) \(approximate: only its ancestors were checked\)$/
+      /\(\+2 more may be below it but cannot be measured: text over images or blended layers; check them with bdg dom inspect <element>\)/
     );
   });
 

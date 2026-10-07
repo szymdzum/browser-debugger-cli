@@ -186,6 +186,9 @@ export function effectiveBackground(
   };
 }
 
+/** Why a contrast over a background image or gradient is approximate (its pixels are unknown) */
+export const OVER_IMAGE_RISK = 'background image or gradient behind';
+
 /**
  * Contrast of the text color with the background behind it, both painted
  * as the browser composites them ({@link paintOver}), with what makes the
@@ -206,7 +209,7 @@ export function textContrast(
   const ratio = Math.floor(contrastRatio(painted.text, painted.background) * 100) / 100;
   const size = pxNumber(style['font-size']) ?? 16;
   const weight = Number(style['font-weight'] ?? 400);
-  const approximate = raw.paintRisks ?? [];
+  const approximate = [...(raw.paintRisks ?? []), ...(painted.overImage ? [OVER_IMAGE_RISK] : [])];
   return {
     ratio,
     level: contrastLevel(ratio, size, weight),

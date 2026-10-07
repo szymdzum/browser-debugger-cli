@@ -22,6 +22,8 @@ export interface AuditContrastItem {
   size: number;
   weight: number;
   inView: boolean;
+  /** Opacity of the text and its ancestors, when below 1 (the colors are faded by it) */
+  opacity?: number;
   /** Why the ratio is approximate (blend modes, filters, an element behind or on top, out of view) */
   approximate?: string[];
 }
@@ -50,8 +52,10 @@ export interface AuditResult {
     level: 'AA' | 'AAA';
     /** Text holders checked */
     checked: number;
-    /** How many are below the level */
+    /** How many are below the level (measured exactly) */
     failing: number;
+    /** How many more look below the level but cannot be measured exactly (text over images, blend modes, layers): not listed, `dom inspect` them */
+    uncertain?: number;
     /** The weakest ones, at most `--limit` */
     items: AuditContrastItem[];
   };

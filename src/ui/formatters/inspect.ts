@@ -256,6 +256,9 @@ function fontParts(text: InspectText): string[] {
 
 /**
  * A contrast as words, e.g. `contrast 4.47 fail on #fff (faded: opacity 0.4)`.
+ * An approximate one gets no pass/fail level, only the estimate and why
+ * (`contrast ≈1 on #fff (approximate: img.hero behind)`): what is behind
+ * the text is not a known color.
  *
  * @param contrast - Contrast
  * @returns Words, or undefined
@@ -264,10 +267,9 @@ function contrastText(contrast: InspectContrast | undefined): string | undefined
   if (!contrast) return undefined;
   return [
     contrast.approximate
-      ? `contrast ≈${contrast.ratio} ${contrast.level}`
+      ? `contrast ≈${contrast.ratio}`
       : `contrast ${contrast.ratio} ${contrast.level}`,
     `on ${contrast.background}`,
-    contrast.overImage && '(over image)',
     contrast.opacity !== undefined && `(faded: opacity ${contrast.opacity})`,
     contrast.approximate && `(approximate: ${contrast.approximate.join(', ')})`,
   ]
