@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-07
+
+### Breaking
+
+- **`dom a11y tree --json`** is a flat, bounded `nodes` list with `depth`, `count`, `omitted` and `skipped`. `data.root` and `childIds` are gone (#436).
+- **`--json` lists default to 100 rows** for `dom query` and `dom a11y query` (`count`/`omitted` say how many matched; `--limit 0` lists all). The a11y tree lists 50 nodes by default (#436).
+- **Long values are cut by default**: `dom get --raw`, `dom eval` and string results in `--json`, console text in `console`/`peek`. `--full` returns them whole; JSON marks a cut value with `truncatedFrom` (#440).
+- **`--json` is printed on one line when stdout is not a terminal** (JSON parsers are unaffected; scripts that grep indented output are) (#441).
+
 ### Changed
 
 - **`--json` output is compact when piped** (#441): the envelope is on one line unless stdout is a terminal, which still gets it indented. Agents and scripts capture stdout, so the indentation was overhead: measured on a fixture page with 500 links, `dom query a --json` 137 KB → 73 KB (−47%), `network list --json` −34%, `status --json` −26%. `--follow` streams, HAR files and session metadata are unchanged.
