@@ -3,7 +3,7 @@
 **Date:** 2025-11-24  
 **Test Order:** Alternating per benchmark specification
 
-> **Note (2026-10):** raw results of one run, bdg 0.6.x against chrome-devtools-mcp as of November 2025. chrome-devtools-mcp had `evaluate_script` then, and its [current tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md) also lists heap snapshot tools, performance traces with insights, `lighthouse_audit` and `get_css_styles`. Statements below that MCP cannot run JavaScript or profile memory are corrected; it still has no HAR export and no raw CDP access. See [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428) for a refreshed benchmark.
+> **Note (2026-10):** raw results of one run, bdg 0.6.x against chrome-devtools-mcp as of November 2025. chrome-devtools-mcp had `evaluate_script` and performance traces with insights then, and its [current tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md) also lists heap snapshot tools, `lighthouse_audit` and `get_css_styles`. Statements below that MCP cannot run JavaScript or profile memory are corrected; it still has no HAR export and no raw CDP access. See [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428) for a refreshed benchmark.
 
 ## Timing Summary
 
@@ -416,7 +416,7 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
 - MCP: ~3.5K tokens (fewer interactions, no profiling output, smaller snapshots after stopping traffic)
 - bdg's higher token usage reflects the additional profiling data and CDP exploration
 
-**Key takeaway**: This test highlights the fundamental architectural difference between the tools. Memory leak detection needed CDP access, which the MCP server tested did not offer. It has since added heap snapshot and performance trace tools, so this no longer holds.
+**Key takeaway**: This test highlights the fundamental architectural difference between the tools. Memory leak detection needed heap measurement, which the MCP server tested did not offer. It has since added heap snapshot tools, so this would likely play out differently today.
 
 ---
 
@@ -437,7 +437,7 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
 - **Console-focused**: Primarily focuses on console/network, less on UI state
 
 ### MCP Strengths:
-- **Speed**: Faster execution on most tests (average 65s vs 88s)
+- **Speed (at the time)**: Faster execution on most tests (average 65s vs 88s)
 - **Visual feedback**: Accessibility tree snapshots provide UI context
 - **User-friendly output**: Clear text-based responses
 - **Direct element interaction**: Straightforward click/fill operations
@@ -459,7 +459,7 @@ MCP clicked message buttons and observed messages appearing in the DOM snapshot.
   - Automated testing requiring structured JSON output
   - Network analysis requiring HAR export
   - Scenarios needing direct CDP protocol access
-  - Batch operations and JavaScript evaluation
+  - Batch operations through JavaScript evaluation (as used in this run)
 
 - **Use MCP for:**
   - Quick exploratory testing and debugging

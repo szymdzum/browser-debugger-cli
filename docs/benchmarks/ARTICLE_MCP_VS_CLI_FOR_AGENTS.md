@@ -2,7 +2,7 @@
 
 **A Benchmark-Driven Comparison of Browser Automation Paradigms**
 
-> **Note (2026-10):** this comparison is one run of five tasks from November 2025, bdg 0.6.x against chrome-devtools-mcp as it was then. Both tools have changed since. The current [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md) lists `evaluate_script`, 14 heap snapshot tools (`take_heapsnapshot`, `compare_heapsnapshots`, `get_heapsnapshot_retainers`, ...), performance traces with insights (`performance_start_trace`, `performance_analyze_insight`), `lighthouse_audit` and `get_css_styles`; it has no HAR export and no raw CDP access. Capability cells that said MCP lacked these are corrected below and marked ¹. "Token efficiency" (TES) is score per token: total tokens were about equal, so the +33% reflects the score gap, not a token saving. A refreshed benchmark is tracked in [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428).
+> **Note (2026-10):** this comparison is one run of five tasks from November 2025, bdg 0.6.x against chrome-devtools-mcp as it was then. Both tools have changed since. The current [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md) lists `evaluate_script` and performance traces with insights (`performance_start_trace`, `performance_analyze_insight`), both already there in November 2025, plus tools added since: 14 heap snapshot tools (`take_heapsnapshot`, plus `compare_heapsnapshots`, `get_heapsnapshot_retainers`, … behind `--memoryDebugging`), `lighthouse_audit` and `get_css_styles`; it has no HAR export and no raw CDP access. Capability cells that said MCP lacked these are corrected below and marked ¹. "Token efficiency" (TES) is score per token: total tokens were about equal, so the +33% reflects the score gap, not a token saving. The Amazon token figures are from a separate 2025-11-23 run. A refreshed benchmark is tracked in [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428).
 
 ---
 
@@ -195,7 +195,7 @@ The difference isn't *whether* to use accessibility data—it's *how much* to re
 
 | Approach | bdg | MCP |
 |----------|-----|-----|
-| Query strategy | Fetch what you need | Dump everything |
+| Query strategy | Fetch what you need | Full snapshot (selective only via `evaluate_script`) |
 | 195-option dropdown | ~50 tokens | ~5,000 tokens |
 | Complex page (Amazon) | ~1,200 tokens | ~52,000 tokens |
 
@@ -225,13 +225,13 @@ That's 43x more efficient. In a context window, that difference determines wheth
 | Capability | bdg | MCP |
 |------------|-----|-----|
 | Console errors with stack traces | ✓ | Partial |
-| Memory profiling | ✓ | ✓ heap snapshot tools¹ |
+| Memory profiling | ✓ | ✓ heap snapshot tools (all but `take_heapsnapshot` behind `--memoryDebugging`)¹ |
 | Network HAR export | ✓ | ✗ |
 | Batch JavaScript execution | ✓ | ✓ `evaluate_script`¹ |
 | Selective DOM queries | ✓ | Via `evaluate_script`¹ |
 | Direct CDP method access | ✓ (300+ methods) | ✗ |
 
-¹ Corrected 2026-10 from the [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md); the original table marked these ✗.
+¹ Corrected 2026-10 from the [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md); the original table marked these ✗. Batch JavaScript execution was available in November 2025 too.
 
 For developer debugging tasks, these aren't edge features—they're core workflows.
 
@@ -254,7 +254,7 @@ With CLI tools, agents can estimate token impact before calling:
 - `bdg dom query ".error"` → proportional to matched elements
 - `bdg console --last 10` → bounded by limit parameter
 
-MCP's `take_snapshot` returns... whatever the page contains. Could be 5K tokens, could be 52K. The agent can't predict or control this.
+MCP's `take_snapshot` returns the whole tree (unless saved to a file with `filePath`). Could be 5K tokens, could be 52K. The agent can't predict or control this.
 
 ---
 
@@ -300,13 +300,13 @@ For **ecosystem integration and sandboxing**: MCP has structural advantages that
 
 ## Conclusion
 
-We set out to compare MCP and CLI as interfaces for AI agents doing browser automation. The benchmark results are clear: for developer debugging workflows, CLI provides more capability with better efficiency.
+We set out to compare MCP and CLI as interfaces for AI agents doing browser automation. In this benchmark, for developer debugging workflows, the CLI produced more complete results on about the same token budget.
 
 In this one run the margin was 77 vs 60 points on about the same tokens. CLI completed a task the MCP server of the time had no tools for (memory profiling; it has heap snapshot tools now), and did shared tasks with less overhead (selective queries vs full dumps).
 
 This doesn't mean MCP is "bad." It means MCP optimizes for different constraints than an AI agent debugging a web application. Protocol standardization and sandboxed execution matter in some contexts. They just aren't the contexts we tested.
 
-For tool builders: consider your users. If AI agents are a primary audience, the CLI paradigm—selective queries, predictable output, full capability access—serves them better than protocol abstractions that trade power for portability.
+For tool builders: consider your users. If AI agents are a primary audience, the CLI paradigm—selective queries, predictable output, full capability access—serves them well.
 
 ---
 
@@ -352,7 +352,7 @@ TES is score per token. Total tokens were about equal (38.1K vs 39.4K), so the +
 | Accessibility | Selective queries | Full tree dumps |
 | CSS | Full | `get_css_styles`¹ |
 
-¹ Corrected 2026-10 from the [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md); the original matrix said None. It also lists `lighthouse_audit`.
+¹ Corrected 2026-10 from the [chrome-devtools-mcp tool reference](https://github.com/ChromeDevTools/chrome-devtools-mcp/blob/main/docs/tool-reference.md); the original matrix said None. Performance traces were already available in November 2025; heap snapshot tools and `get_css_styles` were added later. It also lists `lighthouse_audit`.
 
 ---
 

@@ -110,7 +110,7 @@ One run of five debugging tasks, from a single JS error up to a memory leak, eac
 | Tokens used | ~38.1K | ~39.4K |
 | Time | 441 s | 323 s |
 
-Token use was about the same and MCP was faster; bdg scored higher on all five tasks, most on the multi-error one (+6). Both tools have changed since: Chrome DevTools MCP now has heap snapshots, performance traces with insights, Lighthouse and CSS styles, so the memory task would play out differently today. It still has no HAR export. A refreshed benchmark is tracked in [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428). [Read the full analysis →](docs/benchmarks/ARTICLE_MCP_VS_CLI_FOR_AGENTS.md)
+Token use was about the same and MCP was faster; bdg scored higher on all five tasks, most on the multi-error one (+6). Both tools have changed since: Chrome DevTools MCP has added heap snapshots, Lighthouse audits and CSS styles (it already had performance traces with insights), so the memory task would play out differently today. It still has no HAR export. A refreshed benchmark is tracked in [#428](https://github.com/szymdzum/browser-debugger-cli/issues/428). [Read the full analysis →](docs/benchmarks/ARTICLE_MCP_VS_CLI_FOR_AGENTS.md)
 
 ## Use it with your agent
 
