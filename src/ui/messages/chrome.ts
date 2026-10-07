@@ -42,7 +42,7 @@ export function formatChromeIssue(issue: IssueDetails): string {
   const ctx = issue.context ?? {};
   switch (issue.code) {
     case 'PORT_IN_USE':
-      return portInUseError(ctx['port'] as number);
+      return portInUseError(ctx['port'] as number, ctx['reason'] as string | undefined);
     case 'INVALID_PORT':
       return invalidPortError(ctx['port'] as number);
     case 'USER_DATA_DIR_CREATE_FAILED':
@@ -348,17 +348,48 @@ export function chromeBinaryOverrideIsDirectory(path: string, source: string): s
  * Generate error when CDP port is already in use.
  *
  * @param port - Port number that is in use
+ * @param reason - What was found on the port, when known
  * @returns Multi-line formatted error message with troubleshooting steps
  */
-export function portInUseError(port: number): string {
+export function portInUseError(port: number, reason?: string): string {
   return joinLines(
-    `Port ${port} is already in use.\n`,
+    reason ? `Port ${port} is already in use: ${reason}.\n` : `Port ${port} is already in use.\n`,
     'Another program (or a Chrome left from a previous session) is listening on it.\n',
     'Try:',
     `  - Use a different port: ${sessionCommand(`bdg <url> --port ${port + 1}`)}`,
     `  - If a bdg session holds it: find it with bdg sessions, then end that one: bdg stop --session <name> (bdg cleanup --force --session <name> if it is stuck)`,
     `  - See what uses the port: lsof -i :${port}`
   );
+}
+
+/**
+ * Why a launched Chrome is not the one answering on 127.0.0.1:<port>.
+ *
+ * @param answeredBy - What answers there: a different browser, another
+ *   process, or nothing (the address is held but does not answer)
+ * @param chromeHost - Address the launched Chrome listens on
+ * @returns Reason for the PORT_IN_USE issue
+ */
+export function portTakenByReason(
+  answeredBy: 'browser' | 'process' | 'nothing',
+  chromeHost: string
+): string {
+  if (answeredBy === 'nothing')
+    return `something holds 127.0.0.1 (Chrome fell back to ${chromeHost})`;
+  const other = answeredBy === 'browser' ? 'another browser' : 'another process';
+  return `${other} answers on 127.0.0.1 (Chrome listens on ${chromeHost})`;
+}
+
+/**
+ * Why a launch failed when Chrome announced its port but did not answer on
+ * it in time (a slow start, not a port conflict).
+ *
+ * @param port - Port Chrome announced
+ * @param waitedMs - How long bdg waited
+ * @returns Reason for the CHROME_LAUNCH_FAILED issue
+ */
+export function chromeNotAnsweringReason(port: number, waitedMs: number): string {
+  return `Chrome announced port ${port} but did not answer on 127.0.0.1 within ${(waitedMs / 1000).toFixed(1)}s (slow start)`;
 }
 
 /**

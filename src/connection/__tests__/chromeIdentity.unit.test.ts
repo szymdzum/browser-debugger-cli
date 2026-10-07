@@ -4,7 +4,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as net from 'node:net';
@@ -19,6 +19,7 @@ import {
 } from '@/connection/chromeIdentity.js';
 import { ChromeLaunchError } from '@/connection/errors.js';
 import { markStartupLogs, readStartupLines } from '@/connection/startupExit.js';
+import { formatChromeIssue } from '@/ui/messages/chrome.js';
 
 const BROWSER_PATH = '/devtools/browser/11111111-2222-3333-4444-555555555555';
 const OTHER_PATH = '/devtools/browser/99999999-8888-7777-6666-555555555555';
@@ -57,11 +58,35 @@ async function assertIssue(promise: Promise<void>, code: string): Promise<void> 
   });
 }
 
-before(async () => {
-  server = http.createServer((_req, res) => {
+/**
+ * A DevTools-like server answering `/json/version` with the browser path set
+ * in `answeredPath`.
+ *
+ * @returns Server (not listening yet)
+ */
+function createVersionServer(): http.Server {
+  return http.createServer((req, res) => {
+    const { port: own } = req.socket.address() as net.AddressInfo;
     res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ webSocketDebuggerUrl: `ws://127.0.0.1:${port}${answeredPath}` }));
+    res.end(JSON.stringify({ webSocketDebuggerUrl: `ws://127.0.0.1:${own}${answeredPath}` }));
   });
+}
+
+/**
+ * A port nothing listens on (connections to it are refused).
+ *
+ * @returns Port number
+ */
+async function closedPort(): Promise<number> {
+  const probe = net.createServer();
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+  const free = (probe.address() as net.AddressInfo).port;
+  await new Promise((resolve) => probe.close(resolve));
+  return free;
+}
+
+before(async () => {
+  server = createVersionServer();
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   port = (server.address() as net.AddressInfo).port;
 });
@@ -155,10 +180,87 @@ void describe('verifyLaunchedChrome', () => {
     await assertIssue(verifyLaunchedChrome({ logs, port, pid: alivePid }), 'PORT_IN_USE');
   });
 
+  void it('names what was found when another browser answers on the port', async () => {
+    answeredPath = OTHER_PATH;
+    const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${port}${BROWSER_PATH}`);
+    await assert.rejects(verifyLaunchedChrome({ logs, port, pid: alivePid }), (error: unknown) => {
+      assert.ok(error instanceof ChromeLaunchError && error.issue);
+      assert.equal(error.issue.code, 'PORT_IN_USE');
+      const reason = String(error.issue.context?.['reason']);
+      assert.match(reason, /another browser answers on 127\.0\.0\.1/);
+      assert.ok(formatChromeIssue(error.issue).includes(reason), formatChromeIssue(error.issue));
+      return true;
+    });
+  });
+
+  void it('waits for a slow Chrome that announced its port but does not answer yet', async () => {
+    answeredPath = BROWSER_PATH;
+    const slowPort = await closedPort();
+    const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${slowPort}${BROWSER_PATH}`);
+    const slow = createVersionServer();
+    const late = setTimeout(() => slow.listen(slowPort, '127.0.0.1'), 300);
+    try {
+      await verifyLaunchedChrome({ logs, port: slowPort, pid: alivePid, timeoutMs: 5000 });
+    } finally {
+      clearTimeout(late);
+      await new Promise((resolve) => slow.close(resolve));
+    }
+  });
+
+  void it('reports a Chrome that announced its port but never answers as a slow start, not a port conflict', async () => {
+    const slowPort = await closedPort();
+    const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${slowPort}${BROWSER_PATH}`);
+    await assert.rejects(
+      verifyLaunchedChrome({ logs, port: slowPort, pid: alivePid, timeoutMs: 300 }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChromeLaunchError && error.issue);
+        assert.equal(error.issue.code, 'CHROME_LAUNCH_FAILED');
+        assert.match(
+          String(error.issue.context?.['reason']),
+          new RegExp(`announced port ${slowPort} but did not answer on 127\\.0\\.0\\.1 within`)
+        );
+        return true;
+      }
+    );
+  });
+
   void it('rejects a Chrome listening on another port', async () => {
     answeredPath = BROWSER_PATH;
     const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${port + 1}${BROWSER_PATH}`);
     await assertIssue(verifyLaunchedChrome({ logs, port, pid: alivePid }), 'PORT_IN_USE');
+  });
+
+  void it('reports a Chrome that dies while bdg waits for its answer as died, at once', async () => {
+    const slowPort = await closedPort();
+    const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${slowPort}${BROWSER_PATH}`);
+    const chrome = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 300)']);
+    const exited = new Promise((resolve) => chrome.once('exit', resolve));
+    const started = Date.now();
+    await assertIssue(
+      verifyLaunchedChrome({ logs, port: slowPort, pid: chrome.pid ?? 0, timeoutMs: 5000 }),
+      'CHROME_DIED_AFTER_LAUNCH'
+    );
+    assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
+    await exited;
+  });
+
+  void it('reports a port conflict at once when Chrome fell back to [::1] and 127.0.0.1 does not answer', async () => {
+    const slowPort = await closedPort();
+    const logs = chromeSays(`DevTools listening on ws://[::1]:${slowPort}${BROWSER_PATH}`);
+    const started = Date.now();
+    await assert.rejects(
+      verifyLaunchedChrome({ logs, port: slowPort, pid: alivePid, timeoutMs: 5000 }),
+      (error: unknown) => {
+        assert.ok(error instanceof ChromeLaunchError && error.issue);
+        assert.equal(error.issue.code, 'PORT_IN_USE');
+        assert.match(
+          String(error.issue.context?.['reason']),
+          /something holds 127\.0\.0\.1 \(Chrome fell back to \[::1\]\)/
+        );
+        return true;
+      }
+    );
+    assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
   });
 
   void it('accepts a silent Chrome answering on 127.0.0.1 alone, without a port conflict', async () => {
@@ -168,10 +270,7 @@ void describe('verifyLaunchedChrome', () => {
   });
 
   void it('fails a silent Chrome nothing answers for, naming chrome-err.log, not as a port conflict', async () => {
-    const closed = http.createServer();
-    await new Promise<void>((resolve) => closed.listen(0, '127.0.0.1', resolve));
-    const freePort = (closed.address() as net.AddressInfo).port;
-    await new Promise((resolve) => closed.close(resolve));
+    const freePort = await closedPort();
     await assert.rejects(
       verifyLaunchedChrome({ logs: chromeSays(), port: freePort, pid: alivePid, timeoutMs: 100 }),
       (error: unknown) => {

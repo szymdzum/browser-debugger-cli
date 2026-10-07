@@ -9,7 +9,7 @@ import { getErrorMessage } from '@/utils/errors.js';
  * Chrome's HTTP API should respond quickly when running.
  * A 5-second timeout helps detect when Chrome is not responding.
  */
-const CDP_HTTP_TIMEOUT_MS = 5000;
+export const CDP_HTTP_TIMEOUT_MS = 5000;
 
 /**
  * Options for CDP HTTP target fetch.
@@ -100,18 +100,19 @@ export type DevToolsProbe =
  *
  * @param port - Chrome debugging port
  * @param logger - Optional logger for debug output
- * @param options - Host and HTTPS
+ * @param options - Host, HTTPS and request timeout
  * @returns What answered
  */
 export async function probeDevToolsEndpoint(
   port: number,
   logger?: Logger,
-  options?: Pick<FetchCDPTargetsOptions, 'host' | 'secure'>
+  options?: FetchCDPTargetsOptions
 ): Promise<DevToolsProbe> {
   const url = `${options?.secure ? 'https' : 'http'}://${options?.host ?? HTTP_LOCALHOST}:${port}/json/version`;
+  const timeoutMs = options?.timeoutMs ?? CDP_HTTP_TIMEOUT_MS;
   let response: Response;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(CDP_HTTP_TIMEOUT_MS) });
+    response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   } catch (error) {
     logger?.debug(`Chrome version request failed: ${getErrorMessage(error)} (${url})`);
     return { kind: 'unreachable' };
