@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Web components read as they render** (#418). `dom get`, `dom query` and `dom layout` showed only light-DOM text, so a component often read `No text and no child elements` where a user sees text. Now:
+  - previews, `dom get` text, `dom inspect` text and the `(in shadow root of <host "…">)` label read a component through its shadow root: its own labels (a field label, a dialog title), the fallback content of an empty slot, slotted content in place of its slot. Light-DOM text that no slot shows is left out.
+  - block-level parts are set apart: `Named Title One Default body one` and `Blue Widget $19.99` were glued as `Named Title OneDefault body one` and `Blue Widget$19.99`.
+  - the host label leaves out hidden text and ends a cut with `…`; it used the raw `textContent`.
+  - a component without text lists what its shadow root holds, with aria-labels: `No text; its shadow root holds 1 element: button.icon-button "Close"`.
+  - `dom layout` measures an open `display: contents` dialog component by what it shows. It called the dialog hidden.
+  - action results name a shadow button by its slotted label (`button.root "Ok, got it"`, not `button.root`), an image link by its image's alt text, and a field by its `<label>` or `aria-labelledby`. A click on a shadow button whose label is slotted uses mouse events; it was reported as covered by its own host and fell back to DOM events.
 - **Contrast over images is no longer a definite fail** (#417). White text over a dark photo read `#fff on #fff 1.00 fail` on stripe.com: the photo had `pointer-events: none`, which hit-testing skipped, and text over a background image still got a verdict.
   - Hit-testing now also sees `pointer-events: none` layers (hero images, blended duplicate headings).
   - Text over a background image or gradient is approximate (`contrast ≈1.16 on #fff (approximate: background image or gradient behind)`, without a pass/fail level).

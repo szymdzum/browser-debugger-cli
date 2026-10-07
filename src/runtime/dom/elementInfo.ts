@@ -41,37 +41,58 @@ export const WITHOUT_DECORATIONS_JS = `(el, text) => {
 }`;
 
 /**
- * Page-side text of an element that shows content through `<slot>`s (or of
- * a slot itself), which `innerText` leaves out: each slot is replaced by
- * what it shows, its assigned nodes flattened through nested slots (or its
- * fallback content when nothing is assigned). Elements without slots are
- * read with `innerText`; those that are not rendered are left out, and
- * those that are not inline are set apart by line breaks. The text is cut
- * at `limit` characters, and an element whose text alone passes the limit
- * is read from its text nodes (`textContent`) instead of `innerText`, which
- * would lay out all of it.
+ * Page-side check whether `innerText` misses part of what an element shows:
+ * it is a `<slot>` or hosts an open shadow root, or one of its descendants
+ * is or does. `innerText` follows neither shadow roots nor slots.
  */
-export const SLOTTED_TEXT_JS = `(el, limit) => {
+export const COMPOSED_JS = `(node) => {
+  const composes = (n) => Boolean(n.shadowRoot) || n.localName === 'slot';
+  if (composes(node)) return true;
+  const walker = node.ownerDocument.createTreeWalker(node, NodeFilter.SHOW_ELEMENT);
+  while (walker.nextNode()) if (composes(walker.currentNode)) return true;
+  return false;
+}`;
+
+/**
+ * Page-side text of an element as the flat tree renders it, for elements
+ * `innerText` cannot read ({@link COMPOSED_JS}): a shadow host is read from
+ * its open shadow root (its own labels and fallback content; light children
+ * only where a slot shows them), and each slot is replaced by what it
+ * shows, its assigned nodes flattened through nested slots (or its fallback
+ * content when nothing is assigned). Parts without slots or shadow roots
+ * are read with `innerText`; elements that are not rendered and text under
+ * `visibility: hidden` are left out, elements that are not inline are set
+ * apart by line breaks, as is a `<br>`. Fields and editable regions inside
+ * it (inputs, textareas, selects, a contenteditable editor) are skipped, so
+ * what a user typed is never read; raw text keeps `innerText`'s collapsed
+ * whitespace. The text is cut at `limit` characters, and a
+ * part whose text alone passes the limit is read from its text nodes
+ * (`textContent`) instead of `innerText`, which would lay out all of it.
+ */
+export const FLAT_TEXT_JS = `(el, limit) => {
+  const composed = ${COMPOSED_JS};
+  const view = el.ownerDocument.defaultView;
   let text = '';
-  const read = (node) => {
+  const nodesOf = (node) =>
+    node.localName === 'slot' ? node.assignedNodes({ flatten: true }) : Array.from((node.shadowRoot || node).childNodes);
+  const read = (node, visible) => {
     if (text.length >= limit) return;
-    if (node.nodeType === 3) text += node.data;
+    if (node.nodeType === 3 && visible) text += node.data.replace(/\\s+/g, ' ');
     if (node.nodeType !== 1) return;
-    if (node.localName === 'slot') {
-      node.assignedNodes({ flatten: true }).forEach(read);
-      return;
-    }
-    const display = node.ownerDocument.defaultView.getComputedStyle(node).display;
-    if (node.checkVisibility && !node.checkVisibility() && display !== 'contents') return;
-    const apart = display.startsWith('inline') || display === 'contents' ? '' : '\\n';
+    if (/^(input|textarea|select)$/.test(node.localName) || node.isContentEditable) return;
+    const style = view.getComputedStyle(node);
+    if (node.checkVisibility && !node.checkVisibility() && style.display !== 'contents') return;
+    if (node.localName === 'br') text += '\\n';
+    const apart = style.display.startsWith('inline') || style.display === 'contents' ? '' : '\\n';
     text += apart;
-    if (node.querySelector('slot')) Array.from(node.childNodes).forEach(read);
-    else if ((node.textContent || '').length > limit - text.length) text += (node.textContent || '').slice(0, limit - text.length);
-    else text += typeof node.innerText === 'string' ? node.innerText : node.textContent || '';
+    const own = node.textContent || '';
+    if (composed(node)) nodesOf(node).forEach((child) => read(child, style.visibility === 'visible'));
+    else if (own.length > limit - text.length) text += own.slice(0, limit - text.length);
+    else text += typeof node.innerText === 'string' ? node.innerText : own;
     text += apart;
   };
-  if (el.localName === 'slot') read(el);
-  else Array.from(el.childNodes).forEach(read);
+  const visible = view.getComputedStyle(el).visibility === 'visible';
+  nodesOf(el).forEach((child) => read(child, visible));
   return text.slice(0, limit);
 }`;
 
@@ -81,17 +102,19 @@ export const SLOTTED_TEXT_JS = `(el, limit) => {
  * for an element that is not rendered, `textContent` for SVG and other
  * elements without `innerText` and for `display: contents` wrappers (no box
  * of their own, but their children are shown), and the label of an
- * `<option>` (which its `<select>` renders). An element in a shadow root
- * that shows light-DOM content through a `<slot>` (and a slot itself) is
- * read with that content ({@link SLOTTED_TEXT_JS}). For large containers
- * (more than 2000 characters of text) only the start is read, from the text
- * nodes whose parent is rendered, so a preview never lays out a whole page's
- * text, unless `full` is set. Decorations are left out
+ * `<option>` (which its `<select>` renders). A web component, a slot, and
+ * an element holding either are read through the flat tree
+ * ({@link FLAT_TEXT_JS}): the text a component renders from its shadow
+ * root, slotted content in place of its slots, blocks set apart. For large
+ * containers (more than 2000 characters of text) only the start is read,
+ * from the text nodes whose parent is rendered, so a preview never lays out
+ * a whole page's text, unless `full` is set. Decorations are left out
  * ({@link WITHOUT_DECORATIONS_JS}).
  */
 export const ELEMENT_TEXT_JS = `(el, full) => {
   const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
-  const slottedText = ${SLOTTED_TEXT_JS};
+  const composed = ${COMPOSED_JS};
+  const flatText = ${FLAT_TEXT_JS};
   const all = el.textContent || '';
   if (el.tagName === 'OPTION') return el.label;
   if (typeof el.innerText !== 'string') return full ? all : all.slice(0, 2000);
@@ -99,9 +122,7 @@ export const ELEMENT_TEXT_JS = `(el, full) => {
   const shown = rendered(el);
   const boxless = !shown && el.ownerDocument.defaultView.getComputedStyle(el).display === 'contents';
   if (!shown && !boxless) return '';
-  if (el.localName === 'slot' || el.querySelector('slot')) {
-    return withoutDecorations(el, slottedText(el, full ? Infinity : 2000));
-  }
+  if (composed(el)) return withoutDecorations(el, flatText(el, full ? Infinity : 2000));
   if (boxless) return withoutDecorations(el, full ? all : all.slice(0, 2000));
   if (full || all.length <= 2000) return withoutDecorations(el, el.innerText);
   const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -211,12 +232,15 @@ export const SIBLING_POSITION_JS = `(el) => {
  * Page-side identity of an element an action hit, so the output says which
  * one it was, as one string: its short description
  * ({@link ELEMENT_DESCRIPTION_JS}) and visible text (button value for button
- * inputs, decorations left out), e.g. `button#add.btn "Add to cart"`. A
- * `<select>` is named by its label, aria-label or name, else by its selected
+ * inputs, decorations left out; read through the flat tree for web
+ * components and slots, {@link FLAT_TEXT_JS}), e.g.
+ * `button#add.btn "Add to cart"`. A `<select>` is named by its label
+ * (`aria-labelledby` or `<label>`), aria-label or name, else by its selected
  * option, e.g. `select.sort "Sort products"`. An element without visible
  * text is described by itself first: by its position among same-looking
  * siblings ({@link SIBLING_POSITION_JS}), e.g. `div.figure (2nd of 3)`, with
- * its aria-label, placeholder or title when it has one. Only an element
+ * its name when it has one: aria-label, label, placeholder, title, or the
+ * alt text of an image (in it). Only an element
  * without an id that is the only one of its kind is named by the nearest of
  * three ancestors that has text, e.g.
  * `input.toggle in div.view "Write report"` (rows of a list share their
@@ -224,7 +248,7 @@ export const SIBLING_POSITION_JS = `(el) => {
  * of `<select>`s in it (read like `innerText`: CSS-hidden text is left out of
  * a rendered ancestor; at most 500 text nodes; selects in shadow roots are
  * not looked into), and never past an editable ancestor, whose text may be
- * typed input; otherwise its aria-label, placeholder or title is used. Texts
+ * typed input; otherwise its name is used. Texts
  * are cut at 40 characters. Contenteditable elements count as controls: what
  * was typed into them is never echoed (nor their ancestors' text).
  */
@@ -232,19 +256,36 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
   const describe = ${ELEMENT_DESCRIPTION_JS};
   const siblingPosition = ${SIBLING_POSITION_JS};
   const withoutDecorations = ${WITHOUT_DECORATIONS_JS};
+  const composed = ${COMPOSED_JS};
+  const flatText = ${FLAT_TEXT_JS};
   const clean = (text) => (text || '').replace(/\\s+/g, ' ').trim();
   const cut = (text) => {
     const characters = Array.from(text);
     return characters.length > 40 ? characters.slice(0, 40).join('') + '…' : text;
   };
   const isControl = (node) => /^(input|select|textarea)$/.test(node.localName) || node.isContentEditable;
-  const shownText = (node) =>
-    isControl(node) ? '' : clean(withoutDecorations(node, typeof node.innerText === 'string' ? node.innerText : node.textContent));
+  const textOf = (node) =>
+    composed(node) ? flatText(node, 200) : typeof node.innerText === 'string' ? node.innerText : node.textContent;
+  const shownText = (node) => (isControl(node) ? '' : clean(withoutDecorations(node, textOf(node))));
   const buttonValue = (node) => (node.localName === 'input' && /^(submit|button|reset)$/i.test(node.type) ? clean(node.value) : '');
+  const labelText = (node) => {
+    const ids = (node.getAttribute('aria-labelledby') || '').split(/\\s+/).filter(Boolean);
+    const root = node.getRootNode();
+    const labels = ids.length ? ids.map((id) => root.getElementById(id)) : Array.from(node.labels || []);
+    return clean(labels.filter(Boolean).map(textOf).join(' '));
+  };
+  const imageAlt = (node) => {
+    const image = node.localName === 'img' ? node : node.querySelector('img[alt]');
+    return image ? clean(image.getAttribute('alt')) : '';
+  };
   const attributeText = (node) =>
-    clean(node.getAttribute('aria-label')) || clean(node.getAttribute('placeholder')) || clean(node.getAttribute('title'));
+    clean(node.getAttribute('aria-label')) ||
+    labelText(node) ||
+    clean(node.getAttribute('placeholder')) ||
+    clean(node.getAttribute('title')) ||
+    imageAlt(node);
   const selectName = (node) =>
-    clean(node.labels && node.labels[0] && node.labels[0].innerText) ||
+    labelText(node) ||
     clean(node.getAttribute('aria-label')) ||
     clean(node.getAttribute('name')) ||
     clean(node.selectedOptions && node.selectedOptions[0] && node.selectedOptions[0].label);
@@ -278,27 +319,40 @@ export const ELEMENT_IDENTITY_JS = `(el) => {
 
 /**
  * Page-side location of an element: the iframes it is in (outermost first)
- * and the shadow root holding it, with the host's first class and light-DOM
- * text, e.g. `iframe#pay > shadow root of <sl-button.primary "Save">`;
- * empty for the main document.
+ * and the shadow root holding it, with the host's first class and the text
+ * a user sees of it ({@link ELEMENT_TEXT_JS}, cut at 30 characters with
+ * `…`), e.g. `iframe#pay > shadow root of <sl-button.primary "Save">`;
+ * empty for the main document. Each host's text is read once per script
+ * run, as many matches share a host.
  */
-export const ELEMENT_CONTEXT_JS = `(el) => {
+export const ELEMENT_CONTEXT_JS = `(() => {
+  const textOf = ${ELEMENT_TEXT_JS};
+  const hostTexts = new WeakMap();
+  const hostText = (host) => {
+    if (!hostTexts.has(host)) {
+      const characters = Array.from(String(textOf(host, false)).replace(/\\s+/g, ' ').trim());
+      hostTexts.set(host, characters.length > 30 ? characters.slice(0, 30).join('') + '…' : characters.join(''));
+    }
+    return hostTexts.get(host);
+  };
   const describe = (node) => node.tagName.toLowerCase() + (node.id ? '#' + node.id : '');
-  const parts = [];
-  for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
-    const frame = doc.defaultView.frameElement;
-    parts.unshift(describe(frame));
-    doc = frame.ownerDocument;
-  }
-  const root = el.getRootNode();
-  if (root.host) {
-    const host = root.host;
-    const label = describe(host) + (!host.id && host.classList.length ? '.' + host.classList[0] : '');
-    const text = (host.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 30);
-    parts.push('shadow root of <' + label + (text ? ' "' + text + '"' : '') + '>');
-  }
-  return parts.join(' > ');
-}`;
+  return (el) => {
+    const parts = [];
+    for (let doc = el.ownerDocument; doc && doc.defaultView && doc.defaultView.frameElement; ) {
+      const frame = doc.defaultView.frameElement;
+      parts.unshift(describe(frame));
+      doc = frame.ownerDocument;
+    }
+    const root = el.getRootNode();
+    if (root.host) {
+      const host = root.host;
+      const label = describe(host) + (!host.id && host.classList.length ? '.' + host.classList[0] : '');
+      const text = hostText(host);
+      parts.push('shadow root of <' + label + (text ? ' "' + text + '"' : '') + '>');
+    }
+    return parts.join(' > ');
+  };
+})()`;
 
 /**
  * Short text preview of an element's text: whitespace collapsed, cut on a

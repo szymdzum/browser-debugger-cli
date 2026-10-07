@@ -476,6 +476,9 @@ export const FILL_READ_BACK_SCRIPT = `(() => {
  * a press, a probe (`window.__bdgPressProbe`) records whether the press
  * reaches the element, and otherwise which element it landed on: a browser
  * dialog or bubble can swallow input while the page looks normal.
+ * Slotted text hit-tests as its shadow host, so an element in a shadow root
+ * that shows slotted content (a button labelled through a `<slot>`) is
+ * topmost where its host is hit.
  */
 export const CLICK_ELEMENT_SCRIPT = `
 (function(selector, parts, index, action) {
@@ -579,10 +582,11 @@ export const CLICK_ELEMENT_SCRIPT = `
   window.__bdgClickTarget = el;
   const rect = el.getBoundingClientRect();
   const view = el.ownerDocument.defaultView;
+  const showsSlotted = (node) => Array.from(node.querySelectorAll('slot')).some((slot) => slot.assignedNodes().length > 0);
   const hitTest = (node, px, py) => {
     const root = node.getRootNode();
     const hit = (typeof root.elementFromPoint === 'function' ? root : node.ownerDocument).elementFromPoint(px, py);
-    return hit !== null && (hit === node || node.contains(hit));
+    return hit !== null && (hit === node || node.contains(hit) || (hit === root.host && showsSlotted(node)));
   };
   const toTopPage = (px, py) => {
     let hittable = hitTest(el, px, py);

@@ -689,34 +689,46 @@ export async function getDomContext(
 /** Child elements named for an element without text */
 const CHILDREN_LISTED = 5;
 
+/** Children that show nothing themselves, left out of the listing */
+const UNSHOWN_CHILD = /^(SCRIPT|STYLE|LINK|TEMPLATE)$/;
+
 /**
  * The child elements of an element (for one without text: a body holding
- * only an iframe, an empty app root).
+ * only an iframe, an empty app root). A web component is described by its
+ * shadow root's children, which is what it shows (an icon button named
+ * there); scripts, styles and templates are left out.
  *
  * @param ref - Node reference
- * @returns The first {@link CHILDREN_LISTED} as `tag#id.class` and how many there are
+ * @returns The first {@link CHILDREN_LISTED} as `tag#id.class "label"`, how many there are, and whether they are in its shadow root
  */
-async function childElements(ref: NodeRef): Promise<Pick<DomContext, 'children' | 'childCount'>> {
-  const response = await callCDP('DOM.describeNode', { ...ref, depth: 1 });
+async function childElements(
+  ref: NodeRef
+): Promise<Pick<DomContext, 'children' | 'childCount' | 'shadowChildren'>> {
+  const response = await callCDP('DOM.describeNode', { ...ref, depth: 2, pierce: true });
   const node = (response.data?.result as Protocol.DOM.DescribeNodeResponse | undefined)?.node;
-  const elements = (node?.children ?? []).filter((child) => child.nodeType === 1);
+  const shadowRoot = node?.shadowRoots?.find((root) => root.shadowRootType !== 'user-agent');
+  const elements = ((shadowRoot ?? node)?.children ?? []).filter(
+    (child) => child.nodeType === 1 && !UNSHOWN_CHILD.test(child.nodeName)
+  );
   return {
     children: elements.slice(0, CHILDREN_LISTED).map(childLabel),
     childCount: elements.length,
+    ...(shadowRoot && { shadowChildren: true }),
   };
 }
 
 /**
- * A child element in a few characters.
+ * A child element in a few characters, with its aria-label when it has one.
  *
  * @param node - Child node
- * @returns e.g. `iframe#app.full`
+ * @returns e.g. `iframe#app.full`, `button.icon "Close"`
  */
 function childLabel(node: Protocol.DOM.Node): string {
   const attributes = unpackAttributes(node.attributes);
   const id = attributes['id'] ? `#${attributes['id']}` : '';
   const classes = (attributes['class'] ?? '').split(/\s+/).filter(Boolean).slice(0, 2);
-  return `${node.nodeName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join('')}`;
+  const label = attributes['aria-label']?.trim();
+  return `${node.nodeName.toLowerCase()}${id}${classes.map((name) => `.${name}`).join('')}${label ? ` "${label}"` : ''}`;
 }
 
 /**

@@ -115,7 +115,10 @@ export function formatSemanticNodeWithContext(data: SemanticNodeWithContext): st
   const text = textNotOnRoleLine(node, domContext);
   if (text) return joinLines(line, elementTextLine(text));
   if (domContext?.childCount !== undefined && !node.name) {
-    return joinLines(line, emptyElementLine(domContext.children ?? [], domContext.childCount));
+    return joinLines(
+      line,
+      emptyElementLine(domContext.children ?? [], domContext.childCount, domContext.shadowChildren)
+    );
   }
   return line;
 }

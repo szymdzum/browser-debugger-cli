@@ -20,8 +20,9 @@ export interface ElementGeometry {
   rect: LayoutBox;
   /**
    * For a zero-size element whose children show (an inline list around
-   * floated items): the box around those children, which is what can be
-   * seen of it
+   * floated items, a `display: contents` web component whose shadow root
+   * shows a dialog): the box around those children in the flat tree, which
+   * is what can be seen of it
    */
   content?: LayoutBox | null;
   /** Area its iframes and overflow-clipping ancestors leave visible, in the same coordinates */
@@ -401,7 +402,8 @@ const MASKED_BY_JS = `(el, describe) => {
  * top-level viewport coordinates, its clip by ancestors
  * ({@link ANCESTOR_CLIP_JS}) and by the viewports of its iframes, why it
  * cannot be seen at all (not rendered, or inside a clipping container
- * collapsed to zero size), why a rendered one is still invisible
+ * collapsed to zero size; a `display: contents` element is measured by
+ * its children in the flat tree and is hidden only when none shows), why a rendered one is still invisible
  * ({@link INVISIBLE_REASON_JS}), whether it is inert (an `inert` element
  * around it, through shadow roots) or fixed to the top-level viewport, and how
  * far the top-level page can scroll ({@link SCROLL_RANGE_JS}) or what locks
@@ -440,11 +442,16 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
     }
     return 'not rendered';
   };
+  const flatChildren = (node) =>
+    Array.from((node.shadowRoot || node).children).flatMap((c) => {
+      const shown = c.localName === 'slot' ? c.assignedElements({ flatten: true }) : [c];
+      return shown.flatMap((s) => (styleOf(s).display === 'contents' ? flatChildren(s) : [s]));
+    });
   const shownChildren = (node) => {
     const s = styleOf(node);
     if (s.overflowX !== 'visible' || s.overflowY !== 'visible') return null;
     let union = null;
-    for (const c of Array.from(node.children).slice(0, 50)) {
+    for (const c of flatChildren(node).slice(0, 50)) {
       const r = c.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0 || styleOf(c).visibility !== 'visible') continue;
       union = union
@@ -455,7 +462,7 @@ export const ELEMENT_GEOMETRY_JS = `(el) => {
   };
   const hiddenReason = (style, box, content) => {
     if (style.display === 'none') return 'display: none';
-    if (style.display === 'contents') return 'display: contents (no box of its own)';
+    if (style.display === 'contents') return content ? null : 'display: contents (no box of its own)';
     if (el.getClientRects().length === 0) {
       return el.tagName === 'OPTION' ? reasons.option : 'not rendered (an ancestor has display: none)';
     }

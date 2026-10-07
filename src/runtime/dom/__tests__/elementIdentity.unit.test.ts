@@ -1,7 +1,8 @@
 /**
  * Action output names the element itself: its text, else its position among
  * same-looking siblings (`div.figure (2nd of 3)`), and only then an
- * ancestor's text. Text previews leave out close buttons and icons.
+ * ancestor's text; an element without text by its label or image alt text.
+ * Text previews leave out close buttons and icons.
  *
  * The descriptions are page scripts, run here in an isolated VM context on a
  * small element-like tree.
@@ -28,13 +29,38 @@ interface FakeNode {
   attributes: Record<string, string>;
   parentElement: FakeNode | null;
   children: FakeNode[];
+  shadowRoot: null;
+  labels?: FakeNode[];
   isContentEditable: boolean;
+  ownerDocument: typeof DOCUMENT;
+  getRootNode: () => typeof DOCUMENT;
   getAttribute: (name: string) => string | null;
   matches: (selector: string) => boolean;
   querySelector: (selector: string) => FakeNode | null;
   querySelectorAll: (selector: string) => FakeNode[];
   contains: (other: FakeNode) => boolean;
 }
+
+/** Element tree walker the page script uses to look for shadow hosts and slots */
+interface FakeWalker {
+  currentNode: FakeNode | null;
+  nextNode: () => FakeNode | null;
+}
+
+/** Elements by id, for `aria-labelledby` */
+const BY_ID = new Map<string, FakeNode>();
+
+const DOCUMENT = {
+  createTreeWalker: (root: FakeNode): FakeWalker => {
+    const elements = descendants(root);
+    const walker: FakeWalker = {
+      currentNode: root,
+      nextNode: () => (walker.currentNode = elements.shift() ?? null),
+    };
+    return walker;
+  },
+  getElementById: (id: string): FakeNode | null => BY_ID.get(id) ?? null,
+};
 
 /**
  * Whether a node matches one simple selector: a tag, `.class`, or
@@ -52,6 +78,11 @@ function matchesSimple(node: FakeNode, selector: string): boolean {
     const actual = node.attributes[name];
     if (actual === undefined) return false;
     return insensitive ? actual.toLowerCase() === value.toLowerCase() : actual === value;
+  }
+  const withAttribute = /^([\w-]+)\[([\w-]+)\]$/.exec(selector);
+  if (withAttribute) {
+    const [, tag = '', name = ''] = withAttribute;
+    return node.localName === tag && node.attributes[name] !== undefined;
   }
   return node.localName === selector;
 }
@@ -85,7 +116,10 @@ function node(
     attributes: options.attributes ?? {},
     parentElement: null,
     children,
+    shadowRoot: null,
     isContentEditable: false,
+    ownerDocument: DOCUMENT,
+    getRootNode: () => DOCUMENT,
     getAttribute: (name) => self.attributes[name] ?? null,
     matches: (selector) => selector.split(/\s*,\s*/).some((part) => matchesSimple(self, part)),
     querySelector: (selector) => descendants(self).find((n) => n.matches(selector)) ?? null,
@@ -93,6 +127,7 @@ function node(
     contains: (other) => other === self || descendants(self).includes(other),
   };
   children.forEach((child) => (child.parentElement = self));
+  if (self.id) BY_ID.set(self.id, self);
   return self;
 }
 
@@ -106,7 +141,9 @@ function descendants(parent: FakeNode): FakeNode[] {
   return parent.children.flatMap((child) => [child, ...descendants(child)]);
 }
 
-const identityOf = vm.runInNewContext(`(${ELEMENT_IDENTITY_JS})`) as (el: FakeNode) => string;
+const identityOf = vm.runInNewContext(`(${ELEMENT_IDENTITY_JS})`, {
+  NodeFilter: { SHOW_ELEMENT: 1 },
+}) as (el: FakeNode) => string;
 const positionOf = vm.runInNewContext(`(${SIBLING_POSITION_JS})`) as (el: FakeNode) => string;
 const withoutDecorations = vm.runInNewContext(`(${WITHOUT_DECORATIONS_JS})`) as (
   el: FakeNode,
@@ -141,6 +178,27 @@ void describe('ELEMENT_IDENTITY_JS', () => {
     const close = node('a', { classes: ['close'], text: '×' });
     const flash = node('div', { id: 'flash', text: 'You logged into a secure area!\n×' }, [close]);
     assert.equal(identityOf(flash), 'div#flash "You logged into a secure area!"');
+  });
+
+  void it('names an image link by the alt text of its image', () => {
+    const logo = node('img', { text: '', attributes: { alt: 'Company logo' } });
+    const link = node('a', { id: 'logo', text: '' }, [logo]);
+    node('nav', {}, [link]);
+    assert.equal(identityOf(link), 'a#logo "Company logo"');
+  });
+
+  void it('names a field by its label, or by the element its aria-labelledby points to', () => {
+    const user = node('input', { id: 'user', text: '' });
+    user.labels = [node('label', { text: 'User ' }, [user])];
+    assert.equal(identityOf(user), 'input#user "User"');
+    node('span', { id: 'name-label', text: 'What is your name?' });
+    const field = node('input', {
+      id: 'name',
+      text: '',
+      attributes: { 'aria-labelledby': 'name-label' },
+    });
+    node('div', {}, [field]);
+    assert.equal(identityOf(field), 'input#name "What is your name?"');
   });
 });
 

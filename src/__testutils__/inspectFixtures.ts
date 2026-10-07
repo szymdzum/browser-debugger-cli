@@ -154,6 +154,44 @@ const READING_TEXT_HTML = `<!doctype html><meta charset="utf-8"><title>reading t
   });
 </script>`;
 
+/**
+ * Text web components render themselves: a card with named and default
+ * slots (filled, and empty so its fallback content shows, and with a hidden
+ * slotted title), a component whose shadow root has text and no slot, a
+ * field whose label lives in its shadow root, an icon button named only
+ * inside its shadow root, a button whose text is slotted, an open
+ * `display: contents` dialog host, an image link and an input inside a
+ * label.
+ */
+const COMPONENTS_HTML = `<!doctype html><meta charset="utf-8"><title>components</title>
+<style>x-card { display: block; margin: 4px; }</style>
+<x-card id="filled"><span slot="title">Named Title</span>Default body</x-card>
+<x-card id="empty"></x-card>
+<x-card id="hidden-title"><span slot="title" hidden>Hidden Title</span><span slot="title">Shown Title</span>Body</x-card>
+<x-shadow-only id="shadow-only">Light text never shown</x-shadow-only>
+<x-field id="field" label="What is your name?"></x-field>
+<x-icon-button id="close"></x-icon-button>
+<x-button id="ok">Ok, got it</x-button>
+<x-dialog id="dialog"><p>Dialog body</p></x-dialog>
+<a id="logo" href="#home"><img alt="Company logo" width="40" height="20" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a>
+<label>User <input id="user" value="alice"></label>
+<script>
+  const define = (name, html, style) =>
+    customElements.define(name, class extends HTMLElement {
+      constructor() {
+        super();
+        this.attachShadow({ mode: 'open' }).innerHTML = html.replace('LABEL', this.getAttribute('label') || '');
+        if (style) this.style.display = style;
+      }
+    });
+  define('x-card', '<header><strong><slot name="title">Fallback title</slot></strong></header><div><slot>Fallback body</slot></div><button>Card action</button>');
+  define('x-shadow-only', '<em>Shadow only text</em>');
+  define('x-field', '<label for="input"><slot name="label">LABEL</slot></label><input id="input">');
+  define('x-icon-button', '<button id="icon" aria-label="Close"><svg width="12" height="12"></svg></button>');
+  define('x-button', '<button class="root"><slot></slot></button>');
+  define('x-dialog', '<div class="panel" style="position:fixed;right:0;bottom:0;width:240px;height:100px;background:#fff"><h2>Dialog title</h2><slot></slot></div>', 'contents');
+</script>`;
+
 /** Pages by path */
 export const INSPECT_ROUTES: Record<string, string> = {
   '/tampered': TAMPERED_HTML,
@@ -161,4 +199,5 @@ export const INSPECT_ROUTES: Record<string, string> = {
   '/inspect-frame': INSPECT_FRAME_HTML,
   '/inspect-paint': PAINT_HTML,
   '/reading-text': READING_TEXT_HTML,
+  '/components': COMPONENTS_HTML,
 };
