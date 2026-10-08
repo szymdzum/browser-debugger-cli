@@ -29,6 +29,30 @@ export function bodyEvictedReason(budgetBytes: number): string {
   return `evicted: total body budget (bdg keeps the newest ${megabytes(budgetBytes)} of request and response bodies)`;
 }
 
+/**
+ * Why a response body is missing when Chrome no longer had it
+ * (`Network.getResponseBody` failed with "No resource with given identifier
+ * found" or "No data found for resource with given identifier"), shown by
+ * `bdg details network <id>` as `bodyNotCaptured` and in the HAR as the
+ * content comment.
+ *
+ * @returns Reason text
+ */
+export function bodyGoneReason(): string {
+  return 'Chrome no longer had the body (its network buffer evicted it, or the request was cancelled)';
+}
+
+/**
+ * Why a response body is missing when `Network.getResponseBody` failed for
+ * another reason (a CDP timeout, the connection closing mid-fetch).
+ *
+ * @param errorMessage - The error Chrome or the connection gave
+ * @returns e.g. `Chrome did not return the body: CDP command timeout`
+ */
+export function bodyFetchFailedReason(errorMessage: string): string {
+  return `Chrome did not return the body: ${errorMessage}`;
+}
+
 /** What a session's network capture let go at its limits */
 export interface NetworkEvictionCounts {
   /** Oldest finished requests dropped at the request cap */
