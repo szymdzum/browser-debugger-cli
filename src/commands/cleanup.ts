@@ -174,6 +174,9 @@ async function cleanupBlocker(
 
 /**
  * Clean up the selected session (and delete its directory with `--purge`).
+ * It does not run the session directory trust check (`secureSessionDir`): it
+ * sends no command, only probes the socket and signals PIDs verified by
+ * their command line, and must still clean up an untrusted directory.
  *
  * @param opts - Cleanup options
  * @returns Command result

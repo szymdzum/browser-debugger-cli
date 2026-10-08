@@ -11,7 +11,12 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
-import { dirTrustProblem, makeDirectory } from '@/utils/directories.js';
+import {
+  dirTrustProblem,
+  makeDirectory,
+  type DirTrustKind,
+  type DirTrustProblem,
+} from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
@@ -234,9 +239,13 @@ export interface UntrustedSessionDir {
   dir: string;
   /** Why, e.g. `writable by others (mode 777)` */
   reason: string;
-  /** A shared sticky directory such as `/tmp` itself */
-  shared: boolean;
+  kind: DirTrustKind;
+  /** bdg owns it by convention (`~/.bdg`, `sessions/`, `sessions/<name>`) */
+  bdgOwned: boolean;
 }
+
+/** Session directories need not keep group write out (umask 002 made them 0775) */
+const SESSION_DIR_TRUST = { allowGroupWrite: true };
 
 /** A directory a session directory's trust depends on */
 interface ChainDir {
@@ -246,6 +255,8 @@ interface ChainDir {
    * everything under a base directory, not a `$BDG_SESSION_DIR` the user chose
    */
   bdgOwned: boolean;
+  /** The base directory, which may be a symlink to a trusted directory */
+  isBase: boolean;
 }
 
 /**
@@ -261,13 +272,13 @@ function sessionDirChain(dir: string): ChainDir[] {
   const base = getSessionBaseDir();
   const relative = path.relative(base, dir);
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    return [{ dir, bdgOwned: false }];
+    return [{ dir, bdgOwned: false, isBase: false }];
   }
-  const chain: ChainDir[] = [{ dir: base, bdgOwned: sessionDirOverride() === null }];
+  const chain: ChainDir[] = [{ dir: base, bdgOwned: sessionDirOverride() === null, isBase: true }];
   let current = base;
   for (const part of relative.split(path.sep).filter(Boolean)) {
     current = path.join(current, part);
-    chain.push({ dir: current, bdgOwned: true });
+    chain.push({ dir: current, bdgOwned: true, isBase: false });
   }
   return chain;
 }
@@ -298,6 +309,29 @@ function tightenDir(dir: string): void {
 }
 
 /**
+ * Why a directory of the chain cannot be trusted. The base directory alone
+ * may be a symlink (`~/.bdg` kept with dotfiles or on another disk): its
+ * target is checked instead. `sessions/` and session directories must be
+ * real directories.
+ *
+ * @param entry - Directory of the chain
+ * @returns The problem, or null when it can be trusted
+ * @throws Error from `lstat`/`realpath` (e.g. `ENOENT`)
+ */
+function chainDirProblem(entry: ChainDir): DirTrustProblem | null {
+  const problem = dirTrustProblem(entry.dir, SESSION_DIR_TRUST);
+  if (problem?.kind !== 'symlink' || !entry.isBase) return problem;
+  const target = fs.realpathSync(entry.dir);
+  const targetProblem = dirTrustProblem(target, SESSION_DIR_TRUST);
+  return (
+    targetProblem && {
+      ...targetProblem,
+      reason: `it links to ${target}, which is ${targetProblem.reason}`,
+    }
+  );
+}
+
+/**
  * Accept a trusted directory: tighten it to 0700 when bdg owns it, leave a
  * directory the user chose as it is (noted in the debug log when group or
  * others can use it).
@@ -324,10 +358,14 @@ function acceptTrustedDir(entry: ChainDir): void {
  * must be a real directory (not a symlink), owned by the user, and not
  * writable by others ({@link dirTrustProblem}); group write is accepted, since
  * under umask 002 (per-user groups) older versions created `~/.bdg` 0775.
+ * The base directory may be a symlink whose target passes the same rule
+ * ({@link chainDirProblem}). A directory owned by another uid (a bind mount,
+ * `sudo -E`) is refused.
  *
  * Trusted directories bdg owns (the default `~/.bdg`, `sessions/` and named
  * session directories) that group or others can still use are tightened to
- * 0700; a base directory chosen with `$BDG_SESSION_DIR` is never changed.
+ * 0700; a base directory chosen with `$BDG_SESSION_DIR`, or a symlinked base
+ * (opened without following links), is never changed.
  * Missing paths are skipped (as is a path through a file, which fails on its
  * own): {@link ensureSessionDir} creates them 0700.
  *
@@ -336,15 +374,15 @@ function acceptTrustedDir(entry: ChainDir): void {
  */
 export function secureSessionDir(dir: string = getSessionDir()): UntrustedSessionDir | null {
   for (const entry of sessionDirChain(dir)) {
-    let problem: { reason: string; shared: boolean } | null;
+    let problem: DirTrustProblem | null;
     try {
-      problem = dirTrustProblem(entry.dir, { allowGroupWrite: true });
+      problem = chainDirProblem(entry);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code === 'ENOENT' || code === 'ENOTDIR') continue;
-      problem = { reason: getErrorMessage(error), shared: false };
+      problem = { reason: getErrorMessage(error), kind: 'not-directory' };
     }
-    if (problem !== null) return { dir: entry.dir, ...problem };
+    if (problem !== null) return { dir: entry.dir, ...problem, bdgOwned: entry.bdgOwned };
     acceptTrustedDir(entry);
   }
   return null;

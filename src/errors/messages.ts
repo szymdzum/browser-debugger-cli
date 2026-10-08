@@ -748,21 +748,37 @@ export function sessionDirNotWritableError(dir: string, reason: string): ErrorWi
 
 /**
  * The session directory, or one above it, is not safe to use: another user
- * could replace the daemon socket or plant files there. A shared sticky
- * directory (`BDG_SESSION_DIR=/tmp`) gets a subdirectory suggested instead
- * of a chmod.
+ * could replace the daemon socket or plant files there.
  *
- * @param untrusted - Untrusted directory, why, and whether it is shared
+ * @param untrusted - Untrusted directory and why
  */
 export function untrustedSessionDirError(untrusted: UntrustedSessionDir): ErrorWithSuggestion {
-  const { dir, reason, shared } = untrusted;
-  const example = `BDG_SESSION_DIR=${privateSessionDirExample()}`;
   return {
-    message: `Session directory ${dir} is not safe to use: ${reason}`,
-    suggestion: shared
-      ? `${dir} is shared by all users; use a subdirectory only you can write to, e.g. ${example}`
-      : `Use a directory you own that others cannot write to and that is not a symlink, e.g. ${example} (or chmod 700 ${dir} if it is yours)`,
+    message: `Session directory ${untrusted.dir} is not safe to use: ${untrusted.reason}`,
+    suggestion: untrustedSessionDirSuggestion(untrusted),
   };
+}
+
+/**
+ * Fix for an untrusted session directory: remove a symlink, use a
+ * subdirectory of a shared sticky directory (`BDG_SESSION_DIR=/tmp`), chmod
+ * a directory bdg owns (`~/.bdg`, `sessions/`, `sessions/<name>`), else
+ * choose another `BDG_SESSION_DIR`.
+ *
+ * @param untrusted - Untrusted directory and why
+ * @returns Suggestion
+ */
+function untrustedSessionDirSuggestion(untrusted: UntrustedSessionDir): string {
+  const { dir, kind, bdgOwned } = untrusted;
+  const example = `BDG_SESSION_DIR=${privateSessionDirExample()}`;
+  if (kind === 'symlink') {
+    return `Remove the link (rm ${dir}) or point BDG_SESSION_DIR at the real directory`;
+  }
+  if (kind === 'shared') {
+    return `${dir} is shared by all users; use a subdirectory only you can write to, e.g. ${example}`;
+  }
+  if (bdgOwned) return `Run chmod 700 ${dir} (or remove it if it is not yours), then retry`;
+  return `Use a directory you own that others cannot write to, e.g. ${example} (or chmod 700 ${dir} if it is yours)`;
 }
 
 /**

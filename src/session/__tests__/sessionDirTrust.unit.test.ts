@@ -101,7 +101,7 @@ void describe('session directory trust', { skip: !POSIX }, () => {
     const error = checkUsable();
     assert.equal(error?.exitCode, 103);
     assert.match(error?.message ?? '', /writable by others \(mode 777\)/);
-    assert.match(error?.suggestion ?? '', /BDG_SESSION_DIR/);
+    assert.match(error?.suggestion ?? '', /^Use a directory you own .*BDG_SESSION_DIR=/);
     fs.chmodSync(getSessionDir(), 0o722);
     assert.match(checkUsable()?.message ?? '', /writable by others \(mode 722\)/);
   });
@@ -143,13 +143,54 @@ void describe('session directory trust', { skip: !POSIX }, () => {
     assert.equal(modeOf(bdgDir), 0o700);
   });
 
-  void it('refuses a session directory that is a symlink', () => {
+  void it('accepts a base directory that is a symlink to a trusted directory, without chmod', () => {
     const real = path.join(root, 'real');
     fs.mkdirSync(real, { mode: 0o700 });
+    fs.chmodSync(real, 0o755);
+    fs.symlinkSync(real, getSessionDir());
+    assert.equal(checkUsable(), undefined);
+    assert.equal(modeOf(real), 0o755);
+  });
+
+  void it('accepts a symlinked default ~/.bdg (dotfiles) whose target is trusted', () => {
+    delete process.env['BDG_SESSION_DIR'];
+    process.env['HOME'] = root;
+    const real = path.join(root, 'dotfiles-bdg');
+    fs.mkdirSync(real, { mode: 0o700 });
+    fs.symlinkSync(real, path.join(root, '.bdg'));
+    assert.equal(checkUsable(), undefined);
+  });
+
+  void it('refuses a symlinked base whose target is writable by others', () => {
+    const real = path.join(root, 'real');
+    fs.mkdirSync(real, { mode: 0o700 });
+    fs.chmodSync(real, 0o777);
     fs.symlinkSync(real, getSessionDir());
     const error = checkUsable();
-    assert.equal(error?.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
-    assert.match(error?.message ?? '', /symbolic link/);
+    assert.equal(error?.exitCode, 103);
+    assert.match(error?.message ?? '', /links to .*real, which is writable by others \(mode 777\)/);
+  });
+
+  void it('refuses a symlinked sessions/ or named session directory, suggesting to remove the link', () => {
+    process.env['BDG_SESSION'] = 'agent-1';
+    const base = path.join(root, 'base');
+    const real = path.join(root, 'real');
+    fs.mkdirSync(path.join(base, 'sessions'), { recursive: true, mode: 0o700 });
+    fs.mkdirSync(real, { mode: 0o700 });
+    fs.symlinkSync(real, getSessionDir());
+    const named = checkUsable();
+    assert.equal(named?.exitCode, 103);
+    assert.match(named?.message ?? '', /agent-1 is not safe to use: it is a symbolic link/);
+    assert.match(
+      named?.suggestion ?? '',
+      /^Remove the link .*agent-1.* or point BDG_SESSION_DIR at the real directory/
+    );
+    fs.rmSync(path.join(base, 'sessions'), { recursive: true });
+    fs.symlinkSync(real, path.join(base, 'sessions'));
+    assert.match(
+      checkUsable()?.message ?? '',
+      /sessions is not safe to use: it is a symbolic link/
+    );
   });
 
   void it('refuses a session directory owned by another user', (t) => {
@@ -168,6 +209,10 @@ void describe('session directory trust', { skip: !POSIX }, () => {
     fs.chmodSync(path.join(base, 'sessions'), 0o777);
     const error = checkUsable();
     assert.match(error?.message ?? '', /sessions.*writable by others/);
+    assert.match(
+      error?.suggestion ?? '',
+      /^Run chmod 700 .*sessions \(or remove it if it is not yours\)/
+    );
     assert.equal(fs.existsSync(getSessionDir()), false);
   });
 
@@ -254,13 +299,12 @@ void describe('session directory suggestions', () => {
       sessionDirNotWritableError('/x', 'EACCES').suggestion,
       socketPathTooLongError('/x/daemon.sock', 95).suggestion,
       sessionNameSocketTooLongError('n', '/x/daemon.sock', 95).suggestion,
-      untrustedSessionDirError({
-        dir: '/x',
-        reason: 'writable by others (mode 777)',
-        shared: false,
-      }).suggestion,
-      untrustedSessionDirError({ dir: '/tmp', reason: 'a shared sticky directory', shared: true })
-        .suggestion,
+      ...(['symlink', 'owner', 'shared', 'writable'] as const).flatMap((kind) =>
+        [true, false].map(
+          (bdgOwned) =>
+            untrustedSessionDirError({ dir: '/tmp', reason: 'r', kind, bdgOwned }).suggestion
+        )
+      ),
     ];
     for (const suggestion of suggestions) {
       assert.doesNotMatch(suggestion, /\/tmp\/bdg(?![-\w])/);

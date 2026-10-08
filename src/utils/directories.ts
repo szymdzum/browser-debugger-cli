@@ -104,12 +104,18 @@ const OTHER_WRITE = 0o002;
 /** Sticky bit: a shared directory like `/tmp` where only owners remove their entries */
 const STICKY = 0o1000;
 
+/**
+ * Kind of untrusted directory: a symlink, not a directory, another user's,
+ * a shared sticky directory such as `/tmp` (others may create entries in
+ * it), or writable by others
+ */
+export type DirTrustKind = 'symlink' | 'not-directory' | 'owner' | 'shared' | 'writable';
+
 /** Why a directory cannot be trusted */
 export interface DirTrustProblem {
   /** e.g. `owned by uid 1001`, `writable by others (mode 777)` */
   reason: string;
-  /** A shared sticky directory such as `/tmp` (others may create entries in it) */
-  shared: boolean;
+  kind: DirTrustKind;
 }
 
 /** Options of {@link dirTrustProblem} */
@@ -137,19 +143,19 @@ export function dirTrustProblem(
   options: DirTrustOptions = {}
 ): DirTrustProblem | null {
   const stat = fs.lstatSync(dir);
-  const problem = (reason: string, shared = false): DirTrustProblem => ({ reason, shared });
-  if (stat.isSymbolicLink()) return problem('it is a symbolic link');
-  if (!stat.isDirectory()) return problem('not a directory');
+  const problem = (reason: string, kind: DirTrustKind): DirTrustProblem => ({ reason, kind });
+  if (stat.isSymbolicLink()) return problem('it is a symbolic link', 'symlink');
+  if (!stat.isDirectory()) return problem('not a directory', 'not-directory');
   const uid = process.getuid?.();
-  if (uid !== undefined && stat.uid !== uid) return problem(`owned by uid ${stat.uid}`);
+  if (uid !== undefined && stat.uid !== uid) return problem(`owned by uid ${stat.uid}`, 'owner');
   if (process.platform === 'win32') return null;
   const writeBits = options.allowGroupWrite ? OTHER_WRITE : GROUP_OTHER_WRITE;
   if ((stat.mode & writeBits) === 0) return null;
   const mode = (stat.mode & 0o7777).toString(8);
   if ((stat.mode & STICKY) !== 0 && (stat.mode & OTHER_WRITE) !== 0) {
-    return problem(`a shared sticky directory (mode ${mode})`, true);
+    return problem(`a shared sticky directory (mode ${mode})`, 'shared');
   }
-  return problem(`writable by others (mode ${mode})`);
+  return problem(`writable by others (mode ${mode})`, 'writable');
 }
 
 /**
