@@ -401,11 +401,24 @@ void describe('JSON contract', () => {
     assert.equal(value.data?.['result'], '--debug');
   });
 
+  /**
+   * Follows until two envelopes (two refreshes, about 1 s apart) have been
+   * printed, then stops it with Ctrl-C, instead of killing it after a fixed
+   * time a slow runner may need just to start it.
+   */
   void it('streams one whole envelope per line, without terminal codes, in follow mode', async () => {
-    const result = await runCommand('peek', ['-f', '--json'], { timeout: 2500 });
+    const ctrlC = new AbortController();
+    const result = await runCommand('peek', ['-f', '--json'], {
+      timeout: 30000,
+      interrupt: ctrlC.signal,
+      onStdout: (stdout) => {
+        if (stdout.split('\n').length > 2) ctrlC.abort();
+      },
+    });
+    assert.equal(result.exitCode, 130, result.stderr);
     assert.ok(!result.stdout.includes('\u001b'), 'no ANSI escape codes in JSON stream');
     const lines = result.stdout.split('\n').filter((line) => line.trim() !== '');
-    assert.ok(lines.length > 0, `stdout: ${result.stdout.slice(0, 200)}`);
+    assert.ok(lines.length >= 2, `stdout: ${result.stdout.slice(0, 200)}`);
     for (const line of lines) {
       assert.equal((JSON.parse(line) as { success: boolean }).success, true, line);
     }

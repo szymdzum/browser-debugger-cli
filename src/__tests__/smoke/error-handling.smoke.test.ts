@@ -71,6 +71,11 @@ void describe('Error Handling Smoke Tests', () => {
     assert.ok(/chrome|browser|launch|binary/i.test(result.stderr));
   });
 
+  /**
+   * Both commands fail in validation, about 0.5 s each with process start;
+   * the 15 s bound only fails a start that went on to spawn a daemon and
+   * Chrome and wait for them.
+   */
   void it('refuses a session dir or profile that cannot hold a directory, at once', async () => {
     const started = Date.now();
     const sessionDir = await runCommand('http://127.0.0.1:9/', ['--headless'], {

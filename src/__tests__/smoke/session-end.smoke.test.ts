@@ -99,10 +99,11 @@ void describe('Session end', () => {
     });
     let stderr = '';
     follower.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    const following = once(follower.stdout, 'data');
     follower.stdout.resume();
 
     const closed = once(follower, 'close') as Promise<[number | null]>;
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await Promise.race([following, closed]);
     await bdg(['stop']);
     const [exitCode] = await closed;
 

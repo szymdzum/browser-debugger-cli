@@ -28,6 +28,7 @@ const EXPECTED_MESSAGES = 3;
 
 /**
  * List console messages, waiting until the fixture's messages have arrived.
+ * They arrive within about 1 s of the start; the wait allows 10 s.
  *
  * @returns Messages of the current page
  */
@@ -40,6 +41,23 @@ async function listMessages(): Promise<ListedMessage[]> {
       .data;
     if (messages.length >= EXPECTED_MESSAGES || Date.now() > deadline) return messages;
     await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+/**
+ * The page URL `bdg status` reports, read until it matches (or 10 s passed).
+ *
+ * @param expected - URL the page is going to
+ * @returns The last URL reported
+ */
+async function statusUrlOnceChanged(expected: RegExp): Promise<string> {
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    const status = await runCommand('status', ['--json'], { timeout: 30000 });
+    const data = (JSON.parse(status.stdout) as { data: { pageState?: { url: string } } }).data;
+    const url = data.pageState?.url ?? '';
+    if (expected.test(url) || Date.now() > deadline) return url;
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
 }
 
@@ -99,10 +117,7 @@ void describe('Console sources', () => {
     await runCommand('dom', ['eval', 'history.pushState({}, "", "/pushed"); 1'], {
       timeout: 30000,
     });
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const status = await runCommand('status', ['--json'], { timeout: 30000 });
-    const data = (JSON.parse(status.stdout) as { data: { pageState?: { url: string } } }).data;
 
-    assert.match(data.pageState?.url ?? '', /\/pushed$/);
+    assert.match(await statusUrlOnceChanged(/\/pushed$/), /\/pushed$/);
   });
 });

@@ -142,7 +142,7 @@ void describe('dom eval --frame', () => {
     const result = await runJson([
       'dom',
       'eval',
-      'location.href = "/deep-frame?next"; await new Promise((r) => setTimeout(r, 3000)); 1',
+      'location.href = "/deep-frame?next"; await new Promise(() => {})',
       '--frame',
       'same',
     ]);

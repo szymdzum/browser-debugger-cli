@@ -39,7 +39,7 @@ interface ReportedDownload {
   reason?: string;
 }
 
-/** How long a download may take to land after the click returned */
+/** How long a download may take to land after the click returned (a 15 B or 20 kB file: well under 1 s) */
 const DOWNLOAD_WAIT_MS = 15000;
 
 /** Second name the report gets when its first is taken */
@@ -76,18 +76,6 @@ async function clickDownloads(
 }
 
 /**
- * The session's downloads as `bdg status --json` lists them.
- *
- * @returns Downloads (empty when none)
- */
-async function statusDownloads(): Promise<ReportedDownload[]> {
-  const output = await bdg(['status', '--json']);
-  const data = (JSON.parse(output) as { data: { activity?: { downloads?: ReportedDownload[] } } })
-    .data;
-  return data.activity?.downloads ?? [];
-}
-
-/**
  * Wait until a condition holds.
  *
  * @param check - Condition
@@ -104,6 +92,28 @@ async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return true;
+}
+
+/**
+ * The last download `bdg status --json` lists, once it has left `inProgress`
+ * (Chrome reports the end a moment after the file lands or fails), or after
+ * {@link DOWNLOAD_WAIT_MS}.
+ *
+ * @param env - Extra environment
+ * @returns The download
+ */
+async function lastDownloadOnceEnded(
+  env: Record<string, string> = {}
+): Promise<ReportedDownload | undefined> {
+  const deadline = Date.now() + DOWNLOAD_WAIT_MS;
+  for (;;) {
+    const output = await bdg(['status', '--json'], env);
+    const last = (
+      JSON.parse(output) as { data: { activity?: { downloads?: ReportedDownload[] } } }
+    ).data.activity?.downloads?.at(-1);
+    if (last?.state !== 'inProgress' || Date.now() > deadline) return last;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 /**
@@ -197,8 +207,7 @@ void describe('Downloads', () => {
 
     assert.ok(landed, `files: ${fs.readdirSync(downloadsDir).join(', ')}`);
     assert.deepEqual(fs.readdirSync(downloadsDir).sort(), names.sort());
-    const listed = await statusDownloads();
-    const last = listed.at(-1);
+    const last = await lastDownloadOnceEnded();
     assert.equal(last?.path, path.join(downloadsDir, REPORT_COPY_NAME));
     assert.equal(last.state, 'completed');
     assert.match(await bdg(['status']), /Downloads:\s+\d+ \(last: bdg-fixture-report\.txt → /);
@@ -232,13 +241,7 @@ void describe('Downloads without a usable downloads directory', () => {
     const [download] = await clickDownloads('#report', session);
 
     assert.ok(download, 'the click reports the download');
-    if (download.state === 'inProgress') {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    const output = await bdg(['status', '--json'], session);
-    const listed = (
-      JSON.parse(output) as { data: { activity?: { downloads?: ReportedDownload[] } } }
-    ).data.activity?.downloads?.at(-1);
+    const listed = await lastDownloadOnceEnded(session);
     assert.equal(listed?.state, 'canceled');
     assert.equal(listed.path, undefined);
     assert.match(listed.reason ?? '', /downloads directory/);

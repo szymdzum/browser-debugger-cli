@@ -47,6 +47,21 @@ function sessionChromes(): number[] {
     .map(({ pid }) => pid);
 }
 
+/**
+ * Browser processes of the test session still running once they are all gone
+ * or 15 s passed (a killed Chrome takes a moment to be reaped).
+ *
+ * @returns Their PIDs
+ */
+async function sessionChromesOnceGone(): Promise<number[]> {
+  const deadline = Date.now() + 15000;
+  for (;;) {
+    const pids = sessionChromes();
+    if (pids.length === 0 || Date.now() > deadline) return pids;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 void describe('session recovery', () => {
   let fixture: FixtureServer;
 
@@ -70,7 +85,6 @@ void describe('session recovery', () => {
     assert.match(await bdg(['status']), /Session active/);
 
     await bdg(['cleanup', '--force']);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    assert.deepEqual(sessionChromes(), []);
+    assert.deepEqual(await sessionChromesOnceGone(), []);
   });
 });

@@ -123,6 +123,11 @@ void describe('Page readiness', () => {
     assert.doesNotMatch(output, /Uncaught/);
   });
 
+  /**
+   * The POST starts within milliseconds of the submit and the report comes
+   * right at the 1500 ms timeout, so "pending for 1.Xs" has about 500 ms to
+   * spare on either side.
+   */
   void it('a submit timeout names the page request the server has not answered', async () => {
     await bdg(['page', 'navigate', `${fixture.url}hanging-login`]);
     const { output } = await bdg(
@@ -136,10 +141,18 @@ void describe('Page readiness', () => {
     assert.match(output, /has not answered the page request yet/);
   });
 
+  /**
+   * The result shows 1500 ms after the click. The wait is started together
+   * with the click rather than after it returns (the click waits for the page
+   * to settle, 400–700 ms on a laptop and more on a slow runner, which ate
+   * into the 1 s margin), so it waits about 1.5 s, 1 s more than required.
+   */
   void it('dom wait follows timer-based loading: visible, gone and text', async () => {
     await bdg(['page', 'navigate', `${fixture.url}dynamic-loading`]);
-    await bdg(['dom', 'click', '#start button']);
-    const visible = await bdg(['dom', 'wait', '#finish', '--visible', '--json']);
+    const [visible] = await Promise.all([
+      bdg(['dom', 'wait', '#finish', '--visible', '--json']),
+      bdg(['dom', 'click', '#start button']),
+    ]);
     const data = (JSON.parse(visible.stdout) as WaitEnvelope).data;
     assert.equal(data.visibleCount, 1);
     assert.ok(data.elapsedMs > 500, `waited ${data.elapsedMs}ms`);

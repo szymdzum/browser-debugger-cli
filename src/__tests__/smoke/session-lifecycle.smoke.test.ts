@@ -39,6 +39,7 @@ function daemonLogSize(): number {
  * Wait until the daemon has begun stopping its session (it logs it), so a
  * start sent now meets a session that is shutting down, not one still
  * running: a fixed delay loses that race when `bdg stop` is slow to connect.
+ * The line comes about 1 s after the stop is sent; the wait allows 20 s.
  *
  * @param fromByte - Log size before the stop was sent (earlier daemons log there too)
  */
@@ -116,8 +117,7 @@ void describe('Session Lifecycle Smoke Tests', () => {
     const stopResult = await runCommand('stop', [], { timeout: 60000 });
     assert.equal(stopResult.exitCode, 0, `Stop failed: ${stopResult.stderr}`);
 
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    assert.equal(await isDaemonRunning(), false);
+    assert.equal(await isDaemonRunning(), false, 'the daemon removes its socket before answering');
   });
 
   void it('should handle concurrent session attempts gracefully', async () => {
@@ -147,6 +147,11 @@ void describe('Session Lifecycle Smoke Tests', () => {
     assert.equal(await isDaemonRunning(), true);
   });
 
+  /**
+   * The status request gives up after the 10 s quick timeout; the 20 s bound
+   * leaves 10 s for starting the `bdg status` process and still fails a
+   * status that waits out the full 45 s.
+   */
   void it('reports a frozen session quickly instead of waiting 45 s', async () => {
     assert.equal((await startSession()).exitCode, 0);
     const daemonPid = readPidFromFile(getSessionFilePath('DAEMON_PID'));
