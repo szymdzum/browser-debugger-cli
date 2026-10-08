@@ -198,11 +198,6 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
 
-      - name: Install Chrome
-        uses: browser-actions/setup-chrome@v2
-        with:
-          chrome-version: stable
-
       - name: Restore node_modules cache
         id: cache
         uses: actions/cache/restore@v6
@@ -232,7 +227,8 @@ jobs:
           which bdg
           bdg --version
 
-      # The first start of the runner's Chrome (the one bdg finds) on a fresh
+      # The first start of the runner's preinstalled Chrome
+      # (/usr/bin/google-chrome-stable, the one bdg finds) on a fresh
       # VM can take over 25 s, chrome-launcher's budget for the debugging port;
       # the first smoke suite then fails with ECONNREFUSED. Best effort: a
       # failed warm-up must not block the smoke tests.
