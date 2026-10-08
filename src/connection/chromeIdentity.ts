@@ -123,7 +123,7 @@ export function launchAbortedError(): ChromeLaunchError {
  * @param signal - The launch's abort signal
  * @throws ChromeLaunchError if the signal is aborted
  */
-function throwIfLaunchAborted(signal: AbortSignal | undefined): void {
+export function throwIfLaunchAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw launchAbortedError();
 }
 

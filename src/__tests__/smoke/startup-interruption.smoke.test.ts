@@ -23,8 +23,13 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
+import { writeSilentChrome } from '@/__testutils__/silentChrome.js';
 import { getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
+
+/** What a start stopped by `bdg stop` reports */
+const START_CANCELLED = /The start was cancelled: the session was stopped while it was starting/;
 
 /** The daemon exits after Chrome's teardown (up to 5 s for Chrome alone) */
 const DAEMON_EXIT_TIMEOUT_MS = 15000;
@@ -43,32 +48,6 @@ async function waitForPid(file: 'CHROME_PID' | 'DAEMON_PID'): Promise<number> {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`${file} never appeared`);
-}
-
-/**
- * Write a stand-in Chrome that opens its debugging port and announces it like
- * Chrome, but never answers HTTP requests on it (a Chrome that is very slow to
- * start). It writes its PID to `readyFile` once it listens.
- *
- * @param dir - Directory for the script
- * @param readyFile - File the stand-in writes its PID to
- * @returns Path of the executable script
- */
-function writeSilentChrome(dir: string, readyFile: string): string {
-  const script = path.join(dir, 'silent-chrome');
-  const source = [
-    `#!${process.execPath}`,
-    "const fs = require('node:fs');",
-    "const net = require('node:net');",
-    "const flag = process.argv.find((arg) => arg.startsWith('--remote-debugging-port='));",
-    "const port = Number(flag.split('=')[1]);",
-    'net.createServer(() => {}).listen(port, "127.0.0.1", () => {',
-    '  process.stderr.write(`DevTools listening on ws://127.0.0.1:${port}/devtools/browser/silent\n`);',
-    `  fs.writeFileSync(${JSON.stringify(readyFile)}, String(process.pid));`,
-    '});',
-  ].join('\n');
-  fs.writeFileSync(script, source, { mode: 0o755 });
-  return script;
 }
 
 void describe('Startup interruption', () => {
@@ -112,20 +91,33 @@ void describe('Startup interruption', () => {
     assert.equal(stop.exitCode, 0, `Stop failed: ${stop.stderr}`);
 
     const startResult = await start.result;
-    assert.notEqual(startResult.exitCode, 0, 'interrupted start must not report success');
+    assert.equal(startResult.exitCode, EXIT_CODES.RESOURCE_CONFLICT, startResult.stderr);
+    assert.match(startResult.stderr, START_CANCELLED);
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
     assert.equal(await isDaemonRunning(), false);
     assert.equal(fs.existsSync(getSessionFilePath('CHROME_PID')), false);
   });
 
-  void it('bdg stop while a slow Chrome does not answer yet ends the start at once', async () => {
+  /**
+   * Start a session whose Chrome never answers (see {@link writeSilentChrome}),
+   * wait until that Chrome listens, and interrupt the start.
+   *
+   * @param interrupt - Interrupts the start (`bdg stop`, or Ctrl-C via the controller)
+   * @returns The start command's result, how long it took to end after the
+   *   interruption, and the stand-in Chrome's PID
+   */
+  async function interruptSilentChromeStart(
+    interrupt: (ctrlC: AbortController) => Promise<void>
+  ): Promise<{ result: CommandResult; tookMs: number; chromePid: number }> {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-silent-chrome-'));
     const readyFile = path.join(dir, 'ready');
     try {
+      const ctrlC = new AbortController();
       const port = await getFreePort();
       const start = runCommand(`${fixture.url}slow`, ['--port', String(port), '--headless'], {
         timeout: 60000,
         env: { CHROME_PATH: writeSilentChrome(dir, readyFile) },
+        interrupt: ctrlC.signal,
       });
       const deadline = Date.now() + 20000;
       while (!fs.existsSync(readyFile) && Date.now() < deadline) {
@@ -133,20 +125,38 @@ void describe('Startup interruption', () => {
       }
       const chromePid = Number(fs.readFileSync(readyFile, 'utf8'));
       await new Promise((resolve) => setTimeout(resolve, 500));
-
-      const stoppedAt = Date.now();
-      const stop = await runCommand('stop', [], { timeout: 30000 });
-      assert.equal(stop.exitCode, 0, `Stop failed: ${stop.stderr}`);
-      const startResult = await start;
-      const tookMs = Date.now() - stoppedAt;
-
-      assert.notEqual(startResult.exitCode, 0, 'interrupted start must not report success');
-      assert.ok(tookMs < 5000, `start ended ${tookMs} ms after bdg stop`);
-      assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
-      assert.equal(await isDaemonRunning(), false);
+      const interruptedAt = Date.now();
+      await interrupt(ctrlC);
+      const result = await start;
+      return { result, tookMs: Date.now() - interruptedAt, chromePid };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  }
+
+  void it('bdg stop while a slow Chrome does not answer yet ends the start at once', async () => {
+    const { result, tookMs, chromePid } = await interruptSilentChromeStart(async () => {
+      const stop = await runCommand('stop', [], { timeout: 30000 });
+      assert.equal(stop.exitCode, 0, `Stop failed: ${stop.stderr}`);
+    });
+
+    assert.equal(result.exitCode, EXIT_CODES.RESOURCE_CONFLICT, result.stderr);
+    assert.match(result.stderr, START_CANCELLED);
+    assert.ok(tookMs < 5000, `start ended ${tookMs} ms after bdg stop`);
+    assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
+    assert.equal(await isDaemonRunning(), false);
+  });
+
+  void it('Ctrl-C while a slow Chrome does not answer yet ends the start at once', async () => {
+    const { result, tookMs, chromePid } = await interruptSilentChromeStart((ctrlC) => {
+      ctrlC.abort();
+      return Promise.resolve();
+    });
+
+    assert.equal(result.exitCode, 130);
+    assert.ok(tookMs < 5000, `start ended ${tookMs} ms after Ctrl-C`);
+    assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
+    assert.equal(await isDaemonRunning(), false, 'no session may answer');
   });
 
   void it('SIGTERM to the daemon during startup tears down Chrome', async () => {
