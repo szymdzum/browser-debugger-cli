@@ -86,6 +86,15 @@ export function formatChromeIssue(
         `  - In a container where Chrome's sandbox fails: BDG_NO_SANDBOX=1 ${sessionCommand('bdg <url>')}`
       );
     }
+    case 'CHROME_PORT_NOT_OPENED':
+      return joinLines(
+        chromePortNotOpenedMessage(
+          ctx['pid'] as number,
+          ctx['port'] as number,
+          ctx['waitedMs'] as number
+        ),
+        chromePortNotOpenedSuggestion()
+      );
     case 'CHROME_EXITED_DURING_STARTUP':
       return chromeExitedDuringStartupError(
         ctx['exitCode'] as number | null,
@@ -447,6 +456,32 @@ export function portTakenByReason(
  */
 export function chromeNotAnsweringReason(port: number, waitedMs: number): string {
   return `Chrome announced port ${port} but did not answer on 127.0.0.1 within ${(waitedMs / 1000).toFixed(1)}s (slow start)`;
+}
+
+/**
+ * Chrome is running but did not open its debugging port within
+ * chrome-launcher's readiness budget (a slow start, not a crash or a port
+ * conflict: nothing answered on the port, which was free before the launch).
+ *
+ * @param pid - Chrome's PID
+ * @param port - Debugging port
+ * @param waitedMs - The readiness budget
+ * @returns Error message
+ */
+export function chromePortNotOpenedMessage(pid: number, port: number, waitedMs: number): string {
+  return `Chrome started (pid ${pid}) but did not open its debugging port ${port} within ${Number((waitedMs / 1000).toFixed(1))} s`;
+}
+
+/**
+ * What to do when Chrome started but did not open its debugging port in time.
+ *
+ * @returns Suggestion
+ */
+function chromePortNotOpenedSuggestion(): string {
+  return (
+    `Retry: ${sessionCommand('bdg <url>')} (a first start on a cold machine can be slow). ` +
+    `If it keeps failing: ${sessionCommand('bdg cleanup')} && ${sessionCommand('bdg <url>')}`
+  );
 }
 
 /**
