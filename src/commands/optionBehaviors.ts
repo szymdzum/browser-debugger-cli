@@ -9,12 +9,12 @@
 
 import type { Option } from 'commander';
 
+import type { OptionBehavior } from '@/commands/helpJson.js';
 import {
   MAX_EDGE_PX,
   PIXELS_PER_TOKEN,
   TALL_PAGE_THRESHOLD,
-} from '@/commands/dom/screenshotResize.js';
-import type { OptionBehavior } from '@/commands/helpJson.js';
+} from '@/runtime/page/screenshotResize.js';
 
 /** What DOM actions report about the network requests they triggered */
 const TRIGGERED_REQUESTS_BEHAVIOR =

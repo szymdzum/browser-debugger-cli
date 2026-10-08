@@ -7,12 +7,7 @@ import { extname } from 'path';
 import type * as FsModule from 'fs';
 
 import { DomElementResolver } from '@/commands/dom/DomElementResolver.js';
-import {
-  capturePageScreenshot,
-  captureElementScreenshot,
-  resolveSelector,
-  selectMatch,
-} from '@/commands/dom/helpers/index.js';
+import { captureScreenshot, resolveSelector, selectMatch } from '@/commands/dom/helpers/index.js';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { DomScreenshotCommandOptions } from '@/commands/shared/optionTypes.js';
 import { assertFilePath, outputPathError } from '@/commands/shared/outputFile.js';
@@ -20,7 +15,8 @@ import { positiveIntRule } from '@/commands/shared/validation.js';
 import { CommandError } from '@/errors/index.js';
 import { conflictingTargetError, genericError } from '@/errors/messages.js';
 import { missingArgumentError } from '@/errors/messages.js';
-import type { ScreenshotResult, ElementBounds, NodeRef } from '@/types.js';
+import type { DomScreenshotCommand } from '@/ipc/protocol/commands.js';
+import type { ScreenshotResult, ElementBounds } from '@/types.js';
 import { OutputBuilder, buildSuccessResponse } from '@/ui/OutputBuilder.js';
 import { formatDomScreenshot } from '@/ui/formatters/dom.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -70,56 +66,48 @@ export function resolveImageFormat(outputPath: string, requested?: 'png' | 'jpeg
   return requested ?? fromExtension ?? 'png';
 }
 
-type FilteredScreenshotOptions = {
-  format?: 'png' | 'jpeg';
-  quality?: number;
-  fullPage?: boolean;
-  noResize?: boolean;
-  scroll?: string;
-};
-
-type FilteredElementOptions = {
-  format?: 'png' | 'jpeg';
-  quality?: number;
-  noResize?: boolean;
-  padding?: number;
-};
-
-function buildPageScreenshotOptions(
-  options: DomScreenshotCommandOptions
-): FilteredScreenshotOptions {
-  return filterDefined({
-    format: options.format,
-    quality: options.quality,
-    fullPage: options.fullPage,
-    noResize: options.resize === false,
-    scroll: options.scroll,
-  });
-}
-
-function buildElementScreenshotOptions(
-  options: DomScreenshotCommandOptions
-): FilteredElementOptions {
-  return filterDefined({
-    format: options.format,
-    quality: options.quality,
-    noResize: options.resize === false,
-    padding: options.padding,
-  });
+/**
+ * What to capture, from the command's options: the element `backendNodeId`
+ * names (with its `--padding`), else the page (`--full-page`, `--scroll`).
+ *
+ * @param options - Command options
+ * @param backendNodeId - Element to capture, if any
+ * @returns Daemon request
+ */
+function buildScreenshotRequest(
+  options: DomScreenshotCommandOptions,
+  backendNodeId?: number
+): DomScreenshotCommand {
+  const shared = {
+    format: options.format ?? 'png',
+    ...filterDefined({ quality: options.quality }),
+    ...(options.resize === false && { noResize: true }),
+  };
+  if (backendNodeId !== undefined) {
+    return { ...shared, backendNodeId, ...filterDefined({ padding: options.padding }) };
+  }
+  return { ...shared, ...filterDefined({ fullPage: options.fullPage, scroll: options.scroll }) };
 }
 
 function hasElementTarget(options: DomScreenshotCommandOptions): boolean {
   return options.selector !== undefined || options.index !== undefined;
 }
 
-async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<NodeRef> {
+/**
+ * The element to capture: the selector's match (`--index` picks one), or the
+ * cached query result at `--index`.
+ *
+ * @param options - Command options
+ * @returns Its backend node id
+ * @throws CommandError (81) when neither is given
+ */
+async function resolveElementNodeId(options: DomScreenshotCommandOptions): Promise<number> {
   if (options.selector !== undefined && options.index !== undefined) {
-    return { backendNodeId: await selectMatch(options.selector, options.index) };
+    return selectMatch(options.selector, options.index);
   }
   if (options.index !== undefined) {
-    const resolver = DomElementResolver.getInstance();
-    const node = await resolver.getNodeIdForIndex(options.index);
-    return { backendNodeId: node.nodeId };
+    const node = await DomElementResolver.getInstance().getNodeIdForIndex(options.index);
+    return node.nodeId;
   }
 
   if (options.selector !== undefined) {
@@ -184,8 +172,7 @@ async function handlePageScreenshot(
 ): Promise<void> {
   await runCommand(
     async () => {
-      const screenshotOptions = buildPageScreenshotOptions(options);
-      const result = await capturePageScreenshot(outputPath, screenshotOptions);
+      const result = await captureScreenshot(outputPath, buildScreenshotRequest(options));
       return { success: true, data: result };
     },
     options,
@@ -199,10 +186,9 @@ async function handleElementScreenshot(
 ): Promise<void> {
   await runCommand(
     async () => {
-      const nodeRef = await resolveElementNodeId(options);
-      const screenshotOptions = buildElementScreenshotOptions(options);
-      const result = await captureElementScreenshot(outputPath, nodeRef, screenshotOptions);
-      const elementResult = addElementInfo(result, options);
+      const backendNodeId = await resolveElementNodeId(options);
+      const request = buildScreenshotRequest(options, backendNodeId);
+      const elementResult = addElementInfo(await captureScreenshot(outputPath, request), options);
       return { success: true, data: elementResult };
     },
     options,
@@ -214,14 +200,8 @@ async function captureSequenceFrame(
   outputPath: string,
   options: DomScreenshotCommandOptions
 ): Promise<void> {
-  if (hasElementTarget(options)) {
-    const nodeRef = await resolveElementNodeId(options);
-    const elementOptions = buildElementScreenshotOptions(options);
-    await captureElementScreenshot(outputPath, nodeRef, elementOptions);
-  } else {
-    const pageOptions = buildPageScreenshotOptions(options);
-    await capturePageScreenshot(outputPath, pageOptions);
-  }
+  const backendNodeId = hasElementTarget(options) ? await resolveElementNodeId(options) : undefined;
+  await captureScreenshot(outputPath, buildScreenshotRequest(options, backendNodeId));
 }
 
 async function handleSequenceCapture(

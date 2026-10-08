@@ -844,10 +844,10 @@ export async function getDOMElements(options: DomGetOptions): Promise<DomGetResu
  * Resolve a selector to its first match.
  *
  * @param selector - CSS selector
- * @returns Reference to the first matching node (valid within this command)
+ * @returns Backend node id of the first match
  * @throws CommandError (83) when nothing matches
  */
-export async function resolveSelector(selector: string): Promise<NodeRef> {
+export async function resolveSelector(selector: string): Promise<number> {
   const backendNodeId = (await selectAll(selector))[0];
   if (backendNodeId === undefined) {
     const err = await noMatchesError(selector);
@@ -857,7 +857,7 @@ export async function resolveSelector(selector: string): Promise<NodeRef> {
       EXIT_CODES.RESOURCE_NOT_FOUND
     );
   }
-  return { backendNodeId };
+  return backendNodeId;
 }
 
 /**

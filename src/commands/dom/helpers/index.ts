@@ -3,7 +3,7 @@
  * so callers can keep importing from `@/commands/dom/helpers.js`.
  *
  * - `query.ts`      — selector → backend node ids (shadow roots, same-origin iframes), DOM.describeNode
- * - `screenshot.ts` — page / element capture, element bounds, scroll helpers
+ * - `screenshot.ts` — page / element capture through the daemon, writing the image
  */
 
 export {
@@ -19,18 +19,13 @@ export {
   pageDocumentId,
 } from '@/commands/dom/helpers/query.js';
 
-export {
-  capturePageScreenshot,
-  captureElementScreenshot,
-  getElementBounds,
-} from '@/commands/dom/helpers/screenshot.js';
+export { captureScreenshot } from '@/commands/dom/helpers/screenshot.js';
 
 export type {
   DomQueryResult,
   DomGetResult,
   ScreenshotResult,
   DomGetOptions,
-  ScreenshotOptions,
   DomContext,
   ElementBounds,
 } from '@/types.js';

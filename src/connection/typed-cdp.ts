@@ -20,13 +20,14 @@ import type { Protocol } from 'devtools-protocol/types/protocol.js';
  * Extract parameter type from a CDP command.
  *
  * If command has no parameters, returns empty object type.
- * If command has single parameter array, returns first element.
+ * If command has a single parameter (required, or optional when all its
+ * fields are), returns its type.
  */
 type CommandParams<T extends keyof ProtocolMapping.Commands> =
-  ProtocolMapping.Commands[T]['paramsType'] extends [infer P]
-    ? P
-    : ProtocolMapping.Commands[T]['paramsType'] extends []
-      ? Record<string, never>
+  ProtocolMapping.Commands[T]['paramsType'] extends []
+    ? Record<string, never>
+    : ProtocolMapping.Commands[T]['paramsType'] extends [(infer P)?]
+      ? NonNullable<P>
       : never;
 
 /**
@@ -101,7 +102,7 @@ export class TypedCDPConnection {
     params: CommandParams<T>,
     sessionId?: string
   ): Promise<CommandReturn<T>> {
-    const result = await this.cdp.send(method, params as Record<string, unknown>, sessionId);
+    const result = await this.cdp.send(method, params, sessionId);
     return result as CommandReturn<T>;
   }
 

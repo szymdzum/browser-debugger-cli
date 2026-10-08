@@ -11,7 +11,7 @@ import {
   MAX_EDGE_PX,
   PIXELS_PER_TOKEN,
   TALL_PAGE_THRESHOLD,
-} from '@/commands/dom/screenshotResize.js';
+} from '@/runtime/page/screenshotResize.js';
 
 void describe('calculateImageTokens', () => {
   void it('calculates tokens using width × height / 750 formula', () => {

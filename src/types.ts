@@ -603,19 +603,6 @@ export interface DomGetOptions {
   nth?: number;
 }
 
-/**
- * Options for screenshot operation.
- */
-export interface ScreenshotOptions {
-  format?: 'png' | 'jpeg';
-  quality?: number;
-  fullPage?: boolean;
-  /** Disable auto-resize to 1568px max edge */
-  noResize?: boolean;
-  /** Scroll element into view before capture */
-  scroll?: string;
-}
-
 // ============================================================================
 // Form Discovery Types
 // ============================================================================

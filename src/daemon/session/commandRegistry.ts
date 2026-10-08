@@ -44,6 +44,7 @@ import { evaluateInBdgWorld, sendForBdgScript } from '@/runtime/page/bdgWorld.js
 import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
+import { takeScreenshot } from '@/runtime/page/screenshot.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
@@ -794,6 +795,9 @@ export function createCommandRegistry(
             : result
         )
       ),
+
+    dom_screenshot: async (cdp, params) =>
+      withBusyPageRecovery(cdp, takeScreenshot(cdp, params, emulation.get().viewport)),
 
     dom_wait: async (cdp, params) => waitForCondition(cdp, params),
 
