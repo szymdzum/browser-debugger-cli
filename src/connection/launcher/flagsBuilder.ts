@@ -91,6 +91,106 @@ export function isDocker(): boolean {
   }
 }
 
+const DISABLE_FEATURES = '--disable-features=';
+const ENABLE_FEATURES = '--enable-features=';
+
+/**
+ * Flags that bdg merges into one: Chrome reads only the last occurrence of
+ * these comma-separated feature lists, and chrome-launcher's defaults, bdg and
+ * users all pass them. `--disable-blink-features`/`--enable-blink-features`
+ * are not merged (neither bdg nor the defaults pass them), nor is `--js-flags`
+ * (space-separated V8 flags, not a feature list).
+ */
+const FEATURE_LIST_FLAGS = [DISABLE_FEATURES, ENABLE_FEATURES];
+
+/**
+ * Bare name of a feature-list entry, without a `<Trial` or `:params` suffix.
+ *
+ * @param entry - Entry such as `Foo<Trial` or `Foo:param/1`
+ * @returns Feature name
+ */
+function featureName(entry: string): string {
+  return entry.split(/[<:]/)[0] ?? entry;
+}
+
+/**
+ * Remove disabled features that are also enabled.
+ *
+ * Chrome lets `--disable-features` win over `--enable-features`, so without
+ * this a user's `--enable-features=MediaRouter` could not re-enable a feature
+ * chrome-launcher disables by default.
+ *
+ * @param features - Merged values per feature-list flag (changed in place)
+ */
+function dropReEnabledFeatures(features: Map<string, Set<string>>): void {
+  const enabled = new Set([...(features.get(ENABLE_FEATURES) ?? [])].map(featureName));
+  const disabled = features.get(DISABLE_FEATURES);
+  disabled?.forEach((entry) => {
+    if (enabled.has(featureName(entry))) disabled.delete(entry);
+  });
+}
+
+/**
+ * Merge every `--disable-features=` (and `--enable-features=`) flag into one
+ * and drop repeated flags.
+ *
+ * Chrome applies only the last occurrence of a feature-list flag, so bdg's or
+ * the user's list would otherwise switch chrome-launcher's defaults back on.
+ * The merged flag keeps the first one's position; its values keep their order
+ * without repeats, and an enabled feature is never also disabled. Only
+ * entries starting with `-` are deduplicated, so positional arguments such as
+ * URLs are passed as given.
+ *
+ * @param flags - Chrome flags in launch order
+ * @returns Flags with at most one flag per feature list and no repeated flags
+ */
+function mergeFeatureFlags(flags: string[]): string[] {
+  const features = new Map<string, Set<string>>();
+  const merged: string[] = [];
+  for (const flag of flags) {
+    const prefix = FEATURE_LIST_FLAGS.find((p) => flag.startsWith(p));
+    if (prefix) {
+      if (!features.has(prefix)) merged.push(prefix);
+      const values = flag.slice(prefix.length).split(',').filter(Boolean);
+      features.set(prefix, new Set([...(features.get(prefix) ?? []), ...values]));
+    } else if (!flag.startsWith('-') || !merged.includes(flag)) {
+      merged.push(flag);
+    }
+  }
+  dropReEnabledFeatures(features);
+  return merged.flatMap((flag) => {
+    const values = features.get(flag);
+    if (!values) return [flag];
+    return values.size > 0 ? [flag + [...values].join(',')] : [];
+  });
+}
+
+/**
+ * Remove `HEADLESS` from this process's environment.
+ *
+ * chrome-launcher adds a bare `--headless` whenever the launching process has
+ * a non-empty `HEADLESS` variable (even `0` or `false`), whatever its
+ * `envVars` option says, which would make `--no-headless` launch headless.
+ * The daemon calls this before it launches Chrome.
+ *
+ * @param env - Environment to clean (defaults to `process.env`)
+ */
+export function dropLauncherHeadlessEnv(env: NodeJS.ProcessEnv = process.env): void {
+  delete env['HEADLESS'];
+}
+
+/**
+ * chrome-launcher's default flags (plus its Linux sandbox flag). bdg passes
+ * them itself and tells chrome-launcher to skip its own copy, so each flag
+ * appears once; chrome-launcher adds `--remote-debugging-port`.
+ *
+ * @returns Default flags
+ */
+function defaultFlags(): string[] {
+  const flags = chromeLauncher.Launcher.defaultFlags();
+  return process.platform === 'linux' ? [...flags, '--disable-setuid-sandbox'] : flags;
+}
+
 /**
  * Build Chrome flags array from launch options.
  *
@@ -103,6 +203,8 @@ export function isDocker(): boolean {
  *
  * Custom flags are passed via the chromeFlags option. The BDG_CHROME_FLAGS env var
  * is parsed by the CLI and merged into chromeFlags before reaching this function.
+ * Feature lists from all sources end up in one `--disable-features` (and one
+ * `--enable-features`) flag, and each flag appears once.
  *
  * @param options - Launch options containing flag preferences
  * @returns Array of Chrome command-line flags
@@ -124,18 +226,6 @@ export function isDocker(): boolean {
  * // Includes --disable-gpu, --no-sandbox if in Docker
  * ```
  */
-/**
- * chrome-launcher's default flags (plus its Linux sandbox flag). bdg passes
- * them itself and tells chrome-launcher to skip its own copy, so each flag
- * appears once; chrome-launcher adds `--remote-debugging-port`.
- *
- * @returns Default flags
- */
-function defaultFlags(): string[] {
-  const flags = chromeLauncher.Launcher.defaultFlags();
-  return process.platform === 'linux' ? [...flags, '--disable-setuid-sandbox'] : flags;
-}
-
 export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
   const baseFlags = options.ignoreDefaultFlags ? [] : defaultFlags();
 
@@ -147,19 +237,14 @@ export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
   const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
   const sandboxFlags = needsNoSandbox() ? ['--no-sandbox'] : [];
 
-  // Custom flags from CLI option (env var BDG_CHROME_FLAGS is parsed by CLI and passed here)
   const customFlags = options.chromeFlags ?? [];
 
-  if (options.headless) {
-    return [
-      HEADLESS_FLAG,
-      ...baseFlags,
-      ...bdgFlags,
-      ...dockerFlags,
-      ...sandboxFlags,
-      ...customFlags,
-    ];
-  }
-
-  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...sandboxFlags, ...customFlags];
+  return mergeFeatureFlags([
+    ...(options.headless ? [HEADLESS_FLAG] : []),
+    ...baseFlags,
+    ...bdgFlags,
+    ...dockerFlags,
+    ...sandboxFlags,
+    ...customFlags,
+  ]);
 }

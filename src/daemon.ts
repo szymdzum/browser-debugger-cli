@@ -6,11 +6,14 @@
  * and exits when that session ends.
  */
 
+import { dropLauncherHeadlessEnv } from '@/connection/launcher/flagsBuilder.js';
 import { DaemonError } from '@/daemon/errors.js';
 import { IPCServer } from '@/daemon/ipcServer.js';
 import { DAEMON_ALREADY_RUNNING_CODE } from '@/daemon/server/SocketServer.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
+
+dropLauncherHeadlessEnv();
 
 const log = createLogger('daemon');
 const server = new IPCServer();

@@ -5,7 +5,6 @@ import * as path from 'path';
 import * as chromeLauncher from 'chrome-launcher';
 
 import type { LaunchedChrome, Logger } from './types.js';
-import type { ChildProcess } from 'child_process';
 import type { Options as ChromeLaunchOptions } from 'chrome-launcher';
 
 import {
@@ -13,7 +12,6 @@ import {
   DEFAULT_CDP_PORT,
   CHROME_PROFILE_DIR,
   DEFAULT_CHROME_LOG_LEVEL,
-  DEFAULT_CHROME_HANDLE_SIGINT,
 } from '@/constants.js';
 import { makeDirectory } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -58,7 +56,6 @@ export interface LaunchOptions extends Pick<
   | 'maxConnectionRetries'
   | 'portStrictMode'
   | 'envVars'
-  | 'handleSIGINT'
   | 'ignoreDefaultFlags'
   | 'chromeFlags'
   | 'chromePath'
@@ -146,11 +143,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   const launcher = new chromeLauncher.Launcher(chromeOptions);
 
   const logs = markStartupLogs(userDataDir);
-  const startup = watchStartupExit(
-    () => (launcher as unknown as { chromeProcess?: ChildProcess }).chromeProcess,
-    logs,
-    userDataDir
-  );
+  const startup = watchStartupExit(() => launcher.chromeProcess, logs, userDataDir);
   try {
     const launchStart = Date.now();
     logger.info('Waiting for Chrome to be ready...');
@@ -315,7 +308,6 @@ function buildChromeOptions(options: LaunchOptions): ChromeLaunchOptions {
 
   return {
     logLevel: options.logLevel ?? DEFAULT_CHROME_LOG_LEVEL,
-    handleSIGINT: options.handleSIGINT ?? DEFAULT_CHROME_HANDLE_SIGINT,
     ignoreDefaultFlags: true,
     chromeFlags: buildChromeFlags(options),
     userDataDir,
