@@ -90,6 +90,17 @@ function fieldLabelList(labels: string[]): string {
 }
 
 /**
+ * Warning for a `bdg cdp` method the bundled protocol lacks, sent anyway.
+ *
+ * @param method - Method sent
+ * @param protocolVersion - Bundled devtools-protocol version
+ * @returns Warning text
+ */
+export function cdpUnlistedMethodWarning(method: string, protocolVersion: string): string {
+  return `${method} is not in the bundled protocol (devtools-protocol ${protocolVersion}); sending it to Chrome as is`;
+}
+
+/**
  * Part of the `bdg dom form` summary naming the required fields left empty.
  *
  * @param labels - Labels of the empty required fields

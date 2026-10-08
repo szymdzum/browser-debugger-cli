@@ -74,7 +74,7 @@ export interface Command {
   experimental?: boolean;
   /** Whether command is deprecated */
   deprecated?: boolean;
-  /** URL to specification */
+  /** Domain whose command of the same name implements this one (e.g. 'Overlay' for DOM.highlightNode) */
   redirect?: string;
 }
 
@@ -112,6 +112,8 @@ export interface Type {
   items?: TypeRef;
   /** Whether type is experimental */
   experimental?: boolean;
+  /** Whether type is deprecated */
+  deprecated?: boolean;
 }
 
 /**
