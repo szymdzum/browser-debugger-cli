@@ -452,11 +452,11 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'har:--include-sensitive': {
     default:
-      'The HAR is sanitized: values of Authorization, Proxy-Authorization, Cookie, Set-Cookie, api-key and X-*key/token/secret/auth headers, every cookie value, and password/token/secret/API key fields of JSON and form-urlencoded request bodies (at any depth) become "[redacted]". Header and cookie names, cookie attributes, headersSize and bodySize stay; log.comment and JSON sanitized: true say so',
+      'The HAR is sanitized: values become "[redacted]" for Authorization, Proxy-Authorization, Authentication, Cookie and Set-Cookie headers, X-*key/token/secret/auth headers and headers with an api-key/apikey/token/secret/jwt/subscription-key/session(-id) segment (www-authenticate is kept); every cookie value; query and fragment parameters named like credentials (plus code, sig, key) in the request URL, queryString, redirectURL and Location/Referer headers ("%5Bredacted%5D" in URLs); and password/token/secret/key/session/signature fields of JSON (primitives at any depth under such a name), form-urlencoded (also sniffed when the Content-Type says otherwise) and multipart request bodies. A JSON body too deep to walk becomes "[redacted]" whole. Header, cookie and parameter names, cookie attributes, headersSize and bodySize stay; log.comment and JSON sanitized: true say so',
     whenEnabled:
       'Writes every captured value (JSON sanitized: false); human output warns that the file holds credentials',
     automaticBehavior:
-      'Unlike Chrome DevTools, which drops these headers and empties cookies, names are kept so the HAR still shows a request was authenticated. URLs and query strings, response bodies, multipart bodies and WebSocket messages are not redacted. HAR files are written readable by their owner only (0600). network headers and network getCookies always show real values',
+      'Matching is by name, so it over-redacts: harmless values under credential-looking names (tokenCount: 5, sessionLength) are replaced too, and credentials under other names are kept. Unlike Chrome DevTools, which drops these headers and empties cookies, names are kept so the HAR still shows a request was authenticated. Response bodies and WebSocket messages are not redacted. HAR files are written readable by their owner only (0600). network headers and network getCookies always show real values',
   },
   'peek:--verbose': {
     default: 'Compact output (truncated URLs, no resource types)',

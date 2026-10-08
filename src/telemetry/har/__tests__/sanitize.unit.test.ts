@@ -177,6 +177,181 @@ void describe('HAR sanitization (default)', () => {
   });
 });
 
+/**
+ * Request body as exported, for a POST with the given body and Content-Type.
+ *
+ * @param requestBody - Captured body
+ * @param contentType - Content-Type header, if any
+ * @returns Exported postData text
+ */
+function exportedBody(requestBody: string, contentType?: string): string | undefined {
+  return entryFor({
+    ...LOGIN_REQUEST,
+    requestHeaders: contentType === undefined ? {} : { 'Content-Type': contentType },
+    requestBody,
+  }).request.postData?.text;
+}
+
+void describe('HAR sanitization: headers', () => {
+  const cases: Array<[string, boolean]> = [
+    ['Authentication', true],
+    ['x-api-key', true],
+    ['apikey', true],
+    ['cf-access-jwt-assertion', true],
+    ['cf-access-client-secret', true],
+    ['private-token', true],
+    ['ocp-apim-subscription-key', true],
+    ['access-token', true],
+    ['auth-token', true],
+    ['session-id', true],
+    ['x-amz-security-token', true],
+    ['www-authenticate', false],
+    ['proxy-authenticate', false],
+    ['content-type', false],
+    ['x-request-id', false],
+    ['accept-language', false],
+  ];
+  for (const [name, redacted] of cases) {
+    test(`${name}: ${redacted ? 'redacted' : 'kept'}`, () => {
+      const entry = entryFor({
+        ...LOGIN_REQUEST,
+        requestHeaders: { [name]: 'value-1' },
+        responseHeaders: { [name]: 'value-1' },
+      });
+      const expected = redacted ? REDACTED : 'value-1';
+      assert.equal(header(entry.request.headers, name), expected);
+      assert.equal(header(entry.response.headers, name), expected);
+    });
+  }
+});
+
+void describe('HAR sanitization: bodies', () => {
+  test('redacts a form body sent as text/plain or without Content-Type', () => {
+    assert.equal(
+      exportedBody('user=ann&password=hunter2', 'text/plain'),
+      `user=ann&password=${REDACTED}`
+    );
+    assert.equal(exportedBody('user=ann&token=tok-456'), `user=ann&token=${REDACTED}`);
+  });
+
+  test('leaves text that only contains "=" alone', () => {
+    assert.equal(exportedBody('password = hunter2', 'text/plain'), 'password = hunter2');
+  });
+
+  test('redacts sensitive parts of a multipart body, other parts byte for byte', () => {
+    const body = [
+      '------b0undary',
+      'Content-Disposition: form-data; name="user"',
+      '',
+      'ann',
+      '------b0undary',
+      'Content-Disposition: form-data; name="password"',
+      '',
+      'hunter2',
+      '------b0undary',
+      'Content-Disposition: form-data; name="note"',
+      '',
+      'line one',
+      'line two',
+      '------b0undary--',
+      '',
+    ].join('\r\n');
+    const expected = body.replace('\r\nhunter2\r\n', `\r\n${REDACTED}\r\n`);
+    assert.equal(exportedBody(body, 'multipart/form-data; boundary=----b0undary'), expected);
+    assert.equal(exportedBody(body, 'multipart/form-data; boundary="----b0undary"'), expected);
+  });
+
+  test('keeps the structure under a sensitive key, redacting its primitives', () => {
+    const text = exportedBody(
+      '{"tokens":{"count":5,"list":["a",{"id":"b"}],"none":null},"page":{"size":10}}',
+      'application/json'
+    );
+    assert.deepEqual(JSON.parse(text ?? ''), {
+      tokens: { count: REDACTED, list: [REDACTED, { id: REDACTED }], none: null },
+      page: { size: 10 },
+    });
+  });
+
+  test('over-redacts primitives under names that only look sensitive', () => {
+    const text = exportedBody('{"tokenCount":5,"sessionLength":3,"q":"x"}', 'application/json');
+    assert.deepEqual(JSON.parse(text ?? ''), {
+      tokenCount: REDACTED,
+      sessionLength: REDACTED,
+      q: 'x',
+    });
+  });
+
+  test('redacts jwt, private key, access key, session and signature fields', () => {
+    const text = exportedBody(
+      '{"jwt":"j","private_key":"p","accessKey":"a","session":"s","signature":"g","ok":1}',
+      'application/json'
+    );
+    assert.deepEqual(JSON.parse(text ?? ''), {
+      jwt: REDACTED,
+      private_key: REDACTED,
+      accessKey: REDACTED,
+      session: REDACTED,
+      signature: REDACTED,
+      ok: 1,
+    });
+  });
+
+  test('replaces a JSON body too deep to walk with [redacted]', () => {
+    const depth = 100000;
+    const body = `${'['.repeat(depth)}{"password":"hunter2"}${']'.repeat(depth)}`;
+    assert.equal(exportedBody(body, 'application/json'), REDACTED);
+  });
+});
+
+void describe('HAR sanitization: URLs', () => {
+  const OAUTH_CALLBACK =
+    'https://app.example.com/callback?code=abc123&state=xyz&id_token=it-1#access_token=at-2&scope=read';
+
+  test('redacts sensitive query values in the request URL and queryString', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      url: 'https://example.com/api?q=shoes&access_token=at-1&sig=s1&api_key=k1&page=2',
+    });
+    assert.equal(
+      entry.request.url,
+      'https://example.com/api?q=shoes&access_token=%5Bredacted%5D&sig=%5Bredacted%5D&api_key=%5Bredacted%5D&page=2'
+    );
+    assert.deepEqual(entry.request.queryString, [
+      { name: 'q', value: 'shoes' },
+      { name: 'access_token', value: REDACTED },
+      { name: 'sig', value: REDACTED },
+      { name: 'api_key', value: REDACTED },
+      { name: 'page', value: '2' },
+    ]);
+  });
+
+  test('redacts an OAuth code in a redirect target, Location and Referer', () => {
+    const entry = entryFor({
+      ...LOGIN_REQUEST,
+      requestHeaders: { Referer: OAUTH_CALLBACK },
+      status: 302,
+      redirectURL: OAUTH_CALLBACK,
+      responseHeaders: { Location: OAUTH_CALLBACK },
+    });
+    const expected =
+      'https://app.example.com/callback?code=%5Bredacted%5D&state=xyz&id_token=%5Bredacted%5D#access_token=%5Bredacted%5D&scope=read';
+    assert.equal(entry.response.redirectURL, expected);
+    assert.equal(header(entry.response.headers, 'Location'), expected);
+    assert.equal(header(entry.request.headers, 'Referer'), expected);
+  });
+
+  test('leaves URLs without sensitive parameters alone', () => {
+    const url = 'https://example.com/search?q=zipcode&keyword=a%20b';
+    assert.equal(entryFor({ ...LOGIN_REQUEST, url }).request.url, url);
+  });
+});
+
+void describe('HAR sanitization: log comment', () => {
+  test('says response bodies and WebSocket messages are not sanitized', () => {
+    assert.match(build([LOGIN_REQUEST]).log.comment ?? '', /response bodies.*WebSocket/i);
+  });
+});
+
 void describe('HAR with includeSensitive', () => {
   test('keeps every captured value', () => {
     const { request, response } = entryFor(LOGIN_REQUEST, true);

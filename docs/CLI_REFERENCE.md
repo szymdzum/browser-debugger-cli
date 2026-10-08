@@ -1099,7 +1099,13 @@ bdg network har --include-sensitive full.har
 **Output:**
 - Valid HAR 1.2 format compatible with Chrome DevTools and HAR Viewer
 - Includes all request/response data (URLs, methods, headers, bodies)
-- **Sanitized by default**, like Chrome DevTools' export since Chrome 130: the values of `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `api-key` and `X-*-Key`/`X-*-Token`/`X-*-Secret`/`X-*-Auth*` headers, every cookie value, and password/token/secret/API key fields of JSON and form-urlencoded request bodies are replaced by `[redacted]`. Unlike Chrome, which drops these headers and cookies, bdg keeps their names (and cookie attributes, header sizes). `log.comment` says the file was sanitized. `--include-sensitive` writes every captured value. URLs, response bodies and WebSocket messages are not redacted.
+- **Sanitized by default**, like Chrome DevTools' export since Chrome 130. Values become `[redacted]` for:
+  - `Authorization`, `Proxy-Authorization`, `Authentication`, `Cookie`, `Set-Cookie`, `X-*-Key`/`X-*-Token`/`X-*-Secret`/`X-*-Auth*` headers and headers with an `api-key`, `apikey`, `token`, `secret`, `jwt`, `subscription-key` or `session(-id)` segment (`WWW-Authenticate` is kept)
+  - every cookie value
+  - credential query and fragment parameters (`access_token`, `id_token`, `code`, `sig`, `key`, password/token/secret-like names) in the request URL, `queryString`, `redirectURL` and `Location`/`Referer` headers (`%5Bredacted%5D` in URLs)
+  - password/token/secret/key/session/signature fields of JSON (every primitive under such a name, at any depth), form-urlencoded (also when sent as `text/plain`) and multipart request bodies
+
+  Unlike Chrome, which drops these headers and cookies, bdg keeps their names (and cookie attributes, header sizes). Matching is by name, so harmless values under credential-looking names (`tokenCount`) are redacted too. `log.comment` says the file was sanitized. Response bodies and WebSocket messages are not redacted. `--include-sensitive` writes every captured value.
 - Written readable by its owner only (mode 0600)
 - Complete timing breakdown: blocked, DNS, connect, SSL, send, wait, receive
 - Binary content automatically base64 encoded
