@@ -126,7 +126,7 @@ bdg details network <id>                      # Headers, timing, body of one req
 bdg network getCookies
 bdg console --level error                     # Errors on the current page
 bdg console --follow                          # Streams (blocks; agents re-run bdg console instead)
-bdg network har /tmp/session.har              # Export HAR 1.2
+bdg network har /tmp/session.har              # Export HAR 1.2 (credentials redacted; --include-sensitive keeps them)
 ```
 
 ## Raw CDP

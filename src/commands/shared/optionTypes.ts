@@ -333,7 +333,10 @@ export type CdpCommandOptions = BaseOptions & CdpMethodOptions;
 export type NetworkCookiesCommandOptions = BaseOptions & { url?: string };
 
 /** Options for network HAR command */
-export type NetworkHarCommandOptions = BaseOptions & { outputFile?: string };
+export type NetworkHarCommandOptions = BaseOptions & {
+  outputFile?: string;
+  includeSensitive?: boolean;
+};
 
 /** Options for network headers command */
 export type NetworkHeadersCommandOptions = BaseOptions & { header?: string };
