@@ -18,7 +18,7 @@ import type {
   CleanupFunction,
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
-import { bodyFetchFailedReason } from '@/ui/messages/networkMessages.js';
+import { bodyFetchFailedReason, bodyGoneReason } from '@/ui/messages/networkMessages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -67,12 +67,27 @@ function responseHasNoBody(request: NetworkRequest): boolean {
   );
 }
 
+/** Chrome's errors for a body it no longer has (evicted from its buffer, or never kept) */
+const BODY_GONE_ERROR = /No (resource|data found for resource) with given identifier/;
+
+/**
+ * Why a body fetch Chrome refused left no body.
+ *
+ * @param error - Rejection of `Network.getResponseBody`
+ * @returns Reason for `bodyNotCaptured`
+ */
+function bodyFetchErrorReason(error: unknown): string {
+  const message = getErrorMessage(error);
+  return BODY_GONE_ERROR.test(message) ? bodyGoneReason() : bodyFetchFailedReason(message);
+}
+
 /**
  * Fetch response body for a request with cancellation support: a body that
  * arrives after its fetch was cancelled (removed from `pendingFetches`: the
  * collector stopped, or the request was dropped) is discarded. A fetch Chrome
- * refuses leaves a skipped-body placeholder with the reason, unless the
- * response has no body by definition.
+ * refuses leaves a skipped-body placeholder with the reason (unless the fetch
+ * was cancelled, a body is already stored, or the response has no body by
+ * definition).
  *
  * @param cdp - CDP connection instance
  * @param requestId - Request ID to fetch body for
@@ -104,7 +119,7 @@ function fetchResponseBody(
       );
       if (!pendingFetches.has(requestId)) return;
       if (request.responseBody !== undefined || responseHasNoBody(request)) return;
-      request.responseBody = skippedBodyPlaceholder(bodyFetchFailedReason());
+      request.responseBody = skippedBodyPlaceholder(bodyFetchErrorReason(error));
     })
     .finally(() => {
       pendingFetches.delete(requestId);

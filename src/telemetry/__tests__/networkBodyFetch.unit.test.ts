@@ -12,7 +12,7 @@ import { createCommandRegistry } from '@/daemon/session/commandRegistry.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import { startNetworkCollection } from '@/telemetry/network.js';
 import type { CleanupFunction, NetworkRequest } from '@/types.js';
-import { bodyFetchFailedReason } from '@/ui/messages/networkMessages.js';
+import { bodyFetchFailedReason, bodyGoneReason } from '@/ui/messages/networkMessages.js';
 
 type Handler = (params: unknown) => void;
 
@@ -47,10 +47,14 @@ class FailingCDP {
     this.handlers.get(event)?.forEach((handler) => handler(params));
   }
 
-  /** Fail every held body fetch with Chrome's error, then let the rejections settle */
-  async failFetches(): Promise<void> {
+  /**
+   * Fail every held body fetch, then let the rejections settle.
+   *
+   * @param message - Error of the rejection (default: Chrome's for a body it no longer has)
+   */
+  async failFetches(message = 'No resource with given identifier found'): Promise<void> {
     for (const reject of this.pending.splice(0)) {
-      reject(new Error('No resource with given identifier found'));
+      reject(new Error(message));
     }
     await new Promise((resolve) => setImmediate(resolve));
   }
@@ -89,7 +93,7 @@ class FailingCDP {
  *
  * @returns CDP stub, store and the collector's cleanup
  */
-async function collect(): Promise<{
+async function collect(options: { maxRequests?: number } = {}): Promise<{
   cdp: FailingCDP;
   store: TelemetryStore;
   stop: CleanupFunction;
@@ -99,7 +103,7 @@ async function collect(): Promise<{
   const stop = await startNetworkCollection(
     cdp as unknown as CDPConnection,
     store.networkRequests,
-    { includeAll: true }
+    { includeAll: true, ...options }
   );
   return { cdp, store, stop };
 }
@@ -141,8 +145,63 @@ void describe('failed response body fetch', () => {
 
     const request = await details(store, 'big');
     assert.equal(request.responseBody, undefined);
-    assert.equal(request.bodyNotCaptured, bodyFetchFailedReason());
-    assert.equal(harComment(store, 'big'), `Body not captured: ${bodyFetchFailedReason()}`);
+    assert.equal(request.bodyNotCaptured, bodyGoneReason());
+    assert.equal(harComment(store, 'big'), `Body not captured: ${bodyGoneReason()}`);
+  });
+
+  void it('says the body is gone for "No data found for resource"', async () => {
+    const { cdp, store } = await collect();
+
+    cdp.load('gone');
+    await cdp.failFetches('No data found for resource with given identifier');
+
+    assert.equal((await details(store, 'gone')).bodyNotCaptured, bodyGoneReason());
+  });
+
+  void it('gives any other error with a general reason', async () => {
+    const { cdp, store } = await collect();
+
+    cdp.load('slow');
+    await cdp.failFetches('CDP command timeout: Network.getResponseBody');
+
+    const reason = bodyFetchFailedReason('CDP command timeout: Network.getResponseBody');
+    assert.equal(
+      reason,
+      'Chrome did not return the body: CDP command timeout: Network.getResponseBody'
+    );
+    assert.equal((await details(store, 'slow')).bodyNotCaptured, reason);
+    assert.equal(harComment(store, 'slow'), `Body not captured: ${reason}`);
+  });
+
+  void it('keeps a body already stored', async () => {
+    const { cdp, store } = await collect();
+
+    cdp.load('kept');
+    const request = store.networkRequests.find((r) => r.requestId === 'kept');
+    assert.ok(request);
+    request.responseBody = '{"ok":true}';
+    await cdp.failFetches();
+
+    const reported = await details(store, 'kept');
+    assert.equal(reported.responseBody, '{"ok":true}');
+    assert.equal(reported.bodyNotCaptured, undefined);
+  });
+
+  void it('stores nothing on a request dropped at the request cap', async () => {
+    const { cdp, store } = await collect({ maxRequests: 1 });
+
+    cdp.load('old');
+    const dropped = store.networkRequests[0];
+    assert.equal(dropped?.requestId, 'old');
+    cdp.load('new');
+    await cdp.failFetches();
+
+    assert.deepEqual(
+      store.networkRequests.map((r) => r.requestId),
+      ['new']
+    );
+    assert.equal(dropped.responseBody, undefined);
+    assert.equal((await details(store, 'new')).bodyNotCaptured, bodyGoneReason());
   });
 
   void it('stores nothing once the collector has stopped', async () => {
