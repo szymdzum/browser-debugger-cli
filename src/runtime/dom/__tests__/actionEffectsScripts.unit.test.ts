@@ -2,7 +2,7 @@
  * Page-side parts of the action-effects scripts, run in an isolated VM
  * context on element-like objects: focus/hover churn, structural changes,
  * why "no effect" can't be claimed, which parts of a message are its close
- * controls.
+ * controls, waiting for timers already due.
  */
 
 import assert from 'node:assert/strict';
@@ -11,6 +11,7 @@ import * as vm from 'node:vm';
 
 import {
   CHURN_ONLY_JS,
+  DUE_TIMERS_JS,
   MESSAGE_CHROME_JS,
   STRUCTURAL_CHANGE_JS,
   UNCERTAIN_JS,
@@ -162,5 +163,26 @@ void describe('STRUCTURAL_CHANGE_JS', () => {
     );
     assert.equal(structural({ type: 'characterData' }), false);
     assert.equal(structural({ type: 'attributes', attributeName: 'style' }), false);
+  });
+});
+
+void describe('DUE_TIMERS_JS', () => {
+  const dueTimers = vm.runInNewContext(`(${DUE_TIMERS_JS})`, { setTimeout }) as () => Promise<void>;
+
+  void it('resolves after a timer that fell due while the thread was busy', async () => {
+    const ran: string[] = [];
+    setTimeout(() => ran.push('step'), 5);
+    const busyUntil = Date.now() + 20;
+    while (Date.now() < busyUntil);
+    await dueTimers();
+    assert.deepEqual(ran, ['step']);
+  });
+
+  void it('does not wait for a timer not yet due', async () => {
+    const ran: string[] = [];
+    const later = setTimeout(() => ran.push('later'), 1000);
+    await dueTimers();
+    clearTimeout(later);
+    assert.deepEqual(ran, []);
   });
 });

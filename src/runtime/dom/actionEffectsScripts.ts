@@ -427,16 +427,26 @@ export const EFFECTS_START_SCRIPT = `(() => {
 })()`;
 
 /**
+ * Page-side wait until the timers already due have run. A busy or
+ * descheduled renderer (a slow machine) can run a CDP read before a timer
+ * that fell due meanwhile, so a page changing every 100 ms would look like
+ * a single render; a 0 ms timer runs after the overdue ones.
+ */
+export const DUE_TIMERS_JS = `() => new Promise((resolve) => setTimeout(resolve, 0))`;
+
+/**
  * Read after an action, called with `(stop, shown)`: `stop` also stops
  * watching, `shown` lists the elements the action showed
- * ({@link SHOWN_ELEMENTS_JS}). Returns the URL, the messages shown and,
+ * ({@link SHOWN_ELEMENTS_JS}). The page first runs the timers already due
+ * ({@link DUE_TIMERS_JS}). Returns the URL, the messages shown and,
  * when the snapshot is still there (same document), the number of changes
  * counted (plus one when the page scrolled after the press), why "no
  * effect" could not be claimed ({@link UNCERTAIN_JS}) and whether the page
  * is still working ({@link SETTLE_JS}). `fresh` means a new document
  * (everything shown is new).
  */
-export const EFFECTS_READ_SCRIPT = `((stop, shown) => {
+export const EFFECTS_READ_SCRIPT = `(async (stop, shown) => {
+  await (${DUE_TIMERS_JS})();
   const state = window.__bdgEffects;
   if (!state) return { href: location.href, fresh: true, messages: (${MESSAGES_JS})({ map: new WeakMap(), next: 1 }) };
   if (!state.stopped) state.flush();

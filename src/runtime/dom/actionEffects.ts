@@ -566,8 +566,8 @@ function disposeWatch(watch: Watch): void {
 }
 
 /**
- * Evaluate a page script for its value (undefined on an exception or a
- * failed call).
+ * Evaluate a page script for its value, awaited when it is a promise
+ * (undefined on an exception or a failed call).
  *
  * @param cdp - CDP connection
  * @param expression - Script
@@ -575,7 +575,11 @@ function disposeWatch(watch: Watch): void {
  */
 async function evaluate<T>(cdp: CDPConnection, expression: string): Promise<T | undefined> {
   try {
-    const reply = (await cdp.send('Runtime.evaluate', { expression, returnByValue: true })) as {
+    const reply = (await cdp.send('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    })) as {
       result?: { value?: T };
       exceptionDetails?: { text?: string };
     };
