@@ -7,6 +7,7 @@
 import { getErrorMessage } from '@/utils/errors.js';
 
 import {
+  IPCCancelledError,
   IPCConnectionError,
   IPCParseError,
   IPCTimeoutError,
@@ -39,4 +40,8 @@ export function formatTimeoutError(requestName: string, timeoutMs: number): IPCT
 
 export function formatEarlyCloseError(requestName: string): IPCEarlyCloseError {
   return new IPCEarlyCloseError(requestName);
+}
+
+export function formatCancelledError(requestName: string): IPCCancelledError {
+  return new IPCCancelledError(requestName);
 }

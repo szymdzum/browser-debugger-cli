@@ -164,8 +164,11 @@ export async function getHARData(): Promise<HARDataResponse> {
  *
  * @param url - Target URL to navigate to
  * @param options - Session configuration options
+ * @param signal - Cancels the start: closes the connection, so the daemon
+ *   abandons the session it is starting
  * @returns Start session response with daemon and Chrome PIDs
  * @throws Error if connection fails, session already running, or Chrome launch fails
+ * @throws IPCCancelledError if `signal` aborts first
  *
  * @example
  * ```typescript
@@ -181,7 +184,8 @@ export async function getHARData(): Promise<HARDataResponse> {
  */
 export async function startSession(
   url: string,
-  options?: SessionOptions
+  options?: SessionOptions,
+  signal?: AbortSignal
 ): Promise<StartSessionResponse> {
   const request: StartSessionRequest = withSession({
     type: 'start_session_request',
@@ -205,7 +209,10 @@ export async function startSession(
   return sendRequest<StartSessionRequest, StartSessionResponse>(
     request,
     'start session',
-    'start_session_response'
+    'start_session_response',
+    undefined,
+    undefined,
+    signal
   );
 }
 

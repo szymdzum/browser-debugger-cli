@@ -180,8 +180,8 @@ void describe('Startup interruption', () => {
     ctrlC.abort();
 
     assert.equal((await start.result).exitCode, 130);
+    assert.equal(await isDaemonRunning(), false, 'no session may answer once the start exited');
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
-    assert.equal(await isDaemonRunning(), false, 'no session may answer');
     assert.equal(
       await waitForProcessExit(daemonPid, DAEMON_EXIT_TIMEOUT_MS),
       true,

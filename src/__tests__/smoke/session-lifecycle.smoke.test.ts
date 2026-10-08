@@ -6,6 +6,8 @@
  */
 
 import * as assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 
 import { runCommand, runCommandJSON } from '@/__testutils__/commandRunner.js';
@@ -15,9 +17,40 @@ import {
   startFixtureServer,
   type FixtureServer,
 } from '@/__testutils__/fixtureServer.js';
-import { getSessionFilePath } from '@/session/paths.js';
+import { getSessionDir, getSessionFilePath } from '@/session/paths.js';
 import { readPidFromFile } from '@/session/pid.js';
 import type { BdgOutput } from '@/types.js';
+
+/** The session's daemon log */
+function daemonLogPath(): string {
+  return path.join(getSessionDir(), 'daemon.log');
+}
+
+/**
+ * Size of the daemon log (0 when there is none yet).
+ *
+ * @returns Bytes written so far
+ */
+function daemonLogSize(): number {
+  return fs.existsSync(daemonLogPath()) ? fs.statSync(daemonLogPath()).size : 0;
+}
+
+/**
+ * Wait until the daemon has begun stopping its session (it logs it), so a
+ * start sent now meets a session that is shutting down, not one still
+ * running: a fixed delay loses that race when `bdg stop` is slow to connect.
+ *
+ * @param fromByte - Log size before the stop was sent (earlier daemons log there too)
+ */
+async function waitForSessionStopping(fromByte: number): Promise<void> {
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const log = fs.existsSync(daemonLogPath()) ? fs.readFileSync(daemonLogPath()) : Buffer.alloc(0);
+    if (log.subarray(fromByte).toString('utf8').includes('Stopping session')) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('The daemon never began stopping its session');
+}
 
 void describe('Session Lifecycle Smoke Tests', () => {
   let fixture: FixtureServer;
@@ -104,8 +137,9 @@ void describe('Session Lifecycle Smoke Tests', () => {
   void it('starts a new session right after a stop, once the old one has ended', async () => {
     assert.equal((await startSession()).exitCode, 0);
 
+    const logSize = daemonLogSize();
     const stopping = runCommand('stop', [], { timeout: 60000 });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForSessionStopping(logSize);
     const restarted = await startSession();
     await stopping;
 
