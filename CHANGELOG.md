@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-08
+
 ### Breaking
 
 - **`network har` writes a sanitized HAR by default** (#448), like Chrome DevTools since Chrome 130: values of auth, cookie, API key, token and session headers, cookie values, credential query parameters in URLs (`?code=`, `?access_token=`) and password/token fields of JSON, form and multipart request bodies become `[redacted]` (names and sizes stay; `log.comment` and `--json` `sanitized: true` say so; response bodies and WebSocket messages are not sanitized). `--include-sensitive` writes the HAR as before; HAR files are now written with mode 0600.
