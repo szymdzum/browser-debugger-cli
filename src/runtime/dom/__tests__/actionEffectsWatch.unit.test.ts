@@ -20,6 +20,7 @@ type Handler = (params: unknown, sessionId?: string) => void;
 class FakeCdp {
   readonly handlers = new Map<string, Set<Handler>>();
   readonly expressions: string[] = [];
+  readonly methods: string[] = [];
 
   /**
    * @param start - Reply of the snapshot before the action
@@ -51,6 +52,7 @@ class FakeCdp {
   }
 
   send(method: string, params?: { expression?: string }): Promise<unknown> {
+    this.methods.push(method);
     if (method === 'Page.getFrameTree')
       return Promise.resolve({ frameTree: { frame: { id: 'main' } } });
     if (method === 'Page.createIsolatedWorld') return Promise.reject(new Error('No world'));
@@ -283,6 +285,14 @@ void describe('watchActionEffects', () => {
     watch.dispose();
   });
 
+  void it("creates bdg's world when the watch starts, before the action", async () => {
+    const cdp = new FakeCdp(Promise.resolve(START));
+    const watch = watchActionEffects(cdp.connection);
+    await tick();
+    assert.ok(cdp.methods.includes('Page.createIsolatedWorld'));
+    watch.dispose();
+  });
+
   void it('lets due timers run before each read', async () => {
     const cdp = new FakeCdp(Promise.resolve(START), [{ ...QUIET, changes: 1 }]);
     const watch = watchActionEffects(cdp.connection);
@@ -344,5 +354,31 @@ void describe('watchActionEffects', () => {
     });
     assert.deepEqual(once.readsSent, [false], 'one render needs no second look');
     single.dispose();
+  });
+
+  void it('reports a page changing every 130 ms as changing, and one that stopped as settled', async () => {
+    const read = (burstAges: number[]): unknown => ({
+      ...QUIET,
+      changes: burstAges.length,
+      settle: { burstAges, loading: null },
+    });
+    const first = read([135, 5]);
+    for (const [recheck, expected, label] of [
+      [read([390, 260, 130]), true, 'one new burst 130 ms after the last, 130 ms ago'],
+      [read([395, 265, 215]), false, 'stopped 215 ms before the second look'],
+      [read([390, 260]), false, 'no new burst'],
+    ] as const) {
+      const cdp = new FakeCdp(Promise.resolve(START), [first, recheck]);
+      const watch = watchActionEffects(cdp.connection);
+      const effects = await watch.collect({
+        dialogs: 0,
+        consoleMessages: () => 0,
+        detectNoEffect: false,
+        detectUnsettled: true,
+      });
+      assert.equal(effects.work?.domChanging, expected, label);
+      assert.equal(cdp.readsSent.length, 2, label);
+      watch.dispose();
+    }
   });
 });

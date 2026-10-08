@@ -354,12 +354,14 @@ const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
  * What actions show and leave unfinished: a help icon showing a tooltip on
  * mouseenter, cards whose caption only CSS `:hover` shows, a to-do field
  * adding an item on Enter (while a ticker elsewhere adds a line on every
- * key), buttons whose result comes later (after a spinner, in 100 ms steps,
- * in 100 ms steps on a page busy from 60 to 260 ms as on a slow machine,
+ * key), buttons whose result comes later (after a spinner, in 50 ms steps,
+ * in 50 ms steps on a page busy from 60 to 260 ms as on a slow machine,
  * after a 1.5 s long task), one rendering twice and then stopping, one
  * showing a toast that hides itself, a button covered by a transparent
  * overlay, and a hover target whose mouseenter removes 200 of the 1600
- * text elements beside it.
+ * text elements beside it. The steps are 50 ms apart, well under the
+ * 150 ms a still-changing page may stay quiet: timers on the macOS CI runner
+ * run up to 75 ms late, so 100 ms steps came up to 175 ms apart there.
  */
 const EFFECTS_HTML = `<!doctype html><title>effects</title>
 <style>.card { width: 80px; height: 40px; display: inline-block; vertical-align: top; overflow: hidden } .card .caption { display: none } .card:hover .caption { display: block }</style>
@@ -399,7 +401,7 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
   };
   document.getElementById('steps').onclick = () => {
     let step = 0;
-    const next = () => { add('Step ' + step); if (++step < 20) setTimeout(next, 100); };
+    const next = () => { add('Step ' + step); if (++step < 20) setTimeout(next, 50); };
     next();
   };
   document.getElementById('busy-steps').onclick = () => {
