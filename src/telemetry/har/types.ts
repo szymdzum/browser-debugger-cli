@@ -123,6 +123,8 @@ export interface WebSocketMessage {
   opcode: number;
   /** Message payload (base64 for binary messages) */
   data: string;
+  /** Original payload length in characters, when bdg cut `data` at capture */
+  _truncatedFrom?: number;
 }
 
 /**

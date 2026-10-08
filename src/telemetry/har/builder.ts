@@ -161,6 +161,7 @@ function buildWebSocketMessage(frame: WebSocketFrame): WebSocketMessage {
     time: frame.timestamp / 1000,
     opcode: frame.opcode,
     data: frame.payloadData,
+    ...(frame.truncatedFrom !== undefined && { _truncatedFrom: frame.truncatedFrom }),
   };
 }
 

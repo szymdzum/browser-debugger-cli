@@ -3,7 +3,9 @@
  *
  * A fixture page logs in with `Authorization: Bearer SECRET`, an `X-Api-Key`
  * header and `{"password":"hunter2"}`, gets an HttpOnly session cookie and
- * sends it back. The default HAR export holds none of these values;
+ * a JSON response with `access_token` and `refresh_token`, sends the cookie
+ * back, and sends a JSON WebSocket frame with a `token` that the server
+ * echoes. The default HAR export holds none of these values;
  * `--include-sensitive` keeps them.
  */
 
@@ -46,7 +48,8 @@ async function exportHar(args: string[] = []): Promise<{ data: HarExport; text: 
 }
 
 /**
- * Wait until both login requests of the fixture page have finished.
+ * Wait until both login requests of the fixture page have finished and the
+ * WebSocket echo has come back.
  */
 async function waitForLogins(): Promise<void> {
   const deadline = Date.now() + 10000;
@@ -57,7 +60,13 @@ async function waitForLogins(): Promise<void> {
     const requests = (
       JSON.parse(result.stdout) as { data: { requests: Array<{ url: string; status?: number }> } }
     ).data.requests;
-    if (requests.filter((r) => r.url.endsWith('/har-login') && r.status === 200).length >= 2) {
+    const title = await runCommand('dom', ['eval', 'document.title', '--json'], {
+      timeout: 30000,
+    });
+    if (
+      requests.filter((r) => r.url.endsWith('/har-login') && r.status === 200).length >= 2 &&
+      title.stdout.includes('"done"')
+    ) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -97,6 +106,12 @@ void describe('HAR export sanitization', () => {
     assert.match(text, /"name": "Authorization",\s*"value": "\[redacted\]"/);
     assert.match(text, /"name": "har_session",\s*"value": "\[redacted\]"/);
     assert.match(text, /\\"password\\":\\"\[redacted\]\\"/);
+    assert.match(
+      text,
+      /\\"access_token\\":\\"\[redacted\]\\",\\"refresh_token\\":\\"\[redacted\]\\"/
+    );
+    assert.match(text, /\\"expires_in\\":3600/);
+    assert.match(text, /\\"type\\":\\"auth\\",\\"token\\":\\"\[redacted\]\\"/);
   });
 
   void it('keeps credentials with --include-sensitive', async () => {
@@ -106,6 +121,9 @@ void describe('HAR export sanitization', () => {
     assert.ok(text.includes('SECRET-KEY'), 'X-Api-Key value kept');
     assert.ok(text.includes('SECRET-SESSION'), 'cookie value kept');
     assert.ok(text.includes('hunter2'), 'password kept');
+    assert.ok(text.includes('SECRET-ACCESS'), 'response access_token kept');
+    assert.ok(text.includes('SECRET-REFRESH'), 'response refresh_token kept');
+    assert.ok(text.includes('SECRET-WS'), 'WebSocket token kept');
   });
 
   void it('names the flag in the human success message', async () => {

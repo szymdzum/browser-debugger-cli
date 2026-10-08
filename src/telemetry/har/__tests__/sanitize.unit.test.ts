@@ -9,7 +9,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { SENSITIVE_NAME_SOURCE } from '@/runtime/dom/elementInfo.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
+import { redactOrReplaceWhole } from '@/telemetry/har/sanitizeBody.js';
 import type { Entry, HAR } from '@/telemetry/har/types.js';
 import type { NetworkRequest } from '@/types.js';
 
@@ -296,10 +298,13 @@ void describe('HAR sanitization: bodies', () => {
     });
   });
 
-  test('replaces a JSON body too deep to walk with [redacted]', () => {
+  test('redacts a password nested 100000 levels deep in place', () => {
     const depth = 100000;
     const body = `${'['.repeat(depth)}{"password":"hunter2"}${']'.repeat(depth)}`;
-    assert.equal(exportedBody(body, 'application/json'), REDACTED);
+    assert.equal(
+      exportedBody(body, 'application/json'),
+      body.replace('"hunter2"', `"${REDACTED}"`)
+    );
   });
 });
 
@@ -346,9 +351,543 @@ void describe('HAR sanitization: URLs', () => {
   });
 });
 
+/** A token endpoint's response: the credentials of a login flow */
+const TOKEN_RESPONSE: NetworkRequest = {
+  ...LOGIN_REQUEST,
+  requestId: 'token',
+  mimeType: 'application/json',
+  decodedBodyLength: 4242,
+  responseBody: JSON.stringify({
+    access_token: 'at-SECRET',
+    refresh_token: 'rt-SECRET',
+    id_token: 'it-SECRET',
+    expires_in: 3600,
+    user: { name: 'ann', password: 'hunter2', client_secret: 'cs-SECRET' },
+  }),
+};
+
+/** A WebSocket connection whose frames carry tokens */
+const SOCKET: NetworkRequest = {
+  requestId: 'ws',
+  url: 'wss://example.com/ws',
+  method: 'GET',
+  timestamp: 2,
+  status: 101,
+  resourceType: 'WebSocket',
+  webSocket: {
+    frames: [
+      {
+        timestamp: 3,
+        direction: 'sent',
+        opcode: 1,
+        payloadData: '{"type":"auth","token":"ws-SECRET"}',
+      },
+      { timestamp: 4, direction: 'received', opcode: 1, payloadData: 'token ws-plain' },
+      {
+        timestamp: 6,
+        direction: 'received',
+        opcode: 1,
+        payloadData: '{"type":"auth","token":"ws-cut',
+        truncatedFrom: 204800,
+      },
+      {
+        timestamp: 5,
+        direction: 'received',
+        opcode: 2,
+        payloadData: Buffer.from('{"token":"ws-binary"}').toString('base64'),
+      },
+      {
+        timestamp: 7,
+        direction: 'received',
+        opcode: 2,
+        payloadData: Buffer.from([0x7b, 0x22, 0xff, 0xfe]).toString('base64'),
+      },
+    ],
+  },
+};
+
+/**
+ * Exported response content of a request.
+ *
+ * @param req - Captured request
+ * @param includeSensitive - Keep credentials
+ * @returns HAR content
+ */
+function contentFor(req: NetworkRequest, includeSensitive?: boolean): Entry['response']['content'] {
+  return entryFor(req, includeSensitive).response.content;
+}
+
+void describe('HAR sanitization: response bodies', () => {
+  test('redacts token and password fields of a JSON response, keeping its structure', () => {
+    assert.deepEqual(JSON.parse(contentFor(TOKEN_RESPONSE).text ?? ''), {
+      access_token: REDACTED,
+      refresh_token: REDACTED,
+      id_token: REDACTED,
+      expires_in: 3600,
+      user: { name: 'ann', password: REDACTED, client_secret: REDACTED },
+    });
+  });
+
+  test('exports a login response {"access_token":…,"expires_in":3600} redacted', () => {
+    const content = contentFor({
+      ...TOKEN_RESPONSE,
+      responseBody: '{"access_token":"at-SECRET","expires_in":3600}',
+    });
+    assert.equal(content.text, '{"access_token":"[redacted]","expires_in":3600}');
+  });
+
+  test('redacts credential fields of a form-urlencoded response', () => {
+    const content = contentFor({
+      ...TOKEN_RESPONSE,
+      mimeType: 'application/x-www-form-urlencoded',
+      responseBody: 'access_token=at-SECRET&scope=repo&token_type=bearer',
+    });
+    assert.equal(content.text, `access_token=${REDACTED}&scope=repo&token_type=${REDACTED}`);
+  });
+
+  test('keeps content.size as captured', () => {
+    assert.equal(contentFor(TOKEN_RESPONSE).size, 4242);
+  });
+
+  test('leaves a body that is not JSON or a form as is', () => {
+    const body = '<p>"token": "kept"</p>';
+    const content = contentFor({ ...TOKEN_RESPONSE, mimeType: 'text/html', responseBody: body });
+    assert.equal(content.text, body);
+    assert.equal(content.comment, undefined);
+  });
+
+  test('redacts a 5 MB body without a comment', () => {
+    const pad = 'x'.repeat(5 * 1024 * 1024);
+    const content = contentFor({
+      ...TOKEN_RESPONSE,
+      responseBody: JSON.stringify({ pad, access_token: 'at-SECRET' }),
+    });
+    assert.equal(content.text, JSON.stringify({ pad, access_token: REDACTED }));
+    assert.equal(content.comment, undefined);
+  });
+
+  test('decodes a base64 JSON body of a generic type, redacts it and re-encodes it', () => {
+    const encode = (text: string): string => Buffer.from(text).toString('base64');
+    for (const mimeType of ['application/octet-stream', '']) {
+      const content = contentFor({
+        ...TOKEN_RESPONSE,
+        mimeType,
+        responseBody: encode('{"access_token":"at-SECRET","n":1}'),
+        responseBodyBase64: true,
+      });
+      assert.equal(content.text, encode(`{"access_token":"${REDACTED}","n":1}`), String(mimeType));
+      assert.equal(content.encoding, 'base64');
+    }
+  });
+
+  test('leaves a base64 body that is an image or not UTF-8 as is', () => {
+    const json = Buffer.from('{"access_token":"at-SECRET"}').toString('base64');
+    const invalid = Buffer.from([0x7b, 0x22, 0xff, 0xfe, 0x22, 0x7d]).toString('base64');
+    const image = { ...TOKEN_RESPONSE, mimeType: 'image/png', responseBodyBase64: true };
+    assert.equal(contentFor({ ...image, responseBody: json }).text, json);
+    const octet = { ...image, mimeType: 'application/octet-stream', responseBody: invalid };
+    assert.equal(contentFor(octet).text, invalid);
+  });
+
+  test('--include-sensitive keeps the response body as captured', () => {
+    const content = contentFor(TOKEN_RESPONSE, true);
+    assert.equal(content.text, TOKEN_RESPONSE.responseBody);
+    assert.equal(content.comment, undefined);
+  });
+});
+
+/**
+ * Exported WebSocket messages of {@link SOCKET}.
+ *
+ * @param includeSensitive - Keep credentials
+ * @returns Message payloads in order
+ */
+function socketData(includeSensitive?: boolean): string[] {
+  return (entryFor(SOCKET, includeSensitive)._webSocketMessages ?? []).map((m) => m.data);
+}
+
+void describe('HAR sanitization: WebSocket messages', () => {
+  test('redacts credential fields of JSON text frames', () => {
+    assert.equal(socketData()[0], `{"type":"auth","token":"${REDACTED}"}`);
+  });
+
+  test('leaves non-JSON text frames and binary frames that are not UTF-8 as is', () => {
+    const frames = SOCKET.webSocket?.frames ?? [];
+    const data = socketData();
+    assert.deepEqual([data[1], data[4]], [frames[1]?.payloadData, frames[4]?.payloadData]);
+  });
+
+  test('decodes a UTF-8 binary frame, redacts it and re-encodes it', () => {
+    assert.equal(socketData()[3], Buffer.from(`{"token":"${REDACTED}"}`).toString('base64'));
+  });
+
+  test('redacts a frame cut at capture and keeps its truncation marker', () => {
+    const message = entryFor(SOCKET)._webSocketMessages?.[2];
+    assert.equal(message?.data, `{"type":"auth","token":"${REDACTED}"`);
+    assert.equal(message?._truncatedFrom, 204800);
+  });
+
+  test('--include-sensitive keeps every frame as captured', () => {
+    assert.deepEqual(
+      socketData(true),
+      (SOCKET.webSocket?.frames ?? []).map((f) => f.payloadData)
+    );
+  });
+});
+
+/**
+ * Exported response text of a body.
+ *
+ * @param responseBody - Captured body
+ * @param mimeType - Response MIME type
+ * @returns Exported text
+ */
+function exportedResponse(responseBody: string, mimeType = 'application/json'): string | undefined {
+  return contentFor({ ...TOKEN_RESPONSE, mimeType, responseBody }).text;
+}
+
+void describe('HAR sanitization: bodies keep their exact bytes', () => {
+  const R = `"${REDACTED}"`;
+
+  test('keeps 64-bit numbers, decimals and formatting, editing only the credential', () => {
+    const body = '{ "id": 12345678901234567890,\n  "price": 1.50, "token" : "t-SECRET", "n": 1e2 }';
+    const expected = body.replace('"t-SECRET"', R);
+    assert.equal(exportedResponse(body), expected);
+    assert.equal(exportedBody(body, 'application/json'), expected);
+  });
+
+  test('redacts every duplicate key', () => {
+    assert.equal(exportedResponse('{"token":"a","token":"b"}'), `{"token":${R},"token":${R}}`);
+  });
+
+  test('redacts numbers, booleans and escaped strings, keeps null', () => {
+    assert.equal(
+      exportedResponse('{"passcode":1234,"session":true,"secret":"a\\"b\\\\","jwt":null}'),
+      `{"passcode":${R},"session":${R},"secret":${R},"jwt":null}`
+    );
+  });
+
+  test('matches an escaped key name', () => {
+    assert.equal(exportedResponse('{"\\u0074oken":"x"}'), `{"\\u0074oken":${R}}`);
+  });
+
+  test('keeps a BOM and an XSSI prefix byte for byte', () => {
+    assert.equal(
+      exportedResponse('\uFEFF)]}\'\n{"token":"x","a":[1]}'),
+      `\uFEFF)]}'\n{"token":${R},"a":[1]}`
+    );
+  });
+
+  test('redacts a truncated JSON tail', () => {
+    assert.equal(exportedResponse('{"a":1,"token":"abc'), `{"a":1,"token":${R}`);
+  });
+
+  test('redacts socket.io, server-sent event and NDJSON framing', () => {
+    assert.equal(exportedResponse('42["auth",{"token":"X"}]', ''), `42["auth",{"token":${R}}]`);
+    assert.equal(
+      exportedResponse(
+        'event: auth\ndata: {"token":"x"}\n\ndata: {"ok":1}\n\n',
+        'text/event-stream'
+      ),
+      `event: auth\ndata: {"token":${R}}\n\ndata: {"ok":1}\n\n`
+    );
+    assert.equal(
+      exportedResponse('{"token":"a"}\n{"token":"b","n":2}\n', 'application/x-ndjson'),
+      `{"token":${R}}\n{"token":${R},"n":2}\n`
+    );
+  });
+
+  test('scans in linear time: 5 MB and pathological inputs under 3 s each', () => {
+    const big = `[${Array.from({ length: 100000 }, (_, i) => `{"id":${i},"token":"t${i}","note":"${'n'.repeat(30)}"}`).join(',')}]`;
+    const inputs = [
+      big + ' '.repeat(Math.max(0, 5 * 1024 * 1024 - big.length)),
+      `{"a"${' '.repeat(5 * 1024 * 1024)}`,
+      `["${'\\"'.repeat(2 * 1024 * 1024)}`,
+      '"'.repeat(5 * 1024 * 1024),
+      `{${'"token":'.repeat(500000)}`,
+      `{"token":${'-1e'.repeat(1000000)}`,
+    ];
+    for (const input of inputs) {
+      const started = performance.now();
+      exportedResponse(input);
+      assert.ok(performance.now() - started < 3000, `took ${performance.now() - started} ms`);
+    }
+  });
+});
+
+void describe('HAR sanitization: encoded, framed and loosely formed bodies', () => {
+  const R = `"${REDACTED}"`;
+  const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbm4ifQ.c2lnbmF0dXJl';
+
+  test('redacts JSON encoded in a string value, keeping the other strings byte for byte', () => {
+    assert.equal(
+      exportedResponse('{"payload":"{\\"password\\":\\"S1\\",\\"n\\":1}","note":"caf\\u00e9"}'),
+      `{"payload":"{\\"password\\":\\"${REDACTED}\\",\\"n\\":1}","note":"caf\\u00e9"}`
+    );
+  });
+
+  test('redacts GraphQL variables sent as a string and JSON encoded twice', () => {
+    const inner = JSON.stringify({ password: 'S1' });
+    const body = JSON.stringify({
+      query: '{ me { token } }',
+      variables: inner,
+      deep: JSON.stringify({ wrap: inner }),
+    });
+    const expected = JSON.stringify({
+      query: '{ me { token } }',
+      variables: JSON.stringify({ password: REDACTED }),
+      deep: JSON.stringify({ wrap: JSON.stringify({ password: REDACTED }) }),
+    });
+    assert.equal(exportedBody(body, 'application/json'), expected);
+  });
+
+  test('redacts SockJS frames', () => {
+    assert.equal(
+      exportedResponse('a["{\\"password\\":\\"S1\\"}"]', ''),
+      `a["{\\"password\\":\\"${REDACTED}\\"}"]`
+    );
+  });
+
+  test('redacts namespaced and binary socket.io packets', () => {
+    assert.equal(
+      exportedResponse('42/chat,["login",{"password":"S1"}]', ''),
+      `42/chat,["login",{"password":${R}}]`
+    );
+    assert.equal(
+      exportedResponse('451-["x",{"password":"S1"}]', ''),
+      `451-["x",{"password":${R}}]`
+    );
+  });
+
+  test('a stray quote ends at the line end instead of hiding the next line', () => {
+    const sse = 'text/event-stream';
+    assert.equal(
+      exportedResponse('data: say "hi\ndata: {"password":"S1"}\n\n', sse),
+      `data: say "hi\ndata: {"password":${R}}\n\n`
+    );
+    assert.equal(
+      exportedResponse('data: 5" screen\r\ndata: {"token":"S1"}\r\n', sse),
+      `data: 5" screen\r\ndata: {"token":${R}}\r\n`
+    );
+  });
+
+  test('redacts a whole bare value up to its delimiter', () => {
+    assert.equal(exportedResponse('{"token":123abc,"n":1}'), `{"token":${R},"n":1}`);
+    assert.equal(exportedResponse('{"token": abc-def }'), `{"token": ${R} }`);
+  });
+
+  test('redacts Rails-style form names without a form Content-Type', () => {
+    assert.equal(
+      exportedBody('user[password]=S1&user[name]=ann', 'text/plain'),
+      `user[password]=${REDACTED}&user[name]=ann`
+    );
+    assert.equal(
+      exportedResponse('42["auth",{"password":"a=b"}]', ''),
+      `42["auth",{"password":${R}}]`
+    );
+  });
+
+  test('decodes base64 bodies of JSON with a charset, form and event-stream types', () => {
+    const encode = (text: string): string => Buffer.from(text).toString('base64');
+    const cases: Array<[string, string, string]> = [
+      ['application/json; charset=utf-8', '{"token":"S1"}', `{"token":${R}}`],
+      ['application/x-www-form-urlencoded', 'token=S1&a=1', `token=${REDACTED}&a=1`],
+      ['text/event-stream; charset=utf-8', 'data: {"token":"S1"}\n', `data: {"token":${R}}\n`],
+    ];
+    for (const [mimeType, body, expected] of cases) {
+      const content = contentFor({
+        ...TOKEN_RESPONSE,
+        mimeType,
+        responseBody: encode(body),
+        responseBodyBase64: true,
+      });
+      assert.equal(content.text, encode(expected), mimeType);
+    }
+  });
+
+  test('redacts a JWT under any key and in text bodies', () => {
+    assert.equal(exportedResponse(`{"data":"${JWT}","id":"eyJ"}`), `{"data":${R},"id":"eyJ"}`);
+    assert.equal(
+      exportedResponse(`Bearer ${JWT} expires soon`, 'text/plain'),
+      `Bearer ${REDACTED} expires soon`
+    );
+    const notWhole = `x${JWT} ${JWT}.x eyJshort.a.b`;
+    assert.equal(exportedResponse(notWhole, 'text/plain'), notWhole);
+  });
+
+  test('scans encoded JSON and JWT-like text in linear time', () => {
+    const size = 5 * 1024 * 1024;
+    const inputs: Array<[string, string]> = [
+      [`{"p":${JSON.stringify(`{"a":"${'x'.repeat(size)}"}`)}}`, 'application/json'],
+      [`[${'"{}",'.repeat(size / 5)}"{}"]`, 'application/json'],
+      [`["${'{\\"a\\":\\"'.repeat(size / 10)}"]`, 'application/json'],
+      ['eyJ'.repeat(size / 3), 'text/plain'],
+      [`{"a":"eyJ${'a'.repeat(6 * 1024 * 1024)}"}`, 'application/json'],
+      [`x eyJ${'a.'.repeat(3 * 1024 * 1024)}`, 'text/plain'],
+      [' eyJaaaaa.bbbbb'.repeat(size / 15), 'text/plain'],
+      [`${'eyJaaaaa.'.repeat(size / 9)}`, 'text/plain'],
+      ['"a'.repeat(size / 2), 'text/event-stream'],
+      [`{"token":${'1a'.repeat(size / 2)}}`, 'application/json'],
+    ];
+    for (const [input, mimeType] of inputs) {
+      const started = performance.now();
+      exportedResponse(input, mimeType);
+      const took = performance.now() - started;
+      assert.ok(took < 3000, `${mimeType} ${input.slice(0, 20)}: took ${took} ms`);
+    }
+  });
+});
+
+void describe('HAR sanitization: round 3', () => {
+  const R = `"${REDACTED}"`;
+  const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbm4ifQ.c2lnbmF0dXJl';
+
+  test('a huge eyJ word neither throws nor takes long', () => {
+    const word = `eyJ${'a'.repeat(4e6)}.${'a'.repeat(2e6)}`;
+    for (const [body, mimeType] of [
+      [`{"a":"${word}"}`, 'application/json'],
+      [`x ${word}`, 'text/plain'],
+      [`a=1&b=${word}`, 'application/x-www-form-urlencoded'],
+    ] as const) {
+      const started = performance.now();
+      assert.doesNotThrow(() => exportedResponse(body, mimeType), mimeType);
+      assert.ok(performance.now() - started < 3000, mimeType);
+    }
+  });
+
+  test('a body that cannot be sanitized is replaced whole, never kept', () => {
+    const failing = (): string => {
+      throw new RangeError('Maximum call stack size exceeded');
+    };
+    assert.equal(redactOrReplaceWhole('{"token":"S1"}', failing), REDACTED);
+    assert.equal(
+      redactOrReplaceWhole('{"a":1}', (text) => text),
+      '{"a":1}'
+    );
+  });
+
+  test('redacts only the JWT inside a longer string value', () => {
+    assert.equal(
+      exportedResponse(`{"redirect":"https://a/cb#id_token=${JWT}&state=1","msg":"Bearer ${JWT}"}`),
+      `{"redirect":"https://a/cb#id_token=${REDACTED}&state=1","msg":"Bearer ${REDACTED}"}`
+    );
+  });
+
+  test('redacts a JWT in a form value, also when sniffed as a form', () => {
+    assert.equal(
+      exportedBody(`a=1&b=${JWT}`, 'application/x-www-form-urlencoded'),
+      `a=1&b=${REDACTED}`
+    );
+    assert.equal(exportedBody(`x=${JWT};`, 'text/plain'), `x=${REDACTED};`);
+  });
+
+  test('redacts Engine.io v3 polling payloads', () => {
+    assert.equal(
+      exportedResponse('45:42["auth",{"token":"x"}]', 'text/plain'),
+      `45:42["auth",{"token":${R}}]`
+    );
+  });
+
+  test('reads a socket.io namespace with a query as JSON, not a form', () => {
+    assert.equal(
+      exportedResponse('42/admin?x=1,["a",{"token":"abc"}]', ''),
+      `42/admin?x=1,["a",{"token":${R}}]`
+    );
+  });
+
+  test('decodes a string holding JSON after whitespace or a socket.io frame', () => {
+    assert.equal(
+      exportedResponse('{"a":"\\n {\\"token\\":\\"S1\\"}"}'),
+      `{"a":${JSON.stringify(`\n {"token":"${REDACTED}"}`)}}`
+    );
+    assert.equal(
+      exportedResponse('{"a":"42[\\"auth\\",{\\"token\\":\\"S1\\"}]"}'),
+      `{"a":${JSON.stringify(`42["auth",{"token":"${REDACTED}"}]`)}}`
+    );
+  });
+});
+
+void describe('HAR sanitization: credential names', () => {
+  const sensitive = [
+    'passphrase',
+    'bearer',
+    'cookie',
+    'csrf',
+    'XSRF-TOKEN',
+    'refresh',
+    'auth',
+    'X-Auth',
+    'auth_code',
+    'authCode',
+    'oauth',
+    'sid',
+    'pin',
+    'user_pin',
+    'ssn',
+    'card_number',
+    'cardNo',
+    'cardNumber',
+    'code_verifier',
+    'userPin',
+    'userSsn',
+    'ssnNumber',
+    'userOtp',
+  ];
+  const kept = [
+    'code',
+    'key',
+    'spinner',
+    'author',
+    'considered',
+    'pinned',
+    'cardholder',
+    'opinion',
+    'cardNotes',
+    'card_nonce',
+    'discard_note',
+    'pinned_items',
+    'authorName',
+  ];
+
+  for (const name of sensitive) {
+    test(`${name}: redacted`, () => {
+      assert.equal(exportedResponse(`{"${name}":"v"}`), `{"${name}":"${REDACTED}"}`);
+    });
+  }
+  for (const name of kept) {
+    test(`${name}: kept`, () => {
+      assert.equal(exportedResponse(`{"${name}":"v"}`), `{"${name}":"v"}`);
+    });
+  }
+
+  test('form masking shares passphrase, PIN, SSN and card number names', () => {
+    const masked = new RegExp(SENSITIVE_NAME_SOURCE, 'i');
+    for (const name of ['passphrase', 'pin', 'card-pin', 'ssn', 'card_number', 'cardNum']) {
+      assert.ok(masked.test(name), name);
+    }
+    for (const name of [
+      'spinner',
+      'opinion',
+      'cardholder',
+      'refresh',
+      'cardNotes',
+      'card_nonce',
+      'discard_note',
+      'userPin',
+    ]) {
+      assert.ok(!masked.test(name), name);
+    }
+  });
+});
+
 void describe('HAR sanitization: log comment', () => {
-  test('says response bodies and WebSocket messages are not sanitized', () => {
-    assert.match(build([LOGIN_REQUEST]).log.comment ?? '', /response bodies.*WebSocket/i);
+  test('says response bodies and WebSocket messages are sanitized, and what is not', () => {
+    const comment = build([LOGIN_REQUEST]).log.comment ?? '';
+    assert.doesNotMatch(comment, /not sanitized\. Export/);
+    assert.match(comment, /response bodies/i);
+    assert.match(comment, /WebSocket/);
+    assert.match(comment, /binary/i);
+    assert.doesNotMatch(comment, /2 MB/);
   });
 });
 

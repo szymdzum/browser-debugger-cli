@@ -9,18 +9,24 @@
  * `httpOnly`) with the value `[redacted]`, so the export still shows that a
  * request was authenticated and which cookies were set. It also covers API
  * key, token and session headers, credential query parameters in URLs
- * (`?code=`, `?access_token=`) and credential fields of request bodies
- * (sanitizeBody.ts). `headersSize` and `bodySize` stay those of the captured
- * request. Response bodies and WebSocket messages are not redacted.
+ * (`?code=`, `?access_token=`), and credential fields of request and response
+ * bodies and of WebSocket text messages (sanitizeBody.ts), editing only
+ * those values. `headersSize`, `bodySize` and `content.size` stay those of the
+ * captured request. Base64 bodies are decoded when their type is generic,
+ * JSON, form or event-stream, and binary WebSocket messages always; those
+ * that are not UTF-8 text, and other binary bodies, are kept. A body or
+ * message the sanitizer fails on is replaced whole by {@link REDACTED}.
  */
 
-import type { Cookie, Entry, Header, QueryParam } from './types.js';
+import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } from './types.js';
 
 import {
   REDACTED,
   isSensitiveField,
+  redactBase64Body,
+  redactBody,
+  redactOrReplaceWhole,
   redactPairs,
-  redactRequestBody,
 } from '@/telemetry/har/sanitizeBody.js';
 
 /** {@link REDACTED} as written in a URL */
@@ -52,6 +58,15 @@ const URL_HEADERS = new Set(['location', 'referer']);
 /** Query parameter names that hold credentials in URLs only (OAuth codes, signed URLs, API keys) */
 const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;
 
+/** {@link REDACTED} as base64, for a binary body or message replaced whole */
+const BASE64_REDACTED = Buffer.from(REDACTED).toString('base64');
+
+/** WebSocket opcode of a text message */
+const TEXT_OPCODE = 1;
+
+/** WebSocket opcode of a binary message (base64 in the HAR) */
+const BINARY_OPCODE = 2;
+
 /**
  * Redact the credentials of a HAR entry.
  *
@@ -59,7 +74,7 @@ const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;
  * @returns Copy of the entry with credential values replaced by {@link REDACTED}
  */
 export function sanitizeEntry(entry: Entry): Entry {
-  const { request, response } = entry;
+  const { request, response, _webSocketMessages: messages } = entry;
   const postData = request.postData;
   return {
     ...entry,
@@ -70,7 +85,10 @@ export function sanitizeEntry(entry: Entry): Entry {
       headers: request.headers.map(redactHeader),
       queryString: request.queryString.map(redactQueryParam),
       ...(postData?.text !== undefined && {
-        postData: { ...postData, text: redactRequestBody(postData.text, postData.mimeType) },
+        postData: {
+          ...postData,
+          text: redactOrReplaceWhole(postData.text, (text) => redactBody(text, postData.mimeType)),
+        },
       }),
     },
     response: {
@@ -78,8 +96,43 @@ export function sanitizeEntry(entry: Entry): Entry {
       cookies: response.cookies.map(redactCookie),
       headers: response.headers.map(redactHeader),
       redirectURL: redactUrl(response.redirectURL),
+      content: redactContent(response.content),
     },
+    ...(messages && { _webSocketMessages: messages.map(redactWebSocketMessage) }),
   };
+}
+
+/**
+ * Redact credential fields of a response body, also of a base64 body whose
+ * type is generic or JSON.
+ *
+ * @param content - HAR response content
+ * @returns The content, or a copy with its text redacted; `size` stays as captured
+ */
+function redactContent(content: Content): Content {
+  const { text, mimeType } = content;
+  if (text === undefined) return content;
+  const redacted =
+    content.encoding === 'base64'
+      ? redactOrReplaceWhole(text, (body) => redactBase64Body(body, mimeType), BASE64_REDACTED)
+      : redactOrReplaceWhole(text, (body) => redactBody(body, mimeType));
+  return redacted === text ? content : { ...content, text: redacted };
+}
+
+/**
+ * Redact credential fields of a WebSocket message: a text message, or a
+ * binary one that decodes as UTF-8 (redacted and encoded again).
+ *
+ * @param message - HAR WebSocket message
+ * @returns The message, or a copy with its data redacted
+ */
+function redactWebSocketMessage(message: WebSocketMessage): WebSocketMessage {
+  if (message.opcode !== TEXT_OPCODE && message.opcode !== BINARY_OPCODE) return message;
+  const data =
+    message.opcode === TEXT_OPCODE
+      ? redactOrReplaceWhole(message.data, (text) => redactBody(text, ''))
+      : redactOrReplaceWhole(message.data, (text) => redactBase64Body(text, ''), BASE64_REDACTED);
+  return data === message.data ? message : { ...message, data };
 }
 
 /**
