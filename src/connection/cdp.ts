@@ -1,5 +1,3 @@
-import { setTimeout as sleep } from 'node:timers/promises';
-
 import WebSocket from 'ws';
 
 import type { CDPEventSource, EventCleanup } from './events.js';
@@ -25,19 +23,6 @@ const NORMAL_CLOSURE_REASON = 'Normal closure';
 const CONNECTION_ATTEMPT_FAILED_MESSAGE = (attempt: number, delay: number): string =>
   `Connection attempt ${attempt + 1} failed, retrying in ${delay}ms...`;
 const CONNECTION_ABORTED_ERROR = 'Connection attempts aborted';
-
-/**
- * Wait between connection attempts, ending early when `signal` aborts.
- *
- * @param ms - Delay in milliseconds
- * @param signal - Optional abort signal
- */
-async function abortableDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  if (!signal) return asyncDelay(ms);
-  await sleep(ms, undefined, { signal }).catch((error: unknown) => {
-    if (!signal.aborted) throw error;
-  });
-}
 
 const FAILED_CONNECT_ATTEMPTS_ERROR = (maxRetries: number, lastErrorMessage?: string): string =>
   `Failed to connect after ${maxRetries} attempts: ${lastErrorMessage}`;
@@ -189,7 +174,7 @@ export class CDPConnection implements CDPEventSource {
         if (attempt < maxRetries - 1) {
           const delay = this.calculateBackoffDelay(attempt, this.config.maxRetryDelay);
           this.logger.info(CONNECTION_ATTEMPT_FAILED_MESSAGE(attempt, delay));
-          await abortableDelay(delay, options.signal);
+          await asyncDelay(delay, options.signal);
         }
       }
     }

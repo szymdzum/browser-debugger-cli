@@ -3,12 +3,25 @@
  */
 
 /**
- * Delay execution for a specified duration.
+ * Delay execution for a specified duration, ending early when `signal` aborts.
  *
  * @param ms - Milliseconds to delay
+ * @param signal - Optional abort signal (the delay resolves, not rejects, on abort)
  */
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+export function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const done = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal?.addEventListener('abort', done, { once: true });
+  });
 }
 
 /**

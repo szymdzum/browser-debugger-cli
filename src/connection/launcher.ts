@@ -13,12 +13,17 @@ import {
   CHROME_PROFILE_DIR,
   DEFAULT_CHROME_LOG_LEVEL,
 } from '@/constants.js';
+import { delay } from '@/utils/async.js';
 import { makeDirectory } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
 
-import { verifyLaunchedChrome } from './chromeIdentity.js';
+import {
+  launchAbortedError,
+  throwIfLaunchAborted,
+  verifyLaunchedChrome,
+} from './chromeIdentity.js';
 import { ChromeLaunchError } from './errors.js';
 import { resolveChromeBinary } from './launcher/binaryResolver.js';
 import { buildChromeFlags } from './launcher/flagsBuilder.js';
@@ -39,6 +44,8 @@ import { markStartupLogs, watchStartupExit } from './startupExit.js';
 const CHROME_READY_POLL_MS = 50;
 /** Checks before giving up: 25 s in all, as with chrome-launcher's defaults */
 const CHROME_READY_POLL_ATTEMPTS = 500;
+/** How often an aborted launch checks whether chrome-launcher has spawned Chrome yet */
+const SPAWN_POLL_MS = 10;
 
 const defaultLogger: Logger = {
   info: (msg) => console.error(msg),
@@ -84,6 +91,11 @@ export interface LaunchOptions extends Pick<
   chromePath?: string;
   /** bdg session directory: recorded as a marker flag on the Chrome command line, and holds the default profile */
   sessionDir?: string | undefined;
+  /**
+   * Ends the launch when aborted (the session was stopped): bdg stops waiting
+   * and kills Chrome as soon as chrome-launcher has spawned it
+   */
+  signal?: AbortSignal | undefined;
 }
 
 /**
@@ -98,7 +110,7 @@ export interface LaunchOptions extends Pick<
  *
  * @param options - Launch configuration options
  * @returns LaunchedChrome instance with PID and kill method
- * @throws ChromeLaunchError if Chrome fails to launch, process dies immediately, or CDP doesn't become available
+ * @throws ChromeLaunchError if Chrome fails to launch, process dies immediately, CDP doesn't become available, or `options.signal` aborts
  * @throws Error if user data directory cannot be created
  *
  * @remarks
@@ -140,6 +152,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   applyProfilePreferences(userDataDir, options, logger);
 
   const chromeOptions = buildChromeOptions({ ...options, port });
+  throwIfLaunchAborted(options.signal);
   const launcher = new chromeLauncher.Launcher(chromeOptions);
 
   const logs = markStartupLogs(userDataDir);
@@ -147,7 +160,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   try {
     const launchStart = Date.now();
     logger.info('Waiting for Chrome to be ready...');
-    await Promise.race([launcher.launch(), startup.exited]);
+    await launchUnlessAborted(launcher, startup.exited, options.signal);
     startup.stop();
 
     const launchDurationMs = Date.now() - launchStart;
@@ -172,7 +185,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       );
     }
 
-    await verifyLaunchedChrome({ logs, port, pid: chromeProcessPid });
+    await verifyLaunchedChrome({ logs, port, pid: chromeProcessPid, signal: options.signal });
     logger.info(`Chrome launched successfully (PID: ${chromeProcessPid}, ${launchDurationMs}ms)`);
 
     return {
@@ -203,6 +216,46 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       },
     });
   }
+}
+
+/**
+ * Run chrome-launcher's launch (spawn Chrome, wait for its port to open),
+ * ending early when Chrome exits or `signal` aborts.
+ *
+ * chrome-launcher cannot be cancelled: after an abort its port poller keeps
+ * running, bdg just stops waiting for it. An abort can arrive before
+ * chrome-launcher has spawned Chrome (it first checks whether the port
+ * answers), so this waits until Chrome is spawned or the launch has ended
+ * without one; the caller's kill then reaches that Chrome.
+ *
+ * @param launcher - chrome-launcher instance, not launched yet
+ * @param exited - Rejects when Chrome exits during startup
+ * @param signal - The launch's abort signal
+ * @throws ChromeLaunchError if `signal` aborts (before or during the launch)
+ * @throws Error from chrome-launcher or `exited`
+ */
+async function launchUnlessAborted(
+  launcher: chromeLauncher.Launcher,
+  exited: Promise<never>,
+  signal: AbortSignal | undefined
+): Promise<void> {
+  throwIfLaunchAborted(signal);
+  let settled = false;
+  const launching = launcher.launch().finally(() => {
+    settled = true;
+  });
+  let onAbort = (): void => {};
+  const aborted = new Promise<'aborted'>((resolve) => {
+    onAbort = (): void => resolve('aborted');
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    if ((await Promise.race([launching, exited, aborted])) !== 'aborted') return;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
+  while (!launcher.chromeProcess && !settled) await delay(SPAWN_POLL_MS);
+  throw launchAbortedError();
 }
 
 /**

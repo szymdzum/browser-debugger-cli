@@ -89,6 +89,14 @@ export async function fetchCDPTargets(
 }
 
 /**
+ * Options for a DevTools endpoint probe.
+ */
+export interface DevToolsProbeOptions extends FetchCDPTargetsOptions {
+  /** Ends a pending request early (the probe then reports `unreachable`) */
+  signal?: AbortSignal | undefined;
+}
+
+/**
  * What answers on a DevTools HTTP endpoint: a Chrome (with its browser-level
  * WebSocket URL), an HTTP server that is not DevTools, or nothing.
  */
@@ -100,19 +108,21 @@ export type DevToolsProbe =
  *
  * @param port - Chrome debugging port
  * @param logger - Optional logger for debug output
- * @param options - Host, HTTPS and request timeout
+ * @param options - Host, HTTPS, request timeout and abort signal
  * @returns What answered
  */
 export async function probeDevToolsEndpoint(
   port: number,
   logger?: Logger,
-  options?: FetchCDPTargetsOptions
+  options?: DevToolsProbeOptions
 ): Promise<DevToolsProbe> {
   const url = `${options?.secure ? 'https' : 'http'}://${options?.host ?? HTTP_LOCALHOST}:${port}/json/version`;
   const timeoutMs = options?.timeoutMs ?? CDP_HTTP_TIMEOUT_MS;
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const signal = options?.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
   let response: Response;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    response = await fetch(url, { signal });
   } catch (error) {
     logger?.debug(`Chrome version request failed: ${getErrorMessage(error)} (${url})`);
     return { kind: 'unreachable' };
@@ -132,13 +142,13 @@ export async function probeDevToolsEndpoint(
  *
  * @param port - Chrome debugging port
  * @param logger - Optional logger for debug output
- * @param options - Host and HTTPS
+ * @param options - Host, HTTPS and abort signal
  * @returns The URL, or null if no Chrome answered
  */
 export async function fetchBrowserWsUrl(
   port: number,
   logger?: Logger,
-  options?: Pick<FetchCDPTargetsOptions, 'host' | 'secure'>
+  options?: Pick<DevToolsProbeOptions, 'host' | 'secure' | 'signal'>
 ): Promise<string | null> {
   const probe = await probeDevToolsEndpoint(port, logger, options);
   return probe.kind === 'devtools' ? probe.wsUrl : null;
