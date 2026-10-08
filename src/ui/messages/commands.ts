@@ -7,6 +7,7 @@
 
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
+  DownloadInfo,
   ElementLayout,
   FillValueMismatch,
   LayoutPoint,
@@ -27,7 +28,7 @@ import {
   buildUrlExamples,
   buildSessionManagementReminder,
 } from '@/ui/formatters/helpFormatters.js';
-import { formatDuration, joinLines, pluralize, truncateUrl } from '@/ui/formatting.js';
+import { formatBytes, formatDuration, joinLines, pluralize, truncateUrl } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
 
@@ -196,6 +197,24 @@ export function pageNavigationText(navigation: PageNavigation): string {
   if (navigation.sameDocument) return `URL changed to ${navigation.url} (same document)`;
   const status = navigation.status === undefined ? '' : ` (${navigation.status})`;
   return `navigated to ${navigation.url}${status}`;
+}
+
+/**
+ * A download an action started, as its output line reads.
+ *
+ * @param download - Download
+ * @returns e.g. `Download: report.txt → /Users/me/.bdg/downloads/report.txt (completed, 15 B)`,
+ *   `Download: big.zip → … (inProgress, 9.8 KB so far)` (no size before the first
+ *   bytes), `Download: report.txt (canceled)`
+ */
+export function downloadText(download: DownloadInfo): string {
+  const where = download.path === undefined ? '' : ` → ${download.path}`;
+  const running = download.state === 'inProgress';
+  const bytes =
+    download.bytes === undefined || (running && download.bytes === 0)
+      ? ''
+      : `, ${formatBytes(download.bytes)}${running ? ' so far' : ''}`;
+  return `Download: ${download.suggestedFilename}${where} (${download.state}${bytes})`;
 }
 
 /**

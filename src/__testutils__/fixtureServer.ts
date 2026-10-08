@@ -25,7 +25,9 @@
  * button and a field; `/effects` has a tooltip, CSS hover captions, a to-do
  * field, buttons whose results come late and a covered button; `/attributes`
  * has an image, a link, a form with fields and an iframe for `dom query`'s key
- * attributes; `/repeated-headers` sends the same header value twice. Pages for
+ * attributes; `/repeated-headers` sends the same header value twice;
+ * `/downloads` links to `/report-download` (an attachment of 15 bytes) and
+ * `/slow-download` (an attachment whose second half comes after 3 s). Pages for
  * frame order, rejections and framework listeners come from
  * `knownLimitFixtures.ts`; the `dom inspect` pages from `inspectFixtures.ts`.
  */
@@ -461,6 +463,26 @@ fetch('/har-login', {
   });
 </script>`;
 
+/** Links to the attachments of `/report-download` and `/slow-download` */
+const DOWNLOADS_HTML = `<!doctype html><title>downloads</title>
+<a id="report" href="/report-download">Report</a>
+<a id="slow" href="/slow-download">Slow</a>`;
+
+/** Body of the `/report-download` attachment (15 bytes) */
+export const REPORT_DOWNLOAD_BODY = 'fixture report\n';
+
+/** File name the `/report-download` attachment suggests */
+export const REPORT_DOWNLOAD_NAME = 'bdg-fixture-report.txt';
+
+/** File name the `/slow-download` attachment suggests */
+export const SLOW_DOWNLOAD_NAME = 'bdg-fixture-slow.bin';
+
+/** Size of each half of the `/slow-download` attachment */
+const SLOW_DOWNLOAD_HALF_BYTES = 10000;
+
+/** How long `/slow-download` holds back its second half */
+const SLOW_DOWNLOAD_PAUSE_MS = 3000;
+
 /** Body of a 404 page */
 const MISSING_PAGE_HTML = '<!doctype html><title>Not found</title><h1>Not found</h1>';
 
@@ -652,6 +674,33 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/not-found.png') {
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('missing');
+      return;
+    }
+    if (req.url === '/downloads') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(DOWNLOADS_HTML);
+      return;
+    }
+    if (req.url === '/report-download') {
+      res.writeHead(200, {
+        'Content-Type': 'text/plain',
+        'Content-Disposition': `attachment; filename="${REPORT_DOWNLOAD_NAME}"`,
+      });
+      res.end(REPORT_DOWNLOAD_BODY);
+      return;
+    }
+    if (req.url === '/slow-download') {
+      res.writeHead(200, {
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${SLOW_DOWNLOAD_NAME}"`,
+        'Content-Length': String(2 * SLOW_DOWNLOAD_HALF_BYTES),
+      });
+      res.write(Buffer.alloc(SLOW_DOWNLOAD_HALF_BYTES, 'a'));
+      const timer = setTimeout(
+        () => res.end(Buffer.alloc(SLOW_DOWNLOAD_HALF_BYTES, 'b')),
+        SLOW_DOWNLOAD_PAUSE_MS
+      );
+      res.on('close', () => clearTimeout(timer));
       return;
     }
     if (req.url === '/api/delayed') {

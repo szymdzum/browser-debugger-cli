@@ -3,9 +3,11 @@ import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
+import { ensureSessionDownloadsDir } from '@/session/paths.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
 import { prepareDOMCollection } from '@/telemetry/dom.js';
+import { startDownloadTracking } from '@/telemetry/downloads.js';
 import { startNavigationTracking } from '@/telemetry/navigation.js';
 import { startNetworkCollection, startWebSocketCollection } from '@/telemetry/network.js';
 import { pageCrashedCommandError, startCrashTracking } from '@/telemetry/pageCrash.js';
@@ -115,6 +117,14 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
       runAlways: true,
       async start({ cdp, store }) {
         return startDialogHandling(cdp, (dialog) => store.recordDialog(dialog));
+      },
+    },
+    {
+      name: 'downloads',
+      runAlways: true,
+      async start({ cdp, config, store }) {
+        const downloadDir = config.chromeWsUrl ? undefined : ensureSessionDownloadsDir();
+        return startDownloadTracking(cdp, store.downloads, downloadDir);
       },
     },
     {

@@ -56,9 +56,10 @@ bdg page info                                # URL and title
 Page: navigated to https://app.test/secure (200)    # navigation (or "URL changed ... (same document)")
 New text: "Your password is invalid!" (div#flash)   # alert/status/aria-live messages that appeared
 ⚠ Element Clicked (no visible effect observed ...)  # nothing changed - wrong element or a broken handler
+Download: report.txt → ~/.bdg/downloads/report.txt (completed, 15 B)  # files go to <session dir>/downloads
 ```
 
-- In `--json`: `navigation`, `messages`, `effect: "none"` and pending work (timers, spinners) are fields on `data`.
+- In `--json`: `navigation`, `messages`, `downloads`, `effect: "none"` and pending work (timers, spinners) are fields on `data`.
 - Results the page shows later are not waited for: follow up with `bdg dom wait`.
 
 ```bash

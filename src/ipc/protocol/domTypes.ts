@@ -74,6 +74,27 @@ export interface ShownElement {
   element: string;
 }
 
+/** State of a download: still running, saved, or stopped before it finished */
+export type DownloadState = 'inProgress' | 'completed' | 'canceled';
+
+/** A file download a command started */
+export interface DownloadInfo {
+  /** URL of the downloaded resource */
+  url: string;
+  /** File name the page or server suggested */
+  suggestedFilename: string;
+  /**
+   * Absolute path of the file once saved: for a Chrome bdg launched,
+   * `<session dir>/downloads/<name>` (`(1)`, `(2)`… added when the name is
+   * taken), set while it still runs; for an attached Chrome only when Chrome
+   * says where it saved it. Absent for a canceled download
+   */
+  path?: string;
+  state: DownloadState;
+  /** Bytes received so far (all of them once completed) */
+  bytes?: number;
+}
+
 /** What the page was still working on when an action returned */
 export interface PendingChanges {
   /** Content requests (documents, fetch/XHR, scripts) the action started that were still running */
@@ -106,6 +127,8 @@ export interface ActionEffects {
   pending?: PendingChanges;
   /** All built-ins the page replaced that bdg's action scripts use (when the warning mentions them) */
   replacedBuiltins?: string[];
+  /** Downloads that began during the action (absent when none did) */
+  downloads?: DownloadInfo[];
 }
 
 /** A filled field's value differing from the one given */

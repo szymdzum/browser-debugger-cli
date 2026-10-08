@@ -52,6 +52,7 @@ import {
   pointerScrollText,
   actionStatusLine,
   dialogConsoleText,
+  downloadText,
   moreMessagesText,
   newMessageText,
   pageNavigationText,
@@ -441,9 +442,9 @@ interface ActionNotices extends ActionEffects {
  * "⚠ Element Clicked (page still changing)" with what it was still working
  * on, or "⚠ Element Clicked (no visible effect: …)"), the details, what
  * changed on the page (`Page:` navigation, `New text:` messages, `Shown:`
- * elements), then the network requests it triggered and the dialogs it
- * caused. No request list is shown when there were none (JSON has an empty
- * `triggeredRequests` then).
+ * elements), then the network requests it triggered, the downloads it
+ * started and the dialogs it caused. No request list is shown when there
+ * were none (JSON has an empty `triggeredRequests` then).
  *
  * @param done - What was done, e.g. "Element Clicked"
  * @param details - Label/value rows
@@ -492,6 +493,8 @@ function formatActionOutput(
       .blank()
       .section(formatTriggeredRequestsTitle(result.triggeredRequests ?? [], omitted), requests);
   }
+  if (result.downloads?.length) fmt.blank();
+  for (const download of result.downloads ?? []) fmt.text(downloadText(download));
   for (const dialog of result.dialogs ?? []) {
     fmt.blank();
     fmt.text(`Dialog: ${dialogConsoleText(dialog)}`);
