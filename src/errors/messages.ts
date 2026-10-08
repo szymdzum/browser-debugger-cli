@@ -2451,6 +2451,27 @@ export function cdpMethodNotFoundError(
 }
 
 /**
+ * `bdg cdp <name>` for a close typo of bundled methods or domains: did you
+ * mean, or how to send it as typed (a method newer than the bundled protocol).
+ *
+ * @param input - Name as typed
+ * @param similar - Methods to suggest
+ * @param listHint - First suggestion line (how to find methods)
+ * @returns Message and suggestion
+ */
+export function cdpMethodTypoError(
+  input: string,
+  similar: string[],
+  listHint: string
+): ErrorWithSuggestion {
+  const err = cdpMethodNotFoundError(input, similar, listHint);
+  return {
+    message: err.message,
+    suggestion: `${err.suggestion}\n\nTo send it as typed (a method newer than bdg's protocol): ${sessionCommand(`bdg cdp ${input} --send-anyway`)}`,
+  };
+}
+
+/**
  * `bdg cdp <Domain.method> --describe` for a method the bundled protocol lacks.
  *
  * @param method - Method as typed

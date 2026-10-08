@@ -14,8 +14,11 @@ export type MethodTarget =
   | { kind: 'known'; method: string }
   /** A well-formed method the bundled protocol lacks, sent as typed (known domain recased) */
   | { kind: 'unlisted'; method: string }
-  /** A close typo of bundled methods (suggestions may be empty when only the domain is close) */
-  | { kind: 'typo'; suggestions: string[] }
+  /**
+   * A close typo of bundled methods (suggestions may be empty when only the
+   * domain is close), with the method to send if the user insists
+   */
+  | { kind: 'typo'; method: string; suggestions: string[] }
   /** A protocol type, not a method */
   | { kind: 'type'; name: string }
   /** Not `Domain.method` */
@@ -83,8 +86,9 @@ function resolveUnknownDomain(domainName: string, methodName: string): MethodTar
     domainName,
     loadProtocol().domains.map((d) => d.domain)
   );
-  if (domains.length === 0) return { kind: 'unlisted', method: `${domainName}.${methodName}` };
-  return { kind: 'typo', suggestions: domains.flatMap((d) => closeMethods(d, methodName)) };
+  const method = `${domainName}.${methodName}`;
+  if (domains.length === 0) return { kind: 'unlisted', method };
+  return { kind: 'typo', method, suggestions: domains.flatMap((d) => closeMethods(d, methodName)) };
 }
 
 /**
@@ -111,8 +115,9 @@ export function resolveMethodTarget(input: string): MethodTarget {
 
   const type = findType(domain.domain, methodName);
   if (type) return { kind: 'type', name: `${domain.domain}.${type.id}` };
+  const method = `${domain.domain}.${methodName}`;
   const suggestions = closeMethods(domain.domain, methodName);
   return suggestions.length > 0
-    ? { kind: 'typo', suggestions }
-    : { kind: 'unlisted', method: `${domain.domain}.${methodName}` };
+    ? { kind: 'typo', method, suggestions }
+    : { kind: 'unlisted', method };
 }

@@ -208,6 +208,7 @@ void describe('JSON contract', () => {
     assert.deepEqual(type.data?.['enum'], ['Strict', 'Lax', 'None']);
     const typo = await expectEnvelope(['cdp', 'Network.getCookes', '--json'], 81);
     assert.match(String(typo.suggestion), /Network\.getCookies/);
+    assert.match(String(typo.suggestion), /bdg cdp Network\.getCookes --send-anyway/);
   });
 
   void it('delivers output larger than a pipe buffer to a slow reader', async () => {
@@ -305,9 +306,18 @@ void describe('JSON contract', () => {
     assert.match(String(madeUp.error), /^This Chrome doesn't implement Nonexistent\.method/);
     assert.doesNotMatch(String(madeUp.suggestion), /--describe/);
     assert.match(String(madeUp.warning), /^Nonexistent\.method is not in the bundled protocol/);
+    const forced = await expectEnvelope(
+      ['cdp', 'Network.getCookes', '--send-anyway', '--json'],
+      83
+    );
+    assert.match(String(forced.error), /^This Chrome doesn't implement Network\.getCookes/);
+    assert.match(String(forced.warning), /^Network\.getCookes is not in the bundled protocol/);
     const unlisted = await runCommand('cdp', ['Storage.getRelatedWebsiteSets']);
     assert.notEqual(unlisted.exitCode, 81, 'a method missing from the schema reaches Chrome');
-    assert.match(unlisted.stderr, /not in the bundled protocol .*; sending it to Chrome as is/);
+    assert.match(
+      unlisted.stderr,
+      /Warning: Storage\.getRelatedWebsiteSets is not in the bundled protocol .*; sending it to Chrome as is/
+    );
     const cdpHuman = await runCommand('cdp', ['Browser.getVersion']);
     assert.equal(cdpHuman.exitCode, 0, cdpHuman.stderr);
     assert.match(cdpHuman.stdout, /"product":/, 'cdp prints the result without --json');

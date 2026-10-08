@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  cdpCallResult,
   handleDescribeMethod,
   isBareDomain,
   methodToSend,
@@ -83,6 +84,32 @@ void describe('methodToSend', () => {
     );
   });
 
+  void it('names --send-anyway in the typo error', () => {
+    assert.throws(
+      () => methodToSend('Browser.getWindowBound'),
+      (error: unknown) =>
+        error instanceof CommandError &&
+        /bdg cdp Browser\.getWindowBound --send-anyway/.test(String(error.metadata['suggestion']))
+    );
+  });
+
+  void it('sends a close typo as typed with --send-anyway, with the warning', () => {
+    const target = methodToSend('browser.getWindowBound', { sendAnyway: true });
+    assert.equal(target.method, 'Browser.getWindowBound');
+    assert.match(target.warning ?? '', /not in the bundled protocol/);
+  });
+
+  void it('keeps blocking blocked and malformed names with --send-anyway', () => {
+    for (const name of ['Page.captureScreenshot', 'getCookies', 'Network.CookieSameSite']) {
+      assert.throws(
+        () => methodToSend(name, { sendAnyway: true }),
+        (error: unknown) =>
+          error instanceof CommandError && error.exitCode === EXIT_CODES.INVALID_ARGUMENTS,
+        name
+      );
+    }
+  });
+
   void it('stops a type name and points to --describe (exit 81)', () => {
     assert.throws(
       () => methodToSend('Network.CookieSameSite'),
@@ -102,6 +129,34 @@ void describe('methodToSend', () => {
         name
       );
     }
+  });
+});
+
+void describe('cdpCallResult', () => {
+  void it('puts the warning at the top of a success result', () => {
+    const result = cdpCallResult('Foo.bar', { ok: 1 }, 'Foo.bar is not in the bundled protocol');
+    assert.equal(result.success, true);
+    assert.equal(result.warning, 'Foo.bar is not in the bundled protocol');
+    assert.deepEqual(result.data, { method: 'Foo.bar', result: { ok: 1 } });
+  });
+
+  void it('keeps the warning when the result reports a page exception', () => {
+    const result = cdpCallResult(
+      'Foo.evaluate',
+      {
+        exceptionDetails: {
+          exceptionId: 1,
+          text: 'Uncaught',
+          lineNumber: 0,
+          columnNumber: 0,
+          exception: { type: 'object', subtype: 'error', description: 'Error: boom' },
+        },
+      },
+      'Foo.evaluate is not in the bundled protocol'
+    );
+    assert.equal(result.success, false);
+    assert.equal(result.exitCode, EXIT_CODES.SCRIPT_ERROR);
+    assert.equal(result.warning, 'Foo.evaluate is not in the bundled protocol');
   });
 });
 

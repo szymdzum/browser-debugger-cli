@@ -118,8 +118,6 @@ export interface CdpTypeDescription extends ProtocolEntry {
 export interface CdpExecuteData {
   method: string;
   result: unknown;
-  /** Set when the bundled protocol lacks the method and it was sent as typed */
-  warning?: string | undefined;
 }
 
 /**

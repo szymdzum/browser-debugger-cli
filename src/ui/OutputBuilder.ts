@@ -9,10 +9,11 @@ import { VERSION } from '@/utils/version.js';
  * Build a success response envelope.
  *
  * @param data - Response payload
- * @returns `{ version, success: true, data }`
+ * @param warning - Warning about how the command ran, if any
+ * @returns `{ version, success: true, data }`, plus `warning` when given
  */
-export function buildSuccessResponse<T>(data: T): BdgResponse<T> {
-  return { version: VERSION, success: true, data };
+export function buildSuccessResponse<T>(data: T, warning?: string): BdgResponse<T> {
+  return { version: VERSION, success: true, data, ...(warning && { warning }) };
 }
 
 /**

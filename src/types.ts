@@ -46,6 +46,9 @@ export interface BdgResponse<T = unknown> {
 
   /** Actionable suggestion for error recovery */
   suggestion?: string;
+
+  /** How the command ran despite something unusual (e.g. a CDP method bdg's protocol lacks) */
+  warning?: string;
 }
 
 /**

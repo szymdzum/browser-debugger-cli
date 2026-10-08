@@ -544,6 +544,15 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'No additional effect; kept for compatibility',
   },
 
+  'cdp:--send-anyway': {
+    default:
+      'A Domain.method 1 edit from a bundled method or domain (2 for names over 5 letters, case ignored) is taken for a typo: exit 81 with Did you mean',
+    whenEnabled:
+      'Sends such a name to Chrome as typed (for a method newer than the bundled protocol, e.g. next to a bundled sibling like getWindowBounds/setWindowBounds), with the not-in-bundled-protocol warning',
+    automaticBehavior:
+      'Blocked methods (Page.captureScreenshot, Page.close, Browser.close), type names and names that are not Domain.method are still refused; a well-formed name far from every bundled one is sent without the flag',
+  },
+
   'cdp:--describe': {
     default:
       'Without --describe, a Domain.method is called (one missing from the bundled protocol is sent as typed, with a warning)',

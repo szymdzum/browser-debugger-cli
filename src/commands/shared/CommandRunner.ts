@@ -94,6 +94,11 @@ export interface CommandResult<T = unknown> {
   errorContext?: Record<string, unknown>;
   /** Optional hint message to display on stderr (for successful commands with guidance) */
   hint?: string;
+  /**
+   * Warning about how the command ran (success or failure): top-level
+   * `warning` in the JSON envelope, `Warning: …` on stderr otherwise
+   */
+  warning?: string;
 }
 
 /**
@@ -144,6 +149,15 @@ function sessionEndedError(): CommandError {
 }
 
 /**
+ * Print a command's warning on stderr (text output; `--json` has it in the envelope).
+ *
+ * @param warning - Warning, if any
+ */
+function printWarning(warning: string | undefined): void {
+  if (warning) console.error(escapeControlChars(`Warning: ${warning}`));
+}
+
+/**
  * Run a command with consistent error handling, output formatting, and exit codes.
  * Eliminates boilerplate try-catch and JSON output logic from command handlers.
  *
@@ -184,6 +198,7 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           stringifyEnvelope(
             OutputBuilder.buildJsonError(result.error ?? 'Unknown error', {
               ...result.errorContext,
+              ...(result.warning && { warning: result.warning }),
               exitCode,
             })
           )
@@ -199,16 +214,18 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
             }
           }
         }
+        printWarning(result.warning);
       }
       process.exit(exitCode);
     }
 
+    if (!options.json) printWarning(result.warning);
     if (result.hint && !options.quiet) {
       console.error(escapeControlChars(result.hint));
     }
 
     if (options.json) {
-      console.log(stringifyEnvelope(buildSuccessResponse(result.data)));
+      console.log(stringifyEnvelope(buildSuccessResponse(result.data, result.warning)));
     } else if (formatter) {
       const formattedOutput = formatter(result.data as TResult);
       console.log(escapeControlChars(formattedOutput));
@@ -235,10 +252,14 @@ export async function runCommand<TOptions extends BaseOptions, TResult = unknown
           )
         );
       } else {
+        const { warning, ...metadata } = error.metadata;
         console.error(genericError(error.message));
-        for (const value of Object.values(error.metadata)) {
-          console.error(escapeControlChars(String(value)));
+        for (const value of Object.values(metadata)) {
+          console.error(
+            escapeControlChars(typeof value === 'string' ? value : JSON.stringify(value))
+          );
         }
+        printWarning(warning);
       }
       process.exit(error.exitCode);
     }

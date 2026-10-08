@@ -20,6 +20,7 @@ import { CommandError } from '@/errors/index.js';
 import {
   cdpMethodNotFoundError,
   cdpMethodNotInBundledProtocolError,
+  cdpMethodTypoError,
   cdpTypeNotMethodError,
   emptyCdpSearchError,
   missingArgumentError,
@@ -148,6 +149,12 @@ export function registerCdpCommand(program: Command): void {
     )
     .addOption(new Option('--describe', 'Show method signature and parameters').conflicts('params'))
     .addOption(
+      new Option(
+        '--send-anyway',
+        'Send a Domain.method that looks like a typo of a bundled one as typed'
+      ).conflicts(['list', 'describe', 'search'])
+    )
+    .addOption(
       new Option('--search <query>', 'Search methods by keyword').conflicts([
         'list',
         'describe',
@@ -184,11 +191,7 @@ async function runCdpCommand(
     return runCommand(async () => handleDescribeMethod(method), options, formatCdpDescription);
   }
   if (method) {
-    return runCommand(
-      async () => handleExecuteMethod(method, options.params),
-      options,
-      formatCdpResult
-    );
+    return runCommand(async () => handleExecuteMethod(method, options), options, formatCdpResult);
   }
   return runCommand(async () => {
     const err = missingArgumentError(CDP_USAGE);
@@ -573,11 +576,15 @@ const BLOCKED_CDP_METHODS: Record<string, { alternative: string; reason: string 
  * well-formed method the bundled protocol lacks, as typed with a warning.
  *
  * @param methodName - Method name as typed
+ * @param options - `sendAnyway` sends a close typo of bundled methods as typed
  * @returns Method to send, and the warning for one the bundled protocol lacks
  * @throws CommandError (exit 81) for a blocked method, a type, a close typo
- *   of bundled methods or a name that is not `Domain.method`
+ *   of bundled methods (without `sendAnyway`) or a name that is not `Domain.method`
  */
-export function methodToSend(methodName: string): { method: string; warning?: string } {
+export function methodToSend(
+  methodName: string,
+  options: Pick<CdpCommandOptions, 'sendAnyway'> = {}
+): { method: string; warning?: string } {
   const target = resolveMethodTarget(methodName);
   if (target.kind === 'known') {
     const blocked = BLOCKED_CDP_METHODS[target.method];
@@ -590,7 +597,7 @@ export function methodToSend(methodName: string): { method: string; warning?: st
     }
     return { method: target.method };
   }
-  if (target.kind === 'unlisted') {
+  if (target.kind === 'unlisted' || (target.kind === 'typo' && options.sendAnyway)) {
     return {
       method: target.method,
       warning: cdpUnlistedMethodWarning(target.method, getBundledProtocolVersion()),
@@ -624,12 +631,12 @@ function unknownMethodError(
   }
   const [domainName = ''] = methodName.split('.');
   return target.suggestions.length > 0
-    ? cdpMethodNotFoundError(
+    ? cdpMethodTypoError(
         methodName,
         target.suggestions.slice(0, 3),
         'Use: bdg cdp --search <keyword> (to search for methods)'
       )
-    : cdpMethodNotFoundError(methodName, [], domainSuggestion(domainName));
+    : cdpMethodTypoError(methodName, [], domainSuggestion(domainName));
 }
 
 /**
@@ -638,7 +645,7 @@ function unknownMethodError(
  *
  * @param error - Error of the call
  * @param warning - Warning, when the method was not in the bundled protocol
- * @returns The error, with the warning (JSON `warning`) when there is one
+ * @returns The error, with the warning (top-level JSON `warning`) when there is one
  */
 function withWarning(error: unknown, warning: string | undefined): unknown {
   if (!warning || !(error instanceof CommandError)) return error;
@@ -654,14 +661,14 @@ function withWarning(error: unknown, warning: string | undefined): unknown {
  */
 async function handleExecuteMethod(
   methodName: string,
-  paramsJson?: string
+  options: CdpCommandOptions
 ): Promise<CommandResult<CdpExecuteData>> {
-  const { method: normalized, warning } = methodToSend(methodName);
+  const { method: normalized, warning } = methodToSend(methodName, options);
 
   let params: Record<string, unknown> | undefined;
-  if (paramsJson) {
+  if (options.params) {
     try {
-      params = JSON.parse(paramsJson) as Record<string, unknown>;
+      params = JSON.parse(options.params) as Record<string, unknown>;
     } catch (error) {
       return {
         success: false,
@@ -670,6 +677,7 @@ async function handleExecuteMethod(
         errorContext: {
           suggestion: `Use: bdg cdp ${normalized} --describe (to see parameter schema)`,
         },
+        ...(warning && { warning }),
       };
     }
   }
@@ -682,19 +690,36 @@ async function handleExecuteMethod(
     throw withWarning(error, warning);
   }
 
-  const cdpResult = response.data?.result;
+  const ipcHint = response.data?.hint && formatHint(response.data.hint);
+  return cdpCallResult(normalized, response.data?.result, warning, ipcHint);
+}
+
+/**
+ * The result of a CDP call: the page exception it reported (exit 91), or its
+ * result with the session's and the method's hints; either way with the
+ * warning for a method the bundled protocol lacks.
+ *
+ * @param method - Method called
+ * @param cdpResult - What Chrome returned
+ * @param warning - Warning for a method the bundled protocol lacks
+ * @param ipcHint - Hint the session gave (e.g. a repeated-call pattern)
+ * @returns Command result
+ */
+export function cdpCallResult(
+  method: string,
+  cdpResult: unknown,
+  warning?: string,
+  ipcHint?: string
+): CommandResult<CdpExecuteData> {
+  const withCallWarning = warning ? { warning } : {};
   const exception = pageExceptionResult(cdpResult);
-  if (exception) return exception;
+  if (exception) return { ...exception, ...withCallWarning };
 
-  const hints = [
-    warning && `Warning: ${warning}`,
-    response.data?.hint && formatHint(response.data.hint),
-    getMethodHint(normalized, cdpResult),
-  ].filter(Boolean);
-
+  const hints = [ipcHint, getMethodHint(method, cdpResult)].filter(Boolean);
   return {
     success: true,
-    data: { method: normalized, result: cdpResult, ...(warning && { warning }) },
+    data: { method, result: cdpResult },
+    ...withCallWarning,
     ...(hints.length > 0 && { hint: hints.join('\n') }),
   };
 }

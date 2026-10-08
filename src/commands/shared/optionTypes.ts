@@ -139,6 +139,8 @@ export interface CdpMethodOptions {
   describe?: boolean;
   /** Search for methods */
   search?: string;
+  /** Send a method that looks like a typo of a bundled one as typed */
+  sendAnyway?: boolean;
 }
 
 /** Options for stop command */

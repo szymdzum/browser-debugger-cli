@@ -37,8 +37,9 @@ void describe('resolveMethodTarget', () => {
   });
 
   void it('takes a method 1-2 letters off a bundled one for a typo', () => {
-    assert.deepEqual(resolveMethodTarget('Network.getCookes'), {
+    assert.deepEqual(resolveMethodTarget('network.getCookes'), {
       kind: 'typo',
+      method: 'Network.getCookes',
       suggestions: ['Network.getCookies', 'Network.setCookies'],
     });
     const enable = resolveMethodTarget('Page.enabel');
@@ -48,9 +49,14 @@ void describe('resolveMethodTarget', () => {
   void it('takes a domain 1-2 letters off a bundled one for a typo', () => {
     assert.deepEqual(resolveMethodTarget('Netwrk.getCookies'), {
       kind: 'typo',
+      method: 'Netwrk.getCookies',
       suggestions: ['Network.getCookies'],
     });
-    assert.deepEqual(resolveMethodTarget('Netwrok.fooBar'), { kind: 'typo', suggestions: [] });
+    assert.deepEqual(resolveMethodTarget('Netwrok.fooBar'), {
+      kind: 'typo',
+      method: 'Netwrok.fooBar',
+      suggestions: [],
+    });
   });
 
   void it('tells a type from a method', () => {
