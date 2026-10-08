@@ -76,6 +76,11 @@ void describe('page crash', () => {
     await fixture.close();
   });
 
+  /**
+   * Chrome reports the crash within milliseconds of the kill; status is
+   * polled 20 times (at least 5 s). "At once" is under 10 s, against the
+   * 29 s a query on the dead page used to take; it takes about 1 s.
+   */
   void it('reports a crashed page, fails page commands at once, and recovers on reload', async () => {
     const status0 = JSON.parse(await bdg(['status', '--json'])) as {
       data: { chromePid: number };

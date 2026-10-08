@@ -69,6 +69,20 @@ function longestLine(text: string): number {
   return Math.max(...text.split('\n').map((line) => line.length));
 }
 
+/**
+ * Wait until the session has recorded the error the setup script throws from
+ * a timer, after its eval returned (the tests read it from the console).
+ */
+async function waitForThrownError(): Promise<void> {
+  const deadline = Date.now() + 20000;
+  for (;;) {
+    const data = await bdgJson<ConsoleData>(['console', '--list']);
+    if (data.errors.some((error) => error.text.includes('EEE'))) return;
+    assert.ok(Date.now() < deadline, 'the thrown error was never recorded');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 void describe('Long values', () => {
   let fixture: FixtureServer;
 
@@ -77,6 +91,7 @@ void describe('Long values', () => {
     fixture = await startFixtureServer();
     await bdg([`${fixture.url}interactions`, '--port', String(await getFreePort()), '--headless']);
     await bdg(['dom', 'eval', SETUP_SCRIPT]);
+    await waitForThrownError();
   });
 
   after(async () => {

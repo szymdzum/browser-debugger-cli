@@ -49,7 +49,8 @@ async function exportHar(args: string[] = []): Promise<{ data: HarExport; text: 
 
 /**
  * Wait until both login requests of the fixture page have finished and the
- * WebSocket echo has come back.
+ * WebSocket echo has come back. They finish within about 1 s of the start;
+ * the wait allows 10 s.
  */
 async function waitForLogins(): Promise<void> {
   const deadline = Date.now() + 10000;

@@ -43,9 +43,11 @@ export async function runCommand(
     readDelay?: number;
     /** Sends SIGINT to the command when aborted, like Ctrl-C */
     interrupt?: AbortSignal;
+    /** Called with everything read from stdout so far, after each chunk */
+    onStdout?: (stdout: string) => void;
   } = {}
 ): Promise<CommandResult> {
-  const { timeout = 30000, env = {}, readDelay = 0, interrupt } = options;
+  const { timeout = 30000, env = {}, readDelay = 0, interrupt, onStdout } = options;
 
   // Path to compiled CLI entry point (ESM module compatibility)
   const currentFileDir = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +79,7 @@ export async function runCommand(
 
     child.stdout?.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
+      onStdout?.(stdout);
     });
     if (readDelay > 0) {
       child.stdout?.pause();

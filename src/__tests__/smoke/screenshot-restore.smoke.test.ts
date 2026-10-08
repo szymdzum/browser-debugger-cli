@@ -26,7 +26,11 @@ import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 const PAGE_METRICS_JS =
   '[innerWidth, innerHeight, document.documentElement.clientWidth, devicePixelRatio]';
 
-/** How long the page stays busy once the capture changed its emulation */
+/**
+ * How long the page stays busy once the capture changed its emulation. The
+ * test sends Ctrl-C within one 20 ms beacon poll of the change, so the
+ * capture is still held when it arrives, with about 3 s to spare.
+ */
 const BUSY_MS = 3000;
 
 /**
@@ -85,7 +89,9 @@ async function evaluate(expression: string): Promise<unknown> {
 }
 
 /**
- * Wait until the page measures as expected, or the time runs out.
+ * Wait until the page measures as expected, or the time runs out. The
+ * restore can land just after the interrupted command exits (#519); it takes
+ * well under a second, the wait allows 15 s.
  *
  * @param expected - Metrics before the capture
  * @returns The last metrics read

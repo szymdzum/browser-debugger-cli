@@ -46,6 +46,28 @@ async function evaluate(expression: string): Promise<unknown> {
   return (JSON.parse(output) as { data: { result: unknown } }).data.result;
 }
 
+/**
+ * Wait until the page runs a new document (one without the `beforeReload`
+ * flag the old one set), so the session has seen the navigation, instead of
+ * a fixed delay a slow reload can outlast.
+ */
+async function waitForNewDocument(): Promise<void> {
+  const deadline = Date.now() + 20000;
+  for (;;) {
+    const result = await runCommand(
+      'dom',
+      ['eval', "typeof window.beforeReload === 'undefined'", '--json'],
+      { timeout: 60000 }
+    );
+    const reloaded =
+      result.exitCode === 0 &&
+      (JSON.parse(result.stdout) as { data: { result: unknown } }).data.result === true;
+    if (reloaded) return;
+    assert.ok(Date.now() < deadline, 'the page never loaded its new document');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 const LIST_HTML =
   '<ul id="list">' +
   ['one', 'two', 'three']
@@ -250,8 +272,8 @@ void describe('Element targeting', () => {
 
   void it('fails with 87 after the page navigated', async () => {
     await bdg(['dom', 'query', '.item']);
-    await evaluate('location.href = location.href; 1');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await evaluate('window.beforeReload = true; location.href = location.href; 1');
+    await waitForNewDocument();
     await bdg(['dom', 'get', '0'], 87);
     await bdg(['dom', 'click', '0'], 87);
   });

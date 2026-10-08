@@ -272,6 +272,27 @@ void describe('Full headers and cookies', () => {
   });
 });
 
+/**
+ * Wait until the session has fetched the body of `/pixel.png`. It does so
+ * right after the response; each check runs two bdg commands (about 1 s on a
+ * slow runner), so the wait allows 20 s.
+ *
+ * @returns True once the body is there
+ */
+async function pixelBodyFetched(): Promise<boolean> {
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    const list = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
+    const pixel = list.requests.find((r) => r.url.endsWith('/pixel.png'));
+    const details = pixel
+      ? await runJson<{ item: { responseBody?: string } }>('details', ['network', pixel.requestId])
+      : undefined;
+    if (details?.item.responseBody) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return false;
+}
+
 void describe('HAR export with --all', () => {
   let fixture: FixtureServer;
 
@@ -287,19 +308,7 @@ void describe('HAR export with --all', () => {
       'eval',
       'new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(1); img.src = "/pixel.png"; document.body.append(img); })',
     ]);
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline) {
-      const list = await runJson<{ requests: ListedRequest[] }>('network', ['list', '--last', '0']);
-      const pixel = list.requests.find((r) => r.url.endsWith('/pixel.png'));
-      const details = pixel
-        ? await runJson<{ item: { responseBody?: string } }>('details', [
-            'network',
-            pixel.requestId,
-          ])
-        : undefined;
-      if (details?.item.responseBody) break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
+    assert.ok(await pixelBodyFetched(), 'the pixel body was never fetched');
   });
 
   after(async () => {

@@ -39,6 +39,62 @@ async function evaluate(
   return { exitCode: result.exitCode, ...envelope };
 }
 
+/**
+ * Script that makes the page busy for good from a timer, so the eval itself
+ * returns first. The timer tells the fixture server (`/beacon?busy`, a
+ * synchronous request) right before it loops, so the test can wait for the
+ * page to be busy instead of hoping the timer fired before its next command.
+ */
+const BUSY_FROM_TIMER_JS = `setTimeout(() => {
+  const beacon = new XMLHttpRequest();
+  beacon.open('GET', '/beacon?busy', false);
+  beacon.send();
+  while (true) {}
+}, 0); 1`;
+
+/**
+ * Wait until the page has sent a beacon.
+ *
+ * @param fixture - Fixture server the page reports to
+ * @param name - Beacon query string
+ */
+async function waitForBeacon(fixture: FixtureServer, name: string): Promise<void> {
+  const deadline = Date.now() + 20000;
+  while (!fixture.beacons.includes(name)) {
+    assert.ok(Date.now() < deadline, `the page never sent /beacon?${name}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+/**
+ * Make the page busy from a timer and wait until it is.
+ *
+ * @param fixture - Fixture server the page reports to
+ */
+async function makePageBusy(fixture: FixtureServer): Promise<void> {
+  fixture.beacons.length = 0;
+  assert.equal((await evaluate(BUSY_FROM_TIMER_JS)).exitCode, 0);
+  await waitForBeacon(fixture, 'busy');
+}
+
+/**
+ * Console errors of the page, read once one matching `expected` was recorded
+ * (errors arrive in order, so any reported before it are there too).
+ *
+ * @param expected - Error the page reports last
+ * @returns Texts of the errors
+ */
+async function consoleErrorsOnceReported(expected: RegExp): Promise<string[]> {
+  const deadline = Date.now() + 20000;
+  for (;;) {
+    const result = await runCommand('console', ['--json']);
+    const { data } = JSON.parse(result.stdout) as { data: { errors: Array<{ text: string }> } };
+    const texts = data.errors.map((e) => e.text);
+    if (texts.some((text) => expected.test(text)) || Date.now() > deadline) return texts;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 void describe('dom eval', () => {
   let fixture: FixtureServer;
 
@@ -132,7 +188,7 @@ void describe('dom eval', () => {
   });
 
   void it('recovers a busy page from other DOM commands too', async () => {
-    assert.equal((await evaluate('setTimeout(() => { while (true) {} }, 0); 1')).exitCode, 0);
+    await makePageBusy(fixture);
     const query = await runCommand('dom', ['query', 'body', '--json'], { timeout: 60000 });
     assert.equal(query.exitCode, 102, query.stdout);
     assert.match(query.stdout, /usable again/);
@@ -140,7 +196,7 @@ void describe('dom eval', () => {
   });
 
   void it('recovers a page kept busy by a loop started from a timer', async () => {
-    assert.equal((await evaluate('setTimeout(() => { while (true) {} }, 0); 1')).exitCode, 0);
+    await makePageBusy(fixture);
     const blocked = await evaluate('2', 60000);
     if (blocked.exitCode === 0) {
       assert.equal(blocked.data?.result, 2, "Chrome's own eval timeout stopped the loop first");
@@ -160,7 +216,7 @@ void describe('dom eval', () => {
 
   void it('reports a page that navigates while the script runs as 83', async () => {
     const { exitCode, error } = await evaluate(
-      'location.href = "/?next"; await new Promise((r) => setTimeout(r, 3000)); 1'
+      'location.href = "/?next"; await new Promise(() => {})'
     );
     assert.equal(exitCode, 83);
     assert.match(error ?? '', /The page navigated while the script ran/);
@@ -174,12 +230,8 @@ void describe('dom eval', () => {
     assert.equal(later.exitCode, 91);
     assert.match(later.error ?? '', /page later/);
     await evaluate('setTimeout(() => Promise.reject(new Error("real page rejection"))); 1');
-    await evaluate('await new Promise((r) => setTimeout(r, 300)); 1');
-    const result = await runCommand('console', ['--json']);
-    const { data } = JSON.parse(result.stdout) as { data: { errors: Array<{ text: string }> } };
-    assert.deepEqual(
-      data.errors.map((e) => e.text),
-      ['Uncaught (in promise) Error: real page rejection']
-    );
+    assert.deepEqual(await consoleErrorsOnceReported(/real page rejection/), [
+      'Uncaught (in promise) Error: real page rejection',
+    ]);
   });
 });

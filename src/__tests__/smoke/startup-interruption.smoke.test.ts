@@ -31,8 +31,34 @@ import { EXIT_CODES } from '@/utils/exitCodes.js';
 /** What a start stopped by `bdg stop` reports */
 const START_CANCELLED = /The start was cancelled: the session was stopped while it was starting/;
 
-/** The daemon exits after Chrome's teardown (up to 5 s for Chrome alone) */
+/**
+ * The daemon exits after Chrome's teardown (up to 5 s for Chrome alone, then
+ * SIGKILL); also the wait for Chrome itself once an interrupted start has
+ * returned, since the start stops waiting for its daemon after 3 s.
+ */
 const DAEMON_EXIT_TIMEOUT_MS = 15000;
+
+/**
+ * How soon an interrupted start must end while bdg waits for a silent
+ * Chrome's `/json/version` answer. Without the abort it would wait out the
+ * 10 s launch verification; with it the start ends within about 1 s (on the
+ * `bdg stop` path that includes starting the `bdg stop` process).
+ */
+const INTERRUPTED_START_MAX_MS = 5000;
+
+/**
+ * Wait until a file exists.
+ *
+ * @param file - File to wait for
+ * @param what - What its absence means, for the error
+ */
+async function waitForFile(file: string, what: string): Promise<void> {
+  const deadline = Date.now() + 20000;
+  while (!fs.existsSync(file)) {
+    if (Date.now() > deadline) throw new Error(what);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
 
 /**
  * Wait until a PID file exists and holds a PID.
@@ -69,6 +95,11 @@ void describe('Startup interruption', () => {
   /**
    * Start a session against the slow page without waiting for it.
    *
+   * `/slow` answers 8 s after Chrome requests it, which is after Chrome is up;
+   * the tests interrupt the start as soon as Chrome's PID file appears (about
+   * 1 s for a `bdg stop` process to reach the daemon), so the start is still
+   * waiting for the page with 7 s to spare.
+   *
    * @param interrupt - Sends SIGINT to the start command when aborted
    * @returns Holder for the pending start command (not awaited)
    */
@@ -100,7 +131,8 @@ void describe('Startup interruption', () => {
 
   /**
    * Start a session whose Chrome never answers (see {@link writeSilentChrome}),
-   * wait until that Chrome listens, and interrupt the start.
+   * wait until bdg has asked that Chrome for `/json/version` (the request is
+   * then pending, and stays so), and interrupt the start.
    *
    * @param interrupt - Interrupts the start (`bdg stop`, or Ctrl-C via the controller)
    * @returns The start command's result, how long it took to end after the
@@ -111,20 +143,17 @@ void describe('Startup interruption', () => {
   ): Promise<{ result: CommandResult; tookMs: number; chromePid: number }> {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bdg-silent-chrome-'));
     const readyFile = path.join(dir, 'ready');
+    const requestFile = path.join(dir, 'requested');
     try {
       const ctrlC = new AbortController();
       const port = await getFreePort();
       const start = runCommand(`${fixture.url}slow`, ['--port', String(port), '--headless'], {
         timeout: 60000,
-        env: { CHROME_PATH: writeSilentChrome(dir, readyFile) },
+        env: { CHROME_PATH: writeSilentChrome(dir, readyFile, requestFile) },
         interrupt: ctrlC.signal,
       });
-      const deadline = Date.now() + 20000;
-      while (!fs.existsSync(readyFile) && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+      await waitForFile(requestFile, 'bdg never asked the silent Chrome for /json/version');
       const chromePid = Number(fs.readFileSync(readyFile, 'utf8'));
-      await new Promise((resolve) => setTimeout(resolve, 500));
       const interruptedAt = Date.now();
       await interrupt(ctrlC);
       const result = await start;
@@ -142,7 +171,7 @@ void describe('Startup interruption', () => {
 
     assert.equal(result.exitCode, EXIT_CODES.RESOURCE_CONFLICT, result.stderr);
     assert.match(result.stderr, START_CANCELLED);
-    assert.ok(tookMs < 5000, `start ended ${tookMs} ms after bdg stop`);
+    assert.ok(tookMs < INTERRUPTED_START_MAX_MS, `start ended ${tookMs} ms after bdg stop`);
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
     assert.equal(await isDaemonRunning(), false);
   });
@@ -154,7 +183,7 @@ void describe('Startup interruption', () => {
     });
 
     assert.equal(result.exitCode, 130);
-    assert.ok(tookMs < 5000, `start ended ${tookMs} ms after Ctrl-C`);
+    assert.ok(tookMs < INTERRUPTED_START_MAX_MS, `start ended ${tookMs} ms after Ctrl-C`);
     assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
     assert.equal(await isDaemonRunning(), false, 'no session may answer');
   });
@@ -167,8 +196,16 @@ void describe('Startup interruption', () => {
     process.kill(daemonPid, 'SIGTERM');
 
     await start.result;
-    assert.equal(await waitForProcessExit(daemonPid), true, 'daemon must exit');
-    assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
+    assert.equal(
+      await waitForProcessExit(daemonPid, DAEMON_EXIT_TIMEOUT_MS),
+      true,
+      'daemon must exit'
+    );
+    assert.equal(
+      await waitForProcessExit(chromePid, DAEMON_EXIT_TIMEOUT_MS),
+      true,
+      'Chrome must exit'
+    );
   });
 
   void it('Ctrl-C on the start command during startup leaves no session', async () => {
@@ -181,7 +218,11 @@ void describe('Startup interruption', () => {
 
     assert.equal((await start.result).exitCode, 130);
     assert.equal(await isDaemonRunning(), false, 'no session may answer once the start exited');
-    assert.equal(await waitForProcessExit(chromePid), true, 'Chrome must exit');
+    assert.equal(
+      await waitForProcessExit(chromePid, DAEMON_EXIT_TIMEOUT_MS),
+      true,
+      'Chrome must exit'
+    );
     assert.equal(
       await waitForProcessExit(daemonPid, DAEMON_EXIT_TIMEOUT_MS),
       true,
