@@ -363,9 +363,26 @@ const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
  * after a 1.5 s long task), one rendering twice and then stopping, one
  * showing a toast that hides itself, a button covered by a transparent
  * overlay, and a hover target whose mouseenter removes 200 of the 1600
- * text elements beside it. The steps are 50 ms apart, well under the
- * 150 ms a still-changing page may stay quiet: timers on the macOS CI runner
- * run up to 75 ms late, so 100 ms steps came up to 175 ms apart there.
+ * text elements beside it.
+ *
+ * Timing, against `dom click`: its first read comes 150 ms or more after
+ * the click (the network-idle wait); a DOM that looks busy then gets a
+ * second look about 250 ms later, and is still changing only if no change
+ * came over 150 ms after the one before, through to that look.
+ * - Steps and busy steps have no safe margin on the macOS CI runner (#528,
+ *   #531). There, the page's own tasks run up to about 150 ms late after a
+ *   click while bdg's reads run on time: 50 ms timer steps came up to 180
+ *   to 200 ms apart (also with no DOM change or a hidden one, so not
+ *   rendering), posted messages ran 100 to 150 ms after the click, and the
+ *   60 ms busy timer can fire after the first read, leaving a quiet gap of
+ *   over 200 ms. Linux and local runs keep 50 ms steps within a few ms.
+ * - Block starts its 1.5 s long task in a posted message right after the
+ *   click, not a timer; even 150 ms late, the first read (150 ms or more
+ *   after the click) waits over its 250 ms limit and is never answered.
+ * - Spin: the spinner stays 1.5 s; the first read comes about 150 to 400 ms
+ *   after the click.
+ * - Twice and toast are settled whenever their later change comes: one or
+ *   two renders seen and nothing after them; a toast removed after 3 s.
  */
 const EFFECTS_HTML = `<!doctype html><title>effects</title>
 <style>.card { width: 80px; height: 40px; display: inline-block; vertical-align: top; overflow: hidden } .card .caption { display: none } .card:hover .caption { display: block }</style>
@@ -415,11 +432,15 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
       while (Date.now() < end);
     }, 60);
   };
-  document.getElementById('block').onclick = () => setTimeout(() => {
-    const end = Date.now() + 1500;
-    while (Date.now() < end);
-    add('Unblocked');
-  }, 60);
+  document.getElementById('block').onclick = () => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      const end = Date.now() + 1500;
+      while (Date.now() < end);
+      add('Unblocked');
+    };
+    channel.port2.postMessage(null);
+  };
   document.getElementById('toast').onclick = () => {
     results.insertAdjacentHTML('beforeend', '<div class="toast">Saved</div>');
     setTimeout(() => results.querySelector('.toast').remove(), 3000);
