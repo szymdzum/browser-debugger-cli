@@ -47,7 +47,10 @@ type WithTypeAndSession = { type: string; sessionId: string };
  * @returns The daemon's response
  * @throws CommandError (103) before connecting when the socket's session
  *   directory cannot be trusted (see {@link secureSessionDir}): a socket
- *   planted there by another user would receive the request
+ *   planted there by another user would receive the request. The check runs
+ *   just before connecting, by path; replacing the socket in that window
+ *   needs write access to a directory of the chain, which the check has
+ *   just found only the user has
  */
 export async function sendRequest<
   TRequest extends WithTypeAndSession,
@@ -61,7 +64,7 @@ export async function sendRequest<
 ): Promise<TResponse> {
   const untrusted = secureSessionDir(path.dirname(socketPath));
   if (untrusted) {
-    const err = untrustedSessionDirError(untrusted.dir, untrusted.reason);
+    const err = untrustedSessionDirError(untrusted);
     throw new CommandError(
       err.message,
       { suggestion: err.suggestion },

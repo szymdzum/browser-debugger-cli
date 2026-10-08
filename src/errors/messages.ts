@@ -13,7 +13,7 @@ import {
   type WaitCondition,
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
-import { getSessionBaseDir, getSessionName } from '@/session/paths.js';
+import { getSessionBaseDir, getSessionName, type UntrustedSessionDir } from '@/session/paths.js';
 import type { DocumentRequestState, IndexSource } from '@/types.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import {
@@ -748,15 +748,20 @@ export function sessionDirNotWritableError(dir: string, reason: string): ErrorWi
 
 /**
  * The session directory, or one above it, is not safe to use: another user
- * could replace the daemon socket or plant files there.
+ * could replace the daemon socket or plant files there. A shared sticky
+ * directory (`BDG_SESSION_DIR=/tmp`) gets a subdirectory suggested instead
+ * of a chmod.
  *
- * @param dir - Untrusted directory
- * @param reason - Why, e.g. `writable by others (mode 777)`
+ * @param untrusted - Untrusted directory, why, and whether it is shared
  */
-export function untrustedSessionDirError(dir: string, reason: string): ErrorWithSuggestion {
+export function untrustedSessionDirError(untrusted: UntrustedSessionDir): ErrorWithSuggestion {
+  const { dir, reason, shared } = untrusted;
+  const example = `BDG_SESSION_DIR=${privateSessionDirExample()}`;
   return {
     message: `Session directory ${dir} is not safe to use: ${reason}`,
-    suggestion: `Use a directory you own that others cannot write to and that is not a symlink, e.g. BDG_SESSION_DIR=${privateSessionDirExample()} (or chmod 700 ${dir} if it is yours)`,
+    suggestion: shared
+      ? `${dir} is shared by all users; use a subdirectory only you can write to, e.g. ${example}`
+      : `Use a directory you own that others cannot write to and that is not a symlink, e.g. ${example} (or chmod 700 ${dir} if it is yours)`,
   };
 }
 

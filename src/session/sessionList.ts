@@ -14,6 +14,7 @@ import {
   SESSION_STATE_FILES,
   getNamedSessionDir,
   listSessionDirs,
+  secureSessionDir,
   sessionFilePathIn,
   type SessionDirEntry,
 } from '@/session/paths.js';
@@ -31,9 +32,11 @@ const log = createLogger('session');
  * `unresponsive`), died and left its Chrome running (`crashed`) or only
  * files (`stale`), or exited after the session ended without `bdg stop`
  * (`ended`: Chrome crashed or was closed, the page was closed, `--timeout`).
+ * `untrusted`: something listens on its socket, but its directory is not
+ * safe to use, so it is not asked.
  */
 export type RunningSessionState =
-  'active' | 'starting' | 'ending' | 'unresponsive' | 'crashed' | 'stale' | 'ended';
+  'active' | 'starting' | 'ending' | 'unresponsive' | 'crashed' | 'stale' | 'ended' | 'untrusted';
 
 /**
  * One session in the list.
@@ -55,6 +58,8 @@ export interface RunningSessionInfo {
   endReason?: UnexpectedEndReason;
   /** When an `ended` session ended (epoch ms) */
   endedAt?: number;
+  /** Why an `untrusted` session's directory is not safe to use */
+  untrusted?: string;
 }
 
 /**
@@ -93,6 +98,10 @@ async function describeSession(entry: SessionDirEntry): Promise<RunningSessionIn
   const socketPath = sessionFilePathIn(dir, 'DAEMON_SOCKET');
   const probe = await probeDaemonSocket(socketPath);
   if (probe !== 'alive') return describeWithoutSocket(entry, probe);
+  const untrusted = secureSessionDir(dir);
+  if (untrusted) {
+    return { name, state: 'untrusted', untrusted: `${untrusted.dir}: ${untrusted.reason}` };
+  }
   try {
     const response = await getStatus(socketPath);
     if (response.status === 'ok' && response.data) return toRunningSession(name, response.data);

@@ -155,7 +155,7 @@ export function assertUsableSessionDir(): void {
     );
   }
   const untrusted = secureSessionDir(dir);
-  if (untrusted) fail(untrustedSessionDirError(untrusted.dir, untrusted.reason));
+  if (untrusted) fail(untrustedSessionDirError(untrusted));
   try {
     ensureSessionDir();
     fs.accessSync(dir, fs.constants.W_OK);

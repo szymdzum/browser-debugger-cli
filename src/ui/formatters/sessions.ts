@@ -1,13 +1,14 @@
 import type { RunningSessionInfo } from '@/session/sessionList.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { endedSessionText } from '@/ui/messages/session.js';
+import { endedSessionText, untrustedSessionText } from '@/ui/messages/session.js';
 
 /** Label of the default session in the list */
 const DEFAULT_SESSION_LABEL = '(default)';
 
 /**
- * Format the sessions as a table, followed by why ended sessions ended and
- * the cleanup commands of crashed and stale sessions.
+ * Format the sessions as a table, followed by why ended sessions ended, why
+ * untrusted sessions' directories are not safe to use, and the cleanup
+ * commands of crashed and stale sessions.
  *
  * @param data - Sessions
  * @returns Human-readable list
@@ -46,6 +47,17 @@ export function formatSessionList(data: { sessions: RunningSessionInfo[] }): str
   );
   if (ended.length > 0) {
     fmt.blank().section('Ended without bdg stop:', ended);
+  }
+  const untrusted = data.sessions.flatMap(({ name, untrusted: why }) =>
+    why ? [untrustedSessionText(name ?? DEFAULT_SESSION_LABEL, why)] : []
+  );
+  if (untrusted.length > 0) {
+    fmt
+      .blank()
+      .section(
+        'Directory not safe to use (not asked; bdg status --session <name> says how to fix it):',
+        untrusted
+      );
   }
   const cleanups = data.sessions.flatMap((session) => (session.cleanup ? [session.cleanup] : []));
   if (cleanups.length > 0) {

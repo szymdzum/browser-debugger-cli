@@ -7,6 +7,7 @@
 
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
+import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -23,10 +24,16 @@ import {
 } from '@/errors/messages.js';
 import { sendRequest } from '@/ipc/transport/index.js';
 import { ensureSessionDir, getSessionDir, secureSessionDir } from '@/session/paths.js';
+import { listRunningSessions } from '@/session/sessionList.js';
+import { formatSessionList } from '@/ui/formatters/sessions.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 const POSIX = process.platform !== 'win32';
-const savedEnv = { dir: process.env['BDG_SESSION_DIR'], name: process.env['BDG_SESSION'] };
+const savedEnv = {
+  dir: process.env['BDG_SESSION_DIR'],
+  name: process.env['BDG_SESSION'],
+  home: process.env['HOME'],
+};
 let root: string;
 
 /**
@@ -75,6 +82,7 @@ void describe('session directory trust', { skip: !POSIX }, () => {
   afterEach(() => {
     restoreEnv('BDG_SESSION_DIR', savedEnv.dir);
     restoreEnv('BDG_SESSION', savedEnv.name);
+    restoreEnv('HOME', savedEnv.home);
     fs.rmSync(root, { recursive: true, force: true });
   });
 
@@ -87,15 +95,52 @@ void describe('session directory trust', { skip: !POSIX }, () => {
     assert.equal(modeOf(getSessionDir()), 0o700);
   });
 
-  void it('refuses a group/other-writable session directory with the mode and a suggestion', () => {
+  void it('refuses an other-writable session directory with exit 103, the mode and a suggestion', () => {
     fs.mkdirSync(getSessionDir(), { mode: 0o700 });
     fs.chmodSync(getSessionDir(), 0o777);
     const error = checkUsable();
-    assert.equal(error?.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
+    assert.equal(error?.exitCode, 103);
     assert.match(error?.message ?? '', /writable by others \(mode 777\)/);
     assert.match(error?.suggestion ?? '', /BDG_SESSION_DIR/);
-    fs.chmodSync(getSessionDir(), 0o720);
-    assert.match(checkUsable()?.message ?? '', /writable by others \(mode 720\)/);
+    fs.chmodSync(getSessionDir(), 0o722);
+    assert.match(checkUsable()?.message ?? '', /writable by others \(mode 722\)/);
+  });
+
+  void it('refuses a shared sticky directory (1777) and suggests a subdirectory', () => {
+    fs.mkdirSync(getSessionDir(), { mode: 0o700 });
+    fs.chmodSync(getSessionDir(), 0o1777);
+    const error = checkUsable();
+    assert.equal(error?.exitCode, 103);
+    assert.match(error?.message ?? '', /shared sticky directory \(mode 1777\)/);
+    assert.match(error?.suggestion ?? '', /subdirectory/);
+  });
+
+  void it('accepts own group-writable directories made under umask 002, tightening only bdg-owned ones', () => {
+    process.env['BDG_SESSION'] = 'agent-1';
+    const base = path.join(root, 'base');
+    const previous = process.umask(0o002);
+    try {
+      fs.mkdirSync(getSessionDir(), { recursive: true });
+    } finally {
+      process.umask(previous);
+    }
+    assert.equal(modeOf(base), 0o775);
+    assert.equal(modeOf(path.join(base, 'sessions')), 0o775);
+    assert.equal(checkUsable(), undefined);
+    assert.equal(modeOf(base), 0o775, 'a user-supplied BDG_SESSION_DIR is never chmod-ed');
+    assert.equal(modeOf(path.join(base, 'sessions')), 0o700);
+    assert.equal(modeOf(getSessionDir()), 0o700);
+  });
+
+  void it('tightens the default ~/.bdg made 0775 by an older bdg under umask 002', () => {
+    delete process.env['BDG_SESSION_DIR'];
+    process.env['HOME'] = root;
+    const bdgDir = path.join(root, '.bdg');
+    fs.mkdirSync(bdgDir);
+    fs.chmodSync(bdgDir, 0o775);
+    assert.equal(getSessionDir(), bdgDir);
+    assert.equal(checkUsable(), undefined);
+    assert.equal(modeOf(bdgDir), 0o700);
   });
 
   void it('refuses a session directory that is a symlink', () => {
@@ -126,14 +171,16 @@ void describe('session directory trust', { skip: !POSIX }, () => {
     assert.equal(fs.existsSync(getSessionDir()), false);
   });
 
-  void it("tightens the user's own directory that others can only read (0755 → 0700)", () => {
+  void it('tightens named session directories (0755 → 0700) but not a user-supplied base', () => {
     process.env['BDG_SESSION'] = 'agent-1';
     const base = path.join(root, 'base');
     fs.mkdirSync(getSessionDir(), { recursive: true, mode: 0o755 });
     fs.chmodSync(base, 0o755);
+    fs.chmodSync(path.join(base, 'sessions'), 0o755);
     fs.chmodSync(getSessionDir(), 0o755);
     assert.equal(checkUsable(), undefined);
-    assert.equal(modeOf(base), 0o700);
+    assert.equal(modeOf(base), 0o755);
+    assert.equal(modeOf(path.join(base, 'sessions')), 0o700);
     assert.equal(modeOf(getSessionDir()), 0o700);
   });
 
@@ -148,7 +195,7 @@ void describe('session directory trust', { skip: !POSIX }, () => {
       sendRequest({ type: 'status_request', sessionId: 'x' }, 'status'),
       (error: unknown) => {
         assert.ok(error instanceof CommandError);
-        assert.equal(error.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
+        assert.equal(error.exitCode, 103);
         assert.match(error.message, /writable by others/);
         assert.equal(typeof error.metadata['suggestion'], 'string');
         return true;
@@ -173,12 +220,30 @@ void describe('session directory trust', { skip: !POSIX }, () => {
       () => openDaemonLog(logPath),
       (error: unknown) => {
         assert.ok(error instanceof SessionDirError);
-        assert.equal(error.exitCode, EXIT_CODES.SESSION_FILE_ERROR);
+        assert.equal(error.exitCode, 103);
         assert.match(error.message, /symbolic link/);
         return true;
       }
     );
     assert.equal(fs.readFileSync(victim, 'utf8'), 'ORIGINAL\n');
+  });
+
+  void it('bdg sessions lists a running session in an untrusted directory as untrusted, with why', async () => {
+    process.env['BDG_SESSION'] = 'agent-1';
+    ensureSessionDir();
+    const server = net.createServer();
+    const socketPath = path.join(getSessionDir(), 'daemon.sock');
+    await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+    try {
+      fs.chmodSync(getSessionDir(), 0o777);
+      const sessions = await listRunningSessions();
+      const session = sessions.find((s) => s.name === 'agent-1');
+      assert.equal(session?.state, 'untrusted');
+      assert.match(session?.untrusted ?? '', /writable by others \(mode 777\)/);
+      assert.match(formatSessionList({ sessions }), /agent-1: .*writable by others/);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
 
@@ -189,7 +254,13 @@ void describe('session directory suggestions', () => {
       sessionDirNotWritableError('/x', 'EACCES').suggestion,
       socketPathTooLongError('/x/daemon.sock', 95).suggestion,
       sessionNameSocketTooLongError('n', '/x/daemon.sock', 95).suggestion,
-      untrustedSessionDirError('/x', 'writable by others (mode 777)').suggestion,
+      untrustedSessionDirError({
+        dir: '/x',
+        reason: 'writable by others (mode 777)',
+        shared: false,
+      }).suggestion,
+      untrustedSessionDirError({ dir: '/tmp', reason: 'a shared sticky directory', shared: true })
+        .suggestion,
     ];
     for (const suggestion of suggestions) {
       assert.doesNotMatch(suggestion, /\/tmp\/bdg(?![-\w])/);
