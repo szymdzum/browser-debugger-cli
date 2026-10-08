@@ -37,8 +37,15 @@ export function formatChromeNotice(notice: NoticeDetails<ChromeNoticeCode>): str
  * Called at the UI boundary when a ChromeLaunchError with `issue` details
  * reaches a CLI or daemon log sink. Core modules produce the IssueDetails;
  * this function is the only place wording is assembled.
+ *
+ * @param issue - Structured issue
+ * @param diagnostics - Source of Chrome installation diagnostics (tests stub it)
+ * @returns User-facing message
  */
-export function formatChromeIssue(issue: IssueDetails): string {
+export function formatChromeIssue(
+  issue: IssueDetails,
+  diagnostics: () => ChromeDiagnostics = getChromeDiagnostics
+): string {
   const ctx = issue.context ?? {};
   switch (issue.code) {
     case 'PORT_IN_USE':
@@ -58,7 +65,9 @@ export function formatChromeIssue(issue: IssueDetails): string {
           : reason
             ? chromeLaunchFailedError(reason)
             : `Chrome failed to launch`;
-      const diagnostics = getFormattedDiagnostics();
+      const found = diagnostics();
+      const diagnosticLines = formatDiagnosticsForError(found);
+      if (noChromeFound(found)) return joinLines(header, '', ...diagnosticLines);
       return joinLines(
         header,
         '',
@@ -68,7 +77,7 @@ export function formatChromeIssue(issue: IssueDetails): string {
         `  - Insufficient permissions`,
         `  - Chrome crashed on startup`,
         '',
-        ...diagnostics,
+        ...diagnosticLines,
         '',
         'Try:',
         `  - ${sessionCommand('bdg cleanup')}`,
@@ -90,11 +99,10 @@ export function formatChromeIssue(issue: IssueDetails): string {
         ctx['availableTargets'] as string | null
       );
     case 'CHROME_BINARY_NOT_FOUND': {
-      const diagnostics = getFormattedDiagnostics();
       return joinLines(
         chromeBinaryOverrideNotFound(ctx['chromePath'] as string, ctx['source'] as string),
         '',
-        ...diagnostics
+        ...formatDiagnosticsForError(diagnostics(), { suggestChromePath: false })
       );
     }
     case 'CHROME_BINARY_IS_DIRECTORY':
@@ -147,18 +155,60 @@ export function chromeExitedDuringStartupError(
 }
 
 /**
- * Retrieve Chrome diagnostics and format for error messages.
+ * Whether no Chrome was found at all: no installation and no default binary
+ * (chrome-launcher's default honors a valid CHROME_PATH).
  *
- * @returns Array of formatted diagnostic strings
+ * @param diagnostics - Chrome diagnostics
+ * @returns True when there is nothing to launch
  */
-export function getFormattedDiagnostics(): string[] {
-  return formatDiagnosticsForError(getChromeDiagnostics());
+function noChromeFound(diagnostics: ChromeDiagnostics): boolean {
+  return diagnostics.installationCount === 0 && !diagnostics.defaultPath;
+}
+
+/**
+ * A Chromium-based browser binary that chrome-launcher does not find on its
+ * own, as an example value for CHROME_PATH.
+ *
+ * @param platform - OS the path is for
+ * @returns Microsoft Edge's binary on macOS or Linux; none on other systems
+ */
+function exampleChromePath(platform: NodeJS.Platform): string | undefined {
+  if (platform === 'darwin')
+    return '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge';
+  if (platform === 'linux') return '/usr/bin/microsoft-edge';
+  return undefined;
+}
+
+/**
+ * How to point bdg at another Chromium-based browser through CHROME_PATH.
+ *
+ * @param platform - OS the example is for
+ * @returns Message lines, with an example command where one is known
+ */
+function chromePathSuggestion(platform: NodeJS.Platform): string[] {
+  const example = exampleChromePath(platform);
+  if (!example) return ['Set CHROME_PATH to a Chromium-based browser (Edge, Brave, Chromium)\n'];
+  return [
+    'Set CHROME_PATH to a Chromium-based browser (Edge, Brave, Chromium), e.g.:',
+    `   CHROME_PATH="${example}" ${sessionCommand('bdg <url>')}\n`,
+  ];
+}
+
+/**
+ * Options of {@link formatDiagnosticsForError}.
+ */
+export interface DiagnosticsFormatOptions {
+  /** OS the CHROME_PATH example is for (default: this one) */
+  platform?: NodeJS.Platform;
+  /** Suggest CHROME_PATH when no Chrome is found (off when CHROME_PATH is the problem) */
+  suggestChromePath?: boolean;
 }
 
 /**
  * Format Chrome diagnostics for error reporting when Chrome launch fails.
  *
  * @param diagnostics - Chrome diagnostics information
+ * @param options - Platform of the example and whether to suggest CHROME_PATH
  * @returns Formatted error message lines with troubleshooting steps
  *
  * @example
@@ -168,12 +218,16 @@ export function getFormattedDiagnostics(): string[] {
  * console.error(errorLines.join('\n'));
  * ```
  */
-export function formatDiagnosticsForError(diagnostics: ChromeDiagnostics): string[] {
+export function formatDiagnosticsForError(
+  diagnostics: ChromeDiagnostics,
+  { platform = process.platform, suggestChromePath = true }: DiagnosticsFormatOptions = {}
+): string[] {
   const lines: string[] = [];
 
-  if (diagnostics.installationCount === 0) {
+  if (noChromeFound(diagnostics)) {
     lines.push('Error: No Chrome installations detected\n');
-    lines.push('Install Chrome from:');
+    if (suggestChromePath) lines.push(...chromePathSuggestion(platform));
+    lines.push(suggestChromePath ? 'Or install Chrome from:' : 'Install Chrome from:');
     lines.push('   https://www.google.com/chrome/\n');
   } else {
     lines.push(`Found ${pluralize(diagnostics.installationCount, 'Chrome installation')}:\n`);

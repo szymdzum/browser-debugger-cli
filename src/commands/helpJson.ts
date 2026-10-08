@@ -107,7 +107,7 @@ export interface CompactCommand {
   name: string;
   /** Command aliases (only when it has some) */
   aliases?: readonly string[];
-  /** First line of the description */
+  /** Summary if set, else the first line of the description */
   description: string;
   /** Arguments as in usage, e.g. "<selector> [index]" (only when it takes some) */
   arguments?: string;
@@ -322,8 +322,8 @@ function argumentTerm(argument: Argument): string {
 }
 
 /**
- * Recursively converts a Commander Command to its compact summary: first
- * description line, arguments, and visible options with their descriptions.
+ * Recursively converts a Commander Command to its compact summary: summary
+ * (or first description line), arguments, and visible options with their descriptions.
  * Empty fields are left out.
  *
  * @param command - Commander command instance
@@ -336,7 +336,7 @@ function convertCompactCommand(command: Command): CompactCommand {
   return {
     name: command.name(),
     ...(aliases.length > 0 && { aliases }),
-    description: command.description().split('\n')[0] ?? '',
+    description: command.summary() || (command.description().split('\n')[0] ?? ''),
     ...(args && { arguments: args }),
     ...(options.length > 0 && {
       options: Object.fromEntries(options.map((option) => [option.flags, option.description])),

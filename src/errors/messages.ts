@@ -507,6 +507,18 @@ export function unknownHelpTopicError(topic: string, closest?: string): ErrorWit
 }
 
 /**
+ * "Did you mean" for one or more close candidates, joined as a sentence.
+ *
+ * @param candidates - Close matches, e.g. ["form", "frames"]
+ * @returns e.g. "Did you mean: form or frames?" or "Did you mean: a, b or c?"
+ */
+export function didYouMeanSuggestion(candidates: string[]): string {
+  const last = candidates.at(-1) ?? '';
+  const rest = candidates.slice(0, -1);
+  return `Did you mean: ${rest.length > 0 ? `${rest.join(', ')} or ${last}` : last}?`;
+}
+
+/**
  * Suggestion for a command-line usage error (missing argument, invalid value,
  * unknown option without a close match).
  *

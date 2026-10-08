@@ -122,6 +122,7 @@ function getMethodHint(methodName: string, result: unknown): string | undefined 
 export function registerCdpCommand(program: Command): void {
   program
     .command('cdp')
+    .summary('CDP protocol introspection and execution')
     .description(
       'CDP protocol introspection and execution\n' +
         '  Discovery: --list, --search, --describe\n' +

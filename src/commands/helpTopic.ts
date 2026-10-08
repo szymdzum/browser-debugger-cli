@@ -7,6 +7,7 @@ import type { Command, CommanderError } from 'commander';
 import { commandPath } from '@/commands/helpJson.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  didYouMeanSuggestion,
   missingSubcommandMessage,
   unknownHelpTopicError,
   usageHelpSuggestion,
@@ -14,8 +15,11 @@ import {
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { findSimilar } from '@/utils/suggestions.js';
 
-/** Commander's typo hint on its own line, e.g. "(Did you mean query?)" */
-const COMMANDER_HINT = /\n?\(Did you mean (.+)\?\)\s*$/;
+/**
+ * Commander's typo hint on its own line: "(Did you mean query?)" or, for
+ * several equally close candidates, "(Did you mean one of form, frames?)"
+ */
+const COMMANDER_HINT = /\n?\(Did you mean (?:one of )?(.+)\?\)\s*$/;
 
 /**
  * The command path of `bdg help <path...>`: the words before the first option.
@@ -73,7 +77,10 @@ export function splitCommanderHint(text: string): { message: string; suggestion?
   const message = text.replace(/^error:\s*/i, '');
   const hint = COMMANDER_HINT.exec(message);
   if (!hint) return { message };
-  return { message: message.slice(0, hint.index).trim(), suggestion: `Did you mean: ${hint[1]}?` };
+  return {
+    message: message.slice(0, hint.index).trim(),
+    suggestion: didYouMeanSuggestion((hint[1] ?? '').split(', ')),
+  };
 }
 
 /** The option named in Commander's "unknown option '--x'" message, without an `=value` */
