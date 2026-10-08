@@ -4,6 +4,7 @@ import { runCommand } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
 import type { StopCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StopResult } from '@/commands/types.js';
+import { CommandError } from '@/errors/index.js';
 import { stopSession } from '@/ipc/client.js';
 import { IPCErrorCode } from '@/ipc/index.js';
 import { IPCTimeoutError } from '@/ipc/transport/index.js';
@@ -133,7 +134,7 @@ export function registerStopCommand(program: Command): void {
               };
             }
           } catch (error: unknown) {
-            if (error instanceof IPCTimeoutError) throw error;
+            if (error instanceof IPCTimeoutError || error instanceof CommandError) throw error;
             const errorMessage = getErrorMessage(error);
 
             if (isDaemonNotRunningError(errorMessage)) {

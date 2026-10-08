@@ -11,7 +11,8 @@ import * as os from 'os';
 import * as path from 'path';
 
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
-import { makeDirectory } from '@/utils/directories.js';
+import { makeDirectory, untrustedDirReason } from '@/utils/directories.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('session');
 
@@ -197,15 +198,96 @@ export function getDaemonSocketPath(): string {
   return getSessionFilePath('DAEMON_SOCKET');
 }
 
+/** Mode of the session directories bdg creates: only the user can enter them */
+const PRIVATE_DIR_MODE = 0o700;
+
+/** Permission bits that give group or others any access */
+const GROUP_OTHER_ACCESS = 0o077;
+
 /**
  * Ensure the session directory exists.
  *
- * Creates ~/.bdg/ if it doesn't exist. Safe to call multiple times (idempotent).
- * A path that cannot hold a directory is refused before `mkdir`, which
- * would spin on a pseudo-filesystem ({@link makeDirectory}).
+ * Creates it, and missing parents (the base directory, `sessions/`), with
+ * mode 0700. Safe to call multiple times (idempotent). A path that cannot
+ * hold a directory is refused before `mkdir`, which would spin on a
+ * pseudo-filesystem ({@link makeDirectory}).
  *
  * @throws Error if the directory cannot be created
  */
 export function ensureSessionDir(): void {
-  makeDirectory(getSessionDir());
+  makeDirectory(getSessionDir(), PRIVATE_DIR_MODE);
+}
+
+/** A session directory (or one above it) that cannot be trusted */
+export interface UntrustedSessionDir {
+  /** The untrusted directory */
+  dir: string;
+  /** Why, e.g. `writable by others (mode 777)` */
+  reason: string;
+}
+
+/**
+ * Directories whose trust a session directory depends on: the base
+ * directory and each directory from it down to the session directory
+ * (`<base>`, `<base>/sessions`, `<base>/sessions/<name>`), or the directory
+ * alone when it is outside the base.
+ *
+ * @param dir - Session directory
+ * @returns Directories, outermost first
+ */
+function sessionDirChain(dir: string): string[] {
+  const base = getSessionBaseDir();
+  const relative = path.relative(base, dir);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return [dir];
+  const chain = [base];
+  for (const part of relative.split(path.sep).filter(Boolean)) {
+    chain.push(path.join(chain[chain.length - 1] ?? base, part));
+  }
+  return chain;
+}
+
+/**
+ * Remove group and other access from a directory of the user's (best effort).
+ *
+ * @param dir - Trusted directory
+ */
+function tightenDir(dir: string): void {
+  if (process.platform === 'win32') return;
+  try {
+    if ((fs.statSync(dir).mode & GROUP_OTHER_ACCESS) === 0) return;
+    fs.chmodSync(dir, PRIVATE_DIR_MODE);
+    log.debug(`Session directory ${dir} restricted to mode 700`);
+  } catch (error) {
+    log.debug(`Session directory ${dir} not restricted: ${getErrorMessage(error)}`);
+  }
+}
+
+/**
+ * Check that a session directory and the directories above it up to the base
+ * directory can be trusted before a daemon is started there or its socket is
+ * connected to: another user who can write to one of them could replace the
+ * socket (and receive every command) or plant files. Each existing directory
+ * must be a real directory (not a symlink), owned by the user, and not
+ * writable by group or others ({@link untrustedDirReason}). A trusted one
+ * that others can still read or enter (`~/.bdg` created 0755 by older
+ * versions) is tightened to 0700 instead of refused. Missing paths are
+ * skipped (as is a path through a file, which fails on its own): {@link ensureSessionDir} creates them 0700.
+ *
+ * @param dir - Session directory (default: the selected session's)
+ * @returns The first untrusted directory and why, or null
+ */
+export function secureSessionDir(dir: string = getSessionDir()): UntrustedSessionDir | null {
+  for (const candidate of sessionDirChain(dir)) {
+    let reason: string | null;
+    try {
+      reason = untrustedDirReason(candidate);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT' || code === 'ENOTDIR') continue;
+      reason = getErrorMessage(error);
+    }
+    if (reason !== null) return { dir: candidate, reason };
+    tightenDir(candidate);
+  }
+  return null;
 }

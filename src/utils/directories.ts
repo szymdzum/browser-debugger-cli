@@ -94,3 +94,26 @@ export function makeDirectory(dir: string, mode?: number): void {
   }
   fs.mkdirSync(dir, { recursive: true, ...(mode !== undefined && { mode }) });
 }
+
+/** Permission bits that let other users write */
+const GROUP_OTHER_WRITE = 0o022;
+
+/**
+ * Whether a path is a directory the current user can trust: a real directory
+ * (not a symlink), owned by the user, not writable by group or others.
+ *
+ * @param dir - Existing path
+ * @returns Why it cannot be trusted, or null if it can
+ * @throws Error from `lstat` (e.g. `ENOENT` for a missing path)
+ */
+export function untrustedDirReason(dir: string): string | null {
+  const stat = fs.lstatSync(dir);
+  if (stat.isSymbolicLink()) return 'it is a symbolic link';
+  if (!stat.isDirectory()) return 'not a directory';
+  const uid = process.getuid?.();
+  if (uid !== undefined && stat.uid !== uid) return `owned by uid ${stat.uid}`;
+  if (process.platform !== 'win32' && (stat.mode & GROUP_OTHER_WRITE) !== 0) {
+    return `writable by others (mode ${(stat.mode & 0o777).toString(8)})`;
+  }
+  return null;
+}

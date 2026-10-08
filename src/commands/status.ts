@@ -3,7 +3,7 @@ import type { Command } from 'commander';
 import { runCommand } from '@/commands/shared/CommandRunner.js';
 import type { StatusCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { StatusResult } from '@/commands/types.js';
-import { isDaemonConnectionError } from '@/errors/index.js';
+import { CommandError, isDaemonConnectionError } from '@/errors/index.js';
 import { invalidResponseError, sessionNotRespondingError } from '@/errors/messages.js';
 import { getStatus } from '@/ipc/client.js';
 import type { SessionActivity, PageState } from '@/ipc/index.js';
@@ -155,6 +155,7 @@ export function registerStatusCommand(program: Command): void {
 
             return { success: true, data: withSessionName(jsonOutput) };
           } catch (error) {
+            if (error instanceof CommandError) throw error;
             const errorMessage = getErrorMessage(error);
             if (error instanceof IPCTimeoutError) {
               const err = sessionNotRespondingError(error.timeoutMs / 1000);

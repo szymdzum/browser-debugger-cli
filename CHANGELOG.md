@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed the `handleSIGINT` launch option, which chrome-launcher ignores for `new Launcher()`, and a needless cast to reach `chromeProcess` (#486).
 
+### Security
+
+- **Session directories are private and checked before use** (#438). `~/.bdg`, `$BDG_SESSION_DIR`, `sessions/` and named session directories are created `0700`, `daemon.log` `0600`. `bdg <url>` and every command that talks to the daemon refuse a session directory (or one above it, up to the base) that is a symlink, owned by another user or writable by group/others (exit 103, e.g. `Session directory /tmp/shared is not safe to use: writable by others (mode 777)`): another user could replace `daemon.sock` and receive every command, including `dom fill` values.
+- **Upgrade:** a directory of yours that others can only read or enter (an existing `~/.bdg` created `0755` by earlier versions) is tightened to `0700` automatically, not refused.
+- **A symlinked `daemon.log` is refused, not followed** (it appended the daemon log to the file it pointed to), and error suggestions name a per-user directory (`$XDG_RUNTIME_DIR/bdg` or `<temp dir>/bdg-<uid>`) instead of the shared `/tmp/bdg`.
+
 ## [0.14.0] - 2026-10-07
 
 ### Breaking

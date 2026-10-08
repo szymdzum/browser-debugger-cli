@@ -26,13 +26,13 @@ import { findAvailablePort, firstCandidatePort, getSessionPort } from '@/session
 import {
   getPortRegistryDir,
   portsClaimedByOtherSessions,
-  untrustedDirReason,
   withPortLock,
 } from '@/session/portClaims.js';
 import { listRunningSessions, toRunningSession } from '@/session/sessionList.js';
 import { selectSession, validateSessionName } from '@/session/sessionName.js';
 import { formatSessionList } from '@/ui/formatters/sessions.js';
 import { formatNoSessionMessage } from '@/ui/formatters/status.js';
+import { untrustedDirReason } from '@/utils/directories.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 import { DAEMON_SCRIPT_PATH } from '@/utils/packageRoot.js';
 import { isProcessAlive } from '@/utils/process.js';
@@ -296,7 +296,7 @@ void describe('port choice', () => {
     fs.mkdirSync(path.join(real, 'claims'), { recursive: true, mode: 0o700 });
     fs.chmodSync(real, 0o700);
     fs.symlinkSync(real, getPortRegistryDir());
-    assert.match(untrustedDirReason(getPortRegistryDir()) ?? '', /not a directory/);
+    assert.match(untrustedDirReason(getPortRegistryDir()) ?? '', /symbolic link/);
     fakeRunningSession('other', 9280);
     process.env['BDG_SESSION'] = 'self';
     fs.writeFileSync(path.join(real, 'claims', '9281'), path.join(base, 'nowhere'));
