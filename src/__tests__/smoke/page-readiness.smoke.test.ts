@@ -149,9 +149,10 @@ void describe('Page readiness', () => {
    */
   void it('dom wait follows timer-based loading: visible, gone and text', async () => {
     await bdg(['page', 'navigate', `${fixture.url}dynamic-loading`]);
-    const waiting = bdg(['dom', 'wait', '#finish', '--visible', '--json']);
-    await bdg(['dom', 'click', '#start button']);
-    const visible = await waiting;
+    const [visible] = await Promise.all([
+      bdg(['dom', 'wait', '#finish', '--visible', '--json']),
+      bdg(['dom', 'click', '#start button']),
+    ]);
     const data = (JSON.parse(visible.stdout) as WaitEnvelope).data;
     assert.equal(data.visibleCount, 1);
     assert.ok(data.elapsedMs > 500, `waited ${data.elapsedMs}ms`);
