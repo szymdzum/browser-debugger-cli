@@ -7,6 +7,22 @@
  * errors for read-only and disabled fields; and the `/effects` fixture for
  * what hovers and key presses showed, results that come late, and
  * `--strict` refusals.
+ *
+ * Timing: what `/effects` buttons leave unfinished (`settled`, `pending.*`)
+ * has the margins its fixture describes. The steps and busy-steps
+ * `domChanging` checks have none on the macOS CI runner, where the page's
+ * own tasks run up to about 150 ms late after a click (#528, #531); they
+ * stay as they are until the product or the fixture can hold them.
+ * Elsewhere:
+ * - "no visible effect" (`effect: 'none'`) is claimed only for handlers that
+ *   change nothing at all; the effects other clicks, hovers and key presses
+ *   report come from synchronous handlers, so they hold at any speed.
+ * - The controlled checkbox re-renders in a 0 ms timer; it is read by a new
+ *   command after `dom fill`'s 150 ms network-idle wait.
+ * - `/api/delayed` answers after 500 ms, inside the click's 2 s network wait,
+ *   so it is not pending; the click on a navigation to `/slow` (answered
+ *   after 8 s) returns after that 2 s wait plus the CLI's start, under the
+ *   4 s the test allows, with `/slow` still pending.
  */
 
 import * as assert from 'node:assert/strict';
