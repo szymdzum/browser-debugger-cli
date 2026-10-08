@@ -49,13 +49,14 @@ class FakeCDP {
     this.handlers.get(event)?.forEach((handler) => handler(params));
   }
 
-  /** Start a JSON request */
-  start(requestId: string): void {
+  /** Start a JSON request (a POST when it has post data) */
+  start(requestId: string, postData?: string): void {
+    const method = postData === undefined ? 'GET' : 'POST';
     this.emit('Network.requestWillBeSent', {
       requestId,
       loaderId: 'loader',
       frameId: 'frame',
-      request: { url: `http://127.0.0.1:8080/${requestId}`, method: 'GET', headers: {} },
+      request: { url: `http://127.0.0.1:8080/${requestId}`, method, headers: {}, postData },
       timestamp: 1,
       type: 'Fetch',
     });
@@ -75,6 +76,13 @@ class FakeCDP {
   load(requestId: string, body = ''): void {
     this.bodies.set(requestId, body);
     this.start(requestId);
+    this.finish(requestId);
+  }
+
+  /** Start and finish a POST with post data and a response body */
+  post(requestId: string, postData: string, body = ''): void {
+    this.bodies.set(requestId, body);
+    this.start(requestId, postData);
     this.finish(requestId);
   }
 }
@@ -102,6 +110,18 @@ async function collect(limits: { maxRequests?: number; maxTotalBodyBytes?: numbe
     ...limits,
   });
   return { cdp, requests, evictions };
+}
+
+/**
+ * Bytes of the request and response bodies still stored (placeholders aside).
+ *
+ * @param requests - Captured requests
+ * @returns Total stored body bytes
+ */
+function storedBodyBytes(requests: NetworkRequest[]): number {
+  const kept = (body: string | undefined): number =>
+    body !== undefined && skippedBodyReason(body) === undefined ? body.length : 0;
+  return requests.reduce((sum, r) => sum + kept(r.requestBody) + kept(r.responseBody), 0);
 }
 
 /** Ids of the captured requests */
@@ -231,5 +251,67 @@ void describe('network body budget', () => {
 
     assert.equal(evictions.bodiesEvicted, 0);
     assert.equal(first.responseBody, 'xxxx');
+  });
+
+  void describe('request (POST) bodies', () => {
+    void it('count toward the same budget: the total never exceeds it', async () => {
+      const budget = 25;
+      const { cdp, requests } = await collect({ maxTotalBodyBytes: budget });
+
+      for (let i = 0; i < 20; i++) {
+        cdp.post(`p${i}`, 'q'.repeat(1 + (i % 5)), 'y'.repeat(1 + (i % 7)));
+        await flush();
+        const stored = storedBodyBytes(requests);
+        assert.ok(stored <= budget, `stored ${stored} > ${budget} after p${i}`);
+      }
+    });
+
+    void it('are evicted oldest first, keeping the request and saying why', async () => {
+      const { cdp, requests, evictions } = await collect({ maxTotalBodyBytes: 10 });
+
+      for (const id of ['p1', 'p2', 'p3']) {
+        cdp.post(id, 'xxxx');
+        await flush();
+      }
+
+      assert.deepEqual(ids(requests), ['p1', 'p2', 'p3']);
+      const [p1, p2, p3] = requests;
+      assert.match(skippedBodyReason(p1?.requestBody) ?? '', /^evicted: total body budget/);
+      assert.equal(p1?.method, 'POST', 'metadata stays');
+      assert.equal(p1?.status, 200, 'metadata stays');
+      assert.equal(p2?.requestBody, 'xxxx');
+      assert.equal(p3?.requestBody, 'xxxx');
+      assert.equal(evictions.bodiesEvicted, 1);
+    });
+
+    void it('share the oldest-first order with response bodies', async () => {
+      const { cdp, requests, evictions } = await collect({ maxTotalBodyBytes: 12 });
+
+      cdp.post('p1', 'aaaa', 'bbbb');
+      await flush();
+      cdp.post('p2', 'cccc', 'dddd');
+      await flush();
+
+      const [p1, p2] = requests;
+      assert.match(skippedBodyReason(p1?.requestBody) ?? '', /^evicted: total body budget/);
+      assert.equal(p1?.responseBody, 'bbbb');
+      assert.equal(p2?.requestBody, 'cccc');
+      assert.equal(p2?.responseBody, 'dddd');
+      assert.equal(evictions.bodiesEvicted, 1);
+    });
+
+    void it('free their bytes when the request is dropped', async () => {
+      const { cdp, requests, evictions } = await collect({ maxRequests: 2, maxTotalBodyBytes: 10 });
+
+      for (const id of ['p1', 'p2', 'p3', 'p4']) {
+        cdp.post(id, 'xxxx');
+        await flush();
+      }
+
+      assert.deepEqual(ids(requests), ['p3', 'p4']);
+      assert.equal(requests[0]?.requestBody, 'xxxx');
+      assert.equal(requests[1]?.requestBody, 'xxxx');
+      assert.equal(evictions.bodiesEvicted, 0);
+    });
   });
 });

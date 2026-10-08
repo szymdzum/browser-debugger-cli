@@ -180,7 +180,7 @@ function buildRequest(req: NetworkRequest): Request {
     headers: convertHeaders(req.requestHeaders),
     queryString: extractQueryParams(url),
     headersSize: estimateRequestHeadersSize(req.method, req.url, req.requestHeaders),
-    bodySize: req.requestBody ? Buffer.byteLength(req.requestBody, 'utf-8') : 0,
+    bodySize: requestBodySize(req),
   };
 
   const postData = buildPostData(req);
@@ -258,7 +258,20 @@ function contentLength(req: NetworkRequest): number | undefined {
 }
 
 /**
- * Build POST data object if request has body.
+ * Size of the request body: unknown (-1) when it was evicted at the body budget.
+ *
+ * @param req - Network request data
+ * @returns Body size in bytes, or -1
+ */
+function requestBodySize(req: NetworkRequest): number {
+  if (!req.requestBody) return 0;
+  if (skippedBodyReason(req.requestBody) !== undefined) return -1;
+  return Buffer.byteLength(req.requestBody, 'utf-8');
+}
+
+/**
+ * Build POST data object if request has body. A body bdg did not keep is
+ * exported without `text` and with the reason as `comment`.
  *
  * @param req - Network request data
  * @returns POST data object or undefined
@@ -266,12 +279,11 @@ function contentLength(req: NetworkRequest): number | undefined {
 function buildPostData(req: NetworkRequest): PostData | undefined {
   if (!req.requestBody) return undefined;
 
-  const contentType = getHeader(req.requestHeaders, 'content-type') ?? 'text/plain';
+  const mimeType = getHeader(req.requestHeaders, 'content-type') ?? 'text/plain';
+  const skipped = skippedBodyReason(req.requestBody);
+  if (skipped !== undefined) return { mimeType, comment: `Body not captured: ${skipped}` };
 
-  return {
-    mimeType: contentType,
-    text: req.requestBody,
-  };
+  return { mimeType, text: req.requestBody };
 }
 
 /**

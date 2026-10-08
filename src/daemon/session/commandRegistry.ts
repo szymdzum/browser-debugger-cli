@@ -252,17 +252,27 @@ function allNetworkRequests(store: TelemetryStore): NetworkRequest[] {
 }
 
 /**
- * Present a body bdg chose not to fetch as `bodyNotCaptured` (the reason)
- * instead of a placeholder string in `responseBody`.
+ * Present bodies bdg did not fetch or keep as their reasons
+ * (`requestBodyNotCaptured`, `bodyNotCaptured`) instead of placeholder
+ * strings in `requestBody` and `responseBody`.
  *
  * @param request - Captured request
  * @returns The request as `details` reports it
  */
 function withBodyNotCaptured(request: NetworkRequest): NetworkRequest {
-  const reason = skippedBodyReason(request.responseBody);
-  if (reason === undefined) return request;
-  const { responseBody: _placeholder, ...rest } = request;
-  return { ...rest, bodyNotCaptured: reason };
+  const requestReason = skippedBodyReason(request.requestBody);
+  const responseReason = skippedBodyReason(request.responseBody);
+  if (requestReason === undefined && responseReason === undefined) return request;
+  const result = { ...request };
+  if (requestReason !== undefined) {
+    delete result.requestBody;
+    result.requestBodyNotCaptured = requestReason;
+  }
+  if (responseReason !== undefined) {
+    delete result.responseBody;
+    result.bodyNotCaptured = responseReason;
+  }
+  return result;
 }
 
 /**

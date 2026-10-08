@@ -18,27 +18,28 @@ function megabytes(bytes: number): string {
 }
 
 /**
- * Why a stored response body was replaced by a placeholder (shown by
- * `bdg details network <id>` as `bodyNotCaptured`).
+ * Why a stored request or response body was replaced by a placeholder
+ * (shown by `bdg details network <id>` as `requestBodyNotCaptured` or
+ * `bodyNotCaptured`).
  *
  * @param budgetBytes - Total body budget of the session
- * @returns e.g. `evicted: total body budget (bdg keeps the newest 100 MB of response bodies)`
+ * @returns e.g. `evicted: total body budget (bdg keeps the newest 100 MB of request and response bodies)`
  */
 export function bodyEvictedReason(budgetBytes: number): string {
-  return `evicted: total body budget (bdg keeps the newest ${megabytes(budgetBytes)} of response bodies)`;
+  return `evicted: total body budget (bdg keeps the newest ${megabytes(budgetBytes)} of request and response bodies)`;
 }
 
 /** What a session's network capture let go at its limits */
 export interface NetworkEvictionCounts {
   /** Oldest finished requests dropped at the request cap */
   requestsDropped: number;
-  /** Oldest response bodies evicted at the body budget */
+  /** Oldest request and response bodies evicted at the body budget */
   bodiesEvicted: number;
 }
 
 /**
  * Note that the session dropped its oldest requests or evicted its oldest
- * response bodies at its limits.
+ * request and response bodies at its limits.
  *
  * @param counts - Requests dropped and bodies evicted
  * @returns e.g. `⚠ 2000 older network requests were dropped: bdg keeps the newest 10000`;
@@ -47,7 +48,11 @@ export interface NetworkEvictionCounts {
 export function networkEvictedNote(counts: NetworkEvictionCounts): string | undefined {
   const { requestsDropped, bodiesEvicted } = counts;
   const requests = pluralize(requestsDropped, 'older network request');
-  const bodies = pluralize(bodiesEvicted, 'older response body', 'older response bodies');
+  const bodies = pluralize(
+    bodiesEvicted,
+    'older request/response body',
+    'older request/response bodies'
+  );
   const budget = megabytes(MAX_TOTAL_BODY_BYTES);
   if (requestsDropped > 0 && bodiesEvicted > 0) {
     return `⚠ ${requests} dropped, ${bodies} evicted: bdg keeps the newest ${MAX_NETWORK_REQUESTS} requests and ${budget} of bodies`;

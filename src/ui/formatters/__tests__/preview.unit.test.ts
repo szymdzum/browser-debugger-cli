@@ -268,7 +268,7 @@ void describe('preview totals', () => {
       totals: { network: 0, console: 0, networkDropped: 2000, networkBodiesEvicted: 3 },
     };
     const note =
-      /⚠ 2000 older network requests dropped, 3 older response bodies evicted: bdg keeps the newest 10000 requests and 100 MB of bodies/;
+      /⚠ 2000 older network requests dropped, 3 older request\/response bodies evicted: bdg keeps the newest 10000 requests and 100 MB of bodies/;
     for (const verbose of [false, true]) {
       const text = formatPreview(evicted, { last: 10, network: true, verbose });
       assert.match(text, note);

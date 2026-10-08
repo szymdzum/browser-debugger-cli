@@ -904,6 +904,34 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
     );
   });
 
+  test('exports a request body evicted at the body budget with why, not the placeholder', () => {
+    const request: NetworkRequest = {
+      requestId: 'r',
+      url: 'https://example.com/upload',
+      method: 'POST',
+      timestamp: 0,
+      requestHeaders: { 'Content-Type': 'application/json' },
+      requestBody: '{"big":true}',
+    };
+    const evictions = { requestsDropped: 0, bodiesEvicted: 0 };
+    const retention = new RequestRetention(
+      [],
+      { maxRequests: 10, maxTotalBodyBytes: 4 },
+      evictions
+    );
+    retention.add(request);
+    assert.equal(evictions.bodiesEvicted, 1);
+
+    const entry = entryFor(request);
+    assert.equal(entry.request.bodySize, -1);
+    assert.equal(entry.request.postData?.mimeType, 'application/json');
+    assert.equal(entry.request.postData?.text, undefined);
+    assert.match(
+      entry.request.postData?.comment ?? '',
+      /^Body not captured: evicted: total body budget/
+    );
+  });
+
   test('postData carries text only (params and text are mutually exclusive)', () => {
     const entry = entryFor({ method: 'POST', requestBody: 'a=1' });
     assert.equal(entry.request.postData?.text, 'a=1');

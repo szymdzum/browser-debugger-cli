@@ -136,7 +136,7 @@ export const OBJECT_EXPANSION_FAILURE_THRESHOLD = 5;
 export const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
 
 /**
- * Total size of the response bodies a session keeps (100MB)
+ * Total size of the request and response bodies a session keeps (100MB)
  * Past this the oldest bodies are replaced by a placeholder; their requests stay
  */
 export const MAX_TOTAL_BODY_BYTES = 100 * 1024 * 1024;
