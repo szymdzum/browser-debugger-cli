@@ -5,7 +5,7 @@ import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { colorSchemeLabel, sessionActiveLine } from '@/ui/messages/commands.js';
+import { colorSchemeLabel, downloadsSummary, sessionActiveLine } from '@/ui/messages/commands.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -126,6 +126,9 @@ export function formatSessionStatus(
     fmt.keyValue('Console Messages', `${activity.consoleMessagesCaptured} captured`, 18);
     if (activity.lastConsoleMessageAt) {
       fmt.keyValue('  Last Message', formatTimeAgo(activity.lastConsoleMessageAt), 18);
+    }
+    if (activity.downloads?.length) {
+      fmt.keyValue('Downloads', downloadsSummary(activity.downloads), 18);
     }
   }
 

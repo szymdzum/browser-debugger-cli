@@ -92,7 +92,10 @@ void describe('startDownloadTracking', () => {
     const dir = makeTempDir('bdg-downloads-');
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, dir);
+    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, {
+      kind: 'directory',
+      dir,
+    });
     assert.deepEqual(cdp.sent, [
       {
         method: 'Browser.setDownloadBehavior',
@@ -124,7 +127,10 @@ void describe('startDownloadTracking', () => {
     fs.writeFileSync(path.join(dir, 'a.zip'), 'older');
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, dir);
+    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, {
+      kind: 'directory',
+      dir,
+    });
 
     cdp.begin('g1', 'a.zip');
     cdp.begin('g2', 'a.zip');
@@ -142,7 +148,10 @@ void describe('startDownloadTracking', () => {
     const dir = makeTempDir('bdg-downloads-');
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, dir);
+    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, {
+      kind: 'directory',
+      dir,
+    });
 
     cdp.begin('g1', 'gone.txt');
     cdp.progress('g1', 'completed', 4);
@@ -153,7 +162,7 @@ void describe('startDownloadTracking', () => {
   void it("keeps an attached browser's download settings and reports where it saved", async () => {
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, undefined);
+    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, { kind: 'browser' });
     assert.deepEqual(cdp.sent[0]?.params, { behavior: 'default', eventsEnabled: true });
 
     cdp.begin('g1', 'report.txt');
@@ -172,14 +181,44 @@ void describe('startDownloadTracking', () => {
     const cdp = new MockCDP();
     cdp.send = () => Promise.reject(new Error('Not allowed'));
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, undefined);
+    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, { kind: 'browser' });
 
     cdp.begin('g1', 'report.txt');
     assert.equal(downloads.length, 1);
   });
+  void it('refuses downloads when the directory is unusable, saying why', async () => {
+    const cdp = new MockCDP();
+    const downloads: TrackedDownload[] = [];
+    const destination = { kind: 'refused' as const, reason: 'no directory' };
+    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, destination);
+    assert.deepEqual(cdp.sent[0]?.params, { behavior: 'deny', eventsEnabled: true });
+
+    cdp.begin('g1', 'report.txt');
+    cdp.progress('g1', 'canceled', 0);
+
+    const [download] = downloads;
+    assert.ok(download);
+    assert.deepEqual(toDownloadInfo(download), {
+      url: 'http://example.test/g1',
+      suggestedFilename: 'report.txt',
+      state: 'canceled',
+      bytes: 0,
+      reason: 'no directory',
+    });
+  });
 });
 
 void describe('reserveDownloadPath', () => {
+  void it('treats names differing only in case as taken', () => {
+    const dir = makeTempDir('bdg-downloads-');
+    const reserved = new Set<string>();
+    reserveDownloadPath(dir, 'Report.txt', reserved);
+    assert.equal(
+      reserveDownloadPath(dir, 'report.txt', reserved),
+      path.join(dir, 'report (1).txt')
+    );
+  });
+
   void it('keeps a suggested name inside the download directory', () => {
     const dir = makeTempDir('bdg-downloads-');
     assert.equal(reserveDownloadPath(dir, '../../etc/passwd', new Set()), path.join(dir, 'passwd'));
@@ -207,6 +246,10 @@ void describe('downloadText', () => {
     assert.equal(
       downloadText({ url: 'u', suggestedFilename: 'report.txt', state: 'canceled' }),
       'Download: report.txt (canceled)'
+    );
+    assert.equal(
+      downloadText({ url: 'u', suggestedFilename: 'a.txt', state: 'canceled', reason: 'refused' }),
+      'Download: a.txt (canceled: refused)'
     );
   });
 });

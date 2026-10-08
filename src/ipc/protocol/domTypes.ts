@@ -93,6 +93,8 @@ export interface DownloadInfo {
   state: DownloadState;
   /** Bytes received so far (all of them once completed) */
   bytes?: number;
+  /** Why bdg canceled it, e.g. its downloads directory could not be created */
+  reason?: string;
 }
 
 /** What the page was still working on when an action returned */

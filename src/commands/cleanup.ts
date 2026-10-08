@@ -15,10 +15,16 @@ import {
 import { isSessionChrome } from '@/session/cleanup/staleSession.js';
 import { performSessionCleanup } from '@/session/cleanup/userCommands.js';
 import { isDaemonAlive } from '@/session/daemonSocket.js';
-import { getSessionDir, getSessionFilePath, getSessionName } from '@/session/paths.js';
+import {
+  getSessionDir,
+  getSessionDownloadsDir,
+  getSessionFilePath,
+  getSessionName,
+} from '@/session/paths.js';
 import { readDaemonPid, readPidFromFile } from '@/session/pid.js';
 import { joinLines } from '@/ui/formatting.js';
 import {
+  downloadsKeptMessage,
   sessionFilesCleanedMessage,
   sessionOutputRemovedMessage,
   sessionDirectoryCleanMessage,
@@ -43,6 +49,7 @@ function formatCleanup(data: CleanupResult): string {
   return joinLines(
     cleaned.session && sessionFilesCleanedMessage(),
     cleaned.output && sessionOutputRemovedMessage(),
+    data.downloadsKept && downloadsKeptMessage(data.downloadsKept.dir, data.downloadsKept.files),
     ...(data.warnings ?? []).map((warning) => warningMessage(warning)),
     '',
     data.message
@@ -199,11 +206,13 @@ async function cleanupSession(opts: CleanupCommandOptions): Promise<CommandResul
     };
   }
   const didCleanup = Object.values(cleaned).some(Boolean) || purged !== undefined;
+  const downloadsKept = purged === undefined ? keptDownloads() : undefined;
   return {
     success: true,
     data: {
       cleaned,
       ...(purged !== undefined && { purged }),
+      ...(downloadsKept && { downloadsKept }),
       message: !didCleanup
         ? noSessionFilesMessage()
         : purged !== undefined
@@ -215,6 +224,18 @@ async function cleanupSession(opts: CleanupCommandOptions): Promise<CommandResul
 }
 
 /**
+ * Downloaded files of the session, which cleanup keeps.
+ *
+ * @returns Their directory and count, or undefined when there are none
+ */
+function keptDownloads(): { dir: string; files: number } | undefined {
+  const dir = getSessionDownloadsDir();
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return undefined;
+  const files = fs.readdirSync(dir).length;
+  return files > 0 ? { dir, files } : undefined;
+}
+
+/**
  * Register cleanup command
  *
  * @param program - Commander.js Command instance to register commands on
@@ -222,7 +243,7 @@ async function cleanupSession(opts: CleanupCommandOptions): Promise<CommandResul
 export function registerCleanupCommand(program: Command): void {
   program
     .command('cleanup')
-    .description('Clean up stale session files')
+    .description('Clean up stale session files (downloaded files are kept)')
     .option('-f, --force', 'Kill a running (possibly hung) session, then clean up', false)
     .option('--remove-output', 'Also remove session.json output file', false)
     .option('--aggressive', 'Alias for --force (kept for compatibility)', false)

@@ -237,15 +237,27 @@ export function ensureSessionDir(): void {
 const DOWNLOADS_DIR = 'downloads';
 
 /**
+ * The session's downloads directory (whether or not it exists).
+ *
+ * @returns Absolute path, `<session dir>/downloads`
+ */
+export function getSessionDownloadsDir(): string {
+  return path.join(getSessionDir(), DOWNLOADS_DIR);
+}
+
+/**
  * Ensure the session's downloads directory exists (mode 0700, like the
  * session directory) and return it.
  *
  * @returns Absolute path, `<session dir>/downloads`
- * @throws Error if the directory cannot be created
+ * @throws Error if the directory cannot be created, or a file is in its place
  */
 export function ensureSessionDownloadsDir(): string {
-  const dir = path.join(getSessionDir(), DOWNLOADS_DIR);
+  const dir = getSessionDownloadsDir();
   makeDirectory(dir, PRIVATE_DIR_MODE);
+  if (!fs.statSync(dir).isDirectory()) {
+    throw Object.assign(new Error(`${dir} is a file`), { code: 'ENOTDIR' });
+  }
   return dir;
 }
 

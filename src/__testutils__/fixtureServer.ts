@@ -26,8 +26,10 @@
  * field, buttons whose results come late and a covered button; `/attributes`
  * has an image, a link, a form with fields and an iframe for `dom query`'s key
  * attributes; `/repeated-headers` sends the same header value twice;
- * `/downloads` links to `/report-download` (an attachment of 15 bytes) and
- * `/slow-download` (an attachment whose second half comes after 3 s). Pages for
+ * `/downloads` links to `/report-download` (an attachment of 15 bytes, also
+ * opened in a new tab by a `target=_blank` link and by `window.open()`) and
+ * `/slow-download` (an attachment whose second half is held back until
+ * `/slow-download/release` is requested). Pages for
  * frame order, rejections and framework listeners come from
  * `knownLimitFixtures.ts`; the `dom inspect` pages from `inspectFixtures.ts`.
  */
@@ -466,6 +468,8 @@ fetch('/har-login', {
 /** Links to the attachments of `/report-download` and `/slow-download` */
 const DOWNLOADS_HTML = `<!doctype html><title>downloads</title>
 <a id="report" href="/report-download">Report</a>
+<a id="report-tab" href="/report-download" target="_blank">Report in a new tab</a>
+<button id="report-window" onclick="window.open('/report-download')">Report in a window</button>
 <a id="slow" href="/slow-download">Slow</a>`;
 
 /** Body of the `/report-download` attachment (15 bytes) */
@@ -479,9 +483,6 @@ export const SLOW_DOWNLOAD_NAME = 'bdg-fixture-slow.bin';
 
 /** Size of each half of the `/slow-download` attachment */
 const SLOW_DOWNLOAD_HALF_BYTES = 10000;
-
-/** How long `/slow-download` holds back its second half */
-const SLOW_DOWNLOAD_PAUSE_MS = 3000;
 
 /** Body of a 404 page */
 const MISSING_PAGE_HTML = '<!doctype html><title>Not found</title><h1>Not found</h1>';
@@ -511,6 +512,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   const html = fs.readFileSync(FIXTURE_HTML);
   const interactionsHtml = fs.readFileSync(INTERACTIONS_HTML);
   let loginFailed = false;
+  const heldDownloads = new Set<http.ServerResponse>();
   const beacons: string[] = [];
   const server = http.createServer((req, res) => {
     if (req.url?.startsWith('/beacon?')) {
@@ -696,11 +698,14 @@ export async function startFixtureServer(): Promise<FixtureServer> {
         'Content-Length': String(2 * SLOW_DOWNLOAD_HALF_BYTES),
       });
       res.write(Buffer.alloc(SLOW_DOWNLOAD_HALF_BYTES, 'a'));
-      const timer = setTimeout(
-        () => res.end(Buffer.alloc(SLOW_DOWNLOAD_HALF_BYTES, 'b')),
-        SLOW_DOWNLOAD_PAUSE_MS
-      );
-      res.on('close', () => clearTimeout(timer));
+      heldDownloads.add(res);
+      res.on('close', () => heldDownloads.delete(res));
+      return;
+    }
+    if (req.url === '/slow-download/release') {
+      heldDownloads.forEach((held) => held.end(Buffer.alloc(SLOW_DOWNLOAD_HALF_BYTES, 'b')));
+      res.writeHead(204);
+      res.end();
       return;
     }
     if (req.url === '/api/delayed') {

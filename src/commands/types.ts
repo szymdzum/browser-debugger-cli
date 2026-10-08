@@ -40,6 +40,8 @@ export interface CleanupResult {
   };
   /** Directory deleted by `--purge` */
   purged?: string;
+  /** Downloaded files cleanup left in place (not with `--purge`) */
+  downloadsKept?: { dir: string; files: number };
   message: string;
   warnings?: string[];
 }
