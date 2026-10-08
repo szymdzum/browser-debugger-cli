@@ -77,6 +77,12 @@ export class DownloadTracker {
   private readonly reserved: Reservations = new Set();
   private applied: DownloadDestination = { kind: 'browser' };
   private unsubscribe: () => void = () => undefined;
+  /** Set once stopped: no connection is followed, nor any behavior set, afterwards */
+  private stopped = false;
+  /** Number of the latest attach: an earlier one still running gives way to it */
+  private latestAttach = 0;
+  /** Attaches run one after another */
+  private attaching: Promise<unknown> = Promise.resolve();
 
   /**
    * @param record - Session record receiving downloads and the warning
@@ -95,17 +101,54 @@ export class DownloadTracker {
    * stop claiming bdg's directory (downloads go where the browser puts them)
    * and the record carries a warning.
    *
+   * Attaches run one at a time, and the latest wins: one called meanwhile
+   * (the browser-level connection lost while it was being set up) makes an
+   * earlier one give way without following its connection or warning. After
+   * {@link stop}, nothing is followed and no behavior is set.
+   *
    * @param cdp - Connection (browser-level when possible)
-   * @returns True when Chrome took the destination
+   * @returns True when Chrome took the destination on this connection
    */
-  async attach(cdp: CDPConnection): Promise<boolean> {
+  attach(cdp: CDPConnection): Promise<boolean> {
+    const attempt = ++this.latestAttach;
+    const run = this.attaching.then(() => this.applyOn(cdp, attempt));
+    this.attaching = run.catch(() => undefined);
+    return run;
+  }
+
+  /** Stop following download events */
+  stop(): void {
+    this.stopped = true;
+    this.unsubscribe();
+  }
+
+  /**
+   * Whether an attach was superseded by a later one or by {@link stop}.
+   *
+   * @param attempt - Number of the attach
+   * @returns True when it must give way
+   */
+  private superseded(attempt: number): boolean {
+    return this.stopped || attempt !== this.latestAttach;
+  }
+
+  /**
+   * Set the behavior on a connection and follow its events, unless the
+   * attach was superseded before or while Chrome answered.
+   *
+   * @param cdp - Connection
+   * @param attempt - Number of the attach
+   * @returns True when Chrome took the destination and the attach still stands
+   */
+  private async applyOn(cdp: CDPConnection, attempt: number): Promise<boolean> {
+    if (this.superseded(attempt)) return false;
     this.unsubscribe();
     const error = await setDownloadBehavior(cdp, this.destination);
+    if (this.superseded(attempt)) return false;
     this.applied = error === undefined ? this.destination : { kind: 'browser' };
-    if (error !== undefined && this.destination.kind !== 'browser') {
-      this.record.downloadsWarning = downloadsNotRedirectedWarning(error);
-    } else if (this.destination.kind !== 'refused') {
-      this.record.downloadsWarning = undefined;
+    if (this.destination.kind === 'directory') {
+      this.record.downloadsWarning =
+        error === undefined ? undefined : downloadsNotRedirectedWarning(error);
     }
     const handlers = [
       cdp.on<DownloadWillBegin>('Browser.downloadWillBegin', (event) => this.begin(event)),
@@ -117,11 +160,6 @@ export class DownloadTracker {
     ];
     this.unsubscribe = () => handlers.forEach((remove) => remove());
     return error === undefined;
-  }
-
-  /** Stop following download events */
-  stop(): void {
-    this.unsubscribe();
   }
 
   /**

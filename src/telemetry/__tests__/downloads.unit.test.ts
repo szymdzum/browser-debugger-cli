@@ -263,6 +263,76 @@ void describe('DownloadTracker', () => {
   });
 });
 
+/**
+ * A connection whose `Browser.setDownloadBehavior` answers only when told to.
+ *
+ * @returns The mock and functions settling the pending command
+ */
+function pendingBehaviorCDP(): { cdp: MockCDP; resolve: () => void; reject: () => void } {
+  const cdp = new MockCDP();
+  const settle = { resolve: (): void => undefined, reject: (): void => undefined };
+  cdp.send = (method: string, params?: unknown) => {
+    cdp.sent.push({ method, params });
+    return new Promise((resolve, reject) => {
+      settle.resolve = () => resolve({});
+      settle.reject = () => reject(new Error('Not allowed'));
+    });
+  };
+  return { cdp, resolve: () => settle.resolve(), reject: () => settle.reject() };
+}
+
+void describe('DownloadTracker races', () => {
+  void it('follows nothing when stopped while the behavior was being set', async () => {
+    const dir = makeTempDir('bdg-downloads-');
+    const record = { downloads: [] as TrackedDownload[], downloadsWarning: undefined };
+    const tracker = new DownloadTracker(record, { kind: 'directory', dir });
+    const pending = pendingBehaviorCDP();
+
+    const attached = tracker.attach(pending.cdp as unknown as CDPConnection);
+    await new Promise((resolve) => setImmediate(resolve));
+    tracker.stop();
+    pending.resolve();
+    await attached;
+    pending.cdp.begin('g1', 'late.txt');
+    const later = new MockCDP();
+    await tracker.attach(later as unknown as CDPConnection);
+
+    assert.deepEqual(record.downloads, []);
+    assert.deepEqual(later.sent, [], 'no behavior is set after stop');
+  });
+
+  void it('lets the last attach win, without a warning from the one it replaced', async () => {
+    const dir = makeTempDir('bdg-downloads-');
+    const record = { downloads: [] as TrackedDownload[], downloadsWarning: undefined };
+    const tracker = new DownloadTracker(record, { kind: 'directory', dir });
+    const first = pendingBehaviorCDP();
+    const second = new MockCDP();
+
+    const firstAttached = tracker.attach(first.cdp as unknown as CDPConnection);
+    const secondAttached = tracker.attach(second as unknown as CDPConnection);
+    await new Promise((resolve) => setImmediate(resolve));
+    first.reject();
+    await Promise.all([firstAttached, secondAttached]);
+    first.cdp.begin('g1', 'old.txt');
+    second.begin('g2', 'new.txt');
+
+    assert.equal(record.downloadsWarning, undefined);
+    assert.equal(second.sent.length, 1);
+    assert.deepEqual(
+      record.downloads.map((download) => download.guid),
+      ['g2']
+    );
+  });
+
+  void it('keeps why the directory is unusable when the deny behavior fails too', async () => {
+    const cdp = new MockCDP();
+    cdp.send = () => Promise.reject(new Error('Not allowed'));
+    const record = await startDownloadTracking(cdp, [], { kind: 'refused', reason: 'no dir' });
+
+    assert.equal(record.downloadsWarning, 'no dir');
+  });
+});
+
 void describe('reserveDownloadPath', () => {
   void it('treats names differing only in case as taken', () => {
     const dir = makeTempDir('bdg-downloads-');
