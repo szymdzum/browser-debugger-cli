@@ -20,11 +20,6 @@ export const DEFAULT_CDP_PORT = 9222;
 export const DEFAULT_CHROME_LOG_LEVEL = 'silent';
 
 /**
- * Default SIGINT handling - bdg handles signals, not chrome-launcher
- */
-export const DEFAULT_CHROME_HANDLE_SIGINT = false;
-
-/**
  * Persistent Chrome profile directory path (relative to user home)
  */
 export const CHROME_PROFILE_DIR = 'chrome-profile';

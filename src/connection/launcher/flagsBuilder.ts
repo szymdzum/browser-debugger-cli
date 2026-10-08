@@ -91,6 +91,71 @@ export function isDocker(): boolean {
   }
 }
 
+/** Flags whose comma-separated values Chrome reads only from the last occurrence */
+const FEATURE_LIST_FLAGS = ['--disable-features=', '--enable-features='];
+
+/**
+ * Merge every `--disable-features=` (and `--enable-features=`) flag into one
+ * and drop exact duplicate flags.
+ *
+ * Chrome applies only the last occurrence of a feature-list flag, so bdg's or
+ * the user's list would otherwise switch chrome-launcher's defaults back on.
+ * The merged flag keeps the first one's position; its values keep their order
+ * without repeats.
+ *
+ * @param flags - Chrome flags in launch order
+ * @returns Flags with one flag per feature list and no exact duplicates
+ */
+function mergeFeatureFlags(flags: string[]): string[] {
+  const features = new Map<string, Set<string>>();
+  const merged = new Set<string>();
+  for (const flag of flags) {
+    const prefix = FEATURE_LIST_FLAGS.find((p) => flag.startsWith(p));
+    if (!prefix) {
+      merged.add(flag);
+      continue;
+    }
+    if (!features.has(prefix)) merged.add(prefix);
+    const values = features.get(prefix) ?? new Set<string>();
+    flag
+      .slice(prefix.length)
+      .split(',')
+      .filter(Boolean)
+      .forEach((value) => values.add(value));
+    features.set(prefix, values);
+  }
+  return [...merged].map((flag) => {
+    const values = features.get(flag);
+    return values ? flag + [...values].join(',') : flag;
+  });
+}
+
+/**
+ * Remove `HEADLESS` from this process's environment.
+ *
+ * chrome-launcher adds a bare `--headless` whenever the launching process has
+ * a non-empty `HEADLESS` variable (even `0` or `false`), whatever its
+ * `envVars` option says, which would make `--no-headless` launch headless.
+ * The daemon calls this before it launches Chrome.
+ *
+ * @param env - Environment to clean (defaults to `process.env`)
+ */
+export function dropLauncherHeadlessEnv(env: NodeJS.ProcessEnv = process.env): void {
+  delete env['HEADLESS'];
+}
+
+/**
+ * chrome-launcher's default flags (plus its Linux sandbox flag). bdg passes
+ * them itself and tells chrome-launcher to skip its own copy, so each flag
+ * appears once; chrome-launcher adds `--remote-debugging-port`.
+ *
+ * @returns Default flags
+ */
+function defaultFlags(): string[] {
+  const flags = chromeLauncher.Launcher.defaultFlags();
+  return process.platform === 'linux' ? [...flags, '--disable-setuid-sandbox'] : flags;
+}
+
 /**
  * Build Chrome flags array from launch options.
  *
@@ -103,6 +168,8 @@ export function isDocker(): boolean {
  *
  * Custom flags are passed via the chromeFlags option. The BDG_CHROME_FLAGS env var
  * is parsed by the CLI and merged into chromeFlags before reaching this function.
+ * Feature lists from all sources end up in one `--disable-features` (and one
+ * `--enable-features`) flag, and each flag appears once.
  *
  * @param options - Launch options containing flag preferences
  * @returns Array of Chrome command-line flags
@@ -124,18 +191,6 @@ export function isDocker(): boolean {
  * // Includes --disable-gpu, --no-sandbox if in Docker
  * ```
  */
-/**
- * chrome-launcher's default flags (plus its Linux sandbox flag). bdg passes
- * them itself and tells chrome-launcher to skip its own copy, so each flag
- * appears once; chrome-launcher adds `--remote-debugging-port`.
- *
- * @returns Default flags
- */
-function defaultFlags(): string[] {
-  const flags = chromeLauncher.Launcher.defaultFlags();
-  return process.platform === 'linux' ? [...flags, '--disable-setuid-sandbox'] : flags;
-}
-
 export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
   const baseFlags = options.ignoreDefaultFlags ? [] : defaultFlags();
 
@@ -147,19 +202,14 @@ export function buildChromeFlags(options: FlagsBuilderOptions): string[] {
   const dockerFlags = isDocker() ? DOCKER_CHROME_FLAGS : [];
   const sandboxFlags = needsNoSandbox() ? ['--no-sandbox'] : [];
 
-  // Custom flags from CLI option (env var BDG_CHROME_FLAGS is parsed by CLI and passed here)
   const customFlags = options.chromeFlags ?? [];
 
-  if (options.headless) {
-    return [
-      HEADLESS_FLAG,
-      ...baseFlags,
-      ...bdgFlags,
-      ...dockerFlags,
-      ...sandboxFlags,
-      ...customFlags,
-    ];
-  }
-
-  return [...baseFlags, ...bdgFlags, ...dockerFlags, ...sandboxFlags, ...customFlags];
+  return mergeFeatureFlags([
+    ...(options.headless ? [HEADLESS_FLAG] : []),
+    ...baseFlags,
+    ...bdgFlags,
+    ...dockerFlags,
+    ...sandboxFlags,
+    ...customFlags,
+  ]);
 }
