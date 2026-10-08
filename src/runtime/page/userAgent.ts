@@ -157,15 +157,37 @@ export function regularChromeMetadata(
   };
 }
 
+/** First Windows build of Windows 11, which client hints report as version 13 */
+const WINDOWS_11_BUILD = 22000;
+
+/**
+ * The OS version Chrome reports on Linux or Windows, from `os.release()`:
+ * the kernel version's first three numbers on Linux, and on Windows `13.0.0`
+ * for Windows 11 and `10.0.0` before it (Chrome reports a Windows API
+ * version there, not the OS build).
+ *
+ * @param platform - `process.platform`
+ * @param release - `os.release()`
+ * @returns OS version, or empty when unknown
+ */
+export function releasePlatformVersion(platform: string, release: string): string {
+  if (platform === 'win32') {
+    const build = Number(release.split('.')[2]);
+    if (!build) return '';
+    return build >= WINDOWS_11_BUILD ? '13.0.0' : '10.0.0';
+  }
+  return /^\d+(\.\d+){0,2}/.exec(release)?.[0] ?? '';
+}
+
 /**
  * The OS version as Chrome reports it: the macOS product version (from
- * `SystemVersion.plist`, as `sw_vers` prints it), the kernel version on
- * Linux, the `major.minor.build` version on Windows.
+ * `SystemVersion.plist`, as `sw_vers` prints it), or
+ * {@link releasePlatformVersion} elsewhere.
  *
  * @returns OS version, or empty when unknown
  */
 function hostPlatformVersion(): string {
-  if (process.platform !== 'darwin') return /^[\d.]+\d/.exec(os.release())?.[0] ?? '';
+  if (process.platform !== 'darwin') return releasePlatformVersion(process.platform, os.release());
   try {
     const plist = readFileSync('/System/Library/CoreServices/SystemVersion.plist', 'utf8');
     return /<key>ProductVersion<\/key>\s*<string>([\d.]+)<\/string>/.exec(plist)?.[1] ?? '';
@@ -203,10 +225,15 @@ export function hostPlatform(): HostPlatform {
  *
  * @param cdp - CDP connection
  * @param logger - Logger for failures (the session works without it)
+ * @param known - `Browser.getVersion` result, when the caller has it
  */
-export async function hideHeadlessUserAgent(cdp: CDPConnection, logger: Logger): Promise<void> {
+export async function hideHeadlessUserAgent(
+  cdp: CDPConnection,
+  logger: Logger,
+  known?: BrowserVersion
+): Promise<void> {
   try {
-    const version = (await cdp.send('Browser.getVersion')) as BrowserVersion;
+    const version = known ?? ((await cdp.send('Browser.getVersion')) as BrowserVersion);
     if (!version.userAgent.includes('HeadlessChrome')) return;
     await cdp.send('Emulation.setUserAgentOverride', {
       userAgent: version.userAgent.replace('HeadlessChrome', 'Chrome'),

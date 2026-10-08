@@ -11,6 +11,7 @@ import {
   chromeBrandList,
   hideHeadlessUserAgent,
   regularChromeMetadata,
+  releasePlatformVersion,
   type HostPlatform,
 } from '@/runtime/page/userAgent.js';
 import { createLogger } from '@/ui/logging/index.js';
@@ -106,6 +107,19 @@ void describe('regularChromeMetadata', () => {
     assert.equal(metadata.platformVersion, '');
     assert.equal(metadata.architecture, '');
     assert.equal(metadata.fullVersion, '154.0.8037.98');
+  });
+});
+
+void describe('releasePlatformVersion', () => {
+  void it('keeps the first three numbers of a Linux kernel version', () => {
+    assert.equal(releasePlatformVersion('linux', '6.8.0-45-generic'), '6.8.0');
+    assert.equal(releasePlatformVersion('linux', '5.15.167.4-microsoft-standard-WSL2'), '5.15.167');
+  });
+
+  void it('reports Windows 11 as 13.0.0 and earlier Windows as 10.0.0', () => {
+    assert.equal(releasePlatformVersion('win32', '10.0.22631'), '13.0.0');
+    assert.equal(releasePlatformVersion('win32', '10.0.19045'), '10.0.0');
+    assert.equal(releasePlatformVersion('win32', 'unknown'), '');
   });
 });
 

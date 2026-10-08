@@ -84,10 +84,12 @@ void describe('headless user agent', () => {
         )
       )
     ) as ClientHints;
-    assert.ok(
-      hints.brands.some((entry) => entry.brand === 'Chromium' && entry.version === major),
-      JSON.stringify(hints.brands)
-    );
+    for (const brand of ['Chromium', 'Google Chrome']) {
+      assert.ok(
+        hints.brands.some((entry) => entry.brand === brand && entry.version === major),
+        `${brand} in ${JSON.stringify(hints.brands)}`
+      );
+    }
     assert.ok(
       hints.fullVersionList.some(
         (entry) => entry.brand === 'Chromium' && entry.version === fullVersion
