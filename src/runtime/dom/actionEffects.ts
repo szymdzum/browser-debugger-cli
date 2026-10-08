@@ -64,7 +64,13 @@ const MAX_MESSAGE_LENGTH = 120;
 /** How long collecting waits for the snapshot taken before the action */
 const START_TIMEOUT_MS = 200;
 
-/** How long a read after the action may take before its part is skipped */
+/**
+ * How long a read after the action may take before its part is skipped. A
+ * read has up to three steps ({@link letDueTimersRun}): setting a timer (up
+ * to this), waiting for it (up to {@link DUE_TIMERS_TIMEOUT_MS}) and reading
+ * (up to this again), so about 600 ms at worst; a DOM that looks busy is
+ * read twice.
+ */
 const READ_TIMEOUT_MS = 250;
 
 /**
@@ -571,8 +577,10 @@ async function readPage(
  * its change: set a 0 ms timer ({@link START_DUE_TIMERS_SCRIPT}), then wait
  * for it at most {@link DUE_TIMERS_TIMEOUT_MS}. Both run in bdg's world, whose
  * `setTimeout` the page cannot replace or fake; its timers share the page's
- * queue. The page is not waited for twice: setting the timer has the read's
- * {@link READ_TIMEOUT_MS}, and only waiting for it the shorter limit.
+ * queue. Setting the timer has the read's {@link READ_TIMEOUT_MS}; a page
+ * that does not answer by then is busy and not read. A page that answers
+ * just in time, then keeps its timer waiting the full limit and is slow to
+ * read can take about 600 ms (250 + 100 + 250) before the read is given up.
  *
  * @param cdp - CDP connection
  * @returns False when the page did not answer within {@link READ_TIMEOUT_MS} (busy)
