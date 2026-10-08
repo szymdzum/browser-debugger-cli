@@ -110,6 +110,7 @@ describe('buildChromeFlags feature lists', () => {
   )[0]?.split(',');
 
   test('passes one --disable-features with the defaults and bdg features', () => {
+    assert.ok(launcherDefaults?.length, 'chrome-launcher disables features by default');
     const values = featureFlagValues(buildChromeFlags({ port: 9222 }), '--disable-features=');
     assert.strictEqual(values.length, 1);
     const features = values[0]?.split(',') ?? [];
@@ -140,9 +141,40 @@ describe('buildChromeFlags feature lists', () => {
     });
     assert.deepStrictEqual(featureFlagValues(flags, '--enable-features='), ['A,B,C']);
   });
+
+  test('lets an enabled feature win over a default that disables it', () => {
+    const flags = buildChromeFlags({
+      port: 9222,
+      chromeFlags: ['--enable-features=MediaRouter<Trial,Translate:level/1'],
+    });
+    const disabled = featureFlagValues(flags, '--disable-features=')[0]?.split(',') ?? [];
+    assert.ok(!disabled.includes('MediaRouter'));
+    assert.ok(!disabled.includes('Translate'));
+    assert.ok(disabled.includes('OptimizationHints'));
+    assert.deepStrictEqual(featureFlagValues(flags, '--enable-features='), [
+      'MediaRouter<Trial,Translate:level/1',
+    ]);
+  });
+
+  test('drops --disable-features when every feature in it is enabled', () => {
+    const flags = buildChromeFlags({
+      port: 9222,
+      ignoreDefaultFlags: true,
+      chromeFlags: ['--enable-features=Translate,SessionCrashedBubble'],
+    });
+    assert.deepStrictEqual(featureFlagValues(flags, '--disable-features='), []);
+  });
 });
 
 describe('buildChromeFlags duplicates', () => {
+  test('keeps repeated positional arguments', () => {
+    const flags = buildChromeFlags({
+      port: 9222,
+      chromeFlags: ['https://example.com', 'https://example.com'],
+    });
+    assert.deepStrictEqual(flags.slice(-2), ['https://example.com', 'https://example.com']);
+  });
+
   for (const ignoreDefaultFlags of [false, true]) {
     test(`passes each flag once (ignoreDefaultFlags: ${ignoreDefaultFlags})`, () => {
       const flags = buildChromeFlags({ port: 9222, ignoreDefaultFlags });

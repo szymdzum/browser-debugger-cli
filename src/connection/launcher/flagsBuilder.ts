@@ -91,42 +91,77 @@ export function isDocker(): boolean {
   }
 }
 
-/** Flags whose comma-separated values Chrome reads only from the last occurrence */
-const FEATURE_LIST_FLAGS = ['--disable-features=', '--enable-features='];
+const DISABLE_FEATURES = '--disable-features=';
+const ENABLE_FEATURES = '--enable-features=';
+
+/**
+ * Flags that bdg merges into one: Chrome reads only the last occurrence of
+ * these comma-separated feature lists, and chrome-launcher's defaults, bdg and
+ * users all pass them. `--disable-blink-features`/`--enable-blink-features`
+ * are not merged (neither bdg nor the defaults pass them), nor is `--js-flags`
+ * (space-separated V8 flags, not a feature list).
+ */
+const FEATURE_LIST_FLAGS = [DISABLE_FEATURES, ENABLE_FEATURES];
+
+/**
+ * Bare name of a feature-list entry, without a `<Trial` or `:params` suffix.
+ *
+ * @param entry - Entry such as `Foo<Trial` or `Foo:param/1`
+ * @returns Feature name
+ */
+function featureName(entry: string): string {
+  return entry.split(/[<:]/)[0] ?? entry;
+}
+
+/**
+ * Remove disabled features that are also enabled.
+ *
+ * Chrome lets `--disable-features` win over `--enable-features`, so without
+ * this a user's `--enable-features=MediaRouter` could not re-enable a feature
+ * chrome-launcher disables by default.
+ *
+ * @param features - Merged values per feature-list flag (changed in place)
+ */
+function dropReEnabledFeatures(features: Map<string, Set<string>>): void {
+  const enabled = new Set([...(features.get(ENABLE_FEATURES) ?? [])].map(featureName));
+  const disabled = features.get(DISABLE_FEATURES);
+  disabled?.forEach((entry) => {
+    if (enabled.has(featureName(entry))) disabled.delete(entry);
+  });
+}
 
 /**
  * Merge every `--disable-features=` (and `--enable-features=`) flag into one
- * and drop exact duplicate flags.
+ * and drop repeated flags.
  *
  * Chrome applies only the last occurrence of a feature-list flag, so bdg's or
  * the user's list would otherwise switch chrome-launcher's defaults back on.
  * The merged flag keeps the first one's position; its values keep their order
- * without repeats.
+ * without repeats, and an enabled feature is never also disabled. Only
+ * entries starting with `-` are deduplicated, so positional arguments such as
+ * URLs are passed as given.
  *
  * @param flags - Chrome flags in launch order
- * @returns Flags with one flag per feature list and no exact duplicates
+ * @returns Flags with at most one flag per feature list and no repeated flags
  */
 function mergeFeatureFlags(flags: string[]): string[] {
   const features = new Map<string, Set<string>>();
-  const merged = new Set<string>();
+  const merged: string[] = [];
   for (const flag of flags) {
     const prefix = FEATURE_LIST_FLAGS.find((p) => flag.startsWith(p));
-    if (!prefix) {
-      merged.add(flag);
-      continue;
+    if (prefix) {
+      if (!features.has(prefix)) merged.push(prefix);
+      const values = flag.slice(prefix.length).split(',').filter(Boolean);
+      features.set(prefix, new Set([...(features.get(prefix) ?? []), ...values]));
+    } else if (!flag.startsWith('-') || !merged.includes(flag)) {
+      merged.push(flag);
     }
-    if (!features.has(prefix)) merged.add(prefix);
-    const values = features.get(prefix) ?? new Set<string>();
-    flag
-      .slice(prefix.length)
-      .split(',')
-      .filter(Boolean)
-      .forEach((value) => values.add(value));
-    features.set(prefix, values);
   }
-  return [...merged].map((flag) => {
+  dropReEnabledFeatures(features);
+  return merged.flatMap((flag) => {
     const values = features.get(flag);
-    return values ? flag + [...values].join(',') : flag;
+    if (!values) return [flag];
+    return values.size > 0 ? [flag + [...values].join(',')] : [];
   });
 }
 
