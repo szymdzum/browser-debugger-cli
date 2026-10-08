@@ -110,7 +110,7 @@ export function localProxyNote(): string {
  * @returns Comment naming what was redacted and the flag that keeps it
  */
 export function harSanitizedComment(): string {
-  return 'Sanitized by bdg: values of auth, cookie, API key, token and session headers, cookies, credential query parameters in URLs, password/token/secret fields of JSON and form request and response bodies and WebSocket messages (also truncated JSON, JSON encoded in strings, socket.io, SockJS, server-sent events, NDJSON, and base64 bodies and binary messages that are UTF-8 text), and any JWT are [redacted] in place (by name, so some harmless values are too); everything else stays byte for byte. Not sanitized: other binary data, text that is not JSON or a form, and non-JSON syntax (single quotes, unquoted keys, JSONP). Export with --include-sensitive to keep everything';
+  return 'Sanitized by bdg: values of auth, cookie, API key, token and session headers, cookies, credential query parameters in URLs, password/token/secret fields of JSON and form request and response bodies and WebSocket messages (also truncated JSON, JSON encoded in strings, socket.io, SockJS, server-sent events, NDJSON, and base64 bodies and binary messages that are UTF-8 text), and any JWT (also inside longer strings and form values) are [redacted] in place (by name, so some harmless values are too); everything else stays byte for byte. Not sanitized: other binary data, text that is not JSON or a form, and non-JSON syntax (single quotes, unquoted keys, JSONP, bare values with spaces); a body that could not be sanitized is [redacted] whole. Export with --include-sensitive to keep everything';
 }
 
 /**

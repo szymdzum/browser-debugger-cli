@@ -14,7 +14,8 @@
  * those values. `headersSize`, `bodySize` and `content.size` stay those of the
  * captured request. Base64 bodies are decoded when their type is generic,
  * JSON, form or event-stream, and binary WebSocket messages always; those
- * that are not UTF-8 text, and other binary bodies, are kept.
+ * that are not UTF-8 text, and other binary bodies, are kept. A body or
+ * message the sanitizer fails on is replaced whole by {@link REDACTED}.
  */
 
 import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } from './types.js';
@@ -24,6 +25,7 @@ import {
   isSensitiveField,
   redactBase64Body,
   redactBody,
+  redactOrReplaceWhole,
   redactPairs,
 } from '@/telemetry/har/sanitizeBody.js';
 
@@ -56,6 +58,9 @@ const URL_HEADERS = new Set(['location', 'referer']);
 /** Query parameter names that hold credentials in URLs only (OAuth codes, signed URLs, API keys) */
 const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;
 
+/** {@link REDACTED} as base64, for a binary body or message replaced whole */
+const BASE64_REDACTED = Buffer.from(REDACTED).toString('base64');
+
 /** WebSocket opcode of a text message */
 const TEXT_OPCODE = 1;
 
@@ -80,7 +85,10 @@ export function sanitizeEntry(entry: Entry): Entry {
       headers: request.headers.map(redactHeader),
       queryString: request.queryString.map(redactQueryParam),
       ...(postData?.text !== undefined && {
-        postData: { ...postData, text: redactBody(postData.text, postData.mimeType) },
+        postData: {
+          ...postData,
+          text: redactOrReplaceWhole(postData.text, (text) => redactBody(text, postData.mimeType)),
+        },
       }),
     },
     response: {
@@ -105,7 +113,9 @@ function redactContent(content: Content): Content {
   const { text, mimeType } = content;
   if (text === undefined) return content;
   const redacted =
-    content.encoding === 'base64' ? redactBase64Body(text, mimeType) : redactBody(text, mimeType);
+    content.encoding === 'base64'
+      ? redactOrReplaceWhole(text, (body) => redactBase64Body(body, mimeType), BASE64_REDACTED)
+      : redactOrReplaceWhole(text, (body) => redactBody(body, mimeType));
   return redacted === text ? content : { ...content, text: redacted };
 }
 
@@ -120,8 +130,8 @@ function redactWebSocketMessage(message: WebSocketMessage): WebSocketMessage {
   if (message.opcode !== TEXT_OPCODE && message.opcode !== BINARY_OPCODE) return message;
   const data =
     message.opcode === TEXT_OPCODE
-      ? redactBody(message.data, '')
-      : redactBase64Body(message.data, '');
+      ? redactOrReplaceWhole(message.data, (text) => redactBody(text, ''))
+      : redactOrReplaceWhole(message.data, (text) => redactBase64Body(text, ''), BASE64_REDACTED);
   return data === message.data ? message : { ...message, data };
 }
 

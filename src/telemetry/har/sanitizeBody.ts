@@ -44,11 +44,12 @@ const FORM_BODY = /^(?!\[)[^\s=&{"]+=[^\s&]*(?:&[^\s=&]+=[^\s&]*)*$/;
 /**
  * Text that holds JSON whatever its Content-Type: after an optional BOM,
  * XSSI guard (`)]}'`) and whitespace, an object or array (also after a
- * socket.io packet type such as `42`, `451-` or `42/chat,`, or a SockJS
- * `a`/`c` frame type) or a server-sent event field
+ * socket.io packet type such as `42`, `451-` or `42/chat,`, an Engine.io v3
+ * length prefix such as `45:`, or a SockJS `a`/`c` frame type) or a
+ * server-sent event field
  */
 const JSON_LIKE_START =
-  /^\uFEFF?(?:\)\]\}',?)?\s*(?:(?:\d*-?(?:\/[^,]*,)?|[ac])[[{]|(?:data|event|id|retry):)/;
+  /^\uFEFF?(?:\)\]\}',?)?\s*(?:(?:\d+:)?(?:\d*-?(?:\/[^,]*,)?|[ac])[[{]|(?:data|event|id|retry):)/;
 
 /** Content-Types whose bodies are scanned as JSON whatever they start with */
 const JSON_MIME = /json|event-stream/i;
@@ -63,14 +64,8 @@ const DECODABLE_MIME =
 /** A bare value (number, `true`, `false`, `null`) or word, up to the next delimiter */
 const BARE = /[^\s,:[\]{}"]+/y;
 
-/** A whole JWT as a JSON string's content, up to its closing quote */
-const JWT_STRING = /eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*"/y;
-
-/** A whole JWT in text, not part of a longer word */
-const JWT_IN_TEXT = /(?<![\w.-])eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*(?![\w.-])/g;
-
-/** A JSON string whose content is an object or array */
-const ENCODED_JSON = /"\s*[[{]/y;
+/** Character code of `.`, the JWT segment separator */
+const DOT = 0x2e;
 
 /** Levels of JSON encoded in string values that are decoded */
 const MAX_ENCODED_DEPTH = 3;
@@ -109,7 +104,56 @@ interface JsonScan {
  * @returns True for password, token, secret, key, session and signature names
  */
 export function isSensitiveField(name: string): boolean {
-  return SENSITIVE_FIELD.test(name);
+  return SENSITIVE_FIELD.test(name.replace(/([a-z])([A-Z])/g, '$1_$2'));
+}
+
+/**
+ * Run a redaction, replacing the whole text when it fails, so that a body
+ * the sanitizer cannot handle is never exported as captured.
+ *
+ * @param text - Body or message text
+ * @param redact - Redaction of the text
+ * @param whole - Text written when the redaction throws
+ * @returns Redacted text, or `whole`
+ */
+export function redactOrReplaceWhole(
+  text: string,
+  redact: (text: string) => string,
+  whole = REDACTED
+): string {
+  try {
+    return redact(text);
+  } catch (error) {
+    log.debug(`Body replaced whole, sanitizing failed: ${getErrorMessage(error)}`);
+    return whole;
+  }
+}
+
+/**
+ * Replace every whole JWT (`eyJ` and three base64url segments, not part of a
+ * longer word) in text. Scanned by hand: a regular expression overflows the
+ * stack on a word of millions of characters.
+ *
+ * @param text - Text
+ * @param replacement - Text written instead of each JWT
+ * @returns Text with JWTs replaced; the text unchanged when it has none
+ */
+export function redactJwts(text: string, replacement: string): string {
+  if (!text.includes('eyJ')) return text;
+  const parts: string[] = [];
+  let copied = 0;
+  let at = text.indexOf('eyJ');
+  while (at !== -1) {
+    const end = isJwtBoundary(text, at - 1) ? jwtEnd(text, at) : undefined;
+    if (end !== undefined && isJwtBoundary(text, end)) {
+      parts.push(text.slice(copied, at), replacement);
+      copied = end;
+    }
+    at = text.indexOf('eyJ', Math.max(at + 3, copied));
+  }
+  if (parts.length === 0) return text;
+  parts.push(text.slice(copied));
+  return parts.join('');
 }
 
 /**
@@ -130,8 +174,11 @@ export function redactPairs(
     .split('&')
     .map((pair) => {
       const eq = pair.indexOf('=');
-      if (eq === -1 || !isSensitive(decodeName(pair.slice(0, eq)))) return pair;
-      return `${pair.slice(0, eq)}=${replacement}`;
+      if (eq === -1) return pair;
+      if (isSensitive(decodeName(pair.slice(0, eq)))) return `${pair.slice(0, eq)}=${replacement}`;
+      const value = pair.slice(eq + 1);
+      const redacted = redactJwts(value, replacement);
+      return redacted === value ? pair : `${pair.slice(0, eq + 1)}${redacted}`;
     })
     .join('&');
 }
@@ -147,11 +194,11 @@ export function redactPairs(
  */
 export function redactBody(text: string, mimeType: string): string {
   if (/multipart\/form-data/i.test(mimeType)) return redactMultipart(text, mimeType);
-  if (/x-www-form-urlencoded/i.test(mimeType) || FORM_BODY.test(text)) {
-    return redactPairs(text, isSensitiveField, REDACTED);
-  }
-  if (JSON_MIME.test(mimeType) || JSON_LIKE_START.test(text)) return redactJsonText(text, 0);
-  return text.includes('eyJ') ? text.replace(JWT_IN_TEXT, REDACTED) : text;
+  if (/x-www-form-urlencoded/i.test(mimeType)) return redactPairs(text, isSensitiveField, REDACTED);
+  if (JSON_LIKE_START.test(text)) return redactJsonText(text, 0);
+  if (FORM_BODY.test(text)) return redactPairs(text, isSensitiveField, REDACTED);
+  if (JSON_MIME.test(mimeType)) return redactJsonText(text, 0);
+  return redactJwts(text, REDACTED);
 }
 
 /**
@@ -209,16 +256,17 @@ function redactMultipart(text: string, mimeType: string): string {
 }
 
 /**
- * Redact the value of one multipart part if its name holds a credential.
+ * Redact the value of one multipart part if its name holds a credential, or
+ * the JWTs in it.
  *
  * @param part - Text between two boundary delimiters
- * @returns The part, or the part with its value replaced
+ * @returns The part, or the part with its value or JWTs replaced
  */
 function redactPart(part: string): string {
   const headerEnd = part.indexOf('\r\n\r\n');
   if (headerEnd === -1) return part;
   const name = /;\s*name="([^"]*)"/i.exec(part.slice(0, headerEnd))?.[1];
-  if (name === undefined || !isSensitiveField(name)) return part;
+  if (name === undefined || !isSensitiveField(name)) return redactJwts(part, REDACTED);
   const valueEnd = part.endsWith('\r\n') ? part.length - 2 : part.length;
   return `${part.slice(0, headerEnd + 4)}${REDACTED}${part.slice(valueEnd)}`;
 }
@@ -279,8 +327,8 @@ function scanToken(scan: JsonScan, index: number): number {
 
 /**
  * Read a string: a key (followed by `:`) sets whether the next value is
- * sensitive; a value under a credential name or holding a JWT is replaced,
- * and JSON encoded in a value is redacted and encoded again.
+ * sensitive; a value under a credential name is replaced, JSON encoded in a
+ * value is redacted and encoded again, and JWTs in other values are replaced.
  *
  * @param scan - Scan state
  * @param start - Index of the opening quote
@@ -290,13 +338,28 @@ function scanString(scan: JsonScan, start: number): number {
   const end = stringEnd(scan, start);
   if (isFollowedByColon(scan.text, end)) {
     scan.key = isSensitiveField(keyName(scan.text, start, end));
-  } else if (takeValue(scan) || isJwtString(scan.text, start, end)) {
+  } else if (takeValue(scan)) {
     replaceValue(scan, start, end, REDACTED_STRING);
   } else {
     const encoded = redactEncodedJson(scan, start, end);
-    if (encoded !== undefined) replaceValue(scan, start, end, encoded);
+    if (encoded === undefined) redactStringJwts(scan, start, end);
+    else replaceValue(scan, start, end, encoded);
   }
   return end;
+}
+
+/**
+ * Replace the whole JWTs in a string value, keeping the text around them.
+ *
+ * @param scan - Scan state
+ * @param start - Index of the opening quote
+ * @param end - Index after the string
+ */
+function redactStringJwts(scan: JsonScan, start: number, end: number): void {
+  const contentEnd = end - 1 > start && scan.text[end - 1] === '"' ? end - 1 : end;
+  const content = scan.text.slice(start + 1, contentEnd);
+  const redacted = redactJwts(content, REDACTED);
+  if (redacted !== content) replaceValue(scan, start + 1, contentEnd, redacted);
 }
 
 /**
@@ -345,22 +408,69 @@ function replaceValue(scan: JsonScan, start: number, end: number, replacement: s
 }
 
 /**
- * Whether a string's content is a whole JWT.
+ * Whether the character at an index cannot be part of a JWT's word: outside
+ * the text, or not a base64url character, `.` or `-`.
  *
  * @param text - Text
- * @param start - Index of the opening quote
- * @param end - Index after the string
- * @returns True for `"eyJ….….…"`
+ * @param index - Index (may be -1 or the text length)
+ * @returns True at a word boundary
  */
-function isJwtString(text: string, start: number, end: number): boolean {
-  if (!text.startsWith('eyJ', start + 1)) return false;
-  JWT_STRING.lastIndex = start + 1;
-  return JWT_STRING.test(text) && JWT_STRING.lastIndex === end;
+function isJwtBoundary(text: string, index: number): boolean {
+  if (index < 0 || index >= text.length) return true;
+  const code = text.charCodeAt(index);
+  return !isBase64UrlCode(code) && code !== DOT;
+}
+
+/**
+ * End of a JWT starting at an index: `eyJ` and at least 5 more base64url
+ * characters, a dot, at least 5, a dot, and any number.
+ *
+ * @param text - Text
+ * @param start - Index of `eyJ`
+ * @returns Index after the third segment, or undefined when it is no JWT
+ */
+function jwtEnd(text: string, start: number): number | undefined {
+  const first = segmentEnd(text, start + 3);
+  if (first - start < 8 || text[first] !== '.') return undefined;
+  const second = segmentEnd(text, first + 1);
+  if (second - first - 1 < 5 || text[second] !== '.') return undefined;
+  return segmentEnd(text, second + 1);
+}
+
+/**
+ * End of a run of base64url characters.
+ *
+ * @param text - Text
+ * @param from - Index to start at
+ * @returns Index of the first other character, or the text length
+ */
+function segmentEnd(text: string, from: number): number {
+  let index = from;
+  while (index < text.length && isBase64UrlCode(text.charCodeAt(index))) index++;
+  return index;
+}
+
+/**
+ * Whether a character code is a base64url character: `A-Z`, `a-z`, `0-9`,
+ * `_` or `-`.
+ *
+ * @param code - UTF-16 code unit
+ * @returns True for a base64url character
+ */
+function isBase64UrlCode(code: number): boolean {
+  return (
+    (code >= 0x30 && code <= 0x39) ||
+    (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x61 && code <= 0x7a) ||
+    code === 0x5f ||
+    code === 0x2d
+  );
 }
 
 /**
  * Redact JSON encoded in a string value (a JSON payload, GraphQL variables,
- * a SockJS message), up to {@link MAX_ENCODED_DEPTH} levels.
+ * a SockJS or socket.io message): decoded text that looks like JSON
+ * ({@link JSON_LIKE_START}), up to {@link MAX_ENCODED_DEPTH} levels.
  *
  * @param scan - Scan state
  * @param start - Index of the opening quote
@@ -369,9 +479,10 @@ function isJwtString(text: string, start: number, end: number): boolean {
  *   it holds no JSON or no credentials, so it stays byte for byte
  */
 function redactEncodedJson(scan: JsonScan, start: number, end: number): string | undefined {
-  ENCODED_JSON.lastIndex = start;
-  if (scan.depth >= MAX_ENCODED_DEPTH || !ENCODED_JSON.test(scan.text)) return undefined;
-  if (end - start < 2 || scan.text[end - 1] !== '"') return undefined;
+  if (scan.depth >= MAX_ENCODED_DEPTH || end - start < 2 || scan.text[end - 1] !== '"') {
+    return undefined;
+  }
+  if (!/[[{]/.test(scan.text.slice(start + 1, end - 1))) return undefined;
   let decoded: string;
   try {
     decoded = JSON.parse(scan.text.slice(start, end)) as string;
@@ -379,6 +490,7 @@ function redactEncodedJson(scan: JsonScan, start: number, end: number): string |
     log.debug(`String value not decodable: ${getErrorMessage(error)}`);
     return undefined;
   }
+  if (!JSON_LIKE_START.test(decoded)) return undefined;
   const redacted = redactJsonText(decoded, scan.depth + 1);
   return redacted === decoded ? undefined : JSON.stringify(redacted);
 }

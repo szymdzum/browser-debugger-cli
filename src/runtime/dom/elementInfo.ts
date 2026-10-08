@@ -172,11 +172,12 @@ export const MASKED_VALUE = '••••';
  * Regular expression source (case-insensitive) matching names of fields that
  * hold a password, one-time code, PIN, social security number or card data:
  * `password`, `passwd`, `pwd`, `passcode`, `passphrase`, `otp`, `pin`, `ssn`
- * (these three as whole words), `cvv`, `cvc`, `card_number`, `cardNo`. Shared
+ * (these three as whole words), `cvv`, `cvc`, `card_number`, `cardNo` (whole
+ * words). Shared
  * by the page-side {@link SENSITIVE_FIELD_JS} and HAR sanitization.
  */
 export const SENSITIVE_NAME_SOURCE =
-  'passw|passwd|pwd|passcode|passphrase|(^|[^a-z])(otp|pin|ssn)([^a-z]|$)|cvv|cvc|card[-_]?(num|no)';
+  'passw|passwd|pwd|passcode|passphrase|(^|[^a-z])(otp|pin|ssn)([^a-z]|$)|cvv|cvc|card[-_]?(num(ber)?|no)([^a-z]|$)';
 
 /**
  * Page-side check whether a form control holds a secret whose value must

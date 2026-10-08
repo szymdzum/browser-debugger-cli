@@ -11,6 +11,7 @@ import { describe, test } from 'node:test';
 
 import { SENSITIVE_NAME_SOURCE } from '@/runtime/dom/elementInfo.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
+import { redactOrReplaceWhole } from '@/telemetry/har/sanitizeBody.js';
 import type { Entry, HAR } from '@/telemetry/har/types.js';
 import type { NetworkRequest } from '@/types.js';
 
@@ -721,6 +722,8 @@ void describe('HAR sanitization: encoded, framed and loosely formed bodies', () 
       [`[${'"{}",'.repeat(size / 5)}"{}"]`, 'application/json'],
       [`["${'{\\"a\\":\\"'.repeat(size / 10)}"]`, 'application/json'],
       ['eyJ'.repeat(size / 3), 'text/plain'],
+      [`{"a":"eyJ${'a'.repeat(6 * 1024 * 1024)}"}`, 'application/json'],
+      [`x eyJ${'a.'.repeat(3 * 1024 * 1024)}`, 'text/plain'],
       [' eyJaaaaa.bbbbb'.repeat(size / 15), 'text/plain'],
       [`${'eyJaaaaa.'.repeat(size / 9)}`, 'text/plain'],
       ['"a'.repeat(size / 2), 'text/event-stream'],
@@ -732,6 +735,75 @@ void describe('HAR sanitization: encoded, framed and loosely formed bodies', () 
       const took = performance.now() - started;
       assert.ok(took < 3000, `${mimeType} ${input.slice(0, 20)}: took ${took} ms`);
     }
+  });
+});
+
+void describe('HAR sanitization: round 3', () => {
+  const R = `"${REDACTED}"`;
+  const JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbm4ifQ.c2lnbmF0dXJl';
+
+  test('a huge eyJ word neither throws nor takes long', () => {
+    const word = `eyJ${'a'.repeat(4e6)}.${'a'.repeat(2e6)}`;
+    for (const [body, mimeType] of [
+      [`{"a":"${word}"}`, 'application/json'],
+      [`x ${word}`, 'text/plain'],
+      [`a=1&b=${word}`, 'application/x-www-form-urlencoded'],
+    ] as const) {
+      const started = performance.now();
+      assert.doesNotThrow(() => exportedResponse(body, mimeType), mimeType);
+      assert.ok(performance.now() - started < 3000, mimeType);
+    }
+  });
+
+  test('a body that cannot be sanitized is replaced whole, never kept', () => {
+    const failing = (): string => {
+      throw new RangeError('Maximum call stack size exceeded');
+    };
+    assert.equal(redactOrReplaceWhole('{"token":"S1"}', failing), REDACTED);
+    assert.equal(
+      redactOrReplaceWhole('{"a":1}', (text) => text),
+      '{"a":1}'
+    );
+  });
+
+  test('redacts only the JWT inside a longer string value', () => {
+    assert.equal(
+      exportedResponse(`{"redirect":"https://a/cb#id_token=${JWT}&state=1","msg":"Bearer ${JWT}"}`),
+      `{"redirect":"https://a/cb#id_token=${REDACTED}&state=1","msg":"Bearer ${REDACTED}"}`
+    );
+  });
+
+  test('redacts a JWT in a form value, also when sniffed as a form', () => {
+    assert.equal(
+      exportedBody(`a=1&b=${JWT}`, 'application/x-www-form-urlencoded'),
+      `a=1&b=${REDACTED}`
+    );
+    assert.equal(exportedBody(`x=${JWT};`, 'text/plain'), `x=${REDACTED};`);
+  });
+
+  test('redacts Engine.io v3 polling payloads', () => {
+    assert.equal(
+      exportedResponse('45:42["auth",{"token":"x"}]', 'text/plain'),
+      `45:42["auth",{"token":${R}}]`
+    );
+  });
+
+  test('reads a socket.io namespace with a query as JSON, not a form', () => {
+    assert.equal(
+      exportedResponse('42/admin?x=1,["a",{"token":"abc"}]', ''),
+      `42/admin?x=1,["a",{"token":${R}}]`
+    );
+  });
+
+  test('decodes a string holding JSON after whitespace or a socket.io frame', () => {
+    assert.equal(
+      exportedResponse('{"a":"\\n {\\"token\\":\\"S1\\"}"}'),
+      `{"a":${JSON.stringify(`\n {"token":"${REDACTED}"}`)}}`
+    );
+    assert.equal(
+      exportedResponse('{"a":"42[\\"auth\\",{\\"token\\":\\"S1\\"}]"}'),
+      `{"a":${JSON.stringify(`42["auth",{"token":"${REDACTED}"}]`)}}`
+    );
   });
 });
 
@@ -754,7 +826,12 @@ void describe('HAR sanitization: credential names', () => {
     'ssn',
     'card_number',
     'cardNo',
+    'cardNumber',
     'code_verifier',
+    'userPin',
+    'userSsn',
+    'ssnNumber',
+    'userOtp',
   ];
   const kept = [
     'code',
@@ -765,6 +842,11 @@ void describe('HAR sanitization: credential names', () => {
     'pinned',
     'cardholder',
     'opinion',
+    'cardNotes',
+    'card_nonce',
+    'discard_note',
+    'pinned_items',
+    'authorName',
   ];
 
   for (const name of sensitive) {
@@ -783,7 +865,16 @@ void describe('HAR sanitization: credential names', () => {
     for (const name of ['passphrase', 'pin', 'card-pin', 'ssn', 'card_number', 'cardNum']) {
       assert.ok(masked.test(name), name);
     }
-    for (const name of ['spinner', 'opinion', 'cardholder', 'refresh']) {
+    for (const name of [
+      'spinner',
+      'opinion',
+      'cardholder',
+      'refresh',
+      'cardNotes',
+      'card_nonce',
+      'discard_note',
+      'userPin',
+    ]) {
       assert.ok(!masked.test(name), name);
     }
   });
