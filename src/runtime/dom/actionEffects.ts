@@ -53,8 +53,9 @@ const BUSY_WINDOW_MS = 500;
 const BUSY_RECENT_MS = 150;
 
 /**
- * Second look at a DOM that looked busy; it is still changing when it kept
- * changing at most {@link BUSY_RECENT_MS} apart until then (ms)
+ * Second look at a DOM that looked busy; it is still changing when it
+ * changed again and was never quiet longer than {@link BUSY_RECENT_MS}
+ * until then (ms)
  */
 const STILL_CHANGING_RECHECK_MS = 250;
 
@@ -258,12 +259,15 @@ export function domLooksBusy(settle: SettleSignals | undefined): boolean {
 }
 
 /**
- * Whether the DOM kept changing during the second look: a new burst since
- * the first read, and no quiet spell longer than {@link BUSY_RECENT_MS} from
- * the last burst the first read saw, through the new ones, to the second
- * read. A page changing every 140 ms, or every 100 ms on a machine whose
- * timers run late, keeps changing; a render that ends in two or three
- * commits, or a poller updating every 300 ms, does not.
+ * Whether the DOM kept changing during the second look: at least one new
+ * burst since the first read, and no quiet gap longer than
+ * {@link BUSY_RECENT_MS} from the last burst the first read saw, through the
+ * new ones, to the second read. A page changing every 140 ms keeps
+ * changing; changes more than 150 ms apart (also 100 ms steps whose timers
+ * run over 50 ms late), a render that ended over 150 ms before the
+ * second read and a poller updating every 300 ms do not. A short render
+ * whose last commit came within 150 ms of the second read counts as
+ * changing.
  *
  * @param settle - Signals of the second read
  * @param sinceMs - Time since the first read

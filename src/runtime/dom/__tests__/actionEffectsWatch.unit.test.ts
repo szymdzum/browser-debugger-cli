@@ -355,4 +355,30 @@ void describe('watchActionEffects', () => {
     assert.deepEqual(once.readsSent, [false], 'one render needs no second look');
     single.dispose();
   });
+
+  void it('reports a page changing every 130 ms as changing, and one that stopped as settled', async () => {
+    const read = (burstAges: number[]): unknown => ({
+      ...QUIET,
+      changes: burstAges.length,
+      settle: { burstAges, loading: null },
+    });
+    const first = read([135, 5]);
+    for (const [recheck, expected, label] of [
+      [read([390, 260, 130]), true, 'one new burst 130 ms after the last, 130 ms ago'],
+      [read([395, 265, 215]), false, 'stopped 215 ms before the second look'],
+      [read([390, 260]), false, 'no new burst'],
+    ] as const) {
+      const cdp = new FakeCdp(Promise.resolve(START), [first, recheck]);
+      const watch = watchActionEffects(cdp.connection);
+      const effects = await watch.collect({
+        dialogs: 0,
+        consoleMessages: () => 0,
+        detectNoEffect: false,
+        detectUnsettled: true,
+      });
+      assert.equal(effects.work?.domChanging, expected, label);
+      assert.equal(cdp.readsSent.length, 2, label);
+      watch.dispose();
+    }
+  });
 });
