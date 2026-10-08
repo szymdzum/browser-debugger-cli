@@ -29,6 +29,17 @@ export function bodyEvictedReason(budgetBytes: number): string {
   return `evicted: total body budget (bdg keeps the newest ${megabytes(budgetBytes)} of request and response bodies)`;
 }
 
+/**
+ * Why a response body is missing when Chrome refused to return it
+ * (`Network.getResponseBody` failed), shown by `bdg details network <id>`
+ * as `bodyNotCaptured` and in the HAR as the content comment.
+ *
+ * @returns Reason text
+ */
+export function bodyFetchFailedReason(): string {
+  return 'Chrome no longer had the body (its network buffer evicted it, or the request was cancelled)';
+}
+
 /** What a session's network capture let go at its limits */
 export interface NetworkEvictionCounts {
   /** Oldest finished requests dropped at the request cap */

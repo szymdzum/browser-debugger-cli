@@ -18,6 +18,7 @@ import type {
   CleanupFunction,
 } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { bodyFetchFailedReason } from '@/ui/messages/networkMessages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 
@@ -49,10 +50,29 @@ function shouldFilterRequest(
   return false;
 }
 
+/** Statuses whose responses never have a body (RFC 9110) */
+const BODYLESS_STATUSES = new Set([204, 205, 304]);
+
+/**
+ * Whether HTTP rules out a body for this response (HEAD, 1xx, 204, 205,
+ * 304), so a failed body fetch means nothing was missed.
+ *
+ * @param request - Finished request
+ * @returns True when the response has no body by definition
+ */
+function responseHasNoBody(request: NetworkRequest): boolean {
+  const status = request.status ?? 0;
+  return (
+    request.method === 'HEAD' || (status >= 100 && status < 200) || BODYLESS_STATUSES.has(status)
+  );
+}
+
 /**
  * Fetch response body for a request with cancellation support: a body that
  * arrives after its fetch was cancelled (removed from `pendingFetches`: the
- * collector stopped, or the request was dropped) is discarded.
+ * collector stopped, or the request was dropped) is discarded. A fetch Chrome
+ * refuses leaves a skipped-body placeholder with the reason, unless the
+ * response has no body by definition.
  *
  * @param cdp - CDP connection instance
  * @param requestId - Request ID to fetch body for
@@ -82,6 +102,9 @@ function fetchResponseBody(
       log.debug(
         `Failed to fetch response body for request ${requestId}: ${getErrorMessage(error)}`
       );
+      if (!pendingFetches.has(requestId)) return;
+      if (request.responseBody !== undefined || responseHasNoBody(request)) return;
+      request.responseBody = skippedBodyPlaceholder(bodyFetchFailedReason());
     })
     .finally(() => {
       pendingFetches.delete(requestId);
