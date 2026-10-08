@@ -135,6 +135,17 @@ export function endedSessionText(label: string, end: { reason: string; endedAt: 
 }
 
 /**
+ * A session whose directory is not safe to use, for `bdg sessions`.
+ *
+ * @param label - Session name as listed
+ * @param why - Untrusted directory and why
+ * @returns One line
+ */
+export function untrustedSessionText(label: string, why: string): string {
+  return `${label}: ${why}`;
+}
+
+/**
  * When and why a session ended without `bdg stop`.
  *
  * @param end - How and when it ended

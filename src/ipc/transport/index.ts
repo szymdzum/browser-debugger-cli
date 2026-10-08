@@ -4,9 +4,14 @@
  * Handles Unix domain socket communication with JSONL protocol.
  */
 
+import * as path from 'path';
+
 import { getIPCRequestTimeout } from '@/constants.js';
-import { getDaemonSocketPath } from '@/session/paths.js';
+import { CommandError } from '@/errors/index.js';
+import { untrustedSessionDirError } from '@/errors/messages.js';
+import { getDaemonSocketPath, secureSessionDir } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
   formatConnectionError,
@@ -40,6 +45,12 @@ type WithTypeAndSession = { type: string; sessionId: string };
  * @param timeoutMs - How long to wait for the response (default: IPC timeout)
  * @param socketPath - Daemon socket (default: the selected session's)
  * @returns The daemon's response
+ * @throws CommandError (103) before connecting when the socket's session
+ *   directory cannot be trusted (see {@link secureSessionDir}): a socket
+ *   planted there by another user would receive the request. The check runs
+ *   just before connecting, by path; replacing the socket in that window
+ *   needs write access to a directory of the chain, which the check has
+ *   just found only the user has
  */
 export async function sendRequest<
   TRequest extends WithTypeAndSession,
@@ -51,6 +62,15 @@ export async function sendRequest<
   timeoutMs: number = getIPCRequestTimeout(),
   socketPath: string = getDaemonSocketPath()
 ): Promise<TResponse> {
+  const untrusted = secureSessionDir(path.dirname(socketPath));
+  if (untrusted) {
+    const err = untrustedSessionDirError(untrusted);
+    throw new CommandError(
+      err.message,
+      { suggestion: err.suggestion },
+      EXIT_CODES.SESSION_FILE_ERROR
+    );
+  }
   return new Promise((resolve, reject) => {
     const buffer = new JSONLBuffer();
     let resolved = false;

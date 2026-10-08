@@ -94,3 +94,78 @@ export function makeDirectory(dir: string, mode?: number): void {
   }
   fs.mkdirSync(dir, { recursive: true, ...(mode !== undefined && { mode }) });
 }
+
+/** Permission bits that let group or others write */
+const GROUP_OTHER_WRITE = 0o022;
+
+/** Permission bit that lets others (not the group) write */
+const OTHER_WRITE = 0o002;
+
+/** Sticky bit: a shared directory like `/tmp` where only owners remove their entries */
+const STICKY = 0o1000;
+
+/**
+ * Kind of untrusted directory: a symlink, not a directory, another user's,
+ * a shared sticky directory such as `/tmp` (others may create entries in
+ * it), or writable by others
+ */
+export type DirTrustKind = 'symlink' | 'not-directory' | 'owner' | 'shared' | 'writable';
+
+/** Why a directory cannot be trusted */
+export interface DirTrustProblem {
+  /** e.g. `owned by uid 1001`, `writable by others (mode 777)` */
+  reason: string;
+  kind: DirTrustKind;
+}
+
+/** Options of {@link dirTrustProblem} */
+export interface DirTrustOptions {
+  /**
+   * Accept a directory its group may write to (only others' write access is
+   * refused): under umask 002, common with per-user groups, directories are
+   * created 0775 and the group holds only the user
+   */
+  allowGroupWrite?: boolean;
+}
+
+/**
+ * Whether a path is a directory the current user can trust: a real directory
+ * (not a symlink), owned by the user, not writable by group or others (by
+ * others only, with `allowGroupWrite`).
+ *
+ * @param dir - Existing path
+ * @param options - What else to accept
+ * @returns Why it cannot be trusted, or null if it can
+ * @throws Error from `lstat` (e.g. `ENOENT` for a missing path)
+ */
+export function dirTrustProblem(
+  dir: string,
+  options: DirTrustOptions = {}
+): DirTrustProblem | null {
+  const stat = fs.lstatSync(dir);
+  const problem = (reason: string, kind: DirTrustKind): DirTrustProblem => ({ reason, kind });
+  if (stat.isSymbolicLink()) return problem('it is a symbolic link', 'symlink');
+  if (!stat.isDirectory()) return problem('not a directory', 'not-directory');
+  const uid = process.getuid?.();
+  if (uid !== undefined && stat.uid !== uid) return problem(`owned by uid ${stat.uid}`, 'owner');
+  if (process.platform === 'win32') return null;
+  const writeBits = options.allowGroupWrite ? OTHER_WRITE : GROUP_OTHER_WRITE;
+  if ((stat.mode & writeBits) === 0) return null;
+  const mode = (stat.mode & 0o7777).toString(8);
+  if ((stat.mode & STICKY) !== 0 && (stat.mode & OTHER_WRITE) !== 0) {
+    return problem(`a shared sticky directory (mode ${mode})`, 'shared');
+  }
+  return problem(`writable by others (mode ${mode})`, 'writable');
+}
+
+/**
+ * Strict form of {@link dirTrustProblem}: not a symlink, owned by the user,
+ * not writable by group or others.
+ *
+ * @param dir - Existing path
+ * @returns Why it cannot be trusted, or null if it can
+ * @throws Error from `lstat` (e.g. `ENOENT` for a missing path)
+ */
+export function untrustedDirReason(dir: string): string | null {
+  return dirTrustProblem(dir)?.reason ?? null;
+}

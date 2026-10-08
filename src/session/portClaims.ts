@@ -27,7 +27,7 @@ import {
 } from '@/session/paths.js';
 import { createLogger, logDebugError } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
-import { makeDirectory } from '@/utils/directories.js';
+import { makeDirectory, untrustedDirReason } from '@/utils/directories.js';
 
 const log = createLogger('session');
 
@@ -47,9 +47,6 @@ const LOCK_WAIT_MS = 5000;
 const STALE_LOCK_MS = 10000;
 
 const LOCK_POLL_MS = 25;
-
-/** Permission bits that let other users write */
-const GROUP_OTHER_WRITE = 0o022;
 
 /** Records a port claim; a no-op when the registry cannot be used safely */
 export type RecordPortClaim = (port: number) => void;
@@ -81,24 +78,6 @@ export function getPortRegistryDir(): string {
   if (override) return path.resolve(override);
   const uid = process.getuid?.();
   return path.join(os.tmpdir(), uid === undefined ? 'bdg-ports' : `bdg-ports-${uid}`);
-}
-
-/**
- * Whether a path is a directory the current user can trust: a real directory
- * (not a symlink), owned by the user, not writable by group or others.
- *
- * @param dir - Directory
- * @returns Why it cannot be trusted, or null if it can
- */
-export function untrustedDirReason(dir: string): string | null {
-  const stat = fs.lstatSync(dir);
-  if (!stat.isDirectory()) return 'not a directory';
-  const uid = process.getuid?.();
-  if (uid !== undefined && stat.uid !== uid) return `owned by uid ${stat.uid}`;
-  if (process.platform !== 'win32' && (stat.mode & GROUP_OTHER_WRITE) !== 0) {
-    return `writable by others (mode ${(stat.mode & 0o777).toString(8)})`;
-  }
-  return null;
 }
 
 /**

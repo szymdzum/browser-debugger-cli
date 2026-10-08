@@ -4,6 +4,7 @@
  * Centralized location for reusable error messages with consistent formatting.
  */
 
+import * as os from 'os';
 import * as path from 'path';
 
 import type { DomFrame, PendingRequestInfo } from '@/ipc/protocol/commands.js';
@@ -12,7 +13,7 @@ import {
   type WaitCondition,
   type WaitSnapshot,
 } from '@/runtime/dom/waitCondition.js';
-import { getSessionBaseDir, getSessionName } from '@/session/paths.js';
+import { getSessionBaseDir, getSessionName, type UntrustedSessionDir } from '@/session/paths.js';
 import type { DocumentRequestState, IndexSource } from '@/types.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import {
@@ -670,7 +671,7 @@ export function sessionNameSocketTooLongError(
 ): ErrorWithSuggestion {
   return {
     message: `Session name "${name}" makes the daemon socket path too long (${Buffer.byteLength(socketPath)} bytes, at most ${max}): ${socketPath}`,
-    suggestion: 'Use a shorter session name, or a shorter BDG_SESSION_DIR (e.g. /tmp/bdg)',
+    suggestion: `Use a shorter session name, or a shorter BDG_SESSION_DIR (e.g. ${privateSessionDirExample()})`,
   };
 }
 
@@ -699,9 +700,29 @@ export function purgeRefusedError(dir: string, reason: string): ErrorWithSuggest
   };
 }
 
-/** Fix for an unusable session directory */
-const SESSION_DIR_SUGGESTION =
-  'Set BDG_SESSION_DIR to a short, writable directory, e.g. BDG_SESSION_DIR=/tmp/bdg';
+/**
+ * A short session directory only the user can use, for suggestions: in
+ * `$XDG_RUNTIME_DIR` (Linux, private to the user) when set, else a per-user
+ * name in the OS temp directory (per-user on macOS). Never the shared
+ * `/tmp/bdg`, which another user can create first.
+ *
+ * @returns Absolute directory path
+ */
+function privateSessionDirExample(): string {
+  const runtimeDir = process.env['XDG_RUNTIME_DIR']?.trim();
+  if (runtimeDir) return path.join(runtimeDir, 'bdg');
+  const uid = process.getuid?.();
+  return path.join(os.tmpdir(), uid === undefined ? 'bdg' : `bdg-${uid}`);
+}
+
+/**
+ * Fix for an unusable session directory.
+ *
+ * @returns Suggestion naming a private, short directory
+ */
+function sessionDirSuggestion(): string {
+  return `Set BDG_SESSION_DIR to a short directory only you can write to, e.g. BDG_SESSION_DIR=${privateSessionDirExample()}`;
+}
 
 /**
  * The session directory exists but is not a directory.
@@ -709,7 +730,7 @@ const SESSION_DIR_SUGGESTION =
  * @param dir - Session directory
  */
 export function sessionDirIsFileError(dir: string): ErrorWithSuggestion {
-  return { message: `Session directory ${dir} is a file`, suggestion: SESSION_DIR_SUGGESTION };
+  return { message: `Session directory ${dir} is a file`, suggestion: sessionDirSuggestion() };
 }
 
 /**
@@ -721,7 +742,56 @@ export function sessionDirIsFileError(dir: string): ErrorWithSuggestion {
 export function sessionDirNotWritableError(dir: string, reason: string): ErrorWithSuggestion {
   return {
     message: `Session directory ${dir} is not writable (${reason})`,
-    suggestion: SESSION_DIR_SUGGESTION,
+    suggestion: sessionDirSuggestion(),
+  };
+}
+
+/**
+ * The session directory, or one above it, is not safe to use: another user
+ * could replace the daemon socket or plant files there.
+ *
+ * @param untrusted - Untrusted directory and why
+ */
+export function untrustedSessionDirError(untrusted: UntrustedSessionDir): ErrorWithSuggestion {
+  return {
+    message: `Session directory ${untrusted.dir} is not safe to use: ${untrusted.reason}`,
+    suggestion: untrustedSessionDirSuggestion(untrusted),
+  };
+}
+
+/**
+ * Fix for an untrusted session directory: remove a symlink, use a
+ * subdirectory of a shared sticky directory (`BDG_SESSION_DIR=/tmp`), chmod
+ * a directory bdg owns (`~/.bdg`, `sessions/`, `sessions/<name>`), else
+ * choose another `BDG_SESSION_DIR`.
+ *
+ * @param untrusted - Untrusted directory and why
+ * @returns Suggestion
+ */
+function untrustedSessionDirSuggestion(untrusted: UntrustedSessionDir): string {
+  const { dir, kind, bdgOwned } = untrusted;
+  const example = `BDG_SESSION_DIR=${privateSessionDirExample()}`;
+  if (kind === 'symlink') {
+    return `Remove the link (rm ${dir}) or point BDG_SESSION_DIR at the real directory`;
+  }
+  if (kind === 'shared') {
+    return `${dir} is shared by all users; use a subdirectory only you can write to, e.g. ${example}`;
+  }
+  if (bdgOwned) return `Run chmod 700 ${dir} (or remove it if it is not yours), then retry`;
+  return `Use a directory you own that others cannot write to, e.g. ${example} (or chmod 700 ${dir} if it is yours)`;
+}
+
+/**
+ * The daemon log cannot be opened for writing (a symlink there is refused,
+ * not followed).
+ *
+ * @param logPath - Daemon log path
+ * @param code - File-system error code
+ */
+export function daemonLogNotOpenedError(logPath: string, code: string): ErrorWithSuggestion {
+  return {
+    message: `Cannot open the daemon log ${logPath} (${code === 'ELOOP' ? 'it is a symbolic link' : code})`,
+    suggestion: `Remove ${logPath} if you did not create it, then retry`,
   };
 }
 
@@ -734,7 +804,7 @@ export function sessionDirNotWritableError(dir: string, reason: string): ErrorWi
 export function socketPathTooLongError(socketPath: string, max: number): ErrorWithSuggestion {
   return {
     message: `Session directory path is too long for the daemon socket (${Buffer.byteLength(socketPath)} bytes, at most ${max}): ${socketPath}`,
-    suggestion: SESSION_DIR_SUGGESTION,
+    suggestion: sessionDirSuggestion(),
   };
 }
 

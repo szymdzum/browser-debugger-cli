@@ -13,9 +13,11 @@ import { join } from 'path';
 
 import { DaemonStartupError, SessionDirError } from '@/daemon/errors.js';
 import {
+  daemonLogNotOpenedError,
   sessionDirIsFileError,
   sessionDirNotWritableError,
   socketPathTooLongError,
+  untrustedSessionDirError,
 } from '@/errors/messages.js';
 import { killSessionChromes, readLiveDaemonPid } from '@/session/cleanup/staleSession.js';
 import { isDaemonAlive, isDaemonSocketGone } from '@/session/daemonSocket.js';
@@ -24,6 +26,7 @@ import {
   ensureSessionDir,
   getSessionDir,
   getSessionFilePath,
+  secureSessionDir,
 } from '@/session/paths.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay } from '@/utils/async.js';
@@ -49,10 +52,13 @@ export interface SpawnedDaemon {
  * Ensure a daemon is running, spawning one if needed.
  *
  * @returns The daemon it spawned, or undefined when one was already running
+ * @throws SessionDirError if the session directory is unusable or untrusted
+ *   (checked first, so a socket planted there is never taken for a daemon)
  * @throws DaemonStartupError if the daemon script is missing or the daemon
  *   does not accept connections in time
  */
 export async function launchDaemon(): Promise<SpawnedDaemon | undefined> {
+  assertUsableSessionDir();
   if (await isDaemonAlive()) {
     log.debug('Daemon already running');
     return undefined;
@@ -65,11 +71,10 @@ export async function launchDaemon(): Promise<SpawnedDaemon | undefined> {
     );
   }
 
-  assertUsableSessionDir();
   await stopUnreachableDaemon();
   const logPath = join(getSessionDir(), 'daemon.log');
   rotateLog(logPath);
-  const logFd = fs.openSync(logPath, 'a');
+  const logFd = openDaemonLog(logPath);
   log.debug(`Starting daemon: ${DAEMON_SCRIPT_PATH}`);
   const daemon = spawn(process.execPath, [DAEMON_SCRIPT_PATH], {
     detached: true,
@@ -123,9 +128,11 @@ async function stopUnreachableDaemon(): Promise<void> {
  * Check that the session directory can hold the daemon's files before
  * spawning it (otherwise the daemon dies and only its log says why).
  *
- * @throws SessionDirError (103) for a file or a path that cannot hold a
- *   directory (a pseudo-filesystem like `/proc`), (81) for a too-long path
- *   like a named session's, (82) when not writable
+ * @throws SessionDirError (103) for a file, a path that cannot hold a
+ *   directory (a pseudo-filesystem like `/proc`) or an untrusted directory
+ *   (see {@link secureSessionDir}, which also tightens the user's own 0755
+ *   directories to 0700), (81) for a too-long path like a named session's,
+ *   (82) when not writable
  */
 export function assertUsableSessionDir(): void {
   const dir = getSessionDir();
@@ -147,6 +154,8 @@ export function assertUsableSessionDir(): void {
       problem.denied ? EXIT_CODES.PERMISSION_DENIED : EXIT_CODES.SESSION_FILE_ERROR
     );
   }
+  const untrusted = secureSessionDir(dir);
+  if (untrusted) fail(untrustedSessionDirError(untrusted));
   try {
     ensureSessionDir();
     fs.accessSync(dir, fs.constants.W_OK);
@@ -157,6 +166,34 @@ export function assertUsableSessionDir(): void {
       sessionDirNotWritableError(dir, code ?? getErrorMessage(error)),
       denied ? EXIT_CODES.PERMISSION_DENIED : EXIT_CODES.SESSION_FILE_ERROR
     );
+  }
+}
+
+/** Flags opening the daemon log for appending, refusing (not following) a symlink */
+const DAEMON_LOG_FLAGS =
+  fs.constants.O_WRONLY |
+  fs.constants.O_APPEND |
+  fs.constants.O_CREAT |
+  (fs.constants.O_NOFOLLOW ?? 0);
+
+/**
+ * Open the daemon log for the daemon's output, creating it 0600. A symlink in
+ * its place is refused, not followed: it would append the log to the file it
+ * points to.
+ *
+ * @param logPath - Daemon log path
+ * @returns File descriptor
+ * @throws SessionDirError (103) when it cannot be opened (`ELOOP` for a symlink)
+ */
+export function openDaemonLog(logPath: string): number {
+  try {
+    return fs.openSync(logPath, DAEMON_LOG_FLAGS, 0o600);
+  } catch (error) {
+    const err = daemonLogNotOpenedError(
+      logPath,
+      (error as NodeJS.ErrnoException).code ?? getErrorMessage(error)
+    );
+    throw new SessionDirError(err.message, err.suggestion);
   }
 }
 
