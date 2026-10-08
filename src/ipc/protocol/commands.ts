@@ -19,7 +19,7 @@ import type {
 } from '@/ipc/protocol/domTypes.js';
 import type { InspectResult } from '@/ipc/protocol/inspectTypes.js';
 import type { PageState, SessionActivity } from '@/ipc/session/types.js';
-import type { ColorScheme, NetworkRequest, ViewportSize } from '@/types.js';
+import type { ColorScheme, NetworkRequest, ScreenshotResult, ViewportSize } from '@/types.js';
 
 /**
  * Session peek command request schema.
@@ -425,6 +425,35 @@ export interface DomInspectCommand {
 export type DomInspectData = InspectResult;
 
 /**
+ * dom_screenshot: capture the page, or one element, as an image. The daemon
+ * changes the page's emulation for the capture and puts it back before it
+ * answers, so an interrupted CLI cannot leave it changed.
+ */
+export interface DomScreenshotCommand {
+  format: 'png' | 'jpeg';
+  /** JPEG quality (default 90) */
+  quality?: number;
+  /** Keep the full size instead of scaling down to the token budget */
+  noResize?: boolean;
+  /** Element to capture (the page when absent) */
+  backendNodeId?: number;
+  /** Element capture: CSS px of page added around the captured area */
+  padding?: number;
+  /** Page capture: the whole page (default true) */
+  fullPage?: boolean;
+  /** Page capture: selector scrolled into view first */
+  scroll?: string;
+}
+
+/** A captured image and what it shows */
+export interface DomScreenshotData {
+  /** The image, base64-encoded */
+  image: string;
+  /** What was captured (all a screenshot reports but the file it is written to) */
+  screenshot: Omit<ScreenshotResult, 'path'>;
+}
+
+/**
  * dom_form_discover: run the form discovery script and return raw form data.
  */
 export type DomFormDiscoverCommand = Record<string, never>;
@@ -459,6 +488,7 @@ export type RegistryShape = {
   dom_audit: CommandDef<DomAuditCommand, DomAuditData>;
   css_search: CommandDef<CssSearchCommand, CssSearchData>;
   dom_inspect: CommandDef<DomInspectCommand, DomInspectData>;
+  dom_screenshot: CommandDef<DomScreenshotCommand, DomScreenshotData>;
   dom_wait: CommandDef<DomWaitCommand, DomWaitData>;
   page_navigate: CommandDef<PageNavigateCommand, PageNavigationResult>;
   page_emulate: CommandDef<PageEmulateCommand, PageEmulationResult>;
@@ -607,6 +637,7 @@ export const COMMANDS: RegistryShape = {
   dom_audit: defineCommand(),
   css_search: defineCommand(),
   dom_inspect: defineCommand(),
+  dom_screenshot: defineCommand(),
   dom_wait: defineCommand(),
 };
 

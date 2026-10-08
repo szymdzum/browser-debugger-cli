@@ -472,6 +472,8 @@ export interface FixtureServer {
   url: string;
   /** Stop the server */
   close: () => Promise<void>;
+  /** Query strings of the `/beacon?…` requests the pages sent, in order */
+  beacons: string[];
 }
 
 /**
@@ -483,7 +485,14 @@ export async function startFixtureServer(): Promise<FixtureServer> {
   const html = fs.readFileSync(FIXTURE_HTML);
   const interactionsHtml = fs.readFileSync(INTERACTIONS_HTML);
   let loginFailed = false;
+  const beacons: string[] = [];
   const server = http.createServer((req, res) => {
+    if (req.url?.startsWith('/beacon?')) {
+      beacons.push(req.url.slice('/beacon?'.length));
+      res.writeHead(204);
+      res.end();
+      return;
+    }
     if (req.url === '/authenticate' && req.method === 'POST') {
       let body = '';
       req.on('data', (chunk: Buffer) => (body += chunk.toString()));
@@ -666,6 +675,7 @@ export async function startFixtureServer(): Promise<FixtureServer> {
 
   return {
     url: `http://127.0.0.1:${port}/`,
+    beacons,
     close: () =>
       new Promise<void>((resolve) => {
         echo.clients.forEach((socket) => socket.terminate());

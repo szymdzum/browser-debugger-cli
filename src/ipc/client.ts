@@ -515,6 +515,16 @@ export async function domInspect(
   return sendCommand('dom_inspect', params);
 }
 
+/**
+ * Capture the page or one element; the daemon puts back the emulation the
+ * capture changed before it answers.
+ */
+export async function domScreenshot(
+  params: NoType<(typeof COMMANDS)['dom_screenshot']['requestSchema']>
+): Promise<ClientResponse<'dom_screenshot'>> {
+  return sendCommand('dom_screenshot', params);
+}
+
 /** Time the client gives `dom wait` beyond its --timeout (the daemon reports the timeout first) */
 const WAIT_IPC_MARGIN_MS = 10_000;
 
