@@ -19,6 +19,14 @@ void describe('boundEvalResult', () => {
     assert.equal(bounded.truncatedFrom, undefined);
   });
 
+  void it('lists 100 of 101 elements, omitting one', () => {
+    const value = Array.from({ length: EVAL_JSON_ARRAY_LIMIT + 1 }, (_, index) => index);
+    const bounded = boundEvalResult(value);
+    assert.equal((bounded.result as unknown[]).length, EVAL_JSON_ARRAY_LIMIT);
+    assert.equal(bounded.count, EVAL_JSON_ARRAY_LIMIT + 1);
+    assert.equal(bounded.omitted, 1);
+  });
+
   void it('counts the elements of the array in the page when its copy holds fewer', () => {
     const copy = [...Array.from({ length: 1000 }, (_, index) => index), '…'];
     const bounded = boundEvalResult(copy, 20_000);
@@ -58,7 +66,7 @@ void describe('boundEvalResult', () => {
   });
 
   void it('leaves small values untouched', () => {
-    for (const value of [42, null, true, 'text', [1, 2, 3], { a: [1, { b: 'c' }] }, undefined]) {
+    for (const value of [42, null, true, '', 'text', [], [1, 2, 3], { a: [1, { b: 'c' }] }]) {
       assert.deepEqual(boundEvalResult(value), { result: value });
     }
     const hundred = Array.from({ length: EVAL_JSON_ARRAY_LIMIT }, (_, index) => index);

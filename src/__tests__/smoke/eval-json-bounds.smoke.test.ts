@@ -22,7 +22,7 @@ const DIV_COUNT = 20_000;
 
 const SETUP_SCRIPT = `document.body.insertAdjacentHTML('beforeend', Array.from({ length: ${DIV_COUNT} }, (_, i) => '<div class="row" data-i="' + i + '">Row ' + i + '</div>').join('')); 1`;
 
-/** Every element's HTML; `html` and `body` hold the whole page, so 2 MB of JSON */
+/** Every element's HTML; `html` and `body` hold the whole page, so 3 MB of JSON */
 const ALL_HTML = "[...document.querySelectorAll('*')].map(e => e.outerHTML)";
 
 /** Most bytes a bounded `--json` eval prints */
@@ -104,13 +104,25 @@ void describe('dom eval --json bounds', () => {
     assert.ok((data.truncatedFrom ?? 0) > 40_000, `truncatedFrom ${data.truncatedFrom}`);
   });
 
-  void it('--full returns the whole value', async () => {
-    const { data } = await evalJson(ALL_HTML, ['--full']);
+  void it('--full returns every element of an array over 1000 entries', async () => {
+    const { data } = await evalJson(
+      "[...document.querySelectorAll('div.row')].slice(0, 1500).map(e => e.dataset.i)",
+      ['--full']
+    );
+    assert.ok(Array.isArray(data.result));
+    assert.equal(data.result.length, 1500);
+    assert.ok(!data.result.includes('…'));
+    assert.equal(data.result[1499], '1499');
+  });
+
+  void it('--full returns the whole value, of which the bounded result is the start', async () => {
+    const firstRows = "[...document.querySelectorAll('*')].slice(0, 1000).map(e => e.outerHTML)";
+    const { data } = await evalJson(firstRows, ['--full']);
     assert.ok(Array.isArray(data.result));
     assert.equal(data.count, undefined);
     assert.equal(data.truncatedFrom, undefined);
     const json = JSON.stringify(data.result);
-    const bounded = (await evalJson(ALL_HTML)).data;
+    const bounded = (await evalJson(firstRows)).data;
     assert.equal(bounded.truncatedFrom, json.length);
     assert.ok(json.startsWith(bounded.result as string));
   });

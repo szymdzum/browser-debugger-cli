@@ -36,7 +36,7 @@ export async function handleDomEval(script: string, options: DomEvalCommandOptio
           errorContext: { suggestion: err.suggestion },
         };
       }
-      const response = await domEval(script, options.frame);
+      const response = await domEval(script, options.frame, options.full);
       if (response.status === 'error' || !response.data) {
         const suggestion = await frameErrorSuggestion(response, options.frame);
         return {

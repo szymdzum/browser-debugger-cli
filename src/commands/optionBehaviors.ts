@@ -156,10 +156,11 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
   },
   'eval:--full': {
     default:
-      'Human output prints the first 20000 characters of the value followed by "… N more chars (use --full)". In JSON a string result is cut to 20000 characters with truncatedFrom (the original length); an array result lists its first 100 elements with count (all of them) and omitted; an object or array whose JSON is still over 20000 characters becomes the first 20000 characters of its JSON text (a string; arrays keep count) with truncatedFrom (the length of the whole JSON text)',
-    whenEnabled: 'Prints the whole value, byte for byte',
+      'Human output prints the first 20000 characters of the value followed by "… N more chars (use --full)". In JSON a string result is cut to 20000 characters with truncatedFrom (the original length); an array result lists its first 100 elements with count (all of them) and omitted; an object or array whose JSON is still over 20000 characters becomes the first 20000 characters of its JSON text (a string; arrays keep count) with truncatedFrom (the length of the JSON text of the copy, which holds at most 1000 entries per list or object): a string result with truncatedFrom while type is object is such a JSON-text start',
+    whenEnabled:
+      'Prints the whole value, byte for byte; objects and arrays are copied with every entry (without --full at most 1000 per list or object)',
     tokenImpact:
-      'dom eval document.documentElement.outerHTML on Wikipedia is about 3.6 MB with --full; on a page with 20000 elements, [...document.querySelectorAll("*")].map(e => e.outerHTML) --json is 2 MB with --full and 23 KB without; select what you need in the expression instead',
+      'dom eval document.documentElement.outerHTML on Wikipedia is about 3.6 MB with --full; on a page with 20000 elements, [...document.querySelectorAll("*")].map(e => e.outerHTML) --json is 3 MB with --full and 23 KB without; select what you need in the expression instead',
   },
 
   'console:--full': {
