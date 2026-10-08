@@ -25,9 +25,9 @@ function code(text) {
 export default async function* failedTests(source) {
   const path = [];
   for await (const event of source) {
-    const { name, nesting, file, details } = event.data ?? {};
+    const { name, nesting, file, details, todo } = event.data ?? {};
     if (event.type === 'test:start') path.splice(nesting, path.length, name);
-    if (event.type !== 'test:fail' || details?.type === 'suite') continue;
+    if (event.type !== 'test:fail' || details?.type === 'suite' || todo) continue;
     const fullName = [...path.slice(0, nesting), name].join(' › ');
     yield `- ${file ? `${code(relative(process.cwd(), file))}: ` : ''}${code(fullName)}\n`;
   }
