@@ -79,6 +79,18 @@ void describe('formatNetworkDetails', () => {
     assert.match(output, /\(not captured: images are skipped \(use --all\)\)/);
   });
 
+  void it('explains a request body that was not kept', () => {
+    const output = formatNetworkDetails({
+      requestId: 'R',
+      url: 'https://example.com/upload',
+      method: 'POST',
+      timestamp: 0,
+      requestBodyNotCaptured: 'evicted: total body budget',
+    });
+
+    assert.match(output, /Request Body:[\s\S]*\(not captured: evicted: total body budget\)/);
+  });
+
   void it('cuts very long text bodies and points to the JSON output', () => {
     const output = formatNetworkDetails({
       requestId: 'R',

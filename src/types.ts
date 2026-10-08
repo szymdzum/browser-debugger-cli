@@ -170,6 +170,8 @@ export interface NetworkRequest {
   fromCache?: boolean;
   /** Why the response body was not captured (`details`; `responseBody` is then absent) */
   bodyNotCaptured?: string;
+  /** Why the request body was not kept (`details`; `requestBody` is then absent) */
+  requestBodyNotCaptured?: string;
   /** Messages and lifecycle of a WebSocket connection (`resourceType` is `WebSocket`) */
   webSocket?: {
     frames: WebSocketFrame[];

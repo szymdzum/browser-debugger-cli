@@ -196,7 +196,7 @@ void describe('formatNetworkList eviction note', () => {
     const bodies = { requestsDropped: 0, bodiesEvicted: 5 };
     assert.match(
       formatNetworkList([], { evictions: bodies }),
-      /⚠ 5 older response bodies were evicted: bdg keeps the newest 100 MB of bodies/
+      /⚠ 5 older request\/response bodies were evicted: bdg keeps the newest 100 MB of bodies/
     );
     assert.doesNotMatch(
       formatNetworkList([], { evictions: { requestsDropped: 0, bodiesEvicted: 0 } }),

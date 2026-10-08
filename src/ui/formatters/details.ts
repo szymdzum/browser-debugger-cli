@@ -245,7 +245,11 @@ export function formatNetworkDetails(request: NetworkRequest): string {
   fmt.blank();
 
   if (request.requestHeaders) addHeaders(fmt, 'Request Headers:', request.requestHeaders);
-  if (request.requestBody) {
+  if (request.requestBodyNotCaptured) {
+    fmt.text('Request Body:').separator('━', 70);
+    fmt.text(`(not captured: ${request.requestBodyNotCaptured})`);
+    fmt.blank();
+  } else if (request.requestBody) {
     fmt.text('Request Body:').separator('━', 70);
     fmt.text(request.requestBody);
     fmt.blank();

@@ -336,7 +336,7 @@ export interface NetworkCollectionOptions {
   maxBodySize?: number;
   /** Finished requests kept at most; past it the oldest are dropped (default {@link MAX_NETWORK_REQUESTS}) */
   maxRequests?: number;
-  /** Total size of stored response bodies; past it the oldest are evicted (default {@link MAX_TOTAL_BODY_BYTES}) */
+  /** Total size of stored request and response bodies; past it the oldest are evicted (default {@link MAX_TOTAL_BODY_BYTES}) */
   maxTotalBodyBytes?: number;
   /** Counters of dropped requests and evicted bodies; otherwise the collector keeps private ones */
   evictions?: NetworkEvictions | undefined;
@@ -359,9 +359,9 @@ export interface NetworkCollectionOptions {
  * - The newest 10,000 finished requests are kept: past that the oldest finished
  *   ones are dropped (counted in `evictions.requestsDropped`); requests in flight
  *   are tracked separately and never dropped mid-flight
- * - Stored response bodies total at most 100MB: past that the oldest bodies are
- *   replaced by a placeholder (counted in `evictions.bodiesEvicted`), their
- *   request metadata stays
+ * - Stored request (post data) and response bodies total at most 100MB: past
+ *   that the oldest bodies are replaced by a placeholder (counted in
+ *   `evictions.bodiesEvicted`), their request metadata stays
  * - Response bodies are automatically skipped for images, fonts, CSS, and source maps (see DEFAULT_SKIP_BODY_PATTERNS)
  * - Response bodies larger than 5MB are skipped with a placeholder message
  * - By default, common tracking/analytics domains are filtered out (use includeAll to disable)

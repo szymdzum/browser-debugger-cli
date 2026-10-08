@@ -625,6 +625,25 @@ void describe('CommandRegistry', () => {
       assert.equal(request.responseBody, undefined);
       assert.equal(request.bodyNotCaptured, 'images are skipped');
     });
+
+    void it('reports why an evicted request body is missing', async () => {
+      store.networkRequests.push({
+        requestId: 'upload',
+        timestamp: 1,
+        method: 'POST',
+        url: 'https://example.com/upload',
+        requestBody: '[SKIPPED: evicted: total body budget]',
+      });
+
+      const { item } = await registry.session_details(mockCdp, {
+        itemType: 'network',
+        id: 'upload',
+      });
+
+      const request = item as NetworkRequest;
+      assert.equal(request.requestBody, undefined);
+      assert.equal(request.requestBodyNotCaptured, 'evicted: total body budget');
+    });
   });
 
   void describe('cdp_call', () => {
