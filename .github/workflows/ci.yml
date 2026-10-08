@@ -35,11 +35,14 @@ jobs:
   # Whether a PR changes anything besides docs. Pushes to main and nightly runs
   # always count as code changes. Every job below depends on this (directly or
   # through build), so a docs-only PR skips them and still reports CI OK.
+  # timing: whether a PR touches timing-sensitive code or the smoke setup, so
+  # macOS smoke runs on it too (#529).
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
       code: ${{ github.event_name != 'pull_request' || steps.filter.outputs.code == 'true' }}
+      timing: ${{ steps.timing.outputs.timing == 'true' }}
 
     steps:
       - name: Checkout code
@@ -59,6 +62,29 @@ jobs:
               - '!docs/**'
               - '!.gitignore'
               - '!LICENSE'
+
+      # A step of its own: the quantifier above (every) would need a file to
+      # match all of these paths.
+      - name: Detect timing-sensitive changes
+        id: timing
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            timing:
+              - 'src/runtime/**'
+              - 'src/connection/**'
+              - 'src/daemon/**'
+              - 'src/ipc/**'
+              - 'src/session/**'
+              - 'src/telemetry/**'
+              - 'src/__tests__/smoke/**'
+              - 'src/__testutils__/**'
+              - '.github/workflows/**'
+              - 'scripts/smoke-selected.sh'
+              - 'scripts/failed-tests-reporter.mjs'
+              - 'package.json'
+              - 'package-lock.json'
 
   # Single job to install deps and build - share artifacts with other jobs
   build:
@@ -240,9 +266,10 @@ jobs:
           timeout 120 google-chrome-stable --headless=new --user-data-dir="$(mktemp -d)" --dump-dom about:blank > /dev/null
           echo "Chrome warm-up took $(( $(date +%s) - start )) s"
 
+      # The failed tests are also listed in the job summary.
       - name: Run smoke tests
         if: github.event_name != 'workflow_dispatch'
-        run: npm run test:smoke
+        run: scripts/smoke-selected.sh
 
       - name: Run selected smoke tests
         if: github.event_name == 'workflow_dispatch'
@@ -271,12 +298,13 @@ jobs:
           retention-days: 7
 
   # macOS smoke (the platform bdg is mostly used on), with the runner's Google
-  # Chrome. Only on main and nightly; not part of CI OK.
+  # Chrome. On main, nightly and dispatch, and on PRs that touch timing-sensitive
+  # paths (changes.timing). Not part of CI OK: it gives signal without blocking.
   smoke-macos:
     name: Smoke Tests (macOS, Chrome) (Node 22)
     runs-on: macos-latest
     needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name != 'pull_request'
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || needs.changes.outputs.timing == 'true')
     env:
       BDG_TEST_KEEP_DIRS: '1'
 
@@ -322,9 +350,10 @@ jobs:
           which bdg
           bdg --version
 
+      # The failed tests are also listed in the job summary.
       - name: Run smoke tests
         if: github.event_name != 'workflow_dispatch'
-        run: npm run test:smoke
+        run: scripts/smoke-selected.sh
 
       - name: Run selected smoke tests
         if: github.event_name == 'workflow_dispatch'
