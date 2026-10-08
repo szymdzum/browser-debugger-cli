@@ -9,7 +9,7 @@
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import { VIEWPORT_SIZE_JS } from '@/runtime/dom/elementGeometry.js';
-import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
+import { hideHeadlessUserAgent, type BrowserVersion } from '@/runtime/page/userAgent.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -73,11 +73,11 @@ export async function applySessionEmulation(
  */
 async function emulatePhone(cdp: CDPConnection, on: boolean): Promise<void> {
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: on, maxTouchPoints: on ? 5 : 1 });
-  const { userAgent } = (await cdp.send('Browser.getVersion', {})) as { userAgent: string };
+  const version = (await cdp.send('Browser.getVersion', {})) as BrowserVersion;
+  const { userAgent } = version;
   if (!on) {
-    const headless = userAgent.includes('HeadlessChrome');
-    await cdp.send('Emulation.setUserAgentOverride', { userAgent: headless ? userAgent : '' });
-    if (headless) await hideHeadlessUserAgent(cdp, log);
+    if (userAgent.includes('HeadlessChrome')) await hideHeadlessUserAgent(cdp, log, version);
+    else await cdp.send('Emulation.setUserAgentOverride', { userAgent: '' });
     return;
   }
   const major = /Chrome\/(\d+)/.exec(userAgent)?.[1] ?? '';
