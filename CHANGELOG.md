@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Actions see a page still changing on a busy or slow machine** (#507): when the page's main thread was busy (or its process descheduled) as bdg read the page after an action, the read ran before the timer that had fallen due meanwhile, so a page adding content every 100 ms looked like a single render and the action reported it settled instead of `pending.domChanging`. The read now first lets a timer that fell due meanwhile run (a 0 ms timer set in bdg's own world, so a page that replaced or fakes `setTimeout` is still read, waited for at most 100 ms). The docs now say that DOM changes more than about 150 ms apart are reported as settled.
+
 ## [0.15.0] - 2026-10-08
 
 ### Breaking

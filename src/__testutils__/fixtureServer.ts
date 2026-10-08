@@ -355,6 +355,7 @@ const DYNAMIC_LOADING_HTML = `<!doctype html><title>dynamic loading</title>
  * mouseenter, cards whose caption only CSS `:hover` shows, a to-do field
  * adding an item on Enter (while a ticker elsewhere adds a line on every
  * key), buttons whose result comes later (after a spinner, in 100 ms steps,
+ * in 100 ms steps on a page busy from 60 to 260 ms as on a slow machine,
  * after a 1.5 s long task), one rendering twice and then stopping, one
  * showing a toast that hides itself, a button covered by a transparent
  * overlay, and a hover target whose mouseenter removes 200 of the 1600
@@ -365,7 +366,7 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
 <span id="help" style="padding: 4px">?</span><div id="tip" role="tooltip" hidden>Saves a draft every minute</div>
 <div class="cards"><div class="card"><span class="caption">first card</span></div><div class="card"><span class="caption">second card</span></div></div>
 <section id="todo-app"><header><input id="todo"></header><ul id="todos"></ul></section>
-<button id="spin">Spin</button><button id="twice">Twice</button><button id="steps">Steps</button><button id="block">Block</button><button id="toast">Toast</button>
+<button id="spin">Spin</button><button id="twice">Twice</button><button id="steps">Steps</button><button id="busy-steps">Busy steps</button><button id="block">Block</button><button id="toast">Toast</button>
 <div id="results"></div>
 <div style="position: relative; display: inline-block"><button id="covered">Covered</button><div id="cover" style="position: absolute; inset: 0"></div></div>
 <aside id="ticker"></aside>
@@ -400,6 +401,13 @@ const EFFECTS_HTML = `<!doctype html><title>effects</title>
     let step = 0;
     const next = () => { add('Step ' + step); if (++step < 20) setTimeout(next, 100); };
     next();
+  };
+  document.getElementById('busy-steps').onclick = () => {
+    document.getElementById('steps').onclick();
+    setTimeout(() => {
+      const end = Date.now() + 200;
+      while (Date.now() < end);
+    }, 60);
   };
   document.getElementById('block').onclick = () => setTimeout(() => {
     const end = Date.now() + 1500;

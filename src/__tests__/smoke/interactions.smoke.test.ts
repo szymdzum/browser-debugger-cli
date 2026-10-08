@@ -1189,6 +1189,11 @@ void describe('DOM interactions', () => {
 
     assert.deepEqual((await click('#spin')).pending, { loading: 'div.spinner' });
     assert.equal((await click('#steps')).pending?.['domChanging'], true);
+    assert.equal(
+      (await click('#busy-steps')).pending?.['domChanging'],
+      true,
+      'a step that fell due while the page was busy is seen'
+    );
     assert.equal((await click('#twice')).settled, undefined, 'two renders that stop are settled');
     assert.equal((await click('#block')).pending?.['busy'], true);
     assert.equal(
@@ -1196,6 +1201,11 @@ void describe('DOM interactions', () => {
       undefined,
       "a toast's hide timer is not pending work"
     );
+
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    await evaluate('window.setTimeout = () => 1');
+    const untimed = (JSON.parse(await bdg(['dom', 'click', '#steps', '--json'])) as Unsettled).data;
+    assert.equal(untimed.settled, undefined, 'a page that replaced setTimeout is read, not busy');
 
     await bdg(['page', 'navigate', `${fixture.url}effects`]);
     assert.match(

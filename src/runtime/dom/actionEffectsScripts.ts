@@ -427,6 +427,22 @@ export const EFFECTS_START_SCRIPT = `(() => {
 })()`;
 
 /**
+ * Page-side wait for one turn of the page's timers. A busy or descheduled
+ * renderer (a slow machine) runs a CDP read before a timer that fell due
+ * meanwhile, so a page changing every 100 ms would look like a single
+ * render; Chrome runs the earliest overdue timers before a 0 ms timer posted
+ * after them (a longer delay would wait for every due timer). That order is
+ * Chrome's scheduler behaviour, not a web standard, verified on Chrome 154.
+ */
+export const DUE_TIMERS_JS = `() => new Promise((resolve) => setTimeout(resolve, 0))`;
+
+/** Sets the {@link DUE_TIMERS_JS} timer, kept for {@link AWAIT_DUE_TIMERS_SCRIPT} */
+export const START_DUE_TIMERS_SCRIPT = `globalThis.__bdgDueTimers = (${DUE_TIMERS_JS})(), true`;
+
+/** Resolves once the timer {@link START_DUE_TIMERS_SCRIPT} set has run */
+export const AWAIT_DUE_TIMERS_SCRIPT = 'globalThis.__bdgDueTimers';
+
+/**
  * Read after an action, called with `(stop, shown)`: `stop` also stops
  * watching, `shown` lists the elements the action showed
  * ({@link SHOWN_ELEMENTS_JS}). Returns the URL, the messages shown and,
