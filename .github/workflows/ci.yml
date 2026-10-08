@@ -7,6 +7,23 @@ on:
     branches: ['**']
   schedule:
     - cron: '17 3 * * *'
+  # Run the macOS smoke job on any branch to investigate macOS-only failures
+  # (it does not run on pull requests).
+  workflow_dispatch:
+    inputs:
+      smoke_files:
+        description: 'Smoke test files (glob)'
+        default: 'src/__tests__/smoke/*.smoke.test.ts'
+      name_pattern:
+        description: 'Only tests whose name matches (empty = all)'
+        default: ''
+      repeat:
+        description: 'Run the selection this many times'
+        default: '1'
+      debug:
+        description: 'BDG_DEBUG=1 for the daemons (logs uploaded)'
+        type: boolean
+        default: false
 
 # Cancel superseded PR runs. Runs on main are never cancelled: a release needs
 # a successful CI run of its commit, and a nightly run must not cancel a push run.
@@ -288,10 +305,31 @@ jobs:
           bdg --version
 
       - name: Run smoke tests
+        if: github.event_name != 'workflow_dispatch'
         run: npm run test:smoke
 
+      - name: Run selected smoke tests
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SMOKE_FILES: ${{ inputs.smoke_files }}
+          NAME_PATTERN: ${{ inputs.name_pattern }}
+          REPEAT: ${{ inputs.repeat }}
+          BDG_DEBUG: ${{ inputs.debug && '1' || '' }}
+        run: |
+          args=(--test --test-concurrency=1)
+          if [ -n "$NAME_PATTERN" ]; then args+=(--test-name-pattern "$NAME_PATTERN"); fi
+          failed=0
+          for i in $(seq 1 "$REPEAT"); do
+            echo "::group::run $i of $REPEAT"
+            # shellcheck disable=SC2086 # SMOKE_FILES is a glob on purpose
+            npx tsx "${args[@]}" $SMOKE_FILES || failed=$((failed + 1))
+            echo "::endgroup::"
+          done
+          echo "failed runs: $failed of $REPEAT"
+          [ "$failed" -eq 0 ]
+
       - name: Upload session logs
-        if: failure()
+        if: failure() || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: smoke-logs-macos
