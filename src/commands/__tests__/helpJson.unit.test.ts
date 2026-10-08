@@ -52,6 +52,12 @@ void describe('generateCompactHelp', () => {
     });
   });
 
+  void it('prefers the summary over the first description line', () => {
+    const root = new Command('bdg');
+    root.command('cdp').summary('CDP execution').description('Long text\n  Discovery: --list');
+    assert.equal(generateCompactHelp(root).command.subcommands?.[0]?.description, 'CDP execution');
+  });
+
   void it('keeps exit codes and says where the details are', () => {
     assert.ok(help.exitCodes.length > 0);
     assert.match(help.details, /bdg <command> --help --json/);

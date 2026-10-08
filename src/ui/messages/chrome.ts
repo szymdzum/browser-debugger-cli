@@ -58,7 +58,9 @@ export function formatChromeIssue(issue: IssueDetails): string {
           : reason
             ? chromeLaunchFailedError(reason)
             : `Chrome failed to launch`;
-      const diagnostics = getFormattedDiagnostics();
+      const found = getChromeDiagnostics();
+      const diagnostics = formatDiagnosticsForError(found);
+      if (found.installationCount === 0) return joinLines(header, '', ...diagnostics);
       return joinLines(
         header,
         '',
@@ -156,9 +158,23 @@ export function getFormattedDiagnostics(): string[] {
 }
 
 /**
+ * A Chromium-based browser binary that chrome-launcher does not find on its
+ * own, as an example value for CHROME_PATH.
+ *
+ * @param platform - OS the path is for
+ * @returns Microsoft Edge's binary on macOS or Linux
+ */
+function exampleChromePath(platform: NodeJS.Platform): string {
+  return platform === 'darwin'
+    ? '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+    : '/usr/bin/microsoft-edge';
+}
+
+/**
  * Format Chrome diagnostics for error reporting when Chrome launch fails.
  *
  * @param diagnostics - Chrome diagnostics information
+ * @param platform - OS the CHROME_PATH example is for
  * @returns Formatted error message lines with troubleshooting steps
  *
  * @example
@@ -168,12 +184,17 @@ export function getFormattedDiagnostics(): string[] {
  * console.error(errorLines.join('\n'));
  * ```
  */
-export function formatDiagnosticsForError(diagnostics: ChromeDiagnostics): string[] {
+export function formatDiagnosticsForError(
+  diagnostics: ChromeDiagnostics,
+  platform: NodeJS.Platform = process.platform
+): string[] {
   const lines: string[] = [];
 
   if (diagnostics.installationCount === 0) {
     lines.push('Error: No Chrome installations detected\n');
-    lines.push('Install Chrome from:');
+    lines.push('Set CHROME_PATH to a Chromium-based browser (Edge, Brave, Chromium), e.g.:');
+    lines.push(`   CHROME_PATH="${exampleChromePath(platform)}" ${sessionCommand('bdg <url>')}\n`);
+    lines.push('Or install Chrome from:');
     lines.push('   https://www.google.com/chrome/\n');
   } else {
     lines.push(`Found ${pluralize(diagnostics.installationCount, 'Chrome installation')}:\n`);

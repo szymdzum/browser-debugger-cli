@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Help and usage hints** (#490): an unknown subcommand close to several commands suggests "Did you mean: form or frames?" instead of "one of form, frames"; `cdp` is on one aligned line in `bdg --help`.
+- **No Chrome found** (#496): the launch error suggests `CHROME_PATH` for another Chromium-based browser (with an Edge example) and drops the port-conflict hints that don't apply.
+
 ## [0.14.0] - 2026-10-07
 
 ### Breaking

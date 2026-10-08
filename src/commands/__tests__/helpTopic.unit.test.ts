@@ -88,6 +88,20 @@ void describe('splitCommanderHint', () => {
     });
   });
 
+  void it('joins two candidates with "or"', () => {
+    assert.deepEqual(
+      splitCommanderHint("error: unknown command 'fram'\n(Did you mean one of form, frames?)"),
+      { message: "unknown command 'fram'", suggestion: 'Did you mean: form or frames?' }
+    );
+  });
+
+  void it('lists three or more candidates with commas and a final "or"', () => {
+    assert.deepEqual(
+      splitCommanderHint("error: unknown command 'fo'\n(Did you mean one of fill, form, focus?)"),
+      { message: "unknown command 'fo'", suggestion: 'Did you mean: fill, form or focus?' }
+    );
+  });
+
   void it('leaves other messages alone', () => {
     assert.deepEqual(splitCommanderHint("error: unknown option '--zzz'"), {
       message: "unknown option '--zzz'",
