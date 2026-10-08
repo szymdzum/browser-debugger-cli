@@ -9,19 +9,24 @@
  * `httpOnly`) with the value `[redacted]`, so the export still shows that a
  * request was authenticated and which cookies were set. It also covers API
  * key, token and session headers, credential query parameters in URLs
- * (`?code=`, `?access_token=`) and credential fields of request bodies
- * (sanitizeBody.ts). `headersSize` and `bodySize` stay those of the captured
- * request. Response bodies and WebSocket messages are not redacted.
+ * (`?code=`, `?access_token=`), and credential fields of request and response
+ * bodies and of WebSocket text messages (sanitizeBody.ts). `headersSize`,
+ * `bodySize` and `content.size` stay those of the captured request. Binary
+ * (base64) bodies and messages are kept, and so are response bodies over
+ * {@link MAX_SANITIZED_BODY_BYTES}, which are not parsed (`content.comment`
+ * says so).
  */
 
-import type { Cookie, Entry, Header, QueryParam } from './types.js';
+import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } from './types.js';
 
+import { MAX_SANITIZED_BODY_BYTES } from '@/constants.js';
 import {
   REDACTED,
   isSensitiveField,
+  redactBody,
   redactPairs,
-  redactRequestBody,
 } from '@/telemetry/har/sanitizeBody.js';
+import { harBodyNotSanitizedComment } from '@/ui/messages/networkMessages.js';
 
 /** {@link REDACTED} as written in a URL */
 const URL_REDACTED = encodeURIComponent(REDACTED);
@@ -52,6 +57,9 @@ const URL_HEADERS = new Set(['location', 'referer']);
 /** Query parameter names that hold credentials in URLs only (OAuth codes, signed URLs, API keys) */
 const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;
 
+/** WebSocket opcode of a text message */
+const TEXT_OPCODE = 1;
+
 /**
  * Redact the credentials of a HAR entry.
  *
@@ -59,7 +67,7 @@ const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;
  * @returns Copy of the entry with credential values replaced by {@link REDACTED}
  */
 export function sanitizeEntry(entry: Entry): Entry {
-  const { request, response } = entry;
+  const { request, response, _webSocketMessages: messages } = entry;
   const postData = request.postData;
   return {
     ...entry,
@@ -70,7 +78,7 @@ export function sanitizeEntry(entry: Entry): Entry {
       headers: request.headers.map(redactHeader),
       queryString: request.queryString.map(redactQueryParam),
       ...(postData?.text !== undefined && {
-        postData: { ...postData, text: redactRequestBody(postData.text, postData.mimeType) },
+        postData: { ...postData, text: redactBody(postData.text, postData.mimeType) },
       }),
     },
     response: {
@@ -78,8 +86,41 @@ export function sanitizeEntry(entry: Entry): Entry {
       cookies: response.cookies.map(redactCookie),
       headers: response.headers.map(redactHeader),
       redirectURL: redactUrl(response.redirectURL),
+      content: redactContent(response.content),
     },
+    ...(messages && { _webSocketMessages: messages.map(redactWebSocketMessage) }),
   };
+}
+
+/**
+ * Redact credential fields of a response body. Binary (base64) bodies are
+ * kept; a body over {@link MAX_SANITIZED_BODY_BYTES} is not parsed but kept
+ * with a comment saying so.
+ *
+ * @param content - HAR response content
+ * @returns The content, or a copy with its text redacted or its comment set;
+ *   `size` stays as captured
+ */
+function redactContent(content: Content): Content {
+  const { text } = content;
+  if (text === undefined || content.encoding === 'base64') return content;
+  if (Buffer.byteLength(text, 'utf8') > MAX_SANITIZED_BODY_BYTES) {
+    return { ...content, comment: harBodyNotSanitizedComment() };
+  }
+  const redacted = redactBody(text, content.mimeType);
+  return redacted === text ? content : { ...content, text: redacted };
+}
+
+/**
+ * Redact credential fields of a WebSocket text message; binary messages are kept.
+ *
+ * @param message - HAR WebSocket message
+ * @returns The message, or a copy with its data redacted
+ */
+function redactWebSocketMessage(message: WebSocketMessage): WebSocketMessage {
+  if (message.opcode !== TEXT_OPCODE) return message;
+  const data = redactBody(message.data, '');
+  return data === message.data ? message : { ...message, data };
 }
 
 /**

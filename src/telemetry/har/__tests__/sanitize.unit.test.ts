@@ -346,9 +346,155 @@ void describe('HAR sanitization: URLs', () => {
   });
 });
 
+/** A token endpoint's response: the credentials of a login flow */
+const TOKEN_RESPONSE: NetworkRequest = {
+  ...LOGIN_REQUEST,
+  requestId: 'token',
+  mimeType: 'application/json',
+  decodedBodyLength: 4242,
+  responseBody: JSON.stringify({
+    access_token: 'at-SECRET',
+    refresh_token: 'rt-SECRET',
+    id_token: 'it-SECRET',
+    expires_in: 3600,
+    user: { name: 'ann', password: 'hunter2', client_secret: 'cs-SECRET' },
+  }),
+};
+
+/** A WebSocket connection whose frames carry tokens */
+const SOCKET: NetworkRequest = {
+  requestId: 'ws',
+  url: 'wss://example.com/ws',
+  method: 'GET',
+  timestamp: 2,
+  status: 101,
+  resourceType: 'WebSocket',
+  webSocket: {
+    frames: [
+      {
+        timestamp: 3,
+        direction: 'sent',
+        opcode: 1,
+        payloadData: '{"type":"auth","token":"ws-SECRET"}',
+      },
+      { timestamp: 4, direction: 'received', opcode: 1, payloadData: 'token ws-plain' },
+      {
+        timestamp: 5,
+        direction: 'received',
+        opcode: 2,
+        payloadData: Buffer.from('{"token":"ws-binary"}').toString('base64'),
+      },
+    ],
+  },
+};
+
+/**
+ * Exported response content of a request.
+ *
+ * @param req - Captured request
+ * @param includeSensitive - Keep credentials
+ * @returns HAR content
+ */
+function contentFor(req: NetworkRequest, includeSensitive?: boolean): Entry['response']['content'] {
+  return entryFor(req, includeSensitive).response.content;
+}
+
+void describe('HAR sanitization: response bodies', () => {
+  test('redacts token and password fields of a JSON response, keeping its structure', () => {
+    assert.deepEqual(JSON.parse(contentFor(TOKEN_RESPONSE).text ?? ''), {
+      access_token: REDACTED,
+      refresh_token: REDACTED,
+      id_token: REDACTED,
+      expires_in: 3600,
+      user: { name: 'ann', password: REDACTED, client_secret: REDACTED },
+    });
+  });
+
+  test('exports a login response {"access_token":…,"expires_in":3600} redacted', () => {
+    const content = contentFor({
+      ...TOKEN_RESPONSE,
+      responseBody: '{"access_token":"at-SECRET","expires_in":3600}',
+    });
+    assert.equal(content.text, '{"access_token":"[redacted]","expires_in":3600}');
+  });
+
+  test('redacts credential fields of a form-urlencoded response', () => {
+    const content = contentFor({
+      ...TOKEN_RESPONSE,
+      mimeType: 'application/x-www-form-urlencoded',
+      responseBody: 'access_token=at-SECRET&scope=repo&token_type=bearer',
+    });
+    assert.equal(content.text, `access_token=${REDACTED}&scope=repo&token_type=${REDACTED}`);
+  });
+
+  test('keeps content.size as captured', () => {
+    assert.equal(contentFor(TOKEN_RESPONSE).size, 4242);
+  });
+
+  test('leaves a base64 (binary) body as is', () => {
+    const body = Buffer.from('{"access_token":"at-SECRET"}').toString('base64');
+    const content = contentFor({ ...TOKEN_RESPONSE, responseBody: body, responseBodyBase64: true });
+    assert.equal(content.text, body);
+    assert.equal(content.encoding, 'base64');
+  });
+
+  test('leaves a body that is not JSON or a form as is', () => {
+    const body = '<p>"token": "kept"</p>';
+    const content = contentFor({ ...TOKEN_RESPONSE, mimeType: 'text/html', responseBody: body });
+    assert.equal(content.text, body);
+    assert.equal(content.comment, undefined);
+  });
+
+  test('does not parse a body over 2 MB and says so in content.comment', () => {
+    const body = JSON.stringify({ access_token: 'at-SECRET', pad: 'x'.repeat(2 * 1024 * 1024) });
+    const content = contentFor({ ...TOKEN_RESPONSE, responseBody: body });
+    assert.equal(content.text, body);
+    assert.match(content.comment ?? '', /not sanitized.*2 MB/i);
+  });
+
+  test('--include-sensitive keeps the response body as captured', () => {
+    const content = contentFor(TOKEN_RESPONSE, true);
+    assert.equal(content.text, TOKEN_RESPONSE.responseBody);
+    assert.equal(content.comment, undefined);
+  });
+});
+
+/**
+ * Exported WebSocket messages of {@link SOCKET}.
+ *
+ * @param includeSensitive - Keep credentials
+ * @returns Message payloads in order
+ */
+function socketData(includeSensitive?: boolean): string[] {
+  return (entryFor(SOCKET, includeSensitive)._webSocketMessages ?? []).map((m) => m.data);
+}
+
+void describe('HAR sanitization: WebSocket messages', () => {
+  test('redacts credential fields of JSON text frames', () => {
+    assert.equal(socketData()[0], `{"type":"auth","token":"${REDACTED}"}`);
+  });
+
+  test('leaves non-JSON text frames and binary frames as is', () => {
+    const frames = SOCKET.webSocket?.frames ?? [];
+    assert.deepEqual(socketData().slice(1), [frames[1]?.payloadData, frames[2]?.payloadData]);
+  });
+
+  test('--include-sensitive keeps every frame as captured', () => {
+    assert.deepEqual(
+      socketData(true),
+      (SOCKET.webSocket?.frames ?? []).map((f) => f.payloadData)
+    );
+  });
+});
+
 void describe('HAR sanitization: log comment', () => {
-  test('says response bodies and WebSocket messages are not sanitized', () => {
-    assert.match(build([LOGIN_REQUEST]).log.comment ?? '', /response bodies.*WebSocket/i);
+  test('says response bodies and WebSocket messages are sanitized, and what is not', () => {
+    const comment = build([LOGIN_REQUEST]).log.comment ?? '';
+    assert.doesNotMatch(comment, /not sanitized\. Export/);
+    assert.match(comment, /response bodies/i);
+    assert.match(comment, /WebSocket/);
+    assert.match(comment, /binary/i);
+    assert.match(comment, /2 MB/);
   });
 });
 

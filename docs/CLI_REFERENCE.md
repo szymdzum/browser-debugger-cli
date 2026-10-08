@@ -1111,8 +1111,9 @@ bdg network har --include-sensitive full.har
   - every cookie value
   - credential query and fragment parameters (`access_token`, `id_token`, `code`, `sig`, `key`, password/token/secret-like names) in the request URL, `queryString`, `redirectURL` and `Location`/`Referer` headers (`%5Bredacted%5D` in URLs)
   - password/token/secret/key/session/signature fields of JSON (every primitive under such a name, at any depth), form-urlencoded (also when sent as `text/plain`) and multipart request bodies
+  - the same fields of response bodies (`{"access_token":"[redacted]","expires_in":3600}`) and of JSON or form WebSocket text messages (`_webSocketMessages`)
 
-  Unlike Chrome, which drops these headers and cookies, bdg keeps their names (and cookie attributes, header sizes). Matching is by name, so harmless values under credential-looking names (`tokenCount`) are redacted too. `log.comment` says the file was sanitized. Response bodies and WebSocket messages are not redacted. `--include-sensitive` writes every captured value.
+  Unlike Chrome, which drops these headers and cookies, bdg keeps their names (and cookie attributes, header sizes). Matching is by name, so harmless values under credential-looking names (`tokenCount`) are redacted too. `log.comment` says the file was sanitized. Kept as captured: binary (base64) bodies and WebSocket messages, text that is not JSON or a form (including WebSocket messages cut at 100 KB), and response bodies over 2 MB, which are not parsed (`content.comment` says so). `content.size` stays as captured. `--include-sensitive` writes every captured value.
 - Written readable by its owner only (mode 0600)
 - Complete timing breakdown: blocked, DNS, connect, SSL, send, wait, receive
 - Binary content automatically base64 encoded

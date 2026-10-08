@@ -454,7 +454,11 @@ fetch('/har-login', {
   body: JSON.stringify({ user: 'ann', password: 'hunter' + 2 }),
 })
   .then(() => fetch('/har-login', { method: 'POST', body: 'again' }))
-  .then(() => { document.title = 'done'; });
+  .then(() => {
+    const socket = new WebSocket(location.origin.replace('http', 'ws') + '/ws');
+    socket.onopen = () => socket.send(JSON.stringify({ type: 'auth', token: secret + '-WS' }));
+    socket.onmessage = () => { document.title = 'done'; };
+  });
 </script>`;
 
 /** Body of a 404 page */
@@ -543,7 +547,9 @@ export async function startFixtureServer(): Promise<FixtureServer> {
         'Content-Type': 'application/json',
         'Set-Cookie': 'har_session=SECRET-SESSION; Path=/; HttpOnly',
       });
-      res.end('{"ok":true}');
+      res.end(
+        '{"ok":true,"access_token":"SECRET-ACCESS","refresh_token":"SECRET-REFRESH","expires_in":3600}'
+      );
       return;
     }
     if (req.url === '/cookie') {

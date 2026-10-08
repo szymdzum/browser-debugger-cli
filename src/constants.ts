@@ -141,6 +141,12 @@ export const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
  */
 export const MAX_TOTAL_BODY_BYTES = 100 * 1024 * 1024;
 
+/**
+ * Largest response body a sanitized HAR export parses for credentials (2MB).
+ * A larger body is exported as captured, with a `content.comment` saying so
+ */
+export const MAX_SANITIZED_BODY_BYTES = 2 * 1024 * 1024;
+
 // ============================================================================
 // OUTPUT VALUE LIMITS (lifted by --full)
 // ============================================================================

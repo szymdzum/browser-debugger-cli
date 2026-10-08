@@ -1,6 +1,6 @@
 /**
- * Credential redaction in request bodies and `name=value` lists, for
- * sanitized HAR exports (see sanitize.ts).
+ * Credential redaction in request and response bodies, WebSocket text
+ * messages and `name=value` lists, for sanitized HAR exports (see sanitize.ts).
  *
  * Matching is by field name only, so it over-redacts: any primitive whose
  * name looks like a credential (`tokenCount: 5`) is replaced too.
@@ -63,15 +63,15 @@ export function redactPairs(
 }
 
 /**
- * Redact credential fields of a request body: multipart parts, form fields
- * (by Content-Type or shape) and JSON fields at any depth.
+ * Redact credential fields of a body or WebSocket text message: multipart
+ * parts, form fields (by Content-Type or shape) and JSON fields at any depth.
  *
  * @param text - Body text
- * @param mimeType - Content-Type of the body
+ * @param mimeType - Content-Type of the body (empty for a WebSocket message)
  * @returns Body with credential values replaced; the text unchanged when
- *   there were none
+ *   there were none or it is neither JSON, a form nor multipart
  */
-export function redactRequestBody(text: string, mimeType: string): string {
+export function redactBody(text: string, mimeType: string): string {
   if (/multipart\/form-data/i.test(mimeType)) return redactMultipart(text, mimeType);
   if (/x-www-form-urlencoded/i.test(mimeType) || FORM_BODY.test(text)) {
     return redactPairs(text, isSensitiveField, REDACTED);
@@ -126,7 +126,7 @@ function redactPart(part: string): string {
 }
 
 /**
- * Redact credential fields of a JSON body.
+ * Redact credential fields of a JSON body or message.
  *
  * @param text - Body text
  * @returns Re-serialized JSON when a field was redacted, the text unchanged
@@ -139,7 +139,7 @@ function redactJsonBody(text: string): string {
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    log.debug(`Request body not JSON: ${getErrorMessage(error)}`);
+    log.debug(`Body not JSON: ${getErrorMessage(error)}`);
     return error instanceof SyntaxError ? text : REDACTED;
   }
   try {
@@ -147,7 +147,7 @@ function redactJsonBody(text: string): string {
     const redacted = redactJson(parsed, false, hits);
     return hits.count > 0 ? JSON.stringify(redacted) : text;
   } catch (error) {
-    log.debug(`Request body redacted whole: ${getErrorMessage(error)}`);
+    log.debug(`Body redacted whole: ${getErrorMessage(error)}`);
     return REDACTED;
   }
 }
