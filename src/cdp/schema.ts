@@ -8,9 +8,9 @@
  * - Structured context without verbosity
  */
 
-import type { Domain, Command, Parameter, ReturnValue } from './types.js';
+import type { Domain, Command, Parameter, ReturnValue, Type } from './types.js';
 
-import { loadProtocol, findDomain, findCommand } from './protocol.js';
+import { loadProtocol, findDomain, findCommand, findType } from './protocol.js';
 
 /**
  * Structured method schema for agent consumption.
@@ -32,6 +32,11 @@ export interface MethodSchema {
   parameters: ParameterSchema[];
   /** Return value schema */
   returns: ReturnSchema[];
+  /** The method implementing this one (the schema's `redirect`) and its parameters */
+  redirect?: {
+    method: string;
+    parameters: ParameterSchema[];
+  };
   /** Usage example (JSON) */
   example?: {
     command: string;
@@ -51,12 +56,44 @@ export interface ParameterSchema {
   required: boolean;
   /** Human-readable description */
   description?: string;
-  /** Enum values (if type is enum) */
+  /** Enum values (inline, or of the referenced type) */
   enum?: string[];
+  /** Referenced protocol type with its domain (e.g. 'Network.CookieSameSite'), for `--describe` */
+  ref?: string;
+  /** Base type of the referenced type (e.g. 'number' for Network.TimeSinceEpoch, 'object') */
+  refType?: string;
   /** Array item type (if type is array) */
   items?: string;
   /** Deprecated flag */
   deprecated?: boolean;
+  /** Experimental flag */
+  experimental?: boolean;
+}
+
+/**
+ * Protocol type (`Network.CookieSameSite`, `Network.Cookie`) for agent consumption.
+ */
+export interface TypeSchema {
+  /** Full type name (Domain.Type) */
+  name: string;
+  /** Domain name */
+  domain: string;
+  /** Type id */
+  id: string;
+  /** Base type (string, object, array, ...) */
+  baseType: string;
+  /** Human-readable description */
+  description?: string;
+  /** Whether type is experimental */
+  experimental?: boolean;
+  /** Whether type is deprecated */
+  deprecated?: boolean;
+  /** Enum values (string enums) */
+  enum?: string[];
+  /** Array item type */
+  items?: string;
+  /** Properties (object types) */
+  properties?: ParameterSchema[];
 }
 
 /**
@@ -130,24 +167,10 @@ export function getMethodSchema(domainName: string, methodName: string): MethodS
  * @returns Structured method schema
  */
 function buildMethodSchema(domainName: string, command: Command): MethodSchema {
-  const parameters = command.parameters?.map(paramToSchema) ?? [];
+  const parameters = command.parameters?.map((p) => paramToSchema(domainName, p)) ?? [];
   const returns = command.returns?.map(returnToSchema) ?? [];
-
-  const example: MethodSchema['example'] = {
-    command: `bdg cdp ${domainName}.${command.name}`,
-  };
-
-  if (parameters.length > 0) {
-    const exampleParams: Record<string, unknown> = {};
-    parameters.forEach((p) => {
-      if (!p.required) return; // Skip optional params in example
-      exampleParams[p.name] = getExampleValue(p);
-    });
-    if (Object.keys(exampleParams).length > 0) {
-      example.params = exampleParams;
-      example.command += ` --params '${JSON.stringify(exampleParams)}'`;
-    }
-  }
+  const redirect = buildRedirect(command);
+  const exampleSource = parameters.length > 0 ? parameters : (redirect?.parameters ?? []);
 
   const schema: MethodSchema = {
     name: `${domainName}.${command.name}`,
@@ -155,9 +178,10 @@ function buildMethodSchema(domainName: string, command: Command): MethodSchema {
     method: command.name,
     parameters,
     returns,
-    example,
+    example: buildExample(`${domainName}.${command.name}`, exampleSource),
   };
 
+  if (redirect) schema.redirect = redirect;
   if (command.description) schema.description = command.description;
   if (command.experimental) schema.experimental = command.experimental;
   if (command.deprecated) schema.deprecated = command.deprecated;
@@ -166,20 +190,115 @@ function buildMethodSchema(domainName: string, command: Command): MethodSchema {
 }
 
 /**
- * Convert protocol parameter to schema.
+ * The method a redirected command runs (e.g. DOM.highlightNode runs
+ * Overlay.highlightNode), with the parameters Chrome checks.
+ *
+ * @param command - Command from protocol
+ * @returns Redirect target, or undefined when the command has none
  */
-function paramToSchema(param: Parameter): ParameterSchema {
+function buildRedirect(command: Command): MethodSchema['redirect'] {
+  if (!command.redirect) return undefined;
+  const target = findCommand(command.redirect, command.name);
+  return {
+    method: `${command.redirect}.${command.name}`,
+    parameters: target?.parameters?.map((p) => paramToSchema(command.redirect ?? '', p)) ?? [],
+  };
+}
+
+/**
+ * Example command with the required parameters.
+ *
+ * @param methodName - Full method name
+ * @param parameters - Parameters to take the required ones from
+ * @returns Example command and its parameters
+ */
+function buildExample(
+  methodName: string,
+  parameters: ParameterSchema[]
+): NonNullable<MethodSchema['example']> {
+  const example: NonNullable<MethodSchema['example']> = { command: `bdg cdp ${methodName}` };
+  const required = parameters.filter((p) => p.required);
+  if (required.length === 0) return example;
+  const exampleParams = Object.fromEntries(required.map((p) => [p.name, getExampleValue(p)]));
+  example.params = exampleParams;
+  example.command += ` --params '${JSON.stringify(exampleParams)}'`;
+  return example;
+}
+
+/**
+ * A protocol type a `$ref` names, resolved against the domain it is used in.
+ *
+ * @param domainName - Domain of the parameter (for refs without a domain)
+ * @param ref - `$ref` value, e.g. 'CookieSameSite' or 'Runtime.RemoteObject'
+ * @returns Full type name and definition, or undefined when the schema lacks it
+ */
+function lookupRef(domainName: string, ref: string): { name: string; type: Type } | undefined {
+  const [refDomain, id] = ref.includes('.') ? ref.split('.') : [domainName, ref];
+  const type = refDomain && id ? findType(refDomain, id) : undefined;
+  return type && { name: `${refDomain}.${type.id}`, type };
+}
+
+/**
+ * Convert protocol parameter (or object property) to schema; a `$ref` gets its
+ * full type name and, for an enum type, its values.
+ *
+ * @param domainName - Domain the parameter belongs to
+ * @param param - Protocol parameter
+ * @returns Parameter schema
+ */
+function paramToSchema(domainName: string, param: Parameter): ParameterSchema {
   const schema: ParameterSchema = {
     name: param.name,
     type: resolveType(param),
     required: !param.optional,
   };
+  const referenced = param.$ref ? lookupRef(domainName, param.$ref) : undefined;
+  const values = param.enum ?? referenced?.type.enum;
 
   if (param.description) schema.description = param.description;
   if (param.deprecated) schema.deprecated = param.deprecated;
-  if (param.enum) schema.enum = param.enum;
+  if (param.experimental) schema.experimental = param.experimental;
+  if (values) schema.enum = values;
+  if (referenced) {
+    schema.ref = referenced.name;
+    schema.refType = referenced.type.type;
+  }
   if (param.items) schema.items = resolveType(param.items);
 
+  return schema;
+}
+
+/**
+ * Get structured schema for a protocol type.
+ *
+ * @param domainName - Domain name (case-insensitive)
+ * @param typeName - Type id (case-insensitive)
+ * @returns Type schema or undefined if not found
+ *
+ * @example
+ * ```typescript
+ * getTypeSchema('Network', 'CookieSameSite')?.enum; // ['Strict', 'Lax', 'None']
+ * ```
+ */
+export function getTypeSchema(domainName: string, typeName: string): TypeSchema | undefined {
+  const domain = findDomain(domainName);
+  const type = domain && findType(domain.domain, typeName);
+  if (!domain || !type) return undefined;
+
+  const schema: TypeSchema = {
+    name: `${domain.domain}.${type.id}`,
+    domain: domain.domain,
+    id: type.id,
+    baseType: type.type,
+  };
+  if (type.description) schema.description = type.description;
+  if (type.experimental) schema.experimental = type.experimental;
+  if (type.deprecated) schema.deprecated = type.deprecated;
+  if (type.enum) schema.enum = type.enum;
+  if (type.items) schema.items = resolveType(type.items);
+  if (type.properties) {
+    schema.properties = type.properties.map((p) => paramToSchema(domain.domain, p));
+  }
   return schema;
 }
 
@@ -222,8 +341,7 @@ function getExampleValue(param: ParameterSchema): unknown {
   if (param.enum && param.enum.length > 0) {
     return param.enum[0];
   }
-
-  switch (param.type) {
+  switch (param.refType ?? param.type) {
     case 'string':
       return 'example';
     case 'integer':

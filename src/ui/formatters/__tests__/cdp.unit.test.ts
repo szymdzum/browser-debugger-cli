@@ -119,6 +119,126 @@ void describe('formatCdpDescription', () => {
   });
 });
 
+void describe('formatCdpDescription details', () => {
+  void it('shows $ref enums, experimental parameters, the redirect and a type to describe', () => {
+    const output = formatCdpDescription({
+      type: 'method',
+      name: 'DOM.highlightNode',
+      domain: 'DOM',
+      method: 'highlightNode',
+      description: 'Highlights DOM node.',
+      parameters: [
+        {
+          name: 'sameSite',
+          type: 'CookieSameSite',
+          ref: 'Network.CookieSameSite',
+          enum: ['Strict', 'Lax', 'None'],
+          required: false,
+          experimental: true,
+        },
+      ],
+      returns: [],
+      redirect: {
+        method: 'Overlay.highlightNode',
+        parameters: [
+          {
+            name: 'highlightConfig',
+            type: 'HighlightConfig',
+            ref: 'Overlay.HighlightConfig',
+            refType: 'object',
+            required: true,
+            description: 'A descriptor.',
+          },
+        ],
+      },
+    });
+    assert.equal(
+      output,
+      [
+        'DOM.highlightNode',
+        'Highlights DOM node.',
+        'Parameters:',
+        '  sameSite?: CookieSameSite (Strict|Lax|None)  (experimental)',
+        'Implemented by Overlay.highlightNode (redirect), with these parameters:',
+        '  highlightConfig: HighlightConfig  A descriptor.',
+        'Describe a type: bdg cdp Overlay.HighlightConfig --describe',
+      ].join('\n')
+    );
+  });
+
+  void it('cuts long enums in text', () => {
+    const output = formatCdpDescription({
+      type: 'method',
+      name: 'Browser.grantPermissions',
+      domain: 'Browser',
+      method: 'grantPermissions',
+      parameters: [
+        {
+          name: 'p',
+          type: 'PermissionType',
+          ref: 'Browser.PermissionType',
+          enum: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+          required: true,
+        },
+      ],
+      returns: [],
+    });
+    assert.match(output, /p: PermissionType \(a\|b\|c\|d\|e\|f\|g\|h\|… 2 more\)/);
+  });
+
+  void it('describes enum and object types', () => {
+    assert.equal(
+      formatCdpDescription({
+        type: 'type',
+        name: 'Network.CookieSameSite',
+        domain: 'Network',
+        id: 'CookieSameSite',
+        baseType: 'string',
+        description: "Represents the cookie's 'SameSite' status:\nhttps://example",
+        enum: ['Strict', 'Lax', 'None'],
+      }),
+      [
+        'Network.CookieSameSite: string',
+        "Represents the cookie's 'SameSite' status:\nhttps://example",
+        'Values: Strict, Lax, None',
+      ].join('\n')
+    );
+    assert.equal(
+      formatCdpDescription({
+        type: 'type',
+        name: 'Network.Cookie',
+        domain: 'Network',
+        id: 'Cookie',
+        baseType: 'object',
+        properties: [
+          { name: 'name', type: 'string', required: true, description: 'Cookie name.' },
+          {
+            name: 'expires',
+            type: 'TimeSinceEpoch',
+            ref: 'Network.TimeSinceEpoch',
+            refType: 'number',
+            required: false,
+          },
+          {
+            name: 'sameSite',
+            type: 'CookieSameSite',
+            ref: 'Network.CookieSameSite',
+            enum: ['Strict', 'Lax', 'None'],
+            required: false,
+          },
+        ],
+      }),
+      [
+        'Network.Cookie: object',
+        'Properties:',
+        '  name: string                                 Cookie name.',
+        '  expires?: TimeSinceEpoch (number)',
+        '  sameSite?: CookieSameSite (Strict|Lax|None)',
+      ].join('\n')
+    );
+  });
+});
+
 void describe('formatCdpResult', () => {
   void it('prints the result as JSON, or says there is none', () => {
     assert.equal(

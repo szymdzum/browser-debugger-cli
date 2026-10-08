@@ -1,5 +1,6 @@
 import type { TelemetryStore } from './TelemetryStore.js';
 
+import { normalizeMethod } from '@/cdp/protocol.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
@@ -7,7 +8,11 @@ import { PatternDetector } from '@/daemon/patternDetector.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
 import { CommandError } from '@/errors/index.js';
-import { cdpCallError, formDiscoveryFailedError } from '@/errors/messages.js';
+import {
+  cdpCallError,
+  cdpMethodNotImplementedError,
+  formDiscoveryFailedError,
+} from '@/errors/messages.js';
 import type { HintDetails } from '@/errors/notices.js';
 import type {
   CommandName,
@@ -404,17 +409,33 @@ function pageWebSocketUrl(store: TelemetryStore): string {
 /** Chrome's "server error" code, used for failures on the page's state (a missing node, a bad id…) */
 const CDP_SERVER_ERROR = -32000;
 
+/** JSON-RPC "method not found": Chrome has no such method (for the target) */
+const CDP_METHOD_NOT_FOUND = -32601;
+
 /**
- * A `bdg cdp` failure that is the caller's: wrong parameters (81), or an
- * id of a node, target or frame that does not exist (83). Other failures
- * (internal errors, a detached page) stay software errors.
+ * A `bdg cdp` failure that is the caller's: a method this Chrome doesn't
+ * implement (83), wrong parameters (81), or an id of a node, target or frame
+ * that does not exist (83). Other failures (internal errors, a detached
+ * page) stay software errors.
  *
  * @param method - CDP method
  * @param error - What the call threw
  * @returns The error to report, or undefined to keep the original
  */
-function callerError(method: string, error: unknown): CommandError | undefined {
+export function callerError(method: string, error: unknown): CommandError | undefined {
   if (!(error instanceof CDPProtocolError)) return undefined;
+  if (error.code === CDP_METHOD_NOT_FOUND) {
+    const missing = cdpMethodNotImplementedError(
+      method,
+      error.message,
+      normalizeMethod(method) !== undefined
+    );
+    return new CommandError(
+      missing.message,
+      { suggestion: missing.suggestion },
+      EXIT_CODES.RESOURCE_NOT_FOUND
+    );
+  }
   const err = cdpCallError(method, error.message);
   if (error.isRequestError()) {
     return new CommandError(

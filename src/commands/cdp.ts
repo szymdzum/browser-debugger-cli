@@ -1,12 +1,16 @@
 import { Option, type Command } from 'commander';
 
-import { normalizeMethod } from '@/cdp/protocol.js';
+import { resolveMethodTarget } from '@/cdp/methodTarget.js';
+import { getBundledProtocolVersion } from '@/cdp/protocol.js';
 import {
   getAllDomainSummaries,
   getDomainMethods,
   getProtocolCounts,
   getDomainSummary,
   getMethodSchema,
+  getTypeSchema,
+  type MethodSchema,
+  type ParameterSchema,
 } from '@/cdp/schema.js';
 import { runCommand, type CommandResult } from '@/commands/shared/CommandRunner.js';
 import { jsonOption } from '@/commands/shared/commonOptions.js';
@@ -14,9 +18,13 @@ import type { CdpCommandOptions } from '@/commands/shared/optionTypes.js';
 import type { Protocol } from '@/connection/typed-cdp.js';
 import { CommandError } from '@/errors/index.js';
 import {
+  cdpMethodNotFoundError,
+  cdpMethodNotInBundledProtocolError,
+  cdpTypeNotMethodError,
   emptyCdpSearchError,
   missingArgumentError,
   scriptExecutionError,
+  type ErrorWithSuggestion,
 } from '@/errors/messages.js';
 import { callCDP } from '@/ipc/client.js';
 import { validateIPCResponse } from '@/ipc/index.js';
@@ -34,7 +42,9 @@ import {
   type CdpExecuteData,
   type CdpMethodDescription,
   type CdpSearchData,
+  type CdpTypeDescription,
 } from '@/ui/formatters/cdp.js';
+import { cdpUnlistedMethodWarning } from '@/ui/messages/commands.js';
 import { formatHint } from '@/ui/messages/hints.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -412,108 +422,130 @@ function handleListDomainMethods(domainName: string): CommandResult<CdpDomainMet
   };
 }
 
+/** A description `bdg cdp <name> --describe` gives */
+type CdpDescription = CdpMethodDescription | CdpDomainDescription | CdpTypeDescription;
+
 /**
- * Handle describe method mode: Show method signature and parameters.
+ * Handle describe mode: show a domain, a method's signature and parameters,
+ * or a protocol type's values or properties.
  *
- * @param methodName - Method name (case-insensitive, with or without domain)
- * @returns Success result with method schema
+ * @param name - Domain, `Domain.method` or `Domain.Type` (case-insensitive)
+ * @returns Success result with the description
  */
-function handleDescribeMethod(
-  methodName: string
-): CommandResult<CdpMethodDescription | CdpDomainDescription> {
-  const [domainName, method] = methodName.includes('.')
-    ? methodName.split('.')
-    : [methodName, undefined];
+export function handleDescribeMethod(name: string): CommandResult<CdpDescription> {
+  const [domainName = '', member] = name.includes('.') ? name.split('.') : [name, undefined];
+  if (!member) return describeDomain(name);
 
-  if (!method) {
-    const summary = getDomainSummary(domainName);
-    if (!summary) {
-      const similar = findSimilarMethods(methodName);
-      const suggestions = ['Use: bdg cdp --list (to see all domains)'];
-      if (similar.length > 0) {
-        suggestions.push('');
-        suggestions.push('Did you mean:');
-        similar.forEach((name) => suggestions.push(`  - ${name}`));
-      }
+  const schema = getMethodSchema(domainName, member);
+  if (schema) return { success: true, data: describeMethod(schema) };
+  const type = getTypeSchema(domainName, member);
+  if (type) return { success: true, data: { type: 'type', ...type } };
 
-      return {
-        success: false,
-        error: `Domain or method '${methodName}' not found`,
-        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-        errorContext: {
-          suggestion: suggestions.join('\n'),
-        },
-      };
-    }
+  const target = resolveMethodTarget(name);
+  const err =
+    target.kind === 'unlisted'
+      ? cdpMethodNotInBundledProtocolError(target.method, getBundledProtocolVersion())
+      : cdpMethodNotFoundError(
+          name,
+          findSimilarMethods(name, domainName),
+          `Use: bdg cdp ${domainName} --list (to see all ${domainName} methods)`
+        );
+  return {
+    success: false,
+    error: err.message,
+    exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+    errorContext: { suggestion: err.suggestion },
+  };
+}
 
-    const domainNote = DOMAIN_NOTES[summary.name];
-    return {
-      success: true,
-      data: {
-        type: 'domain',
-        domain: summary.name,
-        description: summary.description,
-        commands: summary.commandCount,
-        events: summary.eventCount,
-        experimental: summary.experimental,
-        deprecated: summary.deprecated,
-        note: domainNote,
-        nextStep: `Use: bdg cdp ${summary.name} --list (to see all methods)`,
-      },
-    };
-  }
-
-  const schema = getMethodSchema(domainName, method);
-  if (!schema) {
-    const similar = findSimilarMethods(methodName, domainName);
-    const suggestions = [`Use: bdg cdp ${domainName} --list (to see all ${domainName} methods)`];
-    if (similar.length > 0) {
-      suggestions.push('');
-      suggestions.push('Did you mean:');
-      similar.forEach((name) => suggestions.push(`  - ${name}`));
-    }
-
+/**
+ * Describe a domain (`bdg cdp Network --describe`).
+ *
+ * @param domainName - Domain name (case-insensitive)
+ * @returns Domain description, or not found with similar names
+ */
+function describeDomain(domainName: string): CommandResult<CdpDomainDescription> {
+  const summary = getDomainSummary(domainName);
+  if (!summary) {
+    const err = cdpMethodNotFoundError(
+      domainName,
+      findSimilarMethods(domainName),
+      'Use: bdg cdp --list (to see all domains)'
+    );
     return {
       success: false,
-      error: `Method '${methodName}' not found`,
+      error: `Domain or method '${domainName}' not found`,
       exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-      errorContext: {
-        suggestion: suggestions.join('\n'),
-      },
+      errorContext: { suggestion: err.suggestion },
     };
   }
-
-  const methodNote = METHOD_NOTES[schema.name] ?? DOMAIN_NOTES[schema.domain];
-  const alternative = blockedAlternative(schema.name);
   return {
     success: true,
     data: {
-      type: 'method',
-      name: schema.name,
-      domain: schema.domain,
-      method: schema.method,
-      description: schema.description,
-      experimental: schema.experimental,
-      deprecated: schema.deprecated,
-      note: methodNote,
-      parameters: schema.parameters.map((p) => ({
-        name: p.name,
-        type: p.type,
-        required: p.required,
-        description: p.description,
-        enum: p.enum,
-        items: p.items,
-        deprecated: p.deprecated,
-      })),
-      returns: schema.returns.map((r) => ({
-        name: r.name,
-        type: r.type,
-        optional: r.optional,
-        description: r.description,
-        items: r.items,
-      })),
-      example: alternative ? { command: alternative } : schema.example,
+      type: 'domain',
+      domain: summary.name,
+      description: summary.description,
+      commands: summary.commandCount,
+      events: summary.eventCount,
+      experimental: summary.experimental,
+      deprecated: summary.deprecated,
+      note: DOMAIN_NOTES[summary.name],
+      nextStep: `Use: bdg cdp ${summary.name} --list (to see all methods)`,
     },
+  };
+}
+
+/**
+ * A parameter as `--describe` shows it.
+ *
+ * @param p - Parameter schema
+ * @returns Described parameter
+ */
+function describeParameter(p: ParameterSchema): CdpMethodDescription['parameters'][number] {
+  return {
+    name: p.name,
+    type: p.type,
+    required: p.required,
+    description: p.description,
+    enum: p.enum,
+    ref: p.ref,
+    refType: p.refType,
+    items: p.items,
+    experimental: p.experimental,
+    deprecated: p.deprecated,
+  };
+}
+
+/**
+ * Describe a method (`bdg cdp Network.getCookies --describe`).
+ *
+ * @param schema - Method schema
+ * @returns Method description with its redirect, note and example
+ */
+function describeMethod(schema: MethodSchema): CdpMethodDescription {
+  const alternative = blockedAlternative(schema.name);
+  return {
+    type: 'method',
+    name: schema.name,
+    domain: schema.domain,
+    method: schema.method,
+    description: schema.description,
+    experimental: schema.experimental,
+    deprecated: schema.deprecated,
+    note: METHOD_NOTES[schema.name] ?? DOMAIN_NOTES[schema.domain],
+    parameters: schema.parameters.map(describeParameter),
+    returns: schema.returns.map((r) => ({
+      name: r.name,
+      type: r.type,
+      optional: r.optional,
+      description: r.description,
+      items: r.items,
+    })),
+    redirect: schema.redirect && {
+      method: schema.redirect.method,
+      parameters: schema.redirect.parameters.map(describeParameter),
+    },
+    example: alternative ? { command: alternative } : schema.example,
   };
 }
 
@@ -537,9 +569,86 @@ const BLOCKED_CDP_METHODS: Record<string, { alternative: string; reason: string 
 };
 
 /**
+ * The method `bdg cdp <name>` sends: a bundled method with its casing, or a
+ * well-formed method the bundled protocol lacks, as typed with a warning.
+ *
+ * @param methodName - Method name as typed
+ * @returns Method to send, and the warning for one the bundled protocol lacks
+ * @throws CommandError (exit 81) for a blocked method, a type, a close typo
+ *   of bundled methods or a name that is not `Domain.method`
+ */
+export function methodToSend(methodName: string): { method: string; warning?: string } {
+  const target = resolveMethodTarget(methodName);
+  if (target.kind === 'known') {
+    const blocked = BLOCKED_CDP_METHODS[target.method];
+    if (blocked) {
+      throw new CommandError(
+        `${target.method} is blocked via raw CDP: ${blocked.reason}`,
+        { suggestion: `Use: ${sessionCommand(blocked.alternative)}` },
+        EXIT_CODES.INVALID_ARGUMENTS
+      );
+    }
+    return { method: target.method };
+  }
+  if (target.kind === 'unlisted') {
+    return {
+      method: target.method,
+      warning: cdpUnlistedMethodWarning(target.method, getBundledProtocolVersion()),
+    };
+  }
+  const err =
+    target.kind === 'type'
+      ? cdpTypeNotMethodError(target.name)
+      : unknownMethodError(methodName, target);
+  throw new CommandError(err.message, { suggestion: err.suggestion }, EXIT_CODES.INVALID_ARGUMENTS);
+}
+
+/**
+ * Not found, for a close typo of bundled methods or domains, or a name that
+ * is not `Domain.method`.
+ *
+ * @param methodName - Method name as typed
+ * @param target - Typo with its suggestions, or malformed
+ * @returns Message and suggestion
+ */
+function unknownMethodError(
+  methodName: string,
+  target: { kind: 'typo'; suggestions: string[] } | { kind: 'malformed' }
+): ErrorWithSuggestion {
+  if (target.kind === 'malformed') {
+    return cdpMethodNotFoundError(
+      methodName,
+      findSimilarMethods(methodName),
+      'Use: bdg cdp --search <keyword> (to search for methods)'
+    );
+  }
+  const [domainName = ''] = methodName.split('.');
+  return target.suggestions.length > 0
+    ? cdpMethodNotFoundError(
+        methodName,
+        target.suggestions.slice(0, 3),
+        'Use: bdg cdp --search <keyword> (to search for methods)'
+      )
+    : cdpMethodNotFoundError(methodName, [], domainSuggestion(domainName));
+}
+
+/**
+ * Add the warning about a method missing from the bundled protocol to the
+ * error Chrome gave for it, so a failed call still says it was sent as typed.
+ *
+ * @param error - Error of the call
+ * @param warning - Warning, when the method was not in the bundled protocol
+ * @returns The error, with the warning (JSON `warning`) when there is one
+ */
+function withWarning(error: unknown, warning: string | undefined): unknown {
+  if (!warning || !(error instanceof CommandError)) return error;
+  return new CommandError(error.message, { ...error.metadata, warning }, error.exitCode);
+}
+
+/**
  * Handle execute method mode: Call CDP method.
  *
- * @param methodName - Method name (case-insensitive)
+ * @param methodName - Method name (case-insensitive for bundled methods)
  * @param paramsJson - Parameters as JSON string
  * @returns Success result with method response
  */
@@ -547,35 +656,7 @@ async function handleExecuteMethod(
   methodName: string,
   paramsJson?: string
 ): Promise<CommandResult<CdpExecuteData>> {
-  const normalized = normalizeMethod(methodName);
-
-  if (normalized && BLOCKED_CDP_METHODS[normalized]) {
-    const blocked = BLOCKED_CDP_METHODS[normalized];
-    return {
-      success: false,
-      error: `${normalized} is blocked via raw CDP: ${blocked.reason}`,
-      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-      errorContext: { suggestion: `Use: ${sessionCommand(blocked.alternative)}` },
-    };
-  }
-  if (!normalized) {
-    const similar = findSimilarMethods(methodName);
-    const suggestions = ['Use: bdg cdp --search <keyword> (to search for methods)'];
-    if (similar.length > 0) {
-      suggestions.push('');
-      suggestions.push('Did you mean:');
-      similar.forEach((name) => suggestions.push(`  - ${name}`));
-    }
-
-    return {
-      success: false,
-      error: `Method '${methodName}' not found`,
-      exitCode: EXIT_CODES.INVALID_ARGUMENTS,
-      errorContext: {
-        suggestion: suggestions.join('\n'),
-      },
-    };
-  }
+  const { method: normalized, warning } = methodToSend(methodName);
 
   let params: Record<string, unknown> | undefined;
   if (paramsJson) {
@@ -595,28 +676,25 @@ async function handleExecuteMethod(
 
   const response = await callCDP(normalized, params);
 
-  validateIPCResponse(response);
+  try {
+    validateIPCResponse(response);
+  } catch (error) {
+    throw withWarning(error, warning);
+  }
 
   const cdpResult = response.data?.result;
   const exception = pageExceptionResult(cdpResult);
   if (exception) return exception;
 
-  const result: CommandResult<CdpExecuteData> = {
+  const hints = [
+    warning && `Warning: ${warning}`,
+    response.data?.hint && formatHint(response.data.hint),
+    getMethodHint(normalized, cdpResult),
+  ].filter(Boolean);
+
+  return {
     success: true,
-    data: {
-      method: normalized,
-      result: cdpResult,
-    },
+    data: { method: normalized, result: cdpResult, ...(warning && { warning }) },
+    ...(hints.length > 0 && { hint: hints.join('\n') }),
   };
-
-  if (response.data?.hint) {
-    result.hint = formatHint(response.data.hint);
-  }
-
-  const methodHint = getMethodHint(normalized, cdpResult);
-  if (methodHint) {
-    result.hint = result.hint ? `${result.hint}\n${methodHint}` : methodHint;
-  }
-
-  return result;
 }

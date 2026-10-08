@@ -21,6 +21,8 @@ export interface ErrorMetadata {
   fallback?: string;
   /** CDP alternative for advanced use cases */
   cdpAlternative?: string;
+  /** How the command ran despite failing (e.g. a CDP method sent though bdg's protocol lacks it) */
+  warning?: string;
 }
 
 /**

@@ -79,6 +79,16 @@ interface CdpField {
   items?: string | undefined;
 }
 
+/** A parameter (or type property) in `--describe`: `enum` also holds a `$ref` type's values */
+interface CdpParameter extends CdpField {
+  required: boolean;
+  enum?: string[] | undefined;
+  ref?: string | undefined;
+  refType?: string | undefined;
+  experimental?: boolean | undefined;
+  deprecated?: boolean | undefined;
+}
+
 /** `bdg cdp <Domain.method> --describe` result */
 export interface CdpMethodDescription extends ProtocolEntry {
   type: 'method';
@@ -86,19 +96,30 @@ export interface CdpMethodDescription extends ProtocolEntry {
   domain: string;
   method: string;
   note?: string | undefined;
-  parameters: (CdpField & {
-    required: boolean;
-    enum?: string[] | undefined;
-    deprecated?: boolean | undefined;
-  })[];
+  parameters: CdpParameter[];
   returns: (CdpField & { optional: boolean })[];
+  redirect?: { method: string; parameters: CdpParameter[] } | undefined;
   example?: { command: string; params?: Record<string, unknown> | undefined } | undefined;
+}
+
+/** `bdg cdp <Domain.Type> --describe` result */
+export interface CdpTypeDescription extends ProtocolEntry {
+  type: 'type';
+  name: string;
+  domain: string;
+  id: string;
+  baseType: string;
+  enum?: string[] | undefined;
+  items?: string | undefined;
+  properties?: CdpParameter[] | undefined;
 }
 
 /** `bdg cdp <Domain.method>` result */
 export interface CdpExecuteData {
   method: string;
   result: unknown;
+  /** Set when the bundled protocol lacks the method and it was sent as typed */
+  warning?: string | undefined;
 }
 
 /**
@@ -145,6 +166,29 @@ function columns(rows: [string, string][]): string[] {
  */
 function typeText(field: CdpField): string {
   return field.items ? `${field.type}<${field.items}>` : field.type;
+}
+
+/** Enum values listed in text before the rest are counted */
+const MAX_ENUM_VALUES = 8;
+
+/**
+ * What a field's type stands for, in parentheses: enum values (the first
+ * {@link MAX_ENUM_VALUES}), or the base type of a referenced non-object type.
+ *
+ * @param field - Field with its inline or referenced enum and referenced base type
+ * @returns e.g. " (Strict|Lax|None)", " (number)", or an empty string
+ */
+function expansionText(field: {
+  enum?: string[] | undefined;
+  refType?: string | undefined;
+}): string {
+  const values = field.enum;
+  if (!values || values.length === 0) {
+    return field.refType && field.refType !== 'object' ? ` (${field.refType})` : '';
+  }
+  const shown = values.slice(0, MAX_ENUM_VALUES);
+  const more = values.length - shown.length;
+  return ` (${[...shown, ...(more > 0 ? [`… ${more} more`] : [])].join('|')})`;
 }
 
 /**
@@ -205,26 +249,92 @@ export function formatCdpDomainMethods(data: CdpDomainMethodsData): string {
  * @param fields - Parameters or return values
  * @returns Title and one line per field, or nothing for an empty list
  */
-function fieldSection(title: string, fields: (CdpField & { optional: boolean })[]): string[] {
+function fieldSection(
+  title: string,
+  fields: (CdpField &
+    ProtocolEntry & {
+      optional: boolean;
+      enum?: string[] | undefined;
+      refType?: string | undefined;
+    })[]
+): string[] {
   if (fields.length === 0) return [];
   return [
     `${title}:`,
     ...columns(
       fields.map((f) => [
-        `${f.name}${f.optional ? '?' : ''}: ${typeText(f)}`,
-        (f.description ?? '').replace(/\s*\n\s*/g, ' '),
+        `${f.name}${f.optional ? '?' : ''}: ${typeText(f)}${expansionText(f)}`,
+        `${(f.description ?? '').replace(/\s*\n\s*/g, ' ')}${tags(f)}`,
       ])
     ),
   ];
 }
 
 /**
- * Format `bdg cdp <Domain.method> --describe` or `bdg cdp <Domain> --describe`.
+ * Parameters as fields with `?` for optional ones.
  *
- * @param data - Method or domain description
- * @returns Description, parameters (`?` = optional), returns, note and example
+ * @param parameters - Parameters or type properties
+ * @returns Fields for {@link fieldSection}
  */
-export function formatCdpDescription(data: CdpMethodDescription | CdpDomainDescription): string {
+function parameterFields(parameters: CdpParameter[]): (CdpParameter & { optional: boolean })[] {
+  return parameters.map((p) => ({ ...p, optional: !p.required }));
+}
+
+/**
+ * How to describe the first object type a parameter refers to (enums and
+ * other types are already shown inline).
+ *
+ * @param parameters - Parameters, the redirect target's included
+ * @returns Hint line, or undefined when no parameter refers to such a type
+ */
+function typeHint(parameters: CdpParameter[]): string | undefined {
+  const ref = parameters.find((p) => p.refType === 'object')?.ref;
+  return ref && `Describe a type: bdg cdp ${ref} --describe`;
+}
+
+/**
+ * Lines naming the method a redirected one runs, with its parameters.
+ *
+ * @param redirect - Redirect target, if any
+ * @returns Title and parameter lines, or nothing without a redirect
+ */
+function redirectSection(redirect: CdpMethodDescription['redirect']): string[] {
+  if (!redirect) return [];
+  const title = `Implemented by ${redirect.method} (redirect)`;
+  return redirect.parameters.length === 0
+    ? [title]
+    : fieldSection(`${title}, with these parameters`, parameterFields(redirect.parameters));
+}
+
+/**
+ * Format `bdg cdp <Domain.Type> --describe`.
+ *
+ * @param data - Type description
+ * @returns Base type, description and values or properties
+ */
+function formatCdpType(data: CdpTypeDescription): string {
+  const properties = data.properties ?? [];
+  return joinLines(
+    `${data.name}: ${typeText({ name: data.id, type: data.baseType, items: data.items })}${tags(data)}`,
+    data.description,
+    data.enum && `Values: ${data.enum.join(', ')}`,
+    ...fieldSection('Properties', parameterFields(properties)),
+    typeHint(properties)
+  );
+}
+
+/**
+ * Format `bdg cdp <Domain.method> --describe`, `bdg cdp <Domain> --describe`
+ * or `bdg cdp <Domain.Type> --describe`.
+ *
+ * @param data - Method, domain or type description
+ * @returns Description, parameters (`?` = optional, `$ref` enums inline),
+ *   the redirect target's parameters, returns, note and example
+ */
+export function formatCdpDescription(
+  data: CdpMethodDescription | CdpDomainDescription | CdpTypeDescription
+): string {
+  if (data.type === 'type') return formatCdpType(data);
   if (data.type === 'domain') {
     return joinLines(
       `${data.domain}: ${pluralize(data.commands, 'method')}, ${pluralize(data.events, 'event')}${tags(data)}`,
@@ -233,15 +343,15 @@ export function formatCdpDescription(data: CdpMethodDescription | CdpDomainDescr
       data.nextStep
     );
   }
+  const redirected = data.redirect?.parameters ?? [];
   return joinLines(
     `${data.name}${tags(data)}`,
     data.description,
-    ...fieldSection(
-      'Parameters',
-      data.parameters.map((p) => ({ ...p, optional: !p.required }))
-    ),
+    ...fieldSection('Parameters', parameterFields(data.parameters)),
+    ...redirectSection(data.redirect),
     ...fieldSection('Returns', data.returns),
     data.note && `Note: ${data.note}`,
+    typeHint([...data.parameters, ...redirected]),
     data.example && `Example: ${data.example.command}`
   );
 }

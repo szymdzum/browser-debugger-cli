@@ -2393,6 +2393,81 @@ export function cdpCallError(
 }
 
 /**
+ * `bdg cdp` when Chrome answered -32601: it has no such method (for the
+ * page target).
+ *
+ * @param method - CDP method
+ * @param chromeMessage - Chrome's error, e.g. "'Foo.bar' wasn't found"
+ * @param inBundledProtocol - Whether bdg's bundled protocol has the method
+ * @returns Message and suggestion
+ */
+export function cdpMethodNotImplementedError(
+  method: string,
+  chromeMessage: string,
+  inBundledProtocol: boolean
+): ErrorWithSuggestion {
+  const search = sessionCommand('bdg cdp --search <keyword>');
+  return {
+    message: `This Chrome doesn't implement ${method} (${chromeMessage})`,
+    suggestion: inBundledProtocol
+      ? `bdg's bundled protocol has it, but this Chrome is older (or ${method} is not available on a page). Use a newer Chrome, or find another method: ${search}`
+      : `Check the spelling (Chrome's method names are case-sensitive), or find a method: ${search}`,
+  };
+}
+
+/**
+ * `bdg cdp <Domain.Type>` without `--describe`: a type cannot be called.
+ *
+ * @param name - Full type name, e.g. Network.CookieSameSite
+ * @returns Message and suggestion
+ */
+export function cdpTypeNotMethodError(name: string): ErrorWithSuggestion {
+  return {
+    message: `${name} is a protocol type, not a method`,
+    suggestion: `Use: bdg cdp ${name} --describe (to see its values or properties)`,
+  };
+}
+
+/**
+ * `bdg cdp <name>` for a close typo of bundled methods, or a name that is
+ * not `Domain.method`.
+ *
+ * @param input - Name as typed
+ * @param similar - Methods to suggest
+ * @param listHint - First suggestion line (how to find methods)
+ * @returns Message and suggestion
+ */
+export function cdpMethodNotFoundError(
+  input: string,
+  similar: string[],
+  listHint: string
+): ErrorWithSuggestion {
+  const didYouMean =
+    similar.length > 0 ? ['', 'Did you mean:', ...similar.map((name) => `  - ${name}`)] : [];
+  return {
+    message: `Method '${input}' not found`,
+    suggestion: [listHint, ...didYouMean].join('\n'),
+  };
+}
+
+/**
+ * `bdg cdp <Domain.method> --describe` for a method the bundled protocol lacks.
+ *
+ * @param method - Method as typed
+ * @param protocolVersion - Bundled devtools-protocol version
+ * @returns Message and suggestion
+ */
+export function cdpMethodNotInBundledProtocolError(
+  method: string,
+  protocolVersion: string
+): ErrorWithSuggestion {
+  return {
+    message: `Method '${method}' is not in the bundled protocol (devtools-protocol ${protocolVersion})`,
+    suggestion: `bdg cdp ${method} sends it to Chrome as is, which may still have it. Methods bdg knows: bdg cdp --search <keyword>`,
+  };
+}
+
+/**
  * The skill file is not where the package should have it (a broken or
  * partial install).
  *

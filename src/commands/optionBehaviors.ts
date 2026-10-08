@@ -544,6 +544,15 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'No additional effect; kept for compatibility',
   },
 
+  'cdp:--describe': {
+    default:
+      'Without --describe, a Domain.method is called (one missing from the bundled protocol is sent as typed, with a warning)',
+    whenEnabled:
+      'Describes a domain, a method (parameters with ? for optional, returns, example) or a protocol type (Domain.Type: enum values or object properties)',
+    automaticBehavior:
+      'Parameters referring to an enum type list its values inline (JSON enum, ref, refType); a redirected method (DOM.highlightNode) also shows the method implementing it and its parameters, which Chrome checks (JSON redirect)',
+  },
+
   'status:--verbose': {
     default: 'Basic session status (daemon running, session active, URL)',
     whenEnabled: 'Includes Chrome diagnostics and CDP connection details',

@@ -10,11 +10,24 @@ import { readFileSync } from 'fs';
 import { createRequire } from 'module';
 import { dirname, join } from 'path';
 
-import type { ProtocolSchema, Domain, Command } from './types.js';
+import type { ProtocolSchema, Domain, Command, Type } from './types.js';
 
 const require = createRequire(import.meta.url);
 
 let cachedProtocol: ProtocolSchema | null = null;
+
+/**
+ * Version of the bundled devtools-protocol package, which names the Chromium
+ * revision its schema comes from.
+ *
+ * @returns e.g. '0.0.1710668'
+ */
+export function getBundledProtocolVersion(): string {
+  const packageJson = JSON.parse(
+    readFileSync(require.resolve('devtools-protocol/package.json'), 'utf-8')
+  ) as { version: string };
+  return packageJson.version;
+}
 
 /**
  * Load the CDP protocol schema.
@@ -96,6 +109,18 @@ export function findCommand(domainName: string, commandName: string): Command | 
 
   const normalized = commandName.toLowerCase();
   return domain.commands.find((c) => c.name.toLowerCase() === normalized);
+}
+
+/**
+ * Find a type within a domain (case-insensitive).
+ *
+ * @param domainName - Domain name (e.g., 'Network')
+ * @param typeName - Type id (e.g., 'CookieSameSite', 'cookiesamesite')
+ * @returns Type definition or undefined if not found
+ */
+export function findType(domainName: string, typeName: string): Type | undefined {
+  const normalized = typeName.toLowerCase();
+  return findDomain(domainName)?.types?.find((t) => t.id.toLowerCase() === normalized);
 }
 
 /**
