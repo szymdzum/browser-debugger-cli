@@ -4,11 +4,7 @@
  * User-facing messages for the network list command output and formatting.
  */
 
-import {
-  MAX_NETWORK_REQUESTS,
-  MAX_SANITIZED_BODY_BYTES,
-  MAX_TOTAL_BODY_BYTES,
-} from '@/constants.js';
+import { MAX_NETWORK_REQUESTS, MAX_TOTAL_BODY_BYTES } from '@/constants.js';
 import { pluralize } from '@/ui/formatting.js';
 
 /**
@@ -114,17 +110,7 @@ export function localProxyNote(): string {
  * @returns Comment naming what was redacted and the flag that keeps it
  */
 export function harSanitizedComment(): string {
-  const limit = megabytes(MAX_SANITIZED_BODY_BYTES);
-  return `Sanitized by bdg: values of auth, cookie, API key, token and session headers, cookies, credential query parameters in URLs, and password/token fields of JSON and form request and response bodies and WebSocket text messages are [redacted] (by name, so some harmless values are too). Not sanitized: binary (base64) bodies and messages, text that is not JSON or a form (including messages cut at capture), and response bodies over ${limit} (their content.comment says so). Export with --include-sensitive to keep everything`;
-}
-
-/**
- * HAR `content.comment` of a response body too large to sanitize.
- *
- * @returns Comment saying the body was exported as captured
- */
-export function harBodyNotSanitizedComment(): string {
-  return `Body not sanitized: over ${megabytes(MAX_SANITIZED_BODY_BYTES)}, exported as captured`;
+  return 'Sanitized by bdg: values of auth, cookie, API key, token and session headers, cookies, credential query parameters in URLs, and password/token fields of JSON and form request and response bodies and WebSocket text messages (also truncated JSON, socket.io, server-sent events, NDJSON, and base64 bodies of a generic or JSON type) are [redacted] in place (by name, so some harmless values are too); everything else stays byte for byte. Not sanitized: other binary (base64) bodies, binary WebSocket messages, and text that is not JSON or a form. Export with --include-sensitive to keep everything';
 }
 
 /**

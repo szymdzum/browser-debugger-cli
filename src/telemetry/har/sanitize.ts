@@ -10,23 +10,21 @@
  * request was authenticated and which cookies were set. It also covers API
  * key, token and session headers, credential query parameters in URLs
  * (`?code=`, `?access_token=`), and credential fields of request and response
- * bodies and of WebSocket text messages (sanitizeBody.ts). `headersSize`,
- * `bodySize` and `content.size` stay those of the captured request. Binary
- * (base64) bodies and messages are kept, and so are response bodies over
- * {@link MAX_SANITIZED_BODY_BYTES}, which are not parsed (`content.comment`
- * says so).
+ * bodies and of WebSocket text messages (sanitizeBody.ts), editing only
+ * those values. `headersSize`, `bodySize` and `content.size` stay those of the
+ * captured request. Base64 bodies are decoded when their type is generic or
+ * JSON; other binary bodies and binary messages are kept.
  */
 
 import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } from './types.js';
 
-import { MAX_SANITIZED_BODY_BYTES } from '@/constants.js';
 import {
   REDACTED,
   isSensitiveField,
+  redactBase64Body,
   redactBody,
   redactPairs,
 } from '@/telemetry/har/sanitizeBody.js';
-import { harBodyNotSanitizedComment } from '@/ui/messages/networkMessages.js';
 
 /** {@link REDACTED} as written in a URL */
 const URL_REDACTED = encodeURIComponent(REDACTED);
@@ -93,21 +91,17 @@ export function sanitizeEntry(entry: Entry): Entry {
 }
 
 /**
- * Redact credential fields of a response body. Binary (base64) bodies are
- * kept; a body over {@link MAX_SANITIZED_BODY_BYTES} is not parsed but kept
- * with a comment saying so.
+ * Redact credential fields of a response body, also of a base64 body whose
+ * type is generic or JSON.
  *
  * @param content - HAR response content
- * @returns The content, or a copy with its text redacted or its comment set;
- *   `size` stays as captured
+ * @returns The content, or a copy with its text redacted; `size` stays as captured
  */
 function redactContent(content: Content): Content {
-  const { text } = content;
-  if (text === undefined || content.encoding === 'base64') return content;
-  if (Buffer.byteLength(text, 'utf8') > MAX_SANITIZED_BODY_BYTES) {
-    return { ...content, comment: harBodyNotSanitizedComment() };
-  }
-  const redacted = redactBody(text, content.mimeType);
+  const { text, mimeType } = content;
+  if (text === undefined) return content;
+  const redacted =
+    content.encoding === 'base64' ? redactBase64Body(text, mimeType) : redactBody(text, mimeType);
   return redacted === text ? content : { ...content, text: redacted };
 }
 

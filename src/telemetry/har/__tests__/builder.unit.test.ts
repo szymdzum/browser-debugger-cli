@@ -978,6 +978,13 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
               frames: [
                 { timestamp: 2000, direction: 'sent', opcode: 1, payloadData: 'hi' },
                 { timestamp: 2500, direction: 'received', opcode: 2, payloadData: 'AQID' },
+                {
+                  timestamp: 3000,
+                  direction: 'received',
+                  opcode: 1,
+                  payloadData: 'cut',
+                  truncatedFrom: 9,
+                },
               ],
             },
           },
@@ -991,6 +998,7 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
       assert.deepEqual(entry?._webSocketMessages, [
         { type: 'send', time: 2, opcode: 1, data: 'hi' },
         { type: 'receive', time: 2.5, opcode: 2, data: 'AQID' },
+        { type: 'receive', time: 3, opcode: 1, data: 'cut', _truncatedFrom: 9 },
       ]);
     });
   });
