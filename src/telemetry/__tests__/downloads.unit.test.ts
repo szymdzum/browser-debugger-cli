@@ -12,7 +12,8 @@ import { makeTempDir, removeTempDirs } from '@/__testutils__/tempDirs.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import {
   reserveDownloadPath,
-  startDownloadTracking,
+  DownloadTracker,
+  type DownloadDestination,
   toDownloadInfo,
   type TrackedDownload,
 } from '@/telemetry/downloads.js';
@@ -87,12 +88,30 @@ class MockCDP {
 
 after(removeTempDirs);
 
-void describe('startDownloadTracking', () => {
+/**
+ * Start tracking downloads into a list.
+ *
+ * @param cdp - Mock connection
+ * @param downloads - List receiving downloads
+ * @param destination - Where downloads go
+ * @returns The record the tracker writes to
+ */
+async function startDownloadTracking(
+  cdp: MockCDP,
+  downloads: TrackedDownload[],
+  destination: DownloadDestination
+): Promise<{ downloads: TrackedDownload[]; downloadsWarning: string | undefined }> {
+  const record = { downloads, downloadsWarning: undefined };
+  await new DownloadTracker(record, destination).attach(cdp as unknown as CDPConnection);
+  return record;
+}
+
+void describe('DownloadTracker', () => {
   void it('saves into the download directory and renames a completed download', async () => {
     const dir = makeTempDir('bdg-downloads-');
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, {
+    await startDownloadTracking(cdp, downloads, {
       kind: 'directory',
       dir,
     });
@@ -127,7 +146,7 @@ void describe('startDownloadTracking', () => {
     fs.writeFileSync(path.join(dir, 'a.zip'), 'older');
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, {
+    await startDownloadTracking(cdp, downloads, {
       kind: 'directory',
       dir,
     });
@@ -148,7 +167,7 @@ void describe('startDownloadTracking', () => {
     const dir = makeTempDir('bdg-downloads-');
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, {
+    await startDownloadTracking(cdp, downloads, {
       kind: 'directory',
       dir,
     });
@@ -162,7 +181,7 @@ void describe('startDownloadTracking', () => {
   void it("keeps an attached browser's download settings and reports where it saved", async () => {
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, { kind: 'browser' });
+    await startDownloadTracking(cdp, downloads, { kind: 'browser' });
     assert.deepEqual(cdp.sent[0]?.params, { behavior: 'default', eventsEnabled: true });
 
     cdp.begin('g1', 'report.txt');
@@ -177,20 +196,56 @@ void describe('startDownloadTracking', () => {
     assert.equal(downloads[0]?.path, '/Users/me/Downloads/report.txt');
   });
 
-  void it('keeps working when the browser refuses the download behavior', async () => {
+  void it('stops claiming its directory when Chrome refuses the behavior, and warns', async () => {
+    const dir = makeTempDir('bdg-downloads-');
     const cdp = new MockCDP();
     cdp.send = () => Promise.reject(new Error('Not allowed'));
     const downloads: TrackedDownload[] = [];
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, { kind: 'browser' });
+    const record = await startDownloadTracking(cdp, downloads, { kind: 'directory', dir });
 
     cdp.begin('g1', 'report.txt');
-    assert.equal(downloads.length, 1);
+    cdp.emit('Browser.downloadProgress', {
+      guid: 'g1',
+      state: 'completed',
+      receivedBytes: 15,
+      filePath: '/Users/me/Downloads/report.txt',
+    });
+
+    assert.equal(downloads[0]?.path, '/Users/me/Downloads/report.txt');
+    assert.match(record.downloadsWarning ?? '', /not redirected .*Not allowed/);
   });
+
+  void it('applies the behavior again on another connection, and clears the warning', async () => {
+    const dir = makeTempDir('bdg-downloads-');
+    const first = new MockCDP();
+    first.send = () => Promise.reject(new Error('Not allowed'));
+    const record = { downloads: [] as TrackedDownload[], downloadsWarning: undefined };
+    const tracker = new DownloadTracker(record, { kind: 'directory', dir });
+    assert.equal(await tracker.attach(first as unknown as CDPConnection), false);
+    const second = new MockCDP();
+
+    assert.equal(await tracker.attach(second as unknown as CDPConnection), true);
+    first.begin('ignored', 'old.txt');
+    second.begin('g1', 'report.txt');
+
+    assert.equal(record.downloadsWarning, undefined);
+    assert.deepEqual(second.sent[0]?.params, {
+      behavior: 'allowAndName',
+      downloadPath: dir,
+      eventsEnabled: true,
+    });
+    assert.deepEqual(
+      record.downloads.map((download) => download.path),
+      [path.join(dir, 'report.txt')]
+    );
+  });
+
   void it('refuses downloads when the directory is unusable, saying why', async () => {
     const cdp = new MockCDP();
     const downloads: TrackedDownload[] = [];
     const destination = { kind: 'refused' as const, reason: 'no directory' };
-    await startDownloadTracking(cdp as unknown as CDPConnection, downloads, destination);
+    const record = await startDownloadTracking(cdp, downloads, destination);
+    assert.equal(record.downloadsWarning, 'no directory');
     assert.deepEqual(cdp.sent[0]?.params, { behavior: 'deny', eventsEnabled: true });
 
     cdp.begin('g1', 'report.txt');

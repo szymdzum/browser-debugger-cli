@@ -127,9 +127,13 @@ export function formatSessionStatus(
     if (activity.lastConsoleMessageAt) {
       fmt.keyValue('  Last Message', formatTimeAgo(activity.lastConsoleMessageAt), 18);
     }
-    if (activity.downloads?.length) {
-      fmt.keyValue('Downloads', downloadsSummary(activity.downloads), 18);
-    }
+    const downloadRows = [
+      ...(activity.downloads?.length ? [downloadsSummary(activity.downloads)] : []),
+      ...(activity.downloadsWarning ? [`⚠ ${activity.downloadsWarning}`] : []),
+    ];
+    downloadRows.forEach((row, index) =>
+      index === 0 ? fmt.keyValue('Downloads', row, 18) : fmt.text(`${' '.repeat(18)}${row}`)
+    );
   }
 
   fmt.blank().text('Collectors').separator('━', 50);

@@ -1,6 +1,6 @@
 /**
  * Setting up a session's download tracking: where downloads go, and the
- * browser-level connection their events arrive on.
+ * connection their events arrive on.
  */
 
 import type { TelemetryPluginContext } from './plugins.js';
@@ -9,7 +9,7 @@ import type { SessionConfig } from './types.js';
 import { CDPConnection } from '@/connection/cdp.js';
 import { browserWebSocketUrl } from '@/daemon/session/chromeConnection.js';
 import { ensureSessionDownloadsDir } from '@/session/paths.js';
-import { startDownloadTracking, type DownloadDestination } from '@/telemetry/downloads.js';
+import { DownloadTracker, type DownloadDestination } from '@/telemetry/downloads.js';
 import type { CleanupFunction } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { downloadsDirUnavailableReason } from '@/ui/messages/commands.js';
@@ -19,28 +19,61 @@ import { getErrorMessage } from '@/utils/errors.js';
 const BROWSER_CONNECT_ATTEMPTS = 2;
 
 /**
- * Track the session's downloads (see {@link startDownloadTracking}) on a
- * browser-level connection, so downloads of tabs the page opens are named
- * and recorded too; on the page's connection when Chrome offers no
- * browser-level one.
+ * Opens a browser-level connection to the session's Chrome, or null when
+ * there is none; `onLost` is called if it closes while the session runs.
+ */
+export type BrowserConnector = (
+  config: SessionConfig,
+  logger: Logger,
+  onLost: () => void
+) => Promise<CDPConnection | null>;
+
+/**
+ * Track the session's downloads (see {@link DownloadTracker}).
+ *
+ * For a Chrome bdg launched, on a browser-level connection, so downloads of
+ * tabs the page opens are named and recorded too; on the page's connection
+ * when there is none, or once it is lost (Chrome drops a connection's
+ * download behavior with it, so it is applied again there). An attached
+ * Chrome (`--chrome-ws-url`) is followed on the page's connection only: a
+ * browser-level one would count the user's other tabs' downloads as the
+ * session's, and a Chrome that allows one connection (toggle mode) would
+ * ask again for each.
  *
  * @param context - Plugin context
+ * @param connectBrowser - Opens the browser-level connection
  * @returns Cleanup: stops tracking and closes the browser-level connection
  */
 export async function startSessionDownloads(
-  context: TelemetryPluginContext
+  context: TelemetryPluginContext,
+  connectBrowser: BrowserConnector = openBrowserConnection
 ): Promise<CleanupFunction> {
   const { cdp, config, store, logger } = context;
-  const browser = await connectBrowser(config, logger);
-  const stop = await startDownloadTracking(
-    browser ?? cdp,
-    store.downloads,
-    downloadDestination(config, logger)
-  );
-  return async () => {
-    await stop();
+  const tracker = new DownloadTracker(store, downloadDestination(config, logger));
+  const browser = config.chromeWsUrl
+    ? null
+    : await connectBrowser(config, logger, () => void followOnPage(tracker, cdp, logger));
+  await tracker.attach(browser ?? cdp);
+  return () => {
+    tracker.stop();
     browser?.close();
   };
+}
+
+/**
+ * Follow downloads on the page's connection after the browser-level one was lost.
+ *
+ * @param tracker - Session download tracker
+ * @param cdp - Page connection
+ * @param logger - Logger
+ */
+async function followOnPage(
+  tracker: DownloadTracker,
+  cdp: CDPConnection,
+  logger: Logger
+): Promise<void> {
+  logger.info('Browser connection for downloads lost; download behavior set again on the page');
+  await tracker.attach(cdp);
 }
 
 /**
@@ -48,17 +81,19 @@ export async function startSessionDownloads(
  *
  * @param config - Session configuration
  * @param logger - Logger
+ * @param onLost - Called if the connection closes while the session runs
  * @returns Open connection, or null when there is none to open
  */
-async function connectBrowser(
+async function openBrowserConnection(
   config: SessionConfig,
-  logger: Logger
+  logger: Logger,
+  onLost: () => void
 ): Promise<CDPConnection | null> {
   const url = await browserWebSocketUrl(config, logger);
   if (!url) return null;
   const browser = new CDPConnection(logger);
   try {
-    await browser.connect(url, { maxRetries: BROWSER_CONNECT_ATTEMPTS });
+    await browser.connect(url, { maxRetries: BROWSER_CONNECT_ATTEMPTS, onDisconnect: onLost });
     return browser;
   } catch (error) {
     logger.debug(`No browser-level connection for downloads: ${getErrorMessage(error)}`);

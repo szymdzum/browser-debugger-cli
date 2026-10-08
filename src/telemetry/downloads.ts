@@ -7,8 +7,8 @@ import * as path from 'path';
 
 import type { CDPConnection } from '@/connection/cdp.js';
 import type { DownloadInfo, DownloadState } from '@/ipc/protocol/domTypes.js';
-import type { CleanupFunction } from '@/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { downloadsNotRedirectedWarning } from '@/ui/messages/commands.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
 const log = createLogger('downloads');
@@ -48,6 +48,14 @@ interface DownloadProgress {
 /** Paths chosen for downloads still running, by {@link reservationKey} */
 type Reservations = Set<string>;
 
+/** Where the session keeps its downloads and what it says about them */
+export interface DownloadRecord {
+  /** Downloads that began, oldest first, updated as they progress */
+  downloads: TrackedDownload[];
+  /** Set while downloads do not go where bdg meant them to (refused, or not redirected) */
+  downloadsWarning: string | undefined;
+}
+
 /**
  * Track the session's downloads.
  *
@@ -59,41 +67,79 @@ type Reservations = Set<string>;
  * and only its events are enabled. Refused downloads are canceled by Chrome
  * and recorded with the reason.
  *
- * Send this on a browser-level connection: download events of other tabs
- * (`target=_blank` links, `window.open()`) do not reach a page's session,
- * though the download behavior applies to them.
- *
- * @param cdp - CDP connection (browser-level when possible)
- * @param downloads - Session list receiving each download, updated as it progresses
- * @param destination - Where downloads go
- * @returns Cleanup function removing the event handlers
+ * Chrome keeps a download behavior only while the connection that set it is
+ * open, so {@link attach} applies it again on another connection when the
+ * first one is lost. A browser-level connection also receives download
+ * events of other tabs (`target=_blank` links, `window.open()`), which do not
+ * reach a page's connection.
  */
-export async function startDownloadTracking(
-  cdp: CDPConnection,
-  downloads: TrackedDownload[],
-  destination: DownloadDestination
-): Promise<CleanupFunction> {
-  await setDownloadBehavior(cdp, destination);
-  const reserved: Reservations = new Set();
-  const dir = destination.kind === 'directory' ? destination.dir : undefined;
-  const cleanups = [
-    cdp.on<DownloadWillBegin>('Browser.downloadWillBegin', ({ guid, url, suggestedFilename }) => {
-      const target = dir && reserveDownloadPath(dir, suggestedFilename, reserved);
-      downloads.push({
-        guid,
-        url,
-        suggestedFilename,
-        state: 'inProgress',
-        ...(target && { path: target }),
-      });
-    }),
-    cdp.on<DownloadProgress>('Browser.downloadProgress', (progress) => {
-      const download = downloads.findLast((entry) => entry.guid === progress.guid);
-      if (download?.state !== 'inProgress') return;
-      updateDownload(download, progress, destination, reserved);
-    }),
-  ];
-  return () => cleanups.forEach((cleanup) => cleanup());
+export class DownloadTracker {
+  private readonly reserved: Reservations = new Set();
+  private applied: DownloadDestination = { kind: 'browser' };
+  private unsubscribe: () => void = () => undefined;
+
+  /**
+   * @param record - Session record receiving downloads and the warning
+   * @param destination - Where downloads should go
+   */
+  constructor(
+    private readonly record: DownloadRecord,
+    private readonly destination: DownloadDestination
+  ) {
+    if (destination.kind === 'refused') record.downloadsWarning = destination.reason;
+  }
+
+  /**
+   * Apply the destination on a connection and follow its download events
+   * there (instead of on the previous one). When Chrome refuses it, reports
+   * stop claiming bdg's directory (downloads go where the browser puts them)
+   * and the record carries a warning.
+   *
+   * @param cdp - Connection (browser-level when possible)
+   * @returns True when Chrome took the destination
+   */
+  async attach(cdp: CDPConnection): Promise<boolean> {
+    this.unsubscribe();
+    const error = await setDownloadBehavior(cdp, this.destination);
+    this.applied = error === undefined ? this.destination : { kind: 'browser' };
+    if (error !== undefined && this.destination.kind !== 'browser') {
+      this.record.downloadsWarning = downloadsNotRedirectedWarning(error);
+    } else if (this.destination.kind !== 'refused') {
+      this.record.downloadsWarning = undefined;
+    }
+    const handlers = [
+      cdp.on<DownloadWillBegin>('Browser.downloadWillBegin', (event) => this.begin(event)),
+      cdp.on<DownloadProgress>('Browser.downloadProgress', (progress) => {
+        const download = this.record.downloads.findLast((entry) => entry.guid === progress.guid);
+        if (download?.state !== 'inProgress') return;
+        updateDownload(download, progress, this.applied, this.reserved);
+      }),
+    ];
+    this.unsubscribe = () => handlers.forEach((remove) => remove());
+    return error === undefined;
+  }
+
+  /** Stop following download events */
+  stop(): void {
+    this.unsubscribe();
+  }
+
+  /**
+   * Record a download that began, with the path chosen for it in bdg's directory.
+   *
+   * @param event - `Browser.downloadWillBegin` parameters
+   */
+  private begin({ guid, url, suggestedFilename }: DownloadWillBegin): void {
+    const dir = this.applied.kind === 'directory' ? this.applied.dir : undefined;
+    const target = dir && reserveDownloadPath(dir, suggestedFilename, this.reserved);
+    this.record.downloads.push({
+      guid,
+      url,
+      suggestedFilename,
+      state: 'inProgress',
+      ...(target && { path: target }),
+    });
+  }
 }
 
 /**
@@ -116,24 +162,26 @@ export function toDownloadInfo(download: TrackedDownload): DownloadInfo {
 
 /**
  * Set the browser's download behavior for the destination and enable
- * download events. A failure is logged: the session works without it, but
- * downloads then go where the browser puts them.
+ * download events.
  *
  * @param cdp - CDP connection
  * @param destination - Where downloads go
+ * @returns Why Chrome refused it, or undefined when it took it
  */
 async function setDownloadBehavior(
   cdp: CDPConnection,
   destination: DownloadDestination
-): Promise<void> {
+): Promise<string | undefined> {
   const behavior =
     destination.kind === 'directory'
       ? { behavior: 'allowAndName', downloadPath: destination.dir }
       : { behavior: destination.kind === 'refused' ? 'deny' : 'default' };
   try {
     await cdp.send('Browser.setDownloadBehavior', { ...behavior, eventsEnabled: true });
+    return undefined;
   } catch (error) {
-    log.info(`Downloads are not tracked: ${getErrorMessage(error)}`);
+    log.info(`Download behavior not set: ${getErrorMessage(error)}`);
+    return getErrorMessage(error);
   }
 }
 

@@ -25,6 +25,8 @@ export interface SessionActivity {
   lastConsoleMessageAt?: number;
   /** Downloads that began during the session, oldest first (left out when none). */
   downloads?: DownloadInfo[];
+  /** Why downloads do not go to the session directory (refused, or not redirected), while they do not */
+  downloadsWarning?: string;
 }
 
 /**

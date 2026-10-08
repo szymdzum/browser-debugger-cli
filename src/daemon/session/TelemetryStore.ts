@@ -35,6 +35,8 @@ export class TelemetryStore {
   readonly dialogs: DialogInfo[] = [];
   /** Downloads that began during the session, oldest first, updated as they progress */
   readonly downloads: TrackedDownload[] = [];
+  /** Set while downloads do not go where bdg meant them to (refused, or not redirected) */
+  downloadsWarning: string | undefined = undefined;
 
   activeTelemetry: TelemetryType[] = [];
   /** When the page's renderer crashed (epoch ms); undefined while the page is alive */

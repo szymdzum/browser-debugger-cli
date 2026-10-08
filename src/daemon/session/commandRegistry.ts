@@ -605,6 +605,9 @@ export function createCommandRegistry(
           ...(lastConsoleMessage && { lastConsoleMessageAt: lastConsoleMessage.timestamp }),
           ...networkEvictionActivity(store),
           ...sessionDownloads(store),
+          ...(store.downloadsWarning !== undefined && {
+            downloadsWarning: store.downloadsWarning,
+          }),
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
       };

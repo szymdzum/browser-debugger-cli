@@ -232,6 +232,17 @@ export function downloadsSummary(downloads: DownloadInfo[]): string {
 }
 
 /**
+ * Warning while Chrome did not take bdg's download behavior, so downloads
+ * are not saved in the session directory.
+ *
+ * @param detail - Chrome's error
+ * @returns Warning shown by `bdg status`
+ */
+export function downloadsNotRedirectedWarning(detail: string): string {
+  return `downloads are not redirected to the session directory (Chrome refused the download behavior: ${detail}); Chrome saves them in its default folder, usually ~/Downloads`;
+}
+
+/**
  * Why downloads are refused when the session's downloads directory could not
  * be created.
  *
