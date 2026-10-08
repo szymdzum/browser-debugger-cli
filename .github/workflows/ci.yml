@@ -7,8 +7,8 @@ on:
     branches: ['**']
   schedule:
     - cron: '17 3 * * *'
-  # Run the macOS smoke job on any branch to investigate macOS-only failures
-  # (it does not run on pull requests).
+  # Run selected smoke tests (Linux and macOS jobs) on any branch to
+  # investigate flaky or platform-only failures.
   workflow_dispatch:
     inputs:
       smoke_files:
@@ -235,12 +235,23 @@ jobs:
       - name: Warm up Chrome
         continue-on-error: true
         run: |
+          google-chrome-stable --version
           start=$(date +%s)
           timeout 120 google-chrome-stable --headless=new --user-data-dir="$(mktemp -d)" --dump-dom about:blank > /dev/null
           echo "Chrome warm-up took $(( $(date +%s) - start )) s"
 
       - name: Run smoke tests
+        if: github.event_name != 'workflow_dispatch'
         run: npm run test:smoke
+
+      - name: Run selected smoke tests
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SMOKE_FILES: ${{ inputs.smoke_files }}
+          NAME_PATTERN: ${{ inputs.name_pattern }}
+          REPEAT: ${{ inputs.repeat }}
+          BDG_DEBUG: ${{ inputs.debug && '1' || '' }}
+        run: scripts/smoke-selected.sh
 
       - name: Run integration tests
         if: github.ref == 'refs/heads/main' && matrix.node == '22'
@@ -322,18 +333,7 @@ jobs:
           NAME_PATTERN: ${{ inputs.name_pattern }}
           REPEAT: ${{ inputs.repeat }}
           BDG_DEBUG: ${{ inputs.debug && '1' || '' }}
-        run: |
-          args=(--test --test-concurrency=1)
-          if [ -n "$NAME_PATTERN" ]; then args+=(--test-name-pattern "$NAME_PATTERN"); fi
-          failed=0
-          for i in $(seq 1 "$REPEAT"); do
-            echo "::group::run $i of $REPEAT"
-            # shellcheck disable=SC2086 # SMOKE_FILES is a glob on purpose
-            npx tsx "${args[@]}" $SMOKE_FILES || failed=$((failed + 1))
-            echo "::endgroup::"
-          done
-          echo "failed runs: $failed of $REPEAT"
-          [ "$failed" -eq 0 ]
+        run: scripts/smoke-selected.sh
 
       - name: Upload session logs
         if: failure() || github.event_name == 'workflow_dispatch'

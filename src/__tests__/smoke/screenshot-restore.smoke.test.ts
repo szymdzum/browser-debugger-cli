@@ -31,17 +31,27 @@ const BUSY_MS = 3000;
 
 /**
  * Page-side trap: on the first change of the window size or the pixel ratio
- * (the capture's emulation), tell the fixture server (`/beacon?changed`) and
- * keep the page busy for {@link BUSY_MS}, so the capture is still running when
- * the test interrupts it.
+ * (the capture's emulation), tell the fixture server (`/beacon?changed`, a
+ * synchronous request, so the server has it before the page turns busy) and
+ * keep the page busy for {@link BUSY_MS} right away, in the change handler.
+ *
+ * The change is handled in the rendering update that applies the new
+ * emulation, and `Page.captureScreenshot` waits for the frame that update
+ * produces, so the capture cannot end before the busy loop does and is still
+ * running when the test interrupts it. A busy loop started later (a timer)
+ * would race the capture: at a changed pixel ratio a viewport capture ends
+ * about 30 ms after the change, before a 100 ms timer fires.
  */
 const TRAP_JS = `(() => {
   let armed = true;
   const changed = () => {
     if (!armed) return;
     armed = false;
-    navigator.sendBeacon('/beacon?changed');
-    setTimeout(() => { const end = Date.now() + ${BUSY_MS}; while (Date.now() < end); }, 100);
+    const beacon = new XMLHttpRequest();
+    beacon.open('GET', '/beacon?changed', false);
+    beacon.send();
+    const end = Date.now() + ${BUSY_MS};
+    while (Date.now() < end);
   };
   addEventListener('resize', changed);
   matchMedia('(resolution: ' + devicePixelRatio + 'dppx)').addEventListener('change', changed);
