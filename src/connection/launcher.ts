@@ -13,6 +13,7 @@ import {
   CHROME_PROFILE_DIR,
   DEFAULT_CHROME_LOG_LEVEL,
 } from '@/constants.js';
+import { chromePortNotOpenedMessage } from '@/ui/messages/chrome.js';
 import { delay } from '@/utils/async.js';
 import { makeDirectory } from '@/utils/directories.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -201,6 +202,8 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
     };
   } catch (error) {
     startup.stop();
+    const pid = launcher.chromeProcess?.pid ?? 0;
+    const chromeAlive = pid > 0 && isProcessAlive(pid);
     launcher.kill();
     launcher.destroyTmp();
 
@@ -208,14 +211,79 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       throw error;
     }
 
-    throw new ChromeLaunchError(`Failed to launch Chrome: ${getErrorMessage(error)}`, {
-      ...(error instanceof Error && { cause: error }),
-      issue: {
-        code: 'CHROME_LAUNCH_FAILED',
-        context: { port, reason: getErrorMessage(error) },
-      },
+    throw launchFailedError(error, {
+      port,
+      pid,
+      chromeAlive,
+      readyBudgetMs: readyBudgetMs(chromeOptions),
     });
   }
+}
+
+/**
+ * State of the launch when chrome-launcher rejected.
+ */
+interface LaunchFailureContext {
+  /** Debugging port */
+  port: number;
+  /** Chrome's PID (0 if it was not spawned) */
+  pid: number;
+  /** Whether Chrome was still running when chrome-launcher rejected */
+  chromeAlive: boolean;
+  /** How long chrome-launcher waited for the port to open */
+  readyBudgetMs: number;
+}
+
+/**
+ * The error for a launch chrome-launcher rejected.
+ *
+ * A refused connection while Chrome is still running means Chrome did not
+ * open its port within the readiness budget (a slow start, e.g. the first
+ * one on a cold machine): the port was free right before the launch and
+ * nothing answers on it, so it is not a conflict, and Chrome did not crash.
+ *
+ * @param error - chrome-launcher's rejection
+ * @param context - Port, Chrome's PID and liveness, and the readiness budget
+ * @returns CHROME_PORT_NOT_OPENED for a slow start, else CHROME_LAUNCH_FAILED
+ */
+export function launchFailedError(
+  error: unknown,
+  { port, pid, chromeAlive, readyBudgetMs }: LaunchFailureContext
+): ChromeLaunchError {
+  const cause = error instanceof Error ? { cause: error } : {};
+  if (chromeAlive && isConnectionRefused(error)) {
+    return new ChromeLaunchError(chromePortNotOpenedMessage(pid, port, readyBudgetMs), {
+      ...cause,
+      issue: { code: 'CHROME_PORT_NOT_OPENED', context: { port, pid, waitedMs: readyBudgetMs } },
+    });
+  }
+  return new ChromeLaunchError(`Failed to launch Chrome: ${getErrorMessage(error)}`, {
+    ...cause,
+    issue: { code: 'CHROME_LAUNCH_FAILED', context: { port, reason: getErrorMessage(error) } },
+  });
+}
+
+/**
+ * Whether an error is a refused TCP connection.
+ *
+ * @param error - Error to check
+ * @returns True for ECONNREFUSED
+ */
+function isConnectionRefused(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException | undefined)?.code === 'ECONNREFUSED';
+}
+
+/**
+ * How long chrome-launcher waits for Chrome's debugging port to open.
+ *
+ * @param chromeOptions - chrome-launcher options
+ * @returns Poll interval times the number of polls
+ */
+function readyBudgetMs(chromeOptions: ChromeLaunchOptions): number {
+  return (
+    (chromeOptions.connectionPollInterval ?? CHROME_READY_POLL_MS) *
+    (chromeOptions.maxConnectionRetries ?? CHROME_READY_POLL_ATTEMPTS)
+  );
 }
 
 /**
