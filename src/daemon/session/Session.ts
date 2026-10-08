@@ -382,7 +382,13 @@ export class Session {
       this.config = { ...this.config, port: await getSessionPort(explicitPort) };
       this.throwIfStopping();
       try {
-        this.chrome = await setupChromeConnection(this.config, this.store, log, this.notify);
+        this.chrome = await setupChromeConnection(
+          this.config,
+          this.store,
+          log,
+          this.notify,
+          this.launchAbort.signal
+        );
         return;
       } catch (error) {
         const retry = !explicitPort && attempt < PORT_ATTEMPTS && isPortConflict(error);

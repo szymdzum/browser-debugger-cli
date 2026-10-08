@@ -19,7 +19,11 @@
  */
 
 import { createLogger } from '@/ui/logging/index.js';
-import { chromeNotAnsweringReason, portTakenByReason } from '@/ui/messages/chrome.js';
+import {
+  CHROME_LAUNCH_ABORTED_MESSAGE,
+  chromeNotAnsweringReason,
+  portTakenByReason,
+} from '@/ui/messages/chrome.js';
 import { delay } from '@/utils/async.js';
 import {
   CDP_HTTP_TIMEOUT_MS,
@@ -86,19 +90,41 @@ export function parseDevToolsListening(lines: readonly string[]): DevToolsEndpoi
  * @param logs - Chrome's log positions from before the launch
  * @param isRunning - Whether Chrome is still running (waiting stops when not)
  * @param timeoutMs - Longest wait
- * @returns Endpoint, or null if Chrome exited or announced none in time
+ * @param signal - Ends the wait early when aborted
+ * @returns Endpoint, or null if Chrome exited, announced none in time or the
+ *   wait was aborted
  */
 export async function waitForDevToolsEndpoint(
   logs: StartupLogs,
   isRunning: () => boolean,
-  timeoutMs: number = ENDPOINT_WAIT_MS
+  timeoutMs: number = ENDPOINT_WAIT_MS,
+  signal?: AbortSignal
 ): Promise<DevToolsEndpoint | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const endpoint = parseDevToolsListening(readStartupLines(logs));
-    if (endpoint || !isRunning() || Date.now() >= deadline) return endpoint;
-    await delay(ENDPOINT_POLL_MS);
+    if (endpoint || !isRunning() || Date.now() >= deadline || signal?.aborted) return endpoint;
+    await delay(ENDPOINT_POLL_MS, signal);
   }
+}
+
+/**
+ * The error for a launch that was aborted (the session was stopped).
+ *
+ * @returns Launch error
+ */
+export function launchAbortedError(): ChromeLaunchError {
+  return new ChromeLaunchError(CHROME_LAUNCH_ABORTED_MESSAGE);
+}
+
+/**
+ * End a launch whose session was stopped.
+ *
+ * @param signal - The launch's abort signal
+ * @throws ChromeLaunchError if the signal is aborted
+ */
+function throwIfLaunchAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw launchAbortedError();
 }
 
 /**
@@ -111,9 +137,11 @@ export async function waitForDevToolsEndpoint(
  * that fell back to [::1] is asked once: 127.0.0.1 is held by something else.
  *
  * @param options - Chrome's log positions from before the launch, requested
- *   port (free on 127.0.0.1 and ::1 right before the launch), Chrome's PID and
- *   longest wait for its announcement and its answer
- * @throws ChromeLaunchError: CHROME_DIED_AFTER_LAUNCH if Chrome exits first;
+ *   port (free on 127.0.0.1 and ::1 right before the launch), Chrome's PID,
+ *   longest wait for its announcement and its answer, and a signal that ends
+ *   the waits and a pending request at once (the session was stopped)
+ * @throws ChromeLaunchError: without an issue if `signal` aborts;
+ *   CHROME_DIED_AFTER_LAUNCH if Chrome exits first;
  *   PORT_IN_USE if another browser or process answers on the port;
  *   CHROME_LAUNCH_FAILED if Chrome announced nothing and nothing answers, or
  *   announced the port but did not answer on it in time
@@ -123,19 +151,22 @@ export async function verifyLaunchedChrome(options: {
   port: number;
   pid: number;
   timeoutMs?: number;
+  signal?: AbortSignal | undefined;
 }): Promise<void> {
-  const { logs, port, pid, timeoutMs = ENDPOINT_WAIT_MS } = options;
+  const { logs, port, pid, timeoutMs = ENDPOINT_WAIT_MS, signal } = options;
   const started = Date.now();
   const isRunning = (): boolean => isProcessAlive(pid);
-  const endpoint = await waitForDevToolsEndpoint(logs, isRunning, timeoutMs);
+  const endpoint = await waitForDevToolsEndpoint(logs, isRunning, timeoutMs, signal);
+  throwIfLaunchAborted(signal);
   if (!endpoint && !isRunning()) throw diedError(port, pid);
-  if (!endpoint) return acceptUnannouncedChrome(logs, port);
+  if (!endpoint) return acceptUnannouncedChrome(logs, port, signal);
   if (endpoint.port !== port) {
     throw portTakenError(port, `Chrome listens on port ${endpoint.port} instead`);
   }
   const onLoopback = endpoint.host === '127.0.0.1';
   const deadline = onLoopback ? started + timeoutMs : Date.now();
-  const answer = await waitForAnswer(port, deadline, isRunning);
+  const answer = await waitForAnswer(port, deadline, isRunning, signal);
+  throwIfLaunchAborted(signal);
   if (answer.kind === 'devtools' && new URL(answer.wsUrl).pathname === endpoint.browserPath) {
     log.debug(`Chrome on port ${port} is the launched one (${endpoint.browserPath})`);
     return;
@@ -149,25 +180,29 @@ export async function verifyLaunchedChrome(options: {
 
 /**
  * Ask 127.0.0.1:<port> for its DevTools version until something answers,
- * Chrome exits or the deadline passes (at least once). Each request waits at
- * most until the deadline (but at least MIN_ANSWER_WAIT_MS).
+ * Chrome exits, the deadline passes (at least once) or `signal` aborts (which
+ * also ends a pending request). Each request waits at most until the deadline
+ * (but at least MIN_ANSWER_WAIT_MS).
  *
  * @param port - Requested port
  * @param deadline - Time (ms since epoch) to stop asking
  * @param isRunning - Whether Chrome is still running
+ * @param signal - Ends the wait early when aborted
  * @returns The first answer, or the last `unreachable` result
  */
 async function waitForAnswer(
   port: number,
   deadline: number,
-  isRunning: () => boolean
+  isRunning: () => boolean,
+  signal: AbortSignal | undefined
 ): Promise<DevToolsProbe> {
   for (;;) {
     const remaining = Math.max(deadline - Date.now(), MIN_ANSWER_WAIT_MS);
     const timeoutMs = Math.min(CDP_HTTP_TIMEOUT_MS, remaining);
-    const answer = await probeDevToolsEndpoint(port, undefined, { timeoutMs });
-    if (answer.kind !== 'unreachable' || !isRunning() || Date.now() >= deadline) return answer;
-    await delay(ENDPOINT_POLL_MS);
+    const answer = await probeDevToolsEndpoint(port, undefined, { timeoutMs, signal });
+    const done = answer.kind !== 'unreachable' || !isRunning() || Date.now() >= deadline;
+    if (done || signal?.aborted) return answer;
+    await delay(ENDPOINT_POLL_MS, signal);
   }
 }
 
@@ -189,13 +224,21 @@ function answerSource(answer: DevToolsProbe): 'browser' | 'process' | 'nothing' 
  *
  * @param logs - Chrome's log positions (the stderr log is named in messages)
  * @param port - Requested port
- * @throws ChromeLaunchError: PORT_IN_USE for a second listener;
- *   CHROME_LAUNCH_FAILED if no browser answers
+ * @param signal - Ends the request early when aborted
+ * @throws ChromeLaunchError: without an issue if `signal` aborts;
+ *   PORT_IN_USE for a second listener; CHROME_LAUNCH_FAILED if no browser
+ *   answers
  */
-async function acceptUnannouncedChrome(logs: StartupLogs, port: number): Promise<void> {
+async function acceptUnannouncedChrome(
+  logs: StartupLogs,
+  port: number,
+  signal: AbortSignal | undefined
+): Promise<void> {
   const errLog = logs.files[0]?.file ?? 'chrome-err.log';
   const missing = `Chrome did not print "DevTools listening on" to ${errLog}`;
-  if (!(await fetchBrowserWsUrl(port, log))) {
+  const browserWsUrl = await fetchBrowserWsUrl(port, log, { signal });
+  throwIfLaunchAborted(signal);
+  if (!browserWsUrl) {
     throw new ChromeLaunchError(`${missing}, and no browser answers on port ${port}`, {
       issue: {
         code: 'CHROME_LAUNCH_FAILED',

@@ -32,18 +32,24 @@ import { filterDefined } from '@/utils/objects.js';
 /**
  * Setup Chrome connection - either launch new instance or connect to existing.
  *
+ * @param config - Session configuration
+ * @param telemetryStore - Store receiving the target info
+ * @param log - Logger
+ * @param notify - Receives notices about an external Chrome
+ * @param signal - Ends a launch at once when aborted (the session was stopped)
  * @returns Launched Chrome instance (null if connecting to external Chrome)
  */
 export async function setupChromeConnection(
   config: SessionConfig,
   telemetryStore: TelemetryStore,
   log: Logger,
-  notify: NoticeSink<ChromeNoticeCode>
+  notify: NoticeSink<ChromeNoticeCode>,
+  signal?: AbortSignal
 ): Promise<LaunchedChrome | null> {
   if (config.chromeWsUrl) {
     return setupExternalChrome(config, telemetryStore, log, notify);
   } else {
-    return setupLaunchedChrome(config, log);
+    return setupLaunchedChrome(config, log, signal);
   }
 }
 
@@ -208,12 +214,22 @@ export function windowSizeFlags(config: SessionConfig): string[] | undefined {
 
 /**
  * Launch a new Chrome instance and record its PID for crash cleanup.
+ *
+ * @param config - Session configuration
+ * @param log - Logger
+ * @param signal - Ends the launch at once when aborted
+ * @returns Launched Chrome
  */
-async function setupLaunchedChrome(config: SessionConfig, log: Logger): Promise<LaunchedChrome> {
+async function setupLaunchedChrome(
+  config: SessionConfig,
+  log: Logger,
+  signal: AbortSignal | undefined
+): Promise<LaunchedChrome> {
   const chrome = await launchChrome({
     port: config.port,
     logger: log,
     sessionDir: getSessionDir(),
+    signal,
     ...filterDefined({
       userDataDir: config.userDataDir,
       headless: config.headless,

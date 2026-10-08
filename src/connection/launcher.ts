@@ -18,7 +18,7 @@ import { getErrorMessage } from '@/utils/errors.js';
 import { filterDefined } from '@/utils/objects.js';
 import { isProcessAlive } from '@/utils/process.js';
 
-import { verifyLaunchedChrome } from './chromeIdentity.js';
+import { launchAbortedError, verifyLaunchedChrome } from './chromeIdentity.js';
 import { ChromeLaunchError } from './errors.js';
 import { resolveChromeBinary } from './launcher/binaryResolver.js';
 import { buildChromeFlags } from './launcher/flagsBuilder.js';
@@ -84,6 +84,8 @@ export interface LaunchOptions extends Pick<
   chromePath?: string;
   /** bdg session directory: recorded as a marker flag on the Chrome command line, and holds the default profile */
   sessionDir?: string | undefined;
+  /** Ends the launch at once when aborted (the session was stopped); Chrome is killed */
+  signal?: AbortSignal | undefined;
 }
 
 /**
@@ -98,7 +100,7 @@ export interface LaunchOptions extends Pick<
  *
  * @param options - Launch configuration options
  * @returns LaunchedChrome instance with PID and kill method
- * @throws ChromeLaunchError if Chrome fails to launch, process dies immediately, or CDP doesn't become available
+ * @throws ChromeLaunchError if Chrome fails to launch, process dies immediately, CDP doesn't become available, or `options.signal` aborts
  * @throws Error if user data directory cannot be created
  *
  * @remarks
@@ -147,7 +149,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
   try {
     const launchStart = Date.now();
     logger.info('Waiting for Chrome to be ready...');
-    await Promise.race([launcher.launch(), startup.exited]);
+    await Promise.race([launcher.launch(), startup.exited, rejectOnAbort(options.signal)]);
     startup.stop();
 
     const launchDurationMs = Date.now() - launchStart;
@@ -172,7 +174,7 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       );
     }
 
-    await verifyLaunchedChrome({ logs, port, pid: chromeProcessPid });
+    await verifyLaunchedChrome({ logs, port, pid: chromeProcessPid, signal: options.signal });
     logger.info(`Chrome launched successfully (PID: ${chromeProcessPid}, ${launchDurationMs}ms)`);
 
     return {
@@ -203,6 +205,23 @@ export async function launchChrome(options: LaunchOptions = {}): Promise<Launche
       },
     });
   }
+}
+
+/**
+ * A promise that rejects with the launch-aborted error once `signal` aborts
+ * (at once if it already has), and otherwise never settles.
+ *
+ * @param signal - The launch's abort signal
+ * @returns Promise to race the launch steps against
+ */
+function rejectOnAbort(signal: AbortSignal | undefined): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    if (signal?.aborted) {
+      reject(launchAbortedError());
+      return;
+    }
+    signal?.addEventListener('abort', () => reject(launchAbortedError()), { once: true });
+  });
 }
 
 /**

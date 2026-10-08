@@ -73,6 +73,55 @@ function createVersionServer(): http.Server {
 }
 
 /**
+ * A server that accepts `/json/version` requests and never answers them.
+ *
+ * @returns Server, its port, and a promise resolved once a pending request is
+ *   closed by the client
+ */
+async function hangingServer(): Promise<{
+  server: http.Server;
+  port: number;
+  requestClosed: Promise<void>;
+}> {
+  let closed: () => void = () => {};
+  const requestClosed = new Promise<void>((resolve) => (closed = resolve));
+  const hanging = http.createServer((req) => req.socket.once('close', () => closed()));
+  await new Promise<void>((resolve) => hanging.listen(0, '127.0.0.1', resolve));
+  return { server: hanging, port: (hanging.address() as net.AddressInfo).port, requestClosed };
+}
+
+/**
+ * Assert that a verification ends as aborted within 200 ms of the abort.
+ *
+ * @param verification - Verification under way
+ * @param stop - Controller whose signal the verification got
+ * @param afterMs - When to abort
+ */
+async function assertEndsSoonAfterAbort(
+  verification: Promise<void>,
+  stop: AbortController,
+  afterMs: number
+): Promise<void> {
+  let abortedAt = 0;
+  const timer = setTimeout(() => {
+    abortedAt = Date.now();
+    stop.abort();
+  }, afterMs);
+  try {
+    await assert.rejects(verification, (error: unknown) => {
+      assert.ok(error instanceof ChromeLaunchError);
+      assert.match(error.message, /aborted/);
+      return true;
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  assert.ok(abortedAt > 0, 'verification ended before the abort');
+  const tookMs = Date.now() - abortedAt;
+  assert.ok(tookMs < 200, `ended ${tookMs} ms after the abort`);
+}
+
+/**
  * A port nothing listens on (connections to it are refused).
  *
  * @returns Port number
@@ -300,6 +349,58 @@ void describe('verifyLaunchedChrome', () => {
     } finally {
       await new Promise((resolve) => v6.close(resolve));
     }
+  });
+
+  void it('ends at once when stopped while waiting for an answer that never comes, aborting the request', async () => {
+    const hanging = await hangingServer();
+    try {
+      const logs = chromeSays(
+        `DevTools listening on ws://127.0.0.1:${hanging.port}${BROWSER_PATH}`
+      );
+      const stop = new AbortController();
+      const verification = verifyLaunchedChrome({
+        logs,
+        port: hanging.port,
+        pid: alivePid,
+        timeoutMs: 10000,
+        signal: stop.signal,
+      });
+      await assertEndsSoonAfterAbort(verification, stop, 300);
+      const closed = await Promise.race([
+        hanging.requestClosed.then(() => true),
+        new Promise((resolve) => setTimeout(() => resolve(false), 200)),
+      ]);
+      assert.equal(closed, true, 'the pending /json/version request must be aborted');
+    } finally {
+      hanging.server.closeAllConnections();
+      await new Promise((resolve) => hanging.server.close(resolve));
+    }
+  });
+
+  void it('ends at once when stopped while polling a port that refuses connections', async () => {
+    const slowPort = await closedPort();
+    const logs = chromeSays(`DevTools listening on ws://127.0.0.1:${slowPort}${BROWSER_PATH}`);
+    const stop = new AbortController();
+    const verification = verifyLaunchedChrome({
+      logs,
+      port: slowPort,
+      pid: alivePid,
+      timeoutMs: 10000,
+      signal: stop.signal,
+    });
+    await assertEndsSoonAfterAbort(verification, stop, 300);
+  });
+
+  void it('ends at once when stopped while waiting for Chrome to announce its endpoint', async () => {
+    const stop = new AbortController();
+    const verification = verifyLaunchedChrome({
+      logs: chromeSays(),
+      port,
+      pid: alivePid,
+      timeoutMs: 10000,
+      signal: stop.signal,
+    });
+    await assertEndsSoonAfterAbort(verification, stop, 300);
   });
 
   void it('reports a Chrome that died before announcing', async () => {

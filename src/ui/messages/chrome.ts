@@ -126,6 +126,9 @@ export function formatChromeIssue(
   }
 }
 
+/** Chrome's launch ended because the session was stopped meanwhile */
+export const CHROME_LAUNCH_ABORTED_MESSAGE = 'Chrome launch aborted: the session was stopped';
+
 /**
  * Chrome exited before its debugging port opened.
  *

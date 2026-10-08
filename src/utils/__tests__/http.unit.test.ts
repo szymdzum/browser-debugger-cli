@@ -192,6 +192,22 @@ void describe('HTTP Utilities', () => {
       fetchMock.mock.mockImplementation(() => Promise.reject(new TypeError('fetch failed')));
       assert.deepEqual(await probeDevToolsEndpoint(3000), { kind: 'unreachable' });
     });
+
+    void it('ends a pending request when the caller aborts', async () => {
+      fetchMock.mock.mockImplementation(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          })
+      );
+      const stop = new AbortController();
+      setTimeout(() => stop.abort(), 50);
+      const started = Date.now();
+      assert.deepEqual(await probeDevToolsEndpoint(3000, undefined, { signal: stop.signal }), {
+        kind: 'unreachable',
+      });
+      assert.ok(Date.now() - started < 1000, `took ${Date.now() - started} ms`);
+    });
   });
 
   void describe('fetchCDPTargetById()', () => {
