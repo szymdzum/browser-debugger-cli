@@ -14,6 +14,7 @@ import { createLogger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
 
 import {
+  formatCancelledError,
   formatConnectionError,
   formatEarlyCloseError,
   formatParseError,
@@ -25,6 +26,7 @@ import { validateResponseType, validateSessionId } from './validation.js';
 
 export {
   IPCError,
+  IPCCancelledError,
   IPCConnectionError,
   IPCTimeoutError,
   IPCParseError,
@@ -44,6 +46,8 @@ type WithTypeAndSession = { type: string; sessionId: string };
  * @param expectedType - Response type to validate, if any
  * @param timeoutMs - How long to wait for the response (default: IPC timeout)
  * @param socketPath - Daemon socket (default: the selected session's)
+ * @param signal - Closes the connection and rejects when aborted (the daemon
+ *   sees the client disconnect, e.g. an interrupted start is cancelled)
  * @returns The daemon's response
  * @throws CommandError (103) before connecting when the socket's session
  *   directory cannot be trusted (see {@link secureSessionDir}): a socket
@@ -60,7 +64,8 @@ export async function sendRequest<
   requestName: string,
   expectedType?: string,
   timeoutMs: number = getIPCRequestTimeout(),
-  socketPath: string = getDaemonSocketPath()
+  socketPath: string = getDaemonSocketPath(),
+  signal?: AbortSignal
 ): Promise<TResponse> {
   const untrusted = secureSessionDir(path.dirname(socketPath));
   if (untrusted) {
@@ -72,12 +77,18 @@ export async function sendRequest<
     );
   }
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(formatCancelledError(requestName));
+      return;
+    }
     const buffer = new JSONLBuffer();
     let resolved = false;
+    let onAbort = (): void => {};
 
     const resolveOnce = (cleanup: () => void, error?: Error, response?: TResponse): void => {
       if (resolved) return;
       resolved = true;
+      signal?.removeEventListener('abort', onAbort);
       cleanup();
       if (error) {
         reject(error);
@@ -133,5 +144,7 @@ export async function sendRequest<
         },
       }
     );
+    onAbort = (): void => resolveOnce(cleanup, formatCancelledError(requestName));
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }

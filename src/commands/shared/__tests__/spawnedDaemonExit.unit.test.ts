@@ -52,7 +52,7 @@ function daemon(exitAfterMs: number, pid = 4242): SpawnedDaemon {
  */
 function deps(
   spawned: SpawnedDaemon | undefined,
-  send: () => Promise<StartSessionResponse>,
+  send: StartDeps['send'],
   exitWaitMs = LONG_WAIT_MS
 ): StartDeps {
   return { launch: () => Promise.resolve(spawned), send, exitWaitMs };
@@ -168,6 +168,102 @@ void describe('attemptStart', () => {
       outcome.human,
       /PID 77\) was still shutting down after 0\.05s; check with bdg sessions/
     );
+  });
+});
+
+/**
+ * A start request the daemon never answers; it fails once the start is
+ * interrupted, as the transport does when it closes the connection.
+ *
+ * @returns Fake request
+ */
+function sendUntilInterrupted(): StartDeps['send'] {
+  return (_url, _options, signal) =>
+    new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new Error('start session cancelled')), {
+        once: true,
+      });
+    });
+}
+
+const SHUTTING_DOWN_RESPONSE: StartSessionResponse = {
+  type: 'start_session_response',
+  sessionId: 's',
+  status: 'error',
+  message: 'The previous session is still shutting down. Try again in a moment.',
+  errorCode: IPCErrorCode.SESSION_SHUTTING_DOWN,
+};
+
+void describe('attemptStart interrupted (Ctrl-C)', () => {
+  void it('reports 130 only after the daemon it spawned has exited', async () => {
+    const interrupt = new AbortController();
+    const spawned = daemon(Infinity);
+    const exited = { at: 0 };
+    const pending = attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      deps(spawned, sendUntilInterrupted()),
+      interrupt.signal
+    );
+    setTimeout(() => {
+      interrupt.abort('SIGINT');
+      setTimeout(() => {
+        exited.at = Date.now();
+        spawned.hasExited = (): boolean => true;
+      }, 100);
+    }, 20);
+
+    const outcome = await pending;
+    assert.ok(exited.at > 0 && Date.now() >= exited.at, 'returned only after the daemon exited');
+    assert.equal(outcome.ok, false);
+    if (outcome.ok) return;
+    assert.equal(outcome.exitCode, 130);
+    assert.match(outcome.human, /Start cancelled \(interrupted\)/);
+    assert.equal(outcome.details?.['daemonStillRunning'], undefined);
+  });
+
+  void it('reports 143 for SIGTERM, with a hint when the daemon outlives the wait', async () => {
+    const interrupt = new AbortController();
+    const pending = attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      deps(daemon(Infinity, 77), sendUntilInterrupted(), 50),
+      interrupt.signal
+    );
+    setTimeout(() => interrupt.abort('SIGTERM'), 20);
+
+    const outcome = await pending;
+    if (outcome.ok) return assert.fail('expected a failure');
+    assert.equal(outcome.exitCode, 143);
+    assert.equal(outcome.details?.['daemonStillRunning'], true);
+    assert.equal(outcome.details?.['daemonPid'], 77);
+  });
+
+  void it('stops retrying at once while the previous session shuts down', async () => {
+    const interrupt = new AbortController();
+    let sends = 0;
+    const started = Date.now();
+    const pending = attemptStart(
+      'http://a.test/',
+      OPTIONS,
+      [],
+      deps(undefined, () => {
+        sends++;
+        return Promise.resolve(SHUTTING_DOWN_RESPONSE);
+      }),
+      interrupt.signal
+    );
+    setTimeout(() => interrupt.abort('SIGINT'), 50);
+
+    const outcome = await pending;
+    assert.ok(Date.now() - started < NO_WAIT_BOUND_MS, 'ended within the retry interval');
+    if (outcome.ok) return assert.fail('expected a failure');
+    assert.equal(outcome.exitCode, 130);
+    const sendsAtEnd = sends;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.equal(sends, sendsAtEnd, 'no attempt after the interrupt');
   });
 });
 

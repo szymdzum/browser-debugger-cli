@@ -118,3 +118,17 @@ export class IPCEarlyCloseError extends IPCError {
     this.requestName = requestName;
   }
 }
+
+/**
+ * Error thrown when the client cancels a request (its abort signal fired),
+ * closing the connection before the response arrived.
+ */
+export class IPCCancelledError extends IPCError {
+  public override readonly name = 'IPCCancelledError';
+  public readonly requestName: string;
+
+  constructor(requestName: string) {
+    super(`${requestName} request cancelled`, EXIT_CODES.SOFTWARE_ERROR);
+    this.requestName = requestName;
+  }
+}
