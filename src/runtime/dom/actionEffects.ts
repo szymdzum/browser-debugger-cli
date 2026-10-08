@@ -20,15 +20,18 @@ import type {
   TriggeredRequest,
 } from '@/ipc/protocol/domTypes.js';
 import {
+  AWAIT_DUE_TIMERS_SCRIPT,
   EFFECTS_READ_SCRIPT,
   EFFECTS_START_SCRIPT,
   EFFECTS_STOP_SCRIPT,
+  START_DUE_TIMERS_SCRIPT,
 } from '@/runtime/dom/actionEffectsScripts.js';
 import {
   listenForActivity,
   type ActivityListener,
   type NavigationEvents,
 } from '@/runtime/dom/pageActivity.js';
+import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -63,6 +66,15 @@ const START_TIMEOUT_MS = 200;
 
 /** How long a read after the action may take before its part is skipped */
 const READ_TIMEOUT_MS = 250;
+
+/**
+ * How long a read waits for the timer it set once the page has set it,
+ * before reading anyway: a 0 ms timer waits for the 0 ms tasks queued before
+ * it (measured: under 1 ms on an idle page, 5 ms behind a MessageChannel
+ * scheduler, 50 ms behind ten chains of 5 ms tasks), and throttled timers
+ * may not run for a second
+ */
+const DUE_TIMERS_TIMEOUT_MS = 100;
 
 /** Second look before claiming "no effect" (late timers, animations) */
 const NO_EFFECT_RECHECK_MS = 300;
@@ -525,9 +537,11 @@ function effectsOf(
 
 /**
  * Read the page after the action, unless a main-frame load is pending (the
- * read would wait for the new page). A stopping read that answered stops the
- * page's watch, so disposing need not. A read that got no answer in time
- * marks the page unresponsive.
+ * read would wait for the new page). The page first gets to run a timer that
+ * fell due meanwhile ({@link letDueTimersRun}); the read itself does not wait
+ * for timers. A stopping read that answered stops the page's watch, so
+ * disposing need not. A page that did not answer in time is marked
+ * unresponsive.
  *
  * @param watch - The action's watch
  * @param options - Also stop the page's watch; list shown elements
@@ -538,15 +552,58 @@ async function readPage(
   options: { stop: boolean; reportShown: boolean }
 ): Promise<ReadSnapshot | undefined> {
   if (watch.listener.navigationPending()) return undefined;
+  const answered = await letDueTimersRun(watch.cdp);
   const expression = `(${EFFECTS_READ_SCRIPT})(${options.stop}, ${options.reportShown})`;
-  const answer = await raceTimeout(
-    evaluate<ReadSnapshot>(watch.cdp, expression).then((value) => ({ value })),
-    READ_TIMEOUT_MS
-  );
+  const answer = answered
+    ? await raceTimeout(
+        evaluate<ReadSnapshot>(watch.cdp, expression).then((value) => ({ value })),
+        READ_TIMEOUT_MS
+      )
+    : undefined;
   if (!answer) watch.unresponsive = !watch.listener.navigationPending();
   const snapshot = answer?.value;
   if (options.stop && snapshot) watch.stopConfirmed = true;
   return snapshot;
+}
+
+/**
+ * Let the page run a timer that fell due while it was busy, so a read sees
+ * its change: set a 0 ms timer ({@link START_DUE_TIMERS_SCRIPT}), then wait
+ * for it at most {@link DUE_TIMERS_TIMEOUT_MS}. Both run in bdg's world, whose
+ * `setTimeout` the page cannot replace or fake; its timers share the page's
+ * queue. The page is not waited for twice: setting the timer has the read's
+ * {@link READ_TIMEOUT_MS}, and only waiting for it the shorter limit.
+ *
+ * @param cdp - CDP connection
+ * @returns False when the page did not answer within {@link READ_TIMEOUT_MS} (busy)
+ */
+async function letDueTimersRun(cdp: CDPConnection): Promise<boolean> {
+  const started = await raceTimeout(
+    evaluateInWorld(cdp, START_DUE_TIMERS_SCRIPT, false).then(() => true),
+    READ_TIMEOUT_MS
+  );
+  if (!started) return false;
+  await raceTimeout(evaluateInWorld(cdp, AWAIT_DUE_TIMERS_SCRIPT, true), DUE_TIMERS_TIMEOUT_MS);
+  return true;
+}
+
+/**
+ * Evaluate one of bdg's page scripts in bdg's world, failures logged.
+ *
+ * @param cdp - CDP connection
+ * @param expression - Script
+ * @param awaitPromise - Wait for the promise it returns
+ */
+async function evaluateInWorld(
+  cdp: CDPConnection,
+  expression: string,
+  awaitPromise: boolean
+): Promise<void> {
+  try {
+    await evaluateInBdgWorld(cdp, { expression, awaitPromise });
+  } catch (error) {
+    log.debug(`Due timers not awaited: ${getErrorMessage(error)}`);
+  }
 }
 
 /**
@@ -566,8 +623,8 @@ function disposeWatch(watch: Watch): void {
 }
 
 /**
- * Evaluate a page script for its value, awaited when it is a promise
- * (undefined on an exception or a failed call).
+ * Evaluate a page script for its value (undefined on an exception or a
+ * failed call).
  *
  * @param cdp - CDP connection
  * @param expression - Script
@@ -575,11 +632,7 @@ function disposeWatch(watch: Watch): void {
  */
 async function evaluate<T>(cdp: CDPConnection, expression: string): Promise<T | undefined> {
   try {
-    const reply = (await cdp.send('Runtime.evaluate', {
-      expression,
-      returnByValue: true,
-      awaitPromise: true,
-    })) as {
+    const reply = (await cdp.send('Runtime.evaluate', { expression, returnByValue: true })) as {
       result?: { value?: T };
       exceptionDetails?: { text?: string };
     };

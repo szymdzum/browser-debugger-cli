@@ -13,7 +13,10 @@ import { watchActionEffects, type CollectedEffects } from '@/runtime/dom/actionE
 
 type Handler = (params: unknown, sessionId?: string) => void;
 
-/** CDP stub with events and scripted page-script replies */
+/**
+ * CDP stub with events and scripted page-script replies. It makes no
+ * isolated world, so bdg's own scripts run in the main world.
+ */
 class FakeCdp {
   readonly handlers = new Map<string, Set<Handler>>();
   readonly expressions: string[] = [];
@@ -21,10 +24,14 @@ class FakeCdp {
   /**
    * @param start - Reply of the snapshot before the action
    * @param reads - Replies of the reads after it, in order
+   * @param timersRun - Whether the page's timers run (false: throttled or stopped timers)
+   * @param answers - Whether the page answers after the action (false: a long script)
    */
   constructor(
     private readonly start: Promise<unknown>,
-    private readonly reads: unknown[] = []
+    private readonly reads: unknown[] = [],
+    private readonly timersRun = true,
+    private readonly answers = true
   ) {}
 
   on(event: string, handler: Handler): () => void {
@@ -46,9 +53,16 @@ class FakeCdp {
   send(method: string, params?: { expression?: string }): Promise<unknown> {
     if (method === 'Page.getFrameTree')
       return Promise.resolve({ frameTree: { frame: { id: 'main' } } });
+    if (method === 'Page.createIsolatedWorld') return Promise.reject(new Error('No world'));
     const expression = params?.expression;
     if (expression === undefined) return Promise.resolve({});
     this.expressions.push(expression);
+    if (expression.includes('setTimeout(resolve, 0)')) {
+      return this.answers ? Promise.resolve(wrap(true)) : new Promise(() => undefined);
+    }
+    if (expression === 'globalThis.__bdgDueTimers') {
+      return this.timersRun ? Promise.resolve(wrap(undefined)) : new Promise(() => undefined);
+    }
     if (expression.includes('new MutationObserver')) return this.start.then(wrap);
     if (expression.includes('const scrolled')) {
       const read = this.reads.shift();
@@ -243,6 +257,19 @@ void describe('watchActionEffects', () => {
     watch.dispose();
   });
 
+  void it('marks a page that did not answer before the read as busy, without reading', async () => {
+    const cdp = new FakeCdp(Promise.resolve(START), [QUIET], true, false);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+    });
+    assert.equal(effects.work?.unresponsive, true);
+    assert.equal(cdp.readsSent.length, 0);
+    watch.dispose();
+  });
+
   void it('marks a page whose read got no answer as busy', async () => {
     const cdp = new FakeCdp(Promise.resolve(START), [NO_ANSWER]);
     const watch = watchActionEffects(cdp.connection);
@@ -253,6 +280,30 @@ void describe('watchActionEffects', () => {
     });
     assert.equal(effects.work?.unresponsive, true);
     assert.equal(effects.effect, undefined);
+    watch.dispose();
+  });
+
+  void it('lets due timers run before each read', async () => {
+    const cdp = new FakeCdp(Promise.resolve(START), [{ ...QUIET, changes: 1 }]);
+    const watch = watchActionEffects(cdp.connection);
+    await watch.collect({ dialogs: 0, consoleMessages: () => 0, detectNoEffect: false });
+    const timers = cdp.expressions.findIndex((e) => e.includes('setTimeout(resolve, 0)'));
+    const read = cdp.expressions.findIndex((e) => e.includes('const scrolled'));
+    assert.ok(timers !== -1 && timers < read);
+    watch.dispose();
+  });
+
+  void it('reads a page whose timers do not run without calling it busy', async () => {
+    const cdp = new FakeCdp(Promise.resolve(START), [{ ...QUIET, changes: 1 }], false);
+    const watch = watchActionEffects(cdp.connection);
+    const effects = await watch.collect({
+      dialogs: 0,
+      consoleMessages: () => 0,
+      detectNoEffect: false,
+      detectUnsettled: true,
+    });
+    assert.equal(effects.work?.unresponsive, false);
+    assert.equal(cdp.readsSent.length, 1);
     watch.dispose();
   });
 

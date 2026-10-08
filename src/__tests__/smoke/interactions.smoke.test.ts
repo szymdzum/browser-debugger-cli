@@ -1203,6 +1203,11 @@ void describe('DOM interactions', () => {
     );
 
     await bdg(['page', 'navigate', `${fixture.url}effects`]);
+    await evaluate('window.setTimeout = () => 1');
+    const untimed = (JSON.parse(await bdg(['dom', 'click', '#steps', '--json'])) as Unsettled).data;
+    assert.equal(untimed.settled, undefined, 'a page that replaced setTimeout is read, not busy');
+
+    await bdg(['page', 'navigate', `${fixture.url}effects`]);
     assert.match(
       await bdg(['dom', 'click', '#block']),
       /^⚠ Element Clicked \(page still changing\)\n⚠ The page was still changing when the click returned \(page busy running a script\); wait for the result with bdg dom wait <selector>\n/

@@ -804,7 +804,7 @@ Shown:         div.figcaption "name: user2 View profile"
 - `requests`: document, fetch/XHR and script requests the action started that were still running (images, stylesheets, fonts and streams do not count)
 - `navigation`: a new page was still loading
 - `loading`: a loading indicator that appeared during the action and was still shown (`aria-busy="true"`, `role="progressbar"`, or a class or id word `loading`, `loader` or `spinner`), e.g. `"div#loading"`
-- `domChanging`: elements kept being added, removed or changed in bursts: at least 2 within 500 ms with the last one under 150 ms ago, and 2 more during a second look 250 ms later (a render that ends in two commits, text-only changes such as clocks, and style animations do not count)
+- `domChanging`: elements kept being added, removed or changed in bursts: at least 2 within 500 ms with the last one under 150 ms ago, and 2 more during a second look 250 ms later (a render that ends in two commits, text-only changes such as clocks, and style animations do not count). Changes more than about 150 ms apart are reported as settled: the first look comes about 150 ms after the action and sees only one of them
 - `busy`: the page did not answer within 250 ms, as when a long script runs right after the action (saucedemo's `performance_glitch_user` login)
 
 ```text
