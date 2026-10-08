@@ -9,6 +9,7 @@ import type { HintDetails } from '@/errors/notices.js';
 import type { AuditCheck, AuditResult, CssSearchResult } from '@/ipc/protocol/auditTypes.js';
 import type {
   ClickResult,
+  DownloadInfo,
   FillResult,
   LayoutResult,
   ListenersResult,
@@ -88,6 +89,8 @@ export interface SessionPeekData {
   droppedNetwork?: number;
   /** Response bodies evicted at the total body budget (the oldest) */
   evictedNetworkBodies?: number;
+  /** Downloads that began during the session, oldest first (left out when none) */
+  downloads?: DownloadInfo[];
   /** Whether there are more network items available. */
   hasMoreNetwork?: boolean;
   /** Whether there are more console items available. */

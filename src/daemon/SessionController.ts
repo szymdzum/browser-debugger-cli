@@ -305,6 +305,7 @@ export class SessionController {
             },
             currentNavigationId: data.currentNavigationId,
             ...(data.pageCrashedAt !== undefined && { pageCrashedAt: data.pageCrashedAt }),
+            ...(data.downloads && { downloads: data.downloads }),
             partial: true,
           },
         },

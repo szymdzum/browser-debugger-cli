@@ -14,7 +14,7 @@ import {
   getRequestState,
 } from '@/ui/formatters/requestStatus.js';
 import { OutputFormatter, truncateUrl, truncateText } from '@/ui/formatting.js';
-import { moreCharsNote, withPageCrashedNote } from '@/ui/messages/commands.js';
+import { downloadsSummary, moreCharsNote, withPageCrashedNote } from '@/ui/messages/commands.js';
 import { consoleDroppedNote } from '@/ui/messages/consoleMessages.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import {
@@ -115,6 +115,8 @@ export interface PreviewJsonData {
   totals?: BdgOutput['totals'];
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** Downloads that began during the session, oldest first */
+  downloads?: BdgOutput['downloads'];
   network?: BdgOutput['data']['network'];
   console?: BdgOutput['data']['console'];
 }
@@ -140,6 +142,7 @@ export function buildPreviewJsonData(output: BdgOutput, options: PreviewOptions)
     ...(output.partial !== undefined && { partial: output.partial }),
     ...(output.totals && { totals: output.totals }),
     ...(output.pageCrashedAt !== undefined && { pageCrashedAt: output.pageCrashedAt }),
+    ...(output.downloads && { downloads: output.downloads }),
     ...(pick('network') && output.data.network && { network: last(output.data.network) }),
     ...(pick('console') &&
       output.data.console && {
@@ -272,6 +275,9 @@ function formatPreviewCompact(output: BdgOutput, options: PreviewOptions): strin
     }
   }
 
+  if (output.downloads?.length)
+    fmt.text(`Downloads: ${downloadsSummary(output.downloads)}`).blank();
+
   if (!options.follow) {
     fmt.tip(compactTipsMessage());
   }
@@ -392,6 +398,10 @@ function formatPreviewVerbose(output: BdgOutput, options: PreviewOptions): strin
       }
       fmt.blank();
     }
+  }
+
+  if (output.downloads?.length) {
+    fmt.keyValue('Downloads', downloadsSummary(output.downloads), 18).blank();
   }
 
   if (!options.follow) {

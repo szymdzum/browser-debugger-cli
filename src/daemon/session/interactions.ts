@@ -10,6 +10,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import type { ActionEffects, DialogInfo, TriggeredRequest } from '@/ipc/protocol/domTypes.js';
 import { pendingChanges, watchActionEffects } from '@/runtime/dom/actionEffects.js';
 import { UNBIND_TARGET_SCRIPT } from '@/runtime/dom/targetNode.js';
+import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { getErrorMessage } from '@/utils/errors.js';
 
@@ -90,8 +91,9 @@ function consoleMessagesLogged(store: TelemetryStore): number {
  * from the page (without waiting: during a pending navigation that takes until
  * the new page commits), and the dialogs it opened, what it changed on the
  * page (see {@link watchActionEffects}; a console message logged meanwhile
- * counts as an effect) and the network requests it
- * triggered (see {@link watchTriggeredRequests}) are added to its result,
+ * counts as an effect), the network requests it
+ * triggered (see {@link watchTriggeredRequests}) and the downloads that began
+ * meanwhile (as they stand when it returns) are added to its result,
  * and, when asked, what the page was still working on (see
  * {@link pendingChanges}). They are attributed by time: a dialog or request
  * started by a page timer or a navigation started earlier is reported by
@@ -109,6 +111,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
   ) => {
     const run = queue.then(async (): Promise<T & InteractionReport> => {
       const firstDialog = store.dialogs.length;
+      const firstDownload = store.downloads.length;
       const firstConsoleMessage = consoleMessagesLogged(store);
       const collectRequests =
         options.reportRequests === false ? undefined : watchTriggeredRequests(store);
@@ -126,6 +129,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
         });
         const { work, ...changes } = collected ?? {};
         const requests = collectRequests?.();
+        const downloads = store.downloads.slice(firstDownload).map(toDownloadInfo);
         const pending =
           options.detectUnsettled && work
             ? pendingChanges(work, requests?.triggeredRequests)
@@ -135,6 +139,7 @@ export function createInteractionRunner(store: TelemetryStore): InteractionRunne
           ...(dialogs.length > 0 && { dialogs }),
           ...changes,
           ...(pending && { settled: false as const, pending }),
+          ...(downloads.length > 0 && { downloads }),
           ...requests,
         };
       } finally {

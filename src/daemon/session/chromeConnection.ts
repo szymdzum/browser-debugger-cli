@@ -26,7 +26,12 @@ import { getSessionDir } from '@/session/paths.js';
 import type { CDPTarget, LaunchedChrome } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
 import { EXIT_CODES } from '@/utils/exitCodes.js';
-import { createPageTarget, fetchCDPTargets, probeDevToolsEndpoint } from '@/utils/http.js';
+import {
+  createPageTarget,
+  fetchBrowserWsUrl,
+  fetchCDPTargets,
+  probeDevToolsEndpoint,
+} from '@/utils/http.js';
 import { filterDefined } from '@/utils/objects.js';
 
 /**
@@ -55,6 +60,27 @@ export async function setupChromeConnection(
 
 /** Path of browser-level DevTools WebSocket URLs (`/devtools/browser/<uuid>`) */
 const BROWSER_WS_PATH = '/devtools/browser/';
+
+/**
+ * Browser-level DevTools WebSocket URL of the session's Chrome: a launched
+ * Chrome's, or for `--chrome-ws-url` the URL itself when it is browser-level,
+ * else the one Chrome reports, reached the way the user's URL is.
+ *
+ * @param config - Session configuration (port resolved)
+ * @param log - Logger
+ * @returns The URL, or null when Chrome does not answer `/json/version`
+ */
+export async function browserWebSocketUrl(
+  config: SessionConfig,
+  log: Logger
+): Promise<string | null> {
+  if (!config.chromeWsUrl) return fetchBrowserWsUrl(config.port, log);
+  const { hostname, pathname, protocol, port } = new URL(config.chromeWsUrl);
+  if (pathname.startsWith(BROWSER_WS_PATH)) return config.chromeWsUrl;
+  const http = { host: hostname, secure: protocol === 'wss:' };
+  const reported = await fetchBrowserWsUrl(config.port, log, http);
+  return reported && withEndpoint(reported, protocol, hostname, port);
+}
 
 /**
  * Debugging port of an external Chrome, taken from its WebSocket URL.

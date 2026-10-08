@@ -6,11 +6,27 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { sessionActivatingCollector, sessionCollectorsActivated } from '@/daemon/messages.js';
 import type { CleanupFunction, TelemetryType } from '@/types.js';
 import type { Logger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
 
 import { getRegisteredTelemetryPlugins, shouldActivatePlugin } from './plugins.js';
 
 const DEFAULT_TELEMETRY: TelemetryType[] = ['network', 'console', 'dom'];
 
+/**
+ * Start the session's collectors (telemetry plugins) in order.
+ *
+ * When one fails to start, the ones already started are cleaned up (their
+ * failures logged) before the error is rethrown, so nothing they opened (a
+ * browser-level connection, event handlers) outlives the failed start.
+ *
+ * @param cdp - Page connection
+ * @param config - Session configuration
+ * @param store - Telemetry store
+ * @param logger - Logger
+ * @param plugins - Plugins to start (default: the registered ones)
+ * @returns Cleanup functions of the started collectors
+ * @throws The error of the collector that failed to start
+ */
 export async function startTelemetryCollectors(
   cdp: CDPConnection,
   config: SessionConfig,
@@ -27,10 +43,30 @@ export async function startTelemetryCollectors(
       continue;
     }
     logger.debug(sessionActivatingCollector(plugin.name));
-    const cleanup = await plugin.start({ cdp, config, store, logger });
-    cleanupFunctions.push(cleanup);
+    try {
+      cleanupFunctions.push(await plugin.start({ cdp, config, store, logger }));
+    } catch (error) {
+      await runCleanups(cleanupFunctions, logger);
+      throw error;
+    }
   }
 
   logger.debug(sessionCollectorsActivated(store.activeTelemetry));
   return cleanupFunctions;
+}
+
+/**
+ * Run cleanup functions, logging (not throwing) their failures.
+ *
+ * @param cleanups - Cleanup functions
+ * @param logger - Logger
+ */
+async function runCleanups(cleanups: CleanupFunction[], logger: Logger): Promise<void> {
+  for (const cleanup of cleanups) {
+    try {
+      await cleanup();
+    } catch (error) {
+      logger.debug(`Collector cleanup error: ${getErrorMessage(error)}`);
+    }
+  }
 }

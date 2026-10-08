@@ -233,6 +233,34 @@ export function ensureSessionDir(): void {
   makeDirectory(getSessionDir(), PRIVATE_DIR_MODE);
 }
 
+/** Subdirectory of a session directory that a launched Chrome downloads into */
+const DOWNLOADS_DIR = 'downloads';
+
+/**
+ * The session's downloads directory (whether or not it exists).
+ *
+ * @returns Absolute path, `<session dir>/downloads`
+ */
+export function getSessionDownloadsDir(): string {
+  return path.join(getSessionDir(), DOWNLOADS_DIR);
+}
+
+/**
+ * Ensure the session's downloads directory exists (mode 0700, like the
+ * session directory) and return it.
+ *
+ * @returns Absolute path, `<session dir>/downloads`
+ * @throws Error if the directory cannot be created, or a file is in its place
+ */
+export function ensureSessionDownloadsDir(): string {
+  const dir = getSessionDownloadsDir();
+  makeDirectory(dir, PRIVATE_DIR_MODE);
+  if (!fs.statSync(dir).isDirectory()) {
+    throw Object.assign(new Error(`${dir} is a file`), { code: 'ENOTDIR' });
+  }
+  return dir;
+}
+
 /** A session directory (or one above it) that cannot be trusted */
 export interface UntrustedSessionDir {
   /** The untrusted directory */

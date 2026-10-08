@@ -53,6 +53,7 @@ export type LogContext =
   | 'ipc'
   | 'http'
   | 'dialogs'
+  | 'downloads'
   | 'navigation'
   | 'page-crash'
   | 'console'

@@ -3,7 +3,7 @@ import type { NetworkRequest, ConsoleMessage, WebSocketFrame } from '@/types.js'
 import { formatFramePosition, formatTimestamp } from '@/ui/formatters/console/shared.js';
 import { headerValueLines } from '@/ui/formatters/networkHeaders.js';
 import { formatRequestStatus } from '@/ui/formatters/requestStatus.js';
-import { OutputFormatter } from '@/ui/formatting.js';
+import { OutputFormatter, formatBytes } from '@/ui/formatting.js';
 import { localProxyNote } from '@/ui/messages/networkMessages.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
@@ -97,19 +97,6 @@ function addWebSocketMessages(
 
 /** Characters of a text body shown in human output (`--json` has all of it) */
 const BODY_PREVIEW_LENGTH = 20000;
-
-/**
- * Format a byte count for humans.
- *
- * @param bytes - Byte count
- * @returns e.g. "512 B", "12.3 KB"
- */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  return bytes < 1024 * 1024
-    ? `${(bytes / 1024).toFixed(1)} KB`
-    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 
 /**
  * Whether an IP address is a loopback address (`127.0.0.0/8`, `::1`).

@@ -7,6 +7,7 @@
 
 import type { DomFrame, PageLoadingState, PendingRequestInfo } from '@/ipc/protocol/commands.js';
 import type {
+  DownloadInfo,
   ElementLayout,
   FillValueMismatch,
   LayoutPoint,
@@ -27,7 +28,7 @@ import {
   buildUrlExamples,
   buildSessionManagementReminder,
 } from '@/ui/formatters/helpFormatters.js';
-import { formatDuration, joinLines, pluralize, truncateUrl } from '@/ui/formatting.js';
+import { formatBytes, formatDuration, joinLines, pluralize, truncateUrl } from '@/ui/formatting.js';
 import { sessionCommand } from '@/ui/messages/sessionCommand.js';
 import { truncateByLength } from '@/utils/strings.js';
 
@@ -196,6 +197,60 @@ export function pageNavigationText(navigation: PageNavigation): string {
   if (navigation.sameDocument) return `URL changed to ${navigation.url} (same document)`;
   const status = navigation.status === undefined ? '' : ` (${navigation.status})`;
   return `navigated to ${navigation.url}${status}`;
+}
+
+/**
+ * A download an action started, as its output line reads.
+ *
+ * @param download - Download
+ * @returns e.g. `Download: report.txt → /Users/me/.bdg/downloads/report.txt (completed, 15 B)`,
+ *   `Download: big.zip → … (inProgress, 9.8 KB so far)` (no size before the first
+ *   bytes), `Download: report.txt (canceled)`
+ */
+export function downloadText(download: DownloadInfo): string {
+  const where = download.path === undefined ? '' : ` → ${download.path}`;
+  const running = download.state === 'inProgress';
+  const bytes =
+    download.bytes === undefined || (running && download.bytes === 0)
+      ? ''
+      : `, ${formatBytes(download.bytes)}${running ? ' so far' : ''}`;
+  const reason = download.reason === undefined ? '' : `: ${download.reason}`;
+  return `Download: ${download.suggestedFilename}${where} (${download.state}${bytes}${reason})`;
+}
+
+/**
+ * The session's downloads in one line: how many, and the last one.
+ *
+ * @param downloads - Downloads, oldest first (at least one)
+ * @returns e.g. `2 (last: report.txt → /Users/me/.bdg/downloads/report.txt, completed)`
+ */
+export function downloadsSummary(downloads: DownloadInfo[]): string {
+  const last = downloads[downloads.length - 1];
+  if (!last) return '0';
+  const where = last.path === undefined ? '' : ` → ${last.path}`;
+  return `${downloads.length} (last: ${last.suggestedFilename}${where}, ${last.state})`;
+}
+
+/**
+ * Warning while Chrome did not take bdg's download behavior, so downloads
+ * are not saved in the session directory.
+ *
+ * @param detail - Chrome's error
+ * @returns Warning shown by `bdg status`
+ */
+export function downloadsNotRedirectedWarning(detail: string): string {
+  return `downloads are not redirected to the session directory (Chrome refused the download behavior: ${detail}); Chrome saves them in its default folder, usually ~/Downloads`;
+}
+
+/**
+ * Why downloads are refused when the session's downloads directory could not
+ * be created.
+ *
+ * @param detail - What went wrong, e.g. `/home/me/.bdg/downloads is a file`
+ * @returns Reason recorded on each refused download
+ */
+export function downloadsDirUnavailableReason(detail: string): string {
+  return `bdg's downloads directory could not be created (${detail}), so downloads are refused`;
 }
 
 /**
@@ -1371,9 +1426,20 @@ export function sessionOutputRemovedMessage(): string {
 }
 
 /**
- * Generate session directory clean message.
+ * Cleanup left the session's downloaded files in place.
  *
- * @returns Formatted success message
+ * @param dir - Downloads directory
+ * @param files - Files in it
+ * @returns e.g. `Downloads kept: 2 files in /Users/me/.bdg/downloads (delete them yourself when done)`
+ */
+export function downloadsKeptMessage(dir: string, files: number): string {
+  return `Downloads kept: ${pluralize(files, 'file')} in ${dir} (delete them yourself when done)`;
+}
+
+/**
+ * Cleanup finished and left nothing behind.
+ *
+ * @returns Message
  */
 export function sessionDirectoryCleanMessage(): string {
   return 'Session directory is now clean';

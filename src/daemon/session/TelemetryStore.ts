@@ -1,5 +1,6 @@
 import { MAX_CONSOLE_MESSAGES } from '@/constants.js';
 import type { DialogInfo } from '@/ipc/protocol/domTypes.js';
+import type { TrackedDownload } from '@/telemetry/downloads.js';
 import type { NavigationEvent } from '@/telemetry/navigation.js';
 import type { PendingRequest } from '@/telemetry/network.js';
 import type { NetworkEvictions } from '@/telemetry/networkRetention.js';
@@ -32,6 +33,10 @@ export class TelemetryStore {
   readonly websocketConnections: WebSocketConnection[] = [];
   /** JavaScript dialogs accepted during the session */
   readonly dialogs: DialogInfo[] = [];
+  /** Downloads that began during the session, oldest first, updated as they progress */
+  readonly downloads: TrackedDownload[] = [];
+  /** Set while downloads do not go where bdg meant them to (refused, or not redirected) */
+  downloadsWarning: string | undefined = undefined;
 
   activeTelemetry: TelemetryType[] = [];
   /** When the page's renderer crashed (epoch ms); undefined while the page is alive */

@@ -7,6 +7,7 @@
 import type { IPCMessage } from './lifecycle.js';
 import type { PageState, SessionActivity } from './types.js';
 
+import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, NetworkRequest, TelemetryType, ViewportSize } from '@/types.js';
 
 /**
@@ -95,6 +96,8 @@ export interface PeekResponseData {
     data: { network?: unknown[]; console?: unknown[] };
     totals: { network: number; console: number };
     currentNavigationId?: number;
+    /** Downloads that began during the session, oldest first */
+    downloads?: DownloadInfo[];
     partial?: boolean;
   };
 }

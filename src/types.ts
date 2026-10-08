@@ -1,4 +1,5 @@
 import type { Protocol } from '@/connection/typed-cdp.js';
+import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
 
 /**
  * Standard response envelope for all bdg command JSON output.
@@ -256,6 +257,8 @@ export interface BdgOutput {
   currentNavigationId?: number;
   /** When the page's renderer crashed (epoch ms), while it is not loaded again */
   pageCrashedAt?: number;
+  /** Downloads that began during the session, oldest first (live previews) */
+  downloads?: DownloadInfo[];
   /** Counts of all captured items matching the request (e.g. `peek --type`), when `data` holds only the most recent ones */
   totals?: {
     network: number;

@@ -20,6 +20,7 @@ import type {
   SessionActivity,
   SessionStatusData,
 } from '@/ipc/index.js';
+import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
 import { searchStyleSheets } from '@/runtime/css/search.js';
 import { auditPage } from '@/runtime/dom/audit.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
@@ -45,6 +46,7 @@ import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/pa
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
 import { takeScreenshot } from '@/runtime/page/screenshot.js';
+import { toDownloadInfo } from '@/telemetry/downloads.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, WebSocketConnection } from '@/types.js';
 import { consoleMessageDroppedError } from '@/ui/messages/consoleMessages.js';
@@ -217,6 +219,16 @@ function webSocketAsRequest(connection: WebSocketConnection): NetworkRequest {
     ...(errorMessage !== undefined && { errorText: errorMessage }),
     webSocket: { frames: connection.frames, ...(closedTime !== undefined && { closedTime }) },
   };
+}
+
+/**
+ * The session's downloads for `status` and `peek`, left out when none began.
+ *
+ * @param store - Telemetry store
+ * @returns `downloads`, oldest first, as they stand now
+ */
+function sessionDownloads(store: TelemetryStore): { downloads?: DownloadInfo[] } {
+  return store.downloads.length > 0 ? { downloads: store.downloads.map(toDownloadInfo) } : {};
 }
 
 /**
@@ -544,6 +556,7 @@ export function createCommandRegistry(
         ...(dropped > 0 && { droppedConsole: dropped }),
         ...(requestsDropped > 0 && { droppedNetwork: requestsDropped }),
         ...(bodiesEvicted > 0 && { evictedNetworkBodies: bodiesEvicted }),
+        ...sessionDownloads(store),
         hasMoreNetwork: networkBounds.start > 0,
         hasMoreConsole: consoleBounds.start > 0,
       });
@@ -591,6 +604,10 @@ export function createCommandRegistry(
           ...(lastNetworkRequest && { lastNetworkRequestAt: lastNetworkRequest.timestamp }),
           ...(lastConsoleMessage && { lastConsoleMessageAt: lastConsoleMessage.timestamp }),
           ...networkEvictionActivity(store),
+          ...sessionDownloads(store),
+          ...(store.downloadsWarning !== undefined && {
+            downloadsWarning: store.downloadsWarning,
+          }),
         },
         navigationId: store.getCurrentNavigationId?.() ?? 0,
       };

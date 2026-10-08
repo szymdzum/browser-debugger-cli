@@ -2,6 +2,7 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import type { SessionConfig } from './types.js';
 
 import type { CDPConnection } from '@/connection/cdp.js';
+import { startSessionDownloads } from '@/daemon/session/downloads.js';
 import { hideHeadlessUserAgent } from '@/runtime/page/userAgent.js';
 import { startConsoleCollection } from '@/telemetry/console.js';
 import { startDialogHandling } from '@/telemetry/dialogs.js';
@@ -116,6 +117,11 @@ export function createDefaultTelemetryPlugins(): TelemetryPlugin[] {
       async start({ cdp, store }) {
         return startDialogHandling(cdp, (dialog) => store.recordDialog(dialog));
       },
+    },
+    {
+      name: 'downloads',
+      runAlways: true,
+      start: startSessionDownloads,
     },
     {
       name: 'page-identity',

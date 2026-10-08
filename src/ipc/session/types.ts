@@ -4,6 +4,7 @@
  * Common types used across session messages and session commands.
  */
 
+import type { DownloadInfo } from '@/ipc/protocol/domTypes.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 
 /**
@@ -22,6 +23,10 @@ export interface SessionActivity {
   lastNetworkRequestAt?: number;
   /** Timestamp of last console message. */
   lastConsoleMessageAt?: number;
+  /** Downloads that began during the session, oldest first (left out when none). */
+  downloads?: DownloadInfo[];
+  /** Why downloads do not go to the session directory (refused, or not redirected), while they do not */
+  downloadsWarning?: string;
 }
 
 /**

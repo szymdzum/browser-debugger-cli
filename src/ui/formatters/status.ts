@@ -5,7 +5,7 @@ import type { SessionMetadata } from '@/session/metadata.js';
 import { calculateDuration, formatTimeAgo } from '@/session/statusData.js';
 import type { ColorScheme, ViewportSize } from '@/types.js';
 import { OutputFormatter } from '@/ui/formatting.js';
-import { colorSchemeLabel, sessionActiveLine } from '@/ui/messages/commands.js';
+import { colorSchemeLabel, downloadsSummary, sessionActiveLine } from '@/ui/messages/commands.js';
 import { networkEvictedNote } from '@/ui/messages/networkMessages.js';
 import { lastSessionEndText } from '@/ui/messages/session.js';
 import { noActiveSessionMessage, sessionCommand } from '@/ui/messages/sessionCommand.js';
@@ -127,6 +127,13 @@ export function formatSessionStatus(
     if (activity.lastConsoleMessageAt) {
       fmt.keyValue('  Last Message', formatTimeAgo(activity.lastConsoleMessageAt), 18);
     }
+    const downloadRows = [
+      ...(activity.downloads?.length ? [downloadsSummary(activity.downloads)] : []),
+      ...(activity.downloadsWarning ? [`⚠ ${activity.downloadsWarning}`] : []),
+    ];
+    downloadRows.forEach((row, index) =>
+      index === 0 ? fmt.keyValue('Downloads', row, 18) : fmt.text(`${' '.repeat(18)}${row}`)
+    );
   }
 
   fmt.blank().text('Collectors').separator('━', 50);
