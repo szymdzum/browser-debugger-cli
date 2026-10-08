@@ -232,6 +232,15 @@ jobs:
           which bdg
           bdg --version
 
+      # The first start of the runner's Chrome (the one bdg finds) on a fresh
+      # VM can take over 25 s, chrome-launcher's budget for the debugging port;
+      # the first smoke suite then fails with ECONNREFUSED.
+      - name: Warm up Chrome
+        run: |
+          start=$(date +%s)
+          timeout 120 google-chrome-stable --headless=new --user-data-dir="$(mktemp -d)" --dump-dom about:blank > /dev/null
+          echo "Chrome warm-up took $(( $(date +%s) - start )) s"
+
       - name: Run smoke tests
         run: npm run test:smoke
 
