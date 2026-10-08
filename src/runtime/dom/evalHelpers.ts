@@ -189,6 +189,8 @@ export interface EvalResult {
   type: string;
   /** Object subtype (`node`, `date`, `map`, `array`, ...) */
   subtype?: string;
+  /** Elements of an array result in the page (its copy holds at most 1000) */
+  length?: number;
   /** Set when the page replaced built-ins bdg's copy of the result uses, so the browser copied it */
   warning?: string;
 }
@@ -367,9 +369,24 @@ async function toEvalResult(
     replaced.length === 0 ? JSON_SAFE_COPY_FUNCTION : SELF_FUNCTION
   );
   const value = copy ? copy.value : formatRemoteObject(remote);
-  if (replaced.length === 0) return { value, ...kind };
+  const copied = { value, ...kind, ...arrayLength(remote) };
+  if (replaced.length === 0) return copied;
   const warning = copy ? evalCopiedByBrowserWarning(replaced) : evalPreviewWarning(replaced);
-  return { value, ...kind, warning };
+  return { ...copied, warning };
+}
+
+/**
+ * Elements of an array result (also a node list or typed array), read from
+ * its description (`Array(20000)`, `NodeList(5)`), since its copy is cut
+ * after 1000.
+ *
+ * @param remote - Remote object returned by Runtime.evaluate
+ * @returns `length`, when the result is an array
+ */
+function arrayLength(remote: Protocol.Runtime.RemoteObject): { length?: number } {
+  if (remote.subtype !== 'array' && remote.subtype !== 'typedarray') return {};
+  const match = /\((\d+)\)$/.exec(remote.description ?? '');
+  return match ? { length: Number(match[1]) } : {};
 }
 
 /**

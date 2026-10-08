@@ -573,7 +573,13 @@ Human output prints a string result as is (`My Page`, not `"My Page"`) unless th
 another value: the empty string, `undefined` and strings that are valid JSON (`"42"`, `"[1,2]"`) stay
 JSON-quoted. Other values are printed as formatted JSON (`undefined` for no value). `--json` keeps the value in `data.result`.
 
-Long values are cut: human output prints the first 20000 characters followed by `… N more chars (use --full)`; in `--json` a string result over 20000 characters is cut with `truncatedFrom` (its original length; objects and arrays are not cut). `--full` prints the whole value (`bdg dom eval document.documentElement.outerHTML --full` is about 3.6 MB on Wikipedia).
+Long values are cut: human output prints the first 20000 characters followed by `… N more chars (use --full)`. In `--json`:
+
+- a string result over 20000 characters is cut with `truncatedFrom` (its original length)
+- an array result lists its first 100 elements, with `count` (all of them) and `omitted`: `{ "result": ["0", "1", …, "99"], "count": 20000, "omitted": 19900, "type": "object", "subtype": "array" }`
+- an object or array whose JSON is still over 20000 characters is given as the first 20000 characters of its JSON text (`result` is then a string; `type` stays `object`), with `truncatedFrom` (the length of the whole JSON text) and, for an array, `count`: `{ "result": "[\"<html><head>…", "count": 20005, "truncatedFrom": 2045247, "type": "object", "subtype": "array" }` (`[...document.querySelectorAll('*')].map(e => e.outerHTML)` on a page with 20000 elements: 23 KB, 2 MB with `--full`)
+
+`--full` prints the whole value (`bdg dom eval document.documentElement.outerHTML --full` is about 3.6 MB on Wikipedia). Arrays and objects are copied from the page with at most 1000 entries each (the rest as `"…"`), also with `--full`; `count` is the length of the array in the page.
 
 **Shell Quote Handling:**
 

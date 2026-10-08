@@ -190,6 +190,9 @@ export const CHROME_POST_DATA_LIMIT = 1 * 1024 * 1024; // 1MB
 /** Matches `dom query` and `dom a11y query` list with `--json` and no `--limit` */
 export const QUERY_JSON_LIST_LIMIT = 100;
 
+/** Elements of an array result `dom eval --json` lists (the rest are counted as omitted) */
+export const EVAL_JSON_ARRAY_LIMIT = 100;
+
 /** Matches `dom layout` measures per command (the rest are counted as omitted) */
 export const LAYOUT_ELEMENT_LIMIT = 100;
 
