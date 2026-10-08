@@ -208,6 +208,8 @@ export interface DomEvalCommand {
   script: string;
   /** Iframe to evaluate in: index, name/id attribute, or URL substring */
   frame?: string;
+  /** `--full`: copy an object or array result with every entry */
+  full?: boolean;
 }
 
 export interface DomEvalData {
@@ -217,6 +219,8 @@ export interface DomEvalData {
   type: string;
   /** Object subtype (node, date, array, ...) */
   subtype?: string;
+  /** Elements of an array result in the page (`value` holds at most 1000 unless `full`) */
+  length?: number;
   /** URL of the iframe the script ran in (with `frame`; empty when it has none) */
   frame?: string;
   /** Set when the page replaced built-ins bdg's copy of the result uses */

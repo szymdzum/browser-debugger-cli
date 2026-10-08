@@ -388,9 +388,22 @@ export function callBdgScript(
 
 /**
  * Evaluate a JavaScript expression in the active page (or one of its iframes) via the daemon.
+ *
+ * @param script - JavaScript expression
+ * @param frame - Iframe to evaluate in
+ * @param full - `--full`: copy an object or array result with every entry
+ * @returns The daemon's response
  */
-export async function domEval(script: string, frame?: string): Promise<ClientResponse<'dom_eval'>> {
-  return sendCommand('dom_eval', { script, ...(frame !== undefined && { frame }) });
+export async function domEval(
+  script: string,
+  frame?: string,
+  full?: boolean
+): Promise<ClientResponse<'dom_eval'>> {
+  return sendCommand('dom_eval', {
+    script,
+    ...(frame !== undefined && { frame }),
+    ...(full && { full }),
+  });
 }
 
 /**

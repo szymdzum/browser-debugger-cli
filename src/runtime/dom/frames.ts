@@ -749,6 +749,7 @@ export async function frameContextLostError(
  * @param script - JavaScript expression
  * @param query - Requested frame (index, name/id attribute, or part of the name, id or URL)
  * @param listedIds - Frame id behind each index of the last `dom frames` listing, if any
+ * @param full - `--full`: copy the result with every entry
  * @returns Value, type and the frame's URL
  * @throws CommandError (81/83) when the frame is ambiguous or missing, (87)
  *   when an index names another frame than when it was listed, (83) when it
@@ -759,7 +760,8 @@ export async function evaluateInFrame(
   wsUrl: string,
   script: string,
   query: string,
-  listedIds?: string[]
+  listedIds?: string[],
+  full = false
 ): Promise<DomEvalData> {
   return withFrameConnection(page, wsUrl, async (fc) => {
     const { frame, uniqueContextId } = await resolveFrame(fc, query, listedIds);
@@ -768,6 +770,7 @@ export async function evaluateInFrame(
         ...(frame.sessionId && { sessionId: frame.sessionId }),
         uniqueContextId,
         recovery: recoverySender(fc, frame.sessionId),
+        full,
       });
       return { ...result, frame: frame.info.url };
     } catch (error) {

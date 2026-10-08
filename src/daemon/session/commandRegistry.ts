@@ -626,13 +626,14 @@ export function createCommandRegistry(
 
     dom_eval: async (cdp, params) =>
       params.frame === undefined
-        ? evaluateScript(cdp, params.script)
+        ? evaluateScript(cdp, params.script, { full: params.full ?? false })
         : evaluateInFrame(
             cdp,
             pageWebSocketUrl(store),
             params.script,
             params.frame,
-            listedFrameIds
+            listedFrameIds,
+            params.full ?? false
           ),
 
     dom_frames: async (cdp) => {

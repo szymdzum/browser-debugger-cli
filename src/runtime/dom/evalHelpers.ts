@@ -189,6 +189,8 @@ export interface EvalResult {
   type: string;
   /** Object subtype (`node`, `date`, `map`, `array`, ...) */
   subtype?: string;
+  /** Elements of an array result in the page (its copy holds at most 1000 unless `full`) */
+  length?: number;
   /** Set when the page replaced built-ins bdg's copy of the result uses, so the browser copied it */
   warning?: string;
 }
@@ -209,6 +211,12 @@ const DESCRIBED_SUBTYPES = new Set([
   'generator',
 ]);
 
+/** Entries per list or object, and levels, of a copied eval result */
+const COPY_LIMITS = { maxItems: 1000, maxDepth: 20 };
+
+/** Limits of a copied eval result with `--full`: every entry, levels deep enough for real data */
+const FULL_COPY_LIMITS = { maxItems: Infinity, maxDepth: 100 };
+
 /** Object subtypes shown by their short description (`button#submit`, `ArrayBuffer(8)`). */
 const BRIEF_SUBTYPES = new Set(['node', 'arraybuffer', 'dataview']);
 
@@ -219,12 +227,19 @@ const BRIEF_SUBTYPES = new Set(['node', 'arraybuffer', 'dataview']);
  * dates ISO strings, maps and sets entries, errors their message, BigInts
  * `12n`, functions `function name()`, and cycles `[Circular]` (an object
  * shared by two properties is copied twice). Works for objects of iframes
- * (other realms); lists and objects are cut after 1000 entries, and a
- * throwing getter becomes `[Error: …]`. It uses the page's built-ins
- * ({@link COPY_BUILTINS}), so it only runs when the page left them alone.
+ * (other realms); lists and objects are cut after 1000 entries and levels
+ * below the 20th become `[…]` (with `full`: no entries are cut, levels
+ * below the 100th), and a throwing getter becomes `[Error: …]`. It uses the
+ * page's built-ins ({@link COPY_BUILTINS}), so it only runs when the page
+ * left them alone.
+ *
+ * @param full - `--full`: copy every entry
+ * @returns Function declaration for Runtime.callFunctionOn
  */
-export const JSON_SAFE_COPY_FUNCTION = `function () {
-  const MAX_ITEMS = 1000;
+export function jsonSafeCopyFunction(full = false): string {
+  const limits = full ? FULL_COPY_LIMITS : COPY_LIMITS;
+  return `function () {
+  const MAX_ITEMS = ${limits.maxItems};
   const ancestors = new Set();
   const kind = (value) => Object.prototype.toString.call(value).slice(8, -1);
   const isNode = (value) => typeof value.nodeType === 'number' && typeof value.nodeName === 'string';
@@ -263,7 +278,7 @@ export const JSON_SAFE_COPY_FUNCTION = `function () {
   const copy = (value, depth) => {
     if (value === null || typeof value !== 'object') return leaf(value);
     if (ancestors.has(value)) return '[Circular]';
-    if (depth > 20) return '[…]';
+    if (depth > ${limits.maxDepth}) return '[…]';
     const next = (item) => copy(item, depth + 1);
     const type = kind(value);
     if (isNode(value)) return describeNode(value);
@@ -290,6 +305,7 @@ export const JSON_SAFE_COPY_FUNCTION = `function () {
   };
   return copy(this, 0);
 }`;
+}
 
 /** Built-ins {@link JSON_SAFE_COPY_FUNCTION} uses (it runs in the page's world, next to the result) */
 const COPY_BUILTINS = [
@@ -342,11 +358,13 @@ function isTerminated(details: Protocol.Runtime.ExceptionDetails): boolean {
  *
  * @param cdp - CDP connection
  * @param remote - Remote object returned by Runtime.evaluate
+ * @param full - `--full`: copy every entry ({@link jsonSafeCopyFunction})
  * @returns Value and type
  */
 async function toEvalResult(
   cdp: CDPSender,
-  remote: Protocol.Runtime.RemoteObject
+  remote: Protocol.Runtime.RemoteObject,
+  full: boolean
 ): Promise<EvalResult> {
   const kind = { type: remote.type, ...(remote.subtype && { subtype: remote.subtype }) };
   if (remote.unserializableValue !== undefined)
@@ -364,12 +382,27 @@ async function toEvalResult(
   const copy = await copyByValue(
     cdp,
     remote.objectId,
-    replaced.length === 0 ? JSON_SAFE_COPY_FUNCTION : SELF_FUNCTION
+    replaced.length === 0 ? jsonSafeCopyFunction(full) : SELF_FUNCTION
   );
   const value = copy ? copy.value : formatRemoteObject(remote);
-  if (replaced.length === 0) return { value, ...kind };
+  const copied = { value, ...kind, ...arrayLength(remote) };
+  if (replaced.length === 0) return copied;
   const warning = copy ? evalCopiedByBrowserWarning(replaced) : evalPreviewWarning(replaced);
-  return { value, ...kind, warning };
+  return { ...copied, warning };
+}
+
+/**
+ * Elements of an array result (also a node list or typed array), read from
+ * its description (`Array(20000)`, `NodeList(5)`), since its copy holds
+ * at most 1000 unless `--full`.
+ *
+ * @param remote - Remote object returned by Runtime.evaluate
+ * @returns `length`, when the result is an array
+ */
+export function arrayLength(remote: Protocol.Runtime.RemoteObject): { length?: number } {
+  if (remote.subtype !== 'array' && remote.subtype !== 'typedarray') return {};
+  const match = /\((\d+)\)$/.exec(remote.description ?? '');
+  return match ? { length: Number(match[1]) } : {};
 }
 
 /**
@@ -378,7 +411,7 @@ async function toEvalResult(
  *
  * @param cdp - CDP connection
  * @param objectId - The result
- * @param functionDeclaration - {@link JSON_SAFE_COPY_FUNCTION}, or
+ * @param functionDeclaration - {@link jsonSafeCopyFunction}'s, or
  *   {@link SELF_FUNCTION} for the browser's plain copy (it fails on cycles
  *   and BigInts)
  * @returns The copy, or undefined when it failed
@@ -577,6 +610,8 @@ export interface EvalTarget {
   recovery?: CDPSender;
   /** Execution context of a frame (`ExecutionContextDescription.uniqueId`) */
   uniqueContextId?: string;
+  /** `--full`: copy the result with every entry */
+  full?: boolean;
 }
 
 /**
@@ -701,7 +736,7 @@ export async function evaluateScript(
       EVAL_TIMEOUT_MS,
       promiseTimeout
     );
-    return await toEvalResult(session, settled);
+    return await toEvalResult(session, settled, target.full ?? false);
   } catch (error) {
     throw scope === 'page' && isContextLostError(error)
       ? await pageContextLostError(error, session)
