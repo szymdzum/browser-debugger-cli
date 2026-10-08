@@ -5,6 +5,7 @@
 #   REPEAT        how many times to run the selection
 # Exits non-zero when any run failed.
 set -u
+REPEAT="${REPEAT:-1}"
 args=(--test --test-concurrency=1)
 if [ -n "${NAME_PATTERN:-}" ]; then args+=(--test-name-pattern "$NAME_PATTERN"); fi
 failed=0
