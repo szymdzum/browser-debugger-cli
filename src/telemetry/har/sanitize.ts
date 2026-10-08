@@ -12,8 +12,9 @@
  * (`?code=`, `?access_token=`), and credential fields of request and response
  * bodies and of WebSocket text messages (sanitizeBody.ts), editing only
  * those values. `headersSize`, `bodySize` and `content.size` stay those of the
- * captured request. Base64 bodies are decoded when their type is generic or
- * JSON; other binary bodies and binary messages are kept.
+ * captured request. Base64 bodies are decoded when their type is generic,
+ * JSON, form or event-stream, and binary WebSocket messages always; those
+ * that are not UTF-8 text, and other binary bodies, are kept.
  */
 
 import type { Content, Cookie, Entry, Header, QueryParam, WebSocketMessage } from './types.js';
@@ -57,6 +58,9 @@ const SENSITIVE_URL_PARAM = /^(code|sig|key)$/i;
 
 /** WebSocket opcode of a text message */
 const TEXT_OPCODE = 1;
+
+/** WebSocket opcode of a binary message (base64 in the HAR) */
+const BINARY_OPCODE = 2;
 
 /**
  * Redact the credentials of a HAR entry.
@@ -106,14 +110,18 @@ function redactContent(content: Content): Content {
 }
 
 /**
- * Redact credential fields of a WebSocket text message; binary messages are kept.
+ * Redact credential fields of a WebSocket message: a text message, or a
+ * binary one that decodes as UTF-8 (redacted and encoded again).
  *
  * @param message - HAR WebSocket message
  * @returns The message, or a copy with its data redacted
  */
 function redactWebSocketMessage(message: WebSocketMessage): WebSocketMessage {
-  if (message.opcode !== TEXT_OPCODE) return message;
-  const data = redactBody(message.data, '');
+  if (message.opcode !== TEXT_OPCODE && message.opcode !== BINARY_OPCODE) return message;
+  const data =
+    message.opcode === TEXT_OPCODE
+      ? redactBody(message.data, '')
+      : redactBase64Body(message.data, '');
   return data === message.data ? message : { ...message, data };
 }
 

@@ -8,7 +8,11 @@
  * JSON is never parsed and re-serialized: a single linear scan replaces the
  * credential values in place, so everything else (64-bit numbers, formatting,
  * duplicate keys, a BOM or `)]}'` prefix) stays byte for byte, and truncated
- * JSON, socket.io packets, server-sent events and NDJSON are covered too.
+ * JSON, socket.io and SockJS packets, server-sent events, NDJSON and JSON
+ * encoded in string values are covered too. JWTs are redacted under any name.
+ *
+ * Only JSON syntax is understood: single-quoted strings, unquoted keys,
+ * JSONP and `name:value` header lines (STOMP `passcode:`) are not.
  */
 
 import { SENSITIVE_NAME_SOURCE } from '@/runtime/dom/elementInfo.js';
@@ -22,34 +26,54 @@ export const REDACTED = '[redacted]';
 
 /**
  * Field names holding credentials: password-like names (shared with form
- * masking), tokens, secrets, keys, sessions, signatures and credentials
+ * masking), tokens, secrets, keys, sessions, signatures, credentials, bearer,
+ * cookie, CSRF and refresh values, `auth` and `sid` as whole words, OAuth,
+ * authorization codes and PKCE verifiers
  */
 const SENSITIVE_FIELD = new RegExp(
-  `${SENSITIVE_NAME_SOURCE}|token|secret|api[-_]?key|authoriz|credential|jwt|private[-_]?key|access[-_]?key|session|signature`,
+  `${SENSITIVE_NAME_SOURCE}|token|secret|api[-_]?key|authoriz|credential|jwt|private[-_]?key|access[-_]?key|session|signature|bearer|cookie|csrf|xsrf|refresh|oauth|(^|[^a-z])(auth|sid)([^a-z]|$)|auth[-_]?code|code[-_]?verifier`,
   'i'
 );
 
-/** A body that is a form whatever its Content-Type: `k=v&k=v`, no whitespace, not JSON */
-const FORM_BODY = /^[^\s=&{["]+=[^\s&]*(?:&[^\s=&]+=[^\s&]*)*$/;
+/**
+ * A body that is a form whatever its Content-Type: `k=v&k=v`, no whitespace,
+ * not JSON (Rails-style names such as `user[password]` included)
+ */
+const FORM_BODY = /^(?!\[)[^\s=&{"]+=[^\s&]*(?:&[^\s=&]+=[^\s&]*)*$/;
 
 /**
  * Text that holds JSON whatever its Content-Type: after an optional BOM,
  * XSSI guard (`)]}'`) and whitespace, an object or array (also after a
- * socket.io packet type such as `42`) or a server-sent event field
+ * socket.io packet type such as `42`, `451-` or `42/chat,`, or a SockJS
+ * `a`/`c` frame type) or a server-sent event field
  */
-const JSON_LIKE_START = /^\uFEFF?(?:\)\]\}',?)?\s*(?:\d*[[{]|(?:data|event|id|retry):)/;
+const JSON_LIKE_START =
+  /^\uFEFF?(?:\)\]\}',?)?\s*(?:(?:\d*-?(?:\/[^,]*,)?|[ac])[[{]|(?:data|event|id|retry):)/;
 
 /** Content-Types whose bodies are scanned as JSON whatever they start with */
 const JSON_MIME = /json|event-stream/i;
 
-/** Content-Types of base64 bodies decoded to look for JSON: none, generic binary or JSON */
-const DECODABLE_MIME = /^(?:application\/octet-stream|binary\/octet-stream)?$|json/i;
+/**
+ * Content-Types (without parameters) of base64 bodies decoded to look for
+ * credentials: none, generic binary, JSON, form and server-sent events
+ */
+const DECODABLE_MIME =
+  /^(?:application\/octet-stream|binary\/octet-stream|application\/x-www-form-urlencoded|text\/event-stream)?$|json/i;
 
-/** A JSON number, or a run of number characters in malformed JSON */
-const NUMBER = /[-\d][\d.eE+-]*/y;
+/** A bare value (number, `true`, `false`, `null`) or word, up to the next delimiter */
+const BARE = /[^\s,:[\]{}"]+/y;
 
-/** A bare word: `true`, `false`, `null`, or text around JSON values */
-const WORD = /[A-Za-z_$][\w$]*/y;
+/** A whole JWT as a JSON string's content, up to its closing quote */
+const JWT_STRING = /eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*"/y;
+
+/** A whole JWT in text, not part of a longer word */
+const JWT_IN_TEXT = /(?<![\w.-])eyJ[\w-]{5,}\.[\w-]{5,}\.[\w-]*(?![\w.-])/g;
+
+/** A JSON string whose content is an object or array */
+const ENCODED_JSON = /"\s*[[{]/y;
+
+/** Levels of JSON encoded in string values that are decoded */
+const MAX_ENCODED_DEPTH = 3;
 
 /** {@link REDACTED} as a JSON string */
 const REDACTED_STRING = JSON.stringify(REDACTED);
@@ -71,6 +95,10 @@ interface JsonScan {
   containers: boolean[];
   /** Whether the last key read names a credential, until its value is read */
   key: boolean | undefined;
+  /** Index of the next line end at or after the last string start (cached) */
+  lineEnd: number;
+  /** Levels of string encoding around the text */
+  depth: number;
 }
 
 /**
@@ -122,12 +150,14 @@ export function redactBody(text: string, mimeType: string): string {
   if (/x-www-form-urlencoded/i.test(mimeType) || FORM_BODY.test(text)) {
     return redactPairs(text, isSensitiveField, REDACTED);
   }
-  return JSON_MIME.test(mimeType) || JSON_LIKE_START.test(text) ? redactJsonText(text) : text;
+  if (JSON_MIME.test(mimeType) || JSON_LIKE_START.test(text)) return redactJsonText(text, 0);
+  return text.includes('eyJ') ? text.replace(JWT_IN_TEXT, REDACTED) : text;
 }
 
 /**
- * Redact credential fields of a base64 body that may be text: one with no,
- * a generic binary or a JSON Content-Type that decodes as UTF-8.
+ * Redact credential fields of a base64 body or binary WebSocket message that
+ * may be text: one with no, a generic binary, a JSON, a form or an
+ * event-stream Content-Type that decodes as UTF-8.
  *
  * @param base64 - Body as base64
  * @param mimeType - Content-Type of the body
@@ -135,7 +165,7 @@ export function redactBody(text: string, mimeType: string): string {
  *   not decodable text or held no credentials
  */
 export function redactBase64Body(base64: string, mimeType: string): string {
-  if (!DECODABLE_MIME.test(mimeType)) return base64;
+  if (!DECODABLE_MIME.test(mimeType.split(';')[0]?.trim() ?? '')) return base64;
   let decoded: string;
   try {
     decoded = UTF8.decode(Buffer.from(base64, 'base64'));
@@ -196,15 +226,26 @@ function redactPart(part: string): string {
 /**
  * Replace the values under credential names in JSON-like text, in one linear
  * pass. Every string, number and boolean under such a key is replaced, at
- * any depth (objects and arrays keep their structure); `null` and all other
- * text stay byte for byte. Unterminated strings run to the end of the text.
+ * any depth (objects and arrays keep their structure), and so is a JWT under
+ * any key; `null` and all other text stay byte for byte. A string ends at
+ * its closing quote or at the end of its line (JSON strings hold no raw line
+ * breaks), so a stray quote hides nothing past its line.
  *
  * @param text - Text holding JSON, possibly truncated or framed
+ * @param depth - Levels of string encoding around the text
  * @returns Text with credential values replaced by `"[redacted]"`; the text
  *   unchanged when there were none
  */
-function redactJsonText(text: string): string {
-  const scan: JsonScan = { text, parts: [], copied: 0, containers: [false], key: undefined };
+function redactJsonText(text: string, depth: number): string {
+  const scan: JsonScan = {
+    text,
+    parts: [],
+    copied: 0,
+    containers: [false],
+    key: undefined,
+    lineEnd: -1,
+    depth,
+  };
   let index = 0;
   while (index < text.length) index = scanToken(scan, index);
   if (scan.parts.length === 0) return text;
@@ -213,8 +254,8 @@ function redactJsonText(text: string): string {
 }
 
 /**
- * Read the token at an index: a string, a bracket, a comma, a number or a
- * word; any other character is skipped.
+ * Read the token at an index: a string, a bracket, a comma or a bare value;
+ * whitespace and colons are skipped.
  *
  * @param scan - Scan state
  * @param index - Index of the token's first character
@@ -231,47 +272,50 @@ function scanToken(scan: JsonScan, index: number): number {
   } else if (char === ',') {
     scan.key = undefined;
   } else {
-    return scanLiteral(scan, index);
+    return scanBare(scan, index);
   }
   return index + 1;
 }
 
 /**
  * Read a string: a key (followed by `:`) sets whether the next value is
- * sensitive; a value under a credential name is replaced.
+ * sensitive; a value under a credential name or holding a JWT is replaced,
+ * and JSON encoded in a value is redacted and encoded again.
  *
  * @param scan - Scan state
  * @param start - Index of the opening quote
- * @returns Index after the closing quote, or the text length when there is none
+ * @returns Index after the string
  */
 function scanString(scan: JsonScan, start: number): number {
-  const end = stringEnd(scan.text, start);
+  const end = stringEnd(scan, start);
   if (isFollowedByColon(scan.text, end)) {
     scan.key = isSensitiveField(keyName(scan.text, start, end));
-  } else if (takeValue(scan)) {
-    replaceValue(scan, start, end);
+  } else if (takeValue(scan) || isJwtString(scan.text, start, end)) {
+    replaceValue(scan, start, end, REDACTED_STRING);
+  } else {
+    const encoded = redactEncodedJson(scan, start, end);
+    if (encoded !== undefined) replaceValue(scan, start, end, encoded);
   }
   return end;
 }
 
 /**
- * Read a number or a word; a number, `true` or `false` under a credential
- * name is replaced. Other words are not values.
+ * Read a bare value or word up to the next delimiter; a number, `true`,
+ * `false` or any bare text right after a credential key is replaced. Other
+ * words are not values.
  *
  * @param scan - Scan state
  * @param index - Index of the character
- * @returns Index after the number or word, or after the character
+ * @returns Index after the bare text, or after a whitespace or colon character
  */
-function scanLiteral(scan: JsonScan, index: number): number {
-  NUMBER.lastIndex = index;
-  WORD.lastIndex = index;
-  const number = NUMBER.exec(scan.text)?.[0];
-  const word = number === undefined ? WORD.exec(scan.text)?.[0] : undefined;
-  const literal = number ?? word;
-  if (literal === undefined) return index + 1;
-  const end = index + literal.length;
-  if (word !== undefined && word !== 'true' && word !== 'false' && word !== 'null') return end;
-  if (takeValue(scan) && word !== 'null') replaceValue(scan, index, end);
+function scanBare(scan: JsonScan, index: number): number {
+  BARE.lastIndex = index;
+  const bare = BARE.exec(scan.text)?.[0];
+  if (bare === undefined) return index + 1;
+  const end = index + bare.length;
+  const isLiteral = /^[-\d]/.test(bare) || bare === 'true' || bare === 'false' || bare === 'null';
+  if (!isLiteral && scan.key !== true) return end;
+  if (takeValue(scan) && bare !== 'null') replaceValue(scan, index, end, REDACTED_STRING);
   return end;
 }
 
@@ -288,30 +332,76 @@ function takeValue(scan: JsonScan): boolean {
 }
 
 /**
- * Write `"[redacted]"` instead of the text between two indices.
+ * Write a replacement instead of the text between two indices.
  *
  * @param scan - Scan state
  * @param start - Index of the value's first character
  * @param end - Index after the value
+ * @param replacement - Text written instead
  */
-function replaceValue(scan: JsonScan, start: number, end: number): void {
-  scan.parts.push(scan.text.slice(scan.copied, start), REDACTED_STRING);
+function replaceValue(scan: JsonScan, start: number, end: number, replacement: string): void {
+  scan.parts.push(scan.text.slice(scan.copied, start), replacement);
   scan.copied = end;
 }
 
 /**
- * End of a JSON string. Each quote looks back only over the backslashes
- * since the previous quote, so the search stays linear.
+ * Whether a string's content is a whole JWT.
  *
  * @param text - Text
  * @param start - Index of the opening quote
- * @returns Index after the closing quote, or the text length when unterminated
+ * @param end - Index after the string
+ * @returns True for `"eyJ….….…"`
  */
-function stringEnd(text: string, start: number): number {
+function isJwtString(text: string, start: number, end: number): boolean {
+  if (!text.startsWith('eyJ', start + 1)) return false;
+  JWT_STRING.lastIndex = start + 1;
+  return JWT_STRING.test(text) && JWT_STRING.lastIndex === end;
+}
+
+/**
+ * Redact JSON encoded in a string value (a JSON payload, GraphQL variables,
+ * a SockJS message), up to {@link MAX_ENCODED_DEPTH} levels.
+ *
+ * @param scan - Scan state
+ * @param start - Index of the opening quote
+ * @param end - Index after the string
+ * @returns The string encoded again with credentials redacted; undefined when
+ *   it holds no JSON or no credentials, so it stays byte for byte
+ */
+function redactEncodedJson(scan: JsonScan, start: number, end: number): string | undefined {
+  ENCODED_JSON.lastIndex = start;
+  if (scan.depth >= MAX_ENCODED_DEPTH || !ENCODED_JSON.test(scan.text)) return undefined;
+  if (end - start < 2 || scan.text[end - 1] !== '"') return undefined;
+  let decoded: string;
+  try {
+    decoded = JSON.parse(scan.text.slice(start, end)) as string;
+  } catch (error) {
+    log.debug(`String value not decodable: ${getErrorMessage(error)}`);
+    return undefined;
+  }
+  const redacted = redactJsonText(decoded, scan.depth + 1);
+  return redacted === decoded ? undefined : JSON.stringify(redacted);
+}
+
+/**
+ * End of a JSON string: its closing quote, or the end of its line. Each quote
+ * looks back only over the backslashes since the previous quote, and the
+ * line end is cached, so the search stays linear.
+ *
+ * @param scan - Scan state
+ * @param start - Index of the opening quote
+ * @returns Index after the closing quote, or of the line break (`\r\n` or
+ *   `\n`) or text end when the line has none
+ */
+function stringEnd(scan: JsonScan, start: number): number {
+  const { text } = scan;
   let from = start + 1;
   for (;;) {
     const quote = text.indexOf('"', from);
-    if (quote === -1) return text.length;
+    const lineEnd = nextLineEnd(scan, from);
+    if (quote === -1 || lineEnd < quote) {
+      return lineEnd > from && text[lineEnd - 1] === '\r' ? lineEnd - 1 : lineEnd;
+    }
     let backslashes = 0;
     while (text[quote - 1 - backslashes] === '\\' && quote - 1 - backslashes > start) {
       backslashes++;
@@ -319,6 +409,21 @@ function stringEnd(text: string, start: number): number {
     if (backslashes % 2 === 0) return quote + 1;
     from = quote + 1;
   }
+}
+
+/**
+ * Index of the next `\n` at or after an index, or the text length.
+ *
+ * @param scan - Scan state, whose cached line end is updated
+ * @param from - Index to look from
+ * @returns Index of the line break
+ */
+function nextLineEnd(scan: JsonScan, from: number): number {
+  if (scan.lineEnd < from) {
+    const lineEnd = scan.text.indexOf('\n', from);
+    scan.lineEnd = lineEnd === -1 ? scan.text.length : lineEnd;
+  }
+  return scan.lineEnd;
 }
 
 /**

@@ -170,19 +170,21 @@ export const MASKED_VALUE = '••••';
 
 /**
  * Regular expression source (case-insensitive) matching names of fields that
- * hold a password, one-time code or card code: `password`, `passwd`, `pwd`,
- * `passcode`, `otp`, `cvv`, `cvc`. Shared by the page-side
- * {@link SENSITIVE_FIELD_JS} and HAR sanitization.
+ * hold a password, one-time code, PIN, social security number or card data:
+ * `password`, `passwd`, `pwd`, `passcode`, `passphrase`, `otp`, `pin`, `ssn`
+ * (these three as whole words), `cvv`, `cvc`, `card_number`, `cardNo`. Shared
+ * by the page-side {@link SENSITIVE_FIELD_JS} and HAR sanitization.
  */
-export const SENSITIVE_NAME_SOURCE = 'passw|passwd|pwd|passcode|(^|[^a-z])otp([^a-z]|$)|cvv|cvc';
+export const SENSITIVE_NAME_SOURCE =
+  'passw|passwd|pwd|passcode|passphrase|(^|[^a-z])(otp|pin|ssn)([^a-z]|$)|cvv|cvc|card[-_]?(num|no)';
 
 /**
  * Page-side check whether a form control holds a secret whose value must
  * never leave the page: a password field (live type or type attribute), a
  * field shown masked by CSS (`-webkit-text-security` other than `none`),
  * one whose `autocomplete` names a password, a payment card (`cc-*`) or a
- * one-time code, or a field named like a password, one-time code or card code
- * (`password`, `passwd`, `pwd`, `passcode`, `otp`, `cvv`, `cvc`), which
+ * one-time code, or a field named like a password, one-time code, PIN, SSN
+ * or card data ({@link SENSITIVE_NAME_SOURCE}), which
  * covers a password field switched to text by a "show password" button.
  */
 export const SENSITIVE_FIELD_JS = `(el) => {
