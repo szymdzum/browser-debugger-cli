@@ -441,9 +441,31 @@ void describe('domLooksBusy and domKeptChanging', () => {
     assert.equal(domLooksBusy(undefined), false);
   });
 
-  void it('counts the DOM as still changing with two new bursts during the second look', () => {
-    assert.equal(domKeptChanging(settle({ burstAges: [400, 180, 60] }), 260), true);
+  void it('counts the DOM as still changing while it never stays quiet for over 150 ms', () => {
+    assert.equal(domKeptChanging(settle({ burstAges: [400, 300, 180, 60] }), 260), true);
+    assert.equal(
+      domKeptChanging(settle({ burstAges: [420, 280, 140, 0] }), 260),
+      true,
+      'every 140 ms'
+    );
+    assert.equal(
+      domKeptChanging(settle({ burstAges: [422, 266, 91] }), 258),
+      false,
+      'quiet for 175 ms (100 ms steps whose timers ran late)'
+    );
+    assert.equal(domKeptChanging(settle({ burstAges: [418, 280] }), 256), false, 'two commits');
+    assert.equal(
+      domKeptChanging(settle({ burstAges: [410, 310, 210] }), 255),
+      false,
+      'three commits, then quiet'
+    );
     assert.equal(domKeptChanging(settle({ burstAges: [400, 300, 60] }), 260), false, 'a poller');
+    assert.equal(
+      domKeptChanging(settle({ burstAges: [300, 240, 230] }), 260),
+      false,
+      'two quick commits, then quiet'
+    );
+    assert.equal(domKeptChanging(settle({ burstAges: [40] }), 260), true, 'only new bursts kept');
     assert.equal(domKeptChanging(undefined, 260), false);
   });
 });

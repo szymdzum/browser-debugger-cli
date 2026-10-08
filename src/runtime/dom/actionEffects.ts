@@ -31,7 +31,7 @@ import {
   type ActivityListener,
   type NavigationEvents,
 } from '@/runtime/dom/pageActivity.js';
-import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
+import { evaluateInBdgWorld, prepareBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { createLogger } from '@/ui/logging/index.js';
 import { delay, raceTimeout } from '@/utils/async.js';
 import { getErrorMessage } from '@/utils/errors.js';
@@ -52,7 +52,10 @@ const BUSY_BURSTS = 2;
 const BUSY_WINDOW_MS = 500;
 const BUSY_RECENT_MS = 150;
 
-/** Second look at a DOM that looked busy; it is still changing with {@link BUSY_BURSTS} new bursts by then (ms) */
+/**
+ * Second look at a DOM that looked busy; it is still changing when it kept
+ * changing at most {@link BUSY_RECENT_MS} apart until then (ms)
+ */
 const STILL_CHANGING_RECHECK_MS = 250;
 
 /** Resource types of pending requests that mean more content is coming */
@@ -255,10 +258,12 @@ export function domLooksBusy(settle: SettleSignals | undefined): boolean {
 }
 
 /**
- * Whether the DOM kept changing during the second look: at least
- * {@link BUSY_BURSTS} new bursts within the time since the first read (a
- * render that ends in two commits, or a poller updating once a second, does
- * not count).
+ * Whether the DOM kept changing during the second look: a new burst since
+ * the first read, and no quiet spell longer than {@link BUSY_RECENT_MS} from
+ * the last burst the first read saw, through the new ones, to the second
+ * read. A page changing every 140 ms, or every 100 ms on a machine whose
+ * timers run late, keeps changing; a render that ends in two or three
+ * commits, or a poller updating every 300 ms, does not.
  *
  * @param settle - Signals of the second read
  * @param sinceMs - Time since the first read
@@ -266,7 +271,11 @@ export function domLooksBusy(settle: SettleSignals | undefined): boolean {
  */
 export function domKeptChanging(settle: SettleSignals | undefined, sinceMs: number): boolean {
   if (!settle) return false;
-  return settle.burstAges.filter((age) => age < sinceMs).length >= BUSY_BURSTS;
+  const fresh = settle.burstAges.filter((age) => age < sinceMs);
+  if (fresh.length === 0) return false;
+  const seen = settle.burstAges.filter((age) => age >= sinceMs);
+  const times = [...seen.slice(-1), ...fresh, 0];
+  return times.slice(1).every((age, i) => (times[i] ?? age) - age <= BUSY_RECENT_MS);
 }
 
 /**
@@ -401,8 +410,10 @@ interface Watch {
 
 /**
  * Start watching an action's effects: listen for main-frame navigations,
- * document statuses, requests and new windows, and send the page snapshot
- * without waiting for it.
+ * document statuses, requests and new windows, send the page snapshot
+ * without waiting for it, and create bdg's world for the reads now, while
+ * the page is idle (created at the first read, it would wait for a page
+ * busy after the action and could leave the read no time to answer).
  *
  * @param cdp - CDP connection
  * @returns Watch to collect from after the action
@@ -415,6 +426,7 @@ export function watchActionEffects(cdp: CDPConnection): ActionEffectsWatch {
     stopConfirmed: false,
     unresponsive: false,
   };
+  prepareBdgWorld(cdp);
   return {
     collect: (options) => collectEffects(watch, options),
     dispose: () => disposeWatch(watch),
@@ -485,7 +497,14 @@ async function stillChanging(watch: Watch, snapshot: ReadSnapshot | undefined): 
   const firstRead = Date.now();
   await delay(STILL_CHANGING_RECHECK_MS);
   const recheck = await readPage(watch, { stop: false, reportShown: false });
-  return domKeptChanging(recheck?.settle, Date.now() - firstRead);
+  const sinceMs = Date.now() - firstRead;
+  const changing = domKeptChanging(recheck?.settle, sinceMs);
+  log.debug(
+    `DOM looked busy (burst ages ${snapshot?.settle?.burstAges.join(',')} ms); ` +
+      `${sinceMs} ms later ${recheck?.settle?.burstAges.join(',') ?? 'no answer'}: ` +
+      (changing ? 'still changing' : 'settled')
+  );
+  return changing;
 }
 
 /**

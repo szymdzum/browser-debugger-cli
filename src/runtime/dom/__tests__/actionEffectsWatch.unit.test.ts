@@ -20,6 +20,7 @@ type Handler = (params: unknown, sessionId?: string) => void;
 class FakeCdp {
   readonly handlers = new Map<string, Set<Handler>>();
   readonly expressions: string[] = [];
+  readonly methods: string[] = [];
 
   /**
    * @param start - Reply of the snapshot before the action
@@ -51,6 +52,7 @@ class FakeCdp {
   }
 
   send(method: string, params?: { expression?: string }): Promise<unknown> {
+    this.methods.push(method);
     if (method === 'Page.getFrameTree')
       return Promise.resolve({ frameTree: { frame: { id: 'main' } } });
     if (method === 'Page.createIsolatedWorld') return Promise.reject(new Error('No world'));
@@ -280,6 +282,14 @@ void describe('watchActionEffects', () => {
     });
     assert.equal(effects.work?.unresponsive, true);
     assert.equal(effects.effect, undefined);
+    watch.dispose();
+  });
+
+  void it("creates bdg's world when the watch starts, before the action", async () => {
+    const cdp = new FakeCdp(Promise.resolve(START));
+    const watch = watchActionEffects(cdp.connection);
+    await tick();
+    assert.ok(cdp.methods.includes('Page.createIsolatedWorld'));
     watch.dispose();
   });
 

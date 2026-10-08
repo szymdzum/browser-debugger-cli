@@ -53,6 +53,17 @@ function worldContext(cdp: PageConnection): Promise<number | null> {
 }
 
 /**
+ * Create the world now, without waiting, so a script run later does not
+ * first wait for it: creating it takes a turn of the page's main thread,
+ * which a page busy right after an action holds.
+ *
+ * @param cdp - Connection to the page
+ */
+export function prepareBdgWorld(cdp: PageConnection): void {
+  void worldContext(cdp);
+}
+
+/**
  * Create the world in the top frame and forget it when the page changes.
  *
  * @param cdp - Connection to the page
