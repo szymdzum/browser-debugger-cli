@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **`network har` writes a sanitized HAR by default** (#448), like Chrome DevTools since Chrome 130: values of auth, cookie, API key and token headers, cookie values and password/token fields of JSON and form request bodies become `[redacted]` (names and sizes stay; `log.comment` and `--json` `sanitized: true` say so). `--include-sensitive` writes the HAR as before; HAR files are now written with mode 0600.
+
 ### Fixed
 
 - **Help and usage hints** (#490): an unknown subcommand close to several commands suggests "Did you mean: form or frames?" instead of "one of form, frames"; `cdp` is on one aligned line in `bdg --help`.

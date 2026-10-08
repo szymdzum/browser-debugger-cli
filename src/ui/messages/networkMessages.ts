@@ -98,3 +98,40 @@ export function headerRepeatedNote(count: number): string {
 export function localProxyNote(): string {
   return '(loopback; likely a local proxy)';
 }
+
+/**
+ * HAR log comment of a sanitized export.
+ *
+ * @returns Comment naming what was redacted and the flag that keeps it
+ */
+export function harSanitizedComment(): string {
+  return 'Sanitized by bdg: values of auth, cookie, API key and token headers, cookies, and password/token fields of request bodies are [redacted]; export with --include-sensitive to keep them';
+}
+
+/**
+ * Result of a HAR export to a file.
+ */
+export interface HarExportSummary {
+  /** Absolute path written */
+  file: string;
+  /** Requests exported */
+  entries: number;
+  /** Whether --filter left requests out */
+  filtered: boolean;
+  /** Whether credentials were redacted */
+  sanitized: boolean;
+}
+
+/**
+ * Success message of `bdg network har`.
+ *
+ * @param result - Export result
+ * @returns e.g. `✓ Exported 4 requests to /tmp/out.har` and a line on sanitization
+ */
+export function harExportedMessage(result: HarExportSummary): string {
+  const filterNote = result.filtered ? ' (filtered)' : '';
+  const note = result.sanitized
+    ? 'Credentials sanitized (auth/cookie/API key/token headers, cookies, password and token body fields are [redacted]); --include-sensitive keeps them'
+    : '⚠ Includes credentials (--include-sensitive): share this file with care';
+  return `✓ Exported ${result.entries} requests${filterNote} to ${result.file}\n  ${note}`;
+}

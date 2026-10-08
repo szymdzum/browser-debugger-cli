@@ -20,8 +20,10 @@ import type {
 } from './types.js';
 import type * as Http from 'node:http';
 
+import { sanitizeEntry } from '@/telemetry/har/sanitize.js';
 import { skippedBodyReason } from '@/telemetry/networkRetention.js';
 import type { NetworkRequest, WebSocketFrame } from '@/types.js';
+import { harSanitizedComment } from '@/ui/messages/networkMessages.js';
 
 /**
  * Loads Node builtins on first use: importing `node:http` in an ES module
@@ -46,14 +48,26 @@ export interface HARMetadata {
   targetTitle?: string;
 }
 
+/**
+ * Options for HAR generation.
+ */
+export interface HAROptions {
+  /** Keep credentials as captured instead of redacting them (see sanitize.ts) */
+  includeSensitive?: boolean;
+}
+
 const UNKNOWN_TIMING = -1;
 const DEFAULT_HTTP_VERSION = 'HTTP/1.1';
 
 /**
  * Build HAR 1.2 format from network telemetry data.
  *
+ * Credentials are redacted (`log.comment` says so) unless
+ * `options.includeSensitive` is set.
+ *
  * @param requests - Array of network requests collected during session
  * @param metadata - Metadata for HAR creator/browser info
+ * @param options - Whether to keep credentials
  * @returns Complete HAR object
  *
  * @remarks
@@ -70,8 +84,13 @@ const DEFAULT_HTTP_VERSION = 'HTTP/1.1';
  * fs.writeFileSync('capture.har', JSON.stringify(har, null, 2));
  * ```
  */
-export function buildHAR(requests: NetworkRequest[], metadata: HARMetadata): HAR {
-  const entries = [...requests].sort((a, b) => a.timestamp - b.timestamp).map(buildEntry);
+export function buildHAR(
+  requests: NetworkRequest[],
+  metadata: HARMetadata,
+  options: HAROptions = {}
+): HAR {
+  const built = [...requests].sort((a, b) => a.timestamp - b.timestamp).map(buildEntry);
+  const entries = options.includeSensitive ? built : built.map(sanitizeEntry);
 
   const log: HAR['log'] = {
     version: '1.2',
@@ -81,6 +100,7 @@ export function buildHAR(requests: NetworkRequest[], metadata: HARMetadata): HAR
       comment: 'Browser Debugger CLI - https://github.com/szymdzum/browser-debugger-cli',
     },
     entries,
+    ...(!options.includeSensitive && { comment: harSanitizedComment() }),
   };
 
   if (metadata.chromeVersion) {

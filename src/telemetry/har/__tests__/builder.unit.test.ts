@@ -510,7 +510,7 @@ describe('HAR Builder', () => {
         },
       ];
 
-      const har = buildHAR(requests, baseMetadata);
+      const har = buildHAR(requests, baseMetadata, { includeSensitive: true });
       const cookies = getFirstEntry(har.log.entries).request.cookies;
 
       assert.equal(cookies.length, 2);
@@ -818,7 +818,7 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
   const metadata: HARMetadata = { version: '0.0.0-test' };
 
   /**
-   * Build a one-entry HAR and return its entry.
+   * Build a one-entry HAR, credentials kept as captured, and return its entry.
    *
    * @param req - Request fields
    * @returns HAR entry
@@ -826,7 +826,8 @@ describe('HAR fidelity (HTTP/1.1 headers, cookies, redirects, skipped bodies)', 
   function entryFor(req: Partial<NetworkRequest>): Entry {
     const har = buildHAR(
       [{ requestId: 'r', url: 'https://example.com/a', method: 'GET', timestamp: 0, ...req }],
-      metadata
+      metadata,
+      { includeSensitive: true }
     );
     const entry = har.log.entries[0];
     assert.ok(entry);

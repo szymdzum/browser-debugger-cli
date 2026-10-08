@@ -169,6 +169,14 @@ export const ELEMENT_TEXT_JS = `(el, full) => {
 export const MASKED_VALUE = '••••';
 
 /**
+ * Regular expression source (case-insensitive) matching names of fields that
+ * hold a password, one-time code or card code: `password`, `passwd`, `pwd`,
+ * `passcode`, `otp`, `cvv`, `cvc`. Shared by the page-side
+ * {@link SENSITIVE_FIELD_JS} and HAR sanitization.
+ */
+export const SENSITIVE_NAME_SOURCE = 'passw|passwd|pwd|passcode|(^|[^a-z])otp([^a-z]|$)|cvv|cvc';
+
+/**
  * Page-side check whether a form control holds a secret whose value must
  * never leave the page: a password field (live type or type attribute), a
  * field shown masked by CSS (`-webkit-text-security` other than `none`),
@@ -182,7 +190,7 @@ export const SENSITIVE_FIELD_JS = `(el) => {
   if (/(^|\\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\\s|$)/i.test(autocomplete)) return true;
   if (el.type === 'password' || /^password$/i.test(el.getAttribute('type') || '')) return true;
   const names = [el.getAttribute('name'), el.id, autocomplete].join(' ');
-  if (/passw|passwd|pwd|passcode|(^|[^a-z])otp([^a-z]|$)|cvv|cvc/i.test(names)) return true;
+  if (/${SENSITIVE_NAME_SOURCE}/i.test(names)) return true;
   try {
     const security = el.ownerDocument.defaultView.getComputedStyle(el).getPropertyValue('-webkit-text-security');
     return Boolean(security) && security !== 'none';

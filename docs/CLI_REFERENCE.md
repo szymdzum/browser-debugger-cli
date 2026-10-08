@@ -1090,12 +1090,17 @@ bdg network har ~/exports/debug.har       # Absolute path
 bdg network har final.har && bdg stop
 
 # JSON output (for scripting)
-bdg network har --json                    # Returns metadata about exported file
+bdg network har --json                    # Returns metadata about exported file (with sanitized: true/false)
+
+# Keep credentials (redacted by default)
+bdg network har --include-sensitive full.har
 ```
 
 **Output:**
 - Valid HAR 1.2 format compatible with Chrome DevTools and HAR Viewer
 - Includes all request/response data (URLs, methods, headers, bodies)
+- **Sanitized by default**, like Chrome DevTools' export since Chrome 130: the values of `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `api-key` and `X-*-Key`/`X-*-Token`/`X-*-Secret`/`X-*-Auth*` headers, every cookie value, and password/token/secret/API key fields of JSON and form-urlencoded request bodies are replaced by `[redacted]`. Unlike Chrome, which drops these headers and cookies, bdg keeps their names (and cookie attributes, header sizes). `log.comment` says the file was sanitized. `--include-sensitive` writes every captured value. URLs, response bodies and WebSocket messages are not redacted.
+- Written readable by its owner only (mode 0600)
 - Complete timing breakdown: blocked, DNS, connect, SSL, send, wait, receive
 - Binary content automatically base64 encoded
 - Creator and browser metadata included

@@ -450,6 +450,14 @@ const OPTION_BEHAVIORS: Record<BehaviorKey, OptionBehavior> = {
     whenEnabled: 'Streams requests as they finish',
     automaticBehavior: FOLLOW_BEHAVIOR,
   },
+  'har:--include-sensitive': {
+    default:
+      'The HAR is sanitized: values of Authorization, Proxy-Authorization, Cookie, Set-Cookie, api-key and X-*key/token/secret/auth headers, every cookie value, and password/token/secret/API key fields of JSON and form-urlencoded request bodies (at any depth) become "[redacted]". Header and cookie names, cookie attributes, headersSize and bodySize stay; log.comment and JSON sanitized: true say so',
+    whenEnabled:
+      'Writes every captured value (JSON sanitized: false); human output warns that the file holds credentials',
+    automaticBehavior:
+      'Unlike Chrome DevTools, which drops these headers and empties cookies, names are kept so the HAR still shows a request was authenticated. URLs and query strings, response bodies, multipart bodies and WebSocket messages are not redacted. HAR files are written readable by their owner only (0600). network headers and network getCookies always show real values',
+  },
   'peek:--verbose': {
     default: 'Compact output (truncated URLs, no resource types)',
     whenEnabled: 'Verbose output with full URLs and resource types',

@@ -430,6 +430,23 @@ const ATTRIBUTES_HTML = `<!doctype html><title>attributes</title>
 </form>
 <iframe id="pay" src="/frame-child?x=1"></iframe>`;
 
+/**
+ * A page that logs in with credentials in headers, a JSON body and a cookie,
+ * then sends the cookie back; the title says `done` when both requests finished.
+ * The secrets are assembled in the script so the captured page source holds none.
+ */
+const HAR_SECRETS_HTML = `<!doctype html><title>har secrets</title>
+<script>
+const secret = ['SEC', 'RET'].join('');
+fetch('/har-login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + secret, 'X-Api-Key': secret + '-KEY' },
+  body: JSON.stringify({ user: 'ann', password: 'hunter' + 2 }),
+})
+  .then(() => fetch('/har-login', { method: 'POST', body: 'again' }))
+  .then(() => { document.title = 'done'; });
+</script>`;
+
 /** Body of a 404 page */
 const MISSING_PAGE_HTML = '<!doctype html><title>Not found</title><h1>Not found</h1>';
 
@@ -494,6 +511,20 @@ export async function startFixtureServer(): Promise<FixtureServer> {
     if (req.url === '/pixel.png') {
       res.writeHead(200, { 'Content-Type': 'image/png' });
       res.end(PIXEL_PNG);
+      return;
+    }
+    if (req.url === '/har-secrets') {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(HAR_SECRETS_HTML);
+      return;
+    }
+    if (req.url === '/har-login') {
+      req.resume();
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': 'har_session=SECRET-SESSION; Path=/; HttpOnly',
+      });
+      res.end('{"ok":true}');
       return;
     }
     if (req.url === '/cookie') {

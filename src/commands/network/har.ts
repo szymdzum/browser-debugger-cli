@@ -20,6 +20,7 @@ import { applyFilters, parseFilterString } from '@/telemetry/filterDsl.js';
 import { buildHAR } from '@/telemetry/har/builder.js';
 import type { HAR } from '@/telemetry/har/types.js';
 import { createLogger } from '@/ui/logging/index.js';
+import { harExportedMessage, type HarExportSummary } from '@/ui/messages/networkMessages.js';
 import { getErrorMessage } from '@/utils/errors.js';
 import { VERSION } from '@/utils/version.js';
 
@@ -81,13 +82,13 @@ async function getChromeVersion(): Promise<string | undefined> {
  * @param data - HAR export result data, or the HAR itself for `-` (stdout)
  * @returns Formatted success message, or the HAR as JSON
  */
-function formatHARExport(
-  data: { file: string; entries: number; filtered?: boolean } | HAR
-): string {
+function formatHARExport(data: HarExportSummary | HAR): string {
   if ('log' in data) return JSON.stringify(data, null, 2);
-  const filterNote = data.filtered ? ' (filtered)' : '';
-  return `✓ Exported ${data.entries} requests${filterNote} to ${data.file}`;
+  return harExportedMessage(data);
 }
+
+/** HAR files may hold credentials (--include-sensitive): readable by their owner only */
+const HAR_FILE_MODE = 0o600;
 
 /** Output path meaning "write the HAR to stdout" */
 const STDOUT_PATH = '-';
@@ -98,6 +99,14 @@ const STDOUT_PATH = '-';
 const filterDslOption = new Option(
   '--filter <dsl>',
   'Filter requests using DevTools DSL (e.g., "status-code:>=400")'
+);
+
+/**
+ * Option to keep credentials in the export.
+ */
+const includeSensitiveOption = new Option(
+  '--include-sensitive',
+  'Keep credentials (auth/cookie/API key headers, cookie values, password and token body fields); redacted by default'
 );
 
 /**
@@ -112,6 +121,7 @@ export function registerHarCommand(networkCmd: Command): void {
     .description('Export network data as HAR 1.2 format')
     .addOption(jsonOption())
     .addOption(filterDslOption)
+    .addOption(includeSensitiveOption)
     .action(async (outputFile: string | undefined, options: HarFilterOptions) => {
       await runCommand(
         async () => {
@@ -130,22 +140,27 @@ export function registerHarCommand(networkCmd: Command): void {
           if (outputPath !== STDOUT_PATH) assertFilePath(outputPath, '.har');
 
           const chromeVersion = await getChromeVersion();
-          const har = buildHAR(requests, {
-            version: VERSION,
-            ...(chromeVersion && { chromeVersion }),
-          });
+          const includeSensitive = options.includeSensitive === true;
+          const har = buildHAR(
+            requests,
+            { version: VERSION, ...(chromeVersion && { chromeVersion }) },
+            { includeSensitive }
+          );
           if (outputPath === STDOUT_PATH) return { success: true, data: har };
 
-          const file = await writeOutputFile(outputPath, JSON.stringify(har, null, 2), '.har');
-
-          return {
-            success: true,
-            data: {
-              file,
-              entries: har.log.entries.length,
-              filtered,
-            },
+          const file = await writeOutputFile(
+            outputPath,
+            JSON.stringify(har, null, 2),
+            '.har',
+            HAR_FILE_MODE
+          );
+          const data: HarExportSummary = {
+            file,
+            entries: har.log.entries.length,
+            filtered,
+            sanitized: !includeSensitive,
           };
+          return { success: true, data };
         },
         options,
         formatHARExport

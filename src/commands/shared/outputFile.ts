@@ -84,20 +84,25 @@ export function assertFilePath(filePath: string, extension?: string): void {
  * @param filePath - Path the user gave
  * @param data - File contents
  * @param extension - Extension of the file kind, for examples in errors
+ * @param mode - File permissions of a text file (default: 0666 less the umask)
  * @returns Absolute path written
  * @throws CommandError naming the path when it cannot be written
  */
 export async function writeOutputFile(
   filePath: string,
   data: string | Buffer,
-  extension?: string
+  extension?: string,
+  mode?: number
 ): Promise<string> {
   assertFilePath(filePath, extension);
   const absolutePath = path.resolve(filePath);
   try {
     makeDirectory(path.dirname(absolutePath));
-    if (typeof data === 'string') await AtomicFileWriter.writeAsync(absolutePath, data);
-    else await AtomicFileWriter.writeBufferAsync(absolutePath, data);
+    if (typeof data === 'string') {
+      await AtomicFileWriter.writeAsync(absolutePath, data, mode === undefined ? {} : { mode });
+    } else {
+      await AtomicFileWriter.writeBufferAsync(absolutePath, data);
+    }
   } catch (error) {
     throw outputPathError(filePath, error, extension);
   }

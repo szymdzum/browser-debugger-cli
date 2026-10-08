@@ -67,19 +67,22 @@ export class AtomicFileWriter {
    *
    * @param filePath - Target file path
    * @param data - Data to write
-   * @param options - Write options
+   * @param options - Write options (`mode`: permissions of the new file, less the umask)
    * @returns Promise that resolves when write completes
    * @throws Error if write operation fails
    */
   static async writeAsync(
     filePath: string,
     data: string,
-    options: { encoding?: BufferEncoding } = {}
+    options: { encoding?: BufferEncoding; mode?: number } = {}
   ): Promise<void> {
     const tmpPath = this.getTempPath(filePath);
 
     try {
-      await fs.promises.writeFile(tmpPath, data, { encoding: options.encoding ?? 'utf-8' });
+      await fs.promises.writeFile(tmpPath, data, {
+        encoding: options.encoding ?? 'utf-8',
+        ...(options.mode !== undefined && { mode: options.mode }),
+      });
       await fs.promises.rename(tmpPath, filePath);
     } catch (error) {
       try {
