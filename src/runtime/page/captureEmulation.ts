@@ -4,9 +4,10 @@
  * A capture at a pixel ratio of 1 on a high-DPI page, and one beyond the
  * viewport, override the device metrics (and hide the scrollbars). Each
  * change is recorded before it is sent, so {@link CaptureEmulation.restore}
- * (called from one `finally` around the whole capture) undoes exactly what
- * may have been changed: the session's emulation is put back from the
- * daemon's own record of it, not from a file.
+ * (called once the capture ended, however it ended) undoes exactly what may
+ * have been changed: the session's emulation is put back from the daemon's
+ * own record of it as it is then (a `page emulate` during the capture
+ * counts), not from a file.
  */
 
 import type { CDPConnection } from '@/connection/cdp.js';
@@ -14,6 +15,10 @@ import { TypedCDPConnection } from '@/connection/typed-cdp.js';
 import { evaluateInBdgWorld } from '@/runtime/page/bdgWorld.js';
 import { viewportOverride } from '@/runtime/page/emulation.js';
 import type { ViewportSize } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
+const log = createLogger('dom');
 
 /** Width and height in CSS px */
 export interface Size {
@@ -77,12 +82,13 @@ export class CaptureEmulation {
 
   /**
    * @param connection - Session connection
-   * @param sessionViewport - The session's emulated viewport (`--viewport`,
-   *   `--mobile`, `page emulate`), put back afterwards; none clears the override
+   * @param sessionViewport - Reads the session's emulated viewport
+   *   (`--viewport`, `--mobile`, `page emulate`) as it is now; put back
+   *   afterwards, none clears the override
    */
   constructor(
     private readonly connection: CDPConnection,
-    private readonly sessionViewport: ViewportSize | undefined
+    private readonly sessionViewport: () => ViewportSize | undefined
   ) {
     this.cdp = new TypedCDPConnection(connection);
   }
@@ -97,7 +103,7 @@ export class CaptureEmulation {
    */
   async useUnitPixelRatio(devicePixelRatio: number, viewport: Size): Promise<void> {
     if (devicePixelRatio === 1) return;
-    const size = this.sessionViewport ?? (await this.windowSize(viewport));
+    const size = this.sessionViewport() ?? (await this.windowSize(viewport));
     this.metricsChanged = true;
     await this.cdp.send('Emulation.setDeviceMetricsOverride', viewportOverride(size, 1));
   }
@@ -112,7 +118,7 @@ export class CaptureEmulation {
    * @param view - Visible viewport size
    */
   async keepLayoutWithoutScrollbars(view: Size): Promise<void> {
-    const phone = this.sessionViewport?.mobile;
+    const phone = this.sessionViewport()?.mobile;
     this.scrollbarsHidden = true;
     await this.cdp.send('Emulation.setScrollbarsHidden', { hidden: true });
     this.metricsChanged = true;
@@ -135,24 +141,51 @@ export class CaptureEmulation {
   /**
    * Put back what the capture changed: scrollbars shown, the session's
    * device metrics (its viewport and a phone's touch input, which a capture
-   * beyond the viewport turns off), else none, and the scroll position.
+   * beyond the viewport turns off), else none, and the scroll position. Each
+   * step runs even when an earlier one failed.
+   *
+   * @throws The first step's error, once every step ran
    */
   async restore(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const [name, step] of this.restoreSteps()) {
+      try {
+        await step();
+      } catch (error) {
+        log.debug(`Screenshot restore (${name}) failed: ${getErrorMessage(error)}`);
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) throw failures[0];
+  }
+
+  /**
+   * The steps {@link restore} runs, for what the capture changed.
+   *
+   * @returns Named steps, in order
+   */
+  private restoreSteps(): Array<[string, () => Promise<unknown>]> {
+    const steps: Array<[string, () => Promise<unknown>]> = [];
     if (this.scrollbarsHidden) {
-      await this.cdp.send('Emulation.setScrollbarsHidden', { hidden: false });
+      steps.push([
+        'scrollbars',
+        () => this.cdp.send('Emulation.setScrollbarsHidden', { hidden: false }),
+      ]);
     }
-    if (this.metricsChanged) await this.restoreSessionMetrics();
-    if (this.scrolledFrom) {
-      const { x, y } = this.scrolledFrom;
-      await evaluateValue(this.connection, `window.scrollTo(${x}, ${y})`);
+    if (this.metricsChanged) steps.push(['device metrics', () => this.restoreSessionMetrics()]);
+    const scrolledFrom = this.scrolledFrom;
+    if (scrolledFrom) {
+      const { x, y } = scrolledFrom;
+      steps.push(['scroll', () => evaluateValue(this.connection, `window.scrollTo(${x}, ${y})`)]);
     }
+    return steps;
   }
 
   /**
    * Put back the session's device metrics, or clear the override.
    */
   private async restoreSessionMetrics(): Promise<void> {
-    const viewport = this.sessionViewport;
+    const viewport = this.sessionViewport();
     if (!viewport) {
       await this.cdp.send('Emulation.clearDeviceMetricsOverride', {});
       return;

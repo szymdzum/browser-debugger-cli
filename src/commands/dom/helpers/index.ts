@@ -7,7 +7,6 @@
  */
 
 export {
-  documentReadyState,
   noMatchesError,
   queryDOMElements,
   getDomContext,
@@ -21,11 +20,4 @@ export {
 
 export { captureScreenshot } from '@/commands/dom/helpers/screenshot.js';
 
-export type {
-  DomQueryResult,
-  DomGetResult,
-  ScreenshotResult,
-  DomGetOptions,
-  DomContext,
-  ElementBounds,
-} from '@/types.js';
+export type { DomGetOptions, DomContext } from '@/types.js';

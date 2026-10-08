@@ -14,6 +14,7 @@ import type { CDPConnection } from '@/connection/cdp.js';
 import { TypedCDPConnection, type Protocol } from '@/connection/typed-cdp.js';
 import type { DomScreenshotCommand, DomScreenshotData } from '@/ipc/protocol/commands.js';
 import { captureArea, getElementBounds, type ElementRef } from '@/runtime/dom/captureArea.js';
+import { withBusyPageRecovery, type BusyRecoveryOptions } from '@/runtime/dom/evalHelpers.js';
 import {
   CaptureEmulation,
   evaluateValue,
@@ -29,6 +30,10 @@ import {
   shouldResize,
 } from '@/runtime/page/screenshotResize.js';
 import type { ElementBounds, ScreenshotResult, ViewportSize } from '@/types.js';
+import { createLogger } from '@/ui/logging/index.js';
+import { getErrorMessage } from '@/utils/errors.js';
+
+const log = createLogger('dom');
 
 /** What a screenshot reports, but the file it was written to */
 type Screenshot = DomScreenshotData['screenshot'];
@@ -39,26 +44,66 @@ const DEFAULT_JPEG_QUALITY = 90;
 /**
  * Take a screenshot: of the element `backendNodeId` names, else of the page.
  * Whatever emulation the capture changed is put back before this returns or
- * throws, from the session's own record of its emulation.
+ * throws, from the session's record of its emulation at that time.
+ *
+ * A page whose scripts keep it busy gets them terminated
+ * ({@link withBusyPageRecovery}, exit 102); the capture then ends, and the
+ * error is reported once its emulation is back, so the next command does not
+ * race the restore.
  *
  * @param cdp - Session connection
  * @param params - What to capture and how
- * @param sessionViewport - The session's emulated viewport, if any
+ * @param sessionViewport - Reads the session's emulated viewport, if any
+ * @param recovery - When a busy page is checked (tests shorten it)
  * @returns The image (base64) and what was captured
  */
 export async function takeScreenshot(
   cdp: CDPConnection,
   params: DomScreenshotCommand,
-  sessionViewport: ViewportSize | undefined
+  sessionViewport: () => ViewportSize | undefined,
+  recovery: BusyRecoveryOptions = {}
 ): Promise<DomScreenshotData> {
-  const emulation = new CaptureEmulation(cdp, sessionViewport);
+  const shot = captureAndRestore(cdp, params, new CaptureEmulation(cdp, sessionViewport));
   try {
-    return params.backendNodeId === undefined
-      ? await capturePage(cdp, params, emulation)
-      : await captureElement(cdp, { backendNodeId: params.backendNodeId }, params, emulation);
-  } finally {
-    await emulation.restore();
+    return await withBusyPageRecovery(cdp, shot, recovery);
+  } catch (error) {
+    await shot.catch((captureError: unknown) =>
+      log.debug(`Capture ended after the busy page: ${getErrorMessage(captureError)}`)
+    );
+    throw error;
   }
+}
+
+/**
+ * Capture, then put back the emulation the capture changed. A failed restore
+ * is reported only when the capture worked; otherwise the capture's error is.
+ *
+ * @param cdp - Session connection
+ * @param params - What to capture and how
+ * @param emulation - Emulation changes of this capture
+ * @returns The image (base64) and what was captured
+ */
+async function captureAndRestore(
+  cdp: CDPConnection,
+  params: DomScreenshotCommand,
+  emulation: CaptureEmulation
+): Promise<DomScreenshotData> {
+  let shot: DomScreenshotData;
+  try {
+    shot =
+      params.backendNodeId === undefined
+        ? await capturePage(cdp, params, emulation)
+        : await captureElement(cdp, { backendNodeId: params.backendNodeId }, params, emulation);
+  } catch (error) {
+    await emulation
+      .restore()
+      .catch((restoreError: unknown) =>
+        log.debug(`Restore after a failed capture: ${getErrorMessage(restoreError)}`)
+      );
+    throw error;
+  }
+  await emulation.restore();
+  return shot;
 }
 
 /**

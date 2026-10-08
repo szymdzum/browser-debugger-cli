@@ -797,7 +797,7 @@ export function createCommandRegistry(
       ),
 
     dom_screenshot: async (cdp, params) =>
-      withBusyPageRecovery(cdp, takeScreenshot(cdp, params, emulation.get().viewport)),
+      takeScreenshot(cdp, params, () => emulation.get().viewport),
 
     dom_wait: async (cdp, params) => waitForCondition(cdp, params),
 
