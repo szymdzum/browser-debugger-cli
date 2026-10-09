@@ -7,6 +7,43 @@
 
 import { MASKED_VALUE, SENSITIVE_FIELD_JS } from '@/runtime/dom/elementInfo.js';
 import type { RawFormData } from '@/runtime/dom/formTypes.js';
+import { DEEP_QUERY_JS } from '@/runtime/dom/targetNode.js';
+
+/** Custom elements checked for a closed shadow root holding fields (bounds the CDP calls) */
+const CLOSED_HOST_LIMIT = 50;
+
+/**
+ * Page-side order of elements in the composed tree, across open shadow
+ * roots: an element's shadow content comes right after it. Takes two
+ * elements, returns a negative number when the first comes first.
+ */
+export const COMPOSED_ORDER_JS = `(a, b) => {
+  const chain = (el) => {
+    const hosts = [el];
+    for (let host = el.getRootNode().host; host; host = host.getRootNode().host) hosts.unshift(host);
+    return hosts;
+  };
+  const first = chain(a);
+  const second = chain(b);
+  for (let i = 0; i < first.length && i < second.length; i++) {
+    if (first[i] === second[i]) continue;
+    return first[i].compareDocumentPosition(second[i]) & 4 ? -1 : 1;
+  }
+  return first.length - second.length;
+}`;
+
+/**
+ * Page-side `closest()` across open shadow roots: the closest ancestor (or
+ * the element itself) matching a selector in the element's tree, else in
+ * its host's tree, and so on up. Takes the element and the selector.
+ */
+export const COMPOSED_CLOSEST_JS = `(el, selector) => {
+  for (let node = el; node; node = node.getRootNode().host) {
+    const match = node.closest(selector);
+    if (match) return match;
+  }
+  return null;
+}`;
 
 /**
  * Page-context script for form discovery.
@@ -21,10 +58,52 @@ import type { RawFormData } from '@/runtime/dom/formTypes.js';
  *   their checked state) is {@link MASKED_VALUE} when filled, and a
  *   sensitive select's options do not say which is chosen)
  * - Form relevance scoring for multi-form pages
+ *
+ * Forms and fields in open shadow roots are found too (nested ones
+ * included, through {@link DEEP_QUERY_JS}; same-origin iframes are left to
+ * the iframe hint): a field belongs to the closest form around it across
+ * shadow roots ({@link COMPOSED_CLOSEST_JS}), so a component's input in a
+ * light DOM form is that form's, and labels are looked up in the field's
+ * own root. A form in a shadow root carries its host (`shadowHost`).
+ *
+ * Evaluates to `{ data, nodes, hosts }`: the discovery result (read by
+ * value), the listed fields and buttons by index (so the daemon can bind
+ * indices to the exact nodes), and custom elements without an open shadow
+ * root (checked by the daemon for a closed one holding fields).
  */
 export const FORM_DISCOVERY_SCRIPT = `
 (function() {
   const result = { forms: [] };
+  const nodes = [];
+  const deepQuery = ${DEEP_QUERY_JS};
+  const composedOrder = ${COMPOSED_ORDER_JS};
+  const composedClosest = ${COMPOSED_CLOSEST_JS};
+
+  // Elements of the main document and its open shadow roots matching a
+  // selector, in composed tree order
+  function deepAll(selector) {
+    return deepQuery(selector, null).filter((el) => el.ownerDocument === document).sort(composedOrder);
+  }
+
+  // Everything a selector search reaches: the document, its open shadow
+  // roots and same-origin iframes (a selector is unique when it matches once
+  // in all of them)
+  const allElements = deepQuery('*', null);
+  const searchRoots = [document];
+  for (const el of allElements) {
+    if (el.shadowRoot) searchRoots.push(el.shadowRoot);
+    if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') {
+      let frameDocument = null;
+      try { frameDocument = el.contentDocument; } catch (e) { frameDocument = null; }
+      if (frameDocument) searchRoots.push(frameDocument);
+    }
+  }
+
+  // Short name of the shadow host an element is in, e.g. x-login#main
+  function shadowHostOf(element) {
+    const host = element.getRootNode().host;
+    return host ? host.localName + (host.id ? '#' + host.id : '') : undefined;
+  }
 
   // Rendered and not visibility-hidden, ancestors included (opacity is left
   // out: styled checkboxes and radios are often transparent)
@@ -45,9 +124,10 @@ export const FORM_DISCOVERY_SCRIPT = `
   // dialog-off-canvas-main-canvas) and fixed app shells holding the whole
   // page are not dialogs.
   function inDialog(element) {
-    if (element.closest('dialog[open], [aria-modal="true"], [role="dialog"], [role="alertdialog"]')) return true;
+    if (composedClosest(element, 'dialog[open], [aria-modal="true"], [role="dialog"], [role="alertdialog"]')) return true;
     const viewportArea = window.innerWidth * window.innerHeight;
-    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+    const parentOf = (node) => node.parentElement || node.getRootNode().host || null;
+    for (let node = parentOf(element); node && node !== document.body; node = parentOf(node)) {
       const style = window.getComputedStyle(node);
       if (style.position !== 'fixed' && style.position !== 'absolute') continue;
       const raised = parseInt(style.zIndex, 10) > 0;
@@ -77,7 +157,12 @@ export const FORM_DISCOVERY_SCRIPT = `
 
   function isUnique(selector) {
     try {
-      return document.querySelectorAll(selector).length === 1;
+      let count = 0;
+      for (const root of searchRoots) {
+        count += root.querySelectorAll(selector).length;
+        if (count > 1) return false;
+      }
+      return count === 1;
     } catch (e) {
       return false;
     }
@@ -127,11 +212,13 @@ export const FORM_DISCOVERY_SCRIPT = `
     return cleaned || text.trim();
   }
 
-  // The element labelling a field: label[for], aria-labelledby, wrapping label
+  // The element labelling a field, in the field's own tree (document or
+  // shadow root): label[for], aria-labelledby, wrapping label
   function labelElement(element) {
-    const labelFor = element.id ? document.querySelector('label[for="' + CSS.escape(element.id) + '"]') : null;
+    const root = element.getRootNode();
+    const labelFor = element.id ? root.querySelector('label[for="' + CSS.escape(element.id) + '"]') : null;
     const labelledBy = element.getAttribute('aria-labelledby');
-    return labelFor || (labelledBy && document.getElementById(labelledBy)) || element.closest('label');
+    return labelFor || (labelledBy && root.getElementById(labelledBy)) || element.closest('label');
   }
 
   // A standalone required star in label text: "* Name", "Name *", "Name *:"
@@ -168,15 +255,16 @@ export const FORM_DISCOVERY_SCRIPT = `
   }
 
   function extractLabel(element) {
+    const root = element.getRootNode();
     if (element.id) {
-      const labelFor = document.querySelector('label[for="' + CSS.escape(element.id) + '"]');
+      const labelFor = root.querySelector('label[for="' + CSS.escape(element.id) + '"]');
       if (labelFor) return cleanLabelText(labelFor.textContent);
     }
     const ariaLabel = element.getAttribute('aria-label');
     if (ariaLabel) return cleanLabelText(ariaLabel);
     const ariaLabelledBy = element.getAttribute('aria-labelledby');
     if (ariaLabelledBy) {
-      const labelEl = document.getElementById(ariaLabelledBy);
+      const labelEl = root.getElementById(ariaLabelledBy);
       if (labelEl) return cleanLabelText(labelEl.textContent);
     }
     const wrappingLabel = element.closest('label');
@@ -310,7 +398,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     const errorIds = (element.getAttribute('aria-errormessage') || '').split(/\\s+/).filter(Boolean);
     const describedIds = (element.getAttribute('aria-describedby') || '').split(/\\s+/).filter(Boolean);
     for (const id of [...errorIds, ...describedIds]) {
-      const target = document.getElementById(id);
+      const target = element.getRootNode().getElementById(id);
       const looksLikeError = errorIds.includes(id) || invalid ||
         /error|invalid|alert/i.test(target ? target.className + ' ' + (target.getAttribute('role') || '') : '');
       if (target && looksLikeError && target.textContent.trim()) {
@@ -335,11 +423,11 @@ export const FORM_DISCOVERY_SCRIPT = `
     const centerY = rect.top + rect.height / 2;
     if (centerX > viewportWidth * 0.2 && centerX < viewportWidth * 0.8) score += 10;
     if (centerY > 0 && centerY < viewportHeight) score += 5;
-    const isInMain = formEl.closest('main, [role="main"], article, .main-content, #main');
+    const isInMain = composedClosest(formEl, 'main, [role="main"], article, .main-content, #main');
     if (isInMain) score += 15;
-    const isInHeader = formEl.closest('header, [role="banner"], nav, [role="navigation"]');
+    const isInHeader = composedClosest(formEl, 'header, [role="banner"], nav, [role="navigation"]');
     if (isInHeader) score -= 10;
-    const isInAside = formEl.closest('aside, [role="complementary"], footer, [role="contentinfo"]');
+    const isInAside = composedClosest(formEl, 'aside, [role="complementary"], footer, [role="contentinfo"]');
     if (isInAside) score -= 5;
     const distinctFields = new Set(
       fields.map((f) => (f.type === 'radio' || f.type === 'checkbox') && f.name ? f.type + ':' + f.name : f.index)
@@ -417,7 +505,7 @@ export const FORM_DISCOVERY_SCRIPT = `
       if (matchesWord(allText, 'register') || matchesWord(allText, 'signup') || matchesWord(allText, 'create')) return 'Registration';
       return 'Login';
     }
-    const hasSearchRole = formEl.closest('[role="search"]') || formEl.getAttribute('role') === 'search';
+    const hasSearchRole = composedClosest(formEl, '[role="search"]');
     const hasSearchInput = formEl.querySelector('[type="search"], [aria-label*="search" i]');
     if (hasSearchRole || hasSearchInput) return 'Search';
     const interactiveTypes = types.filter(t => !['hidden', 'submit', 'button', 'reset', 'image'].includes(t));
@@ -443,7 +531,7 @@ export const FORM_DISCOVERY_SCRIPT = `
     if (ariaLabel) return ariaLabel;
     const ariaLabelledBy = formEl.getAttribute('aria-labelledby');
     if (ariaLabelledBy) {
-      const labelEl = document.getElementById(ariaLabelledBy);
+      const labelEl = formEl.getRootNode().getElementById(ariaLabelledBy);
       if (labelEl) return labelEl.textContent.trim();
     }
     const headings = formEl.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]');
@@ -468,25 +556,37 @@ export const FORM_DISCOVERY_SCRIPT = `
     return null;
   }
 
-  function discoverFields(container, formIndex, startIndex) {
+  // Fields of the page (native controls first, then ARIA ones) and the form
+  // each belongs to
+  const nativeInputs = deepAll(
+    'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), ' +
+    'textarea, ' +
+    'select'
+  );
+  const customInputs = deepAll(
+    '[role="textbox"], ' +
+    '[role="checkbox"]:not(input), ' +
+    '[role="radio"]:not(input), ' +
+    '[role="combobox"], ' +
+    '[role="listbox"], ' +
+    '[role="switch"], ' +
+    '[contenteditable="true"]'
+  );
+  const allInputs = Array.from(new Set([...nativeInputs, ...customInputs]));
+  const allButtons = deepAll(
+    'button, ' +
+    'input[type="submit"], ' +
+    'input[type="button"], ' +
+    'input[type="reset"], ' +
+    '[role="button"]'
+  );
+  const ownerForm = (el) => composedClosest(el, 'form');
+
+  function discoverFields(inputs, formIndex, startIndex) {
     const fields = [];
-    const nativeInputs = container.querySelectorAll(
-      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]), ' +
-      'textarea, ' +
-      'select'
-    );
-    const customInputs = container.querySelectorAll(
-      '[role="textbox"], ' +
-      '[role="checkbox"]:not(input), ' +
-      '[role="radio"]:not(input), ' +
-      '[role="combobox"], ' +
-      '[role="listbox"], ' +
-      '[role="switch"], ' +
-      '[contenteditable="true"]'
-    );
-    const allInputs = new Set([...nativeInputs, ...customInputs]);
     let idx = startIndex;
-    for (const el of allInputs) {
+    for (const el of inputs) {
+      nodes[idx] = el;
       const isHidden = el.type === 'hidden' || !isShown(el);
       const value = getFieldValue(el);
       fields.push({
@@ -519,18 +619,12 @@ export const FORM_DISCOVERY_SCRIPT = `
     return fields;
   }
 
-  function discoverButtons(container, startIndex) {
+  function discoverButtons(buttonEls, startIndex) {
     const buttons = [];
-    const buttonEls = container.querySelectorAll(
-      'button, ' +
-      'input[type="submit"], ' +
-      'input[type="button"], ' +
-      'input[type="reset"], ' +
-      '[role="button"]'
-    );
     let idx = startIndex;
     for (const el of buttonEls) {
       if (!isShown(el)) continue;
+      nodes[idx] = el;
       const type = el.type?.toLowerCase() || 'button';
       const btnType = type === 'submit' ? 'submit' : type === 'reset' ? 'reset' : 'button';
       const explicitSubmit = btnType === 'submit' &&
@@ -552,14 +646,15 @@ export const FORM_DISCOVERY_SCRIPT = `
     return buttons;
   }
 
-  const forms = document.querySelectorAll('form');
+  const forms = deepAll('form');
   let globalIndex = 0;
 
-  // A page still loading may not have a body yet
-  const pageRoot = document.body || document.documentElement;
-  if (forms.length === 0 && pageRoot) {
-    const bodyFields = discoverFields(pageRoot, 0, 0);
-    const bodyButtons = discoverButtons(pageRoot, bodyFields.length);
+  if (forms.length === 0) {
+    const bodyFields = discoverFields(allInputs, 0, 0);
+    const bodyButtons = discoverButtons(allButtons, bodyFields.length);
+    // One shadow host holding all the fields marks the group
+    const groupHosts = new Set(allInputs.map(shadowHostOf));
+    const groupHost = groupHosts.size === 1 ? Array.from(groupHosts)[0] : undefined;
     if (bodyFields.length > 0) {
       result.forms.push({
         index: 0,
@@ -571,6 +666,7 @@ export const FORM_DISCOVERY_SCRIPT = `
         hidden: false,
         inDialog: false,
         inIframe: false,
+        shadowHost: groupHost,
         fields: bodyFields,
         buttons: bodyButtons
       });
@@ -578,9 +674,9 @@ export const FORM_DISCOVERY_SCRIPT = `
   } else {
     for (let i = 0; i < forms.length; i++) {
       const formEl = forms[i];
-      const fields = discoverFields(formEl, i, globalIndex);
+      const fields = discoverFields(allInputs.filter((el) => ownerForm(el) === formEl), i, globalIndex);
       globalIndex += fields.length;
-      const buttons = discoverButtons(formEl, globalIndex);
+      const buttons = discoverButtons(allButtons.filter((el) => ownerForm(el) === formEl), globalIndex);
       globalIndex += buttons.length;
       const inIframe = formEl.ownerDocument !== document;
       // Shown when a field or a button is (buttons list shown ones only), or
@@ -597,26 +693,29 @@ export const FORM_DISCOVERY_SCRIPT = `
         hidden: !shown,
         inDialog: shown && inDialog(formEl),
         inIframe: inIframe,
+        shadowHost: shadowHostOf(formEl),
         fields: fields,
         buttons: buttons
       });
     }
   }
 
-  // Forms the main document does not contain may be in its same-origin iframes
-  if (result.forms.length === 0) {
-    result.frameForms = [];
-    for (const frame of document.querySelectorAll('iframe, frame')) {
-      let frameDocument = null;
-      try { frameDocument = frame.contentDocument; } catch (e) { frameDocument = null; }
-      if (frameDocument && frameDocument.querySelector('form, input:not([type=hidden]), select, textarea')) {
-        result.frameForms.push({ url: frame.src || 'about:blank' });
-      }
+  // Form fields in same-origin iframes, which are not listed (named even
+  // when the main document has forms of its own)
+  result.frameForms = [];
+  for (const frame of document.querySelectorAll('iframe, frame')) {
+    let frameDocument = null;
+    try { frameDocument = frame.contentDocument; } catch (e) { frameDocument = null; }
+    if (frameDocument && frameDocument.querySelector('form, input:not([type=hidden]), select, textarea')) {
+      result.frameForms.push({ url: frame.src || 'about:blank' });
     }
   }
 
   result.readyState = document.readyState;
-  return result;
+  const hosts = allElements.filter((el) =>
+    el.ownerDocument === document && el.localName.includes('-') && !el.shadowRoot && el.matches(':defined')
+  ).slice(0, ${CLOSED_HOST_LIMIT});
+  return { data: result, nodes: nodes, hosts: hosts };
 })()
 `;
 

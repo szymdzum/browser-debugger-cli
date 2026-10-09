@@ -765,6 +765,8 @@ export interface DiscoveredForm {
   hidden: boolean;
   /** Shown inside an open dialog: listed first, like visible forms before hidden ones */
   inDialog: boolean;
+  /** Host of the open shadow root holding the form, e.g. `x-login#main` */
+  shadowHost?: string | undefined;
   fields: FormField[];
   buttons: FormButton[];
   summary: FormSummary;
@@ -784,7 +786,12 @@ export interface FormDiscoveryResult {
     fieldCount: number;
     hidden: boolean;
     inDialog: boolean;
+    shadowHost?: string | undefined;
   }>;
+  /** URLs of same-origin iframes holding form fields, which are not listed */
+  formsInFrames?: string[] | undefined;
+  /** Custom elements whose closed shadow roots hold form fields (not inspectable, so not listed) */
+  closedShadowHosts?: string[] | undefined;
   brief?: boolean | undefined;
 }
 

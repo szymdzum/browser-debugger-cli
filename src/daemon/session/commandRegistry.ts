@@ -3,7 +3,6 @@ import type { TelemetryStore } from './TelemetryStore.js';
 import { missingMethodCause } from '@/cdp/methodTarget.js';
 import type { CDPConnection } from '@/connection/cdp.js';
 import { CDPConnectionError, CDPProtocolError } from '@/connection/errors.js';
-import type { Protocol } from '@/connection/typed-cdp.js';
 import { PatternDetector } from '@/daemon/patternDetector.js';
 import { createInteractionRunner } from '@/daemon/session/interactions.js';
 import { withTriggeredRequestCount } from '@/daemon/session/triggeredRequests.js';
@@ -25,7 +24,7 @@ import { searchStyleSheets } from '@/runtime/css/search.js';
 import { auditPage } from '@/runtime/dom/audit.js';
 import { evaluateScript, withBusyPageRecovery } from '@/runtime/dom/evalHelpers.js';
 import { inspectEventListeners } from '@/runtime/dom/eventListeners.js';
-import { FORM_DISCOVERY_SCRIPT, isRawFormData } from '@/runtime/dom/formDiscovery.js';
+import { evaluateFormDiscovery, readFormDiscovery } from '@/runtime/dom/formDiscoveryNodes.js';
 import {
   fillElement,
   clickElement,
@@ -41,7 +40,7 @@ import { inspectElement } from '@/runtime/dom/inspect.js';
 import { inspectLayout } from '@/runtime/dom/layout.js';
 import { onScriptTarget } from '@/runtime/dom/targetNode.js';
 import { waitForCondition } from '@/runtime/dom/wait.js';
-import { evaluateInBdgWorld, sendForBdgScript } from '@/runtime/page/bdgWorld.js';
+import { sendForBdgScript } from '@/runtime/page/bdgWorld.js';
 import { emulatePage, pageAppearance, type SessionEmulation } from '@/runtime/page/emulation.js';
 import { readDocumentReadyState } from '@/runtime/page/loadingState.js';
 import { navigatePage } from '@/runtime/page/navigation.js';
@@ -843,22 +842,12 @@ export function createCommandRegistry(
     },
 
     dom_form_discover: async (cdp): Promise<RawFormData> => {
-      const response = await withBusyPageRecovery(
-        cdp,
-        evaluateInBdgWorld(cdp, {
-          expression: FORM_DISCOVERY_SCRIPT,
-          returnByValue: true,
-        })
-      );
-      const cdpResponse = response as {
-        exceptionDetails?: Protocol.Runtime.ExceptionDetails;
-        result?: { value?: unknown };
-      };
-      if (cdpResponse.exceptionDetails) {
+      const response = await withBusyPageRecovery(cdp, evaluateFormDiscovery(cdp));
+      if (response.exceptionDetails) {
         const readyState = await readDocumentReadyState(cdp);
         const loading = readyState !== undefined && readyState !== 'complete';
         const err = formDiscoveryFailedError(
-          exceptionSummary(cdpResponse.exceptionDetails),
+          exceptionSummary(response.exceptionDetails),
           readyState
         );
         throw new CommandError(
@@ -867,11 +856,7 @@ export function createCommandRegistry(
           loading ? EXIT_CODES.RESOURCE_NOT_FOUND : EXIT_CODES.SOFTWARE_ERROR
         );
       }
-      const rawData = cdpResponse.result?.value;
-      if (!isRawFormData(rawData)) {
-        throw new Error('Unexpected form discovery response');
-      }
-      return rawData;
+      return readFormDiscovery(cdp, response.result.objectId);
     },
   } as CommandRegistry;
 }

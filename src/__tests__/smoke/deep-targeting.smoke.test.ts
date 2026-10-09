@@ -155,7 +155,32 @@ void describe('Shadow DOM and iframe targeting', () => {
     assert.equal(found.data.count, 1);
   });
 
+  void it('lists shadow root fields and still names the frame holding form fields', async () => {
+    const result = await runCommand('dom', ['form', '--all', '--json']);
+    assert.equal(result.exitCode, 0, result.stderr);
+    const data = (
+      JSON.parse(result.stdout) as {
+        data: { forms: Array<{ fields: Array<{ selector: string }> }>; formsInFrames?: string[] };
+      }
+    ).data;
+    assert.ok(
+      data.forms.some((form) => form.fields.some((field) => field.selector === '#shadow-input')),
+      result.stdout
+    );
+    assert.match(String(data.formsInFrames), /\/deep-frame$/);
+    const human = await runCommand('dom', ['form', '--all']);
+    assert.match(
+      human.stdout,
+      /Note: an iframe holds form fields dom form does not list: \S+\/deep-frame/
+    );
+  });
+
   void it('points to fields of a form inside a same-origin frame (89)', async () => {
+    const removed = await runCommand('dom', [
+      'eval',
+      "document.querySelector('shadow-form').remove(); 1",
+    ]);
+    assert.equal(removed.exitCode, 0, removed.stderr);
     const result = await runCommand('dom', ['form', '--json']);
     assert.equal(result.exitCode, 89);
     assert.match(result.stdout, /deep-frame/);

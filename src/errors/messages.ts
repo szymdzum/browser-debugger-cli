@@ -18,6 +18,7 @@ import { getSessionBaseDir, getSessionName, type UntrustedSessionDir } from '@/s
 import type { DocumentRequestState, IndexSource } from '@/types.js';
 import { escapeControlChars, formatDuration, joinLines } from '@/ui/formatting.js';
 import {
+  closedShadowRootMessage,
   documentRequestText,
   frameLabel,
   frameUrlLabel,
@@ -2330,11 +2331,21 @@ export function internalError(context: string): ErrorWithSuggestion {
 }
 
 /**
- * No forms found on page.
+ * No forms on the page.
+ *
+ * @param readyState - The page's `document.readyState`, when known
+ * @param closedShadowHosts - Components whose closed shadow roots hold form fields
+ * @returns Message and suggestion (the still-loading hint while the page
+ *   loads; what bdg cannot see when fields are in closed shadow roots)
  */
-export function noFormsFoundError(readyState?: string): ErrorWithSuggestion {
-  const check =
-    'Check if forms exist with: bdg dom query "form, input, [role=textbox]" or inspect the page manually';
+export function noFormsFoundError(
+  readyState?: string,
+  closedShadowHosts: string[] = []
+): ErrorWithSuggestion {
+  const check = joinLines(
+    ...closedShadowHosts.map(closedShadowRootMessage),
+    'Check if forms exist with: bdg dom query "form, input, [role=textbox]" or inspect the page manually'
+  );
   if (readyState === undefined || readyState === 'complete') {
     return { message: 'No forms discovered on the page', suggestion: check };
   }
